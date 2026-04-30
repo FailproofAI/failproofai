@@ -10,6 +10,7 @@
 ### Fixes
 - `failproofai policies --uninstall` interactive CLI selector now says "Remove Hooks" / "Choose where to remove from:" instead of "Install Hooks" / "Choose where to install:" (#236)
 - README: replace the GitHub Copilot logo with the current canonical mark and add a dark-mode variant (`copilot-light.svg` + `copilot-dark.svg` via `<picture>`); the previous SVG used outdated path data with a hard-coded black fill that rendered invisibly on GitHub's dark theme (#236)
+- README: replace the broken Cursor Agent logo (`cursor-light.svg` + `cursor-dark.svg`); the previous path was malformed (extended past the 24×24 viewBox to x=24.5 and traced an unrecognizable arrow shape) and is now the canonical Cursor brand mark (#257)
 - Auto-translated MDX: stop the recurring `mintlify validate` parse error in `docs/de/dashboard.mdx` (`<Tab title="Tab „Richtlinien"">`) by adding a `sanitizeJsxAttributes` post-processor to the translation pipeline that strips stray ASCII `"` left after typographic-quote pairs (and any unmatched opening typographic quote) in JSX attribute values, and by tightening the translator system prompt to forbid ASCII `"` inside attribute values. Same regression PR #229 fixed by hand — now it can't recur. Includes the immediate file fix on `docs/de/dashboard.mdx`. (#247)
 
 ### Docs

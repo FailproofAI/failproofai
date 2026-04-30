@@ -171,6 +171,8 @@ Policy configuration lives in `~/.failproofai/policies-config.json` (global) or 
 
 **Three config scopes** are merged automatically (project → local → global). See [docs/configuration.mdx](docs/configuration.mdx) for full merge rules.
 
+CLI output color can be disabled with `NO_COLOR=1` or `failproofai --no-color` (useful for CI logs and non-ANSI terminals).
+
 ---
 
 ## Built-in policies

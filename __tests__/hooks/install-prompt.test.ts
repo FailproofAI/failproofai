@@ -3,6 +3,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 
 describe("hooks/install-prompt", () => {
   const originalIsTTY = process.stdin.isTTY;
+  const originalNoColor = process.env.NO_COLOR;
+  const originalArgv = [...process.argv];
 
   afterEach(() => {
     Object.defineProperty(process.stdin, "isTTY", {
@@ -10,6 +12,8 @@ describe("hooks/install-prompt", () => {
       writable: true,
       configurable: true,
     });
+    process.env.NO_COLOR = originalNoColor;
+    process.argv = [...originalArgv];
     vi.restoreAllMocks();
   });
 
@@ -47,6 +51,29 @@ describe("hooks/install-prompt", () => {
     const selected = await promptPolicySelection(["block-sudo", "block-rm-rf"]);
 
     expect(selected).toEqual(["block-sudo", "block-rm-rf"]);
+  });
+
+  it("returns defaults in NO_COLOR mode even when stdin is a TTY", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+    process.env.NO_COLOR = "1";
+    const setRawMode = vi.fn();
+    const resume = vi.fn();
+    const pause = vi.fn();
+    Object.assign(process.stdin, { setRawMode, resume, pause });
+
+    const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
+    const selected = await promptPolicySelection();
+
+    expect(selected).toContain("sanitize-jwt");
+    expect(selected).toContain("protect-env-vars");
+    expect(selected).toHaveLength(11);
+    expect(setRawMode).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
   });
 
   describe("resolveTargetClis", () => {
@@ -130,6 +157,33 @@ describe("hooks/install-prompt", () => {
       vi.resetModules();
       expect(installResult).toEqual(["claude", "codex", "copilot", "cursor"]);
       expect(uninstallResult).toEqual(["claude", "codex", "copilot", "cursor"]);
+    });
+
+    it("NO_COLOR warning output contains no ANSI sequences", async () => {
+      process.env.NO_COLOR = "1";
+      vi.doMock("../../src/hooks/integrations", async () => {
+        const actual = await vi.importActual<typeof import("../../src/hooks/integrations")>(
+          "../../src/hooks/integrations",
+        );
+        return {
+          ...actual,
+          detectInstalledClis: () => [],
+        };
+      });
+      const logs: string[] = [];
+      const spy = vi.spyOn(console, "log").mockImplementation((m) => {
+        logs.push(String(m));
+      });
+      vi.resetModules();
+      const { resolveTargetClis } = await import("../../src/hooks/install-prompt");
+      await resolveTargetClis(undefined, "install");
+      spy.mockRestore();
+      vi.doUnmock("../../src/hooks/integrations");
+      vi.resetModules();
+      expect(logs[0]).toMatchInlineSnapshot(
+        "\"Warning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent). Defaulting to Claude Code; hooks will activate when an agent is installed.\"",
+      );
+      expect(logs[0]).not.toContain("\\u001b[");
     });
   });
 });

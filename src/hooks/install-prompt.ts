@@ -13,6 +13,7 @@ import * as readline from "node:readline";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { detectInstalledClis, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
+import { createCliStyler, createCursorController } from "../cli-color";
 
 interface SelectItem {
   name: string;
@@ -51,6 +52,7 @@ export async function resolveTargetClis(
   explicit?: IntegrationType[],
   action: CliPromptAction = "install",
 ): Promise<IntegrationType[]> {
+  const style = createCliStyler(process.stdout);
   if (explicit && explicit.length > 0) return [...new Set(explicit)];
 
   const detected = detectInstalledClis();
@@ -60,14 +62,18 @@ export async function resolveTargetClis(
       // Uninstall flow: no agent CLIs detected — nothing to remove from. Default to
       // claude so removeHooks operates over Claude's scopes (no-op if no settings file).
       console.log(
-        "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent). " +
-          "Defaulting to Claude Code; nothing will be removed if no settings file exists.\x1B[0m",
+        style.yellow(
+          "Warning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent). " +
+            "Defaulting to Claude Code; nothing will be removed if no settings file exists.",
+        ),
       );
       return ["claude"];
     }
     console.log(
-      "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent). " +
-        "Defaulting to Claude Code; hooks will activate when an agent is installed.\x1B[0m",
+      style.yellow(
+        "Warning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent). " +
+          "Defaulting to Claude Code; hooks will activate when an agent is installed.",
+      ),
     );
     return ["claude"];
   }
@@ -80,7 +86,7 @@ export async function resolveTargetClis(
   }
 
   // Multiple detected. Prompt or default.
-  if (!process.stdin.isTTY) return detected; // non-interactive: install/remove for all detected
+  if (!process.stdin.isTTY || !style.enabled) return detected; // non-interactive/no-color: use all detected
 
   return promptCliTargetSelection(detected, action);
 }
@@ -93,6 +99,7 @@ async function promptCliTargetSelection(
   detected: IntegrationType[],
   action: CliPromptAction = "install",
 ): Promise<IntegrationType[]> {
+  const style = createCliStyler(process.stdout);
   const labels = detected.map((id) => getIntegration(id).displayName).join(" + ");
   const allLabel = detected.length > 2 ? "All" : "Both";
   const options: Array<{ label: string; description: string; value: IntegrationType[] }> = [
@@ -106,20 +113,7 @@ async function promptCliTargetSelection(
 
   let cursor = 0;
   let lastLineCount = 0;
-  let cursorHidden = false;
-
-  function hideCursor(): void {
-    if (!cursorHidden) {
-      process.stdout.write("\x1B[?25l");
-      cursorHidden = true;
-    }
-  }
-  function showCursor(): void {
-    if (cursorHidden) {
-      process.stdout.write("\x1B[?25h");
-      cursorHidden = false;
-    }
-  }
+  const cursorCtl = createCursorController(process.stdout);
 
   function truncateLine(line: string, width: number): string {
     let visual = 0;
@@ -147,26 +141,26 @@ async function promptCliTargetSelection(
 
   function render(): void {
     const cols = process.stdout.columns || 120;
-    hideCursor();
+    cursorCtl.hide();
 
     const lines: string[] = [];
     lines.push(`  Failproof AI — ${heading}`);
     lines.push("");
-    lines.push(`  \x1B[2mDetected ${labels}. Choose where to ${verb}:\x1B[0m`);
+    lines.push(`  ${style.dim(`Detected ${labels}. Choose where to ${verb}:`)}`);
     lines.push("");
 
     for (let i = 0; i < options.length; i++) {
       const opt = options[i];
       const isActive = i === cursor;
-      const pointer = isActive ? "\x1B[36m❯\x1B[0m" : " ";
-      const labelPart = isActive ? `\x1B[1;36m${opt.label}\x1B[0m` : opt.label;
+      const pointer = isActive ? style.cyan("❯") : " ";
+      const labelPart = isActive ? style.cyan(style.bold(opt.label)) : opt.label;
       const pad = opt.description ? " ".repeat(Math.max(2, 22 - opt.label.length)) : "";
-      const desc = opt.description ? `\x1B[2m${opt.description}\x1B[0m` : "";
+      const desc = opt.description ? style.dim(opt.description) : "";
       lines.push(`  ${pointer} ${labelPart}${pad}${desc}`);
     }
 
     lines.push("");
-    lines.push("  \x1B[2m" + "─".repeat(Math.max(2, cols - 2)) + "\x1B[0m");
+    lines.push("  " + style.dim("─".repeat(Math.max(2, cols - 2))));
     lines.push("  [↑↓] Move  [Enter] Select  [^C] Quit");
 
     if (lastLineCount > 0) {
@@ -186,7 +180,7 @@ async function promptCliTargetSelection(
     process.stdin.resume();
 
     function cleanup(): void {
-      showCursor();
+      cursorCtl.dispose();
       process.stdin.removeListener("keypress", onKey);
       if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw ?? false);
       process.stdin.pause();
@@ -227,9 +221,11 @@ export async function promptPolicySelection(
   options: PromptOptions = {},
 ): Promise<string[]> {
   const { includeBeta = false } = options;
+  const style = createCliStyler(process.stdout);
 
-  // If stdin is not a TTY (piped/CI), return defaults
-  if (!process.stdin.isTTY) {
+  // If stdin is not a TTY (piped/CI) or colors are explicitly disabled,
+  // skip interactive rendering and return defaults.
+  if (!process.stdin.isTTY || !style.enabled) {
     const available = BUILTIN_POLICIES.filter((p) => includeBeta || !p.beta);
     if (preSelected) return preSelected.filter((name) => available.some((p) => p.name === name));
     return available.filter((p) => p.defaultEnabled).map((p) => p.name);
@@ -253,21 +249,7 @@ export async function promptPolicySelection(
   let cursor = 0;
   let search = "";
   let lastLineCount = 0;
-  let cursorHidden = false;
-
-  function hideCursor(): void {
-    if (!cursorHidden) {
-      process.stdout.write("\x1B[?25l");
-      cursorHidden = true;
-    }
-  }
-
-  function showCursor(): void {
-    if (cursorHidden) {
-      process.stdout.write("\x1B[?25h");
-      cursorHidden = false;
-    }
-  }
+  const cursorCtl = createCursorController(process.stdout);
 
   // Truncate a line to `width` visual columns, skipping ANSI CSI sequences.
   function truncateLine(line: string, width: number): string {
@@ -338,7 +320,7 @@ export async function promptPolicySelection(
 
   function render(): void {
     const cols = process.stdout.columns || 120;
-    hideCursor();
+    cursorCtl.hide();
 
     const filtered = getFiltered();
     const shown = filtered.length;
@@ -534,7 +516,7 @@ export async function promptPolicySelection(
     }
 
     function cleanup(): void {
-      showCursor();
+      cursorCtl.dispose();
       process.stdin.removeListener("keypress", keypressHandler);
       process.stdin.setRawMode(false);
       process.stdin.pause();

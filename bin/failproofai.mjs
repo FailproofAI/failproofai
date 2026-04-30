@@ -32,7 +32,11 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
   );
 }
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const args = rawArgs.filter((a) => a !== "--no-color");
+if (rawArgs.includes("--no-color")) {
+  process.env.NO_COLOR = "1";
+}
 
 // Normalize 'p' → 'policies' (shorthand alias)
 if (args[0] === "p") args[0] = "policies";
@@ -131,6 +135,7 @@ COMMANDS
   sync                           One-shot flush of pending events to the server
 
   --version, -v                  Print version and exit
+  --no-color                     Disable ANSI colors (same as NO_COLOR=1)
   --help, -h                     Show this help message
 
 CONVENTION POLICIES
@@ -201,6 +206,7 @@ OPTIONS (install)
   --beta                         Include beta policies
   --custom, -c <path>            Path to a JS file of custom policies
                                  (skips interactive prompt; validates file first)
+  --no-color                     Disable ANSI colors / interactive selector
 
 OPTIONS (uninstall)
   [names...]                     Specific policy names to disable (omit to remove hooks)
@@ -209,6 +215,7 @@ OPTIONS (uninstall)
   --scope user|project|local|all Config scope to remove from (default: user)
   --beta                         Remove only beta policies
   --custom, -c                   Clear the customPoliciesPath from config
+  --no-color                     Disable ANSI colors / interactive selector
 
 EXAMPLES
   failproofai policies

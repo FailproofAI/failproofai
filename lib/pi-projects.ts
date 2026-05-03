@@ -203,8 +203,16 @@ export async function getPiSessionsByEncodedName(name: string): Promise<PiProjec
     return { cwd: null, sessions: [] };
   }
   const matches = metas.filter((m) => encodeFolderName(m.cwd) === name);
+  // encodeFolderName is lossy — distinct cwd values can collapse to the same
+  // encoded slug. Only return a canonical cwd when every match agrees;
+  // otherwise drop the cwd and the (mixed) sessions to avoid surfacing the
+  // wrong project label.
+  const uniqueCwds = Array.from(new Set(matches.map((m) => m.cwd)));
+  if (uniqueCwds.length !== 1) {
+    return { cwd: null, sessions: [] };
+  }
   return {
-    cwd: matches[0]?.cwd ?? null,
+    cwd: uniqueCwds[0],
     sessions: metasToSessionFiles(matches),
   };
 }

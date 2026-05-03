@@ -410,7 +410,13 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         `bun ${BINARY_PATH} policies --install block-sudo --cli pi --scope project`,
         { cwd: env.cwd, env: { ...process.env, HOME: env.home, FAILPROOFAI_TELEMETRY_DISABLED: "1", FAILPROOFAI_BINARY_OVERRIDE: BINARY_PATH } },
       );
-      const result = spawnSync("pi", ["list"], { cwd: env.cwd, encoding: "utf8" });
+      // Run `pi list` under the fixture HOME so it doesn't pick up the
+      // developer's real ~/.pi/agent/settings.json state.
+      const result = spawnSync("pi", ["list"], {
+        cwd: env.cwd,
+        encoding: "utf8",
+        env: { ...process.env, HOME: env.home },
+      });
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("pi-extension");
     } finally {
@@ -430,7 +436,11 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         `bun ${BINARY_PATH} policies --uninstall --cli pi --scope project`,
         { cwd: env.cwd, env: baseEnv },
       );
-      const result = spawnSync("pi", ["list"], { cwd: env.cwd, encoding: "utf8" });
+      const result = spawnSync("pi", ["list"], {
+        cwd: env.cwd,
+        encoding: "utf8",
+        env: { ...process.env, HOME: env.home },
+      });
       expect(result.status).toBe(0);
       expect(result.stdout).not.toContain("pi-extension");
     } finally {

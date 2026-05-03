@@ -65,8 +65,17 @@ export default async function failproofaiPlugin({ client, directory }) {
         const role = info.role || props.role;
         if (role !== "user") return;
         const sessionID = info.sessionID || info.sessionId || info.session_id || props.sessionID;
+        // Reconstruct the user prompt text so prompt-based policies see it.
+        let prompt = "";
+        const parts = info.parts || props.parts || [];
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            if (p && typeof p === "object" && typeof p.text === "string") prompt += p.text;
+          }
+        }
+        if (!prompt) prompt = (info.text || info.content || props.text || "").toString();
         const r = runFailproofai("UserPromptSubmit", {
-          session_id: sessionID, cwd: directory, hook_event_name: "UserPromptSubmit",
+          session_id: sessionID, cwd: directory, hook_event_name: "UserPromptSubmit", prompt,
         }, directory);
         applyDecision(r, { client, sessionID });
         return;

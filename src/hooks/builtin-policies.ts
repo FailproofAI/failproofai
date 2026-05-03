@@ -17,19 +17,25 @@ import { hookLogWarn } from "./hook-logger";
  * their own config and transcripts.
  *
  * OpenCode splits its data across three locations (verified live on
- * opencode v1.14.31 via `opencode debug paths`):
+ * opencode v1.14.33 via `opencode debug paths`):
  *   • ~/.config/opencode/   — config + plugins
  *   • ~/.local/share/opencode/ — sessions, snapshots, opencode.db (SQLite)
  *   • ~/.opencode/          — legacy fallback path
  */
 function isAgentInternalPath(resolved: string): boolean {
+  // Normalize backslashes to forward slashes so the same `startsWith` check
+  // works on Windows. `resolve()` returns forward slashes on POSIX but
+  // backslashes on Windows; `join(homedir(), ...)` follows the same OS
+  // convention. Comparing both sides under a single forward-slash form
+  // avoids per-OS branching.
+  const normResolved = resolved.replaceAll("\\", "/");
   for (const dir of [".claude", ".codex", ".copilot", ".cursor", ".opencode", ".pi"]) {
-    const root = join(homedir(), dir);
-    if (resolved === root || resolved.startsWith(root + "/")) return true;
+    const root = join(homedir(), dir).replaceAll("\\", "/");
+    if (normResolved === root || normResolved.startsWith(root + "/")) return true;
   }
   for (const sub of [join(".config", "opencode"), join(".local", "share", "opencode")]) {
-    const root = join(homedir(), sub);
-    if (resolved === root || resolved.startsWith(root + "/")) return true;
+    const root = join(homedir(), sub).replaceAll("\\", "/");
+    if (normResolved === root || normResolved.startsWith(root + "/")) return true;
   }
   return false;
 }

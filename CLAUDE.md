@@ -112,7 +112,7 @@ Claude-shape JSON response back into plugin semantics — `throw new
 Error(reason)` for deny, `client.session.prompt(...)` for instruct,
 no-op for allow.
 
-A subtle live-verified gotcha (opencode v1.14.31): plugins are **not**
+A subtle live-verified gotcha (opencode v1.14.33): plugins are **not**
 auto-discovered from `.opencode/plugins/`. They must be explicitly
 registered in `opencode.json`'s `plugin` array. The install command
 takes care of this, but if you hand-edit either file the other must
@@ -141,7 +141,7 @@ fast (no subprocess), works without `pi` on PATH, and stays consistent with
 the other four integrations.
 
 **Settings file paths** (verified empirically against pi-coding-agent
-v0.71.1):
+v0.72.1):
 
 | Scope   | Path                                |
 |---------|-------------------------------------|

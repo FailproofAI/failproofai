@@ -774,15 +774,27 @@ export default async function failproofaiPlugin({ client, directory }) {
       if (!event || !event.type) return;
 
       // UserPromptSubmit — filter message.updated to user role only so we
-      // don't fire on every assistant token.
+      // don't fire on every assistant token. Forward the prompt text so
+      // prompt-based policies (sanitize-* on input, content checks) see it.
       if (event.type === "message.updated") {
         const props = event.properties || {};
         const info = props.info || props.message || {};
         const role = info.role || props.role;
         if (role !== "user") return;
         const sessionID = info.sessionID || info.sessionId || info.session_id || props.sessionID;
+        // OpenCode's message shape: parts is an array of {type, text, ...}.
+        // Concatenate text parts to reconstruct the user-facing prompt.
+        // Fall back to direct text/content fields if a future shape differs.
+        let prompt = "";
+        const parts = info.parts || props.parts || [];
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            if (p && typeof p === "object" && typeof p.text === "string") prompt += p.text;
+          }
+        }
+        if (!prompt) prompt = (info.text || info.content || props.text || "").toString();
         const r = runFailproofai("UserPromptSubmit", {
-          session_id: sessionID, cwd: directory, hook_event_name: "UserPromptSubmit",
+          session_id: sessionID, cwd: directory, hook_event_name: "UserPromptSubmit", prompt,
         }, directory);
         applyDecision(r, { client, sessionID });
         return;
@@ -1031,8 +1043,13 @@ function getPiExtensionPath(): string {
 /** True iff a Pi packages-array entry was written by failproofai. */
 function isFailproofaiPiEntry(source: unknown): boolean {
   if (typeof source !== "string") return false;
-  // Path-substring match: matches the canonical `<failproofai>/pi-extension/`
-  // path AND a future npm-scoped `@failproofai/pi-extension` package.
+  // Project-scope writes a relative `../pi-extension` (or similar) — these
+  // must be detected as ours so reinstall/uninstall/hooksInstalledInSettings
+  // don't double-write or leak entries.
+  if (/(?:^|\/)pi-extension\/?$/.test(source)) return true;
+  // Absolute / scoped forms include "failproofai" somewhere in the path
+  // (the canonical `<failproofai-install>/pi-extension/` and a future
+  // `@failproofai/pi-extension` npm scope both qualify).
   return source.includes("pi-extension") && source.includes("failproofai");
 }
 

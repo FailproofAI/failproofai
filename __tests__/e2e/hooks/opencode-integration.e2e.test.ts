@@ -266,13 +266,13 @@ describe("E2E: OpenCode integration — hook protocol", () => {
         OpenCodePayloads.preToolUse.bash("sudo rm -rf /", env.cwd),
         { homeDir: env.home, cli: "opencode" },
       );
-      // Activity log path: <cwd>/.failproofai/activity-log.jsonl (per hook-activity-store)
-      const logPath = resolve(env.cwd, ".failproofai", "activity-log.jsonl");
-      if (!existsSync(logPath)) {
-        // If the activity log isn't where we think, just skip the assertion —
-        // the binary may write elsewhere. The hook still ran.
-        return;
-      }
+      // Activity log path: $HOME/.failproofai/cache/hook-activity/current.jsonl
+      // (per src/hooks/hook-activity-store.ts:30 — DEFAULT_STORE_DIR uses
+      // homedir(), and the test's runHook overrides HOME=env.home).
+      // Fail explicitly if missing so an OpenCode activity-tagging regression
+      // can't silently slip through with a no-op assertion.
+      const logPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      expect(existsSync(logPath)).toBe(true);
       const lines = readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean);
       const entries = lines.map((l) => JSON.parse(l));
       const opencodeEntries = entries.filter((e) => e.integration === "opencode");

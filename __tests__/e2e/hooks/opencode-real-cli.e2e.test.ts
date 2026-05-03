@@ -12,11 +12,13 @@
  * test catches it before we hit users.
  */
 import { describe, it, expect } from "vitest";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 function hasOpenCodeBinary(): boolean {
   try {
-    execSync("which opencode", { stdio: "pipe" });
+    // Probe the binary directly so this works in environments without `which`
+    // (Windows, minimal containers, etc.).
+    execFileSync("opencode", ["--version"], { stdio: "pipe", timeout: 5_000 });
     return true;
   } catch {
     return false;

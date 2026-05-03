@@ -97,7 +97,7 @@ export const CURSOR_EVENT_MAP: Record<CursorHookEventType, HookEventType> = {
 // OpenCode's plugin model is fundamentally different from the other four CLIs:
 // there is NO external-command hook. Plugins are in-process JS/TS modules
 // loaded from the `plugin: []` array in `opencode.json` (auto-discovery from
-// `.opencode/plugins/` does NOT work — verified live on opencode v1.14.31).
+// `.opencode/plugins/` does NOT work — verified live on opencode v1.14.33).
 // Plugins block tool calls by throwing an Error from `tool.execute.before`
 // or by mutating `output.status = "deny"` from `permission.ask`.
 //

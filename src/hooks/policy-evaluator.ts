@@ -143,6 +143,26 @@ export async function evaluatePolicies(
         };
       }
 
+      // Pi's shim parses a flat `{permission, reason}` JSON shape from stdout
+      // and translates `permission === "deny"` into a `{block: true, reason}`
+      // return value from its `pi.on("tool_call", ...)` handler. Pi has no
+      // event-specific decision wrappers, so all events flow through the
+      // same flat shape.
+      if (session?.cli === "pi") {
+        const response = {
+          permission: "deny",
+          reason: blockedMessage,
+        };
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify(response),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -277,6 +297,26 @@ export async function evaluatePolicies(
       };
     }
 
+    // Pi: instruct emits `{permission: "allow", reason}`. The shim won't
+    // block (no `"deny"`); it surfaces `reason` to the user where possible
+    // (Pi has no first-class `additional_context` channel in its tool-call
+    // return shape, so we log it).
+    if (session?.cli === "pi") {
+      const response = {
+        permission: "allow",
+        reason: `Instruction from failproofai: ${combined}`,
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
     if (eventType === "Stop") {
       // Stop hook: exitCode 2 blocks Claude from stopping.
       // Reason goes to stderr so Claude Code receives it as context.
@@ -322,6 +362,26 @@ export async function evaluatePolicies(
       const response = {
         permission: "allow",
         additional_context: `Note from failproofai: ${combined}`,
+      };
+      const stderrMsg = allowEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "allow",
+      };
+    }
+
+    // Pi: same shape as Cursor — flat `{permission: "allow", reason}`.
+    if (session?.cli === "pi") {
+      const response = {
+        permission: "allow",
+        reason: `Note from failproofai: ${combined}`,
       };
       const stderrMsg = allowEntries
         .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)

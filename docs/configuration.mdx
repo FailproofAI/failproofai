@@ -196,18 +196,22 @@ The `policies --install` and `policies --uninstall` commands write to your agent
   - **OpenAI Codex**: `~/.codex/hooks.json` (user), `<cwd>/.codex/hooks.json` (project) — Codex doesn't have a `local` scope
   - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (user), `<cwd>/.github/hooks/failproofai.json` (project) — Copilot has no `local` scope. Hook entries use Copilot's OS-keyed `bash`/`powershell` command fields with `timeoutSec`; the file carries a top-level `version: 1` marker. Copilot CLI support is **beta** while we verify the `events.jsonl` record schema (which the public docs do not specify) against more real-world sessions.
   - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (user), `<cwd>/.cursor/hooks.json` (project) — Cursor has no `local` scope. Hook entries use the Claude-shaped `{type, command, timeout}` form (no `bash`/`powershell` split), but stored under camelCase event keys (`preToolUse`, `beforeSubmitPrompt`, …) in a flat array per Cursor's [hooks schema](https://cursor.com/docs/hooks); the file carries a top-level `version: 1` marker. The handler canonicalizes camelCase → PascalCase via `CURSOR_EVENT_MAP` so existing builtin policies fire unchanged. Cursor Agent support is **beta** while we verify Cursor's transcript on-disk format (not specified in the public docs) against more real-world installs.
+  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (user), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (project) — OpenCode has no `local` scope. Unlike the other four CLIs, OpenCode has **no external-command hook system**: it loads in-process JS/TS plugins explicitly registered via the `plugin: []` array in `opencode.json` (auto-discovery from `.opencode/plugins/` is **not** how plugins load on opencode v1.14.33). Install drops a small generated plugin shim that subprocess-calls the failproofai binary and translates the binary's Claude-shape JSON response back into plugin semantics (`throw new Error()` for deny, `client.session.prompt(...)` for instruct, no-op for allow). Sessions live in opencode's SQLite DB at `~/.local/share/opencode/opencode.db`; the dashboard's session viewer reads them via `opencode db --format json` and `opencode export <id>`. OpenCode support is **beta** while we verify behavior across versions and against more real-world sessions. See the [OpenCode plugins docs](https://opencode.ai/docs/plugins/).
+  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (user), `<cwd>/.pi/settings.json` (project) — Pi has no `local` scope. Pi loads TypeScript extension packages at startup; the settings file is a flat string array `{"packages": ["./relative/path", …]}`. failproofai writes a single packages-array entry pointing at its bundled `pi-extension/` directory. The extension internally subscribes to Pi's `tool_call` / `user_bash` / `input` / `session_start` events and shells out to `failproofai --hook <Event> --cli pi`; the handler canonicalizes underscore_lower_snake_case → PascalCase via `PI_EVENT_MAP` so existing builtin policies fire unchanged. Pi support is **beta** while Pi's extension API and session-log layout stabilize.
 - **`policies-config.json`** — tells failproofai which policies to evaluate and with what params (shared across all agent CLIs)
 
-Pass `--cli claude|codex|copilot|cursor` to target a specific agent (space-separated or repeated for any subset):
+Pass `--cli claude|codex|copilot|cursor|opencode|pi` to target a specific agent (space-separated or repeated for any subset):
 
 ```bash
 failproofai policies --install --cli codex --scope project
 failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli cursor --scope project
-failproofai policies --install --cli claude codex copilot cursor
+failproofai policies --install --cli opencode --scope project
+failproofai policies --install --cli pi --scope project
+failproofai policies --install --cli claude codex copilot cursor opencode pi
 ```
 
-When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent`):
+When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi`):
 
 - **One CLI detected** — auto-selects that CLI without prompting.
 - **Multiple CLIs detected** in an interactive terminal — shows an arrow-key single-select prompt: when two CLIs are present the choices are `Both`, `<CLI A> only`, `<CLI B> only`; with three CLIs the first option becomes `All` (↑↓ to move, Enter to select, ^C to quit).

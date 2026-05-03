@@ -11,8 +11,9 @@ import type {
   SessionMetadata,
   CodexHookEventType,
   CursorHookEventType,
+  PiHookEventType,
 } from "./types";
-import { CODEX_EVENT_MAP, CURSOR_EVENT_MAP } from "./types";
+import { CODEX_EVENT_MAP, CURSOR_EVENT_MAP, PI_EVENT_MAP } from "./types";
 import type { PolicyFunction, PolicyResult } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
@@ -29,7 +30,8 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
  * on stdin and as the --hook arg; Cursor sends camelCase (`preToolUse`,
- * `beforeSubmitPrompt`); Claude Code sends PascalCase. Copilot CLI is installed
+ * `beforeSubmitPrompt`); Pi sends underscore_lower_snake_case (`tool_call`,
+ * `session_start`); Claude Code sends PascalCase. Copilot CLI is installed
  * in "VS Code compatible" PascalCase mode (see integrations.ts), so its events
  * arrive PascalCase already. The internal registry, builtin policies, and
  * policy.match.events all key on PascalCase.
@@ -41,6 +43,10 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
   }
   if (cli === "cursor") {
     const mapped = CURSOR_EVENT_MAP[raw as CursorHookEventType];
+    if (mapped) return mapped;
+  }
+  if (cli === "pi") {
+    const mapped = PI_EVENT_MAP[raw as PiHookEventType];
     if (mapped) return mapped;
   }
   // claude / copilot / unknown — already PascalCase, pass through.

@@ -297,6 +297,156 @@ describe("hooks/handler", () => {
       );
     });
 
+    it("canonicalizes Pi tool_call → PreToolUse before evaluating", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        policyName: null,
+        reason: null,
+        decision: "allow",
+      });
+      mockStdin(JSON.stringify({ tool_name: "bash", hook_event_name: "PreToolUse" }));
+      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+      await handleHookEvent("tool_call", "pi");
+
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "PreToolUse",
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(persistHookActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ integration: "pi", eventType: "PreToolUse" }),
+      );
+    });
+
+    it("canonicalizes Pi user_bash → PreToolUse (synthetic Bash)", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        policyName: null,
+        reason: null,
+        decision: "allow",
+      });
+      mockStdin(JSON.stringify({ tool_name: "Bash" }));
+      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+      await handleHookEvent("user_bash", "pi");
+
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "PreToolUse",
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(persistHookActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ integration: "pi", eventType: "PreToolUse" }),
+      );
+    });
+
+    it("canonicalizes Pi input → UserPromptSubmit", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        policyName: null,
+        reason: null,
+        decision: "allow",
+      });
+      mockStdin(JSON.stringify({ prompt: "hello" }));
+      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+      await handleHookEvent("input", "pi");
+
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "UserPromptSubmit",
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(persistHookActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ integration: "pi", eventType: "UserPromptSubmit" }),
+      );
+    });
+
+    it("canonicalizes Pi session_start → SessionStart", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        policyName: null,
+        reason: null,
+        decision: "allow",
+      });
+      mockStdin(JSON.stringify({ cwd: "/home/u/repo" }));
+      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+      await handleHookEvent("session_start", "pi");
+
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "SessionStart",
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(persistHookActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ integration: "pi", eventType: "SessionStart" }),
+      );
+    });
+
+    it("passes through unknown Pi event names unchanged", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        policyName: null,
+        reason: null,
+        decision: "allow",
+      });
+      mockStdin(JSON.stringify({}));
+
+      await handleHookEvent("model_select", "pi");
+
+      // Unknown pi event passes through verbatim — handler doesn't map it
+      // and policy evaluation simply finds no matching policies.
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "model_select",
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it("tags telemetry with cli=pi when invoked with --cli pi", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '{"permission":"deny","reason":"sudo blocked"}',
+        stderr: "",
+        policyName: "block-sudo",
+        reason: "sudo blocked",
+        decision: "deny",
+      });
+      mockStdin(JSON.stringify({ tool_name: "Bash" }));
+      const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
+
+      await handleHookEvent("tool_call", "pi");
+
+      expect(trackHookEvent).toHaveBeenCalledWith(
+        "test-instance-id",
+        "hook_policy_triggered",
+        expect.objectContaining({ cli: "pi", event_type: "PreToolUse" }),
+      );
+    });
+
     it("fires telemetry with full payload for instruct decisions", async () => {
       const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
       vi.mocked(evaluatePolicies).mockResolvedValueOnce({

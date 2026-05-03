@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi";
 
 export interface ProjectFolder {
   name: string;
@@ -132,12 +132,20 @@ function mergeProjectFolders(...sources: ProjectFolder[][]): ProjectFolder[] {
 export async function getProjectFolders(): Promise<ProjectFolder[]> {
   // Lazy imports keep the per-CLI project providers out of the dep graph for
   // callers that only need Claude helpers (e.g. CLI codepaths).
-  const [{ getCodexProjects }, { getCopilotProjects }, { getCursorProjects }] = await Promise.all([
+  const [
+    { getCodexProjects },
+    { getCopilotProjects },
+    { getCursorProjects },
+    { getOpenCodeProjects },
+    { getPiProjects },
+  ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
     import("./cursor-projects"),
+    import("./opencode-projects"),
+    import("./pi-projects"),
   ]);
-  const [claude, codex, copilot, cursor] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -151,8 +159,16 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Cursor projects:", error);
       return [] as ProjectFolder[];
     }),
+    getOpenCodeProjects().catch((error) => {
+      logError("Error reading OpenCode projects:", error);
+      return [] as ProjectFolder[];
+    }),
+    getPiProjects().catch((error) => {
+      logError("Error reading Pi projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi);
 }
 
 /**

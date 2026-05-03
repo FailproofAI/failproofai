@@ -97,6 +97,106 @@ which writes a portable `npx -y failproofai --hook ... --cli cursor` command.
 Same self-reference caveat applies — do **not** install the standard `npx`
 form from inside this repo.
 
+### OpenCode hooks (`.opencode/`)
+
+This repo also ships a project-scope OpenCode (sst/opencode) plugin
+registration: a generated plugin shim at `.opencode/plugins/failproofai.mjs`
+and a matching entry in `.opencode/opencode.json`'s `plugin: []` array.
+
+OpenCode's extensibility model is fundamentally different from Claude /
+Codex / Copilot / Cursor: it has **no external-command hook system**.
+Plugins are in-process JS/TS modules loaded by opencode at startup. The
+shim subprocess-calls the failproofai binary (`bun bin/failproofai.mjs
+--hook ... --cli opencode` for dev) and translates the binary's existing
+Claude-shape JSON response back into plugin semantics — `throw new
+Error(reason)` for deny, `client.session.prompt(...)` for instruct,
+no-op for allow.
+
+A subtle live-verified gotcha (opencode v1.14.33): plugins are **not**
+auto-discovered from `.opencode/plugins/`. They must be explicitly
+registered in `opencode.json`'s `plugin` array. The install command
+takes care of this, but if you hand-edit either file the other must
+agree.
+
+For production users (outside this repo), the recommended OpenCode
+install is:
+```bash
+failproofai policies --install --cli opencode --scope project
+```
+which writes a portable `npx -y failproofai --hook ... --cli opencode`
+command into the shim. Same self-reference caveat applies — do **not**
+install the standard `npx` form from inside this repo (it would overwrite
+the dev `bun bin/failproofai.mjs` path).
+
+### Pi hooks (`.pi/settings.json`)
+
+This repo also ships a `.pi/settings.json` for Pi (`@mariozechner/pi-coding-agent`)
+sessions. Pi's model differs from the other four CLIs in two important ways:
+
+**Direct settings-file write, not subcommand-based.** Pi exposes
+`pi install <source> [-l]` and `pi remove <source> [-l]` for managing
+extensions, but failproofai writes `.pi/settings.json` directly — same pattern
+as `.cursor/hooks.json` and `.codex/hooks.json`. This keeps install/uninstall
+fast (no subprocess), works without `pi` on PATH, and stays consistent with
+the other four integrations.
+
+**Settings file paths** (verified empirically against pi-coding-agent
+v0.72.1):
+
+| Scope   | Path                                |
+|---------|-------------------------------------|
+| user    | `~/.pi/agent/settings.json`         |
+| project | `<cwd>/.pi/settings.json`           |
+
+Note: `~/.pi/settings.json` does NOT exist on a fresh install; user-scope
+settings live one level deeper under `~/.pi/agent/`.
+
+**Schema** is a flat string array — `{"packages": ["./relative/path", ...]}`.
+Each entry is a path Pi resolves relative to the directory containing
+`settings.json` (so `<cwd>/.pi/` for project scope). For dogfood we write
+`"../pi-extension"` so each contributor's clone resolves to their own
+on-disk `<repo>/pi-extension/`.
+
+**The pi-extension package** ships inside the failproofai npm tarball at
+`pi-extension/` (sibling of `bin/`, `dist/`, etc.). Its `index.ts` is loaded
+by Pi at startup; the shim spawns `failproofai --hook <Event> --cli pi` per
+Pi event and translates Pi's `{toolName, input, ...}` event payload to the
+Claude-shape stdin JSON the handler expects. Pi spawns extensions with an
+undefined cwd contract, so the shim resolves the failproofai binary
+relatively from `import.meta.url`, NOT from `process.cwd()`.
+
+For production users (outside this repo), the recommended Pi install is:
+```bash
+failproofai policies --install --cli pi --scope project
+```
+which writes a `.pi/settings.json` referencing failproofai's bundled
+pi-extension. Same self-reference caveat applies — do **not** install the
+standard `npx` form from inside this repo.
+
+**Pi limitations vs. Claude semantics** (verified against pi-coding-agent
+v0.72.1 d.ts; the `pi-extension/` shim subscribes to 7 events but Pi's API
+caps what each handler can do):
+
+| Pi event           | → Claude event   | Veto / mutate? | Notes |
+|--------------------|------------------|----------------|-------|
+| `tool_call`        | PreToolUse       | ✅ block      | Full deny support via `{block, reason}`. |
+| `user_bash`        | PreToolUse       | ✅ block      | Full deny support. |
+| `input`            | UserPromptSubmit | ✅ block      | Full deny support. |
+| `session_start`    | SessionStart     | observation   | No return-value effect on Pi. |
+| `tool_result`      | PostToolUse      | observation   | `ToolResultEventResult` exposes `{content, details, isError}` for mutation but no `block`. PostToolUse is observation/sanitize anyway, matching Claude semantics. |
+| `agent_end`        | Stop             | observation   | Pi's agent loop has already exited; we cannot keep Pi running the way Claude's exit-2-from-Stop can. `require-*-before-stop` policies still RUN — their findings land in the activity store + stderr — but the stop is not vetoed. |
+| `session_shutdown` | SessionEnd       | observation   | Symmetry only. |
+
+**Instruct (`additionalContext`) on Pi `tool_call`** — Pi's
+`ToolCallEventResult` shape is `{block?, reason?}` only; there's no
+first-class additional-context channel back to the agent. `policy-evaluator.ts`
+emits the right Pi-flat shape (`{permission: "allow", reason: "Instruction
+from failproofai: ..."}`), and the shim logs it to stderr, but Pi does NOT
+inject the instruction into the next LLM turn. A `context`-event injection
+workaround (queue the instruction in `tool_call`, drain in the next `context`
+handler by inserting a system message into `event.messages`) is feasible
+but deferred until upstream Pi adds a first-class channel.
+
 ## Workflow rules
 
 ### One PR per branch

@@ -24,11 +24,11 @@ The dashboard reads directly from the filesystem - your Claude Code project fold
 
 ### Projects
 
-Lists all Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, and Cursor Agent _(beta)_ projects found on your machine. Claude projects are discovered from `~/.claude/projects/` (or the path set by `CLAUDE_PROJECTS_PATH`); Codex projects are discovered by scanning every transcript under `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` and grouping by the `cwd` recorded in each session's first record; Copilot CLI projects are discovered by scanning each `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurable via `COPILOT_HOME`) and grouping by its `cwd` field; Cursor Agent projects are discovered by scanning per-session metadata under `~/.cursor/agent-sessions/<sessionId>/` (configurable via `CURSOR_HOME`, with `conversations/` and `sessions/` probed as fallbacks) for a `cwd` scalar in `meta.json` / `session.json` / `workspace.yaml`. A project that has been used by multiple CLIs renders as a single row with all matching badges. Use the **CLI** dropdown above the table to filter by a specific agent CLI; the URL preserves your selection as `?cli=claude|codex|copilot|cursor`.
+Lists all Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, and Pi _(beta)_ projects found on your machine. Claude projects are discovered from `~/.claude/projects/` (or the path set by `CLAUDE_PROJECTS_PATH`); Codex projects are discovered by scanning every transcript under `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` and grouping by the `cwd` recorded in each session's first record; Copilot CLI projects are discovered by scanning each `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurable via `COPILOT_HOME`) and grouping by its `cwd` field; Cursor Agent projects are discovered by scanning per-session metadata under `~/.cursor/agent-sessions/<sessionId>/` (configurable via `CURSOR_HOME`, with `conversations/` and `sessions/` probed as fallbacks) for a `cwd` scalar in `meta.json` / `session.json` / `workspace.yaml`; OpenCode projects are discovered by querying its SQLite DB at `~/.local/share/opencode/opencode.db` via `opencode db --format json` (we read the `session` and `project` tables and group by `project_id`); Pi projects are discovered by scanning per-session JSONL transcripts under `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (configurable via `PI_SESSIONS_DIR`) and pulling the `cwd` from each session's first record. A project that has been used by multiple CLIs renders as a single row with all matching badges. Use the **CLI** dropdown above the table to filter by a specific agent CLI; the URL preserves your selection as `?cli=claude|codex|copilot|cursor|opencode|pi`.
 
 Each project shows:
 - Project name (derived from the folder path)
-- A CLI badge — `Claude Code` (orange), `OpenAI Codex` (purple), `GitHub Copilot` (blue), and/or `Cursor Agent` (emerald)
+- A CLI badge — `Claude Code` (orange), `OpenAI Codex` (purple), `GitHub Copilot` (blue), `Cursor Agent` (emerald), `OpenCode` (amber), and/or `Pi` (pink)
 - Date of most recent session activity
 
 Click a project to see its sessions.
@@ -47,7 +47,7 @@ Click a session to open the session viewer.
 
 ### Session viewer
 
-The session viewer answers the key question for autonomous agents: what did the agent do, and did it stay on track? A CLI badge beside the header indicates whether the session is a Claude Code, OpenAI Codex, GitHub Copilot CLI, or Cursor Agent transcript. It shows a timeline of everything that happened in a session:
+The session viewer answers the key question for autonomous agents: what did the agent do, and did it stay on track? A CLI badge beside the header indicates whether the session is a Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, or Pi transcript. It shows a timeline of everything that happened in a session:
 
 - **Messages** - Claude's text responses and user prompts
 - **Tool calls** - Every tool Claude invoked, with its input and output
@@ -70,9 +70,9 @@ A two-tab page for managing policies and reviewing activity.
   </Tab>
   <Tab title="Activity tab">
   - Full paginated history of every hook event that has fired across all sessions
-  - Filter by decision, event type, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_), policy name, or session ID
-  - Each row shows: timestamp, policy name, decision, CLI badge (orange = Claude Code, purple = OpenAI Codex, blue = GitHub Copilot, emerald = Cursor Agent), tool name, session ID, and the reason for deny/instruct decisions
-  - Click a session ID to open its transcript — the viewer auto-detects which CLI fired the hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`) and renders the matching CLI badge in the header
+  - Filter by decision, event type, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_), policy name, or session ID
+  - Each row shows: timestamp, policy name, decision, CLI badge (orange = Claude Code, purple = OpenAI Codex, blue = GitHub Copilot, emerald = Cursor Agent, amber = OpenCode, pink = Pi), tool name, session ID, and the reason for deny/instruct decisions
+  - Click a session ID to open its transcript — the viewer auto-detects which CLI fired the hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`) and renders the matching CLI badge in the header
   </Tab>
 </Tabs>
 

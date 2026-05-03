@@ -323,3 +323,201 @@ export const CopilotPayloads = {
     };
   },
 };
+
+/**
+ * OpenCode payload factories — for the e2e harness, which invokes the
+ * failproofai binary directly with `--cli opencode`. The plugin shim
+ * (`.opencode/plugins/failproofai.mjs`) is what translates plugin events
+ * into Claude-shape JSON before invoking the binary, so the binary itself
+ * sees Claude-shape PascalCase events. These factories therefore produce
+ * Claude-shape payloads. The shim's plugin-side translation is exercised
+ * separately in `__tests__/hooks/opencode-plugin-shim.test.ts`.
+ */
+const OPENCODE_SESSION_ID = "ses_test_opencode001";
+
+export const OpenCodePayloads = {
+  preToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: OPENCODE_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command },
+      };
+    },
+    write(filePath: string, content: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: OPENCODE_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Write",
+        tool_input: { file_path: filePath, content },
+      };
+    },
+    edit(filePath: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: OPENCODE_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Edit",
+        tool_input: { file_path: filePath, old_string: "x", new_string: "y" },
+      };
+    },
+    read(filePath: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: OPENCODE_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Read",
+        tool_input: { file_path: filePath },
+      };
+    },
+  },
+  postToolUse: {
+    bash(command: string, output: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: OPENCODE_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PostToolUse",
+        tool_name: "Bash",
+        tool_input: { command },
+        tool_response: output,
+      };
+    },
+  },
+  userPromptSubmit(prompt: string, cwd: string): Record<string, unknown> {
+    return {
+      session_id: OPENCODE_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "UserPromptSubmit",
+      prompt,
+    };
+  },
+  sessionStart(cwd: string): Record<string, unknown> {
+    return {
+      session_id: OPENCODE_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "SessionStart",
+    };
+  },
+  stop(cwd: string): Record<string, unknown> {
+    return {
+      session_id: OPENCODE_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "Stop",
+    };
+  },
+};
+
+/**
+ * Pi (pi-coding-agent) payload factories. The on-disk shape we forward to
+ * `failproofai --hook ... --cli pi` is the same as Claude's stdin shape
+ * (snake_case `tool_name`, `tool_input`, …) — the pi-extension shim does
+ * the camelCase-to-snake_case translation before spawning failproofai.
+ *
+ * These payload factories reproduce what the shim writes, NOT what Pi
+ * itself emits, because the e2e tests run against the bare failproofai
+ * binary and don't go through the shim. The hook_event_name is the Pi-side
+ * underscore_lower_snake_case form (`tool_call`, `user_bash`, `input`,
+ * `session_start`); the handler canonicalizes to PascalCase via PI_EVENT_MAP.
+ */
+const PI_SESSION_ID = "test-session-pi-001";
+
+export const PiPayloads = {
+  toolCall: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: PI_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command },
+      };
+    },
+    write(filePath: string, content: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: PI_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Write",
+        tool_input: { file_path: filePath, content },
+      };
+    },
+    read(filePath: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: PI_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "PreToolUse",
+        tool_name: "Read",
+        tool_input: { file_path: filePath },
+      };
+    },
+  },
+  userBash(command: string, cwd: string): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command },
+    };
+  },
+  input(prompt: string, cwd: string): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "UserPromptSubmit",
+      prompt,
+    };
+  },
+  sessionStart(cwd: string): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "SessionStart",
+    };
+  },
+  sessionShutdown(cwd: string, reason: "quit" | "reload" | "new" | "resume" | "fork" = "quit"): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      reason,
+      hook_event_name: "SessionEnd",
+    };
+  },
+  toolResult(toolName: string, toolInput: Record<string, unknown>, content: unknown[], cwd: string, isError = false): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "PostToolUse",
+      tool_name: toolName,
+      tool_input: toolInput,
+      tool_response: { content, isError },
+    };
+  },
+  agentEnd(cwd: string): Record<string, unknown> {
+    return {
+      session_id: PI_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      hook_event_name: "Stop",
+    };
+  },
+};

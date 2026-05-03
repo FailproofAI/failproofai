@@ -1,0 +1,12 @@
+{
+  "name": "@failproofai/pi-extension",
+  "version": "0.0.1",
+  "description": "failproofai policy bridge for Pi (pi-coding-agent)",
+  "type": "module",
+  "main": "./index.ts",
+  "private": true,
+  "keywords": [
+    "pi-extension",
+    "failproofai"
+  ]
+}

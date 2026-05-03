@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -138,4 +138,33 @@ export function assertCursorInstruct(result: HookRunResult): void {
 export function assertCursorStopInstruct(result: HookRunResult): void {
   expect(result.exitCode).toBe(0);
   expect(result.parsed?.followup_message).toMatch(/^Instruction from failproofai:/);
+}
+
+/**
+ * Pi emits a flat `{permission, reason}` JSON shape — the pi-extension shim
+ * parses this and translates `permission === "deny"` into a `{block, reason}`
+ * return from its `pi.on("tool_call", ...)` handler.
+ */
+export function assertPiDeny(result: HookRunResult): void {
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.permission).toBe("deny");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/Blocked/i);
+  // Pi uses the flat shape — no Claude-style hookSpecificOutput wrapper.
+  expect(result.parsed?.hookSpecificOutput).toBeUndefined();
+}
+
+export function assertPiInstruct(result: HookRunResult): void {
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.permission).toBe("allow");
+  expect(result.parsed?.reason).toMatch(/^Instruction from failproofai:/);
+}
+
+export function assertPiAllow(result: HookRunResult): void {
+  expect(result.exitCode).toBe(0);
+  // Allow can be either an empty stdout or a flat `{permission: "allow"}`
+  // (when there are info-only allow entries). The shim treats both as no-block.
+  if (result.parsed) {
+    expect(result.parsed.permission).not.toBe("deny");
+  }
 }

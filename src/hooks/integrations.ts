@@ -1078,9 +1078,13 @@ export const pi: Integration = {
   },
 
   isFailproofaiHook(hook) {
-    if (hook[FAILPROOFAI_HOOK_MARKER] === true) return true;
-    // Pi entries are strings — also accept a {source} shape used by tests
-    if (typeof hook.source === "string") return isFailproofaiPiEntry(hook.source);
+    // Real on-disk entries are plain strings (a packages array entry).
+    if (typeof hook === "string") return isFailproofaiPiEntry(hook);
+    if (!hook || typeof hook !== "object") return false;
+    const h = hook as Record<string, unknown>;
+    if (h[FAILPROOFAI_HOOK_MARKER] === true) return true;
+    // Test fixtures sometimes pass a wrapper `{source: "..."}`; preserve that shape.
+    if (typeof h.source === "string") return isFailproofaiPiEntry(h.source);
     return false;
   },
 

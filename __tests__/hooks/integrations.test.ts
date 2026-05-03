@@ -43,12 +43,21 @@ import {
 import { homedir } from "node:os";
 
 let tempDir: string;
+const ORIG_CWD = process.cwd();
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "fp-integrations-"));
 });
 
 afterEach(() => {
+  // Restore cwd before removing tempDir so subsequent tests' process.cwd()
+  // doesn't ENOENT (the OpenCode tests chdir into tempDir to exercise the
+  // project-scope plugin shim path).
+  try {
+    process.chdir(ORIG_CWD);
+  } catch {
+    // Best-effort
+  }
   rmSync(tempDir, { recursive: true, force: true });
 });
 

@@ -73,7 +73,6 @@ The easiest way to manage policies that keep your AI agents reliable, on-task, a
     </picture>
   </a>
 </p>
-<p align="center"><strong>+ more coming soon</strong></p>
 
 > Install hooks for one or any combination: `failproofai policies --install --cli opencode pi gemini` (or `--cli claude codex copilot cursor opencode pi gemini`). Omit `--cli` to auto-detect installed CLIs and prompt. **GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, and Gemini CLI support are in beta — testing is ongoing.**
 

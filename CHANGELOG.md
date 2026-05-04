@@ -21,6 +21,9 @@
 
 ### Docs
 - README: drop the "+ more coming soon" line under the supported-CLIs logo strip; the row of seven logos is the visual itself, the trailing tagline reads as filler (#281).
+
+### Chore
+- Remove the scheduled `Sync Hook Event Types` GitHub Actions workflow (`.github/workflows/sync-hook-events.yml`). The prompt that drives the sync (`scripts/sync-hook-events-prompt.md`) is kept so the same task can be run manually to open PRs (#281).
 - README: add Gemini CLI to the supported-CLIs intro line and visual list, with light/dark logo variants (`assets/logos/gemini-light.svg` + `gemini-dark.svg`). Restructure the logo block into two centred `<p>` rows (Claude/Codex/Copilot/Cursor on the first, OpenCode/Pi/Gemini on the second) plus a separate "+ more coming soon" line so the seventh logo doesn't crowd the layout. Update the beta callout to include Gemini CLI alongside Copilot, Cursor, OpenCode, and Pi (#277).
 - README: add Pi to the supported-CLIs intro line and visual list, with light/dark logo variants (`assets/logos/pi-light.svg` + `pi-dark.svg`); update beta callout to include Pi alongside Copilot and Cursor (#264).
 - README: add Cursor Agent to the supported-CLIs intro line and visual list, with light/dark logo variants (`assets/logos/cursor-light.svg` + `cursor-dark.svg`). Note that GitHub Copilot CLI testing is ongoing in the beta callout (#245).

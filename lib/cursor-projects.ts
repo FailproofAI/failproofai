@@ -20,21 +20,26 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { encodeFolderName } from "./paths";
+import { decodeFolderName, encodeFolderName } from "./paths";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { runtimeCache } from "./runtime-cache";
 import { batchAll } from "./concurrency";
 import { formatDate } from "./format-date";
 import { logWarn } from "./logger";
 
-/** Subdirectories under `~/.cursor/` that may carry per-session state. */
-const SESSION_ROOT_CANDIDATES = ["agent-sessions", "conversations", "sessions"] as const;
+/** Legacy subdirectories under `~/.cursor/` that may carry per-session state
+ *  (cursor-agent ≤ 2026-04 ish — kept as a fallback). */
+const LEGACY_SESSION_ROOT_CANDIDATES = ["agent-sessions", "conversations", "sessions"] as const;
 
-/** Filenames that may carry session-level metadata (cwd, model, …). */
+/** Legacy filenames that may carry session-level metadata (cwd, model, …). */
 const META_FILE_CANDIDATES = ["meta.json", "session.json", "workspace.json", "workspace.yaml"] as const;
 
-/** Filenames that may carry the JSONL transcript. */
-const TRANSCRIPT_FILE_CANDIDATES = ["events.jsonl", "transcript.jsonl", "messages.jsonl"] as const;
+/** Legacy filenames that may carry the JSONL transcript. */
+const LEGACY_TRANSCRIPT_FILE_CANDIDATES = ["events.jsonl", "transcript.jsonl", "messages.jsonl"] as const;
+
+/** New (2026-04+) layout: `~/.cursor/projects/<encoded-cwd>/agent-transcripts/<sessionId>/<sessionId>.jsonl`. */
+const NEW_PROJECTS_DIR = "projects";
+const NEW_AGENT_TRANSCRIPTS_DIR = "agent-transcripts";
 
 function getCursorHome(): string {
   return process.env.CURSOR_HOME || join(homedir(), ".cursor");
@@ -119,38 +124,83 @@ async function findFirstExistingPath(dir: string, candidates: readonly string[])
 
 async function scanCursorSessions(): Promise<CursorSessionMeta[]> {
   const home = getCursorHome();
-  const allCandidates: { sessionId: string; dir: string }[] = [];
-  for (const sub of SESSION_ROOT_CANDIDATES) {
+  const newCandidates: { sessionId: string; dir: string; cwd: string }[] = [];
+  const legacyCandidates: { sessionId: string; dir: string }[] = [];
+
+  // New layout: ~/.cursor/projects/<encoded-cwd>/agent-transcripts/<sessionId>/<sessionId>.jsonl
+  // Cursor's project-folder encoding drops the leading slash (e.g.
+  // `home-u-repo` decodes to `/home/u/repo`, not `home/u/repo`). Re-add the
+  // leading slash for non-Windows-drive-letter results so the cwd is absolute.
+  const projectsRoot = join(home, NEW_PROJECTS_DIR);
+  const projectEntries = await safeReaddir(projectsRoot);
+  if (projectEntries) {
+    for (const proj of projectEntries) {
+      if (!proj.isDirectory()) continue;
+      const decoded = decodeFolderName(proj.name);
+      const cwd = decoded.startsWith("/") || /^[A-Za-z]:\//.test(decoded) ? decoded : `/${decoded}`;
+      const transcriptsRoot = join(projectsRoot, proj.name, NEW_AGENT_TRANSCRIPTS_DIR);
+      const sessionDirs = await safeReaddir(transcriptsRoot);
+      if (!sessionDirs) continue;
+      for (const sd of sessionDirs) {
+        if (!sd.isDirectory()) continue;
+        newCandidates.push({
+          sessionId: sd.name,
+          dir: join(transcriptsRoot, sd.name),
+          cwd,
+        });
+      }
+    }
+  }
+
+  // Legacy layout: ~/.cursor/{agent-sessions,conversations,sessions}/<sessionId>/
+  for (const sub of LEGACY_SESSION_ROOT_CANDIDATES) {
     const root = join(home, sub);
     const entries = await safeReaddir(root);
     if (!entries) continue;
     for (const e of entries) {
       if (!e.isDirectory()) continue;
-      allCandidates.push({ sessionId: e.name, dir: join(root, e.name) });
+      legacyCandidates.push({ sessionId: e.name, dir: join(root, e.name) });
     }
   }
-  if (allCandidates.length === 0) return [];
+
+  if (newCandidates.length === 0 && legacyCandidates.length === 0) return [];
 
   const settled = await batchAll(
-    allCandidates.map((c) => async (): Promise<CursorSessionMeta | null> => {
-      const meta = await findFirstUsableMeta(c.dir, META_FILE_CANDIDATES);
-      if (!meta) return null;
-      const transcriptPath = await findFirstExistingPath(c.dir, TRANSCRIPT_FILE_CANDIDATES);
-      const transcriptMtime = transcriptPath ? await statMtime(transcriptPath) : null;
-      const metaMtime = await statMtime(meta.path);
-      const fileMtime =
-        transcriptMtime && metaMtime
-          ? new Date(Math.max(transcriptMtime.getTime(), metaMtime.getTime()))
-          : transcriptMtime ?? metaMtime ?? new Date(0);
-      return {
-        metaPath: meta.path,
-        transcriptPath,
-        sessionId: c.sessionId,
-        cwd: meta.cwd,
-        fileMtime,
-        hasTranscript: transcriptPath !== null,
-      };
-    }),
+    [
+      ...newCandidates.map((c) => async (): Promise<CursorSessionMeta | null> => {
+        // Transcript file is `<sessionId>.jsonl` inside the dir.
+        const transcriptPath = join(c.dir, `${c.sessionId}.jsonl`);
+        const transcriptMtime = await statMtime(transcriptPath);
+        if (!transcriptMtime) return null;
+        return {
+          metaPath: c.dir, // No separate meta file; cwd is decoded from the parent dir name.
+          transcriptPath,
+          sessionId: c.sessionId,
+          cwd: c.cwd,
+          fileMtime: transcriptMtime,
+          hasTranscript: true,
+        };
+      }),
+      ...legacyCandidates.map((c) => async (): Promise<CursorSessionMeta | null> => {
+        const meta = await findFirstUsableMeta(c.dir, META_FILE_CANDIDATES);
+        if (!meta) return null;
+        const transcriptPath = await findFirstExistingPath(c.dir, LEGACY_TRANSCRIPT_FILE_CANDIDATES);
+        const transcriptMtime = transcriptPath ? await statMtime(transcriptPath) : null;
+        const metaMtime = await statMtime(meta.path);
+        const fileMtime =
+          transcriptMtime && metaMtime
+            ? new Date(Math.max(transcriptMtime.getTime(), metaMtime.getTime()))
+            : transcriptMtime ?? metaMtime ?? new Date(0);
+        return {
+          metaPath: meta.path,
+          transcriptPath,
+          sessionId: c.sessionId,
+          cwd: meta.cwd,
+          fileMtime,
+          hasTranscript: transcriptPath !== null,
+        };
+      }),
+    ],
     16,
   );
   return settled

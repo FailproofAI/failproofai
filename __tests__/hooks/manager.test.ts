@@ -78,6 +78,7 @@ describe("hooks/manager", () => {
 
       const written = JSON.parse(content as string);
       expect(Object.keys(written.hooks)).toHaveLength(29);
+      expect(written.hooks).toHaveProperty("Setup");
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         expect(matchers).toHaveLength(1);
@@ -232,6 +233,7 @@ describe("hooks/manager", () => {
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
       expect(Object.keys(written.hooks)).toHaveLength(29);
+      expect(written.hooks).toHaveProperty("Setup");
     });
 
     it("uses 'where' on Windows and handles multi-line output", async () => {

@@ -290,4 +290,48 @@ describe("lib/cursor-sessions: findCursorTranscript + getCursorSessionLog", () =
       rmSync(altHome, { recursive: true, force: true });
     }
   });
+
+  // Cursor 2026-04+ layout: ~/.cursor/projects/<encoded-cwd>/agent-transcripts/<sessionId>/<sessionId>.jsonl
+  it("locates the new layout transcript at projects/<cwd>/agent-transcripts/<id>/<id>.jsonl", () => {
+    const sessionId = "88888888-8888-8888-8888-888888888888";
+    const dir = join(fakeHome, ".cursor", "projects", "home-u-repo", "agent-transcripts", sessionId);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${sessionId}.jsonl`);
+    writeFileSync(file, "");
+    expect(findCursorTranscript(sessionId)).toBe(file);
+  });
+
+  it("getCursorSessionLog parses a 2026-04+ transcript ({role, message: {content: [...]}})", async () => {
+    const sessionId = "99999999-9999-9999-9999-999999999999";
+    const dir = join(fakeHome, ".cursor", "projects", "home-u-repo", "agent-transcripts", sessionId);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${sessionId}.jsonl`);
+    const lines = [
+      JSON.stringify({
+        role: "user",
+        message: {
+          content: [
+            { type: "text", text: "<timestamp>Mon, May 4</timestamp>\n<user_query>\nhello\n</user_query>" },
+          ],
+        },
+      }),
+      JSON.stringify({
+        role: "assistant",
+        message: { content: [{ type: "text", text: "world" }] },
+      }),
+    ].join("\n");
+    writeFileSync(file, lines);
+    const result = await getCursorSessionLog(sessionId);
+    expect(result).not.toBeNull();
+    expect(result!.entries).toHaveLength(2);
+    const u = result!.entries[0];
+    if (u.type !== "user") throw new Error("expected user");
+    // <user_query> wrapper should be stripped, leaving "hello".
+    expect(u.message.content).toBe("hello");
+    const a = result!.entries[1];
+    if (a.type !== "assistant") throw new Error("expected assistant");
+    const block = a.message.content[0];
+    if (block.type !== "text") throw new Error("expected text block");
+    expect(block.text).toBe("world");
+  });
 });

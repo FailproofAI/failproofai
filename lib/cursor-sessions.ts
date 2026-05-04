@@ -17,7 +17,7 @@
  */
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { runtimeCache } from "./runtime-cache";
 import {
@@ -35,12 +35,26 @@ import {
 import { formatDuration } from "./format-duration";
 
 // ── Paths ──
+//
+// Cursor's on-disk layout has shifted over releases. As of cursor-agent
+// 2026.04.x, transcripts live at:
+//   ~/.cursor/projects/<encoded-cwd>/agent-transcripts/<sessionId>/<sessionId>.jsonl
+//
+// Older releases shipped per-session dirs directly under ~/.cursor/agent-sessions
+// (or conversations/, sessions/) with transcript filenames like events.jsonl.
+// We probe the new layout first and fall back to the legacy candidates so an
+// older install still works.
 
-/** Subdirectories under `~/.cursor/` that may carry per-session transcripts. */
-const SESSION_ROOT_CANDIDATES = ["agent-sessions", "conversations", "sessions"] as const;
+/** Legacy subdirectories under `~/.cursor/` that may carry per-session
+ *  transcripts (cursor-agent ≤ 2026-04 ish). */
+const LEGACY_SESSION_ROOT_CANDIDATES = ["agent-sessions", "conversations", "sessions"] as const;
 
-/** Filenames that may carry the JSONL transcript inside a session dir. */
-const TRANSCRIPT_FILE_CANDIDATES = ["events.jsonl", "transcript.jsonl", "messages.jsonl"] as const;
+/** Legacy transcript filenames inside a session dir. */
+const LEGACY_TRANSCRIPT_FILE_CANDIDATES = ["events.jsonl", "transcript.jsonl", "messages.jsonl"] as const;
+
+/** New (2026-04+) transcript root: `~/.cursor/projects/<encoded-cwd>/agent-transcripts/`. */
+const NEW_PROJECTS_DIR = "projects";
+const NEW_AGENT_TRANSCRIPTS_DIR = "agent-transcripts";
 
 /** Root directory for Cursor session state, honoring CURSOR_HOME. */
 export function getCursorHome(): string {
@@ -48,25 +62,46 @@ export function getCursorHome(): string {
 }
 
 /** Locate the session directory for `sessionId` by probing each candidate root.
- *  Returns null on path-traversal sessionIds or if no directory is found. */
+ *  Returns null on path-traversal sessionIds or if no directory is found.
+ *  Tries the new `projects/<cwd>/agent-transcripts/<sessionId>/` layout first,
+ *  then the legacy flat candidates. */
 export function getCursorSessionDir(sessionId: string): string | null {
   if (!sessionId) return null;
   const home = resolve(getCursorHome());
-  for (const sub of SESSION_ROOT_CANDIDATES) {
+
+  // New layout: walk ~/.cursor/projects/<cwd>/agent-transcripts/<sessionId>/.
+  const projectsRoot = resolve(home, NEW_PROJECTS_DIR);
+  let projectEntries: import("node:fs").Dirent[] = [];
+  try { projectEntries = readdirSync(projectsRoot, { withFileTypes: true }); } catch { /* missing */ }
+  for (const entry of projectEntries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = resolve(projectsRoot, entry.name, NEW_AGENT_TRANSCRIPTS_DIR, sessionId);
+    // Containment check guards path-traversal sessionIds.
+    const transcriptRoot = resolve(projectsRoot, entry.name, NEW_AGENT_TRANSCRIPTS_DIR);
+    if (candidate === transcriptRoot || !candidate.startsWith(`${transcriptRoot}${sep}`)) continue;
+    if (existsSync(candidate)) return candidate;
+  }
+
+  // Legacy fallback.
+  for (const sub of LEGACY_SESSION_ROOT_CANDIDATES) {
     const root = resolve(home, sub);
     const candidate = resolve(root, sessionId);
-    // Containment check: equality with root means sessionId resolved to root itself.
     if (candidate === root || !candidate.startsWith(`${root}${sep}`)) continue;
     if (existsSync(candidate)) return candidate;
   }
   return null;
 }
 
-/** Locate the JSONL transcript for a session by probing each filename candidate. */
+/** Locate the JSONL transcript for a session by probing each filename candidate.
+ *  Cursor 2026-04+ stores `<sessionId>.jsonl` inside `<sessionId>/`; older
+ *  layouts use `events.jsonl`/`transcript.jsonl`/`messages.jsonl`. */
 export function findCursorTranscript(sessionId: string): string | null {
   const dir = getCursorSessionDir(sessionId);
   if (!dir) return null;
-  for (const name of TRANSCRIPT_FILE_CANDIDATES) {
+  // New layout: `<dir>/<sessionId>.jsonl` (matches the parent dir name).
+  const newCandidate = join(dir, `${basename(dir)}.jsonl`);
+  if (existsSync(newCandidate)) return newCandidate;
+  for (const name of LEGACY_TRANSCRIPT_FILE_CANDIDATES) {
     const candidate = join(dir, name);
     if (existsSync(candidate)) return candidate;
   }
@@ -89,6 +124,11 @@ interface CursorRecord {
   id?: string;
   timestamp?: string;
   parentId?: string | null;
+  /** Cursor 2026-04+ transcript shape: `{role, message: {content: [...]}}`. */
+  role?: "user" | "assistant" | "system" | string;
+  message?: {
+    content?: Array<{ type?: string; text?: string }>;
+  };
 }
 
 interface CursorParseResult {
@@ -119,6 +159,9 @@ export async function parseCursorLog(
   const toolUseStartMs = new Map<string, number>();
   let cwd: string | undefined;
   let seenSessionStart = false;
+  // Synthesized timestamps for the new `{role, message}` shape, which carries
+  // no timestamp field. We use file-position time so entries sort in order.
+  const SYNTH_T0 = Date.now();
 
   for (let i = 0; i < lines.length; i++) {
     if (i > 0 && i % 200 === 0) await new Promise<void>((r) => setImmediate(r));
@@ -133,6 +176,58 @@ export async function parseCursorLog(
 
     const rawCopy = { ...(raw as Record<string, unknown>), _source: source };
     rawLines.push(rawCopy);
+
+    // ── New `{role, message: {content: [...]}}` shape (cursor-agent 2026-04+) ──
+    // No `type` / `timestamp`; synthesize a per-record timestamp by index so
+    // entries sort in input order.
+    if (!raw.type && raw.role && raw.message?.content) {
+      const synthDate = new Date(SYNTH_T0 + i);
+      const synthTs = synthDate.toISOString();
+      const textParts = raw.message.content
+        .filter((c) => c?.type === "text" && typeof c.text === "string")
+        .map((c) => c.text!)
+        .join("");
+      if (raw.role === "user") {
+        // Strip the synthesized `<timestamp>...</timestamp>\n<user_query>...\n</user_query>`
+        // wrapper Cursor adds for context — keep just the user_query body.
+        const queryMatch = /<user_query>\s*([\s\S]*?)\s*<\/user_query>/.exec(textParts);
+        const text = queryMatch ? queryMatch[1] : textParts;
+        if (text) {
+          entries.push({
+            type: "user",
+            ...baseEntry(rawCopy, synthTs, synthDate, source),
+            message: { role: "user", content: text },
+          } satisfies UserEntry);
+        }
+        continue;
+      }
+      if (raw.role === "assistant") {
+        const blocks: ContentBlock[] = textParts
+          ? [{ type: "text", text: textParts }]
+          : [];
+        if (blocks.length === 0) {
+          entries.push({
+            type: "system",
+            ...baseEntry(rawCopy, synthTs, synthDate, source),
+            raw: rawCopy,
+          } satisfies GenericEntry);
+        } else {
+          entries.push({
+            type: "assistant",
+            ...baseEntry(rawCopy, synthTs, synthDate, source),
+            message: { role: "assistant", content: blocks },
+          } satisfies AssistantEntry);
+        }
+        continue;
+      }
+      // Unknown role — preserve raw.
+      entries.push({
+        type: "system",
+        ...baseEntry(rawCopy, synthTs, synthDate, source),
+        raw: rawCopy,
+      } satisfies GenericEntry);
+      continue;
+    }
 
     const timestampStr = raw.timestamp;
     if (!timestampStr) continue;

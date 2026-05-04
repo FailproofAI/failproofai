@@ -183,6 +183,27 @@ describe("lib/cursor-projects", () => {
     expect(result.sessions).toEqual([]);
   });
 
+  // Cursor 2026-04+ layout: ~/.cursor/projects/<encoded-cwd>/agent-transcripts/<sessionId>/<sessionId>.jsonl
+  it("discovers projects via the new ~/.cursor/projects/<cwd>/agent-transcripts/<id>/<id>.jsonl layout", async () => {
+    const sessionId = "f2f0e429-c3f7-4089-a191-bc0a62bd7af8";
+    const dir = join(fakeHome, ".cursor", "projects", "home-u-repo", "agent-transcripts", sessionId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${sessionId}.jsonl`), JSON.stringify({ role: "user", message: { content: [{ type: "text", text: "hi" }] } }));
+    const projects = await getCursorProjects();
+    expect(projects).toHaveLength(1);
+    // decodeFolderName("home-u-repo") = "/home/u/repo"
+    expect(projects[0].path).toBe("/home/u/repo");
+    expect(projects[0].cli).toEqual(["cursor"]);
+
+    // The URL slug is `encodeFolderName(cwd)` — leading dash for absolute paths
+    // — even though Cursor's on-disk dir name (`home-u-repo`) drops the leading
+    // slash. The session viewer/projects merger always keys on our encoding.
+    const sessions = await getCursorSessionsByEncodedName("-home-u-repo");
+    expect(sessions.cwd).toBe("/home/u/repo");
+    expect(sessions.sessions).toHaveLength(1);
+    expect(sessions.sessions[0].sessionId).toBe(sessionId);
+  });
+
   it("honors CURSOR_HOME when set", async () => {
     const altHome = mkdtempSync(join(tmpdir(), "cursor-alt-home-"));
     try {

@@ -256,9 +256,14 @@ export const CursorPayloads = {
 };
 
 /**
- * Copilot CLI-accurate payload factories. We install Copilot hooks in
- * "VS Code compatible" PascalCase mode, so Copilot delivers PascalCase
- * `hook_event_name` plus snake_case fields (the same shape Claude uses).
+ * Copilot CLI-accurate payload factories. Copilot hooks are installed in
+ * "VS Code compatible" PascalCase mode, so EVENT names arrive PascalCase plus
+ * snake_case wrapper fields (`tool_name`, `tool_input`, `cwd`). Copilot's
+ * tool registry, however, uses LOWERCASE IDs (`bash`, `read`, `write`, …) —
+ * confirmed by the session-log shape at `lib/copilot-sessions.ts:257` and the
+ * test fixture at `__tests__/lib/copilot-sessions.test.ts:87`. The handler's
+ * canonicalizeToolName(cli="copilot") maps these to Claude PascalCase before
+ * policy evaluation (see src/hooks/types.ts:COPILOT_TOOL_MAP).
  */
 const COPILOT_SESSION_ID = "test-session-copilot-001";
 
@@ -270,7 +275,7 @@ export const CopilotPayloads = {
         transcript_path: TRANSCRIPT_PATH,
         cwd,
         hook_event_name: "PreToolUse",
-        tool_name: "Bash",
+        tool_name: "bash",
         tool_input: { command },
       };
     },
@@ -280,7 +285,7 @@ export const CopilotPayloads = {
         transcript_path: TRANSCRIPT_PATH,
         cwd,
         hook_event_name: "PreToolUse",
-        tool_name: "Write",
+        tool_name: "write",
         tool_input: { file_path: filePath, content },
       };
     },
@@ -290,7 +295,7 @@ export const CopilotPayloads = {
         transcript_path: TRANSCRIPT_PATH,
         cwd,
         hook_event_name: "PreToolUse",
-        tool_name: "Read",
+        tool_name: "read",
         tool_input: { file_path: filePath },
       };
     },
@@ -302,7 +307,7 @@ export const CopilotPayloads = {
         transcript_path: TRANSCRIPT_PATH,
         cwd,
         hook_event_name: "PostToolUse",
-        tool_name: "Bash",
+        tool_name: "bash",
         tool_input: { command },
         tool_response: output,
       };

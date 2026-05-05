@@ -34,8 +34,16 @@ export const CODEX_EVENT_MAP: Record<CodexHookEventType, HookEventType> = {
 //
 // Copilot CLI accepts two payload formats. We install with PascalCase event
 // keys ("VS Code compatible" mode), which makes Copilot deliver PascalCase
-// `hook_event_name` plus snake_case fields — same shape Claude already uses.
-// As a result no Codex-style canonicalization map is required.
+// `hook_event_name` plus snake_case fields — same shape Claude already uses
+// at the WRAPPER level (no event-name canonicalization needed).
+//
+// Tool names are a separate matter: Copilot's tool registry uses lowercase
+// IDs (`bash`, `read`, `write`, `edit`, …) — confirmed by the session-log
+// shape at `lib/copilot-sessions.ts:257` and the unit-test fixture at
+// `__tests__/lib/copilot-sessions.test.ts:87`. Builtin policies match
+// PascalCase (`Bash`, `Read`, …) via case-sensitive `Array.includes`, so
+// without canonicalization every Bash/Read/Write/Edit builtin silently
+// no-ops under Copilot. COPILOT_TOOL_MAP below is the source of truth.
 //
 // Settings paths:
 //   user    → ~/.copilot/hooks/failproofai.json
@@ -54,6 +62,28 @@ export const COPILOT_HOOK_EVENT_TYPES = [
   "Stop",
 ] as const;
 export type CopilotHookEventType = (typeof COPILOT_HOOK_EVENT_TYPES)[number];
+
+/**
+ * Copilot's lowercase tool IDs → Claude PascalCase canonical names so existing
+ * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged on
+ * Copilot sessions. Unknown tools (MCP `mcp_*`, extensions) pass through
+ * unchanged via the `?? raw` fallback in handler.ts:canonicalizeToolName.
+ *
+ * Keys derived from in-repo evidence (lib/copilot-sessions.ts and the Copilot
+ * CLI's published tool set). If a future Copilot release ships new tool IDs
+ * we don't recognize, they pass through and any non-builtin custom policy
+ * matching by raw name still works.
+ */
+export const COPILOT_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  str_replace_editor: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+  ls: "LS",
+};
 
 // ── Cursor Agent CLI ───────────────────────────────────────────────────────
 //
@@ -150,6 +180,27 @@ export const OPENCODE_EVENT_MAP: Record<OpenCodeHookEventType, HookEventType> = 
   "permission.ask": "PermissionRequest",
 };
 
+/**
+ * OpenCode's lowercase tool IDs → Claude PascalCase canonical names. OpenCode's
+ * plugin SDK exposes `input.tool` as the raw tool ID (lowercase, snake_case
+ * for multi-word — see opencode v1.14.33 tool registry). The shim template at
+ * src/hooks/integrations.ts:writeFile re-implements an identical map inline
+ * (the shim must be self-contained — opencode loads it as a JS module), so any
+ * change here MUST be mirrored in the shim template.
+ */
+export const OPENCODE_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+  list: "LS",
+  webfetch: "WebFetch",
+  todowrite: "TodoWrite",
+  todoread: "TodoRead",
+};
+
 // ── Pi (pi-coding-agent) ───────────────────────────────────────────────────
 //
 // Pi loads TypeScript extensions from packages registered in `.pi/settings.json`
@@ -213,6 +264,26 @@ export const PI_EVENT_MAP: Record<PiHookEventType, HookEventType> = {
   user_bash: "PreToolUse",
   tool_result: "PostToolUse",
   agent_end: "Stop",
+};
+
+/**
+ * Pi's lowercase tool IDs → Claude PascalCase canonical names. Pi exposes its
+ * tool registry through `event.toolName` on `tool_call` / `tool_result` (see
+ * pi-extension/index.ts). Confirmed lowercase by the docstring there at
+ * line 105 ("Pi emits tool names in lowercase (`bash`, `read`, `edit`, `write`)")
+ * and verified empirically against pi-coding-agent v0.72.1.
+ *
+ * The pi-extension shim re-implements an identical map inline (the shim must
+ * be self-contained — Pi loads it as an in-process JS module), so any change
+ * here MUST be mirrored in pi-extension/index.ts:canonicalizeToolName.
+ */
+export const PI_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
 };
 
 // ── Gemini CLI ─────────────────────────────────────────────────────────────

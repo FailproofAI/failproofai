@@ -247,6 +247,73 @@ describe("hooks/handler", () => {
       );
     });
 
+    it("canonicalizes Copilot lowercase tool name bash → Bash before evaluating (regression for #293)", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
+      });
+      mockStdin(JSON.stringify({ tool_name: "bash", hook_event_name: "PreToolUse" }));
+      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+      await handleHookEvent("PreToolUse", "copilot");
+
+      // Without the canonicalizer the case-sensitive policy filter at
+      // policy-registry.ts:93-95 silently no-ops every Bash builtin.
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "PreToolUse",
+        expect.objectContaining({ tool_name: "Bash" }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(persistHookActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ integration: "copilot", toolName: "Bash" }),
+      );
+    });
+
+    it("canonicalizes every Copilot tool name in COPILOT_TOOL_MAP", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      const cases: Array<[string, string]> = [
+        ["bash", "Bash"],
+        ["read", "Read"],
+        ["write", "Write"],
+        ["edit", "Edit"],
+        ["str_replace_editor", "Edit"],
+        ["glob", "Glob"],
+        ["grep", "Grep"],
+        ["ls", "LS"],
+      ];
+      for (const [raw, canonical] of cases) {
+        vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+          exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
+        });
+        mockStdin(JSON.stringify({ tool_name: raw, hook_event_name: "PreToolUse" }));
+        await handleHookEvent("PreToolUse", "copilot");
+        expect(evaluatePolicies).toHaveBeenLastCalledWith(
+          "PreToolUse",
+          expect.objectContaining({ tool_name: canonical }),
+          expect.any(Object),
+          expect.any(Object),
+        );
+      }
+    });
+
+    it("passes through unknown Copilot tool names (MCP, extensions) unchanged", async () => {
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
+      });
+      mockStdin(JSON.stringify({ tool_name: "mcp_github_create_issue", hook_event_name: "PreToolUse" }));
+
+      await handleHookEvent("PreToolUse", "copilot");
+
+      expect(evaluatePolicies).toHaveBeenCalledWith(
+        "PreToolUse",
+        expect.objectContaining({ tool_name: "mcp_github_create_issue" }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
     it("canonicalizes Cursor camelCase event names to PascalCase before evaluating", async () => {
       const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
       vi.mocked(evaluatePolicies).mockResolvedValueOnce({

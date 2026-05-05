@@ -145,11 +145,51 @@ describe("OpenCode plugin shim — translation of plugin events to binary stdin"
     expect(calls).toHaveLength(1);
     expect(calls[0].args).toEqual(["-y", "failproofai", "--hook", "PreToolUse", "--cli", "opencode"]);
     const stdin = JSON.parse(calls[0].opts.input!);
-    expect(stdin.tool_name).toBe("bash");
+    // Shim canonicalizes lowercase opencode tool IDs (`bash`) to Claude
+    // PascalCase (`Bash`) before the JSON crosses to the binary, so builtin
+    // policies' case-sensitive `toolNames: ["Bash"]` filter fires.
+    expect(stdin.tool_name).toBe("Bash");
     expect(stdin.tool_input).toEqual({ command: "ls" });
     expect(stdin.session_id).toBe("ses_1");
     expect(stdin.cwd).toBe("/repo");
     expect(stdin.hook_event_name).toBe("PreToolUse");
+  });
+
+  it("tool.execute.before passes through unknown tool IDs unchanged", async () => {
+    responses.push({ status: 0, stdout: "", stderr: "" });
+    const { plugin } = await setup();
+    const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
+    await hooks["tool.execute.before"]!(
+      { tool: "mcp_github_create_issue", sessionID: "ses_1", callID: "c1" },
+      { args: { title: "x" } },
+    );
+    const stdin = JSON.parse(calls[0].opts.input!);
+    // Unknown tools (MCP `mcp_*`, third-party extensions) must pass through
+    // unchanged so non-builtin custom policies that match by raw name still work.
+    expect(stdin.tool_name).toBe("mcp_github_create_issue");
+  });
+
+  it("tool.execute.before canonicalizes every OPENCODE_TOOL_MAP entry", async () => {
+    const { plugin } = await setup();
+    const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
+    const cases: Array<[string, string]> = [
+      ["bash", "Bash"],
+      ["read", "Read"],
+      ["write", "Write"],
+      ["edit", "Edit"],
+      ["glob", "Glob"],
+      ["grep", "Grep"],
+      ["list", "LS"],
+      ["webfetch", "WebFetch"],
+      ["todowrite", "TodoWrite"],
+      ["todoread", "TodoRead"],
+    ];
+    for (const [raw, canonical] of cases) {
+      responses.push({ status: 0, stdout: "", stderr: "" });
+      await hooks["tool.execute.before"]!({ tool: raw, sessionID: "ses_1", callID: "c1" }, { args: {} });
+      const stdin = JSON.parse(calls[calls.length - 1].opts.input!);
+      expect(stdin.tool_name).toBe(canonical);
+    }
   });
 
   it("tool.execute.after uses input.args (not output.args) and includes tool_response", async () => {

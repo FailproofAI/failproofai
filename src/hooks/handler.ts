@@ -14,7 +14,7 @@ import type {
   PiHookEventType,
   GeminiHookEventType,
 } from "./types";
-import { CODEX_EVENT_MAP, CURSOR_EVENT_MAP, PI_EVENT_MAP, GEMINI_EVENT_MAP, GEMINI_TOOL_MAP } from "./types";
+import { CODEX_EVENT_MAP, CURSOR_EVENT_MAP, PI_EVENT_MAP, GEMINI_EVENT_MAP, GEMINI_TOOL_MAP, COPILOT_TOOL_MAP } from "./types";
 import type { PolicyFunction, PolicyResult } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
@@ -33,11 +33,12 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
  * on stdin and as the --hook arg; Cursor sends camelCase (`preToolUse`,
  * `beforeSubmitPrompt`); Pi sends underscore_lower_snake_case (`tool_call`,
  * `session_start`); Claude Code sends PascalCase. Copilot CLI is installed
- * in "VS Code compatible" PascalCase mode (see integrations.ts), so its events
- * arrive PascalCase already. Gemini also sends PascalCase but with different
- * names (`BeforeTool`, `BeforeAgent`, `AfterAgent`); we map via GEMINI_EVENT_MAP.
- * The internal registry, builtin policies, and policy.match.events all key on
- * PascalCase.
+ * in "VS Code compatible" PascalCase mode (see integrations.ts), so its event
+ * NAMES arrive PascalCase already (note: tool names are a separate matter and
+ * are canonicalized in canonicalizeToolName below). Gemini also sends
+ * PascalCase event names but with different spellings (`BeforeTool`,
+ * `BeforeAgent`, `AfterAgent`); we map via GEMINI_EVENT_MAP. The internal
+ * registry, builtin policies, and policy.match.events all key on PascalCase.
  */
 function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType {
   if (cli === "codex") {
@@ -63,17 +64,29 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
 
 /**
  * Canonicalize a per-CLI tool name to the Claude PascalCase form that builtin
- * policies match on (e.g. `Bash`, `Read`, `Write`, `Edit`). Today only Gemini
- * needs this — its tools are snake_case (`run_shell_command`, `read_file`,
- * `write_file`, `replace`, …). Other CLIs pass through unchanged: Claude /
- * Codex / Copilot already use PascalCase, and Cursor / Pi pre-canonicalize
- * inside their own plugin shims before the payload reaches this binary.
+ * policies match on (e.g. `Bash`, `Read`, `Write`, `Edit`). The registry filter
+ * at policy-registry.ts:93-95 is case-sensitive `Array.includes`, so any
+ * mismatch silently no-ops every Bash/Read/Write/Edit builtin.
+ *
+ * Per-CLI tool-name shapes (verified from in-repo evidence and vendor docs):
+ *   • Claude:   PascalCase native — passthrough
+ *   • Codex:    PascalCase per current install — passthrough (no map until
+ *               empirical evidence shows otherwise)
+ *   • Copilot:  lowercase IDs (`bash`, `read`, …) — COPILOT_TOOL_MAP
+ *   • Cursor:   PascalCase per Cursor docs — passthrough
+ *   • OpenCode: handled in the OpenCode plugin shim (in-process,
+ *               self-contained) before the JSON crosses to this binary
+ *   • Pi:       handled in the Pi extension shim (same)
+ *   • Gemini:   snake_case — GEMINI_TOOL_MAP
  *
  * Unknown tool names (MCP `mcp_*`, third-party extensions, Skills) pass
  * through unchanged so non-builtin tooling isn't lost.
  */
 function canonicalizeToolName(raw: string | undefined, cli: IntegrationType): string | undefined {
   if (!raw) return raw;
+  if (cli === "copilot") {
+    return COPILOT_TOOL_MAP[raw] ?? raw;
+  }
   if (cli === "gemini") {
     return GEMINI_TOOL_MAP[raw] ?? raw;
   }

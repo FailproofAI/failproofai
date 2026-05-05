@@ -154,6 +154,30 @@ describe("E2E: Copilot integration — hook protocol", () => {
       env.cleanup();
     }
   });
+
+  // Regression for #293: Copilot's tool registry uses lowercase IDs (`bash`),
+  // but builtin policies match PascalCase (`Bash`) via case-sensitive
+  // Array.includes. Without canonicalization in handler.ts every Bash builtin
+  // silently no-ops under Copilot. The user reported that
+  // `ls -la --almost-all $HOME | sed -n '1,200p'` ran successfully with
+  // block-read-outside-cwd enabled; this test pins the fix.
+  it("blocks Bash listing of $HOME outside cwd under Copilot (regression for #293)", () => {
+    const env = createCopilotEnv();
+    try {
+      writeConfig(env.cwd, ["block-read-outside-cwd"]);
+      // Use /tmp as a path guaranteed to be outside env.cwd — env.cwd is
+      // itself under /tmp via mkdtempSync, so any sibling path works.
+      const outsidePath = "/etc";
+      const result = runHook(
+        "PreToolUse",
+        CopilotPayloads.preToolUse.bash(`ls -la ${outsidePath}`, env.cwd),
+        { homeDir: env.home, cli: "copilot" },
+      );
+      assertPreToolUseDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
 });
 
 describe("E2E: Copilot integration — install/uninstall", () => {

@@ -724,6 +724,30 @@ const BUS_EVENT_MAP = {
   // message.updated is handled separately (filter to role:user); see below.
 };
 
+// Map opencode lowercase tool IDs (\`input.tool\`) → Claude PascalCase canonical
+// names. Builtin failproofai policies match on PascalCase via case-sensitive
+// \`Array.includes\`, so without this every Bash/Read/Write/Edit builtin
+// silently no-ops under opencode. Keep in sync with OPENCODE_TOOL_MAP in
+// failproofai/src/hooks/types.ts (this shim is loaded in-process by opencode
+// and must be self-contained — no imports from the failproofai package).
+// Unknown tools pass through unchanged via \`?? raw\`.
+const TOOL_NAME_MAP = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+  list: "LS",
+  webfetch: "WebFetch",
+  todowrite: "TodoWrite",
+  todoread: "TodoRead",
+};
+function canonicalizeTool(raw) {
+  if (!raw) return raw;
+  return TOOL_NAME_MAP[raw] != null ? TOOL_NAME_MAP[raw] : raw;
+}
+
 const FAILPROOFAI_BIN = ${escapedBin};
 const USE_NPX = ${useNpx};
 
@@ -817,7 +841,7 @@ export default async function failproofaiPlugin({ client, directory }) {
       const r = runFailproofai("PreToolUse", {
         session_id: input.sessionID,
         cwd: directory,
-        tool_name: input.tool,
+        tool_name: canonicalizeTool(input.tool),
         tool_input: output.args,
         hook_event_name: "PreToolUse",
       }, directory);
@@ -829,7 +853,7 @@ export default async function failproofaiPlugin({ client, directory }) {
       const r = runFailproofai("PostToolUse", {
         session_id: input.sessionID,
         cwd: directory,
-        tool_name: input.tool,
+        tool_name: canonicalizeTool(input.tool),
         tool_input: input.args,
         tool_response: { title: output.title, output: output.output, metadata: output.metadata },
         hook_event_name: "PostToolUse",
@@ -842,7 +866,7 @@ export default async function failproofaiPlugin({ client, directory }) {
       const r = runFailproofai("PermissionRequest", {
         session_id: input.sessionID,
         cwd: directory,
-        tool_name: input.tool || input.command || "permission",
+        tool_name: canonicalizeTool(input.tool) || input.command || "permission",
         tool_input: input,
         hook_event_name: "PermissionRequest",
       }, directory);

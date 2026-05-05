@@ -102,14 +102,31 @@ interface PiToolCallEvent {
 }
 
 /**
- * Pi emits tool names in lowercase (`bash`, `read`, `edit`, `write`).
- * failproofai's builtin policies match on Claude-shaped capitalized names
- * (`Bash`, `Read`, `Edit`, `Write`). Map between the two so existing
+ * Pi emits tool names in lowercase (`bash`, `read`, `edit`, `write`, `glob`,
+ * `grep`). failproofai's builtin policies match on Claude PascalCase
+ * (`Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`) via case-sensitive
+ * `Array.includes` in policy-registry.ts. Map between the two so existing
  * tool-name match clauses fire on Pi sessions.
+ *
+ * Keys must stay in sync with PI_TOOL_MAP in src/hooks/types.ts (this shim is
+ * loaded in-process by Pi and must be self-contained — no imports from the
+ * failproofai package). Update both whenever Pi adds a tool ID we care about.
+ *
+ * Unknown tools (anything not in this map) pass through unchanged so custom
+ * policies that match on raw Pi tool IDs still work.
  */
+const PI_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+};
+
 function canonicalizeToolName(piToolName: string | undefined): string | undefined {
   if (!piToolName) return undefined;
-  return piToolName.charAt(0).toUpperCase() + piToolName.slice(1);
+  return PI_TOOL_MAP[piToolName] ?? piToolName;
 }
 
 /** Resolve the cwd for the policy payload. Pi events don't include cwd, so

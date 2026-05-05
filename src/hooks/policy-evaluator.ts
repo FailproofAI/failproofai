@@ -264,12 +264,17 @@ export async function evaluatePolicies(
         };
       }
 
-      if (eventType === "Stop") {
+      if (eventType === "Stop" || eventType === "SubagentStop") {
         const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-        // Copilot CLI: `agentStop` honors `{decision: "block", reason}` JSON on
-        // stdout — the reason becomes the next-turn prompt and the agent retries.
-        // Exit-2 is logged as `[WARNING] Hook warning: ...` (verified empirically
-        // against Copilot CLI 1.0.41 events.jsonl) but does NOT trigger retry.
+        // Copilot CLI: `agentStop` and `subagentStop` both honor
+        // `{decision: "block", reason}` JSON on stdout — the reason becomes the
+        // next-turn prompt and the agent (or subagent) retries. Exit-2 is logged
+        // as `[WARNING] Hook warning: ...` (verified empirically against Copilot
+        // CLI 1.0.41 events.jsonl) but does NOT trigger retry. We branch on both
+        // event types so that custom policies matching SubagentStop also enforce
+        // on Copilot subagent boundaries; the 5 builtin require-*-before-stop
+        // policies still match Stop only by design — they are session-completion
+        // gates (commit/push/PR/conflicts/CI), not subagent-return gates.
         // Ref: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
         if (session?.cli === "copilot") {
           return {

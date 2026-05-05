@@ -400,6 +400,48 @@ describe("hooks/policy-evaluator", () => {
       expect(result.decision).toBe("deny");
     });
 
+    it("Copilot SubagentStop deny also emits {decision:'block', reason} JSON (subagent retry)", async () => {
+      // CodeRabbit catch on PR #299: the cli==="copilot" branch initially only
+      // matched eventType==="Stop", so SubagentStop denies fell through to
+      // exit-2 — which Copilot ignores for stop-style events, leaving subagent
+      // policies as observation-only. Custom policies matching SubagentStop
+      // need the same JSON-block shape as Stop. (Builtin require-*-before-stop
+      // policies still match Stop only by design — they are session-completion
+      // gates, not subagent-return gates.)
+      registerPolicy("subagent-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "subagent left work undone",
+      }), { events: ["SubagentStop"] });
+
+      const result = await evaluatePolicies("SubagentStop", {}, { cli: "copilot" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.decision).toBe("block");
+      expect(parsed.reason).toContain("MANDATORY ACTION REQUIRED");
+      expect(parsed.reason).toContain("subagent left work undone");
+      expect(result.decision).toBe("deny");
+    });
+
+    it("Claude SubagentStop deny still uses exit-2+stderr (regression: non-copilot path unchanged)", async () => {
+      // The Stop branch was widened to include SubagentStop; verify the
+      // non-copilot path still emits exit-2 with the MANDATORY ACTION wrapper
+      // (was previously falling through to the bare-reason "other events"
+      // fallback at the function tail — pre-existing minor inconsistency that
+      // the widening also fixed for SubagentStop on Claude).
+      registerPolicy("subagent-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "subagent left work undone",
+      }), { events: ["SubagentStop"] });
+
+      const result = await evaluatePolicies("SubagentStop", {});
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("MANDATORY ACTION REQUIRED");
+      expect(result.stderr).toContain("subagent left work undone");
+      expect(result.decision).toBe("deny");
+    });
+
     it("Stop deny short-circuits subsequent policies", async () => {
       const secondPolicyCalled = { value: false };
       registerPolicy("blocker", "desc", () => ({

@@ -25,6 +25,7 @@ import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { trackHookEvent } from "./hook-telemetry";
 import { resolvePermissionMode } from "./resolve-permission-mode";
+import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 
@@ -153,7 +154,7 @@ export async function handleHookEvent(
   const sessionId = parsed.session_id as string | undefined;
   const session: SessionMetadata = {
     sessionId,
-    transcriptPath: parsed.transcript_path as string | undefined,
+    transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
     cwd: parsed.cwd as string | undefined,
     permissionMode: resolvePermissionMode(cli, parsed, sessionId),
     hookEventName: parsed.hook_event_name as string | undefined,

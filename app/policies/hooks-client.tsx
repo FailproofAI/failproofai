@@ -332,6 +332,9 @@ function DetailPanel({
               <span className="font-mono text-foreground break-all">
                 {item.transcriptPath ?? "\u2014"}
               </span>
+              {item.transcriptPath?.startsWith("opencode-db://") && (
+                <span className="text-muted-foreground ml-1">(stored in opencode DB)</span>
+              )}
             </div>
           </div>
           {item.policyNames && item.policyNames.length > 1 && (

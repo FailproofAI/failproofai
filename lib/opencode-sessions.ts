@@ -235,3 +235,40 @@ export const getCachedOpenCodeSessionLog = runtimeCache(
   30,
   { maxSize: 50 },
 );
+
+// ── Export shape ──
+
+/**
+ * Snapshot of an OpenCode session as it lives in the SQLite store: one
+ * `session` row, all of its `message` rows, all of its `part` rows. The JSON
+ * `data` column on each message/part is parsed (when valid) so consumers
+ * don't have to double-parse; malformed JSON survives as the raw string.
+ *
+ * Used by the dashboard's Download Logs feature so the export mirrors the
+ * underlying schema rather than collapsing parts into a single per-message
+ * record (which is what the viewer-facing `getOpenCodeSessionLog` does).
+ */
+export interface OpenCodeSessionExportData {
+  session: OpenCodeSessionRow;
+  messages: Array<Omit<OpenCodeMessageRow, "data"> & { data: Record<string, unknown> | string | null }>;
+  parts: Array<Omit<OpenCodePartRow, "data"> & { data: Record<string, unknown> | string | null }>;
+}
+
+export async function getOpenCodeSessionExport(sessionId: string): Promise<OpenCodeSessionExportData | null> {
+  if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null;
+  const sessions = runOpenCodeDb<OpenCodeSessionRow>(
+    `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = '${sessionId}'`,
+  );
+  if (!sessions || sessions.length === 0) return null;
+  const messages = runOpenCodeDb<OpenCodeMessageRow>(
+    `SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
+  ) ?? [];
+  const parts = runOpenCodeDb<OpenCodePartRow>(
+    `SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
+  ) ?? [];
+  return {
+    session: sessions[0],
+    messages: messages.map((m) => ({ ...m, data: parseDataColumn(m.data) ?? m.data })),
+    parts: parts.map((p) => ({ ...p, data: parseDataColumn(p.data) ?? p.data })),
+  };
+}

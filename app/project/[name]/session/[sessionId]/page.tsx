@@ -161,16 +161,14 @@ export default async function SessionPage({ params }: SessionPageProps) {
                 <p className="text-muted-foreground">
                   <span className="font-medium">{rawLines.length}</span> log lines
                 </p>
-                {!isExternal && (
-                  <a
-                    href={`/api/download/${encodeURIComponent(name)}/${encodeURIComponent(decodedSessionId)}`}
-                    download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download Logs
-                  </a>
-                )}
+                <a
+                  href={`/api/download/${encodeURIComponent(name)}/${encodeURIComponent(decodedSessionId)}?cli=${cli}`}
+                  download
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Logs
+                </a>
               </div>
             )}
           </div>

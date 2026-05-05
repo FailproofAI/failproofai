@@ -10,7 +10,7 @@ vi.mock("@/lib/runtime-cache", () => ({
 }));
 
 import { execFileSync } from "node:child_process";
-import { getOpenCodeSessionLog } from "@/lib/opencode-sessions";
+import { getOpenCodeSessionLog, getOpenCodeSessionExport } from "@/lib/opencode-sessions";
 
 const mockExec = vi.mocked(execFileSync);
 
@@ -170,5 +170,41 @@ describe("getOpenCodeSessionLog", () => {
     ]);
     const log = await getOpenCodeSessionLog("ses_x");
     expect(log!.filePath).toBe("opencode://ses_x");
+  });
+});
+
+describe("getOpenCodeSessionExport", () => {
+  it("preserves the SQLite session/message/part structure with JSON data columns parsed", async () => {
+    const sessionRow = { id: "ses_x", project_id: "p1", slug: null, directory: "/repo", title: "T", time_created: 1, time_updated: 2 };
+    const messageRow = { id: "m1", session_id: "ses_x", time_created: 1, time_updated: 1, data: JSON.stringify({ role: "user" }) };
+    const partRow = { id: "p1", message_id: "m1", session_id: "ses_x", time_created: 1, time_updated: 1, data: JSON.stringify({ type: "text", text: "hi" }) };
+    mockQueries([[sessionRow], [messageRow], [partRow]]);
+    const result = await getOpenCodeSessionExport("ses_x");
+    expect(result).toEqual({
+      session: sessionRow,
+      messages: [{ ...messageRow, data: { role: "user" } }],
+      parts: [{ ...partRow, data: { type: "text", text: "hi" } }],
+    });
+  });
+
+  it("leaves malformed JSON in the data column as the raw string", async () => {
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: null, directory: "/repo", title: "T", time_created: 1, time_updated: 2 }],
+      [{ id: "m1", session_id: "ses_x", time_created: 1, time_updated: 1, data: "{not-valid-json" }],
+      [],
+    ]);
+    const result = await getOpenCodeSessionExport("ses_x");
+    expect(result!.messages[0].data).toBe("{not-valid-json");
+  });
+
+  it("returns null for an unknown session id", async () => {
+    mockQueries([[]]);
+    expect(await getOpenCodeSessionExport("ses_unknown")).toBeNull();
+  });
+
+  it("returns null for SQL-injection-shaped input without calling the binary", async () => {
+    mockExec.mockReset();
+    expect(await getOpenCodeSessionExport("'; DROP TABLE session; --")).toBeNull();
+    expect(mockExec).not.toHaveBeenCalled();
   });
 });

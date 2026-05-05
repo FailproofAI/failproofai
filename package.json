@@ -91,7 +91,7 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^6.0.2",
-    "@anthropic-ai/sdk": "^0.91.1",
+    "@anthropic-ai/sdk": "^0.93.0",
     "vitest": "^4.0.18"
   },
   "dependencies": {

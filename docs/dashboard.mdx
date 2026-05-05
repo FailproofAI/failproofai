@@ -55,7 +55,7 @@ The session viewer answers the key question for autonomous agents: what did the 
 
 The stats bar at the top shows session duration, total tool calls, and a summary of hook decisions (allow / deny / instruct counts).
 
-You can export the session as a ZIP or JSONL file using the download button.
+Click the **Download Logs** button to export the session. For Claude Code, Codex, Copilot, Cursor, Pi, and Gemini sessions you get the original on-disk JSONL transcript byte-for-byte; for OpenCode (whose sessions live in SQLite, not on disk) you get a JSON document mirroring the underlying `session` / `messages` / `parts` tables.
 
 ### Policies
 

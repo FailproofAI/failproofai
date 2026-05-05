@@ -52,6 +52,13 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
 // `hook_event_name` plus snake_case fields — same shape Claude already uses
 // at the WRAPPER level (no event-name canonicalization needed).
 //
+// Empirically verified (Copilot CLI 1.0.41 against
+// `~/.copilot/session-state/<id>/events.jsonl`): the user-scope PascalCase
+// `Stop` entry IS dispatched on Copilot's native camelCase `agentStop` event
+// — Copilot performs the alias mapping and case-fold internally so failproofai's
+// `--hook Stop --cli copilot` invocation is what actually receives `agentStop`
+// firings. Same alias rule applies to `SubagentStop` ↔ `subagentStop`.
+//
 // Tool names are a separate matter: Copilot's tool registry uses lowercase
 // IDs (`bash`, `read`, `write`, `edit`, …) — confirmed by the session-log
 // shape at `lib/copilot-sessions.ts:257` and the unit-test fixture at
@@ -59,6 +66,15 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
 // PascalCase (`Bash`, `Read`, …) via case-sensitive `Array.includes`, so
 // without canonicalization every Bash/Read/Write/Edit builtin silently
 // no-ops under Copilot. COPILOT_TOOL_MAP below is the source of truth.
+//
+// **Stop block semantics** (verified against Copilot CLI 1.0.41 + docs at
+// https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference):
+// `agentStop` accepts `{decision: "block", reason}` JSON on stdout — the reason
+// becomes the next-turn prompt and the agent retries. **Exit-2 + stderr is NOT
+// honored** — the session log shows it surfaced as `[WARNING] Hook warning: ...`
+// to the user but the agent stops cleanly without retrying. policy-evaluator.ts
+// has a `cli === "copilot"` Stop branch that emits the JSON-block shape so the
+// 5 require-*-before-stop builtins actually enforce on Copilot sessions.
 //
 // Settings paths:
 //   user    → ~/.copilot/hooks/failproofai.json
@@ -75,6 +91,7 @@ export const COPILOT_HOOK_EVENT_TYPES = [
   "PreToolUse",
   "PostToolUse",
   "Stop",
+  "SubagentStop",
 ] as const;
 export type CopilotHookEventType = (typeof COPILOT_HOOK_EVENT_TYPES)[number];
 

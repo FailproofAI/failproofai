@@ -69,6 +69,23 @@ which writes a portable `npx -y failproofai --hook ... --cli copilot` command.
 Same self-reference caveat applies — do **not** install the standard `npx`
 form from inside this repo.
 
+**Stop block semantics** (verified against Copilot CLI 1.0.41, May 2026, via
+`~/.copilot/logs/process-*.log` and `~/.copilot/session-state/<id>/events.jsonl`):
+
+| Channel                                   | Effect                                                          |
+|-------------------------------------------|-----------------------------------------------------------------|
+| `{decision: "block", reason}` JSON stdout (exit 0) | ✅ Forces another turn — `reason` becomes the next-turn prompt |
+| Exit 2 + stderr (Claude convention)       | ❌ Logged as `[WARNING] Hook warning: ...`; agent does NOT retry |
+
+policy-evaluator.ts has a `cli === "copilot"` Stop branch that emits the
+JSON-block shape so the 5 `require-*-before-stop` builtins actually enforce
+on Copilot. Without this branch, the deny would be a user-visible warning
+only — the agent would stop without remediation. Same shape applies to
+SubagentStop (Copilot fires `subagentStop` when a subagent finishes; we
+subscribe to it for parity with `agentStop`).
+
+Ref: <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference>
+
 ### Cursor hooks (`.cursor/hooks.json`)
 
 This repo also ships a `.cursor/hooks.json` for Cursor Agent CLI sessions,

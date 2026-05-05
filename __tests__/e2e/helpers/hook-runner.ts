@@ -193,6 +193,17 @@ export function assertGeminiStopBlock(result: HookRunResult): void {
   expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
 }
 
+export function assertCopilotStopBlock(result: HookRunResult): void {
+  // Copilot's `agentStop` honors `{decision: "block", reason}` JSON on stdout
+  // (exit 0) — the reason becomes the next-turn prompt and the agent retries.
+  // Exit-2 is logged as `[WARNING] Hook warning: ...` but does NOT trigger
+  // retry (verified empirically against Copilot CLI 1.0.41 events.jsonl).
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
+}
+
 export function assertGeminiInstruct(result: HookRunResult, hookEventName: string): void {
   expect(result.exitCode).toBe(0);
   const output = result.parsed?.hookSpecificOutput as Record<string, unknown> | undefined;

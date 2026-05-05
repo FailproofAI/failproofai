@@ -16,6 +16,7 @@ import {
   assertAllow,
   assertPreToolUseDeny,
   assertPostToolUseDeny,
+  assertCopilotStopBlock,
 } from "../helpers/hook-runner";
 import { CopilotPayloads } from "../helpers/payloads";
 
@@ -179,6 +180,35 @@ describe("E2E: Copilot integration — hook protocol", () => {
     }
   });
 
+  // Stop hook on Copilot honors `{decision: "block", reason}` JSON, NOT
+  // exit-2+stderr (verified empirically against Copilot CLI 1.0.41:
+  // ~/.copilot/logs/process-*.log shows `[WARNING] Hook warning: <stderr>`
+  // for exit-2 with no agent retry, while the documented agentStop schema
+  // accepts `{decision:"block",reason}` to force another turn). The
+  // `cli === "copilot"` branch in policy-evaluator.ts emits this shape.
+  it("Stop deny emits {decision:'block', reason} JSON (Copilot agentStop retry shape)", () => {
+    const env = createCopilotEnv();
+    try {
+      writeConfig(env.cwd, ["require-commit-before-stop"]);
+      // require-commit-before-stop denies when the cwd has uncommitted changes.
+      // env.cwd has no .git/ at all, so the policy short-circuits to allow —
+      // we need to plant uncommitted state. Easiest: init a real git repo with
+      // a file that's modified-not-staged.
+      execSync("git init -q && git config user.email t@t && git config user.name t && touch tracked && git add tracked && git commit -q -m initial && echo dirty > tracked", {
+        cwd: env.cwd,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      });
+      const result = runHook(
+        "Stop",
+        CopilotPayloads.stop(env.cwd),
+        { homeDir: env.home, cli: "copilot" },
+      );
+      assertCopilotStopBlock(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   // Regression for #295: Copilot uses a single `view` tool for both file
   // reads AND directory listings. Without `view → Read` in COPILOT_TOOL_MAP
   // the case-sensitive registry filter skips `block-read-outside-cwd`
@@ -222,6 +252,11 @@ describe("E2E: Copilot integration — install/uninstall", () => {
       expect(hooks.SessionEnd).toBeDefined();
       expect(hooks.UserPromptSubmit).toBeDefined();
       expect(hooks.Stop).toBeDefined();
+      // SubagentStop is what Copilot fires when a subagent finishes (camelCase
+      // `subagentStop` aliases to PascalCase via VS Code-compat mode). Without
+      // this entry, require-*-before-stop policies silently no-op on subagent
+      // completion — relevant for cloud-agent flows that delegate via subagents.
+      expect(hooks.SubagentStop).toBeDefined();
       // camelCase keys should not be present
       expect(hooks.preToolUse).toBeUndefined();
     } finally {

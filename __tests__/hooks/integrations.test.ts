@@ -296,6 +296,7 @@ describe("GitHub Copilot integration", () => {
     expect(copilot.eventTypes).toContain("SessionStart");
     expect(copilot.eventTypes).toContain("SessionEnd");
     expect(copilot.eventTypes).toContain("Stop");
+    expect(copilot.eventTypes).toContain("SubagentStop");
   });
 
   it("buildHookEntry uses bash + powershell keys with --cli copilot", () => {

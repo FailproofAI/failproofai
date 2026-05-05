@@ -175,6 +175,64 @@ describe("hooks/policy-evaluator", () => {
     expect(result.policyName).toBe("exospherehost/verify");
   });
 
+  it("SubagentStop + instruct also returns exitCode 2 (Claude path mirrors Stop)", async () => {
+    // The instruct-path Stop branch was widened to include SubagentStop, so
+    // custom subagent-instruct policies now go through the MANDATORY ACTION
+    // wrapper instead of falling through to the generic hookSpecificOutput
+    // additionalContext shape (which Claude does not honor for SubagentStop).
+    registerPolicy("verify", "desc", () => ({
+      decision: "instruct",
+      reason: "subagent left work undone",
+    }), { events: ["SubagentStop"] });
+
+    const result = await evaluatePolicies("SubagentStop", {});
+    expect(result.exitCode).toBe(2);
+    expect(result.decision).toBe("instruct");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("MANDATORY ACTION REQUIRED");
+    expect(result.stderr).toContain("subagent left work undone");
+  });
+
+  it("Copilot Stop + instruct emits {decision:'block', reason} JSON on stdout (NOT exit 2)", async () => {
+    // CodeRabbit catch on PR #299: the Copilot block-payload branch existed in
+    // the deny path but the instruct path's `eventType === "Stop"` arm had no
+    // Copilot branch, so instruct verdicts on Copilot Stop fell through to
+    // exit-2 — which Copilot logs as `[WARNING] Hook warning: ...` but does
+    // NOT honor for retry. Mirror the deny branch so instruct enforces too.
+    registerPolicy("verify", "desc", () => ({
+      decision: "instruct",
+      reason: "needs verification",
+    }), { events: ["Stop"] });
+
+    const result = await evaluatePolicies("Stop", {}, { cli: "copilot" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.decision).toBe("instruct");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    expect(parsed.reason).toContain("MANDATORY ACTION REQUIRED");
+    expect(parsed.reason).toContain("needs verification");
+  });
+
+  it("Copilot SubagentStop + instruct also emits {decision:'block', reason} JSON", async () => {
+    // Combined coverage of both fixes: instruct-path SubagentStop on Copilot
+    // must produce the JSON-block shape (was double-fallthrough before — the
+    // branch only matched Stop AND only the deny path had a Copilot arm).
+    registerPolicy("verify", "desc", () => ({
+      decision: "instruct",
+      reason: "subagent verification pending",
+    }), { events: ["SubagentStop"] });
+
+    const result = await evaluatePolicies("SubagentStop", {}, { cli: "copilot" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.decision).toBe("instruct");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    expect(parsed.reason).toContain("MANDATORY ACTION REQUIRED");
+    expect(parsed.reason).toContain("subagent verification pending");
+  });
+
   it("accumulates multiple instruct messages", async () => {
     registerPolicy("first", "desc", () => ({
       decision: "instruct",
@@ -377,6 +435,69 @@ describe("hooks/policy-evaluator", () => {
       expect(result.stderr).toContain("changes not committed");
       expect(result.decision).toBe("deny");
       expect(result.reason).toBe("changes not committed");
+    });
+
+    it("Copilot Stop deny emits {decision:'block', reason} JSON on stdout (NOT exit 2)", async () => {
+      // Copilot CLI 1.0.41 logs exit-2 from agentStop as `[WARNING] Hook
+      // warning: ...` but does NOT retry the agent. The documented retry
+      // shape is `{decision: "block", reason}` JSON on stdout (exit 0) — the
+      // reason becomes the next-turn prompt. The cli==="copilot" branch in
+      // policy-evaluator.ts emits this shape; this test pins it.
+      registerPolicy("stop-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "changes not committed",
+      }), { events: ["Stop"] });
+
+      const result = await evaluatePolicies("Stop", {}, { cli: "copilot" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.decision).toBe("block");
+      expect(parsed.reason).toContain("MANDATORY ACTION REQUIRED");
+      expect(parsed.reason).toContain("changes not committed");
+      expect(result.decision).toBe("deny");
+    });
+
+    it("Copilot SubagentStop deny also emits {decision:'block', reason} JSON (subagent retry)", async () => {
+      // CodeRabbit catch on PR #299: the cli==="copilot" branch initially only
+      // matched eventType==="Stop", so SubagentStop denies fell through to
+      // exit-2 — which Copilot ignores for stop-style events, leaving subagent
+      // policies as observation-only. Custom policies matching SubagentStop
+      // need the same JSON-block shape as Stop. (Builtin require-*-before-stop
+      // policies still match Stop only by design — they are session-completion
+      // gates, not subagent-return gates.)
+      registerPolicy("subagent-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "subagent left work undone",
+      }), { events: ["SubagentStop"] });
+
+      const result = await evaluatePolicies("SubagentStop", {}, { cli: "copilot" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.decision).toBe("block");
+      expect(parsed.reason).toContain("MANDATORY ACTION REQUIRED");
+      expect(parsed.reason).toContain("subagent left work undone");
+      expect(result.decision).toBe("deny");
+    });
+
+    it("Claude SubagentStop deny still uses exit-2+stderr (regression: non-copilot path unchanged)", async () => {
+      // The Stop branch was widened to include SubagentStop; verify the
+      // non-copilot path still emits exit-2 with the MANDATORY ACTION wrapper
+      // (was previously falling through to the bare-reason "other events"
+      // fallback at the function tail — pre-existing minor inconsistency that
+      // the widening also fixed for SubagentStop on Claude).
+      registerPolicy("subagent-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "subagent left work undone",
+      }), { events: ["SubagentStop"] });
+
+      const result = await evaluatePolicies("SubagentStop", {});
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("MANDATORY ACTION REQUIRED");
+      expect(result.stderr).toContain("subagent left work undone");
+      expect(result.decision).toBe("deny");
     });
 
     it("Stop deny short-circuits subsequent policies", async () => {

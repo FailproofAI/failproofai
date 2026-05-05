@@ -264,11 +264,32 @@ export async function evaluatePolicies(
         };
       }
 
-      if (eventType === "Stop") {
+      if (eventType === "Stop" || eventType === "SubagentStop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        // Copilot CLI: `agentStop` and `subagentStop` both honor
+        // `{decision: "block", reason}` JSON on stdout — the reason becomes the
+        // next-turn prompt and the agent (or subagent) retries. Exit-2 is logged
+        // as `[WARNING] Hook warning: ...` (verified empirically against Copilot
+        // CLI 1.0.41 events.jsonl) but does NOT trigger retry. We branch on both
+        // event types so that custom policies matching SubagentStop also enforce
+        // on Copilot subagent boundaries; the 5 builtin require-*-before-stop
+        // policies still match Stop only by design — they are session-completion
+        // gates (commit/push/PR/conflicts/CI), not subagent-return gates.
+        // Ref: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
+        if (session?.cli === "copilot") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
         return {
           exitCode: 2,
           stdout: "",
-          stderr: `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`,
+          stderr: reasonText,
           policyName: policy.name,
           reason,
           decision: "deny",
@@ -433,16 +454,36 @@ export async function evaluatePolicies(
       };
     }
 
-    if (eventType === "Stop") {
-      // Stop hook: exitCode 2 blocks Claude from stopping.
-      // Reason goes to stderr so Claude Code receives it as context.
+    if (eventType === "Stop" || eventType === "SubagentStop") {
+      // Stop/SubagentStop instruct: exitCode 2 + stderr forces Claude to retry
+      // the agent (or subagent) loop with the reason as context. Same widening
+      // as the deny branch above — custom policies subscribing to
+      // SubagentStop need the same retry semantics; the 5 builtin
+      // require-*-before-stop policies still match Stop only by design.
       const policyAttribution = policyNames.length === 1
         ? `policy: ${policyNames[0]}`
         : `policies: ${policyNames.join(", ")}`;
+      const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+      // Copilot CLI: exit-2 from agentStop / subagentStop is logged as
+      // `[WARNING] Hook warning: ...` but does NOT trigger retry. The
+      // documented retry shape is `{decision: "block", reason}` JSON on
+      // stdout (exit 0). Mirrors the cli==="copilot" branch in the deny
+      // path at line ~279 so custom instruct policies enforce on Copilot.
+      if (session?.cli === "copilot") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
       return {
         exitCode: 2,
         stdout: "",
-        stderr: `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`,
+        stderr: reasonText,
         policyName: policyNames[0],
         policyNames,
         reason: combined,

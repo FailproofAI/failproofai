@@ -7,6 +7,7 @@ import { realpathSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseScriptArgs } from "./parse-script-args";
+import { diagnoseShadow } from "./install-diagnosis.mjs";
 import { version } from "../package.json";
 
 export function launch(mode: "dev" | "start"): void {
@@ -49,7 +50,38 @@ export function launch(mode: "dev" | "start"): void {
       ?? resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), "..");
     const serverJsPath = resolve(packageRoot, ".next/standalone/server.js");
     if (!existsSync(serverJsPath)) {
+      // Most "missing server.js" reports come from a PATH shadow (an older
+      // `bun link` or a `bun install -g` whose prefix wins over npm), not from
+      // a genuinely broken build. Diagnose first so the error message names
+      // the actual cause when that's what's going on.
+      let shadowMessage: string | null = null;
+      try {
+        const diag = diagnoseShadow({ selfPackageRoot: packageRoot, selfVersion: version });
+        if (diag.shadowed) {
+          // Pick whichever alternate install exists at npm/bun globals AND
+          // differs from PATH-first. In the runtime stale-binary scenario the
+          // running install IS the PATH-first one, so we'd otherwise point the
+          // user back at themselves.
+          const alt =
+            (diag.npmGlobalPath && diag.npmGlobalPath !== diag.pathFirstPath
+              ? { path: diag.npmGlobalPath, version: diag.npmGlobalVersion }
+              : null)
+            ?? (diag.bunGlobalPath && diag.bunGlobalPath !== diag.pathFirstPath
+              ? { path: diag.bunGlobalPath, version: diag.bunGlobalVersion }
+              : null);
+          const newer = alt?.path ?? "(unknown)";
+          const newerVer = alt?.version ?? "?";
+          shadowMessage =
+            `\nError: failproofai on your PATH is a stale install that no longer has its build output.\n` +
+            `  Running:    ${diag.pathFirstPath}` + (diag.pathFirstVersion ? `  (v${diag.pathFirstVersion})` : "") + `\n` +
+            `  Newer copy: ${newer}  (v${newerVer})\n\n` +
+            `Remove the shadow with:\n  ${diag.recommendation}\n`;
+        }
+      } catch {
+        // Diagnosis is best-effort; fall back to the original message.
+      }
       console.error(
+        shadowMessage ??
         `\nError: Cannot find server.js at:\n  ${serverJsPath}\n\n` +
         `The package may be missing its build output.\n` +
         `Try reinstalling:\n  npm install -g failproofai@latest\n`

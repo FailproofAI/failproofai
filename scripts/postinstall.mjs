@@ -12,6 +12,7 @@ import { resolve } from "node:path";
 import { platform, arch, release, homedir, hostname } from "node:os";
 import { createHmac } from "node:crypto";
 import { trackInstallEvent } from "./install-telemetry.mjs";
+import { diagnoseShadow } from "./install-diagnosis.mjs";
 
 // Skip when running in development context (e.g. `bun install` in the source repo).
 // INIT_CWD is set by npm/bun to the directory where install was invoked; it differs
@@ -27,6 +28,30 @@ if (!existsSync(serverJsPath)) {
     `  Try reinstalling: npm install -g failproofai@latest\n`
   );
   process.exit(1);
+}
+
+// Detect when an older `failproofai` is shadowing this fresh install on PATH —
+// classic case is a leftover `bun link` from a prior dev session, or a
+// `bun install -g` whose ~/.bun/bin sorts ahead of npm's prefix. Without this
+// warning the user only finds out later via a confusing runtime error from
+// scripts/launch.ts pointing at the *old* install's missing build output.
+try {
+  let selfVersion = null;
+  try {
+    selfVersion = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")).version ?? null;
+  } catch {}
+  const diag = diagnoseShadow({ selfPackageRoot: process.cwd(), selfVersion });
+  if (diag.shadowed) {
+    console.warn(
+      `\n[failproofai] Warning: another failproofai install is earlier on your PATH.\n` +
+      `  Just installed: ${diag.selfPackageRoot}` + (diag.selfVersion ? `  (v${diag.selfVersion})` : "") + `\n` +
+      `  PATH resolves : ${diag.pathFirstPath}` + (diag.pathFirstVersion ? `  (v${diag.pathFirstVersion})` : "") + `\n\n` +
+      `  Your shell will run the older copy. Remove the shadow with:\n` +
+      `    ${diag.recommendation}\n`
+    );
+  }
+} catch {
+  // Diagnosis is best-effort — never fail the install over a warning.
 }
 
 const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__";

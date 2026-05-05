@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixes
+- Detect when `failproofai` on the user's PATH is shadowed by a different, older install (classic cause: a leftover `bun link` from a prior dev session, or a previously-installed `bun install -g failproofai` whose `~/.bun/bin` prefix sorts ahead of npm's). New `scripts/install-diagnosis.mjs` helper resolves the PATH-first install via `command -v` (POSIX) / `where` (Win32), compares its package root + version against the running install, and surfaces a copy-pasteable cleanup command (`rm -f ~/.bun/bin/failproofai && rm -rf ~/.bun/install/global/node_modules/failproofai` for bun-side shadows, `npm rm -g failproofai` for npm-side ones). Wired into two places: (1) `scripts/postinstall.mjs` warns at install time when the just-installed copy is being shadowed, before the customer ever sees the runtime error, (2) `scripts/launch.ts` rewrites the existing "Cannot find server.js at" error to point at the actual stale install (with both versions and the cleanup command) when the missing build output is caused by a PATH shadow rather than a genuinely broken build. Replaces the previous misleading recommendation (`npm install -g failproofai@latest`) which doesn't help when the new install is itself being shadowed (#286).
+
 ## 0.0.10-beta.0 — 2026-05-04
 
 ### Features

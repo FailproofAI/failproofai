@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixes
+- `lib/opencode-sessions.ts`: render OpenCode tool calls in the dashboard session view with their input args and output. Verified live against opencode v1.14.41 — every `part` row with `type: "tool"` nests its payload under `data.state.{status,input,output,time:{start,end},error?}`, but the previous translator read `data.input` / `data.args` (top-level) which are always undefined for real opencode parts. Result: `tool_use` blocks were emitted with the right `name` but `input: {}` and no `result`, so the dashboard showed the tool name only — `state.output` was silently dropped and `state.input` was discarded. The fix populates `tool_use.input` from `state.input` (with legacy `data.input`/`data.args` fallback for older opencode shapes) and builds a full `ToolResultInfo` (`content`, `durationMs`, formatted variants) from `state.output` + `state.time`. Status handling: `completed` → input + result, `error` → result with `state.error` (falling back to `state.output`), `running` → tool_use without `result` (renderer already handles a missing `result` gracefully). Hook-time path is unaffected — `.opencode/plugins/failproofai.mjs` and `src/hooks/integrations.ts` read `output.args` directly from the opencode SDK callback signature, not from the DB. Existing fixture in `__tests__/lib/opencode-sessions.test.ts` was masking the bug by feeding a fictional `{type:"tool",input:{...}}` shape; replaced with the real `state.{input,output,time}` shape and added 5 new tests (running / error-with-error-field / error-without-error-field / legacy-back-compat / live-DB-shape regression) (#319).
+
 ## 0.0.10-beta.6 — 2026-05-08
 
 ### Fixes

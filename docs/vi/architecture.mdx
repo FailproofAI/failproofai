@@ -1,12 +1,11 @@
 ---
-
 ---
 title: Kiến trúc
-description: "Cách hook handler, config loading, và policy evaluation hoạt động nội bộ"
+description: "Cách hook handler, config loading và policy evaluation hoạt động bên trong"
 icon: sitemap
 ---
 
-Tài liệu này giải thích cách failproofai hoạt động nội bộ: cách hook system chặn các tool call của agent, cách configuration được load và merge, cách policies được đánh giá, và cách dashboard giám sát hoạt động của agent.
+Tài liệu này giải thích cách failproofai hoạt động bên trong: cách hệ thống hook chặn các tool call của agent, cách configuration được tải và merge, cách policies được đánh giá, và cách dashboard giám sát hoạt động của agent.
 
 ---
 
@@ -14,10 +13,10 @@ Tài liệu này giải thích cách failproofai hoạt động nội bộ: các
 
 failproofai có hai subsystem độc lập:
 
-1. **Hook handler** - Một subprocess CLI nhanh mà Claude Code gọi trên mỗi agent tool call. Đánh giá policies và trả về quyết định.
-2. **Agent Monitor (Dashboard)** - Một ứng dụng web Next.js để giám sát các agent session và quản lý policies.
+1. **Hook handler** - Một CLI subprocess nhanh mà Claude Code gọi trên mỗi agent tool call. Đánh giá policies và trả lại một quyết định.
+2. **Agent Monitor (Dashboard)** - Một Next.js web application để giám sát agent sessions và quản lý policies.
 
-Cả hai subsystem chia sẻ các file cấu hình trong `~/.failproofai/` và thư mục `.failproofai/` của project, nhưng chúng chạy như các process riêng biệt và chỉ giao tiếp thông qua filesystem.
+Cả hai subsystem đều chia sẻ các tệp cấu hình trong `~/.failproofai/` và thư mục `.failproofai/` của project, nhưng chúng chạy dưới dạng các process riêng biệt và chỉ giao tiếp qua filesystem.
 
 ---
 
@@ -25,7 +24,7 @@ Cả hai subsystem chia sẻ các file cấu hình trong `~/.failproofai/` và t
 
 ### Tích hợp với Claude Code
 
-Khi bạn chạy `failproofai policies --install`, nó sẽ ghi các entry như sau vào `~/.claude/settings.json`:
+Khi bạn chạy `failproofai policies --install`, nó sẽ ghi các entry như thế này vào `~/.claude/settings.json`:
 
 ```json
 {
@@ -46,9 +45,9 @@ Khi bạn chạy `failproofai policies --install`, nó sẽ ghi các entry như 
 }
 ```
 
-Claude Code sau đó gọi `failproofai --hook PreToolUse` như một subprocess trước mỗi tool call, truyền một JSON payload trên stdin.
+Claude Code sau đó gọi `failproofai --hook PreToolUse` như một subprocess trước mỗi tool call, chuyển một JSON payload qua stdin.
 
-### Định dạng payload
+### Định dạng Payload
 
 ```json
 {
@@ -64,9 +63,9 @@ Claude Code sau đó gọi `failproofai --hook PreToolUse` như một subprocess
 
 Đối với `PostToolUse` events, payload cũng chứa `tool_result` với output của tool.
 
-Handler enforces giới hạn stdin 1 MB. Các payload vượt quá giới hạn này được loại bỏ và tất cả policies implicit cho phép.
+Handler thực thi giới hạn 1 MB cho stdin. Những payload vượt quá giới hạn này sẽ bị loại bỏ và tất cả policies sẽ ngầm cho phép.
 
-### Định dạng response
+### Định dạng Response
 
 **Deny (PreToolUse):**
 ```json
@@ -98,15 +97,15 @@ Handler enforces giới hạn stdin 1 MB. Các payload vượt quá giới hạn
 
 **Stop event instruct:**
 - Exit code: `2`
-- Lý do được ghi vào stderr (không phải stdout)
+- Reason được ghi vào stderr (không phải stdout)
 
 **Allow:**
 - Exit code: `0`
-- Stdout trống
+- Stdout trống rỗng
 
-**Allow với message:**
+**Allow with message:**
 
-`allow(message)` cho phép một policy gửi informational context trở lại Claude ngay cả khi operation được phép. Hook handler ghi JSON sau vào **stdout** (không phải config file — đây là handler's response tới Claude Code, giống như deny và instruct responses ở trên):
+`allow(message)` cho phép một policy gửi contextual information trở lại Claude ngay cả khi operation được cho phép. Hook handler ghi JSON sau đây vào **stdout** (không phải một file cấu hình — đây là response của handler tới Claude Code, giống như deny và instruct responses ở trên):
 
 ```json
 // Written to stdout by the hook handler process
@@ -116,13 +115,13 @@ Handler enforces giới hạn stdin 1 MB. Các payload vượt quá giới hạn
   }
 }
 ```
-- Exit code: `0` (operation được phép)
-- Khi nhiều policies trả về `allow` với một message, các messages của chúng được join với newlines thành một single `additionalContext` string
-- Nếu không có policy nào cung cấp message, stdout trống (giống như trước)
+- Exit code: `0` (operation được cho phép)
+- Khi nhiều policies trả về `allow` với một message, các messages của chúng được join lại bằng newlines thành một chuỗi `additionalContext` duy nhất
+- Nếu không có policy nào cung cấp message, stdout trống rỗng (giống như trước)
 
 ### Processing pipeline
 
-`src/hooks/handler.ts` implements toàn bộ pipeline:
+`src/hooks/handler.ts` thực hiện toàn bộ pipeline:
 
 ```text
 stdin JSON
@@ -141,13 +140,13 @@ stdin JSON
   → exit
 ```
 
-Toàn bộ process chạy dưới 100ms cho các typical payloads mà không có LLM calls.
+Toàn bộ process chạy dưới 100ms cho typical payloads mà không có LLM calls.
 
 ---
 
 ## Configuration loading
 
-`src/hooks/hooks-config.ts` implements three-scope config loading.
+`src/hooks/hooks-config.ts` thực hiện three-scope config loading.
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← project  (highest priority)
@@ -156,10 +155,10 @@ Toàn bộ process chạy dưới 100ms cho các typical payloads mà không có
 ```
 
 Merge logic:
-- `enabledPolicies` - deduplicated union across all three files
-- `policyParams` - per-policy key, first file that defines it wins entirely
-- `customPoliciesPath` - first file that defines it wins
-- `llm` - first file that defines it wins
+- `enabledPolicies` - deduplicated union trên cả ba files
+- `policyParams` - per-policy key, file đầu tiên định nghĩa nó sẽ thắng hoàn toàn
+- `customPoliciesPath` - file đầu tiên định nghĩa nó sẽ thắng
+- `llm` - file đầu tiên định nghĩa nó sẽ thắng
 
 Web dashboard sử dụng `readHooksConfig()` (global only) để đọc và ghi, vì nó không được gọi với project cwd.
 
@@ -169,26 +168,26 @@ Web dashboard sử dụng `readHooksConfig()` (global only) để đọc và ghi
 
 `src/hooks/policy-evaluator.ts` chạy policies theo thứ tự.
 
-Với mỗi policy:
+Cho mỗi policy:
 
-1. Look up policy's `params` schema (nếu nó có).
+1. Tra cứu schema `params` của policy (nếu nó có).
 2. Đọc `policyParams[policy.name]` từ merged config.
-3. Merge user-provided values over schema defaults để tạo `ctx.params`.
+3. Merge user-provided values trên schema defaults để tạo ra `ctx.params`.
 4. Gọi `policy.fn(ctx)` với resolved context.
-5. Nếu result là `deny`, dừng ngay lập tức và trả về quyết định đó.
-6. Nếu result là `instruct`, accumulate message và tiếp tục.
-7. Nếu result là `allow`, tiếp tục tới policy tiếp theo.
+5. Nếu kết quả là `deny`, dừng ngay lập tức và trả lại quyết định đó.
+6. Nếu kết quả là `instruct`, tích lũy message và tiếp tục.
+7. Nếu kết quả là `allow`, tiếp tục tới policy tiếp theo.
 
 Sau khi tất cả policies chạy:
-- Nếu bất kỳ `deny` nào được trả về, emit deny response.
-- Nếu bất kỳ `instruct` returns nào được collected, emit một single instruct response với tất cả messages được join.
-- Ngoài ra, emit một allow response (empty stdout, exit 0).
+- Nếu bất kỳ `deny` nào được trả về, phát emit deny response.
+- Nếu bất kỳ `instruct` returns nào được thu thập, phát emit một single instruct response với tất cả messages được join lại.
+- Ngược lại, phát emit một allow response (empty stdout, exit 0).
 
 ---
 
 ## Builtin policies
 
-`src/hooks/builtin-policies.ts` định nghĩa tất cả 26 built-in policies như `BuiltinPolicyDefinition` objects:
+`src/hooks/builtin-policies.ts` định nghĩa tất cả 26 built-in policies như các `BuiltinPolicyDefinition` objects:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -206,15 +205,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-Các policies chấp nhận `params` khai báo một `PolicyParamsSchema` với types và defaults cho mỗi parameter. Policy evaluator injects resolved values vào `ctx.params` trước khi gọi `fn`. Policy functions đọc `ctx.params` mà không cần null-guarding vì defaults luôn được applied trước.
+Policies chấp nhận `params` khai báo một `PolicyParamsSchema` với types và defaults cho mỗi parameter. Policy evaluator inject resolved values vào `ctx.params` trước khi gọi `fn`. Policy functions đọc `ctx.params` mà không cần null-guarding vì defaults luôn được áp dụng trước.
 
-Pattern matching bên trong policies sử dụng parsed command tokens (argv), không phải raw string matching. Điều này ngăn chặn bypass thông qua shell operator injection (ví dụ: một pattern cho `sudo systemctl status *` không thể bypass bằng cách append `; rm -rf /` vào command).
+Pattern matching bên trong policies sử dụng parsed command tokens (argv), không phải raw string matching. Điều này ngăn chặn bypass qua shell operator injection (ví dụ: pattern cho `sudo systemctl status *` không thể bị bypass bằng cách thêm `; rm -rf /` vào command).
 
 ---
 
 ## Custom policies
 
-`src/hooks/custom-hooks-registry.ts` implements một `globalThis`-backed registry:
+`src/hooks/custom-hooks-registry.ts` thực hiện một `globalThis`-backed registry:
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -227,25 +226,25 @@ export function getCustomHooks(): CustomHook[] { ... }
 export function clearCustomHooks(): void { ... }  // used in tests
 ```
 
-`src/hooks/custom-hooks-loader.ts` load user's policy file:
+`src/hooks/custom-hooks-loader.ts` tải file policy của user:
 
-1. Đọc `customPoliciesPath` từ config; skip nếu absent.
-2. Resolve tới absolute path; check file exists.
-3. Rewrite tất cả `from "failproofai"` imports tới actual dist path để `customPolicies` resolve tới cùng `globalThis` registry.
-4. Recursively rewrite transitive local imports để ensure ESM compatibility.
-5. Write temporary `.mjs` files và `import()` entry file.
+1. Đọc `customPoliciesPath` từ config; bỏ qua nếu không có.
+2. Resolve thành absolute path; check file tồn tại.
+3. Rewrite tất cả `from "failproofai"` imports sang actual dist path để `customPolicies` resolve tới cùng `globalThis` registry.
+4. Recursively rewrite transitive local imports để đảm bảo ESM compatibility.
+5. Ghi temporary `.mjs` files và `import()` entry file.
 6. Gọi `getCustomHooks()` để retrieve registered hooks.
 7. Clean up tất cả temp files trong một `finally` block.
 
 Trên bất kỳ error nào (file not found, syntax error, import failure), error được logged tới `~/.failproofai/hook.log` và loader trả về một empty array. Built-in policies không bị ảnh hưởng.
 
-Custom policies được đánh giá sau tất cả built-in policies. Một custom policy `deny` vẫn short-circuits further custom policies (nhưng tất cả built-ins đã chạy rồi ở điểm đó).
+Custom policies được đánh giá sau tất cả built-in policies. Một custom policy `deny` vẫn short-circuits các custom policies khác (nhưng tất cả built-ins đã chạy rồi ở điểm này).
 
 ---
 
 ## Activity logging
 
-Sau mỗi hook event, handler appends một JSONL line tới `~/.failproofai/hook-activity.jsonl`:
+Sau mỗi hook event, handler append một JSONL line tới `~/.failproofai/hook-activity.jsonl`:
 
 ```json
 {
@@ -260,7 +259,7 @@ Sau mỗi hook event, handler appends một JSONL line tới `~/.failproofai/hoo
 }
 ```
 
-Một line cho mỗi policy mà có một non-allow decision. Allow decisions không được logged (để giữ file nhỏ).
+Một line cho mỗi policy mà đưa ra quyết định non-allow. Allow decisions không được logged (để giữ file nhỏ gọn).
 
 ---
 
@@ -283,21 +282,21 @@ app/
     get-hook-activity.ts      ← Paginate/search activity log
     install-hooks-web.ts      ← Install/remove hooks from the browser
   api/
-    download/[project]/[session]/route.ts   ← Export session as ZIP/JSONL
+    download/[project]/[session]/route.ts   ← Per-CLI session export (JSONL or JSON)
 ```
 
 **Data flow:**
 
-- Page components gọi `lib/projects.ts` và `lib/log-entries.ts` để đọc project/session data trực tiếp từ filesystem (không API layer cho reads).
+- Page components gọi `lib/projects.ts` và `lib/log-entries.ts` để đọc project/session data trực tiếp từ filesystem (không có API layer cho reads).
 - Policies page sử dụng Server Actions cho tất cả mutations (toggle, params update, install/remove).
 - Session viewer parse Claude's JSONL transcript format và render một timeline của messages và tool calls.
 
 **Key design decisions:**
 
-- Không database - tất cả persistent state nằm trong plain files (`~/.failproofai/`, `~/.claude/projects/`).
+- Không có database - tất cả persistent state nằm trong plain files (`~/.failproofai/`, `~/.claude/projects/`).
 - Server Actions cho mutations - không cần REST API cho CRUD operations.
 - React Server Components cho read pages - faster initial load, không client bundle cho data fetching.
-- Client components chỉ ở nơi cần interactivity (policy toggles, activity search, log viewer).
+- Client components chỉ khi cần interactivity (policy toggles, activity search, log viewer).
 
 ---
 

@@ -1,10 +1,10 @@
 ---
 title: Bảng điều khiển
-description: "Giám sát các phiên tác nhân, xem xét các lệnh gọi công cụ và quản lý chính sách"
+description: "Theo dõi các phiên làm việc của agent, xem lại các lệnh gọi tool, và quản lý chính sách"
 icon: chart-line
 ---
 
-Bảng điều khiển failproofai là một ứng dụng web cục bộ để giám sát các phiên tác nhân AI của bạn và quản lý chính sách. Xem những gì các tác nhân của bạn đã làm trong khi bạn vắng mặt.
+Bảng điều khiển failproofai là một ứng dụng web cục bộ để theo dõi các phiên làm việc của agent AI của bạn và quản lý chính sách. Xem những gì các agent của bạn đã làm trong khi bạn vắng mặt.
 
 ---
 
@@ -24,12 +24,12 @@ Bảng điều khiển đọc trực tiếp từ hệ thống tệp - các thư 
 
 ### Dự án
 
-Liệt kê tất cả các dự án Claude Code, OpenAI Codex và GitHub Copilot CLI _(beta)_ được tìm thấy trên máy của bạn. Các dự án Claude được phát hiện từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được phát hiện bằng cách quét mỗi bản ghi trong `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi lại trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được phát hiện bằng cách quét từng `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó. Một dự án được sử dụng bởi nhiều CLI sẽ hiển thị dưới dạng một hàng với tất cả các huy hiệu phù hợp. Sử dụng menu thả xuống **CLI** ở trên bảng để lọc theo một CLI tác nhân cụ thể; URL giữ lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot`.
+Liệt kê tất cả các dự án Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, và Gemini CLI _(beta)_ được tìm thấy trên máy của bạn. Các dự án Claude được phát hiện từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được phát hiện bằng cách quét mọi bản ghi dưới `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi lại trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được phát hiện bằng cách quét từng `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó; các dự án Cursor Agent được phát hiện bằng cách quét siêu dữ liệu từng phiên dưới `~/.cursor/agent-sessions/<sessionId>/` (có thể cấu hình qua `CURSOR_HOME`, với `conversations/` và `sessions/` được thử làm dự phòng) để tìm một vô hướng `cwd` trong `meta.json` / `session.json` / `workspace.yaml`; các dự án OpenCode được phát hiện bằng cách truy vấn cơ sở dữ liệu SQLite của nó tại `~/.local/share/opencode/opencode.db` qua `opencode db --format json` (chúng tôi đọc các bảng `session` và `project` và nhóm theo `project_id`); các dự án Pi được phát hiện bằng cách quét các bản ghi JSONL từng phiên dưới `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (có thể cấu hình qua `PI_SESSIONS_DIR`) và lấy `cwd` từ bản ghi đầu tiên của mỗi phiên; các dự án Gemini CLI được phát hiện bằng cách quét `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (có thể cấu hình qua `GEMINI_SESSIONS_DIR`) và khôi phục cwd chính tắc từ điểm đánh dấu `.project_root` liền kề. Một dự án đã được sử dụng bởi nhiều CLI sẽ hiển thị dưới dạng một hàng có tất cả các huy hiệu phù hợp. Sử dụng menu thả xuống **CLI** ở trên bảng để lọc theo một agent CLI cụ thể; URL lưu lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
 
 Mỗi dự án hiển thị:
-- Tên dự án (được lấy từ đường dẫn thư mục)
-- Một huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), và/hoặc `GitHub Copilot` (xanh)
-- Ngày hoạt động phiên gần nhất
+- Tên dự án (được suy ra từ đường dẫn thư mục)
+- Một huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), `GitHub Copilot` (xanh), `Cursor Agent` (ngọc lục bảo), `OpenCode` (hổ phách), `Pi` (hồng), và/hoặc `Gemini CLI` (xanh nhạt)
+- Ngày hoạt động phiên gần đây nhất
 
 Nhấp vào một dự án để xem các phiên của nó.
 
@@ -38,8 +38,8 @@ Nhấp vào một dự án để xem các phiên của nó.
 Liệt kê tất cả các phiên trong một dự án. Mỗi phiên hiển thị:
 - ID phiên
 - Dấu thời gian bắt đầu và kết thúc
-- Số lượng lệnh gọi công cụ
-- Số lượng hoạt động hook (chính sách được kích hoạt)
+- Số lượng lệnh gọi tool
+- Số lượng hoạt động hook (chính sách đã kích hoạt)
 
 Sử dụng bộ lọc phạm vi ngày và tìm kiếm ID phiên để thu hẹp danh sách. Các phiên được phân trang.
 
@@ -47,64 +47,64 @@ Nhấp vào một phiên để mở trình xem phiên.
 
 ### Trình xem phiên
 
-Trình xem phiên trả lời câu hỏi chính cho các tác nhân tự chủ động: tác nhân đã làm gì, và nó có ở đúng hướng không? Một huy hiệu CLI bên cạnh tiêu đề cho biết phiên là bản ghi Claude Code hay OpenAI Codex. Nó hiển thị một dòng thời gian của mọi thứ xảy ra trong một phiên:
+Trình xem phiên trả lời câu hỏi chính cho các agent tự chủ: agent đã làm gì và liệu nó có duy trì hiệu suất không? Một huy hiệu CLI bên cạnh tiêu đề cho biết phiên là một bản ghi Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, hay Gemini CLI. Nó hiển thị một dòng thời gian của mọi thứ đã xảy ra trong một phiên:
 
-- **Tin nhắn** - Phản hồi văn bản của Claude và lời nhắc của người dùng
-- **Lệnh gọi công cụ** - Mọi công cụ mà Claude gọi, cùng với đầu vào và đầu ra của nó
-- **Hoạt động chính sách** - Đối với mỗi lệnh gọi công cụ, các chính sách nào được kích hoạt và quyết định nào chúng trả về
+- **Tin nhắn** - Các phản hồi văn bản của Claude và lời nhắc của người dùng
+- **Lệnh gọi tool** - Mọi tool mà Claude gọi, với đầu vào và đầu ra của nó
+- **Hoạt động chính sách** - Đối với mỗi lệnh gọi tool, chính sách nào đã kích hoạt và quyết định nào mà chúng trả về
 
-Thanh thống kê ở trên cùng hiển thị thời lượng phiên, tổng số lệnh gọi công cụ và tóm tắt các quyết định hook (số lượng allow / deny / instruct).
+Thanh thống kê ở phía trên cùng hiển thị thời lượng phiên, tổng số lệnh gọi tool, và tóm tắt các quyết định hook (số lượng allow / deny / instruct).
 
-Bạn có thể xuất phiên dưới dạng tệp ZIP hoặc JSONL bằng cách sử dụng nút tải xuống.
+Nhấp vào nút **Download Logs** để xuất phiên. Đối với các phiên Claude Code, Codex, Copilot, Cursor, Pi, và Gemini, bạn nhận được bản ghi JSONL trên đĩa ban đầu từng byte; đối với OpenCode (các phiên của nó nằm trong SQLite, không phải trên đĩa) bạn nhận được một tài liệu JSON phản ánh các bảng `session` / `messages` / `parts` cơ bản.
 
 ### Chính sách
 
-Một trang hai tab để quản lý chính sách và xem xét hoạt động.
+Một trang có hai tab để quản lý chính sách và xem lại hoạt động.
 
 <Tabs>
   <Tab title="Tab Chính sách">
-  - Bật hoặc tắt các chính sách riêng lẻ bằng một cú nhấp chuột (ghi vào `~/.failproofai/policies-config.json`)
+  - Bật hoặc tắt các chính sách riêng lẻ chỉ bằng một clic (ghi vào `~/.failproofai/policies-config.json`)
   - Mở rộng một chính sách để cấu hình các tham số của nó (đối với các chính sách hỗ trợ `policyParams`)
-  - Cài đặt hoặc xóa hook cho một phạm vi nhất định
+  - Cài đặt hoặc xóa các hook cho một phạm vi nhất định
   - Đặt đường dẫn tệp chính sách tùy chỉnh
   </Tab>
   <Tab title="Tab Hoạt động">
-  - Lịch sử đầy đủ được phân trang của mọi sự kiện hook được kích hoạt trên tất cả các phiên
-  - Lọc theo quyết định, loại sự kiện, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_), tên chính sách hoặc ID phiên
-  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh = GitHub Copilot), tên công cụ, ID phiên và lý do cho các quyết định deny/instruct
-  - Nhấp vào ID phiên để mở bản ghi của nó — trình xem tự động phát hiện CLI nào kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`) và hiển thị huy hiệu CLI phù hợp trong tiêu đề
+  - Lịch sử được phân trang đầy đủ của mọi sự kiện hook đã kích hoạt trên tất cả các phiên
+  - Lọc theo quyết định, loại sự kiện, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), tên chính sách, hoặc ID phiên
+  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh = GitHub Copilot, ngọc lục bảo = Cursor Agent, hổ phách = OpenCode, hồng = Pi, xanh nhạt = Gemini CLI), tên tool, ID phiên, và lý do cho các quyết định deny/instruct
+  - Nhấp vào ID phiên để mở bản ghi của nó — trình xem tự động phát hiện CLI nào đã kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) và hiển thị huy hiệu CLI phù hợp trong tiêu đề
   </Tab>
 </Tabs>
 
 ---
 
-## Tự động làm tươi
+## Làm mới tự động
 
-Bảng điều khiển có một nút bật tắt tự động làm tươi trong thanh điều hướng trên cùng. Khi bật, trang hiện tại sẽ làm tươi định kỳ để hiển thị các phiên mới và hoạt động chính sách khi chúng xuất hiện. Điều cần thiết để giám sát các phiên tác nhân tự chủ động chạy lâu dài.
+Bảng điều khiển có một công tắc làm mới tự động trong thanh điều hướng trên cùng. Khi được bật, trang hiện tại làm mới định kỳ để hiển thị các phiên mới và hoạt động chính sách khi chúng xuất hiện. Cần thiết để theo dõi các phiên agent tự chủ chạy dài.
 
 ---
 
 ## Vô hiệu hóa các trang
 
-Nếu bạn chỉ cần một số phần của bảng điều khiển, hãy đặt `FAILPROOFAI_DISABLE_PAGES` thành danh sách tên trang được phân tách bằng dấu phẩy:
+Nếu bạn chỉ cần một số phần của bảng điều khiển, hãy đặt `FAILPROOFAI_DISABLE_PAGES` thành một danh sách các tên trang được phân tách bằng dấu phẩy:
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
 ```
 
-Giá trị hợp lệ: `policies`, `projects`.
+Các giá trị hợp lệ: `policies`, `projects`.
 
 ---
 
 ## Chủ đề
 
-Bảng điều khiển hỗ trợ chế độ sáng và tối. Bật tắt qua nút trong thanh điều hướng. Tùy chọn được lưu trữ trong lưu trữ cục bộ của trình duyệt của bạn.
+Bảng điều khiển hỗ trợ chế độ sáng và tối. Chuyển đổi qua nút trong thanh điều hướng. Tùy chọn được lưu trong bộ nhớ cục bộ của trình duyệt.
 
 ---
 
 ## Cấu hình đường dẫn dự án
 
-Theo mặc định, bảng điều khiển đọc từ thư mục dự án Claude Code tiêu chuẩn. Ghi đè cho các thiết lập tùy chỉnh:
+Theo mặc định, bảng điều khiển đọc từ thư mục dự án Claude Code tiêu chuẩn. Ghi đè nó cho các thiết lập tùy chỉnh:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -114,19 +114,19 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## Truy cập từ máy chủ không phải localhost
 
-Khi chạy bảng điều khiển ở **chế độ dev** (`npm run dev`) và truy cập nó từ một tên máy chủ khác với `localhost` - chẳng hạn như miền tùy chỉnh, IP từ xa hoặc URL được kết nối - bạn có thể thấy cảnh báo như:
+Khi chạy bảng điều khiển ở **chế độ dev** (`npm run dev`) và truy cập nó từ tên máy chủ khác với `localhost` - ví dụ, một tên miền tùy chỉnh, IP từ xa, hoặc URL được tạo đường hầm - bạn có thể thấy cảnh báo như:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-Đây là Next.js chặn quyền truy cập cross-origin vào websocket HMR (hot module reload) của nó, đây là tính năng chỉ dành cho dev. Để cho phép máy chủ của bạn, hãy sử dụng cờ `--allowed-origins`:
+Đây là Next.js chặn truy cập xuyên nguồn gốc vào websocket HMR (hot module reload) của nó, đây là tính năng chỉ dành cho dev. Để cho phép máy chủ của bạn, sử dụng cờ `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-Đối với nhiều máy chủ hoặc IP, hãy truyền danh sách được phân tách bằng dấu phẩy:
+Đối với nhiều máy chủ hoặc IP, hãy chuyển một danh sách được phân tách bằng dấu phẩy:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
@@ -139,5 +139,5 @@ FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-Điều này chỉ áp dụng cho chế độ dev. Khi chạy `failproofai` (chế độ sản xuất), không có websocket HMR và không có vấn đề về tài nguyên dev cross-origin.
+Điều này chỉ áp dụng cho chế độ dev. Khi chạy `failproofai` (chế độ production), không có websocket HMR và không có vấn đề tài nguyên dev xuyên nguồn gốc.
 </Note>

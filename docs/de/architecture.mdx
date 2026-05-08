@@ -4,7 +4,7 @@ description: "Wie der Hook-Handler, das Laden der Konfiguration und die Richtlin
 icon: sitemap
 ---
 
-Dieses Dokument erläutert, wie failproofai intern funktioniert: wie das Hook-System Agent-Tool-Aufrufe abfängt, wie die Konfiguration geladen und zusammengeführt wird, wie Richtlinien ausgewertet werden und wie das Dashboard die Agentenaktivität überwacht.
+Dieses Dokument erklärt, wie failproofai intern funktioniert: wie das Hook-System Agent-Tool-Aufrufe abfängt, wie die Konfiguration geladen und zusammengeführt wird, wie Richtlinien ausgewertet werden und wie das Dashboard die Agentenaktivität überwacht.
 
 ---
 
@@ -12,8 +12,8 @@ Dieses Dokument erläutert, wie failproofai intern funktioniert: wie das Hook-Sy
 
 failproofai besteht aus zwei unabhängigen Teilsystemen:
 
-1. **Hook-Handler** – Ein schneller CLI-Subprozess, den Claude Code bei jedem Agent-Tool-Aufruf startet. Er wertet Richtlinien aus und gibt eine Entscheidung zurück.
-2. **Agent Monitor (Dashboard)** – Eine Next.js-Webanwendung zur Überwachung von Agentensitzungen und Verwaltung von Richtlinien.
+1. **Hook-Handler** – Ein schneller CLI-Subprozess, den Claude Code bei jedem Agent-Tool-Aufruf aufruft. Er wertet Richtlinien aus und gibt eine Entscheidung zurück.
+2. **Agent Monitor (Dashboard)** – Eine Next.js-Webanwendung zur Überwachung von Agentensitzungen und zur Verwaltung von Richtlinien.
 
 Beide Teilsysteme teilen sich Konfigurationsdateien in `~/.failproofai/` und im `.failproofai/`-Verzeichnis des Projekts, laufen aber als separate Prozesse und kommunizieren ausschließlich über das Dateisystem.
 
@@ -23,7 +23,7 @@ Beide Teilsysteme teilen sich Konfigurationsdateien in `~/.failproofai/` und im 
 
 ### Integration mit Claude Code
 
-Wenn Sie `failproofai policies --install` ausführen, werden Einträge wie diese in `~/.claude/settings.json` geschrieben:
+Beim Ausführen von `failproofai policies --install` werden Einträge wie folgt in `~/.claude/settings.json` geschrieben:
 
 ```json
 {
@@ -44,9 +44,9 @@ Wenn Sie `failproofai policies --install` ausführen, werden Einträge wie diese
 }
 ```
 
-Claude Code startet dann `failproofai --hook PreToolUse` als Subprozess vor jedem Tool-Aufruf und übergibt dabei ein JSON-Payload über stdin.
+Claude Code ruft `failproofai --hook PreToolUse` dann als Subprozess vor jedem Tool-Aufruf auf und übergibt eine JSON-Nutzlast über stdin.
 
-### Payload-Format
+### Nutzlastformat
 
 ```json
 {
@@ -60,9 +60,9 @@ Claude Code startet dann `failproofai --hook PreToolUse` als Subprozess vor jede
 }
 ```
 
-Bei `PostToolUse`-Ereignissen enthält das Payload zusätzlich `tool_result` mit der Ausgabe des Tools.
+Bei `PostToolUse`-Ereignissen enthält die Nutzlast zusätzlich `tool_result` mit der Ausgabe des Tools.
 
-Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit überschreiten, werden verworfen und alle Richtlinien erlauben implizit.
+Der Handler erzwingt ein stdin-Limit von 1 MB. Nutzlasten, die diesen Wert überschreiten, werden verworfen, und alle Richtlinien erlauben implizit.
 
 ### Antwortformat
 
@@ -85,7 +85,7 @@ Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit übers
 }
 ```
 
-**Anweisung (beliebiges Ereignis außer Stop):**
+**Anweisen (beliebiges Ereignis außer Stop):**
 ```json
 {
   "hookSpecificOutput": {
@@ -94,9 +94,9 @@ Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit übers
 }
 ```
 
-**Stop-Ereignis mit Anweisung:**
+**Stop-Ereignis instruct:**
 - Exit-Code: `2`
-- Begründung wird in stderr geschrieben (nicht stdout)
+- Grund wird in stderr geschrieben (nicht stdout)
 
 **Erlauben:**
 - Exit-Code: `0`
@@ -104,7 +104,7 @@ Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit übers
 
 **Erlauben mit Nachricht:**
 
-`allow(message)` erlaubt es einer Richtlinie, informationellen Kontext an Claude zurückzusenden, auch wenn die Operation erlaubt ist. Der Hook-Handler schreibt folgenden JSON-Inhalt in **stdout** (nicht in eine Konfigurationsdatei – dies ist die Antwort des Handlers an Claude Code, genau wie Ablehnen- und Anweisungsantworten oben):
+`allow(message)` ermöglicht es einer Richtlinie, informativen Kontext an Claude zurückzusenden, auch wenn die Operation erlaubt ist. Der Hook-Handler schreibt folgendes JSON auf **stdout** (keine Konfigurationsdatei – dies ist die Antwort des Handlers an Claude Code, genau wie Ablehnen- und Anweisen-Antworten oben):
 
 ```json
 // Written to stdout by the hook handler process
@@ -115,31 +115,31 @@ Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit übers
 }
 ```
 - Exit-Code: `0` (Operation ist erlaubt)
-- Wenn mehrere Richtlinien `allow` mit einer Nachricht zurückgeben, werden ihre Nachrichten mit Zeilenumbrüchen zu einem einzelnen `additionalContext`-String zusammengefügt
+- Wenn mehrere Richtlinien `allow` mit einer Nachricht zurückgeben, werden deren Nachrichten mit Zeilenumbrüchen zu einem einzigen `additionalContext`-String zusammengefügt
 - Wenn keine Richtlinie eine Nachricht liefert, ist stdout leer (wie zuvor)
 
-### Verarbeitungspipeline
+### Verarbeitungs-Pipeline
 
 `src/hooks/handler.ts` implementiert die vollständige Pipeline:
 
 ```text
 stdin JSON
-  → Payload parsen (max. 1 MB)
-  → Sitzungsmetadaten extrahieren (session_id, cwd, tool_name, tool_input, etc.)
-  → readMergedHooksConfig(cwd)    ← führt Projekt-, lokale und globale Konfiguration zusammen
-  → aktivierte eingebaute Richtlinien mit aufgelösten Parametern registrieren
-  → benutzerdefinierte Richtlinien aus customPoliciesPath laden (falls gesetzt)
-  → benutzerdefinierte Richtlinien in die Policy-Registry registrieren
-  → alle Richtlinien auswerten (zuerst eingebaute, dann benutzerdefinierte)
-      → erstes deny unterbricht sofort die Auswertung
-      → instruct-Entscheidungen werden gesammelt
-      → allow-Nachrichten werden gesammelt
-  → JSON-Entscheidung in stdout schreiben
-  → Ereignis in ~/.failproofai/hook-activity.jsonl speichern
-  → beenden
+  → parse payload (max 1 MB)
+  → extract session metadata (session_id, cwd, tool_name, tool_input, etc.)
+  → readMergedHooksConfig(cwd)    ← merges project + local + global config
+  → register enabled builtin policies with resolved params
+  → load custom policies from customPoliciesPath (if set)
+  → register custom policies into policy registry
+  → evaluate all policies (builtins first, then custom)
+      → first deny short-circuits
+      → instruct decisions accumulate
+      → allow messages accumulate
+  → write JSON decision to stdout
+  → persist event to ~/.failproofai/hook-activity.jsonl
+  → exit
 ```
 
-Der gesamte Prozess läuft bei typischen Payloads ohne LLM-Aufrufe in unter 100 ms ab.
+Der gesamte Prozess läuft bei typischen Nutzlasten in unter 100 ms ohne LLM-Aufrufe.
 
 ---
 
@@ -149,17 +149,17 @@ Der gesamte Prozess läuft bei typischen Payloads ohne LLM-Aufrufe in unter 100 
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← Projekt  (höchste Priorität)
-[2] {cwd}/.failproofai/policies-config.local.json  ← lokal
-[3] ~/.failproofai/policies-config.json             ← global   (niedrigste Priorität)
+[2] {cwd}/.failproofai/policies-config.local.json  ← Lokal
+[3] ~/.failproofai/policies-config.json             ← Global   (niedrigste Priorität)
 ```
 
 Zusammenführungslogik:
-- `enabledPolicies` – deduplizierte Vereinigung aus allen drei Dateien
+- `enabledPolicies` – deduplizierte Vereinigung aller drei Dateien
 - `policyParams` – pro Richtlinienschlüssel gewinnt die erste Datei, die ihn definiert, vollständig
-- `customPoliciesPath` – die erste Datei, die diesen Wert definiert, gewinnt
-- `llm` – die erste Datei, die diesen Wert definiert, gewinnt
+- `customPoliciesPath` – die erste Datei, die ihn definiert, gewinnt
+- `llm` – die erste Datei, die ihn definiert, gewinnt
 
-Das Web-Dashboard verwendet `readHooksConfig()` (nur global) zum Lesen und Schreiben, da es ohne Projekt-cwd aufgerufen wird.
+Das Web-Dashboard verwendet `readHooksConfig()` (nur global) zum Lesen und Schreiben, da es nicht mit einem Projekt-cwd aufgerufen wird.
 
 ---
 
@@ -169,18 +169,18 @@ Das Web-Dashboard verwendet `readHooksConfig()` (nur global) zum Lesen und Schre
 
 Für jede Richtlinie:
 
-1. Das `params`-Schema der Richtlinie nachschlagen (falls vorhanden).
-2. `policyParams[policy.name]` aus der zusammengeführten Konfiguration lesen.
-3. Vom Benutzer angegebene Werte über Schema-Standardwerte legen, um `ctx.params` zu erzeugen.
-4. `policy.fn(ctx)` mit dem aufgelösten Kontext aufrufen.
-5. Wenn das Ergebnis `deny` ist, sofort abbrechen und diese Entscheidung zurückgeben.
-6. Wenn das Ergebnis `instruct` ist, die Nachricht sammeln und fortfahren.
-7. Wenn das Ergebnis `allow` ist, mit der nächsten Richtlinie fortfahren.
+1. Das `params`-Schema der Richtlinie wird nachgeschlagen (sofern vorhanden).
+2. `policyParams[policy.name]` wird aus der zusammengeführten Konfiguration gelesen.
+3. Vom Benutzer angegebene Werte werden über die Schema-Standards gelegt, um `ctx.params` zu erstellen.
+4. `policy.fn(ctx)` wird mit dem aufgelösten Kontext aufgerufen.
+5. Ist das Ergebnis `deny`, wird sofort abgebrochen und diese Entscheidung zurückgegeben.
+6. Ist das Ergebnis `instruct`, wird die Nachricht angesammelt und die Auswertung fortgesetzt.
+7. Ist das Ergebnis `allow`, wird mit der nächsten Richtlinie fortgefahren.
 
-Nach dem Durchlauf aller Richtlinien:
-- Falls ein `deny` zurückgegeben wurde, die Ablehnungsantwort ausgeben.
-- Falls `instruct`-Rückgaben gesammelt wurden, eine einzelne instruct-Antwort mit allen zusammengefügten Nachrichten ausgeben.
-- Andernfalls eine allow-Antwort ausgeben (leerer stdout, Exit 0).
+Nach Ausführung aller Richtlinien:
+- Wurde ein `deny` zurückgegeben, wird die Ablehnungsantwort ausgegeben.
+- Wurden `instruct`-Rückgaben gesammelt, wird eine einzelne Anweisungsantwort mit allen zusammengefügten Nachrichten ausgegeben.
+- Andernfalls wird eine Erlaubnisantwort ausgegeben (leerer stdout, Exit 0).
 
 ---
 
@@ -204,15 +204,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-Richtlinien, die `params` akzeptieren, deklarieren ein `PolicyParamsSchema` mit Typen und Standardwerten für jeden Parameter. Der Richtlinienauswerter injiziert aufgelöste Werte in `ctx.params`, bevor `fn` aufgerufen wird. Richtlinienfunktionen lesen `ctx.params` ohne Null-Prüfung, da Standardwerte immer zuerst angewendet werden.
+Richtlinien, die `params` akzeptieren, deklarieren ein `PolicyParamsSchema` mit Typen und Standardwerten für jeden Parameter. Der Richtlinien-Evaluator injiziert aufgelöste Werte in `ctx.params`, bevor `fn` aufgerufen wird. Richtlinienfunktionen lesen `ctx.params` ohne Null-Prüfung, da Standardwerte immer zuerst angewendet werden.
 
-Das Muster-Matching in Richtlinien verwendet geparste Befehls-Token (argv), keine rohe Zeichenkettenübereinstimmung. Dies verhindert Umgehungsversuche durch Shell-Operator-Injection (z. B. kann ein Muster für `sudo systemctl status *` nicht durch Anhängen von `; rm -rf /` an den Befehl umgangen werden).
+Das Muster-Matching innerhalb von Richtlinien verwendet geparste Befehlstokens (argv) statt rohem String-Matching. Dadurch werden Umgehungsversuche durch Shell-Operator-Injection verhindert (z. B. kann ein Muster für `sudo systemctl status *` nicht durch Anhängen von `; rm -rf /` an den Befehl umgangen werden).
 
 ---
 
 ## Benutzerdefinierte Richtlinien
 
-`src/hooks/custom-hooks-registry.ts` implementiert eine auf `globalThis` basierende Registry:
+`src/hooks/custom-hooks-registry.ts` implementiert eine `globalThis`-basierte Registry:
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -227,23 +227,23 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` lädt die Richtliniendatei des Benutzers:
 
-1. `customPoliciesPath` aus der Konfiguration lesen; überspringen, falls nicht vorhanden.
-2. Zum absoluten Pfad auflösen; prüfen, ob die Datei existiert.
-3. Alle `from "failproofai"`-Importe in den tatsächlichen dist-Pfad umschreiben, damit `customPolicies` zur gleichen `globalThis`-Registry aufgelöst wird.
+1. `customPoliciesPath` aus der Konfiguration lesen; überspringen, wenn nicht vorhanden.
+2. Auf absoluten Pfad auflösen; prüfen, ob die Datei existiert.
+3. Alle `from "failproofai"`-Importe zum tatsächlichen dist-Pfad umschreiben, damit `customPolicies` in dieselbe `globalThis`-Registry aufgelöst wird.
 4. Transitive lokale Importe rekursiv umschreiben, um ESM-Kompatibilität sicherzustellen.
 5. Temporäre `.mjs`-Dateien schreiben und die Einstiegsdatei per `import()` laden.
 6. `getCustomHooks()` aufrufen, um registrierte Hooks abzurufen.
-7. Alle temporären Dateien in einem `finally`-Block bereinigen.
+7. Alle temporären Dateien in einem `finally`-Block aufräumen.
 
 Bei jedem Fehler (Datei nicht gefunden, Syntaxfehler, Import-Fehler) wird der Fehler in `~/.failproofai/hook.log` protokolliert und der Loader gibt ein leeres Array zurück. Eingebaute Richtlinien sind davon nicht betroffen.
 
-Benutzerdefinierte Richtlinien werden nach allen eingebauten Richtlinien ausgewertet. Ein `deny` einer benutzerdefinierten Richtlinie unterbricht weiterhin die Auswertung weiterer benutzerdefinierter Richtlinien (aber alle eingebauten wurden zu diesem Zeitpunkt bereits ausgeführt).
+Benutzerdefinierte Richtlinien werden nach allen eingebauten Richtlinien ausgewertet. Ein `deny` einer benutzerdefinierten Richtlinie unterbricht zwar weitere benutzerdefinierte Richtlinien (alle eingebauten wurden zu diesem Zeitpunkt jedoch bereits ausgeführt).
 
 ---
 
 ## Aktivitätsprotokollierung
 
-Nach jedem Hook-Ereignis fügt der Handler eine JSONL-Zeile an `~/.failproofai/hook-activity.jsonl` an:
+Nach jedem Hook-Ereignis hängt der Handler eine JSONL-Zeile an `~/.failproofai/hook-activity.jsonl` an:
 
 ```json
 {
@@ -258,7 +258,7 @@ Nach jedem Hook-Ereignis fügt der Handler eine JSONL-Zeile an `~/.failproofai/h
 }
 ```
 
-Eine Zeile pro Richtlinie, die eine Nicht-allow-Entscheidung getroffen hat. Allow-Entscheidungen werden nicht protokolliert (um die Dateigröße gering zu halten).
+Eine Zeile pro Richtlinie, die eine Nicht-Erlauben-Entscheidung getroffen hat. Erlauben-Entscheidungen werden nicht protokolliert (um die Datei klein zu halten).
 
 ---
 
@@ -281,21 +281,21 @@ app/
     get-hook-activity.ts      ← Aktivitätsprotokoll paginieren/durchsuchen
     install-hooks-web.ts      ← Hooks über den Browser installieren/entfernen
   api/
-    download/[project]/[session]/route.ts   ← Sitzung als ZIP/JSONL exportieren
+    download/[project]/[session]/route.ts   ← Sitzungsexport pro CLI (JSONL oder JSON)
 ```
 
 **Datenfluss:**
 
-- Seitenkomponenten rufen `lib/projects.ts` und `lib/log-entries.ts` auf, um Projekt- und Sitzungsdaten direkt aus dem Dateisystem zu lesen (keine API-Schicht für Lesevorgänge).
-- Die Policies-Seite verwendet Server Actions für alle Mutationen (Umschalten, Parameteraktualisierung, Installieren/Entfernen).
-- Der Sitzungs-Viewer parst das JSONL-Transkriptformat von Claude und rendert eine Zeitachse mit Nachrichten und Tool-Aufrufen.
+- Seitenkomponenten rufen `lib/projects.ts` und `lib/log-entries.ts` auf, um Projekt-/Sitzungsdaten direkt aus dem Dateisystem zu lesen (keine API-Schicht für Lesevorgänge).
+- Die Richtlinienseite verwendet Server Actions für alle Mutationen (Umschalten, Parameteraktualisierung, Installieren/Entfernen).
+- Der Sitzungs-Viewer parst Claudes JSONL-Transkriptformat und rendert eine Zeitleiste mit Nachrichten und Tool-Aufrufen.
 
 **Wesentliche Designentscheidungen:**
 
 - Keine Datenbank – der gesamte persistente Zustand liegt in einfachen Dateien (`~/.failproofai/`, `~/.claude/projects/`).
 - Server Actions für Mutationen – keine REST-API für CRUD-Operationen erforderlich.
-- React Server Components für Leseseiten – schnelleres initiales Laden, kein Client-Bundle für das Datenabrufen.
-- Client-Komponenten nur dort, wo Interaktivität benötigt wird (Richtlinien-Schalter, Aktivitätssuche, Log-Viewer).
+- React Server Components für Leseseiten – schnelleres initiales Laden, kein Client-Bundle für Datenabruf.
+- Client-Komponenten nur dort, wo Interaktivität benötigt wird (Richtlinien-Umschalter, Aktivitätssuche, Log-Viewer).
 
 ---
 
@@ -304,29 +304,29 @@ app/
 ```text
 failproofai/
 ├── bin/
-│   └── failproofai.mjs           # CLI-Router (Hook / Dashboard / Install / etc.)
+│   └── failproofai.mjs           # CLI-Router (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook-Ereignis-Pipeline
 │   ├── builtin-policies.ts       # 26 Richtliniendefinitionen
-│   ├── policy-evaluator.ts       # Richtlinienausführungs-Engine
+│   ├── policy-evaluator.ts       # Richtlinien-Ausführungsengine
 │   ├── policy-registry.ts        # Richtlinienregistrierung und -suche
 │   ├── policy-types.ts           # TypeScript-Interfaces
 │   ├── hooks-config.ts           # Konfigurationsladen mit mehreren Geltungsbereichen
 │   ├── custom-hooks-registry.ts  # globalThis-basierte Hook-Registry
 │   ├── custom-hooks-loader.ts    # ESM-Loader für benutzerdefinierte JS-Hooks
-│   ├── manager.ts                # Install-, Entfernen- und Listen-Operationen
+│   ├── manager.ts                # Installieren / Entfernen / Auflisten
 │   ├── install-prompt.ts         # Interaktive Richtlinienauswahl-Eingabeaufforderung
 │   ├── hook-logger.ts            # Protokollierung in hook.log
-│   ├── hook-activity-store.ts    # Aktivitäten in hook-activity.jsonl speichern
+│   ├── hook-activity-store.ts    # Aktivität in hook-activity.jsonl persistieren
 │   └── llm-client.ts             # LLM-API-Client (für KI-gestützte Richtlinien)
 ├── app/                          # Next.js-Dashboard (Seiten + Server Actions)
-├── lib/                          # Gemeinsam genutzte Hilfsfunktionen
+├── lib/                          # Gemeinsam genutzte Hilfsprogramme
 │   ├── projects.ts               # Claude-Projekte aus dem Dateisystem aufzählen
 │   ├── log-entries.ts            # Claude-Transkript-JSONL-Format parsen
 │   ├── paths.ts                  # Systempfade auflösen
 │   └── ...
 ├── components/                   # Gemeinsam genutzte React-UI-Komponenten
-├── contexts/                     # React-Kontext-Provider (Theme, Auto-Refresh, Telemetrie)
+├── contexts/                     # React-Context-Provider (Theme, Auto-Refresh, Telemetrie)
 ├── examples/                     # Beispieldateien für benutzerdefinierte Hooks
 └── __tests__/                    # Unit- und E2E-Tests
 ```

@@ -1,6 +1,6 @@
 ---
 title: Primeiros passos
-description: "Instale o failproofai, ative as políticas e deixe seus agentes rodarem com confiabilidade"
+description: "Instale o failproofai, ative as políticas e deixe seus agentes rodando com confiabilidade"
 icon: rocket
 ---
 
@@ -37,14 +37,18 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Isso grava entradas de hook nos CLIs de agente instalados (o `~/.claude/settings.json` do Claude Code, o `~/.codex/hooks.json` do OpenAI Codex ou o `~/.copilot/hooks/failproofai.json` do GitHub Copilot CLI). Quando mais de um estiver presente, você será solicitado a escolher; use `--cli claude codex copilot` (qualquer subconjunto) para pular a seleção.
+    Isso insere entradas de hook nos CLIs de agentes instalados (o `~/.claude/settings.json` do Claude Code, o `~/.codex/hooks.json` do OpenAI Codex, o `~/.copilot/hooks/failproofai.json` do GitHub Copilot CLI, o `~/.cursor/hooks.json` do Cursor Agent, o shim de plugin gerado pelo OpenCode em `~/.config/opencode/plugins/failproofai.mjs` mais uma entrada de registro no array `plugin` de `~/.config/opencode/opencode.json`, o `~/.pi/agent/settings.json` do Pi ou o `~/.gemini/settings.json` do Gemini CLI). Quando mais de um estiver presente, você será solicitado a escolher; passe `--cli claude codex copilot cursor opencode pi gemini` (qualquer subconjunto) para pular essa etapa.
 
-    O suporte ao GitHub Copilot CLI está em **beta** — instale com `--cli copilot`.
+    O suporte ao GitHub Copilot CLI, Cursor Agent, OpenCode, Pi e Gemini CLI está em **beta** — instale com `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` ou `--cli gemini`.
 
     ```bash
     failproofai policies --install --scope project
     failproofai policies --install --cli codex --scope project
     failproofai policies --install --cli copilot --scope project
+    failproofai policies --install --cli cursor --scope project
+    failproofai policies --install --cli opencode --scope project
+    failproofai policies --install --cli pi --scope project
+    failproofai policies --install --cli gemini --scope project
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -53,14 +57,14 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Exibe todas as políticas, se estão ativas e quaisquer parâmetros configurados.
+    Exibe todas as políticas, se estão ativas e quais parâmetros foram configurados.
   </Step>
   <Step title="Abrir o painel">
     ```bash
     failproofai
     ```
 
-    Abre um painel local em `http://localhost:8020` onde você pode navegar por sessões, inspecionar chamadas de ferramentas e gerenciar políticas.
+    Abre um painel local em `http://localhost:8020` onde você pode navegar pelas sessões, inspecionar chamadas de ferramentas e gerenciar políticas.
   </Step>
   <Step title="Executar seu agente">
     Inicie o Claude Code normalmente. Se o agente tentar algo arriscado, o failproofai o intercepta automaticamente. Deixe-o rodando sem supervisão e revise o que aconteceu no painel.
@@ -71,7 +75,7 @@ bun add -g failproofai
 
 ## Como as políticas funcionam
 
-Toda vez que um agente executa uma ferramenta, o Claude Code chama o failproofai como subprocesso:
+Toda vez que um agente executa uma ferramenta, o Claude Code chama o failproofai como um subprocesso:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -86,14 +90,14 @@ Cada política retorna uma de três decisões:
 - **instruct** - contexto adicional é inserido no prompt do agente
 
 <Note>
-As políticas são executadas no seu processo local. Nenhum dado é enviado a um serviço remoto.
+As políticas são executadas no seu processo local. Nada é enviado para um serviço remoto.
 </Note>
 
 ---
 
-## Configurar políticas de equipe com políticas baseadas em convenção
+## Configure políticas de equipe com políticas baseadas em convenção
 
-A maneira mais rápida de estabelecer padrões de qualidade em toda a equipe é a convenção `.failproofai/policies/`. Coloque arquivos de política nesse diretório e eles serão carregados automaticamente — sem flags, sem alterações de configuração, sem comandos de instalação.
+A forma mais rápida de estabelecer padrões de qualidade em toda a sua equipe é a convenção `.failproofai/policies/`. Coloque arquivos de política nesse diretório e eles serão carregados automaticamente — sem flags, sem mudanças de configuração, sem comandos de instalação.
 
 <Steps>
   <Step title="Criar o diretório de políticas">
@@ -127,31 +131,31 @@ A maneira mais rápida de estabelecer padrões de qualidade em toda a equipe é 
     });
     ```
   </Step>
-  <Step title="Fazer commit no git">
+  <Step title="Commitar no git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    Todo membro da equipe que tiver o failproofai instalado recebe essas políticas automaticamente. Nenhuma configuração por desenvolvedor é necessária.
+    Todo membro da equipe que tiver o failproofai instalado receberá essas políticas automaticamente. Nenhuma configuração por desenvolvedor é necessária.
   </Step>
 </Steps>
 
 <Tip>
-Faça commit de `.failproofai/policies/` no seu repositório para que toda a equipe compartilhe os mesmos padrões. À medida que a equipe descobre novos modos de falha, adicione políticas e faça push — todos recebem a atualização no próximo `git pull`. Com o tempo, essas políticas se tornam um padrão de qualidade vivo que continua melhorando.
+Faça commit de `.failproofai/policies/` no seu repositório para que toda a equipe compartilhe os mesmos padrões. À medida que sua equipe descobre novos modos de falha, adicione políticas e faça push — todos recebem a atualização no próximo `git pull`. Com o tempo, essas políticas se tornam um padrão de qualidade vivo que continua melhorando.
 </Tip>
 
 ---
 
 ## Armazenamento de dados
 
-Toda a configuração e os logs ficam na sua máquina:
+Todas as configurações e logs ficam na sua máquina:
 
 | Caminho | O que armazena |
 |---------|----------------|
 | `~/.failproofai/policies-config.json` | Configuração global de políticas |
 | `~/.failproofai/hook-activity.jsonl` | Histórico de execução de hooks |
-| `~/.failproofai/hook.log` | Log de depuração para erros de hooks personalizados |
+| `~/.failproofai/hook.log` | Log de depuração para erros em hooks personalizados |
 | `.failproofai/policies-config.json` | Configuração por projeto (commitada) |
 | `.failproofai/policies-config.local.json` | Substituições pessoais (ignoradas pelo git) |
 
@@ -172,18 +176,18 @@ Remove as entradas de hook do `~/.claude/settings.json`. Os arquivos de configur
 <CardGroup cols={2}>
 
 <Card title="Configuração" icon="gear" href="/pt-br/configuration">
-  Escopos e formato do arquivo de configuração
+  Escopos e formato dos arquivos de configuração
 </Card>
 
 <Card title="Políticas integradas" icon="shield" href="/pt-br/built-in-policies">
-  Todas as 26 políticas com parâmetros
+  Todas as 26 políticas com seus parâmetros
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/pt-br/custom-policies">
   Escreva suas próprias políticas em JavaScript
 </Card>
 
-<Card title="Monitor de agente" icon="chart-line" href="/pt-br/dashboard">
+<Card title="Monitor de agentes" icon="chart-line" href="/pt-br/dashboard">
   Monitore sessões e revise a atividade das políticas
 </Card>
 

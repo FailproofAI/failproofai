@@ -1,10 +1,10 @@
 ---
 title: Configuration
-description: "Format du fichier de configuration, système à trois portées et règles de fusion"
+description: "Format du fichier de config, système à trois portées et règles de fusion"
 icon: gear
 ---
 
-failproofai utilise des fichiers de configuration JSON pour contrôler quelles politiques sont actives, comment elles se comportent et depuis où les politiques personnalisées sont chargées. La configuration est conçue pour être facilement partageable avec votre équipe — commitez-la dans votre dépôt et chaque développeur bénéficiera du même filet de sécurité pour l'agent.
+failproofai utilise des fichiers de configuration JSON pour contrôler quelles politiques sont actives, comment elles se comportent et d'où les politiques personnalisées sont chargées. La configuration est conçue pour être facilement partageable avec votre équipe — commitez-la dans votre dépôt et chaque développeur bénéficie du même filet de sécurité pour l'agent.
 
 ---
 
@@ -13,12 +13,12 @@ failproofai utilise des fichiers de configuration JSON pour contrôler quelles p
 Il existe trois portées de configuration, évaluées par ordre de priorité :
 
 | Portée | Chemin du fichier | Objectif |
-|--------|-------------------|---------|
+|--------|-------------------|----------|
 | **project** | `.failproofai/policies-config.json` | Paramètres par dépôt, commités dans le contrôle de version |
-| **local** | `.failproofai/policies-config.local.json` | Surcharges personnelles par dépôt, ignorées par git |
+| **local** | `.failproofai/policies-config.local.json` | Remplacements personnels par dépôt, ignorés par git |
 | **global** | `~/.failproofai/policies-config.json` | Valeurs par défaut au niveau utilisateur pour tous les projets |
 
-Lorsque failproofai reçoit un événement de hook, il charge et fusionne les trois fichiers existants pour le répertoire de travail courant.
+Lorsque failproofai reçoit un événement de hook, il charge et fusionne les trois fichiers qui existent pour le répertoire de travail courant.
 
 ### Règles de fusion
 
@@ -42,11 +42,11 @@ resolved: { allowPatterns: ["sudo apt-get update"] }   ← project l'emporte, gl
 ```
 
 ```text
-project:  (pas d'entrée block-sudo)
-local:    (pas d'entrée block-sudo)
+project:  (aucune entrée block-sudo)
+local:    (aucune entrée block-sudo)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← repli sur global
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← transmission au global
 ```
 
 **`customPoliciesPath`** — la première portée qui le définit l'emporte.
@@ -110,17 +110,17 @@ Les politiques absentes de `enabledPolicies` sont inactives, même si elles ont 
 
 Type : `Record<string, Record<string, unknown>>`
 
-Surcharges de paramètres par politique. La clé externe est le nom de la politique ; les clés internes sont spécifiques à chaque politique. Chaque politique documente ses paramètres disponibles dans [Politiques intégrées](/fr/built-in-policies).
+Remplacements de paramètres par politique. La clé externe est le nom de la politique ; les clés internes sont spécifiques à chaque politique. Chaque politique documente ses paramètres disponibles dans [Politiques intégrées](/fr/built-in-policies).
 
-Si une politique possède des paramètres mais que vous ne les spécifiez pas, les valeurs par défaut intégrées de la politique sont utilisées. Les utilisateurs qui ne configurent pas du tout `policyParams` obtiennent un comportement identique aux versions précédentes.
+Si une politique possède des paramètres mais que vous ne les spécifiez pas, les valeurs par défaut intégrées de la politique sont utilisées. Les utilisateurs qui ne configurent pas `policyParams` du tout obtiennent un comportement identique aux versions précédentes.
 
-Les clés inconnues dans le bloc de paramètres d'une politique sont silencieusement ignorées lors du déclenchement du hook, mais signalées comme avertissements lors de l'exécution de `failproofai policies`.
+Les clés inconnues dans le bloc de paramètres d'une politique sont silencieusement ignorées au moment du déclenchement du hook, mais signalées comme avertissements lorsque vous exécutez `failproofai policies`.
 
 #### `hint` (transversal)
 
 Type : `string` (optionnel)
 
-Un message ajouté à la raison lorsqu'une politique retourne `deny` ou `instruct`. Utilisez-le pour donner à Claude des indications concrètes sans modifier la politique elle-même.
+Un message ajouté à la raison lorsqu'une politique retourne `deny` ou `instruct`. Utilisez-le pour donner à Claude des conseils concrets sans modifier la politique elle-même.
 
 Fonctionne avec n'importe quel type de politique — intégrée, personnalisée (`custom/`), convention de projet (`.failproofai-project/`) ou convention utilisateur (`.failproofai-user/`).
 
@@ -141,34 +141,34 @@ Fonctionne avec n'importe quel type de politique — intégrée, personnalisée 
 }
 ```
 
-Lorsque `block-force-push` refuse, Claude voit : *"Force-pushing is blocked. Try creating a fresh branch instead."*
+Lorsque `block-force-push` refuse, Claude voit : *« Force-pushing is blocked. Try creating a fresh branch instead. »*
 
-Les valeurs non-chaînes et les chaînes vides sont silencieusement ignorées. Si `hint` n'est pas défini, le comportement reste inchangé (rétrocompatible).
+Les valeurs non-chaînes et les chaînes vides sont silencieusement ignorées. Si `hint` n'est pas défini, le comportement est inchangé (compatible avec les versions antérieures).
 
 ### `customPoliciesPath`
 
 Type : `string` (chemin absolu)
 
-Chemin vers un fichier JavaScript contenant des politiques de hook personnalisées. Ce champ est défini automatiquement par `failproofai policies --install --custom <path>` (le chemin est résolu en absolu avant d'être enregistré).
+Chemin vers un fichier JavaScript contenant des politiques de hook personnalisées. Ce champ est défini automatiquement par `failproofai policies --install --custom <path>` (le chemin est résolu en chemin absolu avant d'être stocké).
 
-Le fichier est rechargé à chaque événement de hook — il n'y a pas de mise en cache. Consultez [Politiques personnalisées](/fr/custom-policies) pour les détails de création.
+Le fichier est chargé à nouveau à chaque événement de hook — il n'y a pas de mise en cache. Consultez [Politiques personnalisées](/fr/custom-policies) pour les détails de création.
 
-### Politiques basées sur les conventions
+### Politiques basées sur des conventions
 
-En plus du `customPoliciesPath` explicite, failproofai découvre et charge automatiquement les fichiers de politique depuis les répertoires `.failproofai/policies/` :
+En plus du `customPoliciesPath` explicite, failproofai découvre et charge automatiquement les fichiers de politiques depuis les répertoires `.failproofai/policies/` :
 
 | Niveau | Répertoire | Portée |
-|--------|------------|--------|
+|--------|-----------|--------|
 | Projet | `.failproofai/policies/` | Partagé avec l'équipe via le contrôle de version |
 | Utilisateur | `~/.failproofai/policies/` | Personnel, s'applique à tous les projets |
 
 **Correspondance de fichiers :** Seuls les fichiers correspondant à `*policies.{js,mjs,ts}` sont chargés (ex. : `security-policies.mjs`, `workflow-policies.js`). Les autres fichiers du répertoire sont ignorés.
 
-**Aucune configuration nécessaire :** Les politiques de convention ne nécessitent aucune entrée dans `policies-config.json`. Déposez simplement les fichiers dans le répertoire et ils seront pris en compte au prochain événement de hook.
+**Aucune configuration requise :** Les politiques de convention ne nécessitent aucune entrée dans `policies-config.json`. Il suffit de déposer des fichiers dans le répertoire et ils sont pris en compte au prochain événement de hook.
 
-**Chargement par union :** Les répertoires de convention du projet et de l'utilisateur sont tous les deux analysés. Tous les fichiers correspondants des deux niveaux sont chargés (contrairement à `customPoliciesPath` qui utilise la règle premier-arrivé-premier-servi).
+**Chargement par union :** Les répertoires de convention de projet et d'utilisateur sont tous deux analysés. Tous les fichiers correspondants des deux niveaux sont chargés (contrairement à `customPoliciesPath` qui utilise la règle premier-arrivé-premier-servi).
 
-Consultez [Politiques personnalisées](/fr/custom-policies) pour plus de détails et d'exemples.
+Consultez [Politiques personnalisées](/fr/custom-policies) pour plus de détails et des exemples.
 
 ### `llm`
 
@@ -194,29 +194,37 @@ Les commandes `policies --install` et `policies --uninstall` écrivent dans le f
 - **Paramètres de la CLI d'agent** — indique à l'agent d'appeler `failproofai --hook <event>` à chaque utilisation d'outil :
   - **Claude Code** : `~/.claude/settings.json` (utilisateur), `<cwd>/.claude/settings.json` (projet), `<cwd>/.claude/settings.local.json` (local)
   - **OpenAI Codex** : `~/.codex/hooks.json` (utilisateur), `<cwd>/.codex/hooks.json` (projet) — Codex n'a pas de portée `local`
-  - **GitHub Copilot CLI _(bêta)_** : `~/.copilot/hooks/failproofai.json` (utilisateur), `<cwd>/.github/hooks/failproofai.json` (projet) — Copilot n'a pas de portée `local`. Les entrées de hook utilisent les champs de commande `bash`/`powershell` à clé OS de Copilot avec `timeoutSec` ; le fichier porte un marqueur de niveau supérieur `version: 1`. La prise en charge de Copilot CLI est en **bêta** pendant que nous vérifions le schéma d'enregistrement `events.jsonl` (que la documentation publique ne spécifie pas) contre davantage de sessions réelles.
-- **`policies-config.json`** — indique à failproofai quelles politiques évaluer et avec quels paramètres (partagé entre toutes les CLI d'agent)
+  - **GitHub Copilot CLI _(bêta)_** : `~/.copilot/hooks/failproofai.json` (utilisateur), `<cwd>/.github/hooks/failproofai.json` (projet) — Copilot n'a pas de portée `local`. Les entrées de hook utilisent les champs de commande `bash`/`powershell` propres à l'OS de Copilot avec `timeoutSec` ; le fichier porte un marqueur de niveau supérieur `version: 1`. La prise en charge de Copilot CLI est en **bêta** pendant que nous vérifions le schéma des enregistrements `events.jsonl` (non spécifié dans la documentation publique) sur davantage de sessions réelles.
+  - **Cursor Agent _(bêta)_** : `~/.cursor/hooks.json` (utilisateur), `<cwd>/.cursor/hooks.json` (projet) — Cursor n'a pas de portée `local`. Les entrées de hook utilisent la forme `{type, command, timeout}` de Claude (sans séparation `bash`/`powershell`), mais stockées sous des clés d'événement en camelCase (`preToolUse`, `beforeSubmitPrompt`, …) dans un tableau plat selon le [schéma de hooks de Cursor](https://cursor.com/docs/hooks) ; le fichier porte un marqueur de niveau supérieur `version: 1`. Le handler canonicalise camelCase → PascalCase via `CURSOR_EVENT_MAP` afin que les politiques intégrées existantes se déclenchent sans modification. La prise en charge de Cursor Agent est en **bêta** pendant que nous vérifions le format du transcript sur disque de Cursor (non spécifié dans la documentation publique) sur davantage d'installations réelles.
+  - **OpenCode _(bêta)_** : `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (utilisateur), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (projet) — OpenCode n'a pas de portée `local`. Contrairement aux quatre autres CLIs, OpenCode **n'a pas de système de hooks par commande externe** : il charge des plugins JS/TS in-process explicitement enregistrés via le tableau `plugin: []` dans `opencode.json` (la découverte automatique depuis `.opencode/plugins/` n'est **pas** le mode de chargement des plugins sous opencode v1.14.33). L'installation dépose un petit shim de plugin généré qui appelle le binaire failproofai en sous-processus et traduit la réponse JSON de forme Claude du binaire en sémantique de plugin (`throw new Error()` pour deny, `client.session.prompt(...)` pour instruct, no-op pour allow). Les sessions résident dans la base de données SQLite d'opencode à `~/.local/share/opencode/opencode.db` ; le visualiseur de sessions du tableau de bord les lit via `opencode db --format json` et `opencode export <id>`. La prise en charge d'OpenCode est en **bêta** pendant que nous vérifions le comportement sur différentes versions et sur davantage de sessions réelles. Consultez la [documentation des plugins OpenCode](https://opencode.ai/docs/plugins/).
+  - **Pi _(bêta)_** : `~/.pi/agent/settings.json` (utilisateur), `<cwd>/.pi/settings.json` (projet) — Pi n'a pas de portée `local`. Pi charge des packages d'extension TypeScript au démarrage ; le fichier de paramètres est un tableau de chaînes plat `{"packages": ["./relative/path", …]}`. failproofai écrit une seule entrée dans le tableau packages pointant vers son répertoire `pi-extension/` inclus. L'extension s'abonne en interne aux événements `tool_call` / `user_bash` / `input` / `session_start` de Pi et exécute `failproofai --hook <Event> --cli pi` en sous-shell ; le handler canonicalise underscore_lower_snake_case → PascalCase via `PI_EVENT_MAP` afin que les politiques intégrées existantes se déclenchent sans modification. La prise en charge de Pi est en **bêta** pendant que l'API d'extension de Pi et la disposition des journaux de session se stabilisent.
+  - **Gemini CLI _(bêta)_** : `~/.gemini/settings.json` (utilisateur), `<cwd>/.gemini/settings.json` (projet) — Gemini n'a pas de portée `local` (il documente une portée `system` à `/etc/gemini-cli/settings.json` que failproofai n'expose pas). Les entrées de hook utilisent la forme `{type, command, timeout}` de Claude enveloppée dans le schéma de matcher `{matcher, hooks: [...]}` de Gemini avec `matcher: "*"` par défaut. Les événements sont en PascalCase (`SessionStart`, `BeforeAgent`, `AfterAgent`, `BeforeModel`, `AfterModel`, `BeforeToolSelection`, `BeforeTool`, `AfterTool`, `PreCompress`, `Notification`, `SessionEnd`) ; le handler les mappe aux noms canoniques de Claude via `GEMINI_EVENT_MAP`. Les noms d'outils sont en snake_case (`run_shell_command`, `read_file`, `write_file`, `replace`, …) — le handler les canonicalise via `GEMINI_TOOL_MAP` afin que les politiques intégrées existantes se déclenchent sans modification. L'évaluateur de politiques émet la forme plate `{decision: "deny", reason}` de Gemini (préférée selon le contrat exit-0 de la règle d'or de Gemini), `{hookSpecificOutput: {hookEventName, additionalContext}}` pour l'injection de contexte sur BeforeAgent / AfterTool / SessionStart, et `{decision: "block", reason}` sur AfterAgent pour la sémantique de force-retry. La prise en charge de Gemini CLI est en **bêta** pendant que nous élargissons la couverture réelle. Consultez la [documentation des hooks Gemini CLI](https://geminicli.com/docs/hooks/).
+- **`policies-config.json`** — indique à failproofai quelles politiques évaluer et avec quels paramètres (partagé entre toutes les CLIs d'agent)
 
-Passez `--cli claude|codex|copilot` pour cibler un agent spécifique (séparé par des espaces ou répété pour un sous-ensemble quelconque) :
+Passez `--cli claude|codex|copilot|cursor|opencode|pi|gemini` pour cibler un agent spécifique (séparés par des espaces ou répétés pour n'importe quel sous-ensemble) :
 
 ```bash
 failproofai policies --install --cli codex --scope project
 failproofai policies --install --cli copilot --scope project
-failproofai policies --install --cli claude codex copilot
+failproofai policies --install --cli cursor --scope project
+failproofai policies --install --cli opencode --scope project
+failproofai policies --install --cli pi --scope project
+failproofai policies --install --cli gemini --scope project
+failproofai policies --install --cli claude codex copilot cursor opencode pi gemini
 ```
 
-Lorsque `--cli` est omis, `failproofai` détecte les CLI d'agent installées (`which claude` / `which codex` / `which copilot`) :
+Lorsque `--cli` est omis, `failproofai` détecte quelles CLIs d'agent sont installées (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which gemini`) :
 
-- **Une CLI détectée** — sélectionne automatiquement cette CLI sans demande de confirmation.
-- **Plusieurs CLI détectées** dans un terminal interactif — affiche une invite de sélection unique par touches directionnelles : lorsque deux CLI sont présentes, les choix sont `Both`, `<CLI A> only`, `<CLI B> only` ; avec trois CLI, la première option devient `All` (↑↓ pour naviguer, Entrée pour sélectionner, ^C pour quitter).
-- **Plusieurs CLI détectées** lors d'une exécution non-interactive (CI, pas de TTY) — installe pour toutes les CLI détectées sans demande de confirmation.
-- **Aucune détectée** — repli sur `claude`, avec un avertissement qu'aucun binaire d'agent n'a été trouvé dans PATH ; la commande de hook est quand même écrite et s'activera dès que vous en installerez un.
+- **Une seule CLI détectée** — la sélectionne automatiquement sans invite.
+- **Plusieurs CLIs détectées** dans un terminal interactif — affiche une invite de sélection unique par touches directionnelles regroupée en une section `Detected (N)` (avec une ligne agrégée `Install for all N detected` + chaque CLI détectée individuellement) et une section `Not installed (M) · install hooks ahead of time` listant toutes les CLIs supportées non détectées comme option d'installation anticipée (↑↓ pour naviguer, Entrée pour sélectionner, ^C pour quitter). Le flux de désinstallation n'affiche que la section Detected.
+- **Plusieurs CLIs détectées** lors d'une exécution non interactive (CI, sans TTY) — installe pour toutes les CLIs détectées sans invite.
+- **Aucune détectée** — revient à `claude`, avec un avertissement qu'aucun binaire d'agent n'a été trouvé dans le PATH ; la commande de hook est tout de même écrite afin de s'activer dès que vous en installez un.
 
-Vous pouvez modifier `policies-config.json` directement à tout moment ; les modifications prennent effet immédiatement au prochain événement de hook, sans redémarrage nécessaire.
+Vous pouvez modifier `policies-config.json` directement à tout moment ; les modifications prennent effet immédiatement au prochain événement de hook sans redémarrage.
 
 ---
 
-## Exemple : configuration au niveau projet avec les paramètres par défaut de l'équipe
+## Exemple : configuration au niveau projet avec les valeurs par défaut de l'équipe
 
 Commitez `.failproofai/policies-config.json` dans votre dépôt :
 
@@ -237,4 +245,4 @@ Commitez `.failproofai/policies-config.json` dans votre dépôt :
 }
 ```
 
-Chaque développeur peut ensuite créer `.failproofai/policies-config.local.json` (ignoré par git) pour ses surcharges personnelles sans affecter ses coéquipiers.
+Chaque développeur peut ensuite créer `.failproofai/policies-config.local.json` (ignoré par git) pour ses remplacements personnels sans affecter ses coéquipiers.

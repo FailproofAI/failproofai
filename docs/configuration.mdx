@@ -216,7 +216,7 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi gem
 When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which gemini`):
 
 - **One CLI detected** — auto-selects that CLI without prompting.
-- **Multiple CLIs detected** in an interactive terminal — shows an arrow-key single-select prompt: when two CLIs are present the choices are `Both`, `<CLI A> only`, `<CLI B> only`; with three CLIs the first option becomes `All` (↑↓ to move, Enter to select, ^C to quit).
+- **Multiple CLIs detected** in an interactive terminal — shows an arrow-key single-select prompt grouped into a `Detected (N)` section (with an `Install for all N detected` aggregate row + each detected CLI individually) and a `Not installed (M) · install hooks ahead of time` section listing every undetected supported CLI as a forward-install option (↑↓ to move, Enter to select, ^C to quit). The uninstall flow shows only the Detected section.
 - **Multiple CLIs detected** in a non-interactive run (CI, no TTY) — installs for all detected CLIs without prompting.
 - **None detected** — falls back to `claude`, with a warning that no agent binary was found in PATH; the hook command is still written so it activates as soon as you install one.
 

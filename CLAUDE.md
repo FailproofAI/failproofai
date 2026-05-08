@@ -114,6 +114,33 @@ which writes a portable `npx -y failproofai --hook ... --cli cursor` command.
 Same self-reference caveat applies — do **not** install the standard `npx`
 form from inside this repo.
 
+**Stop block semantics** (verified against cursor-agent docs as of 2026-05-08
+and live behavior):
+
+| Channel                                              | Effect                                                                                          |
+|------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `{followup_message: "<text>"}` JSON stdout (exit 0)  | ✅ Forces another turn — text becomes next user message; capped at `loop_limit` (default 5)     |
+| `{permission: "deny", …}` JSON stdout (exit 0)       | ❌ Honored on tool events only — Stop falls through and agent stops cleanly                     |
+| Exit 2 + stderr (Claude convention)                  | ❌ Surfaced as warning but does NOT trigger retry                                                |
+
+policy-evaluator.ts has a `cli === "cursor" && eventType in {Stop, SubagentStop}`
+branch ahead of the generic Cursor flat-shape deny that emits the
+`{followup_message}` shape, so the 5 `require-*-before-stop` builtins
+actually enforce on Cursor. Same shape applies to SubagentStop (Cursor's
+`subagentStop` is a sibling of `stop`, same payload + response contract);
+we subscribe to it for parity with Copilot so custom policies subscribing
+to SubagentStop also enforce on Cursor subagent boundaries. The 5
+`require-*-before-stop` builtins still match `Stop` only by design —
+session-completion gates, not subagent-return gates.
+
+**Cloud Agents caveat:** Cursor Cloud Agent VMs do NOT run `stop` /
+`subagentStop` hooks (or `afterAgentResponse`) — confirmed via Cursor
+forum: <https://forum.cursor.com/t/cursor-cloud-agents-do-not-run-afteragentresponse-or-stop-hooks/159929>.
+This means failproofai cannot enforce Stop policies in Cursor Cloud Agent
+runs; the fix above only covers local Cursor sessions.
+
+Ref: <https://cursor.com/docs/hooks>
+
 ### OpenCode hooks (`.opencode/`)
 
 This repo also ships a project-scope OpenCode (sst/opencode) plugin

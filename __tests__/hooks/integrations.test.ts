@@ -392,6 +392,9 @@ describe("Cursor Agent integration", () => {
     expect(cursor.eventTypes).toContain("sessionStart");
     expect(cursor.eventTypes).toContain("sessionEnd");
     expect(cursor.eventTypes).toContain("stop");
+    // subagentStop subscribed for parity with Copilot — custom policies
+    // matching SubagentStop are reachable on Cursor subagent boundaries.
+    expect(cursor.eventTypes).toContain("subagentStop");
   });
 
   it("buildHookEntry uses Claude-shaped {command,timeout} with --cli cursor", () => {
@@ -480,6 +483,7 @@ describe("CURSOR_EVENT_MAP", () => {
     expect(CURSOR_EVENT_MAP.sessionStart).toBe("SessionStart");
     expect(CURSOR_EVENT_MAP.sessionEnd).toBe("SessionEnd");
     expect(CURSOR_EVENT_MAP.stop).toBe("Stop");
+    expect(CURSOR_EVENT_MAP.subagentStop).toBe("SubagentStop");
   });
 
   it("CURSOR_EVENT_MAP keys exactly match CURSOR_HOOK_EVENT_TYPES", () => {

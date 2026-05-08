@@ -290,6 +290,14 @@ export const CursorPayloads = {
       hook_event_name: "stop",
     };
   },
+  subagentStop(cwd: string): Record<string, unknown> {
+    return {
+      conversation_id: CURSOR_CONVERSATION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      workspace_roots: [cwd],
+      hook_event_name: "subagentStop",
+    };
+  },
 };
 
 /**

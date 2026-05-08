@@ -15,6 +15,7 @@ import {
   runHook,
   assertAllow,
   assertCursorDeny,
+  assertCursorStopBlock,
 } from "../helpers/hook-runner";
 import { CursorPayloads } from "../helpers/payloads";
 
@@ -181,6 +182,72 @@ describe("E2E: Cursor integration — hook protocol", () => {
       env.cleanup();
     }
   });
+
+  // Stop hook on Cursor honors `{followup_message}` JSON, NOT `{permission:
+  // "deny"}` (which is a tool-event-only shape) and NOT exit-2+stderr (which
+  // Cursor surfaces as a warning but ignores for retry). Per
+  // https://cursor.com/docs/hooks the followup_message text is auto-submitted
+  // as the next user message, capped at `loop_limit` (default 5). The
+  // `cli === "cursor" && eventType in {Stop, SubagentStop}` branch in
+  // policy-evaluator.ts emits this shape; without it the 5
+  // require-*-before-stop builtins were observation-only on Cursor.
+  it("stop deny emits {followup_message} JSON (Cursor stop force-retry shape)", () => {
+    const env = createCursorEnv();
+    try {
+      writeConfig(env.cwd, ["require-commit-before-stop"]);
+      // require-commit-before-stop denies when the cwd has uncommitted changes.
+      // env.cwd has no .git/ at all, so the policy short-circuits to allow —
+      // we need to plant uncommitted state. Same pattern as the Copilot Stop
+      // e2e in copilot-integration.e2e.test.ts.
+      execSync(
+        "git init -q && git config user.email t@t && git config user.name t && touch tracked && git add tracked && git commit -q -m initial && echo dirty > tracked",
+        { cwd: env.cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+      );
+      const result = runHook(
+        "stop",
+        CursorPayloads.stop(env.cwd),
+        { homeDir: env.home, cli: "cursor" },
+      );
+      assertCursorStopBlock(result);
+      // The flat {permission: "deny"} shape MUST NOT leak through on Stop —
+      // Cursor would ignore it and the agent would stop cleanly.
+      expect(result.parsed?.permission).toBeUndefined();
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  // SubagentStop is a sibling of stop with the same payload + response
+  // contract per Cursor docs; we subscribe to it (CURSOR_HOOK_EVENT_TYPES,
+  // CURSOR_EVENT_MAP) so custom policies matching SubagentStop are reachable
+  // from Cursor subagent boundaries — parity with Copilot's #299 widening.
+  // Builtin require-*-before-stop policies still match Stop only by design,
+  // so we exercise SubagentStop with a custom policy via a small inline shim:
+  // assert allow when no SubagentStop policy is enabled but the hook fires
+  // and is canonicalized correctly (event lands in activity store as
+  // SubagentStop, not as an unknown camelCase form).
+  it("subagentStop canonicalizes to SubagentStop and reaches the activity store", () => {
+    const env = createCursorEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook(
+        "subagentStop",
+        CursorPayloads.subagentStop(env.cwd),
+        { homeDir: env.home, cli: "cursor" },
+      );
+      assertAllow(result);
+
+      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      expect(existsSync(activityPath)).toBe(true);
+      const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
+      const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+      expect(last.integration).toBe("cursor");
+      expect(last.eventType).toBe("SubagentStop");
+      expect(last.cwd).toBe(env.cwd);
+    } finally {
+      env.cleanup();
+    }
+  });
 });
 
 describe("E2E: Cursor integration — install/uninstall", () => {
@@ -203,6 +270,9 @@ describe("E2E: Cursor integration — install/uninstall", () => {
       expect(hooks.sessionEnd).toBeDefined();
       expect(hooks.beforeSubmitPrompt).toBeDefined();
       expect(hooks.stop).toBeDefined();
+      // subagentStop subscribed since #NEW for Copilot-parity: custom policies
+      // matching SubagentStop are reachable on Cursor subagent boundaries.
+      expect(hooks.subagentStop).toBeDefined();
       // PascalCase keys should not be present.
       expect(hooks.PreToolUse).toBeUndefined();
       // Flat array — each entry IS the hook, no `{hooks: [...]}` matcher wrapper.

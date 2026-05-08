@@ -148,10 +148,13 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
 // Cursor delivers events under camelCase keys (`preToolUse`, `postToolUse`,
 // `beforeSubmitPrompt`, …) per https://cursor.com/docs/hooks. The handler
 // maps each one to the PascalCase canonical form via CURSOR_EVENT_MAP before
-// looking up policies. We install the same 6-event parity set as Copilot so
-// every existing builtin policy fires; Cursor-specific events
-// (`beforeShellExecution`, `afterFileEdit`, `subagentStart`, …) can be added
-// later without touching the handler.
+// looking up policies. We subscribe to the 7-event parity set: 6 events that
+// align with Claude's canonical types plus `subagentStop` (sibling of `stop`,
+// same payload shape and `{followup_message}` response contract) so custom
+// policies subscribing to SubagentStop are reachable on Cursor subagent
+// boundaries — matches the Copilot SubagentStop widening from #299.
+// Cursor-specific events (`beforeShellExecution`, `afterFileEdit`,
+// `subagentStart`, …) can be added later without touching the handler.
 //
 // Settings paths:
 //   user    → ~/.cursor/hooks.json
@@ -168,6 +171,7 @@ export const CURSOR_HOOK_EVENT_TYPES = [
   "preToolUse",
   "postToolUse",
   "stop",
+  "subagentStop",
 ] as const;
 export type CursorHookEventType = (typeof CURSOR_HOOK_EVENT_TYPES)[number];
 
@@ -178,6 +182,7 @@ export const CURSOR_EVENT_MAP: Record<CursorHookEventType, HookEventType> = {
   preToolUse: "PreToolUse",
   postToolUse: "PostToolUse",
   stop: "Stop",
+  subagentStop: "SubagentStop",
 };
 
 /**

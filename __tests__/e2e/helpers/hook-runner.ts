@@ -140,6 +140,17 @@ export function assertCursorStopInstruct(result: HookRunResult): void {
   expect(result.parsed?.followup_message).toMatch(/^Instruction from failproofai:/);
 }
 
+export function assertCursorStopBlock(result: HookRunResult): void {
+  // Cursor's stop / subagentStop hooks honor `{followup_message}` on stdout
+  // (exit 0) — auto-submitted as next user message, capped at loop_limit
+  // (default 5). The flat `{permission: "deny"}` shape is ignored on Stop.
+  // Mirrors assertCopilotStopBlock and assertGeminiStopBlock.
+  // Ref: https://cursor.com/docs/hooks
+  expect(result.exitCode).toBe(0);
+  expect(typeof result.parsed?.followup_message).toBe("string");
+  expect(result.parsed?.followup_message).toMatch(/MANDATORY ACTION REQUIRED/);
+}
+
 /**
  * Pi emits a flat `{permission, reason}` JSON shape — the pi-extension shim
  * parses this and translates `permission === "deny"` into a `{block, reason}`

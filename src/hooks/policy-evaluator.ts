@@ -145,6 +145,26 @@ export async function evaluatePolicies(
       // Cursor-shaped response.
       // Ref: https://cursor.com/docs/hooks (Stdout Response Format).
       if (session?.cli === "cursor") {
+        // Cursor's `stop` / `subagentStop` hooks ignore `{permission: "deny"}`
+        // — that shape is only honored on tool events. The only force-retry
+        // channel for Stop/SubagentStop is `{followup_message}` on stdout
+        // (exit 0); Cursor auto-submits the text as the next user message
+        // (capped at `loop_limit`, default 5). Mirrors the Copilot Stop
+        // branch at line ~279 and the Gemini AfterAgent branch at line ~188.
+        // Without this branch, the 5 `require-*-before-stop` builtins were
+        // observation-only on Cursor — the deny was logged but the agent
+        // stopped cleanly. Ref: https://cursor.com/docs/hooks
+        if (eventType === "Stop" || eventType === "SubagentStop") {
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ followup_message: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
         const response = {
           permission: "deny",
           user_message: blockedMessage,
@@ -331,9 +351,12 @@ export async function evaluatePolicies(
     // Cursor's hook protocol uses a flat `{permission, additional_context}`
     // shape for non-Stop and `{followup_message}` for Stop/SubagentStop.
     // Branch first so the rest of the function only handles Claude-shaped
-    // responses. Ref: https://cursor.com/docs/hooks (Stdout Response Format).
+    // responses. We match both Stop and SubagentStop so custom policies
+    // subscribing to SubagentStop on Cursor get the same force-retry
+    // semantics — mirrors the cli==="copilot" Stop|SubagentStop widening
+    // at line ~472. Ref: https://cursor.com/docs/hooks (Stdout Response Format).
     if (session?.cli === "cursor") {
-      if (eventType === "Stop") {
+      if (eventType === "Stop" || eventType === "SubagentStop") {
         const response = {
           followup_message: `Instruction from failproofai: ${combined}`,
         };

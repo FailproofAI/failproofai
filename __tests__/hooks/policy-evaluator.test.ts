@@ -233,6 +233,24 @@ describe("hooks/policy-evaluator", () => {
     expect(parsed.reason).toContain("subagent verification pending");
   });
 
+  it("Cursor SubagentStop + instruct emits {followup_message} JSON (parity with Stop branch)", async () => {
+    // The Cursor Stop instruct branch was widened to also match SubagentStop
+    // so custom policies subscribing to SubagentStop on Cursor get the same
+    // force-retry semantics. Mirrors the Copilot widening above.
+    registerPolicy("verify", "desc", () => ({
+      decision: "instruct",
+      reason: "subagent verification pending",
+    }), { events: ["SubagentStop"] });
+
+    const result = await evaluatePolicies("SubagentStop", {}, { cli: "cursor" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.decision).toBe("instruct");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.followup_message).toMatch(/^Instruction from failproofai:/);
+    expect(parsed.followup_message).toContain("subagent verification pending");
+  });
+
   it("accumulates multiple instruct messages", async () => {
     registerPolicy("first", "desc", () => ({
       decision: "instruct",
@@ -498,6 +516,79 @@ describe("hooks/policy-evaluator", () => {
       expect(result.stderr).toContain("MANDATORY ACTION REQUIRED");
       expect(result.stderr).toContain("subagent left work undone");
       expect(result.decision).toBe("deny");
+    });
+
+    it("Cursor Stop deny emits {followup_message} JSON on stdout (NOT exit 2)", async () => {
+      // Cursor's `stop` hook ignores `{permission: "deny"}` — that shape is
+      // only honored on tool events. The only force-retry channel for Stop
+      // is `{followup_message}` on stdout (exit 0); Cursor auto-submits the
+      // text as the next user message (capped at `loop_limit`, default 5).
+      // Without the cli==="cursor" Stop arm in policy-evaluator.ts, the 5
+      // require-*-before-stop builtins were observation-only on Cursor —
+      // the deny was logged but the agent stopped cleanly.
+      // Ref: https://cursor.com/docs/hooks
+      registerPolicy("stop-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "changes not committed",
+      }), { events: ["Stop"] });
+
+      const result = await evaluatePolicies("Stop", {}, { cli: "cursor" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.followup_message).toContain("MANDATORY ACTION REQUIRED");
+      expect(parsed.followup_message).toContain("changes not committed");
+      // The flat {permission:"deny", user_message, agent_message} shape MUST
+      // NOT be emitted on Stop — Cursor would ignore it and the agent would
+      // stop cleanly. This is the load-bearing assertion.
+      expect(parsed.permission).toBeUndefined();
+      expect(parsed.user_message).toBeUndefined();
+      expect(parsed.agent_message).toBeUndefined();
+      expect(result.decision).toBe("deny");
+    });
+
+    it("Cursor SubagentStop deny also emits {followup_message} JSON (subagent retry)", async () => {
+      // The cli==="cursor" Stop arm was widened to also match SubagentStop
+      // so custom policies subscribing to SubagentStop on Cursor enforce
+      // (the 5 require-*-before-stop builtins still match Stop only by
+      // design — they are session-completion gates, not subagent-return
+      // gates). Mirrors the Copilot SubagentStop widening from #299.
+      registerPolicy("subagent-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "subagent left work undone",
+      }), { events: ["SubagentStop"] });
+
+      const result = await evaluatePolicies("SubagentStop", {}, { cli: "cursor" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.followup_message).toContain("MANDATORY ACTION REQUIRED");
+      expect(parsed.followup_message).toContain("subagent left work undone");
+      expect(result.decision).toBe("deny");
+    });
+
+    it("Cursor PreToolUse deny still uses {permission:'deny'} flat shape (regression: tool-event path unchanged)", async () => {
+      // The Stop/SubagentStop arm is added INSIDE the cli==="cursor" branch
+      // so the flat-shape return below it is unchanged for tool events.
+      // Verify PreToolUse still emits the flat deny shape — Cursor's tool
+      // hooks DO honor it.
+      registerPolicy("tool-blocker", "desc", () => ({
+        decision: "deny",
+        reason: "blocked tool",
+      }), { events: ["PreToolUse"] });
+
+      const result = await evaluatePolicies(
+        "PreToolUse",
+        { tool_name: "Bash", tool_input: { command: "ls" } },
+        { cli: "cursor" },
+      );
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.permission).toBe("deny");
+      expect(parsed.user_message).toMatch(/Blocked Bash by failproofai/);
+      expect(parsed.agent_message).toMatch(/Blocked Bash by failproofai/);
+      // No followup_message on tool events — that's a Stop-only shape.
+      expect(parsed.followup_message).toBeUndefined();
     });
 
     it("Stop deny short-circuits subsequent policies", async () => {

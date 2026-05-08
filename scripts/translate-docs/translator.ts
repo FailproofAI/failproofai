@@ -51,7 +51,15 @@ export async function translateContent(
 ): Promise<{ translated: string; inputTokens: number; outputTokens: number }> {
   const anthropic = getClient();
 
-  const response = await anthropic.messages.create({
+  // Streaming so we don't hit AWS Bedrock's 300s synchronous InvokeModel
+  // ceiling on the largest Tier-1 (Sonnet) translations. Bedrock is one of
+  // the two upstream deployments behind models.aikin.club's
+  // claude-sonnet-4-6 route (weighted 1:1 with anthropic-direct). Under
+  // load, a 6k-token output exceeds Bedrock's non-streaming wall and
+  // surfaces to the SDK as `APIConnectionError ("Connection error.")`.
+  // `messages.stream(...).finalMessage()` returns the same Message shape
+  // as `messages.create(...)`, so the rest of the pipeline is unchanged.
+  const response = await anthropic.messages.stream({
     model,
     max_tokens: 16384,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
@@ -61,7 +69,7 @@ export async function translateContent(
         content: `Translate the following documentation content into ${targetLangName} (${targetLang}).\n\n---\n\n${content}`,
       },
     ],
-  });
+  }).finalMessage();
 
   const translated =
     response.content[0].type === "text" ? response.content[0].text : "";

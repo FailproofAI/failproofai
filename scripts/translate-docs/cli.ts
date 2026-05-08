@@ -180,12 +180,15 @@ async function main() {
   // Read cache once upfront — filter unchanged files before starting work
   const cache = readCache();
 
-  // Concurrency limiter. Kept low (2) because the gateway behind
-  // ANTHROPIC_BASE_URL drops most parallel connections past ~2 in flight,
-  // surfacing as `Connection error` on 4-of-6 requests. Per-language CI
-  // matrix already parallelizes across languages, so the wall-clock cost
-  // of the lower limit is bounded.
-  const MAX_CONCURRENT = 2;
+  // Concurrency limiter. The gateway behind ANTHROPIC_BASE_URL was
+  // empirically saturating past ~2 in flight pre-scale (see #300, #305);
+  // post-scale we run at 4 by default and rely on SDK retries (5 attempts,
+  // configured in translator.ts) to absorb per-request transient
+  // `Connection error.` from LB-induced replica flapping.
+  // Override via TRANSLATE_MAX_CONCURRENT (integer >= 1; otherwise default).
+  const parsedConcurrent = Number.parseInt(process.env.TRANSLATE_MAX_CONCURRENT ?? "", 10);
+  const MAX_CONCURRENT =
+    Number.isInteger(parsedConcurrent) && parsedConcurrent > 0 ? parsedConcurrent : 4;
   async function runWithConcurrency<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
     const results: T[] = [];
     let i = 0;

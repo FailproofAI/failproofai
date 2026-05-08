@@ -5,7 +5,13 @@ let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
   if (!client) {
-    client = new Anthropic();
+    // Default 5 retries (up from SDK default of 2) so transient
+    // `Connection error.` from LiteLLM replica flapping gets enough
+    // chances for the LB to route a retry to a healthy replica.
+    // Override via TRANSLATE_MAX_RETRIES (integer >= 0; 0 disables retries).
+    const parsed = Number.parseInt(process.env.TRANSLATE_MAX_RETRIES ?? "", 10);
+    const maxRetries = Number.isInteger(parsed) && parsed >= 0 ? parsed : 5;
+    client = new Anthropic({ maxRetries });
   }
   return client;
 }

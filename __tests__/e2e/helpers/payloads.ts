@@ -184,19 +184,31 @@ export const CodexPayloads = {
 /**
  * Cursor Agent CLI-accurate payload factories. Cursor delivers camelCase
  * `hook_event_name` (`preToolUse`, `beforeSubmitPrompt`, …) plus snake_case
- * fields (`tool_name`, `tool_input`, `cwd`). The failproofai handler
- * canonicalizes camelCase → PascalCase via CURSOR_EVENT_MAP for internal
- * lookup. Ref: https://cursor.com/docs/hooks (Stdin Payload Schema).
+ * fields. The failproofai handler canonicalizes camelCase → PascalCase via
+ * CURSOR_EVENT_MAP for internal lookup. Ref: https://cursor.com/docs/hooks
+ * (Stdin Payload Schema).
+ *
+ * Per-event cwd shape (verified against the docs as of 2026-05-07):
+ *   • preToolUse / postToolUse: top-level `cwd` is sent. `workspace_roots`
+ *     is also a common base field on every Cursor hook payload, so we
+ *     include both for fidelity.
+ *   • beforeSubmitPrompt / sessionStart / sessionEnd / stop: NO top-level
+ *     `cwd`. `workspace_roots: string[]` is the only directory signal.
+ *     The handler resolves cwd via resolveCwd() with a Cursor-specific
+ *     workspace_roots[0] fallback (src/hooks/resolve-cwd.ts).
  */
 const CURSOR_SESSION_ID = "test-session-cursor-001";
+const CURSOR_CONVERSATION_ID = "test-conversation-cursor-001";
 
 export const CursorPayloads = {
   preToolUse: {
     bash(command: string, cwd: string): Record<string, unknown> {
       return {
         session_id: CURSOR_SESSION_ID,
+        conversation_id: CURSOR_CONVERSATION_ID,
         transcript_path: TRANSCRIPT_PATH,
         cwd,
+        workspace_roots: [cwd],
         hook_event_name: "preToolUse",
         tool_name: "Bash",
         tool_input: { command },
@@ -205,8 +217,10 @@ export const CursorPayloads = {
     write(filePath: string, content: string, cwd: string): Record<string, unknown> {
       return {
         session_id: CURSOR_SESSION_ID,
+        conversation_id: CURSOR_CONVERSATION_ID,
         transcript_path: TRANSCRIPT_PATH,
         cwd,
+        workspace_roots: [cwd],
         hook_event_name: "preToolUse",
         tool_name: "Write",
         tool_input: { file_path: filePath, content },
@@ -215,8 +229,10 @@ export const CursorPayloads = {
     read(filePath: string, cwd: string): Record<string, unknown> {
       return {
         session_id: CURSOR_SESSION_ID,
+        conversation_id: CURSOR_CONVERSATION_ID,
         transcript_path: TRANSCRIPT_PATH,
         cwd,
+        workspace_roots: [cwd],
         hook_event_name: "preToolUse",
         tool_name: "Read",
         tool_input: { file_path: filePath },
@@ -227,8 +243,10 @@ export const CursorPayloads = {
     bash(command: string, output: string, cwd: string): Record<string, unknown> {
       return {
         session_id: CURSOR_SESSION_ID,
+        conversation_id: CURSOR_CONVERSATION_ID,
         transcript_path: TRANSCRIPT_PATH,
         cwd,
+        workspace_roots: [cwd],
         hook_event_name: "postToolUse",
         tool_name: "Bash",
         tool_input: { command },
@@ -238,18 +256,37 @@ export const CursorPayloads = {
   },
   beforeSubmitPrompt(prompt: string, cwd: string): Record<string, unknown> {
     return {
-      session_id: CURSOR_SESSION_ID,
+      conversation_id: CURSOR_CONVERSATION_ID,
       transcript_path: TRANSCRIPT_PATH,
-      cwd,
+      workspace_roots: [cwd],
       hook_event_name: "beforeSubmitPrompt",
       prompt,
     };
   },
-  stop(cwd: string): Record<string, unknown> {
+  sessionStart(cwd: string): Record<string, unknown> {
     return {
       session_id: CURSOR_SESSION_ID,
+      conversation_id: CURSOR_CONVERSATION_ID,
       transcript_path: TRANSCRIPT_PATH,
-      cwd,
+      workspace_roots: [cwd],
+      hook_event_name: "sessionStart",
+    };
+  },
+  sessionEnd(cwd: string): Record<string, unknown> {
+    return {
+      session_id: CURSOR_SESSION_ID,
+      conversation_id: CURSOR_CONVERSATION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      workspace_roots: [cwd],
+      hook_event_name: "sessionEnd",
+      reason: "user_exit",
+    };
+  },
+  stop(cwd: string): Record<string, unknown> {
+    return {
+      conversation_id: CURSOR_CONVERSATION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      workspace_roots: [cwd],
       hook_event_name: "stop",
     };
   },

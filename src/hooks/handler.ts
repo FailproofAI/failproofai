@@ -33,6 +33,7 @@ import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { trackHookEvent } from "./hook-telemetry";
+import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -164,7 +165,7 @@ export async function handleHookEvent(
   const session: SessionMetadata = {
     sessionId,
     transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
-    cwd: parsed.cwd as string | undefined,
+    cwd: resolveCwd(cli, parsed),
     permissionMode: resolvePermissionMode(cli, parsed, sessionId),
     hookEventName: parsed.hook_event_name as string | undefined,
     // Preserve the raw CLI-side event name (eventType arg) before

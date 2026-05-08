@@ -112,7 +112,7 @@ describe("E2E: Cursor integration — hook protocol", () => {
     }
   });
 
-  it("activity entry tags decision with integration: cursor", () => {
+  it("activity entry tags decision with integration: cursor and persists cwd", () => {
     const env = createCursorEnv();
     try {
       writeConfig(env.cwd, ["block-sudo"]);
@@ -129,6 +129,54 @@ describe("E2E: Cursor integration — hook protocol", () => {
       expect(last.decision).toBe("deny");
       // Canonical event name lands in the activity entry, not the camelCase wire form.
       expect(last.eventType).toBe("PreToolUse");
+      // preToolUse carries top-level cwd in Cursor's payload — passthrough.
+      expect(last.cwd).toBe(env.cwd);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("sessionStart resolves cwd from workspace_roots when top-level cwd is absent", () => {
+    const env = createCursorEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook(
+        "sessionStart",
+        CursorPayloads.sessionStart(env.cwd),
+        { homeDir: env.home, cli: "cursor" },
+      );
+      assertAllow(result);
+
+      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      expect(existsSync(activityPath)).toBe(true);
+      const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
+      const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+      expect(last.integration).toBe("cursor");
+      expect(last.eventType).toBe("SessionStart");
+      // No top-level cwd in Cursor's sessionStart payload — handler must
+      // fall back to workspace_roots[0] via resolveCwd().
+      expect(last.cwd).toBe(env.cwd);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("beforeSubmitPrompt resolves cwd from workspace_roots when top-level cwd is absent", () => {
+    const env = createCursorEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook(
+        "beforeSubmitPrompt",
+        CursorPayloads.beforeSubmitPrompt("normal prompt", env.cwd),
+        { homeDir: env.home, cli: "cursor" },
+      );
+      assertAllow(result);
+
+      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      expect(existsSync(activityPath)).toBe(true);
+      const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
+      const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+      expect(last.cwd).toBe(env.cwd);
     } finally {
       env.cleanup();
     }

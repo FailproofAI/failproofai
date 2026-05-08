@@ -185,8 +185,10 @@ async function main() {
   // post-scale we run at 4 by default and rely on SDK retries (5 attempts,
   // configured in translator.ts) to absorb per-request transient
   // `Connection error.` from LB-induced replica flapping.
-  // Override via TRANSLATE_MAX_CONCURRENT.
-  const MAX_CONCURRENT = Number(process.env.TRANSLATE_MAX_CONCURRENT) || 4;
+  // Override via TRANSLATE_MAX_CONCURRENT (integer >= 1; otherwise default).
+  const parsedConcurrent = Number.parseInt(process.env.TRANSLATE_MAX_CONCURRENT ?? "", 10);
+  const MAX_CONCURRENT =
+    Number.isInteger(parsedConcurrent) && parsedConcurrent > 0 ? parsedConcurrent : 4;
   async function runWithConcurrency<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
     const results: T[] = [];
     let i = 0;

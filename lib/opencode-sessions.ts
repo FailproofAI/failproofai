@@ -21,13 +21,16 @@ import { execFileSync } from "node:child_process";
 import { runtimeCache } from "./runtime-cache";
 import {
   baseEntry,
+  formatTimestamp,
   type LogEntry,
   type UserEntry,
   type AssistantEntry,
   type GenericEntry,
   type ContentBlock,
+  type ToolUseBlock,
   type LogSource,
 } from "./log-entries";
+import { formatDuration } from "./format-duration";
 
 interface OpenCodeSessionRow {
   id: string;
@@ -129,14 +132,44 @@ function translateMessage(
       continue;
     }
     if (type === "tool") {
+      // Real opencode (verified v1.14.41) wraps everything under `state`:
+      //   { type:"tool", tool:"read", callID, state:{ status, input, output, time:{start,end}, error? } }
+      // We keep top-level `input`/`args` as legacy fallbacks so any historical
+      // session written by an older opencode still renders.
       const toolName = typeof data.tool === "string" ? data.tool : (typeof data.name === "string" ? data.name : "tool");
-      const input = isPlainObject(data.input) ? data.input : (isPlainObject(data.args) ? data.args : {});
-      content.push({
+      const state = isPlainObject(data.state) ? data.state : null;
+      const input =
+        state && isPlainObject(state.input) ? state.input :
+        isPlainObject(data.input) ? data.input :
+        isPlainObject(data.args) ? data.args :
+        {};
+      const block: ToolUseBlock = {
         type: "tool_use",
         id: p.id,
         name: toolName,
         input: input as Record<string, unknown>,
-      });
+      };
+      const status = state && typeof state.status === "string" ? state.status : "";
+      if (state && (status === "completed" || status === "error")) {
+        const errorText = status === "error" && typeof state.error === "string" ? state.error : null;
+        const rawOutput = errorText ?? state.output;
+        const contentText = typeof rawOutput === "string"
+          ? rawOutput
+          : rawOutput != null ? JSON.stringify(rawOutput) : "";
+        const time = isPlainObject(state.time) ? state.time : {};
+        const startMs = typeof time.start === "number" ? time.start : p.time_created;
+        const endMs = typeof time.end === "number" ? time.end : p.time_updated;
+        const durationMs = Math.max(0, endMs - startMs);
+        const date = new Date(endMs);
+        block.result = {
+          timestamp: date.toISOString(),
+          timestampFormatted: formatTimestamp(date),
+          content: contentText,
+          durationMs,
+          durationFormatted: formatDuration(durationMs),
+        };
+      }
+      content.push(block);
       continue;
     }
     // Unknown part type — preserve as a text annotation rather than drop silently.

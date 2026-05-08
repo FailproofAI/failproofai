@@ -56,27 +56,180 @@ describe("getOpenCodeSessionLog", () => {
     expect(entry.message.content).toBe("hello");
   });
 
-  it("parses an assistant message with text + tool_use parts", async () => {
+  it("parses an assistant message with text + tool_use parts (state.input/output shape)", async () => {
     mockQueries([
       [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
       [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant", model: { providerID: "anthropic", modelID: "claude-sonnet-4" } }) }],
       [
         { id: "prt_a", message_id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ type: "text", text: "Running ls" }) },
-        { id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1101, time_updated: 1101, data: JSON.stringify({ type: "tool", tool: "bash", input: { command: "ls" } }) },
+        {
+          id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1101, time_updated: 1150,
+          data: JSON.stringify({
+            type: "tool",
+            tool: "bash",
+            callID: "c1",
+            state: {
+              status: "completed",
+              input: { command: "ls" },
+              output: "file1\nfile2",
+              time: { start: 1100, end: 1150 },
+            },
+          }),
+        },
       ],
     ]);
     const log = await getOpenCodeSessionLog("ses_x");
     expect(log).not.toBeNull();
     const entry = log!.entries[0] as {
       type: string;
-      message: { role: string; content: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>; model?: string };
+      message: {
+        role: string;
+        content: Array<{
+          type: string; text?: string; name?: string;
+          input?: Record<string, unknown>;
+          result?: { content?: string; durationMs?: number };
+        }>;
+        model?: string;
+      };
     };
     expect(entry.type).toBe("assistant");
     expect(entry.message.role).toBe("assistant");
     expect(entry.message.model).toBe("claude-sonnet-4");
     expect(entry.message.content).toHaveLength(2);
     expect(entry.message.content[0]).toMatchObject({ type: "text", text: "Running ls" });
-    expect(entry.message.content[1]).toMatchObject({ type: "tool_use", name: "bash", input: { command: "ls" } });
+    expect(entry.message.content[1]).toMatchObject({
+      type: "tool_use",
+      name: "bash",
+      input: { command: "ls" },
+      result: { content: "file1\nfile2", durationMs: 50 },
+    });
+  });
+
+  it("emits tool_use without result for in-flight (status=running) tool calls", async () => {
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [
+        {
+          id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1101, time_updated: 1101,
+          data: JSON.stringify({
+            type: "tool", tool: "read", callID: "c1",
+            state: { status: "running", input: { filePath: "/repo/x" } },
+          }),
+        },
+      ],
+    ]);
+    const log = await getOpenCodeSessionLog("ses_x");
+    const entry = log!.entries[0] as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown>; result?: unknown }> } };
+    expect(entry.message.content).toHaveLength(1);
+    expect(entry.message.content[0]).toMatchObject({ type: "tool_use", name: "read", input: { filePath: "/repo/x" } });
+    expect(entry.message.content[0].result).toBeUndefined();
+  });
+
+  it("surfaces state.error as result.content when status=error", async () => {
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [
+        {
+          id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1110,
+          data: JSON.stringify({
+            type: "tool", tool: "bash", callID: "c1",
+            state: {
+              status: "error",
+              input: { command: "false" },
+              output: "ignored when error is set",
+              error: "exit code 1",
+              time: { start: 1100, end: 1110 },
+            },
+          }),
+        },
+      ],
+    ]);
+    const log = await getOpenCodeSessionLog("ses_x");
+    const entry = log!.entries[0] as { message: { content: Array<{ result?: { content?: string } }> } };
+    expect(entry.message.content[0].result?.content).toBe("exit code 1");
+  });
+
+  it("falls back to state.output when status=error but state.error is missing", async () => {
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [
+        {
+          id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1110,
+          data: JSON.stringify({
+            type: "tool", tool: "bash",
+            state: { status: "error", input: {}, output: "boom", time: { start: 1100, end: 1110 } },
+          }),
+        },
+      ],
+    ]);
+    const log = await getOpenCodeSessionLog("ses_x");
+    const entry = log!.entries[0] as { message: { content: Array<{ result?: { content?: string } }> } };
+    expect(entry.message.content[0].result?.content).toBe("boom");
+  });
+
+  it("legacy back-compat: top-level data.input still populates tool_use.input", async () => {
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [
+        {
+          id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1101, time_updated: 1101,
+          data: JSON.stringify({ type: "tool", tool: "bash", input: { command: "ls" } }),
+        },
+      ],
+    ]);
+    const log = await getOpenCodeSessionLog("ses_x");
+    const entry = log!.entries[0] as { message: { content: Array<{ name?: string; input?: Record<string, unknown>; result?: unknown }> } };
+    expect(entry.message.content[0]).toMatchObject({ name: "bash", input: { command: "ls" } });
+    expect(entry.message.content[0].result).toBeUndefined();
+  });
+
+  it("regression: real opencode v1.14.x `read` part shape (input + output captured)", async () => {
+    // Captured live from opencode v1.14.41 — see luv-322 plan.
+    const realPartData = {
+      type: "tool",
+      tool: "read",
+      callID: "call_function_8o31jcbnw410_1",
+      state: {
+        status: "completed",
+        input: { filePath: "/home/nivedit/dev-purge" },
+        output: "<path>/home/nivedit/dev-purge</path>\n<type>directory</type>\n<entries>\nsrc/\n</entries>",
+        metadata: { preview: "src/", truncated: false, loaded: [] },
+        title: "",
+        time: { start: 1778280369088, "end": 1778280369140 },
+      },
+    };
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [
+        {
+          id: "prt_real", message_id: "msg_1", session_id: "ses_x",
+          time_created: 1778280369088, time_updated: 1778280369140,
+          data: JSON.stringify(realPartData),
+        },
+      ],
+    ]);
+    const log = await getOpenCodeSessionLog("ses_x");
+    const entry = log!.entries[0] as {
+      message: {
+        content: Array<{
+          type: string; name?: string;
+          input?: Record<string, unknown>;
+          result?: { content?: string; durationMs?: number };
+        }>;
+      };
+    };
+    expect(entry.message.content[0]).toMatchObject({
+      type: "tool_use",
+      name: "read",
+      input: { filePath: "/home/nivedit/dev-purge" },
+      result: { durationMs: 52 },
+    });
+    expect(entry.message.content[0].result?.content).toContain("<entries>");
   });
 
   it("preserves unknown part types as a labeled text annotation (no silent drops)", async () => {

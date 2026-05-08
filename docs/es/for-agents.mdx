@@ -1,33 +1,33 @@
 ---
 title: "Para agentes"
-description: "Añade el conocimiento de Failproof AI a tu agente de codificación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y más."
+description: "Añade el conocimiento de Failproof AI a tu agente de programación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y más."
 ---
 
-Añade la referencia completa de Failproof AI a tu agente de codificación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y cualquier otro agente que soporte skills.
+Añade la referencia completa de Failproof AI a tu agente de programación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y cualquier otro agente que soporte skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` detecta qué agentes tienes instalados y añade la skill en el formato correcto para cada uno de forma automática.
+`npx skills` detecta qué agentes tienes instalados y añade el skill en el formato correcto para cada uno automáticamente.
 
-## Qué cubre la skill
+## Qué cubre el skill
 
 | Área | Qué incluye |
 |------|-------------|
 | Políticas | Nombres de políticas integradas, tipos de eventos, parámetros, activar/desactivar |
 | Políticas personalizadas | `customPolicies.add()`, filtros de coincidencia, API `allow`/`deny`/`instruct` |
 | Objeto de contexto | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuración | Estructura de `policies-config.json`, fusión de scopes, `policyParams` |
+| Configuración | Estructura de `policies-config.json`, combinación de scopes, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | Visor de sesiones, actividad de políticas, variables de entorno |
-| Arquitectura | Flujo del hook handler, códigos de salida, contrato stdin/stdout |
+| Panel de control | Visor de sesiones, actividad de políticas, variables de entorno |
+| Arquitectura | Flujo del manejador de hooks, códigos de salida, contrato stdin/stdout |
 
-## ¿La skill está completa?
+## ¿Está completo el skill?
 
 Mintlify genera `llms.txt` a partir de todas las páginas de la navegación. La documentación de Failproof AI cubre la API completa: cada política, opción y ejemplo está incluido. Si encuentras algo que falta, el origen está en `https://docs.befailproof.ai/llms-full.txt`.
 
-Para contexto más específico, enlaza directamente a una página concreta:
+Para contexto específico, enlaza directamente a una página concreta:
 
 ```bash
 # Solo la API de políticas personalizadas

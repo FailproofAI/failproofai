@@ -1,14 +1,14 @@
 ---
 title: 커스텀 정책
-description: "JavaScript로 직접 정책을 작성하세요 - 컨벤션 적용, 드리프트 방지, 실패 감지, 외부 시스템 연동"
+description: "JavaScript로 직접 정책을 작성하세요 - 컨벤션 강제, 드리프트 방지, 실패 감지, 외부 시스템 연동"
 icon: code
 ---
 
-커스텀 정책을 사용하면 에이전트 동작에 관한 규칙을 직접 작성할 수 있습니다. 프로젝트 컨벤션 강제, 드리프트 방지, 위험한 작업 차단, 멈춘 에이전트 감지, Slack 연동, 승인 워크플로우 등 다양한 용도로 활용할 수 있습니다. 내장 정책과 동일한 훅 이벤트 시스템과 `allow`, `deny`, `instruct` 결정 방식을 사용합니다.
+커스텀 정책을 사용하면 모든 에이전트 동작에 대한 규칙을 직접 작성할 수 있습니다. 프로젝트 컨벤션 강제, 드리프트 방지, 위험한 작업 차단, 멈춘 에이전트 감지, Slack 연동, 승인 워크플로우 등 다양한 용도로 활용할 수 있습니다. 내장 정책과 동일한 훅 이벤트 시스템과 `allow`, `deny`, `instruct` 결정 방식을 사용합니다.
 
 ---
 
-## 빠른 예제
+## 빠른 예시
 
 ```js
 // my-policies.js
@@ -41,32 +41,32 @@ failproofai policies --install --custom ./my-policies.js
 
 ### 방법 1: 컨벤션 기반 (권장)
 
-`.failproofai/policies/` 디렉토리에 `*policies.{js,mjs,ts}` 파일을 넣으면 자동으로 로드됩니다. 별도 플래그나 설정 변경이 필요하지 않습니다. git 훅처럼 파일만 놓으면 바로 동작합니다.
+`*policies.{js,mjs,ts}` 파일을 `.failproofai/policies/` 디렉토리에 넣으면 자동으로 로드됩니다 — 별도의 플래그나 설정 변경이 필요 없습니다. git 훅처럼 파일만 넣으면 바로 동작합니다.
 
 ```
-# 프로젝트 레벨 — git에 커밋되어 팀 전체가 공유
+# 프로젝트 레벨 — git에 커밋되어 팀과 공유
 .failproofai/policies/security-policies.mjs
 .failproofai/policies/workflow-policies.mjs
 
-# 사용자 레벨 — 개인용, 모든 프로젝트에 적용
+# 사용자 레벨 — 개인 설정, 모든 프로젝트에 적용
 ~/.failproofai/policies/my-policies.mjs
 ```
 
 **동작 방식:**
-- 프로젝트 및 사용자 디렉토리 모두 스캔됩니다 (합집합 방식 — 첫 번째 스코프 우선이 아님)
+- 프로젝트와 사용자 디렉토리 모두 스캔됩니다 (합집합 방식 — 첫 번째 스코프 우선이 아님)
 - 각 디렉토리 내에서 파일은 알파벳 순으로 로드됩니다. `01-`, `02-` 접두사로 순서를 제어할 수 있습니다
-- `*policies.{js,mjs,ts}` 패턴에 매칭되는 파일만 로드되며, 그 외 파일은 무시됩니다
+- `*policies.{js,mjs,ts}` 패턴과 일치하는 파일만 로드되며, 다른 파일은 무시됩니다
 - 각 파일은 독립적으로 로드됩니다 (파일별 fail-open)
-- 명시적 `--custom` 및 내장 정책과 함께 사용할 수 있습니다
+- 명시적인 `--custom` 및 내장 정책과 함께 사용할 수 있습니다
 
 <Tip>
-컨벤션 정책은 조직의 품질 기준을 수립하는 가장 쉬운 방법입니다. `.failproofai/policies/`를 git에 커밋하면 모든 팀원이 동일한 규칙을 자동으로 적용받습니다. 개발자별 별도 설정이 필요 없습니다. 팀에서 새로운 실패 패턴을 발견할 때마다 정책을 추가하고 푸시하세요. 시간이 지날수록 이 정책들은 기여가 쌓일수록 계속 발전하는 살아있는 품질 기준이 됩니다.
+컨벤션 정책은 조직의 품질 기준을 구축하는 가장 쉬운 방법입니다. `.failproofai/policies/`를 git에 커밋하면 모든 팀원이 동일한 규칙을 자동으로 적용받습니다 — 개발자별 별도 설정이 필요 없습니다. 팀이 새로운 실패 패턴을 발견할 때마다 정책을 추가하고 푸시하세요. 시간이 지나면서 이 정책들은 매 기여마다 개선되는 살아있는 품질 기준이 됩니다.
 </Tip>
 
 ### 방법 2: 명시적 파일 경로
 
 ```bash
-# 커스텀 정책 파일을 지정하여 설치
+# 커스텀 정책 파일과 함께 설치
 failproofai policies --install --custom ./my-policies.js
 
 # 정책 파일 경로 교체
@@ -76,7 +76,7 @@ failproofai policies --install --custom ./new-policies.js
 failproofai policies --uninstall --custom
 ```
 
-해석된 절대 경로는 `policies-config.json`의 `customPoliciesPath`에 저장됩니다. 파일은 훅 이벤트마다 새로 로드되며, 이벤트 간 캐싱은 없습니다.
+변환된 절대 경로는 `policies-config.json`에 `customPoliciesPath`로 저장됩니다. 파일은 매 훅 이벤트마다 새로 로드되며 이벤트 간 캐싱은 없습니다.
 
 ### 두 방법 함께 사용하기
 
@@ -90,7 +90,7 @@ failproofai policies --uninstall --custom
 
 ## API
 
-### Import
+### 임포트
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
@@ -98,7 +98,7 @@ import { customPolicies, allow, deny, instruct } from "failproofai";
 
 ### `customPolicies.add(hook)`
 
-정책을 등록합니다. 하나의 파일에 여러 정책을 추가하려면 원하는 만큼 호출하면 됩니다.
+정책을 등록합니다. 같은 파일에 여러 정책을 등록하려면 필요한 만큼 호출하세요.
 
 ```ts
 customPolicies.add({
@@ -109,34 +109,34 @@ customPolicies.add({
 });
 ```
 
-### 결정 헬퍼 함수
+### 결정 헬퍼
 
 | 함수 | 효과 | 사용 시점 |
 |----------|--------|----------|
-| `allow()` | 조용히 작업을 허용 | 안전한 동작이며 메시지가 필요 없을 때 |
-| `deny(message)` | 작업을 차단 | 에이전트가 해당 작업을 수행해서는 안 될 때 |
-| `instruct(message)` | 차단 없이 컨텍스트 추가 | 에이전트가 올바른 방향을 유지하도록 추가 정보를 제공할 때 |
+| `allow()` | 작업을 조용히 허용 | 작업이 안전하고 메시지가 필요 없을 때 |
+| `deny(message)` | 작업 차단 | 에이전트가 이 작업을 수행해서는 안 될 때 |
+| `instruct(message)` | 차단 없이 컨텍스트 추가 | 에이전트에게 올바른 방향을 유지하도록 추가 컨텍스트를 제공할 때 |
 
-`deny(message)` - 메시지는 Claude에게 `"Blocked by failproofai:"` 접두사와 함께 표시됩니다. 하나의 `deny`가 발생하면 이후 모든 평가가 중단됩니다.
+`deny(message)` - 메시지는 `"Blocked by failproofai:"` 접두사와 함께 Claude에게 전달됩니다. 하나의 `deny`가 이후 모든 평가를 단락시킵니다.
 
 `instruct(message)` - 메시지는 현재 툴 호출에 대한 Claude의 컨텍스트에 추가됩니다. 모든 `instruct` 메시지는 누적되어 함께 전달됩니다.
 
 <Tip>
-`policyParams`의 `hint` 필드를 추가하면 코드 변경 없이 `deny` 또는 `instruct` 메시지에 추가 안내를 덧붙일 수 있습니다. 이 기능은 커스텀(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 정책 모두에서 동작합니다. 자세한 내용은 [설정 → hint](/ko/configuration#hint-cross-cutting)를 참고하세요.
+`policyParams`에 `hint` 필드를 추가하면 코드 변경 없이 `deny` 또는 `instruct` 메시지에 추가 안내를 덧붙일 수 있습니다. 커스텀(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 정책에서도 동작합니다. 자세한 내용은 [설정 → hint](/ko/configuration#hint-cross-cutting)를 참조하세요.
 </Tip>
 
-### 정보성 allow 메시지
+### 정보 제공용 allow 메시지
 
-`allow(message)`는 작업을 허용하면서 **동시에** Claude에게 정보성 메시지를 전달합니다. 메시지는 훅 핸들러의 stdout 응답에서 `additionalContext`로 전달됩니다. `instruct`와 동일한 메커니즘을 사용하지만 의미적으로 다릅니다: 경고가 아닌 상태 업데이트입니다.
+`allow(message)`는 작업을 허용하면서 Claude에게 정보 메시지를 전송합니다. 메시지는 훅 핸들러의 stdout 응답에서 `additionalContext`로 전달됩니다 — `instruct`와 동일한 메커니즘이지만 의미상 다릅니다. 경고가 아닌 상태 업데이트입니다.
 
 | 함수 | 효과 | 사용 시점 |
 |----------|--------|----------|
-| `allow(message)` | 허용하면서 Claude에게 컨텍스트 전달 | 검사가 통과되었음을 확인하거나, 검사가 건너뛰어진 이유를 설명할 때 |
+| `allow(message)` | 허용하고 Claude에게 컨텍스트 전송 | 검사가 통과되었음을 확인하거나, 검사가 건너뛰어진 이유를 설명할 때 |
 
 사용 사례:
 - **상태 확인:** `allow("All CI checks passed.")` — Claude에게 모든 것이 정상임을 알림
-- **Fail-open 설명:** `allow("GitHub CLI not installed, skipping CI check.")` — 검사가 건너뛰어진 이유를 Claude에게 알려 전체 맥락을 제공
-- **여러 메시지 누적:** 여러 정책이 각각 `allow(message)`를 반환하면, 모든 메시지가 줄바꿈으로 연결되어 함께 전달됩니다
+- **Fail-open 설명:** `allow("GitHub CLI not installed, skipping CI check.")` — Claude가 전체 컨텍스트를 파악할 수 있도록 검사가 건너뛰어진 이유를 알림
+- **메시지 누적:** 여러 정책이 각각 `allow(message)`를 반환하면 모든 메시지가 줄바꿈으로 연결되어 함께 전달됩니다
 
 ```js
 customPolicies.add({
@@ -146,7 +146,7 @@ customPolicies.add({
     const cwd = ctx.session?.cwd;
     if (!cwd) return allow("No working directory, skipping branch check.");
 
-    // ... 브랜치 상태 확인 ...
+    // ... check branch status ...
     if (allPushed) {
       return allow("Branch is up to date with remote.");
     }
@@ -179,7 +179,7 @@ customPolicies.add({
 |-------|--------------|----------------------|
 | `PreToolUse` | Claude가 툴을 실행하기 전 | 툴의 입력 (예: Bash의 경우 `{ command: "..." }`) |
 | `PostToolUse` | 툴 실행 완료 후 | 툴의 입력 + `tool_result` (출력) |
-| `Notification` | Claude가 알림을 보낼 때 | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - 훅은 항상 `allow()`를 반환해야 하며, 알림을 차단할 수 없습니다 |
+| `Notification` | Claude가 알림을 전송할 때 | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - 훅은 항상 `allow()`를 반환해야 하며 알림을 차단할 수 없습니다 |
 | `Stop` | Claude 세션이 종료될 때 | 비어 있음 |
 
 ---
@@ -194,12 +194,12 @@ customPolicies.add({
 4. 사용자 `~/.failproofai/policies/`의 컨벤션 정책 (파일 알파벳 순, 파일 내 `.add()` 순서)
 
 <Note>
-첫 번째 `deny`가 이후 모든 정책 평가를 중단시킵니다. 모든 `instruct` 메시지는 누적되어 함께 전달됩니다.
+첫 번째 `deny`가 이후 모든 정책을 단락시킵니다. 모든 `instruct` 메시지는 누적되어 함께 전달됩니다.
 </Note>
 
 ---
 
-## 트랜지티브 임포트
+## 전이적 임포트
 
 커스텀 정책 파일은 상대 경로를 사용하여 로컬 모듈을 임포트할 수 있습니다:
 
@@ -218,46 +218,46 @@ customPolicies.add({
 });
 ```
 
-엔트리 파일에서 도달 가능한 모든 상대 임포트가 해석됩니다. 이는 `from "failproofai"` 임포트를 실제 dist 경로로 재작성하고, ESM 호환성을 보장하기 위해 임시 `.mjs` 파일을 생성하는 방식으로 구현됩니다.
+엔트리 파일에서 도달 가능한 모든 상대 임포트가 해석됩니다. 이는 `from "failproofai"` 임포트를 실제 dist 경로로 재작성하고 ESM 호환성을 보장하기 위해 임시 `.mjs` 파일을 생성하는 방식으로 구현됩니다.
 
 ---
 
 ## 이벤트 타입 필터링
 
-`match.events`를 사용하여 정책이 발동되는 이벤트를 제한할 수 있습니다:
+`match.events`를 사용하여 정책이 실행되는 시점을 제한할 수 있습니다:
 
 ```js
 customPolicies.add({
   name: "require-summary-on-stop",
   match: { events: ["Stop"] },
   fn: async (ctx) => {
-    // 세션이 종료될 때만 발동됩니다
-    // ctx.session.transcriptPath에 전체 세션 로그가 있습니다
+    // 세션이 종료될 때만 실행됩니다
+    // ctx.session.transcriptPath에 전체 세션 로그가 포함됩니다
     return allow();
   },
 });
 ```
 
-`match`를 완전히 생략하면 모든 이벤트 타입에서 발동됩니다.
+`match`를 완전히 생략하면 모든 이벤트 타입에서 실행됩니다.
 
 ---
 
-## 오류 처리 및 실패 동작
+## 오류 처리 및 실패 모드
 
 커스텀 정책은 **fail-open** 방식입니다: 오류가 발생해도 내장 정책을 차단하거나 훅 핸들러를 중단시키지 않습니다.
 
-| 실패 유형 | 동작 |
+| 실패 상황 | 동작 |
 |---------|----------|
-| `customPoliciesPath` 미설정 | 명시적 커스텀 정책이 실행되지 않음; 컨벤션 정책 및 내장 정책은 정상 동작 |
+| `customPoliciesPath` 미설정 | 명시적 커스텀 정책이 실행되지 않음; 컨벤션 정책과 내장 정책은 정상적으로 계속 실행 |
 | 파일을 찾을 수 없음 | `~/.failproofai/hook.log`에 경고 기록; 내장 정책은 계속 실행 |
 | 구문/임포트 오류 (명시적) | `~/.failproofai/hook.log`에 오류 기록; 명시적 커스텀 정책 건너뜀 |
 | 구문/임포트 오류 (컨벤션) | 오류 기록; 해당 파일 건너뜀, 다른 컨벤션 파일은 계속 로드 |
 | 런타임에서 `fn` 예외 발생 | 오류 기록; 해당 훅은 `allow`로 처리; 다른 훅은 계속 실행 |
-| `fn` 실행 시간이 10초 초과 | 타임아웃 기록; `allow`로 처리 |
-| 컨벤션 디렉토리 없음 | 컨벤션 정책이 실행되지 않음; 오류 없음 |
+| `fn`이 10초 이상 소요 | 타임아웃 기록; `allow`로 처리 |
+| 컨벤션 디렉토리 없음 | 컨벤션 정책 실행 안 됨; 오류 없음 |
 
 <Tip>
-커스텀 정책 오류를 디버깅하려면 로그 파일을 모니터링하세요:
+커스텀 정책 오류를 디버깅하려면 로그 파일을 실시간으로 확인하세요:
 
 ```bash
 tail -f ~/.failproofai/hook.log
@@ -266,7 +266,7 @@ tail -f ~/.failproofai/hook.log
 
 ---
 
-## 전체 예제: 여러 정책
+## 전체 예시: 여러 정책
 
 ```js
 // my-policies.js
@@ -285,7 +285,7 @@ customPolicies.add({
   },
 });
 
-// 에이전트 방향 유지: 커밋 전 테스트 확인
+// 에이전트 방향 유지: 커밋 전 테스트 검증
 customPolicies.add({
   name: "remind-test-before-commit",
   description: "Keep the agent on track: verify tests pass before committing",
@@ -300,7 +300,7 @@ customPolicies.add({
   },
 });
 
-// 동결 기간 중 계획되지 않은 의존성 변경 방지
+// 프리즈 기간 중 계획되지 않은 의존성 변경 방지
 customPolicies.add({
   name: "dependency-freeze",
   description: "Prevent unplanned dependency changes during freeze period",
@@ -321,15 +321,15 @@ export { customPolicies };
 
 ---
 
-## 예제 파일
+## 예제
 
-`examples/` 디렉토리에는 바로 실행 가능한 정책 파일들이 포함되어 있습니다:
+`examples/` 디렉토리에는 바로 실행 가능한 정책 파일이 포함되어 있습니다:
 
 | 파일 | 내용 |
 |------|----------|
-| `examples/policies-basic.js` | 일반적인 에이전트 실패 패턴을 다루는 5가지 기본 정책 |
-| `examples/policies-advanced/index.js` | 고급 패턴: 트랜지티브 임포트, 비동기 호출, 출력 스크러빙, 세션 종료 훅 |
-| `examples/convention-policies/security-policies.mjs` | 컨벤션 기반 보안 정책 (.env 파일 쓰기 차단, git 히스토리 재작성 방지) |
+| `examples/policies-basic.js` | 일반적인 에이전트 실패 모드를 다루는 5가지 기본 정책 |
+| `examples/policies-advanced/index.js` | 고급 패턴: 전이적 임포트, 비동기 호출, 출력 스크러빙, 세션 종료 훅 |
+| `examples/convention-policies/security-policies.mjs` | 컨벤션 기반 보안 정책 (.env 쓰기 차단, git 히스토리 재작성 방지) |
 | `examples/convention-policies/workflow-policies.mjs` | 컨벤션 기반 워크플로우 정책 (테스트 알림, 감사 파일 쓰기) |
 
 ### 명시적 파일 예제 사용
@@ -350,4 +350,4 @@ mkdir -p ~/.failproofai/policies
 cp examples/convention-policies/*.mjs ~/.failproofai/policies/
 ```
 
-설치 명령이 필요 없습니다. 다음 훅 이벤트 발생 시 파일이 자동으로 감지됩니다.
+설치 명령이 필요 없습니다 — 다음 훅 이벤트 시 파일이 자동으로 로드됩니다.

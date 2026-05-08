@@ -1,6 +1,6 @@
 ---
 title: 정책 설치
-description: "에이전트의 모든 도구 호출에서 정책이 실행되도록 활성화합니다"
+description: "에이전트의 모든 도구 호출에 정책이 실행되도록 활성화합니다"
 ---
 
 ```bash
@@ -15,43 +15,43 @@ failproofai policies --install [policy-names...] [options]
 
 | 플래그 | 설명 |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | 설치할 에이전트 CLI; 공백으로 구분(예: `--cli claude codex copilot`)하거나 반복 입력. 생략 시 설치된 CLI를 자동으로 감지하고 선택 메시지를 표시합니다. |
+| `--cli claude\|codex\|copilot` | 설치할 에이전트 CLI(들); 공백으로 구분(예: `--cli claude codex copilot`)하거나 반복 지정. 생략하면 설치된 CLI를 자동으로 감지하고 선택 프롬프트를 표시합니다. |
 | `--scope user` | 사용자 범위 설정 파일에 설치합니다 (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). 기본값. |
 | `--scope project` | 프로젝트 범위 설정 파일에 설치합니다 (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
 | `--scope local` | Claude 전용 — `<cwd>/.claude/settings.local.json`에 설치합니다. Codex와 Copilot은 `local` 범위를 지원하지 않습니다. |
-| `--custom <path>` / `-c` | 커스텀 훅 정책이 포함된 JS 파일의 경로 |
+| `--custom <path>` / `-c` | 커스텀 훅 정책이 포함된 JS 파일 경로 |
 
 ## 동작 방식
 
-- **정책 이름 미지정** - 정책을 선택할 수 있는 대화형 프롬프트를 엽니다
-- **특정 이름 지정** - 해당 정책을 활성화합니다 (이미 활성화된 정책에 추가됨)
+- **정책 이름 미지정** - 정책을 선택할 수 있는 인터랙티브 프롬프트를 엽니다
+- **특정 이름 지정** - 해당 정책들을 활성화합니다 (이미 활성화된 정책에 추가됨)
 - **`all`** - 사용 가능한 모든 정책을 활성화합니다
 
-설치는 추가 방식으로 동작합니다: `--install`을 다시 실행하면 기존 정책을 제거하지 않고 새 정책만 추가합니다.
+설치는 누적 방식으로 동작합니다: `--install`을 다시 실행하면 기존 정책을 제거하지 않고 새 정책만 추가됩니다.
 
 ## 예시
 
 ```bash
-# 모든 기본 정책을 전역으로 설치합니다 (대화형)
+# 전역으로 모든 기본 정책 설치 (인터랙티브)
 failproofai policies --install
 
-# 현재 프로젝트에 특정 정책을 설치합니다
+# 현재 프로젝트에 특정 정책 설치
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# 모든 정책을 한 번에 활성화합니다
+# 모든 정책 한 번에 활성화
 failproofai policies --install all
 
-# 커스텀 정책 파일과 함께 설치합니다
+# 커스텀 정책 파일과 함께 설치
 failproofai policies --install --custom ./my-policies.js
 
-# OpenAI Codex에 설치합니다 (프로젝트 범위)
+# OpenAI Codex에 설치 (프로젝트 범위)
 failproofai policies --install --cli codex --scope project
 
-# 현재 프로젝트에 GitHub Copilot CLI (베타)용으로 설치합니다
+# 현재 프로젝트에 GitHub Copilot CLI (베타) 설치
 failproofai policies --install --cli copilot --scope project
 
-# 세 CLI 모두에 한 번에 설치합니다
+# 세 CLI 모두에 한 번에 설치
 failproofai policies --install --cli claude codex copilot
 ```
 
-`--custom <path>`를 지정하면 파일이 즉시 유효성 검사를 거칩니다 — `customPolicies.add()`를 최소 한 번 이상 호출해야 합니다. 확인된 경로는 `customPoliciesPath`로 `policies-config.json`에 저장됩니다.
+`--custom <path>`를 지정하면 파일이 즉시 유효성 검사를 받습니다 — `customPolicies.add()`를 최소 한 번 이상 호출해야 합니다. 확인된 경로는 `policies-config.json`에 `customPoliciesPath`로 저장됩니다.

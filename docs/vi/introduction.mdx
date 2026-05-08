@@ -1,41 +1,41 @@
 ---
 title:  Failproof AI
-description: "Quản lý hooks và policies để giữ cho các AI agents của bạn hoạt động đáng tin cậy và tự trị"
+description: "Quản lý hooks và policies giúp các AI agents của bạn hoạt động đáng tin cậy và tự động"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks và policies giữ cho các AI agents của bạn hoạt động đáng tin cậy và tự trị - cho **Claude Code**, **OpenAI Codex**, và **Agents SDK**.
+Hooks và policies giúp các AI agents của bạn hoạt động đáng tin cậy và tự động - cho **Claude Code**, **OpenAI Codex**, và **Agents SDK**.
 
-Các AI agents thất bại theo những cách có thể dự đoán được. Chúng chạy các lệnh tàn phá, rò rỉ bí mật, lệch khỏi nhiệm vụ, bị mắc kẹt trong vòng lặp, hoặc push trực tiếp lên main. Nếu không được giám sát, những lỗi nhỏ sẽ dẫn đến hậu quả lớn.
+Các AI agents thất bại theo những cách dễ dự đoán. Chúng chạy các lệnh có tính phá hủy, để lộ bí mật, lệch khỏi nhiệm vụ, bị kẹt trong vòng lặp, hoặc push trực tiếp lên main. Nếu không được giám sát, những lỗi nhỏ sẽ dẫn đến hậu quả lớn.
 
-Failproof AI giải quyết vấn đề này với **policies** - các quy tắc hook vào từng lệnh công cụ của agent và có thể **phát hiện lỗi**, **giảm thiểu chúng** (block, instruct, sanitize), và **cảnh báo cho bạn** khi cần sự chú ý. Một bảng điều khiển cục bộ cho phép bạn xem lại mọi thứ sau đó.
+Failproof AI giải quyết vấn đề này bằng **policies** - các quy tắc hook vào mỗi tool call của agent và có thể **phát hiện lỗi**, **giảm thiểu chúng** (block, instruct, sanitize), và **cảnh báo cho bạn** khi cần chú ý. Một bảng điều khiển cục bộ cho phép bạn xem lại mọi thứ sau.
 
-Mọi thứ chạy cục bộ. Không có dữ liệu nào rời khỏi máy của bạn.
+Tất cả chạy cục bộ. Không có dữ liệu nào rời khỏi máy của bạn.
 
 ## Bắt đầu
 
 <CardGroup cols={2}>
 
-<Card title="26 policies được tích hợp sẵn" icon="shield" href="/vi/built-in-policies">
-  Chặn các lệnh tàn phá, ngăn chặn rò rỉ bí mật, giữ cho các agents ở trong ranh giới dự án, và nhiều hơn nữa - ngay từ hộp.
+<Card title="26 built-in policies" icon="shield" href="/vi/built-in-policies">
+  Chặn các lệnh có tính phá hủy, ngăn chặn rò rỉ bí mật, giữ agents trong ranh giới dự án, và nhiều hơn nữa - có sẵn.
 </Card>
 
 <Card title="Custom policies" icon="code" href="/vi/custom-policies">
-  Viết các quy tắc của riêng bạn bằng JavaScript với API allow / deny / instruct đơn giản.
+  Viết các quy tắc của riêng bạn bằng JavaScript với một API đơn giản allow / deny / instruct.
 </Card>
 
 <Card title="Agent monitor" icon="chart-line" href="/vi/dashboard">
-  Xem các agents của bạn đã làm gì trong khi bạn vắng mặt. Duyệt các phiên, kiểm tra các lệnh công cụ, xem xét nơi policies được kích hoạt.
+  Xem những gì các agents của bạn đã làm khi bạn vắng mặt. Duyệt các phiên, kiểm tra các tool calls, xem xét nơi các policies được kích hoạt.
 </Card>
 
-<Card title="Cấu hình dễ dàng" icon="gear" href="/vi/configuration">
-  Điều chỉnh bất kỳ policy nào mà không cần mã. Đặt danh sách cho phép, nhánh được bảo vệ, hoặc ngưỡng cho từng dự án hoặc toàn cầu.
+<Card title="Easy configuration" icon="gear" href="/vi/configuration">
+  Điều chỉnh bất kỳ policy nào mà không cần code. Đặt allowlists, protected branches, hoặc thresholds cho mỗi dự án hoặc toàn cục.
 </Card>
 
 </CardGroup>
 
-## Bắt đầu nhanh
+## Khởi động nhanh
 
 <CodeGroup>
 
@@ -54,4 +54,4 @@ failproofai policies --install   # enable policies
 failproofai                      # launch the dashboard
 ```
 
-Xem hướng dẫn [Getting started](/vi/getting-started) để biết toàn bộ hướng dẫn.
+Xem hướng dẫn [Getting started](/vi/getting-started) để biết hướng dẫn đầy đủ.

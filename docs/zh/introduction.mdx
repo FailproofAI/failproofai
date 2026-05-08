@@ -1,36 +1,36 @@
 ---
 title: Failproof AI
-description: "管理 hook 和策略，让您的 AI 智能体保持可靠并自主运行"
+description: "管理钩子和策略，让您的 AI 智能体保持可靠并自主运行"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-让您的 AI 智能体保持可靠并自主运行的 hook 与策略——适用于 **Claude Code**、**OpenAI Codex** 以及 **Agents SDK**。
+为 **Claude Code**、**OpenAI Codex** 和 **Agents SDK** 提供钩子和策略，让您的 AI 智能体保持可靠并自主运行。
 
-AI 智能体的失败方式往往是可以预见的：执行破坏性命令、泄露密钥、偏离任务、陷入死循环，或直接推送到主分支。一旦无人看管，小问题就会引发连锁故障。
+AI 智能体的失败方式往往是可以预见的：执行破坏性命令、泄露密钥、偏离任务、陷入循环，或直接推送到主分支。一旦无人监管，小问题就会引发连锁故障。
 
-Failproof AI 通过**策略**来解决这些问题——这些规则会介入每一次智能体工具调用，能够**检测故障**、**缓解故障**（阻止、指示、净化），并在需要关注时**向您发出警报**。本地仪表板让您可以事后回顾一切。
+Failproof AI 通过**策略**来解决这些问题——这些规则挂钩到每一次智能体工具调用中，能够**检测故障**、**进行缓解**（拦截、指导、清理），并在需要关注时**及时提醒您**。本地仪表板让您事后可以全面复盘。
 
-所有运算均在本地完成，数据不会离开您的设备。
+所有处理均在本地完成，数据不会离开您的机器。
 
 ## 快速上手
 
 <CardGroup cols={2}>
 
-<Card title="26 条内置策略" icon="shield" href="/zh/built-in-policies">
-  开箱即用：阻止破坏性命令、防止密钥泄露、将智能体限制在项目边界内，以及更多功能。
+<Card title="26 个内置策略" icon="shield" href="/zh/built-in-policies">
+  开箱即用：拦截破坏性命令、防止密钥泄露、将智能体限制在项目边界内，以及更多功能。
 </Card>
 
 <Card title="自定义策略" icon="code" href="/zh/custom-policies">
-  使用 JavaScript 编写您自己的规则，提供简洁的 allow / deny / instruct API。
+  使用简洁的 allow / deny / instruct API，用 JavaScript 编写您自己的规则。
 </Card>
 
 <Card title="智能体监控" icon="chart-line" href="/zh/dashboard">
-  查看智能体在您离开期间的所有操作。浏览会话、检查工具调用、查看策略触发记录。
+  查看智能体在您离开期间的操作记录。浏览会话、检查工具调用、查看策略触发详情。
 </Card>
 
-<Card title="便捷配置" icon="gear" href="/zh/configuration">
-  无需编写代码即可调整任何策略。按项目或全局设置白名单、受保护分支或阈值。
+<Card title="轻松配置" icon="gear" href="/zh/configuration">
+  无需编写代码即可调整任意策略。按项目或全局设置允许列表、受保护分支或阈值。
 </Card>
 
 </CardGroup>

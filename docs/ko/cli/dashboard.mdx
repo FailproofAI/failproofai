@@ -1,6 +1,6 @@
 ---
 title: 세션 보기
-description: "대시보드를 실행하여 에이전트 세션을 탐색하고 정책을 관리합니다"
+description: "대시보드를 실행하여 에이전트 세션을 탐색하고 정책을 관리하세요"
 ---
 
 ```bash
@@ -13,9 +13,9 @@ failproofai
 
 | 플래그 | 설명 |
 |--------|------|
-| `--port <number>` | 수신할 포트 (기본값: `8020`) |
-| `--projects-path <path>` | Claude Code 프로젝트 폴더 위치 재정의 |
-| `--allowed-origins <origins>` | 개발 리소스에 접근 허용할 호스트/IP (쉼표로 구분) |
+| `--port <number>` | 수신 대기할 포트 (기본값: `8020`) |
+| `--projects-path <path>` | Claude Code 프로젝트 폴더를 찾을 경로 재정의 |
+| `--allowed-origins <origins>` | 개발 리소스에 접근을 허용할 호스트/IP 목록 (쉼표로 구분) |
 
 ## 예시
 
@@ -23,6 +23,6 @@ failproofai
 # 다른 포트로 실행
 failproofai --port 9000
 
-# 커스텀 프로젝트 경로 사용
+# 사용자 지정 프로젝트 경로 사용
 failproofai --projects-path ~/my-claude-projects
 ```

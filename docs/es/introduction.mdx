@@ -1,24 +1,24 @@
 ---
 title: Failproof AI
-description: "Gestiona hooks y políticas que mantienen a tus agentes de IA confiables y funcionando de forma autónoma"
+description: "Gestiona hooks y políticas que mantienen a tus agentes de IA fiables y funcionando de forma autónoma"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks y políticas que mantienen a tus agentes de IA confiables y funcionando de forma autónoma — para **Claude Code**, **OpenAI Codex** y el **Agents SDK**.
+Hooks y políticas que mantienen a tus agentes de IA fiables y funcionando de forma autónoma — para **Claude Code**, **OpenAI Codex** y el **Agents SDK**.
 
-Los agentes de IA fallan de maneras predecibles: ejecutan comandos destructivos, filtran secretos, se desvían de su tarea, se quedan atascados en bucles o hacen push directamente a main. Sin supervisión, los pequeños fallos se convierten en cascadas de problemas.
+Los agentes de IA fallan de maneras predecibles. Ejecutan comandos destructivos, filtran secretos, se desvían de sus tareas, se quedan atascados en bucles o hacen push directamente a main. Sin supervisión, los pequeños fallos se amplifican.
 
-Failproof AI resuelve esto con **políticas** — reglas que se conectan a cada llamada de herramienta del agente y pueden **detectar fallos**, **mitigarlos** (bloquear, instruir, sanear) y **alertarte** cuando algo requiere atención. Un panel local te permite revisar todo posteriormente.
+Failproof AI resuelve esto con **políticas** — reglas que se enganchan en cada llamada a herramientas del agente y pueden **detectar fallos**, **mitigarlos** (bloquear, instruir, sanear) y **alertarte** cuando algo requiere atención. Un panel de control local te permite revisar todo después.
 
-Todo se ejecuta localmente. Ningún dato sale de tu máquina.
+Todo se ejecuta en local. Ningún dato sale de tu máquina.
 
 ## Primeros pasos
 
 <CardGroup cols={2}>
 
 <Card title="26 políticas integradas" icon="shield" href="/es/built-in-policies">
-  Bloquea comandos destructivos, previene la filtración de secretos, mantiene a los agentes dentro de los límites del proyecto y mucho más — listo para usar.
+  Bloquea comandos destructivos, evita la filtración de secretos, mantén a los agentes dentro de los límites del proyecto y mucho más — listo para usar.
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/es/custom-policies">
@@ -26,7 +26,7 @@ Todo se ejecuta localmente. Ningún dato sale de tu máquina.
 </Card>
 
 <Card title="Monitor de agentes" icon="chart-line" href="/es/dashboard">
-  Ve lo que hicieron tus agentes mientras no estabas. Explora sesiones, inspecciona llamadas a herramientas y revisa dónde se activaron las políticas.
+  Descubre qué hicieron tus agentes mientras no estabas. Navega por sesiones, inspecciona llamadas a herramientas y revisa dónde se activaron las políticas.
 </Card>
 
 <Card title="Configuración sencilla" icon="gear" href="/es/configuration">
@@ -51,7 +51,7 @@ bun add -g failproofai
 
 ```bash
 failproofai policies --install   # habilitar políticas
-failproofai                      # abrir el panel
+failproofai                      # iniciar el panel de control
 ```
 
-Consulta la guía de [Primeros pasos](/es/getting-started) para ver el recorrido completo.
+Consulta la guía de [Primeros pasos](/es/getting-started) para el recorrido completo.

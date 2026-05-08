@@ -1,44 +1,44 @@
 ---
 title: Instalar políticas
-description: "Habilita políticas para que se ejecuten en cada llamada a herramientas del agente"
+description: "Habilita políticas para que se ejecuten en cada llamada de herramienta del agente"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-Escribe entradas de hooks en el archivo de configuración del CLI del agente instalado (Claude Code, OpenAI Codex o GitHub Copilot CLI _(beta)_) para que failproofai intercepte las llamadas a herramientas.
+Escribe entradas de hook en el archivo de configuración del CLI del agente instalado (Claude Code, OpenAI Codex o GitHub Copilot CLI _(beta)_) para que failproofai intercepte las llamadas de herramienta.
 
 Alias: `failproofai p -i`
 
 ## Opciones
 
-| Flag | Descripción |
-|------|-------------|
-| `--cli claude\|codex\|copilot` | CLI(s) del agente para los que instalar; separados por espacios (p. ej. `--cli claude codex copilot`) o repetidos. Omitir para detectar los CLIs instalados y mostrar un selector. |
-| `--scope user` | Instala en el archivo de configuración con ámbito de usuario (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Valor predeterminado. |
-| `--scope project` | Instala en el archivo de configuración con ámbito de proyecto (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Solo para Claude — instala en `<cwd>/.claude/settings.local.json`. Codex y Copilot no tienen un ámbito `local`. |
-| `--custom <path>` / `-c` | Ruta a un archivo JS que contiene políticas de hooks personalizadas |
+| Bandera | Descripción |
+|---------|-------------|
+| `--cli claude\|codex\|copilot` | CLI(s) del agente en los que instalar; separados por espacio (p. ej. `--cli claude codex copilot`) o repetidos. Si se omite, detecta los CLIs instalados y muestra un prompt. |
+| `--scope user` | Instala en el archivo de configuración de ámbito de usuario (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Valor predeterminado. |
+| `--scope project` | Instala en el archivo de configuración de ámbito de proyecto (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Solo Claude — instala en `<cwd>/.claude/settings.local.json`. Codex y Copilot no tienen ámbito `local`. |
+| `--custom <path>` / `-c` | Ruta a un archivo JS con políticas de hook personalizadas |
 
 ## Comportamiento
 
-- **Sin nombres de política** - abre un selector interactivo para elegir políticas
-- **Nombres específicos** - habilita esas políticas (se añaden a las ya habilitadas)
+- **Sin nombres de política** - abre un prompt interactivo para seleccionar políticas
+- **Nombres específicos** - habilita esas políticas (se añaden a las que ya estén habilitadas)
 - **`all`** - habilita todas las políticas disponibles
 
-La instalación es aditiva: ejecutar `--install` de nuevo agrega nuevas políticas sin eliminar las existentes.
+La instalación es acumulativa: ejecutar `--install` de nuevo añade nuevas políticas sin eliminar las existentes.
 
 ## Ejemplos
 
 ```bash
-# Instalar todas las políticas predeterminadas globalmente (interactivo)
+# Instalar todas las políticas predeterminadas de forma global (interactivo)
 failproofai policies --install
 
 # Instalar políticas específicas para el proyecto actual
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# Habilitar todas las políticas a la vez
+# Habilitar todas las políticas de una vez
 failproofai policies --install all
 
 # Instalar con un archivo de políticas personalizado
@@ -54,4 +54,4 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli claude codex copilot
 ```
 
-Cuando se proporciona `--custom <path>`, el archivo se valida de inmediato: debe llamar a `customPolicies.add()` al menos una vez. La ruta resuelta se guarda en `policies-config.json` como `customPoliciesPath`.
+Cuando se proporciona `--custom <path>`, el archivo se valida inmediatamente — debe llamar a `customPolicies.add()` al menos una vez. La ruta resuelta se guarda en `policies-config.json` como `customPoliciesPath`.

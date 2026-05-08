@@ -9,22 +9,22 @@ failproofai --hook <EventType>
 
 这是由 `failproofai policies --install` 注册到 Claude Code 的 `settings.json` 中的命令。通常情况下，你不需要直接调用它。
 
-该命令从 stdin 读取 JSON 数据，评估所有已启用的策略，并以退出码的形式返回决策结果：
+该命令从 stdin 读取 JSON 载荷，评估所有已启用的策略，并以退出码的形式返回决策结果：
 
 | 退出码 | 决策 | 效果 |
 |--------|------|------|
 | `0` | `allow` | 允许该操作 |
-| `1` | `deny` | 阻止该操作 —— Claude 将看到拒绝原因 |
+| `1` | `deny` | 阻止该操作 - Claude 会收到拒绝原因 |
 | `2` | `instruct` | 向 Claude 的上下文中注入指导信息 |
 
 ### 支持的事件类型
 
-| 分类 | 事件 |
+| 类别 | 事件 |
 |------|------|
-| **工具执行** | `PreToolUse`、`PostToolUse`、`PostToolUseFailure`、`PermissionRequest`、`PermissionDenied` |
-| **会话生命周期** | `SessionStart`、`SessionEnd`、`Stop`、`StopFailure` |
-| **用户交互** | `UserPromptSubmit`、`Notification`、`Elicitation`、`ElicitationResult` |
-| **子代理与任务** | `SubagentStart`、`SubagentStop`、`TaskCreated`、`TaskCompleted`、`TeammateIdle` |
-| **配置** | `InstructionsLoaded`、`ConfigChange`、`CwdChanged` |
-| **文件系统** | `FileChanged`、`WorktreeCreate`、`WorktreeRemove` |
-| **上下文** | `PreCompact`、`PostCompact` |
+| **工具执行** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **会话生命周期** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **用户交互** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **子代理与任务** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **配置** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **文件系统** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
+| **上下文** | `PreCompact`, `PostCompact` |

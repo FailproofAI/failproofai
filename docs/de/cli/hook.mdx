@@ -1,21 +1,21 @@
 ---
 title: Hook-Handler (intern)
-description: "Der Subprozess, den Claude Code bei jedem Tool-Ereignis aufruft"
+description: "Der Unterprozess, den Claude Code bei jedem Tool-Ereignis aufruft"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Dies ist der Befehl, der in der `settings.json` von Claude Code durch `failproofai policies --install` registriert wird. Normalerweise wird er nicht direkt aufgerufen.
+Dies ist der Befehl, der in der `settings.json` von Claude Code durch `failproofai policies --install` registriert wird. Normalerweise rufen Sie diesen Befehl nicht direkt auf.
 
-Liest eine JSON-Nutzlast von stdin, wertet alle aktivierten Richtlinien aus und beendet sich mit einem Code, der die Entscheidung angibt:
+Liest eine JSON-Payload von stdin, wertet alle aktivierten Richtlinien aus und beendet sich mit einem Exit-Code, der die Entscheidung angibt:
 
 | Exit-Code | Entscheidung | Auswirkung |
 |-----------|--------------|------------|
 | `0` | `allow` | Aktion erlauben |
 | `1` | `deny` | Aktion blockieren – Claude erhält den Ablehnungsgrund |
-| `2` | `instruct` | Hinweis in Claudes Kontext einschleusen |
+| `2` | `instruct` | Hinweise in Claudes Kontext einschleusen |
 
 ### Unterstützte Ereignistypen
 

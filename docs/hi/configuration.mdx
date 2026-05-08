@@ -1,28 +1,28 @@
 ---
-title: कॉन्फ़िगरेशन
-description: "कॉन्फ़िग फाइल फॉर्मेट, तीन-स्कोप सिस्टम, और मर्ज नियम"
+title: Configuration
+description: "Config file format, three-scope system, and merge rules"
 icon: gear
 ---
 
-failproofai JSON कॉन्फ़िगरेशन फाइलों का उपयोग करता है यह नियंत्रित करने के लिए कि कौन सी नीतियां सक्रिय हैं, वे कैसे काम करती हैं, और कस्टम नीतियां कहां से लोड की जाती हैं। कॉन्फ़िगरेशन आपकी टीम के साथ साझा करना आसान बनाने के लिए डिज़ाइन किया गया है - इसे अपने रिपो में कमिट करें और हर डेवलपर को एक ही एजेंट सेफ्टी नेट मिलता है।
+failproofai JSON configuration files का उपयोग करके नियंत्रित करता है कि कौन सी policies सक्रिय हैं, वे कैसे व्यवहार करती हैं, और कस्टम policies कहाँ से लोड की जाती हैं। Configuration को आपकी टीम के साथ साझा करना आसान है - इसे अपने repo में commit करें और हर developer को समान agent safety net मिलता है।
 
 ---
 
-## कॉन्फ़िगरेशन स्कोप
+## Configuration scopes
 
-तीन कॉन्फ़िगरेशन स्कोप हैं, प्राथमिकता के क्रम में मूल्यांकित:
+तीन configuration scopes हैं, जिनका मूल्यांकन प्राथमिकता क्रम में किया जाता है:
 
-| स्कोप | फाइल पाथ | उद्देश्य |
+| Scope | File path | Purpose |
 |-------|-----------|---------|
-| **project** | `.failproofai/policies-config.json` | प्रति-रिपो सेटिंग्स, संस्करण नियंत्रण में कमिट किए गए |
-| **local** | `.failproofai/policies-config.local.json` | व्यक्तिगत प्रति-रिपो ओवरराइड, gitignored |
-| **global** | `~/.failproofai/policies-config.json` | सभी प्रोजेक्ट्स में उपयोगकर्ता-स्तर की डिफ़ॉल्ट सेटिंग्स |
+| **project** | `.failproofai/policies-config.json` | Per-repo settings, version control में commit किए गए |
+| **local** | `.failproofai/policies-config.local.json` | Personal per-repo overrides, gitignored |
+| **global** | `~/.failproofai/policies-config.json` | सभी projects में user-level defaults |
 
-जब failproofai को एक हुक ईवेंट प्राप्त होता है, तो यह वर्तमान कार्य निर्देशिका के लिए सभी तीन फाइलों को लोड और मर्ज करता है।
+जब failproofai को hook event मिलता है, तो यह वर्तमान working directory के लिए सभी तीनों files को लोड करता है और merge करता है।
 
-### मर्ज नियम
+### Merge rules
 
-**`enabledPolicies`** - सभी तीन स्कोप का संघ। किसी भी स्तर पर सक्षम कोई भी नीति सक्रिय है।
+**`enabledPolicies`** - सभी तीनों scopes का union। कोई भी policy जो किसी भी level पर enabled है, सक्रिय है।
 
 ```text
 project:  ["block-sudo"]
@@ -32,13 +32,13 @@ global:   ["block-sudo", "sanitize-api-keys"]
 resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← deduplicated union
 ```
 
-**`policyParams`** - पहला स्कोप जो किसी दिए गए नीति के लिए पैरामीटर परिभाषित करता है पूरी तरह जीता है। नीति के पैरामीटर के भीतर मानों की कोई गहरी मर्जिंग नहीं है।
+**`policyParams`** - पहला scope जो किसी policy के लिए params define करता है, पूरी तरह जीत जाता है। policy के params के भीतर values की कोई deep merging नहीं है।
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project wins, global ignored
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← project जीतता है, global ignore होता है
 ```
 
 ```text
@@ -46,16 +46,16 @@ project:  (no block-sudo entry)
 local:    (no block-sudo entry)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← falls through to global
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक फॉलथ्रू होता है
 ```
 
-**`customPoliciesPath`** - पहला स्कोप जो इसे परिभाषित करता है जीता है।
+**`customPoliciesPath`** - पहला scope जो इसे define करता है, जीत जाता है।
 
-**`llm`** - पहला स्कोप जो इसे परिभाषित करता है जीता है।
+**`llm`** - पहला scope जो इसे define करता है, जीत जाता है।
 
 ---
 
-## कॉन्फ़िग फाइल फॉर्मेट
+## Config file format
 
 ```json
 {
@@ -96,85 +96,85 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← falls through to glo
 
 ---
 
-## फील्ड संदर्भ
+## Field reference
 
 ### `enabledPolicies`
 
-प्रकार: `string[]`
+Type: `string[]`
 
-सक्षम करने के लिए नीति नामों की सूची। नामों को `failproofai policies` द्वारा दिखाए गए नीति पहचानकर्ताओं के साथ बिल्कुल मेल खाना चाहिए। पूरी सूची के लिए [Built-in Policies](/hi/built-in-policies) देखें।
+Enable करने के लिए policy names की list। Names को `failproofai policies` द्वारा दिखाए गए policy identifiers से बिल्कुल match करना चाहिए। संपूर्ण list के लिए [Built-in Policies](/hi/built-in-policies) देखें।
 
-`enabledPolicies` में नहीं होने वाली नीतियां निष्क्रिय हैं, भले ही उनके पास `policyParams` में प्रविष्टियां हों।
+`enabledPolicies` में नहीं होने वाली policies निष्क्रिय हैं, भले ही उनके `policyParams` में entries हों।
 
 ### `policyParams`
 
-प्रकार: `Record<string, Record<string, unknown>>`
+Type: `Record<string, Record<string, unknown>>`
 
-प्रति-नीति पैरामीटर ओवरराइड। बाहरी कुंजी नीति का नाम है; आंतरिक कुंजियां नीति-विशिष्ट हैं। प्रत्येक नीति [Built-in Policies](/hi/built-in-policies) में अपने उपलब्ध पैरामीटर दस्तावेज़ित करती है।
+Per-policy parameter overrides। बाहरी key policy name है; भीतरी keys policy-specific हैं। प्रत्येक policy [Built-in Policies](/hi/built-in-policies) में अपने उपलब्ध parameters को document करता है।
 
-यदि किसी नीति के पैरामीटर हैं लेकिन आप उन्हें निर्दिष्ट नहीं करते हैं, तो नीति की निर्मित-में डिफ़ॉल्ट का उपयोग किया जाता है। जो उपयोगकर्ता `policyParams` को बिल्कुल कॉन्फ़िगर नहीं करते हैं उन्हें पिछले संस्करणों के समान व्यवहार मिलता है।
+यदि किसी policy के parameters हैं लेकिन आप उन्हें specify नहीं करते, तो policy के built-in defaults का उपयोग किया जाता है। जो users `policyParams` को बिल्कुल configure नहीं करते वे पिछले versions के समान व्यवहार प्राप्त करते हैं।
 
-नीति के पैरामीटर ब्लॉक के अंदर अज्ञात कुंजियों को हुक-फायर समय पर चुप्पी से अनदेखा किया जाता है लेकिन जब आप `failproofai policies` चलाते हैं तो चेतावनी के रूप में झंडी लगाई जाती है।
+policy के params block के अंदर Unknown keys को hook-fire time पर silently ignore किया जाता है लेकिन `failproofai policies` चलाने पर warnings के रूप में flagged किया जाता है।
 
 #### `hint` (cross-cutting)
 
-प्रकार: `string` (वैकल्पिक)
+Type: `string` (optional)
 
-एक संदेश जो तब जोड़ा जाता है जब कोई नीति `deny` या `instruct` लौटाती है। Claude को नीति को संशोधित किए बिना कार्रवाई योग्य मार्गदर्शन देने के लिए इसका उपयोग करें।
+एक message जो policy के `deny` या `instruct` return करने पर reason में जोड़ा जाता है। इसका उपयोग Claude को actionable guidance देने के लिए करें policy को modify किए बिना।
 
-किसी भी नीति प्रकार के साथ काम करता है — निर्मित-में, कस्टम (`custom/`), प्रोजेक्ट कन्वेंशन (`.failproofai-project/`), या उपयोगकर्ता कन्वेंशन (`.failproofai-user/`)।
+किसी भी policy type के साथ काम करता है — built-in, custom (`custom/`), project convention (`.failproofai-project/`), या user convention (`.failproofai-user/`)।
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "इसके बजाय एक नई शाखा बनाने का प्रयास करें।"
+      "hint": "Try creating a fresh branch instead."
     },
     "block-sudo": {
       "allowPatterns": ["sudo apt-get"],
-      "hint": "sudo के बिना सीधे apt-get का उपयोग करें।"
+      "hint": "Use apt-get directly without sudo."
     },
     "custom/my-policy": {
-      "hint": "पहले उपयोगकर्ता से अनुमति मांगें।"
+      "hint": "Ask the user for approval first."
     }
   }
 }
 ```
 
-जब `block-force-push` से इनकार करता है, Claude देखता है: *Force-pushing is blocked. Try creating a fresh branch instead.*
+जब `block-force-push` deny करता है, Claude देखता है: *"Force-pushing is blocked. Try creating a fresh branch instead."*
 
-गैर-स्ट्रिंग मान और खाली स्ट्रिंग्स को चुप्पी से अनदेखा किया जाता है। यदि `hint` सेट नहीं है, तो व्यवहार अपरिवर्तित है (पिछड़ी संगत)।
+Non-string values और empty strings को silently ignore किया जाता है। यदि `hint` set नहीं है, तो behavior unchanged है (backward-compatible)।
 
 ### `customPoliciesPath`
 
-प्रकार: `string` (निरपेक्ष पाथ)
+Type: `string` (absolute path)
 
-कस्टम हुक नीतियों वाली JavaScript फाइल का पाथ। यह `failproofai policies --install --custom <path>` द्वारा स्वचालित रूप से सेट किया जाता है (पाथ को निरपेक्ष होने के लिए संग्रहीत करने से पहले हल किया जाता है)।
+कस्टम hook policies वाली JavaScript file का path। यह `failproofai policies --install --custom <path>` द्वारा automatically set किया जाता है (path को store करने से पहले absolute में resolve किया जाता है)।
 
-फाइल को हर हुक ईवेंट पर ताज़ा लोड किया जाता है - कोई कैशिंग नहीं है। [Custom Policies](/hi/custom-policies) लेखन विवरण के लिए देखें।
+File को हर hook event पर fresh लोड किया जाता है - कोई caching नहीं है। Authoring details के लिए [Custom Policies](/hi/custom-policies) देखें।
 
-### कन्वेंशन-आधारित नीतियां
+### Convention-based policies
 
-स्पष्ट `customPoliciesPath` के अतिरिक्त, failproofai स्वचालित रूप से `.failproofai/policies/` निर्देशिकाओं से नीति फाइलें खोजता है और लोड करता है:
+Explicit `customPoliciesPath` के अलावा, failproofai automatically `.failproofai/policies/` directories से policy files को discover और load करता है:
 
-| स्तर | निर्देशिका | स्कोप |
+| Level | Directory | Scope |
 |-------|-----------|-------|
-| Project | `.failproofai/policies/` | संस्करण नियंत्रण के माध्यम से टीम के साथ साझा किया गया |
-| User | `~/.failproofai/policies/` | व्यक्तिगत, सभी प्रोजेक्ट्स पर लागू होता है |
+| Project | `.failproofai/policies/` | Version control के माध्यम से टीम के साथ shared |
+| User | `~/.failproofai/policies/` | Personal, सभी projects पर लागू होता है |
 
-**फाइल मिलान:** केवल `*policies.{js,mjs,ts}` से मेल खाने वाली फाइलें लोड की जाती हैं (जैसे `security-policies.mjs`, `workflow-policies.js`)। निर्देशिका में अन्य फाइलों को अनदेखा किया जाता है।
+**File matching:** केवल `*policies.{js,mjs,ts}` matching files load होती हैं (जैसे `security-policies.mjs`, `workflow-policies.js`)। Directory में अन्य files ignore होती हैं।
 
-**कोई कॉन्फ़िगरेशन आवश्यक नहीं:** कन्वेंशन नीतियों को `policies-config.json` में प्रविष्टियों की आवश्यकता नहीं है। बस निर्देशिका में फाइलें डालें और वे अगली हुक ईवेंट पर उठाई जाएंगी।
+**कोई config आवश्यक नहीं:** Convention policies को `policies-config.json` में कोई entries की आवश्यकता नहीं है। बस directory में files डालें और वे अगली hook event पर pick up होती हैं।
 
-**यूनियन लोडिंग:** प्रोजेक्ट और उपयोगकर्ता दोनों कन्वेंशन निर्देशिकाएं स्कैन की जाती हैं। दोनों स्तरों की सभी मेल खाने वाली फाइलें लोड की जाती हैं (`customPoliciesPath` के विपरीत जो पहले-स्कोप-जीत का उपयोग करता है)।
+**Union loading:** Project और user दोनों convention directories को scan किया जाता है। दोनों levels से सभी matching files load होती हैं (`customPoliciesPath` के विपरीत जो first-scope-wins का उपयोग करता है)।
 
 अधिक विवरण और उदाहरणों के लिए [Custom Policies](/hi/custom-policies) देखें।
 
 ### `llm`
 
-प्रकार: `object` (वैकल्पिक)
+Type: `object` (optional)
 
-AI कॉल करने वाली नीतियों के लिए LLM क्लाइंट कॉन्फ़िगरेशन। अधिकांश सेटअप्स के लिए आवश्यक नहीं है।
+उन policies के लिए LLM client configuration जो AI calls करती हैं। अधिकांश setups के लिए आवश्यक नहीं है।
 
 ```json
 {
@@ -187,21 +187,21 @@ AI कॉल करने वाली नीतियों के लिए LL
 
 ---
 
-## CLI से कॉन्फ़िगरेशन प्रबंधित करना
+## CLI से configuration को manage करना
 
-`policies --install` और `policies --uninstall` कमांड आपके एजेंट CLI की हुक सेटिंग्स फाइल (हुक एंट्री पॉइंट) में लिखते हैं, जबकि `policies-config.json` वह फाइल है जिसे आप सीधे प्रबंधित करते हैं। दोनों अलग हैं:
+`policies --install` और `policies --uninstall` commands आपके agent CLI की hook settings file (hook entry points) में लिखते हैं, जबकि `policies-config.json` वह file है जिसे आप directly manage करते हैं। दोनों अलग हैं:
 
-- **एजेंट CLI सेटिंग्स** — एजेंट को हर टूल उपयोग पर `failproofai --hook <event>` को कॉल करने के लिए कहता है:
+- **Agent CLI settings** — agent को हर tool use पर `failproofai --hook <event>` call करने के लिए बताता है:
   - **Claude Code**: `~/.claude/settings.json` (user), `<cwd>/.claude/settings.json` (project), `<cwd>/.claude/settings.local.json` (local)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (user), `<cwd>/.codex/hooks.json` (project) — Codex के पास `local` स्कोप नहीं है
-  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (user), `<cwd>/.github/hooks/failproofai.json` (project) — Copilot के पास `local` स्कोप नहीं है। हुक एंट्रीज Copilot के OS-keyed `bash`/`powershell` कमांड फील्ड्स `timeoutSec` के साथ उपयोग करती हैं; फाइल एक शीर्ष-स्तर `version: 1` मार्कर रखती है। Copilot CLI सपोर्ट **beta** है जबकि हम `events.jsonl` रिकॉर्ड स्कीमा (जिसे सार्वजनिक दस्तावेज़ निर्दिष्ट नहीं करते) को अधिक वास्तविक-दुनिया सत्रों के विरुद्ध सत्यापित करते हैं।
-  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (user), `<cwd>/.cursor/hooks.json` (project) — Cursor के पास `local` स्कोप नहीं है। हुक एंट्रीज Claude-shaped `{type, command, timeout}` फॉर्म उपयोग करती हैं (`bash`/`powershell` स्प्लिट नहीं), लेकिन camelCase इवेंट कुंजियों (`preToolUse`, `beforeSubmitPrompt`, …) के तहत संग्रहीत Cursor के [hooks schema](https://cursor.com/docs/hooks) के अनुसार एक फ्लैट ऐरे में; फाइल एक शीर्ष-स्तर `version: 1` मार्कर रखती है। हैंडलर camelCase → PascalCase को `CURSOR_EVENT_MAP` के माध्यम से कैनोनिकलाइज़ करता है इसलिए मौजूदा निर्मित-में नीतियां अपरिवर्तित रहती हैं। Cursor Agent सपोर्ट **beta** है जबकि हम Cursor के ऑन-डिस्क ट्रांसक्रिप्ट फॉर्मेट (सार्वजनिक दस्तावेज़ में निर्दिष्ट नहीं) को अधिक वास्तविक-दुनिया इंस्टॉल के विरुद्ध सत्यापित करते हैं।
-  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (user), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (project) — OpenCode के पास `local` स्कोप नहीं है। अन्य चार CLIs के विपरीत, OpenCode के पास **कोई बाहरी-कमांड हुक सिस्टम नहीं है**: यह `opencode.json` में `plugin: []` ऐरे के माध्यम से स्पष्ट रूप से पंजीकृत in-process JS/TS प्लगइन लोड करता है (`.opencode/plugins/` से स्वचालित-खोज **नहीं** है कि opencode v1.14.33 पर प्लगइन कैसे लोड होते हैं)। इंस्टॉल एक छोटी जेनरेट की गई प्लगइन shim देता है जो failproofai बाइनरी को subprocess-कॉल करता है और बाइनरी के Claude-shape JSON प्रतिक्रिया को प्लगइन सिमेंटिक्स (`throw new Error()` for deny, `client.session.prompt(...)` for instruct, no-op for allow) में वापस अनुवाद करता है। सत्र `~/.local/share/opencode/opencode.db` में opencode के SQLite DB में रहते हैं; डैशबोर्ड का सत्र दर्शक `opencode db --format json` और `opencode export <id>` के माध्यम से उन्हें पढ़ता है। OpenCode सपोर्ट **beta** है जबकि हम संस्करणों में और अधिक वास्तविक-दुनिया सत्रों के विरुद्ध व्यवहार सत्यापित करते हैं। [OpenCode plugins docs](https://opencode.ai/docs/plugins/) देखें।
-  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (user), `<cwd>/.pi/settings.json` (project) — Pi के पास `local` स्कोप नहीं है। Pi स्टार्टअप पर TypeScript एक्सटेंशन पैकेज लोड करता है; सेटिंग्स फाइल एक फ्लैट स्ट्रिंग ऐरे `{"packages": ["./relative/path", …]}` है। failproofai एक एकल packages-array एंट्री लिखता है जो अपनी बंडल की गई `pi-extension/` निर्देशिका की ओर इशारा करता है। एक्सटेंशन आंतरिक रूप से Pi के `tool_call` / `user_bash` / `input` / `session_start` ईवेंट्स को सबस्क्राइब करता है और `failproofai --hook <Event> --cli pi` के लिए shell करता है; हैंडलर underscore_lower_snake_case → PascalCase को `PI_EVENT_MAP` के माध्यम से कैनोनिकलाइज़ करता है इसलिए मौजूदा निर्मित-में नीतियां अपरिवर्तित रहती हैं। Pi सपोर्ट **beta** है जबकि Pi का एक्सटेंशन API और सत्र-लॉग लेआउट स्थिर होते हैं।
-  - **Gemini CLI _(beta)_**: `~/.gemini/settings.json` (user), `<cwd>/.gemini/settings.json` (project) — Gemini के पास `local` स्कोप नहीं है (यह `/etc/gemini-cli/settings.json` पर एक `system` स्कोप दस्तावेज़ित करता है जिसे failproofai expose नहीं करता है)। हुक एंट्रीज Claude के `{type, command, timeout}` फॉर्म का उपयोग करती हैं जो Gemini के `{matcher, hooks: [...]}` मेलर स्कीमा में लपेटी गई हैं जिसमें डिफ़ॉल्ट रूप से `matcher: "*"` है। ईवेंट्स PascalCase हैं (`SessionStart`, `BeforeAgent`, `AfterAgent`, `BeforeModel`, `AfterModel`, `BeforeToolSelection`, `BeforeTool`, `AfterTool`, `PreCompress`, `Notification`, `SessionEnd`); हैंडलर `GEMINI_EVENT_MAP` के माध्यम से Claude कैनोनिकल नामों के लिए मैप करता है। टूल नामें snake_case हैं (`run_shell_command`, `read_file`, `write_file`, `replace`, …) — हैंडलर `GEMINI_TOOL_MAP` के माध्यम से कैनोनिकलाइज़ करता है इसलिए मौजूदा निर्मित-में नीतियां अपरिवर्तित रहती हैं। नीति मूल्यांकनकर्ता Gemini के फ्लैट `{decision: "deny", reason}` आकार (Gemini के Golden Rule exit-0 समझौते के अनुसार पसंदीदा), BeforeAgent / AfterTool / SessionStart पर संदर्भ इंजेक्शन के लिए `{hookSpecificOutput: {hookEventName, additionalContext}}`, और AfterAgent पर `{decision: "block", reason}` force-retry सिमेंटिक्स के लिए उत्सर्जित करता है। Gemini CLI सपोर्ट **beta** है जबकि हम वास्तविक-दुनिया कवरेज चौड़ा करते हैं। [Gemini CLI hooks docs](https://geminicli.com/docs/hooks/) देखें।
-- **`policies-config.json`** — failproofai को बताता है कि कौन सी नीतियों का मूल्यांकन करना है और किस पैरामीटर के साथ (सभी एजेंट CLIs में साझा किया गया)
+  - **OpenAI Codex**: `~/.codex/hooks.json` (user), `<cwd>/.codex/hooks.json` (project) — Codex के पास `local` scope नहीं है
+  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (user), `<cwd>/.github/hooks/failproofai.json` (project) — Copilot के पास `local` scope नहीं है। Hook entries Copilot के OS-keyed `bash`/`powershell` command fields को `timeoutSec` के साथ उपयोग करते हैं; file एक top-level `version: 1` marker रखता है। Copilot CLI support **beta** है जबकि हम `events.jsonl` record schema को (जो public docs specify नहीं करते) अधिक real-world sessions के विरुद्ध verify करते हैं।
+  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (user), `<cwd>/.cursor/hooks.json` (project) — Cursor के पास `local` scope नहीं है। Hook entries Claude-shaped `{type, command, timeout}` form का उपयोग करते हैं (कोई `bash`/`powershell` split नहीं), लेकिन camelCase event keys (`preToolUse`, `beforeSubmitPrompt`, …) के अंतर्गत Cursor के [hooks schema](https://cursor.com/docs/hooks) के अनुसार एक flat array में stored हैं; file एक top-level `version: 1` marker रखता है। Handler camelCase → PascalCase को `CURSOR_EVENT_MAP` के माध्यम से canonicalize करता है ताकि existing builtin policies unchanged fire हों। Cursor Agent support **beta** है जबकि हम Cursor के transcript on-disk format (public docs में specified नहीं) को अधिक real-world installs के विरुद्ध verify करते हैं।
+  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (user), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (project) — OpenCode के पास `local` scope नहीं है। अन्य चार CLIs के विपरीत, OpenCode के पास **कोई external-command hook system नहीं है**: यह in-process JS/TS plugins को explicitly registered में लोड करता है `plugin: []` array के माध्यम से `opencode.json` में (`.opencode/plugins/` से auto-discovery **नहीं** है कि कैसे plugins OpenCode v1.14.33 पर लोड होते हैं)। Install एक small generated plugin shim को drop करता है जो failproofai binary को subprocess-call करता है और binary के Claude-shape JSON response को plugin semantics में translate करता है (`throw new Error()` deny के लिए, `client.session.prompt(...)` instruct के लिए, allow के लिए no-op)। Sessions OpenCode के SQLite DB में `~/.local/share/opencode/opencode.db` पर रहते हैं; dashboard का session viewer उन्हें `opencode db --format json` और `opencode export <id>` के माध्यम से पढ़ता है। OpenCode support **beta** है जबकि हम versions के पार और अधिक real-world sessions के विरुद्ध behavior verify करते हैं। [OpenCode plugins docs](https://opencode.ai/docs/plugins/) देखें।
+  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (user), `<cwd>/.pi/settings.json` (project) — Pi के पास `local` scope नहीं है। Pi startup पर TypeScript extension packages को लोड करता है; settings file एक flat string array `{"packages": ["./relative/path", …]}` है। failproofai एक single packages-array entry को लिखता है जो अपनी bundled `pi-extension/` directory की ओर point करता है। Extension internally Pi के `tool_call` / `user_bash` / `input` / `session_start` events को subscribe करता है और `failproofai --hook <Event> --cli pi` में shell out करता है; handler underscore_lower_snake_case → PascalCase को `PI_EVENT_MAP` के माध्यम से canonicalize करता है ताकि existing builtin policies unchanged fire हों। Pi support **beta** है जबकि Pi के extension API और session-log layout stabilize होते हैं।
+  - **Gemini CLI _(beta)_**: `~/.gemini/settings.json` (user), `<cwd>/.gemini/settings.json` (project) — Gemini के पास `local` scope नहीं है (यह `/etc/gemini-cli/settings.json` पर एक `system` scope को document करता है जिसे failproofai expose नहीं करता)। Hook entries Claude के `{type, command, timeout}` form को Gemini के `{matcher, hooks: [...]}` matcher schema में wrap करते हैं जहाँ default रूप से `matcher: "*"` होता है। Events PascalCase हैं (`SessionStart`, `BeforeAgent`, `AfterAgent`, `BeforeModel`, `AfterModel`, `BeforeToolSelection`, `BeforeTool`, `AfterTool`, `PreCompress`, `Notification`, `SessionEnd`); handler `GEMINI_EVENT_MAP` के माध्यम से Claude canonical names में maps करता है। Tool names snake_case हैं (`run_shell_command`, `read_file`, `write_file`, `replace`, …) — handler `GEMINI_TOOL_MAP` के माध्यम से canonicalize करता है ताकि existing builtin policies unchanged fire हों। Policy evaluator Gemini के flat `{decision: "deny", reason}` shape को emit करता है (Gemini के "Golden Rule" exit-0 contract per preferred), `{hookSpecificOutput: {hookEventName, additionalContext}}` context injection के लिए BeforeAgent / AfterTool / SessionStart पर, और `{decision: "block", reason}` AfterAgent पर force-retry semantics के लिए। Gemini CLI support **beta** है जबकि हम real-world coverage को widen करते हैं। [Gemini CLI hooks docs](https://geminicli.com/docs/hooks/) देखें।
+- **`policies-config.json`** — failproofai को बताता है कि कौन सी policies को evaluate करना है और किन params के साथ (सभी agent CLIs में shared)
 
-`--cli claude|codex|copilot|cursor|opencode|pi|gemini` को किसी विशिष्ट एजेंट को लक्ष्य करने के लिए पास करें (स्पेस-सेपरेटेड या किसी सबसेट के लिए दोहराए गए):
+किसी specific agent को target करने के लिए `--cli claude|codex|copilot|cursor|opencode|pi|gemini` pass करें (space-separated या किसी भी subset के लिए repeated):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -213,20 +213,20 @@ failproofai policies --install --cli gemini --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi gemini
 ```
 
-जब `--cli` छोड़ा जाता है, `failproofai` पता लगाता है कि कौन से एजेंट CLIs इंस्टॉल किए गए हैं (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which gemini`):
+जब `--cli` omit होता है, `failproofai` detect करता है कि कौन से agent CLIs installed हैं (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which gemini`):
 
-- **एक CLI पता चला** — बिना प्रॉम्प्ट के उस CLI को स्वचालित रूप से चुनता है।
-- **इंटरैक्टिव टर्मिनल में कई CLIs पता चले** — एक तीर-कुंजी सिंगल-चयन प्रॉम्प्ट दिखाता है जो एक `Detected (N)` सेक्शन में समूहबद्ध है (एक `Install for all N detected` एकत्रित पंक्ति + प्रत्येक पता चला CLI व्यक्तिगत रूप से) और एक `Not installed (M) · install hooks ahead of time` सेक्शन सभी अपता चले समर्थित CLIs को एक फॉर्वर्ड-इंस्टॉल विकल्प के रूप में सूचीबद्ध करता है (↑↓ को स्थानांतरित करने के लिए, Enter चयन के लिए, ^C छोड़ने के लिए)। अनइंस्टॉल फ्लो केवल Detected सेक्शन दिखाता है।
-- **कई CLIs पता चले** एक गैर-इंटरैक्टिव रन में (CI, कोई TTY नहीं) — बिना प्रॉम्प्ट के सभी पता चले CLIs के लिए इंस्टॉल करता है।
-- **कोई भी नहीं पता चला** — `claude` में वापस गिर जाता है, एक चेतावनी के साथ कि PATH में कोई एजेंट बाइनरी नहीं मिला; हुक कमांड अभी भी लिखा जाता है इसलिए यह सक्रिय होता है जैसे ही आप एक इंस्टॉल करते हैं।
+- **एक CLI detected** — बिना prompting के उस CLI को auto-select करता है।
+- **Multiple CLIs detected** एक interactive terminal में — एक arrow-key single-select prompt दिखाता है जो एक `Detected (N)` section में grouped होता है (एक `Install for all N detected` aggregate row + प्रत्येक detected CLI individually के साथ) और एक `Not installed (M) · install hooks ahead of time` section जो हर undetected supported CLI को forward-install option के रूप में list करता है (↑↓ move करने के लिए, Enter select करने के लिए, ^C quit करने के लिए)। Uninstall flow केवल Detected section दिखाता है।
+- **Multiple CLIs detected** एक non-interactive run में (CI, no TTY) — बिना prompting के सभी detected CLIs के लिए install करता है।
+- **कोई नहीं detected** — `claude` में fallback करता है, एक warning के साथ कि PATH में कोई agent binary नहीं मिला; hook command फिर भी लिखा जाता है ताकि यह activate हो जब आप एक install करते हैं।
 
-आप किसी भी समय `policies-config.json` को सीधे संपादित कर सकते हैं; परिवर्तन अगली हुक ईवेंट पर बिना पुनः प्रारंभ किए तुरंत प्रभावी होते हैं।
+आप `policies-config.json` को किसी भी समय directly edit कर सकते हैं; changes अगली hook event पर बिना restart के तुरंत प्रभाव लेते हैं।
 
 ---
 
-## उदाहरण: टीम डिफ़ॉल्ट के साथ प्रोजेक्ट-स्तर कॉन्फ़िगरेशन
+## Example: project-level config with team defaults
 
-`.failproofai/policies-config.json` को अपने रिपो में कमिट करें:
+`.failproofai/policies-config.json` को अपने repo में commit करें:
 
 ```json
 {
@@ -245,4 +245,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi gem
 }
 ```
 
-प्रत्येक डेवलपर तब `.failproofai/policies-config.local.json` (gitignored) बना सकता है व्यक्तिगत ओवरराइड के लिए बिना सहकर्मियों को प्रभावित किए।
+प्रत्येक developer फिर `.failproofai/policies-config.local.json` (gitignored) create कर सकता है personal overrides के लिए teammates को प्रभावित किए बिना।

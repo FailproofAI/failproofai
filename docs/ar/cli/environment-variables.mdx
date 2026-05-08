@@ -10,14 +10,14 @@ description: "تكوين سلوك failproofai باستخدام متغيرات ا
 | `PORT` | منفذ لوحة التحكم (الافتراضي: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | تجاوز موقع مجلدات مشاريع Claude Code |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | صفحات لوحة التحكم المراد إخفاؤها مفصولة بفواصل |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | المضيفون/عناوين IP المسموح لهم بالوصول إلى موارد التطوير. نفس خيار `--allowed-origins`. |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | المضيفون وعناوين IP المسموحة بالوصول إلى موارد التطوير. نفس الخيار `--allowed-origins`. |
 
 ## تسجيل السجلات
 
 | المتغير | الوصف |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | مستوى سجل الخادم (الافتراضي: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | مسار ملف سجل hook مخصص، أو `true` للاستخدام الافتراضي (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | مسار ملف السجل المخصص، أو `true` للملف الافتراضي (`~/.failproofai/logs/hooks.log`) |
 
 ## قياس الاستخدام
 
@@ -25,10 +25,10 @@ description: "تكوين سلوك failproofai باستخدام متغيرات ا
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | تعطيل قياس الاستخدام المجهول |
 
-## نموذج اللغة الكبير (لتقييم السياسات)
+## نموذج اللغة (لتقييم السياسات)
 
 | المتغير | الوصف |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | نقطة نهاية API لنموذج اللغة الكبير (الافتراضي: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | مفتاح API للسياسات المعتمدة على نموذج اللغة الكبير |
+| `FAILPROOFAI_LLM_BASE_URL` | نقطة نهاية واجهة برمجة نموذج اللغة (الافتراضي: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | مفتاح API للسياسات المعتمدة على نموذج اللغة |
 | `FAILPROOFAI_LLM_MODEL` | اسم النموذج (الافتراضي: `gpt-4o-mini`) |

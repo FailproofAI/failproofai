@@ -1,6 +1,6 @@
 ---
-title: תחילת העבודה
-description: "התקן את failproofai, הפעל מדיניות, והנח לסוכנים שלך לפעול בצורה אמינה"
+title: התחלה
+description: "התקן את failproofai, הפעל מדיניות, והנח לסוכניםך לפעול בצורה אמינה"
 icon: rocket
 ---
 
@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="הפעל מדיניות">
-    מדיניות הם כללים שפועלים לפני ואחרי כל קריאת כלי סוכן. הם תופסים פקודות הרסניות, דליפות סודיות וסוגי כשלים אחרים לפני שהם גורמים נזק.
+    מדיניות הן כללים שרצים לפני ואחרי כל קריאת כלי של סוכן. הם תופסים פקודות הרסניות, דליפות סודיות ודרכי כישלון אחרים לפני שהם גורמים נזק.
 
     ```bash
     failproofai policies --install
     ```
 
-    זה כותב ערכי hook למערכות ה-CLI של הסוכנים שלך (`~/.claude/settings.json` של Claude Code, `~/.codex/hooks.json` של OpenAI Codex, `~/.copilot/hooks/failproofai.json` של GitHub Copilot CLI, `~/.cursor/hooks.json` של Cursor Agent, ה-shim plugin שנוצר של OpenCode ב-`~/.config/opencode/plugins/failproofai.mjs` בתוספת ערך רישום במערך `plugin` של `~/.config/opencode/opencode.json`, `~/.pi/agent/settings.json` של Pi, או `~/.gemini/settings.json` של Gemini CLI). כשיותר מאחד קיים תופיע לך הנמקה; העבור `--cli claude codex copilot cursor opencode pi gemini` (כל תת-קבוצה) כדי לדלג על ההנמקה.
+    זה כותב ערכי hook לממשקי קו הפקודה של הסוכן המותקן שלך (settings.json של Claude Code ב-`~/.claude/settings.json`, hooks.json של OpenAI Codex ב-`~/.codex/hooks.json`, failproofai.json של GitHub Copilot CLI ב-`~/.copilot/hooks/failproofai.json`, hooks.json של Cursor Agent ב-`~/.cursor/hooks.json`, shim של OpenCode שנוצר ב-`~/.config/opencode/plugins/failproofai.mjs` וכן ערך רישום בתוך מערך `plugin` של `~/.config/opencode/opencode.json`, settings.json של Pi ב-`~/.pi/agent/settings.json`, או settings.json של Gemini CLI ב-`~/.gemini/settings.json`). כאשר יותר מאחד קיים תישאל; העבר `--cli claude codex copilot cursor opencode pi gemini` (כל תת-קבוצה) כדי לדלג על ההנמקה.
 
-    תמיכה ב-GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ו-Gemini CLI הם **בטא** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, או `--cli gemini`.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, וGemini CLI כן בתמיכה ב-**beta** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, או `--cli gemini`.
 
     ```bash
     failproofai policies --install --scope project
@@ -57,23 +57,23 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    מציג כל מדיניות, האם היא מופעלת, וכל פרמטרים מעוצבים.
+    מציג כל מדיניות, אם היא מאופשרת, וכל פרמטר שהוגדר.
   </Step>
-  <Step title="הפעל את לוח הבקרה">
+  <Step title="הפעל את לוח המחוונים">
     ```bash
     failproofai
     ```
 
-    פותח לוח בקרה מקומי ב-`http://localhost:8020` שבו אתה יכול לעיין בהפעלות, לבדוק קריאות כלים ולנהל מדיניות.
+    פותח לוח מחוונים מקומי ב-`http://localhost:8020` שם אתה יכול לעיין בהפעלות, לבדוק קריאות כלים, ולנהל מדיניות.
   </Step>
-  <Step title="הפעל את הסוכן שלך">
-    התחל את Claude Code כרגיל. אם הסוכן מנסה משהו מסוכן, failproofai יחצה אותו אוטומטית. השאר אותו פועל ללא השגחה וסקור את מה שקרה בלוח הבקרה.
+  <Step title="הרץ את הסוכן שלך">
+    הפעל את Claude Code כרגיל. אם הסוכן מנסה משהו מסוכן, failproofai מיירט זאת באופן אוטומטי. השאר אותו רץ בלא השגחה וסקור מה קרה בלוח המחוונים.
   </Step>
 </Steps>
 
 ---
 
-## איך מדיניות עובדת
+## איך מדיניות עובדות
 
 בכל פעם שסוכן מפעיל כלי, Claude Code קוראה ל-failproofai כתהליך משנה:
 
@@ -85,28 +85,28 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
 
 כל מדיניות מחזירה אחת משלוש החלטות:
 
-- **allow** - הסוכן ממשיך בדרך רגילה
-- **deny** - הפעולה חסומה, הסוכן מקבל הסבר למה
-- **instruct** - הקשר נוסף מתווסף להנמקה של הסוכן
+- **allow** - הסוכן ממשיך כרגיל
+- **deny** - הפעולה חסומה, הסוכן מיידע למה
+- **instruct** - הקשר נוסף מתווסף להנחיית הסוכן
 
 <Note>
-מדיניות רצות בתהליך המקומי שלך. שום דבר לא נשלח לשירות מרוחק.
+מדיניות רצות בתהליך המקומי שלך. שום דבר לא נשלח לשירות מרחוק.
 </Note>
 
 ---
 
-## הגדר מדיניות לצוות עם מדיניות מבוססות כנס
+## הגדר מדיניות של צוות עם מדיניות מבוססות על קונבנציה
 
-הדרך המהירה ביותר לקבוע תקנים איכות בכל הצוות שלך היא הכנס `.failproofai/policies/`. זרוק קבצי מדיניות לתוך הספריה הזו והם נטענים אוטומטית — ללא דגלים, ללא שינויי תצורה, ללא פקודות התקנה.
+הדרך המהירה ביותר לקבוע תקנות איכות בכל הצוות שלך היא הקונבנציה `/.failproofai/policies/`. זרוק קבצי מדיניות לתיקייה זו והם נטענים באופן אוטומטי — ללא דגלים, ללא שינויי הגדרה, ללא פקודות התקנה.
 
 <Steps>
-  <Step title="צור את ספריית המדיניות">
+  <Step title="צור את תיקיית המדיניות">
     ```bash
     mkdir -p .failproofai/policies
     ```
   </Step>
   <Step title="הוסף קבצי מדיניות">
-    העתק את דוגמאות ההתחלה או כתוב שלך:
+    העתק את דוגמאות ההתחלה או כתוב את שלך:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
@@ -124,40 +124,40 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
-          return instruct("הרץ בדיקות לפני commit.");
+          return instruct("הרץ בדיקות לפני עדכון.");
         }
         return allow();
       },
     });
     ```
   </Step>
-  <Step title="בצע commit ל-git">
+  <Step title="עדכן ב-git">
     ```bash
     git add .failproofai/policies/
     git commit -m "הוסף מדיניות איכות לצוות"
     ```
 
-    כל חבר בצוות שיש לו failproofai מותקן יקטוף את המדיניות הללו אוטומטית. אין צורך בהגדרה לכל מפתח.
+    כל חברי צוות שיש להם failproofai מותקן יוקדו למדיניות אלה באופן אוטומטי. אין צורך בהגדרה לכל מפתח.
   </Step>
 </Steps>
 
 <Tip>
-בצע commit ל-`.failproofai/policies/` למאגר שלך כדי שכל הצוות יחלוק את אותם התקנים. כאשר הצוות שלך מגלה סוגי כשלים חדשים, הוסף מדיניות ודחוף — כולם מקבלים את העדכון ב-`git pull` הבא שלהם. עם הזמן המדיניות הללו הופכות לתקן איכות חי שממשיך להשתפר.
+עדכן את `/.failproofai/policies/` ל-repo שלך כדי שכל הצוות יחלוק את אותן תקנות. כשהצוות שלך גילה דרכי כישלון חדשות, הוסף מדיניות ודחוף — כולם מקבלים את העדכון בה-next `git pull` שלהם. לאורך זמן, מדיניות אלה הופכות לתקן איכות חי שממשיך להשתפר.
 </Tip>
 
 ---
 
 ## אחסון נתונים
 
-כל התצורה והיומנים נשארים במכונה שלך:
+כל ההגדרה ולוגים נשארים במכונה שלך:
 
 | נתיב | מה זה אוחסן |
 |------|----------------|
-| `~/.failproofai/policies-config.json` | תצורת מדיניות גלובלית |
+| `~/.failproofai/policies-config.json` | הגדרת מדיניות גלובלית |
 | `~/.failproofai/hook-activity.jsonl` | היסטוריית ביצוע hook |
-| `~/.failproofai/hook.log` | יומן ניפוי באגים לשגיאות hook מותאמות |
-| `.failproofai/policies-config.json` | תצורה לפי פרויקט (מובהקת) |
-| `.failproofai/policies-config.local.json` | עדכונים אישיים (gitignored) |
+| `~/.failproofai/hook.log` | לוג ניפוי עבור שגיאות hook מותאמות |
+| `.failproofai/policies-config.json` | הגדרת מדיניות לכל פרויקט (מעודכן) |
+| `.failproofai/policies-config.local.json` | שינויים אישיים (gitignored) |
 
 ---
 
@@ -167,7 +167,7 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
 failproofai policies --uninstall
 ```
 
-מסיר ערכי hook מ-`~/.claude/settings.json`. קבצי תצורה ב-`~/.failproofai/` נשמרים.
+הסרת ערכי hook מ-`~/.claude/settings.json`. קבצי הגדרה ב-`~/.failproofai/` נשמרים.
 
 ---
 
@@ -175,11 +175,11 @@ failproofai policies --uninstall
 
 <CardGroup cols={2}>
 
-<Card title="תצורה" icon="gear" href="/he/configuration">
-  היקפים וקובץ תצורה
+<Card title="הגדרה" icon="gear" href="/he/configuration">
+  טווחים וקביעת תנאים לקבצי הגדרה
 </Card>
 
-<Card title="מדיניות מובנות" icon="shield" href="/he/built-in-policies">
+<Card title="מדיניות מובנה" icon="shield" href="/he/built-in-policies">
   כל 26 המדיניות עם פרמטרים
 </Card>
 
@@ -187,7 +187,7 @@ failproofai policies --uninstall
   כתוב את המדיניות שלך ב-JavaScript
 </Card>
 
-<Card title="צג סוכן" icon="chart-line" href="/he/dashboard">
+<Card title="מנטור הסוכן" icon="chart-line" href="/he/dashboard">
   עקוב אחר הפעלות וסקור פעילות מדיניות
 </Card>
 

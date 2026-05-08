@@ -1,5 +1,5 @@
 ---
-title: セッションを表示する
+title: セッションの表示
 description: "ダッシュボードを起動してエージェントセッションの閲覧とポリシーの管理を行う"
 ---
 
@@ -12,17 +12,17 @@ failproofai
 ## オプション
 
 | フラグ | 説明 |
-|--------|------|
+|------|-------------|
 | `--port <number>` | リッスンするポート番号（デフォルト: `8020`） |
-| `--projects-path <path>` | Claude Code のプロジェクトフォルダーの検索場所を上書きする |
+| `--projects-path <path>` | Claude Code のプロジェクトフォルダーの検索先を上書きする |
 | `--allowed-origins <origins>` | 開発リソースへのアクセスを許可するホスト/IPのカンマ区切りリスト |
 
 ## 使用例
 
 ```bash
-# 別のポートで起動する
+# Launch on a different port
 failproofai --port 9000
 
-# カスタムのプロジェクトパスを使用する
+# Use a custom projects path
 failproofai --projects-path ~/my-claude-projects
 ```

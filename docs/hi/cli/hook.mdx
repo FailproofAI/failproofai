@@ -1,30 +1,30 @@
 ---
-title: Hook handler (internal)
-description: "subprocess जो Claude Code प्रत्येक tool event पर कॉल करता है"
+title: हुक हैंडलर (आंतरिक)
+description: "प्रत्येक टूल इवेंट पर सबप्रोसेस Claude Code द्वारा कॉल किया जाने वाला"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code के `settings.json` में पंजीकृत की जाती है। आप आमतौर पर इसे सीधे कॉल नहीं करते हैं।
+यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code के `settings.json` में पंजीकृत की जाती है। आप आमतौर पर इसे सीधे कॉल नहीं करते।
 
-stdin से एक JSON payload पढ़ता है, सभी सक्षम policies का मूल्यांकन करता है, और निर्णय दर्शाने वाली exit code के साथ बाहर निकलता है:
+stdin से एक JSON पेलोड पढ़ता है, सभी सक्षम नीतियों का मूल्यांकन करता है, और एक कोड के साथ निकलता है जो निर्णय को दर्शाता है:
 
-| Exit code | Decision | Effect |
-|-----------|----------|--------|
-| `0` | `allow` | कार्रवाई को अनुमति दें |
-| `1` | `deny` | कार्रवाई को अवरुद्ध करें - Claude को अस्वीकृति का कारण दिखेगा |
-| `2` | `instruct` | Claude के context में guidance inject करें |
+| Exit कोड | निर्णय | प्रभाव |
+|-----------|--------|--------|
+| `0` | `allow` | कार्रवाई की अनुमति दें |
+| `1` | `deny` | कार्रवाई को ब्लॉक करें - Claude को अस्वीकृति का कारण दिखाई देता है |
+| `2` | `instruct` | Claude के संदर्भ में मार्गदर्शन इंजेक्ट करें |
 
-### समर्थित event types
+### समर्थित इवेंट प्रकार
 
-| Category | Events |
+| श्रेणी | इवेंट |
 |----------|--------|
-| **Tool execution** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **Session lifecycle** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **User interaction** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Subagents & tasks** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
-| **Configuration** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
-| **File system** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
-| **Context** | `PreCompact`, `PostCompact` |
+| **टूल निष्पादन** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **सेशन जीवनचक्र** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **उपयोगकर्ता इंटरैक्शन** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **सबएजेंट्स और कार्य** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **कॉन्फ़िगरेशन** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **फाइल सिस्टम** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
+| **संदर्भ** | `PreCompact`, `PostCompact` |

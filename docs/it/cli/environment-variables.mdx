@@ -7,28 +7,28 @@ description: "Configura il comportamento di failproofai con variabili d'ambiente
 
 | Variabile | Descrizione |
 |----------|-------------|
-| `PORT` | Porta del dashboard (predefinito: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Sovrascrivere la posizione dove si trovano le cartelle dei progetti di Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pagine del dashboard separate da virgole da nascondere |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Host/IP autorizzati ad accedere alle risorse di sviluppo. Stesso di `--allowed-origins`. |
+| `PORT` | Porta del dashboard (predefinita: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | Sovrascrive il percorso dove si trovano le cartelle dei progetti Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pagine del dashboard da nascondere, separate da virgole |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Host/IP autorizzati ad accedere alle risorse di sviluppo. Equivalente a `--allowed-origins`. |
 
 ## Logging
 
 | Variabile | Descrizione |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Livello di log del server (predefinito: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Percorso file di log personalizzato, o `true` per il predefinito (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Percorso personalizzato del file di log degli hook, oppure `true` per quello predefinito (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetria
 
 | Variabile | Descrizione |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria anonima di utilizzo |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria anonima d'uso |
 
 ## LLM (per la valutazione delle policy)
 
 | Variabile | Descrizione |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | Endpoint API LLM (predefinito: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Chiave API per le policy basate su LLM |
+| `FAILPROOFAI_LLM_BASE_URL` | Endpoint dell'API LLM (predefinito: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | Chiave API per le policy abilitate da LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nome del modello (predefinito: `gpt-4o-mini`) |

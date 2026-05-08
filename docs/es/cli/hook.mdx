@@ -1,20 +1,20 @@
 ---
-title: Manejador de hooks (interno)
-description: "El subproceso que Claude Code invoca en cada evento de herramienta"
+title: Manejador de hook (interno)
+description: "El subproceso que Claude Code llama en cada evento de herramienta"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Este es el comando registrado en el archivo `settings.json` de Claude Code por `failproofai policies --install`. Normalmente no se llama directamente.
+Este es el comando registrado en el `settings.json` de Claude Code por `failproofai policies --install`. Normalmente no se llama directamente.
 
 Lee un payload JSON desde stdin, evalúa todas las políticas habilitadas y termina con un código que indica la decisión:
 
 | Código de salida | Decisión | Efecto |
 |------------------|----------|--------|
 | `0` | `allow` | Permite la acción |
-| `1` | `deny` | Bloquea la acción — Claude recibe el motivo del rechazo |
+| `1` | `deny` | Bloquea la acción - Claude ve el motivo del rechazo |
 | `2` | `instruct` | Inyecta orientación en el contexto de Claude |
 
 ### Tipos de eventos soportados
@@ -23,7 +23,7 @@ Lee un payload JSON desde stdin, evalúa todas las políticas habilitadas y term
 |-----------|---------|
 | **Ejecución de herramientas** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Ciclo de vida de sesión** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **Interacción con el usuario** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **Interacción del usuario** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **Subagentes y tareas** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Configuración** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **Sistema de archivos** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |

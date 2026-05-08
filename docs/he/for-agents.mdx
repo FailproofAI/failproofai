@@ -1,38 +1,38 @@
 ---
-title: "עבור agents"
-description: "הוסף ידע של Failproof AI לאגנט הקידוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
+title: "לסוכנים"
+description: "הוסף ידע של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
 ---
 
-הוסף את ההתייחסות המלאה של Failproof AI לאגנט הקידוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל אגנט אחר התומך ב-skills.
+הוסף את ההתייחסות המלאה של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל סוכן אחר התומך בכישרונות.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` מגלה איזה אגנטים מותקנים אצלך ומוסיף את ה-skill בפורמט הנכון לכל אחד באופן אוטומטי.
+`npx skills` מזהה אילו סוכנים מותקנים אצלך והוסיף את הכישרון בפורמט הנכון לכל אחד באופן אוטומטי.
 
-## מה הממוצע של ה-skill
+## מה הכישרון כולל
 
 | אזור | מה כלול |
-|------|----------------|
-| Policies | שמות policy מובנים, סוגי אירועים, פרמטרים, הפעלה/השבתה |
-| Custom policies | `customPolicies.add()`, מסננים התאמה, API `allow`/`deny`/`instruct` |
+|------|--------|
+| Policies | שמות הפוליסיות המובנות, סוגי אירועים, פרמטרים, הפעלה/השבתה |
+| Custom policies | `customPolicies.add()`, מסננות התאמה, `allow`/`deny`/`instruct` API |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuration | מבנה `policies-config.json`, מיזוג scope, `policyParams` |
-| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | מציג הפעילות, פעילות policy, משתנים סביבה |
-| Architecture | זרימת hook handler, קודי יציאה, חוזה stdin/stdout |
+| Configuration | מבנה `policies-config.json`, מיזוג הרחבות, `policyParams` |
+| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, הרחבות |
+| Dashboard | מציג סשנים, פעילות הפוליסיה, משתני סביבה |
+| Architecture | זרימת טיפול ה-Hook, קודי יציאה, חוזה stdin/stdout |
 
-## האם ה-skill שלם?
+## האם הכישרון שלם?
 
-Mintlify יוצר `llms.txt` מכל הדפים בניווט. תיעוד Failproof AI מכסה את ה-API המלא - כל policy, אפשרות וכל דוגמה כלולים. אם אתה מוצא משהו חסר, המקור נמצא בכתובת `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify יוצר `llms.txt` מכל העמודים בניווט. התיעוד של Failproof AI מכסה את ה-API המלא - כל פוליסיה, אפשרות ודוגמה כלולות. אם אתה מוצא משהו חסר, המקור נמצא ב-`https://docs.befailproof.ai/llms-full.txt`.
 
-עבור הקשר ממוקד, קשר ישירות לדף ספציפי:
+להקשר ממוקד, קשר ישירות לעמוד ספציפי:
 
 ```bash
-# רק ה-API של custom policies
+# רק את Custom Policies API
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# רק ה-built-in policies
+# רק את הפוליסיות המובנות
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

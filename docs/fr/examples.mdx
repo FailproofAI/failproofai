@@ -1,16 +1,16 @@
 ---
 title: Exemples
-description: "Comment configurer des hooks pour Claude Code et l'Agents SDK"
+description: "Comment configurer des hooks pour Claude Code et le Agents SDK"
 icon: book-open
 ---
 
-Des exemples prêts à l'emploi pour les scénarios courants. Chacun montre comment l'installer et ce à quoi s'attendre.
+Des exemples prêts à l'emploi pour les scénarios courants. Chacun montre comment installer et ce à quoi s'attendre.
 
 ---
 
 ## Configurer des hooks pour Claude Code
 
-Failproof AI s'intègre à Claude Code via son [système de hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). Lorsque vous exécutez `failproofai policies --install`, il enregistre des commandes de hooks dans le fichier `settings.json` de Claude Code, qui se déclenchent à chaque appel d'outil.
+Failproof AI s'intègre à Claude Code via son [système de hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). Lorsque vous exécutez `failproofai policies --install`, des commandes de hook sont enregistrées dans le fichier `settings.json` de Claude Code et se déclenchent à chaque appel d'outil.
 
 <Steps>
   <Step title="Installer failproofai">
@@ -28,7 +28,7 @@ Failproof AI s'intègre à Claude Code via son [système de hooks](https://docs.
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    Vous devriez voir des entrées de hooks pour les événements `PreToolUse`, `PostToolUse`, `Notification` et `Stop`.
+    Vous devriez voir des entrées de hook pour les événements `PreToolUse`, `PostToolUse`, `Notification` et `Stop`.
   </Step>
   <Step title="Lancer Claude Code">
     ```bash
@@ -41,9 +41,9 @@ Failproof AI s'intègre à Claude Code via son [système de hooks](https://docs.
 
 ---
 
-## Configurer des hooks pour l'Agents SDK
+## Configurer des hooks pour le Agents SDK
 
-Si vous développez avec l'[Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), vous pouvez utiliser le même système de hooks de manière programmatique.
+Si vous développez avec le [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), vous pouvez utiliser le même système de hooks de manière programmatique.
 
 <Steps>
   <Step title="Installer failproofai dans votre projet">
@@ -52,7 +52,7 @@ Si vous développez avec l'[Agents SDK](https://docs.anthropic.com/en/docs/agent
     ```
   </Step>
   <Step title="Configurer les hooks dans votre agent">
-    Transmettez des commandes de hooks lors de la création de votre processus agent. Les hooks se déclenchent de la même manière que dans Claude Code — via JSON en stdin/stdout :
+    Transmettez les commandes de hook lors de la création de votre processus agent. Les hooks se déclenchent de la même façon que dans Claude Code — via des JSON en stdin/stdout :
 
     ```bash
     failproofai --hook PreToolUse   # appelé avant chaque outil
@@ -65,7 +65,7 @@ Si vous développez avec l'[Agents SDK](https://docs.anthropic.com/en/docs/agent
 
     customPolicies.add({
       name: "limit-to-project-dir",
-      description: "Maintenir l'agent dans le répertoire du projet",
+      description: "Keep the agent inside the project directory",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         const path = String(ctx.toolInput?.file_path ?? "");
@@ -86,7 +86,7 @@ Si vous développez avec l'[Agents SDK](https://docs.anthropic.com/en/docs/agent
 
 ---
 
-## Bloquer les commandes destructrices
+## Bloquer les commandes destructives
 
 La configuration la plus courante — empêcher les agents de causer des dommages irréversibles.
 
@@ -98,13 +98,13 @@ Ce que cela fait :
 - `block-sudo` — bloque toutes les commandes `sudo`
 - `block-rm-rf` — bloque la suppression récursive de fichiers
 - `block-force-push` — bloque `git push --force`
-- `block-curl-pipe-sh` — bloque l'exécution de scripts distants via un pipe vers le shell
+- `block-curl-pipe-sh` — bloque le piping de scripts distants vers le shell
 
 ---
 
-## Prévenir les fuites de secrets
+## Prévenir la fuite de secrets
 
-Empêcher les agents de voir ou de divulguer des identifiants dans la sortie des outils.
+Empêchez les agents de voir ou de divulguer des identifiants dans la sortie des outils.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
@@ -114,16 +114,16 @@ Ces politiques se déclenchent sur `PostToolUse` — après l'exécution d'un ou
 
 ---
 
-## Recevoir des alertes Slack quand les agents ont besoin d'attention
+## Recevoir des alertes Slack quand les agents nécessitent une attention
 
-Utilisez le hook de notification pour transférer les alertes d'inactivité vers Slack.
+Utilisez le hook de notification pour transmettre les alertes d'inactivité à Slack.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "slack-on-idle",
-  description: "Alerter Slack quand l'agent attend une entrée",
+  description: "Alert Slack when the agent is waiting for input",
   match: { events: ["Notification"] },
   fn: async (ctx) => {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
@@ -160,14 +160,14 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ## Maintenir les agents sur une branche
 
-Empêcher les agents de changer de branche ou de pousser vers des branches protégées.
+Empêchez les agents de changer de branche ou de pousser vers des branches protégées.
 
 ```javascript
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "stay-on-branch",
-  description: "Empêcher l'agent de basculer sur d'autres branches",
+  description: "Prevent the agent from checking out other branches",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
@@ -191,7 +191,7 @@ import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "test-before-commit",
-  description: "Rappeler à l'agent d'exécuter les tests avant de committer",
+  description: "Remind the agent to run tests before committing",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
@@ -206,9 +206,9 @@ customPolicies.add({
 
 ---
 
-## Sécuriser un dépôt de production
+## Verrouiller un dépôt de production
 
-Committez une configuration au niveau du projet afin que tous les développeurs de votre équipe bénéficient des mêmes politiques.
+Commitez une configuration au niveau du projet afin que tous les développeurs de votre équipe bénéficient des mêmes politiques.
 
 Créez `.failproofai/policies-config.json` dans votre dépôt :
 
@@ -231,7 +231,7 @@ Créez `.failproofai/policies-config.json` dans votre dépôt :
 }
 ```
 
-Puis committez-le :
+Puis commitez-le :
 
 ```bash
 git add .failproofai/policies-config.json
@@ -244,7 +244,7 @@ Chaque membre de l'équipe ayant failproofai installé récupérera automatiquem
 
 ## Établir un standard qualité à l'échelle de l'organisation avec des politiques de convention
 
-La configuration la plus impactante : committez `.failproofai/policies/` dans votre dépôt avec des politiques adaptées à votre projet. Tous les membres de l'équipe les récupèrent automatiquement — sans commandes d'installation ni modifications de configuration.
+La configuration la plus impactante : commitez `.failproofai/policies/` dans votre dépôt avec des politiques adaptées à votre projet. Chaque membre de l'équipe les obtient automatiquement — sans commandes d'installation, sans modification de configuration.
 
 <Steps>
   <Step title="Créer le répertoire et ajouter des politiques">
@@ -256,7 +256,7 @@ La configuration la plus impactante : committez `.failproofai/policies/` dans vo
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // Imposer le gestionnaire de paquets préféré de votre équipe
+    // Impose le gestionnaire de paquets préféré de votre équipe
     // (ou activez plutôt la politique intégrée prefer-package-manager)
     customPolicies.add({
       name: "enforce-bun",
@@ -269,7 +269,7 @@ La configuration la plus impactante : committez `.failproofai/policies/` dans vo
       },
     });
 
-    // Rappeler à l'agent d'exécuter les tests avant de committer
+    // Rappelle à l'agent d'exécuter les tests avant de committer
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -283,14 +283,14 @@ La configuration la plus impactante : committez `.failproofai/policies/` dans vo
     });
     ```
   </Step>
-  <Step title="Committer dans git">
+  <Step title="Commiter dans git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
   </Step>
   <Step title="Continuer à améliorer">
-    Au fur et à mesure que votre équipe rencontre de nouveaux types d'échecs, ajoutez des politiques et poussez-les. Tout le monde reçoit la mise à jour au prochain `git pull`. Ces politiques deviennent un standard qualité vivant qui évolue avec votre équipe.
+    Au fur et à mesure que votre équipe rencontre de nouveaux problèmes, ajoutez des politiques et poussez-les. Tout le monde reçoit la mise à jour au prochain `git pull`. Ces politiques deviennent un standard qualité vivant qui évolue avec votre équipe.
   </Step>
 </Steps>
 
@@ -302,6 +302,6 @@ Le répertoire [`examples/`](https://github.com/exospherehost/failproofai/tree/m
 
 | Fichier | Ce qu'il illustre |
 |---------|-------------------|
-| `policies-basic.js` | Politiques de base — bloquer les écritures en production, les force-push, les scripts pipés |
+| `policies-basic.js` | Politiques de démarrage — bloquer les écritures en production, les force-push, les scripts pipés |
 | `policies-notification.js` | Alertes Slack pour les notifications d'inactivité et la fin de session |
-| `policies-advanced/index.js` | Imports transitifs, hooks asynchrones, nettoyage de la sortie PostToolUse, gestion de l'événement Stop |
+| `policies-advanced/index.js` | Imports transitifs, hooks asynchrones, nettoyage de sortie PostToolUse, gestion de l'événement Stop |

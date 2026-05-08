@@ -1,6 +1,6 @@
 ---
 title: Variables d'environnement
-description: "Configurez le comportement de failproofai avec des variables d'environnement"
+description: "Configurer le comportement de failproofai avec des variables d'environnement"
 ---
 
 ## Tableau de bord
@@ -10,20 +10,20 @@ description: "Configurez le comportement de failproofai avec des variables d'env
 | `PORT` | Port du tableau de bord (par défaut : `8020`) |
 | `CLAUDE_PROJECTS_PATH` | Remplace l'emplacement où sont recherchés les dossiers de projets Claude Code |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pages du tableau de bord à masquer, séparées par des virgules |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IP autorisés à accéder aux ressources de développement. Identique à `--allowed-origins`. |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IPs autorisés à accéder aux ressources de développement. Équivalent à `--allowed-origins`. |
 
 ## Journalisation
 
 | Variable | Description |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Niveau de journalisation du serveur (par défaut : `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Chemin personnalisé du fichier journal des hooks, ou `true` pour le chemin par défaut (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Chemin personnalisé du fichier de log des hooks, ou `true` pour le chemin par défaut (`~/.failproofai/logs/hooks.log`) |
 
 ## Télémétrie
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactive la télémétrie d'utilisation anonyme |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactiver la télémétrie d'utilisation anonyme |
 
 ## LLM (pour l'évaluation des politiques)
 

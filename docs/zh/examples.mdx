@@ -1,16 +1,16 @@
 ---
 title: 示例
-description: "如何为 Claude Code 和 Agents SDK 配置 hooks"
+description: "如何为 Claude Code 和 Agents SDK 配置钩子"
 icon: book-open
 ---
 
-开箱即用的常见场景示例，每个示例均说明如何安装以及预期效果。
+适用于常见场景的即开即用示例，每个示例均展示安装方式及预期效果。
 
 ---
 
-## 为 Claude Code 配置 hooks
+## 为 Claude Code 配置钩子
 
-Failproof AI 通过 Claude Code 的 [hooks 系统](https://docs.anthropic.com/en/docs/claude-code/hooks) 与其集成。运行 `failproofai policies --install` 后，它会在 Claude Code 的 `settings.json` 中注册 hook 命令，并在每次工具调用时触发。
+Failproof AI 通过 Claude Code 的[钩子系统](https://docs.anthropic.com/en/docs/claude-code/hooks)与其集成。运行 `failproofai policies --install` 后，它会在 Claude Code 的 `settings.json` 中注册钩子命令，并在每次工具调用时触发。
 
 <Steps>
   <Step title="安装 failproofai">
@@ -23,27 +23,27 @@ Failproof AI 通过 Claude Code 的 [hooks 系统](https://docs.anthropic.com/en
     failproofai policies --install
     ```
   </Step>
-  <Step title="验证 hooks 已注册">
+  <Step title="验证钩子是否已注册">
     ```bash
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    你应该能看到 `PreToolUse`、`PostToolUse`、`Notification` 和 `Stop` 事件的 hook 条目。
+    你应该能看到 `PreToolUse`、`PostToolUse`、`Notification` 和 `Stop` 事件对应的钩子条目。
   </Step>
   <Step title="运行 Claude Code">
     ```bash
     claude
     ```
 
-    策略现在会在每次工具调用时自动执行。尝试让 Claude 运行 `sudo rm -rf /`——该命令将被拦截。
+    策略现在会在每次工具调用时自动执行。可以尝试让 Claude 运行 `sudo rm -rf /`——该命令将被拦截。
   </Step>
 </Steps>
 
 ---
 
-## 为 Agents SDK 配置 hooks
+## 为 Agents SDK 配置钩子
 
-如果你正在使用 [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk) 进行开发，可以通过编程方式使用相同的 hook 系统。
+如果你正在使用 [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk) 进行开发，可以通过编程方式使用同一套钩子系统。
 
 <Steps>
   <Step title="在项目中安装 failproofai">
@@ -51,15 +51,15 @@ Failproof AI 通过 Claude Code 的 [hooks 系统](https://docs.anthropic.com/en
     npm install failproofai
     ```
   </Step>
-  <Step title="在 agent 中配置 hooks">
-    在创建 agent 进程时传入 hook 命令。这些 hooks 的触发方式与 Claude Code 中相同——通过 stdin/stdout JSON 传递：
+  <Step title="在 Agent 中配置钩子">
+    在创建 Agent 进程时传入钩子命令。钩子的触发方式与 Claude Code 中相同——通过 stdin/stdout JSON 传递：
 
     ```bash
-    failproofai --hook PreToolUse   # 在每个工具调用前执行
-    failproofai --hook PostToolUse  # 在每个工具调用后执行
+    failproofai --hook PreToolUse   # 在每个工具调用前触发
+    failproofai --hook PostToolUse  # 在每个工具调用后触发
     ```
   </Step>
-  <Step title="为 agent 编写自定义策略">
+  <Step title="为 Agent 编写自定义策略">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
@@ -88,35 +88,35 @@ Failproof AI 通过 Claude Code 的 [hooks 系统](https://docs.anthropic.com/en
 
 ## 拦截破坏性命令
 
-最常见的配置——防止 agent 造成不可逆的损害。
+最常见的使用场景——防止 Agent 执行不可逆的破坏性操作。
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-功能说明：
+各策略说明：
 - `block-sudo` - 拦截所有 `sudo` 命令
 - `block-rm-rf` - 拦截递归删除文件操作
 - `block-force-push` - 拦截 `git push --force`
-- `block-curl-pipe-sh` - 拦截将远程脚本通过管道传给 shell 的操作
+- `block-curl-pipe-sh` - 拦截将远程脚本通过管道传入 Shell 执行的操作
 
 ---
 
-## 防止密钥泄露
+## 防止密钥泄漏
 
-阻止 agent 在工具输出中查看或泄露凭据。
+阻止 Agent 在工具输出中查看或泄露凭证信息。
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-这些策略在 `PostToolUse` 阶段触发——工具运行结束后，在 agent 读取输出之前对其进行脱敏处理。
+这些策略在 `PostToolUse` 阶段触发——工具执行完毕后，在 Agent 读取输出之前对其进行脱敏处理。
 
 ---
 
-## 在 agent 需要关注时发送 Slack 通知
+## 通过 Slack 接收 Agent 待处理提醒
 
-使用 notification hook 将空闲提醒转发到 Slack。
+使用通知钩子将空闲提醒转发到 Slack。
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -142,7 +142,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // 如果 Slack 不可达，绝不阻塞 agent
+      // 若 Slack 不可达，绝不阻塞 Agent 运行
     }
 
     return allow();
@@ -158,9 +158,9 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## 将 agent 锁定在指定分支
+## 将 Agent 限定在指定分支
 
-防止 agent 切换分支或向受保护的分支推送代码。
+防止 Agent 切换分支或向受保护的分支推送代码。
 
 ```javascript
 import { customPolicies, allow, deny } from "failproofai";
@@ -182,9 +182,9 @@ customPolicies.add({
 
 ---
 
-## 提交前要求运行测试
+## 提交前强制运行测试
 
-提醒 agent 在提交代码前先运行测试。
+提醒 Agent 在提交代码前先执行测试。
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -206,9 +206,9 @@ customPolicies.add({
 
 ---
 
-## 锁定生产环境仓库
+## 锁定生产仓库
 
-在项目中提交一份项目级配置文件，让团队所有成员使用统一的策略。
+在项目中提交一份项目级配置文件，让团队所有成员共享相同的策略。
 
 在仓库中创建 `.failproofai/policies-config.json`：
 
@@ -231,20 +231,20 @@ customPolicies.add({
 }
 ```
 
-然后提交：
+然后提交它：
 
 ```bash
 git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-所有安装了 failproofai 的团队成员将自动应用这些规则。
+所有已安装 failproofai 的团队成员都会自动应用这些规则。
 
 ---
 
 ## 通过约定策略建立组织级质量标准
 
-最具影响力的配置方式：将针对项目定制的策略提交到仓库的 `.failproofai/policies/` 目录。所有团队成员无需执行任何安装命令、无需修改配置，即可自动获取这些策略。
+最具价值的使用方式：将 `.failproofai/policies/` 连同针对项目定制的策略一起提交到仓库。每位团队成员都能自动获取——无需执行安装命令，无需修改配置。
 
 <Steps>
   <Step title="创建目录并添加策略">
@@ -256,8 +256,8 @@ git commit -m "Add failproofai team policies"
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // 强制使用团队偏好的包管理器
-    //（也可以启用内置的 prefer-package-manager 策略）
+    // 强制使用团队指定的包管理器
+    // （也可以直接启用内置的 prefer-package-manager 策略）
     customPolicies.add({
       name: "enforce-bun",
       match: { events: ["PreToolUse"] },
@@ -269,7 +269,7 @@ git commit -m "Add failproofai team policies"
       },
     });
 
-    // 提醒 agent 在提交前运行测试
+    // 提醒 Agent 提交前先运行测试
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -289,8 +289,8 @@ git commit -m "Add failproofai team policies"
     git commit -m "Add team quality policies"
     ```
   </Step>
-  <Step title="持续优化">
-    当团队遇到新的问题模式时，添加相应策略并推送。每位成员在下次 `git pull` 时即可获取更新。这些策略将成为随团队共同成长的动态质量标准。
+  <Step title="持续改进">
+    每当团队遇到新的问题模式，只需添加策略并推送。所有人在下次 `git pull` 时即可获得更新。这些策略将成为随团队共同成长的活文档质量标准。
   </Step>
 </Steps>
 
@@ -298,10 +298,10 @@ git commit -m "Add failproofai team policies"
 
 ## 更多示例
 
-仓库中的 [`examples/`](https://github.com/exospherehost/failproofai/tree/main/examples) 目录包含：
+仓库中的 [`examples/`](https://github.com/exospherehost/failproofai/tree/main/examples) 目录包含以下内容：
 
-| 文件 | 内容说明 |
-|------|---------------|
-| `policies-basic.js` | 入门策略——拦截生产环境写入、force push 和管道脚本 |
-| `policies-notification.js` | 空闲通知和会话结束时的 Slack 告警 |
-| `policies-advanced/index.js` | 传递式导入、异步 hooks、PostToolUse 输出脱敏、Stop 事件处理 |
+| 文件 | 说明 |
+|------|------|
+| `policies-basic.js` | 入门策略——拦截生产环境写入、强制推送、管道脚本 |
+| `policies-notification.js` | 空闲通知和会话结束时的 Slack 提醒 |
+| `policies-advanced/index.js` | 传递性导入、异步钩子、PostToolUse 输出脱敏、Stop 事件处理 |

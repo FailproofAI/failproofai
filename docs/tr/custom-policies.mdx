@@ -1,10 +1,11 @@
 ---
+---
 title: Özel İlkeler
-description: "JavaScript'te kendi ilkelerinizi yazın - kuralları uygulayın, sapmaları önleyin, hataları tespit edin, dış sistemlerle entegre olun"
+description: "JavaScript'te kendi ilkelerinizi yazın - sözleşmeleri uygulayın, sapmaları engelleyin, başarısızlıkları tespit edin, harici sistemlerle entegre olun"
 icon: code
 ---
 
-Özel ilkeler, herhangi bir agent davranışı için kurallar yazmanızı sağlar: proje kurallarını uygulayın, sapmaları önleyin, yıkıcı işlemleri kontrol edin, takılı kalmış aracıları tespit edin veya Slack, onay iş akışları ve daha fazlası ile entegre olun. Yerleşik ilkeler ile aynı hook event sistemini ve `allow`, `deny`, `instruct` kararlarını kullanırlar.
+Özel ilkeler, herhangi bir aracı davranışı için kurallar yazmanızı sağlar: proje sözleşmelerini uygulayın, sapmaları engelleyin, yıkıcı işlemleri sınırlayın, takılı kalmış aracıları tespit edin veya Slack, onay iş akışları ve daha pek çok şeyle entegre olun. Yerleşik ilkelerle aynı kanca olay sistemini ve `allow`, `deny`, `instruct` kararlarını kullanırlar.
 
 ---
 
@@ -37,14 +38,14 @@ failproofai policies --install --custom ./my-policies.js
 
 ---
 
-## Özel ilkeleri yüklemenin iki yolu
+## Özel ilkeleri yüklemek için iki yol
 
-### Seçenek 1: Kural tabanlı (önerilen)
+### Seçenek 1: Sözleşmeye dayalı (önerilen)
 
-`*policies.{js,mjs,ts}` dosyalarını `.failproofai/policies/` klasörüne koyun ve otomatik olarak yüklenir — hiçbir bayrak veya yapılandırma değişikliği gerekmez. Bu git hooks gibi çalışır: dosyayı koyun, işte bu kadar.
+`*policies.{js,mjs,ts}` dosyalarını `.failproofai/policies/` klasörüne bırakın ve otomatik olarak yüklenir — bayrak veya yapılandırma değişikliğine gerek yoktur. Bu, git kancaları gibi çalışır: dosya bırakın, işte oldu.
 
 ```
-# Proje düzeyi — git'e kaydedilir, takım ile paylaşılır
+# Proje düzeyi — git'e kaydedilir, ekip ile paylaşılır
 .failproofai/policies/security-policies.mjs
 .failproofai/policies/workflow-policies.mjs
 
@@ -53,14 +54,14 @@ failproofai policies --install --custom ./my-policies.js
 ```
 
 **Nasıl çalışır:**
-- Hem proje hem de kullanıcı dizinleri taranır (birleşim — ilk kapsam kazanması değil)
-- Dosyalar her klasöre alfabetik olarak yüklenir. Sırayı kontrol etmek için `01-`, `02-` ön ekini kullanın
-- Sadece `*policies.{js,mjs,ts}` ile eşleşen dosyalar yüklenir; diğer dosyalar göz ardı edilir
+- Hem proje hem de kullanıcı dizinleri taranır (birleştirme — ilk kapsama kazananı değil)
+- Dosyalar her dizin içinde alfabetik sırada yüklenir. Sırayı kontrol etmek için `01-`, `02-` ile öneki ekleyin
+- Yalnızca `*policies.{js,mjs,ts}` ile eşleşen dosyalar yüklenir; diğer dosyalar yoksayılır
 - Her dosya bağımsız olarak yüklenir (dosya başına açık başarısızlık)
-- Açık `--custom` ve yerleşik ilkeler ile yan yana çalışır
+- Açık `--custom` ve yerleşik ilkelerle birlikte çalışır
 
 <Tip>
-Kural tabanlı ilkeler, kuruluşunuz için bir kalite standardı oluşturmanın en kolay yoludur. `.failproofai/policies/` git'e kaydedin ve her takım üyesi otomatik olarak aynı kuralları alır — geliştirici başına kurulum gerekmez. Takımınız yeni hata modları keşfettikçe, bir ilke ekleyin ve gönderin. Zaman içinde bu, her katkıyla iyileşen canlı bir kalite standardı haline gelir.
+Sözleşmeye dayalı ilkeler, organizasyonunuz için bir kalite standardı oluşturmanın en kolay yoludur. `.failproofai/policies/` klasörünü git'e kaydedin ve her ekip üyesi otomatik olarak aynı kuralları alır — geliştirici başına kurulum gerekmez. Ekibiniz yeni başarısızlık modları keşfettikçe, bir ilke ekleyin ve gönderin. Zamanla bunlar, her katkı ile iyileşen, yaşayan bir kalite standardı haline gelir.
 </Tip>
 
 ### Seçenek 2: Açık dosya yolu
@@ -76,21 +77,21 @@ failproofai policies --install --custom ./new-policies.js
 failproofai policies --uninstall --custom
 ```
 
-Çözümlenen mutlak yol, `policies-config.json` içinde `customPoliciesPath` olarak depolanır. Dosya her hook eventinde yeniden yüklenir - eventler arasında önbellekleme yoktur.
+Çözümlenen mutlak yol, `policies-config.json` içinde `customPoliciesPath` olarak depolanır. Dosya her kanca olayında taze yüklenir - olaylar arasında önbelleğe alma yoktur.
 
 ### Her ikisini birlikte kullanma
 
-Kural tabanlı ilkeler ve açık `--custom` dosyası birlikte var olabilir. Yükleme sırası:
+Sözleşmeye dayalı ilkeler ve açık `--custom` dosyası bir arada bulunabilir. Yükleme sırası:
 
-1. Açık `customPoliciesPath` dosyası (yapılandırıldıysa)
-2. Proje kural tabanlı dosyaları (`{cwd}/.failproofai/policies/`, alfabetik)
-3. Kullanıcı kural tabanlı dosyaları (`~/.failproofai/policies/`, alfabetik)
+1. Açık `customPoliciesPath` dosyası (yapılandırılmışsa)
+2. Proje sözleşmesi dosyaları (`{cwd}/.failproofai/policies/`, alfabetik)
+3. Kullanıcı sözleşmesi dosyaları (`~/.failproofai/policies/`, alfabetik)
 
 ---
 
 ## API
 
-### İçe aktar
+### İçe aktarma
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
@@ -98,7 +99,7 @@ import { customPolicies, allow, deny, instruct } from "failproofai";
 
 ### `customPolicies.add(hook)`
 
-Bir ilkeyi kaydeder. Aynı dosyada birden fazla ilke için gerektiği kadar çağırın.
+Bir ilke kaydeder. Aynı dosyada birden fazla ilke için gerektiği kadar çağırın.
 
 ```ts
 customPolicies.add({
@@ -112,31 +113,31 @@ customPolicies.add({
 ### Karar yardımcıları
 
 | İşlev | Etki | Ne zaman kullanılır |
-|----------|--------|----------|
-| `allow()` | İşlemi sessizce izin ver | İşlem güvenli, mesaj gerekmez |
-| `deny(message)` | İşlemi engelle | Agent bu işlemi yapmamalı |
-| `instruct(message)` | Bloklama olmaksızın bağlam ekle | Agent'a yolda kalmak için ek bağlam ver |
+|-------|------|-------------------|
+| `allow()` | İşlemi sessizce izin ver | İşlem güvenli, ileti gerekli değil |
+| `deny(message)` | İşlemi engelle | Aracı bu işlemi yapmamalı |
+| `instruct(message)` | Engellemeden bağlam ekle | Aracıya sırada kalmak için ek bağlam ver |
 
-`deny(message)` - ileti Claude'a `"Blocked by failproofai:"` ön ekiyle görünür. Tek bir `deny` tüm diğer değerlendirmeleri kısa devre yapar.
+`deny(message)` - ileti Claude'a `"Blocked by failproofai:"` ön ekiyle görünür. Tek bir `deny` tüm sonraki değerlendirmeyi kısa devre yapar.
 
-`instruct(message)` - ileti Claude'un geçerli araç çağrısı için bağlamına eklenir. Tüm `instruct` iletileri birlikte biriktirilir ve gönderilir.
+`instruct(message)` - ileti Claude'un mevcut araç çağrısı için bağlamına eklenir. Tüm `instruct` iletileri biriktirilir ve birlikte iletilir.
 
 <Tip>
-Kod değişikliği gerekmeksizin `deny` veya `instruct` iletisine ekstra rehberlik ekleyebilirsiniz — `policyParams` içine bir `hint` alanı ekleyerek. Bu özel (`custom/`), proje kural tabanlı (`.failproofai-project/`) ve kullanıcı kural tabanlı (`.failproofai-user/`) ilkeler için de çalışır. Ayrıntılar için [Yapılandırma → hint](/tr/configuration#hint-cross-cutting) bölümüne bakın.
+`policyParams` içine `hint` alanı ekleyerek herhangi bir `deny` veya `instruct` iletisine ek rehberlik ekleyebilirsiniz — kod değişikliğine gerek yoktur. Bu, özel (`custom/`), proje sözleşmesi (`.failproofai-project/`), ve kullanıcı sözleşmesi (`.failproofai-user/`) ilkeleri için de çalışır. Ayrıntılar için [Yapılandırma → hint](/tr/configuration#hint-cross-cutting) bölümüne bakın.
 </Tip>
 
-### Bilgilendirme amaçlı izin iletileri
+### Bilgilendirici izin iletileri
 
-`allow(message)` işlemi izin verir **ve** Claude'a bilgilendirici bir ileti geri gönderir. İleti, hook işleyicisinin stdout yanıtında `additionalContext` olarak gönderilir — `instruct` ile aynı mekanizma kullanılır, ancak semantik olarak farklıdır: bu bir uyarı değil, durum güncellemesidir.
+`allow(message)` işleme izin verir **ve** Claude'a geri bir bilgilendirici ileti gönderir. İleti, kanca işleyicisinin stdout yanıtında `additionalContext` olarak iletilir — `instruct` tarafından kullanılan aynı mekanizma, ancak anlamsal olarak farklı: bir uyarı değil, bir durum güncellemesidir.
 
 | İşlev | Etki | Ne zaman kullanılır |
-|----------|--------|----------|
-| `allow(message)` | İzin ver ve Claude'a bağlam gönder | Bir kontrol başarılı olduğunu onaylayın veya kontrol atlanışını açıklayın |
+|-------|------|-------------------|
+| `allow(message)` | İzin ver ve Claude'a bağlam gönder | Bir denetimin geçtiğini onaylayın veya bir denetimin neden atlanıldığını açıklayın |
 
 Kullanım durumları:
 - **Durum onayları:** `allow("All CI checks passed.")` — Claude'a her şeyin yeşil olduğunu söyler
-- **Açık başarısızlık açıklamaları:** `allow("GitHub CLI not installed, skipping CI check.")` — Claude'a kontrol atlanışını açıklar, böylece tam bağlama sahip olur
-- **Birden fazla ileti birikir:** birden fazla ilke her biri `allow(message)` döndürürse, tüm iletiler satırbaşı ile birleştirilir ve birlikte gönderilir
+- **Açık başarısızlık açıklamaları:** `allow("GitHub CLI not installed, skipping CI check.")` — Claude'a bir denetimin neden atlanıldığını söyler; tam bağlama sahip olması için
+- **Birden fazla ileti birikiyor:** birkaç ilke her biri `allow(message)` döndürürse, tüm iletiler newline ile birleştirilir ve birlikte iletilir
 
 ```js
 customPolicies.add({
@@ -158,28 +159,28 @@ customPolicies.add({
 ### `PolicyContext` alanları
 
 | Alan | Tür | Açıklama |
-|-------|------|-------------|
+|------|-----|----------|
 | `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
-| `toolName` | `string \| undefined` | Çağrılan araç (ör. `"Bash"`, `"Write"`, `"Read"`) |
+| `toolName` | `string \| undefined` | Çağrılan araç (örn. `"Bash"`, `"Write"`, `"Read"`) |
 | `toolInput` | `Record<string, unknown> \| undefined` | Aracın giriş parametreleri |
-| `payload` | `Record<string, unknown>` | Claude Code'dan gelen tam ham event payload'ı |
+| `payload` | `Record<string, unknown>` | Claude Code'dan tam ham olay yükü |
 | `session` | `SessionMetadata \| undefined` | Oturum bağlamı (aşağıya bakın) |
 
 ### `SessionMetadata` alanları
 
 | Alan | Tür | Açıklama |
-|-------|------|-------------|
+|------|-----|----------|
 | `sessionId` | `string` | Claude Code oturum tanımlayıcısı |
 | `cwd` | `string` | Claude Code oturumunun çalışma dizini |
-| `transcriptPath` | `string` | Oturumun JSONL transkript dosyası yolu |
+| `transcriptPath` | `string` | Oturumun JSONL transkripti dosya yolu |
 
-### Event türleri
+### Olay türleri
 
-| Event | Ne zaman tetiklenir | `toolInput` içeriği |
-|-------|--------------|----------------------|
-| `PreToolUse` | Claude bir araç çalıştırmadan önce | Aracın girdisi (ör. Bash için `{ command: "..." }`) |
+| Olay | Ne zaman ateşlenir | `toolInput` içeriği |
+|------|-------------------|-------------------|
+| `PreToolUse` | Claude bir aracı çalıştırmadan önce | Aracın girdisi (örn. Bash için `{ command: "..." }`) |
 | `PostToolUse` | Bir araç tamamlandıktan sonra | Aracın girdisi + `tool_result` (çıktı) |
-| `Notification` | Claude bir bildirim gönderdiğinde | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - hook'lar her zaman `allow()` döndürmelidir, bildirimleri engelleyemezler |
+| `Notification` | Claude bir bildirim gönderdiğinde | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - kancalar her zaman `allow()` döndürmelidir, bildirimleri engelleyemezler |
 | `Stop` | Claude oturumu sona erdiğinde | Boş |
 
 ---
@@ -189,19 +190,19 @@ customPolicies.add({
 İlkeler şu sırada değerlendirilir:
 
 1. Yerleşik ilkeler (tanım sırasında)
-2. `customPoliciesPath` adresinden açık özel ilkeler (`.add()` sırasında)
-3. Proje `.failproofai/policies/` adresinden kural tabanlı ilkeler (dosyalar alfabetik, içinde `.add()` sırası)
-4. Kullanıcı `~/.failproofai/policies/` adresinden kural tabanlı ilkeler (dosyalar alfabetik, içinde `.add()` sırası)
+2. `customPoliciesPath` öğesinden açık özel ilkeler (`.add()` sırasında)
+3. Proje `.failproofai/policies/` adresinden sözleşme ilkeleri (dosyalar alfabetik, içinde `.add()` sırası)
+4. Kullanıcı `~/.failproofai/policies/` adresinden sözleşme ilkeleri (dosyalar alfabetik, içinde `.add()` sırası)
 
 <Note>
-İlk `deny` tüm sonraki ilkeleri kısa devre yapar. Tüm `instruct` iletileri biriktirilir ve birlikte gönderilir.
+İlk `deny` tüm sonraki ilkeleri kısa devre yapar. Tüm `instruct` iletileri biriktirilir ve birlikte iletilir.
 </Note>
 
 ---
 
 ## Geçişli içe aktarmalar
 
-Özel ilke dosyaları, göreceli yollar kullanarak yerel modülleri içe aktarabilir:
+Özel ilke dosyaları göreli yollar kullanarak yerel modülleri içe aktarabilir:
 
 ```js
 // my-policies.js
@@ -218,46 +219,46 @@ customPolicies.add({
 });
 ```
 
-Giriş dosyasından erişilebilen tüm göreceli içe aktarmalar çözümlenir. Bu, `from "failproofai"` içe aktarmalarını gerçek dist yoluna yeniden yazarak ve ESM uyumluluğu sağlamak için geçici `.mjs` dosyaları oluşturarak uygulanır.
+Giriş dosyasından erişilebilir tüm göreli içe aktarmalar çözülür. Bu, `from "failproofai"` içe aktarmalarını gerçek dist yoluna yeniden yazarak ve ESM uyumluluğunu sağlamak için geçici `.mjs` dosyaları oluşturarak uygulanır.
 
 ---
 
-## Event türü filtrelemesi
+## Olay türü filtreleme
 
-Bir ilkenin ne zaman tetiklendiğini sınırlandırmak için `match.events` kullanın:
+Bir ilkenin ne zaman ateşleneceğini sınırlamak için `match.events` kullanın:
 
 ```js
 customPolicies.add({
   name: "require-summary-on-stop",
   match: { events: ["Stop"] },
   fn: async (ctx) => {
-    // Sadece oturum sona erdiğinde tetiklenir
-    // ctx.session.transcriptPath tam oturum günlüğünü içerir
+    // Only fires when the session ends
+    // ctx.session.transcriptPath contains the full session log
     return allow();
   },
 });
 ```
 
-Her event türüne tetiklenmek için `match` tamamen atlayın.
+Her olay türünde ateşlemek için `match` tamamen atlayın.
 
 ---
 
 ## Hata işleme ve başarısızlık modları
 
-Özel ilkeler **açık başarısızlık** modundadır: hatalar yerleşik ilkeleri hiçbir zaman engelleme veya hook işleyiciyi kilitlemez.
+Özel ilkeler **açık başarısız**: hatalar hiçbir zaman yerleşik ilkeleri engellemez veya kanca işleyiciyi çökmez.
 
 | Başarısızlık | Davranış |
-|---------|----------|
-| `customPoliciesPath` ayarlanmamış | Açık özel ilke çalışmaz; kural tabanlı ve yerleşik ilkeler normal şekilde devam eder |
-| Dosya bulunamadı | `~/.failproofai/hook.log` adresine uyarı yazılır; yerleşik ilkeler devam eder |
-| Söz dizimi/içe aktarma hatası (açık) | `~/.failproofai/hook.log` adresine hata yazılır; açık özel ilkeler atlanır |
-| Söz dizimi/içe aktarma hatası (kural tabanlı) | Hata yazılır; bu dosya atlanır, diğer kural tabanlı dosyalar yüklenir |
-| `fn` çalışma zamanında hatanın atılması | Hata yazılır; bu hook `allow` olarak işlem görür; diğer hook'lar devam eder |
-| `fn` 10 saniyeden uzun süre alması | Zaman aşımı yazılır; `allow` olarak işlem görür |
-| Kural tabanlı dizin eksik | Kural tabanlı ilke çalışmaz; hata yok |
+|--------------|----------|
+| `customPoliciesPath` ayarlanmamış | Açık özel ilkeler çalışmaz; sözleşme ilkeleri ve yerleşik ilkeler normal şekilde devam eder |
+| Dosya bulunamadı | Uyarı `~/.failproofai/hook.log` dosyasına kaydedilir; yerleşik ilkeler devam eder |
+| Söz dizimi/içe aktarma hatası (açık) | Hata `~/.failproofai/hook.log` dosyasına kaydedilir; açık özel ilkeler atlanır |
+| Söz dizimi/içe aktarma hatası (sözleşme) | Hata kaydedilir; o dosya atlanır, diğer sözleşme dosyaları yine de yüklenir |
+| `fn` çalışma zamanında hata fırlatır | Hata kaydedilir; o kanca `allow` olarak işlenir; diğer kancalar devam eder |
+| `fn` 10 saniyeden uzun sürer | Zaman aşımı kaydedilir; `allow` olarak işlenir |
+| Sözleşme dizini eksik | Sözleşme ilkeleri çalışmaz; hata yok |
 
 <Tip>
-Özel ilke hatalarını ayıklamak için günlük dosyasını izleyin:
+Özel ilke hatalarını hata ayıklamak için günlük dosyasını izleyin:
 
 ```bash
 tail -f ~/.failproofai/hook.log
@@ -272,7 +273,7 @@ tail -f ~/.failproofai/hook.log
 // my-policies.js
 import { customPolicies, allow, deny, instruct } from "failproofai";
 
-// Agent'ın secrets/ dizinine yazmasını engelle
+// Prevent agent from writing to secrets/ directory
 customPolicies.add({
   name: "block-secrets-dir",
   description: "Prevent agent from writing to secrets/ directory",
@@ -285,7 +286,7 @@ customPolicies.add({
   },
 });
 
-// Agent'ı yolda tut: commit etmeden önce testleri doğrula
+// Keep the agent on track: verify tests before committing
 customPolicies.add({
   name: "remind-test-before-commit",
   description: "Keep the agent on track: verify tests pass before committing",
@@ -300,7 +301,7 @@ customPolicies.add({
   },
 });
 
-// Donma döneminde planlanmamış bağımlılık değişikliklerini engelle
+// Prevent unplanned dependency changes during freeze
 customPolicies.add({
   name: "dependency-freeze",
   description: "Prevent unplanned dependency changes during freeze period",
@@ -323,14 +324,14 @@ export { customPolicies };
 
 ## Örnekler
 
-`examples/` dizini çalıştırmaya hazır ilke dosyaları içerir:
+`examples/` dizini çalışmaya hazır ilke dosyalarını içerir:
 
 | Dosya | İçerik |
-|------|----------|
-| `examples/policies-basic.js` | Yaygın agent hata modlarını kapsayan beş başlatıcı ilke |
-| `examples/policies-advanced/index.js` | Gelişmiş desenler: geçişli içe aktarmalar, zaman uyumsuz çağrılar, çıktı kazıyıcıları ve oturum sonu hook'ları |
-| `examples/convention-policies/security-policies.mjs` | Kural tabanlı güvenlik ilkeleri (.env yazımları engelle, git geçmişi yeniden yazımını önle) |
-| `examples/convention-policies/workflow-policies.mjs` | Kural tabanlı iş akışı ilkeleri (test anımsatıcıları, denetim dosya yazımları) |
+|-------|--------|
+| `examples/policies-basic.js` | Yaygın aracı başarısızlık modlarını kapsayan beş başlangıç ilkesi |
+| `examples/policies-advanced/index.js` | İleri düzey desenler: geçişli içe aktarmalar, eşzamansız çağrılar, çıktı temizleme ve oturum sonu kancaları |
+| `examples/convention-policies/security-policies.mjs` | Sözleşmeye dayalı güvenlik ilkeleri (.env yazmaları engelle, git geçmişi yeniden yazmasını önle) |
+| `examples/convention-policies/workflow-policies.mjs` | Sözleşmeye dayalı iş akışı ilkeleri (test hatırlatmaları, denetim dosyası yazmaları) |
 
 ### Açık dosya örneklerini kullanma
 
@@ -338,16 +339,16 @@ export { customPolicies };
 failproofai policies --install --custom ./examples/policies-basic.js
 ```
 
-### Kural tabanlı örnekleri kullanma
+### Sözleşmeye dayalı örnekleri kullanma
 
 ```bash
-# Proje düzeyine kopyala
+# Proje düzeyine kopyalayın
 mkdir -p .failproofai/policies
 cp examples/convention-policies/*.mjs .failproofai/policies/
 
-# Veya kullanıcı düzeyine kopyala
+# Veya kullanıcı düzeyine kopyalayın
 mkdir -p ~/.failproofai/policies
 cp examples/convention-policies/*.mjs ~/.failproofai/policies/
 ```
 
-Yükleme komutu gerekmez — dosyalar bir sonraki hook olayında otomatik olarak seçilir.
+Yükleme komutu gerekmez — dosyalar bir sonraki kanca olayında otomatik olarak alınır.

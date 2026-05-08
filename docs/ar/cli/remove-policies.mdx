@@ -1,41 +1,42 @@
 ---
+---
 title: إلغاء تثبيت السياسات
-description: "إزالة مدخلات Hook من إعدادات Claude Code"
+description: "إزالة مدخلات الخطاف من إعدادات Claude Code"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-يزيل مدخلات failproofai hook من ملف `settings.json` في Claude Code.
+يزيل مدخلات خطاف failproofai من `settings.json` الخاص بـ Claude Code.
 
 الأسماء المستعارة: `failproofai p -u`
 
 ## الخيارات
 
-| الخيار | الوصف |
+| العلم | الوصف |
 |------|-------------|
 | `--scope user` | إزالة من الإعدادات العامة (الافتراضي) |
 | `--scope project` | إزالة من إعدادات المشروع |
 | `--scope local` | إزالة من الإعدادات المحلية |
-| `--scope all` | إزالة من جميع النطاقات في نفس الوقت |
+| `--scope all` | إزالة من جميع النطاقات في آن واحد |
 | `--custom` / `-c` | مسح `customPoliciesPath` من الإعدادات |
 
 ## السلوك
 
-- **بدون أسماء السياسات** - يزيل جميع مدخلات failproofai hook من ملف الإعدادات
-- **أسماء محددة** - يعطّل تلك السياسات لكن يبقي Hooks مثبتة
+- **بدون أسماء سياسات** - يزيل جميع مدخلات خطاف failproofai من ملف الإعدادات
+- **أسماء محددة** - يعطل تلك السياسات لكن يبقي الخطافات مثبتة
 
 ## أمثلة
 
 ```bash
-# إزالة جميع Hooks عامة
+# إزالة جميع الخطافات عالمياً
 failproofai policies --uninstall
 
-# تعطيل سياسة محددة (يبقي Hooks مثبتة)
+# تعطيل سياسة محددة (يبقي الخطافات مثبتة)
 failproofai policies --uninstall block-sudo
 
-# إزالة Hooks من كل نطاق
+# إزالة الخطافات من كل نطاق
 failproofai policies --uninstall --scope all
 
 # مسح مسار السياسات المخصصة

@@ -1,5 +1,5 @@
 ---
-title: 快速入门
+title: 快速开始
 description: "安装 failproofai，启用策略，让你的 Agent 稳定运行"
 icon: rocket
 ---
@@ -7,7 +7,7 @@ icon: rocket
 ## 环境要求
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0（可选，仅在从源码构建时需要）
+- **Bun** >= 1.3.0（可选 - 仅在从源码构建时需要）
 
 ---
 
@@ -27,19 +27,19 @@ bun add -g failproofai
 
 ---
 
-## 快速开始
+## 快速上手
 
 <Steps>
   <Step title="启用策略">
-    策略是在每次 Agent 工具调用前后执行的规则，能够在破坏性命令、密钥泄露及其他故障模式造成损害之前将其拦截。
+    策略是在每次 Agent 工具调用前后运行的规则。它们能在破坏性命令、密钥泄露及其他故障模式造成损害之前将其拦截。
 
     ```bash
     failproofai policies --install
     ```
 
-    此命令会将 hook 条目写入已安装的 Agent CLI 配置文件（Claude Code 的 `~/.claude/settings.json`、OpenAI Codex 的 `~/.codex/hooks.json`、GitHub Copilot CLI 的 `~/.copilot/hooks/failproofai.json`、Cursor Agent 的 `~/.cursor/hooks.json`、OpenCode 在 `~/.config/opencode/plugins/failproofai.mjs` 生成的插件 shim 及 `~/.config/opencode/opencode.json` 的 `plugin` 数组中的注册条目、Pi 的 `~/.pi/agent/settings.json`，或 Gemini CLI 的 `~/.gemini/settings.json`）。如果检测到多个已安装的 CLI，系统会提示你选择；也可以通过 `--cli claude codex copilot cursor opencode pi gemini`（任意子集）跳过提示。
+    这会将 hook 条目写入已安装的 Agent CLI 中（Claude Code 的 `~/.claude/settings.json`、OpenAI Codex 的 `~/.codex/hooks.json`、GitHub Copilot CLI 的 `~/.copilot/hooks/failproofai.json`、Cursor Agent 的 `~/.cursor/hooks.json`、OpenCode 生成的插件 shim `~/.config/opencode/plugins/failproofai.mjs` 以及 `~/.config/opencode/opencode.json` 的 `plugin` 数组中的注册条目、Pi 的 `~/.pi/agent/settings.json`，或 Gemini CLI 的 `~/.gemini/settings.json`）。若检测到多个 CLI，系统会提示你选择；也可通过 `--cli claude codex copilot cursor opencode pi gemini`（任意子集）跳过提示。
 
-    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 和 Gemini CLI 的支持目前处于 **Beta** 阶段 —— 请分别使用 `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` 或 `--cli gemini` 进行安装。
+    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 和 Gemini CLI 的支持目前处于 **beta** 阶段——请分别使用 `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` 或 `--cli gemini` 进行安装。
 
     ```bash
     failproofai policies --install --scope project
@@ -57,17 +57,17 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    显示所有策略、是否已启用，以及已配置的参数。
+    显示所有策略、启用状态及已配置的参数。
   </Step>
   <Step title="启动控制台">
     ```bash
     failproofai
     ```
 
-    在 `http://localhost:8020` 打开本地控制台，可浏览会话记录、查看工具调用详情并管理策略。
+    在 `http://localhost:8020` 打开本地控制台，你可以在这里浏览会话、检查工具调用并管理策略。
   </Step>
   <Step title="运行你的 Agent">
-    像往常一样启动 Claude Code。如果 Agent 尝试执行危险操作，failproofai 会自动拦截。可以让它在无人值守的情况下运行，事后在控制台中查看执行情况。
+    像平常一样启动 Claude Code。如果 Agent 尝试执行危险操作，failproofai 会自动拦截。让它在无人值守的情况下运行，之后在控制台查看发生了什么。
   </Step>
 </Steps>
 
@@ -75,7 +75,7 @@ bun add -g failproofai
 
 ## 策略的工作原理
 
-每次 Agent 调用工具时，Claude Code 都会将 failproofai 作为子进程调用：
+每当 Agent 运行工具时，Claude Code 会将 failproofai 作为子进程调用：
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -83,21 +83,21 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-每个策略会返回以下三种决策之一：
+每条策略会返回以下三种决策之一：
 
-- **allow** —— Agent 正常继续执行
-- **deny** —— 操作被阻止，Agent 会收到拒绝原因说明
-- **instruct** —— 向 Agent 的提示词中添加额外上下文
+- **allow** - Agent 正常继续执行
+- **deny** - 操作被阻止，Agent 会收到拒绝原因
+- **instruct** - 向 Agent 的提示词中添加额外上下文
 
 <Note>
-策略在你的本地进程中运行，不会向任何远程服务发送数据。
+策略在你的本地进程中运行，不会向远程服务发送任何数据。
 </Note>
 
 ---
 
-## 通过约定式策略建立团队规范
+## 使用约定式策略为团队建立统一规范
 
-在团队内快速建立质量标准的最佳方式是使用 `.failproofai/policies/` 约定。将策略文件放入该目录后即可自动加载，无需额外标志、配置变更或安装命令。
+在团队中快速建立质量标准的最佳方式是使用 `.failproofai/policies/` 约定目录。将策略文件放入该目录，它们会被自动加载——无需任何标志、配置更改或安装命令。
 
 <Steps>
   <Step title="创建策略目录">
@@ -106,13 +106,13 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     ```
   </Step>
   <Step title="添加策略文件">
-    复制示例文件或自行编写：
+    复制示例文件或编写自己的策略：
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    或者新建一个：
+    或创建新策略：
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -131,18 +131,18 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     });
     ```
   </Step>
-  <Step title="提交到 Git">
+  <Step title="提交到 git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    所有安装了 failproofai 的团队成员都会自动获取这些策略，无需每人单独配置。
+    所有已安装 failproofai 的团队成员都会自动获取这些策略，无需进行任何个人配置。
   </Step>
 </Steps>
 
 <Tip>
-将 `.failproofai/policies/` 提交到代码仓库，让整个团队共享同一套规范。每当发现新的故障模式时，添加策略并推送——所有人在下次 `git pull` 时即可获得更新。随着时间推移，这些策略将成为持续演进的质量标准。
+将 `.failproofai/policies/` 提交到代码仓库，让整个团队共享同一套标准。随着团队不断发现新的故障模式，持续添加策略并推送——每个人在下次 `git pull` 时即可获得更新。随着时间推移，这些策略将成为持续演进的质量标准。
 </Tip>
 
 ---
@@ -155,9 +155,9 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
 |------|----------------|
 | `~/.failproofai/policies-config.json` | 全局策略配置 |
 | `~/.failproofai/hook-activity.jsonl` | Hook 执行历史 |
-| `~/.failproofai/hook.log` | 自定义 Hook 错误调试日志 |
-| `.failproofai/policies-config.json` | 项目级配置（可提交） |
-| `.failproofai/policies-config.local.json` | 个人覆盖配置（已加入 gitignore） |
+| `~/.failproofai/hook.log` | 自定义 hook 错误的调试日志 |
+| `.failproofai/policies-config.json` | 项目级配置（可提交到仓库） |
+| `.failproofai/policies-config.local.json` | 个人覆盖配置（已加入 .gitignore） |
 
 ---
 
@@ -176,7 +176,7 @@ failproofai policies --uninstall
 <CardGroup cols={2}>
 
 <Card title="配置" icon="gear" href="/zh/configuration">
-  作用域与配置文件格式说明
+  作用域与配置文件格式
 </Card>
 
 <Card title="内置策略" icon="shield" href="/zh/built-in-policies">
@@ -184,7 +184,7 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="自定义策略" icon="code" href="/zh/custom-policies">
-  用 JavaScript 编写你自己的策略
+  使用 JavaScript 编写你自己的策略
 </Card>
 
 <Card title="Agent 监控" icon="chart-line" href="/zh/dashboard">

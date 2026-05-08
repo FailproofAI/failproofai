@@ -15,16 +15,16 @@ Aliase: `failproofai p -u`
 
 | Flag | Beschreibung |
 |------|-------------|
-| `--scope user` | Aus den globalen Einstellungen entfernen (Standard) |
-| `--scope project` | Aus den Projekteinstellungen entfernen |
-| `--scope local` | Aus den lokalen Einstellungen entfernen |
-| `--scope all` | Aus allen Bereichen gleichzeitig entfernen |
+| `--scope user` | Aus globalen Einstellungen entfernen (Standard) |
+| `--scope project` | Aus Projekteinstellungen entfernen |
+| `--scope local` | Aus lokalen Einstellungen entfernen |
+| `--scope all` | Aus allen Geltungsbereichen gleichzeitig entfernen |
 | `--custom` / `-c` | Den `customPoliciesPath` aus der Konfiguration löschen |
 
 ## Verhalten
 
 - **Keine Richtliniennamen** – entfernt alle failproofai-Hook-Einträge aus der Einstellungsdatei
-- **Bestimmte Namen** – deaktiviert diese Richtlinien, behält aber die installierten Hooks bei
+- **Bestimmte Namen** – deaktiviert diese Richtlinien, behält aber die installierten Hooks
 
 ## Beispiele
 
@@ -35,7 +35,7 @@ failproofai policies --uninstall
 # Eine bestimmte Richtlinie deaktivieren (Hooks bleiben installiert)
 failproofai policies --uninstall block-sudo
 
-# Hooks aus allen Bereichen entfernen
+# Hooks aus allen Geltungsbereichen entfernen
 failproofai policies --uninstall --scope all
 
 # Pfad für benutzerdefinierte Richtlinien löschen

@@ -5,13 +5,13 @@ description: "Cách thiết lập hooks cho Claude Code và Agents SDK"
 icon: book-open
 ---
 
-Các ví dụ sẵn sàng sử dụng cho các tình huống phổ biến. Mỗi ví dụ cho thấy cách cài đặt và những gì mong đợi.
+Các ví dụ sẵn sàng sử dụng cho các tình huống phổ biến. Mỗi ví dụ cho thấy cách cài đặt và những gì bạn có thể mong đợi.
 
 ---
 
 ## Thiết lập hooks cho Claude Code
 
-Failproof AI tích hợp với Claude Code thông qua [hệ thống hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). Khi bạn chạy `failproofai policies --install`, nó sẽ đăng ký các lệnh hook trong `settings.json` của Claude Code, được kích hoạt trên mỗi lệnh gọi công cụ.
+Failproof AI tích hợp với Claude Code thông qua [hệ thống hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) của nó. Khi bạn chạy `failproofai policies --install`, nó sẽ đăng ký các lệnh hook trong `settings.json` của Claude Code và chúng sẽ được kích hoạt trên mỗi lệnh gọi công cụ.
 
 <Steps>
   <Step title="Cài đặt failproofai">
@@ -36,7 +36,7 @@ Failproof AI tích hợp với Claude Code thông qua [hệ thống hooks](https
     claude
     ```
 
-    Các chính sách hiện chạy tự động trên mỗi lệnh gọi công cụ. Hãy thử yêu cầu Claude chạy `sudo rm -rf /` - nó sẽ bị chặn.
+    Chính sách sẽ chạy tự động trên mỗi lệnh gọi công cụ. Hãy thử yêu cầu Claude chạy `sudo rm -rf /` - nó sẽ bị chặn.
   </Step>
 </Steps>
 
@@ -44,7 +44,7 @@ Failproof AI tích hợp với Claude Code thông qua [hệ thống hooks](https
 
 ## Thiết lập hooks cho Agents SDK
 
-Nếu bạn đang xây dựng với [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), bạn có thể sử dụng cùng một hệ thống hook theo cách lập trình.
+Nếu bạn đang xây dựng với [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), bạn có thể sử dụng cùng hệ thống hook theo cách lập trình.
 
 <Steps>
   <Step title="Cài đặt failproofai trong dự án của bạn">
@@ -53,14 +53,14 @@ Nếu bạn đang xây dựng với [Agents SDK](https://docs.anthropic.com/en/d
     ```
   </Step>
   <Step title="Cấu hình hooks trong agent của bạn">
-    Truyền các lệnh hook khi tạo quy trình agent của bạn. Các hooks được kích hoạt theo cách tương tự như trong Claude Code - thông qua stdin/stdout JSON:
+    Chuyển các lệnh hook khi tạo quy trình agent của bạn. Các hook được kích hoạt theo cách tương tự như trong Claude Code - thông qua JSON stdin/stdout:
 
     ```bash
-    failproofai --hook PreToolUse   # called before each tool
-    failproofai --hook PostToolUse  # called after each tool
+    failproofai --hook PreToolUse   # được gọi trước mỗi công cụ
+    failproofai --hook PostToolUse  # được gọi sau mỗi công cụ
     ```
   </Step>
-  <Step title="Viết chính sách tùy chỉnh cho agent của bạn">
+  <Step title="Viết một chính sách tùy chỉnh cho agent của bạn">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
@@ -87,37 +87,37 @@ Nếu bạn đang xây dựng với [Agents SDK](https://docs.anthropic.com/en/d
 
 ---
 
-## Chặn các lệnh phá hủy
+## Chặn các lệnh có tính chất huỷ hoại
 
-Thiết lập phổ biến nhất - ngăn chặn các agent thực hiện các hành động không thể hoàn tác.
+Thiết lập phổ biến nhất - ngăn các agent gây ra thiệt hại không thể khôi phục.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-Điều này thực hiện:
+Điều này làm gì:
 - `block-sudo` - chặn tất cả các lệnh `sudo`
-- `block-rm-rf` - chặn xóa tệp đệ quy
+- `block-rm-rf` - chặn xoá tệp đệ quy
 - `block-force-push` - chặn `git push --force`
-- `block-curl-pipe-sh` - chặn piping các kịch bản từ xa vào shell
+- `block-curl-pipe-sh` - chặn piping các kịch bản từ xa đến shell
 
 ---
 
 ## Ngăn chặn rò rỉ bí mật
 
-Ngăn các agent nhìn thấy hoặc rò rỉ thông tin xác thực trong kết quả công cụ.
+Ngăn các agent nhìn thấy hoặc rò rỉ thông tin đăng nhập trong kết quả công cụ.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-Những chính sách này được kích hoạt trên `PostToolUse` - sau khi công cụ chạy, chúng sẽ làm sạch kết quả trước khi agent nhìn thấy.
+Những chính sách này hoạt động trên `PostToolUse` - sau khi một công cụ chạy, chúng sẽ làm sạch đầu ra trước khi agent nhìn thấy nó.
 
 ---
 
-## Nhận cảnh báo Slack khi các agent cần chú ý
+## Nhận cảnh báo Slack khi các agent cần sự chú ý
 
-Sử dụng hook thông báo để chuyển tiếp các cảnh báo chờ đợi đến Slack.
+Sử dụng hook thông báo để chuyển tiếp cảnh báo chờ đợi đến Slack.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -185,7 +185,7 @@ customPolicies.add({
 
 ## Yêu cầu kiểm tra trước khi commit
 
-Nhắc nhở các agent chạy các bài kiểm tra trước khi commit.
+Nhắc nhở các agent chạy kiểm tra trước khi commit.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -207,9 +207,9 @@ customPolicies.add({
 
 ---
 
-## Khóa chặt kho lưu trữ production
+## Khóa một kho lưu trữ sản xuất
 
-Commit một cấu hình cấp dự án để mỗi nhà phát triển trong nhóm của bạn nhận được cùng các chính sách.
+Commit một cấu hình cấp độ dự án để mỗi lập trình viên trên nhóm của bạn nhận được các chính sách tương tự.
 
 Tạo `.failproofai/policies-config.json` trong kho lưu trữ của bạn:
 
@@ -239,16 +239,16 @@ git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-Mỗi thành viên nhóm đã cài đặt failproofai sẽ tự động áp dụng các quy tắc này.
+Mỗi thành viên nhóm có cài đặt failproofai sẽ tự động nhận các quy tắc này.
 
 ---
 
-## Xây dựng tiêu chuẩn chất lượng trên toàn tổ chức với các chính sách quy ước
+## Xây dựng tiêu chuẩn chất lượng toàn công ty với chính sách quy ước
 
-Thiết lập có ảnh hưởng nhất: commit `.failproofai/policies/` vào kho lưu trữ của bạn với các chính sách được điều chỉnh cho dự án của bạn. Mỗi thành viên nhóm sẽ nhận được chúng tự động — không cần các lệnh cài đặt, không cần thay đổi cấu hình.
+Thiết lập có tác động nhất: commit `.failproofai/policies/` đến kho lưu trữ của bạn với các chính sách được điều chỉnh cho dự án của bạn. Mỗi thành viên nhóm nhận được chúng tự động — không cần lệnh cài đặt, không cần thay đổi cấu hình.
 
 <Steps>
-  <Step title="Tạo thư mục và thêm các chính sách">
+  <Step title="Tạo thư mục và thêm chính sách">
     ```bash
     mkdir -p .failproofai/policies
     ```
@@ -291,18 +291,18 @@ Thiết lập có ảnh hưởng nhất: commit `.failproofai/policies/` vào kh
     ```
   </Step>
   <Step title="Tiếp tục cải thiện">
-    Khi nhóm của bạn gặp phải các chế độ lỗi mới, thêm các chính sách và đẩy. Mọi người sẽ nhận được bản cập nhật trên `git pull` tiếp theo của họ. Những chính sách này trở thành một tiêu chuẩn chất lượng sống động phát triển cùng với nhóm của bạn.
+    Khi nhóm của bạn gặp phải các chế độ lỗi mới, hãy thêm chính sách và đẩy. Mọi người sẽ nhận được bản cập nhật vào lần tiếp theo `git pull` của họ. Các chính sách này trở thành một tiêu chuẩn chất lượng sống động phát triển cùng với nhóm của bạn.
   </Step>
 </Steps>
 
 ---
 
-## Các ví dụ khác
+## Thêm ví dụ
 
 Thư mục [`examples/`](https://github.com/exospherehost/failproofai/tree/main/examples) trong kho lưu trữ chứa:
 
-| Tệp | Nó cho thấy điều gì |
+| Tệp | Nó cho thấy gì |
 |------|---------------|
-| `policies-basic.js` | Các chính sách khởi động - chặn ghi production, force-push, kịch bản được piping |
-| `policies-notification.js` | Cảnh báo Slack cho các thông báo chờ đợi và kết thúc phiên |
-| `policies-advanced/index.js` | Các lần nhập chuyển tiếp, hooks không đồng bộ, làm sạch kết quả PostToolUse, xử lý sự kiện Stop |
+| `policies-basic.js` | Chính sách khởi động - chặn ghi vào sản xuất, force-push, kịch bản piped |
+| `policies-notification.js` | Cảnh báo Slack cho thông báo chờ đợi và kết thúc phiên |
+| `policies-advanced/index.js` | Nhập cách chuyển tiếp, hooks bất đồng bộ, làm sạch đầu ra PostToolUse, xử lý sự kiện Stop |

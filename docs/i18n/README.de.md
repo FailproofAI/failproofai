@@ -23,7 +23,7 @@
 
 **Übersetzungen**: [简体中文](docs/i18n/README.zh.md) | [日本語](docs/i18n/README.ja.md) | [한국어](docs/i18n/README.ko.md) | [Español](docs/i18n/README.es.md) | [Português](docs/i18n/README.pt-br.md) | [Deutsch](docs/i18n/README.de.md) | [Français](docs/i18n/README.fr.md) | [Русский](docs/i18n/README.ru.md) | [हिन्दी](docs/i18n/README.hi.md) | [Türkçe](docs/i18n/README.tr.md) | [Tiếng Việt](docs/i18n/README.vi.md) | [Italiano](docs/i18n/README.it.md) | [العربية](docs/i18n/README.ar.md) | [עברית](docs/i18n/README.he.md)
 
-Die einfachste Möglichkeit, Richtlinien zu verwalten, die Ihre KI-Agenten zuverlässig, fokussiert und autonom am Laufen halten – für **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(Beta)_, **Cursor Agent** _(Beta)_, **OpenCode** _(Beta)_, **Pi** _(Beta)_, **Gemini CLI** _(Beta)_ und das **Agents SDK**.
+Der einfachste Weg, Richtlinien zu verwalten, die deine KI-Agenten zuverlässig, fokussiert und autonom am Laufen halten – für **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(Beta)_, **Cursor Agent** _(Beta)_, **OpenCode** _(Beta)_, **Pi** _(Beta)_, **Gemini CLI** _(Beta)_ & das **Agents SDK**.
 
 <p align="center">
   <img src="failproofai-hq.gif" alt="Failproof AI in Aktion" width="800" />
@@ -80,14 +80,14 @@ Die einfachste Möglichkeit, Richtlinien zu verwalten, die Ihre KI-Agenten zuver
   </a>
 </p>
 
-> Hooks für eine oder mehrere Kombinationen installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl anzuzeigen. **Die Unterstützung für GitHub Copilot CLI, Cursor Agent, OpenCode, Pi und Gemini CLI befindet sich in der Beta – Tests laufen noch.**
+> Hooks für eine oder mehrere Kombinationen installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl anzuzeigen. **Die Unterstützung für GitHub Copilot CLI, Cursor Agent, OpenCode, Pi und Gemini CLI befindet sich in der Beta-Phase – Tests laufen noch.**
 
-- **39 integrierte Richtlinien** – Häufige Fehlermuster von Agenten werden sofort erkannt. Destruktive Befehle werden blockiert, das Durchsickern von Geheimnissen verhindert, Agenten innerhalb der Projektgrenzen gehalten, Schleifen erkannt und vieles mehr.
-- **Benutzerdefinierte Richtlinien** – Schreiben Sie eigene Zuverlässigkeitsregeln in JavaScript. Nutzen Sie die `allow`/`deny`/`instruct`-API, um Konventionen durchzusetzen, Abweichungen zu verhindern, Operationen zu genehmigen oder externe Systeme einzubinden.
-- **Einfache Konfiguration** – Jede Richtlinie lässt sich ohne Code anpassen. Allowlists, geschützte Branches und Schwellenwerte können pro Projekt oder global festgelegt werden. Drei Konfigurationsbereiche werden automatisch zusammengeführt.
-- **Agent-Monitor** – Sehen Sie, was Ihre Agenten in Ihrer Abwesenheit getan haben. Sessions durchsuchen, jeden Tool-Aufruf prüfen und genau nachvollziehen, wo Richtlinien ausgelöst wurden.
+- **39 eingebaute Richtlinien** – Häufige Fehlerquellen von Agenten werden sofort abgefangen. Destruktive Befehle blockieren, das Durchsickern von Secrets verhindern, Agenten innerhalb der Projektgrenzen halten, Endlosschleifen erkennen und vieles mehr.
+- **Benutzerdefinierte Richtlinien** – Schreibe eigene Zuverlässigkeitsregeln in JavaScript. Mit der `allow`/`deny`/`instruct`-API Konventionen durchsetzen, Drift verhindern, Operationen absichern oder externe Systeme integrieren.
+- **Einfache Konfiguration** – Jede Richtlinie ohne Code-Anpassungen feinjustieren. Allowlists, geschützte Branches und Schwellenwerte pro Projekt oder global festlegen. Drei Konfigurations-Scopes werden automatisch zusammengeführt.
+- **Agent-Monitor** – Sieh nach, was deine Agenten in deiner Abwesenheit getan haben. Sitzungen durchsuchen, jeden Tool-Aufruf inspizieren und genau nachvollziehen, wo Richtlinien ausgelöst wurden.
 
-Alles läuft lokal – keine Daten verlassen Ihren Rechner.
+Alles läuft lokal – keine Daten verlassen deinen Rechner.
 
 ---
 
@@ -124,7 +124,7 @@ Schreibt Hook-Einträge in `~/.claude/settings.json`. Claude Code ruft failproof
 failproofai
 ```
 
-Öffnet `http://localhost:8020` – Sessions durchsuchen, Logs einsehen, Richtlinien verwalten.
+Öffnet `http://localhost:8020` – Sitzungen durchsuchen, Logs inspizieren, Richtlinien verwalten.
 
 ### 3. Aktive Richtlinien prüfen
 
@@ -134,12 +134,12 @@ failproofai policies
 
 ---
 
-## Richtlinieninstallation
+## Richtlinien-Installation
 
-### Bereiche
+### Scopes
 
-| Bereich | Befehl | Schreibziel |
-|---------|--------|-------------|
+| Scope | Befehl | Schreibort |
+|-------|---------|-----------------|
 | Global (Standard) | `failproofai policies --install` | `~/.claude/settings.json` |
 | Projekt | `failproofai policies --install --scope project` | `.claude/settings.json` |
 | Lokal | `failproofai policies --install --scope local` | `.claude/settings.local.json` |
@@ -154,7 +154,7 @@ failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
 
 ```bash
 failproofai policies --uninstall
-# oder für einen bestimmten Bereich:
+# oder für einen bestimmten Scope:
 failproofai policies --uninstall --scope project
 ```
 
@@ -162,7 +162,7 @@ failproofai policies --uninstall --scope project
 
 ## Konfiguration
 
-Die Richtlinienkonfiguration befindet sich in `~/.failproofai/policies-config.json` (global) oder `.failproofai/policies-config.json` in Ihrem Projekt (projektspezifisch).
+Die Richtlinienkonfiguration befindet sich in `~/.failproofai/policies-config.json` (global) oder `.failproofai/policies-config.json` in deinem Projekt (projektbezogen).
 
 ```json
 {
@@ -195,27 +195,27 @@ Die Richtlinienkonfiguration befindet sich in `~/.failproofai/policies-config.js
 }
 ```
 
-**Drei Konfigurationsbereiche** werden automatisch zusammengeführt (Projekt → Lokal → Global). Vollständige Zusammenführungsregeln finden Sie unter [docs/configuration.mdx](docs/configuration.mdx).
+**Drei Konfigurations-Scopes** werden automatisch zusammengeführt (Projekt → Lokal → Global). Siehe [docs/configuration.mdx](docs/configuration.mdx) für vollständige Zusammenführungsregeln.
 
 ---
 
-## Integrierte Richtlinien
+## Eingebaute Richtlinien
 
 | Richtlinie | Beschreibung | Konfigurierbar |
-|------------|-------------|:---:|
+|--------|-------------|:---:|
 | `block-sudo` | Verhindert, dass Agenten privilegierte Systembefehle ausführen | `allowPatterns` |
 | `block-rm-rf` | Verhindert versehentliches rekursives Löschen von Dateien | `allowPaths` |
-| `block-curl-pipe-sh` | Verhindert, dass Agenten nicht vertrauenswürdige Skripte per Pipe an die Shell übergeben | |
-| `block-failproofai-commands` | Verhindert die Selbstdeinstallation | |
+| `block-curl-pipe-sh` | Verhindert, dass Agenten nicht vertrauenswürdige Skripte an die Shell weiterleiten | |
+| `block-failproofai-commands` | Verhindert die Selbst-Deinstallation | |
 | `sanitize-jwt` | Verhindert, dass JWT-Token in den Agenten-Kontext gelangen | |
 | `sanitize-api-keys` | Verhindert, dass API-Schlüssel in den Agenten-Kontext gelangen | `additionalPatterns` |
-| `sanitize-connection-strings` | Verhindert, dass Datenbank-Zugangsdaten in den Agenten-Kontext gelangen | |
+| `sanitize-connection-strings` | Verhindert, dass Datenbankzugangsdaten in den Agenten-Kontext gelangen | |
 | `sanitize-private-key-content` | Schwärzt PEM-Private-Key-Blöcke aus der Ausgabe | |
 | `sanitize-bearer-tokens` | Schwärzt Authorization-Bearer-Token aus der Ausgabe | |
 | `block-env-files` | Verhindert, dass Agenten .env-Dateien lesen | |
 | `protect-env-vars` | Verhindert, dass Agenten Umgebungsvariablen ausgeben | |
 | `block-read-outside-cwd` | Hält Agenten innerhalb der Projektgrenzen | `allowPaths` |
-| `block-secrets-write` | Verhindert das Schreiben in Private-Key- und Zertifikatdateien | `additionalPatterns` |
+| `block-secrets-write` | Verhindert das Schreiben in Private-Key- und Zertifikatsdateien | `additionalPatterns` |
 | `block-push-master` | Verhindert versehentliche Pushes auf main/master | `protectedBranches` |
 | `block-work-on-main` | Hält Agenten von geschützten Branches fern | `protectedBranches` |
 | `block-force-push` | Verhindert `git push --force` | |
@@ -227,7 +227,7 @@ Die Richtlinienkonfiguration befindet sich in `~/.failproofai/policies-config.js
 | `warn-large-file-write` | Erkennt unerwartet große Datei-Schreibvorgänge | `thresholdKb` |
 | `warn-package-publish` | Erkennt versehentliches `npm publish` | |
 | `warn-background-process` | Erkennt unbeabsichtigte Hintergrundprozess-Starts | |
-| `warn-global-package-install` | Erkennt unbeabsichtigte globale Paketinstallationen | |
+| `warn-global-package-install` | Erkennt unbeabsichtigte globale Paket-Installationen | |
 | …und mehr | | |
 
 Vollständige Richtliniendetails und Parameterreferenz: [docs/built-in-policies.mdx](docs/built-in-policies.mdx)
@@ -236,7 +236,7 @@ Vollständige Richtliniendetails und Parameterreferenz: [docs/built-in-policies.
 
 ## Benutzerdefinierte Richtlinien
 
-Schreiben Sie eigene Richtlinien, um Agenten zuverlässig und auf Kurs zu halten:
+Schreibe eigene Richtlinien, um Agenten zuverlässig und fokussiert zu halten:
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
@@ -263,29 +263,29 @@ failproofai policies --install --custom ./my-policies.js
 ### Entscheidungs-Hilfsfunktionen
 
 | Funktion | Wirkung |
-|----------|---------|
-| `allow()` | Aktion erlauben |
-| `allow(message)` | Erlauben und informativen Kontext an Claude senden |
-| `deny(message)` | Aktion blockieren; Nachricht wird Claude angezeigt |
+|----------|--------|
+| `allow()` | Operation zulassen |
+| `allow(message)` | Zulassen und informativen Kontext an Claude senden |
+| `deny(message)` | Operation blockieren; Nachricht wird Claude angezeigt |
 | `instruct(message)` | Kontext zum Prompt von Claude hinzufügen; blockiert nicht |
 
 ### Kontextobjekt (`ctx`)
 
 | Feld | Typ | Beschreibung |
-|------|-----|-------------|
+|-------|------|-------------|
 | `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
 | `toolName` | `string` | Aufgerufenes Tool (`"Bash"`, `"Write"`, `"Read"`, …) |
 | `toolInput` | `object` | Eingabeparameter des Tools |
-| `payload` | `object` | Vollständige rohe Event-Nutzlast |
-| `session.cwd` | `string` | Arbeitsverzeichnis der Claude Code-Session |
-| `session.sessionId` | `string` | Session-Bezeichner |
-| `session.transcriptPath` | `string` | Pfad zur Sitzungstranskript-Datei |
+| `payload` | `object` | Vollständiger roher Event-Payload |
+| `session.cwd` | `string` | Arbeitsverzeichnis der Claude Code-Sitzung |
+| `session.sessionId` | `string` | Sitzungskennung |
+| `session.transcriptPath` | `string` | Pfad zur Transkriptdatei der Sitzung |
 
-Benutzerdefinierte Hooks unterstützen transitive lokale Importe, async/await und Zugriff auf `process.env`. Fehler verhalten sich fail-open (werden in `~/.failproofai/hook.log` protokolliert, integrierte Richtlinien laufen weiter). Vollständige Anleitung: [docs/custom-hooks.mdx](docs/custom-hooks.mdx).
+Benutzerdefinierte Hooks unterstützen transitive lokale Importe, async/await und Zugriff auf `process.env`. Fehler sind fail-open (werden in `~/.failproofai/hook.log` protokolliert, eingebaute Richtlinien laufen weiter). Siehe [docs/custom-hooks.mdx](docs/custom-hooks.mdx) für die vollständige Anleitung.
 
 ### Konventionsbasierte Richtlinien
 
-Legen Sie `*policies.{js,mjs,ts}`-Dateien in `.failproofai/policies/` ab – sie werden automatisch geladen, ohne Flags oder Konfigurationsänderungen. Committen Sie das Verzeichnis in Git, und alle Teammitglieder erhalten automatisch dieselben Qualitätsstandards.
+Lege `*policies.{js,mjs,ts}`-Dateien in `.failproofai/policies/` ab – sie werden automatisch geladen, ohne Flags oder Konfigurationsänderungen. Committe das Verzeichnis in Git und alle Teammitglieder erhalten automatisch dieselben Qualitätsstandards.
 
 ```text
 # Projektebene – in Git eingecheckt, mit dem Team geteilt
@@ -296,15 +296,15 @@ Legen Sie `*policies.{js,mjs,ts}`-Dateien in `.failproofai/policies/` ab – sie
 ~/.failproofai/policies/my-policies.mjs
 ```
 
-Beide Ebenen werden geladen (Vereinigung). Dateien werden innerhalb jedes Verzeichnisses alphabetisch geladen. Mit `01-`, `02-` usw. als Präfix lässt sich die Reihenfolge steuern. Sobald Ihr Team neue Fehlermuster entdeckt, fügen Sie eine Richtlinie hinzu und pushen – alle erhalten das Update beim nächsten Pull. Fertige Beispiele finden Sie unter [examples/convention-policies/](examples/convention-policies/).
+Beide Ebenen werden geladen (Vereinigung). Dateien werden innerhalb jedes Verzeichnisses alphabetisch geladen. Mit dem Präfix `01-`, `02-` usw. lässt sich die Reihenfolge steuern. Wenn das Team neue Fehlerquellen entdeckt, einfach eine Richtlinie hinzufügen und pushen – alle erhalten das Update beim nächsten Pull. Siehe [examples/convention-policies/](examples/convention-policies/) für gebrauchsfertige Beispiele.
 
 ---
 
 ## Telemetrie
 
-Failproof AI erfasst anonyme Nutzungstelemetrie über PostHog, um die Nutzung von Funktionen zu verstehen. Es werden niemals Session-Inhalte, Dateinamen, Tool-Eingaben oder persönliche Informationen übermittelt.
+Failproof AI erfasst anonyme Nutzungstelemetrie über PostHog, um die Nutzung von Funktionen zu verstehen. Sitzungsinhalte, Dateinamen, Tool-Eingaben oder personenbezogene Daten werden dabei niemals übertragen.
 
-Deaktivieren:
+Deaktivierung:
 
 ```bash
 FAILPROOFAI_TELEMETRY_DISABLED=1 failproofai
@@ -315,12 +315,12 @@ FAILPROOFAI_TELEMETRY_DISABLED=1 failproofai
 ## Dokumentation
 
 | Leitfaden | Beschreibung |
-|-----------|-------------|
+|-------|-------------|
 | [Erste Schritte](docs/getting-started.mdx) | Installation und erste Schritte |
-| [Integrierte Richtlinien](docs/built-in-policies.mdx) | Alle 39 integrierten Richtlinien mit Parametern |
+| [Eingebaute Richtlinien](docs/built-in-policies.mdx) | Alle 39 eingebauten Richtlinien mit Parametern |
 | [Benutzerdefinierte Richtlinien](docs/custom-policies.mdx) | Eigene Richtlinien schreiben |
-| [Konfiguration](docs/configuration.mdx) | Konfigurationsdateiformat und Bereichszusammenführung |
-| [Dashboard](docs/dashboard.mdx) | Sessions überwachen und Richtlinienaktivität prüfen |
+| [Konfiguration](docs/configuration.mdx) | Konfigurationsdateiformat und Scope-Zusammenführung |
+| [Dashboard](docs/dashboard.mdx) | Sitzungen überwachen und Richtlinienaktivität überprüfen |
 | [Architektur](docs/architecture.mdx) | Funktionsweise des Hook-Systems |
 | [Tests](docs/testing.mdx) | Tests ausführen und neue schreiben |
 
@@ -331,7 +331,7 @@ docker build -f Dockerfile.docs -t failproofai-docs .
 docker run --rm -p 3000:3000 failproofai-docs
 ```
 
-Öffnet die Mintlify-Dokumentationsseite unter `http://localhost:3000`. Der Container erkennt Änderungen, wenn Sie das docs-Verzeichnis einbinden:
+Öffnet die Mintlify-Dokumentationsseite unter `http://localhost:3000`. Der Container überwacht Änderungen, wenn du das Docs-Verzeichnis einbindest:
 
 ```bash
 docker run --rm -p 3000:3000 -v $(pwd)/docs:/app/docs failproofai-docs
@@ -341,7 +341,7 @@ docker run --rm -p 3000:3000 -v $(pwd)/docs:/app/docs failproofai-docs
 
 ## Hinweis für failproofai-Mitwirkende
 
-Die `.claude/settings.json` dieses Repos verwendet `bun ./bin/failproofai.mjs --hook <EventType>` anstelle des Standardbefehls `npx -y failproofai`. Das liegt daran, dass die Ausführung von `npx -y failproofai` innerhalb des failproofai-Projekts selbst einen selbstreferenzierenden Konflikt erzeugt.
+Die `.claude/settings.json` dieses Repos verwendet `bun ./bin/failproofai.mjs --hook <EventType>` anstelle des standardmäßigen `npx -y failproofai`-Befehls. Das liegt daran, dass die Ausführung von `npx -y failproofai` innerhalb des failproofai-Projekts selbst einen selbstreferenzierenden Konflikt erzeugt.
 
 Für alle anderen Repos ist der empfohlene Ansatz `npx -y failproofai`, installiert über:
 
@@ -361,4 +361,4 @@ Siehe [LICENSE](LICENSE).
 
 ---
 
-Entwickelt und gepflegt von **ExosphereHost: Reliability Research Lab for Your Agents**. Wir helfen Unternehmen und Start-ups dabei, die Zuverlässigkeit ihrer KI-Agenten durch eigene Agenten, Software und Expertise zu verbessern. Mehr erfahren unter [exosphere.host](https://exosphere.host).
+Entwickelt und gepflegt von **ExosphereHost: Reliability Research Lab for Your Agents**. Wir helfen Unternehmen und Startups, die Zuverlässigkeit ihrer KI-Agenten durch eigene Agenten, Software und Expertise zu verbessern. Mehr erfahren unter [exosphere.host](https://exosphere.host).

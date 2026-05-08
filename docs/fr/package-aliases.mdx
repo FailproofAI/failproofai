@@ -1,77 +1,77 @@
 ---
-title: Alias de Packages
-description: "Alias enregistrés pour la prévention du typosquatting et leur fonctionnement"
+title: Alias de paquets
+description: "Alias enregistrés pour prévenir le typosquatting et leur fonctionnement"
 icon: copy
 ---
 
-## Package officiel
+## Paquet officiel
 
-Le package npm canonique est **`failproofai`** :
+Le paquet npm canonique est **`failproofai`** :
 
 ```bash
 npm install -g failproofai
-# or
+# ou
 bun add -g failproofai
 ```
 
 ---
 
-## Pourquoi nous détenons les noms d'alias
+## Pourquoi nous possédons les noms d'alias
 
-Le typosquatting est une attaque courante contre la chaîne d'approvisionnement logicielle, où un acteur malveillant enregistre un nom de package à une seule frappe de clavier d'un package populaire. Les utilisateurs qui font une faute de frappe lors de la commande d'installation finissent par exécuter du code contrôlé par l'attaquant avec un accès complet au système — exactement le type de menace que Failproof AI est conçu pour contrer.
+Le typosquatting est une attaque courante sur la chaîne d'approvisionnement logicielle : un acteur malveillant enregistre un nom de paquet qui ne diffère que d'une frappe du paquet populaire ciblé. Les utilisateurs qui font une faute de frappe lors de la commande d'installation se retrouvent alors à exécuter du code contrôlé par l'attaquant avec un accès complet au système — exactement le type de menace que Failproof AI est conçu pour contrer.
 
-Pour éliminer cette surface d'attaque, **nous détenons de manière préventive toutes les fautes d'orthographe courantes et variantes de formatage** de `failproofai` sur npm. Aucun de ces noms ne peut être enregistré par un tiers. Chacun est un proxy minimal qui installe le vrai package `failproofai` et lui délègue les appels.
+Pour éliminer cette surface d'attaque, **nous enregistrons préventivement toutes les fautes d'orthographe courantes et variantes de formatage** de `failproofai` sur npm. Aucun de ces noms ne peut être enregistré par un tiers. Chacun est un proxy léger qui installe et délègue vers le vrai paquet `failproofai`.
 
 ---
 
 ## Alias enregistrés
 
-**Variantes de formatage** - différentes façons d'écrire « failproof ai » :
+**Variantes de formatage** — différentes façons d'écrire « failproof ai » :
 
-| Package | Statut |
-|---------|--------|
+| Paquet | Statut |
+|--------|--------|
 | `failproof` | ✅ Publié |
-| `failproof-ai` | ⏳ En attente de validation npm |
-| `fail-proof-ai` | ⏳ En attente de validation npm |
-| `failproof_ai` | ⏳ En attente de validation npm |
-| `fail_proof_ai` | ⏳ En attente de validation npm |
-| `fail-proofai` | ⏳ En attente de validation npm |
+| `failproof-ai` | ⏳ En attente d'approbation npm |
+| `fail-proof-ai` | ⏳ En attente d'approbation npm |
+| `failproof_ai` | ⏳ En attente d'approbation npm |
+| `fail_proof_ai` | ⏳ En attente d'approbation npm |
+| `fail-proofai` | ⏳ En attente d'approbation npm |
 
-**Fautes de frappe `failprof*`** - un `o` manquant dans « proof » :
+**Fautes de frappe `failprof*`** — il manque un `o` dans « proof » :
 
-| Package | Statut |
-|---------|--------|
+| Paquet | Statut |
+|--------|--------|
 | `failprof` | ✅ Publié |
 | `failprof-ai` | ✅ Publié |
-| `failprofai` | ⏳ En attente de validation npm |
-| `fail-prof-ai` | ⏳ En attente de validation npm |
-| `failprof_ai` | ⏳ En attente de validation npm |
+| `failprofai` | ⏳ En attente d'approbation npm |
+| `fail-prof-ai` | ⏳ En attente d'approbation npm |
+| `failprof_ai` | ⏳ En attente d'approbation npm |
 
-**Fautes de frappe `faliproof*`** - inversion des lettres `a` et `i` :
+**Fautes de frappe `faliproof*`** — inversion des lettres `a` et `i` :
 
-| Package | Statut |
-|---------|--------|
+| Paquet | Statut |
+|--------|--------|
 | `faliproof` | ✅ Publié |
 | `faliproof-ai` | ✅ Publié |
-| `faliproofai` | ⏳ En attente de validation npm |
+| `faliproofai` | ⏳ En attente d'approbation npm |
 
-> **Pourquoi « en attente » ?** La politique anti-spam de npm bloque les noms qui, après suppression de la ponctuation et application de vérifications de similarité, se normalisent vers la même chaîne qu'un package existant. Nous avons contacté le support npm pour réserver ces noms à des fins de protection contre le squatting. Ils seront activés une fois approuvés.
+> **Pourquoi certains sont-ils en attente ?** La politique anti-spam de npm bloque les noms qui se normalisent en une chaîne identique à un paquet existant après suppression de la ponctuation et vérifications de similarité. Nous avons contacté le support npm afin de réserver ces noms à des fins de protection contre le typosquatting. Ils seront activés une fois approuvés.
 
 Vous pouvez vérifier que tout alias publié nous appartient :
 
 ```bash
 npm info failproof
-# Look for: "ExosphereHost Inc." in the maintainers field
+# Cherchez : "ExosphereHost Inc." dans le champ maintainers
 ```
 
 ---
 
 ## Fonctionnement des alias
 
-Chaque package alias :
+Chaque paquet alias :
 
-1. Liste `failproofai` comme dépendance — ainsi, le vrai package (y compris la configuration de son hook `postinstall`) s'exécute lors de l'installation
-2. Expose un binaire portant son propre nom (par exemple `failprof-ai`) qui transmet tous les arguments au binaire `failproofai`
+1. Déclare `failproofai` comme dépendance — ainsi, le vrai paquet (y compris la configuration de son hook `postinstall`) s'exécute lors de l'installation
+2. Expose un binaire portant son propre nom (par ex. `failprof-ai`) qui transmet tous les arguments au binaire `failproofai`
 
 Le proxy est un script Node de deux lignes ; il ne contient aucune logique, n'effectue aucun appel réseau et ne collecte aucune donnée au-delà de ce que fait `failproofai` lui-même.
 
@@ -79,4 +79,4 @@ Le proxy est un script Node de deux lignes ; il ne contient aucune logique, n'ef
 
 ## Si vous trouvez un nom que nous avons manqué
 
-Ouvrez une issue sur [exospherehost/failproofai](https://github.com/exospherehost/failproofai/issues) et nous l'enregistrerons.
+Ouvrez un ticket sur [exospherehost/failproofai](https://github.com/exospherehost/failproofai/issues) et nous l'enregistrerons.

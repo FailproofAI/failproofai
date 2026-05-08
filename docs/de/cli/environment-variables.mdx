@@ -8,7 +8,7 @@ description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
 | Variable | Beschreibung |
 |----------|-------------|
 | `PORT` | Dashboard-Port (Standard: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Überschreibt den Pfad, unter dem Claude Code Projektordner gefunden werden |
+| `CLAUDE_PROJECTS_PATH` | Überschreibt den Pfad, unter dem Claude Code Projektordner gesucht werden |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Kommagetrennte Liste von Dashboard-Seiten, die ausgeblendet werden sollen |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs, die auf Entwicklungsressourcen zugreifen dürfen. Entspricht `--allowed-origins`. |
 
@@ -23,9 +23,9 @@ description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Deaktiviert anonyme Nutzungstelemetrie |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonyme Nutzungstelemetrie deaktivieren |
 
-## LLM (zur Richtlinienauswertung)
+## LLM (für die Richtlinienauswertung)
 
 | Variable | Beschreibung |
 |----------|-------------|

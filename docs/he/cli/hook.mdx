@@ -1,30 +1,30 @@
 ---
-title: Handler ווו (פנימי)
-description: "תהליך משנה שClaude Code מפעיל בכל אירוע כלי"
+title: Hook handler (פנימי)
+description: "תהליך משנה שה-Claude Code מפעיל בכל אירוע כלי"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-זה הפקודה שנרשמת ב־`settings.json` של Claude Code על ידי `failproofai policies --install`. בדרך כלל אתה לא קורא לזה ישירות.
+זה הפקודה שנרשמת ב-`settings.json` של Claude Code על ידי `failproofai policies --install`. בדרך כלל אתה לא קורא לזה ישירות.
 
-קורא payload JSON מ־stdin, מעריך את כל המדיניויות המופעלות, ויוצא עם קוד המציין את ההחלטה:
+קורא JSON payload מ-stdin, מעריך את כל המדיניויות המופעלות, ויוצא עם קוד המציין את ההחלטה:
 
 | קוד יציאה | החלטה | השפעה |
-|-----------|--------|--------|
+|-----------|----------|--------|
 | `0` | `allow` | אפשר את הפעולה |
 | `1` | `deny` | חסום את הפעולה - Claude רואה את סיבת הדחייה |
-| `2` | `instruct` | הוסף הדרכה להקשר של Claude |
+| `2` | `instruct` | הוסף הנחיות להקשר של Claude |
 
 ### סוגי אירועים נתמכים
 
 | קטגוריה | אירועים |
 |----------|--------|
-| **ביצוע כלי** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **מחזור חיים של הסשן** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **אינטראקציה של המשתמש** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **תת־אגנטים ומשימות** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
-| **תצורה** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **ביצוע כלים** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **מחזור חיים של הפעלה** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **אינטראקציה של משתמש** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **תתי-סוכנים ומשימות** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **הגדרות** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **מערכת קבצים** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **הקשר** | `PreCompact`, `PostCompact` |

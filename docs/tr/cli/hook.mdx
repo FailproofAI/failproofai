@@ -9,18 +9,18 @@ failproofai --hook <EventType>
 
 Bu, `failproofai policies --install` tarafından Claude Code'un `settings.json` dosyasına kaydedilen komuttur. Normalde bunu doğrudan çağırmazsınız.
 
-stdin'den bir JSON yükü okur, etkinleştirilen tüm politikaları değerlendirir ve kararı gösteren bir çıkış kodu ile çıkar:
+stdin'den JSON yükü okur, tüm etkin politikaları değerlendirir ve kararı belirten bir koduyla çıkış yapar:
 
 | Çıkış kodu | Karar | Etki |
-|-----------|-------|------|
+|-----------|--------|--------|
 | `0` | `allow` | İşleme izin ver |
 | `1` | `deny` | İşlemi engelle - Claude reddetme nedenini görür |
-| `2` | `instruct` | Claude'un bağlamına rehberlik enjekte et |
+| `2` | `instruct` | Claude'un bağlamına rehberlik ekle |
 
 ### Desteklenen olay türleri
 
 | Kategori | Olaylar |
-|----------|---------|
+|----------|--------|
 | **Araç yürütme** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Oturum yaşam döngüsü** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Kullanıcı etkileşimi** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

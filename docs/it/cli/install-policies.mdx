@@ -1,13 +1,13 @@
 ---
-title: Installare le policy
-description: "Abilita le policy in modo che vengano eseguite ad ogni chiamata di strumento dell'agente"
+title: Installa policy
+description: "Abilita le policy affinché vengono eseguite ad ogni chiamata di tool dell'agent"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-Scrive voci hook nel file di impostazioni della CLI dell'agente installata (Claude Code, OpenAI Codex o GitHub Copilot CLI _(beta)_) in modo che failproofai intercetti le chiamate agli strumenti.
+Scrive voci di hook nel file di impostazioni della CLI dell'agent installata (Claude Code, OpenAI Codex o GitHub Copilot CLI _(beta)_) in modo che failproofai intercetti le chiamate di tool.
 
 Alias: `failproofai p -i`
 
@@ -15,15 +15,15 @@ Alias: `failproofai p -i`
 
 | Flag | Descrizione |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | CLI dell'agente per cui effettuare l'installazione; separate da spazi (es. `--cli claude codex copilot`) o ripetute. Ometti per rilevare automaticamente le CLI installate e ricevere una richiesta. |
+| `--cli claude\|codex\|copilot` | CLI dell'agent per cui installare; separate da spazi (ad es. `--cli claude codex copilot`) o ripetute. Omettere per rilevare le CLI installate e visualizzare un prompt. |
 | `--scope user` | Installa nel file di impostazioni con ambito utente (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Predefinito. |
 | `--scope project` | Installa nel file di impostazioni con ambito progetto (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Solo Claude — esegue l'installazione in `<cwd>/.claude/settings.local.json`. Codex e Copilot non dispongono di un ambito `local`. |
+| `--scope local` | Solo Claude — installa in `<cwd>/.claude/settings.local.json`. Codex e Copilot non hanno un ambito `local`. |
 | `--custom <path>` / `-c` | Percorso di un file JS contenente policy hook personalizzate |
 
 ## Comportamento
 
-- **Nessun nome di policy** - apre una richiesta interattiva per selezionare le policy
+- **Nessun nome di policy** - apre un prompt interattivo per selezionare le policy
 - **Nomi specifici** - abilita quelle policy (aggiunte a quelle già abilitate)
 - **`all`** - abilita tutte le policy disponibili
 

@@ -1,6 +1,6 @@
 ---
 title: 環境変数
-description: "環境変数で failproofai の動作を設定する"
+description: "環境変数を使って failproofai の動作を設定する"
 ---
 
 ## ダッシュボード
@@ -8,22 +8,22 @@ description: "環境変数で failproofai の動作を設定する"
 | 変数 | 説明 |
 |----------|-------------|
 | `PORT` | ダッシュボードのポート番号（デフォルト: `8020`） |
-| `CLAUDE_PROJECTS_PATH` | Claude Code プロジェクトフォルダの検索場所を上書きする |
+| `CLAUDE_PROJECTS_PATH` | Claude Code のプロジェクトフォルダの検索場所を上書きする |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 非表示にするダッシュボードページをカンマ区切りで指定する |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 開発リソースへのアクセスを許可するホスト/IP。`--allowed-origins` と同じ動作。 |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 開発リソースへのアクセスを許可するホスト/IP。`--allowed-origins` と同じ。 |
 
 ## ログ
 
 | 変数 | 説明 |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | サーバーのログレベル（デフォルト: `warn`） |
-| `FAILPROOFAI_HOOK_LOG_FILE` | カスタムフックログファイルのパス。`true` を指定するとデフォルトパス（`~/.failproofai/logs/hooks.log`）を使用。 |
+| `FAILPROOFAI_HOOK_LOG_FILE` | フックログファイルのカスタムパス。`true` を指定するとデフォルトパス（`~/.failproofai/logs/hooks.log`）が使用される |
 
 ## テレメトリー
 
 | 変数 | 説明 |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 匿名の利用統計テレメトリーを無効にする |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 匿名の使用状況テレメトリーを無効にする |
 
 ## LLM（ポリシー評価用）
 

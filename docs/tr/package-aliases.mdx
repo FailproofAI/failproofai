@@ -6,11 +6,11 @@ icon: copy
 
 ## Resmi paket
 
-Kanonik npm paketi **`failproofai`**'dir:
+Kanonik npm paketi **`failproofai`** dir:
 
 ```bash
 npm install -g failproofai
-# or
+# veya
 bun add -g failproofai
 ```
 
@@ -18,15 +18,15 @@ bun add -g failproofai
 
 ## Neden takma ad adlarına sahibiz
 
-Yazım hatası saldırısı (typosquatting), kötü niyetli bir aktörün popüler bir pakete sadece bir tuş uzakta olan bir paket adını kaydettiği yaygın bir tedarik zinciri saldırısıdır. Kurulum komutunu yanlış yazan kullanıcılar, saldırgan tarafından kontrol edilen kodu tam sistem erişimi ile çalıştırmaya maruz kalır - tam olarak Failproof AI'nin savunması için tasarlandığı tür bir tehdit.
+Yazım hatası saldırısı (typosquatting), kötü niyetli bir aktörün popüler bir pakete sadece bir tuş farkı kadar yakın bir paket adını kaydettiği yaygın bir tedarik zinciri saldırısıdır. Install komutunu yanlış yazan şüphesiz kullanıcılar, tam sistem erişimine sahip saldırganın kontrolündeki kodu çalıştırırlar - tam da Failproof AI'nin korumak için tasarlandığı tehdit türü.
 
-Bu riski ortadan kaldırmak için **`failproofai`'nin tüm yaygın yazım hatalarını ve biçimlendirme varyasyonlarının sahibiyiz** npm'de. Bu adların hiçbiri üçüncü bir taraf tarafından kaydettilemez. Her biri gerçek `failproofai` paketini yükleyen ve çalıştıran ince bir vekil (proxy) görevi görür.
+Bu riski ortadan kaldırmak için, **`failproofai` nin tüm yaygın yazım hatalarını ve biçimlendirme varyantlarına önceden sahip oluyuz** npm'de. Bu adların hiçbiri üçüncü bir taraf tarafından kaydedilemez. Her biri gerçek `failproofai` paketini yükleyen ve ona delegasyon yapan ince bir vekil (proxy) dir.
 
 ---
 
-## Kayıtlı takma adları
+## Kayıtlı takma adlar
 
-**Biçimlendirme varyasyonları** - "failproof ai" yazmanın farklı yolları:
+**Biçimlendirme varyantları** - "failproof ai" yazmanın farklı yolları:
 
 | Paket | Durum |
 |---------|--------|
@@ -37,7 +37,7 @@ Bu riski ortadan kaldırmak için **`failproofai`'nin tüm yaygın yazım hatala
 | `fail_proof_ai` | ⏳ npm desteği bekleniyor |
 | `fail-proofai` | ⏳ npm desteği bekleniyor |
 
-**`failprof*` yazım hatası** - "proof"tan bir `o` eksik:
+**`failprof*` yazım hataları** - "proof" tan bir `o` eksik:
 
 | Paket | Durum |
 |---------|--------|
@@ -47,7 +47,7 @@ Bu riski ortadan kaldırmak için **`failproofai`'nin tüm yaygın yazım hatala
 | `fail-prof-ai` | ⏳ npm desteği bekleniyor |
 | `failprof_ai` | ⏳ npm desteği bekleniyor |
 
-**`faliproof*` yazım hatası** - `a` ve `i` yer değiştirilmiş:
+**`faliproof*` yazım hataları** - `a` ve `i` yer değiştirilmiş:
 
 | Paket | Durum |
 |---------|--------|
@@ -55,28 +55,28 @@ Bu riski ortadan kaldırmak için **`failproofai`'nin tüm yaygın yazım hatala
 | `faliproof-ai` | ✅ Yayınlandı |
 | `faliproofai` | ⏳ npm desteği bekleniyor |
 
-> **Neden bekleniyor?** npm'nin spam önleme politikası, noktalama işaretleri kaldırıldığında ve benzerlik kontrolleri yapıldığında mevcut bir paketleyle aynı dizgeye normalleşen adları engeller. Bu adları anti-squatting amaçlarıyla kaydetmek için npm desteğine başvurduk. Onaylandığında etkinleştirileceklerdir.
+> **Neden bekleniyor?** npm'nin spam önleme politikası, noktalama işaretleri kaldırıldıktan ve benzerlik kontrolleri yapıldıktan sonra mevcut bir paket olarak normalleşen adları engeller. Bu adları yazım hatası saldırısı önleme amacıyla kaydetmek için npm desteğine başvurduk. Onaylandıktan sonra etkinleştirileceklerdir.
 
 Yayınlanan herhangi bir takma adın bize ait olduğunu doğrulayabilirsiniz:
 
 ```bash
 npm info failproof
-# Bak: maintainers alanında "ExosphereHost Inc."
+# Bakınız: maintainers alanında "ExosphereHost Inc."
 ```
 
 ---
 
-## Takma adları nasıl çalışır
+## Takma adlar nasıl çalışır
 
 Her takma ad paketi:
 
-1. `failproofai`'yi bir bağımlılık olarak listeler - böylece gerçek paket (kendi `postinstall` kancası kurulumu dahil) yüklenirken çalışır
-2. Kendi adıyla eşleşen bir ikili dosyayı ortaya çıkarır (örn. `failprof-ai`) ve tüm argümanları `failproofai` ikili dosyasına yönlendirir
+1. Bağımlılık olarak `failproofai` listeler - böylece gerçek paket (kendi `postinstall` hook kurulumu dahil) yükleme sırasında çalışır
+2. Tüm argümanları `failproofai` binary dosyasına vekalet yapan kendi adıyla eşleşen bir binary'yi açığa çıkarır (örn. `failprof-ai`)
 
-Vekil, iki satırlı bir Node.js komut dosyasıdır; `failproofai`'nin kendisinin yaptığından başka hiçbir mantık, ağ çağrısı ve veri toplaması yoktur.
+Vekil iki satırlık bir Node betiğidir; hiçbir mantık, ağ çağrısı yok ve `failproofai` nin kendisinin yaptığının ötesinde veri toplama yok.
 
 ---
 
-## Atladığımız bir ad bulursanız
+## Kaçırdığımız bir ad bulursanız
 
-[exospherehost/failproofai](https://github.com/exospherehost/failproofai/issues) adresinde bir sorun açın ve biz onu kaydettireceğiz.
+[exospherehost/failproofai](https://github.com/exospherehost/failproofai/issues) adresinde bir konu açın ve biz onu kaydedeceğiz.

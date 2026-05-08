@@ -1,15 +1,15 @@
 ---
 title: "适用于智能体"
-description: "只需一条命令，即可将 Failproof AI 知识添加到您的编程智能体中。支持 Claude Code、Cursor、Windsurf 等。"
+description: "只需一条命令，即可将 Failproof AI 知识添加到您的编程智能体中。支持 Claude Code、Cursor、Windsurf 等工具。"
 ---
 
-只需一条命令，即可将完整的 Failproof AI 参考文档添加到您的编程智能体中。支持 Claude Code、Cursor、Windsurf 以及任何其他支持技能（skills）的智能体。
+只需一条命令，即可将完整的 Failproof AI 参考资料添加到您的编程智能体中。支持 Claude Code、Cursor、Windsurf，以及任何其他支持技能的智能体。
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` 会自动检测您已安装的智能体，并以适合各智能体的格式添加该技能。
+`npx skills` 会自动检测您已安装的智能体，并以适合各自的格式添加该技能。
 
 ## 技能涵盖的内容
 
@@ -20,19 +20,19 @@ npx skills add https://docs.befailproof.ai
 | 上下文对象 | `ctx.eventType`、`ctx.toolName`、`ctx.toolInput`、`ctx.session` |
 | 配置 | `policies-config.json` 结构、作用域合并、`policyParams` |
 | CLI | `failproofai policies --install`、`--uninstall`、`--custom`、作用域 |
-| 仪表板 | 会话查看器、策略活动、环境变量 |
-| 架构 | 钩子处理流程、退出码、stdin/stdout 协议 |
+| 控制台 | 会话查看器、策略活动、环境变量 |
+| 架构 | 钩子处理流程、退出码、stdin/stdout 约定 |
 
-## 技能内容是否完整？
+## 技能内容完整吗？
 
-Mintlify 会从导航中的所有页面生成 `llms.txt`。Failproof AI 文档涵盖完整 API——包括每条策略、每个选项和每个示例。如果您发现有所遗漏，原始内容位于 `https://docs.befailproof.ai/llms-full.txt`。
+Mintlify 会从导航中的所有页面生成 `llms.txt`。Failproof AI 文档涵盖完整的 API——每条策略、每个选项和示例均已收录。如果您发现有所遗漏，源文件位于 `https://docs.befailproof.ai/llms-full.txt`。
 
 如需针对性的上下文，可直接链接到特定页面：
 
 ```bash
-# 仅获取自定义策略 API
+# 仅自定义策略 API
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# 仅获取内置策略
+# 仅内置策略
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

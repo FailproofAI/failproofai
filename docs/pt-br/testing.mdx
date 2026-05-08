@@ -1,26 +1,26 @@
 ---
 title: Testes
-description: "Testes unitários, testes E2E e utilitários de teste"
+description: "Testes unitários, testes E2E e helpers de teste"
 icon: flask-vial
 ---
 
-failproofai possui duas suítes de testes: **testes unitários** (rápidos, com mocks) e **testes end-to-end** (invocações reais de subprocessos).
+failproofai possui dois conjuntos de testes: **testes unitários** (rápidos, com mocks) e **testes end-to-end** (invocações reais de subprocessos).
 
 ---
 
 ## Executando os testes
 
 ```bash
-# Executar todos os testes unitários uma vez
+# Executa todos os testes unitários uma vez
 bun run test:run
 
-# Executar testes unitários em modo watch
+# Executa os testes unitários em modo watch
 bun run test
 
-# Executar testes E2E (requer configuração - veja abaixo)
+# Executa os testes E2E (requer configuração - veja abaixo)
 bun run test:e2e
 
-# Verificar tipos sem compilar
+# Verificação de tipos sem compilar
 bunx tsc --noEmit
 
 # Lint
@@ -31,17 +31,17 @@ bun run lint
 
 ## Testes unitários
 
-Os testes unitários ficam em `__tests__/` e utilizam o [Vitest](https://vitest.dev) com `happy-dom`.
+Os testes unitários ficam em `__tests__/` e usam [Vitest](https://vitest.dev) com `happy-dom`.
 
 ```text
 __tests__/
   hooks/
     builtin-policies.test.ts      # Lógica de políticas para cada builtin
-    hooks-config.test.ts          # Carregamento de configuração e mesclagem de escopos
+    hooks-config.test.ts          # Carregamento de config e mesclagem de escopos
     policy-evaluator.test.ts      # Injeção de parâmetros e ordem de avaliação
-    custom-hooks-registry.test.ts # Registro globalThis: add/get/clear
-    custom-hooks-loader.test.ts   # Loader ESM, imports transitivos, tratamento de erros
-    manager.test.ts               # Operações install/remove/list
+    custom-hooks-registry.test.ts # globalThis registry add/get/clear
+    custom-hooks-loader.test.ts   # ESM loader, imports transitivos, tratamento de erros
+    manager.test.ts               # Operações de install/remove/list
   components/
     sessions-list.test.tsx        # Componente de lista de sessões
     project-list.test.tsx         # Componente de lista de projetos
@@ -114,7 +114,7 @@ Os testes E2E invocam o binário real do `failproofai` como subprocesso, enviam 
 
 ### Configuração
 
-Os testes E2E executam o binário diretamente do código-fonte do repositório. Antes da primeira execução, compile o bundle CJS que os arquivos de hook customizados usam ao importar de `'failproofai'`:
+Os testes E2E executam o binário diretamente a partir do código-fonte do repositório. Antes da primeira execução, compile o bundle CJS que os arquivos de hooks customizados utilizam ao importar de `'failproofai'`:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -133,17 +133,17 @@ Recompile o `dist/` sempre que alterar a API pública de hooks (`src/hooks/custo
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # Inicia o binário, envia payload JSON, captura código de saída + stdout + stderr
-    fixture-env.ts      # Diretórios temporários isolados por teste com arquivos de configuração
-    payloads.ts         # Fábricas de payload compatíveis com Claude para cada tipo de evento
+    hook-runner.ts      # Inicia o binário, envia o payload JSON, captura código de saída + stdout + stderr
+    fixture-env.ts      # Diretórios temporários isolados por teste com arquivos de config
+    payloads.ts         # Fábricas de payload fiéis ao Claude para cada tipo de evento
   hooks/
     builtin-policies.e2e.test.ts   # Cada política builtin com subprocesso real
     custom-hooks.e2e.test.ts       # Carregamento e avaliação de hooks customizados
-    config-scopes.e2e.test.ts      # Mesclagem de configuração entre escopos project/local/global
+    config-scopes.e2e.test.ts      # Mesclagem de configs entre escopos project/local/global
     policy-params.e2e.test.ts      # Injeção de parâmetros para cada política parametrizada
 ```
 
-### Usando os utilitários E2E
+### Usando os helpers E2E
 
 **`FixtureEnv`** - ambiente isolado por teste:
 
@@ -152,7 +152,7 @@ import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
 // env.cwd    - diretório temporário; passe como payload.cwd para carregar .failproofai/policies-config.json
-// env.home   - home isolado; evita vazamento do ~/.failproofai real
+// env.home   - home dir isolado; sem vazamentos do ~/.failproofai real
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -245,16 +245,16 @@ describe("block-rm-rf (E2E)", () => {
 
 Os testes E2E utilizam `vitest.config.e2e.mts` com:
 
-- `environment: "node"` - sem necessidade de globals do navegador
+- `environment: "node"` - não são necessários globals de browser
 - `pool: "forks"` - isolamento real de processos (os testes iniciam subprocessos)
 - `testTimeout: 20_000` - 20s por teste (inicialização do binário + avaliação do hook)
 
-O pool `forks` é importante: workers baseados em threads compartilham `globalThis`, o que pode interferir com testes que iniciam subprocessos. Forks baseados em processos evitam esse problema.
+O pool `forks` é importante: workers baseados em threads compartilham o `globalThis`, o que pode interferir com testes que iniciam subprocessos. Forks baseados em processos evitam esse problema.
 
 ---
 
 ## CI
 
-A execução completa de CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) deve passar antes do merge. A suíte E2E é executada como um job de CI separado, em paralelo.
+A execução completa de CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) precisa passar antes do merge. O conjunto de testes E2E é executado como um job de CI separado em paralelo.
 
 Consulte [Contributing](../CONTRIBUTING.md) para o checklist completo de pré-merge.

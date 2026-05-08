@@ -1,36 +1,36 @@
 ---
-title: Failproof AI
-description: "AI aracılarınızı güvenilir ve otonom olarak çalışan durumda tutmak için kancaları ve politikaları yönetin"
+title:  Failproof AI
+description: "AI aracılarınızı güvenilir tutun ve otonom olarak çalışmalarını sağlayan hook'ları ve politikaları yönetin"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-AI aracılarınızı güvenilir ve otonom olarak çalışan durumda tutan kancalar ve politikalar - **Claude Code**, **OpenAI Codex** ve **Agents SDK** için.
+AI aracılarınızı güvenilir tutun ve otonom olarak çalışmalarını sağlayan hook'lar ve politikalar - **Claude Code**, **OpenAI Codex** ve **Agents SDK** için.
 
-AI aracıları öngörülebilir şekillerde başarısız olur. Yıkıcı komutları çalıştırırlar, sırları sızıtırlar, görevden sapıp dizayndan çıkarlar, döngülere takılırlar veya doğrudan ana dalına gönderirler. Kontrolsüz bırakıldığında, küçük başarısızlıklar baş döndürücü şekilde artarlar.
+AI aracıları öngörülebilir şekillerde başarısız olur. Yıkıcı komutlar çalıştırırlar, gizli anahtarları sızdırırlar, görevden sapıp kalırlar, döngülerde takılırlar veya doğrudan main branch'ine push yaparlar. Kontrol edilmediğinde, küçük arızalar büyür.
 
-Failproof AI bunu **politikalar** ile çözer - her aracı araç çağrısında devreye giren ve **hataları tespit eden**, onları **azaltabilen** (engelleme, talimat verme, temizleme) ve **dikkat gerektiğinde sizi uyaran** kurallar. Yerel bir pano, sonrasında her şeyi incelemeni sağlar.
+Failproof AI bunu **politikalar** ile çözer - her bir agent araç çağrısına bağlanabilen ve **hataları tespit edebilen**, **bunları azaltabilen** (engelleme, yönetim, temizleme) ve **dikkat gereken durumları** size **bildirebilen** kurallar. Yerel bir dashboard sayesinde daha sonra her şeyi gözden geçirebilirsiniz.
 
-Her şey yerel olarak çalışır. Hiçbir veri bilgisayarınızdan ayrılmaz.
+Her şey yerel olarak çalışır. Hiç veri makinenizden çıkmaz.
 
-## Başla
+## Başlayın
 
 <CardGroup cols={2}>
 
 <Card title="26 yerleşik politika" icon="shield" href="/tr/built-in-policies">
-  Yıkıcı komutları engelle, sır sızıntısını önle, aracıları proje sınırları içinde tut ve daha fazlası - kutudan hemen kullanıma hazır.
+  Yıkıcı komutları engelleyin, gizli dizilerin sızdırılmasını önleyin, aracıları proje sınırları içinde tutun ve daha fazlası - hazır olarak.
 </Card>
 
 <Card title="Özel politikalar" icon="code" href="/tr/custom-policies">
-  JavaScript ile basit allow / deny / instruct API'sini kullanarak kendi kurallarını yaz.
+  Basit allow / deny / instruct API'si ile JavaScript'te kendi kurallarınızı yazın.
 </Card>
 
-<Card title="Aracı monitörü" icon="chart-line" href="/tr/dashboard">
-  Aracılarının uzakta iken neler yaptığını gör. Oturumları gözden geçir, araç çağrılarını incele, politikaların nerede devreye girdiğini kontrol et.
+<Card title="Agent monitörü" icon="chart-line" href="/tr/dashboard">
+  Aracılarınız yokken neler yaptıklarını görün. Oturumlara göz atın, araç çağrılarını inceleyin, politikaların nerede etkinleştiğini gözden geçirin.
 </Card>
 
 <Card title="Kolay yapılandırma" icon="gear" href="/tr/configuration">
-  Herhangi bir politikayı kod yazmadan ayarla. İzin listeleri, korumalı dallar veya eşikleri proje başına veya global olarak belirle.
+  Herhangi bir politikayı kod olmadan ayarlayın. İzin verilen listeler, korumalı branch'ler veya eşikleri proje başına veya küresel olarak ayarlayın.
 </Card>
 
 </CardGroup>
@@ -51,7 +51,7 @@ bun add -g failproofai
 
 ```bash
 failproofai policies --install   # politikaları etkinleştir
-failproofai                      # panoyu başlat
+failproofai                      # dashboard'u başlat
 ```
 
-Tam adım adım kılavuz için [Başlangıç](/tr/getting-started) bölümüne bak.
+Tam talimatlar için [Başlangıç](/tr/getting-started) kılavuzuna bakın.

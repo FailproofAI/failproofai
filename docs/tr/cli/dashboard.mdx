@@ -1,6 +1,6 @@
 ---
-title: Oturumları görüntüleyin
-description: "Agent oturumlarına göz atmak ve politikaları yönetmek için panoyu başlatın"
+title: Oturumları Görüntüle
+description: "Aracı oturumlarına göz atmak ve ilkeleri yönetmek için panoyu başlatın"
 ---
 
 ```bash
@@ -13,16 +13,16 @@ Web panosunu `http://localhost:8020` adresinde başlatır.
 
 | Bayrak | Açıklama |
 |------|-------------|
-| `--port <number>` | Dinlenecek port (varsayılan: `8020`) |
+| `--port <number>` | Dinlenecek bağlantı noktası (varsayılan: `8020`) |
 | `--projects-path <path>` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kıl |
-| `--allowed-origins <origins>` | Geliştirici kaynaklarına erişim izni verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
+| `--allowed-origins <origins>` | Geliştirme kaynaklarına erişmesine izin verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
 
 ## Örnekler
 
 ```bash
-# Farklı bir portta başlat
+# Farklı bir bağlantı noktasında başlat
 failproofai --port 9000
 
-# Özel bir proje yolunu kullan
+# Özel bir proje yolu kullan
 failproofai --projects-path ~/my-claude-projects
 ```

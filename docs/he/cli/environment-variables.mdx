@@ -1,34 +1,34 @@
 ---
 title: משתנים סביבתיים
-description: "קביעת התנהגות failproofai באמצעות משתנים סביבתיים"
+description: "הגדר את התנהגות failproofai באמצעות משתנים סביבתיים"
 ---
 
-## Dashboard
+## דשבורד
 
 | משתנה | תיאור |
 |----------|-------------|
-| `PORT` | פורט ה-Dashboard (ברירת מחדל: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | הגדרת מיקום חלופי לתיקיות פרויקטי Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | עמודי Dashboard להסתרה, מופרדים בפסיקים |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | מערכות קצה/כתובות IP המורשות לגשת למשאבי פיתוח. זהה ל-`--allowed-origins`. |
+| `PORT` | יציאת דשבורד (ברירת מחדל: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | עקוף את מיקום תיקיות הפרויקטים של Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | דפי דשבורד להסתרה, מופרדים בפסיקים |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | hosts/IPs המורשים לגשת למשאבי פיתוח. זהה ל-`--allowed-origins`. |
 
-## Logging
-
-| משתנה | תיאור |
-|----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת ה-log של השרת (ברירת מחדל: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ log מותאם אישית, או `true` לברירת המחדל (`~/.failproofai/logs/hooks.log`) |
-
-## Telemetry
+## רישום
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | השבתת ה-telemetry על שימוש אנונימי |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת רישום השרת (ברירת מחדל: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ רישום hook מותאם אישית, או `true` לברירת המחדל (`~/.failproofai/logs/hooks.log`) |
 
-## LLM (להערכת מדיניות)
+## טלמטריה
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה של API ל-LLM (ברירת מחדל: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניות המופעלת על ידי LLM |
-| `FAILPROOFAI_LLM_MODEL` | שם המודל (ברירת מחדל: `gpt-4o-mini`) |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | בטל טלמטריית שימוש אנונימית |
+
+## LLM (להערכת מדיניויות)
+
+| משתנה | תיאור |
+|----------|-------------|
+| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה של ממשק ה-LLM (ברירת מחדל: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניויות המופעלות על ידי LLM |
+| `FAILPROOFAI_LLM_MODEL` | שם מודל (ברירת מחדל: `gpt-4o-mini`) |

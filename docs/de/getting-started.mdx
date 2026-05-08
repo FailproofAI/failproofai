@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="Richtlinien aktivieren">
-    Richtlinien sind Regeln, die vor und nach jedem Tool-Aufruf eines Agenten ausgeführt werden. Sie erkennen destruktive Befehle, den Verlust von Geheimnissen und andere Fehlerquellen, bevor Schaden entsteht.
+    Richtlinien sind Regeln, die vor und nach jedem Werkzeugaufruf eines Agenten ausgeführt werden. Sie erkennen destruktive Befehle, den Abfluss von Geheimnissen und andere Fehlerquellen, bevor diese Schaden anrichten.
 
     ```bash
     failproofai policies --install
     ```
 
-    Dies schreibt Hook-Einträge in die installierten Agent-CLIs (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generiertes Plugin-Shim unter `~/.config/opencode/plugins/failproofai.mjs` sowie einen Registrierungseintrag im `plugin`-Array von `~/.config/opencode/opencode.json`, Pi's `~/.pi/agent/settings.json` oder Gemini CLI's `~/.gemini/settings.json`). Wenn mehrere vorhanden sind, wird eine Auswahl angeboten; mit `--cli claude codex copilot cursor opencode pi gemini` (beliebige Teilmenge) kann die Abfrage übersprungen werden.
+    Dadurch werden Hook-Einträge in die installierten Agenten-CLIs geschrieben (Claude Codes `~/.claude/settings.json`, OpenAI Codex' `~/.codex/hooks.json`, GitHub Copilot CLIs `~/.copilot/hooks/failproofai.json`, Cursor Agents `~/.cursor/hooks.json`, OpenCodes generiertem Plugin-Shim unter `~/.config/opencode/plugins/failproofai.mjs` sowie einem Registrierungseintrag im `plugin`-Array von `~/.config/opencode/opencode.json`, Pis `~/.pi/agent/settings.json` oder Gemini CLIs `~/.gemini/settings.json`). Wenn mehr als eine CLI vorhanden ist, wird eine Auswahl angezeigt; übergib `--cli claude codex copilot cursor opencode pi gemini` (eine beliebige Teilmenge), um die Abfrage zu überspringen.
 
-    Die Unterstützung für GitHub Copilot CLI, Cursor Agent, OpenCode, Pi und Gemini CLI befindet sich im **Beta**-Stadium – Installation mit `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` oder `--cli gemini`.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi und Gemini CLI werden **beta**-mäßig unterstützt – installiere mit `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` oder `--cli gemini`.
 
     ```bash
     failproofai policies --install --scope project
@@ -64,16 +64,16 @@ bun add -g failproofai
     failproofai
     ```
 
-    Öffnet ein lokales Dashboard unter `http://localhost:8020`, in dem Sitzungen durchsucht, Tool-Aufrufe inspiziert und Richtlinien verwaltet werden können.
+    Öffnet ein lokales Dashboard unter `http://localhost:8020`, in dem du Sitzungen durchsuchen, Werkzeugaufrufe prüfen und Richtlinien verwalten kannst.
   </Step>
   <Step title="Agenten starten">
-    Starte Claude Code wie gewohnt. Wenn der Agent etwas Riskantes versucht, greift failproofai automatisch ein. Lass ihn unbeaufsichtigt laufen und prüfe später im Dashboard, was passiert ist.
+    Starte Claude Code wie gewohnt. Wenn der Agent etwas Riskantes versucht, greift failproofai automatisch ein. Lass ihn unbeaufsichtigt laufen und überprüfe anschließend, was im Dashboard passiert ist.
   </Step>
 </Steps>
 
 ---
 
-## Funktionsweise von Richtlinien
+## So funktionieren Richtlinien
 
 Jedes Mal, wenn ein Agent ein Tool ausführt, ruft Claude Code failproofai als Unterprozess auf:
 
@@ -86,18 +86,18 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
 Jede Richtlinie gibt eine von drei Entscheidungen zurück:
 
 - **allow** – der Agent fährt normal fort
-- **deny** – die Aktion wird blockiert und der Agent erhält eine Begründung
-- **instruct** – dem Prompt des Agenten wird zusätzlicher Kontext hinzugefügt
+- **deny** – die Aktion wird blockiert, der Agent wird über den Grund informiert
+- **instruct** – dem Prompt des Agenten werden zusätzliche Informationen hinzugefügt
 
 <Note>
-Richtlinien laufen im lokalen Prozess. Es werden keine Daten an einen externen Dienst gesendet.
+Richtlinien laufen in deinem lokalen Prozess. Es werden keine Daten an einen entfernten Dienst gesendet.
 </Note>
 
 ---
 
 ## Team-Richtlinien mit konventionsbasierten Richtlinien einrichten
 
-Der schnellste Weg, Qualitätsstandards im Team durchzusetzen, ist die `.failproofai/policies/`-Konvention. Lege Richtliniendateien in dieses Verzeichnis und sie werden automatisch geladen – ohne Flags, Konfigurationsänderungen oder Installationsbefehle.
+Der schnellste Weg, Qualitätsstandards im gesamten Team zu etablieren, ist die `.failproofai/policies/`-Konvention. Lege Richtliniendateien in dieses Verzeichnis und sie werden automatisch geladen – ohne Flags, ohne Konfigurationsänderungen, ohne Installationsbefehle.
 
 <Steps>
   <Step title="Richtlinienverzeichnis erstellen">
@@ -137,12 +137,12 @@ Der schnellste Weg, Qualitätsstandards im Team durchzusetzen, ist die `.failpro
     git commit -m "Add team quality policies"
     ```
 
-    Jedes Teammitglied, das failproofai installiert hat, erhält diese Richtlinien automatisch. Kein individuelles Setup erforderlich.
+    Jedes Teammitglied, das failproofai installiert hat, übernimmt diese Richtlinien automatisch. Es ist kein individuelles Setup pro Entwickler erforderlich.
   </Step>
 </Steps>
 
 <Tip>
-Checke `.failproofai/policies/` in dein Repository ein, damit das gesamte Team dieselben Standards teilt. Wenn das Team neue Fehlerquellen entdeckt, füge Richtlinien hinzu und pushe sie – alle erhalten das Update beim nächsten `git pull`. Mit der Zeit werden diese Richtlinien zu einem lebendigen Qualitätsstandard, der sich kontinuierlich verbessert.
+Checke `.failproofai/policies/` in dein Repository ein, damit das gesamte Team dieselben Standards teilt. Wenn euer Team neue Fehlerquellen entdeckt, fügt Richtlinien hinzu und pusht sie – alle erhalten das Update beim nächsten `git pull`. Mit der Zeit werden diese Richtlinien zu einem lebendigen Qualitätsstandard, der sich kontinuierlich verbessert.
 </Tip>
 
 ---
@@ -151,12 +151,12 @@ Checke `.failproofai/policies/` in dein Repository ein, damit das gesamte Team d
 
 Alle Konfigurationsdaten und Protokolle verbleiben auf deinem Rechner:
 
-| Pfad | Inhalt |
-|------|--------|
+| Pfad | Was gespeichert wird |
+|------|----------------------|
 | `~/.failproofai/policies-config.json` | Globale Richtlinienkonfiguration |
 | `~/.failproofai/hook-activity.jsonl` | Hook-Ausführungsverlauf |
 | `~/.failproofai/hook.log` | Debug-Protokoll für benutzerdefinierte Hook-Fehler |
-| `.failproofai/policies-config.json` | Projektbezogene Konfiguration (eingecheckt) |
+| `.failproofai/policies-config.json` | Projektspezifische Konfiguration (eingecheckt) |
 | `.failproofai/policies-config.local.json` | Persönliche Überschreibungen (per gitignore ausgeschlossen) |
 
 ---
@@ -188,7 +188,7 @@ Entfernt Hook-Einträge aus `~/.claude/settings.json`. Konfigurationsdateien in 
 </Card>
 
 <Card title="Agenten-Monitor" icon="chart-line" href="/de/dashboard">
-  Sitzungen überwachen und Richtlinienaktivitäten einsehen
+  Sitzungen überwachen und Richtlinienaktivitäten überprüfen
 </Card>
 
 </CardGroup>

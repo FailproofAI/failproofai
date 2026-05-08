@@ -7,9 +7,9 @@ description: "Gerencie hooks e políticas que mantêm seus agentes de IA confiá
 
 Hooks e políticas que mantêm seus agentes de IA confiáveis e funcionando de forma autônoma - para **Claude Code**, **OpenAI Codex** e o **Agents SDK**.
 
-Agentes de IA falham de maneiras previsíveis. Eles executam comandos destrutivos, vazam segredos, se desviam das tarefas, ficam presos em loops ou fazem push diretamente para a branch main. Sem supervisão, pequenas falhas se transformam em cascata.
+Agentes de IA falham de maneiras previsíveis. Eles executam comandos destrutivos, vazam segredos, desviam do objetivo, ficam presos em loops ou fazem push diretamente para a branch principal. Sem supervisão, pequenas falhas se tornam grandes problemas.
 
-O Failproof AI resolve isso com **políticas** — regras que se conectam a cada chamada de ferramenta do agente e podem **detectar falhas**, **mitigá-las** (bloquear, instruir, sanitizar) e **alertar você** quando algo precisa de atenção. Um painel local permite revisar tudo depois.
+Failproof AI resolve isso com **políticas** - regras que se integram a cada chamada de ferramenta do agente e podem **detectar falhas**, **mitigá-las** (bloquear, instruir, sanitizar) e **alertar você** quando algo requer atenção. Um painel local permite revisar tudo posteriormente.
 
 Tudo roda localmente. Nenhum dado sai da sua máquina.
 
@@ -18,7 +18,7 @@ Tudo roda localmente. Nenhum dado sai da sua máquina.
 <CardGroup cols={2}>
 
 <Card title="26 políticas integradas" icon="shield" href="/pt-br/built-in-policies">
-  Bloqueie comandos destrutivos, evite vazamento de segredos, mantenha os agentes dentro dos limites do projeto e muito mais — prontos para uso.
+  Bloqueie comandos destrutivos, previna vazamento de segredos, mantenha os agentes dentro dos limites do projeto e muito mais - prontos para uso.
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/pt-br/custom-policies">
@@ -26,11 +26,11 @@ Tudo roda localmente. Nenhum dado sai da sua máquina.
 </Card>
 
 <Card title="Monitor de agentes" icon="chart-line" href="/pt-br/dashboard">
-  Veja o que seus agentes fizeram enquanto você estava ausente. Navegue pelas sessões, inspecione chamadas de ferramentas e revise onde as políticas foram acionadas.
+  Veja o que seus agentes fizeram enquanto você estava ausente. Navegue por sessões, inspecione chamadas de ferramentas e revise onde as políticas foram acionadas.
 </Card>
 
-<Card title="Configuração fácil" icon="gear" href="/pt-br/configuration">
-  Ajuste qualquer política sem código. Defina allowlists, branches protegidas ou limites por projeto ou globalmente.
+<Card title="Configuração simplificada" icon="gear" href="/pt-br/configuration">
+  Ajuste qualquer política sem escrever código. Defina listas de permissões, branches protegidas ou limites por projeto ou globalmente.
 </Card>
 
 </CardGroup>
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # enable policies
-failproofai                      # launch the dashboard
+failproofai policies --install   # habilitar políticas
+failproofai                      # iniciar o painel
 ```
 
-Consulte o guia de [Primeiros passos](/pt-br/getting-started) para o passo a passo completo.
+Consulte o guia de [Primeiros passos](/pt-br/getting-started) para um passo a passo completo.

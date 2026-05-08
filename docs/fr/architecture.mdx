@@ -4,18 +4,18 @@ description: "Fonctionnement interne du gestionnaire de hooks, du chargement de 
 icon: sitemap
 ---
 
-Ce document explique le fonctionnement interne de failproofai : comment le système de hooks intercepte les appels d'outils de l'agent, comment la configuration est chargée et fusionnée, comment les politiques sont évaluées, et comment le tableau de bord surveille l'activité de l'agent.
+Ce document explique le fonctionnement interne de failproofai : comment le système de hooks intercepte les appels d'outils des agents, comment la configuration est chargée et fusionnée, comment les politiques sont évaluées, et comment le tableau de bord surveille l'activité des agents.
 
 ---
 
 ## Vue d'ensemble
 
-failproofai comprend deux sous-systèmes indépendants :
+failproofai repose sur deux sous-systèmes indépendants :
 
-1. **Gestionnaire de hooks** - Un sous-processus CLI rapide que Claude Code invoque à chaque appel d'outil de l'agent. Il évalue les politiques et retourne une décision.
-2. **Moniteur d'agent (Tableau de bord)** - Une application web Next.js pour surveiller les sessions d'agent et gérer les politiques.
+1. **Gestionnaire de hooks** — Un sous-processus CLI rapide que Claude Code invoque à chaque appel d'outil de l'agent. Il évalue les politiques et retourne une décision.
+2. **Agent Monitor (Tableau de bord)** — Une application web Next.js pour surveiller les sessions des agents et gérer les politiques.
 
-Les deux sous-systèmes partagent les fichiers de configuration dans `~/.failproofai/` et le répertoire `.failproofai/` du projet, mais ils s'exécutent en tant que processus séparés et ne communiquent qu'à travers le système de fichiers.
+Les deux sous-systèmes partagent les fichiers de configuration situés dans `~/.failproofai/` et dans le répertoire `.failproofai/` du projet, mais ils s'exécutent en tant que processus séparés et communiquent uniquement via le système de fichiers.
 
 ---
 
@@ -44,9 +44,9 @@ Lorsque vous exécutez `failproofai policies --install`, des entrées comme cell
 }
 ```
 
-Claude Code invoque ensuite `failproofai --hook PreToolUse` en tant que sous-processus avant chaque appel d'outil, en transmettant un payload JSON sur stdin.
+Claude Code invoque ensuite `failproofai --hook PreToolUse` en tant que sous-processus avant chaque appel d'outil, en transmettant une charge utile JSON sur stdin.
 
-### Format du payload
+### Format de la charge utile
 
 ```json
 {
@@ -60,9 +60,9 @@ Claude Code invoque ensuite `failproofai --hook PreToolUse` en tant que sous-pro
 }
 ```
 
-Pour les événements `PostToolUse`, le payload contient également `tool_result` avec la sortie de l'outil.
+Pour les événements `PostToolUse`, la charge utile contient également `tool_result` avec la sortie de l'outil.
 
-Le gestionnaire impose une limite de 1 Mo sur stdin. Les payloads dépassant cette taille sont ignorés et toutes les politiques autorisent implicitement.
+Le gestionnaire applique une limite de 1 Mo sur stdin. Les charges utiles dépassant cette limite sont ignorées et toutes les politiques autorisent implicitement.
 
 ### Format de réponse
 
@@ -96,7 +96,7 @@ Le gestionnaire impose une limite de 1 Mo sur stdin. Les payloads dépassant cet
 
 **Instruction pour l'événement Stop :**
 - Code de sortie : `2`
-- Raison écrite sur stderr (pas sur stdout)
+- Raison écrite sur stderr (et non sur stdout)
 
 **Autorisation :**
 - Code de sortie : `0`
@@ -104,7 +104,7 @@ Le gestionnaire impose une limite de 1 Mo sur stdin. Les payloads dépassant cet
 
 **Autorisation avec message :**
 
-`allow(message)` permet à une politique d'envoyer un contexte informatif à Claude même lorsque l'opération est autorisée. Le gestionnaire de hooks écrit le JSON suivant sur **stdout** (pas dans un fichier de configuration — c'est la réponse du gestionnaire à Claude Code, exactement comme les réponses de refus et d'instruction ci-dessus) :
+`allow(message)` permet à une politique de renvoyer un contexte informatif à Claude même lorsque l'opération est autorisée. Le gestionnaire de hooks écrit le JSON suivant sur **stdout** (et non dans un fichier de configuration — il s'agit de la réponse du gestionnaire à Claude Code, tout comme les réponses deny et instruct ci-dessus) :
 
 ```json
 // Written to stdout by the hook handler process
@@ -115,7 +115,7 @@ Le gestionnaire impose une limite de 1 Mo sur stdin. Les payloads dépassant cet
 }
 ```
 - Code de sortie : `0` (l'opération est autorisée)
-- Lorsque plusieurs politiques retournent `allow` avec un message, leurs messages sont joints par des sauts de ligne dans une seule chaîne `additionalContext`
+- Lorsque plusieurs politiques retournent `allow` avec un message, leurs messages sont joints avec des sauts de ligne en une seule chaîne `additionalContext`
 - Si aucune politique ne fournit de message, stdout est vide (comportement inchangé)
 
 ### Pipeline de traitement
@@ -139,13 +139,13 @@ stdin JSON
   → exit
 ```
 
-L'ensemble du processus s'exécute en moins de 100 ms pour des payloads typiques, sans aucun appel LLM.
+L'ensemble du processus s'exécute en moins de 100 ms pour les charges utiles classiques, sans aucun appel LLM.
 
 ---
 
 ## Chargement de la configuration
 
-`src/hooks/hooks-config.ts` implémente le chargement de configuration à trois niveaux.
+`src/hooks/hooks-config.ts` implémente le chargement de la configuration à trois niveaux de portée.
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← projet   (priorité la plus haute)
@@ -154,10 +154,10 @@ L'ensemble du processus s'exécute en moins de 100 ms pour des payloads typiques
 ```
 
 Logique de fusion :
-- `enabledPolicies` - union dédupliquée des trois fichiers
-- `policyParams` - par clé de politique, le premier fichier qui la définit l'emporte entièrement
-- `customPoliciesPath` - le premier fichier qui le définit l'emporte
-- `llm` - le premier fichier qui le définit l'emporte
+- `enabledPolicies` — union dédupliquée des trois fichiers
+- `policyParams` — par clé de politique, le premier fichier qui la définit est prioritaire
+- `customPoliciesPath` — le premier fichier qui le définit est prioritaire
+- `llm` — le premier fichier qui le définit est prioritaire
 
 Le tableau de bord web utilise `readHooksConfig()` (global uniquement) pour la lecture et l'écriture, car il n'est pas invoqué avec un cwd de projet.
 
@@ -169,18 +169,18 @@ Le tableau de bord web utilise `readHooksConfig()` (global uniquement) pour la l
 
 Pour chaque politique :
 
-1. Rechercher le schéma `params` de la politique (si elle en possède un).
-2. Lire `policyParams[policy.name]` depuis la configuration fusionnée.
-3. Fusionner les valeurs fournies par l'utilisateur par-dessus les valeurs par défaut du schéma pour produire `ctx.params`.
-4. Appeler `policy.fn(ctx)` avec le contexte résolu.
-5. Si le résultat est `deny`, s'arrêter immédiatement et retourner cette décision.
-6. Si le résultat est `instruct`, accumuler le message et continuer.
-7. Si le résultat est `allow`, passer à la politique suivante.
+1. Recherche le schéma `params` de la politique (si elle en possède un).
+2. Lit `policyParams[policy.name]` depuis la configuration fusionnée.
+3. Fusionne les valeurs fournies par l'utilisateur avec les valeurs par défaut du schéma pour produire `ctx.params`.
+4. Appelle `policy.fn(ctx)` avec le contexte résolu.
+5. Si le résultat est `deny`, arrête immédiatement et retourne cette décision.
+6. Si le résultat est `instruct`, accumule le message et continue.
+7. Si le résultat est `allow`, passe à la politique suivante.
 
-Après l'exécution de toutes les politiques :
-- Si un `deny` a été retourné, émettre la réponse de refus.
-- Si des retours `instruct` ont été collectés, émettre une seule réponse d'instruction avec tous les messages joints.
-- Sinon, émettre une réponse d'autorisation (stdout vide, code de sortie 0).
+Une fois toutes les politiques exécutées :
+- Si un `deny` a été retourné, émet la réponse de refus.
+- Si des retours `instruct` ont été collectés, émet une réponse d'instruction unique avec tous les messages joints.
+- Sinon, émet une réponse d'autorisation (stdout vide, code de sortie 0).
 
 ---
 
@@ -204,9 +204,9 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-Les politiques qui acceptent des `params` déclarent un `PolicyParamsSchema` avec les types et valeurs par défaut de chaque paramètre. L'évaluateur de politiques injecte les valeurs résolues dans `ctx.params` avant d'appeler `fn`. Les fonctions de politique lisent `ctx.params` sans vérification de null car les valeurs par défaut sont toujours appliquées en premier.
+Les politiques acceptant des `params` déclarent un `PolicyParamsSchema` avec les types et les valeurs par défaut de chaque paramètre. L'évaluateur de politiques injecte les valeurs résolues dans `ctx.params` avant d'appeler `fn`. Les fonctions de politique lisent `ctx.params` sans vérification de nullité, car les valeurs par défaut sont toujours appliquées en premier.
 
-La correspondance de motifs à l'intérieur des politiques utilise des tokens de commande analysés (argv), et non une correspondance brute sur les chaînes. Cela empêche les contournements via l'injection d'opérateurs shell (par exemple, un motif pour `sudo systemctl status *` ne peut pas être contourné en ajoutant `; rm -rf /` à la commande).
+La correspondance de motifs à l'intérieur des politiques utilise des tokens de commande analysés (argv), et non une correspondance de chaînes brutes. Cela empêche les contournements par injection d'opérateurs shell (par exemple, un motif pour `sudo systemctl status *` ne peut pas être contourné en ajoutant `; rm -rf /` à la commande).
 
 ---
 
@@ -225,19 +225,19 @@ export function getCustomHooks(): CustomHook[] { ... }
 export function clearCustomHooks(): void { ... }  // used in tests
 ```
 
-`src/hooks/custom-hooks-loader.ts` charge le fichier de politique de l'utilisateur :
+`src/hooks/custom-hooks-loader.ts` charge le fichier de politiques de l'utilisateur :
 
-1. Lire `customPoliciesPath` depuis la configuration ; ignorer si absent.
-2. Résoudre en chemin absolu ; vérifier que le fichier existe.
-3. Réécrire toutes les importations `from "failproofai"` vers le chemin dist réel afin que `customPolicies` résolve vers le même registre `globalThis`.
-4. Réécrire récursivement les importations locales transitives pour assurer la compatibilité ESM.
-5. Écrire des fichiers `.mjs` temporaires et `import()` le fichier d'entrée.
-6. Appeler `getCustomHooks()` pour récupérer les hooks enregistrés.
-7. Nettoyer tous les fichiers temporaires dans un bloc `finally`.
+1. Lit `customPoliciesPath` depuis la configuration ; ignore si absent.
+2. Résout vers un chemin absolu ; vérifie l'existence du fichier.
+3. Réécrit tous les imports `from "failproofai"` vers le chemin dist réel afin que `customPolicies` se résolve vers le même registre `globalThis`.
+4. Réécrit récursivement les imports locaux transitifs pour assurer la compatibilité ESM.
+5. Écrit des fichiers `.mjs` temporaires et importe le fichier d'entrée via `import()`.
+6. Appelle `getCustomHooks()` pour récupérer les hooks enregistrés.
+7. Nettoie tous les fichiers temporaires dans un bloc `finally`.
 
-En cas d'erreur (fichier introuvable, erreur de syntaxe, échec d'importation), l'erreur est journalisée dans `~/.failproofai/hook.log` et le chargeur retourne un tableau vide. Les politiques intégrées ne sont pas affectées.
+En cas d'erreur (fichier introuvable, erreur de syntaxe, échec d'import), l'erreur est journalisée dans `~/.failproofai/hook.log` et le chargeur retourne un tableau vide. Les politiques intégrées ne sont pas affectées.
 
-Les politiques personnalisées sont évaluées après toutes les politiques intégrées. Un `deny` d'une politique personnalisée court-circuite quand même les politiques personnalisées suivantes (mais toutes les politiques intégrées ont déjà été exécutées à ce stade).
+Les politiques personnalisées sont évaluées après toutes les politiques intégrées. Un `deny` d'une politique personnalisée court-circuite quand même les autres politiques personnalisées (mais toutes les politiques intégrées ont déjà été exécutées à ce stade).
 
 ---
 
@@ -258,7 +258,7 @@ Après chaque événement de hook, le gestionnaire ajoute une ligne JSONL à `~/
 }
 ```
 
-Une ligne par politique ayant rendu une décision différente de allow. Les décisions d'autorisation ne sont pas journalisées (pour limiter la taille du fichier).
+Une ligne par politique ayant rendu une décision autre que allow. Les décisions allow ne sont pas journalisées (pour limiter la taille du fichier).
 
 ---
 
@@ -272,14 +272,14 @@ app/
   projects/page.tsx           ← Composant serveur : liste tous les projets Claude
   project/[name]/page.tsx     ← Composant serveur : liste les sessions d'un projet
   project/[name]/session/
-    [sessionId]/page.tsx      ← Composant serveur : affiche le visualiseur de session
+    [sessionId]/page.tsx      ← Composant serveur : affiche la visionneuse de session
   policies/page.tsx           ← Composant client : gestion des politiques + journal d'activité
   actions/
     get-hooks-config.ts       ← Lecture de la config + liste des politiques
-    update-hooks-config.ts    ← Activer/désactiver une politique
-    update-policy-params.ts   ← Mettre à jour les paramètres d'une politique
+    update-hooks-config.ts    ← Activation/désactivation d'une politique
+    update-policy-params.ts   ← Mise à jour des paramètres d'une politique
     get-hook-activity.ts      ← Pagination/recherche dans le journal d'activité
-    install-hooks-web.ts      ← Installer/supprimer les hooks depuis le navigateur
+    install-hooks-web.ts      ← Installation/suppression des hooks depuis le navigateur
   api/
     download/[project]/[session]/route.ts   ← Export de session CLI (JSONL ou JSON)
 ```
@@ -287,15 +287,15 @@ app/
 **Flux de données :**
 
 - Les composants de page appellent `lib/projects.ts` et `lib/log-entries.ts` pour lire les données de projet/session directement depuis le système de fichiers (pas de couche API pour les lectures).
-- La page Politiques utilise des Server Actions pour toutes les mutations (activation/désactivation, mise à jour des paramètres, installation/suppression).
-- Le visualiseur de session analyse le format de transcription JSONL de Claude et affiche une chronologie des messages et des appels d'outils.
+- La page Politiques utilise des Server Actions pour toutes les mutations (activation, mise à jour des paramètres, installation/suppression).
+- La visionneuse de session analyse le format de transcription JSONL de Claude et affiche une chronologie des messages et des appels d'outils.
 
 **Décisions de conception clés :**
 
-- Pas de base de données - tout l'état persistant est dans des fichiers simples (`~/.failproofai/`, `~/.claude/projects/`).
-- Server Actions pour les mutations - aucune API REST nécessaire pour les opérations CRUD.
-- React Server Components pour les pages de lecture - chargement initial plus rapide, pas de bundle client pour la récupération des données.
-- Composants client uniquement là où l'interactivité est nécessaire (bascules de politiques, recherche dans l'activité, visualiseur de logs).
+- Pas de base de données — tout l'état persistant est stocké dans des fichiers plats (`~/.failproofai/`, `~/.claude/projects/`).
+- Server Actions pour les mutations — aucune API REST nécessaire pour les opérations CRUD.
+- React Server Components pour les pages de lecture — chargement initial plus rapide, pas de bundle client pour la récupération des données.
+- Composants client uniquement là où l'interactivité est nécessaire (bascules de politiques, recherche dans l'activité, visionneuse de logs).
 
 ---
 
@@ -311,11 +311,11 @@ failproofai/
 │   ├── policy-evaluator.ts       # Moteur d'exécution des politiques
 │   ├── policy-registry.ts        # Enregistrement et recherche des politiques
 │   ├── policy-types.ts           # Interfaces TypeScript
-│   ├── hooks-config.ts           # Chargement de configuration multi-niveaux
+│   ├── hooks-config.ts           # Chargement de configuration multi-portée
 │   ├── custom-hooks-registry.ts  # Registre de hooks basé sur globalThis
 │   ├── custom-hooks-loader.ts    # Chargeur ESM pour les hooks JS utilisateur
 │   ├── manager.ts                # Opérations install / remove / list
-│   ├── install-prompt.ts         # Invite interactive de sélection des politiques
+│   ├── install-prompt.ts         # Invite de sélection interactive des politiques
 │   ├── hook-logger.ts            # Journalisation vers hook.log
 │   ├── hook-activity-store.ts    # Persistance de l'activité vers hook-activity.jsonl
 │   └── llm-client.ts             # Client API LLM (pour les politiques alimentées par IA)

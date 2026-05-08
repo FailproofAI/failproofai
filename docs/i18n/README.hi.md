@@ -23,10 +23,10 @@
 
 **अनुवाद**: [简体中文](docs/i18n/README.zh.md) | [日本語](docs/i18n/README.ja.md) | [한국어](docs/i18n/README.ko.md) | [Español](docs/i18n/README.es.md) | [Português](docs/i18n/README.pt-br.md) | [Deutsch](docs/i18n/README.de.md) | [Français](docs/i18n/README.fr.md) | [Русский](docs/i18n/README.ru.md) | [हिन्दी](docs/i18n/README.hi.md) | [Türkçe](docs/i18n/README.tr.md) | [Tiếng Việt](docs/i18n/README.vi.md) | [Italiano](docs/i18n/README.it.md) | [العربية](docs/i18n/README.ar.md) | [עברית](docs/i18n/README.he.md)
 
-अपने AI एजेंट को विश्वसनीय, कार्य-केंद्रित और स्वायत्त रूप से चलाने वाली नीतियों को प्रबंधित करने का सबसे आसान तरीका - **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(बीटा)_, **Cursor Agent** _(बीटा)_, **OpenCode** _(बीटा)_, **Pi** _(बीटा)_, **Gemini CLI** _(बीटा)_ और **Agents SDK** के लिए।
+अपने AI एजेंट्स को विश्वसनीय, कार्य-केंद्रित और स्वायत्त रूप से चलाने वाली नीतियों को प्रबंधित करने का सबसे आसान तरीका - **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(बीटा)_, **Cursor Agent** _(बीटा)_, **OpenCode** _(बीटा)_, **Pi** _(बीटा)_, **Gemini CLI** _(बीटा)_ और **Agents SDK** के लिए।
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI कार्य में" width="800" />
+  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## समर्थित एजेंट CLIs
@@ -80,14 +80,14 @@
   </a>
 </p>
 
-> एक या कई संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi gemini` (या `--cli claude codex copilot cursor opencode pi gemini`)। `--cli` छोड़ें तो स्वचालित रूप से इंस्टॉल किए गए CLIs का पता लगेगा और संकेत दिया जाएगा। **GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, और Gemini CLI समर्थन बीटा में है — परीक्षण जारी है।**
+> एक या किसी भी संयोजन के लिए हुक स्थापित करें: `failproofai policies --install --cli opencode pi gemini` (या `--cli claude codex copilot cursor opencode pi gemini`)। स्वचालित रूप से स्थापित CLIs का पता लगाने और संकेत देने के लिए `--cli` को छोड़ दें। **GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, और Gemini CLI समर्थन बीटा में हैं — परीक्षण जारी है।**
 
-- **39 बिल्ट-इन नीतियां** - सामान्य एजेंट विफलता मोड को तुरंत पकड़ें। विनाशकारी आदेशों को ब्लॉक करें, गुप्त लीक को रोकें, एजेंट को प्रोजेक्ट सीमाओं के अंदर रखें, लूप का पता लगाएं और बहुत कुछ।
-- **कस्टम नीतियां** - JavaScript में अपने स्वयं की विश्वसनीयता नियम लिखें। सम्मेलन लागू करने, बहाव रोकने, संचालन को गेट करने या बाहरी सिस्टम के साथ एकीकृत करने के लिए `allow`/`deny`/`instruct` API का उपयोग करें।
-- **आसान कॉन्फ़िगरेशन** - कोड लिखे बिना किसी भी नीति को ट्यून करें। सफेदलिस्ट, संरक्षित शाखाएं, प्रति-प्रोजेक्ट या विश्व स्तर पर थ्रेशहोल्ड सेट करें। तीन-स्कोप कॉन्फ़िग स्वचालित रूप से मर्ज होता है।
-- **एजेंट मॉनिटर** - देखें कि आपके एजेंट क्या करते थे जब आप दूर थे। सत्रों को ब्राउज़ करें, हर टूल कॉल का निरीक्षण करें, और देखें कि नीतियां कहां चलीं।
+- **39 बिल्ट-इन नीतियां** - सामान्य एजेंट विफलता मोड को तुरंत पकड़ें। विनाशकारी कमांड को ब्लॉक करें, गोपनीयता रिसाव को रोकें, एजेंट्स को प्रोजेक्ट सीमाओं में रखें, लूप का पता लगाएं और बहुत कुछ।
+- **कस्टम नीतियां** - JavaScript में अपने स्वयं की विश्वसनीयता नियम लिखें। `allow`/`deny`/`instruct` API का उपयोग करके सम्मेलन लागू करें, बहाव को रोकें, संचालन को नियंत्रित करें, या बाहरी सिस्टम के साथ एकीकृत करें।
+- **आसान कॉन्फ़िगरेशन** - कोड लिखे बिना किसी भी नीति को समायोजित करें। प्रति-प्रोजेक्ट या वैश्विक रूप से अनुमति सूची, सुरक्षित शाखाएं, दहलीज सेट करें। तीन-स्कोप कॉन्फ़िग स्वचालित रूप से मर्ज हो जाती हैं।
+- **एजेंट मॉनिटर** - देखें कि आपके एजेंट्स आपके दूर रहते हुए क्या करते थे। सेशन ब्राउज़ करें, प्रत्येक टूल कॉल का निरीक्षण करें, और ठीक से देखें कि नीतियां कहां सक्रिय हुईं।
 
-सब कुछ स्थानीय रूप से चलता है - कोई डेटा आपकी मशीन से बाहर नहीं जाता।
+सब कुछ स्थानीय रूप से चलता है - कोई डेटा आपकी मशीन से नहीं निकलता।
 
 ---
 
@@ -110,7 +110,7 @@ bun add -g failproofai
 
 ## त्वरित प्रारंभ
 
-### 1. वैश्विक रूप से नीतियों को सक्षम करें
+### 1. नीतियों को वैश्विक रूप से सक्षम करें
 
 ```bash
 failproofai policies --install
@@ -124,7 +124,7 @@ failproofai policies --install
 failproofai
 ```
 
-`http://localhost:8020` खोलता है - सत्रों को ब्राउज़ करें, लॉग का निरीक्षण करें, नीतियों का प्रबंधन करें।
+`http://localhost:8020` खोलता है - सेशन ब्राउज़ करें, लॉग निरीक्षण करें, नीतियां प्रबंधित करें।
 
 ### 3. देखें कि क्या सक्रिय है
 
@@ -136,9 +136,9 @@ failproofai policies
 
 ## नीति स्थापना
 
-### स्कोप
+### दायरे
 
-| स्कोप | कमांड | जहां यह लिखता है |
+| दायरा | कमांड | कहां लिखता है |
 |-------|---------|-----------------|
 | वैश्विक (डिफ़ॉल्ट) | `failproofai policies --install` | `~/.claude/settings.json` |
 | प्रोजेक्ट | `failproofai policies --install --scope project` | `.claude/settings.json` |
@@ -150,11 +150,11 @@ failproofai policies
 failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
 ```
 
-### नीतियों को हटाएं
+### नीतियां हटाएं
 
 ```bash
 failproofai policies --uninstall
-# या एक विशिष्ट स्कोप के लिए:
+# या किसी विशिष्ट दायरे के लिए:
 failproofai policies --uninstall --scope project
 ```
 
@@ -162,7 +162,7 @@ failproofai policies --uninstall --scope project
 
 ## कॉन्फ़िगरेशन
 
-नीति कॉन्फ़िगरेशन `~/.failproofai/policies-config.json` (वैश्विक) या आपके प्रोजेक्ट में `.failproofai/policies-config.json` (प्रति-प्रोजेक्ट) में रहती है।
+नीति कॉन्फ़िगरेशन `~/.failproofai/policies-config.json` (वैश्विक) में या आपके प्रोजेक्ट में `.failproofai/policies-config.json` (प्रति-प्रोजेक्ट) में रहती है।
 
 ```json
 {
@@ -181,7 +181,7 @@ failproofai policies --uninstall --scope project
     },
     "block-push-master": {
       "protectedBranches": ["main", "release", "prod"],
-      "hint": "इसके बजाय एक नई शाखा बनाने का प्रयास करें।"
+      "hint": "इसके बजाय एक ताजी शाखा बनाने का प्रयास करें।"
     },
     "sanitize-api-keys": {
       "additionalPatterns": [
@@ -195,7 +195,7 @@ failproofai policies --uninstall --scope project
 }
 ```
 
-**तीन कॉन्फ़िग स्कोप** स्वचालित रूप से मर्ज होते हैं (प्रोजेक्ट → स्थानीय → वैश्विक)। पूर्ण मर्ज नियमों के लिए [docs/configuration.mdx](docs/configuration.mdx) देखें।
+**तीन कॉन्फ़िग दायरे** स्वचालित रूप से मर्ज हो जाते हैं (प्रोजेक्ट → स्थानीय → वैश्विक)। पूर्ण मर्ज नियमों के लिए [docs/configuration.mdx](docs/configuration.mdx) देखें।
 
 ---
 
@@ -203,31 +203,31 @@ failproofai policies --uninstall --scope project
 
 | नीति | विवरण | कॉन्फ़िगर योग्य |
 |--------|-------------|:---:|
-| `block-sudo` | एजेंट को विशेषाधिकार प्राप्त सिस्टम आदेश चलाने से रोकें | `allowPatterns` |
-| `block-rm-rf` | आकस्मिक पुनरावर्ती फाइल विलोपन को रोकें | `allowPaths` |
-| `block-curl-pipe-sh` | एजेंट को अविश्वस्त स्क्रिप्ट को शेल में पाइप करने से रोकें | |
-| `block-failproofai-commands` | आत्म-स्थापना को रोकें | |
-| `sanitize-jwt` | JWT टोकन को एजेंट संदर्भ में लीक होने से रोकें | |
-| `sanitize-api-keys` | API कुंजियों को एजेंट संदर्भ में लीक होने से रोकें | `additionalPatterns` |
-| `sanitize-connection-strings` | डेटाबेस क्रेडेंशियल को एजेंट संदर्भ में लीक होने से रोकें | |
-| `sanitize-private-key-content` | आउटपुट से PEM निजी कुंजी ब्लॉक को संपादित करें | |
-| `sanitize-bearer-tokens` | आउटपुट से प्राधिकरण वाहक टोकन को संपादित करें | |
-| `block-env-files` | एजेंट को .env फाइलों को पढ़ने से रोकें | |
-| `protect-env-vars` | एजेंट को पर्यावरण चर प्रिंट करने से रोकें | |
-| `block-read-outside-cwd` | एजेंट को प्रोजेक्ट सीमाओं के अंदर रखें | `allowPaths` |
-| `block-secrets-write` | निजी कुंजी और प्रमाणपत्र फाइलों में लिखने से रोकें | `additionalPatterns` |
-| `block-push-master` | मुख्य/मास्टर को आकस्मिक धकेलने से रोकें | `protectedBranches` |
-| `block-work-on-main` | एजेंट को संरक्षित शाखाओं से दूर रखें | `protectedBranches` |
+| `block-sudo` | एजेंट्स को विशेषाधिकार प्राप्त सिस्टम कमांड चलाने से रोकें | `allowPatterns` |
+| `block-rm-rf` | आकस्मिक पुनरावर्ती फ़ाइल विलोपन को रोकें | `allowPaths` |
+| `block-curl-pipe-sh` | एजेंट्स को अविश्वसनीय स्क्रिप्ट को शेल में पाइप करने से रोकें | |
+| `block-failproofai-commands` | स्व-विस्थापन को रोकें | |
+| `sanitize-jwt` | JWT टोकन को एजेंट संदर्भ में रिसाव होने से रोकें | |
+| `sanitize-api-keys` | API कुंजियों को एजेंट संदर्भ में रिसाव होने से रोकें | `additionalPatterns` |
+| `sanitize-connection-strings` | डेटाबेस क्रेडेंशियल को एजेंट संदर्भ में रिसाव होने से रोकें | |
+| `sanitize-private-key-content` | आउटपुट से PEM निजी कुंजी ब्लॉक को हटाएं | |
+| `sanitize-bearer-tokens` | आउटपुट से प्राधिकरण Bearer टोकन को हटाएं | |
+| `block-env-files` | एजेंट्स को .env फ़ाइलें पढ़ने से रोकें | |
+| `protect-env-vars` | एजेंट्स को पर्यावरण चर मुद्रित करने से रोकें | |
+| `block-read-outside-cwd` | एजेंट्स को प्रोजेक्ट सीमाओं के अंदर रखें | `allowPaths` |
+| `block-secrets-write` | निजी कुंजी और प्रमाणपत्र फ़ाइलों में लिखने को रोकें | `additionalPatterns` |
+| `block-push-master` | मुख्य/मास्टर में आकस्मिक पुश को रोकें | `protectedBranches` |
+| `block-work-on-main` | एजेंट्स को सुरक्षित शाखाओं से दूर रखें | `protectedBranches` |
 | `block-force-push` | `git push --force` को रोकें | |
-| `warn-git-amend` | एजेंट को कमिट संशोधित करने से पहले याद दिलाएं | |
-| `warn-git-stash-drop` | एजेंट को स्टैश ड्रॉप करने से पहले याद दिलाएं | |
+| `warn-git-amend` | कमिट को संशोधित करने से पहले एजेंट्स को याद दिलाएं | |
+| `warn-git-stash-drop` | स्टैश ड्रॉप करने से पहले एजेंट्स को याद दिलाएं | |
 | `warn-all-files-staged` | आकस्मिक `git add -A` को पकड़ें | |
-| `warn-destructive-sql` | DROP/DELETE SQL को निष्पादन से पहले पकड़ें | |
+| `warn-destructive-sql` | निष्पादन से पहले DROP/DELETE SQL को पकड़ें | |
 | `warn-schema-alteration` | निष्पादन से पहले ALTER TABLE को पकड़ें | |
-| `warn-large-file-write` | अप्रत्याशित बड़ी फाइल लिखने को पकड़ें | `thresholdKb` |
+| `warn-large-file-write` | अप्रत्याशित रूप से बड़ी फ़ाइल लिखने को पकड़ें | `thresholdKb` |
 | `warn-package-publish` | आकस्मिक `npm publish` को पकड़ें | |
-| `warn-background-process` | अनिच्छुक पृष्ठभूमि प्रक्रिया लॉन्च को पकड़ें | |
-| `warn-global-package-install` | अनिच्छुक वैश्विक पैकेज इंस्टॉल को पकड़ें | |
+| `warn-background-process` | अनपेक्षित पृष्ठभूमि प्रक्रिया लॉन्च को पकड़ें | |
+| `warn-global-package-install` | अनपेक्षित वैश्विक पैकेज इंस्टॉल को पकड़ें | |
 | …और अधिक | | |
 
 पूर्ण नीति विवरण और पैरामीटर संदर्भ: [docs/built-in-policies.mdx](docs/built-in-policies.mdx)
@@ -236,19 +236,19 @@ failproofai policies --uninstall --scope project
 
 ## कस्टम नीतियां
 
-एजेंट को विश्वसनीय और कार्य-केंद्रित रखने के लिए अपनी स्वयं की नीतियां लिखें:
+एजेंट्स को विश्वसनीय और कार्य-केंद्रित रखने के लिए अपनी स्वयं की नीतियां लिखें:
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
 
 customPolicies.add({
   name: "no-production-writes",
-  description: "उत्पादन युक्त पथों में लिखने को ब्लॉक करें",
+  description: "Block writes to paths containing 'production'",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
     const path = ctx.toolInput?.file_path ?? "";
-    if (path.includes("production")) return deny("उत्पादन पथों में लिखना अवरुद्ध है");
+    if (path.includes("production")) return deny("Writes to production paths are blocked");
     return allow();
   },
 });
@@ -262,30 +262,30 @@ failproofai policies --install --custom ./my-policies.js
 
 ### निर्णय सहायक
 
-| फंक्शन | प्रभाव |
+| फ़ंक्शन | प्रभाव |
 |----------|--------|
-| `allow()` | संचालन की अनुमति दें |
+| `allow()` | ऑपरेशन को अनुमति दें |
 | `allow(message)` | अनुमति दें और Claude को सूचनात्मक संदर्भ भेजें |
-| `deny(message)` | संचालन को ब्लॉक करें; संदेश Claude को दिखाया जाता है |
-| `instruct(message)` | Claude के संकेत में संदर्भ जोड़ें; ब्लॉक नहीं करता है |
+| `deny(message)` | ऑपरेशन को ब्लॉक करें; Claude को संदेश दिखाया जाता है |
+| `instruct(message)` | Claude के प्रॉम्प्ट में संदर्भ जोड़ें; ब्लॉक नहीं करता है |
 
 ### संदर्भ ऑब्जेक्ट (`ctx`)
 
-| फील्ड | प्रकार | विवरण |
+| क्षेत्र | प्रकार | विवरण |
 |-------|------|-------------|
-| `eventType` | `string` | `PreToolUse`, `PostToolUse`, `Notification`, `Stop` |
-| `toolName` | `string` | कहा जा रहा टूल (`Bash`, `Write`, `Read`, …) |
+| `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
+| `toolName` | `string` | टूल जिसे बुलाया जा रहा है (`"Bash"`, `"Write"`, `"Read"`, …) |
 | `toolInput` | `object` | टूल के इनपुट पैरामीटर |
-| `payload` | `object` | पूर्ण कच्ची घटना पेलोड |
-| `session.cwd` | `string` | Claude Code सत्र की कार्य निर्देशिका |
-| `session.sessionId` | `string` | सत्र पहचानकर्ता |
-| `session.transcriptPath` | `string` | सत्र प्रतिलेख फाइल का पथ |
+| `payload` | `object` | पूर्ण कच्ची इवेंट पेलोड |
+| `session.cwd` | `string` | Claude Code सेशन की कार्य निर्देशिका |
+| `session.sessionId` | `string` | सेशन पहचानकर्ता |
+| `session.transcriptPath` | `string` | सेशन प्रतिलेख फ़ाइल का पथ |
 
-कस्टम हुक सकर्मक स्थानीय आयातों, async/await, और `process.env` तक पहुंच का समर्थन करते हैं। त्रुटियां खुली विफलता हैं (लॉग किया गया `~/.failproofai/hook.log`, बिल्ट-इन नीतियां जारी रहती हैं)। पूर्ण गाइड के लिए [docs/custom-hooks.mdx](docs/custom-hooks.mdx) देखें।
+कस्टम हुक transitive स्थानीय आयातों, async/await, और `process.env` तक पहुंच का समर्थन करते हैं। त्रुटियां fail-open हैं (लॉग किए गए `~/.failproofai/hook.log` में, बिल्ट-इन नीतियां जारी रहती हैं)। पूर्ण गाइड के लिए [docs/custom-hooks.mdx](docs/custom-hooks.mdx) देखें।
 
 ### सम्मेलन-आधारित नीतियां
 
-`.failproofai/policies/` में `*policies.{js,mjs,ts}` फाइलें डालें और वे स्वचालित रूप से लोड हो जाती हैं — कोई फ्लैग या कॉन्फ़िग परिवर्तन की आवश्यकता नहीं। निर्देशिका को git में कमिट करें और हर टीम सदस्य को स्वचालित रूप से समान गुणवत्ता मानदंड मिलते हैं।
+`.failproofai/policies/` में `*policies.{js,mjs,ts}` फ़ाइलें ड्रॉप करें और वे स्वचालित रूप से लोड हो जाती हैं — कोई फ्लैग या कॉन्फ़िग परिवर्तन की आवश्यकता नहीं। डिरेक्टरी को git में कमिट करें और हर टीम के सदस्य को स्वचालित रूप से समान गुणवत्ता मान मिलते हैं।
 
 ```text
 # प्रोजेक्ट स्तर — git में कमिट किया गया, टीम के साथ साझा किया गया
@@ -296,13 +296,13 @@ failproofai policies --install --custom ./my-policies.js
 ~/.failproofai/policies/my-policies.mjs
 ```
 
-दोनों स्तर लोड होते हैं (यूनियन)। फाइलें प्रत्येक निर्देशिका के भीतर वर्णक्रम में लोड की जाती हैं। क्रम को नियंत्रित करने के लिए `01-`, `02-` आदि के साथ उपसर्ग करें। जब आपकी टीम नई विफलता मोड की खोज करती है, एक नीति जोड़ें और पुश करें — सभी को अगली पुल पर अपडेट मिल जाता है। तैयार-से-उपयोग के उदाहरणों के लिए [examples/convention-policies/](examples/convention-policies/) देखें।
+दोनों स्तर लोड होते हैं (union)। फ़ाइलें प्रत्येक निर्देशिका के भीतर वर्णानुक्रम में लोड की जाती हैं। क्रम को नियंत्रित करने के लिए `01-`, `02-`, आदि से उपसर्ग करें। जैसे ही आपकी टीम नई विफलता मोड की खोज करती है, एक नीति जोड़ें और पुश करें — हर कोई अपने अगले पुल पर अपडेट प्राप्त करता है। तैयार-से-उपयोग करने के लिए उदाहरणों के लिए [examples/convention-policies/](examples/convention-policies/) देखें।
 
 ---
 
 ## टेलीमेट्री
 
-Failproof AI सुविधा उपयोग को समझने के लिए PostHog के माध्यम से गुमनाम उपयोग टेलीमेट्री एकत्र करता है। कोई सत्र सामग्री, फाइल नाम, टूल इनपुट, या व्यक्तिगत जानकारी कभी नहीं भेजी जाती है।
+Failproof AI, PostHog के माध्यम से अनाम उपयोग टेलीमेट्री एकत्र करता है ताकि सुविधा उपयोग को समझा जा सके। कोई सेशन सामग्री, फ़ाइल नाम, टूल इनपुट, या व्यक्तिगत जानकारी कभी नहीं भेजी जाती है।
 
 इसे अक्षम करें:
 
@@ -312,26 +312,26 @@ FAILPROOFAI_TELEMETRY_DISABLED=1 failproofai
 
 ---
 
-## प्रलेखन
+## दस्तावेज़
 
 | गाइड | विवरण |
 |-------|-------------|
-| [Getting Started](docs/getting-started.mdx) | स्थापना और पहले कदम |
-| [Built-in Policies](docs/built-in-policies.mdx) | सभी 39 बिल्ट-इन नीतियां पैरामीटर के साथ |
-| [Custom Policies](docs/custom-policies.mdx) | अपनी स्वयं की नीतियां लिखें |
-| [Configuration](docs/configuration.mdx) | कॉन्फ़िग फाइल प्रारूप और स्कोप मर्जिंग |
-| [Dashboard](docs/dashboard.mdx) | सत्रों की निगरानी करें और नीति गतिविधि की समीक्षा करें |
-| [Architecture](docs/architecture.mdx) | हुक सिस्टम कैसे काम करता है |
-| [Testing](docs/testing.mdx) | परीक्षण चलाना और नए लिखना |
+| [शुरुआत करें](docs/getting-started.mdx) | स्थापन और पहले कदम |
+| [बिल्ट-इन नीतियां](docs/built-in-policies.mdx) | सभी 39 बिल्ट-इन नीतियां पैरामीटर के साथ |
+| [कस्टम नीतियां](docs/custom-policies.mdx) | अपनी स्वयं की नीतियां लिखें |
+| [कॉन्फ़िगरेशन](docs/configuration.mdx) | कॉन्फ़िग फ़ाइल प्रारूप और दायरे मर्जिंग |
+| [डैशबोर्ड](docs/dashboard.mdx) | सेशन मॉनिटर करें और नीति गतिविधि की समीक्षा करें |
+| [आर्किटेक्चर](docs/architecture.mdx) | हुक सिस्टम कैसे काम करता है |
+| [परीक्षण](docs/testing.mdx) | परीक्षण चलाएं और नए लिखें |
 
-### स्थानीय रूप से प्रलेखन चलाएं
+### डॉक्स को स्थानीय रूप से चलाएं
 
 ```bash
 docker build -f Dockerfile.docs -t failproofai-docs .
 docker run --rm -p 3000:3000 failproofai-docs
 ```
 
-`http://localhost:3000` पर Mintlify प्रलेखन साइट खोलता है। कंटेनर परिवर्तनों के लिए देखता है यदि आप प्रलेखन निर्देशिका माउंट करते हैं:
+`http://localhost:3000` पर Mintlify डॉक्स साइट खोलता है। कंटेनर परिवर्तन देखता है यदि आप डॉक्स निर्देशिका को माउंट करते हैं:
 
 ```bash
 docker run --rm -p 3000:3000 -v $(pwd)/docs:/app/docs failproofai-docs
@@ -341,9 +341,9 @@ docker run --rm -p 3000:3000 -v $(pwd)/docs:/app/docs failproofai-docs
 
 ## failproofai योगदानकर्ताओं के लिए नोट
 
-इस रिपो का `.claude/settings.json` मानक `npx -y failproofai` कमांड की बजाय `bun ./bin/failproofai.mjs --hook <EventType>` का उपयोग करता है। ऐसा इसलिए है क्योंकि failproofai परियोजना के अंदर `npx -y failproofai` चलाने से एक आत्म-संदर्भित संघर्ष पैदा होता है।
+इस रेपो का `.claude/settings.json` मानक `npx -y failproofai` कमांड के बजाय `bun ./bin/failproofai.mjs --hook <EventType>` का उपयोग करता है। यह इसलिए है क्योंकि failproofai प्रोजेक्ट के अंदर `npx -y failproofai` चलाने से एक स्व-संदर्भमय संघर्ष बनता है।
 
-सभी अन्य रिपो के लिए, अनुशंसित दृष्टिकोण `npx -y failproofai` है, जो निम्न के माध्यम से स्थापित है:
+अन्य सभी रेपोज के लिए, अनुशंसित दृष्टिकोण `npx -y failproofai` है, जो इसके माध्यम से स्थापित है:
 
 ```bash
 failproofai policies --install --scope project
@@ -361,4 +361,4 @@ failproofai policies --install --scope project
 
 ---
 
-**ExosphereHost द्वारा निर्मित और संचालित: आपके एजेंटों के लिए विश्वसनीयता अनुसंधान प्रयोगशाला**। हम एंटरप्राइज और स्टार्टअप को अपने स्वयं के एजेंट, सॉफ्टवेयर और विशेषज्ञता के माध्यम से अपने AI एजेंटों की विश्वसनीयता में सुधार करने में मदद करते हैं। [exosphere.host](https://exosphere.host) पर अधिक जानें।
+**ExosphereHost द्वारा निर्मित और रक्षणाबल्ली: आपके एजेंट्स के लिए विश्वसनीयता अनुसंधान प्रयोगशाला**। हम अपने स्वयं के एजेंट्स, सॉफ़्टवेयर और विशेषज्ञता के माध्यम से उद्यमों और स्टार्टअप्स को उनके AI एजेंट्स की विश्वसनीयता में सुधार करने में मदद करते हैं। [exosphere.host](https://exosphere.host) पर और जानें।

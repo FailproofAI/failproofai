@@ -23,7 +23,7 @@
 
 **Traductions** : [简体中文](docs/i18n/README.zh.md) | [日本語](docs/i18n/README.ja.md) | [한국어](docs/i18n/README.ko.md) | [Español](docs/i18n/README.es.md) | [Português](docs/i18n/README.pt-br.md) | [Deutsch](docs/i18n/README.de.md) | [Français](docs/i18n/README.fr.md) | [Русский](docs/i18n/README.ru.md) | [हिन्दी](docs/i18n/README.hi.md) | [Türkçe](docs/i18n/README.tr.md) | [Tiếng Việt](docs/i18n/README.vi.md) | [Italiano](docs/i18n/README.it.md) | [العربية](docs/i18n/README.ar.md) | [עברית](docs/i18n/README.he.md)
 
-La façon la plus simple de gérer des politiques qui maintiennent vos agents IA fiables, concentrés sur leurs tâches et autonomes — pour **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(bêta)_, **Cursor Agent** _(bêta)_, **OpenCode** _(bêta)_, **Pi** _(bêta)_, **Gemini CLI** _(bêta)_ et le **Agents SDK**.
+La façon la plus simple de gérer des politiques qui maintiennent vos agents IA fiables, concentrés sur leurs tâches et capables de fonctionner de manière autonome — pour **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(bêta)_, **Cursor Agent** _(bêta)_, **OpenCode** _(bêta)_, **Pi** _(bêta)_, **Gemini CLI** _(bêta)_ et le **Agents SDK**.
 
 <p align="center">
   <img src="failproofai-hq.gif" alt="Failproof AI en action" width="800" />
@@ -80,12 +80,12 @@ La façon la plus simple de gérer des politiques qui maintiennent vos agents IA
   </a>
 </p>
 
-> Installez les hooks pour l'un ou une combinaison quelconque : `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omettez `--cli` pour détecter automatiquement les CLIs installés et afficher une invite. **La prise en charge de GitHub Copilot CLI, Cursor Agent, OpenCode, Pi et Gemini CLI est en bêta — les tests sont en cours.**
+> Installez les hooks pour un ou plusieurs CLIs en combinaison : `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omettez `--cli` pour détecter automatiquement les CLIs installés et être invité à choisir. **La prise en charge de GitHub Copilot CLI, Cursor Agent, OpenCode, Pi et Gemini CLI est en bêta — les tests sont en cours.**
 
-- **39 politiques intégrées** - Détectez les modes d'échec courants des agents dès l'installation. Bloquez les commandes destructives, prévenez les fuites de secrets, maintenez les agents dans les limites du projet, détectez les boucles, et bien plus encore.
-- **Politiques personnalisées** - Rédigez vos propres règles de fiabilité en JavaScript. Utilisez l'API `allow`/`deny`/`instruct` pour appliquer des conventions, prévenir les dérives, contrôler les opérations ou vous intégrer à des systèmes externes.
-- **Configuration simplifiée** - Ajustez n'importe quelle politique sans écrire de code. Définissez des listes d'autorisation, des branches protégées et des seuils par projet ou globalement. Les trois niveaux de configuration sont fusionnés automatiquement.
-- **Moniteur d'agents** - Voyez ce que vos agents ont fait pendant votre absence. Parcourez les sessions, inspectez chaque appel d'outil et examinez exactement où les politiques se sont déclenchées.
+- **39 politiques intégrées** - Détectez les modes de défaillance courants des agents sans configuration supplémentaire. Bloquez les commandes destructives, empêchez les fuites de secrets, maintenez les agents dans les limites du projet, détectez les boucles, et bien plus encore.
+- **Politiques personnalisées** - Rédigez vos propres règles de fiabilité en JavaScript. Utilisez l'API `allow`/`deny`/`instruct` pour faire respecter les conventions, éviter la dérive, contrôler les opérations ou vous intégrer à des systèmes externes.
+- **Configuration simple** - Ajustez n'importe quelle politique sans écrire de code. Définissez des listes d'autorisation, des branches protégées et des seuils par projet ou de manière globale. La fusion des trois niveaux de configuration est automatique.
+- **Moniteur d'agents** - Voyez ce que vos agents ont fait en votre absence. Parcourez les sessions, inspectez chaque appel d'outil et examinez précisément où les politiques se sont déclenchées.
 
 Tout s'exécute localement — aucune donnée ne quitte votre machine.
 
@@ -94,7 +94,7 @@ Tout s'exécute localement — aucune donnée ne quitte votre machine.
 ## Prérequis
 
 - Node.js >= 20.9.0
-- Bun >= 1.3.0 (optionnel — uniquement nécessaire pour le développement / la compilation depuis les sources)
+- Bun >= 1.3.0 (facultatif — uniquement nécessaire pour le développement / la compilation depuis les sources)
 
 ---
 
@@ -136,11 +136,11 @@ failproofai policies
 
 ## Installation des politiques
 
-### Niveaux de portée
+### Niveaux
 
-| Portée | Commande | Emplacement d'écriture |
+| Niveau | Commande | Emplacement d'écriture |
 |--------|---------|-----------------|
-| Globale (par défaut) | `failproofai policies --install` | `~/.claude/settings.json` |
+| Global (par défaut) | `failproofai policies --install` | `~/.claude/settings.json` |
 | Projet | `failproofai policies --install --scope project` | `.claude/settings.json` |
 | Locale | `failproofai policies --install --scope local` | `.claude/settings.local.json` |
 
@@ -154,7 +154,7 @@ failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
 
 ```bash
 failproofai policies --uninstall
-# ou pour une portée spécifique :
+# ou pour un niveau spécifique :
 failproofai policies --uninstall --scope project
 ```
 
@@ -215,14 +215,14 @@ La configuration des politiques se trouve dans `~/.failproofai/policies-config.j
 | `block-env-files` | Empêche les agents de lire les fichiers .env | |
 | `protect-env-vars` | Empêche les agents d'afficher les variables d'environnement | |
 | `block-read-outside-cwd` | Maintient les agents dans les limites du projet | `allowPaths` |
-| `block-secrets-write` | Empêche les écritures dans les fichiers de clés privées et de certificats | `additionalPatterns` |
+| `block-secrets-write` | Empêche l'écriture dans les fichiers de clés privées et de certificats | `additionalPatterns` |
 | `block-push-master` | Empêche les poussées accidentelles vers main/master | `protectedBranches` |
-| `block-work-on-main` | Empêche les agents de travailler sur les branches protégées | `protectedBranches` |
+| `block-work-on-main` | Maintient les agents hors des branches protégées | `protectedBranches` |
 | `block-force-push` | Empêche `git push --force` | |
 | `warn-git-amend` | Rappelle aux agents avant de modifier des commits | |
 | `warn-git-stash-drop` | Rappelle aux agents avant de supprimer des stashs | |
 | `warn-all-files-staged` | Détecte les `git add -A` accidentels | |
-| `warn-destructive-sql` | Détecte les instructions SQL DROP/DELETE avant exécution | |
+| `warn-destructive-sql` | Détecte les instructions DROP/DELETE SQL avant exécution | |
 | `warn-schema-alteration` | Détecte les ALTER TABLE avant exécution | |
 | `warn-large-file-write` | Détecte les écritures de fichiers anormalement volumineuses | `thresholdKb` |
 | `warn-package-publish` | Détecte les `npm publish` accidentels | |
@@ -281,11 +281,11 @@ failproofai policies --install --custom ./my-policies.js
 | `session.sessionId` | `string` | Identifiant de session |
 | `session.transcriptPath` | `string` | Chemin vers le fichier de transcription de la session |
 
-Les hooks personnalisés prennent en charge les imports locaux transitifs, async/await et l'accès à `process.env`. Les erreurs sont en mode fail-open (consignées dans `~/.failproofai/hook.log`, les politiques intégrées continuent). Consultez [docs/custom-hooks.mdx](docs/custom-hooks.mdx) pour le guide complet.
+Les hooks personnalisés prennent en charge les imports locaux transitifs, async/await et l'accès à `process.env`. Les erreurs sont en mode fail-open (journalisées dans `~/.failproofai/hook.log`, les politiques intégrées continuent de s'exécuter). Consultez [docs/custom-hooks.mdx](docs/custom-hooks.mdx) pour le guide complet.
 
 ### Politiques basées sur les conventions
 
-Déposez des fichiers `*policies.{js,mjs,ts}` dans `.failproofai/policies/` et ils sont automatiquement chargés — aucun indicateur ni modification de configuration n'est nécessaire. Commitez le répertoire dans git et chaque membre de l'équipe bénéficie automatiquement des mêmes standards de qualité.
+Déposez des fichiers `*policies.{js,mjs,ts}` dans `.failproofai/policies/` et ils seront chargés automatiquement — aucun paramètre ni modification de configuration n'est nécessaire. Commitez le répertoire dans git et chaque membre de l'équipe bénéficiera automatiquement des mêmes standards de qualité.
 
 ```text
 # Niveau projet — commité dans git, partagé avec l'équipe
@@ -296,15 +296,15 @@ Déposez des fichiers `*policies.{js,mjs,ts}` dans `.failproofai/policies/` et i
 ~/.failproofai/policies/my-policies.mjs
 ```
 
-Les deux niveaux sont chargés (union). Les fichiers sont chargés par ordre alphabétique dans chaque répertoire. Préfixez avec `01-`, `02-`, etc. pour contrôler l'ordre. Au fur et à mesure que votre équipe découvre de nouveaux modes d'échec, ajoutez une politique et poussez — tout le monde reçoit la mise à jour au prochain pull. Consultez [examples/convention-policies/](examples/convention-policies/) pour des exemples prêts à l'emploi.
+Les deux niveaux sont chargés (union). Les fichiers sont chargés par ordre alphabétique au sein de chaque répertoire. Préfixez avec `01-`, `02-`, etc. pour contrôler l'ordre. Au fur et à mesure que votre équipe découvre de nouveaux modes de défaillance, ajoutez une politique et poussez — tout le monde reçoit la mise à jour au prochain `git pull`. Consultez [examples/convention-policies/](examples/convention-policies/) pour des exemples prêts à l'emploi.
 
 ---
 
 ## Télémétrie
 
-Failproof AI collecte des données de télémétrie d'utilisation anonymes via PostHog afin de comprendre l'utilisation des fonctionnalités. Aucun contenu de session, nom de fichier, entrée d'outil ni information personnelle n'est jamais envoyé.
+Failproof AI collecte des données de télémétrie anonymes via PostHog pour comprendre l'utilisation des fonctionnalités. Le contenu des sessions, les noms de fichiers, les entrées des outils et les informations personnelles ne sont jamais envoyés.
 
-Pour la désactiver :
+Pour désactiver :
 
 ```bash
 FAILPROOFAI_TELEMETRY_DISABLED=1 failproofai
@@ -316,11 +316,11 @@ FAILPROOFAI_TELEMETRY_DISABLED=1 failproofai
 
 | Guide | Description |
 |-------|-------------|
-| [Démarrage](docs/getting-started.mdx) | Installation et premières étapes |
+| [Premiers pas](docs/getting-started.mdx) | Installation et premières étapes |
 | [Politiques intégrées](docs/built-in-policies.mdx) | Les 39 politiques intégrées avec leurs paramètres |
 | [Politiques personnalisées](docs/custom-policies.mdx) | Rédigez vos propres politiques |
 | [Configuration](docs/configuration.mdx) | Format du fichier de configuration et fusion des niveaux |
-| [Tableau de bord](docs/dashboard.mdx) | Surveiller les sessions et examiner l'activité des politiques |
+| [Tableau de bord](docs/dashboard.mdx) | Surveillez les sessions et examinez l'activité des politiques |
 | [Architecture](docs/architecture.mdx) | Fonctionnement du système de hooks |
 | [Tests](docs/testing.mdx) | Exécuter les tests et en écrire de nouveaux |
 
@@ -331,7 +331,7 @@ docker build -f Dockerfile.docs -t failproofai-docs .
 docker run --rm -p 3000:3000 failproofai-docs
 ```
 
-Ouvre le site de documentation Mintlify sur `http://localhost:3000`. Le conteneur surveille les modifications si vous montez le répertoire de documentation :
+Ouvre le site de documentation Mintlify sur `http://localhost:3000`. Le conteneur surveille les modifications si vous montez le répertoire docs :
 
 ```bash
 docker run --rm -p 3000:3000 -v $(pwd)/docs:/app/docs failproofai-docs
@@ -361,4 +361,4 @@ Consultez [LICENSE](LICENSE).
 
 ---
 
-Développé et maintenu par **ExosphereHost : Reliability Research Lab for Your Agents**. Nous aidons les entreprises et les startups à améliorer la fiabilité de leurs agents IA grâce à nos propres agents, logiciels et expertises. En savoir plus sur [exosphere.host](https://exosphere.host).
+Construit et maintenu par **ExosphereHost : Reliability Research Lab for Your Agents**. Nous aidons les entreprises et les startups à améliorer la fiabilité de leurs agents IA grâce à nos propres agents, logiciels et expertises. En savoir plus sur [exosphere.host](https://exosphere.host).

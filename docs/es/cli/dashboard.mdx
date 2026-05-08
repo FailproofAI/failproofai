@@ -1,28 +1,28 @@
 ---
 title: Ver sesiones
-description: "Inicia el panel de control para explorar sesiones de agentes y gestionar políticas"
+description: "Abre el panel de control para explorar sesiones de agentes y gestionar políticas"
 ---
 
 ```bash
 failproofai
 ```
 
-Inicia el panel web en `http://localhost:8020`.
+Inicia el panel de control web en `http://localhost:8020`.
 
 ## Opciones
 
 | Flag | Descripción |
 |------|-------------|
 | `--port <number>` | Puerto en el que escuchar (por defecto: `8020`) |
-| `--projects-path <path>` | Sobrescribe la ubicación donde se buscan las carpetas de proyectos de Claude Code |
+| `--projects-path <path>` | Reemplaza la ubicación donde se buscan las carpetas de proyectos de Claude Code |
 | `--allowed-origins <origins>` | Hosts/IPs separados por comas con acceso permitido a los recursos de desarrollo |
 
 ## Ejemplos
 
 ```bash
-# Launch on a different port
+# Iniciar en un puerto diferente
 failproofai --port 9000
 
-# Use a custom projects path
+# Usar una ruta de proyectos personalizada
 failproofai --projects-path ~/my-claude-projects
 ```

@@ -1,38 +1,38 @@
 ---
 title: "एजेंटों के लिए"
-description: "एक कमांड में अपने कोडिंग एजेंट में Failproof AI नॉलेज जोड़ें। Claude Code, Cursor, Windsurf और अन्य के साथ काम करता है।"
+description: "एक कमांड में अपने कोडिंग एजेंट में Failproof AI ज्ञान जोड़ें। Claude Code, Cursor, Windsurf, और अन्य के साथ काम करता है।"
 ---
 
-एक कमांड में अपने कोडिंग एजेंट में संपूर्ण Failproof AI संदर्भ जोड़ें। Claude Code, Cursor, Windsurf और किसी भी अन्य एजेंट के साथ काम करता है जो कौशल का समर्थन करते हैं।
+एक कमांड में अपने कोडिंग एजेंट में पूर्ण Failproof AI संदर्भ जोड़ें। Claude Code, Cursor, Windsurf, और किसी भी अन्य एजेंट के साथ काम करता है जो कौशल का समर्थन करता है।
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` पता लगाता है कि आपके पास कौन से एजेंट स्थापित हैं और प्रत्येक के लिए सही प्रारूप में कौशल को स्वचालित रूप से जोड़ता है।
+`npx skills` पता लगाता है कि आपके पास कौन से एजेंट स्थापित हैं और स्वचालित रूप से प्रत्येक के लिए सही प्रारूप में कौशल जोड़ता है।
 
 ## कौशल क्या कवर करता है
 
 | क्षेत्र | क्या शामिल है |
 |------|----------------|
-| नीतियां | निर्मित नीति के नाम, ईवेंट प्रकार, पैरामीटर, सक्षम/अक्षम |
-| कस्टम नीतियां | `customPolicies.add()`, मैच फ़िल्टर, `allow`/`deny`/`instruct` API |
+| नीतियां | अंतर्निहित नीति नाम, ईवेंट प्रकार, पैरामीटर, सक्षम/अक्षम |
+| कस्टम नीतियां | `customPolicies.add()`, मिलान फ़िल्टर, `allow`/`deny`/`instruct` API |
 | संदर्भ ऑब्जेक्ट | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| कॉन्फ़िगरेशन | `policies-config.json` संरचना, स्कोप विलय, `policyParams` |
+| कॉन्फ़िगरेशन | `policies-config.json` संरचना, स्कोप मर्जिंग, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, स्कोप |
 | डैशबोर्ड | सेशन व्यूअर, नीति गतिविधि, पर्यावरण चर |
 | आर्किटेक्चर | हुक हैंडलर प्रवाह, निकास कोड, stdin/stdout अनुबंध |
 
 ## क्या कौशल पूर्ण है?
 
-Mintlify नेविगेशन में सभी पृष्ठों से `llms.txt` उत्पन्न करता है। Failproof AI दस्तावेज़ पूर्ण API को कवर करते हैं - हर नीति, विकल्प और उदाहरण शामिल है। यदि आपको कुछ लापता लगता है, तो स्रोत `https://docs.befailproof.ai/llms-full.txt` पर है।
+Mintlify नेविगेशन में सभी पृष्ठों से `llms.txt` उत्पन्न करता है। Failproof AI डॉक्स पूर्ण API को कवर करते हैं - प्रत्येक नीति, विकल्प, और उदाहरण शामिल है। यदि आप कुछ लापता पाते हैं, तो स्रोत `https://docs.befailproof.ai/llms-full.txt` पर है।
 
-लक्षित संदर्भ के लिए, किसी विशिष्ट पृष्ठ के लिए सीधे लिंक करें:
+लक्षित संदर्भ के लिए, सीधे एक विशिष्ट पृष्ठ से लिंक करें:
 
 ```bash
 # केवल कस्टम नीतियां API
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# केवल निर्मित नीतियां
+# केवल अंतर्निहित नीतियां
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

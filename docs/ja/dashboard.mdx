@@ -4,7 +4,7 @@ description: "エージェントセッションの監視、ツール呼び出し
 icon: chart-line
 ---
 
-failproofai ダッシュボードは、AIエージェントセッションの監視とポリシー管理を行うローカルWebアプリケーションです。その場を離れている間にエージェントが何をしたかを確認できます。
+failproofai ダッシュボードは、AIエージェントセッションの監視とポリシー管理のためのローカルWebアプリケーションです。席を外している間にエージェントが何をしたかを確認できます。
 
 ---
 
@@ -16,19 +16,19 @@ failproofai
 
 `http://localhost:8020` で開きます。
 
-ダッシュボードはファイルシステムから直接データを読み取ります。Claude Code のプロジェクトフォルダーと failproofai の設定ファイルが対象です。リモートサービスへの書き込みは一切行われません。
+ダッシュボードはファイルシステムから直接読み取ります — Claude Code のプロジェクトフォルダと failproofai の設定ファイルを参照します。リモートサービスへの書き込みは一切行いません。
 
 ---
 
-## ページ構成
+## ページ一覧
 
 ### プロジェクト
 
-マシン上で見つかったすべての Claude Code、OpenAI Codex、GitHub Copilot CLI _(ベータ)_、Cursor Agent _(ベータ)_、OpenCode _(ベータ)_、Pi _(ベータ)_、Gemini CLI _(ベータ)_ のプロジェクトを一覧表示します。Claude プロジェクトは `~/.claude/projects/`（または `CLAUDE_PROJECTS_PATH` で設定されたパス）から検出されます。Codex プロジェクトは `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 配下のすべてのトランスクリプトをスキャンし、各セッションの最初のレコードに記録された `cwd` でグループ化することで検出されます。Copilot CLI プロジェクトは各 `~/.copilot/session-state/<sessionId>/workspace.yaml`（`COPILOT_HOME` で変更可能）をスキャンし、`cwd` フィールドでグループ化することで検出されます。Cursor Agent プロジェクトは `~/.cursor/agent-sessions/<sessionId>/`（`CURSOR_HOME` で変更可能。フォールバックとして `conversations/` と `sessions/` も探索）配下のセッションごとのメタデータをスキャンし、`meta.json` / `session.json` / `workspace.yaml` 内の `cwd` スカラーを取得することで検出されます。OpenCode プロジェクトは `~/.local/share/opencode/opencode.db` にある SQLite DB を `opencode db --format json` でクエリし（`session` テーブルと `project` テーブルを読み取り、`project_id` でグループ化）、検出されます。Pi プロジェクトは `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`（`PI_SESSIONS_DIR` で変更可能）配下のセッションごとの JSONL トランスクリプトをスキャンし、各セッションの最初のレコードから `cwd` を取得することで検出されます。Gemini CLI プロジェクトは `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`（`GEMINI_SESSIONS_DIR` で変更可能）をスキャンし、隣接する `.project_root` テキストマーカーから正規の cwd を復元することで検出されます。複数の CLI で使用されたプロジェクトは、該当するバッジをすべて表示した1行としてレンダリングされます。テーブル上部の **CLI** ドロップダウンを使用して特定のエージェント CLI でフィルタリングできます。URLには選択内容が `?cli=claude|codex|copilot|cursor|opencode|pi|gemini` として保持されます。
+マシン上で見つかったすべての Claude Code、OpenAI Codex、GitHub Copilot CLI _(ベータ)_、Cursor Agent _(ベータ)_、OpenCode _(ベータ)_、Pi _(ベータ)_、Gemini CLI _(ベータ)_ のプロジェクトを一覧表示します。Claude プロジェクトは `~/.claude/projects/`（または `CLAUDE_PROJECTS_PATH` で指定したパス）から検出されます。Codex プロジェクトは `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 配下のすべてのトランスクリプトをスキャンし、各セッションの最初のレコードに記録された `cwd` でグループ化して検出されます。Copilot CLI プロジェクトは各 `~/.copilot/session-state/<sessionId>/workspace.yaml`（`COPILOT_HOME` で変更可能）をスキャンし、`cwd` フィールドでグループ化して検出されます。Cursor Agent プロジェクトは `~/.cursor/agent-sessions/<sessionId>/`（`CURSOR_HOME` で変更可能。フォールバックとして `conversations/` と `sessions/` も参照）配下のセッションメタデータをスキャンし、`meta.json` / `session.json` / `workspace.yaml` の `cwd` スカラーから検出されます。OpenCode プロジェクトは `opencode db --format json` を経由して `~/.local/share/opencode/opencode.db` の SQLite DB を照会し（`session` と `project` テーブルを読み込み、`project_id` でグループ化）、検出されます。Pi プロジェクトは `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`（`PI_SESSIONS_DIR` で変更可能）配下のセッション JSONL トランスクリプトをスキャンし、各セッションの最初のレコードから `cwd` を取得して検出されます。Gemini CLI プロジェクトは `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`（`GEMINI_SESSIONS_DIR` で変更可能）をスキャンし、隣接する `.project_root` テキストマーカーから正規の cwd を復元して検出されます。複数の CLI から使用されたプロジェクトは、一致するすべてのバッジとともに単一行として表示されます。テーブル上部の **CLI** ドロップダウンを使用して特定のエージェント CLI でフィルタリングできます。選択内容は `?cli=claude|codex|copilot|cursor|opencode|pi|gemini` としてURLに保存されます。
 
 各プロジェクトには以下が表示されます：
-- プロジェクト名（フォルダーパスから導出）
-- CLI バッジ — `Claude Code`（オレンジ）、`OpenAI Codex`（パープル）、`GitHub Copilot`（ブルー）、`Cursor Agent`（エメラルド）、`OpenCode`（アンバー）、`Pi`（ピンク）、`Gemini CLI`（スカイ）のいずれか、または複数
+- プロジェクト名（フォルダパスから導出）
+- CLI バッジ — `Claude Code`（オレンジ）、`OpenAI Codex`（パープル）、`GitHub Copilot`（ブルー）、`Cursor Agent`（エメラルド）、`OpenCode`（アンバー）、`Pi`（ピンク）、`Gemini CLI`（スカイ）
 - 最新セッションのアクティビティ日時
 
 プロジェクトをクリックするとセッション一覧が表示されます。
@@ -36,43 +36,43 @@ failproofai
 ### セッション
 
 プロジェクト内のすべてのセッションを一覧表示します。各セッションには以下が表示されます：
-- セッションID
+- セッション ID
 - 開始・終了タイムスタンプ
 - ツール呼び出し数
-- フックアクティビティ数（発火したポリシーの数）
+- フックアクティビティ数（発動したポリシー数）
 
-日付範囲フィルターとセッションID検索で絞り込めます。セッションはページネーションで表示されます。
+日付範囲フィルターとセッション ID 検索で絞り込みができます。セッションはページネーションで表示されます。
 
 セッションをクリックするとセッションビューアーが開きます。
 
 ### セッションビューアー
 
-セッションビューアーは、自律型エージェントに対する重要な問いに答えます。エージェントは何をしたのか、そして正しく動作していたのか？ヘッダー横の CLI バッジで、そのセッションが Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI のいずれのトランスクリプトかを確認できます。セッション内で起きたすべての出来事のタイムラインが表示されます：
+セッションビューアーは、自律エージェントにとって重要な問いに答えます：エージェントは何をしたのか、そして意図した通りに動作したのか？ヘッダー横の CLI バッジは、そのセッションが Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI のいずれのトランスクリプトであるかを示します。セッション内で発生したすべての出来事がタイムラインで表示されます：
 
 - **メッセージ** - Claude のテキスト応答とユーザープロンプト
-- **ツール呼び出し** - Claude が呼び出したすべてのツールと、その入力・出力
-- **ポリシーアクティビティ** - 各ツール呼び出しに対して、どのポリシーが発火し、どのような判断が返されたか
+- **ツール呼び出し** - Claude が実行したすべてのツール（入力と出力を含む）
+- **ポリシーアクティビティ** - 各ツール呼び出しに対して、発動したポリシーとその判断結果
 
-上部のステータスバーには、セッション時間、ツール呼び出し合計数、フック判断の概要（allow / deny / instruct の件数）が表示されます。
+上部のステータスバーには、セッション時間、ツール呼び出しの合計数、フック判断のサマリー（allow / deny / instruct の件数）が表示されます。
 
-**ログをダウンロード** ボタンをクリックするとセッションをエクスポートできます。Claude Code、Codex、Copilot、Cursor、Pi、Gemini のセッションではディスク上のオリジナル JSONL トランスクリプトがバイト単位でそのまま取得できます。OpenCode（セッションがディスクではなく SQLite に保存されている）の場合は、`session` / `messages` / `parts` テーブルを反映した JSON ドキュメントが取得されます。
+**ログのダウンロード**ボタンをクリックするとセッションをエクスポートできます。Claude Code、Codex、Copilot、Cursor、Pi、Gemini のセッションはディスク上のオリジナル JSONL トランスクリプトをバイト単位でそのまま取得できます。OpenCode（セッションがディスクではなく SQLite に保存される）の場合は、`session` / `messages` / `parts` テーブルを反映した JSON ドキュメントを取得できます。
 
 ### ポリシー
 
-ポリシーの管理とアクティビティの確認を行う2タブのページです。
+ポリシーの管理とアクティビティ確認のための2タブページです。
 
 <Tabs>
-  <Tab title="Policies タブ">
-  - ワンクリックで個々のポリシーのオン/オフを切り替え（`~/.failproofai/policies-config.json` に書き込まれます）
+  <Tab title="ポリシータブ">
+  - ワンクリックで個別ポリシーのオン・オフを切り替え（`~/.failproofai/policies-config.json` に書き込まれます）
   - ポリシーを展開してパラメーターを設定（`policyParams` をサポートするポリシーの場合）
-  - 指定スコープのフックをインストールまたは削除
+  - 指定スコープのフックのインストールまたは削除
   - カスタムポリシーファイルのパスを設定
   </Tab>
-  <Tab title="Activity タブ">
-  - すべてのセッションにわたって発火したすべてのフックイベントの完全なページネーション履歴
-  - 判断、イベント種別、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(ベータ)_ / Cursor Agent _(ベータ)_ / OpenCode _(ベータ)_ / Pi _(ベータ)_ / Gemini CLI _(ベータ)_）、ポリシー名、セッションIDでフィルタリング可能
-  - 各行には以下が表示されます：タイムスタンプ、ポリシー名、判断、CLI バッジ（オレンジ = Claude Code、パープル = OpenAI Codex、ブルー = GitHub Copilot、エメラルド = Cursor Agent、アンバー = OpenCode、ピンク = Pi、スカイ = Gemini CLI）、ツール名、セッションID、deny/instruct 判断の理由
-  - セッションIDをクリックするとそのトランスクリプトが開きます。ビューアーはフックを発火した CLI（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`）を自動検出し、ヘッダーに対応する CLI バッジをレンダリングします
+  <Tab title="アクティビティタブ">
+  - すべてのセッションにわたって発動したすべてのフックイベントの完全なページネーション履歴
+  - 判断結果、イベントタイプ、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(ベータ)_ / Cursor Agent _(ベータ)_ / OpenCode _(ベータ)_ / Pi _(ベータ)_ / Gemini CLI _(ベータ)_）、ポリシー名、またはセッション ID でフィルタリング
+  - 各行には：タイムスタンプ、ポリシー名、判断結果、CLI バッジ（オレンジ = Claude Code、パープル = OpenAI Codex、ブルー = GitHub Copilot、エメラルド = Cursor Agent、アンバー = OpenCode、ピンク = Pi、スカイ = Gemini CLI）、ツール名、セッション ID、deny/instruct 判断の理由が表示されます
+  - セッション ID をクリックするとトランスクリプトが開きます — ビューアーはフックを発動した CLI を自動検出し（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`）、ヘッダーに対応する CLI バッジを表示します
   </Tab>
 </Tabs>
 
@@ -80,19 +80,19 @@ failproofai
 
 ## 自動更新
 
-ダッシュボードの上部ナビゲーションには自動更新トグルがあります。有効にすると、現在のページが定期的に更新され、新しいセッションやポリシーアクティビティがリアルタイムで表示されます。長時間稼働する自律型エージェントセッションの監視に最適です。
+ダッシュボードのトップナビゲーションには自動更新のトグルがあります。有効にすると、現在のページが定期的に更新され、新しいセッションやポリシーアクティビティがリアルタイムで反映されます。長時間実行される自律エージェントセッションの監視に欠かせない機能です。
 
 ---
 
 ## ページの無効化
 
-ダッシュボードの一部のみ必要な場合は、`FAILPROOFAI_DISABLE_PAGES` にカンマ区切りのページ名を設定してください：
+ダッシュボードの一部のみ必要な場合は、`FAILPROOFAI_DISABLE_PAGES` にカンマ区切りのページ名を設定します：
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
 ```
 
-有効な値：`policies`、`projects`
+有効な値：`policies`、`projects`。
 
 ---
 
@@ -104,7 +104,7 @@ FAILPROOFAI_DISABLE_PAGES=policies failproofai
 
 ## プロジェクトパスの設定
 
-デフォルトでは、ダッシュボードは標準の Claude Code プロジェクトディレクトリを参照します。カスタム設定の場合は上書きできます：
+デフォルトでは、ダッシュボードは標準の Claude Code プロジェクトディレクトリから読み取ります。カスタム設定の場合は以下のように上書きできます：
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -114,30 +114,30 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## localhost 以外のホストからのアクセス
 
-**開発モード**（`npm run dev`）でダッシュボードを実行し、`localhost` 以外のホスト名（カスタムドメイン、リモートIP、トンネルURLなど）からアクセスすると、次のような警告が表示される場合があります：
+**開発モード**（`npm run dev`）でダッシュボードを起動し、`localhost` 以外のホスト名（カスタムドメイン、リモート IP、トンネル URL など）からアクセスする場合、以下のような警告が表示されることがあります：
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-これは Next.js が HMR（ホットモジュールリロード）WebSocket へのクロスオリジンアクセスをブロックしているためです。HMR は開発専用の機能です。ホストを許可するには、`--allowed-origins` フラグを使用してください：
+これは Next.js が HMR（ホットモジュールリロード）WebSocket へのクロスオリジンアクセスをブロックしているためです（開発モード専用の機能です）。ホストを許可するには `--allowed-origins` フラグを使用してください：
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-複数のホストやIPを許可する場合は、カンマ区切りのリストで指定します：
+複数のホストや IP の場合は、カンマ区切りのリストで指定します：
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-環境変数 `FAILPROOFAI_ALLOWED_DEV_ORIGINS` を設定することもできます：
+代わりに `FAILPROOFAI_ALLOWED_DEV_ORIGINS` 環境変数を設定することもできます：
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-これは開発モードにのみ適用されます。`failproofai`（本番モード）を実行する場合は、HMR WebSocket もクロスオリジン開発リソースの問題も発生しません。
+これは開発モードにのみ適用されます。`failproofai`（本番モード）を実行している場合、HMR WebSocket は存在せず、クロスオリジン開発リソースの問題は発生しません。
 </Note>

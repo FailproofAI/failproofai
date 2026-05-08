@@ -1,6 +1,6 @@
 ---
 title: 环境变量
-description: "通过环境变量配置 failproofai 行为"
+description: "通过环境变量配置 failproofai 的行为"
 ---
 
 ## 控制台
@@ -9,7 +9,7 @@ description: "通过环境变量配置 failproofai 行为"
 |----------|-------------|
 | `PORT` | 控制台端口（默认：`8020`） |
 | `CLAUDE_PROJECTS_PATH` | 覆盖 Claude Code 项目文件夹的查找路径 |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的需要隐藏的控制台页面 |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的控制台页面列表，用于隐藏指定页面 |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 允许访问开发资源的主机/IP，与 `--allowed-origins` 相同 |
 
 ## 日志
@@ -30,5 +30,5 @@ description: "通过环境变量配置 failproofai 行为"
 | 变量 | 描述 |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM API 端点（默认：`https://api.openai.com/v1`） |
-| `FAILPROOFAI_LLM_API_KEY` | LLM 驱动策略所使用的 API 密钥 |
+| `FAILPROOFAI_LLM_API_KEY` | LLM 驱动策略的 API 密钥 |
 | `FAILPROOFAI_LLM_MODEL` | 模型名称（默认：`gpt-4o-mini`） |

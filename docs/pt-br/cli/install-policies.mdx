@@ -7,7 +7,7 @@ description: "Ative políticas para que sejam executadas em cada chamada de ferr
 failproofai policies --install [policy-names...] [options]
 ```
 
-Escreve entradas de hook no arquivo de configurações do CLI do agente instalado (Claude Code, OpenAI Codex ou GitHub Copilot CLI _(beta)_) para que o failproofai intercepte as chamadas de ferramentas.
+Grava entradas de hook no arquivo de configurações do CLI do agente instalado (Claude Code, OpenAI Codex ou GitHub Copilot CLI _(beta)_) para que o failproofai intercepte as chamadas de ferramentas.
 
 Aliases: `failproofai p -i`
 
@@ -23,8 +23,8 @@ Aliases: `failproofai p -i`
 
 ## Comportamento
 
-- **Sem nomes de políticas** — abre um prompt interativo para selecionar políticas
-- **Nomes específicos** — ativa as políticas indicadas (adicionadas às que já estiverem ativas)
+- **Sem nomes de políticas** — abre um prompt interativo para selecionar as políticas
+- **Nomes específicos** — ativa essas políticas (adicionadas às que já estiverem ativas)
 - **`all`** — ativa todas as políticas disponíveis
 
 A instalação é aditiva: executar `--install` novamente adiciona novas políticas sem remover as existentes.
@@ -44,13 +44,13 @@ failproofai policies --install all
 # Instalar com um arquivo de políticas personalizado
 failproofai policies --install --custom ./my-policies.js
 
-# Instalar para OpenAI Codex (escopo de projeto)
+# Instalar para o OpenAI Codex (escopo de projeto)
 failproofai policies --install --cli codex --scope project
 
-# Instalar para GitHub Copilot CLI (beta) no projeto atual
+# Instalar para o GitHub Copilot CLI (beta) no projeto atual
 failproofai policies --install --cli copilot --scope project
 
-# Instalar para os três CLIs de uma vez
+# Instalar para os três CLIs ao mesmo tempo
 failproofai policies --install --cli claude codex copilot
 ```
 

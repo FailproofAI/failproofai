@@ -1,38 +1,38 @@
 ---
 title: "Для агентов"
-description: "Добавьте справку Failproof AI вашему кодирующему агенту одной командой. Работает с Claude Code, Cursor, Windsurf и другими."
+description: "Добавьте справку Failproof AI своему coding агенту в одну команду. Работает с Claude Code, Cursor, Windsurf и другими."
 ---
 
-Добавьте полную справку Failproof AI вашему кодирующему агенту одной командой. Работает с Claude Code, Cursor, Windsurf и любым другим агентом, поддерживающим навыки.
+Добавьте полную справку Failproof AI своему coding агенту в одну команду. Работает с Claude Code, Cursor, Windsurf и любым другим агентом, поддерживающим skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` определяет, какие агенты у вас установлены, и автоматически добавляет навык в правильном формате для каждого.
+`npx skills` определяет, какие агенты у вас установлены, и автоматически добавляет skill в правильном формате для каждого из них.
 
-## Что включает навык
+## Что охватывает skill
 
-| Область | Содержание |
-|------|----------------|
+| Раздел | Что включено |
+|--------|--------------|
 | Policies | Встроенные имена политик, типы событий, параметры, включение/отключение |
 | Custom policies | `customPolicies.add()`, фильтры совпадений, API `allow`/`deny`/`instruct` |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuration | Структура `policies-config.json`, слияние scope, `policyParams` |
-| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scope |
+| Configuration | Структура `policies-config.json`, слияние scopes, `policyParams` |
+| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
 | Dashboard | Просмотр сессий, активность политик, переменные окружения |
-| Architecture | Поток обработчика hook, коды выхода, контракт stdin/stdout |
+| Architecture | Поток обработчика хука, коды выхода, контракт stdin/stdout |
 
-## Полон ли навык?
+## Полный ли skill?
 
-Mintlify генерирует `llms.txt` из всех страниц в навигации. Документация Failproof AI охватывает полный API - каждая политика, опция и пример включены. Если вы обнаружите что-то отсутствующее, источник находится по адресу `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify генерирует `llms.txt` из всех страниц в навигации. Документация Failproof AI охватывает полный API — каждая политика, опция и пример включены. Если вы найдёте что-то пропущенное, исходник находится по адресу `https://docs.befailproof.ai/llms-full.txt`.
 
-Для целевого контекста создавайте ссылку непосредственно на конкретную страницу:
+Для целевого контекста ссылайтесь прямо на конкретную страницу:
 
 ```bash
 # Только API custom policies
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# Только встроенные политики
+# Только встроенные policies
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

@@ -18,24 +18,24 @@ failproofai policies --uninstall [policy-names...] [options]
 | `--scope user` | 从全局设置中移除（默认） |
 | `--scope project` | 从项目设置中移除 |
 | `--scope local` | 从本地设置中移除 |
-| `--scope all` | 一次性从所有作用域中移除 |
+| `--scope all` | 同时从所有作用域中移除 |
 | `--custom` / `-c` | 从配置中清除 `customPoliciesPath` |
 
 ## 行为说明
 
 - **未指定策略名称** — 从设置文件中移除所有 failproofai hook 条目
-- **指定具体名称** — 禁用这些策略，但保留已安装的 hooks
+- **指定名称** — 禁用相应策略，但保留已安装的 hook
 
 ## 示例
 
 ```bash
-# 全局移除所有 hooks
+# 全局移除所有 hook
 failproofai policies --uninstall
 
-# 禁用特定策略（保留已安装的 hooks）
+# 禁用特定策略（保留已安装的 hook）
 failproofai policies --uninstall block-sudo
 
-# 从所有作用域移除 hooks
+# 从所有作用域中移除 hook
 failproofai policies --uninstall --scope all
 
 # 清除自定义策略路径

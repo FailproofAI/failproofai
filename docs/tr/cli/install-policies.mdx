@@ -1,47 +1,47 @@
 ---
 title: Politikaları yükle
-description: "Politikaları etkinleştir ve her agent araç çağrısında çalışmasını sağla"
+description: "Politikaları etkinleştirerek her agent araç çağrısında çalışmasını sağla"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-Yüklü agent CLI'nizin (Claude Code, OpenAI Codex veya GitHub Copilot CLI _(beta)_) ayarlar dosyasına hook girişleri yazar, böylece failproofai araç çağrılarını engeller.
+Yüklü agent CLI'ınızın (Claude Code, OpenAI Codex veya GitHub Copilot CLI _(beta)_) ayarlar dosyasına hook girdileri yazarak failproofai araç çağrılarını kesintiye uğratmasını sağlar.
 
 Takma adlar: `failproofai p -i`
 
 ## Seçenekler
 
-| Flag | Açıklama |
-|------|----------|
-| `--cli claude\|codex\|copilot` | Yüklenecek Agent CLI'lar; boşlukla ayrılmış (örn. `--cli claude codex copilot`) veya tekrarlı. Yüklü CLI'ları otomatik olarak algılamak ve sorgulamak için atlayın. |
-| `--scope user` | Kullanıcı kapsamlı ayarlar dosyasına yükle (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Varsayılan. |
-| `--scope project` | Proje kapsamlı ayarlar dosyasına yükle (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Yalnızca Claude için — `<cwd>/.claude/settings.local.json` dosyasına yükle. Codex ve Copilot'ın `local` kapsamı yoktur. |
-| `--custom <path>` / `-c` | Özel hook politikaları içeren JS dosyasının yolu |
+| Bayrak | Açıklama |
+|------|-------------|
+| `--cli claude\|codex\|copilot` | Yükleme yapılacak Agent CLI'ları; boşlukla ayrılmış (örn. `--cli claude codex copilot`) veya tekrarlanmış. Yüklü CLI'ları otomatik olarak algılamak ve sorulmak için atla. |
+| `--scope user` | Kullanıcı kapsamı ayarlar dosyasına yükle (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Varsayılan. |
+| `--scope project` | Proje kapsamı ayarlar dosyasına yükle (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Yalnızca Claude — `<cwd>/.claude/settings.local.json` dosyasına yükle. Codex ve Copilot'un `local` kapsamı yoktur. |
+| `--custom <path>` / `-c` | Özel hook politikalarını içeren JS dosyasının yolu |
 
 ## Davranış
 
 - **Policy adı yok** - politika seçmek için etkileşimli bir istem açar
-- **Belirli adlar** - bu politikaları etkinleştirir (zaten etkinleştirilen herhangi birine eklenir)
-- **`all`** - mevcut tüm politikaları etkinleştirir
+- **Belirli adlar** - bu politikaları etkinleştirir (zaten etkinolanlar üzerine eklenir)
+- **`all`** - tüm mevcut politikaları etkinleştirir
 
-Yükleme toplamalı bir işlemdir: `--install` komutunu tekrar çalıştırmak yeni politikaları ekler, mevcut olanları kaldırmaz.
+Yükleme işlemi toplamsal bir işlemdir: `--install` komutunu tekrar çalıştırmak yeni politikaları mevcut olanları silmeden ekler.
 
 ## Örnekler
 
 ```bash
-# Tüm varsayılan politikaları genel olarak yükle (etkileşimli)
+# Tüm varsayılan politikaları global olarak yükle (etkileşimli)
 failproofai policies --install
 
 # Geçerli proje için belirli politikaları yükle
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# Tüm politikaları bir kez etkinleştir
+# Tüm politikaları bir kerede etkinleştir
 failproofai policies --install all
 
-# Özel politikalar dosyası ile yükle
+# Özel politika dosyası ile yükle
 failproofai policies --install --custom ./my-policies.js
 
 # OpenAI Codex için yükle (proje kapsamı)
@@ -54,4 +54,4 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli claude codex copilot
 ```
 
-`--custom <path>` sağlandığında, dosya anında doğrulanır - en az bir kez `customPolicies.add()` çağrısı yapmalıdır. Çözümlenmiş yol, `customPoliciesPath` olarak `policies-config.json` dosyasına kaydedilir.
+`--custom <path>` sağlandığında, dosya hemen doğrulanır — en az bir kez `customPolicies.add()` çağrısı yapılması gerekir. Çözümlenen yol, `customPoliciesPath` olarak `policies-config.json` dosyasına kaydedilir.

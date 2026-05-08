@@ -8,22 +8,22 @@ description: "Configura el comportamiento de failproofai con variables de entorn
 | Variable | Descripción |
 |----------|-------------|
 | `PORT` | Puerto del dashboard (por defecto: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Sobreescribe la ubicación donde se buscan las carpetas de proyectos de Claude Code |
+| `CLAUDE_PROJECTS_PATH` | Reemplaza la ubicación donde se buscan las carpetas de proyectos de Claude Code |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Páginas del dashboard a ocultar, separadas por comas |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs con acceso a recursos de desarrollo. Equivalente a `--allowed-origins`. |
 
-## Registro (Logging)
+## Registro
 
 | Variable | Descripción |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Nivel de registro del servidor (por defecto: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Ruta personalizada del archivo de log de hooks, o `true` para usar el valor predeterminado (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Ruta personalizada para el archivo de log de hooks, o `true` para usar la ruta por defecto (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetría
 
 | Variable | Descripción |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Deshabilita la telemetría anónima de uso |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Deshabilita la telemetría de uso anónima |
 
 ## LLM (para evaluación de políticas)
 

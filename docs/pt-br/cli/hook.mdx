@@ -1,6 +1,6 @@
 ---
 title: Hook handler (interno)
-description: "O subprocesso que o Claude Code chama em cada evento de ferramenta"
+description: "O subprocesso que o Claude Code chama a cada evento de ferramenta"
 ---
 
 ```bash
@@ -14,16 +14,16 @@ Lê um payload JSON do stdin, avalia todas as políticas habilitadas e encerra c
 | Código de saída | Decisão | Efeito |
 |-----------------|---------|--------|
 | `0` | `allow` | Permite a ação |
-| `1` | `deny` | Bloqueia a ação - Claude recebe o motivo da negação |
+| `1` | `deny` | Bloqueia a ação - Claude vê o motivo da negação |
 | `2` | `instruct` | Injeta orientações no contexto do Claude |
 
-### Tipos de eventos suportados
+### Tipos de evento suportados
 
 | Categoria | Eventos |
 |-----------|---------|
 | **Execução de ferramentas** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Ciclo de vida da sessão** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **Interação com o usuário** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **Interação do usuário** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **Subagentes e tarefas** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Configuração** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **Sistema de arquivos** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |

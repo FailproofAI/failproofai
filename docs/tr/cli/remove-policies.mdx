@@ -1,14 +1,13 @@
 ---
----
-title: Politikaları Kaldır
-description: "Claude Code'un ayarlarından hook girişlerini kaldırın"
+title: İlkeleri kaldır
+description: "Claude Code'un ayarlarından kancaları kaldırın"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-failproofai hook girişlerini Claude Code'un `settings.json` dosyasından kaldırır.
+failproofai kanca girişlerini Claude Code'un `settings.json` dosyasından kaldırır.
 
 Takma adlar: `failproofai p -u`
 
@@ -16,29 +15,29 @@ Takma adlar: `failproofai p -u`
 
 | Bayrak | Açıklama |
 |------|-------------|
-| `--scope user` | Genel ayarlardan kaldırın (varsayılan) |
-| `--scope project` | Proje ayarlarından kaldırın |
-| `--scope local` | Yerel ayarlardan kaldırın |
-| `--scope all` | Tüm kapsamlardan aynı anda kaldırın |
-| `--custom` / `-c` | Yapılandırmadan `customPoliciesPath` temizleyin |
+| `--scope user` | Genel ayarlardan kaldır (varsayılan) |
+| `--scope project` | Proje ayarlarından kaldır |
+| `--scope local` | Yerel ayarlardan kaldır |
+| `--scope all` | Tüm kapsamlardan aynı anda kaldır |
+| `--custom` / `-c` | Konfigürasyondan `customPoliciesPath` öğesini temizle |
 
 ## Davranış
 
-- **Policy adı belirtilmezse** - ayarlar dosyasındaki tüm failproofai hook girişlerini kaldırır
-- **Belirli adlar** - bu politikaları devre dışı bırakır ancak kurulu hook'ları tutmaya devam eder
+- **İlke adı yok** - ayarlar dosyasından tüm failproofai kanca girişlerini kaldırır
+- **Belirli adlar** - bu ilkeleri devre dışı bırakır ama kancanları kurulu tutarak
 
 ## Örnekler
 
 ```bash
-# Tüm hook'ları global olarak kaldır
+# Tüm kancanları genel olarak kaldır
 failproofai policies --uninstall
 
-# Belirli bir politikayı devre dışı bırak (kurulu hook'ları tutar)
+# Belirli bir ilkeyi devre dışı bırak (kancanları kurulu tutar)
 failproofai policies --uninstall block-sudo
 
-# Hook'ları her kapsamdan kaldır
+# Her kapsamdan kancanları kaldır
 failproofai policies --uninstall --scope all
 
-# Özel politikalar yolunu temizle
+# Özel ilkeler yolunu temizle
 failproofai policies --uninstall --custom
 ```

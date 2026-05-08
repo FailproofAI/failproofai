@@ -1,6 +1,6 @@
 ---
 title: Xem các phiên làm việc
-description: "Khởi động bảng điều khiển để duyệt các phiên agent và quản lý chính sách"
+description: "Khởi động bảng điều khiển để duyệt các phiên làm việc của agent và quản lý chính sách"
 ---
 
 ```bash
@@ -11,16 +11,16 @@ Khởi động bảng điều khiển web tại `http://localhost:8020`.
 
 ## Tùy chọn
 
-| Flag | Mô tả |
-|------|-------|
+| Cờ | Mô tả |
+|------|-------------|
 | `--port <number>` | Cổng để lắng nghe (mặc định: `8020`) |
-| `--projects-path <path>` | Ghi đè vị trí tìm kiếm các thư mục dự án Claude Code |
-| `--allowed-origins <origins>` | Các máy chủ/IP được phân cách bằng dấu phẩy được phép truy cập tài nguyên phát triển |
+| `--projects-path <path>` | Ghi đè vị trí tìm kiếm thư mục dự án Claude Code |
+| `--allowed-origins <origins>` | Các máy chủ/IP được phép truy cập tài nguyên phát triển, được phân tách bằng dấu phẩy |
 
 ## Ví dụ
 
 ```bash
-# Khởi động trên cổng khác
+# Khởi động trên một cổng khác
 failproofai --port 9000
 
 # Sử dụng đường dẫn dự án tùy chỉnh

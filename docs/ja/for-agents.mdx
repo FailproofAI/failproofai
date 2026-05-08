@@ -3,7 +3,7 @@ title: "エージェント向け"
 description: "1つのコマンドでFailproof AIの知識をコーディングエージェントに追加できます。Claude Code、Cursor、Windsurfなどに対応しています。"
 ---
 
-1つのコマンドでFailproof AIの完全なリファレンスをコーディングエージェントに追加できます。Claude Code、Cursor、Windsurf、スキルをサポートするその他のエージェントで動作します。
+1つのコマンドでFailproof AIのリファレンス全体をコーディングエージェントに追加できます。Claude Code、Cursor、Windsurf、およびスキル機能をサポートするその他のエージェントに対応しています。
 
 ```bash
 npx skills add https://docs.befailproof.ai
@@ -11,23 +11,23 @@ npx skills add https://docs.befailproof.ai
 
 `npx skills` はインストール済みのエージェントを自動検出し、それぞれに適したフォーマットでスキルを追加します。
 
-## スキルがカバーする内容
+## スキルがカバーする範囲
 
-| エリア | 含まれる内容 |
+| 領域 | 内容 |
 |------|----------------|
-| ポリシー | 組み込みポリシー名、イベントタイプ、パラメーター、有効化/無効化 |
+| ポリシー | 組み込みポリシー名、イベントタイプ、パラメータ、有効化/無効化 |
 | カスタムポリシー | `customPolicies.add()`、マッチフィルター、`allow`/`deny`/`instruct` API |
 | コンテキストオブジェクト | `ctx.eventType`、`ctx.toolName`、`ctx.toolInput`、`ctx.session` |
 | 設定 | `policies-config.json` の構造、スコープのマージ、`policyParams` |
 | CLI | `failproofai policies --install`、`--uninstall`、`--custom`、スコープ |
-| ダッシュボード | セッションビューアー、ポリシーアクティビティ、環境変数 |
+| ダッシュボード | セッションビューア、ポリシーアクティビティ、環境変数 |
 | アーキテクチャ | フックハンドラーのフロー、終了コード、stdin/stdout コントラクト |
 
-## スキルは完全ですか？
+## スキルの内容は完全ですか？
 
-Mintlify はナビゲーション内のすべてのページから `llms.txt` を生成します。Failproof AI のドキュメントはすべてのポリシー、オプション、サンプルを含む完全な API をカバーしています。不足している内容を見つけた場合は、`https://docs.befailproof.ai/llms-full.txt` でソースを確認できます。
+Mintlify はナビゲーション内のすべてのページから `llms.txt` を生成します。Failproof AI のドキュメントは全APIをカバーしており、すべてのポリシー、オプション、サンプルが含まれています。不足している内容が見つかった場合は、`https://docs.befailproof.ai/llms-full.txt` にソースがあります。
 
-特定のコンテキストが必要な場合は、特定のページに直接リンクしてください：
+特定のコンテキストだけが必要な場合は、特定のページに直接リンクしてください。
 
 ```bash
 # カスタムポリシー API のみ

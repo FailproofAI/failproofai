@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="정책 활성화">
-    정책은 에이전트의 모든 도구 호출 전후에 실행되는 규칙입니다. 파괴적인 명령, 시크릿 유출, 그 밖의 오류 상황이 실제 피해를 일으키기 전에 미리 차단합니다.
+    정책은 에이전트의 모든 도구 호출 전후에 실행되는 규칙입니다. 파괴적인 명령, 비밀 정보 유출, 그 외 문제들이 실제로 피해를 일으키기 전에 미리 차단합니다.
 
     ```bash
     failproofai policies --install
     ```
 
-    이 명령은 설치된 에이전트 CLI에 훅 항목을 기록합니다(Claude Code의 `~/.claude/settings.json`, OpenAI Codex의 `~/.codex/hooks.json`, GitHub Copilot CLI의 `~/.copilot/hooks/failproofai.json`, Cursor Agent의 `~/.cursor/hooks.json`, OpenCode의 `~/.config/opencode/plugins/failproofai.mjs` 생성 플러그인 심 및 `~/.config/opencode/opencode.json`의 `plugin` 배열에 등록 항목, Pi의 `~/.pi/agent/settings.json`, Gemini CLI의 `~/.gemini/settings.json`). 여러 CLI가 설치되어 있으면 선택 프롬프트가 표시됩니다. `--cli claude codex copilot cursor opencode pi gemini`(원하는 조합)를 전달하면 프롬프트를 건너뜁니다.
+    이 명령은 설치된 에이전트 CLI에 훅 항목을 기록합니다 (Claude Code의 `~/.claude/settings.json`, OpenAI Codex의 `~/.codex/hooks.json`, GitHub Copilot CLI의 `~/.copilot/hooks/failproofai.json`, Cursor Agent의 `~/.cursor/hooks.json`, OpenCode의 `~/.config/opencode/plugins/failproofai.mjs` 플러그인 심(shim) 및 `~/.config/opencode/opencode.json`의 `plugin` 배열 항목, Pi의 `~/.pi/agent/settings.json`, Gemini CLI의 `~/.gemini/settings.json`). 여러 CLI가 설치되어 있으면 선택 프롬프트가 표시되며, `--cli claude codex copilot cursor opencode pi gemini` (원하는 조합)를 지정하면 프롬프트를 건너뜁니다.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI 지원은 **베타** 상태입니다 — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, 또는 `--cli gemini`로 설치하세요.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI 지원은 **베타** 버전입니다 — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, `--cli gemini`로 설치하세요.
 
     ```bash
     failproofai policies --install --scope project
@@ -57,25 +57,25 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    모든 정책, 활성화 여부, 구성된 파라미터를 표시합니다.
+    활성화된 정책과 설정된 파라미터를 포함하여 모든 정책을 보여줍니다.
   </Step>
   <Step title="대시보드 실행">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020`에서 로컬 대시보드를 열어 세션 탐색, 도구 호출 검사, 정책 관리를 할 수 있습니다.
+    `http://localhost:8020`에서 로컬 대시보드를 열어 세션 탐색, 도구 호출 확인, 정책 관리를 할 수 있습니다.
   </Step>
   <Step title="에이전트 실행">
-    평소처럼 Claude Code를 시작하세요. 에이전트가 위험한 작업을 시도하면 failproofai가 자동으로 차단합니다. 자리를 비워도 실행 상태가 유지되며, 이후 대시보드에서 발생한 일을 검토할 수 있습니다.
+    평소처럼 Claude Code를 시작하세요. 에이전트가 위험한 작업을 시도하면 failproofai가 자동으로 차단합니다. 에이전트를 무인 상태로 두고, 대시보드에서 작업 내역을 나중에 확인하세요.
   </Step>
 </Steps>
 
 ---
 
-## 정책 작동 방식
+## 정책 동작 방식
 
-에이전트가 도구를 실행할 때마다 Claude Code는 failproofai를 서브프로세스로 호출합니다.
+에이전트가 도구를 실행할 때마다 Claude Code는 failproofai를 서브프로세스로 호출합니다:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -83,10 +83,10 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-각 정책은 다음 세 가지 결정 중 하나를 반환합니다.
+각 정책은 세 가지 결정 중 하나를 반환합니다:
 
 - **allow** - 에이전트가 정상적으로 진행
-- **deny** - 작업이 차단되고 에이전트에게 이유가 전달됨
+- **deny** - 해당 작업이 차단되고, 에이전트에게 이유가 전달됨
 - **instruct** - 에이전트의 프롬프트에 추가 컨텍스트가 삽입됨
 
 <Note>
@@ -97,7 +97,7 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
 
 ## 컨벤션 기반 정책으로 팀 정책 설정하기
 
-팀 전체에 품질 기준을 빠르게 적용하는 방법은 `.failproofai/policies/` 컨벤션을 사용하는 것입니다. 이 디렉터리에 정책 파일을 넣기만 하면 자동으로 로드됩니다 — 플래그, 설정 변경, 설치 명령이 필요 없습니다.
+팀 전체에 품질 기준을 빠르게 도입하는 가장 좋은 방법은 `.failproofai/policies/` 컨벤션을 활용하는 것입니다. 이 디렉터리에 정책 파일을 넣으면 자동으로 로드됩니다 — 별도의 플래그, 설정 변경, 설치 명령이 필요 없습니다.
 
 <Steps>
   <Step title="정책 디렉터리 생성">
@@ -106,13 +106,13 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     ```
   </Step>
   <Step title="정책 파일 추가">
-    예제 파일을 복사하거나 직접 작성하세요.
+    시작용 예제를 복사하거나 직접 작성하세요:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    또는 새로운 정책 파일을 만드세요.
+    또는 새로 만들기:
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -142,22 +142,22 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
 </Steps>
 
 <Tip>
-팀 전체가 동일한 기준을 공유할 수 있도록 `.failproofai/policies/`를 저장소에 커밋하세요. 새로운 오류 패턴이 발견될 때마다 정책을 추가하고 푸시하면 — 다음 `git pull` 시 모든 팀원에게 업데이트가 적용됩니다. 시간이 지날수록 이 정책들은 지속적으로 발전하는 살아있는 품질 기준이 됩니다.
+`.failproofai/policies/`를 저장소에 커밋하면 팀 전체가 동일한 기준을 공유할 수 있습니다. 새로운 문제 패턴이 발견될 때마다 정책을 추가하고 푸시하면, 모든 팀원이 다음 `git pull` 시 업데이트를 받습니다. 시간이 지남에 따라 이 정책들은 지속적으로 발전하는 살아있는 품질 기준이 됩니다.
 </Tip>
 
 ---
 
 ## 데이터 저장
 
-모든 설정과 로그는 로컬 머신에 저장됩니다.
+모든 설정과 로그는 로컬 머신에 저장됩니다:
 
 | 경로 | 저장 내용 |
 |------|----------------|
-| `~/.failproofai/policies-config.json` | 전역 정책 설정 |
+| `~/.failproofai/policies-config.json` | 글로벌 정책 설정 |
 | `~/.failproofai/hook-activity.jsonl` | 훅 실행 기록 |
 | `~/.failproofai/hook.log` | 커스텀 훅 오류 디버그 로그 |
-| `.failproofai/policies-config.json` | 프로젝트별 설정 (커밋됨) |
-| `.failproofai/policies-config.local.json` | 개인 설정 재정의 (gitignore 처리됨) |
+| `.failproofai/policies-config.json` | 프로젝트별 설정 (커밋 가능) |
+| `.failproofai/policies-config.local.json` | 개인 오버라이드 (gitignore 처리) |
 
 ---
 
@@ -180,7 +180,7 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="기본 제공 정책" icon="shield" href="/ko/built-in-policies">
-  파라미터가 포함된 26가지 정책 전체 목록
+  파라미터를 포함한 26가지 정책 전체 목록
 </Card>
 
 <Card title="커스텀 정책" icon="code" href="/ko/custom-policies">

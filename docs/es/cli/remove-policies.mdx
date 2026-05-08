@@ -19,12 +19,12 @@ Alias: `failproofai p -u`
 | `--scope project` | Eliminar de la configuración del proyecto |
 | `--scope local` | Eliminar de la configuración local |
 | `--scope all` | Eliminar de todos los ámbitos a la vez |
-| `--custom` / `-c` | Limpiar `customPoliciesPath` de la configuración |
+| `--custom` / `-c` | Borrar el `customPoliciesPath` de la configuración |
 
 ## Comportamiento
 
-- **Sin nombres de política** — elimina todas las entradas de hooks de failproofai del archivo de configuración
-- **Nombres específicos** — deshabilita esas políticas pero mantiene los hooks instalados
+- **Sin nombres de política** - elimina todas las entradas de hooks de failproofai del archivo de configuración
+- **Nombres específicos** - deshabilita esas políticas pero mantiene los hooks instalados
 
 ## Ejemplos
 
@@ -38,6 +38,6 @@ failproofai policies --uninstall block-sudo
 # Eliminar hooks de todos los ámbitos
 failproofai policies --uninstall --scope all
 
-# Limpiar la ruta de políticas personalizadas
+# Borrar la ruta de políticas personalizadas
 failproofai policies --uninstall --custom
 ```

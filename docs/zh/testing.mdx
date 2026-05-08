@@ -1,26 +1,26 @@
 ---
 title: 测试
-description: "单元测试、端到端测试及测试辅助工具"
+description: "单元测试、端到端测试与测试辅助工具"
 icon: flask-vial
 ---
 
-failproofai 包含两套测试体系：**单元测试**（快速、模拟环境）和**端到端测试**（真实子进程调用）。
+failproofai 提供两套测试套件：**单元测试**（速度快，使用 mock）和**端到端测试**（真实子进程调用）。
 
 ---
 
 ## 运行测试
 
 ```bash
-# 执行一次全部单元测试
+# 单次运行所有单元测试
 bun run test:run
 
-# 以监视模式运行单元测试
+# 以监听模式运行单元测试
 bun run test
 
-# 运行端到端测试（需要提前配置，详见下文）
+# 运行端到端测试（需要先配置环境，详见下文）
 bun run test:e2e
 
-# 类型检查（不构建）
+# 仅做类型检查，不构建
 bunx tsc --noEmit
 
 # 代码检查
@@ -31,17 +31,17 @@ bun run lint
 
 ## 单元测试
 
-单元测试位于 `__tests__/` 目录，使用 [Vitest](https://vitest.dev) 及 `happy-dom`。
+单元测试位于 `__tests__/` 目录，使用 [Vitest](https://vitest.dev) 和 `happy-dom`。
 
 ```text
 __tests__/
   hooks/
     builtin-policies.test.ts      # 各内置策略的逻辑测试
     hooks-config.test.ts          # 配置加载与作用域合并
-    policy-evaluator.test.ts      # 参数注入与求值顺序
-    custom-hooks-registry.test.ts # globalThis 注册表的增删查操作
+    policy-evaluator.test.ts      # 参数注入与评估顺序
+    custom-hooks-registry.test.ts # globalThis 注册表的增删查
     custom-hooks-loader.test.ts   # ESM 加载器、传递性导入、错误处理
-    manager.test.ts               # 安装/移除/列举操作
+    manager.test.ts               # install/remove/list 操作
   components/
     sessions-list.test.tsx        # 会话列表组件
     project-list.test.tsx         # 项目列表组件
@@ -110,11 +110,11 @@ describe("block-sudo", () => {
 
 ## 端到端测试
 
-端到端测试将真实的 `failproofai` 二进制文件作为子进程调用，通过 stdin 传入 JSON payload，并对 stdout 输出及退出码进行断言。该方式测试了 Claude Code 所使用的完整集成路径。
+端到端测试会将真实的 `failproofai` 二进制文件作为子进程调用，通过 stdin 传入 JSON payload，并对 stdout 输出和退出码进行断言。这套测试覆盖了 Claude Code 所使用的完整集成路径。
 
-### 配置
+### 环境配置
 
-端到端测试直接运行仓库源码中的二进制文件。在首次运行前，需构建自定义 Hook 文件导入 `'failproofai'` 时所使用的 CJS 包：
+端到端测试直接从仓库源码运行二进制文件。在首次运行之前，需要构建自定义 hook 文件在 `import 'failproofai'` 时所使用的 CJS 包：
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,33 +126,33 @@ bun build src/index.ts --outdir dist --target node --format cjs
 bun run test:e2e
 ```
 
-每当修改公开的 Hook API（`src/hooks/custom-hooks-registry.ts`、`src/hooks/policy-helpers.ts` 或 `src/hooks/policy-types.ts`）后，需重新构建 `dist/`。
+每当你修改公共 hook API（`src/hooks/custom-hooks-registry.ts`、`src/hooks/policy-helpers.ts` 或 `src/hooks/policy-types.ts`）后，都需要重新构建 `dist/`。
 
 ### 端到端测试结构
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # 启动二进制文件、传入 payload JSON、捕获退出码及 stdout/stderr
-    fixture-env.ts      # 为每个测试创建隔离的临时目录及配置文件
-    payloads.ts         # 与 Claude 格式一致的各事件类型 payload 工厂函数
+    hook-runner.ts      # 启动二进制进程、传入 payload JSON、捕获退出码及 stdout/stderr
+    fixture-env.ts      # 为每个测试创建独立的临时目录和配置文件
+    payloads.ts         # 与 Claude 输出格式一致的各事件类型 payload 工厂函数
   hooks/
-    builtin-policies.e2e.test.ts   # 使用真实子进程测试各内置策略
-    custom-hooks.e2e.test.ts       # 自定义 Hook 的加载与求值
-    config-scopes.e2e.test.ts      # 跨项目/本地/全局的配置合并
+    builtin-policies.e2e.test.ts   # 通过真实子进程测试各内置策略
+    custom-hooks.e2e.test.ts       # 自定义 hook 的加载与评估
+    config-scopes.e2e.test.ts      # 项目/本地/全局配置的合并
     policy-params.e2e.test.ts      # 各参数化策略的参数注入
 ```
 
 ### 使用端到端测试辅助工具
 
-**`FixtureEnv`** — 每个测试的隔离环境：
+**`FixtureEnv`** — 为每个测试提供隔离环境：
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - 临时目录；作为 payload.cwd 传入，以加载 .failproofai/policies-config.json
-// env.home   - 隔离的 home 目录；不会读取真实的 ~/.failproofai
+// env.cwd    - 临时目录；作为 payload.cwd 传入，用于读取 .failproofai/policies-config.json
+// env.home   - 隔离的 home 目录；防止真实的 ~/.failproofai 配置泄漏进来
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -180,7 +180,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** — 现成的 payload 工厂函数：
+**`Payloads`** — 开箱即用的 payload 工厂函数：
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -238,7 +238,7 @@ describe("block-rm-rf (E2E)", () => {
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
 | Instruct（非 Stop） | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop instruct | `2` | stdout 为空；原因写入 stderr |
+| Stop instruct | `2` | stdout 为空；原因输出到 stderr |
 | Allow | `0` | 空字符串 |
 
 ### Vitest 配置
@@ -247,14 +247,14 @@ describe("block-rm-rf (E2E)", () => {
 
 - `environment: "node"` — 无需浏览器全局变量
 - `pool: "forks"` — 真正的进程隔离（测试会启动子进程）
-- `testTimeout: 20_000` — 每个测试超时 20 秒（含二进制启动及 Hook 求值时间）
+- `testTimeout: 20_000` — 每个测试最长 20 秒（含二进制启动 + hook 评估时间）
 
-使用 `forks` 模式至关重要：基于线程的 worker 共享 `globalThis`，可能干扰子进程启动类测试，而基于进程的 forks 可避免此问题。
+`forks` pool 至关重要：基于线程的 worker 会共享 `globalThis`，可能干扰子进程相关的测试。使用基于进程的 forks 可以规避这一问题。
 
 ---
 
 ## 持续集成
 
-合并前必须通过完整的 CI 流程（`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`）。端到端测试套件作为独立 CI 任务并行运行。
+合并代码前，必须通过完整的 CI 流程（`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`）。端到端测试套件作为独立的 CI 任务并行运行。
 
-完整的合并前检查清单请参阅 [Contributing](../CONTRIBUTING.md)。
+完整的合并前检查清单，请参阅 [Contributing](../CONTRIBUTING.md)。

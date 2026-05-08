@@ -7,22 +7,22 @@ description: "Le sous-processus que Claude Code appelle à chaque événement d'
 failproofai --hook <EventType>
 ```
 
-C'est la commande enregistrée dans le `settings.json` de Claude Code par `failproofai policies --install`. Vous n'appelez généralement pas cette commande directement.
+Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'avez normalement pas besoin de l'appeler directement.
 
-Elle lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se termine avec un code indiquant la décision :
+Lit un payload JSON depuis stdin, évalue toutes les politiques activées et se termine avec un code indiquant la décision :
 
 | Code de sortie | Décision | Effet |
 |----------------|----------|-------|
-| `0` | `allow` | Autorise l'action |
-| `1` | `deny` | Bloque l'action — Claude reçoit la raison du refus |
-| `2` | `instruct` | Injecte des instructions dans le contexte de Claude |
+| `0` | `allow` | Autoriser l'action |
+| `1` | `deny` | Bloquer l'action — Claude voit la raison du refus |
+| `2` | `instruct` | Injecter des instructions dans le contexte de Claude |
 
 ### Types d'événements pris en charge
 
 | Catégorie | Événements |
 |-----------|------------|
 | **Exécution d'outils** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **Cycle de vie de session** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **Cycle de vie de la session** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Interaction utilisateur** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **Sous-agents et tâches** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Configuration** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |

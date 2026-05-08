@@ -1,36 +1,36 @@
 ---
 title: Failproof AI
-description: "Hooks und Richtlinien verwalten, die Ihre KI-Agenten zuverlässig und autonom am Laufen halten"
+description: "Hooks und Richtlinien verwalten, die Ihre KI-Agenten zuverlässig und autonom halten"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks und Richtlinien, die Ihre KI-Agenten zuverlässig und autonom am Laufen halten – für **Claude Code**, **OpenAI Codex** und das **Agents SDK**.
+Hooks und Richtlinien, die Ihre KI-Agenten zuverlässig und autonom halten – für **Claude Code**, **OpenAI Codex** und das **Agents SDK**.
 
-KI-Agenten scheitern auf vorhersehbare Weise. Sie führen destruktive Befehle aus, geben Geheimnisse preis, weichen von ihrer Aufgabe ab, geraten in Endlosschleifen oder pushen direkt in den Main-Branch. Ohne Aufsicht können kleine Fehler schnell eskalieren.
+KI-Agenten scheitern auf vorhersehbare Weisen. Sie führen destruktive Befehle aus, leaken Secrets, verlieren den Fokus, geraten in Endlosschleifen oder pushen direkt auf main. Kleine Fehler können sich unbeaufsichtigt zu größeren Problemen aufschaukeln.
 
-Failproof AI löst dies mit **Richtlinien** – Regeln, die sich in jeden Werkzeugaufruf eines Agenten einhaken und Fehler **erkennen**, **beheben** (blockieren, anweisen, bereinigen) und Sie **benachrichtigen** können, wenn etwas Aufmerksamkeit erfordert. Ein lokales Dashboard ermöglicht es Ihnen, alles im Nachhinein zu überprüfen.
+Failproof AI löst dies mit **Richtlinien** – Regeln, die sich in jeden Agenten-Tool-Aufruf einklinken und Fehler **erkennen**, **beheben** (blockieren, anweisen, bereinigen) und Sie **benachrichtigen** können, wenn etwas Aufmerksamkeit erfordert. Ein lokales Dashboard ermöglicht es Ihnen, alles nachträglich zu überprüfen.
 
-Alles läuft lokal. Keine Daten verlassen Ihren Rechner.
+Alles läuft lokal. Keine Daten verlassen Ihren Computer.
 
 ## Erste Schritte
 
 <CardGroup cols={2}>
 
 <Card title="26 integrierte Richtlinien" icon="shield" href="/de/built-in-policies">
-  Destruktive Befehle blockieren, das Durchsickern von Geheimnissen verhindern, Agenten innerhalb der Projektgrenzen halten und vieles mehr – sofort einsatzbereit.
+  Destruktive Befehle blockieren, Secret-Leaks verhindern, Agenten innerhalb von Projektgrenzen halten und vieles mehr – direkt einsatzbereit.
 </Card>
 
-<Card title="Benutzerdefinierte Richtlinien" icon="code" href="/de/custom-policies">
+<Card title="Eigene Richtlinien" icon="code" href="/de/custom-policies">
   Schreiben Sie Ihre eigenen Regeln in JavaScript mit einer einfachen allow / deny / instruct API.
 </Card>
 
-<Card title="Agentenmonitor" icon="chart-line" href="/de/dashboard">
-  Sehen Sie, was Ihre Agenten während Ihrer Abwesenheit getan haben. Sitzungen durchsuchen, Werkzeugaufrufe untersuchen und nachverfolgen, wo Richtlinien ausgelöst wurden.
+<Card title="Agenten-Monitor" icon="chart-line" href="/de/dashboard">
+  Sehen Sie, was Ihre Agenten in Ihrer Abwesenheit getan haben. Sitzungen durchsuchen, Tool-Aufrufe inspizieren, nachvollziehen, wo Richtlinien ausgelöst wurden.
 </Card>
 
 <Card title="Einfache Konfiguration" icon="gear" href="/de/configuration">
-  Jede Richtlinie ohne Code anpassen. Erlaubnislisten, geschützte Branches oder Schwellenwerte pro Projekt oder global festlegen.
+  Jede Richtlinie ohne Code anpassen. Allowlists, geschützte Branches oder Schwellenwerte pro Projekt oder global festlegen.
 </Card>
 
 </CardGroup>
@@ -54,4 +54,4 @@ failproofai policies --install   # Richtlinien aktivieren
 failproofai                      # Dashboard starten
 ```
 
-Den vollständigen Durchlauf finden Sie im [Erste-Schritte-Leitfaden](/de/getting-started).
+Den vollständigen Einstieg finden Sie im [Erste-Schritte-Leitfaden](/de/getting-started).

@@ -1,11 +1,10 @@
 ---
----
-title: कस्टम पॉलिसीज़
-description: "JavaScript में अपने नियम लिखें - कन्वेंशन को लागू करें, ड्रिफ्ट को रोकें, विफलताओं का पता लगाएं, बाहरी सिस्टम्स के साथ एकीकृत करें"
+title: कस्टम नीतियां
+description: "JavaScript में अपनी खुद की नीतियां लिखें - सम्मेलनों को लागू करें, drift को रोकें, विफलताओं का पता लगाएं, बाहरी सिस्टम के साथ एकीकृत करें"
 icon: code
 ---
 
-कस्टम पॉलिसीज़ आपको किसी भी एजेंट व्यवहार के लिए नियम लिखने देती हैं: प्रोजेक्ट कन्वेंशन को लागू करें, ड्रिफ्ट को रोकें, विनाशकारी ऑपरेशन्स को गेट करें, फंसे हुए एजेंट्स का पता लगाएं, या Slack, अनुमोदन वर्कफ्लो, और अन्य सिस्टम्स के साथ एकीकृत करें। ये वही हुक इवेंट सिस्टम और `allow`, `deny`, `instruct` निर्णय का उपयोग करते हैं जो बिल्ट-इन पॉलिसीज़ करती हैं।
+कस्टम नीतियां आपको किसी भी एजेंट व्यवहार के लिए नियम लिखने देती हैं: प्रोजेक्ट सम्मेलनों को लागू करें, drift को रोकें, विनाशकारी ऑपरेशनों को gate करें, stuck एजेंटों का पता लगाएं, या Slack, approval workflows, और बहुत कुछ के साथ एकीकृत करें। वे built-in नीतियों के समान hook event system और `allow`, `deny`, `instruct` निर्णयों का उपयोग करते हैं।
 
 ---
 
@@ -38,60 +37,60 @@ failproofai policies --install --custom ./my-policies.js
 
 ---
 
-## कस्टम पॉलिसीज़ को लोड करने के दो तरीके
+## कस्टम नीतियों को लोड करने के दो तरीके
 
-### विकल्प 1: कन्वेंशन-आधारित (अनुशंसित)
+### विकल्प 1: सम्मेलन-आधारित (अनुशंसित)
 
-`.failproofai/policies/` में `*policies.{js,mjs,ts}` फाइलें ड्रॉप करें और वे स्वचालित रूप से लोड हो जाती हैं — कोई फ्लैग या कॉन्फ़िग परिवर्तन की आवश्यकता नहीं। यह git हुक्स की तरह काम करता है: एक फाइल ड्रॉप करें, बस काम करता है।
+`.failproofai/policies/` में `*policies.{js,mjs,ts}` फाइलें ड्रॉप करें और वे स्वचालित रूप से लोड हो जाती हैं — कोई फ्लैग या कॉन्फ़िग परिवर्तन की आवश्यकता नहीं है। यह git hooks की तरह काम करता है: एक फाइल ड्रॉप करें, यह सिर्फ काम करता है।
 
 ```
-# प्रोजेक्ट स्तर — git के लिए प्रतिबद्ध, टीम के साथ साझा किया गया
+# प्रोजेक्ट स्तर — git में committed, टीम के साथ साझा
 .failproofai/policies/security-policies.mjs
 .failproofai/policies/workflow-policies.mjs
 
-# उपयोगकर्ता स्तर — व्यक्तिगत, सभी प्रोजेक्ट्स पर लागू होता है
+# उपयोगकर्ता स्तर — व्यक्तिगत, सभी प्रोजेक्ट पर लागू होता है
 ~/.failproofai/policies/my-policies.mjs
 ```
 
 **यह कैसे काम करता है:**
-- प्रोजेक्ट और उपयोगकर्ता दोनों डायरेक्टरीज़ को स्कैन किया जाता है (यूनियन — पहली स्कोप-जीत नहीं)
-- फाइलें प्रत्येक डायरेक्टरी के भीतर वर्णानुक्रमिक रूप से लोड होती हैं। क्रम को नियंत्रित करने के लिए `01-`, `02-` से प्रीफ़िक्स करें
-- केवल `*policies.{js,mjs,ts}` से मेल खाने वाली फाइलें लोड होती हैं; अन्य फाइलें नजरअंदाज की जाती हैं
-- प्रत्येक फाइल स्वतंत्र रूप से लोड होती है (प्रति फाइल फेल-ओपन)
-- स्पष्ट `--custom` और बिल्ट-इन पॉलिसीज़ के साथ काम करता है
+- प्रोजेक्ट और उपयोगकर्ता दोनों निर्देशिकाओं को स्कैन किया जाता है (union — first-scope-wins नहीं)
+- फाइलें प्रत्येक निर्देशिका के भीतर वर्णक्रमानुसार लोड होती हैं। क्रम को नियंत्रित करने के लिए `01-`, `02-` से प्रीफिक्स करें
+- केवल `*policies.{js,mjs,ts}` से मेल खाने वाली फाइलें लोड होती हैं; अन्य फाइलें अनदेखी की जाती हैं
+- प्रत्येक फाइल स्वतंत्र रूप से लोड की जाती है (प्रति फाइल fail-open)
+- explicit `--custom` और built-in नीतियों के साथ काम करता है
 
 <Tip>
-कन्वेंशन पॉलिसीज़ आपके संगठन के लिए एक गुणवत्ता मानक बनाने का सबसे आसान तरीका हैं। `.failproofai/policies/` को git में प्रतिबद्ध करें और हर टीम सदस्य को स्वचालित रूप से वही नियम मिलते हैं — कोई प्रति-डेवलपर सेटअप की आवश्यकता नहीं। जैसे-जैसे आपकी टीम नई विफलता के तरीके खोजती है, एक पॉलिसी जोड़ें और पुश करें। समय के साथ ये एक जीवंत गुणवत्ता मानक बन जाते हैं जो हर योगदान के साथ सुधरते रहते हैं।
+सम्मेलन नीतियां आपके संगठन के लिए एक गुणवत्ता मानदंड बनाने का सबसे आसान तरीका हैं। `.failproofai/policies/` को git में commit करें और हर टीम सदस्य को स्वचालित रूप से वही नियम मिल जाते हैं — कोई per-developer सेटअप आवश्यक नहीं है। जैसे-जैसे आपकी टीम नई विफलता के तरीके खोजती है, एक नीति जोड़ें और push करें। समय के साथ ये एक जीवंत गुणवत्ता मानदंड बन जाते हैं जो हर योगदान के साथ सुधरते रहते हैं।
 </Tip>
 
-### विकल्प 2: स्पष्ट फाइल पाथ
+### विकल्प 2: Explicit फाइल पथ
 
 ```bash
-# कस्टम पॉलिसीज़ फाइल के साथ इंस्टॉल करें
+# कस्टम नीतियों की फाइल के साथ इंस्टॉल करें
 failproofai policies --install --custom ./my-policies.js
 
-# पॉलिसीज़ फाइल पाथ को प्रतिस्थापित करें
+# नीतियों की फाइल पथ को बदलें
 failproofai policies --install --custom ./new-policies.js
 
-# कॉन्फ़िग से कस्टम पॉलिसीज़ पाथ को हटाएं
+# कॉन्फ़िग से कस्टम नीतियों के पथ को हटाएं
 failproofai policies --uninstall --custom
 ```
 
-हल किया गया निरपेक्ष पाथ `policies-config.json` में `customPoliciesPath` के रूप में संग्रहीत होता है। फाइल हर हुक इवेंट पर ताज़ी लोड होती है - इवेंट्स के बीच कोई कैशिंग नहीं होती है।
+resolved absolute पथ `policies-config.json` में `customPoliciesPath` के रूप में संग्रहीत होता है। फाइल हर hook event पर fresh लोड होती है - events के बीच कोई caching नहीं है।
 
 ### दोनों को एक साथ उपयोग करना
 
-कन्वेंशन पॉलिसीज़ और स्पष्ट `--custom` फाइल एक साथ सह-अस्तित्व कर सकती हैं। लोड क्रम:
+सम्मेलन नीतियां और explicit `--custom` फाइल एक साथ मौजूद हो सकते हैं। लोड क्रम:
 
-1. स्पष्ट `customPoliciesPath` फाइल (यदि कॉन्फ़िगर की गई है)
-2. प्रोजेक्ट कन्वेंशन फाइलें (`{cwd}/.failproofai/policies/`, वर्णानुक्रमिक)
-3. उपयोगकर्ता कन्वेंशन फाइलें (`~/.failproofai/policies/`, वर्णानुक्रमिक)
+1. Explicit `customPoliciesPath` फाइल (यदि configured है)
+2. प्रोजेक्ट सम्मेलन फाइलें (`{cwd}/.failproofai/policies/`, वर्णक्रमानुसार)
+3. उपयोगकर्ता सम्मेलन फाइलें (`~/.failproofai/policies/`, वर्णक्रमानुसार)
 
 ---
 
 ## API
 
-### आयात करें
+### Import
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
@@ -99,45 +98,45 @@ import { customPolicies, allow, deny, instruct } from "failproofai";
 
 ### `customPolicies.add(hook)`
 
-एक पॉलिसी को पंजीकृत करता है। एक ही फाइल में कई पॉलिसीज़ के लिए आवश्यकतानुसार कई बार कॉल करें।
+एक नीति को पंजीकृत करता है। एक ही फाइल में कई नीतियों के लिए इसे जितनी बार चाहें उतनी बार कॉल करें।
 
 ```ts
 customPolicies.add({
-  name: string;                         // आवश्यक - अद्वितीय पहचानकर्ता
-  description?: string;                 // `failproofai policies` आउटपुट में दिखाया गया
-  match?: { events?: HookEventType[] }; // इवेंट प्रकार द्वारा फ़िल्टर करें; सभी से मेल खाने के लिए छोड़ दें
+  name: string;                         // required - unique identifier
+  description?: string;                 // shown in `failproofai policies` output
+  match?: { events?: HookEventType[] }; // filter by event type; omit to match all
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
 });
 ```
 
 ### निर्णय सहायक
 
-| फंक्शन | प्रभाव | उपयोग करें जब |
+| Function | Effect | उपयोग करें जब |
 |----------|--------|----------|
-| `allow()` | ऑपरेशन को चुप से अनुमति दें | कार्य सुरक्षित है, कोई संदेश की आवश्यकता नहीं |
-| `deny(message)` | ऑपरेशन को ब्लॉक करें | एजेंट को यह कार्य नहीं करना चाहिए |
-| `instruct(message)` | बिना ब्लॉक किए संदर्भ जोड़ें | एजेंट को ट्रैक पर रहने के लिए अतिरिक्त संदर्भ दें |
+| `allow()` | ऑपरेशन को चुपचाप अनुमति दें | कार्रवाई सुरक्षित है, कोई संदेश आवश्यक नहीं |
+| `deny(message)` | ऑपरेशन को block करें | एजेंट को यह कार्रवाई नहीं करनी चाहिए |
+| `instruct(message)` | blocking के बिना संदर्भ जोड़ें | एजेंट को track पर रहने के लिए extra संदर्भ दें |
 
-`deny(message)` - संदेश Claude को `"Blocked by failproofai:"` प्रीफ़िक्स के साथ दिखाई देता है। एक ही `deny` सभी आगामी मूल्यांकन को शॉर्ट-सर्किट करता है।
+`deny(message)` - संदेश Claude को `"Blocked by failproofai:"` से prefixed दिखाई देता है। एक single `deny` सभी आगे के मूल्यांकन को short-circuit करता है।
 
-`instruct(message)` - संदेश Claude के संदर्भ में वर्तमान टूल कॉल के लिए जोड़ा जाता है। सभी `instruct` संदेश एकत्र किए जाते हैं और एक साथ दिए जाते हैं।
+`instruct(message)` - संदेश Claude के current tool call के लिए संदर्भ में appended होता है। सभी `instruct` संदेश जमा होते हैं और एक साथ दिए जाते हैं।
 
 <Tip>
-आप `policyParams` में एक `hint` फील्ड जोड़कर किसी भी `deny` या `instruct` संदेश के लिए अतिरिक्त मार्गदर्शन जोड़ सकते हैं — कोई कोड परिवर्तन की आवश्यकता नहीं। यह कस्टम (`custom/`), प्रोजेक्ट कन्वेंशन (`.failproofai-project/`), और उपयोगकर्ता कन्वेंशन (`.failproofai-user/`) पॉलिसीज़ के लिए भी काम करता है। [कॉन्फ़िगरेशन → hint](/hi/configuration#hint-cross-cutting) विवरण के लिए देखें।
+आप किसी भी `deny` या `instruct` संदेश में `policyParams` में `hint` फाइल जोड़कर extra guidance append कर सकते हैं — कोड परिवर्तन की आवश्यकता नहीं है। यह custom (`custom/`), project convention (`.failproofai-project/`), और user convention (`.failproofai-user/`) नीतियों के लिए भी काम करता है। विवरण के लिए [Configuration → hint](/hi/configuration#hint-cross-cutting) देखें।
 </Tip>
 
 ### सूचनात्मक allow संदेश
 
-`allow(message)` ऑपरेशन को अनुमति देता है **और** Claude को वापस एक सूचनात्मक संदेश भेजता है। संदेश हुक हैंडलर के stdout प्रतिक्रिया में `additionalContext` के रूप में दिया जाता है — `instruct` द्वारा उपयोग की जाने वाली एक ही तंत्र, लेकिन शब्दार्थ अलग: यह एक चेतावनी नहीं बल्कि एक स्थिति अपडेट है।
+`allow(message)` ऑपरेशन को **और** Claude को एक सूचनात्मक संदेश भेजता है। संदेश hook handler के stdout response में `additionalContext` के रूप में दिया जाता है — `instruct` द्वारा उपयोग किया जाने वाला ही तंत्र, लेकिन अर्थ में भिन्न: यह एक warning नहीं है, एक स्थिति अपडेट है।
 
-| फंक्शन | प्रभाव | उपयोग करें जब |
+| Function | Effect | उपयोग करें जब |
 |----------|--------|----------|
-| `allow(message)` | अनुमति दें और Claude को संदर्भ भेजें | एक चेक पास हुई की पुष्टि करें, या समझाएं कि एक चेक क्यों छोड़ा गया |
+| `allow(message)` | अनुमति दें और Claude को संदर्भ भेजें | एक check पास होने की पुष्टि करें, या समझाएं कि check को क्यों skip किया गया था |
 
 उपयोग के मामले:
-- **स्थिति पुष्टियां:** `allow("All CI checks passed.")` — Claude को बताएं कि सब कुछ हरा है
-- **फेल-ओपन स्पष्टीकरण:** `allow("GitHub CLI not installed, skipping CI check.")` — Claude को बताएं कि एक चेक क्यों छोड़ा गया ताकि उसके पास पूर्ण संदर्भ हो
-- **कई संदेश जमा होते हैं:** यदि कई पॉलिसीज़ प्रत्येक `allow(message)` लौटाती हैं, सभी संदेश नई पंक्तियों के साथ जुड़ जाते हैं और एक साथ दिए जाते हैं
+- **स्थिति पुष्टियां:** `allow("All CI checks passed.")` — Claude को बताता है कि सब कुछ ठीक है
+- **Fail-open व्याख्याएं:** `allow("GitHub CLI not installed, skipping CI check.")` — Claude को बताता है कि check को क्यों skip किया गया ताकि इसके पास पूर्ण संदर्भ हो
+- **एकाधिक संदेश जमा होते हैं:** यदि कई नीतियां प्रत्येक `allow(message)` लौटाती हैं, तो सभी संदेश newlines के साथ जुड़े हुए होते हैं और एक साथ दिए जाते हैं
 
 ```js
 customPolicies.add({
@@ -147,7 +146,7 @@ customPolicies.add({
     const cwd = ctx.session?.cwd;
     if (!cwd) return allow("No working directory, skipping branch check.");
 
-    // ... branch status चेक करें ...
+    // ... check branch status ...
     if (allPushed) {
       return allow("Branch is up to date with remote.");
     }
@@ -156,53 +155,53 @@ customPolicies.add({
 });
 ```
 
-### `PolicyContext` फील्ड्स
+### `PolicyContext` fields
 
-| फील्ड | प्रकार | विवरण |
+| Field | Type | Description |
 |-------|------|-------------|
 | `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
-| `toolName` | `string \| undefined` | कॉल किया जा रहा टूल (उदाहरण के लिए `"Bash"`, `"Write"`, `"Read"`) |
-| `toolInput` | `Record<string, unknown> \| undefined` | टूल के इनपुट पैरामीटर |
-| `payload` | `Record<string, unknown>` | Claude Code से संपूर्ण कच्चा इवेंट पेलोड |
-| `session` | `SessionMetadata \| undefined` | सेशन संदर्भ (नीचे देखें) |
+| `toolName` | `string \| undefined` | कॉल किया जा रहा tool (जैसे `"Bash"`, `"Write"`, `"Read"`) |
+| `toolInput` | `Record<string, unknown> \| undefined` | tool के input parameters |
+| `payload` | `Record<string, unknown>` | Claude Code से पूर्ण raw event payload |
+| `session` | `SessionMetadata \| undefined` | Session context (नीचे देखें) |
 
-### `SessionMetadata` फील्ड्स
+### `SessionMetadata` fields
 
-| फील्ड | प्रकार | विवरण |
+| Field | Type | Description |
 |-------|------|-------------|
-| `sessionId` | `string` | Claude Code सेशन पहचानकर्ता |
-| `cwd` | `string` | Claude Code सेशन की कार्य निर्देशिका |
-| `transcriptPath` | `string` | सेशन की JSONL ट्रांसक्रिप्ट फाइल का पाथ |
+| `sessionId` | `string` | Claude Code session identifier |
+| `cwd` | `string` | Claude Code session की working directory |
+| `transcriptPath` | `string` | Session की JSONL transcript फाइल का पथ |
 
-### इवेंट प्रकार
+### Event types
 
-| इवेंट | कब फायर होता है | `toolInput` सामग्री |
+| Event | कब यह होता है | `toolInput` contents |
 |-------|--------------|----------------------|
-| `PreToolUse` | Claude एक टूल चलाने से पहले | टूल का इनपुट (उदाहरण के लिए Bash के लिए `{ command: "..." }`) |
-| `PostToolUse` | एक टूल पूरा होने के बाद | टूल का इनपुट + `tool_result` (आउटपुट) |
-| `Notification` | जब Claude एक सूचना भेजता है | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - हुक्स को हमेशा `allow()` लौटना चाहिए, वे सूचनाओं को ब्लॉक नहीं कर सकते |
-| `Stop` | जब Claude सेशन समाप्त होता है | खाली |
+| `PreToolUse` | Claude एक tool चलाने से पहले | Tool का input (जैसे Bash के लिए `{ command: "..." }`) |
+| `PostToolUse` | Tool पूरा होने के बाद | Tool का input + `tool_result` (output) |
+| `Notification` | जब Claude एक notification भेजता है | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - hooks को हमेशा `allow()` लौटना चाहिए, वे notifications को block नहीं कर सकते |
+| `Stop` | जब Claude session समाप्त होता है | Empty |
 
 ---
 
 ## मूल्यांकन क्रम
 
-पॉलिसीज़ को इस क्रम में मूल्यांकन किया जाता है:
+नीतियों का मूल्यांकन इस क्रम में होता है:
 
-1. बिल्ट-इन पॉलिसीज़ (परिभाषा क्रम में)
-2. `customPoliciesPath` से स्पष्ट कस्टम पॉलिसीज़ (`.add()` क्रम में)
-3. प्रोजेक्ट `.failproofai/policies/` से कन्वेंशन पॉलिसीज़ (फाइलें वर्णानुक्रमिक, `.add()` क्रम के भीतर)
-4. उपयोगकर्ता `~/.failproofai/policies/` से कन्वेंशन पॉलिसीज़ (फाइलें वर्णानुक्रमिक, `.add()` क्रम के भीतर)
+1. Built-in नीतियां (definition क्रम में)
+2. `customPoliciesPath` से explicit कस्टम नीतियां (`.add()` क्रम में)
+3. प्रोजेक्ट `.failproofai/policies/` से सम्मेलन नीतियां (फाइलें वर्णक्रमानुसार, के भीतर `.add()` क्रम)
+4. उपयोगकर्ता `~/.failproofai/policies/` से सम्मेलन नीतियां (फाइलें वर्णक्रमानुसार, के भीतर `.add()` क्रम)
 
 <Note>
-पहला `deny` सभी बाद की पॉलिसीज़ को शॉर्ट-सर्किट करता है। सभी `instruct` संदेश एकत्र किए जाते हैं और एक साथ दिए जाते हैं।
+पहली `deny` सभी subsequent नीतियों को short-circuit करती है। सभी `instruct` संदेश जमा होते हैं और एक साथ दिए जाते हैं।
 </Note>
 
 ---
 
-## संक्रमणकारी आयात
+## Transitive imports
 
-कस्टम पॉलिसी फाइलें सापेक्ष पाथ का उपयोग करके स्थानीय मॉड्यूल को आयात कर सकती हैं:
+कस्टम नीति फाइलें relative paths का उपयोग करके स्थानीय modules को import कर सकती हैं:
 
 ```js
 // my-policies.js
@@ -219,46 +218,46 @@ customPolicies.add({
 });
 ```
 
-प्रवेश फाइल से पहुंचने योग्य सभी सापेक्ष आयात हल किए जाते हैं। यह `from "failproofai"` आयात को वास्तविक dist पाथ में फिर से लिखकर और ESM संगतता सुनिश्चित करने के लिए अस्थायी `.mjs` फाइलें बनाकर लागू किया जाता है।
+entry फाइल से सभी reachable relative imports resolved होते हैं। यह `from "failproofai"` imports को actual dist path में rewrite करके और ESM compatibility सुनिश्चित करने के लिए temporary `.mjs` फाइलें बनाकर लागू किया जाता है।
 
 ---
 
-## इवेंट प्रकार फ़िल्टरिंग
+## Event type filtering
 
-`match.events` का उपयोग करके सीमित करें कि कोई पॉलिसी कब फायर होती है:
+एक नीति कब चलती है इसे सीमित करने के लिए `match.events` का उपयोग करें:
 
 ```js
 customPolicies.add({
   name: "require-summary-on-stop",
   match: { events: ["Stop"] },
   fn: async (ctx) => {
-    // केवल तब फायर होता है जब सेशन समाप्त होता है
-    // ctx.session.transcriptPath में पूर्ण सेशन लॉग होता है
+    // केवल तब होता है जब session समाप्त होता है
+    // ctx.session.transcriptPath में पूर्ण session log होता है
     return allow();
   },
 });
 ```
 
-सभी इवेंट प्रकारों पर फायर करने के लिए `match` को पूरी तरह छोड़ दें।
+हर event type पर होने के लिए `match` को पूरी तरह से omit करें।
 
 ---
 
-## त्रुटि हैंडलिंग और विफलता मोड
+## Error handling और failure modes
 
-कस्टम पॉलिसीज़ **फेल-ओपन** हैं: त्रुटियां कभी बिल्ट-इन पॉलिसीज़ को ब्लॉक नहीं करती हैं या हुक हैंडलर को क्रैश नहीं करती हैं।
+कस्टम नीतियां **fail-open** हैं: errors कभी भी built-in नीतियों को block नहीं करते या hook handler को crash नहीं करते।
 
-| विफलता | व्यवहार |
+| Failure | Behavior |
 |---------|----------|
-| `customPoliciesPath` सेट नहीं है | कोई स्पष्ट कस्टम पॉलिसीज़ नहीं चलती हैं; कन्वेंशन पॉलिसीज़ और बिल्ट-इन सामान्य रूप से जारी रहते हैं |
-| फाइल नहीं मिली | `~/.failproofai/hook.log` में चेतावनी लॉग की गई; बिल्ट-इन जारी रहते हैं |
-| सिंटैक्स/आयात त्रुटि (स्पष्ट) | `~/.failproofai/hook.log` में त्रुटि लॉग की गई; स्पष्ट कस्टम पॉलिसीज़ छोड़ी गई |
-| सिंटैक्स/आयात त्रुटि (कन्वेंशन) | त्रुटि लॉग की गई; वह फाइल छोड़ी गई, अन्य कन्वेंशन फाइलें अभी भी लोड होती हैं |
-| `fn` रन-टाइम पर फेंक देता है | त्रुटि लॉग की गई; वह हुक `allow` के रूप में मानी जाती है; अन्य हुक्स जारी रहते हैं |
-| `fn` 10 सेकंड से अधिक समय लेता है | टाइमआउट लॉग किया जाता है; `allow` के रूप में मानी जाती है |
-| कन्वेंशन डायरेक्टरी गायब है | कोई कन्वेंशन पॉलिसीज़ नहीं चलती हैं; कोई त्रुटि नहीं |
+| `customPoliciesPath` set नहीं है | कोई explicit कस्टम नीतियां नहीं चलती; सम्मेलन नीतियां और built-ins normally जारी रहते हैं |
+| फाइल नहीं मिली | Warning `~/.failproofai/hook.log` में logged होती है; built-ins जारी रहते हैं |
+| Syntax/import error (explicit) | Error `~/.failproofai/hook.log` में logged होती है; explicit कस्टम नीतियां skipped होती हैं |
+| Syntax/import error (convention) | Error logged होती है; वह फाइल skipped होती है, अन्य सम्मेलन फाइलें अभी भी लोड होती हैं |
+| `fn` runtime में throw होता है | Error logged होती है; वह hook `allow` के रूप में treated होता है; अन्य hooks जारी रहते हैं |
+| `fn` 10s से अधिक समय लेता है | Timeout logged होती है; `allow` के रूप में treated होता है |
+| सम्मेलन निर्देशिका missing है | कोई सम्मेलन नीतियां नहीं चलती; कोई error नहीं |
 
 <Tip>
-कस्टम पॉलिसी त्रुटियों को डिबग करने के लिए, लॉग फाइल देखें:
+कस्टम नीति errors को debug करने के लिए, log फाइल को देखें:
 
 ```bash
 tail -f ~/.failproofai/hook.log
@@ -267,13 +266,13 @@ tail -f ~/.failproofai/hook.log
 
 ---
 
-## पूर्ण उदाहरण: कई पॉलिसीज़
+## पूर्ण उदाहरण: कई नीतियां
 
 ```js
 // my-policies.js
 import { customPolicies, allow, deny, instruct } from "failproofai";
 
-// एजेंट को secrets/ डायरेक्टरी में लिखने से रोकें
+// एजेंट को secrets/ निर्देशिका में लिखने से रोकें
 customPolicies.add({
   name: "block-secrets-dir",
   description: "Prevent agent from writing to secrets/ directory",
@@ -286,7 +285,7 @@ customPolicies.add({
   },
 });
 
-// एजेंट को ट्रैक पर रखें: कमिट करने से पहले टेस्ट सत्यापित करें
+// एजेंट को track पर रखें: committing से पहले tests को verify करें
 customPolicies.add({
   name: "remind-test-before-commit",
   description: "Keep the agent on track: verify tests pass before committing",
@@ -301,7 +300,7 @@ customPolicies.add({
   },
 });
 
-// फ्रीज़ अवधि के दौरान अनियोजित निर्भरता परिवर्तन को रोकें
+// freeze अवधि के दौरान अनियोजित dependency changes को रोकें
 customPolicies.add({
   name: "dependency-freeze",
   description: "Prevent unplanned dependency changes during freeze period",
@@ -324,22 +323,22 @@ export { customPolicies };
 
 ## उदाहरण
 
-`examples/` डायरेक्टरी में तैयार-से-चलाने के लिए पॉलिसी फाइलें हैं:
+`examples/` निर्देशिका में ready-to-run नीति फाइलें हैं:
 
-| फाइल | सामग्री |
+| File | Contents |
 |------|----------|
-| `examples/policies-basic.js` | पांच स्टार्टर पॉलिसीज़ जो सामान्य एजेंट विफलता के तरीकों को कवर करती हैं |
-| `examples/policies-advanced/index.js` | उन्नत पैटर्न: संक्रमणकारी आयात, async कॉल, आउटपुट स्क्रबिंग, और सेशन-एंड हुक्स |
-| `examples/convention-policies/security-policies.mjs` | कन्वेंशन-आधारित सुरक्षा पॉलिसीज़ (.env लिखता है ब्लॉक करें, git हिस्ट्री पुनर्लेखन रोकें) |
-| `examples/convention-policies/workflow-policies.mjs` | कन्वेंशन-आधारित वर्कफ्लो पॉलिसीज़ (टेस्ट रिमाइंडर, ऑडिट फाइल लिखता है) |
+| `examples/policies-basic.js` | पांच starter नीतियां जो common agent failure modes को cover करती हैं |
+| `examples/policies-advanced/index.js` | Advanced patterns: transitive imports, async calls, output scrubbing, और session-end hooks |
+| `examples/convention-policies/security-policies.mjs` | सम्मेलन-आधारित security नीतियां (.env writes को block करें, git history rewriting को रोकें) |
+| `examples/convention-policies/workflow-policies.mjs` | सम्मेलन-आधारित workflow नीतियां (test reminders, audit file writes) |
 
-### स्पष्ट फाइल उदाहरण का उपयोग करना
+### Explicit file उदाहरण का उपयोग करना
 
 ```bash
 failproofai policies --install --custom ./examples/policies-basic.js
 ```
 
-### कन्वेंशन-आधारित उदाहरण का उपयोग करना
+### सम्मेलन-आधारित उदाहरण का उपयोग करना
 
 ```bash
 # प्रोजेक्ट स्तर पर कॉपी करें
@@ -351,4 +350,4 @@ mkdir -p ~/.failproofai/policies
 cp examples/convention-policies/*.mjs ~/.failproofai/policies/
 ```
 
-कोई इंस्टॉल कमांड की आवश्यकता नहीं — फाइलें अगले हुक इवेंट पर स्वचालित रूप से उठाई जाती हैं।
+कोई install command आवश्यक नहीं — फाइलें अगले hook event पर स्वचालित रूप से pick up होती हैं।

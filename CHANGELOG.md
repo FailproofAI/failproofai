@@ -5,9 +5,6 @@
 ### Features
 - `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — hand-crafted chunky pixel-block lowercase "failproof ai" compressed with Unicode 2x2 quadrant block characters (▖▗▘▙▚▛▜▝▞▟ + ▀ ▄ █ ▌ ▐) and horizontally scaled 4:3 so the full wordmark fits in ~75 cols × ~10 rows (clean on any standard ≥80-col terminal), with a plain-text fallback for narrower windows (#322).
 
-### Docs
-- `README.md` and all 14 `docs/i18n/README.*.md` files now use the hosted PNG wordmark instead of the ASCII header for consistent branding (#322).
-
 ## 0.0.10-beta.8 — 2026-05-08
 
 ### Fixes

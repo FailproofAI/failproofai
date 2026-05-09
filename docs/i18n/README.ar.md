@@ -6,9 +6,14 @@
 <div dir="rtl">
 
 
-<p align="center">
-  <img src="https://d2wq11aau0arks.cloudfront.net/failproof/logo-wordmark.png" alt="Failproof AI" width="600" />
-</p>
+```
+    ______      _ __                       ____   ___    ____
+   / ____/___ _(_) /___  _________  ____  / __/  /   |  /  _/
+  / /_  / __ `/ / / __ \/ ___/ __ \/ __ \/ /_   / /| |  / /
+ / __/ / /_/ / / / /_/ / /  / /_/ / /_/ / __/  / ___ |_/ /
+/_/    \__,_/_/_/ .___/_/   \____/\____/_/    /_/  |_/___/
+               /_/
+```
 
 # Failproof AI
 

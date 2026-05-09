@@ -13,7 +13,8 @@ const NAV_LINKS = [
   { href: "/projects", label: "Projects", icon: FolderOpen },
 ];
 
-const WORDMARK_SRC = "https://d2wq11aau0arks.cloudfront.net/failproof/logo-wordmark.png";
+/** Local SVG copy of docs/logo/dark.svg — wordmark + green leaf gradient. */
+const WORDMARK_SRC = "/wordmark.svg";
 
 export const Navbar: React.FC<{ disabledPages?: string[] }> = ({ disabledPages = [] }) => {
   const pathname = usePathname();

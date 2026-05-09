@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Features
-- Restyle dashboard to match befailproof.ai (near-black + cyan palette, Geist Mono, wordmark navbar) and drop light mode entirely (#332).
+- Restyle dashboard to match the failproofai brand (black canvas, pink primary, green accent, Geist Mono, local wordmark+leaf SVG navbar) and drop light mode entirely (#332).
 - `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — hand-crafted chunky pixel-block lowercase "failproof ai" compressed with Unicode 2x2 quadrant block characters (▖▗▘▙▚▛▜▝▞▟ + ▀ ▄ █ ▌ ▐) and horizontally scaled 4:3 so the full wordmark fits in ~75 cols × ~10 rows (clean on any standard ≥80-col terminal), with a plain-text fallback for narrower windows. Also drops the "Using default .claude projects path: …" log line at startup — it printed unconditionally on every dashboard launch and added no signal (#322).
 - Remove the undocumented `--projects-path <path>` / `-p <path>` CLI flag from `scripts/parse-script-args.ts` and the corresponding plumbing in `scripts/launch.ts` (custom-path branch + log line + spawn-env override). Custom Claude project folders can still be pointed at via the `CLAUDE_PROJECTS_PATH` environment variable, which `lib/paths.ts:getClaudeProjectsPath` already honors. `docs/cli/dashboard.mdx` updated to reflect the env-var-only path; tests in `__tests__/scripts/parse-script-args.test.ts` trimmed to drop the 6 cases that exercised the removed flag (#322).
 

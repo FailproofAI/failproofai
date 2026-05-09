@@ -5,41 +5,48 @@
 :root {
   --radius: 0.5rem;
 
-  /* Near-black canvas + electric cyan accent — terminal aesthetic, matches befailproof.ai. */
-  --background: #0a0a0a;
+  /* Black-dominant canvas with pink primary accent + green status — matches the
+     failproofai brand palette: docs/logo/dark.svg (#FAFAFA / #9F9FA9 text +
+     emerald leaf gradient) and docs/docs.json (colors.light: #e4587d). */
+  --background: #09090b;
   --foreground: #fafafa;
-  --card: #141416;
+  --card: #18181b;
   --card-foreground: #fafafa;
-  --popover: #141416;
+  --popover: #18181b;
   --popover-foreground: #fafafa;
-  --primary: #06b6d4;
-  --primary-foreground: #0a0a0a;
+  --primary: #e4587d;
+  --primary-foreground: #09090b;
   --secondary: #1f1f22;
   --secondary-foreground: #fafafa;
   --muted: #1f1f22;
-  --muted-foreground: #a1a1aa;
-  --accent: #06b6d4;
-  --accent-light: #22d3ee;
-  --accent-lighter: #67e8f9;
-  --accent-lightest: #a5f3fc;
-  --accent-foreground: #0a0a0a;
+  --muted-foreground: #9f9fa9;
+  --accent: #e4587d;
+  --accent-light: #f08aa6;
+  --accent-lighter: #f7b3c5;
+  --accent-lightest: #fbd5de;
+  --accent-foreground: #09090b;
   --destructive: #ef4444;
   --border: #27272a;
   --input: #27272a;
-  --ring: #06b6d4;
-  --chart-1: #22d3ee;
-  --chart-2: #34d399;
+  --ring: #e4587d;
+  --chart-1: #e4587d;
+  --chart-2: #4ade80;
   --chart-3: #fbbf24;
   --chart-4: #f87171;
   --chart-5: #a78bfa;
-  --sidebar: #141416;
+  --sidebar: #18181b;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #06b6d4;
-  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-primary: #e4587d;
+  --sidebar-primary-foreground: #09090b;
   --sidebar-accent: #1f1f22;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #27272a;
-  --sidebar-ring: #06b6d4;
+  --sidebar-ring: #e4587d;
+
+  /* Brand greens for status / leaf accents (used sparingly). */
+  --success: #4ade80;
+  --success-deep: #16a34a;
+  --success-glow: #18e299;
 }
 
 /* Custom Scrollbar Styling */
@@ -80,6 +87,9 @@
   --color-accent-light: var(--accent-light);
   --color-accent-lighter: var(--accent-lighter);
   --color-accent-lightest: var(--accent-lightest);
+  --color-success: var(--success);
+  --color-success-deep: var(--success-deep);
+  --color-success-glow: var(--success-glow);
   --font-sans: var(--font-sans, system-ui, -apple-system, sans-serif);
   --font-mono: var(--font-mono, ui-monospace, monospace);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -128,7 +138,7 @@
 
     position: relative;
   }
-  /* Faint cyan vignette at the top — atmosphere without ornament. */
+  /* Faint pink wash at the top — barely there, lets the black canvas breathe. */
   body::before {
     content: "";
     position: fixed;
@@ -136,7 +146,7 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(ellipse 90% 60% at 50% -10%, rgba(6, 182, 212, 0.08), transparent 65%);
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(228, 88, 125, 0.06), transparent 65%);
   }
   body > * {
     position: relative;

@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Features
-- `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — hand-crafted chunky pixel-block lowercase "failproof ai", compressed with half-block characters (▀ ▄ █) so each terminal row covers two pixel rows of art (~10 rows tall instead of 19) (#322).
+- `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — hand-crafted chunky pixel-block lowercase "failproof ai", compressed with half-block characters (▀ ▄ █) so each terminal row covers two pixel rows of art (~10 rows tall instead of 19), with a plain-text "failproof ai" fallback when `process.stdout.columns` is narrower than the banner so it doesn't wrap on standard terminals (#322).
 
 ### Docs
 - `README.md` and all 14 `docs/i18n/README.*.md` files now use the hosted PNG wordmark instead of the ASCII header for consistent branding (#322).

@@ -1,5 +1,5 @@
 ---
-title: Oturumları Görüntüle
+title: Oturumları görüntüle
 description: "Aracı oturumlarına göz atmak ve ilkeleri yönetmek için panoyu başlatın"
 ---
 
@@ -13,16 +13,17 @@ Web panosunu `http://localhost:8020` adresinde başlatır.
 
 | Bayrak | Açıklama |
 |------|-------------|
-| `--port <number>` | Dinlenecek bağlantı noktası (varsayılan: `8020`) |
-| `--projects-path <path>` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kıl |
-| `--allowed-origins <origins>` | Geliştirme kaynaklarına erişmesine izin verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
+| `--port <number>` | Dinlenecek port (varsayılan: `8020`) |
+| `--allowed-origins <origins>` | Geliştirme kaynaklarına erişim izni verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
+
+Panoyu varsayılan olmayan bir Claude proje klasörüne işaret etmek için, başlatırken `CLAUDE_PROJECTS_PATH` ortam değişkenini ayarlayın.
 
 ## Örnekler
 
 ```bash
-# Farklı bir bağlantı noktasında başlat
+# Farklı bir portta başlat
 failproofai --port 9000
 
-# Özel bir proje yolu kullan
-failproofai --projects-path ~/my-claude-projects
+# Ortam değişkeni aracılığıyla özel Claude proje yolu kullan
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

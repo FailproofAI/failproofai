@@ -1,21 +1,22 @@
 ---
 title: Voir les sessions
-description: "Lancez le tableau de bord pour parcourir les sessions des agents et gérer les politiques"
+description: "Lancer le tableau de bord pour parcourir les sessions d'agents et gérer les politiques"
 ---
 
 ```bash
 failproofai
 ```
 
-Démarre le tableau de bord web sur `http://localhost:8020`.
+Démarre le tableau de bord web à l'adresse `http://localhost:8020`.
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
 | `--port <number>` | Port d'écoute (par défaut : `8020`) |
-| `--projects-path <path>` | Remplace l'emplacement où les dossiers de projets Claude Code sont recherchés |
 | `--allowed-origins <origins>` | Hôtes/IPs séparés par des virgules autorisés à accéder aux ressources de développement |
+
+Pour pointer le tableau de bord vers un dossier de projet Claude non défini par défaut, définissez la variable d'environnement `CLAUDE_PROJECTS_PATH` au moment du lancement.
 
 ## Exemples
 
@@ -23,6 +24,6 @@ Démarre le tableau de bord web sur `http://localhost:8020`.
 # Lancer sur un port différent
 failproofai --port 9000
 
-# Utiliser un chemin de projets personnalisé
-failproofai --projects-path ~/my-claude-projects
+# Utiliser un chemin de projets Claude personnalisé via une variable d'environnement
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

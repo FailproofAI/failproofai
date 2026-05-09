@@ -1,21 +1,23 @@
 ---
+---
 title: عرض الجلسات
-description: "شغّل لوحة المعلومات لاستعراض جلسات الوكلاء وإدارة السياسات"
+description: "شغّل لوحة التحكم لتصفح جلسات الوكيل وإدارة السياسات"
 ---
 
 ```bash
 failproofai
 ```
 
-يشغّل لوحة المعلومات على الويب في `http://localhost:8020`.
+يشغّل لوحة التحكم على `http://localhost:8020`.
 
 ## الخيارات
 
 | العلم | الوصف |
 |------|-------------|
 | `--port <number>` | المنفذ المراد الاستماع عليه (الافتراضي: `8020`) |
-| `--projects-path <path>` | تجاوز موقع مجلدات مشاريع Claude Code |
-| `--allowed-origins <origins>` | مضيفون وعناوين IP مفصولة بفواصل مسموحة بالوصول إلى موارد التطوير |
+| `--allowed-origins <origins>` | مضيفون/عناوين IP مفصولة بفواصل مسموح لها بالوصول إلى موارد التطوير |
+
+لتوجيه لوحة التحكم إلى مجلد مشروع Claude غير افتراضي، عيّن متغير البيئة `CLAUDE_PROJECTS_PATH` عند التشغيل.
 
 ## أمثلة
 
@@ -23,6 +25,6 @@ failproofai
 # شغّل على منفذ مختلف
 failproofai --port 9000
 
-# استخدم مسار مشاريع مخصص
-failproofai --projects-path ~/my-claude-projects
+# استخدم مسار مشاريع Claude مخصص عبر متغير البيئة
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

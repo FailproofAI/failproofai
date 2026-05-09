@@ -1,6 +1,6 @@
 ---
-title: Visualizar sessões
-description: "Inicie o dashboard para navegar pelas sessões de agentes e gerenciar políticas"
+title: Ver sessões
+description: "Abra o dashboard para navegar pelas sessões de agentes e gerenciar políticas"
 ---
 
 ```bash
@@ -14,8 +14,9 @@ Inicia o dashboard web em `http://localhost:8020`.
 | Flag | Descrição |
 |------|-----------|
 | `--port <number>` | Porta para escutar (padrão: `8020`) |
-| `--projects-path <path>` | Substitui o local onde as pastas de projetos do Claude Code são encontradas |
 | `--allowed-origins <origins>` | Hosts/IPs separados por vírgula com permissão de acesso aos recursos de desenvolvimento |
+
+Para apontar o dashboard para uma pasta de projetos Claude diferente da padrão, defina a variável de ambiente `CLAUDE_PROJECTS_PATH` ao iniciar.
 
 ## Exemplos
 
@@ -23,6 +24,6 @@ Inicia o dashboard web em `http://localhost:8020`.
 # Iniciar em uma porta diferente
 failproofai --port 9000
 
-# Usar um caminho de projetos personalizado
-failproofai --projects-path ~/my-claude-projects
+# Usar um caminho personalizado de projetos Claude via variável de ambiente
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

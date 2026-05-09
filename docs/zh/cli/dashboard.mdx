@@ -1,28 +1,29 @@
 ---
 title: 查看会话
-description: "启动控制台以浏览 Agent 会话并管理策略"
+description: "启动仪表板以浏览代理会话并管理策略"
 ---
 
 ```bash
 failproofai
 ```
 
-在 `http://localhost:8020` 启动 Web 控制台。
+在 `http://localhost:8020` 启动 Web 仪表板。
 
 ## 选项
 
-| 参数 | 说明 |
+| 标志 | 描述 |
 |------|------|
 | `--port <number>` | 监听端口（默认：`8020`） |
-| `--projects-path <path>` | 覆盖 Claude Code 项目文件夹的查找路径 |
-| `--allowed-origins <origins>` | 以逗号分隔的主机名/IP，允许访问开发资源 |
+| `--allowed-origins <origins>` | 允许访问开发资源的主机/IP，以逗号分隔 |
+
+若要将仪表板指向非默认的 Claude 项目文件夹，请在启动时设置 `CLAUDE_PROJECTS_PATH` 环境变量。
 
 ## 示例
 
 ```bash
-# 在不同端口启动
+# 在其他端口启动
 failproofai --port 9000
 
-# 使用自定义项目路径
-failproofai --projects-path ~/my-claude-projects
+# 通过环境变量使用自定义 Claude 项目路径
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

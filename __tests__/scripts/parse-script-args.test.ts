@@ -5,35 +5,11 @@ import { parseScriptArgs } from "@/scripts/parse-script-args";
 describe("parseScriptArgs", () => {
   it("returns defaults when no args given", () => {
     const result = parseScriptArgs([]);
-    expect(result.claudeProjectsPath).toBeUndefined();
     expect(result.remainingArgs).toEqual([]);
-  });
-
-  it("parses --projects-path=/some/path", () => {
-    const result = parseScriptArgs(["--projects-path=/some/path"]);
-    expect(result.claudeProjectsPath).toBe("/some/path");
-    expect(result.remainingArgs).toEqual([]);
-  });
-
-  it("parses --projects-path /some/path (space-separated)", () => {
-    const result = parseScriptArgs(["--projects-path", "/some/path"]);
-    expect(result.claudeProjectsPath).toBe("/some/path");
-    expect(result.remainingArgs).toEqual([]);
-  });
-
-  it("parses -p=/some/path", () => {
-    const result = parseScriptArgs(["-p=/some/path"]);
-    expect(result.claudeProjectsPath).toBe("/some/path");
-  });
-
-  it("parses -p /some/path (space-separated)", () => {
-    const result = parseScriptArgs(["-p", "/some/path"]);
-    expect(result.claudeProjectsPath).toBe("/some/path");
   });
 
   it("passes remaining args through", () => {
-    const result = parseScriptArgs(["--projects-path=/p", "--port", "3000"]);
-    expect(result.claudeProjectsPath).toBe("/p");
+    const result = parseScriptArgs(["--port", "3000"]);
     expect(result.remainingArgs).toEqual(["--port", "3000"]);
   });
 
@@ -74,8 +50,7 @@ describe("parseScriptArgs", () => {
   });
 
   it("combines known flags and passes unknown as remainingArgs", () => {
-    const result = parseScriptArgs(["--projects-path=/proj", "--turbopack", "--disable-telemetry"]);
-    expect(result.claudeProjectsPath).toBe("/proj");
+    const result = parseScriptArgs(["--turbopack", "--disable-telemetry"]);
     expect(result.disableTelemetry).toBe(true);
     expect(result.remainingArgs).toEqual(["--turbopack"]);
   });

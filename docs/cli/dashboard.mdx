@@ -14,8 +14,9 @@ Starts the web dashboard at `http://localhost:8020`.
 | Flag | Description |
 |------|-------------|
 | `--port <number>` | Port to listen on (default: `8020`) |
-| `--projects-path <path>` | Override where Claude Code project folders are found |
 | `--allowed-origins <origins>` | Comma-separated hosts/IPs allowed to access dev resources |
+
+To point the dashboard at a non-default Claude project folder, set the `CLAUDE_PROJECTS_PATH` environment variable when launching.
 
 ## Examples
 
@@ -23,6 +24,6 @@ Starts the web dashboard at `http://localhost:8020`.
 # Launch on a different port
 failproofai --port 9000
 
-# Use a custom projects path
-failproofai --projects-path ~/my-claude-projects
+# Use a custom Claude projects path via environment variable
+CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

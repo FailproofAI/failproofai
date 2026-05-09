@@ -73,7 +73,6 @@ export const DO_NOT_TRANSLATE = [
   "--scope",
   "--port",
   "--strict",
-  "--projects-path",
   "--allowed-origins",
   // Policy names
   "block-sudo",

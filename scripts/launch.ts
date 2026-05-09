@@ -1,7 +1,6 @@
 /**
  * Shared launch logic for dev.ts and start.ts.
  */
-import { getDefaultClaudeProjectsPath } from "../lib/paths";
 import { spawn } from "child_process";
 import { realpathSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -11,7 +10,7 @@ import { diagnoseShadow } from "./install-diagnosis.mjs";
 import { version } from "../package.json";
 
 export function launch(mode: "dev" | "start"): void {
-  const { claudeProjectsPath: parsedPath, loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
+  const { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
 
   // Hand-crafted pixel-block wordmark mirroring the hosted PNG logo at
   // https://d2wq11aau0arks.cloudfront.net/failproof/logo-wordmark.png —
@@ -45,16 +44,6 @@ export function launch(mode: "dev" | "start"): void {
   console.log(`  ⭐ Star us:      https://github.com/exospherehost/failproofai`);
   console.log(`  📖 Docs:         https://befailproof.ai`);
   console.log(`  💬 Slack:        https://join.slack.com/t/failproofai/shared_invite/zt-3v63b7k5e-O3NBHmj8X6n9gZSGDx6ggQ\n`);
-
-  let claudeProjectsPath = parsedPath;
-
-  if (!claudeProjectsPath) {
-    claudeProjectsPath = getDefaultClaudeProjectsPath();
-  } else {
-    console.log(`Using custom .claude projects path: ${claudeProjectsPath}`);
-  }
-
-  process.env.CLAUDE_PROJECTS_PATH = claudeProjectsPath;
 
   let cmd: string;
   let cmdArgs: string[];
@@ -118,7 +107,6 @@ export function launch(mode: "dev" | "start"): void {
     stdio: "inherit",
     env: {
       ...process.env,
-      CLAUDE_PROJECTS_PATH: claudeProjectsPath,
       ...(loggingLevel ? { FAILPROOFAI_LOG_LEVEL: loggingLevel } : {}),
       ...(disableTelemetry ? { FAILPROOFAI_TELEMETRY_DISABLED: "1" } : {}),
       ...(allowedDevOrigins ? { FAILPROOFAI_ALLOWED_DEV_ORIGINS: allowedDevOrigins.join(",") } : {}),

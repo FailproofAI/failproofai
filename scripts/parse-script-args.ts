@@ -4,7 +4,6 @@
 import { resolve } from "path";
 
 export interface ParsedScriptArgs {
-  claudeProjectsPath: string | undefined;
   loggingLevel: string | undefined;
   disableTelemetry: boolean;
   allowedDevOrigins: string[] | undefined;
@@ -30,7 +29,6 @@ function parseStringFlag(
 
 export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
   const args = [...argv];
-  let claudeProjectsPath: string | undefined;
   let loggingLevel: string | undefined;
   let disableTelemetry = false;
   let allowedDevOrigins: string[] | undefined;
@@ -41,14 +39,6 @@ export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
     const eqIdx = arg.indexOf("=");
     const flag = eqIdx >= 0 ? arg.slice(0, eqIdx) : arg;
     const inlineValue = eqIdx >= 0 ? arg.slice(eqIdx + 1) : null;
-
-    if (flag === "--projects-path" || flag === "-p") {
-      const { value, spliceCount } = parseStringFlag(flag, "a path argument", inlineValue, args, i);
-      claudeProjectsPath = value;
-      args.splice(i, spliceCount);
-      i--;
-      continue;
-    }
 
     if (flag === "--logging") {
       const raw = inlineValue ?? args[i + 1];
@@ -83,5 +73,5 @@ export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
     }
   }
 
-  return { claudeProjectsPath, loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs: args };
+  return { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs: args };
 }

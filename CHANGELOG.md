@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Features
-- `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — pixel-block lowercase "failproof ai" with a cyan dot + magenta stem on the i of "fail" matching the PNG's rosette/U accent (#322).
+- `scripts/launch.ts`: redesign the dashboard-startup ASCII banner to mirror the hosted PNG wordmark — hand-crafted chunky pixel-block lowercase "failproof ai" in the same rounded-glyph style as the PNG (#322).
 
 ### Docs
 - `README.md` and all 14 `docs/i18n/README.*.md` files now use the hosted PNG wordmark instead of the ASCII header for consistent branding (#322).

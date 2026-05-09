@@ -13,17 +13,31 @@ import { version } from "../package.json";
 export function launch(mode: "dev" | "start"): void {
   const { claudeProjectsPath: parsedPath, loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
 
-  // Wordmark mirrors the hosted PNG logo (figlet "Pagga" font, lowercase
-  // pixel-block style). The "i" of "fail" gets a cyan dot + magenta stem to
-  // echo the colored rosette accent in the PNG.
-  const C = "\x1b[36m"; // cyan — flower/dot
-  const M = "\x1b[35m"; // magenta — pink "U" accent
-  const R = "\x1b[0m";
-  console.log(`
-░█▀▀░█▀█░${C}▀█▀${R}░█░░░█▀█░█▀▄░█▀█░█▀█░█▀▀░░░█▀█░▀█▀
-░█▀▀░█▀█░${M}░█░${R}░█░░░█▀▀░█▀▄░█░█░█░█░█▀▀░░░█▀█░░█░
-░▀░░░▀░▀░${M}▀▀▀${R}░▀▀▀░▀░░░▀░▀░▀▀▀░▀▀▀░▀░░░░░▀░▀░▀▀▀   v${version}
-`);
+  // Hand-crafted pixel-block wordmark mirroring the hosted PNG logo at
+  // https://d2wq11aau0arks.cloudfront.net/failproof/logo-wordmark.png —
+  // chunky lowercase "failproof ai" in the same rounded-glyph style.
+  const banner = [
+    "                ████████                                                                                                                                 █████████                                 █████",
+    "                ████████                                                                                                                                 █████████                                 █████",
+    "            ████████████                         ████                                                                                                 ████████████                                 █████",
+    "            █████                              ███████                                                                                               ██████",
+    "        ████████████████     ████████████     █████████   █████         ███████             ████████         ████████            ████████         ███████████████              ████████████         ███",
+    "        ████████████████    █████████████      ███████    ██████       █████████           ██████████       █████████            █████████       █████████████████             ████████████        █████",
+    "        ████████████████    ████████████████      ██      ██████      ██████████           █████████        ██████████          ██████████       █████████████████             █████████████       █████",
+    "            █████                      ██████   █████     ██████   █████      ██████   ██████           ██████      █████    █████      ██████       ██████                               █████    █████",
+    "            █████            ████████████████  ████████   ██████   █████      ██████   ██████           ██████      █████    █████      ██████       ██████                    ████████████████    █████",
+    "            █████           █████████████████  ████████   ██████   █████      ██████   ██████           ██████      █████    █████      ██████       ██████                    ████████████████    █████",
+    "            █████           █████████████████  ████████   ██████   █████      ██████   ██████           ██████      █████    █████      ██████       ██████                    ████████████████    █████",
+    "            █████           █████      ██████   █████     ██████   █████      ██████   ██████           ██████      █████    █████      ██████       ██████                    █████      █████    █████",
+    "            █████           █████████████████   █████     ██████   █████████████████   ██████           █████████████████    █████████████████       ██████                    ████████████████    █████",
+    "            █████               █████████████   ████████████████   █████████████       ██████               █████████            █████████           ██████                       █████████████    █████",
+    "            █████               █████████████   ████████████████   █████████████       ██████               █████████            █████████           ██████                       █████████████    █████",
+    "                                                                   █████",
+    "                                                                   █████",
+    "                                                                   █████",
+    "                                                                   █████",
+  ].join("\n");
+  console.log(`\n${banner}\n\n  v${version}\n`);
   console.log(`  ⭐ Star us:      https://github.com/exospherehost/failproofai`);
   console.log(`  📖 Docs:         https://befailproof.ai`);
   console.log(`  💬 Slack:        https://join.slack.com/t/failproofai/shared_invite/zt-3v63b7k5e-O3NBHmj8X6n9gZSGDx6ggQ\n`);

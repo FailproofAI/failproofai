@@ -18,7 +18,7 @@ export function launch(mode: "dev" | "start"): void {
   // chunky lowercase "failproof ai" compressed vertically using upper /
   // lower / full half-block characters (▀ ▄ █) so each terminal row
   // covers two pixel rows of art (≈10 rows tall instead of 19).
-  const banner = [
+  const bannerLines = [
     "                ████████                                                                                                                                 █████████                                 █████",
     "            █████▀▀▀▀▀▀▀                       ▄▄████▄                                                                                               ▄█████▀▀▀▀▀▀▀                                 ▀▀▀▀▀",
     "        ████████████████    ▄████████████     ▀███████▀   █████▄       ▄███████▄           ▄████████▄       ▄████████            ████████▄       ▄███████████████▄             ████████████        ▄███▄",
@@ -29,7 +29,16 @@ export function launch(mode: "dev" | "start"): void {
     "            ▀▀▀▀▀               ▀▀▀▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   █████▀▀▀▀▀▀▀▀       ▀▀▀▀▀▀               ▀▀▀▀▀▀▀▀▀            ▀▀▀▀▀▀▀▀▀           ▀▀▀▀▀▀                       ▀▀▀▀▀▀▀▀▀▀▀▀▀    ▀▀▀▀▀",
     "                                                                   █████",
     "                                                                   ▀▀▀▀▀",
-  ].join("\n");
+  ];
+  // Fall back to plain text on narrow terminals so the wide pixel-block art
+  // doesn't wrap and shred itself. process.stdout.columns is undefined when
+  // stdout isn't a TTY (piped, captured, redirected to a file), in which case
+  // there's no width to compare against and we keep the full art as-is.
+  const bannerWidth = bannerLines.reduce((w, l) => Math.max(w, l.length), 0);
+  const cols = process.stdout.columns;
+  const banner = cols !== undefined && cols < bannerWidth
+    ? "  failproof ai"
+    : bannerLines.join("\n");
   console.log(`\n${banner}\n\n  v${version}\n`);
   console.log(`  ⭐ Star us:      https://github.com/exospherehost/failproofai`);
   console.log(`  📖 Docs:         https://befailproof.ai`);

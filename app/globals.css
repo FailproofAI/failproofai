@@ -125,6 +125,7 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+
     position: relative;
   }
   /* Faint cyan vignette at the top — atmosphere without ornament. */
@@ -208,9 +209,6 @@
     color: var(--foreground);
     border-radius: 0.25rem;
   }
-
-  #__loading { display: none !important; }
-  body > * { opacity: 1 !important; }
 }
 
 @keyframes entry-highlight {
@@ -230,10 +228,4 @@
 }
 .animate-expand {
   animation: expand-in 150ms ease-out;
-}
-
-/* Terminal-prompt blinking caret used by the loading screen. */
-@keyframes caret-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
 }

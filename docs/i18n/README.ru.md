@@ -26,7 +26,7 @@
 Самый простой способ управления политиками безопасности, которые обеспечивают надёжность ваших AI-агентов, удерживают их в рамках задач и позволяют работать автономно — для **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(бета)_, **Cursor Agent** _(бета)_, **OpenCode** _(бета)_, **Pi** _(бета)_, **Gemini CLI** _(бета)_ и **Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI в действии" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
 </p>
 
 ## Поддерживаемые CLI агентов

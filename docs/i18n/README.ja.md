@@ -26,7 +26,7 @@
 AIエージェントを信頼性高く、タスクに集中させ、自律的に動作させ続けるためのポリシー管理ツール。**Claude Code**、**OpenAI Codex**、**GitHub Copilot CLI** _(ベータ)_、**Cursor Agent** _(ベータ)_、**OpenCode** _(ベータ)_、**Pi** _(ベータ)_、**Gemini CLI** _(ベータ)_、そして **Agents SDK** に対応しています。
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## 対応エージェント CLI

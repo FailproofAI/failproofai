@@ -26,7 +26,7 @@
 管理策略的最简方式，让你的 AI 智能体保持可靠、专注任务并自主运行——支持 **Claude Code**、**OpenAI Codex**、**GitHub Copilot CLI** _(测试版)_、**Cursor Agent** _(测试版)_、**OpenCode** _(测试版)_、**Pi** _(测试版)_、**Gemini CLI** _(测试版)_ 以及 **Agents SDK**。
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## 支持的智能体 CLI

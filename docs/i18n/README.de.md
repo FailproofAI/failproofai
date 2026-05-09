@@ -26,7 +26,7 @@
 Der einfachste Weg, Richtlinien zu verwalten, die deine KI-Agenten zuverlässig, fokussiert und autonom am Laufen halten – für **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(Beta)_, **Cursor Agent** _(Beta)_, **OpenCode** _(Beta)_, **Pi** _(Beta)_, **Gemini CLI** _(Beta)_ & das **Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in Aktion" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in Aktion" width="800" />
 </p>
 
 ## Unterstützte Agent-CLIs

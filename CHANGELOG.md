@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Docs
-- `README.md`: swap the hero GIF from `failproofai-hq.gif` to `readme-arch-hq.gif` (#321).
+- Swap the README hero GIF from `failproofai-hq.gif` to `readme-arch-hq.gif` across the English `README.md` and all 14 translated `docs/i18n/README.*.md` files (#321).
 
 ## 0.0.10-beta.8 — 2026-05-08
 

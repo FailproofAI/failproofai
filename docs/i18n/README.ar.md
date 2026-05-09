@@ -28,7 +28,7 @@
 الطريقة الأسهل لإدارة السياسات التي تحافظ على موثوقية وكلائك الذكيين والعاملين بشكل مستقل - لـ **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(تجريبي)_, **Cursor Agent** _(تجريبي)_, **OpenCode** _(تجريبي)_, **Pi** _(تجريبي)_, **Gemini CLI** _(تجريبي)_ و **Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI في العمل" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI في العمل" width="800" />
 </p>
 
 ## واجهات برمجة التطبيقات للوكلاء المدعومة

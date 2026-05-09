@@ -26,7 +26,7 @@
 अपने AI एजेंट्स को विश्वसनीय, कार्य-केंद्रित और स्वायत्त रूप से चलाने वाली नीतियों को प्रबंधित करने का सबसे आसान तरीका - **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(बीटा)_, **Cursor Agent** _(बीटा)_, **OpenCode** _(बीटा)_, **Pi** _(बीटा)_, **Gemini CLI** _(बीटा)_ और **Agents SDK** के लिए।
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## समर्थित एजेंट CLIs

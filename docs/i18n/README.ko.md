@@ -26,7 +26,7 @@
 AI 에이전트를 안정적으로 유지하고, 작업에 집중하며, 자율적으로 실행할 수 있도록 정책을 관리하는 가장 쉬운 방법 - **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(베타)_, **Cursor Agent** _(베타)_, **OpenCode** _(베타)_, **Pi** _(베타)_, **Gemini CLI** _(베타)_ 및 **Agents SDK**를 지원합니다.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## 지원하는 에이전트 CLI

@@ -28,7 +28,7 @@
 הדרך הקלה ביותר לנהל מדיניות שמשמרות סוכנים AI אמינים, ממוקדים ופעילים באופן עצמאי - עבור **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(beta)_, **Cursor Agent** _(beta)_, **OpenCode** _(beta)_, **Pi** _(beta)_, **Gemini CLI** _(beta)_ ו-**Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI בפעולה" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI בפעולה" width="800" />
 </p>
 
 ## CLIs של סוכנים נתמכים

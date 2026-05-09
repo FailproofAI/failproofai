@@ -26,7 +26,7 @@
 Cách dễ nhất để quản lý các chính sách giữ cho các agent AI của bạn đáng tin cậy, tập trung vào nhiệm vụ và chạy tự động - cho **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(beta)_, **Cursor Agent** _(beta)_, **OpenCode** _(beta)_, **Pi** _(beta)_, **Gemini CLI** _(beta)_ & **Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ## Các agent CLI được hỗ trợ

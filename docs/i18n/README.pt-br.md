@@ -26,7 +26,7 @@
 A maneira mais fácil de gerenciar políticas que mantêm seus agentes de IA confiáveis, focados e funcionando de forma autônoma — para **Claude Code**, **OpenAI Codex**, **GitHub Copilot CLI** _(beta)_, **Cursor Agent** _(beta)_, **OpenCode** _(beta)_, **Pi** _(beta)_, **Gemini CLI** _(beta)_ e o **Agents SDK**.
 
 <p align="center">
-  <img src="failproofai-hq.gif" alt="Failproof AI em ação" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI em ação" width="800" />
 </p>
 
 ## CLIs de agentes suportados

@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Docs
-- Rewrite the English `README.md`: new layout with shields.io badges (npm / CI / Slack / Docs / License), a CDN-hosted wordmark logo, condensed "What it stops" / "Your own policies" / "Session visibility" sections, and a documentation index linking to docs.befailproof.ai. The hero GIF is the new `readme-arch-hq.gif` (added in this PR); the old `failproofai-hq.gif` is removed. The 14 translated `docs/i18n/README.*.md` files were swapped to the new GIF filename in the same PR — their structural rewrite is left to the next `translate-docs` workflow run on `main` (#321).
+- Rewrite the English `README.md`: new layout with shields.io badges (npm / CI / Slack / Docs / License), a CDN-hosted wordmark logo, the translation strip pulled back up to the header alongside the badges, the existing 7-CLI logo grid (Claude / Codex / Copilot / Cursor / OpenCode / Pi / Gemini) preserved with its install hint and beta caveat, a tighter "What it stops" table that leans on the git policies (`block-push-master` / `block-force-push` / `block-work-on-main` / `block-rm-rf` / `sanitize-api-keys`), a "License" section explaining the MIT + Commons Clause split, and a documentation index linking to docs.befailproof.ai. The hero GIF is the new `readme-arch-hq.gif` (added in this PR); the old `failproofai-hq.gif` is removed. The 14 translated `docs/i18n/README.*.md` files were swapped to the new GIF filename in the same PR — their structural rewrite is left to the next `translate-docs` workflow run on `main` (#321).
 
 ## 0.0.10-beta.8 — 2026-05-08
 

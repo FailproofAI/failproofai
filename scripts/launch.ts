@@ -17,10 +17,11 @@ export function launch(mode: "dev" | "start"): void {
   // chunky lowercase "failproof ai" compressed with Unicode 2x2 quadrant
   // block characters (▖▗▘▙▚▛▜▝▞▟ + ▀ ▄ █ ▌ ▐) and then horizontally
   // scaled 4:3 (every 4th source-pixel column dropped) so the full
-  // wordmark fits in ~75 cols × ~10 rows — clean on any standard ≥80-col
-  // terminal.
+  // wordmark fits in ~75 cols × ~8 rows — clean on any standard ≥80-col
+  // terminal. Many monospace fonts render each cell ~2-3× taller than wide,
+  // so we drop the f-top-serif row and trim the p-descender to a single
+  // row to keep the wordmark from looking visually stretched vertically.
   const bannerLines = [
-    "      ███                                                ▐███            ▐█",
     "    ▐█▛▀▀         ▟█▖                                   ▟█▛▀▀            ▝▀",
     "   ██████ ▗████▌ ▝██▛ ██   ███    ▐██▙  ▗███    ▐██▙  ▗█████▙     ████▌  ▐█",
     "   ▀▜█▛▀▀ ▝▀▀▀▀█▙ ▄▙  ██ ▗▟▀▀▜▄▖ ▄▟▀▀▘ ▄▟▛▀▜▙▖ ▄█▀▀█▄▖▝▀██▛▀▀     ▀▀▀▀▙▄ ▐█",
@@ -29,7 +30,6 @@ export function launch(mode: "dev" | "start"): void {
     "    ▐█▌   ▝▀█████ ██▄▄██ ▐████▀▘ ██    ▀▜███▀▘ ▀▜███▀▘  ██▌       ▀█████ ▐█",
     "    ▝▀▘     ▀▀▀▀▀ ▀▀▀▀▀▀ ▐█▀▀▀   ▀▀     ▝▀▀▀    ▝▀▀▀    ▀▀▘        ▀▀▀▀▀ ▝▀",
     "                         ▐█",
-    "                         ▝▀",
   ];
   // Fall back to plain text on narrow terminals so the wide pixel-block art
   // doesn't wrap and shred itself. process.stdout.columns is undefined when

@@ -1047,23 +1047,31 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
         setActionError(null);
         if (toInstall.length > 0) await installHooksWebAction("user", toInstall);
         if (toRemove.length > 0) await removeHooksWebAction("user", toRemove);
-        await reload();
       } catch (e) {
         setActionError(e instanceof Error ? e.message : "Failed to apply changes.");
+      } finally {
+        // Always resync so a partial-success batch (install OK, remove failed)
+        // doesn't leave the UI showing stale install state on the next click.
+        await reload();
       }
     });
   };
 
   const handleReinstall = () => {
-    const targets = Array.from(checkedClis);
+    // Reinstall acts on the intersection of checked × installed. Detected-but-
+    // not-installed CLIs are pre-checked as a one-click install hint, so a raw
+    // Array.from(checkedClis) would silently install brand-new CLIs from the
+    // Reinstall button. Use Apply for first-time installs.
+    const targets = Array.from(installedCliSet).filter((id) => checkedClis.has(id));
     if (targets.length === 0) return;
     startTransition(async () => {
       try {
         setActionError(null);
         await installHooksWebAction("user", targets);
-        await reload();
       } catch (e) {
         setActionError(e instanceof Error ? e.message : "Failed to reinstall.");
+      } finally {
+        await reload();
       }
     });
   };
@@ -1296,7 +1304,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
         <ErrorToast
           message={hooksWarning}
           onDismiss={() => setHooksWarning(null)}
-          onInstall={handleReinstall}
+          onInstall={handleApply}
           isPending={isPending}
         />
       )}

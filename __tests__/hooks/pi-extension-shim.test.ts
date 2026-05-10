@@ -24,10 +24,23 @@ interface PiExtensionApi {
 
 const captured: CapturedCall[] = [];
 
+/** Per-event stdout reply queue for the spawnSync mock. Tests that need
+ *  to simulate a binary deny set `mockSpawnReplyByEvent[<eventName>]`
+ *  to a JSON string before invoking the matching handler. Any event not
+ *  in the map gets the default empty stdout. */
+const mockSpawnReplyByEvent: Record<string, string | undefined> = {};
+
+function eventNameFromArgs(args: string[]): string | undefined {
+  const i = args.indexOf("--hook");
+  return i >= 0 ? args[i + 1] : undefined;
+}
+
 vi.mock("node:child_process", () => ({
   spawnSync: (_cmd: string, args: string[], opts: { input?: string }) => {
     captured.push({ args: args ?? [], payload: JSON.parse(opts?.input ?? "{}") });
-    return { pid: 0, output: [], status: 0, signal: null, stderr: "", stdout: "" };
+    const evt = eventNameFromArgs(args ?? []);
+    const stdout = (evt && mockSpawnReplyByEvent[evt]) ?? "";
+    return { pid: 0, output: [], status: 0, signal: null, stderr: "", stdout };
   },
 }));
 
@@ -43,6 +56,7 @@ describe("pi-extension shim — sessionId resolution via on-disk discovery", () 
 
   beforeEach(async () => {
     captured.length = 0;
+    for (const k of Object.keys(mockSpawnReplyByEvent)) delete mockSpawnReplyByEvent[k];
     handlers = {};
     piRoot = mkdtempSync(join(tmpdir(), "pi-shim-test-"));
     originalEnv = process.env.PI_SESSIONS_DIR;
@@ -237,6 +251,124 @@ describe("pi-extension shim — sessionId resolution via on-disk discovery", () 
     if (originalEnv === undefined) delete process.env.PI_SESSIONS_DIR;
     else process.env.PI_SESSIONS_DIR = originalEnv;
     rmSync(piRoot, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Pi cannot veto `agent_end` directly (Pi's AgentEndEvent has no Result type).
+ * The shim captures any deny reason and re-injects it as a `systemPrompt`
+ * suffix on the next `before_agent_start`. These tests cover that handoff.
+ */
+describe("pi-extension shim — agent_end → before_agent_start stop-block handoff", () => {
+  let handlers: Record<string, (event: unknown) => unknown> = {};
+  let piRoot: string;
+  let originalEnv: string | undefined;
+  const SID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+
+  beforeEach(async () => {
+    captured.length = 0;
+    for (const k of Object.keys(mockSpawnReplyByEvent)) delete mockSpawnReplyByEvent[k];
+    handlers = {};
+    piRoot = mkdtempSync(join(tmpdir(), "pi-shim-handoff-"));
+    originalEnv = process.env.PI_SESSIONS_DIR;
+    process.env.PI_SESSIONS_DIR = piRoot;
+    // Seed a transcript so resolveSessionId returns a stable id.
+    const dir = join(piRoot, piEncodeCwd("/proj"));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `2026-05-09T00-00-00-000Z_${SID}.jsonl`), "{}\n");
+    vi.resetModules();
+    const mod = await import("../../pi-extension/index");
+    mod.default({ on: (name, fn) => { handlers[name] = fn; } });
+  });
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.PI_SESSIONS_DIR;
+    else process.env.PI_SESSIONS_DIR = originalEnv;
+    rmSync(piRoot, { recursive: true, force: true });
+  });
+
+  it("agent_end deny is captured and drained on next before_agent_start as a systemPrompt suffix", () => {
+    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({
+      permission: "deny",
+      reason: "MANDATORY ACTION REQUIRED from failproofai (policy: require-commit-before-stop): commit now.",
+    });
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    // No reply value from agent_end (Pi cannot veto stop).
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      prompt: "next prompt",
+      systemPrompt: "BASE",
+      cwd: "/proj",
+    }) as { systemPrompt?: string } | undefined;
+    expect(result?.systemPrompt).toBe(
+      "BASE\n\nMANDATORY ACTION REQUIRED from failproofai (policy: require-commit-before-stop): commit now.",
+    );
+  });
+
+  it("before_agent_start with no pending block returns undefined", () => {
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      prompt: "p",
+      systemPrompt: "BASE",
+      cwd: "/proj",
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("the stop-block is one-shot: a second before_agent_start in the same session does not re-fire", () => {
+    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({ permission: "deny", reason: "X" });
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    const first = handlers.before_agent_start({ type: "before_agent_start", systemPrompt: "B", cwd: "/proj" }) as { systemPrompt?: string };
+    expect(first?.systemPrompt).toBe("B\n\nX");
+    const second = handlers.before_agent_start({ type: "before_agent_start", systemPrompt: "B", cwd: "/proj" });
+    expect(second).toBeUndefined();
+  });
+
+  it("session_shutdown clears the pending stop-block (quit reason too, not just new/resume/fork)", () => {
+    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({ permission: "deny", reason: "X" });
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    handlers.session_shutdown({ type: "session_shutdown", reason: "quit", cwd: "/proj" });
+    // Even though `quit` retains the cached sessionId, the pending block must
+    // be dropped so a future before_agent_start (e.g. in the next session
+    // started in this process) doesn't inherit a stale gate.
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      systemPrompt: "B",
+      cwd: "/proj",
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("agent_end with allow stdout (empty reason) does NOT set a pending block", () => {
+    // Default mock returns empty stdout → callPolicy returns {block:false}.
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      systemPrompt: "B",
+      cwd: "/proj",
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("before_agent_start without a resolvable sessionId is a no-op", () => {
+    // Use a cwd that has no on-disk transcript — sessionId discovery returns
+    // undefined and the handler must early-return without throwing.
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      systemPrompt: "B",
+      cwd: "/no-such-cwd",
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("before_agent_start with no systemPrompt in the event still injects (uses empty base)", () => {
+    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({ permission: "deny", reason: "Y" });
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    const result = handlers.before_agent_start({
+      type: "before_agent_start",
+      cwd: "/proj",
+    }) as { systemPrompt?: string };
+    expect(result?.systemPrompt).toBe("\n\nY");
   });
 });
 

@@ -218,18 +218,19 @@ pi-extension. Same self-reference caveat applies — do **not** install the
 standard `npx` form from inside this repo.
 
 **Pi limitations vs. Claude semantics** (verified against pi-coding-agent
-v0.72.1 d.ts; the `pi-extension/` shim subscribes to 7 events but Pi's API
+v0.73.1 d.ts; the `pi-extension/` shim subscribes to 8 events but Pi's API
 caps what each handler can do):
 
-| Pi event           | → Claude event   | Veto / mutate? | Notes |
-|--------------------|------------------|----------------|-------|
-| `tool_call`        | PreToolUse       | ✅ block      | Full deny support via `{block, reason}`. |
-| `user_bash`        | PreToolUse       | ✅ block      | Full deny support. |
-| `input`            | UserPromptSubmit | ✅ block      | Full deny support. |
-| `session_start`    | SessionStart     | observation   | No return-value effect on Pi. |
-| `tool_result`      | PostToolUse      | observation   | `ToolResultEventResult` exposes `{content, details, isError}` for mutation but no `block`. PostToolUse is observation/sanitize anyway, matching Claude semantics. |
-| `agent_end`        | Stop             | observation   | Pi's agent loop has already exited; we cannot keep Pi running the way Claude's exit-2-from-Stop can. `require-*-before-stop` policies still RUN — their findings land in the activity store + stderr — but the stop is not vetoed. |
-| `session_shutdown` | SessionEnd       | observation   | Symmetry only. |
+| Pi event             | → Claude event   | Veto / mutate?  | Notes |
+|----------------------|------------------|-----------------|-------|
+| `tool_call`          | PreToolUse       | ✅ block        | Full deny support via `{block, reason}`. |
+| `user_bash`          | PreToolUse       | ✅ block        | Full deny support. |
+| `input`              | UserPromptSubmit | ✅ block        | Full deny support. |
+| `session_start`      | SessionStart     | observation     | No return-value effect on Pi. |
+| `tool_result`        | PostToolUse      | observation     | `ToolResultEventResult` exposes `{content, details, isError}` for mutation but no `block`. PostToolUse is observation/sanitize anyway, matching Claude semantics. |
+| `agent_end`          | Stop             | shifted (next turn) | Pi's `AgentEndEvent` has no Result type — we cannot retry the same loop the way Claude's exit-2-from-Stop can. The shim captures any deny `reason` and stashes it keyed by sessionId for the next `before_agent_start` handler to drain. The 5 `require-*-before-stop` builtins thus enforce by gating the NEXT user turn's system prompt. Bounded by Pi process lifetime — same bound Claude has on exit-2-from-Stop. |
+| `before_agent_start` | (Pi-only handoff) | systemPrompt   | Drains any pending Stop deny captured at `agent_end`, returning `{systemPrompt: <event.systemPrompt> + "\n\n" + reason}` so the LLM sees the MANDATORY ACTION directive before its next turn. Multiple extensions chain. No injection when no block is pending. |
+| `session_shutdown`   | SessionEnd       | observation     | Symmetry only. Also clears any pending stop-block for the session id (every reason, not just `new`/`resume`/`fork`). |
 
 **Instruct (`additionalContext`) on Pi `tool_call`** — Pi's
 `ToolCallEventResult` shape is `{block?, reason?}` only; there's no

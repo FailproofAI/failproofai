@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.10-beta.12 — 2026-05-10
+
+### Features
+- Pi: enforce `Stop` policies (`require-commit-before-stop`, `require-push-before-stop`, etc.) on the next user turn via `before_agent_start` injection. Pi's `AgentEndEvent` has no Result type — by the time it fires, Pi's agent loop has already exited, so a deny return cannot keep Pi running the way Claude's exit-2-from-Stop can. Empirically observed: a user on Pi with `require-commit-before-stop` enabled saw the deny `reason` ("You have uncommitted changes …") propagate to Pi but Pi exited anyway. Fix: the `pi-extension/index.ts` shim captures any deny `reason` from `agent_end` into a per-`sessionId` in-memory map, then on the next `before_agent_start` (Pi v0.73.x — fires after the user submits a prompt, before the agent loop runs) returns `{systemPrompt: <event.systemPrompt> + "\n\n" + reason}` so the LLM sees a `MANDATORY ACTION REQUIRED` directive at the top of its next turn. The map is one-shot per drain and is cleared on every `session_shutdown` reason (including `quit`), so a stale gate cannot leak into a fresh session started in the same Pi process. `policy-evaluator.ts` now emits the `MANDATORY ACTION REQUIRED from failproofai (policy: …)` wrapper inside `reason` for `cli === "pi" && eventType === "Stop"` (both the deny and instruct paths), mirroring the Cursor/Gemini/Copilot/OpenCode Stop branches; non-Stop Pi events keep the existing flat `{permission, reason}` shape. Bounded by Pi process lifetime — same bound Claude has on exit-2-from-Stop (kill the agent and the gate is missed). New shim unit tests cover capture/drain/one-shot/`session_shutdown`-clear/no-pending-noop/missing-systemPrompt and a new e2e test pins the binary's stdout shape (`{permission:"deny", reason:/MANDATORY ACTION REQUIRED.*require-commit-before-stop.*uncommitted changes/}`) for `agent_end` in a dirty repo (#PR).
+
 ## 0.0.10-beta.11 — 2026-05-10
 
 ### Fixes

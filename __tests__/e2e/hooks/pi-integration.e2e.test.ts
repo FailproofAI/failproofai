@@ -208,6 +208,39 @@ describe("E2E: Pi integration — hook protocol (handler-only)", () => {
     }
   });
 
+  it("agent_end with require-commit-before-stop in a dirty repo emits MANDATORY ACTION reason", () => {
+    const env = createPiEnv();
+    try {
+      // Make env.cwd a git repo with an uncommitted file so
+      // require-commit-before-stop returns deny. This is the bridge to the
+      // shim-side handoff: the binary's stdout MUST be a Pi-flat
+      // `{permission:"deny", reason}` payload whose reason carries the
+      // "MANDATORY ACTION REQUIRED" wrapper. The shim captures that
+      // reason on agent_end and re-injects it via before_agent_start (the
+      // in-process map handoff is covered by the shim unit tests).
+      execSync("git init -q && git config user.email t@t && git config user.name t", { cwd: env.cwd });
+      writeFileSync(resolve(env.cwd, "dirty.txt"), "uncommitted\n");
+      writeConfig(env.cwd, ["require-commit-before-stop"]);
+      const result = runHook(
+        "agent_end",
+        PiPayloads.agentEnd(env.cwd),
+        { homeDir: env.home, cli: "pi" },
+      );
+      // Stop on Pi uses the MANDATORY ACTION wrapping (not the generic
+      // `Blocked <displayTool> by failproofai because: …` wording that
+      // assertPiDeny matches), so we inline the deny shape checks here.
+      expect(result.exitCode).toBe(0);
+      expect(result.parsed?.permission).toBe("deny");
+      expect(result.parsed?.hookSpecificOutput).toBeUndefined();
+      const reason = String(result.parsed?.reason ?? "");
+      expect(reason).toMatch(/MANDATORY ACTION REQUIRED/);
+      expect(reason).toMatch(/require-commit-before-stop/);
+      expect(reason).toMatch(/uncommitted changes/i);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("agent-settings guard: Bash read of .pi/settings.json is denied", () => {
     const env = createPiEnv();
     try {

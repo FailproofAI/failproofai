@@ -184,8 +184,22 @@ export async function evaluatePolicies(
       // and translates `permission === "deny"` into a `{block: true, reason}`
       // return value from its `pi.on("tool_call", ...)` handler. Pi has no
       // event-specific decision wrappers, so all events flow through the
-      // same flat shape.
+      // same flat shape — except Stop, where we emit the MANDATORY ACTION
+      // wording so the shim can re-inject it as a system-prompt suffix on
+      // the next before_agent_start (Pi cannot veto agent_end directly).
+      // Mirrors the Cursor/Gemini/Copilot/OpenCode Stop branches above.
       if (session?.cli === "pi") {
+        if (eventType === "Stop") {
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
         const response = {
           permission: "deny",
           reason: blockedMessage,
@@ -416,8 +430,26 @@ export async function evaluatePolicies(
     // Pi: instruct emits `{permission: "allow", reason}`. The shim won't
     // block (no `"deny"`); it surfaces `reason` to the user where possible
     // (Pi has no first-class `additional_context` channel in its tool-call
-    // return shape, so we log it).
+    // return shape, so we log it). Stop is the exception — we emit a
+    // `permission: "deny"` with the MANDATORY ACTION wording so the shim
+    // captures it for next-turn before_agent_start injection. Same handoff
+    // contract as the deny branch above.
     if (session?.cli === "pi") {
+      if (eventType === "Stop") {
+        const policyAttribution = policyNames.length === 1
+          ? `policy: ${policyNames[0]}`
+          : `policies: ${policyNames.join(", ")}`;
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
       const response = {
         permission: "allow",
         reason: `Instruction from failproofai: ${combined}`,

@@ -2,12 +2,8 @@
 
 ## 0.0.10 — 2026-05-10
 
-Stable promotion of `0.0.10-beta.13`. See the per-beta sections below for the
-full list of features, fixes, and docs that landed during the 0.0.10 cycle —
-notably 7-CLI hook integrations (Claude Code, OpenAI Codex, GitHub Copilot,
-Cursor Agent, OpenCode, Pi, Gemini CLI), the dashboard rebrand, the Activity
-tab CLI filter, the per-CLI Stop semantics handoff for Pi, and the Configure
-tab's new multi-CLI control panel.
+### Docs
+- Promote `0.0.10-beta.13` to stable `0.0.10`; per-beta sections below carry the full feature / fix / docs details for this cycle (#345).
 
 ## 0.0.10-beta.13 — 2026-05-10
 

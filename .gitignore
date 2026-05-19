@@ -87,3 +87,6 @@ packages/*/assets/
 # Local monitoring scratch files (CI run watchers etc.)
 .monitor-*.sh
 .monitor-*.log
+
+# Local Mintlify dev server log (transient)
+mint-dev.log

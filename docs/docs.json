@@ -11,7 +11,7 @@
     "light": "/logo/Failproof_AI_logo_light.png",
     "dark": "/logo/Failproof_AI_logo.png"
   },
-  "favicon": "/favicon.ico",
+  "favicon": "/icon.svg",
   "navigation": {
     "languages": [
       {

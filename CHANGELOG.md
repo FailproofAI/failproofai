@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.11-beta.2 — 2026-05-21
+
+### Breaking
+- Remove the undocumented cloud auth + event relay subsystem ahead of a from-scratch redesign. Deletes `src/auth/` (OAuth 2.0 device-flow login against `api.befailproof.ai`, `~/.failproofai/auth.json` token store) and `src/relay/` (WebSocket event relay daemon, sanitized JSONL queue at `~/.failproofai/cache/server-queue/`, PID tracking). Strips the `failproofai login` / `logout` / `whoami` / `relay start|stop|status` / `sync` subcommands and the internal `--relay-daemon` mode from `bin/failproofai.mjs`, along with their `--help` entries and "did you mean" suggestions. Removes the fire-and-forget `appendToServerQueue` + `ensureRelayRunning` calls from `src/hooks/handler.ts` so hook evaluation no longer enqueues events or lazy-spawns a daemon. The whole subsystem had zero references in `README.md`, `docs/`, `examples/`, or `__tests__/`, and only had internal cross-imports — `tsc`, `eslint`, `vitest` (1623 tests), and the `bun run build` bundles all stay green. Users who ran `failproofai login` should also wipe `~/.failproofai/{auth.json,cache/server-queue,relay.pid}` and stop any running relay daemon by hand; new auth/cloud surface will land in a follow-up.
+
 ## 0.0.11-beta.1 — 2026-05-20
 
 ### Breaking

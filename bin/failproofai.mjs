@@ -81,7 +81,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies"];
+  const SUBCOMMANDS = ["policies", "audit"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -117,6 +117,23 @@ COMMANDS
     --custom, -c                   Clear the customPoliciesPath from config
 
   policies --help, -h            Show this help for the policies command
+
+  audit                          Scan past agent CLI transcripts and count
+                                   "stupid behaviors" (env-var checks, force
+                                   pushes, redundant cd <cwd>, sleep loops,
+                                   etc.) per policy / audit detector.
+    --cli claude|codex|copilot|cursor|opencode|pi|gemini
+                                   Restrict to one or more CLIs (default: all).
+    --project <path>               Restrict to one cwd (repeatable).
+    --since 7d|2026-04-01          Only sessions whose mtime is within window.
+    --policy <name>                Restrict to one policy/detector (repeatable).
+    --limit N                      Top-N rows in the table (default 20).
+    --show-examples                Include one example per row.
+    --report <path>                Markdown report path (default ./failproofai-audit.md).
+    --no-report                    Skip writing the markdown file.
+    --json                         Print JSON to stdout instead of the table.
+    --no-cache                     Bypass the per-transcript cache.
+  audit --help, -h               Show this help for the audit command
 
   --version, -v                  Print version and exit
   --help, -h                     Show this help message
@@ -409,6 +426,141 @@ EXAMPLES
     process.exit(0);
   }
 
+  // audit — scan past transcripts for "stupid behaviors" caught by builtin
+  // policies + a set of audit-only detectors.
+  if (args[0] === "audit") {
+    const subArgs = args.slice(1);
+
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai audit — scan past agent transcripts for stupid behaviors
+
+USAGE
+  failproofai audit [options]
+
+OPTIONS
+  --cli claude|codex|copilot|cursor|opencode|pi|gemini
+                                 Restrict to one or more CLIs (space-separated or repeated).
+                                 Default: scan all 7.
+  --project <path>               Restrict to sessions whose cwd matches this path. Repeatable.
+  --since 7d|30d|2026-04-01      Only sessions whose mtime is within window.
+  --policy <name>                Restrict to one policy/detector name. Repeatable.
+  --limit N                      Top-N rows in the table (default 20).
+  --show-examples                Include one example command per row in the table.
+  --report <path>                Markdown report path (default: ./failproofai-audit.md).
+  --no-report                    Skip writing the markdown report.
+  --json                         Print JSON to stdout instead of the table.
+  --no-cache                     Bypass the per-transcript result cache.
+  --help, -h                     Show this help
+
+EXAMPLES
+  failproofai audit
+  failproofai audit --cli claude --since 30d
+  failproofai audit --policy protect-env-vars --policy block-force-push
+  failproofai audit --json > audit.json
+  failproofai audit --project /home/me/myrepo --show-examples
+`.trimStart());
+      process.exit(0);
+    }
+
+    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"]);
+    /** Consume one or more values for a flag like `--cli a b c`, stopping at
+     *  the next flag or an unknown token (when an allow-set is supplied). */
+    function collectMulti(flag, allowSet) {
+      const out = [];
+      const consumed = new Set();
+      for (let i = 0; i < subArgs.length; i++) {
+        if (subArgs[i] !== flag) continue;
+        for (let j = i + 1; j < subArgs.length; j++) {
+          const v = subArgs[j];
+          if (v.startsWith("-")) break;
+          if (allowSet && !allowSet.has(v)) break;
+          out.push(v);
+          consumed.add(j);
+        }
+        consumed.add(i);
+      }
+      return { values: out, consumed };
+    }
+    /** Take the single value following a one-shot flag like `--since 7d`. */
+    function takeOne(flag) {
+      const i = subArgs.indexOf(flag);
+      if (i < 0) return { value: undefined, consumed: new Set() };
+      const v = subArgs[i + 1];
+      if (v === undefined || v.startsWith("-")) {
+        throw new CliError(`Missing value for ${flag}`);
+      }
+      return { value: v, consumed: new Set([i, i + 1]) };
+    }
+
+    const allConsumed = new Set();
+    const cliRes = collectMulti("--cli", VALID_CLIS);
+    cliRes.consumed.forEach((i) => allConsumed.add(i));
+    const projectRes = collectMulti("--project", null);
+    projectRes.consumed.forEach((i) => allConsumed.add(i));
+    const policyRes = collectMulti("--policy", null);
+    policyRes.consumed.forEach((i) => allConsumed.add(i));
+    const sinceRes = takeOne("--since");
+    sinceRes.consumed.forEach((i) => allConsumed.add(i));
+    const limitRes = takeOne("--limit");
+    limitRes.consumed.forEach((i) => allConsumed.add(i));
+    const reportRes = takeOne("--report");
+    reportRes.consumed.forEach((i) => allConsumed.add(i));
+
+    const showExamples = subArgs.includes("--show-examples");
+    if (showExamples) allConsumed.add(subArgs.indexOf("--show-examples"));
+    const noReport = subArgs.includes("--no-report");
+    if (noReport) allConsumed.add(subArgs.indexOf("--no-report"));
+    const jsonOut = subArgs.includes("--json");
+    if (jsonOut) allConsumed.add(subArgs.indexOf("--json"));
+    const noCache = subArgs.includes("--no-cache");
+    if (noCache) allConsumed.add(subArgs.indexOf("--no-cache"));
+
+    // Reject unknown flags / positional args.
+    for (let i = 0; i < subArgs.length; i++) {
+      if (allConsumed.has(i)) continue;
+      const arg = subArgs[i];
+      throw new CliError(
+        `Unexpected argument: ${arg}\nRun \`failproofai audit --help\` for usage.`,
+      );
+    }
+
+    const opts = {
+      clis: cliRes.values.length > 0 ? cliRes.values : undefined,
+      projects: projectRes.values.length > 0 ? projectRes.values : undefined,
+      policies: policyRes.values.length > 0 ? policyRes.values : undefined,
+      since: sinceRes.value,
+      limit: limitRes.value !== undefined ? parseInt(limitRes.value, 10) : undefined,
+      showExamples,
+      reportPath: reportRes.value ?? "./failproofai-audit.md",
+      noReport: noReport || jsonOut, // --json implies --no-report unless explicit --report
+      json: jsonOut,
+      noCache,
+    };
+    // Re-enable report when --report was passed alongside --json.
+    if (jsonOut && reportRes.value) opts.noReport = false;
+
+    const { runAudit } = await import("../src/audit");
+    const { formatText, formatJson, formatMarkdown } = await import("../src/audit/report");
+    const result = await runAudit(opts);
+
+    if (jsonOut) {
+      process.stdout.write(formatJson(result) + "\n");
+    } else {
+      process.stdout.write(formatText(result, opts));
+    }
+
+    if (!opts.noReport) {
+      const { writeFileSync } = await import("node:fs");
+      const { resolve } = await import("node:path");
+      const reportPath = resolve(opts.reportPath);
+      writeFileSync(reportPath, formatMarkdown(result), "utf-8");
+      if (!jsonOut) process.stdout.write(`\nReport written: ${reportPath}\n`);
+    }
+
+    process.exit(0);
+  }
+
   // Unknown flag guard — must appear after all known-flag branches
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
@@ -427,7 +579,7 @@ EXAMPLES
       return dp[m][n];
     }
 
-    const primary = ["--version", "--help", "--hook", "policies"];
+    const primary = ["--version", "--help", "--hook", "policies", "audit"];
     const closest = primary.reduce((best, flag) => {
       const dist = levenshtein(unknownFlag, flag);
       return dist < best.dist ? { flag, dist } : best;

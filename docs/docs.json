@@ -106,7 +106,6 @@
                   "zh/cli/install-policies",
                   "zh/cli/remove-policies",
                   "zh/cli/list-policies",
-                  "zh/cli/audit",
                   "zh/cli/hook",
                   "zh/cli/version",
                   "zh/cli/environment-variables"
@@ -170,7 +169,6 @@
                   "ja/cli/install-policies",
                   "ja/cli/remove-policies",
                   "ja/cli/list-policies",
-                  "ja/cli/audit",
                   "ja/cli/hook",
                   "ja/cli/version",
                   "ja/cli/environment-variables"
@@ -234,7 +232,6 @@
                   "ko/cli/install-policies",
                   "ko/cli/remove-policies",
                   "ko/cli/list-policies",
-                  "ko/cli/audit",
                   "ko/cli/hook",
                   "ko/cli/version",
                   "ko/cli/environment-variables"
@@ -298,7 +295,6 @@
                   "es/cli/install-policies",
                   "es/cli/remove-policies",
                   "es/cli/list-policies",
-                  "es/cli/audit",
                   "es/cli/hook",
                   "es/cli/version",
                   "es/cli/environment-variables"
@@ -362,7 +358,6 @@
                   "pt-br/cli/install-policies",
                   "pt-br/cli/remove-policies",
                   "pt-br/cli/list-policies",
-                  "pt-br/cli/audit",
                   "pt-br/cli/hook",
                   "pt-br/cli/version",
                   "pt-br/cli/environment-variables"
@@ -426,7 +421,6 @@
                   "de/cli/install-policies",
                   "de/cli/remove-policies",
                   "de/cli/list-policies",
-                  "de/cli/audit",
                   "de/cli/hook",
                   "de/cli/version",
                   "de/cli/environment-variables"
@@ -490,7 +484,6 @@
                   "fr/cli/install-policies",
                   "fr/cli/remove-policies",
                   "fr/cli/list-policies",
-                  "fr/cli/audit",
                   "fr/cli/hook",
                   "fr/cli/version",
                   "fr/cli/environment-variables"
@@ -554,7 +547,6 @@
                   "ru/cli/install-policies",
                   "ru/cli/remove-policies",
                   "ru/cli/list-policies",
-                  "ru/cli/audit",
                   "ru/cli/hook",
                   "ru/cli/version",
                   "ru/cli/environment-variables"
@@ -618,7 +610,6 @@
                   "hi/cli/install-policies",
                   "hi/cli/remove-policies",
                   "hi/cli/list-policies",
-                  "hi/cli/audit",
                   "hi/cli/hook",
                   "hi/cli/version",
                   "hi/cli/environment-variables"
@@ -682,7 +673,6 @@
                   "tr/cli/install-policies",
                   "tr/cli/remove-policies",
                   "tr/cli/list-policies",
-                  "tr/cli/audit",
                   "tr/cli/hook",
                   "tr/cli/version",
                   "tr/cli/environment-variables"
@@ -746,7 +736,6 @@
                   "vi/cli/install-policies",
                   "vi/cli/remove-policies",
                   "vi/cli/list-policies",
-                  "vi/cli/audit",
                   "vi/cli/hook",
                   "vi/cli/version",
                   "vi/cli/environment-variables"
@@ -810,7 +799,6 @@
                   "it/cli/install-policies",
                   "it/cli/remove-policies",
                   "it/cli/list-policies",
-                  "it/cli/audit",
                   "it/cli/hook",
                   "it/cli/version",
                   "it/cli/environment-variables"
@@ -874,7 +862,6 @@
                   "ar/cli/install-policies",
                   "ar/cli/remove-policies",
                   "ar/cli/list-policies",
-                  "ar/cli/audit",
                   "ar/cli/hook",
                   "ar/cli/version",
                   "ar/cli/environment-variables"
@@ -938,7 +925,6 @@
                   "he/cli/install-policies",
                   "he/cli/remove-policies",
                   "he/cli/list-policies",
-                  "he/cli/audit",
                   "he/cli/hook",
                   "he/cli/version",
                   "he/cli/environment-variables"

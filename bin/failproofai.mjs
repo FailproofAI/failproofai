@@ -37,6 +37,23 @@ const args = process.argv.slice(2);
 // Normalize 'p' → 'policies' (shorthand alias)
 if (args[0] === "p") args[0] = "policies";
 
+// Lightweight telemetry helper for CLI lifecycle events. Lazy-loads to avoid
+// pulling in the hook-telemetry / telemetry-id modules on the fast --hook path.
+let _telemetry;
+let lastSubcommand = null;
+async function track(name, props) {
+  try {
+    if (!_telemetry) {
+      const [t, i] = await Promise.all([
+        import("../src/hooks/hook-telemetry"),
+        import("../lib/telemetry-id"),
+      ]);
+      _telemetry = { trackHookEvent: t.trackHookEvent, getInstanceId: i.getInstanceId };
+    }
+    await _telemetry.trackHookEvent(_telemetry.getInstanceId(), name, props);
+  } catch {}
+}
+
 // --hook <event> [--cli <name>] — called by an agent CLI hook; fast path, outside
 // runCli() because it has its own exit code contract with the calling agent.
 const hookIdx = args.indexOf("--hook");
@@ -69,6 +86,11 @@ if (hookIdx >= 0) {
     process.exit(exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    await track("hook_dispatch_error", {
+      event_type: eventType,
+      cli,
+      error_type: err instanceof Error ? err.name : "unknown",
+    });
     console.error(`Unexpected error: ${msg}`);
     process.exit(2);
   }
@@ -249,6 +271,7 @@ EXAMPLES
     }
 
     if (isInstall) {
+      lastSubcommand = "install";
       const { installHooks } = await import("../src/hooks/manager");
       const { resolveTargetClis } = await import("../src/hooks/install-prompt");
 
@@ -336,10 +359,19 @@ EXAMPLES
         false,
         cli,
       );
+      await track("cli_install_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        explicit_policies: explicitPolicyNames.length > 0,
+        include_beta: includeBeta,
+        has_custom_path: !!customPoliciesPath,
+      });
       process.exit(0);
     }
 
     if (isUninstall) {
+      lastSubcommand = "uninstall";
       const { removeHooks } = await import("../src/hooks/manager");
       const { resolveTargetClis } = await import("../src/hooks/install-prompt");
 
@@ -401,6 +433,14 @@ EXAMPLES
         undefined,
         { betaOnly, removeCustomHooks, cli },
       );
+      await track("cli_uninstall_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        beta_only: betaOnly,
+        remove_custom_hooks: removeCustomHooks,
+        explicit_policies: policyNames.length > 0,
+      });
       process.exit(0);
     }
 
@@ -423,8 +463,10 @@ EXAMPLES
       );
     }
 
+    lastSubcommand = "list";
     const { listHooks } = await import("../src/hooks/manager");
     await listHooks();
+    await track("cli_list_invoked", {});
     process.exit(0);
   }
 
@@ -621,6 +663,17 @@ EXAMPLES
     );
   }
 
+  // First-run nudge — only on truly bare `failproofai` invocations. Best-effort:
+  // any thrown error must not block the dashboard from launching.
+  if (args.length === 0) {
+    try {
+      const { maybeRunFirstRunNudge } = await import("../src/hooks/first-run-nudge");
+      await maybeRunFirstRunNudge();
+    } catch {
+      // Nudge is non-critical; fall through to dashboard.
+    }
+  }
+
   // Dashboard launch — always production mode
   const { launch } = await import("../scripts/launch");
   launch("start");
@@ -634,11 +687,31 @@ try {
   await runCli();
 } catch (err) {
   if (err instanceof CliError) {
+    if (lastSubcommand === "install") {
+      await track("cli_install_failure", { error_type: "cli_error", exit_code: err.exitCode });
+    } else if (lastSubcommand === "uninstall") {
+      await track("cli_uninstall_failure", { error_type: "cli_error", exit_code: err.exitCode });
+    } else {
+      await track("cli_parse_error", {
+        subcommand: lastSubcommand ?? (args[0] ?? null),
+        exit_code: err.exitCode,
+      });
+    }
     console.error(`Error: ${err.message}`);
     process.exit(err.exitCode);
   }
   // Unexpected internal error — show message only, no stack trace
   const msg = err instanceof Error ? err.message : String(err);
+  if (lastSubcommand === "install") {
+    await track("cli_install_failure", { error_type: err instanceof Error ? err.name : "unknown" });
+  } else if (lastSubcommand === "uninstall") {
+    await track("cli_uninstall_failure", { error_type: err instanceof Error ? err.name : "unknown" });
+  } else {
+    await track("cli_unexpected_error", {
+      subcommand: lastSubcommand ?? (args[0] ?? null),
+      error_type: err instanceof Error ? err.name : "unknown",
+    });
+  }
   console.error(`Unexpected error: ${msg}`);
   process.exit(2);
 }

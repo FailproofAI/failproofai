@@ -13,6 +13,8 @@ import * as readline from "node:readline";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { detectInstalledClis, getIntegration } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType } from "./types";
+import { trackHookEvent } from "./hook-telemetry";
+import { getInstanceId } from "../../lib/telemetry-id";
 
 interface SelectItem {
   name: string;
@@ -51,9 +53,29 @@ export async function resolveTargetClis(
   explicit?: IntegrationType[],
   action: CliPromptAction = "install",
 ): Promise<IntegrationType[]> {
-  if (explicit && explicit.length > 0) return [...new Set(explicit)];
+  const detected = explicit && explicit.length > 0 ? [] : detectInstalledClis();
+  const stdinIsTty = !!process.stdin.isTTY;
+  const explicitList = explicit && explicit.length > 0 ? [...new Set(explicit)] : [];
 
-  const detected = detectInstalledClis();
+  const fireDetectionEvent = (
+    selected: IntegrationType[],
+    resolutionMode: "explicit" | "single_detected" | "all_detected" | "interactive_prompt" | "defaulted_to_claude",
+  ): void => {
+    void trackHookEvent(getInstanceId(), "cli_detection_summary", {
+      action,
+      detected_clis: detected,
+      explicit_clis: explicitList,
+      selected_clis: selected,
+      defaulted_to_claude: resolutionMode === "defaulted_to_claude",
+      stdin_is_tty: stdinIsTty,
+      resolution_mode: resolutionMode,
+    });
+  };
+
+  if (explicit && explicit.length > 0) {
+    fireDetectionEvent(explicitList, "explicit");
+    return explicitList;
+  }
 
   if (detected.length === 0) {
     if (action === "uninstall") {
@@ -63,12 +85,14 @@ export async function resolveTargetClis(
         "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi, gemini). " +
           "Defaulting to Claude Code; nothing will be removed if no settings file exists.\x1B[0m",
       );
+      fireDetectionEvent(["claude"], "defaulted_to_claude");
       return ["claude"];
     }
     console.log(
       "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi, gemini). " +
         "Defaulting to Claude Code; hooks will activate when an agent is installed.\x1B[0m",
     );
+    fireDetectionEvent(["claude"], "defaulted_to_claude");
     return ["claude"];
   }
 
@@ -76,13 +100,19 @@ export async function resolveTargetClis(
     const integration = getIntegration(detected[0]);
     const verb = action === "uninstall" ? "removing hooks from" : "installing hooks for";
     console.log(`Detected ${integration.displayName}; ${verb} it.`);
+    fireDetectionEvent(detected, "single_detected");
     return detected;
   }
 
   // Multiple detected. Prompt or default.
-  if (!process.stdin.isTTY) return detected; // non-interactive: install/remove for all detected
+  if (!process.stdin.isTTY) {
+    fireDetectionEvent(detected, "all_detected");
+    return detected;
+  }
 
-  return promptCliTargetSelection(detected, action);
+  const selected = await promptCliTargetSelection(detected, action);
+  fireDetectionEvent(selected, "interactive_prompt");
+  return selected;
 }
 
 /** Selectable row in the CLI target menu. Exported for unit tests. */

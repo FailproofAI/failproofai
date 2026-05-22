@@ -7,7 +7,7 @@
  *
  * No external dependencies — Node.js built-ins only.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { platform, arch, release, homedir, hostname } from "node:os";
 import { createHmac } from "node:crypto";
@@ -133,6 +133,94 @@ try {
 } catch {
   // Non-critical — don't fail the install
 }
+
+if (!hooksResult.configured && !hooksResult.registered) {
+  console.log(
+    `\n[failproofai] Installed. Next steps:\n` +
+    `  1. Run \`failproofai policies --install\` to enable safety policies.\n` +
+    `  2. Run \`failproofai\` to open the dashboard (or just \`failproofai\` to start now — it'll offer to set up policies for you).\n` +
+    `  Disable first-run prompt: FAILPROOFAI_NO_FIRST_RUN=1\n`
+  );
+}
+
+// First-run + version_changed detection. The presence of ~/.failproofai/last-version
+// is a stable signal: written on every postinstall, absent before the first one.
+// Cannot piggy-back on instance-id because most users hit Tier 2 (OS machine ID)
+// and never create that file.
+//
+// Semver comparison: a release (no prerelease tag) is greater than the same
+// version with a prerelease tag (semver §11). Inside the prerelease, numeric
+// identifiers are lower than non-numeric ones of the same length.
+function compareSemver(a, b) {
+  const parse = (v) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/.exec(v);
+    if (!m) return null;
+    return { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ?? null };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  if (!pa || !pb) return a < b ? -1 : a > b ? 1 : 0;
+  for (let i = 0; i < 3; i++) {
+    if (pa.nums[i] !== pb.nums[i]) return pa.nums[i] < pb.nums[i] ? -1 : 1;
+  }
+  if (pa.pre === null && pb.pre === null) return 0;
+  if (pa.pre === null) return 1;
+  if (pb.pre === null) return -1;
+  const ax = pa.pre.split(/[.-]/);
+  const bx = pb.pre.split(/[.-]/);
+  for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+    const ai = ax[i], bi = bx[i];
+    if (ai === undefined) return -1;
+    if (bi === undefined) return 1;
+    const aNum = /^\d+$/.test(ai), bNum = /^\d+$/.test(bi);
+    if (aNum && bNum) {
+      const d = Number(ai) - Number(bi);
+      if (d !== 0) return d < 0 ? -1 : 1;
+    } else if (aNum) {
+      return -1;
+    } else if (bNum) {
+      return 1;
+    } else if (ai !== bi) {
+      return ai < bi ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+const currentVersion = process.env.npm_package_version ?? "unknown";
+const lastVersionFile = resolve(homedir(), ".failproofai", "last-version");
+let previousVersion = null;
+try {
+  if (existsSync(lastVersionFile)) {
+    previousVersion = readFileSync(lastVersionFile, "utf8").trim() || null;
+  }
+} catch {}
+
+if (previousVersion === null) {
+  trackInstallEvent("first_install", {
+    platform: platform(),
+    arch: arch(),
+    os_release: release(),
+    node_version: process.versions.node,
+    version: currentVersion,
+  }).catch(() => {});
+} else {
+  // Same version is a reinstall — still worth tracking; users hitting `npm install -g`
+  // repeatedly is itself signal. Drop the `!==` guard so cmp===0 reaches the event.
+  const cmp = compareSemver(previousVersion, currentVersion);
+  trackInstallEvent("version_changed", {
+    from_version: previousVersion,
+    to_version: currentVersion,
+    direction: cmp < 0 ? "upgrade" : cmp > 0 ? "downgrade" : "reinstall",
+    platform: platform(),
+    arch: arch(),
+  }).catch(() => {});
+}
+
+try {
+  mkdirSync(resolve(homedir(), ".failproofai"), { recursive: true });
+  writeFileSync(lastVersionFile, currentVersion, "utf8");
+} catch {}
 
 // Telemetry (best-effort, fire-and-forget)
 trackInstallEvent("package_installed", {

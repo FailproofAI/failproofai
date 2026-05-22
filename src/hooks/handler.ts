@@ -79,6 +79,7 @@ export async function handleHookEvent(
   // Read stdin payload (Claude passes JSON)
   const MAX_STDIN_BYTES = 1_048_576; // 1 MB
   let payload = "";
+  let stdinOversized = false;
   try {
     payload = await new Promise<string>((resolve, reject) => {
       const chunks: string[] = [];
@@ -88,6 +89,7 @@ export async function handleHookEvent(
         totalBytes += Buffer.byteLength(chunk);
         if (totalBytes > MAX_STDIN_BYTES) {
           hookLogWarn(`stdin payload exceeds 1 MB for ${eventType}, discarding`);
+          stdinOversized = true;
           process.stdin.destroy();
           resolve("");
           return;
@@ -99,8 +101,20 @@ export async function handleHookEvent(
       // If stdin is already closed or not piped, resolve immediately
       if (process.stdin.readableEnded) resolve("");
     });
-  } catch {
+  } catch (err) {
     hookLogWarn(`stdin read failed for ${eventType}`);
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: err instanceof Error ? err.name : "unknown",
+    });
+  }
+  if (stdinOversized) {
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: "oversized",
+    });
   }
 
   let parsed: Record<string, unknown> = {};
@@ -109,6 +123,11 @@ export async function handleHookEvent(
       parsed = JSON.parse(payload) as Record<string, unknown>;
     } catch {
       hookLogWarn(`payload parse failed for ${eventType} (${payload.length} bytes)`);
+      void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
+        event_type: eventType,
+        cli,
+        payload_size: payload.length,
+      });
     }
   }
 

@@ -81,11 +81,11 @@ before they become incidents. Zero latency. Runs locally.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install
+failproofai policies --install   # or just run `failproofai` and accept the first-run prompt
 failproofai
 ```
 
-30 built-in policies activate immediately. Dashboard at `localhost:8020`.
+30 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 

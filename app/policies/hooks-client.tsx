@@ -26,6 +26,7 @@ import { togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
+import { usePostHog } from "@/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
 import { pageToParam, paramToPage } from "@/lib/url-filter-serializers";
 import { getCliLabel, getCliBadgeClasses, KNOWN_CLI_IDS, isKnownCli, type CliId } from "@/lib/cli-registry";
@@ -208,10 +209,12 @@ function DurationDisplay({ ms }: { ms: number }) {
 
 // -- Copy Button --
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, field }: { text: string; field?: string }) {
   const [copied, setCopied] = useState(false);
+  const { capture } = usePostHog();
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    capture("activity_copy_clicked", { field: field ?? "unknown" });
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -321,12 +324,12 @@ function DetailPanel({
               <span className="font-mono text-foreground">
                 {item.sessionId ?? "\u2014"}
               </span>
-              {item.sessionId && <CopyButton text={item.sessionId} />}
+              {item.sessionId && <CopyButton text={item.sessionId} field="session_id" />}
             </div>
             <div>
               <span className="text-muted-foreground">CWD: </span>
               <span className="font-mono text-foreground">{item.cwd ?? "\u2014"}</span>
-              {item.cwd && <CopyButton text={item.cwd} />}
+              {item.cwd && <CopyButton text={item.cwd} field="cwd" />}
             </div>
             <div>
               <span className="text-muted-foreground">Transcript: </span>
@@ -366,6 +369,7 @@ function ActivityTab({
   onSwitchTab?: (tab: "activity" | "policies") => void;
 }) {
   const { intervalSec } = useAutoRefresh();
+  const { capture } = usePostHog();
   const url = useUrlParams();
   const mountedRef = useRef(false);
 
@@ -385,6 +389,7 @@ function ActivityTab({
     return isKnownCli(v) ? v : "";
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filterTelemetryFirstRunRef = useRef(true);
   const filtersRef = useRef({ filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli });
   filtersRef.current = { filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli };
 
@@ -444,6 +449,28 @@ function ActivityTab({
       setPage(1);
       setExpandedRow(null);
       fetchData(1);
+      // Skip the initial render — filters are initialized from URL params, not
+      // from a user action. Only fire on real user-driven changes.
+      if (filterTelemetryFirstRunRef.current) {
+        filterTelemetryFirstRunRef.current = false;
+        return;
+      }
+      capture("activity_filter_changed", {
+        active_filter_count:
+          (filterDecision !== "" ? 1 : 0) +
+          (filterEventType !== "" ? 1 : 0) +
+          (filterPolicy !== "" ? 1 : 0) +
+          (filterSessionId !== "" ? 1 : 0) +
+          (filterCli !== "" ? 1 : 0),
+        has_decision: filterDecision !== "",
+        has_event_type: filterEventType !== "",
+        has_policy: filterPolicy !== "",
+        has_session: filterSessionId !== "",
+        has_cli: filterCli !== "",
+        decision: filterDecision || null,
+        event_type: filterEventType || null,
+        cli: filterCli || null,
+      });
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -455,7 +482,17 @@ function ActivityTab({
   const totalPages = data?.totalPages ?? 1;
 
   const toggleRow = (idx: number) => {
-    setExpandedRow((prev) => (prev === idx ? null : idx));
+    setExpandedRow((prev) => {
+      const next = prev === idx ? null : idx;
+      const item = items[idx];
+      capture("activity_row_toggled", {
+        expanded: next !== null,
+        decision: item?.decision ?? null,
+        policy_name: item?.policyName ?? null,
+        event_type: item?.eventType ?? null,
+      });
+      return next;
+    });
   };
 
   return (
@@ -652,6 +689,11 @@ function ActivityTab({
           currentPage={page}
           totalPages={totalPages}
           onPageChange={(p) => {
+            capture("activity_pagination_changed", {
+              from_page: page,
+              to_page: p,
+              total_pages: totalPages,
+            });
             setPage(p);
             setExpandedRow(null);
           }}
@@ -886,6 +928,7 @@ function ErrorToast({
   onInstall: () => void;
   isPending: boolean;
 }) {
+  const { capture } = usePostHog();
   return createPortal(
     <div
       className="fixed top-4 right-4 z-[9999] w-full max-w-sm"
@@ -923,7 +966,11 @@ function ErrorToast({
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
-              onClick={() => { onDismiss(); onInstall(); }}
+              onClick={() => {
+                capture("hooks_install_from_error_clicked", { error_message: message.slice(0, 200) });
+                onDismiss();
+                onInstall();
+              }}
               disabled={isPending}
               className="h-7 flex-1 border-0 bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-400 disabled:opacity-50"
             >
@@ -953,6 +1000,15 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
   const [configuringPolicy, setConfiguringPolicy] = useState<PolicyInfo | null>(null);
   const [checkedClis, setCheckedClis] = useState<Set<IntegrationType>>(() => new Set());
   const cliCheckboxesInitializedRef = useRef(false);
+  const { capture } = usePostHog();
+
+  const fireActionError = useCallback(
+    (errorType: string, message: string) => {
+      capture("action_error_displayed", { error_type: errorType, error_message: message.slice(0, 200) });
+      setActionError(message);
+    },
+    [capture],
+  );
 
   const reload = useCallback(async () => {
     try {
@@ -1002,8 +1058,15 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
   const toggleCli = (id: IntegrationType) => {
     setCheckedClis((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const willCheck = !next.has(id);
+      if (willCheck) next.add(id);
+      else next.delete(id);
+      const cliInfo = config?.clis.find((c) => c.id === id);
+      capture("cli_selection_toggled", {
+        cli_id: id,
+        checked: willCheck,
+        current_state: cliInfo?.installed ? "installed" : cliInfo?.detected ? "detected" : "inactive",
+      });
       return next;
     });
   };
@@ -1033,7 +1096,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       try {
         await togglePolicyAction(name, !currentlyEnabled);
       } catch {
-        setActionError("Failed to save policy change.");
+        fireActionError("policy_toggle", "Failed to save policy change.");
         reload();
       }
     });
@@ -1042,13 +1105,19 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
   const handleApply = () => {
     const { toInstall, toRemove } = pendingChanges;
     if (toInstall.length === 0 && toRemove.length === 0) return;
+    capture("cli_install_remove_submitted", {
+      to_install: toInstall,
+      to_remove: toRemove,
+      count_install: toInstall.length,
+      count_remove: toRemove.length,
+    });
     startTransition(async () => {
       try {
         setActionError(null);
         if (toInstall.length > 0) await installHooksWebAction("user", toInstall);
         if (toRemove.length > 0) await removeHooksWebAction("user", toRemove);
       } catch (e) {
-        setActionError(e instanceof Error ? e.message : "Failed to apply changes.");
+        fireActionError("cli_apply", e instanceof Error ? e.message : "Failed to apply changes.");
       } finally {
         // Always resync so a partial-success batch (install OK, remove failed)
         // doesn't leave the UI showing stale install state on the next click.
@@ -1064,12 +1133,13 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     // Reinstall button. Use Apply for first-time installs.
     const targets = Array.from(installedCliSet).filter((id) => checkedClis.has(id));
     if (targets.length === 0) return;
+    capture("cli_reinstall_submitted", { cli_ids: targets, count: targets.length });
     startTransition(async () => {
       try {
         setActionError(null);
         await installHooksWebAction("user", targets);
       } catch (e) {
-        setActionError(e instanceof Error ? e.message : "Failed to reinstall.");
+        fireActionError("cli_reinstall", e instanceof Error ? e.message : "Failed to reinstall.");
       } finally {
         await reload();
       }
@@ -1086,7 +1156,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
         await updatePolicyParamsAction(policyName, params);
         await reload();
       } catch (e) {
-        setActionError(e instanceof Error ? e.message : "Failed to save configuration.");
+        fireActionError("param_update", e instanceof Error ? e.message : "Failed to save configuration.");
       }
     });
   };
@@ -1111,7 +1181,10 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     {configuringPolicy && (
       <PolicyConfigModal
         policy={configuringPolicy}
-        onClose={() => setConfiguringPolicy(null)}
+        onClose={() => {
+          capture("policy_config_modal_closed", { policy_name: configuringPolicy.name, action: "cancel" });
+          setConfiguringPolicy(null);
+        }}
         onSave={handleSaveParams}
       />
     )}
@@ -1379,7 +1452,19 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
                 {policy.params && Object.keys(policy.params).length > 0 && (
                   <button
                     className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
-                    onClick={() => setConfiguringPolicy(policy)}
+                    onClick={() => {
+                      const customizedCount = Object.entries(policy.params ?? {}).filter(([k, spec]) => {
+                        const currentVal = policy.currentParams?.[k] ?? spec.default;
+                        return JSON.stringify(currentVal) !== JSON.stringify(spec.default);
+                      }).length;
+                      capture("policy_config_modal_opened", {
+                        policy_name: policy.name,
+                        param_count: Object.keys(policy.params ?? {}).length,
+                        has_customized_params: customizedCount > 0,
+                        customized_count: customizedCount,
+                      });
+                      setConfiguringPolicy(policy);
+                    }}
                     title="Edit parameters"
                   >
                     <Settings className="h-3.5 w-3.5" />
@@ -1483,6 +1568,7 @@ function TabBar({
 
 export default function HooksClient({ initialTab = "activity" }: { initialTab?: "activity" | "policies" }) {
   const url = useUrlParams();
+  const { capture } = usePostHog();
   const [activeTab, setActiveTab] = useState<"activity" | "policies">(initialTab);
   const [hooksInstalled, setHooksInstalled] = useState<boolean | undefined>(undefined);
   const [policyCounts, setPolicyCounts] = useState<{ enabled: number; total: number } | null>(null);
@@ -1508,6 +1594,9 @@ export default function HooksClient({ initialTab = "activity" }: { initialTab?: 
       : `Policy evaluations across ${installedCliLabels.length} agents`;
 
   const handleTabChange = (tab: "activity" | "policies") => {
+    if (tab !== activeTab) {
+      capture("policies_tab_switched", { tab, from_tab: activeTab });
+    }
     setActiveTab(tab);
     url.setAll({ tab: tab === "activity" ? undefined : tab });
   };

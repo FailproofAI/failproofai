@@ -7,6 +7,8 @@ import type { PolicyContext, HooksConfig } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent, normalizePolicyName } from "./policy-registry";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
+import { trackHookEvent } from "./hook-telemetry";
+import { getInstanceId } from "../../lib/telemetry-id";
 
 function appendHint(baseReason: string, hint: unknown): string {
   const base = baseReason.trim();
@@ -107,7 +109,20 @@ export async function evaluatePolicies(
     try {
       result = await policy.fn(ctx);
     } catch (err) {
-      hookLogWarn(`policy "${policy.name}" threw: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      hookLogWarn(`policy "${policy.name}" threw: ${msg}`);
+      // Custom hooks are wrapped in handler.ts with their own try/catch that
+      // emits custom_hook_error. Anything reaching here is a builtin policy
+      // crash — track separately so we can surface regressions in builtins.
+      const isCustom = policy.name.startsWith("custom/") || policy.name.startsWith(".failproofai-");
+      if (!isCustom) {
+        void trackHookEvent(getInstanceId(), "policy_evaluation_error", {
+          policy_name: policy.name,
+          event_type: eventType,
+          cli: session?.cli ?? null,
+          error_type: err instanceof Error ? err.name : "unknown",
+        });
+      }
       continue;
     }
 

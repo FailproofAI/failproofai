@@ -127,6 +127,13 @@ export async function installHooks(
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
     if (!integration.scopes.includes(scope)) {
+      try {
+        await trackHookEvent(getInstanceId(), "scope_validation_failed", {
+          cli: cliId,
+          scope,
+          supported_scopes: integration.scopes,
+        });
+      } catch {}
       throw new CliError(
         `Scope "${scope}" is not supported by ${integration.displayName}. ` +
           `Valid scopes: ${integration.scopes.join(", ")}`
@@ -171,10 +178,23 @@ export async function installHooks(
     try {
       validatedHooks = await loadCustomHooks(configToWrite.customPoliciesPath, { strict: true });
     } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      try {
+        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+          scope,
+          error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
+        });
+      } catch {}
+      console.error(`Error: ${msg}`);
       process.exit(1);
     }
     if (validatedHooks.length === 0) {
+      try {
+        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+          scope,
+          error_type: "no_hooks_registered",
+        });
+      } catch {}
       console.error(
         `Error: no hooks registered in ${customPoliciesPath}. ` +
           `Make sure your file calls customPolicies.add(...) at least once.`,
@@ -198,10 +218,26 @@ export async function installHooks(
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
     const settingsPath = integration.getSettingsPath(scope, cwd);
-    const settings = integration.readSettings(settingsPath);
-    integration.writeHookEntries(settings, binaryPath, scope);
-    integration.writeSettings(settingsPath, settings);
-    writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+    try {
+      const settings = integration.readSettings(settingsPath);
+      integration.writeHookEntries(settings, binaryPath, scope);
+      integration.writeSettings(settingsPath, settings);
+      writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+    } catch (err) {
+      const errorType = err instanceof Error && /EACCES|EPERM/.test(err.message)
+        ? "permission_denied"
+        : err instanceof Error && /ENOENT|ENOTDIR/.test(err.message)
+          ? "path_not_found"
+          : "write_error";
+      try {
+        await trackHookEvent(getInstanceId(), "hook_write_failed", {
+          cli: cliId,
+          scope,
+          error_type: errorType,
+        });
+      } catch {}
+      throw err;
+    }
   }
 
   // Telemetry: track successful hook installation (with diff vs previous config)
@@ -228,6 +264,20 @@ export async function installHooks(
       param_policy_names: configToWrite.policyParams ? Object.keys(configToWrite.policyParams) : [],
       command_format: scope === "project" ? "npx" : "absolute",
     });
+
+    if (includeBeta) {
+      const betaNames = new Set(BUILTIN_POLICIES.filter((p) => p.beta).map((p) => p.name));
+      const installedBeta = selectedPolicies.filter((p) => betaNames.has(p));
+      if (installedBeta.length > 0) {
+        await trackHookEvent(distinctId, "beta_policies_installed", {
+          scope,
+          cli: selectedClis,
+          beta_count: installedBeta.length,
+          beta_policy_names: installedBeta,
+          ...(source ? { source } : {}),
+        });
+      }
+    }
   } catch {
     // Telemetry is best-effort — never block the operation
   }
@@ -257,6 +307,13 @@ export async function installHooks(
     console.log(`Having hooks in multiple scopes may cause duplicate policy evaluation.`);
     console.log(`Use \`failproofai policies --uninstall --scope ${duplicates[0]}\` to remove the other installation,`);
     console.log(`or \`failproofai policies\` to see all scopes.`);
+    try {
+      await trackHookEvent(getInstanceId(), "multi_scope_warning_shown", {
+        new_scope: scope,
+        existing_scopes: duplicates,
+        cli: selectedClis,
+      });
+    } catch {}
   }
 }
 
@@ -558,10 +615,20 @@ export async function listHooks(cwd?: string): Promise<void> {
 
   // Warn about unknown policyParams keys
   if (config.policyParams) {
+    const unknownKeys: string[] = [];
     for (const key of Object.keys(config.policyParams)) {
       if (!builtinPolicyNames.has(key)) {
         console.log(`  \x1B[33mWarning: unknown policyParams key "${key}" — possible typo\x1B[0m`);
+        unknownKeys.push(key);
       }
+    }
+    if (unknownKeys.length > 0) {
+      try {
+        await trackHookEvent(getInstanceId(), "policy_params_validation_warning", {
+          unknown_keys_count: unknownKeys.length,
+          unknown_keys: unknownKeys,
+        });
+      } catch {}
     }
   }
 

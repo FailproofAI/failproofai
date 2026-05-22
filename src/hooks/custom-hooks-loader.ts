@@ -18,6 +18,8 @@ import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
 import { getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
 import { findDistIndex, rewriteFileTree, TMP_SUFFIX, cleanupTmpFiles } from "./loader-utils";
 import { findProjectConfigDir } from "./hooks-config";
+import { trackHookEvent } from "./hook-telemetry";
+import { getInstanceId } from "../../lib/telemetry-id";
 import type { CustomHook } from "./policy-types";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
@@ -46,7 +48,10 @@ export function discoverPolicyFiles(dir: string): string[] {
  * Load a single policy file into the globalThis custom hooks registry.
  * Does NOT clear the registry — caller is responsible for that.
  */
-async function loadSingleFile(absPath: string, opts?: { strict?: boolean }): Promise<void> {
+async function loadSingleFile(
+  absPath: string,
+  opts?: { strict?: boolean; conventionScope?: "project" | "user" },
+): Promise<void> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
@@ -62,6 +67,17 @@ async function loadSingleFile(absPath: string, opts?: { strict?: boolean }): Pro
     await import(/* webpackIgnore: true */ fileUrl);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
+      ? "module_not_found"
+      : /SyntaxError|Unexpected token/i.test(msg)
+        ? "syntax_error"
+        : "runtime_error";
+    void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
+      error_type: errorType,
+      is_convention: !!opts?.conventionScope,
+      convention_scope: opts?.conventionScope ?? null,
+      file_basename: basename(absPath),
+    });
     if (opts?.strict) throw new Error(`Failed to load custom hooks from ${absPath}: ${msg}`);
     hookLogError(`failed to load custom hooks from ${absPath}: ${msg}`);
   } finally {
@@ -148,7 +164,7 @@ export async function loadAllCustomHooks(
   const projectFiles = discoverPolicyFiles(projectDir);
   for (const file of projectFiles) {
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file);
+    await loadSingleFile(file, { conventionScope: "project" });
     const newHooks = getCustomHooks().slice(hooksBefore);
     if (newHooks.length > 0) {
       conventionSources.push({
@@ -164,7 +180,7 @@ export async function loadAllCustomHooks(
   const userFiles = discoverPolicyFiles(userDir);
   for (const file of userFiles) {
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file);
+    await loadSingleFile(file, { conventionScope: "user" });
     const newHooks = getCustomHooks().slice(hooksBefore);
     if (newHooks.length > 0) {
       conventionSources.push({

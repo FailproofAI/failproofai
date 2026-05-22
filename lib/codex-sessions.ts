@@ -15,7 +15,16 @@
  * parser produces (`lib/log-entries.ts`) so the existing log viewer renders
  * Codex sessions without any UI-side branching.
  */
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  statSync,
+  renameSync,
+  unlinkSync,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -48,12 +57,15 @@ function readCache(): Record<string, string> {
 }
 
 function writeCacheEntry(sessionId: string, path: string): void {
+  const tmpPath = `${CACHE_PATH}.${process.pid}.tmp`;
   try {
     mkdirSync(dirname(CACHE_PATH), { recursive: true });
     const cache = readCache();
     cache[sessionId] = path;
-    writeFileSync(CACHE_PATH, JSON.stringify(cache), "utf-8");
+    writeFileSync(tmpPath, JSON.stringify(cache), "utf-8");
+    renameSync(tmpPath, CACHE_PATH);
   } catch {
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
     // Cache is best-effort
   }
 }

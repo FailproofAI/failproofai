@@ -1,8 +1,16 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir, homedir } from "node:os";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 
 const line = (obj: Record<string, unknown>): string => JSON.stringify(obj);
 
@@ -195,6 +203,7 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
   let originalHome: string | undefined;
   let fakeHome: string;
   let findCodexTranscript: typeof import("@/lib/codex-sessions").findCodexTranscript;
+  let getCacheFilePath: typeof import("@/lib/codex-sessions")._getCacheFilePath;
 
   beforeEach(async () => {
     originalHome = process.env.HOME;
@@ -206,7 +215,9 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, homedir: () => fakeHome };
     });
-    ({ findCodexTranscript } = await import("@/lib/codex-sessions"));
+    const mod = await import("@/lib/codex-sessions");
+    findCodexTranscript = mod.findCodexTranscript;
+    getCacheFilePath = mod._getCacheFilePath;
   });
 
   afterEach(() => {
@@ -234,6 +245,25 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
 
     const result = findCodexTranscript(sid);
     expect(result).toBe(file);
+  });
+
+  it("writes discovered transcript paths through the cache file", () => {
+    const sid = "019dd672-cache-7a30-8671-deadbeefcafe";
+    const today = new Date();
+    const y = String(today.getUTCFullYear());
+    const m = String(today.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(today.getUTCDate()).padStart(2, "0");
+    const dir = join(fakeHome, ".codex", "sessions", y, m, d);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `rollout-${sid}.jsonl`);
+    writeFileSync(file, "{}\n");
+
+    expect(findCodexTranscript(sid)).toBe(file);
+
+    const cachePath = getCacheFilePath();
+    expect(JSON.parse(readFileSync(cachePath, "utf-8"))).toEqual({ [sid]: file });
+    expect(existsSync(`${cachePath}.${process.pid}.tmp`)).toBe(false);
+    expect(readdirSync(dirname(cachePath)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
   it("locates a transcript via full tree scan when not in today/yesterday", () => {

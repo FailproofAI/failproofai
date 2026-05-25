@@ -1,0 +1,100 @@
+---
+title: Geçmiş oturumları denetle (beta)
+description: "Aracının geçmiş transkriptler arasında ne sıklıkla savurgan veya riskli işler yaptığını say"
+---
+
+<Note>
+  **Beta özelliği.** `failproofai audit` erken geri bildirim toplarken beta olarak yayınlanmaktadır. CLI bayrakları, çıktı biçimi ve yalnızca denetim dedektörü katalogu sonraki kararlı sürümden önce değişebilir. Yakında canlı yayına alınacak — bir sorun varsa lütfen sorun açın.
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+Bu makinedeki geçmiş aracı CLI transkriptlerini tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) ve aracının failproofai'nin durdurmak üzere inşa edildiği şeyleri ne sıklıkla yaptığını raporlar — ortam değişkeni kontrolleri, zorla itişler, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenmiş dosyaları yeniden okuma ve daha fazlası.
+
+Her transkript için, her araç-kullanım olayı 39 yerleşik politika **ve** çalışma zamanı politikaları tarafından henüz kapsanmayan desenleri yakalayan 8 yalnızca denetim dedektörü aracılığıyla yeniden oynatılır. Sayımlar, tüm oturumlar arasında politika / dedektör başına toplanır.
+
+## Seçenekler
+
+| Bayrak | Açıklama |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | Bir veya daha fazla CLI ile sınırla (boşlukla ayrılmış veya tekrarlanmış). Varsayılan: tüm 7. |
+| `--project <path>` | Oturumları `cwd` bu yolla eşleşenlerle sınırla. Tekrarlanabilir. |
+| `--since 7d\|30d\|2026-04-01` | Yalnızca transkript mtime pencere içinde olan oturumlar. |
+| `--policy <name>` | Bir politika veya dedektör adıyla sınırla. Tekrarlanabilir. |
+| `--limit N` | Tablodaki ilk N satır (varsayılan 20). |
+| `--show-examples` | Tablodaki her satır için bir örnek komut ekle. |
+| `--report <path>` | Markdown rapor yolu (varsayılan `./failproofai-audit.md`). |
+| `--no-report` | Markdown rapor yazma işlemini atla. |
+| `--json` | Tabloyu günlüğe geçirmek yerine JSON'u stdout'a yazdır. `--report` da geçilmedikçe `--no-report` ima eder. |
+| `--no-cache` | `~/.failproofai/cache/audit/` adresindeki transkript başına sonuç önbelleğini atla. |
+
+## Yalnızca denetim dedektörleri
+
+Gerçek zamanda (henüz) uygulanmayan "aptalca davranış" desenleri algılar. Bunlar yalnızca `audit` sırasında çalışır ve asla canlı bir araç çağrısını engelleme.
+
+| Dedektör | Neler sayıldığı |
+|---|---|
+| `redundant-cd-cwd` | `cd <cwd> && …` ile başlayan Bash komutları, komutlar zaten `cwd` içinde çalışıyor olmasına rağmen. |
+| `prefer-edit-over-read-cat` | Tek bir kaynak dosyasında `cat`/`head`/`tail`/`less`/`more` — `Read` aracını kullan. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` yerinde düzenlemeler — `Edit` aracını kullan. |
+| `prefer-write-over-heredoc` | Dosya yazma için Heredoc / çok satırlı `echo > file` — `Write` aracını kullan. |
+| `sleep-polling-loop` | Uzun `sleep N` (≥ 30s) veya `while …; sleep …; done` yoklama döngüleri. |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, vb. — bunun yerine `cwd` kapsamını belirle. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, kancaları atlayarak. |
+| `reread-after-edit` | Aynı oturumda yeni `Edit`/`Write` yapılmış bir dosyanın `Read` işlemi. |
+
+## Çıktı
+
+Varsayılan çıktı, stdout'a bir ANSI tablo artı `./failproofai-audit.md` adresinde bölümlere ayrılmış bir markdown rapordur. Her ikisi de vuruşları kategoriye göre gruplandırır (Sanitize / Wasteful / Risky / …) vuruş sayıları, proje sayıları ve satır başına üç örnek komuta kadar.
+
+`--json` makine tarafından okunabilir çıktı yayar:
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## Örnekler
+
+```bash
+# Bu makinedeki her CLI'de her şeyi tara
+failproofai audit
+
+# Yalnızca son 30 gün, yalnızca Claude
+failproofai audit --cli claude --since 30d
+
+# En yüksek isabet için örnekleri göster
+failproofai audit --show-examples --limit 10
+
+# Bir politikaya dalallan
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# Makine tarafından okunabilir çıktı
+failproofai audit --json > audit.json
+```
+
+## Notlar
+
+- **Önbellek.** Transkript başına sonuçlar `~/.failproofai/cache/audit/<sha1>.json` adresinde `(mtime, size, engineVersion, detectorVersion)` anahtarıyla önbelleğe alınır. Önbellek, politika veya dedektör kodu değiştiğinde otomatik olarak geçersiz kılınır.
+- **Değişiklik yok.** Denetim salt okunur modda yeniden oynatılır. `warn-repeated-tool-calls` atlanır çünkü oturum başına yan sıra değiştirilir.
+- **İş akışı politikaları atlanmış.** `require-*-before-stop` politikaları yalnızca `Stop` olaylarında ve canlı git durumuna karşı `execSync` üzerinde ateşlenir — "2025 yılında ne olurdu" yorumu anlamını taşımaz, bu nedenle denetim sayımlarında görünmezler.
+- **Özel politikalar atlanmış.** Kullanıcı tarafından sağlanan özel kancalar yeniden oynatılmaz (orijinal oturumdan beri değişmiş olabilirler).

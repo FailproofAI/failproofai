@@ -1,0 +1,100 @@
+---
+title: पिछली सेशन्स का ऑडिट करें (beta)
+description: "पिछली ट्रांसक्रिप्ट्स के आर-पार एजेंट ने कितनी बार बेकार या जोखिम भरे काम किए, इसकी गिनती करें"
+---
+
+<Note>
+  **Beta फीचर।** `failproofai audit` beta के रूप में शिप हो रहा है जबकि हम शुरुआती फीडबैक एकत्र कर रहे हैं। CLI फ्लैग्स, आउटपुट फॉर्मेट, और audit-only डिटेक्टर कैटलॉग अगले स्थिर संस्करण से पहले बदल सकते हैं। शीघ्र ही लाइव होने वाला है — अगर कुछ गलत लगे तो कृपया एक issue खोलें।
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+इस मशीन पर पिछली एजेंट CLI ट्रांसक्रिप्ट्स को स्कैन करता है (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) और रिपोर्ट करता है कि एजेंट ने failproofai को रोकने के लिए बनाई गई चीजें कितनी बार कीं — env-var चेक्स, force pushes, अनावश्यक `cd <cwd>` प्रीफिक्स, sleep-polling लूप्स, अभी संपादित की गई फाइलों को फिर से पढ़ना, और अधिक।
+
+प्रत्येक ट्रांसक्रिप्ट के लिए, हर tool-use ईवेंट को 39 builtin policies **और** 8 audit-only डिटेक्टर्स के माध्यम से रीप्ले किया जाता है जो ऐसे पैटर्न्स को पकड़ते हैं जो अभी तक runtime policies द्वारा कवर नहीं किए गए हैं। गिनती सभी सेशन्स में प्रति policy / डिटेक्टर एकत्रित की जाती है।
+
+## विकल्प
+
+| फ्लैग | विवरण |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | एक या अधिक CLIs तक सीमित करें (स्पेस-सेपरेटेड या दोहराए जाएं)। डिफ़ॉल्ट: सभी 7। |
+| `--project <path>` | सेशन्स तक सीमित करें जिनका `cwd` इस पथ से मेल खाता हो। दोहराने योग्य। |
+| `--since 7d\|30d\|2026-04-01` | केवल सेशन्स जिनकी ट्रांसक्रिप्ट mtime विंडो के अंदर है। |
+| `--policy <name>` | एक policy या डिटेक्टर नाम तक सीमित करें। दोहराने योग्य। |
+| `--limit N` | टेबल में top-N पंक्तियां (डिफ़ॉल्ट 20)। |
+| `--show-examples` | टेबल में प्रति पंक्ति एक उदाहरण कमांड शामिल करें। |
+| `--report <path>` | Markdown रिपोर्ट पथ (डिफ़ॉल्ट `./failproofai-audit.md`)। |
+| `--no-report` | Markdown रिपोर्ट लिखना छोड़ दें। |
+| `--json` | टेबल के बजाय stdout पर JSON प्रिंट करें। `--report` भी पास नहीं किया जाता तो `--no-report` का अर्थ है। |
+| `--no-cache` | `~/.failproofai/cache/audit/` पर per-transcript result कैश को बाईपास करें। |
+
+## Audit-only डिटेक्टर्स
+
+ये "stupid behavior" पैटर्न्स को detect करते हैं जो (अभी तक) real time में लागू नहीं किए जाते। वे केवल `audit` के दौरान चलते हैं और कभी भी live tool call को block नहीं करते।
+
+| डिटेक्टर | यह क्या गिनती करता है |
+|---|---|
+| `redundant-cd-cwd` | Bash कमांड्स जो `cd <cwd> && …` से शुरू होती हैं भले ही कमांड्स पहले से ही `cwd` में चल रहे हों। |
+| `prefer-edit-over-read-cat` | एक single स्रोत फाइल पर `cat`/`head`/`tail`/`less`/`more` — `Read` tool का उपयोग करें। |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` in-place edits — `Edit` tool का उपयोग करें। |
+| `prefer-write-over-heredoc` | Heredoc / multi-line `echo > file` फाइलें लिखना — `Write` tool का उपयोग करें। |
+| `sleep-polling-loop` | लंबे `sleep N` (≥ 30s) या `while …; sleep …; done` polling लूप्स। |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, आदि — `cwd` पर scope करें। |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, hooks को छोड़ना। |
+| `reread-after-edit` | एक फाइल का `Read` जो अभी-अभी उसी सेशन में `Edit`/`Write` की गई थी। |
+
+## आउटपुट
+
+डिफ़ॉल्ट आउटपुट stdout के लिए एक ANSI टेबल है और `./failproofai-audit.md` पर एक sectioned markdown रिपोर्ट है। दोनों हिट्स को category के अनुसार group करते हैं (Sanitize / Wasteful / Risky / …) hit counts, project counts, और प्रति पंक्ति तीन तक उदाहरण कमांड्स के साथ।
+
+`--json` machine-readable आउटपुट emit करता है:
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## उदाहरण
+
+```bash
+# इस मशीन पर हर CLI में सब कुछ स्कैन करें
+failproofai audit
+
+# केवल पिछले 30 दिन, Claude केवल
+failproofai audit --cli claude --since 30d
+
+# top hits के लिए उदाहरण दिखाएं
+failproofai audit --show-examples --limit 10
+
+# एक policy में drill करें
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# Machine-readable आउटपुट
+failproofai audit --json > audit.json
+```
+
+## नोट्स
+
+- **कैश।** Per-transcript परिणाम `~/.failproofai/cache/audit/<sha1>.json` पर `(mtime, size, engineVersion, detectorVersion)` द्वारा key किए हुए कैश किए जाते हैं। जब policy या डिटेक्टर कोड बदलते हैं तो कैश स्वचालित रूप से invalidate हो जाता है।
+- **कोई mutation नहीं।** ऑडिट read-only mode में रीप्ले करता है। `warn-repeated-tool-calls` को छोड़ दिया जाता है क्योंकि इसके per-session sidecar को अन्यथा संशोधित किया जाएगा।
+- **Workflow policies छोड़ दिए गए।** `require-*-before-stop` policies केवल `Stop` ईवेंट्स और live git state के विरुद्ध `execSync` पर fire होती हैं — उनके पास कोई सार्थक "2025 में क्या हुआ होता" का interpretation नहीं है, इसलिए वे audit counts में दिखाई नहीं देते।
+- **कस्टम policies छोड़ दिए गए।** User-supplied कस्टम hooks को रीप्ले नहीं किया जाता (वे original session के बाद से बदल सकते हैं)।

@@ -1,0 +1,100 @@
+---
+title: 過去セッションの監査（ベータ版）
+description: "過去のトランスクリプト全体で、エージェントが無駄または危険な操作を行った頻度をカウントする"
+---
+
+<Note>
+  **ベータ機能。** `failproofai audit` は早期フィードバックを収集しながらベータ版として提供されています。CLIフラグ、出力形式、および監査専用のディテクターカタログは次の安定版リリースまでに変更される可能性があります。まもなく公開予定 — 問題があれば、お気軽にissueを開いてください。
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+このマシン上にある過去のエージェントCLIトランスクリプト（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Gemini）をスキャンし、failproofaiが防ぐために設計された操作（環境変数チェック、フォースプッシュ、冗長な `cd <cwd>` プレフィックス、スリープポーリングループ、編集直後のファイル再読み込みなど）がどの程度発生したかを報告します。
+
+各トランスクリプトについて、すべてのツール使用イベントが39個の組み込みポリシー**と**、ランタイムポリシーではまだカバーされていないパターンを検出する8個の監査専用ディテクターを通じて再実行されます。カウントはすべてのセッションにわたってポリシー／ディテクターごとに集計されます。
+
+## オプション
+
+| フラグ | 説明 |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | 1つ以上のCLIに限定します（スペース区切りまたは繰り返し指定）。デフォルト: 全7種。 |
+| `--project <path>` | `cwd` がこのパスに一致するセッションに限定します。繰り返し指定可能。 |
+| `--since 7d\|30d\|2026-04-01` | トランスクリプトのmtimeが指定ウィンドウ内のセッションのみ対象。 |
+| `--policy <name>` | 特定のポリシーまたはディテクター名に限定します。繰り返し指定可能。 |
+| `--limit N` | テーブルの上位N行（デフォルト20）。 |
+| `--show-examples` | テーブルの各行にコマンド例を1つ含めます。 |
+| `--report <path>` | Markdownレポートのパス（デフォルト `./failproofai-audit.md`）。 |
+| `--no-report` | Markdownレポートの書き込みをスキップします。 |
+| `--json` | テーブルの代わりにJSONをstdoutに出力します。`--report` も指定しない限り `--no-report` を暗黙的に有効にします。 |
+| `--no-cache` | `~/.failproofai/cache/audit/` のトランスクリプトごとの結果キャッシュをバイパスします。 |
+
+## 監査専用ディテクター
+
+これらは、リアルタイムでは（まだ）適用されていない「非効率な動作」パターンを検出します。`audit` 実行時のみ動作し、ライブのツール呼び出しをブロックすることはありません。
+
+| ディテクター | カウント対象 |
+|---|---|
+| `redundant-cd-cwd` | コマンドがすでに `cwd` で実行されているにもかかわらず、`cd <cwd> && …` で始まるBashコマンド。 |
+| `prefer-edit-over-read-cat` | 単一のソースファイルへの `cat`/`head`/`tail`/`less`/`more` — `Read` ツールを使用してください。 |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` によるインプレース編集 — `Edit` ツールを使用してください。 |
+| `prefer-write-over-heredoc` | ヒアドキュメント / 複数行の `echo > file` によるファイル書き込み — `Write` ツールを使用してください。 |
+| `sleep-polling-loop` | 長い `sleep N`（≥ 30秒）または `while …; sleep …; done` ポーリングループ。 |
+| `find-from-root` | `find /`、`find /home`、`find /usr` など — `cwd` にスコープを限定してください。 |
+| `git-commit-no-verify` | フックをスキップする `git commit … --no-verify` / `-n`。 |
+| `reread-after-edit` | 同一セッション内で `Edit`/`Write` した直後のファイルの `Read`。 |
+
+## 出力
+
+デフォルト出力は、stdoutへのANSIテーブルと `./failproofai-audit.md` へのセクション分けされたMarkdownレポートです。どちらもヒットをカテゴリ（Sanitize / Wasteful / Risky / …）ごとにグループ化し、ヒット数、プロジェクト数、および各行に最大3つのコマンド例を含みます。
+
+`--json` はマシンリーダブルな出力を生成します：
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## 使用例
+
+```bash
+# このマシン上のすべてのCLIに対してスキャンを実行
+failproofai audit
+
+# 過去30日間、Claude のみ
+failproofai audit --cli claude --since 30d
+
+# 上位ヒットのコマンド例を表示
+failproofai audit --show-examples --limit 10
+
+# 特定のポリシーを詳しく調べる
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# マシンリーダブルな出力
+failproofai audit --json > audit.json
+```
+
+## 注意事項
+
+- **キャッシュ。** トランスクリプトごとの結果は `~/.failproofai/cache/audit/<sha1>.json` にキャッシュされ、`(mtime, size, engineVersion, detectorVersion)` をキーとして使用します。ポリシーまたはディテクターのコードが変更されると、キャッシュは自動的に無効化されます。
+- **変更なし。** 監査は読み取り専用モードで再実行されます。`warn-repeated-tool-calls` はスキップされます。これは、そのセッションごとのサイドカーが変更されてしまうためです。
+- **ワークフローポリシーのスキップ。** `require-*-before-stop` ポリシーは `Stop` イベント時のみ発火し、ライブのgit状態に対して `execSync` を実行します。これらは「2025年に何が起きていたか」という意味のある解釈ができないため、監査カウントには表示されません。
+- **カスタムポリシーのスキップ。** ユーザー指定のカスタムフックは再実行されません（元のセッション以降に変更されている可能性があるため）。

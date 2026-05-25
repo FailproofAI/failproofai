@@ -1,0 +1,100 @@
+---
+title: 이전 세션 감사 (베타)
+description: "지난 트랜스크립트에서 에이전트가 낭비적이거나 위험한 행동을 얼마나 자주 했는지 집계"
+---
+
+<Note>
+  **베타 기능.** `failproofai audit`은 초기 피드백을 수집하는 동안 베타로 제공됩니다. 다음 안정 버전 출시 전에 CLI 플래그, 출력 형식, 감사 전용 감지기 목록이 변경될 수 있습니다. 곧 정식 출시 예정입니다 — 이상한 점이 있으면 이슈를 등록해 주세요.
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+이 머신에 있는 에이전트 CLI 트랜스크립트(Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini)를 스캔하여, 에이전트가 failproofai가 차단하도록 설계된 행동을 얼마나 자주 했는지 보고합니다 — 환경 변수 확인, 강제 푸시, 불필요한 `cd <cwd>` 접두사, sleep 폴링 루프, 방금 편집한 파일 재읽기 등이 포함됩니다.
+
+각 트랜스크립트에 대해 모든 도구 사용 이벤트가 39개의 내장 정책 **및** 런타임 정책으로 아직 커버되지 않은 패턴을 감지하는 8개의 감사 전용 감지기를 통해 재실행됩니다. 집계된 카운트는 모든 세션에 걸쳐 정책/감지기별로 표시됩니다.
+
+## 옵션
+
+| 플래그 | 설명 |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | 하나 이상의 CLI로 제한 (공백 구분 또는 반복). 기본값: 전체 7개. |
+| `--project <path>` | `cwd`가 이 경로와 일치하는 세션으로 제한. 반복 사용 가능. |
+| `--since 7d\|30d\|2026-04-01` | 트랜스크립트 mtime이 지정한 기간 내에 있는 세션만 포함. |
+| `--policy <name>` | 특정 정책 또는 감지기 이름으로 제한. 반복 사용 가능. |
+| `--limit N` | 테이블에 표시할 상위 N개 행 (기본값 20). |
+| `--show-examples` | 테이블의 각 행에 예시 명령어 하나씩 포함. |
+| `--report <path>` | 마크다운 보고서 경로 (기본값 `./failproofai-audit.md`). |
+| `--no-report` | 마크다운 보고서 작성 생략. |
+| `--json` | 테이블 대신 JSON을 stdout으로 출력. `--report`도 함께 지정하지 않으면 `--no-report`를 암묵적으로 적용. |
+| `--no-cache` | `~/.failproofai/cache/audit/`의 트랜스크립트별 결과 캐시를 우회. |
+
+## 감사 전용 감지기
+
+실시간으로 강제되지 않는(아직) "비효율적인 행동" 패턴을 감지합니다. `audit` 실행 중에만 동작하며 실시간 도구 호출을 절대 차단하지 않습니다.
+
+| 감지기 | 집계 대상 |
+|---|---|
+| `redundant-cd-cwd` | 명령이 이미 `cwd`에서 실행되고 있음에도 `cd <cwd> && …`로 시작하는 Bash 명령. |
+| `prefer-edit-over-read-cat` | 단일 소스 파일에 대한 `cat`/`head`/`tail`/`less`/`more` 사용 — `Read` 도구를 사용해야 함. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` 인플레이스 편집 — `Edit` 도구를 사용해야 함. |
+| `prefer-write-over-heredoc` | Heredoc / 여러 줄 `echo > file`로 파일 작성 — `Write` 도구를 사용해야 함. |
+| `sleep-polling-loop` | 긴 `sleep N` (≥ 30초) 또는 `while …; sleep …; done` 폴링 루프. |
+| `find-from-root` | `find /`, `find /home`, `find /usr` 등 — `cwd`로 범위를 좁혀야 함. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`으로 훅을 건너뜀. |
+| `reread-after-edit` | 같은 세션에서 `Edit`/`Write`한 직후 해당 파일을 `Read`하는 경우. |
+
+## 출력
+
+기본 출력은 stdout에 ANSI 테이블을 표시하고 `./failproofai-audit.md`에 섹션별 마크다운 보고서를 생성합니다. 두 출력 모두 카테고리별(Sanitize / Wasteful / Risky / …)로 히트 수, 프로젝트 수, 행당 최대 3개의 예시 명령어를 표시합니다.
+
+`--json`을 사용하면 기계가 읽을 수 있는 형식으로 출력됩니다:
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## 예시
+
+```bash
+# 이 머신의 모든 CLI에서 전체 스캔
+failproofai audit
+
+# 최근 30일, Claude만
+failproofai audit --cli claude --since 30d
+
+# 상위 히트에 대한 예시 표시
+failproofai audit --show-examples --limit 10
+
+# 특정 정책 상세 분석
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# 기계 읽기 가능한 출력
+failproofai audit --json > audit.json
+```
+
+## 참고 사항
+
+- **캐시.** 트랜스크립트별 결과는 `(mtime, size, engineVersion, detectorVersion)`을 키로 하여 `~/.failproofai/cache/audit/<sha1>.json`에 캐시됩니다. 정책 또는 감지기 코드가 변경되면 캐시가 자동으로 무효화됩니다.
+- **변경 없음.** 감사는 읽기 전용 모드로 재실행됩니다. `warn-repeated-tool-calls`는 세션별 사이드카가 수정될 수 있으므로 건너뜁니다.
+- **워크플로우 정책 제외.** `require-*-before-stop` 정책은 `Stop` 이벤트와 현재 git 상태에 대한 `execSync`에서만 동작합니다 — 이 정책들은 "2025년에 무슨 일이 있었을까"라는 해석이 의미가 없으므로 감사 집계에 나타나지 않습니다.
+- **커스텀 정책 제외.** 사용자가 제공한 커스텀 훅은 재실행되지 않습니다 (원래 세션 이후 변경되었을 수 있음).

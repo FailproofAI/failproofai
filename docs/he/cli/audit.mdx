@@ -1,0 +1,100 @@
+---
+title: 审计过去的会话 (beta)
+description: "统计代理在过去的文字记录中浪费或风险操作的频率"
+---
+
+<Note>
+  **Beta 功能。** `failproofai audit` 作为 beta 版本推出，我们正在收集早期反馈。CLI 标志、输出格式和仅限审计的检测器目录可能在下一个稳定版本发布前更改。即将上线 — 如果有任何问题，请开启 issue。
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+扫描此机器上过去的代理 CLI 文字记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Gemini），并报告代理执行 failproofai 旨在阻止的操作的频率 — 环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、睡眠轮询循环、重新读取刚编辑的文件等。
+
+对于每个文字记录，每个工具使用事件都会通过 39 个内置策略 **以及** 8 个仅限审计的检测器进行重放，这些检测器捕获运行时策略尚未覆盖的模式。计数会在所有会话中按策略/检测器进行聚合。
+
+## 选项
+
+| 标志 | 描述 |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | 限制为一个或多个 CLI（空格分隔或重复）。默认：全部 7 个。 |
+| `--project <path>` | 限制为 `cwd` 匹配此路径的会话。可重复。 |
+| `--since 7d\|30d\|2026-04-01` | 仅限于文字记录 mtime 在此时间窗口内的会话。 |
+| `--policy <name>` | 限制为一个策略或检测器名称。可重复。 |
+| `--limit N` | 表格中的前 N 行（默认 20）。 |
+| `--show-examples` | 在表格的每一行中包含一个示例命令。 |
+| `--report <path>` | Markdown 报告路径（默认 `./failproofai-audit.md`）。 |
+| `--no-report` | 跳过写入 markdown 报告。 |
+| `--json` | 将 JSON 输出到 stdout 而不是表格。除非也传递了 `--report`，否则隐含 `--no-report`。 |
+| `--no-cache` | 绕过 `~/.failproofai/cache/audit/` 处的每个文字记录结果缓存。 |
+
+## 仅限审计的检测器
+
+这些检测"愚蠢行为"模式，这些模式（尚）未在实时强制执行。它们仅在 `audit` 期间运行，永远不会阻止实时工具调用。
+
+| 检测器 | 它计数的内容 |
+|---|---|
+| `redundant-cd-cwd` | 以 `cd <cwd> && …` 开头的 Bash 命令，即使命令已在 `cwd` 中运行。 |
+| `prefer-edit-over-read-cat` | 在单个源文件上执行 `cat`/`head`/`tail`/`less`/`more` — 使用 `Read` 工具。 |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` 就地编辑 — 使用 `Edit` 工具。 |
+| `prefer-write-over-heredoc` | Heredoc / 多行 `echo > file` 写入文件 — 使用 `Write` 工具。 |
+| `sleep-polling-loop` | 长 `sleep N`（≥ 30s）或 `while …; sleep …; done` 轮询循环。 |
+| `find-from-root` | `find /`、`find /home`、`find /usr` 等 — 改为作用于 `cwd`。 |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`，跳过钩子。 |
+| `reread-after-edit` | `Read` 同一会话中刚被 `Edit`/`Write` 的文件。 |
+
+## 输出
+
+默认输出是到 stdout 的 ANSI 表格加上 `./failproofai-audit.md` 处的分段 markdown 报告。两者都按类别（Sanitize / Wasteful / Risky / …）分组，包含命中计数、项目计数和每行最多三个示例命令。
+
+`--json` 输出机器可读的输出：
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## 示例
+
+```bash
+# 扫描此机器上所有 CLI 中的所有内容
+failproofai audit
+
+# 仅最近 30 天，仅 Claude
+failproofai audit --cli claude --since 30d
+
+# 显示前几个命中的示例
+failproofai audit --show-examples --limit 10
+
+# 深入查看一个策略
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# 机器可读的输出
+failproofai audit --json > audit.json
+```
+
+## 注意事项
+
+- **缓存。** 每个文字记录的结果缓存在 `~/.failproofai/cache/audit/<sha1>.json` 处，由 `(mtime, size, engineVersion, detectorVersion)` 键化。当策略或检测器代码更改时，缓存会自动失效。
+- **无变更。** 审计在只读模式下重放。`warn-repeated-tool-calls` 被跳过，因为其按会话的辅助文件会被修改。
+- **工作流策略被跳过。** `require-*-before-stop` 策略仅在 `Stop` 事件上和针对实时 git 状态的 `execSync` 上触发 — 它们没有有意义的"2025 年会发生什么"解释，所以它们不会出现在审计计数中。
+- **自定义策略被跳过。** 用户提供的自定义钩子不会被重放（它们可能自原始会话以来已更改）。

@@ -1,0 +1,100 @@
+---
+title: Vergangene Sitzungen prüfen (Beta)
+description: "Zählt, wie oft der Agent in vergangenen Transkripten verschwenderische oder riskante Aktionen durchgeführt hat"
+---
+
+<Note>
+  **Beta-Funktion.** `failproofai audit` wird als Beta-Version veröffentlicht, während wir erstes Feedback sammeln. CLI-Flags, Ausgabeformat und der Katalog der Audit-spezifischen Detektoren können sich vor dem nächsten stabilen Release ändern. Wird in Kürze live geschaltet – bitte öffne ein Issue, wenn etwas nicht stimmt.
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+Durchsucht vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) und zeigt, wie oft der Agent Dinge getan hat, die failproofai verhindern soll – Umgebungsvariablen-Abfragen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Lesen gerade bearbeiteter Dateien und mehr.
+
+Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 39 integrierten Richtlinien **und** durch 8 Audit-spezifische Detektoren wiederholt, die Muster erkennen, die noch nicht durch Laufzeit-Richtlinien abgedeckt sind. Treffer werden pro Richtlinie / Detektor über alle Sitzungen hinweg aggregiert.
+
+## Optionen
+
+| Flag | Beschreibung |
+|------|-------------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | Auf eine oder mehrere CLIs beschränken (durch Leerzeichen getrennt oder wiederholt). Standard: alle 7. |
+| `--project <path>` | Auf Sitzungen beschränken, deren `cwd` diesem Pfad entspricht. Wiederholbar. |
+| `--since 7d\|30d\|2026-04-01` | Nur Sitzungen, deren Transkript-mtime innerhalb des Zeitfensters liegt. |
+| `--policy <name>` | Auf einen Richtlinien- oder Detektornamen beschränken. Wiederholbar. |
+| `--limit N` | Anzahl der Zeilen in der Tabelle (Standard: 20). |
+| `--show-examples` | Ein Beispielbefehl pro Zeile in der Tabelle einbeziehen. |
+| `--report <path>` | Pfad für den Markdown-Bericht (Standard: `./failproofai-audit.md`). |
+| `--no-report` | Schreiben des Markdown-Berichts überspringen. |
+| `--json` | JSON auf stdout ausgeben statt der Tabelle. Impliziert `--no-report`, sofern nicht auch `--report` angegeben. |
+| `--no-cache` | Den transkript-bezogenen Ergebnis-Cache unter `~/.failproofai/cache/audit/` umgehen. |
+
+## Audit-spezifische Detektoren
+
+Diese erkennen Muster für „unnötiges Verhalten", die (noch) nicht in Echtzeit durchgesetzt werden. Sie laufen nur während `audit` und blockieren niemals einen Live-Tool-Aufruf.
+
+| Detektor | Was gezählt wird |
+|---|---|
+| `redundant-cd-cwd` | Bash-Befehle, die mit `cd <cwd> && …` beginnen, obwohl Befehle bereits in `cwd` ausgeführt werden. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` auf eine einzelne Quelldatei – nutze stattdessen das `Read`-Tool. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` In-Place-Bearbeitungen – nutze stattdessen das `Edit`-Tool. |
+| `prefer-write-over-heredoc` | Heredoc- / mehrzeilige `echo > file`-Schreibvorgänge – nutze stattdessen das `Write`-Tool. |
+| `sleep-polling-loop` | Lange `sleep N` (≥ 30s) oder `while …; sleep …; done`-Polling-Schleifen. |
+| `find-from-root` | `find /`, `find /home`, `find /usr` usw. – auf `cwd` eingrenzen. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, wodurch Hooks übersprungen werden. |
+| `reread-after-edit` | `Read` einer Datei, die in derselben Sitzung gerade per `Edit`/`Write` bearbeitet wurde. |
+
+## Ausgabe
+
+Die Standardausgabe ist eine ANSI-Tabelle auf stdout sowie ein gegliederter Markdown-Bericht unter `./failproofai-audit.md`. Beide gruppieren Treffer nach Kategorie (Sanitize / Wasteful / Risky / …) mit Trefferanzahl, Projektanzahl und bis zu drei Beispielbefehlen pro Zeile.
+
+`--json` erzeugt maschinenlesbare Ausgabe:
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## Beispiele
+
+```bash
+# Alles über alle CLIs auf diesem Rechner scannen
+failproofai audit
+
+# Nur die letzten 30 Tage, nur Claude
+failproofai audit --cli claude --since 30d
+
+# Beispiele für die häufigsten Treffer anzeigen
+failproofai audit --show-examples --limit 10
+
+# Eine einzelne Richtlinie genauer untersuchen
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# Maschinenlesbare Ausgabe
+failproofai audit --json > audit.json
+```
+
+## Hinweise
+
+- **Cache.** Transkript-bezogene Ergebnisse werden unter `~/.failproofai/cache/audit/<sha1>.json` zwischengespeichert, mit dem Schlüssel `(mtime, size, engineVersion, detectorVersion)`. Der Cache wird automatisch invalidiert, wenn sich der Richtlinien- oder Detektorcode ändert.
+- **Keine Änderungen.** Das Audit läuft im Nur-Lese-Modus. `warn-repeated-tool-calls` wird übersprungen, da sein sitzungsbezogener Sidecar sonst verändert würde.
+- **Workflow-Richtlinien werden übersprungen.** `require-*-before-stop`-Richtlinien werden nur bei `Stop`-Ereignissen ausgelöst und führen `execSync` gegen den Live-Git-Zustand aus – sie haben keine sinnvolle Interpretation im Sinne von „was wäre 2025 passiert?" und erscheinen daher nicht in den Audit-Zählungen.
+- **Benutzerdefinierte Richtlinien werden übersprungen.** Vom Nutzer bereitgestellte benutzerdefinierte Hooks werden nicht wiederholt (sie können sich seit der ursprünglichen Sitzung geändert haben).

@@ -1,0 +1,100 @@
+---
+title: تدقيق الجلسات السابقة (نسخة تجريبية)
+description: "عد عدد مرات قيام الوكيل بأشياء مهدرة أو محفوفة بالمخاطر عبر النصوص السابقة"
+---
+
+<Note>
+  **ميزة تجريبية.** `failproofai audit` تُطلق كنسخة تجريبية بينما نجمع التعليقات المبكرة. قد تتغير أعلام سطر الأوامر وتنسيق الإخراج وكتالوج كاشفات التدقيق فقط قبل الإصدار المستقر التالي. قادم قريباً جداً — يرجى فتح مشكلة إذا بدا شيء ما خاطئاً.
+</Note>
+
+```bash
+failproofai audit [options]
+```
+
+يفحص نصوص CLI للوكيل السابقة على هذا الجهاز (Claude Code و Codex و Copilot و Cursor و OpenCode و Pi و Gemini) ويُبلّغ عن عدد مرات قيام الوكيل بأشياء مصممة failproofai لإيقافها — فحوصات متغيرات البيئة والدفع القسري وبادئات `cd <cwd>` الزائدة وحلقات sleep-polling وإعادة قراءة الملفات المعدّلة للتو والمزيد.
+
+بالنسبة لكل نص، يتم إعادة تشغيل كل حدث استخدام أداة من خلال سياسات 39 مدمجة **و** من خلال 8 كاشفات تدقيق فقط تلتقط الأنماط التي لم تغطها السياسات في وقت التشغيل بعد. يتم تجميع الأعداد لكل سياسة / كاشف عبر جميع الجلسات.
+
+## الخيارات
+
+| العلم | الوصف |
+|------|--------|
+| `--cli claude\|codex\|copilot\|cursor\|opencode\|pi\|gemini` | تقصر على CLI واحد أو أكثر (مفصول بمسافات أو مكرر). الافتراضي: الـ 7 جميعاً. |
+| `--project <path>` | تقصر على الجلسات التي يطابق فيها `cwd` هذا المسار. قابل للتكرار. |
+| `--since 7d\|30d\|2026-04-01` | فقط الجلسات التي تقع فيها mtime النص ضمن النافذة. |
+| `--policy <name>` | تقصر على اسم سياسة أو كاشف واحد. قابل للتكرار. |
+| `--limit N` | أعلى N صف في الجدول (الافتراضي 20). |
+| `--show-examples` | تضمين أمر مثال واحد لكل صف في الجدول. |
+| `--report <path>` | مسار تقرير Markdown (الافتراضي `./failproofai-audit.md`). |
+| `--no-report` | تخطي كتابة تقرير Markdown. |
+| `--json` | طباعة JSON إلى stdout بدلاً من الجدول. تعني `--no-report` ما لم يتم تمرير `--report` أيضاً. |
+| `--no-cache` | تجاوز ذاكرة التخزين المؤقت لكل نص في `~/.failproofai/cache/audit/`. |
+
+## كاشفات التدقيق فقط
+
+تكتشف أنماط السلوك "الغبي" التي لم تُطبّق (حتى الآن) في الوقت الفعلي. تعمل فقط أثناء `audit` ولا تحظر أبداً استدعاء أداة حي.
+
+| الكاشف | ما يعده |
+|---|---|
+| `redundant-cd-cwd` | أوامر Bash التي تبدأ بـ `cd <cwd> && …` رغم أن الأوامر تعمل بالفعل في `cwd`. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` على ملف مصدر واحد — استخدم أداة `Read`. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` تعديلات موضعية — استخدم أداة `Edit`. |
+| `prefer-write-over-heredoc` | Heredoc / متعدد الأسطر `echo > file` كتابة الملفات — استخدم أداة `Write`. |
+| `sleep-polling-loop` | `sleep N` طويل (≥ 30s) أو `while …; sleep …; done` حلقات polling. |
+| `find-from-root` | `find /` و `find /home` و `find /usr` وما إلى ذلك — حصر النطاق إلى `cwd` بدلاً من ذلك. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n` تخطي الخطافات. |
+| `reread-after-edit` | `Read` لملف تم `Edit`/`Write` للتو في نفس الجلسة. |
+
+## الإخراج
+
+الإخراج الافتراضي عبارة عن جدول ANSI إلى stdout بالإضافة إلى تقرير markdown منقسم في `./failproofai-audit.md`. كلاهما يجمّع الضربات حسب الفئة (Sanitize / Wasteful / Risky / ...) مع أعداد الضربات وأعداد المشاريع وحتى ثلاث أوامر مثال لكل صف.
+
+يطبع `--json` الإخراج الذي يمكن قراءته بواسطة الآلة:
+
+```json
+{
+  "version": 1,
+  "scannedAt": "2026-05-21T...",
+  "scope": { "cli": [...], "projects": "all", "since": null },
+  "transcripts": { "scanned": 4187, "skipped": 0, "errors": 0, "durationMs": 12345 },
+  "results": [
+    {
+      "name": "failproofai/protect-env-vars",
+      "source": "builtin",
+      "category": "Environment",
+      "hits": 428,
+      "projects": 142,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "examples": [{ "sessionId": "...", "cwd": "...", "timestamp": "...", "example": "env" }]
+    }
+  ],
+  "totals": { "hits": 1398, "projectsWithHits": 392 }
+}
+```
+
+## أمثلة
+
+```bash
+# فحص كل شيء عبر كل CLI على هذا الجهاز
+failproofai audit
+
+# آخر 30 يوماً فقط، Claude فقط
+failproofai audit --cli claude --since 30d
+
+# عرض الأمثلة للضربات الأعلى
+failproofai audit --show-examples --limit 10
+
+# التعمق في سياسة واحدة
+failproofai audit --policy protect-env-vars --policy block-force-push
+
+# إخراج قابل للقراءة الآلية
+failproofai audit --json > audit.json
+```
+
+## ملاحظات
+
+- **ذاكرة التخزين المؤقت.** يتم تخزين نتائج كل نص مؤقتاً في `~/.failproofai/cache/audit/<sha1>.json` يفتاح على `(mtime, size, engineVersion, detectorVersion)`. ذاكرة التخزين المؤقت تبطل تلقائياً عند تغيير كود السياسة أو الكاشف.
+- **بدون تحوير.** يعاد تشغيل التدقيق في وضع القراءة فقط. يتم تخطي `warn-repeated-tool-calls` لأن ملفه الجانبي لكل جلسة سيتم تعديله بخلاف ذلك.
+- **تخطي سياسات سير العمل.** سياسات `require-*-before-stop` تطلق فقط على أحداث `Stop` و `execSync` ضد حالة git الحية — ليس لديها تفسير معنى "ماذا كان سيحدث في 2025" لذا لا تظهر في أعداد التدقيق.
+- **تخطي السياسات المخصصة.** خطافات مخصصة يوفرها المستخدم لا تُعاد تشغيلها (قد تكون تغيرت منذ الجلسة الأصلية).

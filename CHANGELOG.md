@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.11-beta.3 — 2026-05-25
+
+### Features
+- Stamp `product: "failproofai-oss"` on every PostHog event across all four telemetry channels — hooks/audit (`trackHookEvent`), server (`trackEvent`), web UI (`captureClientEvent`), and npm-lifecycle install/uninstall (`trackInstallEvent`) — so OSS events stay distinguishable from any future hosted surface. The value lives in a single `POSTHOG_PRODUCT` constant in `src/posthog-key.ts`, reused by the three TypeScript channels; the standalone `scripts/install-telemetry.mjs` inlines the same literal because it can't import the TS module at install time. Honors `FAILPROOFAI_TELEMETRY_DISABLED=1` like all other telemetry (#380).
+
 ## 0.0.11-beta.2 — 2026-05-21
 
 ### Features

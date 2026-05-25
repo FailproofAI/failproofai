@@ -10,7 +10,7 @@
 
 import { getInstanceId } from "./telemetry-id";
 import { version } from "../package.json";
-import { POSTHOG_API_KEY } from "../src/posthog-key";
+import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../src/posthog-key";
 
 const DEFAULT_API_KEY = POSTHOG_API_KEY;
 const DEFAULT_HOST = "https://us.i.posthog.com";
@@ -129,7 +129,7 @@ export function trackEvent(
   client.capture({
     distinctId: getInstanceId(),
     event: name,
-    properties: { ...properties, $lib: "failproofai", failproofai_version: version },
+    properties: { ...properties, $lib: "failproofai", failproofai_version: version, product: POSTHOG_PRODUCT },
   });
 }
 

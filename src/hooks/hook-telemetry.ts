@@ -6,7 +6,7 @@
  */
 
 import { version } from "../../package.json";
-import { POSTHOG_API_KEY } from "../posthog-key";
+import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../posthog-key";
 
 const API_KEY = POSTHOG_API_KEY;
 const CAPTURE_URL = "https://us.i.posthog.com/capture/";
@@ -22,7 +22,7 @@ export async function trackHookEvent(
     api_key: process.env.FAILPROOFAI_POSTHOG_KEY ?? API_KEY,
     event,
     distinct_id: distinctId,
-    properties: { ...properties, $lib: "failproofai-hooks", failproofai_version: version },
+    properties: { ...properties, $lib: "failproofai-hooks", failproofai_version: version, product: POSTHOG_PRODUCT },
   });
 
   try {

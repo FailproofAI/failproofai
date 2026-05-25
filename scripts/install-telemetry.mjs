@@ -13,6 +13,9 @@ import { join } from "node:path";
 const NAMESPACE = "failproofai-telemetry-v1";
 const API_KEY = "phc_Ac1Ww1GqKc0z1SyrRWbmatEeQdlOQIsDEEdP8l8JRgX";
 const CAPTURE_URL = "https://us.i.posthog.com/capture/";
+// Mirrors POSTHOG_PRODUCT in src/posthog-key.ts — this standalone npm-lifecycle
+// script can't import the TS module at install time, so the literal is inlined.
+const PRODUCT = "failproofai-oss";
 
 function hashToId(raw) {
   return createHmac("sha256", NAMESPACE).update(raw).digest("hex");
@@ -91,6 +94,7 @@ export async function trackInstallEvent(event, properties = {}) {
       ...properties,
       $lib: "failproofai-install",
       failproofai_version: version,
+      product: PRODUCT,
     },
   });
 

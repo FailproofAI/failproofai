@@ -1,4 +1,5 @@
 import type { TelemetryConfig } from "@/app/actions/get-telemetry-config";
+import { POSTHOG_PRODUCT } from "@/src/posthog-key";
 
 let config: TelemetryConfig | null = null;
 
@@ -21,6 +22,7 @@ export function captureClientEvent(
       ...properties,
       $lib: "failproofai-web",
       failproofai_version: config.version,
+      product: POSTHOG_PRODUCT,
       $current_url: window.location.href,
       $pathname: window.location.pathname,
     },

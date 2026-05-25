@@ -50,6 +50,7 @@ describe("client-telemetry", () => {
     expect(body.distinct_id).toBe("test-id");
     expect(body.properties.$lib).toBe("failproofai-web");
     expect(body.properties.failproofai_version).toBe("1.0.0-test");
+    expect(body.properties.product).toBe("failproofai-oss");
     expect(body.properties.extra).toBe("prop");
   });
 

@@ -121,7 +121,7 @@ describe("lib/telemetry", () => {
       expect(mockCapture).toHaveBeenCalledWith({
         distinctId: "test-instance-id",
         event: "feature_used",
-        properties: expect.objectContaining({ feature: "dashboard", $lib: "failproofai", failproofai_version: expect.any(String) }),
+        properties: expect.objectContaining({ feature: "dashboard", $lib: "failproofai", failproofai_version: expect.any(String), product: "failproofai-oss" }),
       });
     });
 
@@ -132,7 +132,7 @@ describe("lib/telemetry", () => {
       expect(mockCapture).toHaveBeenCalledWith({
         distinctId: "test-instance-id",
         event: "app_started",
-        properties: { $lib: "failproofai", failproofai_version: expect.any(String) },
+        properties: { $lib: "failproofai", failproofai_version: expect.any(String), product: "failproofai-oss" },
       });
     });
   });

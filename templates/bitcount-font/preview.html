@@ -35,6 +35,8 @@
       border-bottom: 1px solid #2a2926; z-index: 10;
     }
     .readout b { color: #e4e2dd; }
+    /* neutralize UA heading margins/bold so the size classes + .bitcount-title drive everything */
+    .stack h1, .stack h2, .stack h3, .stack h4 { margin: 0; font-weight: inherit; }
     .stack { display: grid; gap: clamp(1.5rem, 4vw, 3.5rem); margin-top: 3rem; }
     .hero  { font-size: clamp(44px, 16vw, 200px); line-height: .9; }
     .h1    { font-size: clamp(30px, 8vw, 96px); }
@@ -51,19 +53,19 @@
   </div>
 
   <div class="stack">
-    <div><div class="label">hero / wordmark</div><div class="hero bitcount-title">failproof</div></div>
-    <div><div class="label">h1</div><div class="h1 bitcount-title">runtime failure resolution</div></div>
-    <div><div class="label">h2 (accent)</div><div class="h2 bitcount-title">catches loops &amp; dangerous actions</div></div>
-    <div><div class="label">h3 (accent)</div><div class="h3 bitcount-title">zero latency · runs locally</div></div>
+    <section><div class="label">hero / wordmark</div><h1 class="hero bitcount-title">failproof</h1></section>
+    <section><div class="label">h1</div><h2 class="h1 bitcount-title">runtime failure resolution</h2></section>
+    <section><div class="label">h2 (accent)</div><h3 class="h2 bitcount-title">catches loops &amp; dangerous actions</h3></section>
+    <section><div class="label">h3 (accent)</div><h4 class="h3 bitcount-title">zero latency · runs locally</h4></section>
 
-    <div>
+    <section>
       <div class="label">mixed line lengths (wrap / squish check)</div>
       <div class="row">
-        <span class="h2 bitcount-title">404</span>
-        <span class="h2 bitcount-title">incident contained</span>
-        <span class="h2 bitcount-title">guardrails</span>
+        <h3 class="h2 bitcount-title">404</h3>
+        <h3 class="h2 bitcount-title">incident contained</h3>
+        <h3 class="h2 bitcount-title">guardrails</h3>
       </div>
-    </div>
+    </section>
 
     <div>
       <div class="label">body text for contrast (not the template)</div>

@@ -12,7 +12,7 @@
                    the @font-face below (most reliable; ELSH stays variable).
    (C) Google CDN-> replace @font-face with:
        @import url('https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single:ELSH,wght@0..100,100..900&display=swap');
-       NOTE: confirm the ELSH range for your build; adjust if Google 400s.
+       NOTE: this URL is verified working (ELSH 0..100, wght 100..900). Adjust ranges if you need others.
    ===================================================================== */
 
 /* (B) Self-host — comment out if using (A) next/font or (C) the CDN @import. */

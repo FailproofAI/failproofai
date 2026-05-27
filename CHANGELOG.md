@@ -7,6 +7,7 @@
 
 ### Docs
 - Update the README logo (EN + 14 translated READMEs) from `logo-wordmark.png` to the new `fa_updated_full.svg` wordmark served on befailproof.ai (#387).
+- Add a Bitcount Prop Single font template under `templates/bitcount-font/` (next/font loader, framework-agnostic CSS with tunable knobs, and a `preview.html` demo page) capturing the befailproof.ai title treatment for reuse (#390).
 
 ## 0.0.11-beta.2 — 2026-05-21
 

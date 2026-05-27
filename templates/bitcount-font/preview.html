@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bitcount Prop Single — template preview</title>
+
+  <!-- Real font bytes (validated): variable Bitcount Prop Single incl. the ELSH axis.
+       The self-host @font-face in bitcount.css 404s here (no local woff2) — harmless,
+       this CDN copy satisfies the "Bitcount Prop Single" family used by .bitcount-title. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single:ELSH,wght@0..100,100..900&display=swap" />
+
+  <!-- THE ARTIFACT under test -->
+  <link rel="stylesheet" href="bitcount.css" />
+
+  <style>
+    /* demo chrome only — not part of the template */
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0f0f0e;
+      color: #e4e2dd;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      padding: 4vh 6vw 12vh;
+    }
+    .readout {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; gap: 1.5rem; justify-content: center;
+      padding: 6px; font: 12px/1 ui-monospace, monospace;
+      background: #1c1b19; color: #9b988f; letter-spacing: .04em;
+      border-bottom: 1px solid #2a2926; z-index: 10;
+    }
+    .readout b { color: #e4e2dd; }
+    /* neutralize UA heading margins/bold so the size classes + .bitcount-title drive everything */
+    .stack h1, .stack h2, .stack h3, .stack h4 { margin: 0; font-weight: inherit; }
+    .stack { display: grid; gap: clamp(1.5rem, 4vw, 3.5rem); margin-top: 3rem; }
+    .hero  { font-size: clamp(44px, 16vw, 200px); line-height: .9; }
+    .h1    { font-size: clamp(30px, 8vw, 96px); }
+    .h2    { font-size: clamp(22px, 5vw, 56px); color: #c9b6f7; }
+    .h3    { font-size: clamp(16px, 3.5vw, 34px); color: #8fd6c4; }
+    .label { font: 11px/1 ui-monospace, monospace; color: #6f6c64; letter-spacing:.18em; text-transform:uppercase; margin-bottom:.4rem; }
+    .row   { display: flex; flex-wrap: wrap; gap: 2rem 3rem; align-items: baseline; }
+    p.body { max-width: 46ch; color: #b7b4ab; line-height: 1.6; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="readout">
+    viewport <b id="vw">–</b> · dpr <b id="dpr">–</b> · headings <b>Bitcount Prop Single</b>
+  </div>
+
+  <div class="stack">
+    <section><div class="label">hero / wordmark</div><h1 class="hero bitcount-title">failproof</h1></section>
+    <section><div class="label">h1</div><h2 class="h1 bitcount-title">runtime failure resolution</h2></section>
+    <section><div class="label">h2 (accent)</div><h3 class="h2 bitcount-title">catches loops &amp; dangerous actions</h3></section>
+    <section><div class="label">h3 (accent)</div><h4 class="h3 bitcount-title">zero latency · runs locally</h4></section>
+
+    <section>
+      <div class="label">mixed line lengths (wrap / squish check)</div>
+      <div class="row">
+        <h3 class="h2 bitcount-title">404</h3>
+        <h3 class="h2 bitcount-title">incident contained</h3>
+        <h3 class="h2 bitcount-title">guardrails</h3>
+      </div>
+    </section>
+
+    <div>
+      <div class="label">body text for contrast (not the template)</div>
+      <p class="body">Hooks into coding agents and catches loops, dangerous actions, and secret leaks before they become incidents. The headings above use <code>.bitcount-title</code> from the template.</p>
+    </div>
+  </div>
+
+  <script>
+    const set = () => {
+      document.getElementById('vw').textContent = innerWidth + '×' + innerHeight;
+      document.getElementById('dpr').textContent = (window.devicePixelRatio || 1).toFixed(2);
+    };
+    set(); addEventListener('resize', set);
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+// Bitcount Prop Single — Next.js loader (next/font/google).
+// Rename to `fonts.ts`. Exposes the `--font-bitcount` CSS variable that
+// bitcount.css consumes. `axes: ['ELSH']` opts into the Element Shape axis
+// (wght is variable by default); the specific instance (wght 417, ELSH 55)
+// is pinned in bitcount.css via font-variation-settings, not here.
+//
+// Shipped as `.ts.example` so this repo's tsc/eslint skip it. Rename on use.
+import { Bitcount_Prop_Single } from 'next/font/google';
+
+export const bitcount = Bitcount_Prop_Single({
+  subsets: ['latin'],
+  axes: ['ELSH'],
+  variable: '--font-bitcount',
+  display: 'swap',
+});
+
+// In your root layout:
+//   import { bitcount } from './fonts';
+//   export default function RootLayout({ children }: { children: React.ReactNode }) {
+//     return <html className={bitcount.variable}>{children}</html>;
+//   }
+//
+// Then anything with class="bitcount-title" picks up the tuned treatment.

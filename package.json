@@ -31,7 +31,7 @@
     "lint": "eslint . --config eslint.config.mjs",
     "postinstall": "node scripts/postinstall.mjs",
     "preuninstall": "node scripts/preuninstall.mjs",
-    "prepare": "bun run build",
+    "prepublishOnly": "bun run build",
     "test:e2e": "vitest run --config vitest.config.e2e.mts",
     "test:e2e:watch": "vitest --config vitest.config.e2e.mts",
     "translate": "bun scripts/translate-docs/cli.ts",

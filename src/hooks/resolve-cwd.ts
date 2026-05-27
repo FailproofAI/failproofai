@@ -19,18 +19,27 @@
  * Mirrors the dispatch pattern of `resolve-permission-mode.ts` and
  * `resolve-transcript-path.ts`.
  */
+import { isAbsolute, normalize } from "node:path";
 import type { IntegrationType } from "./types";
+
+/** Validate that a cwd value is a plausible absolute path.
+ *  Rejects relative paths, empty strings, and paths with null bytes. */
+function isValidCwd(value: string): boolean {
+  if (value.length === 0 || value.length > 4096) return false;
+  if (value.includes("\0")) return false;
+  return isAbsolute(normalize(value));
+}
 
 export function resolveCwd(
   integration: IntegrationType,
   parsed: Record<string, unknown>,
 ): string | undefined {
-  const direct = typeof parsed.cwd === "string" && parsed.cwd.length > 0 ? parsed.cwd : undefined;
+  const direct = typeof parsed.cwd === "string" && isValidCwd(parsed.cwd) ? parsed.cwd : undefined;
   if (direct) return direct;
 
   if (integration === "cursor") {
     const wr = parsed.workspace_roots;
-    if (Array.isArray(wr) && typeof wr[0] === "string" && wr[0].length > 0) {
+    if (Array.isArray(wr) && typeof wr[0] === "string" && isValidCwd(wr[0])) {
       return wr[0];
     }
   }

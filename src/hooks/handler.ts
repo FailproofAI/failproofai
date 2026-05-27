@@ -210,6 +210,11 @@ export async function handleHookEvent(
         return { decision: "allow" };
       }
     };
+    // Log when loading convention-discovered policies from project directory
+    // (vs user home directory) so users are aware of project-level code execution
+    if (isConvention && conventionScope === "project") {
+      hookLogWarn(`loading project convention policy "${hookName}" from .failproofai/policies/ — this code runs with full process privileges`);
+    }
     registerPolicy(
       `${prefix}/${hookName}`,
       hook.description ?? "",

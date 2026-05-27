@@ -19,7 +19,7 @@
  * missing `~/.pi/` returns `[]`, and a malformed JSONL falls open without
  * surfacing the session.
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, stat, open } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { encodeFolderName } from "./paths";
@@ -60,25 +60,32 @@ async function statMtime(path: string): Promise<Date | null> {
   }
 }
 
+const FIRST_LINE_CHUNK_BYTES = 4096;
+
 /** Reads the first newline-terminated record of a Pi JSONL file and returns
  *  its `cwd` field. Returns null on read/parse failure or when the first
- *  record isn't `{type: "session"}`. */
+ *  record isn't `{type: "session"}`. Uses bounded read to avoid loading
+ *  entire transcript files into memory. */
 async function readSessionCwd(filePath: string): Promise<string | null> {
-  let text: string;
+  let fh: Awaited<ReturnType<typeof open>> | null = null;
   try {
-    text = await readFile(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-  const firstLine = text.indexOf("\n") >= 0 ? text.slice(0, text.indexOf("\n")) : text;
-  if (!firstLine) return null;
-  try {
+    fh = await open(filePath, "r");
+    const buf = Buffer.alloc(FIRST_LINE_CHUNK_BYTES);
+    const { bytesRead } = await fh.read(buf, 0, FIRST_LINE_CHUNK_BYTES, 0);
+    if (bytesRead === 0) return null;
+    const slice = buf.subarray(0, bytesRead);
+    const nl = slice.indexOf(0x0a);
+    const end = nl === -1 ? bytesRead : nl;
+    const firstLine = slice.subarray(0, end).toString("utf-8");
+    if (!firstLine) return null;
     const parsed = JSON.parse(firstLine) as { type?: unknown; cwd?: unknown };
     if (parsed.type !== "session") return null;
     if (typeof parsed.cwd !== "string" || parsed.cwd.length === 0) return null;
     return parsed.cwd;
   } catch {
     return null;
+  } finally {
+    if (fh) await fh.close().catch(() => {});
   }
 }
 

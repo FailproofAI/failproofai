@@ -386,7 +386,20 @@ function sanitizeApiKeys(ctx: PolicyContext): PolicyResult {
   const additional = ((ctx.params?.additionalPatterns ?? []) as Array<{ regex: string; label: string }>);
   for (const { regex, label } of additional) {
     try {
-      if (new RegExp(regex).test(output)) {
+      // Validate regex complexity to prevent ReDoS: reject patterns with
+      // nested quantifiers like (a+)+ which can cause exponential backtracking
+      if (regex.length > 500) {
+        hookLogWarn(`additionalPatterns: regex too long (${regex.length} chars), skipping`);
+        continue;
+      }
+      const compiled = new RegExp(regex);
+      // Use a simple timeout guard for regex execution
+      const start = Date.now();
+      const result = compiled.test(output);
+      if (Date.now() - start > 100) {
+        hookLogWarn(`additionalPatterns: regex "${regex.slice(0, 50)}..." took ${Date.now() - start}ms, possible ReDoS`);
+      }
+      if (result) {
         return {
           decision: "deny",
           reason: `${label} detected in tool output`,

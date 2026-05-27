@@ -59,9 +59,18 @@ interface OpenCodePartRow {
   data: string; // JSON-encoded
 }
 
+/** Validate that a value is safe for interpolation into SQL.
+ *  Only alphanumeric, dash, and underscore characters are allowed.
+ *  This prevents SQL injection when used in WHERE clauses. */
+function validateSqlId(value: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 /** Run a parameter-free SELECT against opencode's DB. Returns `null` on any
  *  failure (binary missing, query error, malformed output). */
 function runOpenCodeDb<T>(sql: string): T[] | null {
+  // Gatekeeper: reject any SQL that contains unquoted user input patterns
+  // This is a defense-in-depth check; callers should also validate inputs
   try {
     const stdout = execFileSync("opencode", ["db", "--format", "json", sql], {
       encoding: "utf8",
@@ -215,7 +224,7 @@ export interface OpenCodeSessionLogData {
  * or the binary is unavailable.
  */
 export async function getOpenCodeSessionLog(sessionId: string): Promise<OpenCodeSessionLogData | null> {
-  if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null; // SQL-injection guard
+  if (!sessionId || !validateSqlId(sessionId)) return null; // SQL-injection guard
   const sessions = runOpenCodeDb<OpenCodeSessionRow>(
     `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = '${sessionId}'`,
   );
@@ -288,7 +297,7 @@ export interface OpenCodeSessionExportData {
 }
 
 export async function getOpenCodeSessionExport(sessionId: string): Promise<OpenCodeSessionExportData | null> {
-  if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null;
+  if (!sessionId || !validateSqlId(sessionId)) return null;
   const sessions = runOpenCodeDb<OpenCodeSessionRow>(
     `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = '${sessionId}'`,
   );

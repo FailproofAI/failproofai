@@ -11,7 +11,8 @@
 
 ## Checklist
 
-- [ ] `npm run lint` passes
-- [ ] `npx tsc --noEmit` passes
-- [ ] `npm run test:run` passes
-- [ ] `npm run build` succeeds
+- [ ] `bun run lint` passes
+- [ ] `bunx tsc --noEmit` passes
+- [ ] `bun run test:run` passes
+- [ ] `bun run build` succeeds
+- [ ] CHANGELOG.md entry added

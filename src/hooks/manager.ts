@@ -5,7 +5,7 @@
  * `Integration` impl per CLI). This module orchestrates: validation, policy
  * selection, telemetry, multi-scope warnings, and console output.
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { homedir, platform, arch, release, hostname } from "node:os";
@@ -48,8 +48,8 @@ function resolveFailproofaiBinary(): string {
   const override = process.env.FAILPROOFAI_BINARY_OVERRIDE;
   if (override && override.trim()) return override.trim();
   try {
-    const cmd = process.platform === "win32" ? "where failproofai" : "which failproofai";
-    const result = execSync(cmd, { encoding: "utf8" }).trim();
+    const cmd = process.platform === "win32" ? "where" : "which";
+    const result = execFileSync(cmd, ["failproofai"], { encoding: "utf8", stdio: "pipe", timeout: 5000 }).trim();
     // `where` on Windows may return multiple lines; take the first
     return result.split("\n")[0].trim();
   } catch {
@@ -185,8 +185,7 @@ export async function installHooks(
           error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
         });
       } catch {}
-      console.error(`Error: ${msg}`);
-      process.exit(1);
+      throw new CliError(msg);
     }
     if (validatedHooks.length === 0) {
       try {
@@ -195,11 +194,10 @@ export async function installHooks(
           error_type: "no_hooks_registered",
         });
       } catch {}
-      console.error(
-        `Error: no hooks registered in ${customPoliciesPath}. ` +
+      throw new CliError(
+        `no hooks registered in ${customPoliciesPath}. ` +
           `Make sure your file calls customPolicies.add(...) at least once.`,
       );
-      process.exit(1);
     }
     console.log(
       `\nValidated ${validatedHooks.length} custom hook(s): ${validatedHooks.map((h) => h.name).join(", ")}`,

@@ -6,7 +6,7 @@
  * path (`handler.ts`, `policy-evaluator.ts`, `BUILTIN_POLICIES`, `policy-helpers`)
  * is agent-agnostic — only install/uninstall plumbing varies.
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,8 +41,12 @@ import {
 
 function readJsonFile(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const raw = readFileSync(path, "utf8");
-  return JSON.parse(raw) as Record<string, unknown>;
+  try {
+    const raw = readFileSync(path, "utf8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function writeJsonFile(path: string, data: Record<string, unknown>): void {
@@ -61,8 +65,8 @@ function isMarkedHook(hook: unknown): boolean {
 
 function binaryExists(name: string): boolean {
   try {
-    const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
-    execSync(cmd, { encoding: "utf8", stdio: "pipe" });
+    const cmd = process.platform === "win32" ? "where" : "which";
+    execFileSync(cmd, [name], { encoding: "utf8", stdio: "pipe", timeout: 5000 });
     return true;
   } catch {
     return false;

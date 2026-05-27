@@ -123,9 +123,9 @@ export function writeHooksConfig(config: HooksConfig): void {
   const configPath = getConfigPath();
   const dir = dirname(configPath);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8", { mode: 0o600 });
 }
 
 /**
@@ -166,9 +166,9 @@ export function writeScopedHooksConfig(config: HooksConfig, scope: HookScope, cw
   const configPath = getConfigPathForScope(scope, cwd);
   const dir = dirname(configPath);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8", { mode: 0o600 });
 }
 
 export interface ResolvedLlmConfig {

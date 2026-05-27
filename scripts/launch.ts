@@ -27,7 +27,7 @@ export function launch(mode: "dev" | "start"): void {
     const portIdx = remainingArgs.indexOf("--port");
     const port = portIdx >= 0 ? remainingArgs[portIdx + 1] : "8020";
     process.env.PORT = port;
-    process.env.HOSTNAME = "0.0.0.0";
+    process.env.HOSTNAME = process.env.FAILPROOFAI_HOST ?? "127.0.0.1";
     cmd = "node";
     // Resolve the real package root via realpathSync so symlinked npm global binaries
     // don't cause import.meta.url to point at the symlink dir instead of the package dir.

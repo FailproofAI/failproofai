@@ -1,0 +1,77 @@
+name: Bump platform submodule pointer
+
+# When this repo's main moves, push a matching gitlink bump to the
+# FailproofAI/platform monorepo so its `failproofai/oss` submodule tracks
+# upstream automatically. Direct push to platform `main` — no PR.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialize runs so back-to-back merges produce sequential bumps,
+# not a race that loses one of them.
+concurrency:
+  group: bump-platform-submodule
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FailproofAI/platform main
+        uses: actions/checkout@v6
+        with:
+          repository: FailproofAI/platform
+          token: ${{ secrets.PLATFORM_BUMP_TOKEN }}
+          ref: main
+          fetch-depth: 1
+          # Don't fetch submodule contents — we only edit the gitlink.
+          submodules: false
+
+      - name: Bump failproofai/oss gitlink and push
+        env:
+          NEW_SHA: ${{ github.sha }}
+          COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
+          UPSTREAM_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          CURRENT_SHA=$(git ls-tree HEAD failproofai/oss | awk '{print $3}')
+          if [ -z "$CURRENT_SHA" ]; then
+            echo "::error::failproofai/oss is not a gitlink in platform main — aborting."
+            exit 1
+          fi
+          if [ "$CURRENT_SHA" = "$NEW_SHA" ]; then
+            echo "Already at $NEW_SHA — nothing to do."
+            exit 0
+          fi
+
+          # Rewrite the gitlink (mode 160000 = submodule entry) without
+          # needing the submodule contents on disk.
+          git update-index --add --cacheinfo "160000,$NEW_SHA,failproofai/oss"
+
+          SUBJECT_LINE=$(printf '%s\n' "${COMMIT_SUBJECT:-Manual trigger}" | head -n 1)
+          SHORT_SHA=${NEW_SHA:0:7}
+
+          git commit -m "Bump failproofai/oss to $SHORT_SHA" \
+                     -m "Upstream: $SUBJECT_LINE" \
+                     -m "https://github.com/$UPSTREAM_REPO/commit/$NEW_SHA"
+
+          # Race-safe push: if platform main moved between checkout and push,
+          # rebase the single bump commit on top and try again.
+          for attempt in 1 2 3; do
+            if git push origin main; then
+              echo "Pushed bump on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed on attempt $attempt — rebasing onto latest main"
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "::error::Failed to push submodule bump after 3 attempts"
+          exit 1

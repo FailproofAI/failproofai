@@ -8,6 +8,7 @@
 
 ### Docs
 - Update the README logo (EN + 14 translated READMEs) from `logo-wordmark.png` to the new `fa_updated_full.svg` wordmark served on befailproof.ai (#387).
+- Change the README supply-chain badge from the live OSV-Scanner workflow-status badge (`supply chain: passing`) to a static `supply chain: secure` badge, still linked to the workflow runs (#393).
 
 ## 0.0.11-beta.2 — 2026-05-21
 

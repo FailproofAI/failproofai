@@ -10,15 +10,16 @@
 
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
+[![Supply Chain](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/osv-scanner.yml?branch=main&style=flat-square&label=supply%20chain)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Slack](https://img.shields.io/badge/Slack-join%20us-4A154B?style=flat-square&logo=slack)](https://join.slack.com/t/failproofai/shared_invite/zt-3v63b7k5e-O3NBHmj8X6n9gZSGDx6ggQ)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
 
 **Traduzioni:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Risoluzione degli errori di runtime per agenti di codifica.**
-Si integra con Claude Code e Codex. Intercetta loop, azioni pericolose e perdite di segreti
-prima che diventino incidenti. Latenza zero. Funziona localmente.
+**Risoluzione degli errori a runtime per agenti di codifica.**
+Si integra con Claude Code e Codex. Rileva cicli infiniti, azioni pericolose e fughe di segreti
+prima che diventino incidenti. Latenza zero. Eseguito localmente.
 
 </div>
 
@@ -28,7 +29,7 @@ prima che diventino incidenti. Latenza zero. Funziona localmente.
 
 ---
 
-## CLI degli agenti supportati
+## CLI agenti supportati
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -79,19 +80,19 @@ prima che diventino incidenti. Latenza zero. Funziona localmente.
   </a>
 </p>
 
-> Installa i hook per uno o una combinazione qualsiasi: `failproofai policies --install --cli opencode pi gemini` (oppure `--cli claude codex copilot cursor opencode pi gemini`). Ometti `--cli` per rilevare automaticamente i CLI installati e ricevere una richiesta.
+> Installa i hook per uno o una combinazione qualsiasi: `failproofai policies --install --cli opencode pi gemini` (oppure `--cli claude codex copilot cursor opencode pi gemini`). Ometti `--cli` per rilevare automaticamente i CLI installati e ricevere un prompt.
 
 ---
 
-## Installazione
+## Installa
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oppure esegui semplicemente `failproofai` e accetta il prompt al primo avvio
+failproofai policies --install   # oppure esegui `failproofai` e accetta il prompt al primo avvio
 failproofai
 ```
 
-30 policy integrate si attivano immediatamente. Dashboard disponibile su `localhost:8020`. Disabilita il prompt al primo avvio con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 policy built-in si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt al primo avvio con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -99,20 +100,20 @@ failproofai
 
 | Policy | Cosa blocca |
 |---|---|
-| `block-push-master` | Push diretti su `main` / `master` |
+| `block-push-master` | Push diretti a `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commit, merge, rebase su `main` / `master` |
-| `block-rm-rf` | Cancellazione ricorsiva di file |
-| `sanitize-api-keys` | Perdite di chiavi API nel contesto dell'agente |
+| `block-rm-rf` | Eliminazione ricorsiva di file |
+| `sanitize-api-keys` | Chiavi API che si propagano nel contesto dell'agente |
 
-→ [Tutte le 30 policy integrate](https://docs.befailproof.ai/built-in-policies)
+→ [Tutte le 30 policy built-in](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## Le tue policy personali
+## Le tue policy
 
-Inserisci un file in `.failproofai/policies/` — si carica automaticamente, senza flag necessari.
-Esegui il commit e l'intero team lo riceve al prossimo pull.
+Aggiungi un file in `.failproofai/policies/` — si carica automaticamente, senza flag necessari.
+Esegui il commit e l'intero team le riceverà al prossimo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -122,7 +123,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Le scritture su percorsi production sono bloccate.");
     return allow();
   },
 });
@@ -134,7 +135,7 @@ Tre decisioni disponibili per ogni policy:
 |---|---|
 | `allow()` | Consenti l'operazione |
 | `deny(message)` | Bloccala — il messaggio torna all'agente |
-| `instruct(message)` | Lasciarla passare, ma aggiungi contesto al prossimo prompt dell'agente |
+| `instruct(message)` | Lasciala passare, ma aggiungi contesto al prossimo prompt dell'agente |
 
 → [Guida alle policy personalizzate](https://docs.befailproof.ai/custom-policies)
 
@@ -142,7 +143,7 @@ Tre decisioni disponibili per ogni policy:
 
 ## Visibilità della sessione
 
-Ogni tool call che il tuo agente effettua viene registrata localmente. Il dashboard mostra cosa è stato eseguito,
+Ogni tool call che il tuo agente esegue viene registrato localmente. Il dashboard mostra cosa è stato eseguito,
 cosa è stato bloccato e cosa la policy ha detto all'agente — così non stai indovinando
 quando qualcosa va storto. → [Guida al dashboard](https://docs.befailproof.ai/dashboard)
 
@@ -153,9 +154,9 @@ quando qualcosa va storto. → [Guida al dashboard](https://docs.befailproof.ai/
 | | |
 |---|---|
 | [Guida introduttiva](https://docs.befailproof.ai/getting-started) | Installazione e primi passi |
-| [Policy integrate](https://docs.befailproof.ai/built-in-policies) | Tutte le 30 policy con parametri |
+| [Policy built-in](https://docs.befailproof.ai/built-in-policies) | Tutte le 30 policy con parametri |
 | [Policy personalizzate](https://docs.befailproof.ai/custom-policies) | Scrivi le tue |
-| [Configurazione](https://docs.befailproof.ai/configuration) | Ambiti di configurazione e regole di fusione |
+| [Configurazione](https://docs.befailproof.ai/configuration) | Ambiti di configurazione e regole di merge |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor della sessione e attività delle policy |
 | [Architettura](https://docs.befailproof.ai/architecture) | Come funziona il sistema di hook |
 
@@ -163,7 +164,7 @@ quando qualcosa va storto. → [Guida al dashboard](https://docs.befailproof.ai/
 
 ## Licenza
 
-MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso interno e personale; la rivendita commerciale di failproofai stesso richiede un accordo separato. Consulta [LICENSE](./LICENSE) per il testo completo.
+MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso interno e personale; la rivendita commerciale di failproofai stesso richiede un accordo separato. Vedi [LICENSE](./LICENSE) per il testo completo.
 
 ---
 
@@ -173,5 +174,5 @@ Vedi [CONTRIBUTING.md](./CONTRIBUTING.md). Nuove policy, casi limite e traduzion
 
 ---
 
-Creato da [Nivedit Jain](https://github.com/NiveditJain) e [Nikita Agarwal](https://github.com/nk-ag).
+Realizzato da [Nivedit Jain](https://github.com/NiveditJain) e [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

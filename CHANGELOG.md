@@ -10,8 +10,12 @@
   `https://api.befailproof.ai`; override with `FAILPROOFAI_API_BASE_URL`. Login
   prompts interactively (or takes `--email`); logout best-effort revokes
   server-side then always clears local state; whoami auto-refreshes an expired
-  access token and surfaces "Session expired" when the refresh token itself is
-  expired (#396).
+  access token, surfaces "Session expired" when the refresh token itself is
+  expired or rejected (401/403), and preserves the session on transient
+  failures (network / 5xx / timeout) so users aren't silently logged out by
+  flakes. Network/timeout failures throughout the api client are wrapped into
+  `CliError` so they exit with a clean message rather than "Unexpected error"
+  (#396).
 
 ### Fixes
 - Stop three builtin policies from over-firing on benign source code and shell
@@ -19,8 +23,11 @@
   containing the substring `credentials` (it was denying source files like
   `src/auth/credentials.ts`); `SECRET_FILE_CREDENTIALS_RE` now anchors to
   well-known credential paths (`.aws/credentials`, `.docker/credentials.json`,
-  `.netrc`, …) and `SECRET_FILE_ID_RSA_RE` matches the SSH-key basename only
-  (so `<anywhere>/id_rsa` still blocks but `id_rsa_backup.md` does not).
+  `.netrc`, …) and `SECRET_FILE_ID_RSA_RE` matches the SSH private-key
+  basename only (so `<anywhere>/id_rsa` still blocks, but `id_rsa_backup.md`
+  and the corresponding `.pub` public keys do not). Both patterns accept POSIX
+  `/` and Windows `\` separators, so e.g. `C:\Users\me\.ssh\id_rsa` is still
+  caught on Windows.
   `sanitize-connection-strings` no longer flags grep/perl arguments that merely
   contain a scheme name (e.g. `'postgres://|mysql://'`): the regex now requires
   a URL-safe `<user>:<pass>@<host>` shape so regex metachars in the pre-`@`

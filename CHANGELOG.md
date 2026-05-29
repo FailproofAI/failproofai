@@ -3,39 +3,12 @@
 ## 0.0.11-beta.3 — 2026-05-28
 
 ### Features
-- Add `failproofai auth login | logout | whoami` for email-OTP login against the
-  failproofai api-server (the follow-up promised by #380's removal of the old
-  device-flow auth). New `src/auth/{session-store,api-client,prompts,manager}.ts`;
-  session persisted at `~/.failproofai/session.json` with mode 0600. Defaults to
-  `https://api.befailproof.ai`; override with `FAILPROOFAI_API_BASE_URL`. Login
-  prompts interactively (or takes `--email`); logout best-effort revokes
-  server-side then always clears local state; whoami auto-refreshes an expired
-  access token, surfaces "Session expired" when the refresh token itself is
-  expired or rejected (401/403), and preserves the session on transient
-  failures (network / 5xx / timeout) so users aren't silently logged out by
-  flakes. Network/timeout failures throughout the api client are wrapped into
-  `CliError` so they exit with a clean message rather than "Unexpected error"
-  (#396).
+- Add `failproofai auth login | logout | whoami` for email-OTP login against the failproofai api-server: new `src/auth/{session-store,api-client,prompts,manager}.ts`; session at `~/.failproofai/session.json` (mode 0600); default base URL `https://api.befailproof.ai` overridable via `FAILPROOFAI_API_BASE_URL`; login prompts interactively or takes `--email`; logout best-effort revokes server-side then always clears local state; whoami auto-refreshes an expired access token, clears the session only on 401/403 from refresh, preserves it on transient failures, and wraps fetch/timeout errors as `CliError` so they print `Error:` instead of `Unexpected error:` (the follow-up promised by #380's removal of the old device-flow auth) (#396).
 
 ### Fixes
-- Stop three builtin policies from over-firing on benign source code and shell
-  arguments. `block-secrets-write` no longer blocks `Write` of any path
-  containing the substring `credentials` (it was denying source files like
-  `src/auth/credentials.ts`); `SECRET_FILE_CREDENTIALS_RE` now anchors to
-  well-known credential paths (`.aws/credentials`, `.docker/credentials.json`,
-  `.netrc`, …) and `SECRET_FILE_ID_RSA_RE` matches the SSH private-key
-  basename only (so `<anywhere>/id_rsa` still blocks, but `id_rsa_backup.md`
-  and the corresponding `.pub` public keys do not). Both patterns accept POSIX
-  `/` and Windows `\` separators, so e.g. `C:\Users\me\.ssh\id_rsa` is still
-  caught on Windows.
-  `sanitize-connection-strings` no longer flags grep/perl arguments that merely
-  contain a scheme name (e.g. `'postgres://|mysql://'`): the regex now requires
-  a URL-safe `<user>:<pass>@<host>` shape so regex metachars in the pre-`@`
-  segment break the match. `warn-repeated-tool-calls` now canonicalizes the
-  fingerprint (sorts input keys recursively) so the same logical call always
-  hashes the same, and records a `warned` set in the sidecar so the warning
-  only fires once per fingerprint per session instead of repeating every turn
-  (#396).
+- `block-secrets-write` no longer denies `Write` of source files containing the substring `credentials` or `id_rsa`: `SECRET_FILE_CREDENTIALS_RE` now anchors to well-known credential paths (`.aws/credentials`, `.docker/credentials.json`, `.netrc`, …), `SECRET_FILE_ID_RSA_RE` matches the SSH private-key basename only (so `<anywhere>/id_rsa` blocks but `id_rsa_backup.md` and `id_rsa.pub` don't), and both patterns accept POSIX `/` and Windows `\` separators (#396).
+- `sanitize-connection-strings` no longer flags grep/perl arguments that merely contain a scheme name (e.g. `'postgres://|mysql://'`): the regex now requires a URL-safe `<user>:<pass>@<host>` shape so regex metachars in the pre-`@` segment break the match while real connection strings still get redacted (#396).
+- `warn-repeated-tool-calls` canonicalizes the fingerprint (sorts input keys recursively) so the same logical call always hashes the same regardless of property order, and records a `warned` set in the sidecar so the warning fires once per fingerprint per session instead of repeating every turn (back-compat with the old bare-counts sidecar format preserved) (#396).
 - Fix the `bump-platform-submodule.yml` workflow's first post-merge push, which failed with `fatal: could not read Username for 'https://github.com'`. The `persist-credentials: false` hardening from #394 left the cross-repo `git push`/`fetch` unauthenticated, and the inline `Authorization: bearer …` extraheader only authenticates GitHub's REST API — git-over-HTTPS smart-protocol expects Basic auth with `x-access-token:<pat>`. Switch to a base64-encoded Basic header (matching `actions/checkout`'s own internal extraheader format) so the push and the rebase-and-retry fetch in the loop both authenticate (#395).
 
 ### Features

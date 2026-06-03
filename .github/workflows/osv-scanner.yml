@@ -42,7 +42,7 @@ jobs:
           # No git ops after checkout; don't leave the token in .git/config.
           persist-credentials: false
       - name: Scan bun.lock for known-vulnerable / malicious dependencies
-        uses: google/osv-scanner-action/osv-scanner-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@fa4ff678dd5d0a4fa3d628e57af8162873e93cd6 # v2.3.8
         with:
           scan-args: |-
             --lockfile=bun.lock

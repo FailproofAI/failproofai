@@ -13,7 +13,6 @@ import { notFound } from "next/navigation";
 import { existsSync } from "fs";
 import { stat } from "fs/promises";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { formatDate } from "@/lib/format-date";
 import SessionsList from "@/app/components/sessions-list";
 
@@ -115,50 +114,101 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const displayPath = claudeExists && claudeProjectPath ? claudeProjectPath : canonicalRoot;
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto p-8">
-        <Link
-          href="/projects"
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Projects</span>
-        </Link>
-
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2 break-words break-all">
-            {canonicalRoot}
-          </h1>
-          <div className="space-y-1">
-            <p className="text-muted-foreground">
-              <span className="font-medium">Path:</span> {displayPath}
-            </p>
-            {lastModifiedFormatted && (
-              <p className="text-muted-foreground">
-                <span className="font-medium">Modified:</span> {lastModifiedFormatted}
-              </p>
-            )}
+    <main className="report">
+      <section className="section" data-screen-label="project">
+        <div className="section-mast">
+          <Link
+            href="/projects"
+            className="btn"
+            style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase" }}
+            aria-label="Back to projects"
+          >
+            <span style={{ color: "var(--accent-pink)", letterSpacing: "-2px" }}>━━</span>
+            back to projects
+          </Link>
+          <div className="section-meta">
+            <span className="g">●</span> {sessionFiles.length} session{sessionFiles.length === 1 ? "" : "s"}
           </div>
         </div>
 
-        {/* Sessions Section */}
-        <div className="bg-card text-card-foreground rounded-lg border border-border p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-4">Sessions</h2>
+        <h1
+          className="section-h"
+          style={{ textTransform: "none", marginBottom: 18, wordBreak: "break-word" }}
+        >
+          {canonicalRoot}
+        </h1>
 
-          {sessionFiles.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground mb-2">
-                No .jsonl files found in this project.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Session files will appear here once they are created.
-              </p>
-            </div>
-          ) : (
-            <Suspense><SessionsList files={sessionFiles} projectName={name} /></Suspense>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            gap: "8px 18px",
+            margin: "0 0 36px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "var(--ink-2)",
+          }}
+        >
+          <dt
+            style={{
+              color: "var(--accent-green)",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              fontSize: 10,
+              alignSelf: "center",
+            }}
+          >
+            path
+          </dt>
+          <dd style={{ margin: 0, wordBreak: "break-all" }}>{displayPath}</dd>
+          {lastModifiedFormatted && (
+            <>
+              <dt
+                style={{
+                  color: "var(--accent-green)",
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  fontSize: 10,
+                  alignSelf: "center",
+                }}
+              >
+                modified
+              </dt>
+              <dd style={{ margin: 0 }}>{lastModifiedFormatted}</dd>
+            </>
           )}
+        </dl>
+
+        <div className="section-mast" style={{ marginBottom: 18 }}>
+          <div className="section-label">
+            <span className="glyph">━━</span> sessions
+          </div>
         </div>
-      </div>
+
+        {sessionFiles.length === 0 ? (
+          <div
+            className="panel"
+            style={{ textAlign: "center", padding: "48px 32px" }}
+          >
+            <p style={{ color: "var(--ink-2)", marginBottom: 8 }}>
+              no .jsonl files found in this project.
+            </p>
+            <p
+              style={{
+                color: "var(--dim)",
+                fontSize: 12,
+                letterSpacing: "0.05em",
+              }}
+            >
+              session files will appear here once they are created.
+            </p>
+          </div>
+        ) : (
+          <div className="panel" style={{ padding: 0 }}>
+            <Suspense><SessionsList files={sessionFiles} projectName={name} /></Suspense>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

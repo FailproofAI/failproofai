@@ -100,7 +100,7 @@ html, body, #root {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
@@ -154,6 +154,35 @@ input[type="checkbox"] { accent-color: var(--accent-pink); }
 select { color-scheme: dark; }
 select option { background-color: var(--bg-2); color: var(--ink); }
 input[type="date"] { color-scheme: dark; }
+
+/* selection — pink wash ties prose snippets and code-like fragments to the
+   accent without redesigning anything; used app-wide. */
+::selection {
+  background: var(--accent-pink-bg);
+  color: var(--accent-light);
+}
+::-moz-selection {
+  background: var(--accent-pink-bg);
+  color: var(--accent-light);
+}
+
+/* focus-visible — keyboard users get a clear pink ring on every interactive
+   element. Pointer users see nothing different (`:focus-visible` only fires
+   on keyboard-driven focus). Bracketed outline + outline-offset matches the
+   pixel-craft chrome (no rounded glow). */
+:where(a, button, [role="button"], input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 1px solid var(--accent-pink);
+  outline-offset: 2px;
+}
+.btn:focus-visible,
+.tab:focus-visible {
+  outline: 1px solid var(--accent-pink);
+  outline-offset: 3px;
+}
+.btn-press:focus-visible {
+  outline: 1px solid var(--accent-pink);
+  outline-offset: 4px;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -248,18 +277,34 @@ input[type="date"] { color-scheme: dark; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 12px;
-  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;
+  font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em;
   border: 1px solid var(--line-2); background: transparent; color: var(--ink);
-  transition: all 120ms ease; white-space: nowrap;
+  /* limit transitioned props so width/height/font don't animate, and use the
+     same cubic-bezier curve as .audit-bar-fill for a coherent motion feel */
+  transition:
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
 }
 .btn:hover { border-color: var(--ink); background: rgba(255,255,255,0.03); }
+.btn:active { transform: translateY(1px); }
+.btn[aria-disabled="true"], .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn[aria-disabled="true"]:hover, .btn:disabled:hover { border-color: var(--line-2); background: transparent; }
 .btn-primary { border-color: var(--accent-pink); color: var(--accent-pink); }
 .btn-primary:hover { background: var(--accent-pink); color: var(--bg); }
 .btn-press {
   box-shadow: 4px 4px 0 0 var(--accent-pink-shadow);
-  transition: box-shadow 120ms, transform 120ms;
+  transition:
+    box-shadow 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .btn-press:hover { box-shadow: 2px 2px 0 0 var(--accent-pink-shadow); transform: translate(2px, 2px); }
+.btn-press:active { box-shadow: 0 0 0 0 var(--accent-pink-shadow); transform: translate(4px, 4px); }
 
 /* primary tab strip — used by both the audit page and the policies/projects nav rows */
 .tabs {
@@ -269,26 +314,49 @@ input[type="date"] { color-scheme: dark; }
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
+  position: relative;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 16px;
-  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;
+  font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em;
   color: var(--ink-2);
   border-bottom: 1px solid transparent; margin-bottom: -1px;
-  transition: color 120ms, border-color 120ms; white-space: nowrap;
+  transition:
+    color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
   background: transparent;
 }
 .tab:hover { color: var(--ink); }
+/* faint underline preview on hover — emerges from center on inactive tabs;
+   active state keeps the existing sharp full-width pink line. */
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 16px; right: 16px; bottom: -1px;
+  height: 1px;
+  background: var(--accent-pink);
+  transform: scaleX(0);
+  transform-origin: center;
+  opacity: 0.4;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tab:hover::after { transform: scaleX(1); }
 .tab.is-active { color: var(--accent-pink); border-bottom-color: var(--accent-pink); }
+.tab.is-active::after { display: none; }
 
 /* ───────────────────────── canonical page chrome ───────────────────────── */
 
+/* the canonical content shell. Scales to fill ultrawide monitors without
+   collapsing on mobile or letting prose lines get unreadable. The cap at
+   1840px keeps the line measure for tabular pages (policies activity,
+   sessions list) comfortably below "scan back to start of next row" length
+   on a 2560px display. Side gutter is clamped 20→56px so the chrome breathes
+   on big screens without crowding small ones. */
 .report {
-  max-width: 1380px;
+  width: 100%;
+  max-width: clamp(720px, 96vw, 1840px);
   margin: 0 auto;
-  padding: 0 40px;
-}
-@media (max-width: 720px) {
-  .report { padding: 0 20px; }
+  padding: 0 clamp(20px, 3vw, 56px);
 }
 
 .section {
@@ -304,14 +372,14 @@ input[type="date"] { color-scheme: dark; }
 }
 .section-label {
   font-family: var(--font-mono);
-  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+  font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--accent-green);
   display: inline-flex; align-items: baseline; gap: 10px;
 }
 .section-label .glyph { color: var(--accent-pink); letter-spacing: -2px; }
 .section-meta {
   font-family: var(--font-mono);
-  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--dim);
 }
 .section-meta .g { color: var(--accent-green); }
@@ -340,6 +408,167 @@ input[type="date"] { color-scheme: dark; }
   50%      { opacity: 1;    box-shadow: 0 0 14px var(--accent-green); }
 }
 
+/* ───────────────────────── activity table styles ─────────────────────────
+   /policies activity tab. Lives next to the new .stat-bar + .filter-bar so
+   the table feels like the third panel of the same instrument family.    */
+
+.activity-table-wrap {
+  border: 1px solid var(--line-2);
+  border-top: 0;
+  background: var(--bg-2);
+}
+.activity-table { width: 100%; }
+.activity-thead { background: var(--bg-3); }
+.activity-thead tr { border-bottom: 1px solid var(--line-2); }
+.activity-th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--accent-green);
+  text-align: left;
+}
+.activity-th.text-right { text-align: right; }
+
+/* zebra rhythm — adds ambient banding without breaking the dark feel.
+   Hover overrides the stripe so rows feel responsive. */
+.activity-table tbody tr.activity-row-stripe { background: rgba(255, 255, 255, 0.012); }
+
+/* expanded-row treatment */
+.activity-detail {
+  border-left: 3px solid var(--accent-pink);
+  background: var(--bg);
+  padding: 16px 22px 18px;
+}
+.activity-detail-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-pink);
+  margin-bottom: 10px;
+  display: inline-flex; align-items: baseline; gap: 6px;
+}
+
+/* ───────────────────────── instrument strip (.stat-bar) ─────────────────────
+   3-cell brutalist stats row used by /policies activity. Spans the full
+   container so the top of the view feels composed at every width.
+   Each cell carries a small green eyebrow caption above a big mono numeral.
+   On narrow viewports the grid collapses to a single column.            */
+
+.stat-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+}
+.stat-bar::before,
+.stat-bar::after { content: ""; position: absolute; width: 10px; height: 10px; }
+.stat-bar::before {
+  top: -1px; left: -1px;
+  border-top: 1px solid var(--accent-pink);
+  border-left: 1px solid var(--accent-pink);
+}
+.stat-bar::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 1px solid var(--accent-pink);
+  border-right: 1px solid var(--accent-pink);
+}
+.stat-cell {
+  padding: 18px 24px;
+  border-right: 1px dashed var(--line);
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 0;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-cell .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-green);
+}
+.stat-cell .eyebrow .glyph { color: var(--accent-pink); letter-spacing: -2px; margin-right: 6px; }
+.stat-cell .value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stat-cell .value.is-deny { color: var(--accent-pink); }
+.stat-cell .value.is-warn { color: var(--amber); }
+.stat-cell .meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.05em;
+  /* let .meta values that contain a slash (e.g. policy paths) ellipsis */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 800px) {
+  .stat-bar { grid-template-columns: 1fr; }
+  .stat-cell { border-right: none; border-bottom: 1px dashed var(--line); }
+  .stat-cell:last-child { border-bottom: none; }
+}
+
+/* ───────────────────────── filter console (.filter-bar) ──────────────────
+   Elastic row of `.filter-group`s. Each group stacks a small green eyebrow
+   label above its control. `.filter-group--grow` absorbs leftover space so
+   the text inputs naturally fill the remaining horizontal room.          */
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-top: 0;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.filter-group--grow { flex: 1 1 220px; }
+.filter-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-green);
+}
+.filter-input {
+  height: 30px;
+  width: 100%;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  outline: none;
+  transition: border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.filter-input::placeholder { color: var(--dim); }
+.filter-input:focus { border-color: var(--accent-pink); }
+.filter-clear {
+  align-self: flex-end;
+  /* sits at the same baseline as the inputs; matches .btn but smaller */
+  padding: 6px 10px;
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--accent-pink);
+  background: transparent;
+  border: 1px dashed var(--accent-pink-soft);
+}
+.filter-clear:hover { background: var(--accent-pink-bg); border-color: var(--accent-pink); }
+
 /* ───────────────────────── reusable bracket panel ───────────────────────── */
 
 .panel {
@@ -347,6 +576,15 @@ input[type="date"] { color-scheme: dark; }
   border: 1px solid var(--line-2);
   background: var(--bg-2);
   padding: 28px;
+  transition:
+    border-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.panel::before,
+.panel::after {
+  transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              height 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .panel::before {
   content: ""; position: absolute; top: -1px; left: -1px;
@@ -360,6 +598,13 @@ input[type="date"] { color-scheme: dark; }
   border-bottom: 1px solid var(--accent-pink);
   border-right: 1px solid var(--accent-pink);
 }
+/* opt-in interactive flavour: hovering grows the corner brackets and softens
+   the panel border. Apply to clickable card-like panels (e.g. project rows). */
+.panel.is-interactive { cursor: pointer; }
+.panel.is-interactive:hover { border-color: var(--line); }
+.panel.is-interactive:hover::before,
+.panel.is-interactive:hover::after { width: 16px; height: 16px; }
+.panel.is-interactive:focus-within { border-color: var(--accent-pink-soft); }
 
 /* ───────────────────────── animations (preserved from previous globals) ───────────────────────── */
 
@@ -406,5 +651,16 @@ input[type="date"] { color-scheme: dark; }
   .audit-bar-fill {
     animation: none;
     opacity: 1;
+  }
+  .section-h-dot {
+    animation: none;
+  }
+  .tab::after,
+  .panel,
+  .panel::before,
+  .panel::after,
+  .btn,
+  .btn-press {
+    transition: none;
   }
 }

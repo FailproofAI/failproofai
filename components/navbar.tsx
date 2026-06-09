@@ -114,6 +114,7 @@ export const Navbar: React.FC<{
               {label}
               {showAuditBadge && (
                 <span
+                  role="status"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -129,7 +130,8 @@ export const Navbar: React.FC<{
                     border: "1px solid var(--amber)",
                     marginLeft: 2,
                   }}
-                  aria-label={`${auditSlippingCount} slipping through`}
+                  aria-label={`${auditSlippingCount} action${auditSlippingCount === 1 ? "" : "s"} slipping through your policies`}
+                  title={`${auditSlippingCount} slipping through`}
                 >
                   {auditSlippingCount}
                 </span>

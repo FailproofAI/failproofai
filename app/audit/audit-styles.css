@@ -192,10 +192,18 @@
 
 /* ───────────────────────── audit page shell ───────────────────────── */
 
+/* the audit page intentionally runs narrower than the global .report — the
+   archetype hero, findings cards, and score-share card are tuned for a
+   ~1400px-max layout where the headline line measure stays "billboard"
+   tight. On a 2400px+ monitor we still want to break out of the 1180px
+   feel that used to leave too much black on both flanks; clamp up to
+   1480px and let `.archetype-frame` cap itself further so the hero doesn't
+   stretch past its compositional break-point. */
 .report {
-  max-width: 1180px;
+  width: 100%;
+  max-width: clamp(720px, 92vw, 1480px);
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 clamp(20px, 3vw, 48px);
 }
 
 .section {
@@ -242,6 +250,11 @@
 
 .archetype-frame {
   position: relative;
+  /* hero composition was tuned for ~1180px max — let it grow a little but
+     don't let the giant Bitcount name turn into a billboard on 4K */
+  max-width: 1320px;
+  margin-left: auto;
+  margin-right: auto;
   border: 1px solid var(--line-2);
   background:
     repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
@@ -294,6 +307,9 @@
 @keyframes pulseDot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arch-target .dot-live { animation: none; }
 }
 .arch-counter {
   font-family: var(--font-mono); font-size: 11px;
@@ -432,32 +448,139 @@
   padding-top: 22px;
 }
 
-/* sigil — 8x8 pixel grid */
+/* ───────────────────────── sigil — brutalist instrument plate ─────────────
+   The audit hero's central image. Was a bare 16px-cell pixel grid that
+   felt visually underweight next to the 124px Bitcount archetype name
+   and underdesigned compared to the dashed-frame panels everywhere else.
+
+   Treatment: an "instrument card" — register crosshairs at corners, header
+   strip with index + 8×8 coordinate, the grid on a dashed inner frame
+   with 20px cells, footer strip with the archetype slug, and a stacked
+   pink + black hard-offset shadow for depth.
+
+   The `data-bare` variant (used by the ShowOff CTA via `hideLabel`)
+   skips the plate and renders a bare grid so the showoff card can scale
+   the sigil down independently and the html2canvas poster export doesn't
+   need to capture the new plate chrome.                                   */
+
 .sigil-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  display: flex; flex-direction: column; align-items: center;
   justify-self: center;
 }
-.sigil {
-  display: grid;
-  grid-template-columns: repeat(8, 16px);
-  grid-template-rows: repeat(8, 16px);
-  gap: 2px;
-  padding: 16px;
-  background: var(--bg);
+
+.sigil-plate {
+  position: relative;
+  padding: 18px 22px;
+  background:
+    /* faint pink+green gridlines — same recipe as `.archetype-frame` so the
+       sigil reads as a smaller specimen of the same instrument family */
+    repeating-linear-gradient(0deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(102,209,181,0.04) 0 1px, transparent 1px 12px),
+    var(--bg);
   border: 1px solid var(--line-2);
-  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+  /* stacked hard-offsets: pink at the front, black behind for depth */
+  box-shadow:
+    8px 8px 0 0 var(--accent-pink-shadow),
+    16px 16px 0 0 rgba(0, 0, 0, 0.55);
 }
-.sigil .px { background: transparent; }
-.sigil .px.on { background: var(--ink); }
-.sigil .px.p { background: var(--accent-pink); }
-.sigil .px.g { background: var(--accent-green); }
-.sigil .px.d { background: var(--dim); }
-.sigil-label {
+
+/* register crosshair marks at the four corners — CSS-only "+" rendered
+   from two 1px bars so they stay pixel-crisp at any zoom */
+.sigil-mark {
+  position: absolute;
+  width: 10px; height: 10px;
+  color: var(--accent-pink);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.sigil-mark::before,
+.sigil-mark::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.sigil-mark::before { top: 50%; left: 0; right: 0; height: 1px; }
+.sigil-mark::after  { left: 50%; top: 0; bottom: 0; width: 1px; }
+.sigil-mark.tl { top: 6px;    left: 6px;  }
+.sigil-mark.tr { top: 6px;    right: 6px; }
+.sigil-mark.bl { bottom: 6px; left: 6px;  }
+.sigil-mark.br { bottom: 6px; right: 6px; }
+
+/* the header (top) and footer (bottom) strips of the plate */
+.sigil-strip {
+  display: flex; justify-content: space-between; align-items: baseline;
   font-family: var(--font-mono); font-size: 10px;
   letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--dim);
 }
-.sigil-label .ix { color: var(--accent-pink); margin-right: 6px; }
+.sigil-strip--top {
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px dashed var(--line);
+}
+.sigil-strip--bot {
+  padding-top: 10px;
+  margin-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+.sigil-ix       { color: var(--accent-pink); }
+.sigil-coord    { color: var(--dim); }
+.sigil-strip-key { color: var(--dim); }
+.sigil-strip-val { color: var(--accent-green); }
+
+/* the actual 8×8 grid — bumped from 16px → 20px cells so the sigil
+   carries enough visual weight to sit next to the archetype name */
+.sigil {
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  grid-template-rows: repeat(8, 20px);
+  gap: 2px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px dashed var(--line);
+  margin: 0 auto;
+}
+/* When the sigil is rendered bare (ShowOff path), restore the original
+   single-shadow look so the showoff card stays compositionally what it
+   was before the plate landed. */
+.sigil-wrap[data-bare="true"] .sigil {
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+}
+
+.sigil .px {
+  background: transparent;
+  /* diagonal fade-in: cells light up along an (x+y) wave starting from
+     the top-left when the hero first paints. Total animation ≈ 600ms. */
+  opacity: 0;
+  animation: sigil-cell-in 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc((var(--cx, 0) + var(--cy, 0)) * 22ms);
+}
+.sigil .px.on { background: var(--ink); }
+.sigil .px.p  {
+  background: var(--accent-pink);
+  /* subtle inner glow on accent cells so they pop without breaking pixel-craft */
+  box-shadow: 0 0 4px rgba(228, 88, 125, 0.45);
+}
+.sigil .px.g  {
+  background: var(--accent-green);
+  box-shadow: 0 0 4px rgba(102, 209, 181, 0.35);
+}
+.sigil .px.d  { background: var(--dim); }
+
+@keyframes sigil-cell-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigil .px {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* ───────────── poster capture mode (applied during html2canvas) ─────────────
    The live layout uses clamp()/vw font sizes, soft grid columns, and a
@@ -519,57 +642,147 @@
   justify-self: center;
   padding-top: 0;
 }
-.archetype-frame.capturing .sigil {
-  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+/* html2canvas renders stacked box-shadows unreliably and won't run our
+   sigil-cell-in animation. Collapse to a single hard offset on the plate
+   and force every cell to its final state for the capture. */
+.archetype-frame.capturing .sigil-plate {
+  box-shadow: 8px 8px 0 0 var(--accent-pink-shadow);
+}
+.archetype-frame.capturing .sigil { box-shadow: none; }
+.archetype-frame.capturing .sigil .px {
+  animation: none;
+  opacity: 1;
+  transform: none;
 }
 
-/* identity share buttons (inside .archetype-frame, hidden during capture) */
-.identity-share-btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-  padding-top: 16px;
+/* ──────────────── identity share buttons (chunky CTAs) ────────────────
+   Three branded buttons that sit below the archetype card. Each leads
+   with a platform mark tile (𝕏 / in / ↓), then a small "share on" / "save"
+   eyebrow above the platform label, then a trailing arrow. The buttons
+   read as armed at rest via a 2px pink right-edge stroke; on hover the
+   stroke fills the full border and a hard-offset pink shadow appears.
+   On press they translate (2px, 2px) and the shadow collapses — matches
+   the .btn-press motion language used elsewhere.
+
+   The shared `.share-btn` class is also used by the floating ShareDock so
+   the visual rhythm carries between surfaces.                          */
+
+.identity-share-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px dashed var(--line);
 }
-.identity-share-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  color: var(--ink-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 120ms, border-color 120ms, color 120ms;
-  text-transform: lowercase;
+@media (max-width: 720px) {
+  .identity-share-grid { grid-template-columns: 1fr; }
 }
-.identity-share-btn:hover {
-  background: var(--accent-pink-bg);
-  border-color: var(--accent-pink);
-  color: var(--accent-pink);
-}
-.identity-share-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.isb-glyph {
-  display: grid; place-items: center;
-  width: 20px; height: 20px;
-  border: 1px solid var(--line);
-  font-family: var(--font-mono); font-size: 10px;
-  text-transform: uppercase;
-  color: var(--accent-pink);
-  font-weight: 600;
-  flex-shrink: 0;
-}
-.identity-share-btn:hover .isb-glyph { border-color: var(--accent-pink); }
 
-/* hide during html2canvas capture */
-.archetype-frame.capturing .identity-share-btns { display: none; }
+.share-btn {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  /* pink right-edge stroke at rest — reads as armed */
+  border-right: 2px solid var(--accent-pink-soft);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.share-btn:hover {
+  border-color: var(--accent-pink);
+  background: var(--accent-pink-bg);
+  box-shadow: 4px 4px 0 0 var(--accent-pink-shadow);
+  transform: translate(-1px, -1px);
+}
+.share-btn:active {
+  box-shadow: 0 0 0 0 var(--accent-pink-shadow);
+  transform: translate(2px, 2px);
+}
+.share-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-right-color: var(--line);
+}
+.share-btn:disabled:hover {
+  background: var(--bg);
+  border-color: var(--line-2);
+  border-right-color: var(--line);
+  box-shadow: none;
+  transform: none;
+}
+
+.share-btn-mark {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid var(--line-2);
+  /* corner-crosshair adornment — matches the sigil-plate's register marks */
+  background:
+    linear-gradient(to right, var(--accent-pink) 0 6px, transparent 6px) top left/100% 1px no-repeat,
+    linear-gradient(to bottom, var(--accent-pink) 0 6px, transparent 6px) top left/1px 100% no-repeat,
+    linear-gradient(to left, var(--accent-pink) 0 6px, transparent 6px) bottom right/100% 1px no-repeat,
+    linear-gradient(to top, var(--accent-pink) 0 6px, transparent 6px) bottom right/1px 100% no-repeat,
+    var(--bg-2);
+  color: var(--ink);
+}
+.share-btn-mark--x  { color: #ffffff; background-color: #000000; }
+.share-btn-mark--li {
+  color: #ffffff;
+  background-color: #0a66c2;
+  /* override the pink-crosshair gradients so the LinkedIn blue tile reads cleanly */
+  background-image: none;
+}
+.share-btn-mark--dl { color: var(--accent-pink); }
+
+.share-btn-body {
+  display: flex; flex-direction: column;
+  gap: 2px; min-width: 0;
+}
+.share-btn-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-green);
+}
+.share-btn-label {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  font-weight: 500;
+  /* avoid spilling on long localized labels */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-btn-arrow {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--accent-pink);
+  opacity: 0.7;
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.share-btn:hover .share-btn-arrow { opacity: 1; transform: translateX(2px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .share-btn, .share-btn-arrow { transition: none; }
+  .share-btn:hover { transform: none; }
+}
+
+/* hide during html2canvas capture so the buttons don't render into the poster */
+.archetype-frame.capturing .identity-share-grid { display: none; }
 
 /* ───────────────────────── 02 STRENGTHS ───────────────────────── */
 
@@ -1076,9 +1289,12 @@
   margin: -40px -28px;
   /* shrink the embedded sigil without rebuilding it */
 }
-.showoff-glyph .sigil {
+.showoff-glyph .sigil-wrap[data-bare="true"] .sigil {
   box-shadow: 4px 4px 0 0 var(--accent-pink-shadow);
 }
+/* legacy: pre-plate sigil rendered a .sigil-label sibling. The new plate
+   renders strip rows inside the plate instead, but keep this null-rule so
+   any cached HTML between deploys doesn't surface a stray label. */
 .showoff-glyph .sigil-label { display: none; }
 .showoff-copy {
   display: flex;
@@ -1723,4 +1939,128 @@
   .strength-row { grid-template-columns: 40px 1fr; }
   .strength-metric { grid-column: 2; text-align: left; margin-top: 6px; }
   .return-hook { padding: 28px 24px; }
+}
+
+/* reduced-motion: silence the ambient terminal motion (blinking cursor,
+   spinner, marquee shine, status pulse) so vestibular-sensitive users get a
+   still UI. Functional progress (.running-bar-fill width) still updates;
+   only the decorative loops are stopped. */
+@media (prefers-reduced-motion: reduce) {
+  .running-cursor,
+  .running-stage-spin,
+  .running-bar-fill::after,
+  .auth-status-pill .dot {
+    animation: none;
+  }
+  .running-bar-fill { transition: none; }
+}
+
+/* ──────────────── floating share dock ────────────────
+   Persistent share affordance pinned to the bottom-right of the audit
+   page. Uses the same .share-btn styling as the inline strip in
+   identity-section so the visual rhythm carries. The dock can be
+   collapsed to a single pink FAB; preference persists in sessionStorage. */
+
+.share-dock {
+  position: fixed;
+  right: clamp(16px, 2.5vw, 32px);
+  bottom: clamp(16px, 2.5vw, 32px);
+  z-index: 40;
+  width: 300px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow:
+    8px 8px 0 0 var(--accent-pink-shadow),
+    16px 16px 0 0 rgba(0, 0, 0, 0.5);
+  animation: share-dock-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.share-dock::before,
+.share-dock::after { content: ""; position: absolute; width: 10px; height: 10px; }
+.share-dock::before {
+  top: -1px; left: -1px;
+  border-top: 1px solid var(--accent-pink);
+  border-left: 1px solid var(--accent-pink);
+}
+.share-dock::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 1px solid var(--accent-pink);
+  border-right: 1px solid var(--accent-pink);
+}
+
+@keyframes share-dock-in {
+  from { opacity: 0; transform: translate(8px, 8px); }
+  to   { opacity: 1; transform: translate(0, 0); }
+}
+
+.share-dock-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px dashed var(--line);
+}
+.share-dock-eyebrow {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--accent-green);
+}
+.share-dock-eyebrow > span { color: var(--accent-pink); margin-right: 8px; letter-spacing: -2px; }
+.share-dock-caret {
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono); font-size: 11px;
+  cursor: pointer;
+  transition: color 140ms cubic-bezier(0.22, 1, 0.36, 1), border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.share-dock-caret:hover { color: var(--accent-pink); border-color: var(--accent-pink); }
+
+.share-dock-stack {
+  display: flex; flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 10px;
+}
+/* Dock buttons fill the dock width — same `.share-btn` skin, just full-width. */
+.share-dock-stack .share-btn { width: 100%; }
+
+.share-dock-foot {
+  padding: 10px 16px 12px;
+  border-top: 1px dashed var(--line);
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+}
+.share-dock-foot > span { color: var(--accent-pink); margin-right: 6px; }
+
+/* Collapsed-state FAB — single pink-tile button that re-expands the dock. */
+.share-dock-fab {
+  position: fixed;
+  right: clamp(16px, 2.5vw, 32px);
+  bottom: clamp(16px, 2.5vw, 32px);
+  z-index: 40;
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  background: var(--accent-pink);
+  color: var(--bg);
+  border: 1px solid var(--accent-pink);
+  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+  font-family: var(--font-mono);
+  font-size: 22px; font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: share-dock-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.share-dock-fab:hover { transform: translate(-2px, -2px); box-shadow: 9px 9px 0 0 var(--accent-pink-shadow); }
+.share-dock-fab:active { transform: translate(2px, 2px); box-shadow: 0 0 0 0 var(--accent-pink-shadow); }
+
+/* hide on mobile — inline buttons cover the same affordance there */
+@media (max-width: 760px) {
+  .share-dock, .share-dock-fab { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-dock, .share-dock-fab { animation: none; }
+  .share-dock-fab { transition: none; }
+  .share-dock-caret { transition: none; }
 }

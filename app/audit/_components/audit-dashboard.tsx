@@ -21,6 +21,7 @@ import { deriveFindings } from "@/src/audit/findings";
 import { usePostHog } from "@/contexts/PostHogContext";
 
 import { IdentitySection } from "./identity-section";
+import { ShareDock } from "./share-dock";
 import { StrengthsSection } from "./strengths-section";
 import { ScoreSection } from "./score-section";
 import { FindingsSection } from "./findings-section";
@@ -296,9 +297,6 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
             sessions={result.transcripts.scanned}
             window={scopeWindow}
             seed={project}
-            score={score}
-            grade={grade}
-            missing={missing}
           />
           <StrengthsSection
             strengths={strengths}
@@ -318,6 +316,14 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
         </div>
         <ReportFooter cachedAt={cachedAt} />
       </div>
+      <ShareDock
+        frameRef={identityFrameRef}
+        archetypeKey={classification.archetype}
+        seed={project}
+        score={score}
+        grade={grade}
+        missing={missing}
+      />
     </div>
   );
 }

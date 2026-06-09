@@ -22,6 +22,12 @@ import { ARCHETYPES, pickArchetypeVariant, type ArchetypeKey } from "@/src/audit
 import { type Grade } from "@/src/audit/scoring";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { Sigil } from "./sigil";
+import {
+  X_TEMPLATES,
+  LI_TEMPLATES,
+  pickTemplate,
+  type ShareCtx,
+} from "./share-templates";
 
 const SITE_URL = "https://failproof.ai";
 const X_INTENT = (text: string) =>
@@ -29,28 +35,6 @@ const X_INTENT = (text: string) =>
 const LI_INTENT = (text: string) =>
   `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(SITE_URL)}&summary=${encodeURIComponent(text)}`;
 
-function buildXTemplate(score: number, archetypeName: string, grade: Grade, missing: number): string {
-  const gradeLines: Record<Grade, string> = {
-    S: "every prescribed policy live. running at peak. this is what secure looks like.",
-    A: `${missing} polic${missing === 1 ? "y" : "ies"} from elite tier. almost there.`,
-    B: `solid baseline. ${missing} policy gap${missing === 1 ? "" : "s"} to close before i'm comfortable.`,
-    C: `${missing} prescribed polic${missing === 1 ? "y" : "ies"} between here and the next tier. they're named. they're waiting.`,
-    D: `${missing} prescribed polic${missing === 1 ? "y" : "ies"} unaddressed. agents without guardrails aren't ready for prod.`,
-    F: `exposure is real. ${missing} polic${missing === 1 ? "y" : "ies"} away from stable ground — starting today.`,
-  };
-  return `just audited my AI agent with failproofai ✦\n\narchetype: ${archetypeName.toLowerCase()} · ${score}/100 · ${grade} tier\n${gradeLines[grade]}\n\nrun yours → ${SITE_URL}`;
-}
-
-function buildLinkedInTemplate(score: number, archetypeName: string, grade: Grade, missing: number): string {
-  // "every key policy is live" is only true when the audit returned no
-  // unenabled prescribed policies. A-grade with a non-zero `missing` count
-  // is the "almost there but still has gaps" state — softer copy.
-  const cleanRun = grade === "S" || (grade === "A" && missing === 0);
-  const verdict = cleanRun
-    ? `${score}/100 — ${grade} tier. every key policy is live. the audit confirmed what good looks like.`
-    : `${score}/100 — ${grade} tier. ${missing} prescribed polic${missing === 1 ? "y" : "ies"} uncovered — each one is a real attack surface.`;
-  return `We ran a failproofai security audit on our AI agent stack.\n\n${verdict}\n\nArchetype: ${archetypeName.toLowerCase()}. failproofai maps your agent\'s behavior pattern, identifies the exposure, and prescribes the exact policies to close it.\n\nFree. Open-source. 30 seconds to run: ${SITE_URL}`;
-}
 
 interface Props {
   archetypeKey: ArchetypeKey;
@@ -81,9 +65,12 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
   const { capture } = usePostHog();
   const [downloadState, setDownloadState] = useState<"idle" | "busy" | "done" | "error">("idle");
 
-  const captureCard = async (): Promise<boolean> => {
+  const cardFilename = () => `failproofai-identity-${grade.toLowerCase()}-${score}.png`;
+
+  /** Render the identity frame to a PNG blob (no side effects). */
+  const captureCardBlob = async (): Promise<Blob | null> => {
     const node = typeof frameRef === "function" ? null : frameRef?.current;
-    if (!node) return false;
+    if (!node) return null;
     node.classList.add("capturing");
     try {
       if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
@@ -95,82 +82,93 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
         logging: false,
         useCORS: true,
       });
-      await new Promise<void>((resolve) => {
-        canvas.toBlob((blob) => {
-          if (!blob) { resolve(); return; }
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `failproofai-identity-${grade.toLowerCase()}-${score}.png`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          resolve();
-        }, "image/png");
+      return await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), "image/png");
       });
-      return true;
     } finally {
       node.classList.remove("capturing");
     }
   };
 
+  const triggerDownload = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = cardFilename();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Share the post text together with the audit card. X / LinkedIn web
+   * composers can't accept a programmatically-attached image, so:
+   *   • where the browser supports file sharing (mobile + some desktop), use
+   *     the native share sheet — the card image IS attached to the post; else
+   *   • download the card (so the user can drag it in) AND open the platform's
+   *     web composer with the text pre-filled.
+   * Returns which path was taken (for telemetry).
+   */
+  const shareWithCard = async (text: string, intentUrl: string): Promise<"native" | "fallback"> => {
+    const blob = await captureCardBlob().catch(() => null);
+    const file = blob ? new File([blob], cardFilename(), { type: "image/png" }) : null;
+    const nav = typeof navigator !== "undefined"
+      ? (navigator as Navigator & { canShare?: (d?: ShareData) => boolean })
+      : undefined;
+    if (file && nav?.canShare?.({ files: [file] })) {
+      try {
+        await nav.share({ files: [file], text });
+        return "native";
+      } catch {
+        /* user cancelled or the share failed → fall through to the web intent */
+      }
+    }
+    if (blob) triggerDownload(blob);
+    globalThis.open(intentUrl, "_blank", "noopener,noreferrer");
+    return "fallback";
+  };
+
   const handleDownload = async () => {
     if (downloadState === "busy") return;
-    capture("audit_card_download_clicked", {
-      score,
-      grade,
-      missing_policies: missing,
-    });
+    capture("audit_card_download_clicked", { score, grade, missing_policies: missing });
     setDownloadState("busy");
     try {
-      const captured = await captureCard();
+      const blob = await captureCardBlob();
+      if (blob) triggerDownload(blob);
       capture("audit_card_capture_completed", {
         trigger: "download",
-        status: captured ? "success" : "no_frame",
+        status: blob ? "success" : "no_frame",
       });
       setDownloadState("done");
       setTimeout(() => setDownloadState("idle"), 2000);
     } catch {
-      capture("audit_card_capture_completed", {
-        trigger: "download",
-        status: "error",
-      });
+      capture("audit_card_capture_completed", { trigger: "download", status: "error" });
       setDownloadState("error");
       setTimeout(() => setDownloadState("idle"), 2000);
     }
   };
 
+  const shareCtx: ShareCtx = { score, arch: archetype.name.toLowerCase(), grade, missing };
+
   const handleShareX = async () => {
-    const text = buildXTemplate(score, archetype.name, grade, missing);
-    capture("audit_card_share_clicked", {
-      channel: "x",
-      score,
-      grade,
-      missing_policies: missing,
-    });
-    const captured = await captureCard().catch(() => false);
+    const text = pickTemplate(X_TEMPLATES, seed, shareCtx);
+    capture("audit_card_share_clicked", { channel: "x", score, grade, missing_policies: missing });
+    const mode = await shareWithCard(text, X_INTENT(text)).catch(() => "fallback" as const);
     capture("audit_card_capture_completed", {
       trigger: "share_x",
-      status: captured ? "success" : "error",
+      status: mode === "native" ? "native_share" : "success",
     });
-    globalThis.open(X_INTENT(text), "_blank", "noopener,noreferrer");
   };
 
   const handleShareLI = async () => {
-    const text = buildLinkedInTemplate(score, archetype.name, grade, missing);
-    capture("audit_card_share_clicked", {
-      channel: "linkedin",
-      score,
-      grade,
-      missing_policies: missing,
-    });
-    const captured = await captureCard().catch(() => false);
+    const text = pickTemplate(LI_TEMPLATES, seed, shareCtx);
+    capture("audit_card_share_clicked", { channel: "linkedin", score, grade, missing_policies: missing });
+    const mode = await shareWithCard(text, LI_INTENT(text)).catch(() => "fallback" as const);
     capture("audit_card_capture_completed", {
       trigger: "share_linkedin",
-      status: captured ? "success" : "error",
+      status: mode === "native" ? "native_share" : "success",
     });
-    globalThis.open(LI_INTENT(text), "_blank", "noopener,noreferrer");
   };
 
   return (

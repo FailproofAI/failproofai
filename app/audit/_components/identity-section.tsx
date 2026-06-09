@@ -64,6 +64,7 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
   const secondary = secondaryKey !== archetypeKey ? ARCHETYPES[secondaryKey] : null;
   const { capture } = usePostHog();
   const [downloadState, setDownloadState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [shareNote, setShareNote] = useState<string | null>(null);
 
   const cardFilename = () => `failproofai-identity-${grade.toLowerCase()}-${score}.png`;
 
@@ -101,21 +102,41 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
     URL.revokeObjectURL(url);
   };
 
+  /** Copy the card PNG to the clipboard so it can be pasted straight into the
+   *  composer. Must run while the document is still focused (i.e. before we
+   *  open the intent window), or the write rejects. */
+  const copyBlobToClipboard = async (blob: Blob): Promise<boolean> => {
+    try {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return false;
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type || "image/png"]: blob }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  type ShareMode = "native" | "clipboard" | "download";
+
   /**
    * Share the post text together with the audit card. X / LinkedIn web
-   * composers can't accept a programmatically-attached image, so:
-   *   • where the browser supports file sharing (mobile + some desktop), use
-   *     the native share sheet — the card image IS attached to the post; else
-   *   • download the card (so the user can drag it in) AND open the platform's
-   *     web composer with the text pre-filled.
-   * Returns which path was taken (for telemetry).
+   * composers can't accept a programmatically-attached image, so we attach it
+   * by the best route the browser allows:
+   *   • native share sheet (mobile + some desktop) — the card IS attached; else
+   *   • copy the card to the clipboard so the user pastes it (⌘/Ctrl+V) into the
+   *     composer (which we open with the text pre-filled) — desktop default; else
+   *   • download the card as a hard fallback.
+   * Returns which path was taken so the UI can tell the user what to do.
    */
-  const shareWithCard = async (text: string, intentUrl: string): Promise<"native" | "fallback"> => {
+  const shareWithCard = async (text: string, intentUrl: string): Promise<ShareMode> => {
     const blob = await captureCardBlob().catch(() => null);
     const file = blob ? new File([blob], cardFilename(), { type: "image/png" }) : null;
     const nav = typeof navigator !== "undefined"
       ? (navigator as Navigator & { canShare?: (d?: ShareData) => boolean })
       : undefined;
+
+    // 1. Native share — attaches the image directly to the post.
     if (file && nav?.canShare?.({ files: [file] })) {
       try {
         await nav.share({ files: [file], text });
@@ -124,9 +145,24 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
         /* user cancelled or the share failed → fall through to the web intent */
       }
     }
-    if (blob) triggerDownload(blob);
+
+    // 2. Copy the card to the clipboard *before* opening the window (opening
+    //    steals focus and would make the clipboard write fail).
+    const copied = blob ? await copyBlobToClipboard(blob) : false;
+
+    // 3. If we couldn't copy, fall back to a download so the card is still
+    //    available to attach manually.
+    if (blob && !copied) triggerDownload(blob);
+
     globalThis.open(intentUrl, "_blank", "noopener,noreferrer");
-    return "fallback";
+    return copied ? "clipboard" : "download";
+  };
+
+  /** Tell the user how to get the card onto their post, based on share path. */
+  const noteFor = (mode: ShareMode): string | null => {
+    if (mode === "clipboard") return "✓ audit card copied — paste it into your post (⌘/Ctrl + V)";
+    if (mode === "download") return "↓ audit card downloaded — attach it to your post";
+    return null; // native share already attached it
   };
 
   const handleDownload = async () => {
@@ -151,25 +187,24 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
 
   const shareCtx: ShareCtx = { score, arch: archetype.name.toLowerCase(), grade, missing };
 
-  const handleShareX = async () => {
-    const text = pickTemplate(X_TEMPLATES, seed, shareCtx);
-    capture("audit_card_share_clicked", { channel: "x", score, grade, missing_policies: missing });
-    const mode = await shareWithCard(text, X_INTENT(text)).catch(() => "fallback" as const);
+  const runShare = async (channel: "x" | "linkedin") => {
+    const text = channel === "x"
+      ? pickTemplate(X_TEMPLATES, seed, shareCtx)
+      : pickTemplate(LI_TEMPLATES, seed, shareCtx);
+    const intentUrl = channel === "x" ? X_INTENT(text) : LI_INTENT(text);
+    capture("audit_card_share_clicked", { channel, score, grade, missing_policies: missing });
+    const mode = await shareWithCard(text, intentUrl).catch(() => "download" as const);
     capture("audit_card_capture_completed", {
-      trigger: "share_x",
-      status: mode === "native" ? "native_share" : "success",
+      trigger: channel === "x" ? "share_x" : "share_linkedin",
+      status: mode === "native" ? "native_share" : mode === "clipboard" ? "clipboard" : "success",
     });
+    const note = noteFor(mode);
+    setShareNote(note);
+    if (note) setTimeout(() => setShareNote(null), 6000);
   };
 
-  const handleShareLI = async () => {
-    const text = pickTemplate(LI_TEMPLATES, seed, shareCtx);
-    capture("audit_card_share_clicked", { channel: "linkedin", score, grade, missing_policies: missing });
-    const mode = await shareWithCard(text, LI_INTENT(text)).catch(() => "fallback" as const);
-    capture("audit_card_capture_completed", {
-      trigger: "share_linkedin",
-      status: mode === "native" ? "native_share" : "success",
-    });
-  };
+  const handleShareX = () => runShare("x");
+  const handleShareLI = () => runShare("linkedin");
 
   return (
     <section className="identity" data-screen-label="01 Identity">
@@ -271,6 +306,12 @@ export const IdentitySection = forwardRef<HTMLDivElement, Props>(function Identi
             </span>
           </button>
         </div>
+
+        {shareNote && (
+          <div className="identity-share-note" role="status" aria-live="polite">
+            {shareNote}
+          </div>
+        )}
       </div>
     </section>
   );

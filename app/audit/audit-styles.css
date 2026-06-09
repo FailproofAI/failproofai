@@ -568,8 +568,20 @@
 }
 .identity-share-btn:hover .isb-glyph { border-color: var(--accent-pink); }
 
+.identity-share-note {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--accent-green-bg, rgba(80, 200, 120, 0.08));
+  border: 1px dashed var(--accent-green, #4caf78);
+  color: var(--accent-green, #4caf78);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
 /* hide during html2canvas capture */
 .archetype-frame.capturing .identity-share-btns { display: none; }
+.archetype-frame.capturing .identity-share-note { display: none; }
 
 /* ───────────────────────── 02 STRENGTHS ───────────────────────── */
 

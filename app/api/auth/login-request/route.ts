@@ -15,16 +15,6 @@ interface RequestBody {
   email?: unknown;
 }
 
-/** SHA-256 of the lowercased email; lets us count distinct senders without storing PII. */
-async function hashEmail(email: string): Promise<string> {
-  const data = new TextEncoder().encode(email.trim().toLowerCase());
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 32);
-}
-
 export async function POST(req: NextRequest): Promise<NextResponse> {
   await initTelemetry();
   let body: RequestBody = {};
@@ -41,12 +31,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const emailHash = await hashEmail(body.email);
+  // Telemetry sends the raw (normalised) email so PostHog can identify the
+  // sender. Core login logic still uses the original `body.email`.
+  const email = body.email.trim().toLowerCase();
   try {
     const r = await requestLoginCode(body.email);
     trackEvent("audit_otp_requested", {
       status: "success",
-      email_hash: emailHash,
+      email,
       source: "dashboard",
       expires_in: r.expires_in,
       resend_available_in: r.resend_available_in,
@@ -63,7 +55,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (err instanceof AuthApiError) {
       trackEvent("audit_otp_requested", {
         status: "failed",
-        email_hash: emailHash,
+        email,
         source: "dashboard",
         error_code: err.code,
         http_status: err.status,
@@ -86,7 +78,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const message = err instanceof Error ? err.message : String(err);
     trackEvent("audit_otp_requested", {
       status: "failed",
-      email_hash: emailHash,
+      email,
       source: "dashboard",
       error_code: "upstream_unreachable",
       error_message: message.slice(0, 200),

@@ -262,18 +262,23 @@ async function runLogin(): Promise<void> {
     status: "success",
     attempt: verifyAttempts,
     user_id: tokenResp.user.id,
+    email: tokenResp.user.email,
   });
   // Bridge the anonymous local instance ID to the server-issued user identity.
   // PostHog can stitch together "anonymous machine X did Y" events emitted
   // before sign-in with "user Z" events that follow, by joining on
-  // `local_random_id`. The dashboard's /api/auth/login-verify emits the same
-  // event with `source: "audit_set_reminder_auth_dialog"`; this is the CLI
-  // sibling — without it, anyone who signs in via `failproofai auth login`
-  // stays unjoined to their pre-auth events.
+  // `local_random_id` (== this event's distinct_id). The verified email +
+  // `$set` persist the account onto the device person. The dashboard's
+  // /api/auth/login-verify emits the same event with
+  // `source: "audit_set_reminder_auth_dialog"`; this is the CLI sibling —
+  // without it, anyone who signs in via `failproofai auth login` stays
+  // unjoined to their pre-auth events.
   void trackHookEvent(getInstanceId(), "audit_user_identity_linked", {
     source: "cli",
     user_id: tokenResp.user.id,
+    email: tokenResp.user.email,
     local_random_id: getInstanceId(),
+    $set: { email: tokenResp.user.email, user_id: tokenResp.user.id },
   });
   void trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
     source: "cli",

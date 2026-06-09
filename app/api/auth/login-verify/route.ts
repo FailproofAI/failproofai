@@ -43,15 +43,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const tokens = await verifyLoginCode(body.email, body.code);
     writeAuth(authFromTokenResponse(tokens));
+    // Identity stitch: this event's distinct_id IS the device random id
+    // (getInstanceId()), so attaching the verified email + user_id — and
+    // persisting them as person properties via `$set` — maps the verified
+    // account onto the anonymous device person in PostHog.
     trackEvent("audit_user_identity_linked", {
       source: "audit_set_reminder_auth_dialog",
       user_id: tokens.user.id,
+      email: tokens.user.email,
       local_random_id: getInstanceId(),
+      $set: { email: tokens.user.email, user_id: tokens.user.id },
     });
     trackEvent("audit_otp_verified", {
       status: "success",
       source: "dashboard",
       user_id: tokens.user.id,
+      email: tokens.user.email,
     });
     return NextResponse.json(
       {

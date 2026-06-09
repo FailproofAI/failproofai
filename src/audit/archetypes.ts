@@ -800,8 +800,20 @@ export function pickArchetypeVariant(key: ArchetypeKey, seed: string): ResolvedA
 // Tunable thresholds (calibrated against the distribution harness in
 // __tests__/audit/distribution.test.ts):
 
-/** Below this overall hit-rate the agent is "running clean" → precision. */
-const CLEAN_THRESHOLD = 0.02;
+// precision is about *absence of a concentrated tendency*, NOT a low hit-rate.
+// Real agents make hundreds–thousands of tool calls but only a handful of
+// policy violations, so a rate gate would label almost everyone "clean" and
+// swallow every other persona. Instead: precision only when the total mapped
+// signal is tiny in absolute terms (essentially no tendency to read), or a
+// trace amount thinly spread across a high-volume session. Everything with a
+// real fault tendency gets its persona — a cowboy with 8 rm-rf attempts is a
+// cowboy even across 2000 clean calls (the *score* still rewards the clean
+// footprint separately).
+/** Below this absolute weighted signal → no meaningful tendency → precision. */
+const PRECISION_FLOOR = 2.5;
+/** A trace tendency spread thinly over a high-volume session also reads clean. */
+const PRECISION_RATE = 0.003;
+const PRECISION_SOFT_CAP = 6;
 /** When the two over-verification detectors own ≥ this share of signal (and
  *  the agent isn't a cowboy) → the paranoid architect. */
 const ARCHITECT_CAUTION_MIN = 0.35;
@@ -863,8 +875,11 @@ export function classifyAgent(result: AuditResult, seed = ""): Classification {
     variantSeed: `${seed}|${f.fingerprint}`,
   };
 
-  // 1. precision — running clean (absence of meaningful fault signal).
-  if (f.totalSignal === 0 || f.faultRate < CLEAN_THRESHOLD) {
+  // 1. precision — no concentrated fault tendency (absolute, not rate-based).
+  if (
+    f.totalSignal < PRECISION_FLOOR ||
+    (f.faultRate < PRECISION_RATE && f.totalSignal < PRECISION_SOFT_CAP)
+  ) {
     return { archetype: "precision", secondary: ARCHETYPES.precision.secondary, ...base };
   }
 

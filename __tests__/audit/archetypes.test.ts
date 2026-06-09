@@ -50,10 +50,23 @@ describe("classifyAgent — relational personas", () => {
     expect(classifyAgent(mkResult([mkRow("failproofai/block-rm-rf", 0)])).archetype).toBe("precision");
   });
 
-  it("precision when fault-rate is below the clean threshold (high volume, tiny signal)", () => {
-    // 1 cowboy hit across 5000 tool calls → fault-rate 0.0002 < 0.02 → clean.
-    const cls = classifyAgent(mkResult([mkRow("failproofai/block-rm-rf", 1)], 5000));
-    expect(cls.archetype).toBe("precision");
+  it("precision when the total signal is below the absolute floor (no tendency)", () => {
+    // A single cowboy hit (weight 2.0) is below PRECISION_FLOOR (2.5) → no
+    // concentrated tendency → precision, regardless of volume.
+    expect(classifyAgent(mkResult([mkRow("failproofai/block-rm-rf", 1)], 5000)).archetype).toBe("precision");
+  });
+
+  it("precision when a trace tendency is thinly spread over a high-volume session", () => {
+    // 2 cowboy hits (weight 4.0, below the soft cap) across 5000 calls →
+    // fault-rate < 0.003 → still reads clean.
+    expect(classifyAgent(mkResult([mkRow("failproofai/block-rm-rf", 2)], 5000)).archetype).toBe("precision");
+  });
+
+  it("does NOT collapse a concentrated tendency into precision (the skew bug)", () => {
+    // 8 rm-rf attempts across 2000 calls: fault-rate is tiny, but the tendency
+    // is real → cowboy, not precision. (The score still rewards the clean
+    // footprint separately.)
+    expect(classifyAgent(mkResult([mkRow("failproofai/block-rm-rf", 8)], 2000)).archetype).toBe("cowboy");
   });
 
   it("architect when the over-verification detectors dominate", () => {

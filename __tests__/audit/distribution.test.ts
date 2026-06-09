@@ -103,6 +103,73 @@ describe("persona distribution — reachability", () => {
   });
 });
 
+describe("persona distribution — realistic population is not skewed", () => {
+  // Simulate a heterogeneous population with realistic latent tendencies (most
+  // users make hundreds–thousands of tool calls but only a handful of policy
+  // violations) plus cross-cluster noise, and confirm:
+  //   • every persona gets a healthy share (no one swallows the population),
+  //   • all 8 appear in a single 100-user cohort.
+  // This guards the precision-gate regression: a rate-based clean gate used to
+  // collapse ~80% of users into "precision".
+  const sigsFor = (a: ArchetypeKey) =>
+    Object.entries(SIGNAL_MAP).filter(([, v]) => v.archetype === a).map(([k]) => k);
+  const ri = (rnd: () => number, a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
+
+  function genUser(rnd: () => number, latent: string): AuditResult {
+    let events = ri(rnd, 150, 3000);
+    const rows: AuditCount[] = [];
+    const add = (n: string, h: number) => { if (h > 0) rows.push(row(n, h)); };
+    const noise = () => {
+      if (rnd() < 0.45) { const k = pick(ACTIVE, rnd); add(pick(sigsFor(k), rnd), ri(rnd, 1, 2)); }
+    };
+    if (latent === "clean") {
+      events = ri(rnd, 1500, 6000);
+      if (rnd() < 0.5) add(pick(Object.keys(SIGNAL_MAP), rnd), ri(rnd, 1, 2));
+    } else if (latent === "scattered") {
+      add("block-rm-rf", ri(rnd, 4, 7)); add("block-env-files", ri(rnd, 2, 4));
+      add("warn-large-file-write", ri(rnd, 2, 4)); add("prefer-edit-over-sed-awk", ri(rnd, 1, 3));
+      add("sleep-polling-loop", ri(rnd, 1, 2));
+    } else if (latent === "architect") {
+      add("reread-after-edit", ri(rnd, 4, 12)); add("redundant-cd-cwd", ri(rnd, 3, 10)); noise();
+    } else {
+      const sigs = sigsFor(latent as ArchetypeKey);
+      for (let i = 0, n = ri(rnd, 1, 3); i < n; i++) add(pick(sigs, rnd), ri(rnd, 3, 12));
+      noise(); noise();
+    }
+    return result(rows, events);
+  }
+
+  const PRIOR: [string, number][] = [
+    ["clean", 0.16], ["cowboy", 0.16], ["explorer", 0.14], ["optimist", 0.14],
+    ["ghost", 0.10], ["hammer", 0.08], ["architect", 0.10], ["scattered", 0.12],
+  ];
+  const sampleLatent = (rnd: () => number) => {
+    let x = rnd(), c = 0;
+    for (const [k, p] of PRIOR) { c += p; if (x < c) return k; }
+    return "cowboy";
+  };
+
+  it("every persona gets a healthy share and all 8 appear in 100 users", () => {
+    const rnd = lcg(424242);
+    const N = 5000;
+    const tally: Record<string, number> = {};
+    const cohort = new Set<string>();
+    for (let i = 0; i < N; i++) {
+      const got = classifyAgent(genUser(rnd, sampleLatent(rnd)), `u${i}`).archetype;
+      tally[got] = (tally[got] ?? 0) + 1;
+      if (i < 100) cohort.add(got);
+    }
+    // No persona collapses the population (the old bug had precision at ~80%).
+    for (const k of ALL) {
+      const share = (tally[k] ?? 0) / N;
+      expect(share, `${k} share ${(share * 100).toFixed(1)}%`).toBeGreaterThan(0.04);
+      expect(share, `${k} share ${(share * 100).toFixed(1)}%`).toBeLessThan(0.30);
+    }
+    // The very first 100 users already cover all 8.
+    for (const k of ALL) expect(cohort.has(k), `cohort missing ${k}`).toBe(true);
+  });
+});
+
 describe("persona distribution — no surface-area skew", () => {
   // For each active-fault cluster, light only its own signals and confirm the
   // classifier returns that cluster the large majority of the time. Cowboy's

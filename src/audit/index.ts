@@ -14,6 +14,7 @@ import { normalizePolicyName } from "../hooks/policy-registry";
 import { INTEGRATION_TYPES, type IntegrationType } from "../hooks/types";
 import { ADAPTERS } from "./cli-adapters";
 import { AUDIT_DETECTORS } from "./detectors";
+import { severityForBuiltin } from "./features";
 import { readCachedTranscriptResult, writeCachedTranscriptResult } from "./cache";
 import { initReplay, replayEvent, restoreReplay } from "./replay";
 import {
@@ -238,7 +239,10 @@ function aggregateResults(
       name,
       source,
       category: detector?.category ?? builtin?.category ?? "Custom",
-      severity: isDetector ? (detector?.severity ?? "info") : "deny",
+      // Builtins carry no static severity field — derive it from the policy
+      // name prefix (sanitize-/warn-/block-/…) so the score's gentle/medium
+      // buckets actually populate instead of everything collapsing to "deny".
+      severity: isDetector ? (detector?.severity ?? "info") : severityForBuiltin(name),
       hits: bucket.hits,
       projects: bucket.projects.size,
       firstSeen: bucket.first,

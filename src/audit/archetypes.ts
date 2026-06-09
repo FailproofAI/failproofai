@@ -18,6 +18,13 @@
  * different seeds → different cards.
  */
 import type { AuditResult } from "./types";
+import {
+  deriveFeatures,
+  hashSeed,
+  MAPPABLE_KEYS,
+  ACTIVE_FAULT_KEYS,
+  type AuditFeatures,
+} from "./features";
 
 export type ArchetypeKey =
   | "optimist"
@@ -742,13 +749,6 @@ export const SIGILS: Record<ArchetypeKey, string[]> = {
 // Variant picker — deterministic over (key, seed)
 // ============================================================
 
-/** djb2-style hash. Stable across renders, no crypto needed. */
-function hashSeed(s: string): number {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return h >>> 0;
-}
-
 function pickAt<T>(arr: T[], h: number, axis: number): T {
   if (arr.length === 0) throw new Error("pickAt: empty array");
   // Mix axis into the hash so different fields don't all land on the same
@@ -790,150 +790,120 @@ export function pickArchetypeVariant(key: ArchetypeKey, seed: string): ResolvedA
 // ============================================================
 // Classifier
 // ============================================================
+//
+// The signal→archetype map, baseline shares and feature derivation all live
+// in `./features`. The classifier is a thin ordered pipeline over those
+// features. All eight archetypes are reachable:
+//   • precision / architect / goldfish — relational (rate / ratio / spread)
+//   • cowboy / explorer / ghost / optimist / hammer — by lift argmax
+//
+// Tunable thresholds (calibrated against the distribution harness in
+// __tests__/audit/distribution.test.ts):
 
-/** Mapping from policy/detector short-name → which archetype its hits feed,
- *  and how heavily. Higher weight = stronger signal. */
-const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: number }> = {
-  // ---- audit-only detectors ----
-  "redundant-cd-cwd":         { archetype: "optimist",  weight: 1.0 },
-  "prefer-edit-over-read-cat":{ archetype: "optimist",  weight: 0.5 },
-  "prefer-edit-over-sed-awk": { archetype: "cowboy",    weight: 0.8 },
-  "prefer-write-over-heredoc":{ archetype: "cowboy",    weight: 0.5 },
-  "sleep-polling-loop":       { archetype: "hammer",    weight: 1.2 },
-  "find-from-root":           { archetype: "explorer",  weight: 1.0 },
-  "git-commit-no-verify":     { archetype: "cowboy",    weight: 1.5 },
-  "reread-after-edit":        { archetype: "architect", weight: 0.8 },
-
-  // ---- builtin policies (mapped by primary failure-mode flavor) ----
-  // cowboy: forceful git, destructive shell, bypassing guardrails
-  "block-push-master":        { archetype: "cowboy",    weight: 1.5 },
-  "block-force-push":         { archetype: "cowboy",    weight: 1.5 },
-  "block-work-on-main":       { archetype: "cowboy",    weight: 1.2 },
-  "block-rm-rf":              { archetype: "cowboy",    weight: 2.0 },
-  "block-sudo":               { archetype: "cowboy",    weight: 1.5 },
-  "block-curl-pipe-sh":       { archetype: "cowboy",    weight: 1.5 },
-  "block-failproofai-commands":{ archetype: "cowboy",   weight: 2.0 },
-  "warn-git-amend":           { archetype: "cowboy",    weight: 0.8 },
-  "warn-git-stash-drop":      { archetype: "cowboy",    weight: 1.0 },
-  "warn-all-files-staged":    { archetype: "cowboy",    weight: 0.6 },
-  "warn-destructive-sql":     { archetype: "cowboy",    weight: 1.5 },
-  "warn-schema-alteration":   { archetype: "cowboy",    weight: 1.0 },
-  "warn-package-publish":     { archetype: "cowboy",    weight: 1.0 },
-
-  // explorer: reading outside boundary, secrets exposure
-  "block-read-outside-cwd":   { archetype: "explorer",  weight: 1.2 },
-  "block-env-files":          { archetype: "explorer",  weight: 1.5 },
-  "block-secrets-write":      { archetype: "explorer",  weight: 1.5 },
-  "protect-env-vars":         { archetype: "explorer",  weight: 1.0 },
-  "sanitize-api-keys":        { archetype: "explorer",  weight: 1.2 },
-  "sanitize-jwt":             { archetype: "explorer",  weight: 1.2 },
-  "sanitize-connection-strings":{ archetype: "explorer",weight: 1.2 },
-  "sanitize-private-key-content":{ archetype: "explorer",weight: 1.5 },
-  "sanitize-bearer-tokens":   { archetype: "explorer",  weight: 1.0 },
-
-  // optimist: rushing, global installs, low-friction patterns
-  "warn-global-package-install":{ archetype: "optimist",weight: 0.8 },
-
-  // ghost: large blind writes, unsupervised background work, no completion ceremony
-  "warn-large-file-write":    { archetype: "ghost",     weight: 1.0 },
-  "warn-background-process":  { archetype: "ghost",     weight: 0.8 },
-  "require-commit-before-stop":{ archetype: "ghost",    weight: 1.2 },
-  "require-push-before-stop": { archetype: "ghost",     weight: 1.0 },
-  "require-pr-before-stop":   { archetype: "ghost",     weight: 1.0 },
-  "require-ci-green-before-stop":{ archetype: "ghost",  weight: 1.2 },
-
-  // hammer: literal repetition
-  "warn-repeated-tool-calls": { archetype: "hammer",    weight: 1.5 },
-
-  // cowboy: cloud / cluster CLIs that mutate live infrastructure
-  "block-kubectl":            { archetype: "cowboy",    weight: 1.5 },
-  "block-terraform":          { archetype: "cowboy",    weight: 1.5 },
-  "block-helm":               { archetype: "cowboy",    weight: 1.5 },
-  "block-aws-cli":            { archetype: "cowboy",    weight: 1.2 },
-  "block-gcloud":             { archetype: "cowboy",    weight: 1.2 },
-  "block-az-cli":             { archetype: "cowboy",    weight: 1.2 },
-  "block-gh-pipeline":        { archetype: "cowboy",    weight: 1.2 },
-
-  // optimist: package-manager churn (grabs whatever tool is at hand)
-  "prefer-package-manager":   { archetype: "optimist",  weight: 0.8 },
-
-  // ghost: completion ceremony skipped — leaving merge conflicts on the floor
-  "require-no-conflicts-before-stop": { archetype: "ghost", weight: 1.0 },
-};
-
-function shortName(name: string): string {
-  const slash = name.indexOf("/");
-  return slash >= 0 ? name.slice(slash + 1) : name;
-}
+/** Below this overall hit-rate the agent is "running clean" → precision. */
+const CLEAN_THRESHOLD = 0.02;
+/** When the two over-verification detectors own ≥ this share of signal (and
+ *  the agent isn't a cowboy) → the paranoid architect. */
+const ARCHITECT_CAUTION_MIN = 0.35;
+/** Architect only applies when cowboy isn't itself over-indexing. */
+const ARCHITECT_COWBOY_MAX_LIFT = 1.0;
+/** Normalised lift entropy above this (with enough distinct clusters lit)
+ *  → goldfish (genuinely scattered). */
+const GOLDFISH_ENTROPY = 0.75;
+const GOLDFISH_MIN_NONZERO = 4;
+/** When the top-two lifts are within this ratio, resolve deterministically by
+ *  the behaviour fingerprint instead of always taking the arithmetic winner —
+ *  spreads near-ties across the population without any RNG. */
+const TIEBREAK_RATIO = 1.08;
 
 export interface Classification {
   archetype: ArchetypeKey;
   /** Same-key when no meaningful secondary; the IdentitySection hides the
    *  secondary chip whenever `secondary === archetype`. */
   secondary: ArchetypeKey;
-  /** Per-archetype raw weight. Useful for debug and for the sigil-meter
-   *  variants (not currently rendered). */
+  /** Per-archetype raw weighted-hit total (Σ hits × weight). Kept under the
+   *  `weights` name for back-compat; also drives the (optional) trait radar. */
   weights: Record<ArchetypeKey, number>;
-  /** Total signal — sum of weighted hits across all archetypes. */
+  /** Per-archetype lift = observed-share ÷ baseline-share. The ranking metric. */
+  lift: Record<ArchetypeKey, number>;
+  /** Total mapped signal across all archetypes. */
   totalSignal: number;
+  /** Deterministic seed for `pickArchetypeVariant`, folding the behaviour
+   *  fingerprint into the supplied seed so two agents with the same primary
+   *  but different behaviour get different copy. */
+  variantSeed: string;
+}
+
+/** Keys sorted by descending lift. */
+function rankByLift(f: AuditFeatures, keys: ArchetypeKey[]): ArchetypeKey[] {
+  return [...keys].sort((a, b) => f.clusterLift[b] - f.clusterLift[a]);
 }
 
 /**
- * Classify an `AuditResult` into one of the 8 archetypes plus an optional
- * secondary tendency.
+ * Classify an `AuditResult` into one of the 8 archetypes plus a secondary
+ * tendency. Pure over (result, seed); identical input → identical output.
  *
- * Rules:
- *   1. Empty signal (no hits, nothing detected) → precision. This is the
- *      "you're already running clean" outcome.
- *   2. Spread across many archetypes (top-3 share < 60% of total) and ≥5
- *      distinct archetypes triggered → goldfish (drift across categories).
- *   3. Otherwise: highest-weighted archetype wins. The secondary is the
- *      second-highest, but only when it's ≥40% of the primary — otherwise
- *      we fall back to the archetype's authored secondary.
+ * Pipeline:
+ *   1. precision — zero signal OR fault-rate below CLEAN_THRESHOLD (absence).
+ *   2. architect — the over-verification detectors dominate, low cowboy lift.
+ *   3. goldfish  — high lift entropy across ≥4 clusters (scatter).
+ *   4. argmax    — highest lift among the 5 active-fault personas, which
+ *                  removes the cowboy surface-area skew.
+ *   5. tie-break — near-ties resolved by the behaviour fingerprint.
+ *
+ * `seed` (the project name) is folded into the returned `variantSeed` for
+ * deterministic, behaviour-aware copy selection.
  */
-export function classifyAgent(result: AuditResult): Classification {
-  const weights: Record<ArchetypeKey, number> = {
-    optimist: 0, cowboy: 0, explorer: 0, goldfish: 0,
-    architect: 0, precision: 0, hammer: 0, ghost: 0,
+export function classifyAgent(result: AuditResult, seed = ""): Classification {
+  const f = deriveFeatures(result, seed);
+  const base = {
+    weights: f.clusterRaw,
+    lift: f.clusterLift,
+    totalSignal: f.totalSignal,
+    variantSeed: `${seed}|${f.fingerprint}`,
   };
 
-  for (const row of result.results) {
-    const sig = SIGNAL_MAP[shortName(row.name)];
-    if (!sig) continue;
-    weights[sig.archetype] += row.hits * sig.weight;
+  // 1. precision — running clean (absence of meaningful fault signal).
+  if (f.totalSignal === 0 || f.faultRate < CLEAN_THRESHOLD) {
+    return { archetype: "precision", secondary: ARCHETYPES.precision.secondary, ...base };
   }
 
-  const totalSignal = Object.values(weights).reduce((s, w) => s + w, 0);
-  const sorted = (Object.entries(weights) as [ArchetypeKey, number][])
-    .sort((a, b) => b[1] - a[1]);
-
-  // Rule 1: no signal → precision (clean baseline).
-  if (totalSignal === 0) {
-    return {
-      archetype: "precision",
-      secondary: ARCHETYPES.precision.secondary,
-      weights,
-      totalSignal: 0,
-    };
+  // 2. architect — faults are over-verification, and not a cowboy.
+  if (f.cautionShare >= ARCHITECT_CAUTION_MIN && f.cowboyLift < ARCHITECT_COWBOY_MAX_LIFT) {
+    return { archetype: "architect", secondary: ARCHETYPES.architect.secondary, ...base };
   }
 
-  // Rule 2: goldfish (broad spread).
-  const nonZero = sorted.filter(([, w]) => w > 0);
-  const top3Sum = sorted.slice(0, 3).reduce((s, [, w]) => s + w, 0);
-  if (nonZero.length >= 5 && top3Sum / totalSignal < 0.6) {
-    return {
-      archetype: "goldfish",
-      secondary: sorted[0][0],
-      weights,
-      totalSignal,
-    };
+  // 3. goldfish — genuinely scattered across many clusters.
+  const nonZero = MAPPABLE_KEYS.filter((k) => f.clusterLift[k] > 0).length;
+  if (nonZero >= GOLDFISH_MIN_NONZERO && f.entropy > GOLDFISH_ENTROPY) {
+    const strongest = rankByLift(f, MAPPABLE_KEYS)[0];
+    return { archetype: "goldfish", secondary: strongest, ...base };
   }
 
-  // Rule 3: highest-weighted wins.
-  const primary = sorted[0][0];
-  const secondary = sorted[1] && sorted[1][1] >= sorted[0][1] * 0.4
-    ? sorted[1][0]
-    : ARCHETYPES[primary].secondary;
+  // 4. argmax lift over the active-fault personas.
+  const ranked = rankByLift(f, ACTIVE_FAULT_KEYS);
+  let primary = ranked[0];
 
-  return { archetype: primary, secondary, weights, totalSignal };
+  // 5. seeded tie-break when the top two are within TIEBREAK_RATIO.
+  const runnerUp = ranked[1];
+  if (
+    runnerUp &&
+    f.clusterLift[runnerUp] > 0 &&
+    f.clusterLift[primary] / f.clusterLift[runnerUp] < TIEBREAK_RATIO
+  ) {
+    const pair = [ranked[0], ranked[1]];
+    primary = pair[f.fingerprint % 2];
+  }
+
+  // Secondary: the next-highest lift if it's ≥ 40% of the primary's, else the
+  // archetype's authored fallback.
+  const secondaryCandidate = rankByLift(f, ACTIVE_FAULT_KEYS).find((k) => k !== primary);
+  const secondary =
+    secondaryCandidate &&
+    f.clusterLift[secondaryCandidate] > 0 &&
+    f.clusterLift[secondaryCandidate] >= f.clusterLift[primary] * 0.4
+      ? secondaryCandidate
+      : ARCHETYPES[primary].secondary;
+
+  return { archetype: primary, secondary, ...base };
 }

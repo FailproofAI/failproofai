@@ -227,14 +227,16 @@ interface MainReportProps {
 
 function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize }: MainReportProps) {
   const { capture } = usePostHog();
-  const classification = useMemo(() => classifyAgent(result), [result]);
+  const project = useMemo(() => inferProjectName(result, projectFromUrl), [result, projectFromUrl]);
+  // Seed classification with the project name so the behaviour fingerprint
+  // (used for tie-breaks + copy variants) is stable per project.
+  const classification = useMemo(() => classifyAgent(result, project), [result, project]);
   const score = useMemo(() => deriveScore(result), [result]);
   const projected = useMemo(() => projectedScore(result, score), [result, score]);
   const grade = gradeFor(score);
   const projectedGrade = gradeFor(projected);
   const strengths = useMemo(() => deriveStrengths(result), [result]);
   const findings = useMemo(() => deriveFindings(result), [result]);
-  const project = useMemo(() => inferProjectName(result, projectFromUrl), [result, projectFromUrl]);
   // Renamed from `window` to avoid shadowing the browser global — any
   // future `window.*` reference added inside MainReport would silently
   // bind to a string and crash at runtime.
@@ -296,7 +298,7 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
             toolCalls={result.eventsScanned ?? 0}
             sessions={result.transcripts.scanned}
             window={scopeWindow}
-            seed={project}
+            seed={classification.variantSeed}
           />
           <StrengthsSection
             strengths={strengths}
@@ -319,7 +321,7 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
       <ShareDock
         frameRef={identityFrameRef}
         archetypeKey={classification.archetype}
-        seed={project}
+        seed={classification.variantSeed}
         score={score}
         grade={grade}
         missing={missing}

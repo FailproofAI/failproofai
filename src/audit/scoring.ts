@@ -38,51 +38,87 @@ export function tierName(g: Grade): string {
 }
 
 /**
- * Heuristic score. Start at 100 and subtract per-hit penalties weighted by
- * severity. Hit-penalty ratios were tuned against the reference defaults
- * (58 → C for an agent with a moderate optimist + explorer footprint).
+ * Heuristic score on 0-100. Three properties make it *dynamic* — distinct
+ * inputs (almost) never collide on a fixed threshold the way the old
+ * hard-capped scorer did:
  *
- * Per-hit penalties:
- *   deny / block / warn-stop builtin (high severity)  -1.2 per hit, max -25
- *   instruct / warn builtin           (medium)         -0.7 per hit, max -15
- *   sanitize policies                                  -0.4 per hit, max -10
- *   audit-only detector hit                            -0.5 per hit, max -20
+ *   1. Rate-normalised. Penalty scales with the *rate* of weighted faults per
+ *      tool call (× REF_EVENTS), not the absolute count. A 1000-call session
+ *      with 25 denies scores higher than a 100-call one with 25 denies — and
+ *      heavy users no longer all pile onto the same cap.
  *
- * Floor at 0, cap at 100. Sessions with zero scanned transcripts return 0
- * (no signal, no grade).
+ *   2. Saturating, not clipped. Each severity bucket asymptotes to a cap via
+ *      `cap·(1 − e^(−p/k))` instead of `min(p, cap)`. One bad area still can't
+ *      tank the score, but the curve is *strictly monotonic*, so every extra
+ *      hit still moves the number — no two counts land on the same value.
+ *
+ *   3. Credited. Up to +5 from the derived strengths, so clean agents spread
+ *      upward instead of all sitting at 100.
+ *
+ * Per-hit weights (pre-normalisation): deny 1.2, warn/instruct 0.7,
+ * sanitize 0.4, audit detector 0.5. Bucket caps 50 / 28 / 16 / 30 (they sum
+ * past 100 so a multi-dimension reckless agent can bottom out at F).
+ *
+ * Sessions with zero scanned transcripts return 0 (no signal, no grade).
  */
-export function deriveScore(result: AuditResult): number {
-  if (result.transcripts.scanned === 0) return 0;
+import { MIN_EVENTS } from "./features";
+import { deriveStrengths } from "./strengths";
 
-  let score = 100;
-  let denyPenalty = 0;
-  let instructPenalty = 0;
-  let sanitizePenalty = 0;
-  let detectorPenalty = 0;
+/** Reference tool-call volume the rate is normalised against — chosen so a
+ *  moderate footprint lands around C/B and the demo anchor (~58 → C) holds.
+ *  Calibrated via __tests__/audit/scoring.test.ts. */
+const REF_EVENTS = 300;
 
-  for (const row of result.results) {
+/** Concave saturator: → `cap` as `p → ∞`, strictly increasing for all p ≥ 0. */
+function saturate(p: number, cap: number, k: number): number {
+  return cap * (1 - Math.exp(-p / k));
+}
+
+/** Total weighted penalty for a set of rows, rate-normalised against `events`.
+ *  Shared by `deriveScore` and `projectedScore` so they can't diverge. */
+function penaltyFor(rows: AuditResult["results"], events: number): number {
+  const norm = REF_EVENTS / Math.max(events, MIN_EVENTS);
+  let deny = 0, instruct = 0, sanitize = 0, detector = 0;
+  for (const row of rows) {
     if (row.source === "audit-detector") {
-      detectorPenalty += row.hits * 0.5;
+      detector += row.hits * 0.5;
       continue;
     }
     const sev = row.severity;
-    if (sev === "deny") {
-      denyPenalty += row.hits * 1.2;
-    } else if (sev === "instruct" || sev === "warn") {
-      instructPenalty += row.hits * 0.7;
-    } else {
-      // sanitize-* policies report as the underlying decision; treat
-      // remaining categories (allow-with-reason from sanitize) gently.
-      sanitizePenalty += row.hits * 0.4;
-    }
+    if (sev === "deny") deny += row.hits * 1.2;
+    else if (sev === "instruct" || sev === "warn") instruct += row.hits * 0.7;
+    else sanitize += row.hits * 0.4; // sanitize-* and any other gentle category
   }
+  // Per-bucket (cap, k). The cap bounds any single failure mode; k sets how
+  // fast it ramps. k is small relative to the cap so penalties bite early and
+  // the score uses the full S→F range rather than clustering near 100. Caps
+  // sum past 100 on purpose, so a multi-dimension reckless agent can reach F.
+  return (
+    saturate(deny * norm, 50, 12) +
+    saturate(instruct * norm, 28, 10) +
+    saturate(sanitize * norm, 16, 8) +
+    saturate(detector * norm, 30, 14)
+  );
+}
 
-  score -= Math.min(denyPenalty, 25);
-  score -= Math.min(instructPenalty, 15);
-  score -= Math.min(sanitizePenalty, 10);
-  score -= Math.min(detectorPenalty, 20);
+/** Positive credit (0-5) from the heuristic strengths. Deliberately small so a
+ *  reckless agent's "absence" strengths (e.g. "no credential leaks") can't
+ *  inflate it back into the top tier. */
+function creditFor(result: AuditResult): number {
+  return Math.min(deriveStrengths(result).length * 1.0, 5);
+}
 
-  return Math.max(0, Math.min(100, Math.round(score)));
+/** Exact (unrounded) score — used by tests to prove strict monotonicity and
+ *  the absence of threshold collisions. */
+export function deriveScoreExact(result: AuditResult): number {
+  if (result.transcripts.scanned === 0) return 0;
+  const events = result.eventsScanned ?? 0;
+  const score = 100 - penaltyFor(result.results, events) + creditFor(result);
+  return Math.max(0, Math.min(100, score));
+}
+
+export function deriveScore(result: AuditResult): number {
+  return Math.round(deriveScoreExact(result));
 }
 
 /**
@@ -95,19 +131,19 @@ export function deriveScore(result: AuditResult): number {
  * still has to keep the policies on.
  */
 export function projectedScore(result: AuditResult, currentScore: number): number {
-  // Sum the penalty that would be lifted if every "slipping through" hit
-  // (unenabled-builtin only — detectors don't have a real-time policy yet)
-  // moved from `slipping` → `blocked`.
-  let recoverable = 0;
-  for (const row of result.results) {
-    if (row.source !== "builtin") continue;
-    if (row.enabledInConfig) continue;
-    if (row.severity === "deny") recoverable += row.hits * 1.2;
-    else if (row.severity === "instruct" || row.severity === "warn") recoverable += row.hits * 0.7;
-    else recoverable += row.hits * 0.4;
-  }
-  // The caps applied in deriveScore mean recoverable points can't exceed
-  // the same caps in aggregate. Approximation OK for a "projected" hint.
+  const events = result.eventsScanned ?? 0;
+  // Penalty as-is vs. penalty with every unenabled builtin's hits removed
+  // (enabling those policies would have blocked them). The delta is what the
+  // user recovers — computed through the same saturating, rate-normalised
+  // curve as `deriveScore`, so the projection is consistent rather than a
+  // naive per-hit sum.
+  const full = penaltyFor(result.results, events);
+  const fixedRows = result.results.filter(
+    (r) => !(r.source === "builtin" && !r.enabledInConfig),
+  );
+  const fixed = penaltyFor(fixedRows, events);
+  const recoverable = Math.max(0, full - fixed);
+  // Cap at 92 so the prescription never promises a guaranteed S.
   const proj = Math.min(92, currentScore + Math.round(recoverable));
   return Math.max(currentScore, proj);
 }

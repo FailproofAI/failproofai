@@ -1,0 +1,199 @@
+// @vitest-environment node
+//
+// No-skew / reachability harness. Deterministically generates many synthetic
+// audits (seeded LCG — no Math.random, so CI is reproducible), classifies each
+// and asserts:
+//   1. All 8 personas are reachable.
+//   2. Lift normalisation removes the cowboy surface-area skew: a profile that
+//      focuses on one active-fault cluster classifies as THAT cluster the large
+//      majority of the time, even though cowboy owns 20 of the 47 signals.
+import { describe, it, expect } from "vitest";
+import { classifyAgent, type ArchetypeKey } from "../../src/audit/archetypes";
+import { SIGNAL_MAP } from "../../src/audit/features";
+import type { AuditCount, AuditResult } from "../../src/audit/types";
+
+const DETECTORS = new Set([
+  "find-from-root", "git-commit-no-verify", "prefer-edit-over-read-cat",
+  "prefer-edit-over-sed-awk", "prefer-write-over-heredoc", "redundant-cd-cwd",
+  "reread-after-edit", "sleep-polling-loop",
+]);
+
+/** Signals grouped by the persona they feed. */
+function signalsFor(archetype: ArchetypeKey): string[] {
+  return Object.entries(SIGNAL_MAP)
+    .filter(([, v]) => v.archetype === archetype)
+    .map(([k]) => k);
+}
+
+/** Deterministic LCG → [0,1). */
+function lcg(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+function row(name: string, hits: number): AuditCount {
+  return {
+    name: DETECTORS.has(name) ? name : `failproofai/${name}`,
+    source: DETECTORS.has(name) ? "audit-detector" : "builtin",
+    category: "x", severity: "deny", hits, projects: 1, examples: [],
+    displayTitle: name, impact: "", enabledInConfig: false, installHint: "",
+  };
+}
+
+function result(rows: AuditCount[], events: number): AuditResult {
+  return {
+    version: 2, scannedAt: "2026-06-01T00:00:00.000Z",
+    scope: { cli: ["claude"], projects: "all", since: null },
+    transcripts: { scanned: 3, skipped: 0, errors: 0, durationMs: 0 },
+    results: rows,
+    totals: { hits: rows.reduce((s, r) => s + r.hits, 0), projectsWithHits: 0 },
+    projectsScanned: [], eventsScanned: events, enabledBuiltinNames: [],
+  };
+}
+
+const ACTIVE: ArchetypeKey[] = ["cowboy", "explorer", "ghost", "optimist", "hammer"];
+const ALL: ArchetypeKey[] = [...ACTIVE, "architect", "precision", "goldfish"];
+
+function pick<T>(arr: T[], rnd: () => number): T {
+  return arr[Math.floor(rnd() * arr.length)];
+}
+
+describe("persona distribution — reachability", () => {
+  it("all 8 personas are reachable across varied profiles", () => {
+    const rnd = lcg(20260609);
+    const tally: Record<string, number> = {};
+    for (let i = 0; i < 4000; i++) {
+      const style = pick(["clean", "caution", "spread", "focused", "mixed"], rnd);
+      let rows: AuditCount[] = [];
+      let events = 200 + Math.floor(rnd() * 3000);
+      if (style === "clean") {
+        events = 3000 + Math.floor(rnd() * 5000);
+        if (rnd() < 0.5) rows = [row(pick(signalsFor("cowboy"), rnd), 1)];
+      } else if (style === "caution") {
+        rows = [row("reread-after-edit", 3 + Math.floor(rnd() * 8)),
+                row("redundant-cd-cwd", 2 + Math.floor(rnd() * 8))];
+      } else if (style === "spread") {
+        // Lite signal proportional-ish to baseline → high lift entropy.
+        rows = [
+          row("block-rm-rf", 4 + Math.floor(rnd() * 3)),
+          row("block-env-files", 2 + Math.floor(rnd() * 2)),
+          row("warn-large-file-write", 2 + Math.floor(rnd() * 2)),
+          row("prefer-edit-over-sed-awk", 1 + Math.floor(rnd() * 2)),
+          row("sleep-polling-loop", 1),
+        ];
+      } else if (style === "focused") {
+        const k = pick(ACTIVE, rnd);
+        const sigs = signalsFor(k);
+        rows = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () =>
+          row(pick(sigs, rnd), 2 + Math.floor(rnd() * 10)));
+      } else {
+        const n = 1 + Math.floor(rnd() * 5);
+        const all = Object.keys(SIGNAL_MAP);
+        rows = Array.from({ length: n }, () => row(pick(all, rnd), 1 + Math.floor(rnd() * 8)));
+      }
+      const a = classifyAgent(result(rows, events), `seed-${i}`).archetype;
+      tally[a] = (tally[a] ?? 0) + 1;
+    }
+    for (const k of ALL) {
+      expect(tally[k] ?? 0, `persona "${k}" should be reachable (got ${tally[k] ?? 0})`).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("persona distribution — realistic population is not skewed", () => {
+  // Simulate a heterogeneous population with realistic latent tendencies (most
+  // users make hundreds–thousands of tool calls but only a handful of policy
+  // violations) plus cross-cluster noise, and confirm:
+  //   • every persona gets a healthy share (no one swallows the population),
+  //   • all 8 appear in a single 100-user cohort.
+  // This guards the precision-gate regression: a rate-based clean gate used to
+  // collapse ~80% of users into "precision".
+  const sigsFor = (a: ArchetypeKey) =>
+    Object.entries(SIGNAL_MAP).filter(([, v]) => v.archetype === a).map(([k]) => k);
+  const ri = (rnd: () => number, a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
+
+  function genUser(rnd: () => number, latent: string): AuditResult {
+    let events = ri(rnd, 150, 3000);
+    const rows: AuditCount[] = [];
+    const add = (n: string, h: number) => { if (h > 0) rows.push(row(n, h)); };
+    const noise = () => {
+      if (rnd() < 0.45) { const k = pick(ACTIVE, rnd); add(pick(sigsFor(k), rnd), ri(rnd, 1, 2)); }
+    };
+    if (latent === "clean") {
+      events = ri(rnd, 1500, 6000);
+      if (rnd() < 0.5) add(pick(Object.keys(SIGNAL_MAP), rnd), ri(rnd, 1, 2));
+    } else if (latent === "scattered") {
+      add("block-rm-rf", ri(rnd, 4, 7)); add("block-env-files", ri(rnd, 2, 4));
+      add("warn-large-file-write", ri(rnd, 2, 4)); add("prefer-edit-over-sed-awk", ri(rnd, 1, 3));
+      add("sleep-polling-loop", ri(rnd, 1, 2));
+    } else if (latent === "architect") {
+      add("reread-after-edit", ri(rnd, 4, 12)); add("redundant-cd-cwd", ri(rnd, 3, 10)); noise();
+    } else {
+      const sigs = sigsFor(latent as ArchetypeKey);
+      for (let i = 0, n = ri(rnd, 1, 3); i < n; i++) add(pick(sigs, rnd), ri(rnd, 3, 12));
+      noise(); noise();
+    }
+    return result(rows, events);
+  }
+
+  const PRIOR: [string, number][] = [
+    ["clean", 0.16], ["cowboy", 0.16], ["explorer", 0.14], ["optimist", 0.14],
+    ["ghost", 0.10], ["hammer", 0.08], ["architect", 0.10], ["scattered", 0.12],
+  ];
+  const sampleLatent = (rnd: () => number) => {
+    let x = rnd(), c = 0;
+    for (const [k, p] of PRIOR) { c += p; if (x < c) return k; }
+    return "cowboy";
+  };
+
+  it("every persona gets a healthy share and all 8 appear in 100 users", () => {
+    const rnd = lcg(424242);
+    const N = 5000;
+    const tally: Record<string, number> = {};
+    const cohort = new Set<string>();
+    for (let i = 0; i < N; i++) {
+      const got = classifyAgent(genUser(rnd, sampleLatent(rnd)), `u${i}`).archetype;
+      tally[got] = (tally[got] ?? 0) + 1;
+      if (i < 100) cohort.add(got);
+    }
+    // No persona collapses the population (the old bug had precision at ~80%).
+    for (const k of ALL) {
+      const share = (tally[k] ?? 0) / N;
+      expect(share, `${k} share ${(share * 100).toFixed(1)}%`).toBeGreaterThan(0.04);
+      expect(share, `${k} share ${(share * 100).toFixed(1)}%`).toBeLessThan(0.30);
+    }
+    // The very first 100 users already cover all 8.
+    for (const k of ALL) expect(cohort.has(k), `cohort missing ${k}`).toBe(true);
+  });
+});
+
+describe("persona distribution — no surface-area skew", () => {
+  // For each active-fault cluster, light only its own signals and confirm the
+  // classifier returns that cluster the large majority of the time. Cowboy's
+  // 20-signal surface area must NOT let it hijack the other four.
+  for (const target of ACTIVE) {
+    it(`a ${target}-focused agent classifies as ${target}`, () => {
+      const rnd = lcg(777 + target.length);
+      const sigs = signalsFor(target);
+      let correct = 0;
+      let hijacked = 0; // misclassified as a DIFFERENT active-fault persona
+      const N = 300;
+      for (let i = 0; i < N; i++) {
+        // Enough hits (over 150 calls) to clear the precision clean-rate gate,
+        // so this isolates the skew property rather than the clean threshold.
+        const rows = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () =>
+          row(pick(sigs, rnd), 6 + Math.floor(rnd() * 12)));
+        const got = classifyAgent(result(rows, 150), `s${i}`).archetype;
+        if (got === target) correct++;
+        else if (ACTIVE.includes(got)) hijacked++;
+      }
+      expect(correct / N, `${target} accuracy`).toBeGreaterThan(0.95);
+      // The whole point of lift normalisation: no other active persona
+      // (cowboy especially) hijacks a single-cluster profile.
+      expect(hijacked, `${target} hijacked by another persona`).toBe(0);
+    });
+  }
+});

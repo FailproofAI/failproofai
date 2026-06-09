@@ -31,6 +31,7 @@ import { type Grade } from "@/src/audit/scoring";
 import { copyOrDownloadCard, downloadCard, shareCardNative, shareCardToastMessage } from "@/lib/share-card";
 import { toast } from "@/app/components/toast";
 import { usePostHog } from "@/contexts/PostHogContext";
+import { X_TEMPLATES, LI_TEMPLATES, pickTemplate, type ShareCtx } from "./share-templates";
 
 const SITE_URL = "https://failproof.ai";
 const X_INTENT = (text: string) =>
@@ -51,26 +52,6 @@ interface Props {
   score: number;
   grade: Grade;
   missing: number;
-}
-
-function buildXTemplate(score: number, archetypeName: string, grade: Grade, missing: number): string {
-  const gradeLines: Record<Grade, string> = {
-    S: "every prescribed policy live. running at peak. this is what secure looks like.",
-    A: `${missing} polic${missing === 1 ? "y" : "ies"} from elite tier. almost there.`,
-    B: `solid baseline. ${missing} policy gap${missing === 1 ? "" : "s"} to close before i'm comfortable.`,
-    C: `${missing} prescribed polic${missing === 1 ? "y" : "ies"} between here and the next tier. they're named. they're waiting.`,
-    D: `${missing} prescribed polic${missing === 1 ? "y" : "ies"} unaddressed. agents without guardrails aren't ready for prod.`,
-    F: `exposure is real. ${missing} polic${missing === 1 ? "y" : "ies"} away from stable ground — starting today.`,
-  };
-  return `just audited my AI agent with failproofai ✦\n\narchetype: ${archetypeName.toLowerCase()} · ${score}/100 · ${grade} tier\n${gradeLines[grade]}\n\nrun yours → ${SITE_URL}`;
-}
-
-function buildLinkedInTemplate(score: number, archetypeName: string, grade: Grade, missing: number): string {
-  const cleanRun = grade === "S" || (grade === "A" && missing === 0);
-  const verdict = cleanRun
-    ? `${score}/100 — ${grade} tier. every key policy is live. the audit confirmed what good looks like.`
-    : `${score}/100 — ${grade} tier. ${missing} prescribed polic${missing === 1 ? "y" : "ies"} uncovered — each one is a real attack surface.`;
-  return `We ran a failproofai security audit on our AI agent stack.\n\n${verdict}\n\nArchetype: ${archetypeName.toLowerCase()}. failproofai maps your agent's behavior pattern, identifies the exposure, and prescribes the exact policies to close it.\n\nFree. Open-source. 30 seconds to run: ${SITE_URL}`;
 }
 
 export function ShareDock({ frameRef, archetypeKey, seed, score, grade, missing }: Props) {
@@ -161,9 +142,18 @@ export function ShareDock({ frameRef, archetypeKey, seed, score, grade, missing 
       // (one-tap "image attached" on iOS / Android / recent Safari / recent
       // Chrome). Fall back to clipboard + opening the intent URL when the
       // native share sheet isn't available or the user dismissed it.
+      const shareCtx: ShareCtx = {
+        score,
+        arch: archetypeDisplayName.toLowerCase(),
+        grade,
+        missing,
+      };
+      // One of five tone-matched templates (quirky for X, professional for
+      // LinkedIn), chosen deterministically from the behaviour-fingerprint
+      // seed so the copy fits this run and stays stable on re-share.
       const shareText = channel === "x"
-        ? buildXTemplate(score, archetypeDisplayName, grade, missing)
-        : buildLinkedInTemplate(score, archetypeDisplayName, grade, missing);
+        ? pickTemplate(X_TEMPLATES, seed, shareCtx)
+        : pickTemplate(LI_TEMPLATES, seed, shareCtx);
       const native = await shareCardNative(blob, filenameFor(channel), shareText);
       if (native) {
         capture("audit_card_capture_completed", {

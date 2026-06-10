@@ -106,23 +106,28 @@ describe("classifyAgent — active-fault personas (each reachable)", () => {
 });
 
 describe("classifyAgent — lift over baseline", () => {
-  it("a low-baseline persona beats a higher raw-weight cowboy signal", () => {
-    // cowboy raw = 10 (block-rm-rf ×5), hammer raw = 9 (warn-repeated ×6).
-    // Raw argmax would pick cowboy; lift picks hammer (tiny baseline).
+  it("a low-baseline persona beats a higher raw-weight high-baseline signal", () => {
+    // explorer raw = 9 (block-env-files ×6 ×1.5), cowboy raw = 6 (block-rm-rf ×3 ×2.0).
+    // Raw argmax would pick explorer; lift picks cowboy, because explorer's
+    // EMPIRICAL baseline (ambient env/secrets signals fire in nearly every
+    // session) is ~3× cowboy's, so cowboy over-indexes on far less signal.
     const cls = classifyAgent(mkResult([
-      mkRow("failproofai/block-rm-rf", 5),
-      mkRow("failproofai/warn-repeated-tool-calls", 6),
+      mkRow("failproofai/block-env-files", 6), // explorer — higher raw weight
+      mkRow("failproofai/block-rm-rf", 3),     // cowboy — lower raw weight
     ]));
-    expect(cls.archetype).toBe("hammer");
+    expect(cls.archetype).toBe("cowboy");
   });
 
   it("promotes secondary when its lift is ≥40% of the primary's", () => {
+    // ghost has a low (floored) baseline, so 5 large-file-write hits reach
+    // ≥40% of cowboy's lift and override cowboy's authored secondary.
     const cls = classifyAgent(mkResult([
-      mkRow("failproofai/block-rm-rf", 10),    // cowboy
-      mkRow("failproofai/block-env-files", 3), // explorer, ≥40% of cowboy lift
+      mkRow("failproofai/block-rm-rf", 10),          // cowboy — primary
+      mkRow("failproofai/warn-large-file-write", 5), // ghost — runner-up
     ]));
     expect(cls.archetype).toBe("cowboy");
-    expect(cls.secondary).toBe("explorer");
+    expect(cls.secondary).toBe("ghost");
+    expect(cls.secondary).not.toBe(ARCHETYPES.cowboy.secondary); // proves promotion, not fallback
   });
 
   it("falls back to authored secondary when runner-up is too weak", () => {

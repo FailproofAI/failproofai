@@ -11,11 +11,36 @@ Thanks for your interest in contributing! Here's how to get started.
 ```bash
 git clone https://github.com/failproofai/failproofai.git
 cd failproofai
-bun install
+bun install   # runs the `prepare` script → `bun run build`, which creates dist/
 bun run dev
 ```
 
 The dev server starts at `http://localhost:8020`.
+
+### Build before the in-repo dev hooks will work
+
+This repo **dogfoods failproofai on itself**: `.claude/settings.json` (and the
+sibling `.codex/`, `.cursor/`, `.gemini/`, `.github/hooks/`, … configs) register
+hooks that run `bun bin/failproofai.mjs --hook <Event>`. Those hooks load the
+custom policies in `.failproofai/policies/*.mjs`, which `import` the
+`failproofai` package — resolved against the **compiled `dist/index.js` bundle**.
+
+If `dist/` is missing or stale you'll see hook errors like:
+
+```
+[failproofai:hook] ERROR failed to load custom hooks from
+  .failproofai/policies/review-policies.mjs: Cannot find package 'failproofai' …
+```
+
+`bun install` builds `dist/` for you via its `prepare` script, so a clean clone
+just works. **Build explicitly whenever the bundle is missing or you've changed
+`src/`** (the hooks run the compiled bundle, not your live `src/`):
+
+```bash
+bun run build   # full build (Next.js + dist/)
+# …or, just the hook bundle (much faster while iterating on policies):
+bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts
+```
 
 ## Available Scripts
 

@@ -820,8 +820,11 @@ const ARCHITECT_CAUTION_MIN = 0.35;
 /** Architect only applies when cowboy isn't itself over-indexing. */
 const ARCHITECT_COWBOY_MAX_LIFT = 1.0;
 /** Normalised lift entropy above this (with enough distinct clusters lit)
- *  → goldfish (genuinely scattered). */
-const GOLDFISH_ENTROPY = 0.75;
+ *  → goldfish (genuinely scattered). Retuned from 0.75 → 0.70 when the lift
+ *  denominator moved from catalog weights to empirical firing shares
+ *  (see features.ts BASELINE_SHARE): the empirical baseline reshapes the lift
+ *  vector, and 0.75 left goldfish under-reachable (< 4% of the population). */
+const GOLDFISH_ENTROPY = 0.70;
 const GOLDFISH_MIN_NONZERO = 4;
 /** When the top-two lifts are within this ratio, resolve deterministically by
  *  the behaviour fingerprint instead of always taking the arithmetic winner —

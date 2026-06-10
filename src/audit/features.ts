@@ -11,10 +11,14 @@
  *   1. All 8 personas reachable. Five are mapped by *which* faults dominate
  *      (`SIGNAL_MAP`); three are relational — `precision` (low fault rate),
  *      `architect` (faults are over-verification), `goldfish` (scattered).
- *   2. No artificial skew. The catalog is cowboy-heavy (20 of 47 signals), so
- *      a raw argmax would almost always pick cowboy. We rank by *lift over a
- *      self-calibrated baseline* instead — cowboy's large baseline means it
- *      has to over-index to win, neutralising the surface-area advantage.
+ *   2. No systemic skew. Ranking is by *lift = observed-share ÷ baseline-share*
+ *      where the baseline is the EMPIRICAL firing share of each cluster for a
+ *      typical agent (see BASELINE_SHARE / EMPIRICAL_FIRING_SHARE), not the
+ *      catalog weight share. This is what stops ambient, high-firing clusters
+ *      (explorer, architect) from collapsing the whole population onto one
+ *      persona: a cluster wins only when it fires *more than typical*, not
+ *      merely often. `block-read-outside-cwd` is excluded from SIGNAL_MAP
+ *      entirely — it is off by default and fires on ubiquitous ambient reads.
  *   3. Deterministic personalisation. A `fingerprint` hash of the rounded
  *      behaviour vector seeds tie-breaks and copy-variant selection, so two
  *      different agents that land on the same primary still look distinct,
@@ -93,14 +97,21 @@ export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: numbe
   "block-az-cli":              { archetype: "cowboy", weight: 1.2 },
   "block-gh-pipeline":         { archetype: "cowboy", weight: 1.2 },
 
-  // ── explorer ── boundary crossing / secrets exposure (10) ─────────────────
+  // ── explorer ── boundary crossing / secrets exposure (9) ──────────────────
+  // NOTE: `block-read-outside-cwd` is deliberately NOT mapped to a persona. It
+  // is `defaultEnabled: false` (so real users don't even enforce it) and fires
+  // on any absolute-path read outside cwd — ambient, volume-scaled behaviour
+  // present in essentially every session, not an elective "explorer" tendency.
+  // Replay force-registers it regardless of config, so leaving it here made it
+  // the single largest signal (≈37% of all mapped signal in real audits) and
+  // collapsed the whole population onto "the explorer". It still appears in the
+  // audit report; it just no longer drives the archetype.
   "sanitize-private-key-content":{ archetype: "explorer", weight: 1.5 },
   "block-env-files":           { archetype: "explorer", weight: 1.5 },
   "block-secrets-write":       { archetype: "explorer", weight: 1.5 },
   "sanitize-api-keys":         { archetype: "explorer", weight: 1.2 },
   "sanitize-jwt":              { archetype: "explorer", weight: 1.2 },
   "sanitize-connection-strings":{ archetype: "explorer", weight: 1.2 },
-  "block-read-outside-cwd":    { archetype: "explorer", weight: 1.2 },
   "sanitize-bearer-tokens":    { archetype: "explorer", weight: 1.0 },
   "protect-env-vars":          { archetype: "explorer", weight: 1.0 },
   "find-from-root":            { archetype: "explorer", weight: 1.0 },
@@ -160,21 +171,48 @@ function emptyWeights(): Record<ArchetypeKey, number> {
   };
 }
 
+/** A rare-but-elective cluster floor for the lift denominator. Without it a
+ *  cluster that barely fires under replay (e.g. ghost) would have a near-zero
+ *  baseline and explode to a huge lift off a single hit, hijacking the persona
+ *  from one stray signal. 0.05 ≈ "you need a few % of your signal here to count
+ *  as over-indexing", which is the right bar for the long tail. */
+const MIN_BASELINE = 0.05;
+
 /**
- * Each mappable persona's *expected* share of total signal, derived directly
- * from `SIGNAL_MAP` (sum of its weights ÷ sum of all weights). Self-calibrates
- * whenever a weight changes. Used to compute lift = observed-share ÷ baseline,
- * which is what removes the cowboy surface-area skew.
+ * EMPIRICAL firing share of each mappable cluster for a *typical* agent —
+ * measured from a corpus of real audits, NOT derived from catalog weights.
+ *
+ * The original implementation set the baseline to each persona's share of the
+ * `SIGNAL_MAP` *catalog* (Σ its weights ÷ Σ all weights), on the theory that
+ * lift would then cancel cowboy's 20-signal surface area. But catalog share ≠
+ * real firing rate. The ambient policies feeding `explorer` (env access,
+ * secrets-in-tool-output) and `architect` (reread-after-edit, redundant-cd)
+ * fire on benign, volume-scaled activity in nearly every session — far above
+ * their catalog share — while cowboy's destructive `block-*` policies almost
+ * never fire. A catalog baseline therefore kept explorer's lift > 1 for almost
+ * every real user and collapsed the entire population onto a single persona.
+ * Calibrating the denominator to real firing frequency is what removes that
+ * systemic skew: a cluster now wins only when it fires *more than typical*.
+ *
+ * These need only track the *relative* ambient firing frequency of each
+ * cluster; they don't have to sum to 1. Refine as the corpus grows.
  */
+export const EMPIRICAL_FIRING_SHARE: Record<ArchetypeKey, number> = {
+  explorer: 0.38,
+  architect: 0.33,
+  hammer: 0.11,
+  cowboy: 0.11,
+  optimist: 0.07,
+  ghost: 0.01,
+  precision: 0,
+  goldfish: 0,
+};
+
+/** Lift denominator: observed-share ÷ baseline-share. Empirically calibrated
+ *  (see EMPIRICAL_FIRING_SHARE) and floored at MIN_BASELINE for the long tail. */
 export const BASELINE_SHARE: Record<ArchetypeKey, number> = (() => {
-  const raw = emptyWeights();
-  let total = 0;
-  for (const { archetype, weight } of Object.values(SIGNAL_MAP)) {
-    raw[archetype] += weight;
-    total += weight;
-  }
   const out = emptyWeights();
-  for (const k of MAPPABLE_KEYS) out[k] = total > 0 ? raw[k] / total : 0;
+  for (const k of MAPPABLE_KEYS) out[k] = Math.max(EMPIRICAL_FIRING_SHARE[k], MIN_BASELINE);
   return out;
 })();
 

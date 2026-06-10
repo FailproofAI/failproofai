@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.11-beta.5 — 2026-06-10
+
+### Fixes
+- Fix the `/audit` archetype classifier collapsing nearly every agent onto **the explorer**. The lift denominator (`BASELINE_SHARE` in `src/audit/features.ts`) was derived from `SIGNAL_MAP` *catalog weights* — each persona's share of the catalog — on the theory that lift would cancel cowboy's surface-area advantage. But catalog share ≠ real firing rate: the ambient policies feeding `explorer` (env access + secrets-in-tool-output) and `architect` (`reread-after-edit` / `redundant-cd-cwd`) fire on benign, volume-scaled activity in essentially every session, far above their catalog share, so explorer's lift stayed > 1 for almost everyone and won the active-fault argmax. A real-corpus audit (674 transcripts / 41k events) measured explorer at ~60% of all mapped signal against a 22% catalog baseline. Fix: (1) drop `block-read-outside-cwd` from `SIGNAL_MAP` — it is `defaultEnabled: false` and fires on ubiquitous ambient reads, ~37% of all mapped signal on its own; (2) replace the catalog-weight `BASELINE_SHARE` with an **empirical firing-share** baseline (floored at `MIN_BASELINE` so a rare cluster can't explode to a huge lift off one hit), so a persona now wins only when it fires *more than typical*; (3) retune `GOLDFISH_ENTROPY` 0.75 → 0.70 for the reshaped lift vector. The synthetic population now spreads all 8 personas across ~8–20% (explorer down from a forced ~100% to ~13%). New regression block in `__tests__/audit/distribution.test.ts` reproduces the real ambient profile (explorer as the largest *raw* cluster) and asserts it is never auto-classified explorer and that an ambient cohort never collapses onto one persona; the two `__tests__/audit/archetypes.test.ts` lift examples are rewritten for the empirical baseline (#426).
+
+### Docs
+- Document that contributors must build the project before the in-repo dev hooks work — the hooks resolve the `failproofai` import against the compiled `dist/index.js`, so a missing or stale `dist/` produces `Cannot find package 'failproofai'` hook errors. Adds a "Build before the in-repo dev hooks will work" section to `CONTRIBUTING.md` (with the fast `dist/index.js`-only build command for iterating on policies) and a build-first callout to the README `Contributing` section (#426).
+
 ## 0.0.11-beta.4 — 2026-06-10
 
 ### Fixes

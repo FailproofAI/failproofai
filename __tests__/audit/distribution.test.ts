@@ -9,7 +9,7 @@
 //      majority of the time, even though cowboy owns 20 of the 47 signals.
 import { describe, it, expect } from "vitest";
 import { classifyAgent, type ArchetypeKey } from "../../src/audit/archetypes";
-import { SIGNAL_MAP } from "../../src/audit/features";
+import { SIGNAL_MAP, deriveFeatures, MAPPABLE_KEYS } from "../../src/audit/features";
 import type { AuditCount, AuditResult } from "../../src/audit/types";
 
 const DETECTORS = new Set([
@@ -196,4 +196,70 @@ describe("persona distribution — no surface-area skew", () => {
       expect(hijacked, `${target} hijacked by another persona`).toBe(0);
     });
   }
+});
+
+describe("persona distribution — ambient profile does not collapse to explorer", () => {
+  // Regression for the reported bug: "every person who tries it gets explorer".
+  //
+  // Replaying real transcripts makes the *ambient* explorer signals (env access
+  // + secrets-in-tool-output) and architect signals (reread-after-edit,
+  // redundant-cd) the largest RAW clusters for nearly every agent — they fire
+  // on benign, volume-scaled activity in essentially every session. Under the
+  // old catalog-weight baseline that forced the whole population onto "the
+  // explorer". The fix calibrates the lift denominator to EMPIRICAL firing
+  // shares (features.ts BASELINE_SHARE), so ambient explorer firing no longer
+  // over-indexes and a typical agent reads as scattered/over-verifying, never
+  // auto-explorer.
+  //
+  // The genUser harness above fabricates users from a latent label and lights
+  // only that label's signals, so it never reproduced this shape — that's the
+  // exact gap this block closes.
+  const ambientRows = (rnd: () => number): AuditCount[] => {
+    const j = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
+    return [
+      row("block-env-files", j(4, 8)),            // explorer — ambient env
+      row("protect-env-vars", j(4, 8)),           // explorer — ambient env
+      row("sanitize-connection-strings", j(3, 6)),// explorer — secrets in output
+      row("reread-after-edit", j(5, 12)),         // architect — ambient re-read
+      row("redundant-cd-cwd", j(4, 10)),          // architect — ambient cd
+      row("sleep-polling-loop", j(0, 3)),         // hammer — elective tail
+      row("block-gh-pipeline", j(0, 2)),          // cowboy — elective tail
+      row("prefer-edit-over-read-cat", j(0, 4)),  // optimist — elective tail
+    ];
+  };
+
+  it("a representative ambient agent has explorer as its largest raw cluster yet is NOT classified explorer", () => {
+    // Deterministic profile mirroring real measured shares: explorer raw 21
+    // (the largest), architect 13.6, small elective tails.
+    const res = result([
+      row("block-env-files", 6), row("protect-env-vars", 6),
+      row("sanitize-connection-strings", 5),
+      row("reread-after-edit", 8), row("redundant-cd-cwd", 7),
+      row("sleep-polling-loop", 2), row("block-gh-pipeline", 1),
+      row("prefer-edit-over-read-cat", 2),
+    ], 1500);
+    const f = deriveFeatures(res, "ambient");
+    const maxCluster = MAPPABLE_KEYS.reduce(
+      (m, k) => (f.clusterRaw[k] > f.clusterRaw[m] ? k : m), MAPPABLE_KEYS[0]);
+    expect(maxCluster, "precondition: explorer must dominate raw signal").toBe("explorer");
+    // The whole bug: explorer is the biggest raw cluster but must not win.
+    expect(classifyAgent(res, "ambient").archetype).not.toBe("explorer");
+  });
+
+  it("a cohort of ambient agents does not collapse onto a single persona", () => {
+    const rnd = lcg(54321);
+    const N = 600;
+    const tally: Record<string, number> = {};
+    for (let i = 0; i < N; i++) {
+      const got = classifyAgent(
+        result(ambientRows(rnd), 200 + Math.floor(rnd() * 3000)), `c${i}`).archetype;
+      tally[got] = (tally[got] ?? 0) + 1;
+    }
+    const explorerShare = (tally.explorer ?? 0) / N;
+    const topShare = Math.max(...Object.values(tally)) / N;
+    // Old bug: 100% explorer. Now explorer must be a small minority…
+    expect(explorerShare, `explorer ${(explorerShare * 100).toFixed(0)}%`).toBeLessThan(0.2);
+    // …and no persona may own the ambient population.
+    expect(topShare, `top persona ${(topShare * 100).toFixed(0)}%`).toBeLessThan(0.85);
+  });
 });

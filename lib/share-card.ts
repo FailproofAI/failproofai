@@ -21,10 +21,33 @@
 export type ShareCardMethod = "native" | "clipboard" | "download" | "failed";
 
 /**
+ * Best-effort "is this a mobile device" check. On mobile, the system share
+ * sheet exposes the actual X / LinkedIn apps as targets so `navigator.share`
+ * is a one-tap UX win. On desktop (notably Windows Chromium / Edge) the same
+ * call opens the OS share dialog — useless for X / LinkedIn — so we
+ * deliberately skip it and fall back to clipboard + intent URL.
+ *
+ * Prefers `userAgentData.mobile` (Chromium UA-Client-Hints, no sniffing),
+ * falls back to a tight UA pattern for Safari / Firefox, and treats
+ * iPadOS 13+ (UA says Mac but multi-touch is available) as mobile.
+ */
+function isLikelyMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  type UADataNav = Navigator & { userAgentData?: { mobile?: boolean } };
+  const uaData = (navigator as UADataNav).userAgentData;
+  if (uaData && typeof uaData.mobile === "boolean") return uaData.mobile;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+  if (ua.includes("Mac") && typeof navigator.maxTouchPoints === "number" && navigator.maxTouchPoints > 1) return true;
+  return false;
+}
+
+/**
  * Try the native Web Share API with a file attachment. Returns `true` on
  * success, `false` if the API is unavailable, files-sharing isn't
- * supported, or the user dismissed the sheet. Caller should fall back to
- * `copyOrDownloadCard` on `false`.
+ * supported, the device is desktop (where the OS share sheet doesn't
+ * include X / LinkedIn), or the user dismissed the sheet. Caller should
+ * fall back to `copyOrDownloadCard` on `false`.
  */
 export async function shareCardNative(
   blob: Blob,
@@ -34,6 +57,7 @@ export async function shareCardNative(
   if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
     return false;
   }
+  if (!isLikelyMobile()) return false;
   const file = new File([blob], filename, { type: "image/png" });
   // Some browsers (older Chrome desktop) expose `navigator.share` but reject
   // file payloads. `canShare({ files })` gates that cleanly.

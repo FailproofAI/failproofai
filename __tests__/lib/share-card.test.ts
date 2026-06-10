@@ -29,6 +29,7 @@ describe("lib/share-card", () => {
     vi.restoreAllMocks();
     delete (globalThis as { ClipboardItem?: unknown }).ClipboardItem;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "userAgentData", { configurable: true, value: undefined });
   });
 
   it("returns 'clipboard' when navigator.clipboard.write succeeds", async () => {
@@ -120,10 +121,11 @@ describe("lib/share-card", () => {
     }
   });
 
-  it("shareCardNative returns true when navigator.share resolves", async () => {
+  it("shareCardNative returns true when navigator.share resolves on mobile", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "share", { configurable: true, value: share });
     Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "userAgentData", { configurable: true, value: { mobile: true } });
 
     const ok = await shareCardNative(makeBlob(), "x.png", "hello");
 
@@ -136,9 +138,25 @@ describe("lib/share-card", () => {
     const share = vi.fn().mockRejectedValue(abort);
     Object.defineProperty(navigator, "share", { configurable: true, value: share });
     Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "userAgentData", { configurable: true, value: { mobile: true } });
 
     const ok = await shareCardNative(makeBlob(), "x.png", "hello");
 
     expect(ok).toBe(false);
+  });
+
+  it("shareCardNative returns false on desktop without invoking navigator.share", async () => {
+    // Windows Chromium / Edge expose `navigator.share` but the OS share sheet
+    // doesn't include X / LinkedIn as targets, so we skip native entirely on
+    // desktop and let the caller's clipboard + intent-URL fallback run.
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { configurable: true, value: share });
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "userAgentData", { configurable: true, value: { mobile: false } });
+
+    const ok = await shareCardNative(makeBlob(), "x.png", "hello");
+
+    expect(ok).toBe(false);
+    expect(share).not.toHaveBeenCalled();
   });
 });

@@ -25,10 +25,14 @@ import type { AuditResult } from "@/src/audit/types";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { isAbortError } from "@/lib/fetch-with-timeout";
 import { AuthDialog, type AuthedUser } from "./auth-dialog";
-import { RerunError, triggerRun } from "./rerun-button";
 
 interface Props {
   result: AuditResult;
+  /** Lifted by AuditDashboard so the bottom button and the top-of-page
+   *  re-audit bar share state — only one rerun at a time. */
+  isRunning: boolean;
+  /** Lifted handler. Drives the sticky progress strip + soft refresh. */
+  onRerun: () => void;
 }
 
 const BULK_INSTALL_CMD = "failproofai policies --install";
@@ -59,7 +63,7 @@ function formatNextAudit(unixSecs: number): string {
   });
 }
 
-export function ReturnSection({ result }: Props) {
+export function ReturnSection({ result, isRunning, onRerun }: Props) {
   const { capture } = usePostHog();
   const hasUnenabled = result.results.some(
     (r) => r.source === "builtin" && !r.enabledInConfig && r.hits > 0,
@@ -70,7 +74,6 @@ export function ReturnSection({ result }: Props) {
   const [reminder, setReminder] = useState<Reminder | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reminderBusy, setReminderBusy] = useState(false);
-  const [rerunBusy, setRerunBusy] = useState(false);
   const ctaShownRef = useRef(false);
   /** Throttle gate for focus/visibility-triggered refreshStatus calls —
    *  rapid alt-tabbing would otherwise hit /api/auth/status (two disk
@@ -233,30 +236,15 @@ export function ReturnSection({ result }: Props) {
     [capture, persistReminder],
   );
 
-  const handleRerun = useCallback(async () => {
-    if (rerunBusy) return;
-    capture("audit_rerun_clicked", {
-      source: "return_section",
-      since: "30d",
-    });
-    setRerunBusy(true);
-    try {
-      await triggerRun({ cli: [], since: "30d" });
-      // Reload the page after the run so the cached result + dashboard cache
-      // get re-hydrated against the new scan. Cheaper than threading state.
-      window.location.reload();
-    } catch (err) {
-      const kind = err instanceof RerunError ? err.kind : "network";
-      capture("audit_rerun_failed", {
-        kind,
-        source: "return_section",
-        since: "30d",
-        cli_filter: "all",
-      });
-    } finally {
-      setRerunBusy(false);
-    }
-  }, [capture, rerunBusy]);
+  // Re-audit is now lifted into AuditDashboard so the top-of-page bar and
+  // this bottom button share state — concurrent clicks are impossible and
+  // success path soft-refreshes the report rather than reloading the page.
+  // PostHog `source: "return_section"` capture happens inside the lifted
+  // handler via the `source` argument it receives.
+  const handleRerun = useCallback(() => {
+    if (isRunning) return;
+    onRerun();
+  }, [isRunning, onRerun]);
 
   const authed = authStatus.kind === "authed";
   const hasReminder = authed && reminder !== null;
@@ -328,7 +316,7 @@ export function ReturnSection({ result }: Props) {
               showSetReminder={!hasReminder}
               setReminderDisabled={reminderBusy}
               reminderBusy={reminderBusy}
-              rerunBusy={rerunBusy}
+              rerunBusy={isRunning}
               hasUnenabled={hasUnenabled}
               copied={copied}
               onSetReminder={handleSetReminder}
@@ -341,7 +329,7 @@ export function ReturnSection({ result }: Props) {
             showSetReminder
             setReminderDisabled={authStatus.kind === "unknown" || reminderBusy}
             reminderBusy={reminderBusy}
-            rerunBusy={rerunBusy}
+            rerunBusy={isRunning}
             hasUnenabled={hasUnenabled}
             copied={copied}
             onSetReminder={handleSetReminder}

@@ -63,7 +63,10 @@ export async function triggerRun(scanParams: ScanParams): Promise<void> {
     throw new RerunError(isAbortError(err) ? "timeout" : "network", "audit run request failed");
   }
 
-  // Poll status until running flips false.
+  // Poll status until running flips false. The status route returns
+  // `cachedAt`, which the polling caller can compare against the prior
+  // value to detect "fresh result available" — but for `triggerRun`'s
+  // purposes the `running: false` flip is the success signal.
   const startedAt = Date.now();
   while (Date.now() - startedAt < MAX_POLL_MS) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));

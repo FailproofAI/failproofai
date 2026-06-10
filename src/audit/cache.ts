@@ -61,12 +61,26 @@ function getCachePathFor(transcriptPath: string): string {
  * silently rendered them as `cwd: undefined` (dropped from
  * `projectsScanned`) and `eventsScanned: 0`. Rejecting v1 forces a
  * re-scan so the new fields are populated correctly.
+ *
+ * v3: `CacheEntry` gained `cachedAt` to support the 7-day TTL below. v2
+ * entries lack the field; without a bump the age check would treat
+ * `cachedAt: undefined` as `NaN` (passes the `<= TTL` comparison
+ * accidentally on some paths) so we reject them outright and force a
+ * re-scan.
  */
-export const CACHE_SCHEMA_VERSION = 2;
+export const CACHE_SCHEMA_VERSION = 3;
+
+/** Hard expiry: a cached transcript result is rejected on read once it's
+ *  this old. Keeps the audit pipeline honest about long-lived results that
+ *  may no longer reflect current detector intent even if the transcript
+ *  bytes and policy hashes haven't changed. */
+export const CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
 
 interface CacheEntry {
   /** Bumped whenever the on-disk shape changes incompatibly. */
   schemaVersion: number;
+  /** ms since epoch when the entry was written. Drives the 7-day TTL. */
+  cachedAt: number;
   mtimeMs: number;
   sizeBytes: number;
   engineVersion: string;
@@ -90,6 +104,7 @@ export function readCachedTranscriptResult(
     if (entry.sizeBytes !== sizeBytes) return null;
     if (entry.engineVersion !== getEngineVersion()) return null;
     if (entry.detectorVersion !== getDetectorVersion()) return null;
+    if (typeof entry.cachedAt !== "number" || Date.now() - entry.cachedAt > CACHE_TTL_MS) return null;
     return entry.result ?? null;
   } catch {
     return null;
@@ -108,6 +123,7 @@ export function writeCachedTranscriptResult(
     mkdirSync(join(homedir(), ".failproofai", "cache", "audit"), { recursive: true });
     const entry: CacheEntry = {
       schemaVersion: CACHE_SCHEMA_VERSION,
+      cachedAt: Date.now(),
       mtimeMs,
       sizeBytes,
       engineVersion: getEngineVersion(),

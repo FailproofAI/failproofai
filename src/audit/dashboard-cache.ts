@@ -18,6 +18,12 @@ import type { AuditResult, RunAuditOptions } from "./types";
 
 const DEFAULT_MAX_AGE_MINUTES = 30;
 
+/** Hard expiry: the dashboard cache is rejected on read once it's this old.
+ *  Matches the per-transcript TTL in `cache.ts` so the whole audit surface
+ *  has a consistent 7-day freshness window — past that, `/audit` falls
+ *  through to its empty state and nudges the user to re-audit. */
+const DASHBOARD_CACHE_TTL_MINUTES = 7 * 24 * 60;
+
 /**
  * Bump whenever the on-disk shape of a cached entry changes in a way the
  * reader can't tolerate (added required field, renamed key, swapped result
@@ -75,6 +81,9 @@ export function readDashboardCache(): DashboardCacheEntry | null {
     if (entry.schemaVersion !== DASHBOARD_CACHE_SCHEMA_VERSION) {
       return null;
     }
+    if (isCacheStale(entry.cachedAt, DASHBOARD_CACHE_TTL_MINUTES)) {
+      return null;
+    }
     return entry;
   } catch {
     return null;
@@ -108,4 +117,25 @@ export function isCacheStale(cachedAt: string, maxAgeMinutes: number = DEFAULT_M
   if (Number.isNaN(cachedMs)) return true;
   const ageMs = Date.now() - cachedMs;
   return ageMs > maxAgeMinutes * 60_000;
+}
+
+/**
+ * Read just the `cachedAt` timestamp from the dashboard cache file,
+ * **bypassing** the TTL check. Used by the empty-state path to tell apart
+ * "no audit has ever run" from "your last audit aged out". A non-null
+ * return whose age exceeds `DASHBOARD_CACHE_TTL_MINUTES` means the cache
+ * was rejected by `readDashboardCache()` for being expired (rather than
+ * missing or schema-incompatible).
+ */
+export function readDashboardCacheMeta(): { cachedAt: string } | null {
+  const cachePath = getCachePath();
+  if (!existsSync(cachePath)) return null;
+  try {
+    const raw = readFileSync(cachePath, "utf-8");
+    const entry = JSON.parse(raw) as Partial<DashboardCacheEntry>;
+    if (!entry || typeof entry.cachedAt !== "string") return null;
+    return { cachedAt: entry.cachedAt };
+  } catch {
+    return null;
+  }
 }

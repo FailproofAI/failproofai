@@ -8,7 +8,7 @@
  */
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { readDashboardCache } from "@/src/audit/dashboard-cache";
+import { readDashboardCache, readDashboardCacheMeta } from "@/src/audit/dashboard-cache";
 import { BUILTIN_POLICIES } from "@/src/hooks/builtin-policies";
 import { AUDIT_DETECTORS } from "@/src/audit/detectors";
 import { AuditDashboard } from "./_components/audit-dashboard";
@@ -32,14 +32,24 @@ export default async function AuditPage({ searchParams }: PageProps) {
   const { p } = await searchParams;
 
   const cache = readDashboardCache();
-  const initial = cache
-    ? {
-        status: "cached" as const,
-        cachedAt: cache.cachedAt,
-        params: cache.params,
-        result: cache.result,
-      }
-    : { status: "empty" as const };
+  let initial;
+  if (cache) {
+    initial = {
+      status: "cached" as const,
+      cachedAt: cache.cachedAt,
+      params: cache.params,
+      result: cache.result,
+    };
+  } else {
+    // No fresh cache. Probe meta so we can distinguish "first run" from
+    // "your last audit expired" and surface the right top-bar nudge.
+    const meta = readDashboardCacheMeta();
+    initial = {
+      status: "empty" as const,
+      expired: meta !== null,
+      expiredAt: meta?.cachedAt ?? null,
+    };
+  }
 
   return (
     <Suspense>

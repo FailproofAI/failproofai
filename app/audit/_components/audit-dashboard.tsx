@@ -30,6 +30,9 @@ import { ReturnSection } from "./return-section";
 import { ReportFooter } from "./report-footer";
 import { EmptyState } from "./empty-state";
 import { RunProgress } from "./run-progress";
+import { TopAuditBar, type TopAuditBarMode } from "./top-audit-bar";
+import { AuditProgressStrip, type RerunStatus } from "./audit-progress-strip";
+import { RerunError, triggerRun } from "./rerun-button";
 
 // IMPORTANT: do NOT import BUILTIN_POLICIES or AUDIT_DETECTORS here.
 // Both pull in node:fs and execSync (workflow policies), which Next.js
@@ -38,7 +41,12 @@ import { RunProgress } from "./run-progress";
 
 type Initial =
   | { status: "cached"; cachedAt: string; params: RunAuditOptions; result: AuditResult }
-  | { status: "empty" };
+  | { status: "empty"; expired: boolean; expiredAt: string | null };
+
+/** Tag passed to the shared `startRerun()` handler so PostHog can tell
+ *  whether the click came from the new top bar or the existing bottom
+ *  return-section button. */
+export type RerunSource = "top_bar" | "return_section" | "empty_state";
 
 interface Props {
   initial: Initial;
@@ -82,6 +90,7 @@ function inferProjectName(result: AuditResult, override?: string): string {
 export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Props) {
   const [cache, setCache] = useState<Initial>(initial);
   const [running, setRunning] = useState(false);
+  const [rerunStatus, setRerunStatus] = useState<RerunStatus>({ kind: "idle" });
   const { capture } = usePostHog();
   const pageViewStateRef = useRef<string | null>(null);
   const scrollTrackedRef = useRef(false);
@@ -90,7 +99,37 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
 
   const refreshFromCache = useCallback(async () => {
     const payload = await getAuditResultAction();
-    if (payload.status === "cached") setCache(payload);
+    setCache(payload);
+  }, []);
+
+  /** Shared re-audit handler used by the top bar and the bottom button.
+   *  Drives `rerunStatus` (which renders the sticky progress strip) and
+   *  soft-refreshes the dashboard cache on success — no full page reload. */
+  const startRerun = useCallback(async (source: RerunSource) => {
+    if (running) return;
+    capture("audit_rerun_clicked", { source, since: "30d" });
+    setRunning(true);
+    setRerunStatus({ kind: "running", startedAt: Date.now() });
+    try {
+      await triggerRun({ cli: [], since: "30d" });
+      await refreshFromCache();
+      setRerunStatus({ kind: "idle" });
+    } catch (err) {
+      const kind = err instanceof RerunError ? err.kind : "network";
+      capture("audit_rerun_failed", {
+        kind,
+        source,
+        since: "30d",
+        cli_filter: "all",
+      });
+      setRerunStatus({ kind: "failed", reason: kind, failedAt: Date.now() });
+    } finally {
+      setRunning(false);
+    }
+  }, [capture, refreshFromCache, running]);
+
+  const dismissRerunStatus = useCallback(() => {
+    setRerunStatus({ kind: "idle" });
   }, []);
 
   // Body class for audit-only background + grain texture. Applied once on
@@ -152,11 +191,21 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     };
   }, [cache.status, capture, resultsCount, running, transcriptsScanned]);
 
+  // Compute the top-bar mode (only matters on empty paths — MainReport
+  // always renders the bar in "cached" mode below).
+  const emptyBarMode: TopAuditBarMode =
+    cache.status === "empty" && cache.expired ? "expired" : "empty";
+  const emptyBarCachedAt =
+    cache.status === "empty" && cache.expired ? cache.expiredAt : null;
+
   /* ---- empty / first-run ----------------------------------------- */
   if (cache.status === "empty" && !running) {
     return (
       <ShellEmpty
         running={false}
+        topBar={{ mode: emptyBarMode, cachedAt: emptyBarCachedAt, isRunning: running, onRerun: () => startRerun("empty_state") }}
+        rerunStatus={rerunStatus}
+        onDismissRerun={dismissRerunStatus}
         onStarted={() => setRunning(true)}
         onCompleted={async () => { setRunning(false); await refreshFromCache(); }}
       />
@@ -166,6 +215,9 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     return (
       <ShellEmpty
         running
+        topBar={{ mode: emptyBarMode, cachedAt: emptyBarCachedAt, isRunning: running, onRerun: () => startRerun("empty_state") }}
+        rerunStatus={rerunStatus}
+        onDismissRerun={dismissRerunStatus}
         onStarted={() => {}}
         onCompleted={async () => { setRunning(false); await refreshFromCache(); }}
       />
@@ -184,28 +236,20 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
       <ShellEmpty
         running={running}
         mode="zero-sessions"
+        topBar={{ mode: "cached", cachedAt, isRunning: running, onRerun: () => startRerun("empty_state") }}
+        rerunStatus={rerunStatus}
+        onDismissRerun={dismissRerunStatus}
         onStarted={() => setRunning(true)}
         onCompleted={async () => { setRunning(false); await refreshFromCache(); }}
       />
     );
   }
 
-  /* ---- in-flight re-run ------------------------------------------ */
-  if (running) {
-    return (
-      <div className="app">
-        <div className="scanline-overlay" />
-        <div className="app-shell">
-          <div className="report">
-            <RunProgress />
-          </div>
-          <ReportFooter cachedAt={cachedAt} />
-        </div>
-      </div>
-    );
-  }
-
   /* ---- main report ----------------------------------------------- */
+  // Note: on re-audit from a cached state, we deliberately stay on the
+  // MainReport instead of swapping to RunProgress. The sticky
+  // AuditProgressStrip provides the in-flight indicator, and the soft
+  // refresh on completion (via refreshFromCache) avoids a full reload.
   return (
     <MainReport
       result={result}
@@ -213,6 +257,10 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
       params={params}
       projectFromUrl={projectFromUrl}
       totalCatalogSize={totalCatalogSize}
+      isRunning={running}
+      rerunStatus={rerunStatus}
+      onRerun={(source) => startRerun(source)}
+      onDismissRerun={dismissRerunStatus}
     />
   );
 }
@@ -223,9 +271,23 @@ interface MainReportProps {
   params: RunAuditOptions | undefined;
   projectFromUrl?: string;
   totalCatalogSize: number;
+  isRunning: boolean;
+  rerunStatus: RerunStatus;
+  onRerun: (source: RerunSource) => void;
+  onDismissRerun: () => void;
 }
 
-function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize }: MainReportProps) {
+function MainReport({
+  result,
+  cachedAt,
+  params,
+  projectFromUrl,
+  totalCatalogSize,
+  isRunning,
+  rerunStatus,
+  onRerun,
+  onDismissRerun,
+}: MainReportProps) {
   const { capture } = usePostHog();
   const project = useMemo(() => inferProjectName(result, projectFromUrl), [result, projectFromUrl]);
   // Seed classification with the project name so the behaviour fingerprint
@@ -288,9 +350,16 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
 
   return (
     <div className="app">
+      <AuditProgressStrip status={rerunStatus} onDismiss={onDismissRerun} />
       <div className="scanline-overlay" />
       <div className="app-shell">
         <div className="report">
+          <TopAuditBar
+            mode="cached"
+            cachedAt={cachedAt}
+            isRunning={isRunning}
+            onRerun={() => onRerun("top_bar")}
+          />
           <IdentitySection
             ref={identityFrameRef}
             archetypeKey={classification.archetype}
@@ -312,7 +381,11 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
             archetypeKey={classification.archetype}
             project={project}
           />
-          <ReturnSection result={result} />
+          <ReturnSection
+            result={result}
+            isRunning={isRunning}
+            onRerun={() => onRerun("return_section")}
+          />
           <FindingsSection findings={findings} />
           <PoliciesSection result={result} projected={projected} projectedGrade={projectedGrade} />
         </div>
@@ -333,19 +406,34 @@ function MainReport({ result, cachedAt, params, projectFromUrl, totalCatalogSize
 interface ShellEmptyProps {
   running: boolean;
   mode?: "no-cache" | "zero-sessions";
+  topBar: {
+    mode: TopAuditBarMode;
+    cachedAt: string | null;
+    isRunning: boolean;
+    onRerun: () => void;
+  };
+  rerunStatus: RerunStatus;
+  onDismissRerun: () => void;
   onStarted: () => void;
   onCompleted: () => Promise<void> | void;
 }
 
-function ShellEmpty({ running, mode = "no-cache", onStarted, onCompleted }: ShellEmptyProps) {
+function ShellEmpty({ running, mode = "no-cache", topBar, rerunStatus, onDismissRerun, onStarted, onCompleted }: ShellEmptyProps) {
   // Use the archetype "optimist" sigil for the empty-state visual so the
   // page doesn't render with a dead box. EmptyState itself is unchanged
   // from the previous build.
   return (
     <div className="app">
+      <AuditProgressStrip status={rerunStatus} onDismiss={onDismissRerun} />
       <div className="scanline-overlay" />
       <div className="app-shell">
         <div className="report">
+          <TopAuditBar
+            mode={topBar.mode}
+            cachedAt={topBar.cachedAt}
+            isRunning={topBar.isRunning}
+            onRerun={topBar.onRerun}
+          />
           {running ? (
             <RunProgress />
           ) : (

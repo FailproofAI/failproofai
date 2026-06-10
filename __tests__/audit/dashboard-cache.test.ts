@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   readDashboardCache,
+  readDashboardCacheMeta,
   writeDashboardCache,
   isCacheStale,
+  DASHBOARD_CACHE_SCHEMA_VERSION,
 } from "../../src/audit/dashboard-cache";
 import type { AuditResult } from "../../src/audit/types";
 
@@ -91,5 +93,61 @@ describe("dashboard cache", () => {
 
   it("isCacheStale treats unparseable timestamps as stale", () => {
     expect(isCacheStale("not-a-date")).toBe(true);
+  });
+
+  it("rejects entries older than the 7-day TTL", () => {
+    const dir = join(tmpHome, ".failproofai");
+    mkdirSync(dir, { recursive: true });
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString();
+    writeFileSync(
+      join(dir, "audit-dashboard.json"),
+      JSON.stringify({
+        schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
+        cachedAt: eightDaysAgo,
+        params: { since: "30d" },
+        result: FAKE_RESULT,
+      }),
+      "utf-8",
+    );
+    expect(readDashboardCache()).toBeNull();
+  });
+
+  it("accepts entries inside the 7-day TTL", () => {
+    const dir = join(tmpHome, ".failproofai");
+    mkdirSync(dir, { recursive: true });
+    const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60_000).toISOString();
+    writeFileSync(
+      join(dir, "audit-dashboard.json"),
+      JSON.stringify({
+        schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
+        cachedAt: sixDaysAgo,
+        params: { since: "30d" },
+        result: FAKE_RESULT,
+      }),
+      "utf-8",
+    );
+    expect(readDashboardCache()).not.toBeNull();
+  });
+
+  it("readDashboardCacheMeta returns cachedAt even when the entry is expired", () => {
+    const dir = join(tmpHome, ".failproofai");
+    mkdirSync(dir, { recursive: true });
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString();
+    writeFileSync(
+      join(dir, "audit-dashboard.json"),
+      JSON.stringify({
+        schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
+        cachedAt: eightDaysAgo,
+        params: { since: "30d" },
+        result: FAKE_RESULT,
+      }),
+      "utf-8",
+    );
+    expect(readDashboardCache()).toBeNull();
+    expect(readDashboardCacheMeta()).toEqual({ cachedAt: eightDaysAgo });
+  });
+
+  it("readDashboardCacheMeta returns null when the file is missing", () => {
+    expect(readDashboardCacheMeta()).toBeNull();
   });
 });

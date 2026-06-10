@@ -19,19 +19,19 @@
 
 **الترجمات:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**حل فشل وقت التشغيل لوكلاء البرمجة.**
-يتكامل مع Claude Code و Codex. يقبض على الحلقات والإجراءات الخطرة وتسريب الأسرار
-قبل أن تصبح حوادث. بدون كمون. يعمل محليًا.
+**حل فشل وقت التشغيل لوكيل الترميز.**
+يدمج مع Claude Code و Codex. يمسك الحلقات والإجراءات الخطيرة وتسرب الأسرار
+قبل أن تصبح حوادث. بدون كمون. يعمل محلياً.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI في العمل" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI قيد العمل" width="800" />
 </p>
 
 ---
 
-## CLIs للوكيل المدعومة
+## واجهات الخط أمر الوكيل المدعومة
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -82,31 +82,31 @@
   </a>
 </p>
 
-> ثبّت ربطات مزج لواحد أو أي مجموعة: `failproofai policies --install --cli opencode pi gemini` (أو `--cli claude codex copilot cursor opencode pi gemini`). اترك `--cli` للكشف التلقائي عن CLIs المثبتة والمطالبة.
+> تثبيت المشاريع لواحد أو أي مزيج: `failproofai policies --install --cli opencode pi gemini` (أو `--cli claude codex copilot cursor opencode pi gemini`). حذف `--cli` للكشف التلقائي عن واجهات الخط أمر المثبتة والطلب.
 
 ---
 
-## التثبيت
+## تثبيت
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # أو ما عليك سوى تشغيل `failproofai` والموافقة على مطالبة المرة الأولى
+failproofai policies --install   # أو فقط قم بتشغيل `failproofai` واقبل موجه التشغيل الأول
 failproofai
 ```
 
-30 سياسة مدمجة تنشط على الفور. لوحة المعلومات في `localhost:8020`. عطّل مطالبة المرة الأولى باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 سياسة مدمجة تنشط فوراً. لوحة المعلومات في `localhost:8020`. عطّل موجه التشغيل الأول باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## ما يوقفه
+## ما الذي يوقفه
 
-| السياسة | ما يحظره |
+| السياسة | ما الذي يمنعه |
 |---|---|
 | `block-push-master` | الدفع المباشر إلى `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | الالتزام والدمج وإعادة الأساس على `main` / `master` |
-| `block-rm-rf` | حذف ملفات متكرر |
-| `sanitize-api-keys` | مفاتيح API تسرب إلى سياق الوكيل |
+| `block-work-on-main` | الالتزامات والدمج والإعادة على `main` / `master` |
+| `block-rm-rf` | حذف ملفات عودية |
+| `sanitize-api-keys` | تسرب مفاتيح API إلى سياق الوكيل |
 
 → [جميع السياسات المدمجة الـ 30](https://docs.befailproof.ai/built-in-policies)
 
@@ -114,8 +114,8 @@ failproofai
 
 ## سياساتك الخاصة
 
-اسقط ملف في `.failproofai/policies/` — يتم تحميله تلقائيًا، بدون حاجة إلى أعلام.
-التزم به وستحصل الفريق بأكمله عليه عند الدمج التالي.
+أسقط ملفاً في `.failproofai/policies/` — يتم تحميله تلقائياً، بدون حاجة لأعلام.
+التزم به وستحصل الفريق بالكامل عليه في الطلب التالي.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -131,13 +131,13 @@ customPolicies.add({
 });
 ```
 
-ثلاث قرارات متاحة لكل سياسة:
+ثلاثة قرارات متاحة لكل سياسة:
 
 | القرار | التأثير |
 |---|---|
 | `allow()` | السماح بالعملية |
-| `deny(message)` | حظره — ترسل الرسالة للعودة إلى الوكيل |
-| `instruct(message)` | دعه ينفذ، لكن أضف سياقًا إلى مطالبة الوكيل التالية |
+| `deny(message)` | حظرها — تعود الرسالة إلى الوكيل |
+| `instruct(message)` | اسمح بها، لكن أضف سياقاً لموجه الوكيل التالي |
 
 → [دليل السياسات المخصصة](https://docs.befailproof.ai/custom-policies)
 
@@ -145,9 +145,9 @@ customPolicies.add({
 
 ## رؤية الجلسة
 
-كل استدعاء أداة يقوم به وكيلك يتم تسجيله محليًا. تعرض لوحة المعلومات ما تم تشغيله،
-ما تم حظره، وما قالته السياسة للوكيل — لذا أنت لا تخمن
-عندما يحدث شيء خاطئ. → [دليل لوحة المعلومات](https://docs.befailproof.ai/dashboard)
+كل استدعاء أداة يقوم به وكيلك يتم تسجيله محلياً. لوحة المعلومات توضح ما الذي تم تشغيله،
+ما الذي تم حظره، وما قالته السياسة للوكيل — بحيث لا تكون تخمين
+عندما يحدث خطأ ما. → [دليل لوحة المعلومات](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -157,26 +157,32 @@ customPolicies.add({
 |---|---|
 | [البدء السريع](https://docs.befailproof.ai/getting-started) | التثبيت والخطوات الأولى |
 | [السياسات المدمجة](https://docs.befailproof.ai/built-in-policies) | جميع السياسات الـ 30 مع المعاملات |
-| [السياسات المخصصة](https://docs.befailproof.ai/custom-policies) | اكتب الخاص بك |
+| [السياسات المخصصة](https://docs.befailproof.ai/custom-policies) | اكتب سياساتك الخاصة |
 | [التكوين](https://docs.befailproof.ai/configuration) | نطاقات التكوين وقواعد الدمج |
 | [لوحة المعلومات](https://docs.befailproof.ai/dashboard) | مراقب الجلسة ونشاط السياسة |
-| [الهندسة المعمارية](https://docs.befailproof.ai/architecture) | كيف يعمل نظام الربط |
+| [العمارة](https://docs.befailproof.ai/architecture) | كيفية عمل نظام الخطاف |
 
 ---
 
 ## الترخيص
 
-MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة بيع failproofai نفسه يتطلب اتفاقية منفصلة. انظر [LICENSE](./LICENSE) للنص الكامل.
+MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة البيع التجاري لـ failproofai نفسه يتطلب اتفاقية منفصلة. انظر [LICENSE](./LICENSE) للنص الكامل.
 
 ---
 
 ## المساهمة
 
-انظر [CONTRIBUTING.md](./CONTRIBUTING.md). السياسات الجديدة والحالات الحدية والترجمات كلها موضع ترحيب.
+انظر [CONTRIBUTING.md](./CONTRIBUTING.md). السياسات الجديدة والحالات الحدودية والترجمات كلها مرحب بها.
+
+> **بناء قبل البدء.** قم بتشغيل `bun install && bun run build` أولاً. يقوم هذا المستودع بتشغيل
+> مشاريع failproofai على نفسه، وهو يحل استيراد `failproofai` مقابل
+> حزمة `dist/` المترجمة — بدون بناء ستصل إلى أخطاء الخطاف `Cannot find package 'failproofai'`.
+> أعد البناء بعد تغيير `src/`. انظر
+> [البناء قبل أن تعمل خطافات المستودع داخلي](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-تم بناؤه بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
+تم البناء بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)
 
 

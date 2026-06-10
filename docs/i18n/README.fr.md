@@ -17,9 +17,9 @@
 
 **Traductions :** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Résolution des échecs d'exécution pour les agents de codage.**
-S'intègre à Claude Code et à Codex. Détecte les boucles, les actions dangereuses et les fuites de secrets
-avant qu'ils ne deviennent des incidents. Latence zéro. Fonctionne en local.
+**Résolution des erreurs d'exécution pour les agents de codage.**
+S'intègre à Claude Code et Codex. Détecte les boucles, les actions dangereuses et les fuites de secrets
+avant qu'ils ne deviennent des incidents. Zéro latence. Fonctionne en local.
 
 </div>
 
@@ -29,7 +29,7 @@ avant qu'ils ne deviennent des incidents. Latence zéro. Fonctionne en local.
 
 ---
 
-## CLI d'agents pris en charge
+## CLIs d'agents pris en charge
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -80,7 +80,7 @@ avant qu'ils ne deviennent des incidents. Latence zéro. Fonctionne en local.
   </a>
 </p>
 
-> Installez les hooks pour un ou plusieurs CLIs en combinaison : `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omettez `--cli` pour détecter automatiquement les CLIs installés et être invité à choisir.
+> Installez les hooks pour un ou plusieurs agents en combinaison : `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omettez `--cli` pour détecter automatiquement les CLIs installés et être invité à choisir.
 
 ---
 
@@ -96,15 +96,15 @@ failproofai
 
 ---
 
-## Ce que ça bloque
+## Ce qu'il bloque
 
-| Politique | Ce qui est bloqué |
+| Politique | Ce qu'elle bloque |
 |---|---|
 | `block-push-master` | Pushs directs vers `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges, rebases sur `main` / `master` |
+| `block-work-on-main` | Commits, fusions et rebases sur `main` / `master` |
 | `block-rm-rf` | Suppression récursive de fichiers |
-| `sanitize-api-keys` | Clés API qui fuient dans le contexte de l'agent |
+| `sanitize-api-keys` | Fuites de clés API dans le contexte de l'agent |
 
 → [Les 30 politiques intégrées](https://docs.befailproof.ai/built-in-policies)
 
@@ -112,7 +112,7 @@ failproofai
 
 ## Vos propres politiques
 
-Déposez un fichier dans `.failproofai/policies/` — il se charge automatiquement, sans aucun flag.
+Déposez un fichier dans `.failproofai/policies/` — il se charge automatiquement, sans aucun paramètre.
 Commitez-le et toute l'équipe en bénéficiera au prochain pull.
 
 ```js
@@ -133,9 +133,9 @@ Trois décisions disponibles pour chaque politique :
 
 | Décision | Effet |
 |---|---|
-| `allow()` | Autoriser l'opération |
-| `deny(message)` | La bloquer — le message est renvoyé à l'agent |
-| `instruct(message)` | La laisser passer, mais ajouter du contexte au prochain prompt de l'agent |
+| `allow()` | Autorise l'opération |
+| `deny(message)` | La bloque — le message est renvoyé à l'agent |
+| `instruct(message)` | Laisse passer, mais ajoute du contexte au prochain prompt de l'agent |
 
 → [Guide des politiques personnalisées](https://docs.befailproof.ai/custom-policies)
 
@@ -143,9 +143,9 @@ Trois décisions disponibles pour chaque politique :
 
 ## Visibilité de session
 
-Chaque appel d'outil effectué par votre agent est journalisé en local. Le tableau de bord affiche ce qui s'est exécuté,
-ce qui a été bloqué, et ce que la politique a indiqué à l'agent — pour ne plus avoir à deviner
-quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befailproof.ai/dashboard)
+Chaque appel d'outil effectué par votre agent est enregistré localement. Le tableau de bord affiche ce qui s'est exécuté,
+ce qui a été bloqué et ce que la politique a communiqué à l'agent — pour ne plus jamais avoir à deviner
+ce qui s'est passé en cas de problème. → [Guide du tableau de bord](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -155,7 +155,7 @@ quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befa
 |---|---|
 | [Démarrage rapide](https://docs.befailproof.ai/getting-started) | Installation et premiers pas |
 | [Politiques intégrées](https://docs.befailproof.ai/built-in-policies) | Les 30 politiques avec leurs paramètres |
-| [Politiques personnalisées](https://docs.befailproof.ai/custom-policies) | Écrire les vôtres |
+| [Politiques personnalisées](https://docs.befailproof.ai/custom-policies) | Écrivez les vôtres |
 | [Configuration](https://docs.befailproof.ai/configuration) | Portées de configuration et règles de fusion |
 | [Tableau de bord](https://docs.befailproof.ai/dashboard) | Moniteur de session et activité des politiques |
 | [Architecture](https://docs.befailproof.ai/architecture) | Fonctionnement du système de hooks |
@@ -164,15 +164,18 @@ quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befa
 
 ## Licence
 
-MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour un usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Voir [LICENSE](./LICENSE) pour le texte complet.
+MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Consultez [LICENSE](./LICENSE) pour le texte intégral.
 
 ---
 
-## Contribuer
+## Contribution
 
-Voir [CONTRIBUTING.md](./CONTRIBUTING.md). Nouvelles politiques, cas limites et traductions sont les bienvenus.
+Consultez [CONTRIBUTING.md](./CONTRIBUTING.md). Les nouvelles politiques, cas limites et traductions sont les bienvenus.
+
+> **Compilez avant de commencer.** Exécutez d'abord `bun install && bun run build`. Ce dépôt fait tourner ses propres hooks failproofai sur lui-même, et ils résolvent l'import `failproofai` depuis le bundle compilé `dist/` — sans compilation, vous obtiendrez des erreurs de hook `Cannot find package 'failproofai'`. Recompilez après toute modification dans `src/`. Consultez
+> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Construit par [Nivedit Jain](https://github.com/NiveditJain) et [Nikita Agarwal](https://github.com/nk-ag).
+Développé par [Nivedit Jain](https://github.com/NiveditJain) et [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

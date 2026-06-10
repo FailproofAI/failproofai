@@ -3,6 +3,7 @@
 ## 0.0.11-beta.4 — 2026-06-10
 
 ### Fixes
+- Fix the wrong site URL embedded in every `/audit` social-share template. `app/audit/_components/share-templates.ts` and `app/audit/_components/share-dock.tsx` had `SITE_URL = "https://failproof.ai"` (and one bare `failproof.ai` mention in the 4th X template) — the actual marketing domain is `befailproof.ai`, so every shared post linked to a dead URL. Updates both `SITE_URL` constants + the bare mention to `befailproof.ai`, and tightens `__tests__/audit/share-templates.test.ts` to assert `befailproof.ai` so a future regression to `failproof.ai` fails (#425).
 - Stop the `/audit` ShareDock's "share on X" / "share on LinkedIn" buttons from opening the Windows OS share dialog on desktop Chromium / Edge. `lib/share-card.ts` `shareCardNative()` now early-returns `false` on non-mobile devices (detected via `navigator.userAgentData.mobile` with a UA-string fallback for Safari / Firefox + a touch-points check for iPadOS 13+) so the existing clipboard + `x.com/intent/tweet` / `linkedin.com/sharing/share-offsite` fallback runs instead. On mobile, the system share sheet still fires as before because it actually surfaces the X / LinkedIn apps as targets. +1 test for the desktop short-circuit, existing happy-path tests opt into mobile via `navigator.userAgentData.mobile = true` (#425).
 
 ## 0.0.11-beta.3 — 2026-06-09

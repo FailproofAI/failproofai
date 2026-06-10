@@ -22,7 +22,7 @@ describe("share templates", () => {
       expect(out).toContain("72");
       expect(out).toContain("the cowboy");
       expect(out).toMatch(/\bB\b/);
-      expect(out).toContain("failproof.ai");
+      expect(out).toContain("befailproof.ai");
       expect(out.length).toBeGreaterThan(40);
     }
   });

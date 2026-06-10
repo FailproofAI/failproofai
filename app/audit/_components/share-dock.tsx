@@ -33,7 +33,7 @@ import { toast } from "@/app/components/toast";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { X_TEMPLATES, LI_TEMPLATES, pickTemplate, type ShareCtx } from "./share-templates";
 
-const SITE_URL = "https://failproof.ai";
+const SITE_URL = "https://befailproof.ai";
 const X_INTENT = (text: string) =>
   `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
 const LI_INTENT = (text: string) =>

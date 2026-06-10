@@ -9,7 +9,7 @@
  */
 import type { Grade } from "@/src/audit/scoring";
 
-const SITE_URL = "https://failproof.ai";
+const SITE_URL = "https://befailproof.ai";
 
 export interface ShareCtx {
   score: number;
@@ -31,7 +31,7 @@ export const X_TEMPLATES: ((c: ShareCtx) => string)[] = [
   ({ score, arch, grade }) =>
     `${score}/100. ${grade} tier. archetype: ${arch} 👀\n\nfailproofai reverse-engineered my agent's entire vibe from its own session logs.\n\n${SITE_URL}`,
   ({ score, arch, grade, missing }) =>
-    `plot twist: my AI agent is ${arch} 🎭\n\n${score}/100 · ${grade} tier${missing > 0 ? ` · ${missing} ${pol(missing)} away from behaving` : ` · spotless, somehow`}\n\nfailproof.ai`,
+    `plot twist: my AI agent is ${arch} 🎭\n\n${score}/100 · ${grade} tier${missing > 0 ? ` · ${missing} ${pol(missing)} away from behaving` : ` · spotless, somehow`}\n\nbefailproof.ai`,
   ({ score, arch, grade }) =>
     `i let failproofai audit my coding agent and it called me ${arch} ${grade === "S" || grade === "A" ? "😎" : "😬"}\n\n${score}/100, ${grade} tier. brutally accurate. no notes.\n\n${SITE_URL}`,
 ];

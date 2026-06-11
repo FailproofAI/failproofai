@@ -108,10 +108,6 @@ html, body, #root {
 
 body {
   background-color: var(--bg);
-  background-image:
-    radial-gradient(ellipse 1000px 600px at 85% -10%, rgba(102, 209, 181, 0.045) 0%, transparent 60%),
-    linear-gradient(180deg, #16161a 0%, #0f0f12 100%);
-  background-attachment: fixed;
   position: relative;
 }
 

@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * Section 04 — HOW TO IMPROVE. "install or configure."
+ * Section 04 — HOW TO IMPROVE. Calm row list, one per prescribed
+ * policy:
  *
- * Calm fix-card list. Each card: title (`install <slug>`), what it
- * blocks, install command (`$ failproofai policy add <slug>`), and an
- * install button. Maps detector hits + unenabled-builtin hits onto the
- * smallest set of prescribed policies that closes the slipping-through
- * window — same logic the old PoliciesSection used, in a calmer shell.
+ *   <policy-name>                 $ failproof policy add <slug>   [📋]
+ *   <one-line explanation>
+ *
+ * A single "install all" button at the section header copies the
+ * combined install command for every prescribed policy.
  */
 import React, { useMemo, useState } from "react";
 import type { AuditResult } from "@/src/audit/types";
@@ -32,12 +33,12 @@ const DETECTOR_TO_PRIMARY_POLICY: Record<string, string> = {
 };
 
 const POLICY_DESC: Record<string, string> = {
-  "warn-repeated-tool-calls": "warns when the same tool is called 3+ times with identical parameters — catches the loops before they spiral.",
-  "block-read-outside-cwd":   "denies any file read whose absolute path falls outside the project root, including symlinks.",
-  "block-env-files":          "blocks reads and writes of `.env` files at the tool layer.",
+  "warn-repeated-tool-calls": "warns when the same tool is called 3+ times with identical parameters.",
+  "block-read-outside-cwd":   "denies any file read outside the project root, including symlinks.",
+  "block-env-files":          "blocks reads and writes of .env files at the tool layer.",
   "block-secrets-write":      "blocks writes to .pem, id_rsa, credentials.json, and other secret-key files.",
-  "warn-background-process":  "warns before starting nohup / & / screen / tmux / disown processes that get forgotten about.",
-  "warn-git-amend":           "warns before amending git commits — dangerous-commit-flag class.",
+  "warn-background-process":  "warns before starting nohup / & / screen / tmux processes.",
+  "warn-git-amend":           "warns before amending git commits.",
   "require-ci-green-before-stop": "requires CI checks to pass on HEAD before the agent declares the task done.",
 };
 
@@ -46,28 +47,24 @@ function shortName(name: string): string {
   return slash >= 0 ? name.slice(slash + 1) : name;
 }
 
-interface FixCard {
+interface FixRow {
   name: string;
   desc: string;
   hits: number;
-  projects: number;
-  viaList: string[];
 }
 
-function buildFixes(result: AuditResult): FixCard[] {
+function buildFixes(result: AuditResult): FixRow[] {
   const enabledSet = new Set(result.enabledBuiltinNames ?? []);
-  const buckets = new Map<string, { hits: number; projects: number; sources: Set<string> }>();
+  const buckets = new Map<string, number>();
 
   for (const row of result.results) {
     if (row.hits === 0) continue;
 
     let target: string;
-    let isFromDetector = false;
     if (row.source === "audit-detector") {
       const mapped = DETECTOR_TO_PRIMARY_POLICY[shortName(row.name)];
       if (!mapped) continue;
       target = mapped;
-      isFromDetector = true;
     } else if (row.source === "builtin" && !row.enabledInConfig) {
       target = shortName(row.name);
     } else {
@@ -75,28 +72,44 @@ function buildFixes(result: AuditResult): FixCard[] {
     }
 
     if (enabledSet.has(target)) continue;
-
-    const bucket = buckets.get(target) ?? { hits: 0, projects: 0, sources: new Set() };
-    bucket.hits += row.hits;
-    bucket.projects = Math.max(bucket.projects, row.projects);
-    bucket.sources.add(isFromDetector ? shortName(row.name) : "self");
-    buckets.set(target, bucket);
+    buckets.set(target, (buckets.get(target) ?? 0) + row.hits);
   }
 
   return [...buckets.entries()]
-    .sort((a, b) => b[1].hits - a[1].hits)
-    .map(([name, b]) => ({
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, hits]) => ({
       name,
       desc: POLICY_DESC[name] ?? "enable this builtin policy to close the gap.",
-      hits: b.hits,
-      projects: b.projects,
-      viaList: [...b.sources].filter((s) => s !== "self"),
+      hits,
     }));
 }
 
+function bulkInstall(fixes: FixRow[]): string {
+  if (fixes.length === 0) return "";
+  if (fixes.length === 1) return `failproof policy add ${fixes[0]!.name}`;
+  return `failproof policy add ${fixes.map((f) => f.name).join(" ")}`;
+}
+
 export function HowToImproveSection({ result, projected, projectedGrade }: Props) {
+  const { capture } = usePostHog();
   const fixes = useMemo(() => buildFixes(result), [result]);
+  const installAllCmd = useMemo(() => bulkInstall(fixes), [fixes]);
+  const [copiedAll, setCopiedAll] = useState(false);
+
   if (fixes.length === 0) return null;
+
+  const handleInstallAll = async () => {
+    try {
+      await navigator.clipboard.writeText(installAllCmd);
+      setCopiedAll(true);
+      capture("audit_copy_clicked", {
+        source: "how_to_improve_section_install_all",
+        item_type: "bulk_install_command",
+        policy_count: fixes.length,
+      });
+      setTimeout(() => setCopiedAll(false), 1500);
+    } catch { /* ignore */ }
+  };
 
   return (
     <section className="audit-sec" data-screen-label="04 How to improve">
@@ -104,12 +117,20 @@ export function HowToImproveSection({ result, projected, projectedGrade }: Props
         <span className="audit-sec-eyebrow">
           <span className="ix">04</span>{"// how to improve"}
         </span>
-        <span className="audit-sec-meta">
-          enable all {fixes.length === 1 ? "one" : fixes.length} → projected{" "}
-          <strong>{projected}</strong> · {tierName(projectedGrade).toLowerCase()}
-        </span>
+        <button
+          type="button"
+          className="install-all-btn"
+          onClick={handleInstallAll}
+          aria-label="Copy install-all command"
+        >
+          {copiedAll ? "copied" : "install all"}
+        </button>
       </div>
       <h2 className="audit-sec-title">install or configure</h2>
+      <div className="audit-sec-sub">
+        enable all {fixes.length === 1 ? "one" : fixes.length} → projected{" "}
+        <strong>{projected}</strong> · {tierName(projectedGrade).toLowerCase()}
+      </div>
 
       <div className="fix-list">
         {fixes.map((f, i) => (
@@ -120,11 +141,10 @@ export function HowToImproveSection({ result, projected, projectedGrade }: Props
   );
 }
 
-function FixRow({ fix, idx }: { fix: FixCard; idx: number }) {
+function FixRow({ fix, idx }: { fix: FixRow; idx: number }) {
   const { capture } = usePostHog();
   const [copied, setCopied] = useState(false);
   const install = `failproof policy add ${fix.name}`;
-  const quirkRef = `quirk #${idx + 1}`;
 
   const handleCopy = async () => {
     try {
@@ -141,25 +161,27 @@ function FixRow({ fix, idx }: { fix: FixCard; idx: number }) {
   };
 
   return (
-    <article className="fix-card">
-      <div className="fix-body">
-        <div className="fix-title">
-          install <code>{fix.name}</code>
-        </div>
-        <div className="fix-blocks">
-          would catch <strong>{quirkRef}</strong> · {fix.desc}
-        </div>
-        <div className="fix-cmd">
-          <span className="prompt">$</span>{install}
-        </div>
+    <div className="fix-row">
+      <div className="fix-row-info">
+        <div className="fix-name">{fix.name}</div>
+        <div className="fix-desc">{fix.desc}</div>
       </div>
-      <button
-        type="button"
-        className="fix-install-btn"
-        onClick={handleCopy}
-      >
-        {copied ? "copied" : "copy"}
-      </button>
-    </article>
+      <div className="fix-row-cmd">
+        <code className="fix-cmd-code">{install}</code>
+        <button
+          type="button"
+          className="copy-icon-btn"
+          onClick={handleCopy}
+          aria-label={`Copy install command for ${fix.name}`}
+        >
+          {copied ? "✓" : (
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <rect x="3" y="3" width="9" height="11" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <rect x="5.5" y="0.5" width="9" height="11" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
   );
 }

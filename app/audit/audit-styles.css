@@ -952,52 +952,20 @@
 /* ============================================================
    HOW TO IMPROVE — section 04. Fix cards.
    ============================================================ */
-.fix-list { display: flex; flex-direction: column; gap: 10px; }
-.fix-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 18px;
-  padding: 16px 18px;
-  border: 1px solid var(--line-2);
-  background: var(--bg-2);
-  align-items: center;
-}
-.fix-body { min-width: 0; }
-.fix-title {
+.audit-sec-sub {
   font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--ink);
-  letter-spacing: 0.02em;
-}
-.fix-title code {
-  color: var(--accent-green);
-  background: transparent;
   font-size: 12px;
-}
-.fix-blocks {
-  font-family: var(--font-mono);
-  font-size: 11px;
   color: var(--ink-2);
-  margin-top: 6px;
-  line-height: 1.6;
+  margin: -10px 0 18px;
+  line-height: 1.55;
 }
-.fix-blocks strong { color: var(--accent-pink); font-weight: 600; }
-.fix-cmd {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--line);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--accent-green);
-}
-.fix-cmd .prompt { color: var(--dim); margin-right: 6px; }
-.fix-install-btn {
-  align-self: center;
-  white-space: nowrap;
+.audit-sec-sub strong { color: var(--ink); font-weight: 600; }
+
+.install-all-btn {
   border: 1px solid var(--accent-pink);
   background: var(--accent-pink-bg);
   color: var(--accent-pink);
-  padding: 10px 16px;
+  padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -1005,8 +973,65 @@
   cursor: pointer;
   transition: background-color 140ms ease;
 }
-.fix-install-btn:hover { background: rgba(228, 88, 124, 0.18); }
-.fix-install-btn:disabled { opacity: 0.55; cursor: wait; }
+.install-all-btn:hover { background: rgba(228, 88, 124, 0.18); }
+
+.fix-list { display: flex; flex-direction: column; }
+.fix-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, auto);
+  gap: 24px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.fix-row:last-child { border-bottom: none; }
+.fix-row-info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.fix-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+.fix-desc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.fix-row-cmd {
+  display: flex; align-items: stretch; gap: 6px;
+  min-width: 0;
+}
+.fix-cmd-code {
+  flex: 1; min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-green);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow-x: auto;
+  display: flex; align-items: center;
+}
+.copy-icon-btn {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-2);
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px;
+}
+.copy-icon-btn:hover {
+  color: var(--accent-pink);
+  border-color: var(--accent-pink);
+}
 
 /* ============================================================
    COME BACK BETTER — section 05. Two cards.
@@ -1115,7 +1140,8 @@
 
 @media (max-width: 720px) {
   .cbb-grid { grid-template-columns: 1fr; }
-  .fix-card { grid-template-columns: 1fr; }
+  .fix-row { grid-template-columns: 1fr; gap: 8px; }
+  .fix-row-cmd { min-width: 0; }
   .quirks-thead, .quirks-row {
     grid-template-columns: 1fr;
     gap: 6px;

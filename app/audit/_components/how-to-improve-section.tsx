@@ -4,7 +4,7 @@
  * Section 04 — HOW TO IMPROVE. Calm row list, one per prescribed
  * policy:
  *
- *   <policy-name>                 $ failproof policy add <slug>   [📋]
+ *   <policy-name>                 $ failproofai policy add <slug>   [📋]
  *   <one-line explanation>
  *
  * A single "install all" button at the section header copies the
@@ -86,8 +86,8 @@ function buildFixes(result: AuditResult): FixRow[] {
 
 function bulkInstall(fixes: FixRow[]): string {
   if (fixes.length === 0) return "";
-  if (fixes.length === 1) return `failproof policy add ${fixes[0]!.name}`;
-  return `failproof policy add ${fixes.map((f) => f.name).join(" ")}`;
+  if (fixes.length === 1) return `failproofai policy add ${fixes[0]!.name}`;
+  return `failproofai policy add ${fixes.map((f) => f.name).join(" ")}`;
 }
 
 export function HowToImproveSection({ result, projected, projectedGrade }: Props) {
@@ -144,7 +144,7 @@ export function HowToImproveSection({ result, projected, projectedGrade }: Props
 function FixRow({ fix, idx }: { fix: FixRow; idx: number }) {
   const { capture } = usePostHog();
   const [copied, setCopied] = useState(false);
-  const install = `failproof policy add ${fix.name}`;
+  const install = `failproofai policy add ${fix.name}`;
 
   const handleCopy = async () => {
     try {

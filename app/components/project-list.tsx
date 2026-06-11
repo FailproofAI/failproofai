@@ -136,224 +136,193 @@ export default function ProjectList({ folders }: ProjectListProps) {
   const paginatedFolders = filteredFolders.slice(startIndex, endIndex);
 
   return (
-    <div className="space-y-4">
+    <div className="project-list">
       {/* Filter Bar */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex flex-col gap-4">
-          {/* Preset Filters + CLI filter */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-foreground">Filter by:</span>
-            {FILTER_PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                onClick={() => handlePresetChange(preset.value)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  filterPreset === preset.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-
-            <span className="ml-2 text-sm font-medium text-foreground">CLI:</span>
-            <select
-              aria-label="Filter by CLI"
-              value={filterCli}
-              onChange={(e) => {
-                const v = e.target.value;
-                setFilterCli(v === "" || isKnownCli(v) ? v : "");
-              }}
-              className="px-2 py-1.5 text-sm bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+      <div className="project-filter-bar">
+        {/* Preset Filters + CLI filter */}
+        <div className="project-filter-row">
+          <span className="project-filter-label">filter by</span>
+          {FILTER_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              type="button"
+              onClick={() => handlePresetChange(preset.value)}
+              className={`project-chip${filterPreset === preset.value ? " on" : ""}`}
             >
-              <option value="">All CLIs</option>
-              {KNOWN_CLI_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {getCliLabel(id)}
-                </option>
-              ))}
-            </select>
-          </div>
+              {preset.label}
+            </button>
+          ))}
 
-          {/* Keyword Search */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">Search Keywords:</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Keyword Input */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={keywordInput}
-                  onChange={(e) => setKeywordInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addKeyword(keywordInput);
-                    }
-                  }}
-                  placeholder="Enter keyword and press Enter"
-                  className="px-3 py-2 text-sm bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all hover:border-primary/50 w-[250px]"
-                  aria-label="Add keyword"
-                />
-                <button
-                  onClick={() => addKeyword(keywordInput)}
-                  className="px-3 py-2 text-sm bg-muted text-muted-foreground hover:bg-muted/80 rounded-md transition-colors"
-                  aria-label="Add keyword"
-                >
-                  Add
-                </button>
-              </div>
-              {/* Keyword Chips */}
-              {keywords.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {keywords.map((keyword, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground rounded-md text-sm"
-                    >
-                      <span>{keyword}</span>
-                      <button
-                        onClick={() => removeKeyword(index)}
-                        className="hover:text-foreground transition-colors p-0.5 rounded hover:bg-muted/80"
-                        aria-label={`Remove keyword ${keyword}`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+          <span className="project-filter-label" style={{ marginLeft: 12 }}>cli</span>
+          <select
+            aria-label="Filter by CLI"
+            value={filterCli}
+            onChange={(e) => {
+              const v = e.target.value;
+              setFilterCli(v === "" || isKnownCli(v) ? v : "");
+            }}
+            className="project-select"
+          >
+            <option value="">all clis</option>
+            {KNOWN_CLI_IDS.map((id) => (
+              <option key={id} value={id}>
+                {getCliLabel(id)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Keyword Search */}
+        <div className="project-filter-row">
+          <span className="project-filter-label">
+            <Search className="project-filter-icon" aria-hidden="true" />
+            search
+          </span>
+          <input
+            type="text"
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addKeyword(keywordInput);
+              }
+            }}
+            placeholder="type a keyword and press Enter"
+            className="project-input"
+            aria-label="Add keyword"
+          />
+          <button
+            type="button"
+            onClick={() => addKeyword(keywordInput)}
+            className="project-chip"
+            aria-label="Add keyword"
+          >
+            add
+          </button>
+          {keywords.length > 0 && (
+            <>
+              {keywords.map((keyword, index) => (
+                <span key={index} className="project-keyword-chip">
+                  {keyword}
                   <button
-                    onClick={clearKeywords}
-                    className="px-2 py-1.5 text-xs bg-muted text-muted-foreground hover:bg-muted/80 rounded-md transition-colors"
-                    aria-label="Clear all keywords"
+                    type="button"
+                    onClick={() => removeKeyword(index)}
+                    className="project-keyword-x"
+                    aria-label={`Remove keyword ${keyword}`}
                   >
-                    Clear all
+                    <X className="project-filter-icon" aria-hidden="true" />
                   </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Custom Date Range */}
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="text-sm font-medium text-foreground">Custom Range:</span>
-            <div className="flex items-center gap-2">
-              <DatePickerInput
-                id="date-from"
-                value={dateRange.from}
-                onChange={(v) => handleDateRangeChange("from", v)}
-                aria-label="Filter from date"
-              />
-              <span className="text-muted-foreground">to</span>
-              <DatePickerInput
-                id="date-to"
-                value={dateRange.to}
-                onChange={(v) => handleDateRangeChange("to", v)}
-                aria-label="Filter to date"
-              />
-            </div>
-            {(filterPreset !== "all" || dateRange.from !== null || dateRange.to !== null || keywords.length > 0 || filterCli !== "") && (
+                </span>
+              ))}
               <button
-                onClick={clearFilters}
-                className="px-3 py-2 text-sm bg-muted text-muted-foreground hover:bg-muted/80 rounded-md transition-colors"
+                type="button"
+                onClick={clearKeywords}
+                className="project-chip"
+                aria-label="Clear all keywords"
               >
-                Clear
+                clear all
               </button>
-            )}
-          </div>
+            </>
+          )}
+        </div>
 
-          {/* Results Count */}
-          <div className="text-sm text-muted-foreground">
-            {filteredFolders.length === 0 ? (
-              <>No projects found</>
-            ) : (
-              <>
-                Showing {startIndex + 1}-{endIndex} of {filteredFolders.length} projects
-                {filteredFolders.length !== normalizedFolders.length && (
-                  <span className="ml-1">
-                    (filtered from {normalizedFolders.length} total)
-                  </span>
-                )}
-                {keywords.length > 0 && (
-                  <span className="ml-1">
-                    with {keywords.length} keyword{keywords.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
+        {/* Custom Date Range */}
+        <div className="project-filter-row">
+          <span className="project-filter-label">range</span>
+          <DatePickerInput
+            id="date-from"
+            value={dateRange.from}
+            onChange={(v) => handleDateRangeChange("from", v)}
+            aria-label="Filter from date"
+          />
+          <span className="project-range-sep">to</span>
+          <DatePickerInput
+            id="date-to"
+            value={dateRange.to}
+            onChange={(v) => handleDateRangeChange("to", v)}
+            aria-label="Filter to date"
+          />
+          {(filterPreset !== "all" || dateRange.from !== null || dateRange.to !== null || keywords.length > 0 || filterCli !== "") && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="project-chip"
+              style={{ marginLeft: "auto" }}
+            >
+              clear
+            </button>
+          )}
+        </div>
+
+        {/* Results Count */}
+        <div className="project-results-count">
+          {filteredFolders.length === 0 ? (
+            <>{"// no projects found"}</>
+          ) : (
+            <>
+              {"// showing"} {startIndex + 1}–{endIndex} of {filteredFolders.length} projects
+              {filteredFolders.length !== normalizedFolders.length && (
+                <span> · filtered from {normalizedFolders.length}</span>
+              )}
+              {keywords.length > 0 && (
+                <span> · {keywords.length} keyword{keywords.length !== 1 ? "s" : ""}</span>
+              )}
+            </>
+          )}
         </div>
       </div>
 
       {/* Project Table */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground w-12">
-                  <span className="sr-only">Icon</span>
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground max-w-md">
-                  Agent Root
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground hidden md:table-cell">
-                  Path
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground">
-                  Last Modified
-                </th>
+      <div className="project-table-wrap">
+        <table className="project-table">
+          <thead>
+            <tr>
+              <th scope="col" className="project-th project-th-icon">
+                <span className="sr-only">Icon</span>
+              </th>
+              <th scope="col" className="project-th">agent root</th>
+              <th scope="col" className="project-th project-th-path">path</th>
+              <th scope="col" className="project-th">last modified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedFolders.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="project-td project-empty">
+                  {"// no projects match the selected filter."}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {paginatedFolders.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    No projects found matching the selected filter.
+            ) : (
+              paginatedFolders.map((folder) => (
+                <tr key={folder.name} className="project-row">
+                  <td className="project-td project-td-icon">
+                    <Folder className="project-folder-icon" aria-hidden="true" />
+                  </td>
+                  <td className="project-td project-td-name">
+                    <Link
+                      href={`/project/${encodeURIComponent(folder.name)}`}
+                      className="project-link"
+                    >
+                      {decodeFolderName(folder.name)}
+                    </Link>
+                    {folder.cli.map((c) => (
+                      <CliBadge key={c} cli={c} />
+                    ))}
+                  </td>
+                  <td className="project-td project-td-path">{folder.path}</td>
+                  <td className="project-td project-td-date">
+                    <DateDisplay
+                      date={folder.lastModified}
+                      formatted={folder.lastModifiedFormatted}
+                    />
                   </td>
                 </tr>
-              ) : (
-                paginatedFolders.map((folder) => (
-                  <tr
-                    key={folder.name}
-                    className="border-b border-border hover:bg-muted/50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <Folder className="w-5 h-5 text-primary" />
-                    </td>
-                    <td className="px-4 py-3 max-w-md">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/project/${encodeURIComponent(folder.name)}`}
-                          className="font-semibold text-foreground hover:text-primary transition-colors break-words break-all inline-block max-w-full"
-                        >
-                          {decodeFolderName(folder.name)}
-                        </Link>
-                        {folder.cli.map((c) => (
-                          <CliBadge key={c} cli={c} />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground hidden md:table-cell truncate max-w-md">
-                      {folder.path}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      <DateDisplay
-                        date={folder.lastModified}
-                        formatted={folder.lastModifiedFormatted}
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
 
-        {/* Pagination Controls */}
         {filteredFolders.length > 0 && (
           <PaginationControls
             currentPage={currentPage}

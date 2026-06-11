@@ -70,23 +70,21 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
   const captureCardBlob = async (): Promise<Blob | null> => {
     const node = (posterRef as React.MutableRefObject<HTMLDivElement | null>)?.current;
     if (!node) return null;
-    node.classList.add("capturing");
-    try {
-      if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
-      await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(node, {
-        backgroundColor: "#0e0e11",
-        scale: 2,
-        logging: false,
-        useCORS: true,
-      });
-      return await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((blob) => resolve(blob), "image/png");
-      });
-    } finally {
-      node.classList.remove("capturing");
-    }
+    // Capture the poster element as it renders on screen — no class
+    // override, no font swapping, no manual sizing. Whatever the user
+    // sees is what gets exported.
+    if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(node, {
+      backgroundColor: "#0e0e11",
+      scale: 2,
+      logging: false,
+      useCORS: true,
+    });
+    return await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
   };
 
   const filenameFor = (channel: "x" | "linkedin" | "download") =>

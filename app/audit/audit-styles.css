@@ -791,39 +791,6 @@
 }
 .poster-scroll-hint .arrow { color: var(--accent-pink); margin-left: 6px; }
 
-/* capture mode — html2canvas can't reliably render clamp() ── */
-/* capture mode — html2canvas can't reliably render clamp()/vh, so
- *  lock every fluid measurement to a fixed value tuned for an
- *  ~880×1100 PNG export. Compact, no internal stretching. */
-.poster.capturing {
-  width: 880px;
-  height: auto;
-  min-height: 0;
-  max-width: none;
-  padding: 32px 44px;
-  flex: 0 0 auto;
-  overflow: visible;
-}
-.poster.capturing .poster-body {
-  gap: 36px;
-  padding: 24px 0;
-  flex: 0 0 auto;
-  min-height: 0;
-  justify-content: flex-start;
-}
-.poster.capturing .poster-score { gap: 28px; }
-.poster.capturing .score-n { font-size: 96px; line-height: 1.05; }
-.poster.capturing .score-of { font-size: 22px; line-height: 1.05; }
-.poster.capturing .score-rank { font-size: 12px; padding: 6px 16px; }
-.poster.capturing .persona-name { font-size: 56px; line-height: 1; }
-.poster.capturing .persona-keywords { font-size: 22px; line-height: 1; }
-.poster.capturing .persona-rarity { font-size: 12px; line-height: 1.4; }
-.poster.capturing .poster-sigil .sigil {
-  grid-template-columns: repeat(8, 18px);
-  grid-template-rows: repeat(8, 18px);
-  padding: 8px;
-}
-
 @media (max-width: 720px) {
   .poster { padding: 24px 22px; }
   .poster-body { gap: 28px; padding: 12px 0; }

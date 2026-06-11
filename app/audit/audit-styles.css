@@ -620,9 +620,16 @@
   font-size: 11px;
   letter-spacing: 0.04em;
 }
-.poster-wordmark { color: var(--ink); }
-.poster-wordmark .poster-mark { color: var(--accent-pink); margin-right: 4px; }
-.poster-wordmark .poster-sep { color: var(--dim); margin: 0 4px; }
+.poster-wordmark {
+  color: var(--ink);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.poster-wordmark .poster-logo {
+  height: 14px;
+  width: auto;
+  display: block;
+}
+.poster-wordmark .poster-sep { color: var(--dim); margin: 0 2px; }
 .poster-meta { color: var(--dim); }
 .poster-meta .poster-ix { color: var(--accent-pink); }
 .poster-meta .of { color: var(--dim); }
@@ -686,27 +693,21 @@
 .poster-persona .persona-rarity .lbl { color: var(--dim); }
 .poster-persona .persona-rarity .pct { color: var(--accent-pink); font-weight: 600; }
 
-/* score — heroic number anchored at the bottom of the body ── */
+/* score — single horizontal row: score-n + /100 + rank pill all
+ *  baseline-aligned, so the pill can never overlap the digits. */
 .poster-score {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(20px, 2.6vh, 32px);
-}
-.poster-score .score-row {
-  display: flex; align-items: baseline; gap: 8px;
+  align-items: baseline;
+  justify-content: center;
+  gap: clamp(10px, 1.4vh, 16px);
 }
 .poster-score .score-n {
-  /* Use the mono font for the score — Bitcount Prop Single is the
-   *  archetype name's voice but renders unreliably in html2canvas at
-   *  large sizes (phantom pixels, baseline overshoot). JetBrains Mono
-   *  is calmer here and exports cleanly. line-height: 1.1 keeps the
-   *  glyph fully inside its line box so the rank pill below sits
-   *  cleanly under the digits. */
+  /* Mono font — Bitcount Prop Single renders unreliably in html2canvas
+   *  at this size (phantom pixels). JetBrains Mono exports cleanly. */
   font-family: var(--font-mono);
   font-size: clamp(56px, 11vh, 112px);
   font-weight: 700;
-  line-height: 1.05;
+  line-height: 1;
   letter-spacing: -0.02em;
   color: var(--accent-pink);
   font-variant-numeric: tabular-nums;
@@ -716,7 +717,8 @@
   font-size: clamp(16px, 2vh, 22px);
   color: var(--dim);
   letter-spacing: 0.04em;
-  line-height: 1.05;
+  line-height: 1;
+  margin-right: clamp(12px, 2vh, 28px);
 }
 .poster-score .score-rank {
   font-family: var(--font-mono);
@@ -724,10 +726,11 @@
   letter-spacing: 0.32em;
   text-transform: uppercase;
   color: var(--accent-green);
-  padding: 6px 16px;
+  padding: 6px 14px;
   border: 1px solid var(--accent-green);
   background: rgba(102, 209, 181, 0.05);
   line-height: 1;
+  white-space: nowrap;
 }
 .poster-sigil .sigil .px { background: transparent; }
 .poster-sigil .sigil .px.on { background: var(--ink); }

@@ -167,8 +167,12 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
       <div className="poster" ref={posterRef}>
         <header className="poster-head">
           <span className="poster-wordmark">
-            <span className="poster-mark" aria-hidden="true">▣</span>
-            failproof_ai <span className="poster-sep">·</span> audit
+            <img
+              src="/logo.svg"
+              alt="failproof_ai"
+              className="poster-logo"
+            />
+            <span className="poster-sep">·</span> audit
           </span>
           <span className="poster-meta">
             <span className="poster-ix">№ {indexLabel}</span>
@@ -206,12 +210,10 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
             )}
           </div>
 
-          {/* Score block — heroic number with rank, anchored at bottom of body */}
+          {/* Score block — heroic number + rank pill on the same baseline */}
           <div className="poster-score">
-            <div className="score-row">
-              <span className="score-n">{score}</span>
-              <span className="score-of">/100</span>
-            </div>
+            <span className="score-n">{score}</span>
+            <span className="score-of">/100</span>
             <span className="score-rank">{scoreRank}</span>
           </div>
         </div>

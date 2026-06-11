@@ -181,12 +181,12 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
         </header>
 
         <div className="poster-body">
-          <div className="poster-score">
-            <span className="score-n">{score}</span>
-            <span className="score-of">/100</span>
-            <span className="score-rank">{scoreRank}</span>
+          {/* Sigil — visual anchor at the top of the centered stack */}
+          <div className="poster-sigil">
+            <Sigil archetypeKey={archetypeKey} />
           </div>
 
+          {/* Persona block — name + keywords + rarity, centered */}
           <div className="poster-persona">
             <h1 className="persona-name">{archetype.name}</h1>
             <div className="persona-keywords">
@@ -208,8 +208,13 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
             )}
           </div>
 
-          <div className="poster-sigil">
-            <Sigil archetypeKey={archetypeKey} />
+          {/* Score block — heroic number with rank, anchored at bottom of body */}
+          <div className="poster-score">
+            <div className="score-row">
+              <span className="score-n">{score}</span>
+              <span className="score-of">/100</span>
+            </div>
+            <span className="score-rank">{scoreRank}</span>
           </div>
         </div>
 

@@ -610,28 +610,30 @@
   /* Fill the viewport: the poster IS the first thing you see, and the
    *  scroll hint at the bottom signals where the report begins.
    *  Subtracts the sticky app-header (~52px) so the share row + scroll
-   *  hint sit just above the fold on a vanilla 100vh layout. */
+   *  hint sit at the bottom edge of the fold. */
   min-height: calc(100vh - 52px);
-  padding: 40px 0 32px;
+  padding: 32px 0 20px;
   border-bottom: 1px solid var(--line);
   display: flex; flex-direction: column;
-  justify-content: center;
 }
 
 .poster {
   position: relative;
-  padding: 36px 44px 24px;
+  padding: 28px 44px;
   border: 1px dashed var(--accent-pink-soft);
-  background:
-    radial-gradient(ellipse 700px 240px at 80% 10%,
-      rgba(228, 88, 124, 0.06) 0%, transparent 65%),
-    var(--bg-2);
+  background: var(--bg-2);
   display: flex; flex-direction: column;
-  gap: 28px;
   max-width: 980px;
   width: 100%;
   margin: 0 auto;
+  flex: 1;
 }
+
+/* poster lays out as head / centered body / footer so the body anchors
+ *  vertically in the middle even when the poster fills the viewport. */
+.poster-head { flex: 0 0 auto; }
+.poster-body { flex: 1 1 auto; }
+.poster-foot { flex: 0 0 auto; }
 
 /* head ────────────────────────────────────────────────────── */
 .poster-head {
@@ -651,77 +653,96 @@
 .poster-meta .of { color: var(--dim); }
 .poster-meta .poster-sep { color: var(--dim); }
 
-/* body — 3-col: score | persona | sigil ───────────────────── */
+/* body — vertical centered stack: sigil → persona → score ─── */
 .poster-body {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 32px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  min-height: 160px;
+  justify-content: center;
+  gap: clamp(28px, 5vh, 56px);
+  text-align: center;
+  padding: clamp(16px, 4vh, 48px) 0;
+  min-height: 0;
 }
 
-.poster-score { text-align: center; display: flex; flex-direction: column; align-items: center; }
-.poster-score .score-n {
-  font-family: var(--font-display);
-  font-size: clamp(60px, 8vw, 80px);
-  line-height: 1;
-  letter-spacing: 0.04em;
-  color: var(--accent-pink);
-}
-.poster-score .score-of {
-  font-family: var(--font-mono);
-  font-size: 16px;
-  color: var(--dim);
-  margin-top: 2px;
-}
-.poster-score .score-rank {
-  margin-top: 10px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent-green);
+/* sigil — flat 8x8, anchored at the top of the centered stack ── */
+.poster-sigil .sigil {
+  display: grid;
+  grid-template-columns: repeat(8, clamp(14px, 2.4vh, 22px));
+  grid-template-rows: repeat(8, clamp(14px, 2.4vh, 22px));
+  gap: 2px;
+  padding: clamp(8px, 1.4vh, 12px);
+  background: var(--bg);
+  border: 1px solid var(--line-2);
 }
 
-.poster-persona { min-width: 0; }
+/* persona — name + keywords + rarity stacked centered ──────── */
+.poster-persona {
+  min-width: 0;
+  display: flex; flex-direction: column; align-items: center;
+  gap: clamp(10px, 1.6vh, 18px);
+}
 .poster-persona .persona-name {
   font-family: var(--font-display);
-  font-size: clamp(28px, 4vw, 34px);
-  letter-spacing: 0.04em;
-  line-height: 1;
-  margin: 0 0 12px;
+  font-size: clamp(40px, 8vh, 84px);
+  letter-spacing: 0.03em;
+  line-height: 0.95;
+  margin: 0;
   color: var(--ink);
   text-transform: lowercase;
   text-wrap: balance;
 }
 .poster-persona .persona-keywords {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: clamp(18px, 2.6vh, 26px);
   letter-spacing: 0.06em;
   text-transform: lowercase;
 }
 .poster-persona .persona-keywords .kw-0 { color: var(--accent-green); }
 .poster-persona .persona-keywords .kw-1 { color: var(--ink); }
 .poster-persona .persona-keywords .kw-2 { color: var(--accent-pink); }
-.poster-persona .persona-keywords .kw-sep { color: var(--dim); margin: 0 8px; }
+.poster-persona .persona-keywords .kw-sep { color: var(--dim); margin: 0 10px; }
 .poster-persona .persona-rarity {
-  margin-top: 10px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: clamp(12px, 1.5vh, 14px);
   color: var(--accent-green);
+  letter-spacing: 0.02em;
 }
 .poster-persona .persona-rarity .lbl { color: var(--dim); }
 .poster-persona .persona-rarity .pct { color: var(--accent-pink); font-weight: 600; }
 
-/* sigil — flat 8x8, no plate, no crosshairs, no animation ─── */
-.poster-sigil .sigil {
-  display: grid;
-  grid-template-columns: repeat(8, 12px);
-  grid-template-rows: repeat(8, 12px);
-  gap: 2px;
-  padding: 7px;
-  background: var(--bg);
-  border: 1px solid var(--line-2);
+/* score — heroic number anchored at the bottom of the body ── */
+.poster-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.poster-score .score-row {
+  display: flex; align-items: baseline; gap: 6px;
+}
+.poster-score .score-n {
+  font-family: var(--font-display);
+  font-size: clamp(80px, 14vh, 168px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--accent-pink);
+}
+.poster-score .score-of {
+  font-family: var(--font-mono);
+  font-size: clamp(18px, 2.4vh, 24px);
+  color: var(--dim);
+  letter-spacing: 0.04em;
+}
+.poster-score .score-rank {
+  font-family: var(--font-mono);
+  font-size: clamp(10px, 1.4vh, 13px);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-green);
+  padding: 5px 14px;
+  border: 1px solid var(--accent-green);
+  background: rgba(102, 209, 181, 0.05);
 }
 .poster-sigil .sigil .px { background: transparent; }
 .poster-sigil .sigil .px.on { background: var(--ink); }
@@ -784,18 +805,34 @@
 .poster-scroll-hint .arrow { color: var(--accent-pink); margin-left: 6px; }
 
 /* capture mode — html2canvas can't reliably render clamp() ── */
+/* capture mode — html2canvas can't reliably render clamp()/vh, so
+ *  lock every fluid measurement to a fixed value tuned for the
+ *  ~960×960 PNG export. */
 .poster.capturing {
   min-width: 880px; max-width: 980px;
-  padding: 32px 40px 22px;
+  min-height: 880px;
+  padding: 36px 48px;
 }
-.poster.capturing .score-n { font-size: 76px; }
-.poster.capturing .persona-name { font-size: 32px; }
-.poster.capturing .persona-keywords { font-size: 18px; }
+.poster.capturing .poster-body { gap: 40px; padding: 24px 0; }
+.poster.capturing .score-n { font-size: 140px; }
+.poster.capturing .score-of { font-size: 22px; }
+.poster.capturing .score-rank { font-size: 12px; }
+.poster.capturing .persona-name { font-size: 72px; }
+.poster.capturing .persona-keywords { font-size: 24px; }
+.poster.capturing .persona-rarity { font-size: 13px; }
+.poster.capturing .poster-sigil .sigil {
+  grid-template-columns: repeat(8, 22px);
+  grid-template-rows: repeat(8, 22px);
+  padding: 10px;
+}
 
 @media (max-width: 720px) {
-  .poster-body { grid-template-columns: 1fr; gap: 22px; text-align: center; }
+  .poster { padding: 24px 22px; }
+  .poster-body { gap: 28px; padding: 12px 0; }
   .poster-share-row { grid-template-columns: 1fr; }
   .poster-head { font-size: 10px; }
+  .poster-score .score-n { font-size: clamp(72px, 18vw, 120px); }
+  .poster-persona .persona-name { font-size: clamp(36px, 9vw, 56px); }
 }
 
 /* ============================================================

@@ -16,9 +16,9 @@ import { RefreshButton } from "@/app/components/refresh-button";
 import { usePostHog } from "@/contexts/PostHogContext";
 
 const NAV_LINKS = [
+  { href: "/projects", label: "projects" },
   { href: "/policies", label: "policies" },
   { href: "/audit", label: "audit" },
-  { href: "/projects", label: "projects" },
 ];
 
 const REMOTE_LOGO_URL =

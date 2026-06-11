@@ -249,6 +249,11 @@ export interface AuditFeatures {
   clusterLift: Record<ArchetypeKey, number>;
   /** Normalised entropy of the lift vector (goldfish detector). */
   entropy: number;
+  /** Second-highest cluster lift. Goldfish requires this to be elevated:
+   *  high entropy alone is satisfied by a uniform-at-baseline lift vector
+   *  (every cluster fires at ambient rate → lifts ≈ 1.0 → entropy = max),
+   *  which would otherwise collapse every "typical" agent onto goldfish. */
+  secondLift: number;
   /** Share of total signal coming from the two architect caution detectors. */
   cautionShare: number;
   cowboyLift: number;
@@ -288,7 +293,10 @@ export function deriveFeatures(result: AuditResult, seed = ""): AuditFeatures {
     clusterLift[k] = BASELINE_SHARE[k] > 0 ? share / BASELINE_SHARE[k] : 0;
   }
 
-  const entropy = normalizedEntropy(MAPPABLE_KEYS.map((k) => clusterLift[k]));
+  const liftVec = MAPPABLE_KEYS.map((k) => clusterLift[k]);
+  const entropy = normalizedEntropy(liftVec);
+  const sortedLifts = [...liftVec].sort((a, b) => b - a);
+  const secondLift = sortedLifts[1] ?? 0;
   const cautionShare = totalSignal > 0 ? cautionRaw / totalSignal : 0;
   const faultRate = totalHits / events;
 
@@ -300,7 +308,7 @@ export function deriveFeatures(result: AuditResult, seed = ""): AuditFeatures {
 
   return {
     events, sessions, totalHits, faultRate,
-    clusterRaw, totalSignal, clusterLift, entropy,
+    clusterRaw, totalSignal, clusterLift, entropy, secondLift,
     cautionShare, cowboyLift: clusterLift.cowboy, fingerprint,
   };
 }

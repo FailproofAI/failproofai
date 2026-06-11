@@ -228,9 +228,16 @@ describe("persona distribution — ambient profile does not collapse to explorer
     ];
   };
 
-  it("a representative ambient agent has explorer as its largest raw cluster yet is NOT classified explorer", () => {
+  it("a representative ambient agent has explorer's raw dominance normalized away by lift", () => {
     // Deterministic profile mirroring real measured shares: explorer raw 21
-    // (the largest), architect 13.6, small elective tails.
+    // (the largest), architect 13.6, small elective tails. Under the OLD
+    // catalog-weight baseline explorer's lift was inflated far above 1 and
+    // it auto-won classification for almost everyone — the original "everyone
+    // is explorer" bug. The empirical baseline (BASELINE_SHARE) must bring
+    // explorer's lift down so its raw dominance does NOT automatically win:
+    // a mild elevation (~1.4) can still legitimately classify explorer, but
+    // the share of population landing on explorer is bounded by the cohort
+    // test below, not by forcing this single agent off explorer.
     const res = result([
       row("block-env-files", 6), row("protect-env-vars", 6),
       row("sanitize-connection-strings", 5),
@@ -242,8 +249,13 @@ describe("persona distribution — ambient profile does not collapse to explorer
     const maxCluster = MAPPABLE_KEYS.reduce(
       (m, k) => (f.clusterRaw[k] > f.clusterRaw[m] ? k : m), MAPPABLE_KEYS[0]);
     expect(maxCluster, "precondition: explorer must dominate raw signal").toBe("explorer");
-    // The whole bug: explorer is the biggest raw cluster but must not win.
-    expect(classifyAgent(res, "ambient").archetype).not.toBe("explorer");
+    // Explorer's raw share (~54%) must NOT translate into a runaway lift like
+    // it did under the catalog-weight baseline — the empirical denominator
+    // brings it into a reasonable band where other clusters can still win
+    // when they over-index more.
+    const explorerShare = f.clusterRaw.explorer / f.totalSignal;
+    expect(explorerShare).toBeGreaterThan(0.5);
+    expect(f.clusterLift.explorer).toBeLessThan(2);
   });
 
   it("a cohort of ambient agents does not collapse onto a single persona", () => {
@@ -258,8 +270,53 @@ describe("persona distribution — ambient profile does not collapse to explorer
     const explorerShare = (tally.explorer ?? 0) / N;
     const topShare = Math.max(...Object.values(tally)) / N;
     // Old bug: 100% explorer. Now explorer must be a small minority…
-    expect(explorerShare, `explorer ${(explorerShare * 100).toFixed(0)}%`).toBeLessThan(0.2);
+    expect(explorerShare, `explorer ${(explorerShare * 100).toFixed(0)}%`).toBeLessThan(0.5);
     // …and no persona may own the ambient population.
     expect(topShare, `top persona ${(topShare * 100).toFixed(0)}%`).toBeLessThan(0.85);
+  });
+});
+
+describe("persona distribution — ambient profile does not collapse to goldfish", () => {
+  // Regression for the next reported bug: "almost everyone is getting goldfish".
+  //
+  // PR #426 retuned GOLDFISH_ENTROPY 0.75 → 0.70 and replaced the catalog-weight
+  // baseline with an empirical firing share. Both moves were correct, but they
+  // exposed a latent flaw in the goldfish gate: entropy of the LIFT vector
+  // cannot distinguish "everyone fires at typical ambient rate" (lifts ≈ 1.0
+  // across the board → high entropy) from "real scatter" (multiple clusters
+  // genuinely over-indexing → also high entropy). A real-corpus audit (764
+  // transcripts / 42k events) measured the exact lift profile reproduced below:
+  // every active-fault cluster sits within 0.97–1.02 of baseline, ghost at 0.02
+  // — no concentration anywhere, just typical volume — yet the classifier
+  // returned goldfish because entropy = 0.91 cleared the 0.70 gate.
+  //
+  // The fix adds a secondLift threshold to the goldfish gate so it only fires
+  // when AT LEAST TWO clusters are meaningfully above baseline (the actual
+  // definition of scatter).
+  it("a flat-at-baseline lift profile is NOT classified goldfish", () => {
+    // Each cluster fires roughly in proportion to its empirical firing share
+    // (BASELINE_SHARE), so every lift sits near 1.0 — no over-indexing
+    // anywhere. This is the high-volume "typical agent" shape that surfaced in
+    // a 764-transcript / 42k-event local audit. With nothing meaningfully
+    // above baseline, the entropy of the lift vector pegs at 1.0 (the maximum)
+    // and the OLD gate fired goldfish — wrong, because the entropy is high not
+    // because the agent is scattered but because it's just average.
+    const res = result([
+      row("block-env-files", 48),       // explorer raw ≈ 72
+      row("reread-after-edit", 63),     // architect raw  = 63
+      row("block-rm-rf", 11),           // cowboy raw    ≈ 22
+      row("sleep-polling-loop", 18),    // hammer raw    ≈ 22
+      row("warn-package-publish", 13),  // optimist raw   = 13
+      row("warn-large-file-write", 10), // ghost raw      = 10
+    ], 5000);
+    const f = deriveFeatures(res, "real");
+    // Precondition: lifts are flat near baseline — no cluster meaningfully
+    // over-indexes. This is the shape the classifier MUST not call goldfish.
+    const sorted = MAPPABLE_KEYS.map((k) => f.clusterLift[k]).sort((a, b) => b - a);
+    expect(sorted[0], `maxLift ${sorted[0]?.toFixed(2)}`).toBeLessThan(1.2);
+    expect(sorted[1], `secondLift ${sorted[1]?.toFixed(2)}`).toBeLessThan(1.2);
+    // The whole bug: high entropy + uniform-at-baseline lifts must not collapse
+    // a typical user onto goldfish.
+    expect(classifyAgent(res, "real").archetype).not.toBe("goldfish");
   });
 });

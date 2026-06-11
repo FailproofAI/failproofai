@@ -826,6 +826,14 @@ const ARCHITECT_COWBOY_MAX_LIFT = 1.0;
  *  vector, and 0.75 left goldfish under-reachable (< 4% of the population). */
 const GOLDFISH_ENTROPY = 0.70;
 const GOLDFISH_MIN_NONZERO = 4;
+/** Goldfish also requires the SECOND-highest cluster lift to be meaningfully
+ *  above baseline. Entropy on its own is satisfied by a uniform-at-baseline
+ *  lift vector (every cluster firing at typical ambient rate → all lifts ≈ 1.0
+ *  → entropy = max), which would otherwise collapse every "typical" agent onto
+ *  goldfish. Requiring secondLift > 1.3 means at least TWO clusters are
+ *  genuinely over-indexing — the actual definition of scatter, not just
+ *  "average-volume noise spread across many clusters". */
+const GOLDFISH_MIN_SECOND_LIFT = 1.3;
 /** When the top-two lifts are within this ratio, resolve deterministically by
  *  the behaviour fingerprint instead of always taking the arithmetic winner —
  *  spreads near-ties across the population without any RNG. */
@@ -891,9 +899,18 @@ export function classifyAgent(result: AuditResult, seed = ""): Classification {
     return { archetype: "architect", secondary: ARCHETYPES.architect.secondary, ...base };
   }
 
-  // 3. goldfish — genuinely scattered across many clusters.
+  // 3. goldfish — genuinely scattered across many clusters. Both the entropy
+  //    and the second-lift gate must clear: entropy catches "many clusters
+  //    contribute", secondLift catches "the contribution is actually elevated
+  //    relative to ambient". Without secondLift, a high-volume average user
+  //    (lifts ≈ 1.0 everywhere) passes the entropy gate and collapses onto
+  //    goldfish — that's the bug fixed alongside this gate.
   const nonZero = MAPPABLE_KEYS.filter((k) => f.clusterLift[k] > 0).length;
-  if (nonZero >= GOLDFISH_MIN_NONZERO && f.entropy > GOLDFISH_ENTROPY) {
+  if (
+    nonZero >= GOLDFISH_MIN_NONZERO &&
+    f.entropy > GOLDFISH_ENTROPY &&
+    f.secondLift >= GOLDFISH_MIN_SECOND_LIFT
+  ) {
     const strongest = rankByLift(f, MAPPABLE_KEYS)[0];
     return { archetype: "goldfish", secondary: strongest, ...base };
   }

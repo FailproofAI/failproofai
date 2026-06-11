@@ -70,20 +70,20 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
   const captureCardBlob = async (): Promise<Blob | null> => {
     const node = (posterRef as React.MutableRefObject<HTMLDivElement | null>)?.current;
     if (!node) return null;
-    // Capture the poster element as it renders on screen — no class
-    // override, no font swapping, no manual sizing. Whatever the user
-    // sees is what gets exported.
+    // Capture via html-to-image instead of html2canvas. The former
+    // serializes the DOM into an SVG <foreignObject> and rasterizes
+    // it through the browser's native rendering engine — so dashed
+    // borders, the SVG logo, gradients, and font metrics render
+    // exactly as they do on screen. html2canvas reimplements CSS
+    // in JS and was producing broken dashes and a stray pink square
+    // on the logo's mask.
     if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(node, {
+    const { toBlob } = await import("html-to-image");
+    return await toBlob(node, {
       backgroundColor: "#0e0e11",
-      scale: 2,
-      logging: false,
-      useCORS: true,
-    });
-    return await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), "image/png");
+      pixelRatio: 2,
+      cacheBust: true,
     });
   };
 

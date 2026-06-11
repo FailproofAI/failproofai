@@ -32,7 +32,8 @@ export interface ScanParams {
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_MS = 5 * 60_000; // 5 min hard cap
 
-function paramsToBody(p: ScanParams) {
+/** Exported for unit testing the option-threading. */
+export function paramsToBody(p: ScanParams) {
   return {
     cli: p.cli.length > 0 ? p.cli : undefined,
     since: p.since === "all" ? undefined : p.since,

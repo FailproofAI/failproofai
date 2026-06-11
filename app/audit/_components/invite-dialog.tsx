@@ -20,6 +20,10 @@ interface Props {
   /** Source tag for PostHog so we can split "invited from come-back-better"
    *  from any future entry points. */
   source: string;
+  /** Called when the proxy returns 401 (session expired between probe and
+   *  submit). The parent should re-open the AuthDialog so the user can
+   *  re-authenticate; without this, a 401 dead-ends with an inline error. */
+  onUnauthorized?: () => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -42,7 +46,7 @@ function parseEmails(input: string): { valid: string[]; invalid: string[] } {
   return { valid, invalid };
 }
 
-export function InviteDialog({ open, onClose, source }: Props): React.ReactElement | null {
+export function InviteDialog({ open, onClose, source, onUnauthorized }: Props): React.ReactElement | null {
   const { capture } = usePostHog();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -106,8 +110,18 @@ export function InviteDialog({ open, onClose, source }: Props): React.ReactEleme
           code?: string;
           message?: string;
         };
+        if (res.status === 401) {
+          // Session expired between probe and submit — route back through auth.
+          // Without this, repeated submits would dead-end with the same 401.
+          if (onUnauthorized) {
+            onClose();
+            onUnauthorized();
+          } else {
+            setError("session expired. please sign in again.");
+          }
+          return;
+        }
         if (!res.ok) {
-          // 401 → caller handles by opening AuthDialog; we still surface inline so the user has feedback.
           const msg = body.message ?? "couldn't send invites.";
           setError(msg);
           return;
@@ -127,7 +141,7 @@ export function InviteDialog({ open, onClose, source }: Props): React.ReactEleme
         setBusy(false);
       }
     },
-    [busy, valid, invalid, capture, source, onClose],
+    [busy, valid, invalid, capture, source, onClose, onUnauthorized],
   );
 
   if (!open) return null;

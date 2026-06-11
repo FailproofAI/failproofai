@@ -13,8 +13,8 @@
  * Validation: max 10 recipients per call, each must look like an email.
  * Anything beyond that gets a 400 and never reaches upstream.
  *
- * Contract for the upstream endpoint lives at
- * `docs/superpowers/specs/2026-06-11-platform-invite-endpoint.md`.
+ * Contract for the upstream endpoint is handed over to the platform team
+ * separately.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { whoAmI } from "@/lib/auth/auth-store";
@@ -162,17 +162,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: httpStatus },
       );
     }
-    const message = err instanceof Error ? err.message : String(err);
+    // Don't surface the raw upstream message to either telemetry or the
+    // client. Network/DNS errors can carry internal hostnames, IPs, or
+    // fragment payload bytes that have no business leaving the proxy.
+    // Log the error name only (bounded) and return a stable generic.
+    const errorName = err instanceof Error ? err.name : "unknown";
     trackEvent("audit_invite_sent", {
       status: "failed",
       source: "dashboard",
       user_id: who.me.id,
       error_code: "upstream_unreachable",
-      error_message: message.slice(0, 200),
+      error_name: errorName.slice(0, 50),
       recipient_count: normalised.length,
     });
     return NextResponse.json(
-      { code: "upstream_unreachable", message: `api-server unreachable: ${message}` },
+      { code: "upstream_unreachable", message: "Invite service is unreachable. Please try again in a moment." },
       { status: 502 },
     );
   }

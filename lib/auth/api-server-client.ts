@@ -251,7 +251,7 @@ export interface InviteSendResult {
  * email from the access-token claims and Cc's them on every outbound message
  * so the recipient sees who invited them.
  *
- * Contract — see `docs/superpowers/specs/2026-06-11-platform-invite-endpoint.md`.
+ * Contract is handed over to the platform team separately.
  */
 export async function sendInvites(
   accessToken: string,

@@ -293,6 +293,13 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
         open={inviteDialogOpen}
         source="come_back_better_section"
         onClose={() => setInviteDialogOpen(false)}
+        onUnauthorized={() => {
+          // Session expired between probe and submit — flip back to anon
+          // and bounce through the AuthDialog so the user re-auths.
+          setAuthStatus({ kind: "anon" });
+          setReminder(null);
+          setDialogOpen(true);
+        }}
       />
 
       <AuthDialog

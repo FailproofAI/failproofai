@@ -239,6 +239,31 @@ export async function cancelReminder(accessToken: string): Promise<void> {
   throw await parseError(res);
 }
 
+export interface InviteSendResult {
+  /** Recipients that were dispatched successfully. */
+  sent: string[];
+  /** Recipients that failed (bad address, bounce, rate-limit, etc.). */
+  failed: string[];
+}
+
+/**
+ * Send invite emails to a batch of friends. The api-server pulls the sender's
+ * email from the access-token claims and Cc's them on every outbound message
+ * so the recipient sees who invited them.
+ *
+ * Contract — see `docs/superpowers/specs/2026-06-11-platform-invite-endpoint.md`.
+ */
+export async function sendInvites(
+  accessToken: string,
+  to: string[],
+): Promise<InviteSendResult> {
+  return postJson<InviteSendResult>(
+    "/v0/invite",
+    { to },
+    { accessToken },
+  );
+}
+
 interface JwtClaims {
   sub: string;
   email: string;

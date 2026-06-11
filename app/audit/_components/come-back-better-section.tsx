@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { isAbortError } from "@/lib/fetch-with-timeout";
 import { AuthDialog, type AuthedUser } from "./auth-dialog";
+import { InviteDialog } from "./invite-dialog";
 
 interface Props {
   isRunning: boolean;
@@ -32,11 +33,7 @@ const DEFAULT_REMINDER_DAYS = 7;
 const REMINDER_OPTIONS = [3, 7, 14, 30] as const;
 type Cadence = typeof REMINDER_OPTIONS[number];
 
-const PERKS_TARGET = 3;
 const PERKS_PERK = "share with 3 friends → unlock pro features for a month.";
-const PERKS_INVITE_URL =
-  "https://x.com/intent/tweet?text=" +
-  encodeURIComponent("just got my agent audited at failproof.ai — it's free, takes 30s. you should run yours too 👀");
 
 type AuthStatus =
   | { kind: "unknown" }
@@ -63,19 +60,14 @@ function formatNextAudit(unixSecs: number): string {
   });
 }
 
-// Mock: invite count is UI state until the backend tracking lands. Per
-// the spec the user is seeding the data — for now the count is 0 and
-// the button just opens a share intent.
-const SEED_INVITE_COUNT = 0;
-
 export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
   const { capture } = usePostHog();
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ kind: "unknown" });
   const [reminder, setReminder] = useState<Reminder | null>(null);
   const [cadence, setCadence] = useState<Cadence>(DEFAULT_REMINDER_DAYS);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [reminderBusy, setReminderBusy] = useState(false);
-  const [inviteCount] = useState<number>(SEED_INVITE_COUNT);
   const ctaShownRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
 
@@ -224,12 +216,17 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
 
   const handleInvite = useCallback(() => {
     capture("audit_perks_invite_clicked", {
-      invite_count: inviteCount,
-      target: PERKS_TARGET,
       source: "come_back_better_section",
+      auth_state: authStatus.kind,
     });
-    globalThis.open(PERKS_INVITE_URL, "_blank", "noopener,noreferrer");
-  }, [capture, inviteCount]);
+    // Unauthed users go through the AuthDialog first so we have a sender
+    // identity to Cc on the invite email.
+    if (authStatus.kind !== "authed") {
+      setDialogOpen(true);
+      return;
+    }
+    setInviteDialogOpen(true);
+  }, [authStatus.kind, capture]);
 
   const handleRerunInline = useCallback(() => {
     if (isRunning) return;
@@ -237,11 +234,6 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
   }, [isRunning, onRerun]);
 
   const days = reminder ? daysUntil(reminder.next_audit_at) : 0;
-  const remaining = Math.max(0, PERKS_TARGET - inviteCount);
-  const progressPct = Math.min(
-    100,
-    Math.round((inviteCount / PERKS_TARGET) * 100),
-  );
 
   return (
     <section className="audit-sec" data-screen-label="05 Come back better">
@@ -288,23 +280,20 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
         <div className="cbb-card">
           <div className="cbb-card-title">unlock failproof perks</div>
           <div className="cbb-card-sub">{PERKS_PERK}</div>
-          <div className="perks-progress" aria-hidden="true">
-            <span style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="perks-meta">
-            <strong>
-              {inviteCount} of {PERKS_TARGET}
-            </strong>{" "}
-            invited · {remaining} to go
-          </div>
           <button type="button" className="invite-btn" onClick={handleInvite}>
             invite a friend
           </button>
           <div className="cbb-foot">
-            {"// invites are tracked by signup — they have to run an audit too."}
+            {"// invites are sent from failproof.ai, Cc'd to you, with a link to run their own audit."}
           </div>
         </div>
       </div>
+
+      <InviteDialog
+        open={inviteDialogOpen}
+        source="come_back_better_section"
+        onClose={() => setInviteDialogOpen(false)}
+      />
 
       <AuthDialog
         open={dialogOpen}

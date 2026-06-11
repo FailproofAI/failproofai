@@ -1145,6 +1145,24 @@
   transition: background-color 140ms ease;
 }
 .invite-btn:hover { background: rgba(228, 88, 124, 0.18); }
+
+.invite-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 90px;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+.invite-summary {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+.invite-summary .invite-valid { color: var(--accent-green); }
+.invite-summary .invite-invalid { color: var(--accent-pink); }
 .cbb-foot {
   font-family: var(--font-mono);
   font-size: 10px;

@@ -9,6 +9,9 @@
 ### Dependencies
 - Add `html-to-image@^1.11.13` for the audit-poster PNG export. Replaces (but does not remove) `html2canvas` — the latter remains for any non-audit screenshot path still using it (#435).
 
+### Docs
+- Update `docs/dashboard.mdx`'s `### Audit` section to describe the new 5-section flow (poster + strengths + quirks + how to improve + come back better), replacing the prior 6-section description (identity + show off + strengths + score+leaderboard + findings + prescribed policies+return loop). Calls out the html-to-image swap so the documented behaviour matches what users see when they click `download poster` (#435).
+
 ## 0.0.11-beta.8 — 2026-06-11
 
 ### Features

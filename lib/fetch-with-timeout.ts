@@ -18,8 +18,11 @@
  * reason AND silently dropped `init.signal` by spreading then
  * overwriting it with the controller's own signal.
  *
- * Both APIs are available in every runtime Next.js 16 supports
- * (Node 20.3+, Chrome 116+, Firefox 124+, Safari 17.4+).
+ * Both APIs are available in every runtime Next.js 16 supports:
+ * `AbortSignal.timeout` since Node 17.3 / 16.14, `AbortSignal.any`
+ * since Node 20.3 (also backported to 18.17). Next.js 16's minimum
+ * runtime (Node >= 20.9, per its engines field) covers both. Browser
+ * support: Chrome 116+, Firefox 124+, Safari 17.4+.
  */
 
 /** Hard cap on every fetch using this helper unless overridden. Picked to

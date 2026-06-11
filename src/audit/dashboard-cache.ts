@@ -133,7 +133,17 @@ export function readDashboardCacheMeta(): { cachedAt: string } | null {
   try {
     const raw = readFileSync(cachePath, "utf-8");
     const entry = JSON.parse(raw) as Partial<DashboardCacheEntry>;
-    if (!entry || typeof entry.cachedAt !== "string") return null;
+    // Require schema-version match + a parseable ISO timestamp before
+    // surfacing the entry as "this user's audit aged out". A
+    // schema-incompatible entry is structurally indistinguishable from
+    // "no audit has ever run", so it should fall through to the
+    // first-run empty copy, not the expired banner.
+    if (
+      !entry
+      || entry.schemaVersion !== DASHBOARD_CACHE_SCHEMA_VERSION
+      || typeof entry.cachedAt !== "string"
+      || Number.isNaN(new Date(entry.cachedAt).getTime())
+    ) return null;
     return { cachedAt: entry.cachedAt };
   } catch {
     return null;

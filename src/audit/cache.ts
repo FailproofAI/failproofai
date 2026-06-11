@@ -104,7 +104,10 @@ export function readCachedTranscriptResult(
     if (entry.sizeBytes !== sizeBytes) return null;
     if (entry.engineVersion !== getEngineVersion()) return null;
     if (entry.detectorVersion !== getDetectorVersion()) return null;
-    if (typeof entry.cachedAt !== "number" || Date.now() - entry.cachedAt > CACHE_TTL_MS) return null;
+    // Number.isFinite (not typeof) so a malformed JSON `Infinity` /
+    // `NaN` is rejected — those would otherwise bypass the TTL check
+    // and pin a stale entry as valid forever.
+    if (!Number.isFinite(entry.cachedAt) || Date.now() - (entry.cachedAt as number) > CACHE_TTL_MS) return null;
     return entry.result ?? null;
   } catch {
     return null;

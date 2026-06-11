@@ -110,10 +110,10 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     setRunning(true);
     setRerunStatus({ kind: "running", startedAt: Date.now() });
     try {
-      // noCache: an explicit re-audit clears the cache and re-scans from
-      // scratch — never a silent no-op that returns the identical cached
-      // result. The fresh result overwrites the dashboard cache on success;
-      // the prior cache survives a failed run so the report doesn't vanish.
+      // noCache: an explicit re-audit bypasses the per-transcript cache and
+      // re-scans from scratch — never a silent no-op that returns the identical
+      // cached result. The fresh result overwrites the dashboard cache on
+      // success; the prior cache survives a failed run so the report doesn't vanish.
       // The empty-state first-run (empty-state.tsx) deliberately stays on the
       // fast cached path — it's a first scan, not a re-audit.
       await triggerRun({ cli: [], since: "30d", noCache: true });

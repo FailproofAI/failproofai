@@ -607,26 +607,30 @@
    ============================================================ */
 
 .poster-section {
-  /* Fill the viewport: the poster IS the first thing you see, and the
-   *  scroll hint at the bottom signals where the report begins.
-   *  Subtracts the sticky app-header (~52px) so the share row + scroll
-   *  hint sit at the bottom edge of the fold. */
-  min-height: calc(100vh - 52px);
-  padding: 32px 0 20px;
+  /* Fit the viewport exactly: poster + share row + scroll hint all
+   *  visible on the first screen. The header is ~52px tall (14px
+   *  padding × 2 + ~18px content + 1px border). Using `height` (not
+   *  min-height) means the section never overflows; the poster's
+   *  flex column shrinks its body to fit. */
+  height: calc(100vh - 52px);
+  padding: 20px 0 16px;
   border-bottom: 1px solid var(--line);
   display: flex; flex-direction: column;
+  gap: 14px;
 }
 
 .poster {
   position: relative;
-  padding: 28px 44px;
+  padding: 22px 40px;
   border: 1px dashed var(--accent-pink-soft);
   background: var(--bg-2);
   display: flex; flex-direction: column;
   max-width: 980px;
   width: 100%;
   margin: 0 auto;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* poster lays out as head / centered body / footer so the body anchors
@@ -659,19 +663,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(28px, 5vh, 56px);
+  gap: clamp(14px, 2.6vh, 30px);
   text-align: center;
-  padding: clamp(16px, 4vh, 48px) 0;
+  padding: clamp(6px, 1.4vh, 16px) 0;
   min-height: 0;
 }
 
 /* sigil — flat 8x8, anchored at the top of the centered stack ── */
 .poster-sigil .sigil {
   display: grid;
-  grid-template-columns: repeat(8, clamp(14px, 2.4vh, 22px));
-  grid-template-rows: repeat(8, clamp(14px, 2.4vh, 22px));
+  grid-template-columns: repeat(8, clamp(10px, 1.7vh, 16px));
+  grid-template-rows: repeat(8, clamp(10px, 1.7vh, 16px));
   gap: 2px;
-  padding: clamp(8px, 1.4vh, 12px);
+  padding: clamp(6px, 1vh, 10px);
   background: var(--bg);
   border: 1px solid var(--line-2);
 }
@@ -680,11 +684,11 @@
 .poster-persona {
   min-width: 0;
   display: flex; flex-direction: column; align-items: center;
-  gap: clamp(10px, 1.6vh, 18px);
+  gap: clamp(6px, 1.2vh, 14px);
 }
 .poster-persona .persona-name {
   font-family: var(--font-display);
-  font-size: clamp(40px, 8vh, 84px);
+  font-size: clamp(32px, 6.5vh, 64px);
   letter-spacing: 0.03em;
   line-height: 0.95;
   margin: 0;
@@ -694,7 +698,7 @@
 }
 .poster-persona .persona-keywords {
   font-family: var(--font-display);
-  font-size: clamp(18px, 2.6vh, 26px);
+  font-size: clamp(16px, 2.2vh, 22px);
   letter-spacing: 0.06em;
   text-transform: lowercase;
 }
@@ -704,7 +708,7 @@
 .poster-persona .persona-keywords .kw-sep { color: var(--dim); margin: 0 10px; }
 .poster-persona .persona-rarity {
   font-family: var(--font-mono);
-  font-size: clamp(12px, 1.5vh, 14px);
+  font-size: clamp(11px, 1.3vh, 13px);
   color: var(--accent-green);
   letter-spacing: 0.02em;
 }
@@ -716,31 +720,31 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 .poster-score .score-row {
   display: flex; align-items: baseline; gap: 6px;
 }
 .poster-score .score-n {
   font-family: var(--font-display);
-  font-size: clamp(80px, 14vh, 168px);
+  font-size: clamp(56px, 11vh, 112px);
   line-height: 1;
   letter-spacing: 0.02em;
   color: var(--accent-pink);
 }
 .poster-score .score-of {
   font-family: var(--font-mono);
-  font-size: clamp(18px, 2.4vh, 24px);
+  font-size: clamp(16px, 2vh, 22px);
   color: var(--dim);
   letter-spacing: 0.04em;
 }
 .poster-score .score-rank {
   font-family: var(--font-mono);
-  font-size: clamp(10px, 1.4vh, 13px);
+  font-size: clamp(10px, 1.3vh, 12px);
   letter-spacing: 0.32em;
   text-transform: uppercase;
   color: var(--accent-green);
-  padding: 5px 14px;
+  padding: 4px 12px;
   border: 1px solid var(--accent-green);
   background: rgba(102, 209, 181, 0.05);
 }
@@ -764,10 +768,11 @@
 /* share-row — UI only, outside the PNG capture ─────────────── */
 .poster-share-row {
   max-width: 980px;
-  margin: 18px auto 0;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+  flex: 0 0 auto;
 }
 .poster-share-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -795,11 +800,12 @@
 /* scroll-hint — small footer below share row ───────────────── */
 .poster-scroll-hint {
   text-align: center;
-  margin: 22px 0 0;
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
+  flex: 0 0 auto;
   color: var(--dim);
 }
 .poster-scroll-hint .arrow { color: var(--accent-pink); margin-left: 6px; }

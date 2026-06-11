@@ -79,11 +79,23 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     // on the logo's mask.
     if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    // Lock dimensions to the rendered size — html-to-image clones the
+    // node without its parent's flex context, so the clone would otherwise
+    // collapse to intrinsic width while the canvas inherits the original
+    // offsetWidth, anchoring the content to the left of empty space.
+    const width = node.offsetWidth;
+    const height = node.offsetHeight;
     const { toBlob } = await import("html-to-image");
     return await toBlob(node, {
       backgroundColor: "#0e0e11",
       pixelRatio: 2,
       cacheBust: true,
+      width,
+      height,
+      style: {
+        width: `${width}px`,
+        height: `${height}px`,
+      },
     });
   };
 

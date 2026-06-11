@@ -32,7 +32,7 @@ interface Props {
 const ERROR_COPY: Record<RerunError["kind"], string> = {
   timeout: "audit took too long — try again",
   network: "network hiccup — check your connection",
-  post_failed: "audit failed to start — try again",
+  post_failed: "audit failed — try again",
 };
 
 export function formatElapsed(ms: number): string {

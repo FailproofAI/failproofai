@@ -30,7 +30,13 @@ export interface ScanParams {
 }
 
 const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_MS = 5 * 60_000; // 5 min hard cap
+
+/** Give up polling only after this many *consecutive* status-fetch failures.
+ *  There is no duration cap on a run (a cold all-history scan is unbounded), so
+ *  the only thing that should stop a live poll is losing the server — not the
+ *  run taking a while. At POLL_INTERVAL_MS, this is ~10s of an unreachable
+ *  server before we surface a network error. */
+const MAX_CONSECUTIVE_POLL_FAILURES = 10;
 
 /** Exported for unit testing the option-threading. */
 export function paramsToBody(p: ScanParams) {
@@ -51,7 +57,10 @@ export class RerunError extends Error {
 }
 
 export async function triggerRun(scanParams: ScanParams): Promise<void> {
-  // Kick off the run. 409 (already running) is OK — we'll just poll.
+  // Start the run. The route is fire-and-forget — it kicks off runAudit() in
+  // the background and returns 202 in milliseconds — so the default fast fetch
+  // timeout is correct here: it bounds the *kickoff request*, not the run.
+  // 409 (already running) is fine — we just poll the in-flight run.
   try {
     const res = await fetchWithTimeout("/api/audit/run", {
       method: "POST",
@@ -69,22 +78,42 @@ export async function triggerRun(scanParams: ScanParams): Promise<void> {
     throw new RerunError(isAbortError(err) ? "timeout" : "network", "audit run request failed");
   }
 
-  // Poll status until running flips false. The status route returns
-  // `cachedAt`, which the polling caller can compare against the prior
-  // value to detect "fresh result available" — but for `triggerRun`'s
-  // purposes the `running: false` flip is the success signal.
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < MAX_POLL_MS) {
+  // Poll /api/audit/status until the run finishes. There is deliberately NO
+  // duration cap: a cold, all-history scan can run arbitrarily long and must
+  // not be guillotined client-side. The only failure mode that stops polling is
+  // losing the server, tracked as consecutive status-fetch failures.
+  let consecutiveFailures = 0;
+  for (;;) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    let status: { running: boolean; error?: string | null } | null = null;
     try {
       const sres = await fetchWithTimeout("/api/audit/status", { cache: "no-store" });
-      if (!sres.ok) continue;
-      const s = await sres.json() as { running: boolean };
-      if (!s.running) return;
+      if (sres.ok) {
+        status = (await sres.json()) as { running: boolean; error?: string | null };
+      }
     } catch {
-      // Transient (including per-request timeout) — keep polling until the
-      // outer MAX_POLL_MS budget runs out.
+      // Transient fetch/JSON failure (including a per-request timeout) — handled
+      // by the connectivity backstop below.
+    }
+
+    if (status === null) {
+      // Status unreachable or non-OK. Only give up once the server has been
+      // unreachable for MAX_CONSECUTIVE_POLL_FAILURES polls in a row; a single
+      // blip must not kill a long, healthy run.
+      if (++consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+        throw new RerunError("network", "audit status poll lost the server");
+      }
+      continue;
+    }
+
+    consecutiveFailures = 0;
+    if (!status.running) {
+      // Run finished. A non-null error means the background runAudit() threw —
+      // surface it (the dashboard cache was NOT updated). Otherwise it's a clean
+      // success: writeDashboardCache ran before finishRun(null).
+      if (status.error) throw new RerunError("post_failed", status.error);
+      return;
     }
   }
-  throw new RerunError("timeout", "audit poll loop timed out");
 }

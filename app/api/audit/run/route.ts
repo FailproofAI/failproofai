@@ -1,20 +1,24 @@
 /**
- * POST /api/audit/run — kick off a `runAudit()` call and write the dashboard
- * cache on success. Returns the full `AuditResult` in the response.
+ * POST /api/audit/run — start a `runAudit()` call in the background and return
+ * `202 { status: "started" }` immediately. The run is fire-and-forget: it
+ * executes as a detached task in this long-lived server process (NOT awaited by
+ * the handler), writes the dashboard cache on success, and records its outcome
+ * in `_state.ts`. The client (rerun-button.tsx) polls /api/audit/status until
+ * the run finishes — there is deliberately no per-request or per-run time cap,
+ * so a cold all-history scan runs to completion however long it takes.
  *
  * Concurrency: a module-level singleton in `_state.ts` guards against
- * overlapping runs — the second concurrent POST gets a 409. The client
- * (rerun-button.tsx) then just falls back to polling /status.
+ * overlapping runs — the second concurrent POST gets a 409. The client then
+ * just falls back to polling /status for the in-flight run.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { runAudit } from "@/src/audit";
 import { writeDashboardCache } from "@/src/audit/dashboard-cache";
 import { INTEGRATION_TYPES, type IntegrationType } from "@/src/hooks/types";
 import type { RunAuditOptions } from "@/src/audit/types";
-import { releaseRun, tryAcquireRun } from "../_state";
+import { finishRun, tryAcquireRun } from "../_state";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
 
 interface RunBody {
   since?: string;
@@ -76,14 +80,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  try {
-    const result = await runAudit(opts);
-    writeDashboardCache(opts, result);
-    return NextResponse.json({ status: "ok", result });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message, status: "error" }, { status: 500 });
-  } finally {
-    releaseRun();
-  }
+  // Fire-and-forget: a cold, all-history scan can run far longer than any HTTP
+  // request should stay open — and longer than Node's `server.requestTimeout`
+  // on the standalone production server. Start runAudit() as a detached task in
+  // this long-lived server process and return immediately; the client polls
+  // /api/audit/status until `running` flips false. The task settles the lock
+  // via finishRun() in its own try/catch, surfacing any error through /status.
+  void (async () => {
+    try {
+      const result = await runAudit(opts);
+      writeDashboardCache(opts, result);
+      finishRun(null);
+    } catch (err) {
+      finishRun(err instanceof Error ? err.message : String(err));
+    }
+  })();
+
+  return NextResponse.json({ status: "started" }, { status: 202 });
 }

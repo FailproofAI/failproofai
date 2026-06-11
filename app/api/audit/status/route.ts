@@ -19,5 +19,6 @@ export async function GET(): Promise<NextResponse> {
     running: state.running,
     startedAt: state.startedAt ?? null,
     cachedAt: cache?.cachedAt ?? null,
+    error: state.error,
   });
 }

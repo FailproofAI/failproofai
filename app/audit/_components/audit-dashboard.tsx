@@ -106,7 +106,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
    *  soft-refreshes the dashboard cache on success — no full page reload. */
   const startRerun = useCallback(async (source: RerunSource) => {
     if (running) return;
-    capture("audit_rerun_clicked", { source, since: "30d" });
+    capture("audit_rerun_clicked", { source, since: "all" });
     setRunning(true);
     setRerunStatus({ kind: "running", startedAt: Date.now() });
     try {
@@ -116,7 +116,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
       // success; the prior cache survives a failed run so the report doesn't vanish.
       // The empty-state first-run (empty-state.tsx) deliberately stays on the
       // fast cached path — it's a first scan, not a re-audit.
-      await triggerRun({ cli: [], since: "30d", noCache: true });
+      await triggerRun({ cli: [], since: "all", noCache: true });
       await refreshFromCache();
       setRerunStatus({ kind: "idle" });
     } catch (err) {
@@ -124,7 +124,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
       capture("audit_rerun_failed", {
         kind,
         source,
-        since: "30d",
+        since: "all",
         cli_filter: "all",
       });
       setRerunStatus({ kind: "failed", reason: kind, failedAt: Date.now() });

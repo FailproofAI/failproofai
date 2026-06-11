@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.11-beta.8 — 2026-06-11
+
+### Fixes
+- Fix the `/audit` first-run audit failing on the first click (a retry worked) and stop capping how much it scans. The run was driven by a synchronous `/api/audit/run` POST that `triggerRun` (`app/audit/_components/rerun-button.tsx`) aborted after the 15s `DEFAULT_FETCH_TIMEOUT_MS` (`lib/fetch-with-timeout.ts`, sized for fast upstream calls), so a cold run (measured ~17s locally) timed out and dropped back to the empty state while the server kept running and warmed the caches — making the second click succeed. The run is now fire-and-forget: the POST starts `runAudit()` as a detached task in the long-lived server process and returns `202` immediately, the client polls `/api/audit/status` with **no duration cap** until it finishes (only a ~10-poll lost-connection backstop stops it), and a server-side run error is surfaced through the status endpoint (`app/api/audit/_state.ts` gains an `error` field + `finishRun(error)`, and its 5-min lock auto-expiry — which would have prematurely "finished" a long run — is removed along with the route's `maxDuration = 120`). The default scan window also drops from 30 days to the user's entire history, so an audit runs over every session regardless of how long it takes; the empty-state CTA and `run-progress` copy update from "10–30s" to "may take a while". New tests cover the fire-and-forget route, unbounded polling, and the run-state machine (`__tests__/api/audit-run-route.test.ts`, `__tests__/audit/rerun-button.test.ts`, `__tests__/api/audit-state.test.ts`) (#434).
+
 ## 0.0.11-beta.7 — 2026-06-10
 
 ### Fixes

@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { tryAcquireRun, releaseRun, getRunState } from "../../app/api/audit/_state";
-
-const LOCK_MAX_AGE_MS = 5 * 60_000;
+import {
+  tryAcquireRun,
+  releaseRun,
+  finishRun,
+  getRunState,
+} from "../../app/api/audit/_state";
 
 describe("audit run-lock state", () => {
   beforeEach(() => {
@@ -28,21 +31,40 @@ describe("audit run-lock state", () => {
     expect(tryAcquireRun()).toBe(true);
   });
 
-  it("a lock older than LOCK_MAX_AGE_MS auto-expires", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-06T00:00:00Z"));
+  it("finishRun records the run's error and clears running", () => {
     expect(tryAcquireRun()).toBe(true);
-    // Jump past the expiry window.
-    vi.setSystemTime(new Date(Date.now() + LOCK_MAX_AGE_MS + 1000));
-    expect(getRunState().running).toBe(false);
-    expect(tryAcquireRun()).toBe(true);
+    finishRun("scan blew up");
+    const s = getRunState();
+    expect(s.running).toBe(false);
+    expect(s.startedAt).toBeUndefined();
+    expect(s.error).toBe("scan blew up");
   });
 
-  it("a lock younger than LOCK_MAX_AGE_MS stays held", () => {
+  it("finishRun(null) clears a prior error", () => {
+    tryAcquireRun();
+    finishRun("scan blew up");
+    expect(getRunState().error).toBe("scan blew up");
+    finishRun(null);
+    expect(getRunState().error).toBeNull();
+  });
+
+  it("a fresh tryAcquireRun clears the prior run's error", () => {
+    tryAcquireRun();
+    finishRun("scan blew up");
+    expect(getRunState().error).toBe("scan blew up");
+    // The lock is free again, so the next run acquires and starts clean.
+    expect(tryAcquireRun()).toBe(true);
+    expect(getRunState().error).toBeNull();
+  });
+
+  it("never auto-expires the lock, even across a large time jump", () => {
+    // The old behavior released a lock older than 5 min; we removed that so a
+    // long but healthy run is never mistaken for a wedged one.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-06T00:00:00Z"));
     expect(tryAcquireRun()).toBe(true);
-    vi.setSystemTime(new Date(Date.now() + LOCK_MAX_AGE_MS - 1000));
+    // Jump an hour into the future — far past the old 5-min expiry window.
+    vi.setSystemTime(new Date(Date.now() + 60 * 60_000));
     expect(getRunState().running).toBe(true);
     expect(tryAcquireRun()).toBe(false);
   });

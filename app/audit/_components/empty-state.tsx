@@ -32,7 +32,13 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
     });
     onStarted();
     try {
-      await triggerRun({ cli: [], since: "30d" });
+      // since:"all" — scan the user's entire session history, not a window.
+      await triggerRun({ cli: [], since: "all" });
+    } catch (err) {
+      // A failed first run falls back to the empty state via onCompleted's
+      // refetch (no cache was written). Swallow here so it doesn't surface as
+      // an unhandled promise rejection on the click handler.
+      console.error("audit first run failed:", err);
     } finally {
       await onCompleted();
     }
@@ -82,7 +88,7 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
               {running ? "[ scanning… ]" : "[ run audit ]"}
             </button>
             <span className="empty-meta">
-              scans the last 30 days · all installed CLIs · 10–30s
+              scans all sessions · all installed CLIs · may take a while
             </span>
           </div>
         </div>

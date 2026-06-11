@@ -66,7 +66,7 @@ export function RunProgress() {
       <div className="panel running-panel">
         <div className="running-header">
           <span className="running-prompt">$</span>
-          <span className="running-cmd">failproofai audit --since 30d</span>
+          <span className="running-cmd">failproofai audit</span>
           <span className="running-cursor" aria-hidden="true">▮</span>
         </div>
 
@@ -112,7 +112,7 @@ export function RunProgress() {
         </div>
 
         <p className="running-foot">
-          this usually takes 10–30 seconds depending on how much session history you have.
+          this can take a while depending on how much session history you have.
         </p>
       </div>
     </section>

@@ -24,7 +24,7 @@
   padding: 48px 56px;
   display: flex; flex-direction: column;
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
     repeating-linear-gradient(90deg, rgba(102,209,181,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
 }
@@ -257,7 +257,7 @@
   margin-right: auto;
   border: 1px solid var(--line-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
     repeating-linear-gradient(90deg, rgba(102,209,181,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
   padding: 56px 56px 48px;
@@ -474,7 +474,7 @@
   background:
     /* faint pink+green gridlines — same recipe as `.archetype-frame` so the
        sigil reads as a smaller specimen of the same instrument family */
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.04) 0 1px, transparent 1px 12px),
     repeating-linear-gradient(90deg, rgba(102,209,181,0.04) 0 1px, transparent 1px 12px),
     var(--bg);
   border: 1px solid var(--line-2);
@@ -561,7 +561,7 @@
 .sigil .px.p  {
   background: var(--accent-pink);
   /* subtle inner glow on accent cells so they pop without breaking pixel-craft */
-  box-shadow: 0 0 4px rgba(228, 88, 125, 0.45);
+  box-shadow: 0 0 4px rgba(228, 88, 124, 0.45);
 }
 .sigil .px.g  {
   background: var(--accent-green);
@@ -851,8 +851,8 @@
 .score-share-card {
   padding: 22px 24px 20px;
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
     var(--bg-2);
 }
 
@@ -1011,9 +1011,9 @@
   background: var(--dim);
 }
 .ss-chip.missing {
-  border-color: rgba(228, 88, 125, 0.6);
+  border-color: rgba(228, 88, 124, 0.6);
   color: var(--accent-pink);
-  background: rgba(228, 88, 125, 0.06);
+  background: rgba(228, 88, 124, 0.06);
 }
 .ss-chip.missing .dot { background: var(--accent-pink); }
 .ss-chip.enabled {
@@ -1255,8 +1255,8 @@
   padding: 28px 32px;
   border: 1px solid var(--line-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
   color: var(--ink);
   text-decoration: none;
@@ -1266,8 +1266,8 @@
 .showoff-cta:hover {
   border-color: var(--ink-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.04) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.04) 0 1px, transparent 1px 16px),
     var(--bg-3);
 }
 .showoff-cta::before {
@@ -1448,8 +1448,8 @@
 .share-card {
   border: 1px solid var(--accent-pink);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.02) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.02) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.02) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.02) 0 1px, transparent 1px 16px),
     var(--bg-2);
   padding: 32px;
   position: relative;
@@ -1650,8 +1650,8 @@
   padding: 18px 20px;
   border: 1px solid var(--accent-pink);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
     var(--bg-2);
 }
 .return-status .rs-row {
@@ -1674,7 +1674,7 @@
 }
 .rs-dot-pink {
   background: var(--accent-pink);
-  box-shadow: 0 0 8px rgba(228,88,125,0.55);
+  box-shadow: 0 0 8px rgba(228, 88, 124,0.55);
   animation: pulseDot 1.6s ease-in-out infinite;
 }
 .rs-dot-green {
@@ -1729,7 +1729,7 @@
   display: grid; place-items: center;
   padding: 32px 16px;
   background:
-    radial-gradient(ellipse 1000px 700px at 30% 20%, rgba(228,88,125,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 1000px 700px at 30% 20%, rgba(228, 88, 124,0.08) 0%, transparent 60%),
     rgba(8,8,10,0.78);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -1747,8 +1747,8 @@
   padding: 32px 32px 28px;
   border: 1px solid var(--accent-pink);
   background:
-    repeating-linear-gradient(0deg,  rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg,  rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
     var(--bg-2);
   box-shadow: 8px 8px 0 0 var(--accent-pink-shadow);
   font-family: var(--font-mono);

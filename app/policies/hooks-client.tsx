@@ -1663,9 +1663,17 @@ export default function HooksClient({ initialTab = "activity" }: { initialTab?: 
   return (
     <main className="report">
       <section className="section" data-screen-label="policies">
-        <h2 className="section-h" style={{ textTransform: "none" }}>
-          {activeTab === "activity" ? "Policies" : "what to stop them doing."}
-          {activeTab === "activity" && <span className="section-h-dot" aria-hidden />}
+        <h2
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 24,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            color: "var(--ink)",
+            margin: "0 0 16px",
+          }}
+        >
+          {activeTab === "activity" ? "Policies" : "Configure Policies"}
         </h2>
         {activeTab === "activity" ? (
           <div
@@ -1688,7 +1696,7 @@ export default function HooksClient({ initialTab = "activity" }: { initialTab?: 
                 minWidth: 0,
               }}
             >
-              {evaluationsHeading.toLowerCase()}
+              {evaluationsHeading}
               {policyCounts && (
                 <span style={{ color: "var(--dim)" }}>
                   {" · "}enabled policies{" "}

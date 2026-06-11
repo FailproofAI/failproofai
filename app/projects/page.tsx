@@ -1,12 +1,4 @@
-/** Projects page — lists all Claude Agent SDK project folders.
- *
- * Wrapped in the audit `.report` + `.section` chrome so the page picks up
- * the unified design system: mono fonts, section masthead with the ━━
- * glyph + green eyebrow label, and the dashed-frame `.panel` around the
- * project list when it's populated. The inner ProjectList component is
- * unchanged — every Tailwind utility it uses (bg-card, text-foreground,
- * border-border, …) now resolves to the audit palette globally.
- */
+/** Projects page — lists all Claude Agent SDK project folders. */
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getCachedProjectFolders } from "@/lib/projects";
@@ -26,17 +18,17 @@ export default async function ProjectsPage() {
   return (
     <main className="report">
       <section className="section" data-screen-label="projects">
-        <div className="section-mast">
-          <div className="section-label">
-            <span className="glyph">━━</span> projects
-          </div>
-          <div className="section-meta">
-            <span className={count > 0 ? "g" : "p"}>●</span>{" "}
-            {count} {count === 1 ? "folder" : "folders"}
-          </div>
-        </div>
-        <h2 className="section-h" style={{ textTransform: "none" }}>
-          your agent footprint.
+        <h2
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 24,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            color: "var(--ink)",
+            margin: "0 0 24px",
+          }}
+        >
+          Projects
         </h2>
 
         {count === 0 ? (
@@ -54,7 +46,6 @@ export default async function ProjectsPage() {
                   padding: 12,
                   border: "1px solid var(--line-2)",
                   background: "var(--bg)",
-                  boxShadow: "4px 4px 0 0 var(--accent-pink-shadow)",
                 }}
               >
                 {Array.from({ length: 36 }).map((_, i) => {
@@ -72,7 +63,7 @@ export default async function ProjectsPage() {
               </div>
             </div>
             <p style={{ color: "var(--ink-2)", marginBottom: 8 }}>
-              no projects found in the <code style={{ color: "var(--accent-pink)" }}>.claude/projects</code> directory.
+              No projects found in the <code>.claude/projects</code> directory.
             </p>
             <p
               style={{
@@ -81,7 +72,7 @@ export default async function ProjectsPage() {
                 letterSpacing: "0.05em",
               }}
             >
-              run an agent in any folder and it will show up here.
+              Run an agent in any folder and it will show up here.
             </p>
           </div>
         ) : (

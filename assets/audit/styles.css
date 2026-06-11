@@ -21,10 +21,10 @@
   --dim: #5e5c58;
   --line: #25252b;
   --line-2: #32323a;
-  --accent-pink: #e4587d;
-  --accent-pink-soft: rgba(228, 88, 125, 0.7);
+  --accent-pink: #e4587c;
+  --accent-pink-soft: rgba(228, 88, 124, 0.7);
   --accent-pink-shadow: #a83a5a;
-  --accent-pink-bg: rgba(228, 88, 125, 0.12);
+  --accent-pink-bg: rgba(228, 88, 124, 0.12);
   --accent-green: #66d1b5;
   --accent-green-shadow: #3e9a82;
   --accent-green-bg: rgba(102, 209, 181, 0.10);
@@ -52,7 +52,7 @@ html, body, #root {
 body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(ellipse 1200px 800px at 70% -10%, rgba(228, 88, 125, 0.055) 0%, transparent 60%),
+    radial-gradient(ellipse 1200px 800px at 70% -10%, rgba(228, 88, 124, 0.055) 0%, transparent 60%),
     radial-gradient(ellipse 1000px 700px at 0% 100%, rgba(102, 209, 181, 0.04) 0%, transparent 55%),
     radial-gradient(ellipse 100% 100% at 50% 50%, transparent 50%, rgba(0,0,0,0.45) 100%),
     linear-gradient(180deg, #16161a 0%, #0f0f12 100%);
@@ -216,7 +216,7 @@ a { color: inherit; text-decoration: none; }
   position: relative;
   border: 1px solid var(--line-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
     repeating-linear-gradient(90deg, rgba(102,209,181,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
   padding: 56px 56px 48px;
@@ -805,8 +805,8 @@ a { color: inherit; text-decoration: none; }
   padding: 28px 32px;
   border: 1px solid var(--line-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
   color: var(--ink);
   text-decoration: none;
@@ -816,8 +816,8 @@ a { color: inherit; text-decoration: none; }
 .showoff-cta:hover {
   border-color: var(--ink-2);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.04) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.04) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.04) 0 1px, transparent 1px 16px),
     var(--bg-3);
 }
 .showoff-cta::before {
@@ -995,8 +995,8 @@ a { color: inherit; text-decoration: none; }
 .share-card {
   border: 1px solid var(--accent-pink);
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.02) 0 1px, transparent 1px 16px),
-    repeating-linear-gradient(90deg, rgba(228,88,125,0.02) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.02) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(228, 88, 124,0.02) 0 1px, transparent 1px 16px),
     var(--bg-2);
   padding: 32px;
   position: relative;

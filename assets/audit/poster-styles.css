@@ -56,7 +56,7 @@
 .poster {
   position: relative;
   background:
-    repeating-linear-gradient(0deg, rgba(228,88,125,0.03) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(0deg, rgba(228, 88, 124,0.03) 0 1px, transparent 1px 16px),
     repeating-linear-gradient(90deg, rgba(102,209,181,0.025) 0 1px, transparent 1px 16px),
     var(--bg-2);
   border: 1px solid var(--line-2);

@@ -18,6 +18,7 @@
 
 ### Docs
 - Update `docs/dashboard.mdx`'s `### Audit` section to describe the new 5-section flow (poster + strengths + quirks + how to improve + come back better), replacing the prior 6-section description (identity + show off + strengths + score+leaderboard + findings + prescribed policies+return loop). Calls out the html-to-image swap so the documented behaviour matches what users see when they click `download poster` (#435).
+- Update `docs/dashboard.mdx`'s description of the `come back better` perks card to document the new `invite a friend` flow (modal → `/api/audit/invite` → upstream `/v0/invite` → one email per recipient with sender Cc'd) — replacing the prior "progress bar + invite a friend CTA" description (#435).
 
 ## 0.0.11-beta.8 — 2026-06-11
 

@@ -79,24 +79,56 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     // on the logo's mask.
     if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    // Lock dimensions to the rendered size — html-to-image clones the
-    // node without its parent's flex context, so the clone would otherwise
-    // collapse to intrinsic width while the canvas inherits the original
-    // offsetWidth, anchoring the content to the left of empty space.
-    const width = node.offsetWidth;
-    const height = node.offsetHeight;
-    const { toBlob } = await import("html-to-image");
-    return await toBlob(node, {
-      backgroundColor: "#0e0e11",
-      pixelRatio: 2,
-      cacheBust: true,
-      width,
-      height,
-      style: {
-        width: `${width}px`,
-        height: `${height}px`,
-      },
-    });
+    // Clone the poster into an off-screen container with a fixed width
+    // so html-to-image captures a self-contained subtree. The live
+    // .poster sits inside a flex column (.poster-section's flex: 1)
+    // and uses margin: 0 auto for centering — capturing it directly
+    // inherits that parent context, which shifts content within an
+    // oversized canvas. The clone has no such context.
+    const liveRect = node.getBoundingClientRect();
+    const captureWidth = Math.round(liveRect.width);
+    const captureHeight = Math.round(liveRect.height);
+
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = [
+      "position: fixed",
+      "left: -10000px",
+      "top: 0",
+      `width: ${captureWidth}px`,
+      `height: ${captureHeight}px`,
+      "padding: 0",
+      "margin: 0",
+      "background: var(--bg)",
+      "z-index: -1",
+      "pointer-events: none",
+    ].join(";");
+
+    const clone = node.cloneNode(true) as HTMLElement;
+    clone.style.cssText += [
+      "",
+      `width: ${captureWidth}px`,
+      `height: ${captureHeight}px`,
+      "max-width: none",
+      "min-width: 0",
+      "flex: 0 0 auto",
+      "margin: 0",
+    ].join(";");
+
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    try {
+      const { toBlob } = await import("html-to-image");
+      return await toBlob(clone, {
+        backgroundColor: "#0e0e11",
+        pixelRatio: 2,
+        cacheBust: true,
+        width: captureWidth,
+        height: captureHeight,
+      });
+    } finally {
+      wrapper.remove();
+    }
   };
 
   const filenameFor = (channel: "x" | "linkedin" | "download") =>

@@ -779,6 +779,15 @@
 .poster-share-btn:disabled {
   opacity: 0.55; cursor: wait;
 }
+.poster-share-btn:focus-visible,
+.cadence-btn:focus-visible,
+.invite-btn:focus-visible,
+.install-all-btn:focus-visible,
+.copy-icon-btn:focus-visible,
+.fix-install-btn:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 2px;
+}
 .poster-share-btn .mark { color: var(--accent-pink); font-weight: 700; }
 
 /* scroll-hint — small footer below share row ───────────────── */

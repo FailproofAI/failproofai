@@ -194,7 +194,7 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
       const fallbackMethod = await copyOrDownloadCard(blob, filenameFor(channel));
       capture("audit_card_capture_completed", {
         trigger: `share_${channel}`,
-        status: "success",
+        status: fallbackMethod === "failed" ? "error" : "success",
         image_method: fallbackMethod,
         source: "poster",
       });

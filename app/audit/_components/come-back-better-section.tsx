@@ -81,8 +81,20 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
 
   const refreshStatus = useCallback(async () => {
     lastRefreshAtRef.current = Date.now();
+    // Preserve current UI state on transient failures (5xx, network blips).
+    // Downgrading to anon on every error would clear a valid reminder mid-
+    // session on a single failed poll, forcing an unnecessary auth prompt.
+    // Only fall through to anon on the very first probe (still "unknown")
+    // so the cadence buttons unlock even if the server is unreachable.
+    const fallbackToAnonOnError = () => {
+      setAuthStatus((prev) => (prev.kind === "unknown" ? { kind: "anon" } : prev));
+    };
     try {
       const res = await fetch("/api/auth/status", { cache: "no-store" });
+      if (!res.ok) {
+        fallbackToAnonOnError();
+        return;
+      }
       const body = (await res.json()) as {
         authenticated?: boolean;
         user?: { id: string; email: string };
@@ -96,8 +108,7 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
         setReminder(null);
       }
     } catch {
-      setAuthStatus({ kind: "anon" });
-      setReminder(null);
+      fallbackToAnonOnError();
     }
   }, []);
 

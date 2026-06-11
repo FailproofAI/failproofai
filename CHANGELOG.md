@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.11-beta.7 — 2026-06-10
+
+### Fixes
+- Remove the top-of-page `[ re-audit ]` bar from `/audit` (added in #428). On the empty/expired path it stacked a second "run an audit" CTA directly above the existing first-run panel — the duplication read as broken — and on loaded reports the `audited 3d ago` / `expires in 14h` strip earned little, so the whole `TopAuditBar` component (`app/audit/_components/top-audit-bar.tsx`), its `.top-audit-bar*` CSS, and its test (`__tests__/audit/top-audit-bar.test.tsx`) are deleted. Re-auditing still works from `[ run audit ]` on the empty state and `[ re-audit now ]` at the bottom of a report; the sticky `AuditProgressStrip`, soft-refresh-on-success, and the 7-day cache TTL are untouched, and the per-report generation timestamp still renders in the footer. Past the TTL, `/audit` now falls through to the standard empty state instead of a dedicated `audit expired` banner. `RerunSource` drops its now-dead `"top_bar"` variant; `docs/dashboard.mdx` and `docs/cli/audit.mdx` updated to match (#431).
+
 ## 0.0.11-beta.6 — 2026-06-10
 
 ### Fixes

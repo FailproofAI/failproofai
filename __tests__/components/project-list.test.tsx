@@ -46,7 +46,7 @@ describe("ProjectList", () => {
   it("renders project folders in table", () => {
     const folders = makeFolders(3);
     render(<ProjectList folders={folders} />);
-    expect(screen.getByText(/agent root/i)).toBeInTheDocument();
+    expect(screen.getByText("Agent Root")).toBeInTheDocument();
     expect(screen.getByText("/home/user/project0")).toBeInTheDocument();
     expect(screen.getByText("/home/user/project1")).toBeInTheDocument();
     expect(screen.getByText("/home/user/project2")).toBeInTheDocument();
@@ -220,7 +220,7 @@ describe("ProjectList", () => {
 
   it("shows empty state when no folders", () => {
     render(<ProjectList folders={[]} />);
-    expect(screen.getByText(/no projects found/i)).toBeInTheDocument();
+    expect(screen.getByText("No projects found")).toBeInTheDocument();
   });
 
   it("keyword filtering with / to - normalization", async () => {
@@ -228,16 +228,16 @@ describe("ProjectList", () => {
     const folders = makeFolders(3);
     render(<ProjectList folders={folders} />);
 
-    const input = screen.getByPlaceholderText("type a keyword and press Enter");
+    const input = screen.getByPlaceholderText("Enter keyword and press Enter");
     await user.type(input, "/home/user/project0{Enter}");
 
-    expect(screen.getByText(/showing 1.1 of 1 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-1 of 1 projects/)).toBeInTheDocument();
   });
 
   it("pagination (25 per page)", () => {
     const folders = makeFolders(30);
     render(<ProjectList folders={folders} />);
-    expect(screen.getByText(/showing 1.25 of 30 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-25 of 30 projects/)).toBeInTheDocument();
   });
 
   it("CLI filter dropdown shows All CLIs + each known CLI label", () => {
@@ -245,7 +245,7 @@ describe("ProjectList", () => {
     const select = screen.getByLabelText("Filter by CLI") as HTMLSelectElement;
     const optionLabels = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
     expect(optionLabels).toEqual([
-      "all clis",
+      "All CLIs",
       "Claude Code",
       "OpenAI Codex",
       "GitHub Copilot",
@@ -285,9 +285,9 @@ describe("ProjectList", () => {
       },
     ];
     render(<ProjectList folders={mixed} />);
-    expect(screen.getByText(/showing 1.3 of 3 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-3 of 3 projects/)).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Filter by CLI"), "copilot");
-    expect(screen.getByText(/showing 1.1 of 1 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-1 of 1 projects/)).toBeInTheDocument();
     expect(screen.queryByText("/home/u/claude-only")).not.toBeInTheDocument();
     expect(screen.queryByText("/home/u/codex-only")).not.toBeInTheDocument();
     expect(screen.getByText("/home/u/copilot-only")).toBeInTheDocument();
@@ -314,9 +314,9 @@ describe("ProjectList", () => {
     render(<ProjectList folders={mixed} />);
     const select = screen.getByLabelText("Filter by CLI");
     await user.selectOptions(select, "claude");
-    expect(screen.getByText(/showing 1.1 of 1 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-1 of 1 projects/)).toBeInTheDocument();
     await user.selectOptions(select, "");
-    expect(screen.getByText(/showing 1.2 of 2 projects/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1-2 of 2 projects/)).toBeInTheDocument();
   });
 
   it("CLI filter matches multi-CLI rows", async () => {

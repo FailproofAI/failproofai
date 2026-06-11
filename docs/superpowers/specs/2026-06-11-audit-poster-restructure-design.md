@@ -205,18 +205,55 @@ and render proportionally — the placeholder values (1/3) come from a mock for 
 
 ## `/policies` and `/projects` — calm-down
 
-The structure does not change. Only the styles do:
+The structure does not change. Styles calm down AND headings revert to the plain
+title-case wording that existed prior to the brutalist redesign (reference: commit
+[`a0a18415`](https://github.com/FailproofAI/failproofai/commit/a0a18415c5ee93d13bfb64985616b0bbb1346b4d)).
 
-- `app/projects/page.tsx` already wraps in `.report` + `.section` chrome — that stays.
-  The inner empty-state pixel grid loses its hard-offset shadow.
-- The inner `ProjectList` component currently uses Tailwind utilities that resolve to
-  the audit palette through shadcn aliases. It calms automatically once the underlying
-  tokens (`--card`, `--border`, etc.) lose their decorative treatments. No component
-  changes expected.
-- `app/policies/page.tsx` wraps `HooksClient`. The client uses `Button`, `lucide` icons,
-  and table-style activity. Same auto-calm via tokens. No restructure.
-- Section headers in both pages keep the existing `━━ <label>` glyph + green eyebrow
-  pattern — that pattern matches the demo's `// raw events from agents` motif.
+These two pages are utility surfaces, not brand artifacts — they get sharp English
+headings, not the lowercase + `// comment` style we kept for the audit poster. The
+visual languages diverge by purpose: the audit page is a poster, `/policies` and
+`/projects` are dashboards.
+
+### `/policies` headings (revert wording, drop chrome)
+
+| Element | Current | Revert to |
+|---|---|---|
+| Page heading (activity tab) | `Policies` (lowercase via `textTransform: none` + `section-h` chrome) | **`Policies`** plain title case, no chrome |
+| Page heading (configure tab) | `what to stop them doing.` | **`Configure Policies`** |
+| Subheading prose | `{evaluationsHeading}.toLowerCase()` + `enabled policies N/M` | **`{evaluationsHeading}`** in its original title case (`Policy evaluations across …`) |
+| Tab labels | `Activity` / `Configure` (already correct in `TabBar`) | unchanged |
+
+Drop the `section-h-dot` ping animation next to the activity heading — the
+`evaluationsHeading` prose carries the "live" signal already.
+
+### `/projects` headings (revert wording, drop chrome)
+
+| Element | Current | Revert to |
+|---|---|---|
+| Section eyebrow | `━━ projects` glyph + `● N folders` meta | **drop entirely** |
+| Page heading | `your agent footprint.` (lowercase, period) | **`Projects`** plain title case |
+| Empty-state copy | `no projects found in the .claude/projects directory.` (with pink `<code>` highlight) | **`No projects found in the .claude/projects directory.`** plain sentence case |
+| Empty-state pixel grid | renders with `boxShadow: 4px 4px 0 0 var(--accent-pink-shadow)` | drop the shadow; keep the grid |
+
+### Inner components — auto-calm via tokens
+
+- `ProjectList` uses Tailwind utilities that resolve to the audit palette through
+  shadcn aliases (`bg-card`, `border-border`, `text-muted-foreground`, …). It calms
+  automatically once the underlying tokens lose their decorative treatments. No
+  component changes expected.
+- `HooksClient` uses `Button`, `lucide` icons, and a table-style activity list. Same
+  auto-calm via tokens. No restructure.
+
+### Style scope
+
+- Wrap-up containers (`.report`, `.section`) stay — they're the calm shell that the
+  demo also uses (max-width + horizontal padding).
+- All instances of `section-h` styling that previously rendered the `━━` glyph + green
+  eyebrow on `/policies` and `/projects` are replaced with plain `<h1>` / `<h2>` tags
+  using `text-2xl font-semibold tracking-tight text-foreground` (or equivalent).
+- The `section-mast` row that held the eyebrow + count meta is dropped on these two
+  pages.
+- `section-h-dot` is dropped on `/policies`.
 
 ## Component map (old → new)
 

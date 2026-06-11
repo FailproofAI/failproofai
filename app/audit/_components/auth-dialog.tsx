@@ -2,14 +2,15 @@
 
 /**
  * Auth dialog — modal overlay shown when an unauthenticated user clicks
- * "[ set a reminder ]". Two-step flow:
+ * a cadence button to set a reminder. Two-step flow:
  *
  *   1. Email entry  → POST /api/auth/login-request
  *   2. OTP entry    → POST /api/auth/login-verify
  *
- * Styled to match the rest of the /audit page: pixel brackets, sharp pink
- * accent, terminal-style frame. The dialog never sees the refresh token —
- * the dashboard's API route writes it to ~/.failproofai/auth.json.
+ * Calm chrome to match the rest of /audit: 1px borders, plain
+ * lowercase copy, no corner crosshair frame. The dialog never sees
+ * the refresh token — the dashboard's API route writes it to
+ * ~/.failproofai/auth.json.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -23,15 +24,12 @@ export interface AuthedUser {
 
 interface Props {
   open: boolean;
-  /** Copy shown above the title, e.g. "oops — you are unknown." */
+  /** Optional title. Defaults to "set a reminder". */
   headline?: string;
-  /** Copy under the title explaining why we need auth right now. */
-  reason?: string;
   onClose: () => void;
   /** Fired after successful verify. Caller decides what to do next. */
   onAuthed: (user: AuthedUser) => void;
-  /** Telemetry tag identifying which CTA opened the dialog. Defaults to
-   *  "unknown" so existing call sites continue to compile. */
+  /** Telemetry tag identifying which CTA opened the dialog. */
   source?: string;
 }
 
@@ -52,8 +50,7 @@ function describeFetchError(err: unknown): string {
 
 export function AuthDialog({
   open,
-  headline = "oops — you are unknown.",
-  reason = "verify yourself to continue.",
+  headline = "where to route the reminder?",
   onClose,
   onAuthed,
   source = "unknown",
@@ -65,8 +62,6 @@ export function AuthDialog({
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const codeInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset internal state every time the dialog opens. Also fire the
-  // funnel-opened event so we can measure dismissal vs verification rates.
   useEffect(() => {
     if (open) {
       setStep({ kind: "email", error: null });
@@ -76,9 +71,6 @@ export function AuthDialog({
     }
   }, [capture, open, source]);
 
-  // Fire dismissed when the dialog closes WITHOUT a successful verify.
-  // We piggyback on `open` flipping false instead of intercepting every
-  // close path so resend / step transitions don't double-count.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (open) {
@@ -94,7 +86,6 @@ export function AuthDialog({
     wasOpenRef.current = false;
   }, [capture, open, source, step.kind]);
 
-  // Autofocus the right input as the step changes.
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
@@ -104,7 +95,6 @@ export function AuthDialog({
     return () => clearTimeout(t);
   }, [open, step.kind]);
 
-  // ESC to close.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -114,7 +104,6 @@ export function AuthDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, busy, onClose]);
 
-  // Resend countdown ticker.
   const resendActive = step.kind === "code" && step.resendIn > 0;
   useEffect(() => {
     if (!resendActive) return;
@@ -129,9 +118,6 @@ export function AuthDialog({
   const requestCode = useCallback(
     async (email: string, opts: { isResend?: boolean } = {}): Promise<void> => {
       const { isResend = false } = opts;
-      // Show resend errors inline on the OTP step — the previously sent
-      // code is still usable. Only the first-send error path bounces back
-      // to the email step.
       const setError = (msg: string) => {
         if (isResend) {
           setStep((s) => (s.kind === "code" ? { ...s, error: msg } : s));
@@ -268,11 +254,6 @@ export function AuthDialog({
       }}
     >
       <div className="auth-dialog">
-        <span className="corner tl">┌</span>
-        <span className="corner tr">┐</span>
-        <span className="corner bl">└</span>
-        <span className="corner br">┘</span>
-
         <button
           type="button"
           className="auth-close"
@@ -280,21 +261,19 @@ export function AuthDialog({
           disabled={busy}
           aria-label="close"
         >
-          [ x ]
+          ×
         </button>
 
-        <div className="auth-label">━━ identity check</div>
         <h2 id="auth-dialog-title" className="auth-headline">
           {headline}
         </h2>
 
         {step.kind === "email" && (
           <>
-            <p className="auth-sub">{reason}</p>
+            <p className="auth-sub">
+              we&apos;ll send a one-time code to confirm.
+            </p>
             <form onSubmit={onEmailSubmit} className="auth-form">
-              <label className="auth-field-label" htmlFor="auth-dialog-email">
-                email
-              </label>
               <input
                 ref={emailInputRef}
                 id="auth-dialog-email"
@@ -311,7 +290,7 @@ export function AuthDialog({
               {step.error && <div className="auth-error">{step.error}</div>}
               <div className="auth-actions">
                 <button type="submit" className="auth-btn primary" disabled={busy}>
-                  {busy ? "[ sending… ]" : "[ send code ]"}
+                  {busy ? "sending…" : "send code"}
                 </button>
                 <button
                   type="button"
@@ -319,7 +298,7 @@ export function AuthDialog({
                   onClick={onClose}
                   disabled={busy}
                 >
-                  [ cancel ]
+                  cancel
                 </button>
               </div>
             </form>
@@ -329,14 +308,10 @@ export function AuthDialog({
         {step.kind === "code" && (
           <>
             <p className="auth-sub">
-              we sent a code to <span className="auth-email">{step.email}</span>.
-              <br />
-              check your inbox — it expires in {Math.ceil(step.expiresIn / 60)} min.
+              code sent to <span className="auth-email">{step.email}</span>.
+              expires in {Math.ceil(step.expiresIn / 60)} min.
             </p>
             <form onSubmit={onCodeSubmit} className="auth-form">
-              <label className="auth-field-label" htmlFor="auth-dialog-code">
-                one-time code
-              </label>
               <input
                 ref={codeInputRef}
                 id="auth-dialog-code"
@@ -354,7 +329,7 @@ export function AuthDialog({
               {step.error && <div className="auth-error">{step.error}</div>}
               <div className="auth-actions">
                 <button type="submit" className="auth-btn primary" disabled={busy}>
-                  {busy ? "[ verifying… ]" : "[ verify ]"}
+                  {busy ? "verifying…" : "verify"}
                 </button>
                 <button
                   type="button"
@@ -363,8 +338,8 @@ export function AuthDialog({
                   disabled={busy || step.resendIn > 0}
                 >
                   {step.resendIn > 0
-                    ? `[ resend in ${step.resendIn}s ]`
-                    : "[ resend code ]"}
+                    ? `resend in ${step.resendIn}s`
+                    : "resend code"}
                 </button>
               </div>
               <button
@@ -382,15 +357,12 @@ export function AuthDialog({
         {step.kind === "done" && (
           <>
             <p className="auth-sub">
-              <span className="auth-ok">✓</span> you are{" "}
+              <span className="auth-ok">✓</span> signed in as{" "}
               <span className="auth-email">{step.user.email}</span>.
-            </p>
-            <p className="auth-sub" style={{ marginTop: 8 }}>
-              session saved locally.
             </p>
             <div className="auth-actions">
               <button type="button" className="auth-btn primary" onClick={onClose}>
-                [ continue ]
+                continue
               </button>
             </div>
           </>

@@ -261,78 +261,49 @@
   position: fixed; inset: 0; z-index: 10000;
   display: grid; place-items: center;
   padding: 32px 16px;
-  background:
-    radial-gradient(ellipse 1000px 700px at 30% 20%, rgba(228, 88, 124,0.08) 0%, transparent 60%),
-    rgba(8,8,10,0.78);
+  background: rgba(8,8,10,0.7);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  animation: authFadeIn 140ms ease-out;
-}
-@keyframes authFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 .auth-dialog {
   position: relative;
   width: 100%;
-  max-width: 460px;
-  padding: 32px 32px 28px;
+  max-width: 420px;
+  padding: 28px 28px 24px;
   border: 1px solid var(--line-2);
   background: var(--bg-2);
   font-family: var(--font-mono);
   color: var(--ink);
-  animation: authPop 160ms ease-out;
 }
-@keyframes authPop {
-  from { transform: translateY(8px) scale(0.985); opacity: 0; }
-  to   { transform: translateY(0)    scale(1);     opacity: 1; }
-}
-
-.auth-dialog .corner {
-  position: absolute;
-  font-family: var(--font-mono);
-  font-size: 14px; line-height: 1;
-  color: var(--accent-pink); opacity: 0.85;
-}
-.auth-dialog .corner.tl { top: 6px;    left: 8px; }
-.auth-dialog .corner.tr { top: 6px;    right: 8px; }
-.auth-dialog .corner.bl { bottom: 6px; left: 8px; }
-.auth-dialog .corner.br { bottom: 6px; right: 8px; }
 
 .auth-close {
   position: absolute; top: 12px; right: 14px;
-  font-family: var(--font-mono); font-size: 11px;
-  letter-spacing: 0.15em; text-transform: uppercase;
+  font-family: var(--font-mono); font-size: 20px;
+  line-height: 1;
   color: var(--dim);
-  background: transparent; border: none; padding: 4px 6px;
+  background: transparent; border: none; padding: 4px 8px;
   cursor: pointer;
   transition: color 120ms;
 }
 .auth-close:hover { color: var(--accent-pink); }
 .auth-close:disabled { color: var(--line-2); cursor: not-allowed; }
 
-.auth-label {
-  font-family: var(--font-mono); font-size: 11px;
-  letter-spacing: 0.22em; text-transform: uppercase;
-  color: var(--accent-green);
-  margin-bottom: 14px;
-}
-
 .auth-headline {
-  font-family: var(--font-display);
-  font-size: clamp(26px, 3.6vw, 34px);
-  letter-spacing: 0.09em; line-height: 1.1;
-  text-transform: lowercase;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
   color: var(--ink);
-  margin: 0 0 12px;
-  text-wrap: balance;
+  margin: 0 0 8px;
 }
 
 .auth-sub {
-  font-family: var(--font-mono); font-size: 13px;
-  line-height: 1.65; color: var(--ink-2);
-  margin: 0 0 22px;
+  font-family: var(--font-mono); font-size: 12px;
+  line-height: 1.55; color: var(--ink-2);
+  margin: 0 0 18px;
 }
 .auth-sub .auth-email {
   color: var(--accent-pink);
@@ -720,23 +691,32 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: clamp(20px, 2.6vh, 32px);
 }
 .poster-score .score-row {
-  display: flex; align-items: baseline; gap: 6px;
+  display: flex; align-items: baseline; gap: 8px;
 }
 .poster-score .score-n {
-  font-family: var(--font-display);
+  /* Use the mono font for the score — Bitcount Prop Single is the
+   *  archetype name's voice but renders unreliably in html2canvas at
+   *  large sizes (phantom pixels, baseline overshoot). JetBrains Mono
+   *  is calmer here and exports cleanly. line-height: 1.1 keeps the
+   *  glyph fully inside its line box so the rank pill below sits
+   *  cleanly under the digits. */
+  font-family: var(--font-mono);
   font-size: clamp(56px, 11vh, 112px);
-  line-height: 1;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   color: var(--accent-pink);
+  font-variant-numeric: tabular-nums;
 }
 .poster-score .score-of {
   font-family: var(--font-mono);
   font-size: clamp(16px, 2vh, 22px);
   color: var(--dim);
   letter-spacing: 0.04em;
+  line-height: 1.05;
 }
 .poster-score .score-rank {
   font-family: var(--font-mono);
@@ -744,9 +724,10 @@
   letter-spacing: 0.32em;
   text-transform: uppercase;
   color: var(--accent-green);
-  padding: 4px 12px;
+  padding: 6px 16px;
   border: 1px solid var(--accent-green);
   background: rgba(102, 209, 181, 0.05);
+  line-height: 1;
 }
 .poster-sigil .sigil .px { background: transparent; }
 .poster-sigil .sigil .px.on { background: var(--ink); }
@@ -812,24 +793,35 @@
 
 /* capture mode — html2canvas can't reliably render clamp() ── */
 /* capture mode — html2canvas can't reliably render clamp()/vh, so
- *  lock every fluid measurement to a fixed value tuned for the
- *  ~960×960 PNG export. */
+ *  lock every fluid measurement to a fixed value tuned for an
+ *  ~880×1100 PNG export. Compact, no internal stretching. */
 .poster.capturing {
-  min-width: 880px; max-width: 980px;
-  min-height: 880px;
-  padding: 36px 48px;
+  width: 880px;
+  height: auto;
+  min-height: 0;
+  max-width: none;
+  padding: 32px 44px;
+  flex: 0 0 auto;
+  overflow: visible;
 }
-.poster.capturing .poster-body { gap: 40px; padding: 24px 0; }
-.poster.capturing .score-n { font-size: 140px; }
-.poster.capturing .score-of { font-size: 22px; }
-.poster.capturing .score-rank { font-size: 12px; }
-.poster.capturing .persona-name { font-size: 72px; }
-.poster.capturing .persona-keywords { font-size: 24px; }
-.poster.capturing .persona-rarity { font-size: 13px; }
+.poster.capturing .poster-body {
+  gap: 36px;
+  padding: 24px 0;
+  flex: 0 0 auto;
+  min-height: 0;
+  justify-content: flex-start;
+}
+.poster.capturing .poster-score { gap: 28px; }
+.poster.capturing .score-n { font-size: 96px; line-height: 1.05; }
+.poster.capturing .score-of { font-size: 22px; line-height: 1.05; }
+.poster.capturing .score-rank { font-size: 12px; padding: 6px 16px; }
+.poster.capturing .persona-name { font-size: 56px; line-height: 1; }
+.poster.capturing .persona-keywords { font-size: 22px; line-height: 1; }
+.poster.capturing .persona-rarity { font-size: 12px; line-height: 1.4; }
 .poster.capturing .poster-sigil .sigil {
-  grid-template-columns: repeat(8, 22px);
-  grid-template-rows: repeat(8, 22px);
-  padding: 10px;
+  grid-template-columns: repeat(8, 18px);
+  grid-template-rows: repeat(8, 18px);
+  padding: 8px;
 }
 
 @media (max-width: 720px) {

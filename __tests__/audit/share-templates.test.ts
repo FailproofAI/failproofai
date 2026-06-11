@@ -16,14 +16,22 @@ describe("share templates", () => {
     expect(LI_TEMPLATES).toHaveLength(5);
   });
 
-  it("every template is personalised with score, grade, archetype and the site URL", () => {
+  it("every template is personalised with score, archetype and the site URL", () => {
     for (const t of [...X_TEMPLATES, ...LI_TEMPLATES]) {
       const out = t(ctx);
       expect(out).toContain("72");
       expect(out).toContain("the cowboy");
-      expect(out).toMatch(/\bB\b/);
       expect(out).toContain("befailproof.ai");
       expect(out.length).toBeGreaterThan(40);
+    }
+  });
+
+  it("does not surface the grade tier in copy (sounds bad at the low end)", () => {
+    const lowCtx: ShareCtx = { score: 41, arch: "the optimist", grade: "D", missing: 5 };
+    for (const t of [...X_TEMPLATES, ...LI_TEMPLATES]) {
+      const out = t(lowCtx);
+      expect(out).not.toMatch(/\bD tier\b/i);
+      expect(out).not.toMatch(/\(D\)/i);
     }
   });
 

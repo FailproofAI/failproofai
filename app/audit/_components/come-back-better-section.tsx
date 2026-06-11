@@ -298,8 +298,6 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
       <AuthDialog
         open={dialogOpen}
         source="return_section"
-        headline="oops — you are unknown."
-        reason="verify yourself to get the re-audit reminder."
         onClose={() => setDialogOpen(false)}
         onAuthed={(u) => {
           setDialogOpen(false);

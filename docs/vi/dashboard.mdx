@@ -4,7 +4,7 @@ description: "Giám sát các phiên làm việc của agent, xem xét các lệ
 icon: chart-line
 ---
 
-Bảng điều khiển failproofai là một ứng dụng web cục bộ để giám sát các phiên làm việc của agent AI của bạn và quản lý chính sách. Xem những gì các agent của bạn đã làm khi bạn vắng mặt.
+Bảng điều khiển failproofai là một ứng dụng web cục bộ để giám sát các phiên làm việc của agent AI và quản lý chính sách. Xem những gì các agent của bạn đã làm trong khi bạn vắng mặt.
 
 ---
 
@@ -16,7 +16,7 @@ failproofai
 
 Mở tại `http://localhost:8020`.
 
-Bảng điều khiển đọc trực tiếp từ hệ thống tệp - các thư mục dự án Claude Code của bạn và các tệp cấu hình failproofai. Không có gì được ghi vào một dịch vụ từ xa.
+Bảng điều khiển đọc trực tiếp từ hệ thống tệp - các thư mục dự án Claude Code và các tệp cấu hình failproofai của bạn. Không có gì được ghi vào dịch vụ từ xa.
 
 ---
 
@@ -24,12 +24,12 @@ Bảng điều khiển đọc trực tiếp từ hệ thống tệp - các thư 
 
 ### Dự án
 
-Liệt kê tất cả các dự án Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ và Gemini CLI _(beta)_ được tìm thấy trên máy của bạn. Các dự án Claude được khám phá từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được khám phá bằng cách quét mọi bảng ghi lại dưới `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi lại trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được khám phá bằng cách quét từng `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó; các dự án Cursor Agent được khám phá bằng cách quét siêu dữ liệu cho mỗi phiên dưới `~/.cursor/agent-sessions/<sessionId>/` (có thể cấu hình qua `CURSOR_HOME`, với `conversations/` và `sessions/` được kiểm tra làm phương án dự phòng) để tìm một scalar `cwd` trong `meta.json` / `session.json` / `workspace.yaml`; các dự án OpenCode được khám phá bằng cách truy vấn cơ sở dữ liệu SQLite của nó tại `~/.local/share/opencode/opencode.db` qua `opencode db --format json` (chúng tôi đọc các bảng `session` và `project` và nhóm theo `project_id`); các dự án Pi được khám phá bằng cách quét bảng ghi lại JSONL cho mỗi phiên dưới `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (có thể cấu hình qua `PI_SESSIONS_DIR`) và lấy `cwd` từ bản ghi đầu tiên của mỗi phiên; các dự án Gemini CLI được khám phá bằng cách quét `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (có thể cấu hình qua `GEMINI_SESSIONS_DIR`) và khôi phục cwd chính tắc từ điểm đánh dấu văn bản `.project_root` ở bên cạnh. Một dự án đã được sử dụng bởi nhiều CLI sẽ hiển thị dưới dạng một hàng duy nhất với tất cả các huy hiệu phù hợp. Sử dụng trình thả xuống **CLI** phía trên bảng để lọc theo một agent CLI cụ thể; URL bảo toàn lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
+Liệt kê tất cả các dự án Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, và Gemini CLI _(beta)_ được tìm thấy trên máy của bạn. Các dự án Claude được phát hiện từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được phát hiện bằng cách quét mỗi bảng ghi chép dưới `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi lại trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được phát hiện bằng cách quét mỗi `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó; các dự án Cursor Agent được phát hiện bằng cách quét siêu dữ liệu trên mỗi phiên dưới `~/.cursor/agent-sessions/<sessionId>/` (có thể cấu hình qua `CURSOR_HOME`, với `conversations/` và `sessions/` được thử dự phòng) cho một đại lượng vô hướng `cwd` trong `meta.json` / `session.json` / `workspace.yaml`; các dự án OpenCode được phát hiện bằng cách truy vấn cơ sở dữ liệu SQLite của nó tại `~/.local/share/opencode/opencode.db` qua `opencode db --format json` (chúng tôi đọc các bảng `session` và `project` và nhóm theo `project_id`); các dự án Pi được phát hiện bằng cách quét các bảng ghi chép JSONL trên mỗi phiên dưới `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (có thể cấu hình qua `PI_SESSIONS_DIR`) và lấy `cwd` từ bản ghi đầu tiên của mỗi phiên; các dự án Gemini CLI được phát hiện bằng cách quét `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (có thể cấu hình qua `GEMINI_SESSIONS_DIR`) và phục hồi cwd chính tắc từ dấu hiệu `.project_root` ở bên cạnh. Dự án được sử dụng bởi nhiều CLI sẽ hiển thị dưới dạng một hàng với tất cả các huy hiệu phù hợp. Sử dụng **CLI** dropdown phía trên bảng để lọc theo agent CLI cụ thể; URL giữ lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
 
 Mỗi dự án hiển thị:
-- Tên dự án (xuất phát từ đường dẫn thư mục)
-- Một huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), `GitHub Copilot` (xanh dương), `Cursor Agent` (xanh lục sánh), `OpenCode` (hổ phách), `Pi` (hồng) và/hoặc `Gemini CLI` (xanh nhạt)
-- Ngày của hoạt động phiên gần đây nhất
+- Tên dự án (được lấy từ đường dẫn thư mục)
+- Huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), `GitHub Copilot` (xanh), `Cursor Agent` (lục), `OpenCode` (hổphach), `Pi` (hồng), và/hoặc `Gemini CLI` (xanh nhạt)
+- Ngày hoạt động phiên gần đây nhất
 
 Nhấp vào một dự án để xem các phiên của nó.
 
@@ -47,28 +47,28 @@ Nhấp vào một phiên để mở trình xem phiên.
 
 ### Trình xem phiên
 
-Trình xem phiên trả lời câu hỏi chính cho các agent tự chủ: agent đã làm gì và liệu nó có tuân thủ đúng đường hướng không? Một huy hiệu CLI bên cạnh tiêu đề cho biết phiên là bản ghi lại của Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi hay Gemini CLI. Nó hiển thị dòng thời gian của mọi thứ đã xảy ra trong một phiên:
+Trình xem phiên trả lời câu hỏi then chốt cho các agent tự động: agent đã làm gì, và liệu nó có giữ đúng hướng không? Huy hiệu CLI bên cạnh tiêu đề cho biết phiên đó là bản ghi Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, hay Gemini CLI. Nó hiển thị một dòng thời gian của tất cả những gì đã xảy ra trong một phiên:
 
 - **Tin nhắn** - Các phản hồi văn bản của Claude và các lời nhắc của người dùng
-- **Lệnh gọi công cụ** - Mọi công cụ mà Claude đã gọi, với đầu vào và đầu ra của nó
-- **Hoạt động chính sách** - Đối với mỗi lệnh gọi công cụ, những chính sách nào đã kích hoạt và quyết định nào mà chúng trả về
+- **Lệnh gọi công cụ** - Mọi công cụ mà Claude đã gọi, cùng với đầu vào và đầu ra của nó
+- **Hoạt động chính sách** - Đối với mỗi lệnh gọi công cụ, chính sách nào đã kích hoạt và quyết định nào mà chúng trả về
 
-Thanh thống kê ở trên cùng hiển thị thời lượng phiên, tổng số lệnh gọi công cụ và tóm tắt quyết định hook (số lượng allow / deny / instruct).
+Thanh thống kê ở đầu trang hiển thị thời lượng phiên, tổng số lệnh gọi công cụ và tóm tắt quyết định hook (số lượng allow / deny / instruct).
 
-Nhấp vào nút **Download Logs** để xuất phiên. Đối với các phiên Claude Code, Codex, Copilot, Cursor, Pi và Gemini, bạn sẽ nhận được bản ghi lại JSONL trên đĩa gốc từng byte; đối với OpenCode (có các phiên nằm trong SQLite, không phải trên đĩa), bạn sẽ nhận được tài liệu JSON phản ánh các bảng `session` / `messages` / `parts` cơ bản.
+Nhấp vào nút **Download Logs** để xuất phiên. Đối với các phiên Claude Code, Codex, Copilot, Cursor, Pi và Gemini, bạn sẽ nhận được bản ghi JSONL trên đĩa gốc byte-for-byte; đối với OpenCode (các phiên của nó tồn tại trong SQLite, không phải trên đĩa), bạn sẽ nhận được tài liệu JSON phản chiếu các bảng `session` / `messages` / `parts` cơ bản.
 
 ### Kiểm toán
 
-Một báo cáo mang tính cách nhân của cách agent của bạn thực sự hoạt động trên các phiên trong quá khứ. Chạy cùng một quét như CLI `failproofai audit` nhưng hiển thị nó dưới dạng bảng điều khiển gồm sáu phần:
+Báo cáo được hướng dẫn bởi tính cách về cách agent của bạn thực sự hoạt động trên các phiên trong quá khứ. Chạy cùng một quét như CLI `failproofai audit` nhưng hiển thị nó dưới dạng bảng điều khiển sáu phần:
 
-1. **Nhận dạng** — phân loại agent của bạn thành một trong 8 mẫu hình (`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) dựa trên những bộ phát hiện nào + chính sách đã kích hoạt và mức độ nặng của chúng. Hiển thị một sigil 8×8 pixel, dòng tóm tắt mẫu hình, khung `common in` / `primary risk`, và dòng kết bằng một từ.
-2. **Trưng bày agent của bạn** — nắm bắt thẻ nhận dạng dưới dạng PNG 1200×630 phù hợp để đăng lên X / LinkedIn (nhấp `make poster`).
-3. **Điểm mạnh** — các hành động được đánh dấu xanh lá cây mà agent của bạn đã làm đúng, xuất phát từ dữ liệu kiểm toán trực tiếp (tỷ lệ gọi công cụ sạch sẽ, độ dài phiên trung bình, không rò rỉ thông tin xác thực, không có bão retry, v.v.).
-4. **Điểm số + bảng xếp hạng** — điểm số 0–100 với xếp loại chữ cái (S/A/B/C/D/F), biểu đồ phân bổ hiển thị vị trí của bạn trong nhóm, văn bản mô tả ("a B starts at 71. you're 13 points away."), và bảng xếp hạng với hàng của bạn được tô sáng.
-5. **Phát hiện** — thẻ phát hiện cho mỗi hàng được xếp hạng theo tác động. Mỗi thẻ nổi bật điều gì đã xảy ra, chi phí của nó, mẫu bằng chứng với các lệnh được nắm bắt thực tế, và chính sách failproofai sẽ bắt được cùng một mẫu (`$ failproofai policy add <slug>`, click-to-copy).
-6. **Chính sách được quy định + vòng lặp trả về** — một lưới của mọi chính sách tích hợp chưa được bật sẽ đóng một khoảng cách, với một ghi chú điểm số dự kiến, cộng với CTA `re-audit in 7 days`.
+1. **Danh tính** — phân loại agent của bạn thành một trong 8 kiểu nguyên mẫu (`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) dựa trên những detektor nào + chính sách đã kích hoạt và mức độ nặng. Hiển thị một sigil 8×8 pixel, tagline kiểu nguyên mẫu, khung trình bày "common in" / "primary risk", và câu nói kết thúc.
+2. **Khoe agent của bạn** — chụp thẻ danh tính dưới dạng PNG 1200×630 phù hợp để đăng lên X / LinkedIn (nhấp vào `make poster`).
+3. **Điểm mạnh** — các hành vi được đánh dấu xanh lá cây mà agent của bạn đã làm đúng, được lấy từ dữ liệu kiểm toán trực tiếp (tỷ lệ lệnh gọi công cụ sạch, độ dài phiên trung bình, không có rò rỉ thông tin xác thực, không có cơn tố cáo retry, v.v.).
+4. **Điểm + bảng xếp hạng** — điểm 0–100 với xếp hạng chữ cái (S/A/B/C/D/F), biểu đồ phân bố hiển thị vị trí của bạn trong nhóm, văn bản mô tả ("a B starts at 71. you're 13 points away."), và bảng bảng xếp hạng với hàng của bạn được đánh dấu.
+5. **Phát hiện** — thẻ mỗi phát hiện được xếp hạng theo tác động. Mỗi thẻ hiển thị những gì đã xảy ra, chi phí là bao nhiêu, mẫu bằng chứng với các lệnh được chụp thực tế, và chính sách failproofai sẽ bắt được cùng một mẫu (`$ failproofai policy add <slug>`, click-to-copy).
+6. **Chính sách được quy định + vòng lặp trả về** — lưới của mỗi chính sách builtin chưa được bật sẽ đóng một khoảng trống, với callout điểm dự kiến, cộng với CTA "re-audit in 7 days".
 
-Được điều hành bởi thời gian chạy `failproofai audit` — xem [Audit CLI](/vi/cli/audit) cho công cụ quét cơ bản, các cờ được hỗ trợ và bất biến bộ nhớ cache cho mỗi bản ghi lại. Bảng điều khiển lưu trữ kết quả mới nhất tại `~/.failproofai/audit-dashboard.json` (chế độ `0600`, một khe duy nhất, các lần chạy mới sẽ ghi đè) để các lần ghé thăm lại nhanh chóng; **cả bộ nhớ cache cho mỗi bản ghi lại và toàn bộ kết quả đều bị từ chối khi đọc khi chúng cũ hơn 7 ngày** để bảng điều khiển không bao giờ đơn âm phục vụ một kết quả cũ một tuần. Thanh `[ re-audit ]` ở đầu trang luôn hiển thị dấu thời gian chạy lần cuối (`audited 3d ago`), một chip hổ phách `expires in 14h — re-audit to refresh` trong 24 giờ cuối cùng của cửa sổ, và một biểu ngữ `audit expired` sau TTL. Nhấp vào `[ re-audit ]` (trên) hoặc `[ re-audit now ]` (dưới) sẽ POST `/api/audit/run` và bảng điều khiển sẽ thăm dò `/api/audit/status` ở 1Hz cho đến khi lần chạy kết thúc; một dải tiến trình hồng dính pin vào đầu viewport trong lần chạy với bộ đếm thời gian trôi qua, và kết quả sẽ thay đổi tại chỗ khi thành công (không tải lại toàn bộ trang). Khi xảy ra lỗi, dải sẽ chuyển sang đỏ với bản sao được khóa từ `RerunError.kind` (`timeout` / `network` / `post_failed`). Trạng thái trống (không có bộ nhớ cache) và trạng thái zero-sessions (bộ nhớ cache tồn tại nhưng quét không tìm thấy bất kỳ bản ghi lại nào) được nổi bật riêng.
+Được điều khiển bởi thời gian chạy `failproofai audit` — xem [Audit CLI](/vi/cli/audit) để biết công cụ quét cơ bản, các cờ được hỗ trợ và bất biến bộ nhớ cache theo bảng ghi chép. Bảng điều khiển bộ nhớ cache kết quả mới nhất tại `~/.failproofai/audit-dashboard.json` (mode `0600`, một slot, các lần chạy mới ghi đè) để các lần truy cập lại là tức thì; **cả bộ nhớ cache per-transcript và whole-result đều bị từ chối khi đọc khi chúng lâu hơn 7 ngày** nên bảng điều khiển không bao giờ âm thầm phục vụ một kết quả một tuần tuổi — quá TTL `/audit` giảm xuống trạng thái trống của nó và nhắc chạy lại. Nhấp vào `[ re-audit now ]` gần cuối báo cáo POSTs `/api/audit/run` và bảng điều khiển thăm dò `/api/audit/status` ở tần số 1Hz cho đến khi lần chạy hoàn tất; một dải tiến độ hồng dính ghim vào đầu của khung nhìn trong quá trình chạy với hẹn giờ đã trôi qua, và kết quả hoán đổi vào chỗ khi thành công (không tải lại toàn bộ trang). Khi thất bại, dải chuyển sang màu đỏ với bản sao khóa tắt `RerunError.kind` (`timeout` / `network` / `post_failed`). Trạng thái trống (không có bộ nhớ cache hoặc hết hạn) và trạng thái zero-sessions (bộ nhớ cache tồn tại nhưng quét không tìm thấy bảng ghi chép) được hiển thị riêng biệt.
 
 ### Chính sách
 
@@ -76,24 +76,24 @@ Trang hai tab để quản lý chính sách và xem xét hoạt động.
 
 <Tabs>
   <Tab title="Tab Chính sách">
-  - Chọn nhiều agent CLI mà failproofai bảo vệ từ một bảng điều khiển duy nhất — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi và Gemini CLI đều có một hàng với trạng thái cài đặt (`Active` / `Detected` / `Inactive`), đường dẫn cài đặt phạm vi người dùng và điểm nhấn có màu thương hiệu. Đánh dấu hoặc bỏ đánh dấu các CLI bạn muốn và nhấp `Apply changes` để cài đặt/gỡ cài đặt điểm khác biệt trong một bước. Các CLI có nhị phân được phát hiện trên PATH sẽ được kiểm tra trước.
-  - Bật hoặc tắt các chính sách riêng lẻ bằng một cú nhấp chuột (ghi vào `~/.failproofai/policies-config.json` — được chia sẻ trên mọi CLI được cài đặt)
+  - Chọn nhiều CLI agent mà failproofai bảo vệ từ một bảng duy nhất — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, và Gemini CLI đều có một hàng với trạng thái cài đặt (`Active` / `Detected` / `Inactive`), đường dẫn cài đặt phạm vi người dùng và một bộ nhấn mạnh được tô màu thương hiệu. Đánh dấu hoặc bỏ đánh dấu các CLI mà bạn muốn và nhấp vào `Apply changes` để cài đặt/gỡ cài đặt độ chênh lệch trong một bước. Các CLI có tệp nhị phân được phát hiện trên PATH được đánh dấu trước.
+  - Bật hoặc tắt các chính sách riêng lẻ bằng một lần nhấp chuột (ghi vào `~/.failproofai/policies-config.json` — được chia sẻ trên mọi CLI được cài đặt)
   - Mở rộng một chính sách để cấu hình các tham số của nó (đối với các chính sách hỗ trợ `policyParams`)
   - Đặt đường dẫn tệp chính sách tùy chỉnh
   </Tab>
   <Tab title="Tab Hoạt động">
-  - Lịch sử đầy đủ được phân trang của mọi sự kiện hook đã kích hoạt trên tất cả các phiên
+  - Lịch sử toàn bộ được phân trang của mỗi sự kiện hook đã kích hoạt trên tất cả các phiên
   - Lọc theo quyết định, loại sự kiện, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), tên chính sách hoặc ID phiên
-  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh dương = GitHub Copilot, xanh lục sánh = Cursor Agent, hổ phách = OpenCode, hồng = Pi, xanh nhạt = Gemini CLI), tên công cụ, ID phiên và lý do cho quyết định deny/instruct
-  - Nhấp vào ID phiên để mở bảng ghi lại của nó — trình xem tự động phát hiện CLI nào đã kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) và hiển thị huy hiệu CLI phù hợp trong tiêu đề
+  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh = GitHub Copilot, lục = Cursor Agent, hổphach = OpenCode, hồng = Pi, xanh nhạt = Gemini CLI), tên công cụ, ID phiên và lý do cho các quyết định deny/instruct
+  - Nhấp vào ID phiên để mở bản ghi của nó — trình xem tự động phát hiện CLI nào đã kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) và hiển thị huy hiệu CLI khớp trong tiêu đề
   </Tab>
 </Tabs>
 
 ---
 
-## Tự động làm mới
+## Làm mới tự động
 
-Bảng điều khiển có công tắc tự động làm mới trong thanh điều hướng hàng đầu. Khi bật, trang hiện tại sẽ làm mới định kỳ để hiển thị các phiên mới và hoạt động chính sách khi chúng xuất hiện. Điều cần thiết để giám sát các phiên agent tự chủ chạy lâu dài.
+Bảng điều khiển có chuyển đổi làm mới tự động trong điều hướng trên cùng. Khi được bật, trang hiện tại sẽ làm mới định kỳ để hiển thị các phiên mới và hoạt động chính sách khi chúng xuất hiện. Cần thiết để giám sát các phiên agent tự động chạy lâu dài.
 
 ---
 
@@ -121,13 +121,13 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## Truy cập từ máy chủ không phải localhost
 
-Khi chạy bảng điều khiển ở **chế độ dev** (`npm run dev`) và truy cập nó từ tên máy chủ khác với `localhost` - ví dụ, một miền tùy chỉnh, một IP từ xa hoặc một URL được đào hầm - bạn có thể thấy một cảnh báo như:
+Khi chạy bảng điều khiển ở **chế độ phát triển** (`npm run dev`) và truy cập nó từ tên máy chủ khác hơn `localhost` - ví dụ: tên miền tùy chỉnh, IP từ xa hoặc URL được tạo đường hầm — bạn có thể thấy cảnh báo như:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-Đây là Next.js chặn truy cập cross-origin vào websocket HMR (hot module reload) của nó, đây là một tính năng chỉ dành cho dev. Để cho phép máy chủ của bạn, hãy sử dụng cờ `--allowed-origins`:
+Đây là Next.js chặn quyền truy cập cross-origin vào websocket HMR (hot module reload) của nó, đây là tính năng chỉ dành cho phát triển. Để cho phép máy chủ của bạn, sử dụng cờ `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
@@ -139,12 +139,12 @@ npm run dev -- --allowed-origins dashboard.example.com
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-Bạn cũng có thể đặt biến môi trường `FAILPROOFAI_ALLOWED_DEV_ORIGINS` thay thế:
+Bạn cũng có thể đặt biến môi trường `FAILPROOFAI_ALLOWED_DEV_ORIGINS`:
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-Điều này chỉ áp dụng cho chế độ dev. Khi chạy `failproofai` (chế độ sản xuất), không có websocket HMR và không có vấn đề tài nguyên dev cross-origin.
+Điều này chỉ áp dụng cho chế độ phát triển. Khi chạy `failproofai` (chế độ sản xuất), không có websocket HMR và không có vấn đề tài nguyên phát triển cross-origin.
 </Note>

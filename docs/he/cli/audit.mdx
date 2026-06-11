@@ -1,57 +1,57 @@
 ---
-title: ביקורת הפעלות קודמות (בטא)
-description: "ספור כמה פעמים הסוכן עשה דברים מבוזבזים או מסוכנים בחוצצות קודמות"
+title: ביקורת של הפעלות קודמות (beta)
+description: "ספרו כמה פעמים הסוכן עשה דברים בזבזניים או מסוכנים על פני תמלילים קודמים"
 ---
 
 <Note>
-  **תכונה בטא.** הביקורת משוחררת כבטא בזמן שאנחנו אוספים משוב מוקדם.
-  קטלוג הגלאים ופורמט הדוח עשויים להשתנות לפני ההוצאה הבאה היציבה.
-  אנא פתח issue אם משהו נראה לא בסדר.
+  **תכונת Beta.** הביקורת משלחת כ-beta בזמן שאנחנו אוספים משוב מוקדם.
+  קטלוג הגלאים וקטגוריית הדוח עשויים להשתנות לפני החתך היציב הבא.
+  אנא פתחו issue אם משהו נראה לא בסדר.
 </Note>
 
-הביקורת חשופה כעת כ-**/audit dashboard page**, ולא כפקודת משנה של CLI. פתח אותה מסרגל הניווט של לוח התעבורה (בין Policies ו-Projects), או בקר ישירות ב-`http://localhost:8020/audit` כאשר מריץ את `failproofai` מקומית.
+הביקורת כעת חשופה כ-**/audit dashboard page**, לא כ-CLI subcommand. פתחו אותה מתוך navbar של הדוחשבורד (בין Policies ו-Projects), או בקרו ישירות ב-`http://localhost:8020/audit` כאשר מריצים `failproofai` באופן מקומי.
 
 ```bash
 failproofai          # open the dashboard, then click "Audit"
 ```
 
-לוח התעבורה סורק חוצצות עבר של ה-CLI של הסוכן במכונה זו (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) ודווח כמה פעמים הסוכן עשה דברים שfailproofai בנוי לעצור — בדיקות משתנים סביבה, כפיפות כפויות, קידומות `cd <cwd>` מיותרות, לולאות sleep-polling, קריאה חוזרת של קבצים שזה עתה עדכנו, ועוד.
+הדוחשבורד סורק תמלילי CLI של סוכן קודמים במכונה זו (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) ודיווח כמה פעמים הסוכן עשה דברים שfailproofai בנוי כדי לעצור — בדיקות של משתני env, force pushes, קידומי `cd <cwd>` מיותרים, sleep-polling loops, קריאה חוזרת של קבצים שזה עתה נערכו, ועוד.
 
-לכל חוצץ, כל אירוע tool-use מחודש דרך 39 המדיניות המובנות **וגם** דרך 8 גלאים המיוחדים לביקורת שתופסים דפוסים שעדיין לא מכוסים על ידי מדיניות זמן ריצה. הספירות מצטברות לכל מדיניות / גלאי בכל ההפעלות.
+לכל תמליל, כל אירוע tool-use מוקדם שוב דרך 39 המדיניויות המובנות **וגם** דרך 8 גלאים המיוחדים לביקורת התופסים דפוסים שעדיין לא מכוסים על ידי מדיניויות runtime. הספירות מצטברות לכל מדיניות / גלאי על פני כל הפעלות.
 
 ## מה אתה מקבל
 
-הדף `/audit` מרכיב שש חלקים:
+הדף `/audit` מרכיב שש סעיפים:
 
-1. **Identity** — הסוכן שלך מסווג לאחד מ-8 ארכטיפים (`optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`) בהתאם לאות משוקלל בכל חוצץ שעבר ביקורת.
-2. **Strengths** — מספרים אמיתיים הנגזרים מהסריקה (% קריאה נקייה, "0 credential leaks" וכו') המותנים על ידי מדיניות ה-sanitize הרלוונטיות למעשה מופעלות.
-3. **Score** — 0-100 עם תוספות S/A/B/C/D/F וחיזוי בדיוק אם כל מדיניות מומלצת תהיה מופעלת.
-4. **Findings** — כרטיסי מדיניות עם מה קרה, עלות, ראיות שצולמו, והפקודה `failproofai policy add <slug>` המדויקת להפעלת הבנייה המובנית בזמן חי שהייתה תופסת את זה.
-5. **Prescribed policies** — רשימת התקנה מצטברת עם פקודה `failproofai policies --install` בחד-פעמיות.
-6. **Re-audit reminder** — "חזור טוב יותר." הגדר תזכורת דוא"ל ל-7 ימים דרך ה-api-server (דורש כניסה; ראה [`failproofai auth`](/he/cli/auth)).
+1. **Identity** — הסוכן שלך מסווג לאחד מ-8 אב-טיפוסים (`optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`) בהתאם לאות המשוקלל על פני כל תמליל שביקורת.
+2. **Strengths** — מספרים אמיתיים הנובעים מהסריקה (clean-call %, "0 credential leaks", וכו') המגודרים בעקבות המדיניויות sanitize הרלוונטיות בעצם נורים.
+3. **Score** — 0-100 עם S/A/B/C/D/F bands והעלייה הצפויה אם כל מדיניות מומלצת תהיה מופעלת.
+4. **Findings** — כרטיסי per-policy עם מה קרה, עלות, ראיות שנתפסו, ו-`failproofai policy add <slug>` המדויק להפעלת ה-builtin בזמן חי שהיה תופס אותו.
+5. **Prescribed policies** — רשימת התקנה מצטברת עם פקודה `failproofai policies --install` חד-פעמית.
+6. **Re-audit reminder** — "תחזרו יותר טוב." הגדרו תזכורת דוא"ל של 7 ימים דרך ה-api-server (דורש כניסה; ראו [`failproofai auth`](/he/cli/auth)).
 
 ## גלאים המיוחדים לביקורת
 
-אלה חושפים דפוסים של "התנהגות טיפשה" שאינם (עדיין) מנוכחים בזמן אמת. הם רצים רק במהלך הביקורת ולעולם לא חוסמים קריאת כלי חיים.
+אלה תופסים דפוסי "stupid behavior" שלא (עדיין) מאונצים בזמן חי. הם רצים רק במהלך הביקורת ולעולם לא חוסמים קריאת כלי חי.
 
-| גלאי | מה הוא סופר |
+| Detector | מה זה סופר |
 |---|---|
-| `redundant-cd-cwd` | פקודות Bash המתחילות ב-`cd <cwd> && …` למרות שפקודות כבר פועלות ב-`cwd`. |
-| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` בקובץ מקור יחיד — השתמש בכלי `Read`. |
-| `prefer-edit-over-sed-awk` | עריכות בשורה של `sed -i` / `awk … > file` — השתמש בכלי `Edit`. |
-| `prefer-write-over-heredoc` | heredoc / כתיבה ברובות שורות של `echo > file` — השתמש בכלי `Write`. |
-| `sleep-polling-loop` | `sleep N` (≥ 30s) ארוך או `while …; sleep …; done` לולאות polling. |
-| `find-from-root` | `find /`, `find /home`, `find /usr` וכו' — היקף ל-`cwd` במקום זאת. |
+| `redundant-cd-cwd` | פקודות Bash החלות ב-`cd <cwd> && …` למרות שפקודות כבר רצות ב-`cwd`. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` בקובץ מקור יחיד — השתמשו בכלי `Read`. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` עריכות in-place — השתמשו בכלי `Edit`. |
+| `prefer-write-over-heredoc` | Heredoc / `echo > file` רב-שורות כתיבת קבצים — השתמשו בכלי `Write`. |
+| `sleep-polling-loop` | `sleep N` ארוך (≥ 30s) או `while …; sleep …; done` polling loops. |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, וכו' — ממדו ל-`cwd` במקום. |
 | `git-commit-no-verify` | `git commit … --no-verify` / `-n`, דילוג על hooks. |
-| `reread-after-edit` | `Read` של קובץ שהיה זה עתה `Edit`/`Write` באותה הפעלה. |
+| `reread-after-edit` | `Read` של קובץ שזה עתה `Edit`/`Write` באותה הפעלה. |
 
-## אחסונים במטמון
+## Caches
 
-- **אחסון בטמון לכל חוצץ** ב-`~/.failproofai/cache/audit/<sha1>.json` עם מפתח של `(mtime, size, engineVersion, detectorVersion)` — מבטל את הולידות באופן אוטומטי כאשר החוצץ או קוד המדיניות/גלאי משתנים. כל ערך מאחסן גם חותמת זמן `cachedAt` כ-**TTL metadata** (לא חלק מהמפתח של המטמון); ערכים ישנים יותר מ-**7 ימים** דחויים בקריאה כדי שתוצאות חיות ארוכות לא יחיו מעבר לכוונת גלאי המתפתח.
-- **אחסון בטמון לתוצאה כוללת** ב-`~/.failproofai/audit-dashboard.json` (mode 0600). מאפשר ללוח התעבורה להתרחק מיידית בניווט ללא הפעלה חוזרת. גם דחוי בקריאה עבור **TTL ל-7 ימים** — `/audit` אז נופל דרך למצב הריק עם בנר `audit expired — re-audit to refresh`. לחץ על `[ re-audit ]` בחלק העליון של הדף (או `[ re-audit now ]` ליד התחתית) כדי לרענן; הריצה החדשה משדרת התקדמות דרך סרט דבוק למעלה וחליפות התוצאה במקום בהצלחה (ללא טעינת עמוד).
+- **Per-transcript cache** ב-`~/.failproofai/cache/audit/<sha1>.json` שמופתח ב-`(mtime, size, engineVersion, detectorVersion)` — מבטל בצורה אוטומטית כאשר התמליל או קוד המדיניות/גלאי משתנה. כל רשומה גם מאחסנת חותמת זמן `cachedAt` כ-**TTL metadata** (לא חלק ממפתח המטמון); רשומות שקדמו ליותר מ-**7 ימים** דחויות בקריאה כדי שתוצאות ארוכות טווח לא יחיו יותר מכוונת גלאי משתנה.
+- **Whole-result cache** ב-`~/.failproofai/audit-dashboard.json` (mode 0600). מאפשר לדוחשבורד להציג תוצאות באופן מיידי בניווט ללא הפעלה חוזרת. גם דחוי בקריאה אחרי ה-**7-day TTL** — `/audit` אז נופל למצב הריק שלו ומנהל פעולה הנ ה-run טרי. לחצו `[ re-audit now ]` ליד התחתית של הדוח לרענון; ה-run החדש זורם התקדמות דרך רצועה דבוקה בחלק העליון ומחליף את התוצאה במקום בהצלחה (אין טעינה מחדש של דף).
 
 ## הערות
 
-- **ללא מוטציה.** הביקורת מחודשת במצב קריאה בלבד. `warn-repeated-tool-calls` מושמטה מכיוון שהסייד-קר שלה לכל הפעלה היה שונה אחרת.
-- **מדיניות זרימת עבודה מושמטות.** מדיניות `require-*-before-stop` מופעלות רק באירועי `Stop` וב-`execSync` מול מצב ה-git החי — אין להם פירוש משמעותי של "מה היה קורה ב-2025", כך שהם לא מופיעים בספירות הביקורת.
-- **מדיניות מותאמות אישית מושמטות.** הוקים המסופקים על ידי המשתמש אינם מחודשים (הם עשויים השתנו מאז ההפעלה המקורית).
+- **No mutation.** הביקורת מוקדמת במצב read-only. `warn-repeated-tool-calls` דולג מכיוון שה-sidecar שלה per-session אחרת היה משתנה.
+- **Workflow policies skipped.** מדיניויות `require-*-before-stop` נורים רק באירועי `Stop` ו-`execSync` כנגד state git חי — אין להם פירוש משמעותי "מה היה קורה ב-2025", ולכן הם לא מופיעים בספירות ביקורת.
+- **Custom policies skipped.** hooks חד-פעמי מסופקים משתמש לא מוקדמים (הם אולי השתנו מאז ההפעלה המקורית).

@@ -3,30 +3,31 @@
 /**
  * Top-level client wrapper for /audit.
  *
- * Composes the personality report: classify the agent into one of 8
- * archetypes, derive a score + tier, render the IdentitySection +
- * ShowOff + Strengths + Score (with leaderboard) + Findings + Policies
- * + Return-loop CTA.
+ * Composes the calm personality report: classify the agent into one of
+ * 8 archetypes, derive a score, and render the 5-section flow:
  *
- * Empty / running states fall back to the existing EmptyState and
- * RunProgress components.
+ *   01 AuditPoster — single-screen shareable poster
+ *   02 StrengthsSection — what it's great at
+ *   03 QuirksSection — what slipped through
+ *   04 HowToImproveSection — install / configure
+ *   05 ComeBackBetterSection — reminder + perks
+ *
+ * Empty / running states fall back to EmptyState and RunProgress.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAuditResultAction } from "@/app/actions/get-audit-result";
 import type { AuditResult, RunAuditOptions } from "@/src/audit/types";
 import { classifyAgent } from "@/src/audit/archetypes";
-import { COHORT_SIZE, deriveScore, gradeFor, projectedScore, type Grade } from "@/src/audit/scoring";
+import { deriveScore, gradeFor, projectedScore } from "@/src/audit/scoring";
 import { deriveStrengths } from "@/src/audit/strengths";
 import { deriveFindings } from "@/src/audit/findings";
 import { usePostHog } from "@/contexts/PostHogContext";
 
-import { IdentitySection } from "./identity-section";
-import { ShareDock } from "./share-dock";
+import { AuditPoster } from "./audit-poster";
 import { StrengthsSection } from "./strengths-section";
-import { ScoreSection } from "./score-section";
-import { FindingsSection } from "./findings-section";
-import { PoliciesSection } from "./policies-section";
-import { ReturnSection } from "./return-section";
+import { QuirksSection } from "./quirks-section";
+import { HowToImproveSection } from "./how-to-improve-section";
+import { ComeBackBetterSection } from "./come-back-better-section";
 import { ReportFooter } from "./report-footer";
 import { EmptyState } from "./empty-state";
 import { RunProgress } from "./run-progress";
@@ -56,11 +57,6 @@ interface Props {
   /** Total number of detectors + builtin policies. Computed server-side
    *  in page.tsx — the modules can't ship to the client. */
   totalCatalogSize: number;
-}
-
-function inferWindow(params: RunAuditOptions | undefined): string {
-  if (!params?.since) return "all time";
-  return params.since;
 }
 
 function inferProjectName(result: AuditResult, override?: string): string {
@@ -249,9 +245,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     <MainReport
       result={result}
       cachedAt={cachedAt}
-      params={params}
       projectFromUrl={projectFromUrl}
-      totalCatalogSize={totalCatalogSize}
       isRunning={running}
       rerunStatus={rerunStatus}
       onRerun={(source) => startRerun(source)}
@@ -263,9 +257,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
 interface MainReportProps {
   result: AuditResult;
   cachedAt: string | null;
-  params: RunAuditOptions | undefined;
   projectFromUrl?: string;
-  totalCatalogSize: number;
   isRunning: boolean;
   rerunStatus: RerunStatus;
   onRerun: (source: RerunSource) => void;
@@ -275,9 +267,7 @@ interface MainReportProps {
 function MainReport({
   result,
   cachedAt,
-  params,
   projectFromUrl,
-  totalCatalogSize,
   isRunning,
   rerunStatus,
   onRerun,
@@ -294,14 +284,10 @@ function MainReport({
   const projectedGrade = gradeFor(projected);
   const strengths = useMemo(() => deriveStrengths(result), [result]);
   const findings = useMemo(() => deriveFindings(result), [result]);
-  // Renamed from `window` to avoid shadowing the browser global — any
-  // future `window.*` reference added inside MainReport would silently
-  // bind to a string and crash at runtime.
-  const scopeWindow = inferWindow(params);
 
-  // One pass over result.results derives both counts; score-section and
-  // return-section also need `missing` but they take it from us via props
-  // / `result` shape, so deduplicate the scan here.
+  // One pass over result.results: detectors triggered + missing prescribed
+  // policies. Both feed PostHog instrumentation; `missing` also feeds the
+  // poster's share-text template.
   const { detectorsTriggered, missing } = useMemo(() => {
     let detectorsTriggered = 0;
     let missing = 0;
@@ -340,54 +326,37 @@ function MainReport({
     detectorsTriggered,
   ]);
 
-  /** Identity hero ref — captured to PNG by the share buttons. */
-  const identityFrameRef = useRef<HTMLDivElement>(null);
+  /** Poster ref — captured to PNG by the poster's share buttons. */
+  const posterRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="app">
       <AuditProgressStrip status={rerunStatus} onDismiss={onDismissRerun} />
-      <div className="scanline-overlay" />
       <div className="app-shell">
         <div className="report">
-          <IdentitySection
-            ref={identityFrameRef}
+          <AuditPoster
+            ref={posterRef}
             archetypeKey={classification.archetype}
-            secondaryKey={classification.secondary}
-            toolCalls={result.eventsScanned ?? 0}
-            sessions={result.transcripts.scanned}
-            window={scopeWindow}
             seed={classification.variantSeed}
-          />
-          <StrengthsSection
-            strengths={strengths}
-            totalDetectorsTriggered={detectorsTriggered}
-            totalDetectorsAvailable={totalCatalogSize}
-          />
-          <ScoreSection
-            result={result}
             score={score}
             grade={grade}
-            archetypeKey={classification.archetype}
-            project={project}
+            missing={missing}
+            auditedAt={cachedAt ?? new Date().toISOString()}
           />
-          <ReturnSection
+          <StrengthsSection strengths={strengths} />
+          <QuirksSection findings={findings} />
+          <HowToImproveSection
             result={result}
+            projected={projected}
+            projectedGrade={projectedGrade}
+          />
+          <ComeBackBetterSection
             isRunning={isRunning}
             onRerun={() => onRerun("return_section")}
           />
-          <FindingsSection findings={findings} />
-          <PoliciesSection result={result} projected={projected} projectedGrade={projectedGrade} />
         </div>
         <ReportFooter cachedAt={cachedAt} />
       </div>
-      <ShareDock
-        frameRef={identityFrameRef}
-        archetypeKey={classification.archetype}
-        seed={classification.variantSeed}
-        score={score}
-        grade={grade}
-        missing={missing}
-      />
     </div>
   );
 }
@@ -408,7 +377,6 @@ function ShellEmpty({ running, mode = "no-cache", rerunStatus, onDismissRerun, o
   return (
     <div className="app">
       <AuditProgressStrip status={rerunStatus} onDismiss={onDismissRerun} />
-      <div className="scanline-overlay" />
       <div className="app-shell">
         <div className="report">
           {running ? (

@@ -4,6 +4,7 @@
 
 ### Fixes
 - Swap the `/audit` poster PNG export from `html2canvas` to `html-to-image`. html2canvas reimplements CSS in JavaScript and was producing broken dashed borders on the poster's outer rule (Canvas's `setLineDash` doesn't connect cleanly at corners) and a stray pink square cutting through the wordmark's "l" (the `/logo.svg` uses an SVG `<mask>` for the "i" character, which html2canvas ignored). `html-to-image` serializes the live DOM into an SVG `<foreignObject>` and rasterizes it through the browser's native rendering engine, so dashed borders, SVG masks, gradients, and font metrics render exactly as they do on screen. Implementation in `app/audit/_components/audit-poster.tsx#captureCardBlob` (#435).
+- Lock the html-to-image capture's `width`/`height` (and the matching inline `style` override) to the live poster element's `offsetWidth`/`offsetHeight`. html-to-image clones the node without its parent's flex context (the `.poster-section`'s `flex: 1` stretching), so the clone would collapse to intrinsic content width while the canvas inherited the original `offsetWidth` — content rendered anchored to the left of empty space (#435).
 
 ### Dependencies
 - Add `html-to-image@^1.11.13` for the audit-poster PNG export. Replaces (but does not remove) `html2canvas` — the latter remains for any non-audit screenshot path still using it (#435).

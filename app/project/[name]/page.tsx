@@ -116,97 +116,41 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   return (
     <main className="report">
       <section className="section" data-screen-label="project">
-        <div className="section-mast">
-          <Link
-            href="/projects"
-            className="btn"
-            style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase" }}
-            aria-label="Back to projects"
-          >
-            <span style={{ color: "var(--accent-pink)", letterSpacing: "-2px" }}>━━</span>
-            back to projects
-          </Link>
-          <div className="section-meta">
-            <span className="g">●</span> {sessionFiles.length} session{sessionFiles.length === 1 ? "" : "s"}
-          </div>
-        </div>
-
-        <h1
-          className="section-h"
-          style={{ textTransform: "none", marginBottom: 18, wordBreak: "break-word" }}
+        <Link
+          href="/projects"
+          className="project-page-back"
+          aria-label="Back to projects"
         >
-          {canonicalRoot}
-        </h1>
+          <span className="arrow">←</span>
+          back to projects
+        </Link>
 
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            gap: "8px 18px",
-            margin: "0 0 36px",
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            color: "var(--ink-2)",
-          }}
-        >
-          <dt
-            style={{
-              color: "var(--accent-green)",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              fontSize: 10,
-              alignSelf: "center",
-            }}
-          >
-            path
-          </dt>
-          <dd style={{ margin: 0, wordBreak: "break-all" }}>{displayPath}</dd>
+        <h1 className="project-page-title">{canonicalRoot}</h1>
+
+        <div className="project-page-meta">
+          <span className="label">path</span>
+          <span className="path">{displayPath}</span>
           {lastModifiedFormatted && (
             <>
-              <dt
-                style={{
-                  color: "var(--accent-green)",
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  fontSize: 10,
-                  alignSelf: "center",
-                }}
-              >
-                modified
-              </dt>
-              <dd style={{ margin: 0 }}>{lastModifiedFormatted}</dd>
+              <span className="sep">·</span>
+              <span className="label">modified</span>
+              {lastModifiedFormatted}
             </>
           )}
-        </dl>
-
-        <div className="section-mast" style={{ marginBottom: 18 }}>
-          <div className="section-label">
-            <span className="glyph">━━</span> sessions
-          </div>
+          <span className="sep">·</span>
+          <span className="label">sessions</span>
+          {sessionFiles.length}
         </div>
 
         {sessionFiles.length === 0 ? (
-          <div
-            className="panel"
-            style={{ textAlign: "center", padding: "48px 32px" }}
-          >
-            <p style={{ color: "var(--ink-2)", marginBottom: 8 }}>
-              no .jsonl files found in this project.
-            </p>
-            <p
-              style={{
-                color: "var(--dim)",
-                fontSize: 12,
-                letterSpacing: "0.05em",
-              }}
-            >
+          <div className="project-page-empty">
+            no .jsonl files found in this project.
+            <div className="hint">
               session files will appear here once they are created.
-            </p>
+            </div>
           </div>
         ) : (
-          <div className="panel" style={{ padding: 0 }}>
-            <Suspense><SessionsList files={sessionFiles} projectName={name} /></Suspense>
-          </div>
+          <Suspense><SessionsList files={sessionFiles} projectName={name} /></Suspense>
         )}
       </section>
     </main>

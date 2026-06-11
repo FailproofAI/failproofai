@@ -1,6 +1,9 @@
 /**
  * Sessions List — displays session log files for a project with date
  * preset / custom-range filtering, session ID search, and pagination.
+ *
+ * Chrome matches the calm aesthetic on /audit: sharp 1px borders, dim
+ * small-caps labels, mono throughout, pink-outlined active filter chip.
  */
 "use client";
 
@@ -95,69 +98,67 @@ export default function SessionsList({ files, projectName }: SessionsListProps) 
     filterPreset !== "all" || dateRange.from !== null || dateRange.to !== null || sessionIdFilter !== "";
 
   return (
-    <div className="space-y-4">
+    <div className="sessions-list">
       {/* Filters */}
-      <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-4">
-        {/* Preset Filters + Refresh */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Filter by:</span>
+      <div className="sessions-filter-bar">
+        {/* Preset Filters */}
+        <div className="sessions-filter-row">
+          <span className="sessions-filter-label">filter by</span>
           {FILTER_PRESETS.map((preset) => (
             <button
               key={preset.value}
+              type="button"
               onClick={() => handlePresetChange(preset.value)}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                filterPreset === preset.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
+              className={`sessions-chip${filterPreset === preset.value ? " on" : ""}`}
             >
               {preset.label}
             </button>
           ))}
-
         </div>
 
         {/* Custom Date Range */}
-        <div className="flex flex-wrap items-center gap-4">
-          <span className="text-sm font-medium text-foreground">Custom Range:</span>
-          <div className="flex items-center gap-2">
-            <DatePickerInput id="date-from" value={dateRange.from} onChange={(v) => handleDateRangeChange("from", v)} aria-label="Filter from date" />
-            <span className="text-muted-foreground">to</span>
-            <DatePickerInput id="date-to" value={dateRange.to} onChange={(v) => handleDateRangeChange("to", v)} aria-label="Filter to date" />
-          </div>
+        <div className="sessions-filter-row">
+          <span className="sessions-filter-label">range</span>
+          <DatePickerInput id="date-from" value={dateRange.from} onChange={(v) => handleDateRangeChange("from", v)} aria-label="Filter from date" />
+          <span className="sessions-range-sep">to</span>
+          <DatePickerInput id="date-to" value={dateRange.to} onChange={(v) => handleDateRangeChange("to", v)} aria-label="Filter to date" />
         </div>
 
         {/* Session ID Search */}
-        <div className="flex items-center gap-2">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Filter by Session ID:</span>
+        <div className="sessions-filter-row">
+          <span className="sessions-filter-label">
+            <Search className="sessions-filter-icon" aria-hidden="true" />
+            session id
+          </span>
           <input
             type="text"
             value={sessionIdFilter}
             onChange={(e) => setSessionIdFilter(e.target.value)}
-            placeholder="Enter session ID (UUID)"
-            className="px-3 py-2 text-sm bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all hover:border-primary/50 flex-1 max-w-md"
+            placeholder="paste a session uuid"
+            className="sessions-input"
             aria-label="Filter by session ID"
           />
           {hasActiveFilters && (
             <button
+              type="button"
               onClick={clearFilters}
-              className="px-3 py-2 text-sm bg-muted text-muted-foreground hover:bg-muted/80 rounded-md transition-colors"
+              className="sessions-chip"
+              style={{ marginLeft: "auto" }}
             >
-              Clear
+              clear
             </button>
           )}
         </div>
 
         {/* Results Count */}
-        <div className="text-sm text-muted-foreground">
+        <div className="sessions-results-count">
           {filteredFiles.length === 0 ? (
-            "No sessions found"
+            <>{"// no sessions found"}</>
           ) : (
             <>
-              Showing {startIndex + 1}-{endIndex} of {filteredFiles.length} sessions
+              {"// showing"} {startIndex + 1}–{endIndex} of {filteredFiles.length} sessions
               {filteredFiles.length !== normalizedFiles.length && (
-                <span className="ml-1">(filtered from {normalizedFiles.length} total)</span>
+                <span> · filtered from {normalizedFiles.length}</span>
               )}
             </>
           )}
@@ -165,60 +166,56 @@ export default function SessionsList({ files, projectName }: SessionsListProps) 
       </div>
 
       {/* Sessions Table */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground w-12">
-                  <span className="sr-only">Icon</span>
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground">SessionId</th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-foreground">Modified</th>
+      <div className="sessions-table-wrap">
+        <table className="sessions-table">
+          <thead>
+            <tr>
+              <th scope="col" className="sessions-th sessions-th-icon">
+                <span className="sr-only">Icon</span>
+              </th>
+              <th scope="col" className="sessions-th">session id</th>
+              <th scope="col" className="sessions-th">modified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedFiles.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="sessions-td sessions-empty">
+                  {"// no sessions match the filter."}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {paginatedFiles.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                    No sessions found matching the filter.
+            ) : (
+              paginatedFiles.map((file) => (
+                <tr key={file.path} className="sessions-row">
+                  <td className="sessions-td sessions-td-icon">
+                    <File className="sessions-file-icon" aria-hidden="true" />
+                  </td>
+                  <td className="sessions-td sessions-td-name">
+                    {file.sessionId ? (
+                      <>
+                        <Link
+                          href={`/project/${encodeURIComponent(projectName)}/session/${encodeURIComponent(file.sessionId)}`}
+                          className="sessions-link"
+                        >
+                          {file.name.replace(/\.jsonl$/, "")}
+                        </Link>
+                        <CopyButton text={file.sessionId} />
+                      </>
+                    ) : (
+                      <span className="sessions-link" aria-disabled="true">
+                        {file.name.replace(/\.jsonl$/, "")}
+                      </span>
+                    )}
+                    {file.cli && <CliBadge cli={file.cli} />}
+                  </td>
+                  <td className="sessions-td sessions-td-date">
+                    {file.lastModifiedFormatted || formatDate(file.lastModified)}
                   </td>
                 </tr>
-              ) : (
-                paginatedFiles.map((file) => (
-                  <tr key={file.path} className="border-b border-border hover:bg-muted/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <File className="w-5 h-5 text-primary" />
-                    </td>
-                    <td className="px-4 py-3 max-w-md">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {file.sessionId ? (
-                          <>
-                            <Link
-                              href={`/project/${encodeURIComponent(projectName)}/session/${encodeURIComponent(file.sessionId)}`}
-                              className="font-semibold text-foreground hover:text-primary transition-colors break-words break-all inline-block max-w-full"
-                            >
-                              {file.name.replace(/\.jsonl$/, "")}
-                            </Link>
-                            <CopyButton text={file.sessionId} />
-                          </>
-                        ) : (
-                          <span className="font-semibold text-foreground break-words break-all inline-block max-w-full">
-                            {file.name.replace(/\.jsonl$/, "")}
-                          </span>
-                        )}
-                        {file.cli && <CliBadge cli={file.cli} />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {file.lastModifiedFormatted || formatDate(file.lastModified)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
 
         {filteredFiles.length > 0 && (
           <PaginationControls currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />

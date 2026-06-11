@@ -49,7 +49,7 @@ describe("SessionsList", () => {
   it("renders sessions in table", () => {
     const files = makeFiles(3);
     render(<SessionsList files={files} projectName="test-project" />);
-    expect(screen.getByText("SessionId")).toBeInTheDocument();
+    expect(screen.getAllByText(/session id/i).length).toBeGreaterThan(0);
     expect(screen.getByText(files[0].sessionId!)).toBeInTheDocument();
   });
 
@@ -61,7 +61,7 @@ describe("SessionsList", () => {
     const input = screen.getByLabelText("Filter by session ID");
     await user.type(input, "00000000");
 
-    expect(screen.getByText(/Showing.*of.*session/)).toBeInTheDocument();
+    expect(screen.getByText(/showing.*of.*session/i)).toBeInTheDocument();
   });
 
   it("date preset filtering", async () => {
@@ -84,11 +84,11 @@ describe("SessionsList", () => {
 
     await user.click(screen.getByText("Last Hour"));
 
-    expect(screen.getByText(/Showing.*of.*1.*session/)).toBeInTheDocument();
+    expect(screen.getByText(/showing.*of.*1.*session/i)).toBeInTheDocument();
   });
 
   it("shows empty state", () => {
     render(<SessionsList files={[]} projectName="test-project" />);
-    expect(screen.getByText("No sessions found")).toBeInTheDocument();
+    expect(screen.getByText(/no sessions found/i)).toBeInTheDocument();
   });
 });

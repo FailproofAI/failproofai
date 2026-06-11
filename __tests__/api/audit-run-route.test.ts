@@ -70,6 +70,48 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
     expect(writeCacheMock).not.toHaveBeenCalled();
   });
 
+  it("writes the cache and clears the lock when the detached run succeeds", async () => {
+    let resolveRun!: (value: unknown) => void;
+    runAuditMock.mockImplementation(
+      () => new Promise((res) => { resolveRun = res; }),
+    );
+    writeCacheMock.mockReturnValue(true);
+
+    const res = await POST(req("{}"));
+    expect(res.status).toBe(202);
+    expect(getRunState().running).toBe(true);
+
+    // Complete the detached run and let its .then settle.
+    resolveRun({ ok: true });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(writeCacheMock).toHaveBeenCalledTimes(1);
+    expect(getRunState()).toMatchObject({ running: false, error: null });
+  });
+
+  it("reports a run error when the result cannot be persisted (cache write fails)", async () => {
+    let resolveRun!: (value: unknown) => void;
+    runAuditMock.mockImplementation(
+      () => new Promise((res) => { resolveRun = res; }),
+    );
+    // writeDashboardCache swallows its own IO errors and returns false; in
+    // fire-and-forget the cache is the only delivery channel, so a failed
+    // persist must surface as a run error rather than a silent success.
+    writeCacheMock.mockReturnValue(false);
+
+    const res = await POST(req("{}"));
+    expect(res.status).toBe(202);
+
+    resolveRun({ ok: true });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const s = getRunState();
+    expect(s.running).toBe(false);
+    expect(s.error).toBeTruthy();
+  });
+
   it("400s a non-object JSON body", async () => {
     const res = await POST(req("[]"));
     expect(res.status).toBe(400);

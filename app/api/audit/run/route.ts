@@ -89,8 +89,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   void (async () => {
     try {
       const result = await runAudit(opts);
-      writeDashboardCache(opts, result);
-      finishRun(null);
+      // The cache is the only channel by which a detached run's result reaches
+      // the client (the POST already returned 202), so a failed persist is a
+      // failed run from the user's view — surface it instead of reporting OK.
+      const persisted = writeDashboardCache(opts, result);
+      finishRun(persisted ? null : "audit finished but its result could not be saved");
     } catch (err) {
       finishRun(err instanceof Error ? err.message : String(err));
     }

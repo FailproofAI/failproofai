@@ -91,11 +91,15 @@ export function readDashboardCache(): DashboardCacheEntry | null {
 }
 
 /** Write the cache file atomically via the shared `writeJsonAtomically`
- *  helper. Best-effort overall (swallows errors so a failed write never
- *  breaks the run path), but the temp-file dance protects concurrent
- *  readers (e.g. the 1s status poll firing while a fresh run writes a
- *  multi-hundred-KB AuditResult) from observing a torn JSON file. */
-export function writeDashboardCache(params: RunAuditOptions, result: AuditResult): void {
+ *  helper. Returns `true` on success and `false` if the write threw (disk
+ *  full, permissions, …) — never throwing into the run path. The temp-file
+ *  dance protects concurrent readers (e.g. the 1s status poll firing while a
+ *  fresh run writes a multi-hundred-KB AuditResult) from observing a torn JSON
+ *  file. The fire-and-forget run route relies on this boolean to surface a
+ *  persistence failure: the cache is the only channel by which a detached
+ *  run's result reaches the dashboard, so a silently dropped write would
+ *  otherwise look like a successful run that serves stale data. */
+export function writeDashboardCache(params: RunAuditOptions, result: AuditResult): boolean {
   try {
     const entry: DashboardCacheEntry = {
       schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
@@ -104,8 +108,11 @@ export function writeDashboardCache(params: RunAuditOptions, result: AuditResult
       result,
     };
     writeJsonAtomically(getCachePath(), entry);
+    return true;
   } catch {
-    // Cache writes are best-effort.
+    // Best-effort: never throw into the run path. The caller decides how to
+    // treat a failed persist (the run route reports it as a run error).
+    return false;
   }
 }
 

@@ -51,11 +51,7 @@ const useBrandLogo = (): string => {
 
 export const Navbar: React.FC<{
   disabledPages?: string[];
-  /** Total slipping-through actions from the latest cached audit. When > 0
-   *  a small chip is rendered next to the Audit nav link. Undefined → no
-   *  chip (no cache yet, or audit disabled). */
-  auditSlippingCount?: number;
-}> = ({ disabledPages = [], auditSlippingCount }) => {
+}> = ({ disabledPages = [] }) => {
   const pathname = usePathname();
   const { capture } = usePostHog();
   const logoSrc = useBrandLogo();
@@ -90,10 +86,6 @@ export const Navbar: React.FC<{
           const active = href === "/projects"
             ? pathname === "/projects" || pathname.startsWith("/project/")
             : pathname.startsWith(href);
-          const showAuditBadge =
-            href === "/audit"
-            && typeof auditSlippingCount === "number"
-            && auditSlippingCount > 0;
           return (
             <Link
               key={href}
@@ -105,37 +97,10 @@ export const Navbar: React.FC<{
                 capture("audit_nav_clicked", {
                   from_path: pathname,
                   is_active_tab: active,
-                  has_badge: showAuditBadge,
-                  slipping_count: typeof auditSlippingCount === "number" ? auditSlippingCount : null,
                 });
               }}
             >
-              <span style={{ color: "var(--dim)", letterSpacing: "-2px", marginRight: 2 }}>━━</span>
               {label}
-              {showAuditBadge && (
-                <span
-                  role="status"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: "1.4rem",
-                    height: "1rem",
-                    padding: "0 6px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 10,
-                    letterSpacing: "0.05em",
-                    background: "var(--amber-bg)",
-                    color: "var(--amber)",
-                    border: "1px solid var(--amber)",
-                    marginLeft: 2,
-                  }}
-                  aria-label={`${auditSlippingCount} action${auditSlippingCount === 1 ? "" : "s"} slipping through your policies`}
-                  title={`${auditSlippingCount} slipping through`}
-                >
-                  {auditSlippingCount}
-                </span>
-              )}
             </Link>
           );
         })}

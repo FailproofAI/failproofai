@@ -48,7 +48,7 @@ These detect "stupid behavior" patterns not (yet) enforced in real time. They ru
 ## Caches
 
 - **Per-transcript cache** at `~/.failproofai/cache/audit/<sha1>.json` keyed by `(mtime, size, engineVersion, detectorVersion)` — invalidates automatically when the transcript or the policy/detector code changes. Each entry also stores a `cachedAt` timestamp as **TTL metadata** (not part of the cache key); entries older than **7 days** are rejected on read so long-lived results don't outlive evolving detector intent.
-- **Whole-result cache** at `~/.failproofai/audit-dashboard.json` (mode 0600). Lets the dashboard render instantly on navigation without re-running. Also rejected on read past the **7-day TTL** — `/audit` then falls through to its empty state and prompts a fresh run. Click `[ re-audit now ]` near the bottom of the report to refresh; the new run streams progress via a sticky top strip and swaps the result in place on success (no page reload).
+- **Whole-result cache** at `~/.failproofai/audit-dashboard.json` (mode 0600). Lets the dashboard render instantly on navigation without re-running. Also rejected on read past the **7-day TTL** — `/audit` then falls through to its empty state and prompts a fresh run. Click `[ re-audit now ]` near the bottom of the report to refresh — re-audit sends `noCache: true`, so it bypasses the per-transcript cache and re-scans every transcript instead of returning the cached result; the run streams progress via a sticky top strip and swaps the result in place on success (no page reload; a failed re-audit keeps the previous report).
 
 ## Notes
 

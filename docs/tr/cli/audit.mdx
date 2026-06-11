@@ -1,57 +1,57 @@
 ---
 title: Geçmiş oturumları denetle (beta)
-description: "Aracının geçmiş transkriptlerde ne sıklıkla savurganlık veya riskli işlemler yaptığını say"
+description: "Ajanın geçmiş dökümlerde ne sıklıkta boşa harcama veya riskli şeyler yaptığını say"
 ---
 
 <Note>
-  **Beta özelliği.** Denetim, erken geri bildirim toplarken beta olarak sunulmaktadır.
-  Dedektör kataloğu ve rapor biçimi bir sonraki kararlı sürümden önce değişebilir.
-  Bir şey yanlış görünürse lütfen bir sorun açınız.
+  **Beta özelliği.** Denetim erken geri bildirim toplarken beta olarak sunulmaktadır.
+  Dedektör kataloğu ve rapor formatı bir sonraki kararlı sürümden önce değişebilir.
+  Herhangi bir şey yanlış görünürse bir sorun açınız.
 </Note>
 
-Denetim, artık CLI alt komutu değil, **/audit pano sayfası** olarak sunulmaktadır. Pano gezinti çubuğundan (Policies ve Projects arasında) açabilir veya `failproofai` yerel ortamda çalıştırılırken doğrudan `http://localhost:8020/audit` adresini ziyaret edebilirsiniz.
+Denetim artık CLI alt komutu değil **/audit pano sayfası** olarak sunulmaktadır. Bunu pano gezinti çubuğundan açın (Policies ve Projects arasında) veya `failproofai` yerel olarak çalışırken doğrudan `http://localhost:8020/audit` adresini ziyaret edin.
 
 ```bash
-failproofai          # panoyu aç, sonra "Audit"ı tıkla
+failproofai          # panoyu aç, ardından "Audit"a tıkla
 ```
 
-Pano, bu makinedeki geçmiş aracı CLI transkriptlerini (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) tarar ve aracının failproofai tarafından durdurulması için inşa edilen şeyleri ne sıklıkla yaptığını raporlar — ortam değişkeni kontrolleri, force push işlemleri, gereksiz `cd <cwd>` önekleri, uyku-polling döngüleri, henüz düzenlenen dosyaları yeniden okuma ve daha fazlası.
+Pano, bu makinedeki geçmiş ajan CLI dökümleri tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) ve ajanın failproofai'nin durdurmak için inşa edildiği şeyleri ne sıklıkta yaptığını bildirir — ortam değişkeni kontrolleri, zorla itme işlemleri, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenmiş dosyaları yeniden okuma ve daha fazlası.
 
-Her transkript için, her araç-kullanım olayı 39 yerleşik politika **ve** runtime politikaları tarafından henüz kapsanmayan desenleri yakalayan 8 denetim-yalnız dedektör aracılığıyla yeniden oynatılır. Sayılar tüm oturumlar arasında politika/dedektör başına toplanır.
+Her döküm için, her araç kullanımı olayı 39 yerleşik politika **ve** çalışma zamanı politikaları tarafından henüz kapsanmayan desenleri yakalayan 8 denetim-yalnızca dedektörden geçiyor. Sayılar, tüm oturumlar arasında politika / dedektör başına toplandı.
 
-## Ne alacaksınız
+## Ne elde edersiniz
 
 `/audit` sayfası altı bölümden oluşur:
 
-1. **Kimlik** — aracınız denetlenen her transkript arasında ağırlıklı sinyal temelinde 8 prototipden biri olarak sınıflandırılır (`optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`).
-2. **Güçlü Yönler** — taramadan türetilen gerçek sayılar (temiz çağrı %, "0 kimlik bilgisi sızıntısı", vb.) ilgili sanitize politikaları gerçekten ateşlendiğinde gated.
-3. **Puan** — 0-100 arası S/A/B/C/D/F bantları ve önerilen her politika etkinleştirildiyse tahmini iyileştirme.
-4. **Bulgular** — politika başına kartlar, ne olduğu, maliyeti, yakalanan kanıt ve canlı-zaman yerleşiğini yakalayan yapacak `failproofai policy add <slug>` komutunu gösterir.
-5. **Önerilen politikalar** — `failproofai policies --install` tek komutlu kurulum listesi.
-6. **Yeniden denetim hatırlatması** — "daha iyi geri dön." API sunucusu aracılığıyla 7 günlük e-posta hatırlatması ayarlayın (oturum açma gereklidir; bkz. [`failproofai auth`](/tr/cli/auth)).
+1. **Kimlik** — ajanınız, denetlenen her döküm arasındaki ağırlıklı sinyale göre 8 arketipin biri olarak sınıflandırılmıştır (`iyimser`, `kovboy`, `keşfetçi`, `balık`, `paranoid mimar`, `hassas yapıcı`, `çekiç`, `hayalet`).
+2. **Güçlü Yönler** — taramadan türetilen gerçek sayılar (temiz çağrı %, "0 kimlik bilgisi sızıntısı" vb.) ilgili sanitizasyon politikaları gerçekten çalıştığında açılanır.
+3. **Puan** — 0-100 aralığında S/A/B/C/D/F bandları ve önerilen her politika etkinleştirilirse öngörülen iyileştirme.
+4. **Bulgular** — politika başına kartlar neler olduğunu, maliyeti, yakalanmış kanıtı ve canlı olarak yakalamış olacak yerleşik `failproofai policy add <slug>` komutunu gösterir.
+5. **Önerilen Politikalar** — tek atışlı `failproofai policies --install` komutuyla toplu kurulum listesi.
+6. **Yeniden Denetleme Hatırlatması** — "daha iyi geri dön." api-server aracılığıyla 7 günlük bir e-posta hatırlatması ayarlayın (oturum açmayı gerektirir; bkz. [`failproofai auth`](/tr/cli/auth)).
 
-## Denetim-yalnız dedektörler
+## Denetim-yalnızca dedektörler
 
-Bu, canlı olarak (henüz) uygulanmayan "aptal davranış" desenlerini algılar. Yalnızca denetim sırasında çalışırlar ve hiçbir zaman canlı araç çağrısını engellemezler.
+Bunlar canlı olarak (henüz) uygulanmayan "aptalca davranış" desenlerini dedektör eder. Yalnızca denetim sırasında çalıştırılırlar ve canlı bir araç çağrısını hiçbir zaman engellememezler.
 
-| Dedektör | Ne saydığı |
+| Dedektör | Ne sayar |
 |---|---|
-| `redundant-cd-cwd` | Komutlar zaten `cwd` içinde çalışsa bile `cd <cwd> && …` ile başlayan Bash komutları. |
-| `prefer-edit-over-read-cat` | Tek bir kaynak dosyasında `cat`/`head`/`tail`/`less`/`more` — `Read` aracını kullan. |
-| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` yerinde düzenleme — `Edit` aracını kullan. |
-| `prefer-write-over-heredoc` | Heredoc / çok satırlı `echo > file` dosya yazma — `Write` aracını kullan. |
-| `sleep-polling-loop` | Uzun `sleep N` (≥ 30s) veya `while …; sleep …; done` polling döngüleri. |
-| `find-from-root` | `find /`, `find /home`, `find /usr` vb. — `cwd` kapsamına al. |
-| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, kancaları atla. |
-| `reread-after-edit` | Aynı oturumda henüz `Edit`/`Write` edilen dosya `Read` işlemi. |
+| `redundant-cd-cwd` | `cd <cwd> && …` ile başlayan Bash komutları, hatta komutlar zaten `cwd` içinde çalışsa da. |
+| `prefer-edit-over-read-cat` | Tek bir kaynak dosyada `cat`/`head`/`tail`/`less`/`more` — `Read` aracını kullanın. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` yerinde düzenlemeler — `Edit` aracını kullanın. |
+| `prefer-write-over-heredoc` | Heredoc / çok satırlı `echo > file` dosya yazmaları — `Write` aracını kullanın. |
+| `sleep-polling-loop` | Uzun `sleep N` (≥ 30s) veya `while …; sleep …; done` yoklama döngüleri. |
+| `find-from-root` | `find /`, `find /home`, `find /usr` vb. — yerine `cwd` kapsamına alın. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, kancaları atlayan. |
+| `reread-after-edit` | Aynı oturumda yeni `Edit`/`Write` yapılan bir dosyanın `Read` işlemi. |
 
 ## Önbellekler
 
-- **Transkript başına önbellek** `~/.failproofai/cache/audit/<sha1>.json` adresinde `(mtime, size, engineVersion, detectorVersion)` ile anahtarlanmış — transkript veya politika/dedektör kodu değiştiğinde otomatik olarak geçersiz kılınır. Her giriş ayrıca **TTL meta verisi** olarak `cachedAt` zaman damgası depolar (önbellek anahtarının parçası değildir); **7 günden** daha eski girişler, uzun ömürlü sonuçlar gelişen dedektör niyetini aşmadığında okunması reddedilir.
-- **Tüm sonuç önbelleği** `~/.failproofai/audit-dashboard.json` adresinde (mod 0600). Pano, yeniden çalıştırmadan hızlı gezintiye sahip işleme izin verir. Ayrıca **7 günlük TTL** geçmişte okuma reddedilir — `/audit` daha sonra boş durumuna düşer ve yeni bir çalıştırma ister. Rapor altında bulunan `[ şimdi yeniden denetim yap ]` tıklayarak yenile; yeni çalıştırma yapışkan üst şerit aracılığıyla ilerlemeyi akışa alır ve başarıda sonucu yerine takas eder (sayfa yeniden yüklenmez).
+- **Döküm başına önbellek** `~/.failproofai/cache/audit/<sha1>.json` adresinde `(mtime, size, engineVersion, detectorVersion)` ile anahtarlanmış — döküm veya politika/dedektör kodu değiştiğinde otomatik olarak geçersiz kılınır. Her giriş ayrıca **TTL metadata** olarak bir `cachedAt` zaman damgası depolar (önbellek anahtarının parçası değildir); **7 günden** eski girdiler okumada reddedilir, böylece uzun süreli sonuçlar gelişen dedektör niyetini aşmaz.
+- **Tam sonuç önbelleği** `~/.failproofai/audit-dashboard.json` adresinde (mod 0600). Pano gezintisinde anında render edilmesini sağlar ve yeniden çalıştırmaya gerek kalmaz. Ayrıca **7 günlük TTL** geçildikten sonra okumada reddedilir — `/audit` daha sonra boş durumuna düşer ve yeni bir çalıştırma istemi verir. Rapor sayfasının alt kısmında `[ şimdi yeniden denetle ]` seçeneğine tıklayın — yeniden denetleme `noCache: true` gönderir, böylece döküm başına önbelleği atlar ve önbelleğe alınan sonuç yerine her dökümanı yeniden tarar; çalıştırma yapışkan bir üst şeride ilerlemeyi aktarır ve başarı sırasında sonucu yerinde değiştirir (sayfa yenileme yok; başarısız yeniden denetleme önceki raporu tutar).
 
 ## Notlar
 
-- **Değişiklik yok.** Denetim salt okunur modda yeniden oynatılır. `warn-repeated-tool-calls`, oturum başına yan arası aksi takdirde değiştirilir çünkü atlanır.
-- **İş akışı politikaları atlanır.** `require-*-before-stop` politikaları yalnızca `Stop` olaylarında ve canlı git durumuna karşı `execSync` işleminde ateşlenir — "2025'te ne olurdu" için anlamlı bir yorumları yoktur, bu nedenle denetim sayılarında görünmezler.
-- **Özel politikalar atlanır.** Kullanıcı tarafından sağlanan özel kancalar yeniden oynatılmaz (orijinal oturumdan beri değişmiş olabilirler).
+- **Mutasyon yok.** Denetim salt okunur modda çalıştırılır. `warn-repeated-tool-calls`, oturum başına yan araç aksi takdirde değiştirildiği için atlanır.
+- **İş akışı politikaları atlandı.** `require-*-before-stop` politikaları yalnızca `Stop` olaylarında ve canlı git durumuna karşı `execSync` üzerinde çalışır — "2025'te ne olmuş olurdu" başarısız bir yorumlamaya sahip değildir, bu nedenle denetim sayılarında görünmez.
+- **Özel politikalar atlandı.** Kullanıcı tarafından sağlanan özel kancalar çalıştırılmaz (özgün oturumdan bu yana değişmiş olabilirler).

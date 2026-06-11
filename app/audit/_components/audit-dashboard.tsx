@@ -111,7 +111,11 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     setRunning(true);
     setRerunStatus({ kind: "running", startedAt: Date.now() });
     try {
-      await triggerRun({ cli: [], since: "30d" });
+      // noCache: an explicit re-audit clears the cache and re-scans from
+      // scratch — never a silent no-op that returns the identical cached
+      // result. The fresh result overwrites the dashboard cache on success;
+      // the prior cache survives a failed run so the report doesn't vanish.
+      await triggerRun({ cli: [], since: "30d", noCache: true });
       await refreshFromCache();
       setRerunStatus({ kind: "idle" });
     } catch (err) {
@@ -358,7 +362,9 @@ function MainReport({
             mode="cached"
             cachedAt={cachedAt}
             isRunning={isRunning}
+            rerunStatus={rerunStatus}
             onRerun={() => onRerun("top_bar")}
+            onDismiss={onDismissRerun}
           />
           <IdentitySection
             ref={identityFrameRef}
@@ -432,7 +438,9 @@ function ShellEmpty({ running, mode = "no-cache", topBar, rerunStatus, onDismiss
             mode={topBar.mode}
             cachedAt={topBar.cachedAt}
             isRunning={topBar.isRunning}
+            rerunStatus={rerunStatus}
             onRerun={topBar.onRerun}
+            onDismiss={onDismissRerun}
           />
           {running ? (
             <RunProgress />

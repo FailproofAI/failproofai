@@ -23,6 +23,10 @@ export interface ScanParams {
   cli: string[];
   /** "7d" | "30d" | "90d" | "all" (or any value accepted by parseSinceOpt). */
   since: string;
+  /** Skip the per-transcript cache and produce a genuinely fresh scan. Set by
+   *  the explicit re-audit affordance so "re-audit" never silently returns the
+   *  identical cached result — it re-scans every transcript from scratch. */
+  noCache?: boolean;
 }
 
 const POLL_INTERVAL_MS = 1000;
@@ -32,6 +36,7 @@ function paramsToBody(p: ScanParams) {
   return {
     cli: p.cli.length > 0 ? p.cli : undefined,
     since: p.since === "all" ? undefined : p.since,
+    noCache: p.noCache ? true : undefined,
   };
 }
 

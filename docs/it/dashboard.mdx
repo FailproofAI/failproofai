@@ -1,22 +1,22 @@
 ---
 title: Dashboard
-description: "Monitora le sessioni degli agenti, revisiona le chiamate ai tool e gestisci le politiche"
+description: "Monitora le sessioni degli agenti, rivedi le chiamate ai tool e gestisci i criteri"
 icon: chart-line
 ---
 
-La dashboard di failproofai è un'applicazione web locale per monitorare le sessioni dei tuoi agenti AI e gestire le politiche. Scopri cosa hanno fatto i tuoi agenti mentre eri assente.
+Il dashboard failproofai è un'applicazione web locale per monitorare le sessioni dei tuoi agenti AI e gestire i criteri. Scopri cosa hanno fatto i tuoi agenti mentre eri assente.
 
 ---
 
-## Avviare la dashboard
+## Avvio del dashboard
 
 ```bash
 failproofai
 ```
 
-Si apre all'indirizzo `http://localhost:8020`.
+Si apre su `http://localhost:8020`.
 
-La dashboard legge direttamente dal filesystem - le cartelle dei tuoi progetti Claude Code e i file di configurazione di failproofai. Nulla viene scritto in un servizio remoto.
+Il dashboard legge direttamente dal filesystem - le tue cartelle di progetto Claude Code e i file di configurazione failproofai. Non viene scritto nulla su un servizio remoto.
 
 ---
 
@@ -24,68 +24,67 @@ La dashboard legge direttamente dal filesystem - le cartelle dei tuoi progetti C
 
 ### Progetti
 
-Elenca tutti i progetti Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ e Gemini CLI _(beta)_ trovati sulla tua macchina. I progetti Claude vengono scoperti da `~/.claude/projects/` (o dal percorso impostato da `CLAUDE_PROJECTS_PATH`); i progetti Codex vengono scoperti scansionando ogni trascrizione sotto `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` e raggruppando per il `cwd` registrato nel primo record di ogni sessione; i progetti Copilot CLI vengono scoperti scansionando ogni `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurabile tramite `COPILOT_HOME`) e raggruppando per il relativo campo `cwd`; i progetti Cursor Agent vengono scoperti scansionando i metadati per sessione sotto `~/.cursor/agent-sessions/<sessionId>/` (configurabile tramite `CURSOR_HOME`, con `conversations/` e `sessions/` testati come fallback) alla ricerca di uno scalare `cwd` in `meta.json` / `session.json` / `workspace.yaml`; i progetti OpenCode vengono scoperti interrogando il suo DB SQLite all'indirizzo `~/.local/share/opencode/opencode.db` tramite `opencode db --format json` (leggiamo le tabelle `session` e `project` e raggruppiamo per `project_id`); i progetti Pi vengono scoperti scansionando le trascrizioni JSONL per sessione sotto `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (configurabile tramite `PI_SESSIONS_DIR`) ed estraendo il `cwd` dal primo record di ogni sessione; i progetti Gemini CLI vengono scoperti scansionando `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (configurabile tramite `GEMINI_SESSIONS_DIR`) e ripristinando il cwd canonico dal marcatore di testo `.project_root` adiacente. Un progetto utilizzato da più CLI viene visualizzato come una singola riga con tutti i badge corrispondenti. Utilizza il menu a discesa **CLI** sopra la tabella per filtrare per uno specifico CLI agente; l'URL preserva la tua selezione come `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
+Elenca tutti i progetti Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ e Gemini CLI _(beta)_ trovati sulla tua macchina. I progetti Claude vengono rilevati da `~/.claude/projects/` (o dal percorso impostato da `CLAUDE_PROJECTS_PATH`); i progetti Codex vengono rilevati scansionando ogni trascrizione in `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` e raggruppando per `cwd` registrato nel primo record di ogni sessione; i progetti Copilot CLI vengono rilevati scansionando ogni `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurabile tramite `COPILOT_HOME`) e raggruppando per il suo campo `cwd`; i progetti Cursor Agent vengono rilevati scansionando i metadati per sessione in `~/.cursor/agent-sessions/<sessionId>/` (configurabile tramite `CURSOR_HOME`, con `conversations/` e `sessions/` come fallback) cercando uno scalare `cwd` in `meta.json` / `session.json` / `workspace.yaml`; i progetti OpenCode vengono rilevati interrogando il suo DB SQLite in `~/.local/share/opencode/opencode.db` tramite `opencode db --format json` (leggiamo le tabelle `session` e `project` e raggruppiamo per `project_id`); i progetti Pi vengono rilevati scansionando le trascrizioni JSONL per sessione in `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (configurabile tramite `PI_SESSIONS_DIR`) e estraendo `cwd` dal primo record di ogni sessione; i progetti Gemini CLI vengono rilevati scansionando `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (configurabile tramite `GEMINI_SESSIONS_DIR`) e recuperando il cwd canonico dal marcatore di testo `.project_root` adiacente. Un progetto utilizzato da più CLI viene visualizzato come una singola riga con tutti i badge corrispondenti. Usa il menu a discesa **CLI** sopra la tabella per filtrare per uno specifico CLI agent; l'URL preserva la tua selezione come `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
 
 Ogni progetto mostra:
 - Nome del progetto (derivato dal percorso della cartella)
-- Un badge CLI — `Claude Code` (arancione), `OpenAI Codex` (viola), `GitHub Copilot` (blu), `Cursor Agent` (smeraldo), `OpenCode` (ambra), `Pi` (rosa) e/o `Gemini CLI` (azzurro)
-- Data dell'attività della sessione più recente
+- Un badge CLI — `Claude Code` (arancione), `OpenAI Codex` (viola), `GitHub Copilot` (blu), `Cursor Agent` (smeraldo), `OpenCode` (ambra), `Pi` (rosa), e/o `Gemini CLI` (cielo)
+- Data dell'attività di sessione più recente
 
 Fai clic su un progetto per vederne le sessioni.
 
 ### Sessioni
 
 Elenca tutte le sessioni all'interno di un progetto. Ogni sessione mostra:
-- ID sessione
+- ID della sessione
 - Timestamp di inizio e fine
 - Numero di chiamate ai tool
-- Numero di attività hook (politiche che si sono attivate)
+- Conteggio dell'attività hook (criteri che si sono attivati)
 
-Utilizza il filtro intervallo di date e la ricerca per ID sessione per restringere l'elenco. Le sessioni sono impaginate.
+Usa il filtro dell'intervallo di date e la ricerca dell'ID sessione per restringere l'elenco. Le sessioni sono impaginate.
 
 Fai clic su una sessione per aprire il visualizzatore di sessione.
 
 ### Visualizzatore di sessione
 
-Il visualizzatore di sessione risponde alla domanda chiave per gli agenti autonomi: cosa ha fatto l'agente e ha mantenuto la giusta direzione? Un badge CLI accanto all'intestazione indica se la sessione è una trascrizione di Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi o Gemini CLI. Mostra una timeline di tutto ciò che è accaduto in una sessione:
+Il visualizzatore di sessione risponde alla domanda chiave per gli agenti autonomi: cosa ha fatto l'agente e ha mantenuto la rotta? Un badge CLI accanto all'intestazione indica se la sessione è una trascrizione Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi o Gemini CLI. Mostra una cronologia di tutto ciò che è accaduto in una sessione:
 
 - **Messaggi** - Risposte di testo di Claude e prompt dell'utente
-- **Chiamate ai tool** - Ogni tool che Claude ha invocato, con il suo input e output
-- **Attività delle politiche** - Per ogni chiamata al tool, quali politiche si sono attivate e quale decisione hanno restituito
+- **Chiamate ai tool** - Ogni tool invocato da Claude, con il suo input e output
+- **Attività dei criteri** - Per ogni chiamata ai tool, quali criteri si sono attivati e quale decisione hanno restituito
 
 La barra delle statistiche in alto mostra la durata della sessione, il totale delle chiamate ai tool e un riepilogo delle decisioni hook (conteggi allow / deny / instruct).
 
-Fai clic sul pulsante **Download Logs** per esportare la sessione. Per le sessioni Claude Code, Codex, Copilot, Cursor, Pi e Gemini ricevi la trascrizione JSONL originale su disco byte-per-byte; per OpenCode (le cui sessioni vivono in SQLite, non su disco) ricevi un documento JSON che rispecchia le tabelle sottostanti `session` / `messages` / `parts`.
+Fai clic sul pulsante **Download Logs** per esportare la sessione. Per Claude Code, Codex, Copilot, Cursor, Pi e sessioni Gemini ottieni la trascrizione JSONL originale sul disco byte-per-byte; per OpenCode (le cui sessioni vivono in SQLite, non su disco) ottieni un documento JSON che rispecchia le tabelle sottostanti `session` / `messages` / `parts`.
 
 ### Audit
 
-Un rapporto caratterizzato su come il tuo agente si è effettivamente comportato nelle sessioni passate. Esegue la stessa scansione del CLI `failproofai audit` ma la renderizza come una dashboard a sei sezioni:
+Un report di personalità su come il tuo agente si è effettivamente comportato nelle sessioni passate. Esegue la stessa scansione del CLI `failproofai audit` ma la renderizza come poster monoschermo condivisibile + quattro sezioni sotto il fold:
 
-1. **Identità** — classifica il tuo agente in uno degli 8 archetipi (`l'ottimista`, `il cowboy`, `l'esploratore`, `il pesce rosso`, `l'architetto paranoico`, `il costruttore di precisione`, `il martello`, `il fantasma`) in base a quali detector + politiche si sono attivati e quanto intensamente. Renderizza un sigillo pixel 8×8, il tagline dell'archetipo, il framing "comune in" / "rischio primario" e la battuta di chiusura.
-2. **Mostra il tuo agente** — cattura la carta d'identità come PNG 1200×630 adatto per la pubblicazione su X / LinkedIn (fai clic su `make poster`).
-3. **Punti di forza** — comportamenti con spunta verde che il tuo agente già fa bene, derivati dai dati di audit live (tasso di chiamate ai tool pulito, durata media della sessione, zero perdite di credenziali, zero tempeste di tentativi, ecc.).
-4. **Punteggio + classifica** — punteggio 0–100 con voto in lettere (S/A/B/C/D/F), un istogramma di distribuzione che mostra dove ti posizioni nella coorte, prosa ("una B inizia a 71. sei a 13 punti di distanza.") e una tabella di classifica con la tua riga evidenziata.
-5. **Risultati** — carte per ogni risultato classificate per impatto. Ogni carta mostra cosa è accaduto, cosa costa, un campione di prove con comandi effettivamente acquisiti e la politica di failproofai che catturerebbe lo stesso pattern (`$ failproofai policy add <slug>`, fare clic per copiare).
-6. **Politiche prescritte + loop di ritorno** — una griglia di ogni politica builtin non abilitata che chiuderebbe un gap, con un callout di punteggio proiettato, più un CTA "rivaluta in 7 giorni".
+1. **Poster** — riempie il primo viewport. Regione PNG auto-contenuta con il marchio failproof_ai + etichetta audit · indice dell'archetipo (`№ NN di 08`) + data audit · punteggio numerico (0–100) + pillola di rank percentile (`top 15%`) · il nome dell'archetipo (uno tra `the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + strip 3-keyword · linea di rarità `// solo N% degli agenti sono questo archetipo` · tile sigillo 8×8 pixel · footer `audit yours → failproof.ai`. Tre pulsanti di condivisione si trovano appena fuori dalla casella di cattura: `post your archetype` (X intent), `share on linkedin`, `download poster`. La cattura viene eseguita tramite `html-to-image` quindi il PNG corrisponde al rendering sullo schermo pixel-per-pixel (bordi tratteggiati, maschera logo SVG, gradienti, metriche dei font — tutto preservato).
+2. **Strengths** — lista di righe calm ✓ dei comportamenti che il tuo agente già fa bene, derivati dai dati di audit in diretta (clean tool-call rate, lunghezza media della sessione, zero fughe di credenziali, zero retry storms, ecc.).
+3. **Quirks** — tabella di ciò che è passato inosservato, classificato per impatto: `time · what slipped + policy that would've caught it · severity pill · recurrence` (new / Nx this wk / recurring).
+4. **How to improve** — lista di righe calm, una per ogni criterio prescritto: nome del criterio in bianco, descrizione in una riga, comando di installazione + pulsante di copia sul lato destro. Un pulsante `[install all]` nell'intestazione della sezione copia il comando `failproofai policy add a b c …` combinato per ogni criterio prescritto.
+5. **Come back better** — due schede affiancate. Sinistra: imposta un promemoria (`3d` / `7d` / `14d` / `30d` selettore di cadenza; persiste tramite `/api/auth/reminder` una volta autenticato). Destra: sblocca i vantaggi failproof — `invite a friend` apre un modale che accetta un elenco separato da virgola/spazio/newline di email di amici (max 10 per invio), POSTs a `/api/audit/invite`, che inoltra al `POST /v0/invite` del server api. Il server api invia un'email per ogni destinatario da `invite@failproof.ai` con il mittente Cc'd e `Reply-To` impostato, quindi il destinatario vede chi lo ha invitato e il mittente riceve una copia nella sua posta in arrivo. Gli utenti anonimi vengono instradati prima tramite `AuthDialog` quindi l'email del mittente è nota prima che gli inviti vengano inviati. L'adempimento dei diritti / vantaggi è un follow-up.
 
-Guidato dal runtime `failproofai audit` — vedi [Audit CLI](/it/cli/audit) per il motore di scansione sottostante, i flag supportati e gli invarianti della cache per trascrizione. La dashboard memorizza nella cache il risultato più recente in `~/.failproofai/audit-dashboard.json` (modalità `0600`, slot singolo, le nuove esecuzioni sovrascrivono) quindi le revisitazioni sono istantanee; **sia le cache per trascrizione che il risultato intero vengono rifiutate in lettura una volta che hanno più di 7 giorni** quindi la dashboard non serve mai un risultato di una settimana fa silenziosamente — superato il TTL `/audit` ricade nel suo stato vuoto e richiede un'esecuzione nuova. Facendo clic su `[ rivaluta ora ]` vicino al fondo del report POST `/api/audit/run` con `noCache: true` — la rivalutazione ignora la cache per trascrizione e ripete la scansione di ogni trascrizione da zero piuttosto che restituire silenziosamente il risultato memorizzato nella cache — e la dashboard esegue il polling su `/api/audit/status` a 1Hz fino al completamento dell'esecuzione; una barra di progresso adesiva rosa si appunta alla parte superiore del viewport durante l'esecuzione con un timer trascorso, e il risultato nuovo si sostituisce in posizione al successo (nessun ricaricamento della pagina intera; una rivalutazione fallita lascia intatto il rapporto precedente). In caso di errore la barra diventa rossa con copia basata su `RerunError.kind` (`timeout` / `network` / `post_failed`). Lo stato vuoto (nessuna cache o scaduta) e lo stato zero-sessioni (la cache esiste ma la scansione non ha trovato trascrizioni) vengono visualizzati separatamente.
+Guidato dal runtime `failproofai audit` — vedi [Audit CLI](/it/cli/audit) per il motore di scansione sottostante, i flag supportati e gli invarianti della cache per trascrizione. Il dashboard memorizza nella cache l'ultimo risultato su `~/.failproofai/audit-dashboard.json` (mode `0600`, singolo slot, le nuove esecuzioni sovrascrivono) quindi i revisioni sono istantanee; **sia la cache per trascrizione che la cache del risultato completo vengono rifiutate alla lettura una volta che hanno più di 7 giorni** quindi il dashboard non serve mai silenziosamente un risultato di una settimana fa — dopo il TTL `/audit` cade nello stato vuoto e richiede un nuovo esecuzione. Facendo clic su `[ re-audit now ]` vicino al fondo del report POSTs `/api/audit/run` con `noCache: true` — il re-audit bypassa la cache per trascrizione e ri-scansiona ogni trascrizione da zero piuttosto che restituire silenziosamente il risultato memorizzato nella cache — e il dashboard esegue il polling `/api/audit/status` a 1Hz fino al completamento dell'esecuzione; una striscia di progresso rosa appiccicatizia si fissa in cima al viewport durante l'esecuzione con un timer di tempo trascorso e il risultato fresco si scambia al posto al successo (nessun ricaricamento della pagina completa; un re-audit fallito lascia il report precedente intatto). In caso di errore la striscia diventa rossa con copia basata su `RerunError.kind` (`timeout` / `network` / `post_failed`). Lo stato vuoto (nessuna cache o scaduta) e lo stato zero-sessioni (cache esiste ma la scansione non ha trovato trascrizioni) vengono visualizzati separatamente.
 
-### Politiche
+### Criteri
 
-Una pagina a due schede per gestire le politiche e rivedere l'attività.
+Una pagina a due schede per gestire i criteri e rivedere l'attività.
 
 <Tabs>
-  <Tab title="Scheda Politiche">
-  - Seleziona più CLI agenti che failproofai protegge da un singolo pannello — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi e Gemini CLI hanno tutti una riga con stato di installazione (`Active` / `Detected` / `Inactive`), il percorso delle impostazioni nel campo dell'utente e un accento colorato del marchio. Seleziona o deseleziona i CLI che desideri e fai clic su `Apply changes` per installare/disinstallare il diff in un unico passaggio. I CLI il cui binario viene rilevato su PATH sono pre-selezionati.
-  - Attiva o disattiva singole politiche con un singolo clic (scrive su `~/.failproofai/policies-config.json` — condiviso tra ogni CLI installato)
-  - Espandi una politica per configurarne i parametri (per le politiche che supportano `policyParams`)
-  - Imposta un percorso file di politiche personalizzate
+  <Tab title="Scheda Policies">
+  - Multi-selezione quale CLI agente failproofai protegge da un singolo pannello — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi e Gemini CLI hanno tutti una riga con stato di installazione (`Active` / `Detected` / `Inactive`), il percorso delle impostazioni a livello utente e un accento di colore del marchio. Seleziona o deseleziona i CLI che desideri e fai clic su `Apply changes` per installare/disinstallare il diff in un unico passaggio. I CLI il cui binario viene rilevato su PATH sono pre-selezionati.
+  - Attiva o disattiva i singoli criteri con un singolo clic (scrive su `~/.failproofai/policies-config.json` — condiviso tra ogni CLI installato)
+  - Espandi un criterio per configurarne i parametri (per i criteri che supportano `policyParams`)
+  - Imposta un percorso file di criteri personalizzati
   </Tab>
-  <Tab title="Scheda Attività">
-  - Cronologia completamente impaginata di ogni evento hook che si è attivato in tutte le sessioni
-  - Filtra per decisione, tipo di evento, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), nome della politica o ID sessione
-  - Ogni riga mostra: timestamp, nome della politica, decisione, badge CLI (arancione = Claude Code, viola = OpenAI Codex, blu = GitHub Copilot, smeraldo = Cursor Agent, ambra = OpenCode, rosa = Pi, azzurro = Gemini CLI), nome del tool, ID sessione e il motivo per le decisioni deny/instruct
-  - Fai clic su un ID sessione per aprire la sua trascrizione — il visualizzatore rileva automaticamente quale CLI ha attivato l'hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) e renderizza il badge CLI corrispondente nell'intestazione
+  <Tab title="Scheda Activity">
+  - Cronologia completa impaginata di ogni evento hook che si è attivato su tutte le sessioni
+  - Filtra per decisione, tipo di evento, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), nome del criterio o ID della sessione
+  - Ogni riga mostra: timestamp, nome del criterio, decisione, badge CLI (arancione = Claude Code, viola = OpenAI Codex, blu = GitHub Copilot, smeraldo = Cursor Agent, ambra = OpenCode, rosa = Pi, cielo = Gemini CLI), nome del tool, ID della sessione e il motivo delle decisioni deny/instruct
+  - Fai clic su un ID di sessione per aprirne la trascrizione — il visualizzatore rileva automaticamente quale CLI ha attivato l'hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) e renderizza il badge CLI corrispondente nell'intestazione
   </Tab>
 </Tabs>
 
@@ -93,13 +92,13 @@ Una pagina a due schede per gestire le politiche e rivedere l'attività.
 
 ## Auto-refresh
 
-La dashboard ha un interruttore di auto-refresh nella navigazione in alto. Se abilitato, la pagina corrente si aggiorna periodicamente per mostrare nuove sessioni e attività di politica man mano che appaiono. Essenziale per monitorare le sessioni di agenti autonomi a lungo termine.
+Il dashboard ha un interruttore di auto-refresh nella navigazione in alto. Quando abilitato, la pagina corrente si aggiorna periodicamente per mostrare nuove sessioni e attività di criteri man mano che appaiono. Essenziale per monitorare le sessioni di agenti autonomi di lunga durata.
 
 ---
 
-## Disabilitare pagine
+## Disabilitazione delle pagine
 
-Se hai bisogno solo di alcune parti della dashboard, imposta `FAILPROOFAI_DISABLE_PAGES` su un elenco separato da virgole di nomi di pagina:
+Se hai bisogno solo di alcune parti del dashboard, imposta `FAILPROOFAI_DISABLE_PAGES` su un elenco separato da virgole dei nomi delle pagine:
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
@@ -109,9 +108,9 @@ Valori validi: `policies`, `projects`, `audit`.
 
 ---
 
-## Configurare il percorso dei progetti
+## Configurazione del percorso dei progetti
 
-Per impostazione predefinita, la dashboard legge dalla directory dei progetti Claude Code standard. Ignoralo per configurazioni personalizzate:
+Per impostazione predefinita, il dashboard legge dalla directory dei progetti Claude Code standard. Sovrascrivilo per configurazioni personalizzate:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -121,19 +120,19 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## Accesso da un host non-localhost
 
-Quando esegui la dashboard in **modalità dev** (`npm run dev`) e la accedi da un nome host diverso da `localhost` - ad esempio, un dominio personalizzato, un indirizzo IP remoto o un URL tunnelato - potresti vedere un avviso come:
+Quando esegui il dashboard in **dev mode** (`npm run dev`) e vi accedi da un nome host diverso da `localhost` - ad esempio, un dominio personalizzato, un IP remoto o un URL tunnelato - potresti vedere un avviso come:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-Questo è Next.js che blocca l'accesso cross-origin al suo websocket HMR (hot module reload), che è una funzione solo per dev. Per consentire il tuo host, utilizza il flag `--allowed-origins`:
+Questo è Next.js che blocca l'accesso cross-origin al suo websocket HMR (hot module reload), che è una funzionalità solo per sviluppatori. Per consentire il tuo host, usa il flag `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-Per più host o indirizzi IP, passa un elenco separato da virgole:
+Per più host o IP, passa un elenco separato da virgole:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
@@ -146,5 +145,5 @@ FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-Questo vale solo per la modalità dev. Quando esegui `failproofai` (modalità produzione), non c'è websocket HMR e nessun problema di risorsa dev cross-origin.
+Questo si applica solo alla modalità sviluppatore. Quando esegui `failproofai` (modalità produzione), non c'è websocket HMR e nessun problema di risorsa dev cross-origin.
 </Note>

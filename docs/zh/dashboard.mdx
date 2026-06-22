@@ -1,14 +1,14 @@
 ---
-title: 控制面板
-description: "监控 Agent 会话、查看工具调用并管理策略"
+title: 控制台
+description: "监控智能体会话、审查工具调用并管理策略"
 icon: chart-line
 ---
 
-failproofai 控制面板是一个本地 Web 应用程序，用于监控 AI Agent 会话和管理策略。查看 Agent 在你离开期间所做的一切。
+failproofai 控制台是一个本地 Web 应用程序，用于监控 AI 智能体会话和管理策略。查看智能体在您不在时所做的一切。
 
 ---
 
-## 启动控制面板
+## 启动控制台
 
 ```bash
 failproofai
@@ -16,7 +16,7 @@ failproofai
 
 在 `http://localhost:8020` 打开。
 
-控制面板直接从文件系统读取数据——包括你的 Claude Code 项目文件夹和 failproofai 配置文件。不会向远程服务写入任何数据。
+控制台直接从文件系统读取数据——包括您的 Claude Code 项目文件夹和 failproofai 配置文件。不会向远程服务写入任何内容。
 
 ---
 
@@ -24,14 +24,14 @@ failproofai
 
 ### 项目
 
-列出你机器上发现的所有 Claude Code、OpenAI Codex、GitHub Copilot CLI _(beta)_、Cursor Agent _(beta)_、OpenCode _(beta)_、Pi _(beta)_ 和 Gemini CLI _(beta)_ 项目。Claude 项目从 `~/.claude/projects/` 中发现（或通过 `CLAUDE_PROJECTS_PATH` 设置的路径）；Codex 项目通过扫描 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 下的所有转录并按每个会话第一条记录中的 `cwd` 分组来发现；Copilot CLI 项目通过扫描每个 `~/.copilot/session-state/<sessionId>/workspace.yaml`（可通过 `COPILOT_HOME` 配置）并按其 `cwd` 字段分组来发现；Cursor Agent 项目通过扫描 `~/.cursor/agent-sessions/<sessionId>/` 下的每会话元数据（可通过 `CURSOR_HOME` 配置，以 `conversations/` 和 `sessions/` 作为备用路径）中 `meta.json` / `session.json` / `workspace.yaml` 的 `cwd` 标量来发现；OpenCode 项目通过 `opencode db --format json` 查询 `~/.local/share/opencode/opencode.db` 中的 SQLite 数据库（读取 `session` 和 `project` 表并按 `project_id` 分组）来发现；Pi 项目通过扫描 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` 下的每会话 JSONL 转录（可通过 `PI_SESSIONS_DIR` 配置）并从每个会话的第一条记录中提取 `cwd` 来发现；Gemini CLI 项目通过扫描 `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`（可通过 `GEMINI_SESSIONS_DIR` 配置）并从同级 `.project_root` 文本标记中恢复规范 cwd 来发现。被多个 CLI 使用过的项目会渲染为一行，并显示所有匹配的标识。使用表格上方的 **CLI** 下拉菜单按特定 Agent CLI 过滤；URL 会将你的选择保留为 `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`。
+列出在您的机器上找到的所有 Claude Code、OpenAI Codex、GitHub Copilot CLI _(beta)_、Cursor Agent _(beta)_、OpenCode _(beta)_、Pi _(beta)_ 和 Gemini CLI _(beta)_ 项目。Claude 项目从 `~/.claude/projects/`（或由 `CLAUDE_PROJECTS_PATH` 设置的路径）中发现；Codex 项目通过扫描 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 下的所有对话记录并按每个会话首条记录中的 `cwd` 分组来发现；Copilot CLI 项目通过扫描每个 `~/.copilot/session-state/<sessionId>/workspace.yaml`（可通过 `COPILOT_HOME` 配置）并按其 `cwd` 字段分组来发现；Cursor Agent 项目通过扫描 `~/.cursor/agent-sessions/<sessionId>/`（可通过 `CURSOR_HOME` 配置，并以 `conversations/` 和 `sessions/` 作为备选路径）下每个会话的元数据，从 `meta.json` / `session.json` / `workspace.yaml` 中读取 `cwd` 标量来发现；OpenCode 项目通过 `opencode db --format json` 查询位于 `~/.local/share/opencode/opencode.db` 的 SQLite 数据库（读取 `session` 和 `project` 表并按 `project_id` 分组）来发现；Pi 项目通过扫描 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`（可通过 `PI_SESSIONS_DIR` 配置）下每个会话的 JSONL 对话记录并从每个会话的首条记录中提取 `cwd` 来发现；Gemini CLI 项目通过扫描 `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`（可通过 `GEMINI_SESSIONS_DIR` 配置）并从同级 `.project_root` 文本标记中还原规范 cwd 来发现。被多个 CLI 使用过的项目会以单行显示，并附带所有匹配的徽章。使用表格上方的 **CLI** 下拉菜单按特定智能体 CLI 筛选；URL 会将您的选择保留为 `?cli=claude|codex|copilot|cursor|opencode|pi|gemini`。
 
 每个项目显示：
 - 项目名称（从文件夹路径派生）
-- CLI 标识——`Claude Code`（橙色）、`OpenAI Codex`（紫色）、`GitHub Copilot`（蓝色）、`Cursor Agent`（翠绿色）、`OpenCode`（琥珀色）、`Pi`（粉色）和/或 `Gemini CLI`（天蓝色）
-- 最近会话活动的日期
+- CLI 徽章——`Claude Code`（橙色）、`OpenAI Codex`（紫色）、`GitHub Copilot`（蓝色）、`Cursor Agent`（翠绿色）、`OpenCode`（琥珀色）、`Pi`（粉色）和/或 `Gemini CLI`（天蓝色）
+- 最近一次会话活动的日期
 
-点击项目查看其会话。
+点击项目可查看其会话。
 
 ### 会话
 
@@ -39,53 +39,52 @@ failproofai
 - 会话 ID
 - 开始和结束时间戳
 - 工具调用次数
-- Hook 活动计数（触发的策略数）
+- Hook 活动次数（触发的策略数）
 
-使用日期范围过滤器和会话 ID 搜索来缩小列表范围。会话支持分页。
+使用日期范围筛选器和会话 ID 搜索来缩小列表范围。会话支持分页。
 
-点击会话打开会话查看器。
+点击会话可打开会话查看器。
 
 ### 会话查看器
 
-会话查看器回答了自主 Agent 的核心问题：Agent 做了什么，它是否保持在正轨上？标题旁边的 CLI 标识指示该会话是 Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 还是 Gemini CLI 的转录。它展示了会话中发生的所有事件的时间线：
+会话查看器回答了自主智能体最关键的问题：智能体做了什么，它是否保持正轨？标题旁边的 CLI 徽章指示该会话是 Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 还是 Gemini CLI 对话记录。它显示会话中发生的一切事件的时间线：
 
 - **消息** - Claude 的文本回复和用户提示
-- **工具调用** - Claude 调用的每个工具，包括其输入和输出
-- **策略活动** - 针对每次工具调用，哪些策略触发了以及返回了什么决策
+- **工具调用** - Claude 调用的每个工具，包含其输入和输出
+- **策略活动** - 针对每次工具调用，哪些策略被触发以及返回了什么决定
 
-顶部的统计栏显示会话时长、总工具调用次数以及 hook 决策摘要（allow / deny / instruct 计数）。
+顶部统计栏显示会话时长、工具调用总数以及 Hook 决定摘要（allow / deny / instruct 计数）。
 
-点击 **Download Logs** 按钮导出会话。对于 Claude Code、Codex、Copilot、Cursor、Pi 和 Gemini 会话，你将获得原始磁盘上的 JSONL 转录（逐字节）；对于 OpenCode（其会话存储在 SQLite 中而非磁盘上），你将获得一个镜像底层 `session` / `messages` / `parts` 表的 JSON 文档。
+点击**下载日志**按钮可导出会话。对于 Claude Code、Codex、Copilot、Cursor、Pi 和 Gemini 会话，您将获得磁盘上的原始 JSONL 对话记录（逐字节完整）；对于 OpenCode（其会话存储在 SQLite 而非磁盘上），您将获得一个镜像底层 `session` / `messages` / `parts` 表的 JSON 文档。
 
 ### 审计
 
-一份个性化报告，展示你的 Agent 在过去会话中的实际行为。运行与 `failproofai audit` CLI 相同的扫描，但将其渲染为六个部分的控制面板：
+一份基于个性化分析的报告，呈现您的智能体在过去会话中的实际行为。运行与 `failproofai audit` CLI 相同的扫描，但将结果渲染为一张单屏可分享的海报，以及四个折叠区域：
 
-1. **身份** — 将你的 Agent 分类为 8 种原型之一（`the optimist`、`the cowboy`、`the explorer`、`the goldfish`、`the paranoid architect`、`the precision builder`、`the hammer`、`the ghost`），基于触发的检测器和策略及其频率。渲染一个 8×8 像素图腾、原型标语、"常见于" / "主要风险"框架以及结尾一句话。
-2. **展示你的 Agent** — 将身份卡片捕获为适合发布到 X / LinkedIn 的 1200×630 PNG（点击 `make poster`）。
-3. **优势** — 你的 Agent 已经做对的行为（绿色勾选），从实时审计数据派生（干净的工具调用率、平均会话长度、零凭证泄漏、零重试风暴等）。
-4. **分数 + 排行榜** — 0–100 分数及字母等级（S/A/B/C/D/F），显示你在群体中位置的分布直方图，文字说明（"B 从 71 分开始，你还差 13 分"），以及高亮显示你所在行的排行榜表格。
-5. **发现** — 按影响排序的每条发现卡片。每张卡片展示发生了什么、代价是什么、带有真实捕获命令的证据样本，以及可以捕获相同模式的 failproofai 策略（`$ failproofai policy add <slug>`，点击复制）。
-6. **推荐策略 + 回访循环** — 所有未启用的内置策略网格（这些策略将填补缺口），附带预计分数提示，以及"7 天后重新审计"的行动号召。
+1. **海报** — 填满第一个视口。可独立导出为 PNG 的捕获区域，包含 failproof_ai 字标 + 审计标签 · 原型索引（`№ NN of 08`）+ 审计日期 · 数值评分（0–100）+ 百分位排名标签（`top 15%`）· 原型名称（`the optimist`、`the cowboy`、`the explorer`、`the goldfish`、`the paranoid architect`、`the precision builder`、`the hammer`、`the ghost` 之一）+ 3 关键词条 · `// only N% of agents are this archetype` 稀有度行 · 8×8 像素图章瓷砖 · `audit yours → failproof.ai` 页脚。捕获框外侧有三个分享按钮：`post your archetype`（X 分享）、`share on linkedin`、`download poster`。通过 `html-to-image` 生成 PNG，与屏幕渲染像素完全一致（虚线边框、SVG 徽标遮罩、渐变、字体度量——全部保留）。
+2. **优势** — 平静的 ✓ 行列表，列出您的智能体已经做得正确的行为，从实时审计数据派生（干净工具调用率、平均会话时长、零凭据泄露、零重试风暴等）。
+3. **问题** — 按影响排序列出遗漏内容的表格：`时间 · 遗漏内容 + 本可捕获该问题的策略 · 严重程度标签 · 复发情况`（新 / 本周 N 次 / 周期性）。
+4. **改进建议** — 平静的行列表，每条对应一个推荐策略：白色显示策略名称，单行描述，右侧是安装命令 + 复制按钮。区域标题处有一个 `[install all]` 按钮，可复制所有推荐策略的合并 `failproofai policy add a b c …` 命令。
+5. **更好地回归** — 两张并排卡片。左侧：设置提醒（`3d` / `7d` / `14d` / `30d` 周期选择器；通过 `/api/auth/reminder` 在认证后持久化）。右侧：解锁 failproof 特权——`invite a friend` 打开一个弹窗，接受逗号/空格/换行分隔的好友邮箱列表（每次发送最多 10 个），POST 至 `/api/audit/invite`，该接口转发到 api-server 的 `POST /v0/invite`。api-server 从 `invite@failproof.ai` 向每位收件人发送邮件，发件人抄送且 `Reply-To` 已设置，因此收件人能看到谁邀请了他们，发件人也会在收件箱收到一份副本。匿名用户会先通过 `AuthDialog` 流程，以便在发送邀请前获知发件人邮箱。权益/特权兑现为后续功能。
 
-由 `failproofai audit` 运行时驱动——有关底层扫描引擎、支持的标志和每转录缓存不变量，请参阅 [Audit CLI](/zh/cli/audit)。控制面板将最新结果缓存在 `~/.failproofai/audit-dashboard.json`（模式 `0600`，单槽，新运行覆盖），以便再次访问时立即加载；**每转录缓存和整体结果缓存在读取时如果超过 7 天则会被拒绝**，因此控制面板永远不会悄悄提供一周前的结果——超过 TTL 后，`/audit` 将回退到空状态并提示重新运行。点击报告底部附近的 `[ re-audit now ]` 将向 `/api/audit/run` 发送带有 `noCache: true` 的 POST 请求——重新审计会绕过每转录缓存并从头重新扫描每个转录，而不是悄悄返回缓存结果——控制面板以 1Hz 轮询 `/api/audit/status` 直到运行完成；运行期间，一个粘性粉色进度条固定在视口顶部并带有计时器，成功后新结果将原地替换（无需整页刷新；重新审计失败时保留先前报告）。失败时进度条变红，并根据 `RerunError.kind`（`timeout` / `network` / `post_failed`）显示相应提示。空状态（无缓存或已过期）和零会话状态（缓存存在但扫描未找到转录）分别单独呈现。
+由 `failproofai audit` 运行时驱动——扫描引擎、支持的标志和每个对话记录的缓存不变量，请参阅 [Audit CLI](/zh/cli/audit)。控制台将最新结果缓存在 `~/.failproofai/audit-dashboard.json`（模式 `0600`，单槽，新运行覆盖旧缓存），以便再次访问时即时加载；**无论是每个对话记录的缓存还是整体结果缓存，一旦超过 7 天就会在读取时被拒绝**，因此控制台永远不会静默返回一周前的旧结果——超过 TTL 后，`/audit` 会回退到空状态并提示重新运行。点击报告底部附近的 `[ re-audit now ]` 会向 `/api/audit/run` POST 请求（带 `noCache: true`）——重新审计会绕过每个对话记录的缓存，从头重新扫描所有对话记录，而不是静默返回缓存结果——控制台以 1Hz 轮询 `/api/audit/status` 直到运行完成；运行期间，一个粘性粉色进度条固定在视口顶部，并显示计时器，成功后新结果原地替换（无需整页刷新；重新审计失败时保留原有报告）。失败时进度条变红，并根据 `RerunError.kind`（`timeout` / `network` / `post_failed`）显示对应提示文案。空状态（无缓存或已过期）和零会话状态（缓存存在但扫描未发现任何对话记录）会分别呈现。
 
 ### 策略
 
-一个两标签页面，用于管理策略和查看活动。
+一个包含两个选项卡的页面，用于管理策略和审查活动。
 
 <Tabs>
-  <Tab title="策略标签">
-  - 从单个面板多选 failproofai 保护哪些 Agent CLI——Claude Code、OpenAI Codex、GitHub Copilot、Cursor Agent、OpenCode、Pi 和 Gemini CLI 都有一行，显示安装状态（`Active` / `Detected` / `Inactive`）、用户级设置路径和品牌颜色强调。勾选或取消勾选你想要的 CLI，然后点击 `Apply changes` 一次性安装/卸载差异。已在 PATH 中检测到二进制文件的 CLI 会预先勾选。
-  - 单击切换单个策略的开启或关闭状态（写入 `~/.failproofai/policies-config.json`——在所有已安装的 CLI 间共享）
+  <Tab title="策略选项卡">
+  - 在单个面板中多选 failproofai 要保护的智能体 CLI——Claude Code、OpenAI Codex、GitHub Copilot、Cursor Agent、OpenCode、Pi 和 Gemini CLI 各有一行，显示安装状态（`Active` / `Detected` / `Inactive`）、用户范围的设置路径和品牌配色强调色。勾选或取消勾选所需的 CLI，然后点击 `Apply changes`，一步完成安装/卸载差异更新。已在 PATH 中检测到二进制文件的 CLI 会预先勾选。
+  - 单击即可启用或禁用单个策略（写入 `~/.failproofai/policies-config.json`——在所有已安装的 CLI 之间共享）
   - 展开策略以配置其参数（适用于支持 `policyParams` 的策略）
   - 设置自定义策略文件路径
   </Tab>
-  <Tab title="活动标签">
-  - 所有会话中触发的每个 hook 事件的完整分页历史
-  - 按决策、事件类型、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_）、策略名称或会话 ID 过滤
-  - 每行显示：时间戳、策略名称、决策、CLI 标识（橙色 = Claude Code，紫色 = OpenAI Codex，蓝色 = GitHub Copilot，翠绿色 = Cursor Agent，琥珀色 = OpenCode，粉色 = Pi，天蓝色 = Gemini CLI）、工具名称、会话 ID，以及 deny/instruct 决策的原因
-  - 点击会话 ID 打开其转录——查看器自动检测哪个 CLI 触发了 hook（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`），并在标题中渲染匹配的 CLI 标识
+  <Tab title="活动选项卡">
+  - 跨所有会话触发的每个 Hook 事件的完整分页历史记录
+  - 按决定、事件类型、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_）、策略名称或会话 ID 筛选
+  - 每行显示：时间戳、策略名称、决定、CLI 徽章（橙色 = Claude Code，紫色 = OpenAI Codex，蓝色 = GitHub Copilot，翠绿色 = Cursor Agent，琥珀色 = OpenCode，粉色 = Pi，天蓝色 = Gemini CLI）、工具名称、会话 ID，以及 deny/instruct 决定的原因
+  - 点击会话 ID 可打开其对话记录——查看器会自动检测哪个 CLI 触发了 Hook（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`），并在标题中渲染对应的 CLI 徽章
   </Tab>
 </Tabs>
 
@@ -93,13 +92,13 @@ failproofai
 
 ## 自动刷新
 
-控制面板顶部导航中有一个自动刷新切换开关。启用后，当前页面会定期刷新，以显示新出现的会话和策略活动。这对于监控长时间运行的自主 Agent 会话至关重要。
+控制台在顶部导航栏中有一个自动刷新开关。启用后，当前页面会定期刷新，以显示新出现的会话和策略活动。这对于监控长时间运行的自主智能体会话至关重要。
 
 ---
 
 ## 禁用页面
 
-如果你只需要控制面板的某些部分，可以将 `FAILPROOFAI_DISABLE_PAGES` 设置为以逗号分隔的页面名称列表：
+如果您只需要控制台的某些部分，可将 `FAILPROOFAI_DISABLE_PAGES` 设置为逗号分隔的页面名称列表：
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
@@ -111,7 +110,7 @@ FAILPROOFAI_DISABLE_PAGES=policies failproofai
 
 ## 配置项目路径
 
-默认情况下，控制面板从标准 Claude Code 项目目录读取数据。可以为自定义设置覆盖此路径：
+默认情况下，控制台从标准 Claude Code 项目目录读取。可为自定义设置覆盖此路径：
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -121,30 +120,30 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## 从非 localhost 主机访问
 
-在**开发模式**（`npm run dev`）下运行控制面板并从 localhost 以外的主机名访问时——例如自定义域名、远程 IP 或隧道 URL——你可能会看到如下警告：
+在**开发模式**下运行控制台（`npm run dev`）并从 `localhost` 以外的主机名访问时——例如自定义域名、远程 IP 或隧道 URL——您可能会看到如下警告：
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-这是 Next.js 阻止对其 HMR（热模块重载）WebSocket 的跨域访问，这是一个仅限开发环境的功能。要允许你的主机，请使用 `--allowed-origins` 标志：
+这是 Next.js 阻止跨源访问其 HMR（热模块重载）WebSocket 的行为，这是一个仅在开发模式下存在的功能。要允许您的主机访问，请使用 `--allowed-origins` 标志：
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-对于多个主机或 IP，传入以逗号分隔的列表：
+对于多个主机或 IP，传入逗号分隔的列表：
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-你也可以改为设置 `FAILPROOFAI_ALLOWED_DEV_ORIGINS` 环境变量：
+您也可以改用 `FAILPROOFAI_ALLOWED_DEV_ORIGINS` 环境变量：
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-这仅适用于开发模式。运行 `failproofai`（生产模式）时，不存在 HMR WebSocket，也不存在跨域开发资源问题。
+这仅适用于开发模式。运行 `failproofai`（生产模式）时，不存在 HMR WebSocket，也不存在跨源开发资源问题。
 </Note>

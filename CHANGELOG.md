@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.11-beta.9 — 2026-06-22
+
+### Fixes
+- Fix the failing **Supply Chain** (OSV-Scanner) CI gate, which was red on every open PR. The dependency tree resolved `vite@8.0.14`, which carries two advisories with no in-tree patch — GHSA-fx2h-pf6j-xcff (CVSS 8.2, high) and GHSA-v6wh-96g9-6wx3 (CVSS 5.5, medium), both fixed in 8.0.16. A plain `bun update vite` only bumped the top-level copy (used by `@vitejs/plugin-react`) and left a nested `vitest`-owned `vite@8.0.14` behind, so the fix pins `vite` to `8.0.16` via `package.json` `overrides` (the mechanism `osv-scanner.toml` recommends) to dedupe the whole tree. The same scan also flagged `undici@7.27.2` — 7 advisories disclosed since the per-PR CI runs, pulled in transitively by the `jsdom` test environment — pinned to `7.28.0` via `overrides`. OSV-Scanner now reports "No issues found" (#446).
+
+### Dependencies
+- Consolidate the open Dependabot bumps #436–#445 into this single PR, each landing at the exact version its PR proposed: `next` 16.2.7 → 16.2.9 (#436), `eslint` 10.4.1 → 10.5.0 (#437), `@tailwindcss/postcss` 4.3.0 → 4.3.1 (#438), `tailwindcss` 4.3.0 → 4.3.1 (#439), `@anthropic-ai/sdk` 0.102.0 → 0.104.2 (#440, the one bump that also moves a `package.json` range, `^0.102.0` → `^0.104.2`), `vitest` 4.1.8 → 4.1.9 (#441), `lucide-react` 1.17.0 → 1.18.0 (#442), `@tanstack/react-virtual` 3.14.2 → 3.14.3 (#443), `posthog-node` 5.36.5 → 5.37.1 (#444), and `eslint-config-next` 16.2.7 → 16.2.9 (#445). The ten superseded PRs are closed in favour of this one (#446).
+
 ## 0.0.11-beta.8 — 2026-06-11
 
 ### Fixes

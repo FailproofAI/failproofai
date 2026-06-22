@@ -71,9 +71,9 @@
     "access": "public"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.102.0",
-    "@tailwindcss/postcss": "^4.1.18",
-    "@tanstack/react-virtual": "^3.13.18",
+    "@anthropic-ai/sdk": "^0.104.2",
+    "@tailwindcss/postcss": "^4.3.1",
+    "@tanstack/react-virtual": "^3.14.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -82,24 +82,26 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "clsx": "^2.1.1",
-    "eslint": "^10.2.0",
-    "eslint-config-next": "^16.2.2",
+    "eslint": "^10.5.0",
+    "eslint-config-next": "^16.2.9",
     "jsdom": "^29.1.1",
-    "lucide-react": "^1.0.1",
-    "next": "^16.2.2",
+    "lucide-react": "^1.18.0",
+    "next": "^16.2.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.1.18",
+    "tailwindcss": "^4.3.1",
     "typescript": "6.0.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
-    "posthog-node": "^5.28.11"
+    "posthog-node": "^5.37.1"
   },
   "overrides": {
     "postcss": "8.5.14",
-    "eslint-plugin-react-hooks": "7.0.1"
+    "eslint-plugin-react-hooks": "7.0.1",
+    "vite": "8.0.16",
+    "undici": "7.28.0"
   }
 }

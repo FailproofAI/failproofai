@@ -54,7 +54,7 @@ jobs:
       FAILPROOFAI_TELEMETRY_DISABLED: "1"
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -107,7 +107,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download all translations
         continue-on-error: true

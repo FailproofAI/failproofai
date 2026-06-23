@@ -353,6 +353,7 @@ function MainReport({
           <ComeBackBetterSection
             isRunning={isRunning}
             onRerun={() => onRerun("return_section")}
+            score={score}
           />
         </div>
         <ReportFooter cachedAt={cachedAt} />

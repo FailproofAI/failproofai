@@ -24,6 +24,9 @@ interface Props {
    *  submit). The parent should re-open the AuthDialog so the user can
    *  re-authenticate; without this, a 401 dead-ends with an inline error. */
   onUnauthorized?: () => void;
+  /** Sender's audit score (0–100), forwarded to the api-server so the invite
+   *  body can show "mine came out at N/100". Omitted → score-free copy. */
+  score?: number;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,7 +49,7 @@ function parseEmails(input: string): { valid: string[]; invalid: string[] } {
   return { valid, invalid };
 }
 
-export function InviteDialog({ open, onClose, source, onUnauthorized }: Props): React.ReactElement | null {
+export function InviteDialog({ open, onClose, source, onUnauthorized, score }: Props): React.ReactElement | null {
   const { capture } = usePostHog();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,7 +105,7 @@ export function InviteDialog({ open, onClose, source, onUnauthorized }: Props): 
         const res = await fetch("/api/audit/invite", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ to: valid }),
+          body: JSON.stringify({ to: valid, score }),
         });
         const body = (await res.json().catch(() => ({}))) as {
           sent?: string[];
@@ -141,7 +144,7 @@ export function InviteDialog({ open, onClose, source, onUnauthorized }: Props): 
         setBusy(false);
       }
     },
-    [busy, valid, invalid, capture, source, onClose, onUnauthorized],
+    [busy, valid, invalid, capture, source, onClose, onUnauthorized, score],
   );
 
   if (!open) return null;

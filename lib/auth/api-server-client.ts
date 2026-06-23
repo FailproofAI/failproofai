@@ -249,17 +249,20 @@ export interface InviteSendResult {
 /**
  * Send invite emails to a batch of friends. The api-server pulls the sender's
  * email from the access-token claims and Cc's them on every outbound message
- * so the recipient sees who invited them.
+ * so the recipient sees who invited them. `score` (the sender's audit score,
+ * 0–100) is forwarded so the invite body can show "mine came out at N/100";
+ * omit it and the api-server renders score-free copy.
  *
  * Contract is handed over to the platform team separately.
  */
 export async function sendInvites(
   accessToken: string,
   to: string[],
+  score?: number,
 ): Promise<InviteSendResult> {
   return postJson<InviteSendResult>(
     "/v0/invite",
-    { to },
+    score === undefined ? { to } : { to, score },
     { accessToken },
   );
 }

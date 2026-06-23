@@ -27,6 +27,8 @@ import { InviteDialog } from "./invite-dialog";
 interface Props {
   isRunning: boolean;
   onRerun: () => void;
+  /** Current audit score (0–100), forwarded into the invite email body. */
+  score?: number;
 }
 
 const DEFAULT_REMINDER_DAYS = 7;
@@ -68,7 +70,7 @@ function formatNextAudit(unixSecs: number): string {
   });
 }
 
-export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
+export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
   const { capture } = usePostHog();
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ kind: "unknown" });
   const [reminder, setReminder] = useState<Reminder | null>(null);
@@ -306,6 +308,7 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
       <InviteDialog
         open={inviteDialogOpen}
         source="come_back_better_section"
+        score={score}
         onClose={() => setInviteDialogOpen(false)}
         onUnauthorized={() => {
           // Session expired between probe and submit — flip back to anon

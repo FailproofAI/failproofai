@@ -13,6 +13,7 @@ import {
   decodeJwt,
   requestLoginCode,
   scheduleReminder,
+  sendInvites,
 } from "@/lib/auth/api-server-client";
 
 describe("api-server-client fetchWithTimeout telemetry", () => {
@@ -127,6 +128,44 @@ describe("cancelReminder", () => {
       new Response(JSON.stringify({ code: "unauthorized", message: "no" }), { status: 401 }),
     ) as unknown as typeof fetch;
     await expect(cancelReminder("at-1")).rejects.toBeInstanceOf(AuthApiError);
+  });
+});
+
+describe("sendInvites", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    trackEventMock.mockClear();
+  });
+
+  const okResult = { sent: ["b@x.co"], failed: [] };
+  const mockFetch = () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(okResult), { status: 200 }),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+    return fetchMock;
+  };
+  const bodyOf = (fetchMock: typeof fetch) => {
+    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    return JSON.parse(init.body as string) as { to: string[]; score?: number };
+  };
+
+  it("includes the score in the POST body when provided", async () => {
+    const fetchMock = mockFetch();
+    const out = await sendInvites("at-1", ["b@x.co"], 18);
+    expect(out).toEqual(okResult);
+    const body = bodyOf(fetchMock);
+    expect(body.to).toEqual(["b@x.co"]);
+    expect(body.score).toBe(18);
+  });
+
+  it("omits the score key entirely when not provided", async () => {
+    const fetchMock = mockFetch();
+    await sendInvites("at-1", ["b@x.co"]);
+    const body = bodyOf(fetchMock);
+    expect(body.to).toEqual(["b@x.co"]);
+    expect("score" in body).toBe(false);
   });
 });
 

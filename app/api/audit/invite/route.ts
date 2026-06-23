@@ -28,6 +28,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface InviteBody {
   to?: unknown;
+  score?: unknown;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -132,8 +133,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Optional sender audit score (0–100), surfaced in the invite body. Coerce
+  // defensively — the value is client-supplied: ignore non-finite garbage,
+  // round, then clamp into range before forwarding upstream.
+  let score: number | undefined;
+  if (typeof body.score === "number" && Number.isFinite(body.score)) {
+    score = Math.max(0, Math.min(100, Math.round(body.score)));
+  }
+
   try {
-    const result = await sendInvites(who.auth.access_token, normalised);
+    const result = await sendInvites(who.auth.access_token, normalised, score);
     trackEvent("audit_invite_sent", {
       status: "success",
       source: "dashboard",

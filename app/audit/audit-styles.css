@@ -617,7 +617,7 @@
   padding-bottom: 12px;
   border-bottom: 1px dashed var(--line);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 0.04em;
 }
 .poster-wordmark {
@@ -625,7 +625,7 @@
   display: inline-flex; align-items: center; gap: 8px;
 }
 .poster-wordmark .poster-logo {
-  height: 14px;
+  height: 18px;
   width: auto;
   display: block;
 }
@@ -730,7 +730,7 @@
   padding-top: 10px;
   border-top: 1px dashed var(--line);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 14px;
 }
 .poster-brand {
   color: var(--ink);
@@ -802,7 +802,7 @@
   .poster { padding: 24px 22px; }
   .poster-body { gap: 28px; padding: 12px 0; }
   .poster-share-row { grid-template-columns: 1fr; }
-  .poster-head { font-size: 10px; }
+  .poster-head { font-size: 12px; }
   .poster-score .score-n { font-size: clamp(72px, 18vw, 120px); }
   .poster-persona .persona-name { font-size: clamp(36px, 9vw, 56px); }
 }

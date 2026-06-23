@@ -1,58 +1,95 @@
 ---
 title: Vergangene Sitzungen prüfen (Beta)
-description: "Zählt, wie oft der Agent in vergangenen Transkripten verschwenderische oder riskante Aktionen durchgeführt hat"
+description: "Wie oft der Agent in vergangenen Transkripten verschwenderische oder riskante Aktionen ausgeführt hat"
 ---
 
 <Note>
-  **Beta-Funktion.** Die Prüfung wird als Beta veröffentlicht, während wir
-  frühes Feedback sammeln. Der Detektor-Katalog und das Berichtsformat können
-  sich vor dem nächsten stabilen Release ändern. Bitte öffne ein Issue, wenn
-  etwas nicht stimmt.
+  **Beta-Funktion.** Das Audit wird als Beta ausgeliefert, während wir erstes Feedback sammeln.
+  Der Detektor-Katalog und das Berichtsformat können sich vor dem nächsten stabilen
+  Release ändern. Bitte öffne ein Issue, wenn etwas nicht stimmt.
 </Note>
 
-Die Prüfung ist jetzt als **/audit-Dashboard-Seite** verfügbar, nicht als CLI-Unterbefehl. Öffne sie über die Dashboard-Navigationsleiste (zwischen Policies und Projekten) oder besuche `http://localhost:8020/audit` direkt, wenn `failproofai` lokal läuft.
+Das Audit spielt vergangene Agent-CLI-Transkripte durch die Richtlinien-Engine von failproofai ab
+und erstellt einen teilbaren, visuellen Bericht auf der **`/audit`-Dashboard-Seite** —
+den Archetyp deines Agenten, einen Score von 0–100 und genau, welche Richtlinien was abgefangen hätten.
 
-```bash
-failproofai          # open the dashboard, then click "Audit"
+## Ausführen
+
+Drei Einstiegswege — alle landen im gleichen `/audit`-Bericht.
+
+<CodeGroup>
+
+```bash npx (keine Installation)
+npx -y failproofai audit
 ```
 
-Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Gerät (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) und meldet, wie oft der Agent Dinge getan hat, die failproofai verhindern soll — Umgebungsvariablen-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Lesen gerade bearbeiteter Dateien und mehr.
+```bash failproofai audit
+failproofai audit
+```
 
-Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 39 integrierten Policies **und** durch 8 nur für die Prüfung vorgesehene Detektoren wiedergegeben, die Muster erkennen, die noch nicht durch Laufzeit-Policies abgedeckt sind. Zählungen werden pro Policy / Detektor über alle Sitzungen aggregiert.
+```bash failproofai (Dashboard)
+failproofai
+```
+
+</CodeGroup>
+
+<CardGroup cols={3}>
+  <Card title="Keine Installation" icon="bolt">
+    `npx -y failproofai audit` lädt failproofai herunter, führt den Scan durch und öffnet das
+    Dashboard — ohne vorherige Installation.
+  </Card>
+  <Card title="Über die CLI" icon="terminal">
+    `failproofai audit` führt den Scan im Terminal aus und öffnet anschließend
+    automatisch `localhost:8020/audit`.
+  </Card>
+  <Card title="Über das Dashboard" icon="gauge">
+    Starte `failproofai` und klicke in der Navigationsleiste auf **Audit** (zwischen Policies und
+    Projects), oder öffne `/audit` direkt.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Führe `failproofai audit -h` (oder `--help`) aus, um die Nutzungshinweise anzuzeigen. Das Audit läuft **vollständig
+  offline** — kein Konto und keine Netzwerkverbindung erforderlich — und das Dashboard bleibt aktiv,
+  bis du es mit `Ctrl+C` beendest.
+</Tip>
+
+Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) und zeigt, wie oft der Agent Dinge getan hat, die failproofai verhindern soll — Umgebungsvariablen-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Lesen gerade bearbeiteter Dateien und mehr.
+
+Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 39 eingebauten Richtlinien **und** durch 8 Audit-exklusive Detektoren abgespielt, die Muster erkennen, die noch nicht durch Laufzeitrichtlinien abgedeckt sind. Die Zählungen werden pro Richtlinie / Detektor über alle Sitzungen hinweg aggregiert.
 
 ## Was du erhältst
 
-Die `/audit`-Seite besteht aus sechs Abschnitten:
+Die `/audit`-Seite ist ein einseitiges, teilbares **Poster**, gefolgt von vier Abschnitten unterhalb des sichtbaren Bereichs:
 
-1. **Identität** — dein Agent wird anhand des gewichteten Signals über alle geprüften Transkripte in einen von 8 Archetypen eingeordnet (`optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`).
-2. **Stärken** — echte Zahlen aus dem Scan (Anteil sauberer Aufrufe in %, „0 Credential-Leaks" usw.), die davon abhängen, dass die relevanten Sanitize-Policies tatsächlich ausgelöst haben.
-3. **Score** — 0–100 mit den Bandbreiten S/A/B/C/D/F und einem prognostizierten Anstieg, wenn alle empfohlenen Policies aktiviert wären.
-4. **Befunde** — Policy-Karten mit Beschreibung des Vorgefallenen, Kosten, gesammelten Belegen und dem genauen `failproofai policy add <slug>`-Befehl, um das integrierte Live-Feature zu aktivieren, das den Vorfall abgefangen hätte.
-5. **Empfohlene Policies** — aggregierte Installationsliste mit einem einzigen `failproofai policies --install`-Befehl.
-6. **Erinnerung zur erneuten Prüfung** — „komm besser zurück." Richte eine 7-tägige E-Mail-Erinnerung über den API-Server ein (erfordert Anmeldung; siehe [`failproofai auth`](/de/cli/auth)).
+1. **Poster** — die Identität deines Agenten auf einen Blick: sein **Archetyp** (einer von 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), seine Persona-Schlüsselwörter, wie selten dieser Archetyp ist, und ein **Score von 0–100** mit einem Stufenband (`S` bis `bottom tier`). Zum Teilen gedacht — poste es auf X oder LinkedIn oder lade es als PNG herunter.
+2. **`// strengths`** — was dein Agent bereits gut macht, als echte Zahlen aus dem Scan (z. B. Clean-Tool-Call-%, `0` Push-to-Main-Versuche), nur angezeigt, wenn die entsprechende Richtlinie eine saubere Bilanz hat.
+3. **`// quirks`** — was durchgeglitten ist: eine nach Rang sortierte Tabelle der Verhaltensweisen, die failproofai abgefangen hätte — *wann* es zuletzt vorkam, *was durchgeglitten ist* (und das eingebaute Tool, das es blockiert hätte), dessen *Schweregrad* und wie oft es *gesehen* wurde (`new` / `recurring` / `N× seen`).
+4. **`// how to improve`** — die vorgeschriebene Verbesserungsliste: eine Zeile pro Richtlinie mit einem kopierfertigen `failproofai policy add <slug>`, plus einem **Alle installieren**-Button, der alle Empfehlungen auf einmal aktiviert und deinen **prognostizierten Score** anzeigt.
+5. **`// come back better`** — die Gewohnheit aufbauen: eine E-Mail-**Erinnerung** für ein erneutes Audit setzen (`3d` / `7d` / `14d` / `30d`) oder jetzt erneut prüfen, und **einen Freund einladen**, sein eigenes Audit durchzuführen (gesendet von failproof.ai, Cc an dich). Erinnerungen und Einladungen erfordern eine Anmeldung — siehe [`failproofai auth`](/de/cli/auth).
 
-## Nur für die Prüfung vorgesehene Detektoren
+## Audit-exklusive Detektoren
 
-Diese erkennen Muster für „unintelligentes Verhalten", die (noch) nicht in Echtzeit durchgesetzt werden. Sie laufen nur während der Prüfung und blockieren niemals einen Live-Tool-Aufruf.
+Diese erkennen Muster für dummes Verhalten, die (noch) nicht in Echtzeit durchgesetzt werden. Sie laufen nur während des Audits und blockieren nie einen Live-Tool-Aufruf.
 
-| Detektor | Was gezählt wird |
+| Detektor | Was er zählt |
 |---|---|
 | `redundant-cd-cwd` | Bash-Befehle, die mit `cd <cwd> && …` beginnen, obwohl Befehle bereits in `cwd` ausgeführt werden. |
-| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` auf eine einzelne Quelldatei — verwende stattdessen das `Read`-Tool. |
-| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file`-In-Place-Bearbeitungen — verwende stattdessen das `Edit`-Tool. |
-| `prefer-write-over-heredoc` | Heredoc / mehrzeiliges `echo > file` zum Schreiben von Dateien — verwende stattdessen das `Write`-Tool. |
-| `sleep-polling-loop` | Lange `sleep N`-Aufrufe (≥ 30 s) oder `while …; sleep …; done`-Polling-Schleifen. |
-| `find-from-root` | `find /`, `find /home`, `find /usr` usw. — schränke auf `cwd` ein. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` auf einer einzelnen Quelldatei — verwende stattdessen das `Read`-Tool. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` direkte Bearbeitungen — verwende stattdessen das `Edit`-Tool. |
+| `prefer-write-over-heredoc` | Heredoc / mehrzeilige `echo > file`-Dateioperationen — verwende stattdessen das `Write`-Tool. |
+| `sleep-polling-loop` | Lange `sleep N`-Befehle (≥ 30s) oder `while …; sleep …; done`-Polling-Schleifen. |
+| `find-from-root` | `find /`, `find /home`, `find /usr` usw. — auf `cwd` eingrenzen. |
 | `git-commit-no-verify` | `git commit … --no-verify` / `-n`, wodurch Hooks übersprungen werden. |
-| `reread-after-edit` | `Read` einer Datei, die gerade mit `Edit`/`Write` in derselben Sitzung bearbeitet wurde. |
+| `reread-after-edit` | `Read` einer Datei, die in derselben Sitzung gerade per `Edit`/`Write` bearbeitet wurde. |
 
 ## Caches
 
-- **Transkript-spezifischer Cache** unter `~/.failproofai/cache/audit/<sha1>.json`, indexiert nach `(mtime, size, engineVersion, detectorVersion)` — wird automatisch ungültig, wenn das Transkript oder der Policy-/Detektor-Code sich ändert. Jeder Eintrag speichert außerdem einen `cachedAt`-Zeitstempel als **TTL-Metadaten** (kein Teil des Cache-Schlüssels); Einträge, die älter als **7 Tage** sind, werden beim Lesen abgelehnt, damit langlebige Ergebnisse nicht die Weiterentwicklung der Detektoren überdauern.
-- **Gesamtergebnis-Cache** unter `~/.failproofai/audit-dashboard.json` (Modus 0600). Ermöglicht dem Dashboard eine sofortige Darstellung beim Navigieren, ohne erneut ausgeführt zu werden. Ebenfalls nach Ablauf des **7-Tage-TTL** beim Lesen abgelehnt — `/audit` fällt dann in seinen leeren Zustand zurück und fordert einen neuen Durchlauf an. Klicke auf `[ re-audit now ]` unten im Bericht, um zu aktualisieren — eine erneute Prüfung sendet `noCache: true`, umgeht damit den transkriptspezifischen Cache und scannt alle Transkripte neu, anstatt das gecachte Ergebnis zurückzugeben; der Durchlauf streamt den Fortschritt über einen fixierten oberen Streifen und tauscht das Ergebnis bei Erfolg direkt aus (kein Seitenneuladen; eine fehlgeschlagene erneute Prüfung behält den vorherigen Bericht).
+- **Transkript-spezifischer Cache** unter `~/.failproofai/cache/audit/<sha1>.json`, indiziert nach `(mtime, size, engineVersion, detectorVersion)` — wird automatisch invalidiert, wenn das Transkript oder der Richtlinien-/Detektor-Code sich ändert. Jeder Eintrag speichert auch einen `cachedAt`-Zeitstempel als **TTL-Metadaten** (nicht Teil des Cache-Schlüssels); Einträge, die älter als **7 Tage** sind, werden beim Lesen abgelehnt, damit langlebige Ergebnisse nicht die Weiterentwicklung der Detektoren überdauern.
+- **Gesamtergebnis-Cache** unter `~/.failproofai/audit-dashboard.json` (Modus 0600). Ermöglicht sofortiges Rendern des Dashboards bei der Navigation ohne erneuten Scan. Ebenfalls nach dem **7-Tage-TTL** abgelehnt — `/audit` fällt dann in seinen leeren Zustand zurück und fordert einen neuen Scan an. Klicke auf `[ re-audit now ]` unten im Bericht zum Aktualisieren — Re-Audit sendet `noCache: true`, umgeht damit den transkriptspezifischen Cache und scannt alle Transkripte neu, anstatt das gecachte Ergebnis zurückzugeben; der Lauf streamt den Fortschritt über einen festen oberen Streifen und tauscht das Ergebnis bei Erfolg an Ort und Stelle aus (kein Seitenneulade; ein fehlgeschlagenes Re-Audit behält den vorherigen Bericht).
 
 ## Hinweise
 
-- **Keine Änderungen.** Die Prüfung läuft im reinen Lesemodus. `warn-repeated-tool-calls` wird übersprungen, da sein sitzungsspezifischer Begleiter sonst verändert würde.
-- **Workflow-Policies werden übersprungen.** `require-*-before-stop`-Policies werden nur bei `Stop`-Ereignissen ausgelöst und führen `execSync` gegen den Live-Git-Zustand aus — sie haben keine sinnvolle Interpretation im Sinne von „Was wäre 2025 passiert", daher erscheinen sie nicht in den Prüfzählungen.
-- **Benutzerdefinierte Policies werden übersprungen.** Benutzerdefinierte Hooks werden nicht wiedergegeben (sie können sich seit der ursprünglichen Sitzung geändert haben).
+- **Keine Mutation.** Das Audit wird im Nur-Lese-Modus abgespielt. `warn-repeated-tool-calls` wird übersprungen, da dessen sitzungsspezifische Hilfsdatei andernfalls geändert würde.
+- **Workflow-Richtlinien übersprungen.** `require-*-before-stop`-Richtlinien werden nur bei `Stop`-Ereignissen ausgelöst und führen `execSync` gegen den Live-Git-Status aus — sie haben keine sinnvolle Interpretation im Sinne von 2025, daher erscheinen sie nicht in den Audit-Zählungen.
+- **Benutzerdefinierte Richtlinien übersprungen.** Vom Benutzer bereitgestellte benutzerdefinierte Hooks werden nicht abgespielt (sie können sich seit der ursprünglichen Sitzung geändert haben).

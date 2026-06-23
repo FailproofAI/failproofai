@@ -1,10 +1,10 @@
 ---
 title: לוח בקרה
-description: "עקוב אחר הפעלות של סוכנים, בדוק קריאות כלים וניהל מדיניות"
+description: "מراقبة جلسات الوكيل، مراجعة استدعاءات الأدوات، وإدارة السياسات"
 icon: chart-line
 ---
 
-לוח הבקרה של failproofai היא אפליקציית אינטרנט מקומית לניטור של הפעלות סוכן AI שלך וניהול מדיניות. ראה מה עשו הסוכנים שלך בזמן שלא היית שם.
+לוח הבקרה של failproofai הוא יישום אינטרנט מקומי לניטור של جلسات סוכני AI שלך וניהול מדיניויות. ראה מה העשו הסוכנים שלך בזמן שהיית רחוק.
 
 ---
 
@@ -14,77 +14,81 @@ icon: chart-line
 failproofai
 ```
 
-נפתח בכתובת `http://localhost:8020`.
+נפתח ב-`http://localhost:8020`.
 
-לוח הבקרה קורא ישירות מהמערכת של קבצים - תיקיות פרויקט Claude Code וקובצי תצורה של failproofai. שום דבר לא נשמר לשירות מרחוק.
+לוח הבקרה קורא ישירות מקובץ המערכת - תיקיות הפרויקט Claude Code שלך וקובצי הגדרות failproofai. שום דבר לא נכתב לשירות מרחוק.
 
 ---
 
-## עמודים
+## דפים
 
 ### Projects
 
-מפרטת את כל פרויקטי Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ ו-Gemini CLI _(beta)_ שנמצאו במחשב שלך. פרויקטי Claude מתגלים מ-`~/.claude/projects/` (או הנתיב שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מתגלים על ידי סריקה של כל תמלול תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי `cwd` שנרשם ברשומה הראשונה של כל הפעלה; פרויקטי Copilot CLI מתגלים על ידי סריקה של כל `~/.copilot/session-state/<sessionId>/workspace.yaml` (ניתן לעדכון דרך `COPILOT_HOME`) וקיבוץ לפי שדה `cwd` שלו; פרויקטי Cursor Agent מתגלים על ידי סריקה של מטא-נתונים לכל הפעלה תחת `~/.cursor/agent-sessions/<sessionId>/` (ניתן לעדכון דרך `CURSOR_HOME`, עם `conversations/` ו-`sessions/` הנדונים כחילופיים) עבור סקלר `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מתגלים על ידי שאילתה של מסד הנתונים SQLite שלו בכתובת `~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנו קוראים את הטבלאות `session` ו-`project` ומקבצים לפי `project_id`); פרויקטי Pi מתגלים על ידי סריקה של תמלולי JSONL לכל הפעלה תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (ניתן לעדכון דרך `PI_SESSIONS_DIR`) וחילוץ ה-`cwd` מהרשומה הראשונה של כל הפעלה; פרויקטי Gemini CLI מתגלים על ידי סריקה של `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (ניתן לעדכון דרך `GEMINI_SESSIONS_DIR`) והחזרת ה-cwd הקנוני מסימן הטקסט `.project_root` הסמוך. פרויקט שהשתמשו בו מספר CLIs מתוצג כשורה אחת עם כל הדגלים התואמים. השתמש בתפריט הנפתח **CLI** מעל הטבלה כדי לסנן לפי סוכן CLI מסוים; כתובת ה-URL שמרת בחירתך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
+רשימה של כל פרויקטי Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, ו-Gemini CLI _(beta)_ שנמצאו במחשב שלך. פרויקטי Claude מתגלים מ-`~/.claude/projects/` (או המסלול שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מתגלים על ידי סריקת כל תמלול תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי `cwd` המוקלט בתיעוד הראשון של כל סession; פרויקטי Copilot CLI מתגלים על ידי סריקת `~/.copilot/session-state/<sessionId>/workspace.yaml` (הניתן להגדרה דרך `COPILOT_HOME`) וקיבוץ לפי שדה `cwd` שלו; פרויקטי Cursor Agent מתגלים על ידי סריקת מטא-נתונים לכל סession תחת `~/.cursor/agent-sessions/<sessionId>/` (הניתן להגדרה דרך `CURSOR_HOME`, עם `conversations/` ו-`sessions/` בדוקים כחלופות) עבור סקלאר `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מתגלים על ידי שאילתה של מסד נתונים SQLite שלו ב-`~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנחנו קוראים את הטבלאות `session` ו-`project` וקיבוץ לפי `project_id`); פרויקטי Pi מתגלים על ידי סריקת תמלולי JSONL לכל סession תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (הניתן להגדרה דרך `PI_SESSIONS_DIR`) ושימור `cwd` מתיעוד הראשון של כל סession; פרויקטי Gemini CLI מתגלים על ידי סריקת `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (הניתן להגדרה דרך `GEMINI_SESSIONS_DIR`) והחזרת cwd הקנוני מסימן `project_root` הטקסטי הסמוך. פרויקט שהשתמשו בו מספר CLIs מוצג בשורה אחת עם כל התגים המתאימים. השתמש בתפריט הנפתח **CLI** מעל הטבלה כדי לסנן לפי CLI סוכן ספציפי; ה-URL משמר את הבחירה שלך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|gemini`.
 
 כל פרויקט מציג:
-- שם הפרויקט (הנגזר מנתיב התיקייה)
-- דגל CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (אזמרגד), `OpenCode` (amber), `Pi` (ורוד), ו/או `Gemini CLI` (sky)
-- תאריך של פעילות ההפעלה האחרונה
+- שם הפרויקט (מושא מנתיב התיקייה)
+- תג CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (זמרד), `OpenCode` (ענבר), `Pi` (ורוד), ו/או `Gemini CLI` (שמיים)
+- תאריך של פעילות הסession הקודמת
 
-לחץ על פרויקט כדי לראות את ההפעלות שלו.
+לחץ על פרויקט כדי לראות את הsessions שלו.
 
 ### Sessions
 
-מפרטת את כל ההפעלות בתוך פרויקט. כל הפעלה מציגה:
-- מזהה הפעלה
+רשימה של כל הsessions בתוך פרויקט. כל סession מציג:
+- Session ID
 - חותמות זמן התחלה וסיום
-- מספר קריאות כלים
-- ספירת פעילות hook (מדיניות שעלו בתוקף)
+- מספר קריאות הכלים
+- ספירת פעילות hook (מדיניויות שהופעלו)
 
-השתמש בסינון טווח התאריכים וחיפוש מזהה ההפעלה כדי לצמצם את הרשימה. הפעלות מחולקות לעמודים.
+השתמש בסנן טווח התאריך וחיפוש Session ID כדי לצמצם את הרשימה. Sessionsים מחולקים לעמודים.
 
-לחץ על הפעלה כדי לפתוח את מציג ההפעלות.
+לחץ על סession כדי לפתוח את מציג הsession.
 
-### Session viewer
+### מציג Session
 
-מציג ההפעלות עונה על השאלה המרכזית עבור סוכנים אוטונומיים: מה עשה הסוכן, והאם הוא נשאר על עקבותיו? דגל CLI ליד הכותרת מעיד אם ההפעלה היא תמלול Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi או Gemini CLI. הוא מציג ציר הזמן של כל מה שקרה בהפעלה:
+מציג הsession עונה על השאלה המרכזית עבור סוכנים אוטונומיים: מה עשה הסוכן, והאם הוא נשאר בעקבות? תג CLI ליד הכותרת מציין האם הsession הוא תמלול Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, או Gemini CLI. הוא מציג ציר הזמן של כל מה שקרה בsession:
 
-- **Messages** - תגובות טקסט של Claude והנחיות משתמש
-- **Tool calls** - כל כלי שב-Claude שימש, עם הקלט והפלט שלו
-- **Policy activity** - עבור כל קריאת כלים, אילו מדיניות עלו בתוקף ואיזו החלטה הן החזירו
+- **Messages** - תגובות טקסט של Claude והודעות משתמש
+- **Tool calls** - כל כלי שClaude הפעיל, עם הקלט והפלט שלו
+- **Policy activity** - לכל קריאת כלי, אילו מדיניויות הופעלו ואיזו החלטה הן החזירו
 
-סרגל הסטטיסטיקות בחלק העליון מציג משך ההפעלה, סך הקריאות של כלים וסיכום של החלטות hook (ספירות allow / deny / instruct).
+סרגל הסטטיסטיקה בחלק העליון מציג משך הsession, סך כל קריאות הכלים, וסיכום החלטות hook (ספירות allow / deny / instruct).
 
-לחץ על כפתור **Download Logs** כדי לייצא את ההפעלה. עבור ההפעלות Claude Code, Codex, Copilot, Cursor, Pi ו-Gemini אתה מקבל את תמלול JSONL על הדיסק המקורי בן לעצמו; עבור OpenCode (שההפעלות שלה חיות ב-SQLite ולא על הדיסק) אתה מקבל מסמך JSON המשקף את הטבלאות `session` / `messages` / `parts` הבסיסיות.
+לחץ על כפתור **Download Logs** כדי לייצא את הsession. עבור Sessionsי Claude Code, Codex, Copilot, Cursor, Pi, ו-Gemini אתה מקבל את תמלול JSONL המקורי בדיסק בתים-בתים; עבור OpenCode (שהsessionsים שלה חיים ב-SQLite, לא בדיסק) אתה מקבל מסמך JSON המשקף את הטבלאות `session` / `messages` / `parts` הבסיסיות.
 
 ### Audit
 
-דוח מופעל על ידי אישיות כיצד הסוכן שלך למעשה התנהג בהפעלות קודמות. מפעיל את אותה סריקה כמו ממשק השורה של `failproofai audit` אך עובר אותו כעמוד אחד שניתן לשיתוף כרזה + ארבע חלקים מתחת:
+דוח מונע בעקבות אישיות איך הסוכן שלך התנהג בפועל על פני sessionsים קודמים. מפעיל את אותה סריקה כמו CLI `failproofai audit` אבל מעניק אותה כפוסטר בן מסך יחיד שניתן לשיתוף + ארבעה חלקים מתחת לקפל:
 
-1. **Poster** — ממלא את הצפייה הראשונה. אזור NPG עצמאי עם סימן failproof_ai + תווית audit · אינדקס ארכיטיפ (`№ NN של 08`) + תאריך audit · ניקוד מספרי (0–100) + כדור דרגה percentile (`top 15%`) · שם הארכיטיפ (אחד מ-`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + רצועת מילים חשובות של 3 · `// רק N% של סוכנים הם ארכיטיפ זה` שורת נדירות · אריח sigil של 8×8 pixel · כותרת תחתונה `audit yours → failproof.ai`. שלושה כפתורי שיתוף יושבים בדיוק מחוץ תיבת הלכידה: `post your archetype` (כוונת X), `share on linkedin`, `download poster`. הלכידה פועלת דרך `html-to-image` כך ש-PNG תואם את ההעברה על המסך pixel-to-pixel (גבולות מקווקוו, מסקת לוגו SVG, הדרגתיות, מדדי פונט — כל זה נשמר).
-2. **Strengths** — רשימת שורות רגועה ✓ של התנהגויות שהסוכן שלך כבר עושה נכון, הנגזרות מנתוני האודיט החי (שיעור קריאות כלים נקי, אורך הפעלה ממוצע, אפס דליפות אישור, אפס סערות ניסיון חוזר וכו').
-3. **Quirks** — טבלת מה התגנב, מדורגת לפי השפעה: `time · what slipped + policy that would've caught it · severity pill · recurrence` (חדש / Nx שבוע זה / חוזר).
-4. **How to improve** — רשימת שורות רגועה, אחת לכל מדיניות קבועה: שם מדיניות בלבן, תיאור בשורה אחת, פקודת התקנה + כפתור העתקה בצד ימין. כפתור `[install all]` בכותרת הקטע העתק את הפקודה `failproofai policy add a b c …` המשולבת עבור כל מדיניות קבועה.
-5. **Come back better** — שתי כרטיסים זה לצד זה. שמאל: קבע תזכורת (בחיר קדנציה `3d` / `7d` / `14d` / `30d`; נשמר דרך `/api/auth/reminder` ברגע שמאומת). ימין: בטל נעילה של יתרונות failproof — `invite a friend` פותח מודאל שלוקח רשימה מופרדת בפסיקומה/רווח/שורה חדשה של דברי בן זוג (מקס 10 לשליחה), POSTs אותם ל-`/api/audit/invite`, שמעביר לשרת ה-api של `POST /v0/invite`. שרת ה-api שולח דוא"ל אחד לכל נמען מ-`invite@failproof.ai` עם המשדר מכובד ו-`Reply-To` שנקבע, כך שהנמען רואה מי זימן אותו והשולח מקבל עותק בתיבת הדואר שלו. משתמשים אנונימיים מועברים דרך `AuthDialog` תחילה כך שדוא"ל השולח ידוע לפני שההזמנות יוצאות. זכאות / מילוי יתרונות היא תעקוב.
+1. **Poster** — ממלא את viewport הראשון. אזור PNG בעצמאות המעט עם ה-failproof_ai wordmark + תווית audit · אינדקס archetype (`№ NN of 08`) + תאריך audit · ניקוד מספרי (0–100) + כדור דרגת אחוזון (`top 15%`) · שם archetype (אחד מ-`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + רצועת 3 מילים · `// only N% of agents are this archetype` שורת נדירות · sigil tile של 8×8 פיקסל · `audit yours → failproof.ai` תוחלת. שלושה כפתורי שיתוף יושבים בחוץ מ-capture box: `post your archetype` (X intent), `share on linkedin`, `download poster`. Capture פועל דרך `html-to-image` אז ה-PNG תואם את הרינדור בעל המסך פיקסל-לפיקסל (גבולות מקווקווים, SVG logo mask, gradients, font metrics — הכל משומר).
 
-מונע על ידי זמן הריצה של `failproofai audit` — ראה [Audit CLI](/he/cli/audit) עבור מנוע הסריקה הבסיסי, דגלים נתמכים וחוקיות מטמון לכל תמלול. לוח הבקרה משמר את התוצאה האחרונה בכתובת `~/.failproofai/audit-dashboard.json` (מצב `0600`, חריץ יחיד, הרצות חדשות מחליפות) כך שביקורות חוזרות היא מיידיות; **גם המטמון לכל תמלול וכל התוצאה נדחות בקריאה ברגע שהם קדומים ליותר מ-7 ימים** כך שלוח הבקרה לעולם לא משמר בשקט תוצאה בת שבוע — עבר ה-TTL `/audit` נופל לחנות הריקה שלו ומנחה הרצה טרייה. לחיצה על `[ re-audit now ]` ליד התחתון של הדוח POSTs `/api/audit/run` עם `noCache: true` — re-audit עוקף את המטמון לכל תמלול וסורק מחדש כל תמלול מאפס ולא מחזיר בשקט את התוצאה שנשמרה — ולוח הבקרה שוקל `/api/audit/status` ב-1Hz עד שההרצה מסתיימת; רצועת התקדמות ורודה דביקה מצמודה לחלק העליון של viewport בזמן ההרצה עם טיימר שחלף, והתוצאה הטרייה מחליפה במקום בהצלחה (לא טעינה דף מלאה; אודיט חוזר שנכשל משאיר את הדוח הקודם בשלום). בכישלון הרצועה הופכת לאדום עם עותק מפוצל מ-`RerunError.kind` (`timeout` / `network` / `post_failed`). מצב ריק (אין מטמון או פג תוקף) ומצב אפס הפעלות (מטמון קיים אך הסריקה לא מצאה תמלולים) משטחים בנפרד.
+2. **Strengths** — שורת רשימה רגועה ✓ של התנהגויות שהסוכן שלך כבר עושה נכון, מביאות מנתוני audit חיוני (קצב קריאת כלים נקי, ללא דחיפות ישירות לראשי, אפס דלפי אישורים, אפס סערות ניסיון) — כל אחת מופיעה רק כאשר למדיניות הרלוונטית יש רקורד נקי על פני חלון ה-audit.
+
+3. **Quirks** — טבלה של מה שחלף, מדורגת לפי חומרה: `when · what slipped + the policy that would've caught it · severity pill · seen`, כאשר ה-recurrence קורא `new` (פעם אחת), `N× seen` (2–9 פעמים), או `recurring` (10+).
+
+4. **How to improve** — שורת רשימה רגועה, אחד לכל מדיניות מקבילה: שם מדיניות בלבן, תיאור בשורה אחת, כפתור פקודת התקנה + העתקה בצד ימין. כותרת הסעיף קוראת `enable all N → projected <score> · <tier>` (הניקוד שהייתה תוקף עם כל התיקון המיושם), וכפתור `[install all]` שלו מעתיק את הפקודה `failproofai policy add a b c …` המשולבת לכל מדיניות מקבילה.
+
+5. **Come back better** — שתי כרטיסים זה לצד זה. משמאל: הגדרת תזכורת (`3d` / `7d` / `14d` / `30d` בוחר קדנציה; שומר דרך `/api/auth/reminder` ברגע שמאומת). מימין: פתח הטבות failproof — `invite a friend` פותח מודאל שלוקח רשימה מופרדת בפסיק/ספייס/שורה חדשה של אימיילים חברים (מקסימום 10 לשליחה), POSTs להם ל-`/api/audit/invite`, שמעביר לשרת api `POST /v0/invite`. שרת ה-api שולח אימייל אחד לכל מקבל מ-`invite@failproof.ai` עם ה-Cc של השולח וה-`Reply-To` מוגדר, כך שהמקבל רואה מי הזמין אותו והשולח מקבל העתק בתיבת הדואר שלו. משתמשים אנונימיים מעוברים דרך `AuthDialog` תחילה אז אימייל השולח ידוע לפני שההזמנות יוצאות. עמידה / מילוי הטבות הוא מעקב.
+
+מונעות על ידי `failproofai audit` runtime — ראה [Audit CLI](/he/cli/audit) עבור מנוע הסריקה הבסיס, דגלים נתמכים, ובלתי-משתנים cache לכל תמלול. לוח הבקרה משמור את התוצאה העדכנית ביותר ב-`~/.failproofai/audit-dashboard.json` (מצב `0600`, חריץ יחיד, הריצות חדשות משכתבות) אז הביקורים חוזרים מיידיים; **גם ה-per-transcript וגם כל ה-result caches דוחים על קריאה ברגע שהם קדומים יותר מ-7 ימים** אז לוח הבקרה לעולם לא משרת בשקט תוצאה בן שבועות — עבר ה-TTL `/audit` נופל דרך למצב הריק שלו ומתגבר שריקה טרייה. לחיצה על `[ re-audit now ]` ליד תחתית הדוח POSTs `/api/audit/run` עם `noCache: true` — re-audit עוקף את ה-per-transcript cache ומסרק כל תמלול מהעט ​​במקום בשקט להחזיר את התוצאה המטומנת — ולוח הבקרה סוקר `/api/audit/status` ב-1Hz עד שהריצה תסתיים; רצועת התקדמות ורודה דביקה מתלמדת לחלק העליון של ה-viewport במהלך הריצה עם טיימר זמן חלוף, והתוצאה הטרייה משתלבת במקום בהצלחה (לא טעינת עמוד מלא; re-audit כושל משאיר את הדוח הקודם שלם). בכישלון הרצועה הופכת לאדום עם עותק מחובר ל-`RerunError.kind` (`timeout` / `network` / `post_failed`). מצב ריק (אין cache או פקוח) ומצב sessionsים אפס (cache קיים אך הסריקה לא מצאה תמלולים) מוצגים בנפרד.
 
 ### Policies
 
-עמוד בעל שתי כרטיסיות לניהול מדיניות וביקורת פעילות.
+דף שתי-טאב לניהול מדיניויות ובדיקת פעילות.
 
 <Tabs>
   <Tab title="Policies tab">
-  - בחר מספר CLIs של סוכן שעליו failproofai מגן מלוח יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi ו-Gemini CLI לכולם יש שורה עם מצב התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות ההיקף של משתמש וניגודיות בצבע מותג. סמן או בטל סימון של CLIs שברצונך וכולל `Apply changes` כדי להתקין/להסיר את ההבדל בשלב אחד. CLIs שהבינארי שלהם מתגלה ב-PATH מסומנים מראש.
-  - הפעל משקל מדיניות בודדות או כבויות בלחיצה יחידה (כותב ל-`~/.failproofai/policies-config.json` — משותף בכל CLI מותקן)
-  - הרחב מדיניות כדי להגדיר את הפרמטרים שלה (עבור מדיניות התומכת ב-`policyParams`)
-  - הגדר נתיב קובץ מדיניות מותאם
+  - בחר באופן מרובה איזו CLIs סוכן failproofai מגנה מפנל יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, ו-Gemini CLI כולם יש שורה עם סטטוס התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות ה-user-scope, וכן נקודה צבעי-מותג. סמן או בטל סימון CLIs שאתה רוצה ולחץ על `Apply changes` כדי להתקין/להסיר את ההבדל בשלב אחד. CLIs שהבינארי שלהם מתגלה ב-PATH מסומנים מראש.
+  - החליפו מדיניויות בודדות או כיבוי עם לחיצה יחידה (כתיבה ל-`~/.failproofai/policies-config.json` — משותף על פני כל CLI שהותקן)
+  - הרחבו מדיניות כדי להגדיר את הפרמטרים שלה (עבור מדיניויות התומכות ב-`policyParams`)
+  - הגדר נתיב קובץ מדיניויות מותאם
   </Tab>
   <Tab title="Activity tab">
-  - היסטוריה מלאה מחולקת לעמודים של כל אירוע hook שירה בכל ההפעלות
-  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), שם מדיניות או מזהה הפעלה
-  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, דגל CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, אזמרגד = Cursor Agent, amber = OpenCode, ורוד = Pi, sky = Gemini CLI), שם כלים, מזהה הפעלה וסיבת החלטות deny/instruct
-  - לחץ על מזהה הפעלה כדי לפתוח את התמלול שלה — הצופה מזהה באופן אוטומטי איזה CLI ירה את ה-hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) ועובד את דגל CLI התואם בכותרת
+  - היסטוריה מלאה מחולקת לעמודים של כל אירוע hook שהופעל על פני כל הsessions
+  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), שם מדיניות, או Session ID
+  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, תג CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, זמרד = Cursor Agent, ענבר = OpenCode, ורוד = Pi, שמיים = Gemini CLI), שם כלי, Session ID, והסיבה להחלטות deny/instruct
+  - לחץ על Session ID כדי לפתוח את התמלול שלו — מציג אוטו-מזהה איזה CLI הדליק את ה-hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`) וממשיך את תג CLI המתאים בכותרת
   </Tab>
 </Tabs>
 
@@ -92,13 +96,13 @@ failproofai
 
 ## Auto-refresh
 
-לוח הבקרה יש הפעל/כבה auto-refresh בניווט העליון. כשהוא מופעל, העמוד הנוכחי מתרענן תקופתית כדי להציג הפעלות חדשות ופעילות מדיניות כאשר הם מופיעים. חיוני לניטור הפעלות סוכן אוטונומיות ארוכות.
+לוח הבקרה יש תיאום toggle auto-refresh בניווט העליון. כאשר הוא מופעל, הדף הנוכחי מתרענן בתדירות כדי להציג sessionsים חדשים ופעילות מדיניות כאשר הם מופיעים. חיוני לניטור של sessionsים סוכנים אוטונומיים ארוכי משך.
 
 ---
 
-## השבתת עמודים
+## השבתת דפים
 
-אם אתה זקוק רק לחלקים מסוימים של לוח הבקרה, הגדר `FAILPROOFAI_DISABLE_PAGES` לרשימה מופרדת בפסיקומה של שמות עמודים:
+אם אתה צריך רק חלקים מסוימים של לוח הבקרה, הגדר `FAILPROOFAI_DISABLE_PAGES` לרשימה מופרדת בפסיק של שמות דפים:
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
@@ -110,7 +114,7 @@ FAILPROOFAI_DISABLE_PAGES=policies failproofai
 
 ## הגדרת נתיב הפרויקטים
 
-כברירת מחדל, לוח הבקרה קורא מספריית פרויקטי Claude Code הסטנדרטית. עקוף אותה עבור הגדרות מותאמות:
+כברירת מחדל, לוח הבקרה קורא מתיקיית הפרויקטים הסטנדרטית Claude Code. עקוף אותו עבור הגדרות מותאמות:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -118,32 +122,32 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ---
 
-## גישה מהוסט non-localhost
+## הגישה מhoست non-localhost
 
-בעת הפעלת לוח הבקרה במצב **dev** (`npm run dev`) והגישה אליו מ-hostname אחר מאשר `localhost` - למשל, תחום מותאם, IP מרחוק או כתובת URL מנוצלת - ייתכן שתראה אזהרה כמו:
+כאשר בפעלון לוח הבקרה בעבודה **dev mode** (`npm run dev`) וגישה אליו משם hostname שאינו `localhost` - לדוגמה, תחום מותאם, IP מרחוק, או URL tunneled - אתה עשוי לראות אזהרה כמו:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-זה Next.js חוסם גישה חוצה-מקור ל-HMR שלו (hot module reload) websocket, שהיא תכונה dev-only. כדי לאפשר לכותב המוזבן שלך, השתמש בדגל `--allowed-origins`:
+זה Next.js חוסם גישה cross-origin לחוט HMR (hot module reload) שלו, שזה תכונה dev-only. כדי לתת אפשרות לhoust שלך, השתמש בדגל `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-עבור מספר מארחים או כתובות IP, מסור רשימה מופרדת בפסיקומה:
+עבור מספר hostsים או IPs, העבור רשימה מופרדת בפסיק:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-אתה יכול גם להגדיר את משתנה הסביבה `FAILPROOFAI_ALLOWED_DEV_ORIGINS` במקום:
+אתה גם יכול להגדיר את משתנה הסביבה `FAILPROOFAI_ALLOWED_DEV_ORIGINS` במקום:
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-זה חל רק על מצב dev. בעת הרצת `failproofai` (מצב production), אין websocket HMR ואין בעיית משאב dev חוצה-מקור.
+זה חל רק ל-dev mode. כאשר רצים `failproofai` (production mode), אין HMR websocket ואין בעיה cross-origin dev resource.
 </Note>

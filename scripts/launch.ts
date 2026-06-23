@@ -5,8 +5,10 @@ import { spawn } from "child_process";
 import { realpathSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline";
 import { parseScriptArgs } from "./parse-script-args";
 import { diagnoseShadow } from "./install-diagnosis.mjs";
+import { makeSkewLogFilter } from "./skew-log-filter";
 import { version } from "../package.json";
 
 export function launch(mode: "dev" | "start"): void {
@@ -79,15 +81,39 @@ export function launch(mode: "dev" | "start"): void {
     cmdArgs = ["--bun", "next", "dev", ...remainingArgs];
   }
 
+  // In `start` (the shipped standalone server) we pipe + filter the child's
+  // output to drop the benign "Failed to find Server Action" deployment-skew
+  // block — a stale browser tab POSTing an old action ID after a rebuild, which
+  // the client recovers from via Next's graceful 404 (see skew-log-filter.ts).
+  // `dev` keeps "inherit" so Next's interactive compile output is untouched.
+  // FORCE_COLOR keeps the piped child's output colored despite the non-TTY pipe.
+  const filterLogs = mode === "start";
+
   const nextProcess = spawn(cmd, cmdArgs, {
-    stdio: "inherit",
+    stdio: filterLogs ? ["inherit", "pipe", "pipe"] : "inherit",
     env: {
       ...process.env,
+      ...(filterLogs ? { FORCE_COLOR: process.env.FORCE_COLOR ?? "1" } : {}),
       ...(loggingLevel ? { FAILPROOFAI_LOG_LEVEL: loggingLevel } : {}),
       ...(disableTelemetry ? { FAILPROOFAI_TELEMETRY_DISABLED: "1" } : {}),
       ...(allowedDevOrigins ? { FAILPROOFAI_ALLOWED_DEV_ORIGINS: allowedDevOrigins.join(",") } : {}),
     },
   });
+
+  if (filterLogs) {
+    // One filter instance per stream — the skew block is multi-line and stateful.
+    for (const [src, dest] of [
+      [nextProcess.stdout, process.stdout],
+      [nextProcess.stderr, process.stderr],
+    ] as const) {
+      if (!src) continue;
+      const filter = makeSkewLogFilter();
+      createInterface({ input: src }).on("line", (line) => {
+        const out = filter(line);
+        if (out !== null) dest.write(out + "\n");
+      });
+    }
+  }
 
   nextProcess.on("error", (error) => {
     console.error("Error starting Next.js:", error);

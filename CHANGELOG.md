@@ -10,6 +10,7 @@
 
 ### Fixes
 - Fix three translated docs pages that failed the Mintlify deploy parse. `docs/tr/cli/audit.mdx` had a dropped closing backtick that pushed `<slug>` out of its inline-code span (parsed as an unclosed JSX tag); `docs/ja/built-in-policies.mdx` and `docs/zh/built-in-policies.mdx` carried translator-injected `{#id}` heading anchors that MDX reads as JS expressions. All three now match the other 12 locales (#455).
+- Stop the failproofai server log from repeating the benign Next.js "Failed to find Server Action" deployment-skew error. A browser tab left open across a dashboard rebuild/upgrade POSTs a stale Server Action ID; the client recovers via Next's graceful 404, but the standalone server still logged a 3-line error block to stderr per stale request. The `start` launcher now pipes the server's output through a filter (`scripts/skew-log-filter.ts`) that drops just that block — all other output, and color via `FORCE_COLOR`, passes through untouched; `dev` is unchanged (#456).
 
 ### Dependencies
 - Add `@mdx-js/mdx` as a dev dependency, used by the new `validate:mdx` docs parse check (#455).

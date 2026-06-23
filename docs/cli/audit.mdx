@@ -9,11 +9,51 @@ description: "Count how often the agent did wasteful or risky things across past
   cut. Please open an issue if anything looks off.
 </Note>
 
-The audit is now exposed as the **/audit dashboard page**, not a CLI subcommand. Open it from the dashboard navbar (between Policies and Projects), or visit `http://localhost:8020/audit` directly when running `failproofai` locally.
+The audit replays your past agent-CLI transcripts through failproofai's policy
+engine and renders a shareable, visual report on the **`/audit` dashboard
+page** — your agent's archetype, a 0–100 score, and exactly which policies
+would have caught what.
 
-```bash
-failproofai          # open the dashboard, then click "Audit"
+## Run it
+
+Three ways in — all land on the same `/audit` report.
+
+<CodeGroup>
+
+```bash npx (no install)
+npx -y failproofai audit
 ```
+
+```bash failproofai audit
+failproofai audit
+```
+
+```bash failproofai (dashboard)
+failproofai
+```
+
+</CodeGroup>
+
+<CardGroup cols={3}>
+  <Card title="No install" icon="bolt">
+    `npx -y failproofai audit` fetches failproofai, runs the scan, and opens the
+    dashboard for you — nothing to install first.
+  </Card>
+  <Card title="From the CLI" icon="terminal">
+    `failproofai audit` runs the scan in your terminal, then opens
+    `localhost:8020/audit` automatically when it finishes.
+  </Card>
+  <Card title="From the dashboard" icon="gauge">
+    Run `failproofai` and click **Audit** in the navbar (between Policies and
+    Projects), or open `/audit` directly.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Run `failproofai audit -h` (or `--help`) to see usage. The audit runs **fully
+  offline** — no account or network required — and the dashboard keeps serving
+  until you stop it with `Ctrl+C`.
+</Tip>
 
 The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
 

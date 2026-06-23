@@ -4,6 +4,9 @@
 
 ### Features
 - Add a PR-level MDX parse check (`bun run validate:mdx`, wired into the CI `docs` job) that compiles every `docs/**/*.mdx` with the same MDX engine Mintlify runs at deploy time. `mintlify validate` only checks `docs.json` structure and nav links — it never parses page content — so syntax errors slipped through to the post-merge deploy. This catches them on the PR instead (#455).
+- Invite emails now include the inviter's audit score: `sendInvites()` and the `/api/audit/invite` proxy forward a clamped (0–100) score to the api-server, which renders "my agent scored a N/100" in the body. Threaded `AuditDashboard → ComeBackBetterSection → InviteDialog`; optional end-to-end so it degrades to score-free copy when absent (#456).
+- Rewrite the X/LinkedIn share templates (10 each): lead on the score and archetype and end on the `npx -y failproofai audit` CTA + handle (`@failproofai` / `@Failproof AI`), with no URLs in the copy so the pasted audit-card image isn't replaced by a link-preview card (#456).
+- Enlarge the audit poster's four corner labels so they read clearly at share size, on both the dashboard render and the downloaded PNG (#456).
 
 ### Fixes
 - Fix three translated docs pages that failed the Mintlify deploy parse. `docs/tr/cli/audit.mdx` had a dropped closing backtick that pushed `<slug>` out of its inline-code span (parsed as an unclosed JSX tag); `docs/ja/built-in-policies.mdx` and `docs/zh/built-in-policies.mdx` carried translator-injected `{#id}` heading anchors that MDX reads as JS expressions. All three now match the other 12 locales (#455).

@@ -61,14 +61,13 @@ For each transcript, every tool-use event is replayed through the 39 builtin pol
 
 ## What you get
 
-The `/audit` page composes six sections:
+The `/audit` page is a single-screen, shareable **poster** followed by four below-the-fold sections:
 
-1. **Identity** — your agent classified into one of 8 archetypes (`optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`) based on the weighted signal across every audited transcript.
-2. **Strengths** — real numbers derived from the scan (clean-call %, "0 credential leaks", etc.) gated on the relevant sanitize policies actually firing.
-3. **Score** — 0-100 with S/A/B/C/D/F bands and a projected uplift if every recommended policy were enabled.
-4. **Findings** — per-policy cards with what happened, cost, captured evidence, and the exact `failproofai policy add <slug>` to enable the live-time builtin that would have caught it.
-5. **Prescribed policies** — aggregated install list with a one-shot `failproofai policies --install` command.
-6. **Re-audit reminder** — "come back better." Set a 7-day email reminder via the api-server (requires sign-in; see [`failproofai auth`](/cli/auth)).
+1. **Poster** — your agent's identity at a glance: its **archetype** (one of 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), its persona keywords, how rare that archetype is, and a **0–100 score** with a tier band (`S` down to `bottom tier`). Built to share — post to X or LinkedIn, or download it as a PNG.
+2. **`// strengths`** — what your agent already does well, as real numbers from the scan (e.g. clean-tool-call %, `0` push-to-main attempts), shown only where the relevant policy has a clean record.
+3. **`// quirks`** — what slipped through: a ranked table of behaviors failproofai would have caught — *when* it last happened, *what slipped* (and the builtin that would have blocked it), its *severity*, and how often it was *seen* (`new` / `recurring` / `N× seen`).
+4. **`// how to improve`** — the prescribed fix list: one row per policy with a copy-paste `failproofai policy add <slug>`, plus an **install all** button that enables every recommendation at once and shows your **projected score** if you did.
+5. **`// come back better`** — build the habit: set a re-audit email **reminder** (`3d` / `7d` / `14d` / `30d`) or re-audit now, and **invite a friend** to run their own audit (sent from failproof.ai, Cc'd to you). Reminders and invites require sign-in — see [`failproofai auth`](/cli/auth).
 
 ## Audit-only detectors
 

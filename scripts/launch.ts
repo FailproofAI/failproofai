@@ -19,7 +19,7 @@ export function launch(mode: "dev" | "start"): void {
   console.log(`  📦 Version:      ${version}`);
   console.log(`  ⭐ Star us:      https://github.com/failproofai/failproofai`);
   console.log(`  📖 Docs:         https://befailproof.ai`);
-  console.log(`  💬 Discord:      https://discord.gg/2zjBZP7yQJ`);
+  console.log(`  💬 Discord:      https://discord.gg/2zjBZP7yQJ\n`);
 
   let cmd: string;
   let cmdArgs: string[];

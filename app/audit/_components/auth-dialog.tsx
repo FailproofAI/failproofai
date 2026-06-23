@@ -24,8 +24,11 @@ export interface AuthedUser {
 
 interface Props {
   open: boolean;
-  /** Optional title. Defaults to "set a reminder". */
+  /** Optional title. Defaults to "where to route the reminder?". */
   headline?: string;
+  /** Optional subtitle shown under the title on the email step. Defaults to
+   *  "we'll send a one-time code to confirm." */
+  subhead?: string;
   onClose: () => void;
   /** Fired after successful verify. Caller decides what to do next. */
   onAuthed: (user: AuthedUser) => void;
@@ -51,6 +54,7 @@ function describeFetchError(err: unknown): string {
 export function AuthDialog({
   open,
   headline = "where to route the reminder?",
+  subhead = "we'll send a one-time code to confirm.",
   onClose,
   onAuthed,
   source = "unknown",
@@ -270,9 +274,7 @@ export function AuthDialog({
 
         {step.kind === "email" && (
           <>
-            <p className="auth-sub">
-              we&apos;ll send a one-time code to confirm.
-            </p>
+            <p className="auth-sub">{subhead}</p>
             <form onSubmit={onEmailSubmit} className="auth-form">
               <input
                 ref={emailInputRef}

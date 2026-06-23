@@ -35,6 +35,14 @@ type Cadence = typeof REMINDER_OPTIONS[number];
 
 const PERKS_PERK = "share with 3 friends → unlock pro features for a month.";
 
+// The AuthDialog is shared by the reminder and invite CTAs. The reminder path
+// keeps the dialog's default copy; the invite path swaps in login-required
+// copy. Content only — the auth flow is identical for both.
+const INVITE_AUTH_COPY = {
+  headline: "Oops! Login required",
+  subhead: "What's your email?",
+} as const;
+
 type AuthStatus =
   | { kind: "unknown" }
   | { kind: "anon" }
@@ -68,6 +76,10 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [reminderBusy, setReminderBusy] = useState(false);
+  // Copy for the shared AuthDialog: {} keeps the reminder defaults,
+  // INVITE_AUTH_COPY shows the invite variant. Set by whichever CTA opens the
+  // dialog — content selection only, no effect on the auth flow.
+  const [authCopy, setAuthCopy] = useState<{ headline?: string; subhead?: string }>({});
   const ctaShownRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
 
@@ -196,6 +208,7 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
         return;
       }
       if (authStatus.kind === "anon") {
+        setAuthCopy({}); // reminder context → keep the dialog's default copy
         setDialogOpen(true);
       }
     },
@@ -222,6 +235,7 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
     // Unauthed users go through the AuthDialog first so we have a sender
     // identity to Cc on the invite email.
     if (authStatus.kind !== "authed") {
+      setAuthCopy(INVITE_AUTH_COPY); // invite context → "Oops! Login required"
       setDialogOpen(true);
       return;
     }
@@ -298,6 +312,7 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
           // and bounce through the AuthDialog so the user re-auths.
           setAuthStatus({ kind: "anon" });
           setReminder(null);
+          setAuthCopy(INVITE_AUTH_COPY); // still the invite context
           setDialogOpen(true);
         }}
       />
@@ -305,6 +320,8 @@ export function ComeBackBetterSection({ isRunning, onRerun }: Props) {
       <AuthDialog
         open={dialogOpen}
         source="return_section"
+        headline={authCopy.headline}
+        subhead={authCopy.subhead}
         onClose={() => setDialogOpen(false)}
         onAuthed={(u) => {
           setDialogOpen(false);

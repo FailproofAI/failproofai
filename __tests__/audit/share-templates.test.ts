@@ -19,7 +19,9 @@ describe("share templates", () => {
   it("every template ends on the npx CTA, references score or archetype, and embeds no URL", () => {
     for (const t of [...X_TEMPLATES, ...LI_TEMPLATES]) {
       const out = t(ctx);
-      expect(out).toContain("npx -y failproofai audit");
+      // Anchored: the CTA must *terminate* the copy (matches the test name),
+      // not merely appear somewhere in it.
+      expect(out.trimEnd()).toMatch(/npx -y failproofai audit · @[^\n]+$/);
       // No URLs anywhere — a link would trigger a preview card and swallow the
       // pasted image. (Catches befailproof.ai and any http(s) link.)
       expect(out).not.toContain("befailproof.ai");

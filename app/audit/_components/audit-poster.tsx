@@ -24,18 +24,22 @@
 import React, { forwardRef, useMemo, useState } from "react";
 import { pickArchetypeVariant, type ArchetypeKey } from "@/src/audit/archetypes";
 import { type Grade } from "@/src/audit/scoring";
-import { getArchetypeRarityPct, getScoreRank } from "@/src/audit/social-proof";
+import { getArchetypeRarityPct } from "@/src/audit/social-proof";
 import { copyOrDownloadCard, downloadCard, shareCardNative, shareCardToastMessage } from "@/lib/share-card";
 import { toast } from "@/app/components/toast";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { Sigil } from "./sigil";
 import { X_TEMPLATES, LI_TEMPLATES, pickTemplate, type ShareCtx } from "./share-templates";
 
-const SITE_URL = "https://befailproof.ai";
 const X_INTENT = (text: string) =>
   `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
+// LinkedIn deprecated the share-offsite `summary` / `title` params, so they no
+// longer pre-fill the post composer (it only scrapes OG tags from the URL). The
+// feed route with `shareActive=true` + `text=` opens "start a post" with our
+// text pre-filled — and the share templates already embed the befailproof.ai
+// link inside that text.
 const LI_INTENT = (text: string) =>
-  `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(SITE_URL)}&summary=${encodeURIComponent(text)}`;
+  `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
 
 interface Props {
   archetypeKey: ArchetypeKey;
@@ -60,7 +64,6 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     [archetypeKey, seed],
   );
   const rarityPct = getArchetypeRarityPct(archetypeKey);
-  const scoreRank = getScoreRank(score);
   const indexLabel = String(archetype.index).padStart(2, "0");
   const auditedDate = useMemo(() => formatAuditedDate(auditedAt), [auditedAt]);
 
@@ -254,17 +257,18 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
             )}
           </div>
 
-          {/* Score block — heroic number + rank pill on the same baseline */}
+          {/* Score block — heroic number, centered in the card */}
           <div className="poster-score">
             <span className="score-n">{score}</span>
             <span className="score-of">/100</span>
-            <span className="score-rank">{scoreRank}</span>
           </div>
         </div>
 
         <footer className="poster-foot">
+          <span className="poster-brand">befailproof.ai</span>
           <span className="poster-cta">
-            audit yours <span className="arrow">→</span> failproof.ai
+            audit yours <span className="arrow">→</span>{" "}
+            <span className="cta-cmd">npx -y failproofai audit</span>
           </span>
         </footer>
       </div>

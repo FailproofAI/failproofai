@@ -693,8 +693,7 @@
 .poster-persona .persona-rarity .lbl { color: var(--dim); }
 .poster-persona .persona-rarity .pct { color: var(--accent-pink); font-weight: 600; }
 
-/* score — single horizontal row: score-n + /100 + rank pill all
- *  baseline-aligned, so the pill can never overlap the digits. */
+/* score — score-n + /100, baseline-aligned and centered in the card. */
 .poster-score {
   display: flex;
   align-items: baseline;
@@ -718,19 +717,6 @@
   color: var(--dim);
   letter-spacing: 0.04em;
   line-height: 1;
-  margin-right: clamp(12px, 2vh, 28px);
-}
-.poster-score .score-rank {
-  font-family: var(--font-mono);
-  font-size: clamp(10px, 1.3vh, 12px);
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--accent-green);
-  padding: 6px 14px;
-  border: 1px solid var(--accent-green);
-  background: rgba(102, 209, 181, 0.05);
-  line-height: 1;
-  white-space: nowrap;
 }
 .poster-sigil .sigil .px { background: transparent; }
 .poster-sigil .sigil .px.on { background: var(--ink); }
@@ -738,16 +724,25 @@
 .poster-sigil .sigil .px.g  { background: var(--accent-green); }
 .poster-sigil .sigil .px.d  { background: var(--dim); }
 
-/* foot — single small CTA bottom-right ─────────────────────── */
+/* foot — brand stamp (left) + CTA (right) ─────────────────────── */
 .poster-foot {
-  display: flex; justify-content: flex-end;
+  display: flex; justify-content: space-between; align-items: baseline;
   padding-top: 10px;
   border-top: 1px dashed var(--line);
   font-family: var(--font-mono);
   font-size: 10px;
 }
+.poster-brand {
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.5), 0 0 14px rgba(255, 255, 255, 0.22);
+}
 .poster-cta { color: var(--accent-green); letter-spacing: 0.04em; }
 .poster-cta .arrow { color: var(--accent-pink); margin: 0 4px; }
+/* glow just the copy-paste command so it reads as the actionable bit */
+.poster-cta .cta-cmd {
+  text-shadow: 0 0 6px rgba(102, 209, 181, 0.6), 0 0 14px rgba(102, 209, 181, 0.3);
+}
 
 /* share-row — UI only, outside the PNG capture ─────────────── */
 .poster-share-row {

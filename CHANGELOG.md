@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.0.11-beta.10 — 2026-06-23
+
+### Features
+- Add the `failproofai audit` CLI command: scans local agent-CLI session history, pre-warms the dashboard cache, and opens the `/audit` report — also runs install-free via `npx -y failproofai audit`. New `src/audit/cli.ts` (animated progress mirroring the dashboard's stages) and `src/audit/open-browser.ts`, wired into `bin/failproofai.mjs` (#453).
+- Rework the shareable `/audit` card (dashboard render + downloadable PNG): remove the bottom-tier rank pill, center the score, and rebuild the footer as a glowing white `befailproof.ai` stamp + a glowing `npx -y failproofai audit` CTA. Expand the social-share copy to 10 X + 10 LinkedIn templates (short, on-brand) tagging `@failproofai` / `@Failproof AI`, drop the raw site URL, and append a clipboard paste hint on share (#453).
+
+### Fixes
+- Show login-required copy ("Oops! Login required" / "What's your email?") on the invite-a-friend CTA's shared `AuthDialog` so it reads distinctly from the reminder CTA — content only, the auth flow is unchanged (#453).
+- LinkedIn share now opens the feed composer with the post text pre-filled (`feed/?shareActive=true&text=`) instead of the deprecated `share-offsite` `summary` param that LinkedIn ignores (#453).
+
+### Docs
+- Document the `failproofai audit` command and `npx -y failproofai audit` usage in `docs/cli/audit.mdx`, and refresh the `docs/dashboard.mdx` Audit section to the current poster flow (#453).
+- Point the docs community anchor (`docs.json`) and the CLI launch banner at the Discord server instead of the Slack invite (#453).
+
 ## 0.0.11-beta.9 — 2026-06-22
 
 ### Features

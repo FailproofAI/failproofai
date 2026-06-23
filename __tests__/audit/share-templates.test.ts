@@ -16,15 +16,26 @@ describe("share templates", () => {
     expect(LI_TEMPLATES).toHaveLength(10);
   });
 
-  it("every template carries score, archetype, the npx command, and no bare site URL", () => {
+  it("every template ends on the npx CTA, references score or archetype, and embeds no URL", () => {
     for (const t of [...X_TEMPLATES, ...LI_TEMPLATES]) {
       const out = t(ctx);
-      expect(out).toContain("72");
-      expect(out).toContain("the cowboy");
       expect(out).toContain("npx -y failproofai audit");
+      // No URLs anywhere — a link would trigger a preview card and swallow the
+      // pasted image. (Catches befailproof.ai and any http(s) link.)
       expect(out).not.toContain("befailproof.ai");
+      expect(out).not.toMatch(/https?:\/\//);
+      // Each template surfaces the score and/or the archetype (a couple lean
+      // on just one).
+      expect(out.includes("72") || out.includes("the cowboy")).toBe(true);
       expect(out.length).toBeGreaterThan(40);
     }
+  });
+
+  it("references the score on most templates and the archetype on most templates", () => {
+    const withScore = [...X_TEMPLATES, ...LI_TEMPLATES].filter((t) => t(ctx).includes("72"));
+    const withArch = [...X_TEMPLATES, ...LI_TEMPLATES].filter((t) => t(ctx).includes("the cowboy"));
+    expect(withScore.length).toBeGreaterThanOrEqual(15);
+    expect(withArch.length).toBeGreaterThanOrEqual(15);
   });
 
   it("tags the channel's handle (@failproofai on X, @Failproof AI on LinkedIn)", () => {
@@ -48,10 +59,9 @@ describe("share templates", () => {
     }
   });
 
-  it("X copy is emoji-forward; LinkedIn copy is emoji-free", () => {
+  it("all copy is emoji-free (clean, professional tone on both channels)", () => {
     const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
-    expect(X_TEMPLATES.every((t) => emoji.test(t(ctx)))).toBe(true);
-    for (const t of LI_TEMPLATES) {
+    for (const t of [...X_TEMPLATES, ...LI_TEMPLATES]) {
       expect(emoji.test(t(ctx))).toBe(false);
     }
   });

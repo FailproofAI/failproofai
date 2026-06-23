@@ -108,7 +108,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "auth"];
+  const SUBCOMMANDS = ["policies", "policy", "auth", "audit"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -153,6 +153,10 @@ COMMANDS
     logout                         Revoke this session and remove auth.json
     whoami                         Print the currently authenticated identity
   auth --help, -h                Show this help for the auth command
+
+  audit                          Audit your agent's behavior, then open the
+                                 dashboard at http://localhost:8020/audit
+  audit --help, -h               Show this help for the audit command
 
   --version, -v                  Print version and exit
   --help, -h                     Show this help message
@@ -474,6 +478,17 @@ EXAMPLES
     process.exit(process.exitCode ?? 0);
   }
 
+  // audit — scan local agent-CLI history, then launch the dashboard at /audit.
+  if (args[0] === "audit") {
+    lastSubcommand = "audit";
+    const { runAuditCli } = await import("../src/audit/cli");
+    await runAuditCli(args.slice(1));
+    // No process.exit(): on the success path runAuditCli calls launch(), which
+    // keeps this process alive running the dashboard. The --help / no-sessions
+    // paths exit inside runAuditCli; failures throw a CliError handled below.
+    return;
+  }
+
   // policy — single-policy shortcut over `policies --install <name>`.
   //   failproofai policy add <name>     enable one policy (defaults: claude/user)
   //   failproofai policy remove <name>  disable one policy
@@ -650,7 +665,7 @@ EXAMPLES
       return dp[m][n];
     }
 
-    const primary = ["--version", "--help", "--hook", "policies", "policy", "auth"];
+    const primary = ["--version", "--help", "--hook", "policies", "policy", "auth", "audit"];
     const closest = primary.reduce((best, flag) => {
       const dist = levenshtein(unknownFlag, flag);
       return dist < best.dist ? { flag, dist } : best;

@@ -183,9 +183,14 @@ function IntegrationBadge({ integration }: { integration?: string }) {
 
 function ModeBadge({ mode }: { mode: string }) {
   const isDefault = mode === "default";
+  // inline-block + max-w-full + truncate: the pill fits its column for known
+  // modes (incl. the longest, "bypassPermissions") and, for any unexpectedly
+  // long / custom mode, ellipsizes inside the pill with a hover tooltip rather
+  // than being hard-clipped mid-word at the cell edge by .activity-data-row > td.
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[0.6rem] font-medium border ${
+      title={mode}
+      className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 align-middle text-[0.6rem] font-medium border ${
         isDefault
           ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
           : "bg-amber-500/10 text-amber-400 border-amber-500/20"
@@ -632,6 +637,10 @@ function ActivityTab({
         ) : (
           <div className="overflow-x-auto activity-table-wrap">
             <table className="w-full text-xs activity-table" style={{ tableLayout: "fixed" }}>
+              {/* Column widths (table-layout: fixed). Order must match <thead>:
+                  chevron · time · decision · event · cli · tool · policy · reason · mode · duration · session.
+                  Badge columns (decision/event/cli/mode) must stay wide enough for their widest
+                  pill — mode holds "bypassPermissions", the longest badge text in the table. */}
               <colgroup>
                 <col style={{ width: 32 }} />
                 <col style={{ width: "7%" }} />
@@ -639,9 +648,9 @@ function ActivityTab({
                 <col style={{ width: "12%" }} />
                 <col style={{ width: "11%" }} />
                 <col style={{ width: "9%" }} />
-                <col style={{ width: "15%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "7%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "11%" }} />
                 <col style={{ width: "8%" }} />
                 <col style={{ width: "8%" }} />
               </colgroup>

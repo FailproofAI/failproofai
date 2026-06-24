@@ -17,9 +17,9 @@
 
 **Çeviriler:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Kodlama ajanları için çalışma zamanı hatası çözümü.**
-Claude Code ve Codex'e bağlanır. Döngüleri, tehlikeli işlemleri ve gizli sızıntılarını
-olay haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
+**Kodlama ajanları için runtime hata çözümü.**
+Claude Code ve Codex ile entegrasyon. Döngüleri, tehlikeli işlemleri ve gizli bilgilerin sızmasını
+bunlar sorun olmadan önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
 
 </div>
 
@@ -29,7 +29,7 @@ olay haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
 
 ---
 
-## Desteklenen ajan CLI'ları
+## Desteklenen ajan CLIleri
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -80,29 +80,29 @@ olay haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
   </a>
 </p>
 
-> Bir veya birden fazla kombinasyon için kancaları yükleyin: `failproofai policies --install --cli opencode pi gemini` (ya da `--cli claude codex copilot cursor opencode pi gemini`). Yüklü CLI'ları otomatik olarak algılamak ve seçim yapmak için `--cli` seçeneğini atlayın.
+> Hook'ları bir veya birkaç kombinasyon için yükleyin: `failproofai policies --install --cli opencode pi gemini` (veya `--cli claude codex copilot cursor opencode pi gemini`). Kurulu CLIleri otomatik olarak algılamak ve seçim yapmak için `--cli` parametresini ihmal edin.
 
 ---
 
-## Kurulum
+## Yükleme
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # veya sadece `failproofai` komutunu çalıştırıp ilk çalıştırma komutunu kabul edin
+failproofai policies --install   # veya sadece `failproofai` komutunu çalıştırın ve ilk çalıştırma istemini kabul edin
 failproofai
 ```
 
-30 yerleşik politika hemen etkinleştirilir. Kontrol paneli `localhost:8020` adresindedir. İlk çalıştırma komutunu `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
+30 yerleşik politika hemen etkinleşir. Pano adresinde `localhost:8020` bulunur. İlk çalıştırma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakabilirsiniz.
 
 ---
 
-## Neyi engeller
+## Neyi durdurur
 
-| Politika | Engellediği şey |
+| Politika | Neyi engeller |
 |---|---|
-| `block-push-master` | `main` / `master` dalına doğrudan gönderimler |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` dalında işlemler, birleştirmeler, yeniden tabanlama |
+| `block-push-master` | `main` / `master` dalına doğrudan push işlemleri |
+| `block-force-push` | `git push --force` komutu |
+| `block-work-on-main` | `main` / `master` dalında commit, merge, rebase işlemleri |
 | `block-rm-rf` | Özyinelemeli dosya silme |
 | `sanitize-api-keys` | API anahtarlarının ajan bağlamına sızması |
 
@@ -112,8 +112,8 @@ failproofai
 
 ## Kendi politikalarınız
 
-`.failproofai/policies/` klasörüne bir dosya bırakın — bayrak gerekmeksizin otomatik olarak yüklenecektir.
-Bunu işleyin ve bütün takım bir sonraki çekme operasyonunda bunu alacaktır.
+`.failproofai/policies/` klasörüne bir dosya koyun — otomatik olarak yüklenir, bayrak gerekmez.
+Commit edin ve tüm takım bir sonraki pull'da bunu alır.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -123,7 +123,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Üretim yollarına yazma işlemleri engellenir.");
+      return deny("Writes to production paths are blocked.");
     return allow();
   },
 });
@@ -134,18 +134,18 @@ Her politika için üç karar mevcuttur:
 | Karar | Etki |
 |---|---|
 | `allow()` | İşleme izin ver |
-| `deny(message)` | Engelle — ileti ajana geri gönderilir |
-| `instruct(message)` | Geçit ver, ancak ajanın sonraki isteminine bağlam ekle |
+| `deny(message)` | Engelle — mesaj ajana geri gönderilir |
+| `instruct(message)` | Geçişe izin ver, ama ajana bir sonraki komutuna bağlam ekle |
 
-→ [Özel politikalar rehberi](https://docs.befailproof.ai/custom-policies)
+→ [Özel politikalar kılavuzu](https://docs.befailproof.ai/custom-policies)
 
 ---
 
 ## Oturum görünürlüğü
 
-Ajanınızın yaptığı her araç çağrısı yerel olarak kaydedilir. Kontrol paneli, ne çalıştığını,
-ne engellendi ve politikanın ajana ne söylediğini gösterir — böylece bir şey yanlış gittiğinde
-tahmin etmek zorunda kalmazsınız. → [Kontrol paneli rehberi](https://docs.befailproof.ai/dashboard)
+Ajanınızın yaptığı her araç çağrısı yerel olarak günlüğe kaydedilir. Pano, neyin çalıştığını,
+neyin engellendiğini ve politikanın ajana ne söylediğini gösterir — böylece bir şey yanlış gittiğinde
+tahmin etmeniz gerekmez. → [Pano kılavuzu](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -153,28 +153,32 @@ tahmin etmek zorunda kalmazsınız. → [Kontrol paneli rehberi](https://docs.be
 
 | | |
 |---|---|
-| [Başlarken](https://docs.befailproof.ai/getting-started) | Kurulum ve ilk adımlar |
+| [Başlangıç](https://docs.befailproof.ai/getting-started) | Yükleme ve ilk adımlar |
 | [Yerleşik Politikalar](https://docs.befailproof.ai/built-in-policies) | Tüm 30 politika ve parametreleri |
 | [Özel Politikalar](https://docs.befailproof.ai/custom-policies) | Kendi politikalarınızı yazın |
 | [Yapılandırma](https://docs.befailproof.ai/configuration) | Yapılandırma kapsamları ve birleştirme kuralları |
-| [Kontrol Paneli](https://docs.befailproof.ai/dashboard) | Oturum monitörü ve politika etkinliği |
-| [Mimari](https://docs.befailproof.ai/architecture) | Kanca sisteminin nasıl çalıştığı |
+| [Pano](https://docs.befailproof.ai/dashboard) | Oturum izleyici ve politika aktivitesi |
+| [Mimari](https://docs.befailproof.ai/architecture) | Hook sistemi nasıl çalışır |
 
 ---
 
 ## Lisans
 
-Commons Clause ile MIT — dahili ve kişisel kullanım için ücretsiz; failproofai'nin kendisinin ticari olarak yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) dosyasına bakın.
+MIT with [Commons Clause](https://commonsclause.com/) — dahili ve kişisel kullanım için ücretsiz; failproofai'nin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) bölümüne bakın.
 
 ---
 
-## Katkıda bulunma
+## Katkıda Bulunma
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) dosyasına bakın. Yeni politikalar, kenar durumları ve çeviriler hoş karşılanır.
+[CONTRIBUTING.md](./CONTRIBUTING.md) bölümüne bakın. Yeni politikalar, kenar durumları ve çeviriler her zaman hoş karşılanır.
 
-> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo failproofai'nin kendi kancalarını kendisine uyguluyor ve `failproofai` içe aktarımını derlenmiş `dist/` paketi ile çözüyor — derleme olmaksızın `Cannot find package 'failproofai'` kanca hataları alacaksınız. `src/` değişikliklerinden sonra yeniden derleyin. Bkz. [In-repo dev hooks'larının çalışması için önce derleyin](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu repo,
+> failproofai'nin kendi hook'larını kendisinde çalıştırır ve `failproofai` importunu
+> derlenmiş `dist/` paketi ile çözer — derleme olmadan `Cannot find package 'failproofai'`
+> hook hataları alırsınız. `src/` dosyalarında değişiklik yaptıktan sonra yeniden derleyin. Bkz.
+> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) ve [Nikita Agarwal](https://github.com/nk-ag) tarafından yapılmıştır.
+[Nivedit Jain](https://github.com/NiveditJain) ve [Nikita Agarwal](https://github.com/nk-ag) tarafından yapıldı.
 [befailproof.ai](https://befailproof.ai)

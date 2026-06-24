@@ -2,10 +2,9 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { GitBranch, Lightbulb, Bug, MessageSquare, ChevronDown, Star, BookOpen, Hash } from "lucide-react";
+import { GitBranch, ChevronDown, Star, BookOpen, MessageCircle, MessageSquareWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const GITHUB_REPO = "https://github.com/failproofai/failproofai";
 const CONTACT_EMAIL = "failproofai@exosphere.host";
 
 const options = [
@@ -24,32 +23,18 @@ const options = [
     bg: "rgba(96,165,250,0.08)",
   },
   {
-    label: "Join our Slack",
-    icon: Hash,
-    href: "https://join.slack.com/t/failproofai/shared_invite/zt-3v63b7k5e-O3NBHmj8X6n9gZSGDx6ggQ",
-    color: "#a78bfa",
-    bg: "rgba(167,139,250,0.08)",
+    label: "Join our Discord",
+    icon: MessageCircle,
+    href: "https://discord.gg/2zjBZP7yQJ",
+    color: "#5865f2",
+    bg: "rgba(88,101,242,0.08)",
   },
   {
-    label: "Request a Feature",
-    icon: Lightbulb,
-    href: `${GITHUB_REPO}/issues/new?labels=enhancement&title=Feature+Request%3A+`,
+    label: "Feedback & Issues",
+    icon: MessageSquareWarning,
+    href: "https://github.com/FailproofAI/failproofai/issues/new/choose",
     color: "#34d399",
     bg: "rgba(52,211,153,0.08)",
-  },
-  {
-    label: "Report an Issue",
-    icon: Bug,
-    href: `${GITHUB_REPO}/issues/new?labels=bug&title=Bug+Report%3A+`,
-    color: "#f87171",
-    bg: "rgba(248,113,113,0.08)",
-  },
-  {
-    label: "Ask a Question",
-    icon: MessageSquare,
-    href: `${GITHUB_REPO}/discussions/new?category=q-a`,
-    color: "#fb923c",
-    bg: "rgba(251,146,60,0.08)",
   },
 ] as const;
 

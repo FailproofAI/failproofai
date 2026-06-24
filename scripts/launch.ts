@@ -15,7 +15,7 @@ export function launch(mode: "dev" | "start"): void {
   const { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
 
   // Plain-text title + a labeled `Version` line that lines up with the
-  // `Star us` / `Docs` / `Slack` lines below (all four labels pad to the
+  // `Star us` / `Docs` / `Discord` lines below (all four labels pad to the
   // same column so the values form a clean right-hand column).
   console.log(`\n  failproof ai\n`);
   console.log(`  📦 Version:      ${version}`);

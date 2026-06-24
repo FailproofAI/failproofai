@@ -191,7 +191,7 @@ EXAMPLES
 LINKS
   ⭐ Star us:      https://github.com/failproofai/failproofai
   📖 Docs:         https://befailproof.ai
-  💬 Slack:        https://join.slack.com/t/failproofai/shared_invite/zt-3v63b7k5e-O3NBHmj8X6n9gZSGDx6ggQ
+  💬 Discord:      https://discord.gg/2zjBZP7yQJ
 `.trimStart());
     process.exit(0);
   }

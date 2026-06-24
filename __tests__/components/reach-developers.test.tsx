@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReachDevelopers } from "@/components/reach-developers";
@@ -16,39 +16,31 @@ describe("ReachDevelopers", () => {
     render(<ReachDevelopers />);
 
     // Dropdown content should not be visible initially
-    expect(screen.queryByText("Request a Feature")).not.toBeInTheDocument();
+    expect(screen.queryByText("Feedback & Issues")).not.toBeInTheDocument();
 
     // Click the trigger button
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
 
-    // Dropdown should now be visible
-    expect(screen.getByText("Request a Feature")).toBeInTheDocument();
-    expect(screen.getByText("Report an Issue")).toBeInTheDocument();
-    expect(screen.getByText("Ask a Question")).toBeInTheDocument();
+    // Dropdown should now be visible with the current items
+    expect(screen.getByText("Join our Discord")).toBeInTheDocument();
+    expect(screen.getByText("Feedback & Issues")).toBeInTheDocument();
   });
 
-  it("contains correct mailto links with subjects", async () => {
+  it("Discord link and the combined feedback/issues link point to the right places", async () => {
     const user = userEvent.setup();
     render(<ReachDevelopers />);
 
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
 
-    const featureLink = screen.getByText("Request a Feature").closest("a");
-    expect(featureLink).toHaveAttribute(
-      "href",
-      expect.stringContaining("github.com/failproofai/failproofai")
-    );
-    expect(featureLink).toHaveAttribute(
-      "href",
-      expect.stringContaining("labels=enhancement")
-    );
+    const discordLink = screen.getByText("Join our Discord").closest("a");
+    expect(discordLink).toHaveAttribute("href", "https://discord.gg/2zjBZP7yQJ");
 
-    const bugLink = screen.getByText("Report an Issue").closest("a");
-    expect(bugLink).toHaveAttribute(
+    const feedbackLink = screen.getByText("Feedback & Issues").closest("a");
+    expect(feedbackLink).toHaveAttribute(
       "href",
-      expect.stringContaining("github.com/failproofai/failproofai")
+      expect.stringContaining("github.com/FailproofAI/failproofai/issues/new/choose"),
     );
   });
 
@@ -59,12 +51,12 @@ describe("ReachDevelopers", () => {
     // Open dropdown
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
-    expect(screen.getByText("Request a Feature")).toBeInTheDocument();
+    expect(screen.getByText("Feedback & Issues")).toBeInTheDocument();
 
     // Click the backdrop overlay (the fixed inset-0 div rendered when open)
     const backdrop = container.querySelector('[aria-hidden="true"]') as HTMLElement;
     await user.click(backdrop);
-    expect(screen.queryByText("Report an Issue")).not.toBeInTheDocument();
+    expect(screen.queryByText("Feedback & Issues")).not.toBeInTheDocument();
   });
 
   // ARIA attribute tests
@@ -102,7 +94,8 @@ describe("ReachDevelopers", () => {
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
     const menuItems = screen.getAllByRole("menuitem");
-    expect(menuItems).toHaveLength(6);
+    // Star, Documentation, Join our Discord, Feedback & Issues
+    expect(menuItems).toHaveLength(4);
   });
 
   it("Escape key closes dropdown", async () => {
@@ -110,9 +103,9 @@ describe("ReachDevelopers", () => {
     render(<ReachDevelopers />);
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
-    expect(screen.getByText("Request a Feature")).toBeInTheDocument();
+    expect(screen.getByText("Feedback & Issues")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByText("Report an Issue")).not.toBeInTheDocument();
+    expect(screen.queryByText("Feedback & Issues")).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.11-beta.12 — 2026-06-24
+
+### Features
+- Collapse the dashboard "Reach Us" dropdown's three GitHub links (Request a Feature / Report an Issue / Ask a Question) into a single **Feedback & Issues** entry pointing at the GitHub issue chooser (`/issues/new/choose`).
+
+### Docs
+- Replace the community Slack invite with Discord (`https://discord.gg/2zjBZP7yQJ`) everywhere it's user-facing: the `failproofai --help` LINKS banner, the dashboard "Reach Us" dropdown, and the README community badge (English + 14 translations). The Slack *webhook notification example* (`examples/policies-notification.js`) is intentionally left as-is — it's a feature integration, not a community link.
+
 ## 0.0.11-beta.11 — 2026-06-23
 
 ### Features

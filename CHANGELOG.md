@@ -11,6 +11,7 @@
 
 ### Docs
 - Replace the community Slack invite with Discord (`https://discord.gg/2zjBZP7yQJ`) everywhere it's user-facing: the `failproofai --help` LINKS banner, the dashboard "Reach Us" dropdown, and the README community badge (English + 14 translations). The Slack *webhook notification example* (`examples/policies-notification.js`) is intentionally left as-is — it's a feature integration, not a community link.
+- Reword the `/audit` invite card ("Share with friends" / "wanna know how your friends' agents score?") and grammar-pass the X/LinkedIn share templates (article/adverb/coordination/comma-splice fixes only — no behavioral or structural change).
 
 ## 0.0.11-beta.11 — 2026-06-23
 

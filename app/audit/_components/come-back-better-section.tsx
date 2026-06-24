@@ -35,7 +35,7 @@ const DEFAULT_REMINDER_DAYS = 7;
 const REMINDER_OPTIONS = [3, 7, 14, 30] as const;
 type Cadence = typeof REMINDER_OPTIONS[number];
 
-const PERKS_PERK = "share with 3 friends → unlock pro features for a month.";
+const PERKS_PERK = "wanna know how your friends' agents score?";
 
 // The AuthDialog is shared by the reminder and invite CTAs. The reminder path
 // keeps the dialog's default copy; the invite path swaps in login-required
@@ -294,7 +294,7 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
 
         {/* Perks card */}
         <div className="cbb-card">
-          <div className="cbb-card-title">unlock failproof perks</div>
+          <div className="cbb-card-title">Share with friends</div>
           <div className="cbb-card-sub">{PERKS_PERK}</div>
           <button type="button" className="invite-btn" onClick={handleInvite}>
             invite a friend

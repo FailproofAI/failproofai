@@ -4,6 +4,10 @@
 
 ### Features
 - Collapse the dashboard "Reach Us" dropdown's three GitHub links (Request a Feature / Report an Issue / Ask a Question) into a single **Feedback & Issues** entry pointing at the GitHub issue chooser (`/issues/new/choose`).
+- Reorder the policies → activity table columns to: time · decision · event · cli · tool · policy · reason · mode · duration · session.
+
+### Fixes
+- Fix the policies → activity table collapsing on narrow / portrait windows. Columns no longer overlap — each data cell clips with an ellipsis at its own edge and headers stay on one line — and the table holds a readable `min-width` (1280px), scrolling horizontally below that via a themed scrollbar instead of squeezing columns into each other. The badge / long-header columns (event, cli, decision, duration, session) were widened so their content fits.
 
 ### Docs
 - Replace the community Slack invite with Discord (`https://discord.gg/2zjBZP7yQJ`) everywhere it's user-facing: the `failproofai --help` LINKS banner, the dashboard "Reach Us" dropdown, and the README community badge (English + 14 translations). The Slack *webhook notification example* (`examples/policies-notification.js`) is intentionally left as-is — it's a feature integration, not a community link.

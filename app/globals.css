@@ -387,8 +387,24 @@ input[type="date"] { color-scheme: dark; }
   border: 1px solid var(--line-2);
   border-top: 0;
   background: var(--bg-2);
+  /* Scroll horizontally on narrow / portrait viewports instead of letting the
+     fixed-layout columns collapse into each other. Themed thin scrollbar so it
+     reads as part of the same instrument family. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
 }
-.activity-table { width: 100%; }
+.activity-table-wrap::-webkit-scrollbar { height: 10px; }
+.activity-table-wrap::-webkit-scrollbar-track { background: var(--bg-3); }
+.activity-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border: 2px solid var(--bg-3);
+}
+.activity-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent-green); }
+/* min-width keeps every column wide enough for its header/badge; below it,
+   the wrap scrolls instead of squeezing columns into each other. */
+.activity-table { width: 100%; min-width: 1280px; }
 .activity-thead { background: var(--bg-3); }
 .activity-thead tr { border-bottom: 1px solid var(--line-2); }
 .activity-th {
@@ -399,8 +415,17 @@ input[type="date"] { color-scheme: dark; }
   font-weight: 500;
   color: var(--accent-green);
   text-align: left;
+  white-space: nowrap;
 }
 .activity-th.text-right { text-align: right; }
+/* Data cells stay on one line and clip (with ellipsis) at their own column
+   edge, so a wide badge/value/header can never overlap the next column.
+   Scoped to data rows so the expanded detail row (colSpan) is untouched. */
+.activity-data-row > td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* zebra rhythm — adds ambient banding without breaking the dark feel.
    Hover overrides the stripe so rows feel responsive. */

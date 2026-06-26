@@ -17,8 +17,8 @@
 
 **Übersetzungen:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Laufzeit-Fehlerbehebung für Coding-Agents.**
-Greift in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und geheime Datenlecks,
+**Laufzeit-Fehlerbehebung für Coding-Agenten.**
+Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und geheime Datenlecks,
 bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
 
 </div>
@@ -29,7 +29,7 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
 
 ---
 
-## Unterstützte Agent-CLIs
+## Unterstützte Agenten-CLIs
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -80,7 +80,7 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
   </a>
 </p>
 
-> Hooks für eine oder mehrere Kombinationen installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl anzuzeigen.
+> Hooks für eine oder mehrere CLIs installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl zu erhalten.
 
 ---
 
@@ -88,23 +88,23 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oder einfach `failproofai` ausführen und die Erststart-Abfrage bestätigen
+failproofai policies --install   # oder einfach `failproofai` ausführen und beim ersten Start bestätigen
 failproofai
 ```
 
-30 integrierte Richtlinien werden sofort aktiviert. Dashboard unter `localhost:8020`. Die Erststart-Abfrage lässt sich mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
+30 integrierte Richtlinien werden sofort aktiv. Dashboard unter `localhost:8020`. Den Erststart-Dialog mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
 
 ---
 
 ## Was blockiert wird
 
-| Richtlinie | Was sie verhindert |
+| Richtlinie | Was sie blockiert |
 |---|---|
-| `block-push-master` | Direkte Pushes nach `main` / `master` |
+| `block-push-master` | Direkte Pushes auf `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commits, Merges und Rebases auf `main` / `master` |
 | `block-rm-rf` | Rekursives Löschen von Dateien |
-| `sanitize-api-keys` | API-Schlüssel, die in den Agent-Kontext gelangen |
+| `sanitize-api-keys` | API-Keys, die in den Agenten-Kontext gelangen |
 
 → [Alle 30 integrierten Richtlinien](https://docs.befailproof.ai/built-in-policies)
 
@@ -112,8 +112,8 @@ failproofai
 
 ## Eigene Richtlinien
 
-Eine Datei in `.failproofai/policies/` ablegen — sie wird automatisch geladen, ohne zusätzliche Parameter.
-Ins Repository einchecken und das gesamte Team erhält sie beim nächsten Pull.
+Eine Datei in `.failproofai/policies/` ablegen – sie wird automatisch geladen, ohne weitere Optionen.
+Ins Repository committen, und das gesamte Team erhält sie beim nächsten Pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -129,23 +129,23 @@ customPolicies.add({
 });
 ```
 
-Drei Entscheidungen stehen jeder Richtlinie zur Verfügung:
+Drei Entscheidungstypen stehen jeder Richtlinie zur Verfügung:
 
 | Entscheidung | Wirkung |
 |---|---|
 | `allow()` | Operation zulassen |
-| `deny(message)` | Blockieren — die Nachricht wird an den Agent zurückgegeben |
-| `instruct(message)` | Durchlassen, aber dem nächsten Prompt des Agents Kontext hinzufügen |
+| `deny(message)` | Blockieren – die Nachricht wird an den Agenten zurückgegeben |
+| `instruct(message)` | Durchlassen, aber dem nächsten Agenten-Prompt zusätzlichen Kontext hinzufügen |
 
 → [Leitfaden für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Sitzungstransparenz
+## Sitzungsübersicht
 
-Jeder Tool-Aufruf des Agents wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
-was blockiert wurde und was die Richtlinie dem Agent mitgeteilt hat — damit Sie bei Problemen
-nicht im Dunkeln tappen. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
+Jeder Tool-Aufruf des Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
+was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat – damit man bei Problemen
+nicht im Dunkeln tappt. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -164,18 +164,18 @@ nicht im Dunkeln tappen. → [Dashboard-Leitfaden](https://docs.befailproof.ai/d
 
 ## Lizenz
 
-MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und privaten Einsatz; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text finden Sie in [LICENSE](./LICENSE).
+MIT mit [Commons Clause](https://commonsclause.com/) – kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine separate Vereinbarung. Den vollständigen Text findet man in der [LICENSE](./LICENSE)-Datei.
 
 ---
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Grenzfälle und Übersetzungen sind herzlich willkommen.
+Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Grenzfälle und Übersetzungen sind stets willkommen.
 
 > **Vor dem Start bauen.** Zuerst `bun install && bun run build` ausführen. Dieses Repository verwendet
-> failproofai's eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import gegen das
-> kompilierte `dist/`-Bundle auf — ohne einen Build treten `Cannot find package 'failproofai'`
-> Hook-Fehler auf. Nach Änderungen an `src/` neu bauen. Siehe
+> failproofai's eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import anhand des
+> kompilierten `dist/`-Bundles auf – ohne Build tritt der Hook-Fehler `Cannot find package 'failproofai'` auf.
+> Nach Änderungen an `src/` neu bauen. Siehe
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

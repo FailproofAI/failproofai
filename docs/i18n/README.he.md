@@ -19,19 +19,19 @@
 
 **תרגומים:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה עבור סוכני קידוד.**
-מתחברים ל-Claude Code וב-Codex. תופסים לולאות, פעולות מסוכנות, ודיפוזיות של סודות
-לפני שהם הופכים לתקריות. אפס השהיה. רץ מקומי.
+**פתרון כשלים בזמן ריצה לסוכנים קוד.**
+מתחברים ל-Claude Code ו-Codex. תופסים לולאות, פעולות מסוכנות, והדלפות סודות
+לפני שהם הופכים לתקריות. אפס עיכוב. רץ באופן מקומי.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI בפעולה" width="800" />
 </p>
 
 ---
 
-## CLI סוכנים נתמכים
+## CLIs סוכנים נתמכים
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -82,7 +82,7 @@
   </a>
 </p>
 
-> התקינו hooks עבור אחד או כל שילוב: `failproofai policies --install --cli opencode pi gemini` (או `--cli claude codex copilot cursor opencode pi gemini`). השמיטו `--cli` לזיהוי אוטומטי של CLI מותקנות והנחיה.
+> התקן hook-ים עבור אחד או כל שילוב: `failproofai policies --install --cli opencode pi gemini` (או `--cli claude codex copilot cursor opencode pi gemini`). הוסר `--cli` להתקלת אוטומטית של CLIs מותקנים ושאילתה.
 
 ---
 
@@ -90,11 +90,11 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או פשוט הריצו `failproofai` וקבלו את ההנחיה בריצה ראשונה
+failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את הודעת ההרצה הראשונה
 failproofai
 ```
 
-30 מדיניות מובנות מופעלות מיד. לוח מחוונים ב-`localhost:8020`. השבתו את ההנחיה בריצה ראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניות מובנות מופעלות מייד. לוח בקרה ב-`localhost:8020`. השבת את הודעת ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -104,18 +104,18 @@ failproofai
 |---|---|
 | `block-push-master` | דחיפות ישירות ל-`main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | קומיטים, מיזוגים, rebases על `main` / `master` |
+| `block-work-on-main` | commits, merges, rebases על `main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API דולפים לתוך הקשר הסוכן |
+| `sanitize-api-keys` | API keys הדולפות להקשר הסוכן |
 
 → [כל 30 המדיניות המובנות](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## המדיניות שלך
+## המדיניויות שלך
 
-הנח קובץ ל-`.failproofai/policies/` — הוא נטען אוטומטית, ללא דגלים נדרשים.
-קומיטו אותו והצוות כולו מקבל אותו בפול הבא.
+שחרר קובץ ל-`.failproofai/policies/` — זה נטען באופן אוטומטי, ללא דגלים נדרשים.
+בצע commit שלו והצוות כולו יקבל אותו בעת ה-pull הבא.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -137,17 +137,17 @@ customPolicies.add({
 |---|---|
 | `allow()` | אפשר את הפעולה |
 | `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לזה לעבור, אבל הוסף הקשר לתא הבא של הסוכן |
+| `instruct(message)` | תן לזה לעבור, אך הוסף הקשר להודעה הבאה של הסוכן |
 
 → [מדריך מדיניות מותאם אישית](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## נראות הסדרה
+## נראות הפעילות
 
-כל קריאת כלים שהסוכן שלך מבצע נרשמת מקומית. לוח המחוונים מראה מה רץ,
+כל קריאת כלי שהסוכן שלך מבצע מתועדת באופן מקומי. לוח הבקרה מציג מה רץ,
 מה נחסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
-כשמשהו הולך לא טוב. → [מדריך לוח המחוונים](https://docs.befailproof.ai/dashboard)
+כשמשהו הולך לא בסדר. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -155,30 +155,30 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [התחלה מהירה](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשונים |
-| [מדיניות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניות עם פרמטרים |
-| [מדיניות מותאמות אישית](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
-| [תצורה](https://docs.befailproof.ai/configuration) | היקפי תצורה וכללי מיזוג |
-| [לוח מחוונים](https://docs.befailproof.ai/dashboard) | צג סדרה ופעילות מדיניות |
-| [ארכיטקטורה](https://docs.befailproof.ai/architecture) | איך מערכת ה-hook עובדת |
+| [התחל](https://docs.befailproof.ai/getting-started) | התקנה והצעדים הראשונים |
+| [מדיניויות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניויות עם פרמטרים |
+| [מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
+| [הגדרה](https://docs.befailproof.ai/configuration) | הגדרות היקף וכללי מיזוג |
+| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מנטר פעילות ופעילות מדיניות |
+| [אדריכלות](https://docs.befailproof.ai/architecture) | כיצד מערכת ה-hook עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](./LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חופשי לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכמה נפרדת. ראה [LICENSE](./LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניות חדשות, מקרי קצה, ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניויות חדשות, cases קצה, ותרגומים כולם בברכה.
 
-> **בנו לפני שתתחילו.** הריצו `bun install && bun run build` תחילה. מאגר זה מריץ
-> hooks של failproofai על עצמו, והם פותרים את היבוא `failproofai` כנגד
-> bundle המהדר `dist/` — ללא build תפגעו ב-`Cannot find package 'failproofai'`
-> שגיאות hook. בנו מחדש לאחר שינוי `src/`. ראה
-> [בנו לפני שה-in-repo dev hooks יעבדו](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` תחילה. ריפו זה מריץ
+> את hook-ים של failproofai בעצמו, והם פותרים את `failproofai` import כנגד
+> bundle `dist/` המהדורה — בלי build תקבל `Cannot find package 'failproofai'`
+> hook errors. בנה מחדש אחרי שינוי `src/`. ראה
+> [בנה לפני שה-in-repo dev hooks יעבדו](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

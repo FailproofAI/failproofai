@@ -17,9 +17,9 @@
 
 **Traduções:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Resolução de falhas em tempo de execução para agentes de código.**
+**Resolução de falhas em tempo de execução para agentes de codificação.**
 Integra-se ao Claude Code e ao Codex. Detecta loops, ações perigosas e vazamentos de segredos
-antes que se tornem incidentes. Latência zero. Roda localmente.
+antes que virem incidentes. Latência zero. Executa localmente.
 
 </div>
 
@@ -80,7 +80,7 @@ antes que se tornem incidentes. Latência zero. Roda localmente.
   </a>
 </p>
 
-> Instale hooks para um ou qualquer combinação: `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omita `--cli` para detectar automaticamente as CLIs instaladas e ser guiado por um prompt.
+> Instale hooks para um ou qualquer combinação: `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omita `--cli` para detectar automaticamente os CLIs instalados e exibir um prompt.
 
 ---
 
@@ -88,15 +88,15 @@ antes que se tornem incidentes. Latência zero. Roda localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt da primeira execução
+failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt na primeira execução
 failproofai
 ```
 
-30 políticas integradas são ativadas imediatamente. Dashboard em `localhost:8020`. Desative o prompt da primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas integradas são ativadas imediatamente. Dashboard disponível em `localhost:8020`. Desative o prompt de primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## O que é bloqueado
+## O que ele bloqueia
 
 | Política | O que bloqueia |
 |---|---|
@@ -104,7 +104,7 @@ failproofai
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commits, merges e rebases em `main` / `master` |
 | `block-rm-rf` | Exclusão recursiva de arquivos |
-| `sanitize-api-keys` | Vazamento de chaves de API para o contexto do agente |
+| `sanitize-api-keys` | Vazamento de chaves de API no contexto do agente |
 
 → [Todas as 30 políticas integradas](https://docs.befailproof.ai/built-in-policies)
 
@@ -113,7 +113,7 @@ failproofai
 ## Suas próprias políticas
 
 Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
-Faça o commit e toda a equipe receberá a política no próximo pull.
+Faça commit e toda a equipe receberá na próxima atualização.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -143,9 +143,9 @@ Três decisões disponíveis para cada política:
 
 ## Visibilidade da sessão
 
-Cada chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
-o que foi bloqueado e o que a política comunicou ao agente — para que você não fique no escuro
-quando algo der errado. → [Guia do Dashboard](https://docs.befailproof.ai/dashboard)
+Cada chamada de ferramenta que seu agente realiza é registrada localmente. O dashboard mostra o que foi executado,
+o que foi bloqueado e o que a política informou ao agente — para que você não fique no escuro
+quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -155,7 +155,7 @@ quando algo der errado. → [Guia do Dashboard](https://docs.befailproof.ai/dash
 |---|---|
 | [Primeiros Passos](https://docs.befailproof.ai/getting-started) | Instalação e primeiros passos |
 | [Políticas Integradas](https://docs.befailproof.ai/built-in-policies) | Todas as 30 políticas com parâmetros |
-| [Políticas Personalizadas](https://docs.befailproof.ai/custom-policies) | Escreva as suas próprias |
+| [Políticas Personalizadas](https://docs.befailproof.ai/custom-policies) | Crie as suas próprias |
 | [Configuração](https://docs.befailproof.ai/configuration) | Escopos de configuração e regras de mesclagem |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor de sessão e atividade de políticas |
 | [Arquitetura](https://docs.befailproof.ai/architecture) | Como o sistema de hooks funciona |
@@ -164,7 +164,7 @@ quando algo der errado. → [Guia do Dashboard](https://docs.befailproof.ai/dash
 
 ## Licença
 
-MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai requer um acordo separado. Veja [LICENSE](./LICENSE) para o texto completo.
+MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai requer um acordo separado. Consulte [LICENSE](./LICENSE) para o texto completo.
 
 ---
 
@@ -172,10 +172,10 @@ MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso inter
 
 Consulte [CONTRIBUTING.md](./CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
 
-> **Faça o build antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório roda
+> **Faça o build antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
 > os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` em relação ao
-> bundle compilado em `dist/` — sem um build, você receberá erros de hook como `Cannot find package 'failproofai'`.
-> Refaça o build após alterar `src/`. Veja
+> bundle compilado em `dist/` — sem um build você encontrará erros de hook `Cannot find package 'failproofai'`.
+> Refaça o build após alterar `src/`. Consulte
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

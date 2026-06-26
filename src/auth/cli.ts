@@ -144,7 +144,7 @@ async function runLogin(): Promise<void> {
     const nowSecs = Math.floor(Date.now() / 1000);
     const refreshUsable = existing.refresh_expires_at > nowSecs;
     if (refreshUsable) {
-      void trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
+      await trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
         source: "cli",
         status: "already_signed_in",
         user_id: existing.user.id,
@@ -160,6 +160,8 @@ async function runLogin(): Promise<void> {
     // Overwrite cleanly so a half-broken file doesn't survive next startup.
     deleteAuth();
   }
+  // Fire-and-forget: the interactive `email:` / `code:` prompts that follow keep
+  // the process alive well past the 5s fetch, and awaiting would stall the prompt.
   void trackHookEvent(getInstanceId(), "audit_cli_auth_login_started", {
     source: "cli",
     api_base: getApiBase(),
@@ -177,7 +179,7 @@ async function runLogin(): Promise<void> {
     email = "";
   }
   if (!email) {
-    void trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
+    await trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
       source: "cli",
       status: "aborted_invalid_email",
     });
@@ -186,6 +188,7 @@ async function runLogin(): Promise<void> {
 
   try {
     const r = await requestLoginCode(email);
+    // Fire-and-forget: the `code:` prompt loop below keeps the process alive.
     void trackHookEvent(getInstanceId(), "audit_otp_requested", {
       source: "cli",
       status: "success",
@@ -197,7 +200,7 @@ async function runLogin(): Promise<void> {
     );
   } catch (err) {
     const isApi = err instanceof AuthApiError;
-    void trackHookEvent(getInstanceId(), "audit_otp_requested", {
+    await trackHookEvent(getInstanceId(), "audit_otp_requested", {
       source: "cli",
       status: "failed",
       error_code: isApi ? err.code : "upstream_unreachable",
@@ -228,7 +231,7 @@ async function runLogin(): Promise<void> {
       break;
     } catch (err) {
       const isApi = err instanceof AuthApiError;
-      void trackHookEvent(getInstanceId(), "audit_otp_verified", {
+      await trackHookEvent(getInstanceId(), "audit_otp_verified", {
         source: "cli",
         status: "failed",
         attempt: verifyAttempts,
@@ -248,7 +251,7 @@ async function runLogin(): Promise<void> {
     }
   }
   if (!tokenResp) {
-    void trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
+    await trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
       source: "cli",
       status: "exhausted_attempts",
       attempts: verifyAttempts,
@@ -257,7 +260,7 @@ async function runLogin(): Promise<void> {
   }
 
   writeAuth(authFromTokenResponse(tokenResp));
-  void trackHookEvent(getInstanceId(), "audit_otp_verified", {
+  await trackHookEvent(getInstanceId(), "audit_otp_verified", {
     source: "cli",
     status: "success",
     attempt: verifyAttempts,
@@ -273,14 +276,14 @@ async function runLogin(): Promise<void> {
   // `source: "audit_set_reminder_auth_dialog"`; this is the CLI sibling —
   // without it, anyone who signs in via `failproofai auth login` stays
   // unjoined to their pre-auth events.
-  void trackHookEvent(getInstanceId(), "audit_user_identity_linked", {
+  await trackHookEvent(getInstanceId(), "audit_user_identity_linked", {
     source: "cli",
     user_id: tokenResp.user.id,
     email: tokenResp.user.email,
     local_random_id: getInstanceId(),
     $set: { email: tokenResp.user.email, user_id: tokenResp.user.id },
   });
-  void trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
+  await trackHookEvent(getInstanceId(), "audit_cli_auth_login_completed", {
     source: "cli",
     status: "success",
     attempts: verifyAttempts,
@@ -295,7 +298,7 @@ async function runLogin(): Promise<void> {
 async function runLogout(): Promise<void> {
   const existing = readAuth();
   if (!existing) {
-    void trackHookEvent(getInstanceId(), "audit_cli_auth_logout_completed", {
+    await trackHookEvent(getInstanceId(), "audit_cli_auth_logout_completed", {
       source: "cli",
       had_session: false,
       upstream: "noop",
@@ -315,7 +318,7 @@ async function runLogout(): Promise<void> {
     }
   }
   deleteAuth();
-  void trackHookEvent(getInstanceId(), "audit_cli_auth_logout_completed", {
+  await trackHookEvent(getInstanceId(), "audit_cli_auth_logout_completed", {
     source: "cli",
     had_session: true,
     upstream,
@@ -326,10 +329,10 @@ async function runLogout(): Promise<void> {
   );
 }
 
-function runWhoami(): void {
+async function runWhoami(): Promise<void> {
   const existing = readAuth();
   if (!existing) {
-    void trackHookEvent(getInstanceId(), "audit_cli_auth_whoami", {
+    await trackHookEvent(getInstanceId(), "audit_cli_auth_whoami", {
       source: "cli",
       authenticated: false,
     });
@@ -337,7 +340,7 @@ function runWhoami(): void {
     process.exitCode = 1;
     return;
   }
-  void trackHookEvent(getInstanceId(), "audit_cli_auth_whoami", {
+  await trackHookEvent(getInstanceId(), "audit_cli_auth_whoami", {
     source: "cli",
     authenticated: true,
     user_id: existing.user.id,

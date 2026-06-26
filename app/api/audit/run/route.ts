@@ -17,6 +17,7 @@ import { writeDashboardCache } from "@/src/audit/dashboard-cache";
 import { INTEGRATION_TYPES, type IntegrationType } from "@/src/hooks/types";
 import type { RunAuditOptions } from "@/src/audit/types";
 import { finishRun, tryAcquireRun } from "../_state";
+import { initTelemetry, trackEvent } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,11 @@ function sanitize(body: RunBody): RunAuditOptions {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // initTelemetry never throws; init up front so every exit path (incl. the
+  // 400/409 rejections and the detached run task below) can report. The
+  // dashboard is a long-lived process, so trackEvent's background flush
+  // delivers even after this handler returns 202.
+  await initTelemetry();
   let body: RunBody = {};
   try {
     const raw = await request.text();
@@ -60,6 +66,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // JSON.parse("null") returns null and JSON.parse("[]") returns an
       // array — both pass the catch but break sanitize()'s field access.
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        trackEvent("audit_run_rejected", { source: "dashboard", reason: "non_object_body" });
         return NextResponse.json(
           { error: "Request body must be a JSON object" },
           { status: 400 },
@@ -68,17 +75,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body = parsed as RunBody;
     }
   } catch {
+    trackEvent("audit_run_rejected", { source: "dashboard", reason: "invalid_json" });
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const opts = sanitize(body);
 
   if (!tryAcquireRun()) {
+    trackEvent("audit_run_rejected", { source: "dashboard", reason: "already_running" });
     return NextResponse.json(
       { error: "Audit already running", status: "already-running" },
       { status: 409 },
     );
   }
+
+  // Mirror the CLI's cli_audit_* funnel for the dashboard path (which shares the
+  // same runAudit() core but previously emitted no server telemetry at all).
+  trackEvent("audit_run_started", {
+    source: "dashboard",
+    since: opts.since ?? null,
+    no_cache: opts.noCache === true,
+    cli_count: opts.clis?.length ?? 0,
+    project_count: opts.projects?.length ?? 0,
+  });
+  const startedAt = Date.now();
 
   // Fire-and-forget: a cold, all-history scan can run far longer than any HTTP
   // request should stay open — and longer than Node's `server.requestTimeout`
@@ -93,8 +113,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // the client (the POST already returned 202), so a failed persist is a
       // failed run from the user's view — surface it instead of reporting OK.
       const persisted = writeDashboardCache(opts, result);
+      trackEvent("audit_run_completed", {
+        source: "dashboard",
+        duration_ms: Date.now() - startedAt,
+        events_scanned: result.eventsScanned,
+        sessions_scanned: result.transcripts.scanned,
+        projects_scanned: result.projectsScanned.length,
+        findings: result.results.length,
+        total_hits: result.totals.hits,
+        persisted,
+      });
       finishRun(persisted ? null : "audit finished but its result could not be saved");
     } catch (err) {
+      trackEvent("audit_run_failed", {
+        source: "dashboard",
+        duration_ms: Date.now() - startedAt,
+        error_type: err instanceof Error ? err.name : "unknown",
+      });
       finishRun(err instanceof Error ? err.message : String(err));
     }
   })();

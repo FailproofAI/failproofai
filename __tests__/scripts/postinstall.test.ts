@@ -100,6 +100,23 @@ describe("postinstall script", () => {
   const allLogs = () =>
     consoleLogSpy.mock.calls.map((c: unknown[]) => String(c[0] ?? "")).join("\n");
 
+  describe("missing dashboard build (server.js absent)", () => {
+    it("tracks package_install_failed before exiting 1 (was silently invisible)", async () => {
+      const { existsSync } = await import("node:fs");
+      vi.mocked(existsSync).mockReturnValue(false); // SERVER_JS missing
+      const { trackInstallEvent } = await import("../../scripts/install-telemetry.mjs");
+
+      await expect(import("../../scripts/postinstall.mjs")).rejects.toThrow("process.exit called");
+
+      expect(trackInstallEvent).toHaveBeenCalledWith(
+        "package_install_failed",
+        expect.objectContaining({ reason: "server_js_missing" }),
+      );
+      expect(trackInstallEvent).not.toHaveBeenCalledWith("package_installed", expect.anything());
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("brand-new user (no config, no settings)", () => {
     it("prints the Next steps block", async () => {
       await runPostinstall({ hooksConfigExists: false });

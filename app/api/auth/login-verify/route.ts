@@ -20,26 +20,32 @@ interface VerifyBody {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // `initTelemetry` never throws — its internal try/catch is total. Init up
+  // front so the validation-400 paths below are tracked too, mirroring
+  // /api/auth/login-request.
+  await initTelemetry();
   let body: VerifyBody = {};
   try {
     body = (await req.json()) as VerifyBody;
   } catch {
+    trackEvent("audit_otp_verified", { status: "validation_error", source: "dashboard", reason: "invalid_json" });
     return NextResponse.json({ code: "validation_error", message: "Invalid JSON body" }, { status: 400 });
   }
   if (typeof body.email !== "string" || !body.email.trim()) {
+    trackEvent("audit_otp_verified", { status: "validation_error", source: "dashboard", reason: "missing_email" });
     return NextResponse.json(
       { code: "validation_error", message: "email is required" },
       { status: 400 },
     );
   }
   if (typeof body.code !== "string" || !body.code.trim()) {
+    trackEvent("audit_otp_verified", { status: "validation_error", source: "dashboard", reason: "missing_code", email: body.email.trim().toLowerCase() });
     return NextResponse.json(
       { code: "validation_error", message: "code is required" },
       { status: 400 },
     );
   }
-  // `initTelemetry` never throws — its internal try/catch is total.
-  await initTelemetry();
+  const email = body.email.trim().toLowerCase();
   try {
     const tokens = await verifyLoginCode(body.email, body.code);
     writeAuth(authFromTokenResponse(tokens));
@@ -72,6 +78,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       trackEvent("audit_otp_verified", {
         status: "failed",
         source: "dashboard",
+        email,
         error_code: err.code,
         http_status: err.status,
       });
@@ -87,6 +94,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     trackEvent("audit_otp_verified", {
       status: "failed",
       source: "dashboard",
+      email,
       error_code: "upstream_unreachable",
       error_message: message.slice(0, 200),
     });

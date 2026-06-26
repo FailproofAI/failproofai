@@ -104,7 +104,8 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
     if (running) return;
     capture("audit_rerun_clicked", { source, since: "all" });
     setRunning(true);
-    setRerunStatus({ kind: "running", startedAt: Date.now() });
+    const startedAt = Date.now();
+    setRerunStatus({ kind: "running", startedAt });
     try {
       // noCache: an explicit re-audit bypasses the per-transcript cache and
       // re-scans from scratch — never a silent no-op that returns the identical
@@ -114,6 +115,11 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
       // fast cached path — it's a first scan, not a re-audit.
       await triggerRun({ cli: [], since: "all", noCache: true });
       await refreshFromCache();
+      capture("audit_rerun_succeeded", {
+        source,
+        since: "all",
+        duration_ms: Date.now() - startedAt,
+      });
       setRerunStatus({ kind: "idle" });
     } catch (err) {
       const kind = err instanceof RerunError ? err.kind : "network";
@@ -122,6 +128,7 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
         source,
         since: "all",
         cli_filter: "all",
+        duration_ms: Date.now() - startedAt,
       });
       setRerunStatus({ kind: "failed", reason: kind, failedAt: Date.now() });
     } finally {

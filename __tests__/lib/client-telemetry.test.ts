@@ -54,6 +54,12 @@ describe("client-telemetry", () => {
     expect(body.properties.extra).toBe("prop");
   });
 
+  it("sets keepalive:true so events survive a page navigation/unload", () => {
+    setClientTelemetryConfig(enabledConfig);
+    captureClientEvent("$pageview");
+    expect(fetchSpy.mock.calls[0][1].keepalive).toBe(true);
+  });
+
   it("includes $current_url and $pathname in properties", () => {
     setClientTelemetryConfig(enabledConfig);
     captureClientEvent("$pageview");

@@ -27,6 +27,14 @@ if (!existsSync(serverJsPath)) {
     `  The package may not have been built correctly.\n` +
     `  Try reinstalling: npm install -g failproofai@latest\n`
   );
+  // Await so the event lands before process.exit(1) kills the in-flight fetch —
+  // a failed install is exactly the signal we most want and would otherwise lose.
+  await trackInstallEvent("package_install_failed", {
+    reason: "server_js_missing",
+    platform: platform(),
+    arch: arch(),
+    node_version: process.versions.node,
+  }).catch(() => {});
   process.exit(1);
 }
 
@@ -202,7 +210,7 @@ if (previousVersion === null) {
     arch: arch(),
     os_release: release(),
     node_version: process.versions.node,
-    version: currentVersion,
+    // `version` is carried automatically as `failproofai_version` — no explicit dup.
   }).catch(() => {});
 } else {
   // Same version is a reinstall — still worth tracking; users hitting `npm install -g`
@@ -227,6 +235,7 @@ trackInstallEvent("package_installed", {
   platform: platform(),
   arch: arch(),
   os_release: release(),
+  node_version: process.versions.node,
   hostname_hash: hashToId(hostname()),
   hooks_configured: hooksResult.configured,
   hooks_registered: hooksResult.registered,

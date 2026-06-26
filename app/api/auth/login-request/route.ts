@@ -21,11 +21,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     body = (await req.json()) as RequestBody;
   } catch {
-    trackEvent("audit_otp_requested", { status: "validation_error", reason: "invalid_json" });
+    trackEvent("audit_otp_requested", { status: "validation_error", source: "dashboard", reason: "invalid_json" });
     return NextResponse.json({ code: "validation_error", message: "Invalid JSON body" }, { status: 400 });
   }
   if (typeof body.email !== "string" || !body.email.trim()) {
-    trackEvent("audit_otp_requested", { status: "validation_error", reason: "missing_email" });
+    trackEvent("audit_otp_requested", { status: "validation_error", source: "dashboard", reason: "missing_email" });
     return NextResponse.json(
       { code: "validation_error", message: "email is required" },
       { status: 400 },

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.11 — 2026-06-26
+
+### Docs
+- Promote `0.0.11-beta.13` to stable `0.0.11`; the per-beta `0.0.11-beta.*` sections below carry the full feature / fix / docs details for this cycle (#459).
+
 ## 0.0.11-beta.12 — 2026-06-24
 
 ### Features

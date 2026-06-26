@@ -254,6 +254,10 @@ export async function runAuditCli(args: string[]): Promise<void> {
   }
 
   const instanceId = getInstanceId();
+  // Fire-and-forget is safe for `started`: the multi-second audit below (and the
+  // awaited cli_audit_completed / cli_audit_failed) keep the process alive long
+  // enough for this fetch to land. Awaiting it would add up to a 5s pre-audit
+  // stall on a flaky network for no reliability gain.
   void trackHookEvent(instanceId, "cli_audit_started", { source: "cli" });
 
   printHeader();
@@ -265,7 +269,10 @@ export async function runAuditCli(args: string[]): Promise<void> {
   try {
     result = await runWithProgress(opts);
   } catch (err) {
-    void trackHookEvent(instanceId, "cli_audit_failed", {
+    // Await before die(): die() calls process.exit(1), which would kill an
+    // in-flight fire-and-forget fetch and drop this event. trackHookEvent is
+    // bounded (5s timeout) and never throws, so this can't hang or mask the error.
+    await trackHookEvent(instanceId, "cli_audit_failed", {
       source: "cli",
       error_type: err instanceof Error ? err.name : "unknown",
     });
@@ -274,7 +281,11 @@ export async function runAuditCli(args: string[]): Promise<void> {
 
   printSummary(result);
 
-  void trackHookEvent(instanceId, "cli_audit_completed", {
+  // Await before the empty-history branch below, which calls process.exit(0) and
+  // would otherwise drop this event. On the dashboard path launch() keeps the
+  // process alive, but awaiting makes delivery reliable on every exit path.
+  // Bounded (5s) and never throws.
+  await trackHookEvent(instanceId, "cli_audit_completed", {
     source: "cli",
     events_scanned: result.eventsScanned,
     sessions_scanned: result.transcripts.scanned,

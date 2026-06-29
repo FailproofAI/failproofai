@@ -60,7 +60,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
@@ -70,7 +70,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Restore translation cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: scripts/translate-docs/.translation-cache.json
           key: translation-cache-${{ hashFiles('scripts/translate-docs/.translation-cache.json') }}
@@ -164,7 +164,7 @@ jobs:
           "
 
       - name: Save translation cache
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: scripts/translate-docs/.translation-cache.json
           key: translation-cache-${{ hashFiles('scripts/translate-docs/.translation-cache.json') }}

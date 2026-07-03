@@ -79,7 +79,7 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
 // Settings paths:
 //   user    → ~/.copilot/hooks/failproofai.json
 //   project → <cwd>/.github/hooks/failproofai.json   (also where the cloud agent reads)
-// Settings file carries `version: 1` like Codex's hooks.json.
+// Settings file carries a top-level `version: 1` (Copilot's own VS Code-compatible schema).
 
 export const COPILOT_HOOK_SCOPES = ["user", "project"] as const;
 export type CopilotHookScope = (typeof COPILOT_HOOK_SCOPES)[number];
@@ -159,7 +159,7 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
 // Settings paths:
 //   user    → ~/.cursor/hooks.json
 //   project → <cwd>/.cursor/hooks.json
-// Settings file carries `version: 1` like Codex/Copilot.
+// Settings file carries a top-level `version: 1` (Cursor's own hooks.json schema).
 
 export const CURSOR_HOOK_SCOPES = ["user", "project"] as const;
 export type CursorHookScope = (typeof CURSOR_HOOK_SCOPES)[number];

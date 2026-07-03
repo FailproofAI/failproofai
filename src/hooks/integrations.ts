@@ -226,16 +226,20 @@ export const claudeCode: Integration = {
 
 // ── OpenAI Codex integration ────────────────────────────────────────────────
 //
-// Codex's hook protocol is Claude-compatible by design (see the parity matrix
-// in plans/great-in-failproofai-i-vectorized-treasure.md). The only material
+// Codex's hook protocol is Claude-compatible by design. The only material
 // differences are:
 //   • Settings paths: ~/.codex/hooks.json (user) and <cwd>/.codex/hooks.json (project)
 //   • Stdin event names arrive snake_case (pre_tool_use); we canonicalize to PascalCase before policy lookup
 //   • No "local" scope
-//   • Settings file carries a top-level "version": 1 marker
+//   • Schema: the top-level object allows ONLY `hooks` (plus an optional
+//     `description`). Codex's `HooksFile` struct is #[serde(deny_unknown_fields)],
+//     so a stray `version` key makes Codex refuse to start the session with
+//     "unknown field `version`, expected `hooks`". We must not write one — and we
+//     strip any left over by older builds on the next install/uninstall.
+//   • `timeout` is in SECONDS (Codex's `timeout_sec`, default 600), not the
+//     milliseconds Claude/Cursor use.
 
 interface CodexSettingsFile {
-  version?: number;
   hooks?: Record<string, ClaudeHookMatcher[]>;
   [key: string]: unknown;
 }
@@ -261,9 +265,7 @@ export const codex: Integration = {
   },
 
   readSettings(settingsPath) {
-    const raw = readJsonFile(settingsPath);
-    if (raw.version === undefined) raw.version = 1;
-    return raw;
+    return readJsonFile(settingsPath);
   },
 
   writeSettings(settingsPath, settings) {
@@ -281,7 +283,9 @@ export const codex: Integration = {
     return {
       type: "command",
       command,
-      timeout: 60_000,
+      // Codex reads `timeout` in SECONDS (its `timeout_sec` field, default 600),
+      // not the milliseconds Claude uses. 60_000 would mean ~16.7h, not 60s.
+      timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
   },
@@ -290,7 +294,10 @@ export const codex: Integration = {
 
   writeHookEntries(settings, binaryPath, scope) {
     const s = settings as CodexSettingsFile;
-    if (s.version === undefined) s.version = 1;
+    // Migration: older builds wrote a top-level `version: 1` that Codex now
+    // rejects (deny_unknown_fields). Strip it so re-installing self-heals a
+    // previously broken hooks.json.
+    delete (s as Record<string, unknown>).version;
     if (!s.hooks) s.hooks = {};
 
     for (const eventType of CODEX_HOOK_EVENT_TYPES) {
@@ -315,7 +322,14 @@ export const codex: Integration = {
 
   removeHooksFromFile(settingsPath) {
     const settings = this.readSettings(settingsPath) as CodexSettingsFile;
-    if (!settings.hooks) return 0;
+    // Migration: drop any legacy top-level `version` (Codex rejects it) so an
+    // uninstall also leaves a parseable file behind.
+    const hadVersion = (settings as Record<string, unknown>).version !== undefined;
+    delete (settings as Record<string, unknown>).version;
+    if (!settings.hooks) {
+      if (hadVersion) this.writeSettings(settingsPath, settings as Record<string, unknown>);
+      return 0;
+    }
 
     let removed = 0;
     for (const eventType of Object.keys(settings.hooks)) {
@@ -374,7 +388,8 @@ export const codex: Integration = {
 // Hook entries differ from Claude/Codex: each entry uses OS-keyed `bash` and
 // `powershell` command fields and a `timeoutSec` (seconds) instead of Claude's
 // single `command` field with `timeout` (milliseconds). Top-level wrapper is
-// `{ "version": 1, "hooks": {...} }`, mirroring Codex.
+// `{ "version": 1, "hooks": {...} }` (Copilot's own VS Code-compatible schema;
+// unlike Codex, whose HooksFile rejects a top-level `version`).
 
 interface CopilotHookEntry {
   type: "command";

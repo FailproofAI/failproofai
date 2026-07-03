@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.12-beta.0 — 2026-07-03
+
+### Fixes
+- Stop writing an invalid top-level `version` field into OpenAI Codex `hooks.json`. Codex's `HooksFile` config struct is `#[serde(deny_unknown_fields)]`, so the `version: 1` marker made Codex v0.142+ refuse to start every session with ``unknown field `version`, expected `hooks` ``. failproofai now writes only `hooks`, strips any leftover `version` on the next install/uninstall so previously-broken configs self-heal, and corrects the hook `timeout` from `60000` to `60` — Codex reads `timeout` in seconds (`timeout_sec`), so the old value meant ~16.7h instead of 60s (#473).
+
 ## 0.0.11 — 2026-06-26
 
 ### Breaking

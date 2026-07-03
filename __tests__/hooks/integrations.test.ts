@@ -202,6 +202,9 @@ describe("OpenAI Codex integration", () => {
     expect(entry.command).toContain("--cli codex");
     expect(entry.command).toContain("--hook pre_tool_use");
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    // Codex reads `timeout` in SECONDS (its `timeout_sec` field), not the
+    // milliseconds Claude uses — 60_000 would be ~16.7h.
+    expect(entry.timeout).toBe(60);
   });
 
   it("project scope uses npx -y failproofai", () => {
@@ -220,16 +223,41 @@ describe("OpenAI Codex integration", () => {
       // Snake-case keys must NOT be present (Codex stores under Pascal)
       expect(hooks[snake]).toBeUndefined();
     }
-    // Settings file carries version: 1
-    expect(settings.version).toBe(1);
+    // Codex's HooksFile is #[serde(deny_unknown_fields)] — a top-level `version`
+    // makes Codex refuse to start, so we must NOT write one.
+    expect(settings.version).toBeUndefined();
   });
 
-  it("readSettings backfills version: 1 on existing files without it", () => {
+  it("readSettings does not inject a top-level version", () => {
     const settingsPath = resolve(tempDir, ".codex", "hooks.json");
     mkdirSync(resolve(tempDir, ".codex"), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify({ hooks: {} }));
     const read = codex.readSettings(settingsPath);
-    expect(read.version).toBe(1);
+    expect(read.version).toBeUndefined();
+  });
+
+  it("writeHookEntries strips a legacy top-level version (migration)", () => {
+    // A hooks.json written by an older failproofai build carried version: 1,
+    // which Codex v0.142+ rejects. Re-installing must remove it, not just stop
+    // adding it, so a previously-broken file self-heals.
+    const settings: Record<string, unknown> = { version: 1, hooks: {} };
+    codex.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    expect(settings.version).toBeUndefined();
+    expect(settings.hooks).toBeDefined();
+  });
+
+  it("removeHooksFromFile strips a legacy top-level version (migration)", () => {
+    const settingsPath = resolve(tempDir, ".codex", "hooks.json");
+    mkdirSync(resolve(tempDir, ".codex"), { recursive: true });
+    const settings: Record<string, unknown> = {};
+    codex.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    (settings as { version?: number }).version = 1; // simulate old build's field
+    codex.writeSettings(settingsPath, settings);
+
+    codex.removeHooksFromFile(settingsPath);
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    expect(after.version).toBeUndefined();
+    expect(after.hooks).toBeUndefined();
   });
 
   it("re-running writeHookEntries is idempotent", () => {

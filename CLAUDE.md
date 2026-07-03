@@ -37,6 +37,21 @@ cwd (where `codex` was launched), so we use a relative `bun bin/failproofai.mjs`
 path. If Codex ever changes that behavior and the hook fails to find the binary,
 switch to an absolute path.
 
+**Schema (verified against Codex CLI v0.142.5 / `codex-rs/config/src/hook_config.rs`):**
+Codex's top-level `HooksFile` struct is `#[serde(deny_unknown_fields)]` and allows
+**only** `hooks` (plus an optional `description`), so the config must **not** carry a
+top-level `version` field — an earlier build wrote `version: 1` (an unverified
+assumption), which made Codex v0.142+ refuse to start every session with
+``unknown field `version`, expected `hooks` ``. The `codex` integration now writes
+only `hooks` and strips any leftover `version` on the next install/uninstall so a
+previously-broken config self-heals. Two more schema notes: `timeout` is in **seconds**
+(Codex's `timeout_sec`, default 600), not the milliseconds Claude/Cursor use — hook
+entries use `timeout: 60`. And the `__failproofai_hook__` marker is safe to keep:
+Codex's `HookHandlerConfig::Command` is an internally-tagged enum (`#[serde(tag =
+"type")]`) with **no** `deny_unknown_fields`, so the extra key is tolerated, not
+rejected. **Do not** add a `version` field to `.codex/hooks.json` (unlike Copilot and
+Cursor, whose own schemas legitimately require one).
+
 For production users (outside this repo), the recommended Codex install is:
 ```bash
 failproofai policies --install --cli codex --scope project

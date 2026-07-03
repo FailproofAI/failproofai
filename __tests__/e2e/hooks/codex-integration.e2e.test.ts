@@ -177,8 +177,15 @@ describe("E2E: Codex integration — install/uninstall", () => {
       const hooksPath = resolve(env.cwd, ".codex", "hooks.json");
       expect(existsSync(hooksPath)).toBe(true);
       const settings = JSON.parse(readFileSync(hooksPath, "utf-8")) as Record<string, unknown>;
-      expect(settings.version).toBe(1);
-      const hooks = settings.hooks as Record<string, unknown[]>;
+      // Codex's HooksFile is #[serde(deny_unknown_fields)] — the file must NOT
+      // carry a top-level `version` (it would make Codex refuse to start with
+      // "unknown field `version`, expected `hooks`"). Fresh install → only `hooks`.
+      expect(settings.version).toBeUndefined();
+      expect(Object.keys(settings)).toEqual(["hooks"]);
+      const hooks = settings.hooks as Record<
+        string,
+        Array<{ hooks: Array<Record<string, unknown>> }>
+      >;
       // Codex stores under PascalCase keys
       expect(hooks.PreToolUse).toBeDefined();
       expect(hooks.PostToolUse).toBeDefined();
@@ -188,6 +195,11 @@ describe("E2E: Codex integration — install/uninstall", () => {
       expect(hooks.UserPromptSubmit).toBeDefined();
       // Snake-case keys should not be present
       expect(hooks.pre_tool_use).toBeUndefined();
+      // Each entry matches Codex's HookHandlerConfig::Command shape: type
+      // "command" + `timeout` in SECONDS (60, not 60_000 ms).
+      const entry = hooks.PreToolUse[0].hooks[0];
+      expect(entry.type).toBe("command");
+      expect(entry.timeout).toBe(60);
     } finally {
       env.cleanup();
     }

@@ -583,11 +583,17 @@ export const HOOK_EVENT_TYPES = [
   "UserPromptExpansion",
   "PostToolBatch",
   // Newly documented upstream (https://code.claude.com/docs/en/hooks lifecycle
-  // table): `Setup` (fires on --init/--maintenance) and `MessageDisplay` (fires
-  // while assistant message text is displayed; docs lower its timeout default to
-  // 10s). Claude is canonical (no event map), so appending keeps the build green.
+  // table). `Setup` fires only on `--init`/`--maintenance` (low-frequency), so it
+  // is appended and installed like any other event.
+  //
+  // `MessageDisplay` is intentionally NOT appended. The docs mark it observe-only
+  // (it cannot block or modify anything) and note it fires on *every* assistant
+  // message display with no matcher support. Since `writeHookEntries` installs a
+  // hook for every entry in this array, appending it would spawn a failproofai
+  // subprocess on every message render for zero enforcement value. Deferred to the
+  // PR reviewer checklist; add it here only if a future observe-only use case
+  // (e.g. redaction/telemetry) justifies the per-message cost.
   "Setup",
-  "MessageDisplay",
 ] as const;
 
 export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];

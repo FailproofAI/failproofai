@@ -65,7 +65,7 @@ describe("hooks/manager", () => {
   });
 
   describe("installHooks", () => {
-    it("installs hooks for all 30 event types into empty settings", async () => {
+    it("installs hooks for all 29 event types into empty settings", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");
 
@@ -77,7 +77,7 @@ describe("hooks/manager", () => {
       expect(path).toBe(USER_SETTINGS_PATH);
 
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(30);
+      expect(Object.keys(written.hooks)).toHaveLength(29);
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         expect(matchers).toHaveLength(1);
@@ -231,7 +231,7 @@ describe("hooks/manager", () => {
       expect(writeFileSync).toHaveBeenCalledOnce();
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(30);
+      expect(Object.keys(written.hooks)).toHaveLength(29);
     });
 
     it("uses 'where' on Windows and handles multi-line output", async () => {

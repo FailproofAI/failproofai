@@ -288,8 +288,9 @@ export const codex: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli codex`;
     return {
       type: "command",
-      // Codex reads `timeout` in SECONDS (its `timeout_sec` field, default 600) —
-      // like Claude/Cursor/Copilot, and unlike Gemini, whose `timeout` is in
+      // Codex reads `timeout` in SECONDS (the field is literally `timeout`,
+      // default 600 per https://developers.openai.com/codex/hooks) — same unit as
+      // Claude/Cursor/Copilot, and unlike Gemini, whose `timeout` is in
       // milliseconds (default 60000). 60 = 60s, not 60000ms (~16.7h).
       command,
       timeout: 60,

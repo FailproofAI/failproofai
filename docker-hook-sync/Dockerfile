@@ -14,7 +14,7 @@
 #     run the clone's SOURCE via bun, not this global)
 #   - git + gh + jq + dumb-init + `script` (PTY wrap for stream-json)
 #
-# Build:  docker build -t hook-sync:latest docker/
+# Build:  docker build -t hook-sync:latest docker-hook-sync/
 # Run:    docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN=... -e GH_TOKEN=... hook-sync:latest
 #
 # Every dependency is installed at build time. The daily GitHub Actions rebuild

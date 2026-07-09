@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SessionStart",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SessionEnd",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -30,7 +30,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook UserPromptSubmit",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -42,7 +42,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PreToolUse",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -54,7 +54,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PermissionRequest",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -66,7 +66,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PermissionDenied",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -78,7 +78,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostToolUse",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -90,7 +90,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostToolUseFailure",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -102,7 +102,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Notification",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -114,7 +114,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SubagentStart",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -126,7 +126,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SubagentStop",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -138,7 +138,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TaskCreated",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -150,7 +150,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TaskCompleted",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -162,7 +162,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Stop",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -174,7 +174,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook StopFailure",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -186,7 +186,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TeammateIdle",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -198,7 +198,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook InstructionsLoaded",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -210,7 +210,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook ConfigChange",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -222,7 +222,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook CwdChanged",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -234,7 +234,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook FileChanged",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -246,7 +246,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook WorktreeCreate",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -258,7 +258,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook WorktreeRemove",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -270,7 +270,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PreCompact",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -282,7 +282,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostCompact",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -294,7 +294,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Elicitation",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -306,7 +306,7 @@
           {
             "type": "command",
             "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook ElicitationResult",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]

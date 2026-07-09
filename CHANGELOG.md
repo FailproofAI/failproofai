@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.13-beta.0 — 2026-07-09
+
+### Features
+- Sync agent CLI hook harnesses with upstream docs. Append newly-documented hook events: Claude `Setup` + `MessageDisplay`; Codex `subagent_start`/`pre_compact`/`post_compact`/`subagent_stop` (their `CODEX_EVENT_MAP` canonical mappings are intentionally left for a reviewer, so `tsc` gates the change); Copilot `PostToolUseFailure`/`ErrorOccurred`/`PreCompact`/`PermissionRequest`. (#485)
+
+### Fixes
+- Correct the Claude and Cursor hook `timeout` unit from `60000` to `60`. Both CLIs read `timeout` in seconds per their upstream docs (Claude: "Seconds before canceling … 60 for agent"; Cursor: "Execution timeout in seconds"), so the old `60000` meant ~16.7h instead of 60s. Gemini's `timeout` is genuinely milliseconds (default 60000) and is left unchanged. (#485)
+
 ## 0.0.12-beta.0 — 2026-07-09
 
 ### Features

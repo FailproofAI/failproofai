@@ -154,7 +154,10 @@ export const claudeCode: Integration = {
     return {
       type: "command",
       command,
-      timeout: 60_000,
+      // Claude reads `timeout` in SECONDS per https://code.claude.com/docs/en/hooks
+      // ("Seconds before canceling. Defaults: 600 for command ...; 60 for agent"),
+      // NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h. (#482-class unit fix)
+      timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
   },
@@ -286,7 +289,8 @@ export const codex: Integration = {
     return {
       type: "command",
       // Codex reads `timeout` in SECONDS (its `timeout_sec` field, default 600) —
-      // NOT milliseconds like Claude/Cursor/Gemini. 60 = 60s, not 60000ms (~16.7h).
+      // like Claude/Cursor/Copilot, and unlike Gemini, whose `timeout` is in
+      // milliseconds (default 60000). 60 = 60s, not 60000ms (~16.7h).
       command,
       timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
@@ -591,11 +595,13 @@ export const cursor: Integration = {
       scope === "project"
         ? `npx -y failproofai --hook ${eventType} --cli cursor`
         : `"${binaryPath}" --hook ${eventType} --cli cursor`;
-    // `timeout` is documented as ms in Cursor's schema (matches Claude).
+    // `timeout` is documented in SECONDS in Cursor's schema per
+    // https://cursor.com/docs/hooks ("Execution timeout in seconds"; doc examples
+    // use 30 and 10), NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h.
     return {
       type: "command",
       command,
-      timeout: 60_000,
+      timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
   },

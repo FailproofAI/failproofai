@@ -125,7 +125,7 @@ describe("Claude Code integration", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
     expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse');
     expect(entry.command).not.toContain("--cli");
-    expect(entry.timeout).toBe(60_000);
+    expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
   });
 
@@ -191,7 +191,7 @@ describe("OpenAI Codex integration", () => {
     expect(codex.scopes).toEqual(["user", "project"]);
   });
 
-  it("eventTypes are exactly the 6 documented Codex events (snake_case)", () => {
+  it("eventTypes are exactly the 10 documented Codex events (snake_case)", () => {
     expect(codex.eventTypes).toEqual(CODEX_HOOK_EVENT_TYPES);
     // PR 185 omitted permission_request — make sure we have it.
     expect(codex.eventTypes).toContain("permission_request");
@@ -414,7 +414,7 @@ describe("Cursor Agent integration", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
     expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor');
-    expect(entry.timeout).toBe(60_000);
+    expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Cursor entries use the Claude-style `command` field, not Copilot's bash/powershell split.
     expect(entry.bash).toBeUndefined();

@@ -18,6 +18,16 @@ export const CODEX_HOOK_EVENT_TYPES = [
   "post_tool_use",
   "user_prompt_submit",
   "stop",
+  // Newly documented upstream (https://developers.openai.com/codex/hooks) —
+  // snake_case forms of the documented SubagentStart / PreCompact / PostCompact /
+  // SubagentStop events. Their CODEX_EVENT_MAP entries are intentionally NOT added
+  // here: the canonical HookEventType is a reviewer decision, and the missing keys
+  // make the exhaustive `Record<CodexHookEventType, HookEventType>` below fail tsc
+  // on purpose so this drift is not silently half-applied. See PR body checklist.
+  "subagent_start",
+  "pre_compact",
+  "post_compact",
+  "subagent_stop",
 ] as const;
 export type CodexHookEventType = (typeof CODEX_HOOK_EVENT_TYPES)[number];
 
@@ -92,6 +102,16 @@ export const COPILOT_HOOK_EVENT_TYPES = [
   "PostToolUse",
   "Stop",
   "SubagentStop",
+  // Newly documented upstream (cli-hooks-reference) with an explicit PascalCase
+  // "VS Code compatible" variant shown in the docs. No COPILOT_EVENT_MAP exists
+  // (Copilot names are already Pascal), so appending keeps the build green.
+  // NOTE: `notification` and `subagentStart` are also newly documented but appear
+  // camelCase-ONLY (no PascalCase variant shown), so they are deferred to the PR
+  // reviewer checklist rather than guessing a casing.
+  "PostToolUseFailure",
+  "ErrorOccurred",
+  "PreCompact",
+  "PermissionRequest",
 ] as const;
 export type CopilotHookEventType = (typeof COPILOT_HOOK_EVENT_TYPES)[number];
 
@@ -556,6 +576,12 @@ export const HOOK_EVENT_TYPES = [
   "ElicitationResult",
   "UserPromptExpansion",
   "PostToolBatch",
+  // Newly documented upstream (https://code.claude.com/docs/en/hooks lifecycle
+  // table): `Setup` (fires on --init/--maintenance) and `MessageDisplay` (fires
+  // while assistant message text is displayed; docs lower its timeout default to
+  // 10s). Claude is canonical (no event map), so appending keeps the build green.
+  "Setup",
+  "MessageDisplay",
 ] as const;
 
 export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];

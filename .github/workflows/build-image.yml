@@ -2,10 +2,10 @@ name: build-image
 
 # Builds and pushes the failproofai hook-sync container to GHCR.
 #
-# The hook-sync container (docker/) runs Claude Code in --effort ultracode mode on a
+# The hook-sync container (docker-hook-sync/) runs Claude Code in --effort ultracode mode on a
 # daily schedule (a k8s CronJob managed in our infra, not this repo) to detect drift
 # between every integrated agent CLI and this repo, and opens auto-sync PRs. See
-# docker/Dockerfile for the image and scripts/sync-agent-cli-harnesses-prompt.md for
+# docker-hook-sync/Dockerfile for the image and scripts/sync-agent-cli-harnesses-prompt.md for
 # what the agent does.
 #
 # The daily rebuild refreshes the @latest-pinned claude-code + failproofai npm globals.
@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docker/**'
+      - 'docker-hook-sync/**'
       - '.github/workflows/build-image.yml'
   schedule:
     - cron: '0 8 * * *' # daily at 08:00 UTC — refresh claude-code@latest + failproofai@latest
@@ -78,8 +78,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
-          context: docker
-          file: docker/Dockerfile
+          context: docker-hook-sync
+          file: docker-hook-sync/Dockerfile
           push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_to_ghcr }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha

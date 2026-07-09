@@ -20,10 +20,12 @@ export const CODEX_HOOK_EVENT_TYPES = [
   "stop",
   // Newly documented upstream (https://developers.openai.com/codex/hooks) —
   // snake_case forms of the documented SubagentStart / PreCompact / PostCompact /
-  // SubagentStop events. Their CODEX_EVENT_MAP entries are intentionally NOT added
-  // here: the canonical HookEventType is a reviewer decision, and the missing keys
-  // make the exhaustive `Record<CodexHookEventType, HookEventType>` below fail tsc
-  // on purpose so this drift is not silently half-applied. See PR body checklist.
+  // SubagentStop events. Each has an exact 1:1 canonical HookEventType (already
+  // present in HOOK_EVENT_TYPES), so their CODEX_EVENT_MAP entries below are
+  // filled in directly. The map is an exhaustive `Record<CodexHookEventType,
+  // HookEventType>`, so tsc guarantees every event here keeps a mapping — a
+  // partial sync (event added, mapping missing) fails the build instead of
+  // silently writing an `undefined` event key into users' .codex/hooks.json.
   "subagent_start",
   "pre_compact",
   "post_compact",
@@ -38,6 +40,10 @@ export const CODEX_EVENT_MAP: Record<CodexHookEventType, HookEventType> = {
   post_tool_use: "PostToolUse",
   user_prompt_submit: "UserPromptSubmit",
   stop: "Stop",
+  subagent_start: "SubagentStart",
+  pre_compact: "PreCompact",
+  post_compact: "PostCompact",
+  subagent_stop: "SubagentStop",
 };
 
 /**

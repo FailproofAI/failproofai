@@ -56,10 +56,10 @@ RUN npm install -g --omit=dev \
         failproofai@latest \
  && npm cache clean --force
 
-# Layer 4: non-root user + chowned runtime dirs.
+# Layer 4: non-root user + chowned workspace.
 RUN useradd --create-home --uid 10001 --shell /bin/bash appuser \
- && mkdir -p /workspace /var/log/hook-sync \
- && chown -R appuser:appuser /workspace /var/log/hook-sync /home/appuser
+ && mkdir -p /workspace \
+ && chown -R appuser:appuser /workspace /home/appuser
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh

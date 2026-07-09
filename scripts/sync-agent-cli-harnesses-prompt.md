@@ -3,7 +3,7 @@ ultracode
 You are an automated **ultracode** (multi-agent) run inside a fresh clone of the
 failproofai repository. Your job is to keep failproofai in sync with the upstream
 documentation for **every** agent CLI we integrate with, then open exactly one
-pull request with the fix.
+pull request with the fix — or, if a sync PR is already open, comment on it instead.
 
 ## Run contract (read first)
 
@@ -13,10 +13,11 @@ pull request with the fix.
   finish the work.
 - The entrypoint has **already cut a fresh branch** named `auto/sync-cli-harnesses-<UTC>`.
   Do all your work here; do **not** switch branches or work on `main`.
-- failproofai's own Stop hooks are active in this checkout: you will not be allowed
-  to stop until you have **committed**, **pushed**, and **opened a PR** (or
-  determined there is nothing to sync and made no changes). Plan to finish the
-  whole flow.
+- failproofai's own Stop hooks are active in this checkout. If you make commits, you
+  will not be allowed to stop until you have **committed**, **pushed**, and **opened a
+  PR** for them. If you make **no** commits (nothing to sync, or you only commented on
+  an already-open sync PR), a clean working tree stops fine — so on those paths, do
+  **not** edit any files.
 - Use ultracode / multi-agent orchestration: in Phase 1, fan out **one subagent per
   CLI** so the seven harnesses are checked in parallel.
 
@@ -99,11 +100,41 @@ surface is documented in the package source, not a clean enumeration).
 | Pi        | https://www.npmjs.com/package/@mariozechner/pi-coding-agent |
 | Gemini    | https://geminicli.com/docs/hooks/ · https://geminicli.com/docs/reference/tools/ (tool names) |
 
-## Phase 2 — Synthesis: apply the fixes
+## Phase 2 — Decide what to do (do this BEFORE editing any files)
 
-Merge the subagent reports. If no verified CLI has drift in any scope, make **no
-changes** and skip to "Nothing to sync" below. Otherwise, edit only what drift
-requires:
+Merge the subagent reports into one list of detected drift. Then, **before you edit a
+single file**, decide which path you are on — editing first would leave uncommitted
+changes that block a clean stop on the comment / no-op paths below.
+
+1. **No drift in any verified CLI** → do nothing: make no edits, open no PR, post no
+   comment. Stop. (`unverified` alone is not drift — the docs may just be unreachable
+   today.)
+
+2. **Drift exists — first check for an already-open sync PR:**
+   `gh pr list --base main --state open --search "[auto] sync agent CLI harnesses" --json number,url,headRefName`.
+
+   - **If an open sync PR already exists, do NOT open a second PR and do NOT edit any
+     files.** Read what it already covers (`gh pr diff <number>` plus its body) and
+     compare against your detected drift. If that PR already covers everything you
+     found, stop — nothing to add. If you found drift the PR is **missing**, post ONE
+     comment listing exactly what's missing, then stop —
+     `gh pr comment <number> --body "..."`, e.g.:
+
+     > This open sync PR is missing newly-detected drift:
+     > - **Cursor**: upstream added event `afterEdit` — append to `CURSOR_HOOK_EVENT_TYPES` (+ a `CURSOR_EVENT_MAP` entry).
+     > - **Gemini**: the `run_shell_command` tool was renamed to `shell` — the `GEMINI_TOOL_MAP` key is stale.
+     >
+     > (hook-sync bot — please fold these into this PR rather than opening a second sync PR.)
+
+     Never push commits to another PR's branch; only comment, and leave the working
+     tree clean so this run stops cleanly.
+
+   - **If no open sync PR exists → go to Phase 3** to apply the fixes and open one.
+
+## Phase 3 — Apply the fixes and open one PR
+
+Only reached when there is real drift **and** no open sync PR. Edit only what drift
+requires.
 
 ### Scope 1 (event names)
 - **Append** new events just before `] as const`, preserving upstream casing.
@@ -143,25 +174,16 @@ Add a single-line entry to `CHANGELOG.md` under `## <version> — <YYYY-MM-DD>` 
 `<version>` is the `version` field in `package.json` (read it) and `<YYYY-MM-DD>` is
 today's UTC date. If that heading does not exist yet, create it above the previous
 version's section. There is no `## Unreleased` section. Use the `### Features` (or
-`### Fixes` for a shape correction) subsection. Append ` (#<PR>)` after you know the
-PR number (see Phase 3).
+`### Fixes` for a shape correction) subsection.
 
-## Phase 3 — Dedupe, then open exactly one PR
-
-1. **Dedupe first:** run
-   `gh pr list --base main --state open --search "[auto] sync agent CLI harnesses" --json number,url`.
-   If an open auto-sync PR already exists, do **NOT** open a second one — stop
-   without creating a PR (a human is still reviewing the last one). If your
-   recomputed drift was empty, also stop with no changes.
-2. Otherwise stage only the files you intentionally edited (never `git add -A`):
+### Commit, push, open the PR
+1. Stage only the files you intentionally edited (never `git add -A`):
    `src/hooks/types.ts`, `src/hooks/integrations.ts`, `src/hooks/policy-evaluator.ts`,
    the touched `__tests__/...` files, the touched dogfood fixtures, and
    `CHANGELOG.md` — whichever actually changed.
-3. Commit (e.g. `feat: sync agent CLI harnesses with upstream docs`), then
+2. Commit (e.g. `feat: sync agent CLI harnesses with upstream docs`), then
    `git push -u origin "$(git branch --show-current)"`.
-4. `gh pr create --base main --title "[auto] sync agent CLI harnesses with upstream docs" --body "<body>"`.
-5. Update the `CHANGELOG.md` entry with the real `(#<PR>)` number, then amend or add
-   a follow-up commit and push again so the PR reflects it.
+3. `gh pr create --base main --title "[auto] sync agent CLI harnesses with upstream docs" --body "<body>"`.
 
 The PR **body** must contain, in order:
 
@@ -180,11 +202,6 @@ The PR **body** must contain, in order:
    > reviewer must add the missing `*EVENT_MAP` entries (replacing `"???"`) before
    > merging. For drift in Claude or Copilot only (no event map), CI should pass on
    > this commit alone. CI must pass and this PR must be reviewed before merging.**
-
-## Nothing to sync
-
-If no verified CLI drifted in any scope: make no file changes, open no PR, and stop.
-`unverified` alone is **not** drift — the docs may simply be unreachable today.
 
 ## Constraints
 

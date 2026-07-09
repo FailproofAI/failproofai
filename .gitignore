@@ -61,9 +61,6 @@ next-env.d.ts
 # custom hooks loader temp files
 *.__failproofai_tmp__.*
 
-# sync-hook-events workflow output (ephemeral, generated in CI)
-.sync-hook-events-output.json
-
 # package manager lockfiles (bun.lock is tracked; bun.lockb is binary)
 package-lock.json
 

@@ -3,7 +3,29 @@
 ## 0.0.12-beta.0 — 2026-07-09
 
 ### Fixes
-- Codex hooks: drop the invalid top-level `version` field from `.codex/hooks.json` (Codex CLI v0.142+ rejects it with `unknown field 'version'`, refusing to start any session), and strip any leftover `version` on the next install/uninstall so previously-broken configs self-heal. Also correct the Codex `timeout` unit from `60000` to `60` — Codex reads `timeout` in seconds (its `timeout_sec` field), so the old value meant ~16.7h instead of 60s. Copilot and Cursor legitimately carry `version: 1` in their own schemas and are untouched.
+- Codex hooks: drop the invalid top-level `version` field from `.codex/hooks.json` (Codex CLI v0.142+ rejects it with `unknown field 'version'`, refusing to start any session), and strip any leftover `version` on the next install/uninstall so previously-broken configs self-heal. Also correct the Codex `timeout` unit from `60000` to `60` — Codex reads `timeout` in seconds (its `timeout_sec` field), so the old value meant ~16.7h instead of 60s. Copilot and Cursor legitimately carry `version: 1` in their own schemas and are untouched. (#482)
+
+### Dependencies
+- Bump `actions/cache` 5 → 6 (#463)
+- Bump `lucide-react` 1.21.0 → 1.22.0 (#464)
+- Bump `eslint` 10.5.0 → 10.6.0 (#465)
+- Bump `@anthropic-ai/sdk` 0.105.0 → 0.107.0 (#466)
+- Bump `@vitejs/plugin-react` 6.0.2 → 6.0.3 (#467)
+- Bump `posthog-node` 5.38.2 → 5.38.8 (#468)
+- Bump `@tanstack/react-virtual` 3.14.3 → 3.14.4 (#470)
+- Bump `tailwindcss` 4.3.1 → 4.3.2 (#471)
+- Bump `@types/node` 26.0.0 → 26.0.1 (#472)
+- Bump `@types/node` 26.0.1 → 26.1.0 (#474)
+- Bump `eslint-config-next` 16.2.9 → 16.2.10 (#475)
+- Bump `@anthropic-ai/sdk` 0.107.0 → 0.110.0 (#476)
+- Bump `@tanstack/react-virtual` 3.14.4 → 3.14.5 (#477)
+- Bump `vitest` 4.1.9 → 4.1.10 (#478)
+- Bump `next` 16.2.9 → 16.2.10 (#479)
+- Bump `posthog-node` 5.38.8 → 5.40.0 (#480)
+- Bump `lucide-react` 1.22.0 → 1.23.0 (#481)
+
+### Docs
+- Sync translated docs mirrors with the latest English sources (#462)
 
 ## 0.0.11 — 2026-06-26
 

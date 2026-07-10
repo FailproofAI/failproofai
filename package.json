@@ -22,7 +22,7 @@
   "scripts": {
     "predev": "bun run build:cli && bun link",
     "dev": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
-    "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
+    "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
     "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
     "prestart": "bun run build:cli && bun link",
     "start": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
@@ -99,7 +99,8 @@
   "dependencies": {
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
-    "posthog-node": "^5.37.1"
+    "posthog-node": "^5.37.1",
+    "sql.js": "^1.14.1"
   },
   "overrides": {
     "postcss": "8.5.14",

@@ -14,6 +14,8 @@ import { resolveSessionFilePath, UUID_RE } from "./projects";
 import type { CliId } from "./cli-registry";
 
 export const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
+/** Hermes session IDs: `YYYYMMDD_HHMMSS_<hash>` or `cron_<hash>_YYYYMMDD_HHMMSS`. */
+export const HERMES_SESSION_RE = /^(?:cron_[0-9a-z]+_)?\d{8}_\d{6}(?:_[0-9a-z-]+)?$/;
 
 export type DownloadSource =
   | { kind: "file"; path: string }
@@ -23,6 +25,7 @@ export type DownloadSource =
  *  prefixes; everyone else is a UUID. */
 export function isValidSessionId(cli: CliId, sessionId: string): boolean {
   if (cli === "opencode") return OPENCODE_SESSION_RE.test(sessionId);
+  if (cli === "hermes") return HERMES_SESSION_RE.test(sessionId);
   return UUID_RE.test(sessionId);
 }
 
@@ -83,6 +86,16 @@ export async function resolveDownloadSource(
     if (!result) return null;
     const body = JSON.stringify(result, null, 2) + "\n";
     return { kind: "synthesized", body, contentType: "application/json", extension: "json" };
+  }
+
+  if (cli === "hermes") {
+    // Hermes keeps sessions in SQLite (~/.hermes/state.db). Synthesize a JSONL
+    // export of the session's raw `messages` rows.
+    const { getHermesSessionLog } = await import("./hermes-sessions");
+    const result = await getHermesSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

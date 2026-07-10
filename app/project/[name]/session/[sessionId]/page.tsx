@@ -9,6 +9,7 @@ import { getCachedCursorSessionLog } from "@/lib/cursor-sessions";
 import { getCachedOpenCodeSessionLog } from "@/lib/opencode-sessions";
 import { getCachedPiSessionLog } from "@/lib/pi-sessions";
 import { getCachedGeminiSessionLog } from "@/lib/gemini-sessions";
+import { getCachedHermesSessionLog } from "@/lib/hermes-sessions";
 import { decodeFolderName } from "@/lib/paths";
 import { baseSessionId } from "@/lib/utils/session-id";
 import { resolveProjectPath, UUID_RE } from "@/lib/projects";
@@ -39,12 +40,19 @@ export default async function SessionPage({ params }: SessionPageProps) {
   // `ses_21ad60d14ffewMeRRKMLdS7vOI`). The other four CLIs use UUIDs. Accept
   // either; the per-CLI loader returns null for unknown IDs anyway.
   const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
-  if (!UUID_RE.test(decodedSessionId) && !OPENCODE_SESSION_RE.test(decodedSessionId)) notFound();
+  // Hermes session IDs: `YYYYMMDD_HHMMSS_<hash>` or `cron_<hash>_YYYYMMDD_HHMMSS`.
+  const HERMES_SESSION_RE = /^(?:cron_[0-9a-z]+_)?\d{8}_\d{6}(?:_[0-9a-z-]+)?$/;
+  if (
+    !UUID_RE.test(decodedSessionId) &&
+    !OPENCODE_SESSION_RE.test(decodedSessionId) &&
+    !HERMES_SESSION_RE.test(decodedSessionId)
+  )
+    notFound();
 
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" = "claude";
+  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" = "claude";
   let externalCwd: string | undefined;
 
   try {
@@ -100,7 +108,15 @@ export default async function SessionPage({ params }: SessionPageProps) {
                   externalCwd = gemini.cwd;
                   cli = "gemini";
                 } else {
-                  error = "Session log file not found.";
+                  const hermes = await getCachedHermesSessionLog(decodedSessionId);
+                  if (hermes) {
+                    entries = hermes.entries;
+                    rawLines = hermes.rawLines;
+                    externalCwd = hermes.cwd;
+                    cli = "hermes";
+                  } else {
+                    error = "Session log file not found.";
+                  }
                 }
               }
             }
@@ -127,7 +143,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
               ? `Pi${externalCwd ? ` · ${externalCwd}` : ""}`
               : cli === "gemini"
                 ? `Gemini CLI${externalCwd ? ` · ${externalCwd}` : ""}`
-                : decodedName;
+                : cli === "hermes"
+                  ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
+                  : decodedName;
 
   return (
     <main className="min-h-screen bg-background">

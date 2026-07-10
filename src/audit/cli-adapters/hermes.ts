@@ -1,14 +1,14 @@
 /**
  * Hermes (hermes-agent) transcript adapter — AUDIT-ONLY (Pillar 2).
  *
- * Hermes keeps every gateway user's sessions in one SQLite DB. We enumerate via
- * lib/hermes-projects.ts (`hermes sessions list`) and parse each session via
- * lib/hermes-sessions.ts (`hermes sessions export`), which produces the same
- * LogEntry[] shape the Codex parser does — so `logEntriesToEvents` handles the
- * rest. Shell-out (no bundled SQLite driver), mirroring the OpenCode adapter.
+ * Hermes keeps every gateway user's sessions in one SQLite DB. We read it
+ * directly via the bundled sql.js reader (lib/hermes-projects.ts enumerates the
+ * `sessions` table; lib/hermes-sessions.ts parses each session's `messages`),
+ * producing the same LogEntry[] shape the other adapters do — so
+ * `logEntriesToEvents` handles the rest.
  *
  * Gateway sessions have no `cwd` (Slack/Telegram runs aren't in a repo), so they
- * all group under a single "hermes" project bucket rather than by working dir.
+ * group by `source` (slack/telegram/cli/cron) instead of working directory.
  */
 import { getHermesSessions } from "../../../lib/hermes-projects";
 import { getHermesSessionLog } from "../../../lib/hermes-sessions";
@@ -20,8 +20,7 @@ export async function listHermesTranscriptMetadata(
   opts: ListOpts = {},
 ): Promise<TranscriptMetadata[]> {
   // `audit --project <cwd>` filters on working directory; gateway sessions have
-  // none, so Hermes contributes nothing to a cwd-scoped audit (return empty
-  // rather than every session).
+  // none, so Hermes contributes nothing to a cwd-scoped audit.
   if (opts.projects && opts.projects.length > 0) return [];
 
   const sinceMs = opts.sinceMs ?? 0;
@@ -29,16 +28,17 @@ export async function listHermesTranscriptMetadata(
   const out: TranscriptMetadata[] = [];
   for (const s of sessions) {
     if (s.mtimeMs < sinceMs) continue;
+    if (s.messageCount <= 0) continue; // empty session → no events
     out.push({
       cli: "hermes",
-      projectName: "hermes", // single bucket — gateway sessions are cwd-less
+      // Group by channel; gateway sessions are cwd-less.
+      projectName: s.source ? `hermes:${s.source}` : "hermes",
       sessionId: s.sessionId,
       transcriptPath: `hermes://${s.sessionId}`,
       mtimeMs: s.mtimeMs,
-      // DB-backed source → sizeBytes 0 disables the per-transcript cache
-      // (src/audit/cache.ts), so sessions are re-parsed each run — identical to
-      // the OpenCode adapter's behavior today.
-      sizeBytes: 0,
+      // message_count is stable for an ended session, so (mtime, size) forms a
+      // real per-transcript cache key — an ended session is parsed once.
+      sizeBytes: s.messageCount,
     });
   }
   return out;

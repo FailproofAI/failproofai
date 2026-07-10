@@ -1,81 +1,157 @@
 /**
- * Hermes (hermes-agent) session enumeration.
+ * Hermes (hermes-agent) session enumeration — AUDIT-ONLY.
  *
- * AUDIT-ONLY. Enumerates every session across every gateway user from Hermes's
- * single DB by shelling out to `hermes sessions list` (all sessions live in one
- * `~/.hermes/state.db`, so this is "audit everyone from one place").
- *
- * ⚠️ Unlike `opencode db --format json`, `hermes sessions list` has NO
- * structured-output flag — it prints human text. We therefore extract session
- * IDs by pattern. Hermes session IDs embed their start datetime
- * (`YYYYMMDD_HHMMSS`, e.g. `20260709_112532_9bfa1bc9`, or
- * `cron_<hash>_YYYYMMDD_HHMMSS`), so we derive `mtimeMs` from the ID itself —
- * no extra CLI call, and `--since` filtering works.
- *
- * On-box verification needed: the exact `sessions list` output format and how
- * to list ALL sessions (not just a recent-N default) — see `hermesListArgs`.
+ * Reads the `sessions` table directly from `~/.hermes/state.db` via the bundled
+ * sql.js reader. All gateway users' sessions live in the one DB → "audit
+ * everyone from one place". Because we query the table (not a text `sessions
+ * list`), we get `source`/`cwd`/`message_count` up front — enough to group by
+ * channel and to build a real per-transcript cache key.
  */
-import { runHermes } from "./hermes-sessions";
+import { openSqliteReadonly } from "./sqlite-reader";
+import { hermesDbPath, epochToMs } from "./hermes-sessions";
 import { runtimeCache } from "./runtime-cache";
+import type { ProjectFolder, SessionFile } from "./projects";
+import { formatDate } from "./format-date";
 
 export interface HermesSessionRef {
   sessionId: string;
-  /** Derived from the datetime embedded in the session ID; falls back to "now"
-   *  (include-by-default) when the ID carries no parseable date, so `--since`
-   *  never silently drops a session. */
+  source?: string;
+  cwd?: string;
+  title?: string;
+  /** Slack/Telegram user that drove the session. */
+  userId?: string;
+  /** Channel id + type (group/dm) the session ran in. */
+  chatId?: string;
+  chatType?: string;
+  /** From `ended_at` (falls back to `started_at`) — epoch ms. */
   mtimeMs: number;
+  /** `message_count` — a stable cache key for an ended session. */
+  messageCount: number;
 }
 
-/** Args to list every session. ⚠️ Confirm the gateway lists ALL (not a capped
- *  default) — adjust if Hermes needs an `--all`/`--limit` flag. */
-function hermesListArgs(): string[] {
-  return ["sessions", "list"];
-}
-
-// Matches Hermes session IDs:
-//   20260709_112532_9bfa1bc9            (chat/gateway/cli sessions)
-//   cron_4c5aef2aa8ae_20260706_090030   (cron sessions)
-//   ses_ABC123                          (short form, if present)
-const SESSION_ID_RE =
-  /\b(?:cron_[0-9a-z]+_)?\d{8}_\d{6}(?:_[0-9a-z-]+)?\b|\bses_[A-Za-z0-9]+\b/g;
-
-/** Parse the `YYYYMMDD_HHMMSS` embedded in a session ID into epoch ms. */
-function mtimeFromId(id: string): number {
-  const m = id.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-  if (!m) return Date.now();
-  const [, y, mo, d, h, mi, s] = m;
-  const ms = Date.parse(
-    `${y}-${mo}-${d}T${h}:${mi}:${s}`,
-  );
-  return Number.isNaN(ms) ? Date.now() : ms;
+interface SessionRow {
+  id: string;
+  source: string | null;
+  cwd: string | null;
+  title: string | null;
+  user_id: string | null;
+  chat_id: string | null;
+  chat_type: string | null;
+  started_at: number | null;
+  ended_at: number | null;
+  message_count: number | null;
+  /** MAX(messages.timestamp) — the real last-activity time; advances on every
+   *  new message even while the session is still open (ended_at is null). */
+  last_activity: number | null;
 }
 
 /**
- * Extract session refs from `hermes sessions list` output text. Pure (no I/O)
- * so it is unit-testable without `hermes` installed. Dedupes and orders
- * newest-first (matching the other adapters).
- */
-export function parseHermesSessionList(output: string): HermesSessionRef[] {
-  const seen = new Set<string>();
-  const refs: HermesSessionRef[] = [];
-  for (const match of output.matchAll(SESSION_ID_RE)) {
-    const sessionId = match[0];
-    if (seen.has(sessionId)) continue;
-    seen.add(sessionId);
-    refs.push({ sessionId, mtimeMs: mtimeFromId(sessionId) });
-  }
-  refs.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return refs;
-}
-
-/**
- * List every Hermes session. Returns `[]` when the binary is missing or the
- * output has no recognizable IDs (fail-open — the audit just skips Hermes).
+ * List every Hermes session (all users). Returns `[]` when the DB is missing or
+ * unreadable (fail-open — the audit just skips Hermes).
  */
 export async function getHermesSessions(): Promise<HermesSessionRef[]> {
-  const out = runHermes(hermesListArgs());
-  if (out == null) return [];
-  return parseHermesSessionList(out);
+  const db = await openSqliteReadonly(hermesDbPath());
+  if (!db) return [];
+  try {
+    const rows = db.query<SessionRow>(
+      "SELECT s.id, s.source, s.cwd, s.title, s.user_id, s.chat_id, s.chat_type, " +
+        "s.started_at, s.ended_at, s.message_count, lm.last_activity " +
+        "FROM sessions s " +
+        "LEFT JOIN (SELECT session_id, MAX(timestamp) AS last_activity FROM messages GROUP BY session_id) lm " +
+        "ON lm.session_id = s.id " +
+        "ORDER BY lm.last_activity DESC",
+    );
+    return rows.map((r) => ({
+      sessionId: r.id,
+      source: r.source ?? undefined,
+      cwd: r.cwd ?? undefined,
+      title: r.title ?? undefined,
+      userId: r.user_id ?? undefined,
+      chatId: r.chat_id ?? undefined,
+      chatType: r.chat_type ?? undefined,
+      // Prefer the latest message time (advances live); fall back to ended/started.
+      mtimeMs: epochToMs(r.last_activity ?? r.ended_at ?? r.started_at),
+      messageCount: typeof r.message_count === "number" ? r.message_count : 0,
+    }));
+  } catch {
+    return [];
+  } finally {
+    db.close();
+  }
 }
 
-export const getCachedHermesSessions = runtimeCache(getHermesSessions, 30);
+export const getCachedHermesSessions = runtimeCache(getHermesSessions, 2);
+
+// ── Dashboard history browser (projects list + project-detail sessions) ──
+
+/**
+ * Surface Hermes gateway sessions as synthetic "projects" grouped by `source`
+ * (slack/telegram/cli/cron) — gateway sessions have no cwd to group by. One
+ * ProjectFolder per source; its `name` is `hermes-<source>`, reversed in
+ * `getHermesSessionsByEncodedName`.
+ */
+export async function getHermesProjects(): Promise<ProjectFolder[]> {
+  const sessions = await getHermesSessions();
+  const latestBySource = new Map<string, number>();
+  for (const s of sessions) {
+    if (s.messageCount <= 0) continue; // skip empty sessions
+    const src = s.source ?? "unknown";
+    latestBySource.set(src, Math.max(latestBySource.get(src) ?? 0, s.mtimeMs));
+  }
+  const out: ProjectFolder[] = [];
+  for (const [src, latest] of latestBySource) {
+    const lastModified = new Date(latest);
+    out.push({
+      name: `hermes-${src}`,
+      path: `hermes:${src}`,
+      isDirectory: true,
+      lastModified,
+      lastModifiedFormatted: formatDate(lastModified),
+      cli: ["hermes"],
+    });
+  }
+  out.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+  return out;
+}
+
+export interface HermesProjectByName {
+  cwd: string | null;
+  sessions: SessionFile[];
+}
+
+/**
+ * Resolve the Hermes sessions for a synthetic project name (`hermes-<source>`),
+ * for the project-detail page. Non-Hermes names resolve to empty.
+ */
+export async function getHermesSessionsByEncodedName(
+  name: string,
+): Promise<HermesProjectByName> {
+  if (!name.startsWith("hermes-")) return { cwd: null, sessions: [] };
+  const source = name.slice("hermes-".length);
+  const sessions = await getHermesSessions();
+  const matched = sessions.filter((s) => s.messageCount > 0 && (s.source ?? "unknown") === source);
+  return {
+    cwd: `hermes:${source}`,
+    sessions: matched.map((s) => {
+      const lastModified = new Date(s.mtimeMs);
+      return {
+        name: s.title ?? s.sessionId,
+        path: `hermes://${s.sessionId}`,
+        lastModified,
+        lastModifiedFormatted: formatDate(lastModified),
+        sessionId: s.sessionId,
+        cli: "hermes" as const,
+        userId: s.userId,
+        channelId: s.chatId,
+        channelType: s.chatType,
+      };
+    }),
+  };
+}
+
+export const getCachedHermesProjects = runtimeCache(getHermesProjects, 2);
+export const getCachedHermesSessionsByEncodedName = runtimeCache(
+  (name: string) => getHermesSessionsByEncodedName(name),
+  2,
+  { maxSize: 50 },
+);

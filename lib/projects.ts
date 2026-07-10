@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes";
 
 export interface ProjectFolder {
   name: string;
@@ -40,6 +40,11 @@ export interface SessionFile {
   /** Originating agent CLI. Set when the session list mixes sources from more
    *  than one CLI, so the table can render a per-row CLI badge. */
   cli?: ProjectCli;
+  /** Gateway session metadata (Hermes only today): who drove it and where.
+   *  Other CLIs leave these undefined; the list renders them only when present. */
+  userId?: string;
+  channelId?: string;
+  channelType?: string; // e.g. "group" | "dm"
 }
 
 /** Stats a path and returns mtime. Falls back to epoch (1970-01-01) on error
@@ -139,6 +144,7 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getOpenCodeProjects },
     { getPiProjects },
     { getGeminiProjects },
+    { getHermesProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -146,8 +152,9 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./opencode-projects"),
     import("./pi-projects"),
     import("./gemini-projects"),
+    import("./hermes-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, gemini] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, gemini, hermes] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -173,8 +180,12 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Gemini projects:", error);
       return [] as ProjectFolder[];
     }),
+    getHermesProjects().catch((error) => {
+      logError("Error reading Hermes projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, gemini);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, gemini, hermes);
 }
 
 /**

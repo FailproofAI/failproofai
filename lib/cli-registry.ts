@@ -27,7 +27,7 @@
 import type { IntegrationType } from "@/src/hooks/types";
 
 /** Canonical CLI ids the registry knows about. Mirrors `INTEGRATION_TYPES`. */
-export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"] as const satisfies readonly IntegrationType[];
+export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"] as const satisfies readonly IntegrationType[];
 export type CliId = (typeof KNOWN_CLI_IDS)[number];
 
 /** Per-CLI metadata consumed by the dashboard. */
@@ -73,6 +73,11 @@ const CLI_ENTRIES: Record<CliId, CliEntry> = {
     id: "gemini",
     label: "Gemini CLI",
     badgeClasses: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  },
+  hermes: {
+    id: "hermes",
+    label: "Hermes",
+    badgeClasses: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
   },
 };
 

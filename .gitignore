@@ -90,3 +90,6 @@ mint-dev.log
 
 # superpowers brainstorm session scratch
 .superpowers/
+
+# transient commit-message scratch files
+COMMIT_MSG.tmp

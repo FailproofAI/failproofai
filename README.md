@@ -72,6 +72,11 @@ before they become incidents. Zero latency. Runs locally.
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <!-- TODO: swap assets/logos/hermes.svg (placeholder monogram) + the href for the official Hermes brand asset / URL -->
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <img src="assets/logos/hermes.svg" alt="Hermes" width="64" height="64" />
+  </a>
 </p>
 
 > Install hooks for one or any combination: `failproofai policies --install --cli opencode pi gemini` (or `--cli claude codex copilot cursor opencode pi gemini hermes`). Omit `--cli` to auto-detect installed CLIs and prompt.

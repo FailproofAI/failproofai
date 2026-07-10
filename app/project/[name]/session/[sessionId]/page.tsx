@@ -214,7 +214,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
                             ? "OpenCode"
                             : cli === "pi"
                               ? "Pi"
-                              : "Gemini CLI"))
+                              : cli === "hermes"
+                                ? "Hermes"
+                                : "Gemini CLI"))
                 : decodedName
             }
             sessionId={decodedSessionId}

@@ -43,6 +43,12 @@ vi.mock("@/lib/pi-projects", () => ({
 vi.mock("@/lib/gemini-projects", () => ({
   getGeminiProjects: vi.fn(async () => []),
 }));
+// Mock hermes-projects too — getProjectFolders() calls getHermesProjects(),
+// which does real ~/.hermes/state.db I/O; without this the suite is non-hermetic
+// and fails on any box with a real gateway DB.
+vi.mock("@/lib/hermes-projects", () => ({
+  getHermesProjects: vi.fn(async () => []),
+}));
 
 import { readdir, stat } from "fs/promises";
 import { extractSessionId, getProjectFolders, getSessionFiles, type ProjectFolder } from "@/lib/projects";
@@ -52,6 +58,7 @@ import { getCursorProjects } from "@/lib/cursor-projects";
 import { getOpenCodeProjects } from "@/lib/opencode-projects";
 import { getPiProjects } from "@/lib/pi-projects";
 import { getGeminiProjects } from "@/lib/gemini-projects";
+import { getHermesProjects } from "@/lib/hermes-projects";
 
 const mockGetCodexProjects = vi.mocked(getCodexProjects);
 const mockGetCopilotProjects = vi.mocked(getCopilotProjects);
@@ -59,6 +66,7 @@ const mockGetCursorProjects = vi.mocked(getCursorProjects);
 const mockGetOpenCodeProjects = vi.mocked(getOpenCodeProjects);
 const mockGetPiProjects = vi.mocked(getPiProjects);
 const mockGetGeminiProjects = vi.mocked(getGeminiProjects);
+const mockGetHermesProjects = vi.mocked(getHermesProjects);
 
 const mockReaddir = vi.mocked(readdir);
 const mockStat = vi.mocked(stat);
@@ -544,6 +552,26 @@ describe("getProjectFolders", () => {
     expect(result).toHaveLength(1);
     expect(result[0].cli).toEqual(["gemini"]);
     expect(result[0].path).toBe("/home/u/gemini-only");
+  });
+
+  it("surfaces a standalone Hermes project", async () => {
+    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
+    mockReaddir.mockResolvedValueOnce([] as any);
+    mockGetHermesProjects.mockResolvedValueOnce([
+      {
+        name: "hermes-slack",
+        path: "hermes:slack",
+        isDirectory: true,
+        lastModified: new Date("2026-08-16T00:00:00Z"),
+        lastModifiedFormatted: "2026-08-16T00:00:00.000Z",
+        cli: ["hermes"],
+      } satisfies ProjectFolder,
+    ]);
+
+    const result = await getProjectFolders();
+    expect(result).toHaveLength(1);
+    expect(result[0].cli).toEqual(["hermes"]);
+    expect(result[0].path).toBe("hermes:slack");
   });
 
   it("merges a Gemini project with the same encoded name into one row with both badges", async () => {

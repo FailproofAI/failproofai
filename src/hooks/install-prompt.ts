@@ -11,8 +11,8 @@
  */
 import * as readline from "node:readline";
 import { BUILTIN_POLICIES } from "./builtin-policies";
-import { detectInstalledClis, getIntegration } from "./integrations";
-import { INTEGRATION_TYPES, type IntegrationType } from "./types";
+import { detectInstalledClis, getIntegration, listInstallableIds } from "./integrations";
+import { type IntegrationType } from "./types";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 
@@ -139,7 +139,10 @@ export function buildCliMenuOptions(
 ): { options: CliMenuOption[]; undetected: IntegrationType[] } {
   const undetected: IntegrationType[] =
     action === "install"
-      ? INTEGRATION_TYPES.filter((id) => !detected.includes(id))
+      ? // Only CLIs that support live-hook install — audit-only CLIs (e.g.
+        // hermes) have no install path and must not appear as forward-install
+        // options.
+        listInstallableIds().filter((id) => !detected.includes(id))
       : [];
 
   const options: CliMenuOption[] = [];

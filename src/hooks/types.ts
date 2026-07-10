@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -59,6 +59,31 @@ export const CODEX_EVENT_MAP: Record<CodexHookEventType, HookEventType> = {
 export const CODEX_TOOL_MAP: Record<string, string> = {
   apply_patch: "Edit",
   write_stdin: "Bash",
+};
+
+// ── Hermes (hermes-agent) — AUDIT-ONLY ──────────────────────────────────────
+//
+// Hermes is an audit-only integration (offline replay; no live hooks yet), so
+// this map is consumed ONLY by the audit adapter via `logEntriesToEvents` →
+// `canonicalizeToolName`. Tool names are the granular toolset tools verified
+// against a live ~/.hermes/state.db (frequency in a real gateway session:
+// terminal 574, read_file 124, patch 94, write_file 54, web_search 42, …).
+// Names with a Claude canonical are mapped so builtin policies fire; Hermes-
+// specific tools (skill_view, cronjob, browser_*, memory, session_search,
+// clarify, process) pass through unchanged so they still appear in the audit,
+// just unmatched by builtin policies.
+export const HERMES_TOOL_MAP: Record<string, string> = {
+  terminal: "Bash",
+  bash: "Bash",
+  read_file: "Read",
+  write_file: "Write",
+  patch: "Edit",
+  web_search: "WebSearch",
+  // Tentative — verify each tool's `tool_input` key shape against a live export
+  // before relying on policy matches (may also need a HERMES_TOOL_INPUT_MAP):
+  web_extract: "WebFetch",
+  search_files: "Grep",
+  todo: "TodoWrite",
 };
 
 // ── GitHub Copilot CLI ─────────────────────────────────────────────────────

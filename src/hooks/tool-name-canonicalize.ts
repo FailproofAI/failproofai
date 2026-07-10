@@ -15,6 +15,7 @@ import {
   PI_TOOL_MAP,
   PI_TOOL_INPUT_MAP,
   GEMINI_TOOL_MAP,
+  HERMES_TOOL_MAP,
 } from "./types";
 
 /**
@@ -33,6 +34,7 @@ export function canonicalizeToolName(
   if (cli === "gemini") return GEMINI_TOOL_MAP[raw] ?? raw;
   if (cli === "opencode") return OPENCODE_TOOL_MAP[raw] ?? raw;
   if (cli === "pi") return PI_TOOL_MAP[raw] ?? raw;
+  if (cli === "hermes") return HERMES_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 

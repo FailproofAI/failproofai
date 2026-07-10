@@ -1425,7 +1425,11 @@ export const gemini: Integration = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-const INTEGRATIONS: Record<IntegrationType, Integration> = {
+// `Partial` because not every IntegrationType is installable for LIVE hooks
+// (Pillar 1). `hermes` is an AUDIT-ONLY integration — it has an audit adapter
+// (src/audit/cli-adapters/hermes.ts) but no live-hook install support yet, so it
+// has no entry here. Consumers below tolerate the absence.
+const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   claude: claudeCode,
   codex,
   copilot,
@@ -1438,16 +1442,30 @@ const INTEGRATIONS: Record<IntegrationType, Integration> = {
 export function getIntegration(id: IntegrationType): Integration {
   const integration = INTEGRATIONS[id];
   if (!integration) {
-    throw new Error(`Unknown integration: ${id}. Valid: ${INTEGRATION_TYPES.join(", ")}`);
+    // Audit-only CLIs (e.g. hermes) reach here when someone tries to install
+    // live hooks for them. Be explicit rather than "unknown integration".
+    throw new Error(
+      `"${id}" is audit-only — live-hook install is not supported for it yet. Installable: ${listInstallableIds().join(", ")}`,
+    );
   }
   return integration;
 }
 
-export function listIntegrations(): Integration[] {
-  return INTEGRATION_TYPES.map((id) => INTEGRATIONS[id]);
+/** IntegrationTypes that support live-hook install (i.e. have an INTEGRATIONS
+ *  entry). Audit-only CLIs (e.g. hermes) are excluded — they have an audit
+ *  adapter but no hook install, so they must never appear in install menus. */
+export function listInstallableIds(): IntegrationType[] {
+  return INTEGRATION_TYPES.filter((id) => INTEGRATIONS[id] !== undefined);
 }
 
-/** Detect which agent CLIs are installed on PATH. */
+export function listIntegrations(): Integration[] {
+  return INTEGRATION_TYPES.map((id) => INTEGRATIONS[id]).filter(
+    (i): i is Integration => i !== undefined,
+  );
+}
+
+/** Detect which agent CLIs are installed on PATH. Only considers CLIs that
+ *  support live-hook install (audit-only CLIs have no INTEGRATIONS entry). */
 export function detectInstalledClis(): IntegrationType[] {
-  return INTEGRATION_TYPES.filter((id) => INTEGRATIONS[id].detectInstalled());
+  return INTEGRATION_TYPES.filter((id) => INTEGRATIONS[id]?.detectInstalled());
 }

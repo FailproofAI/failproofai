@@ -18,6 +18,7 @@ import { listCursorTranscriptMetadata, streamCursorEvents } from "./cursor";
 import { listOpenCodeTranscriptMetadata, streamOpenCodeEvents } from "./opencode";
 import { listPiTranscriptMetadata, streamPiEvents } from "./pi";
 import { listGeminiTranscriptMetadata, streamGeminiEvents } from "./gemini";
+import { listHermesTranscriptMetadata, streamHermesEvents } from "./hermes";
 
 export type { ListOpts };
 
@@ -62,6 +63,11 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "gemini",
     listTranscripts: listGeminiTranscriptMetadata,
     streamEvents: streamGeminiEvents,
+  },
+  hermes: {
+    cli: "hermes",
+    listTranscripts: listHermesTranscriptMetadata,
+    streamEvents: streamHermesEvents,
   },
 };
 

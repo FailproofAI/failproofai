@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.13-beta.1 — 2026-07-10
+
+### Features
+- Add Hermes (hermes-agent) as an **audit-only** integration (offline replay; no live hooks yet): `failproofai audit` now discovers Hermes gateway sessions from the single `~/.hermes/state.db` by shelling out to the `hermes` CLI (`sessions list` + `sessions export`) — mirroring the OpenCode adapter's driverless shell-out — parses the OpenAI-shape export into the shared `LogEntry[]` form via the Codex-family parser, and replays every tool call through the existing policy engine + audit detectors. Adds `HERMES_TOOL_MAP` (`terminal→Bash`, `read_file→Read`, `write_file→Write`, `patch→Edit`, `web_search→WebSearch`, …) and makes the live-hook install registry (`INTEGRATIONS`) `Partial` so audit-only CLIs are never offered for hook install.
+
 ## 0.0.13-beta.0 — 2026-07-09
 
 ### Features

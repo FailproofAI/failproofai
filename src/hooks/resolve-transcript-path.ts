@@ -63,6 +63,10 @@ export function resolveTranscriptPath(
       return findGeminiTranscript(sessionId) ?? undefined;
     case "opencode":
       return `opencode-db://${sessionId}`;
+    case "hermes":
+      // Hermes live-hook payloads carry no transcript file; the audit path
+      // reads sessions straight from ~/.hermes/state.db (see hermes-sessions.ts).
+      return undefined;
     default:
       return undefined;
   }

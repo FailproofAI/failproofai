@@ -61,11 +61,12 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
   write_stdin: "Bash",
 };
 
-// ── Hermes (hermes-agent) — AUDIT-ONLY ──────────────────────────────────────
+// ── Hermes (hermes-agent) ───────────────────────────────────────────────────
 //
-// Hermes is an audit-only integration (offline replay; no live hooks yet), so
-// this map is consumed ONLY by the audit adapter via `logEntriesToEvents` →
-// `canonicalizeToolName`. Tool names are the granular toolset tools verified
+// Hermes supports BOTH audit (Pillar 2) and live hooks (Pillar 1). This tool
+// map is consumed by the audit adapter (via `logEntriesToEvents`) AND the
+// live-hook handler, both through `canonicalizeToolName`. Tool names are the
+// granular toolset tools verified
 // against a live ~/.hermes/state.db (frequency in a real gateway session:
 // terminal 574, read_file 124, patch 94, write_file 54, web_search 42, …).
 // Names with a Claude canonical are mapped so builtin policies fire; Hermes-
@@ -84,6 +85,34 @@ export const HERMES_TOOL_MAP: Record<string, string> = {
   web_extract: "WebFetch",
   search_files: "Grep",
   todo: "TodoWrite",
+};
+
+// Hermes live-hook (Pillar 1) events + scopes. Hermes fires these snake_case
+// events with a JSON payload on stdin; the command we install runs
+// `failproofai --hook <event> --cli hermes`. Config is USER-scope only
+// (`~/.hermes/config.yaml`; Hermes has no project scope). `pre_tool_call` is the
+// core deny point — it fires for tool calls from every source
+// (slack/telegram/cli/cron) and internal subagents, so a single install
+// intercepts all platforms. Hermes has NO turn-end `Stop` event, so the
+// `require-*-before-stop` builtins never fire for it (see the audit plan).
+export const HERMES_HOOK_SCOPES = ["user"] as const;
+export type HermesHookScope = (typeof HERMES_HOOK_SCOPES)[number];
+
+export const HERMES_HOOK_EVENT_TYPES = [
+  "pre_tool_call",
+  "post_tool_call",
+  "on_session_start",
+  "on_session_end",
+  "subagent_stop",
+] as const;
+export type HermesHookEventType = (typeof HERMES_HOOK_EVENT_TYPES)[number];
+
+export const HERMES_EVENT_MAP: Record<HermesHookEventType, HookEventType> = {
+  pre_tool_call: "PreToolUse",
+  post_tool_call: "PostToolUse",
+  on_session_start: "SessionStart",
+  on_session_end: "SessionEnd",
+  subagent_stop: "SubagentStop",
 };
 
 // ── GitHub Copilot CLI ─────────────────────────────────────────────────────

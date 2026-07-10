@@ -100,7 +100,8 @@
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "posthog-node": "^5.37.1",
-    "sql.js": "^1.14.1"
+    "sql.js": "^1.14.1",
+    "yaml": "^2.9.0"
   },
   "overrides": {
     "postcss": "8.5.14",

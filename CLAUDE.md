@@ -301,6 +301,76 @@ of 2026-04-13):
 | `AfterModel`           | (Gemini-only, no canonical) | observation   | Same. |
 | `BeforeToolSelection`  | (Gemini-only, no canonical) | observation   | Same. |
 
+### Hermes hooks (`~/.hermes/config.yaml`)
+
+Unlike the seven CLIs above, this repo does **not** ship a dogfood Hermes config —
+Hermes (hermes-agent) is a downstream client's Slack/Telegram gateway, not something
+we run in-repo. Hermes is a **dual-pillar** integration: an **audit** adapter
+(`src/audit/cli-adapters/hermes.ts`, reads `~/.hermes/state.db` directly) **and** a
+**live-hook** integration (`hermes` in `INTEGRATIONS`).
+
+Hermes uses a **Claude/Codex-style external shell-hook system**, but its config is
+**YAML** (`~/.hermes/config.yaml`) under a `hooks:` map — the only integration whose
+settings file is YAML, so `integrations.ts` has a comment-preserving `readYamlDoc`/
+`writeYamlDoc` layer (the `yaml` package's `Document` API) that rewrites only the
+`hooks:` key and leaves the operator's other settings + comments intact.
+
+Settings file paths:
+
+| Scope   | Path                        |
+|---------|-----------------------------|
+| user    | `~/.hermes/config.yaml`     |
+
+Hermes is **user-scope only** — there is no project config, so `getSettingsPath`
+ignores scope/cwd. Hermes exposes no `$HERMES_PROJECT_DIR`; the installed command uses
+the resolved binary path (`"${binaryPath}" --hook <event> --cli hermes`, or
+`npx -y failproofai …` for the portable/project form). `timeout` is in **seconds** (30).
+
+**Consent (headless gateway).** Hermes prompts once per unique `(event, command)` hook
+before running it. The gateway has no TTY, so install also writes
+`hooks_auto_accept: true` into config.yaml (uninstall removes it). Tradeoff: this
+auto-accepts *any* hook the operator adds — a deliberate choice for headless operation.
+A more targeted alternative is to pre-seed `~/.hermes/shell-hooks-allowlist.json` with
+just our `(event, command)` pairs; deferred as a future refinement.
+
+**Block contract** (verified live): Hermes reads a `{"decision":"block","reason"}` JSON
+object on **stdout** and **ignores exit codes**. So `policy-evaluator.ts` has a
+`cli === "hermes"` deny branch (ahead of the Stop block) that emits that shape
+unconditionally for every event — one branch covers PreToolUse/PostToolUse/SubagentStop.
+
+**Platform independence & subagents.** The gateway is one Hermes process and
+`pre_tool_call` fires on the *tool event*, not the source — so a single install
+intercepts tool calls from **every platform (Slack/Telegram/cli/cron)** and Hermes's
+**internal subagents** uniformly, with no per-platform config. The payload's
+`source`/`chat_type`/`user_id` remain available for per-platform *rules*. Blind spot:
+processes Hermes spawns via the `terminal` tool run in a separate process, so their
+internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_call`.
+
+**Per-event capability matrix:**
+
+| Hermes event       | Canonical (`HERMES_EVENT_MAP`) | Veto / mutate? | Notes |
+|--------------------|--------------------------------|----------------|-------|
+| `pre_tool_call`    | `PreToolUse`                   | ✅ block       | The core deny point — stops the tool before it runs. |
+| `post_tool_call`   | `PostToolUse`                  | observation    | Observe / sanitize. |
+| `on_session_start` | `SessionStart`                 | observation    | — |
+| `on_session_end`   | `SessionEnd`                   | observation    | — |
+| `subagent_stop`    | `SubagentStop`                 | ✅ block       | Subagent-return gate. |
+
+**Limitations vs. Claude semantics.** Hermes has **no turn-end `Stop` event** — its
+lifecycle is session-oriented and it can't force another turn into a session that's
+ending — so `HERMES_EVENT_MAP` never emits `Stop` and the 5 `require-*-before-stop`
+builtins never fire for it (inapplicable, not broken). It also lacks `UserPromptSubmit`
+(only per-LLM-call `pre_llm_call`), `PreCompact`/`Notification`, etc. `instruct()`
+degrades to **allow + logged note** — Hermes has no additional-context channel, so the
+evaluator emits a non-blocking `{"decision":"allow", reason}` and surfaces the note on
+stderr. In exchange Hermes has capabilities others lack (`transform_tool_result`,
+`pre_gateway_dispatch`, `pre_llm_call`) — out of scope for now.
+
+For production users the recommended Hermes install is:
+```bash
+failproofai policies --install --cli hermes --scope user
+```
+
 ## Workflow rules
 
 ### One PR per branch

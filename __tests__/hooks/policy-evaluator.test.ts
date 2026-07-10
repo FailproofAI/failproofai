@@ -233,6 +233,44 @@ describe("hooks/policy-evaluator", () => {
     expect(parsed.reason).toContain("subagent verification pending");
   });
 
+  it("Hermes deny emits {decision:'block', reason} JSON on stdout (exit 0, ignores exit codes)", async () => {
+    // Hermes's only actionable channel is `{"decision":"block"}` on stdout —
+    // it ignores exit codes. One unconditional branch covers every Hermes event.
+    registerPolicy("blocker", "desc", () => ({ decision: "deny", reason: "no rm -rf" }), {
+      events: ["PreToolUse"],
+    });
+    const result = await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, { cli: "hermes" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.decision).toBe("deny");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    expect(parsed.reason).toContain("no rm -rf");
+  });
+
+  it("Hermes deny on SubagentStop also emits {decision:'block'} (no Stop special-case)", async () => {
+    registerPolicy("blocker", "desc", () => ({ decision: "deny", reason: "finish first" }), {
+      events: ["SubagentStop"],
+    });
+    const result = await evaluatePolicies("SubagentStop", {}, { cli: "hermes" });
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+  });
+
+  it("Hermes instruct degrades to allow + logged note (no context-injection channel)", async () => {
+    registerPolicy("advise", "desc", () => ({ decision: "instruct", reason: "prefer git mv" }), {
+      events: ["PreToolUse"],
+    });
+    const result = await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, { cli: "hermes" });
+    expect(result.exitCode).toBe(0);
+    expect(result.decision).toBe("instruct");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBe("allow"); // does NOT block — tool still runs
+    expect(parsed.reason).toContain("prefer git mv");
+    expect(result.stderr).toContain("prefer git mv"); // surfaced on stderr for logs
+  });
+
   it("Cursor SubagentStop + instruct emits {followup_message} JSON (parity with Stop branch)", async () => {
     // The Cursor Stop instruct branch was widened to also match SubagentStop
     // so custom policies subscribing to SubagentStop on Cursor get the same

@@ -13,12 +13,14 @@ import type {
   CursorHookEventType,
   PiHookEventType,
   GeminiHookEventType,
+  HermesHookEventType,
 } from "./types";
 import {
   CODEX_EVENT_MAP,
   CURSOR_EVENT_MAP,
   PI_EVENT_MAP,
   GEMINI_EVENT_MAP,
+  HERMES_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import type { PolicyFunction, PolicyResult } from "./policy-types";
@@ -63,6 +65,12 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
   }
   if (cli === "gemini") {
     const mapped = GEMINI_EVENT_MAP[raw as GeminiHookEventType];
+    if (mapped) return mapped;
+  }
+  if (cli === "hermes") {
+    // Hermes sends snake_case event names (pre_tool_call, on_session_start, …);
+    // map to PascalCase. Has no turn-end Stop event, so no Stop mapping exists.
+    const mapped = HERMES_EVENT_MAP[raw as HermesHookEventType];
     if (mapped) return mapped;
   }
   // claude / copilot / unknown — already PascalCase, pass through.

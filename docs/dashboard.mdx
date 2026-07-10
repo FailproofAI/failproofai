@@ -28,7 +28,7 @@ Lists all Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _
 
 Each project shows:
 - Project name (derived from the folder path)
-- A CLI badge — `Claude Code` (orange), `OpenAI Codex` (purple), `GitHub Copilot` (blue), `Cursor Agent` (emerald), `OpenCode` (amber), `Pi` (pink), and/or `Gemini CLI` (sky)
+- A CLI badge — `Claude Code` (orange), `OpenAI Codex` (purple), `GitHub Copilot` (blue), `Cursor Agent` (emerald), `OpenCode` (amber), `Pi` (pink), `Gemini CLI` (sky), and/or `Hermes` (indigo)
 - Date of most recent session activity
 
 Click a project to see its sessions.
@@ -47,7 +47,7 @@ Click a session to open the session viewer.
 
 ### Session viewer
 
-The session viewer answers the key question for autonomous agents: what did the agent do, and did it stay on track? A CLI badge beside the header indicates whether the session is a Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, or Gemini CLI transcript. It shows a timeline of everything that happened in a session:
+The session viewer answers the key question for autonomous agents: what did the agent do, and did it stay on track? A CLI badge beside the header indicates whether the session is a Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI, or Hermes transcript. It shows a timeline of everything that happened in a session:
 
 - **Messages** - Claude's text responses and user prompts
 - **Tool calls** - Every tool Claude invoked, with its input and output
@@ -75,15 +75,15 @@ A two-tab page for managing policies and reviewing activity.
 
 <Tabs>
   <Tab title="Policies tab">
-  - Multi-select which agent CLIs failproofai protects from a single panel — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, and Gemini CLI all have a row with install status (`Active` / `Detected` / `Inactive`), the user-scope settings path, and a brand-colored accent. Check or uncheck the CLIs you want and click `Apply changes` to install/uninstall the diff in one step. CLIs whose binary is detected on PATH are pre-checked.
+  - Multi-select which agent CLIs failproofai protects from a single panel — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI, and Hermes all have a row with install status (`Active` / `Detected` / `Inactive`), the user-scope settings path, and a brand-colored accent. Check or uncheck the CLIs you want and click `Apply changes` to install/uninstall the diff in one step. CLIs whose binary is detected on PATH are pre-checked.
   - Toggle individual policies on or off with a single click (writes to `~/.failproofai/policies-config.json` — shared across every installed CLI)
   - Expand a policy to configure its parameters (for policies that support `policyParams`)
   - Set a custom policies file path
   </Tab>
   <Tab title="Activity tab">
   - Full paginated history of every hook event that has fired across all sessions
-  - Filter by decision, event type, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_), policy name, or session ID
-  - Each row shows: timestamp, policy name, decision, CLI badge (orange = Claude Code, purple = OpenAI Codex, blue = GitHub Copilot, emerald = Cursor Agent, amber = OpenCode, pink = Pi, sky = Gemini CLI), tool name, session ID, and the reason for deny/instruct decisions
+  - Filter by decision, event type, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), policy name, or session ID
+  - Each row shows: timestamp, policy name, decision, CLI badge (orange = Claude Code, purple = OpenAI Codex, blue = GitHub Copilot, emerald = Cursor Agent, amber = OpenCode, pink = Pi, sky = Gemini CLI, indigo = Hermes), tool name, session ID, and the reason for deny/instruct decisions
   - Click a session ID to open its transcript — the viewer auto-detects which CLI fired the hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) and renders the matching CLI badge in the header
   </Tab>
 </Tabs>

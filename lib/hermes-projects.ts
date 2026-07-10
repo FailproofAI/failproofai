@@ -25,8 +25,14 @@ export interface HermesSessionRef {
   chatType?: string;
   /** From `ended_at` (falls back to `started_at`) — epoch ms. */
   mtimeMs: number;
-  /** `message_count` — a stable cache key for an ended session. */
+  /** `message_count` — a stable cache key for an ended session. Can lag (Hermes
+   *  may write it lazily / only at session end), so don't use it alone to decide
+   *  emptiness. */
   messageCount: number;
+  /** True when the session has ≥1 real message row (`MAX(messages.timestamp)`
+   *  non-null). Reliable "non-empty" signal even when `message_count` is a
+   *  stale `0` for an in-progress session. */
+  hasMessages: boolean;
 }
 
 interface SessionRow {
@@ -72,6 +78,7 @@ export async function getHermesSessions(): Promise<HermesSessionRef[]> {
       // Prefer the latest message time (advances live); fall back to ended/started.
       mtimeMs: epochToMs(r.last_activity ?? r.ended_at ?? r.started_at),
       messageCount: typeof r.message_count === "number" ? r.message_count : 0,
+      hasMessages: r.last_activity != null,
     }));
   } catch {
     return [];
@@ -94,7 +101,7 @@ export async function getHermesProjects(): Promise<ProjectFolder[]> {
   const sessions = await getHermesSessions();
   const latestBySource = new Map<string, number>();
   for (const s of sessions) {
-    if (s.messageCount <= 0) continue; // skip empty sessions
+    if (s.messageCount <= 0 && !s.hasMessages) continue; // skip empty (message_count can lag; trust real messages)
     const src = s.source ?? "unknown";
     latestBySource.set(src, Math.max(latestBySource.get(src) ?? 0, s.mtimeMs));
   }
@@ -129,7 +136,7 @@ export async function getHermesSessionsByEncodedName(
   if (!name.startsWith("hermes-")) return { cwd: null, sessions: [] };
   const source = name.slice("hermes-".length);
   const sessions = await getHermesSessions();
-  const matched = sessions.filter((s) => s.messageCount > 0 && (s.source ?? "unknown") === source);
+  const matched = sessions.filter((s) => (s.messageCount > 0 || s.hasMessages) && (s.source ?? "unknown") === source);
   return {
     cwd: `hermes:${source}`,
     sessions: matched.map((s) => {

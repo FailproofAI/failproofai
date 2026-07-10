@@ -1,0 +1,28 @@
+fix: address CodeRabbit + hermes-exosphere PR review
+
+Code fixes:
+- download-session.ts / session page: align HERMES_SESSION_RE with the loader's
+  ID pattern so a session can't list/open in the viewer yet fail its download
+  with RangeError("Invalid session ID") (CR#8 / HE#11).
+- integrations.ts removeHooksFromFile: always drop hooks_auto_accept on
+  uninstall, even when the hooks were already removed manually, so it can't
+  silently auto-accept future operator hooks (CR#5).
+- hermes-projects.ts + audit adapter: decide emptiness from actual message rows
+  (MAX(timestamp) non-null via hasMessages), not the denormalized message_count
+  which Hermes can write lazily — otherwise in-progress sessions are hidden (HE#10).
+
+Docs / comments:
+- CLAUDE.md: narrow the comment-preservation claim (comments inside the hooks:
+  block aren't kept) and drop the unreachable npx "project form" (user-scope
+  only) (CR#3, CR#4).
+- integrations.ts / install-prompt.ts: fix stale "(e.g. hermes) is audit-only"
+  comments — hermes is a full live-hook integration now (CR#9, HE#12).
+- CHANGELOG: drop the stale "no live hooks yet" wording; add (#486) to entries
+  (CR#2, and the correct answer to CR#1).
+- docs/dashboard.mdx: add Hermes to the remaining filter/badge/viewer lists
+  (CR#7). docs/configuration.mdx: "builtin" -> "built-in" (CR#6).
+
+Tests: regression tests for auto-accept-drop-on-uninstall and the
+stale-message_count in-progress-session cases.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

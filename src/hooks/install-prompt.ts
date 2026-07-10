@@ -139,9 +139,10 @@ export function buildCliMenuOptions(
 ): { options: CliMenuOption[]; undetected: IntegrationType[] } {
   const undetected: IntegrationType[] =
     action === "install"
-      ? // Only CLIs that support live-hook install — audit-only CLIs (e.g.
-        // hermes) have no install path and must not appear as forward-install
-        // options.
+      ? // Only CLIs that support live-hook install — a future audit-only CLI
+        // (one with no INTEGRATIONS entry) has no install path and must not
+        // appear as a forward-install option. (hermes IS installable, so it
+        // correctly appears here.)
         listInstallableIds().filter((id) => !detected.includes(id))
       : [];
 

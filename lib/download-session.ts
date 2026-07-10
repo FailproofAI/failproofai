@@ -14,8 +14,11 @@ import { resolveSessionFilePath, UUID_RE } from "./projects";
 import type { CliId } from "./cli-registry";
 
 export const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
-/** Hermes session IDs: `YYYYMMDD_HHMMSS_<hash>` or `cron_<hash>_YYYYMMDD_HHMMSS`. */
-export const HERMES_SESSION_RE = /^(?:cron_[0-9a-z]+_)?\d{8}_\d{6}(?:_[0-9a-z-]+)?$/;
+/** Hermes session IDs (e.g. `YYYYMMDD_HHMMSS_<hash>` / `cron_<hash>_...`). Kept
+ *  in sync with `getHermesSessionLog`'s validator in lib/hermes-sessions.ts —
+ *  a stricter pattern here would let a session list/open in the viewer yet fail
+ *  its download with `RangeError("Invalid session ID")`. */
+export const HERMES_SESSION_RE = /^[A-Za-z0-9_-]+$/;
 
 export type DownloadSource =
   | { kind: "file"; path: string }

@@ -16,6 +16,9 @@ const prevEnv = process.env.HERMES_DB_PATH;
 
 const PR_ID = "20260709_102452_abc";
 const EMPTY_ID = "20260709_000000_empty";
+// In-progress session: ended_at null and message_count a STALE 0, but it has a
+// real message row. Must still surface (message_count can lag on live sessions).
+const LIVE_ID = "20260709_120000_live";
 
 async function buildFixtureDb(path: string): Promise<void> {
   const SQL = await initSqlJs();
@@ -28,6 +31,8 @@ async function buildFixtureDb(path: string): Promise<void> {
   );
   db.run("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?)", [PR_ID, "slack", null, "PR session", "U094HN9AFL4", "C0BFWEGNURW", "group", 1_752_000_000, 1_752_000_100, 3]);
   db.run("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?)", [EMPTY_ID, "slack", null, "empty", "U1", "C1", "dm", 1_752_000_000, 1_752_000_000, 0]);
+  // ended_at null + stale message_count 0, but a real message row (added below).
+  db.run("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?)", [LIVE_ID, "slack", null, "live session", "U2", "C2", "dm", 1_752_000_200, null, 0]);
 
   const toolCalls = JSON.stringify([
     { id: "c1", type: "function", function: { name: "terminal", arguments: JSON.stringify({ command: "gh pr create" }) } },
@@ -35,6 +40,7 @@ async function buildFixtureDb(path: string): Promise<void> {
   db.run("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", [1, PR_ID, "user", "create pr", null, null, null, 1_752_000_001]);
   db.run("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", [2, PR_ID, "assistant", "on it", null, toolCalls, null, 1_752_000_002]);
   db.run("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", [3, PR_ID, "tool", "PR #287 created", "c1", null, "terminal", 1_752_000_003]);
+  db.run("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", [4, LIVE_ID, "user", "in progress", null, null, null, 1_752_000_201]);
 
   writeFileSync(path, Buffer.from(db.export()));
   db.close();
@@ -85,6 +91,16 @@ describe("hermes SQLite integration (real sql.js + temp state.db)", () => {
       channelId: "C0BFWEGNURW",
       channelType: "group",
     });
+  });
+
+  it("surfaces an in-progress session with real messages even when message_count is a stale 0", async () => {
+    // Regression (hermes-exosphere review): filtering purely on the denormalized
+    // message_count hides live sessions whose count Hermes writes lazily. We now
+    // trust actual message rows (MAX(timestamp) non-null).
+    const { getHermesSessionsByEncodedName } = await import("@/lib/hermes-projects");
+    const { sessions } = await getHermesSessionsByEncodedName("hermes-slack");
+    expect(sessions.some((s) => s.sessionId === LIVE_ID)).toBe(true); // count 0 but has a message → shown
+    expect(sessions.some((s) => s.sessionId === EMPTY_ID)).toBe(false); // truly empty → still filtered
   });
 
   it("loads a session's messages and pairs the tool result", async () => {

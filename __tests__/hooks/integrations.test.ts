@@ -636,6 +636,19 @@ describe("Hermes integration", () => {
     expect(parsed.model).toBe("gpt-5"); // user key survives
   });
 
+  it("removeHooksFromFile drops hooks_auto_accept even when the hooks were already removed manually", () => {
+    // Regression (CodeRabbit): the auto-accept flag must not linger and silently
+    // auto-accept future operator hooks after our hooks are gone.
+    const path = hermes.getSettingsPath("user");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "model: gpt-5\nhooks_auto_accept: true\n"); // no `hooks:` block
+    const removed = hermes.removeHooksFromFile(path);
+    expect(removed).toBe(0);
+    const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    expect(parsed.hooks_auto_accept).toBeUndefined(); // dropped despite 0 hooks removed
+    expect(parsed.model).toBe("gpt-5");
+  });
+
   it("hooksInstalledInSettings detects installed hooks / false when missing", () => {
     expect(hermes.hooksInstalledInSettings("user")).toBe(false);
     const path = hermes.getSettingsPath("user");

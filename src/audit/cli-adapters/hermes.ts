@@ -28,7 +28,7 @@ export async function listHermesTranscriptMetadata(
   const out: TranscriptMetadata[] = [];
   for (const s of sessions) {
     if (s.mtimeMs < sinceMs) continue;
-    if (s.messageCount <= 0) continue; // empty session → no events
+    if (s.messageCount <= 0 && !s.hasMessages) continue; // empty → no events (message_count can lag; trust real messages)
     out.push({
       cli: "hermes",
       // Group by channel; gateway sessions are cwd-less.

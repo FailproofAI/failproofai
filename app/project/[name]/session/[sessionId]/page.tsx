@@ -40,8 +40,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
   // `ses_21ad60d14ffewMeRRKMLdS7vOI`). The other four CLIs use UUIDs. Accept
   // either; the per-CLI loader returns null for unknown IDs anyway.
   const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
-  // Hermes session IDs: `YYYYMMDD_HHMMSS_<hash>` or `cron_<hash>_YYYYMMDD_HHMMSS`.
-  const HERMES_SESSION_RE = /^(?:cron_[0-9a-z]+_)?\d{8}_\d{6}(?:_[0-9a-z-]+)?$/;
+  // Hermes session IDs — same permissive shape as the loader/download validator
+  // (a stricter pattern would 404 real sessions that the loader would happily open).
+  const HERMES_SESSION_RE = /^[A-Za-z0-9_-]+$/;
   if (
     !UUID_RE.test(decodedSessionId) &&
     !OPENCODE_SESSION_RE.test(decodedSessionId) &&

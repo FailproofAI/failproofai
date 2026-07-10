@@ -1527,25 +1527,29 @@ export const hermes: Integration = {
     const doc = readYamlDoc(settingsPath);
     const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
     const hooks = js.hooks;
-    if (!hooks || typeof hooks !== "object") return 0;
 
     let removed = 0;
-    for (const eventType of Object.keys(hooks)) {
-      const entries = hooks[eventType];
-      if (!Array.isArray(entries)) continue;
-      const before = entries.length;
-      const filtered = entries.filter((h) => !isMarkedHook(h));
-      removed += before - filtered.length;
-      if (filtered.length === 0) delete hooks[eventType];
-      else hooks[eventType] = filtered;
+    if (hooks && typeof hooks === "object") {
+      for (const eventType of Object.keys(hooks)) {
+        const entries = hooks[eventType];
+        if (!Array.isArray(entries)) continue;
+        const before = entries.length;
+        const filtered = entries.filter((h) => !isMarkedHook(h));
+        removed += before - filtered.length;
+        if (filtered.length === 0) delete hooks[eventType];
+        else hooks[eventType] = filtered;
+      }
+      if (removed > 0) {
+        if (Object.keys(hooks).length === 0) doc.delete("hooks");
+        else doc.set("hooks", hooks);
+      }
     }
 
-    if (removed > 0) {
-      if (Object.keys(hooks).length === 0) doc.delete("hooks");
-      else doc.set("hooks", hooks);
-      doc.delete("hooks_auto_accept");
-      writeYamlDoc(settingsPath, doc);
-    }
+    // Always drop our headless-consent flag on uninstall — even if the hooks were
+    // already removed manually — so it can't silently auto-accept future operator
+    // hooks. `doc.delete` returns true iff the key was present.
+    const droppedAutoAccept = doc.delete("hooks_auto_accept");
+    if (removed > 0 || droppedAutoAccept) writeYamlDoc(settingsPath, doc);
     return removed;
   },
 
@@ -1592,8 +1596,10 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
 export function getIntegration(id: IntegrationType): Integration {
   const integration = INTEGRATIONS[id];
   if (!integration) {
-    // Audit-only CLIs (e.g. hermes) reach here when someone tries to install
-    // live hooks for them. Be explicit rather than "unknown integration".
+    // A future audit-only CLI (one with an audit adapter but no INTEGRATIONS
+    // entry) reaches here when someone tries to install live hooks for it. Be
+    // explicit rather than "unknown integration". (hermes is NOT audit-only — it
+    // has a live-hook entry — so it never reaches this branch.)
     throw new Error(
       `"${id}" is audit-only — live-hook install is not supported for it yet. Installable: ${listInstallableIds().join(", ")}`,
     );

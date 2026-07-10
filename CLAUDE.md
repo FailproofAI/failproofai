@@ -313,7 +313,9 @@ Hermes uses a **Claude/Codex-style external shell-hook system**, but its config 
 **YAML** (`~/.hermes/config.yaml`) under a `hooks:` map — the only integration whose
 settings file is YAML, so `integrations.ts` has a comment-preserving `readYamlDoc`/
 `writeYamlDoc` layer (the `yaml` package's `Document` API) that rewrites only the
-`hooks:` key and leaves the operator's other settings + comments intact.
+`hooks:` key, preserving the operator's other settings and any comments **outside**
+that block. (Comments *inside* the `hooks:` map are not preserved — we rebuild the
+key from `doc.toJS()` — but failproofai owns that block, so there's nothing to keep.)
 
 Settings file paths:
 
@@ -323,8 +325,8 @@ Settings file paths:
 
 Hermes is **user-scope only** — there is no project config, so `getSettingsPath`
 ignores scope/cwd. Hermes exposes no `$HERMES_PROJECT_DIR`; the installed command uses
-the resolved binary path (`"${binaryPath}" --hook <event> --cli hermes`, or
-`npx -y failproofai …` for the portable/project form). `timeout` is in **seconds** (30).
+the resolved binary path (`"${binaryPath}" --hook <event> --cli hermes`) — since
+Hermes is user-scope only, no `npx` project form applies. `timeout` is in **seconds** (30).
 
 **Consent (headless gateway).** Hermes prompts once per unique `(event, command)` hook
 before running it. The gateway has no TTY, so install also writes

@@ -80,11 +80,23 @@ export const HERMES_TOOL_MAP: Record<string, string> = {
   write_file: "Write",
   patch: "Edit",
   web_search: "WebSearch",
-  // Tentative — verify each tool's `tool_input` key shape against a live export
-  // before relying on policy matches (may also need a HERMES_TOOL_INPUT_MAP):
   web_extract: "WebFetch",
   search_files: "Grep",
   todo: "TodoWrite",
+};
+
+// Hermes tool-INPUT key canonicalization, keyed by the *canonical* tool name
+// (the handler canonicalizes the name before calling canonicalizeToolInput).
+// Verified against a live ~/.hermes/state.db: read_file / write_file / patch
+// deliver the file path as `path`, but Claude builtins read `file_path`
+// (block-env-files, block-secrets-write, block-read-outside-cwd) — so map it.
+// write_file's `content`, patch's `old_string`/`new_string`, and search_files'
+// `pattern`/`path` are already canonical, so Grep needs no entry. Mirrors
+// PI_TOOL_INPUT_MAP (Pi has the same `path` → `file_path` shape).
+export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path" },
+  Write: { path: "file_path" },
+  Edit: { path: "file_path" },
 };
 
 // Hermes live-hook (Pillar 1) events + scopes. Hermes fires these snake_case

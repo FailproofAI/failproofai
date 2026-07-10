@@ -16,6 +16,7 @@ import {
   PI_TOOL_INPUT_MAP,
   GEMINI_TOOL_MAP,
   HERMES_TOOL_MAP,
+  HERMES_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -58,14 +59,9 @@ export function canonicalizeToolInput(
   let perToolMap: Record<string, string> | undefined;
   if (cli === "opencode") perToolMap = OPENCODE_TOOL_INPUT_MAP[toolName];
   else if (cli === "pi") perToolMap = PI_TOOL_INPUT_MAP[toolName];
-  // NOTE (Hermes): tool NAMES are canonicalized (HERMES_TOOL_MAP) and
-  // `terminal`'s `command` arg is already canonical (live-verified — sudo/rm -rf
-  // block), but there is no HERMES_TOOL_INPUT_MAP yet. So read_file/write_file/
-  // patch/search_files arg keys pass through unmapped: file-path/content builtins
-  // (block-env-files, block-secrets-write, block-read-outside-cwd) fire on Hermes
-  // only if those keys already match canonical (`file_path`/`content`/`path`).
-  // Add a Hermes branch here once the real arg shapes are verified against a live
-  // ~/.hermes/state.db — do NOT guess the keys (a wrong map silently mis-maps).
+  // Hermes read_file/write_file/patch deliver the file path as `path`; map it to
+  // `file_path` so path/content builtins fire (verified against a live state.db).
+  else if (cli === "hermes") perToolMap = HERMES_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

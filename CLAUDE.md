@@ -368,14 +368,13 @@ evaluator emits a non-blocking `{"decision":"allow", reason}` and surfaces the n
 stderr. In exchange Hermes has capabilities others lack (`transform_tool_result`,
 `pre_gateway_dispatch`, `pre_llm_call`) — out of scope for now.
 
-**Tool-input canonicalization gap.** `HERMES_TOOL_MAP` canonicalizes tool *names*, and
-`terminal`'s `command` arg is already canonical (Bash-command policies like `block-sudo`
-are live-verified). But there is **no `HERMES_TOOL_INPUT_MAP`** yet, so the *argument keys*
-of `read_file`/`write_file`/`patch`/`search_files` pass through unmapped — file-path/content
-builtins (`block-env-files`, `block-secrets-write`, `block-read-outside-cwd`) enforce on
-Hermes only if those keys already match canonical (`file_path`/`content`/`path`). Add a
-`hermes` branch in `canonicalizeToolInput` once the real arg shapes are verified against a
-live `~/.hermes/state.db` (don't guess the keys).
+**Tool-input canonicalization.** `HERMES_TOOL_MAP` canonicalizes tool *names* and
+`HERMES_TOOL_INPUT_MAP` the *argument keys*. Verified against a live `~/.hermes/state.db`:
+`read_file`/`write_file`/`patch` deliver the file path as `path`, which we map to
+`file_path` so path/content builtins (`block-env-files`, `block-secrets-write`,
+`block-read-outside-cwd`) fire; `write_file`'s `content`, `patch`'s `old_string`/`new_string`,
+and `search_files`' `pattern`/`path` are already canonical (so Grep needs no entry), and
+`terminal`'s `command` is canonical too (Bash policies like `block-sudo` are live-verified).
 
 For production users the recommended Hermes install is:
 ```bash

@@ -73,9 +73,11 @@ before they become incidents. Zero latency. Runs locally.
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <!-- TODO: swap assets/logos/hermes.svg (placeholder monogram) + the href for the official Hermes brand asset / URL -->
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
-    <img src="assets/logos/hermes.svg" alt="Hermes" width="64" height="64" />
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
   </a>
 </p>
 

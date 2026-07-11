@@ -7,24 +7,24 @@ description: "Eliminar entradas de hooks de la configuración de Claude Code"
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Elimina las entradas de hooks de failproofai del `settings.json` de Claude Code.
+Elimina las entradas de hooks de failproofai del archivo `settings.json` de Claude Code.
 
 Alias: `failproofai p -u`
 
 ## Opciones
 
-| Indicador | Descripción |
-|-----------|-------------|
+| Bandera | Descripción |
+|---------|-------------|
 | `--scope user` | Eliminar de la configuración global (predeterminado) |
 | `--scope project` | Eliminar de la configuración del proyecto |
 | `--scope local` | Eliminar de la configuración local |
 | `--scope all` | Eliminar de todos los ámbitos a la vez |
-| `--custom` / `-c` | Borrar la ruta `customPoliciesPath` de la configuración |
+| `--custom` / `-c` | Eliminar `customPoliciesPath` de la configuración |
 
 ## Comportamiento
 
-- **Sin nombres de política** — elimina todas las entradas de hooks de failproofai del archivo de configuración
-- **Nombres específicos** — deshabilita esas políticas pero mantiene los hooks instalados
+- **Sin nombres de política** - elimina todas las entradas de hooks de failproofai del archivo de configuración
+- **Nombres específicos** - deshabilita esas políticas pero mantiene los hooks instalados
 
 ## Ejemplos
 

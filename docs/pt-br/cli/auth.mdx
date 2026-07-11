@@ -1,17 +1,17 @@
 ---
 title: Entrar
-description: "Entre no FailproofAI pela CLI para ativar lembretes e recursos personalizados"
+description: "Faça login no FailproofAI pela CLI para ativar lembretes e recursos personalizados"
 ---
 
 ```bash
-failproofai auth login    # e-mail + código de uso único
+failproofai auth login    # email + código de uso único
 failproofai auth logout   # revogar esta sessão
-failproofai auth whoami   # exibir a identidade conectada
+failproofai auth whoami   # exibir a identidade do usuário conectado
 ```
 
-A forma legada com flags `--login` / `--logout` / `--whoami` ainda é aceita como alias para compatibilidade com versões anteriores.
+A forma legada com flags `--login` / `--logout` / `--whoami` ainda é aceita como alias para compatibilidade retroativa.
 
-A autenticação é opcional. Políticas, o dashboard, a página `/audit` e todos os outros recursos locais funcionam exatamente da mesma forma, independentemente de você estar conectado ou não. A tela de login existe para que recursos que **precisam** de uma identidade estável (lembretes de re-auditoria por enquanto, mais no futuro) tenham onde se ancorar.
+A autenticação é opcional. Políticas, o painel, a página `/audit` e todos os outros recursos locais funcionam exatamente da mesma forma, esteja você conectado ou não. A funcionalidade de login existe para que recursos que **precisam** de uma identidade estável (lembretes de re-auditoria hoje, mais no futuro) tenham onde se ancorar.
 
 ## Fluxo de login
 
@@ -19,9 +19,9 @@ A autenticação é opcional. Políticas, o dashboard, a página `/audit` e todo
 failproofai auth login
 ```
 
-Solicita seu e-mail, envia um código de 6 dígitos de uso único para esse endereço, pede o código e, em caso de sucesso, grava `~/.failproofai/auth.json` (modo `0600`). A mesma sessão fica visível no dashboard do aplicativo — ao clicar em `[ set a reminder ]` em `/audit`, você aparecerá como conectado.
+Solicita seu e-mail, envia um código de uso único de 6 dígitos para esse endereço, pede o código e, em caso de sucesso, grava `~/.failproofai/auth.json` (modo `0600`). A mesma sessão fica visível no painel do aplicativo — ao clicar em `[ set a reminder ]` em `/audit`, você será reconhecido como conectado.
 
-O dashboard expõe o mesmo fluxo como um diálogo modal em `/audit` para usuários que nunca usam a CLI.
+O painel expõe o mesmo fluxo como um diálogo modal em `/audit` para usuários que nunca usam a CLI.
 
 ## Sair
 
@@ -29,7 +29,7 @@ O dashboard expõe o mesmo fluxo como um diálogo modal em `/audit` para usuári
 failproofai auth logout
 ```
 
-Revoga a sessão atual no servidor e exclui `~/.failproofai/auth.json`. Se o servidor de API estiver inacessível, o arquivo local é removido de qualquer forma — a intenção local de sair sempre prevalece.
+Revoga a sessão atual no servidor e exclui `~/.failproofai/auth.json`. Se o servidor de API estiver inacessível, o arquivo local é removido de qualquer forma — a intenção local de desconectar sempre prevalece.
 
 ## Verificação de identidade
 
@@ -37,11 +37,11 @@ Revoga a sessão atual no servidor e exclui `~/.failproofai/auth.json`. Se o ser
 failproofai auth whoami
 ```
 
-Exibe `<email> (<user uuid>)` e encerra com código 0 quando existe uma sessão válida, ou `not signed in` e encerra com código 1 caso contrário. Atualiza silenciosamente o token de acesso em segundo plano se ele estiver a menos de um minuto de expirar.
+Exibe `<email> (<uuid do usuário>)` e encerra com código 0 quando há uma sessão válida, ou `not signed in` e encerra com código 1 caso contrário. Atualiza silenciosamente o token de acesso em segundo plano se ele estiver a menos de um minuto de expirar.
 
 ## Lembrete recorrente de re-auditoria
 
-Quando você clica em **`[ set a reminder ]`** na página `/audit` (ou entra via o modal que o botão acessa), o dashboard grava um pequeno arquivo auxiliar em `~/.failproofai/next-audit.json`:
+Ao clicar em **`[ set a reminder ]`** na página `/audit` (ou ao entrar via o modal que o botão exige), o painel grava um pequeno arquivo complementar em `~/.failproofai/next-audit.json`:
 
 ```json
 {
@@ -51,9 +51,9 @@ Quando você clica em **`[ set a reminder ]`** na página `/audit` (ou entra via
 }
 ```
 
-Este arquivo está vinculado ao e-mail para o qual foi definido — trocar a sessão da CLI para uma conta diferente oculta qualquer lembrete pertencente ao usuário anterior. O intervalo padrão é de **7 dias**, configurável futuramente quando o agendador for implementado. Criado com permissões `0600` como `auth.json`.
+Este arquivo está vinculado ao e-mail para o qual foi definido — trocar a sessão da CLI para uma conta diferente oculta qualquer lembrete pertencente ao usuário anterior. O intervalo padrão é de **7 dias**, configurável futuramente quando o agendador for implementado. Criado com permissões `0600`, assim como `auth.json`.
 
-O endpoint `/api/auth/reminder` do dashboard expõe `GET` (ler), `POST` (definir / reagendar) e `DELETE` (limpar), e requer uma sessão ativa.
+O endpoint `/api/auth/reminder` do painel expõe os métodos `GET` (ler), `POST` (definir / reagendar) e `DELETE` (limpar), e requer uma sessão ativa.
 
 ## O que há em `~/.failproofai/auth.json`
 
@@ -67,7 +67,7 @@ O endpoint `/api/auth/reminder` do dashboard expõe `GET` (ler), `POST` (definir
 }
 ```
 
-Criado com permissões `0600` (leitura/escrita somente pelo proprietário). O token de acesso é um JWT HS256 com validade de 1 hora; o token de atualização é uma string aleatória opaca de 256 bits que o servidor armazena como `SHA-256(token)`. A reutilização do token de atualização é detectada no servidor e revoga todas as sessões do usuário.
+Criado com permissões `0600` (leitura/escrita apenas pelo proprietário). O token de acesso é um JWT HS256 válido por 1 hora; o refresh token é uma string aleatória opaca de 256 bits que o servidor armazena como `SHA-256(token)`. A reutilização do refresh token é detectada no servidor e revoga todas as sessões do usuário.
 
 ## Variáveis de ambiente
 
@@ -80,8 +80,8 @@ Consulte [Variáveis de ambiente](/pt-br/cli/environment-variables) para a lista
 
 ## Solução de problemas
 
-**"Could not reach the api-server"** — a CLI não consegue abrir uma conexão TCP com `FAILPROOF_API_URL`. Verifique sua rede ou defina `FAILPROOF_API_URL` se você estiver executando um servidor de API auto-hospedado.
+**"Could not reach the api-server"** — a CLI não consegue abrir uma conexão TCP com `FAILPROOF_API_URL`. Verifique sua rede ou defina `FAILPROOF_API_URL` se estiver executando um servidor de API auto-hospedado.
 
-**"Rate limited"** — muitas tentativas de login em uma janela de 15 minutos para aquele e-mail (5/e-mail) ou IP (20/IP), ou um cooldown de 30 segundos após a solicitação anterior para o mesmo e-mail. A mensagem de erro inclui o tempo de espera em segundos.
+**"Rate limited"** — muitas tentativas de login em uma janela de 15 minutos para aquele e-mail (5/e-mail) ou IP (20/IP), ou um intervalo de reenvio de 30 segundos após a solicitação anterior para o mesmo e-mail. A mensagem de erro inclui o tempo de espera em segundos.
 
-**Código rejeitado** — o OTP estava incorreto, expirou ou a entrada atingiu o bloqueio de 5 tentativas erradas. Execute `failproofai auth login` novamente para solicitar um novo código.
+**Código rejeitado** — o OTP estava incorreto, expirado, ou a entrada atingiu o bloqueio após 5 tentativas erradas. Execute `failproofai auth login` novamente para solicitar um novo código.

@@ -1,12 +1,12 @@
 ---
-title: Bí danh Gói
-description: "Các bí danh ngăn chặn typosquat đã đăng ký và cách chúng hoạt động"
+title: Package Aliases
+description: "Những alias phòng chống lỗi đánh máy được đăng ký và cách chúng hoạt động"
 icon: copy
 ---
 
 ## Gói chính thức
 
-Gói npm chính là **`failproofai`**:
+Gói npm chính thức là **`failproofai`**:
 
 ```bash
 npm install -g failproofai
@@ -16,17 +16,17 @@ bun add -g failproofai
 
 ---
 
-## Tại sao chúng tôi sở hữu các tên bí danh
+## Tại sao chúng tôi sở hữu các tên alias
 
-Typosquatting là một cuộc tấn công chuỗi cung ứng phổ biến, trong đó một tác nhân độc hại đăng ký tên gói chỉ cách một phím bàn phím so với gói phổ biến. Những người dùng vô tình gõ sai lệnh cài đặt sẽ chạy mã do kẻ tấn công kiểm soát với quyền truy cập toàn hệ thống - đó chính là loại mối đe dọa mà Failproof AI được thiết kế để bảo vệ.
+Typosquatting là một cuộc tấn công chuỗi cung ứng phổ biến trong đó một diễn viên độc hại đăng ký tên gói chỉ cách một phím bàn phím so với gói phổ biến. Những người dùng vô tình gõ sai lệnh cài đặt sẽ chạy mã được kiểm soát bởi kẻ tấn công với quyền truy cập đầy đủ hệ thống - chính xác là loại mối đe dọa mà Failproof AI được thiết kế để bảo vệ.
 
-Để loại bỏ rủi ro này, **chúng tôi chủ động sở hữu tất cả các lỗi chính tả phổ biến và các biến thể định dạng** của `failproofai` trên npm. Không tên nào trong số này có thể được đăng ký bởi bên thứ ba. Mỗi tên đều là một proxy đơn giản giúp cài đặt và ủy quyền cho gói `failproofai` thực tế.
+Để loại bỏ bề mặt tấn công này, **chúng tôi chủ động sở hữu tất cả các lỗi đánh máy phổ biến và các biến thể định dạng** của `failproofai` trên npm. Không có tên nào trong số này có thể được đăng ký bởi bên thứ ba. Mỗi tên là một proxy mỏng cài đặt và ủy quyền cho gói `failproofai` thực tế.
 
 ---
 
-## Bí danh đã đăng ký
+## Các alias được đăng ký
 
-**Biến thể định dạng** - các cách khác nhau để viết "failproof ai":
+**Các biến thể định dạng** - những cách khác nhau để viết "failproof ai":
 
 | Gói | Trạng thái |
 |---------|--------|
@@ -37,7 +37,7 @@ Typosquatting là một cuộc tấn công chuỗi cung ứng phổ biến, tron
 | `fail_proof_ai` | ⏳ Chờ hỗ trợ npm |
 | `fail-proofai` | ⏳ Chờ hỗ trợ npm |
 
-**`failprof*` typos** - thiếu một `o` từ "proof":
+**Lỗi đánh máy `failprof*`** - thiếu một chữ `o` từ "proof":
 
 | Gói | Trạng thái |
 |---------|--------|
@@ -47,7 +47,7 @@ Typosquatting là một cuộc tấn công chuỗi cung ứng phổ biến, tron
 | `fail-prof-ai` | ⏳ Chờ hỗ trợ npm |
 | `failprof_ai` | ⏳ Chờ hỗ trợ npm |
 
-**`faliproof*` typos** - hoán đổi `a` và `i`:
+**Lỗi đánh máy `faliproof*`** - hoán đổi `a` và `i`:
 
 | Gói | Trạng thái |
 |---------|--------|
@@ -55,9 +55,9 @@ Typosquatting là một cuộc tấn công chuỗi cung ứng phổ biến, tron
 | `faliproof-ai` | ✅ Đã xuất bản |
 | `faliproofai` | ⏳ Chờ hỗ trợ npm |
 
-> **Tại sao chờ?** Chính sách ngăn chặn thư rác của npm chặn các tên được chuẩn hóa thành chuỗi giống như gói hiện có sau khi loại bỏ dấu chấm câu và chạy kiểm tra tương tự. Chúng tôi đã liên hệ với hỗ trợ npm để đặt trước những tên này nhằm mục đích chống typosquatting. Chúng sẽ được kích hoạt sau khi được phê duyệt.
+> **Tại sao đang chờ?** Chính sách phòng chống spam của npm chặn các tên được chuẩn hóa thành chuỗi giống nhau như gói hiện có sau khi loại bỏ dấu câu và chạy kiểm tra tương tự. Chúng tôi đã liên hệ với hỗ trợ npm để dự trữ các tên này cho mục đích phòng chống typosquatting. Chúng sẽ được kích hoạt sau khi được phê duyệt.
 
-Bạn có thể xác minh bất kỳ bí danh đã xuất bản nào do chúng tôi sở hữu:
+Bạn có thể xác minh bất kỳ alias được xuất bản nào đều được chúng tôi sở hữu:
 
 ```bash
 npm info failproof
@@ -66,17 +66,17 @@ npm info failproof
 
 ---
 
-## Cách các bí danh hoạt động
+## Cách các alias hoạt động
 
-Mỗi gói bí danh:
+Mỗi gói alias:
 
-1. Liệt kê `failproofai` làm phụ thuộc - vì vậy gói thực tế (bao gồm thiết lập móc `postinstall` của nó) được chạy khi cài đặt
-2. Hiển thị một lệnh binary phù hợp với tên riêng của nó (ví dụ `failproof-ai`) ủy quyền tất cả các đối số cho lệnh binary `failproofai`
+1. Liệt kê `failproofai` làm một phụ thuộc - vì vậy gói thực tế (bao gồm thiết lập hook `postinstall` của nó) chạy khi cài đặt
+2. Phơi bày nhị phân khớp với tên của chính nó (ví dụ: `failprof-ai`) phục vụ như proxy cho tất cả các đối số đến nhị phân `failproofai`
 
-Proxy là một tập lệnh Node hai dòng; không có logic, không có lệnh gọi mạng và không có thu thập dữ liệu ngoài những gì `failproofai` tự thực hiện.
+Proxy là một kịch bản Node hai dòng; không có logic, không có lệnh gọi mạng và không có thu thập dữ liệu ngoài những gì `failproofai` tự làm.
 
 ---
 
-## Nếu bạn tìm thấy một tên chúng tôi bỏ sót
+## Nếu bạn tìm thấy một tên mà chúng tôi bỏ lỡ
 
 Mở một issue tại [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) và chúng tôi sẽ đăng ký nó.

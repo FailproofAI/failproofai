@@ -7,15 +7,15 @@ description: "Le sous-processus que Claude Code appelle à chaque événement d'
 failproofai --hook <EventType>
 ```
 
-Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'avez normalement pas à l'appeler directement.
+Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'appelez normalement pas cette commande directement.
 
-Lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se termine avec un code indiquant la décision :
+Elle lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se termine avec un code indiquant la décision prise :
 
 | Code de sortie | Décision | Effet |
 |----------------|----------|-------|
-| `0` | `allow` | Autorise l'action |
-| `1` | `deny` | Bloque l'action — Claude voit la raison du refus |
-| `2` | `instruct` | Injecte des instructions dans le contexte de Claude |
+| `0` | `allow` | Autoriser l'action |
+| `1` | `deny` | Bloquer l'action — Claude voit la raison du refus |
+| `2` | `instruct` | Injecter des instructions dans le contexte de Claude |
 
 ### Types d'événements pris en charge
 

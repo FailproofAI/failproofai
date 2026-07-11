@@ -4,6 +4,7 @@
 
 ### Fixes
 - Skip the `require-*-before-stop` workflow gates during Claude Code plan mode (`permission_mode: "plan"`) — plan mode makes no commits/pushes/PRs by design, so the gates were wrongly demanding actions plan mode forbids (e.g. `git push` with nothing to push, blocking the agent from finishing). (#488)
+- Fix translation regressions from the #486 docs sync: strip hallucinated `{#…}` heading-ID syntax that broke MDX parsing (`ja/built-in-policies`), restore dropped YAML frontmatter (`tr/cli/hook`) and the `--cli …|hermes` inline code span (`he/configuration`), and un-translate an inline-code placeholder (`de/cli/auth`). (#487)
 
 ## 0.0.13-beta.1 — 2026-07-10
 

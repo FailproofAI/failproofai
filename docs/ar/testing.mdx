@@ -1,10 +1,11 @@
 ---
+---
 title: الاختبار
-description: "اختبارات الوحدة واختبارات E2E ومساعدات الاختبار"
+description: "اختبارات الوحدة واختبارات End-to-End ومساعدات الاختبار"
 icon: flask-vial
 ---
 
-يحتوي failproofai على مجموعتي اختبار: **اختبارات الوحدة** (سريعة، مع محاكاة) و**اختبارات end-to-end** (استدعاءات subprocess فعلية).
+failproofai يحتوي على مجموعتي اختبار: **اختبارات الوحدة** (سريعة، معزولة) و**اختبارات End-to-End** (استدعاءات subprocess حقيقية).
 
 ---
 
@@ -20,10 +21,10 @@ bun run test
 # تشغيل اختبارات E2E (يتطلب إعدادًا - انظر أدناه)
 bun run test:e2e
 
-# فحص النوع دون البناء
+# التحقق من الأنواع بدون بناء
 bunx tsc --noEmit
 
-# التحقق من الأسلوب
+# التحقق من أسلوب الكود
 bun run lint
 ```
 
@@ -31,7 +32,7 @@ bun run lint
 
 ## اختبارات الوحدة
 
-تقع اختبارات الوحدة في `__tests__/` وتستخدم [Vitest](https://vitest.dev) مع `jsdom`.
+اختبارات الوحدة توجد في `__tests__/` وتستخدم [Vitest](https://vitest.dev) مع `jsdom`.
 
 ```text
 __tests__/
@@ -39,9 +40,9 @@ __tests__/
     builtin-policies.test.ts      # منطق السياسة لكل سياسة مدمجة
     hooks-config.test.ts          # تحميل الإعدادات ودمج النطاقات
     policy-evaluator.test.ts      # حقن المعاملات وترتيب التقييم
-    custom-hooks-registry.test.ts # إضافة/الحصول على/مسح سجل globalThis
-    custom-hooks-loader.test.ts   # محمل ESM والاستيرادات المتعدية ومعالجة الأخطاء
-    manager.test.ts               # عمليات التثبيت/الإزالة/القائمة
+    custom-hooks-registry.test.ts # سجل globalThis للإضافة والحصول والحذف
+    custom-hooks-loader.test.ts   # محمل ESM والاستيرادات المتداخلة ومعالجة الأخطاء
+    manager.test.ts               # عمليات التثبيت والإزالة والقائمة
   components/
     sessions-list.test.tsx        # مكون قائمة الجلسات
     project-list.test.tsx         # مكون قائمة المشاريع
@@ -108,13 +109,13 @@ describe("block-sudo", () => {
 
 ---
 
-## اختبارات end-to-end
+## اختبارات End-to-End
 
-تستدعي اختبارات E2E الملف الثنائي الفعلي `failproofai` كـ subprocess، وترسل حمولة JSON إلى stdin، وتتحقق من مخرجات stdout وكود الخروج. يختبر هذا مسار التكامل الكامل الذي يستخدمه Claude Code.
+اختبارات E2E تستدعي ملف التنفيذ `failproofai` الحقيقي كـ subprocess، وتنقل حمولة JSON إلى stdin، وتتحقق من مخرجات stdout ورمز الخروج. هذا يختبر مسار التكامل الكامل الذي يستخدمه Claude Code.
 
 ### الإعداد
 
-تشغل اختبارات E2E الملف الثنائي مباشرة من مصدر المستودع. قبل التشغيل الأول، قم ببناء حزمة CJS التي تستخدمها ملفات الخطاف المخصصة عند استيرادها من `'failproofai'`:
+اختبارات E2E تشغل الملف التنفيذي مباشرة من مصدر المستودع. قبل التشغيل الأول، بناء حزمة CJS التي تستخدمها ملفات hook المخصصة عند الاستيراد من `'failproofai'`:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,20 +127,20 @@ bun build src/index.ts --outdir dist --target node --format cjs
 bun run test:e2e
 ```
 
-أعد بناء `dist/` كلما غيرت واجهة برمجية عامة للخطاف (`src/hooks/custom-hooks-registry.ts` أو `src/hooks/policy-helpers.ts` أو `src/hooks/policy-types.ts`).
+أعد بناء `dist/` كلما غيرت واجهة برمجية hook عامة (`src/hooks/custom-hooks-registry.ts` أو `src/hooks/policy-helpers.ts` أو `src/hooks/policy-types.ts`).
 
-### بنية اختبار E2E
+### هيكل اختبار E2E
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # توليد الملف الثنائي، أنابيب حمولة JSON، التقاط كود الخروج + stdout + stderr
-    fixture-env.ts      # بيئة معزولة لكل اختبار مع ملفات إعدادات
-    payloads.ts         # مصانع الحمول الدقيقة من Claude لكل نوع حدث
+    hook-runner.ts      # استدعاء الملف التنفيذي، نقل JSON للحمولة، التقاط رمز الخروج والمخرجات والأخطاء
+    fixture-env.ts      # دليل مؤقت معزول لكل اختبار مع ملفات الإعدادات
+    payloads.ts         # مصانع الحمولة الدقيقة لكل نوع حدث
   hooks/
-    builtin-policies.e2e.test.ts   # كل سياسة مدمجة مع subprocess فعلي
-    custom-hooks.e2e.test.ts       # تحميل الخطاف المخصص والتقييم
-    config-scopes.e2e.test.ts      # دمج الإعدادات عبر المشروع/المحلي/العام
+    builtin-policies.e2e.test.ts   # كل سياسة مدمجة مع subprocess حقيقي
+    custom-hooks.e2e.test.ts       # تحميل وتقييم hook مخصص
+    config-scopes.e2e.test.ts      # دمج الإعدادات عبر المشروع والمحلي والعام
     policy-params.e2e.test.ts      # حقن المعاملات لكل سياسة بمعاملات
 ```
 
@@ -151,8 +152,8 @@ __tests__/e2e/
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - مجلد مؤقت؛ مرر كـ payload.cwd لالتقاط .failproofai/policies-config.json
-// env.home   - مجلد منزلي معزول؛ لا يتسرب ~/.failproofai الفعلي
+// env.cwd    - دليل مؤقت؛ مرره كـ payload.cwd للتقاط .failproofai/policies-config.json
+// env.home   - دليل home معزول؛ لا تسريب حقيقي لـ ~/.failproofai
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -162,9 +163,9 @@ env.writeConfig({
 });
 ```
 
-يسجل `createFixtureEnv()` تنظيف `afterEach` تلقائيًا.
+`createFixtureEnv()` يسجل تنظيف `afterEach` تلقائيًا.
 
-**`runHook`** - استدعاء الملف الثنائي:
+**`runHook`** - استدعاء الملف التنفيذي:
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -180,7 +181,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - مصانع حمول جاهزة:
+**`Payloads`** - مصانع الحمولة الجاهزة:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -226,35 +227,35 @@ describe("block-rm-rf (E2E)", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("");  // allow → empty stdout
+    expect(result.stdout).toBe("");  // السماح → stdout فارغ
   });
 });
 ```
 
 ### أشكال استجابات E2E
 
-| القرار | كود الخروج | stdout |
+| القرار | رمز الخروج | stdout |
 |----------|-----------|--------|
-| `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
-| `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
-| Instruct (غير Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop instruct | `2` | stdout فارغ؛ السبب في stderr |
-| Allow | `0` | سلسلة فارغة |
+| `PreToolUse` رفض | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
+| `PostToolUse` رفض | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
+| تعليمات (بدون Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
+| تعليمات Stop | `2` | stdout فارغ؛ السبب في stderr |
+| السماح | `0` | سلسلة فارغة |
 
 ### إعداد Vitest
 
-تستخدم اختبارات E2E `vitest.config.e2e.mts` مع:
+اختبارات E2E تستخدم `vitest.config.e2e.mts` مع:
 
-- `environment: "node"` - لا توجد متغيرات عامة للمتصفح المطلوبة
-- `pool: "forks"` - عزل عملية حقيقي (اختبارات توليد subprocesses)
-- `testTimeout: 20_000` - 20 ثانية لكل اختبار (بدء الملف الثنائي + تقييم الخطاف)
+- `environment: "node"` - لا توجد متغيرات عامة للمتصفح مطلوبة
+- `pool: "forks"` - عزل العملية الحقيقي (الاختبارات تستدعي subprocesses)
+- `testTimeout: 20_000` - 20 ثانية لكل اختبار (بدء التشغيل + تقييم hook)
 
-تجمع `forks` مهمة: العمال المستندة إلى الخيط تشارك `globalThis`، مما قد يتداخل مع اختبارات التي تولد subprocesses. تتجنب forks القائمة على العملية هذا.
+حوض `forks` مهم: العمال المستندة إلى الخيوط تشارك `globalThis`، مما قد يتداخل مع الاختبارات التي تستدعي subprocess. العمليات المستقلة تتجنب هذا.
 
 ---
 
 ## CI
 
-يجب نجاح التشغيل الكامل لـ CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) قبل الدمج. تعمل مجموعة E2E كمهمة CI منفصلة بالتوازي.
+يجب أن يمر التشغيل الكامل لـ CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) قبل دمج الكود. مجموعة E2E تعمل كعمل CI منفصل بالتوازي.
 
-انظر [المساهمة](../CONTRIBUTING.md) للحصول على قائمة التحقق الكاملة قبل الدمج.
+انظر [المساهمة](../CONTRIBUTING.md) لقائمة التحقق الكاملة قبل الدمج.

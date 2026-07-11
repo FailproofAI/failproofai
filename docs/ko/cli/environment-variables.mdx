@@ -19,29 +19,29 @@ description: "환경 변수로 failproofai 동작 구성하기"
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | 서버 로그 레벨 (기본값: `warn`) |
 | `FAILPROOFAI_HOOK_LOG_FILE` | 커스텀 훅 로그 파일 경로, 또는 기본 경로(`~/.failproofai/logs/hooks.log`)를 사용하려면 `true` |
 
-## 텔레메트리
+## 원격 측정
 
 | 변수 | 설명 |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 익명 사용 통계 수집 비활성화 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 익명 사용 원격 측정 비활성화 |
 
 ## 인증
 
 | 변수 | 설명 |
 |----------|-------------|
-| `FAILPROOF_API_URL` | `failproofai auth` 및 대시보드 인증 대화상자에서 사용하는 API 서버 기본 URL 재정의. 기본값은 `https://api.befailproof.ai`이며, 로컬 api-server 실행 시 `http://localhost:8080` 등으로 설정. |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json`이 저장되는 경로 재정의 (기본값: `~/.failproofai`). 주로 격리된 테스트 환경에서 유용. |
+| `FAILPROOF_API_URL` | `failproofai auth` 및 대시보드 인증 다이얼로그에서 사용하는 API 서버 기본 URL 재정의. 기본값은 `https://api.befailproof.ai`이며, 로컬 API 서버 실행 시 `http://localhost:8080`(또는 해당 주소)으로 설정. |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json` 저장 위치 재정의 (기본값: `~/.failproofai`). 주로 격리된 테스트 환경에서 유용함. |
 
-## 첫 실행 프롬프트
+## 최초 실행 프롬프트
 
 | 변수 | 설명 |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | 최초 `failproofai` 실행 시 정책 설치를 제안하는 프롬프트 건너뛰기 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 처음 `failproofai`를 실행할 때 정책 설치를 제안하는 프롬프트 건너뛰기 |
 
 ## LLM (정책 평가용)
 
 | 변수 | 설명 |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM API 엔드포인트 (기본값: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | LLM 기반 정책에 사용할 API 키 |
+| `FAILPROOFAI_LLM_API_KEY` | LLM 기반 정책용 API 키 |
 | `FAILPROOFAI_LLM_MODEL` | 모델 이름 (기본값: `gpt-4o-mini`) |

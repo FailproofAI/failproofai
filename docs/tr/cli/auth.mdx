@@ -1,6 +1,7 @@
 ---
+---
 title: Oturum aç
-description: "FailproofAI'ye CLI'dan oturum açarak anımsatıcıları ve kişiselleştirilmiş özellikleri etkinleştirin"
+description: "FailproofAI'da CLI üzerinden oturum açarak hatırlatıcıları ve kişiselleştirilmiş özellikleri etkinleştirin"
 ---
 
 ```bash
@@ -9,9 +10,9 @@ failproofai auth logout   # revoke this session
 failproofai auth whoami   # print the signed-in identity
 ```
 
-Eski `--login` / `--logout` / `--whoami` bayrak biçimi hâlâ geriye uyumluluk için takma ad olarak kabul edilmektedir.
+Eski `--login` / `--logout` / `--whoami` bayrak formu hala geriye dönük uyumluluk için takma ad olarak kabul edilmektedir.
 
-Kimlik doğrulama isteğe bağlıdır. İlkeler, gösterge paneli, `/audit` sayfası ve diğer tüm yerel özellikler oturum açmış olsanız da olmasanız da tamamen aynı şekilde çalışır. Oturum açma sayfası, **gerektiğinde** sabit bir kimlik gerektiren özelliklerin (bugün yeniden denetim anımsatıcıları, gelecekte daha fazlası) bir tutturacak noktasına sahip olması için mevcuttur.
+Kimlik doğrulama isteğe bağlıdır. İlkeler, gösterge paneli, `/audit` sayfası ve diğer tüm yerel özellikler, oturum açmış olmanız veya olmamanız fark etmeksizin tamamen aynı şekilde çalışır. Oturum açma yüzeyi, **sabit bir kimliğe ihtiyaç duyan** özellikler (bugün yeniden denetim hatırlatıcıları, gelecekte daha fazlası) için bir bağlantı noktası sağlamak amacıyla mevcuttur.
 
 ## Oturum açma akışı
 
@@ -19,17 +20,17 @@ Kimlik doğrulama isteğe bağlıdır. İlkeler, gösterge paneli, `/audit` sayf
 failproofai auth login
 ```
 
-E-posta adresinizi istenir, bu adrese 6 haneli tek kullanımlık bir kod gönderilir, kod için istenir ve başarı durumunda `~/.failproofai/auth.json` dosyasını yazar (`0600` modu). Aynı oturum daha sonra uygulama içi gösterge panelinde görünür — `/audit` sayfasında `[ set a reminder ]` düğmesine tıklamak sizi oturum açmış olarak gösterir.
+E-posta adresinizi sorar, o adrese 6 haneli bir kerelik kod gönderir, kodu ister ve başarılı olduğunda `~/.failproofai/auth.json` dosyasını yazar (`0600` modu). Aynı oturum daha sonra uygulama içi gösterge panelinde görülebilir — `/audit` sayfasında `[ set a reminder ]` öğesine tıklamak sizi oturum açmış olarak görecektir.
 
-Gösterge paneli, CLI'ya hiç dokunmayan kullanıcılar için `/audit` sayfasında bu akışı modal diyalog olarak sunar.
+Gösterge paneli, CLI'ye hiç dokunmayan kullanıcılar için `/audit` sayfasında modal bir diyalog olarak aynı akışı gösterir.
 
-## Oturum kapatma
+## Oturumu kapatma
 
 ```bash
 failproofai auth logout
 ```
 
-Geçerli oturumu sunucuda iptal eder ve `~/.failproofai/auth.json` dosyasını siler. API sunucusuna ulaşılamazsa, yerel dosya yine de kaldırılır — yerel olarak oturum kapatma niyeti her zaman öncelik alır.
+Sunucudaki mevcut oturumu iptal eder ve `~/.failproofai/auth.json` dosyasını siler. API sunucusuna ulaşılamıyorsa, yerel dosya yine de kaldırılır — yerel oturum kapatma niyeti her zaman öncelik alır.
 
 ## Kimlik kontrolü
 
@@ -37,11 +38,11 @@ Geçerli oturumu sunucuda iptal eder ve `~/.failproofai/auth.json` dosyasını s
 failproofai auth whoami
 ```
 
-Geçerli bir oturum olduğunda `<email> (<user uuid>)` yazdırır ve 0 ile çıkar, aksi takdirde `not signed in` yazdırır ve 1 ile çıkar. Erişim belirteci sona ermeye 1 dakika kalmışsa arka planda sessizce yeniler.
+Geçerli bir oturum varsa `<email> (<user uuid>)` öğesini yazdırır ve çıkış kodu 0 ile sonlandırır veya aksi takdirde `not signed in` öğesini yazdırır ve çıkış kodu 1 ile sonlandırır. Süresi dolmaya bir dakika kala arka planda erişim belirtecini sessizce yeniler.
 
-## Kalıcı yeniden denetim anımsatıcısı
+## Kalıcı yeniden denetim hatırlatıcısı
 
-`/audit` sayfasında **`[ set a reminder ]`** düğmesine tıkladığınızda (veya düğmenin kapılarından geçerek modal aracılığıyla oturum açtığınızda), gösterge paneli `~/.failproofai/next-audit.json` konumunda küçük bir yardımcı dosya yazar:
+`/audit` sayfasında **`[ set a reminder ]`** öğesine tıkladığınızda (veya düğmenin kapısı açan modal aracılığıyla oturum açtığınızda), gösterge paneli `~/.failproofai/next-audit.json` konumunda küçük bir yardımcı dosya yazar:
 
 ```json
 {
@@ -51,11 +52,11 @@ Geçerli bir oturum olduğunda `<email> (<user uuid>)` yazdırır ve 0 ile çık
 }
 ```
 
-Bu dosya, ayarlandığı e-posta adresine kapsamlıdır — CLI oturumunu farklı bir hesaba değiştirmek, önceki kullanıcıya ait herhangi bir anımsatıcıyı gizler. Varsayılan fark **7 gündür**, zamanlayıcı geldiğinde daha sonra yapılandırılabilir. `auth.json` gibi `0600` izinleriyle oluşturulur.
+Bu dosya, kendisinin ayarlandığı e-posta adresiyle sınırlandırılmıştır — CLI oturumunu farklı bir hesaba değiştirmek, önceki kullanıcıya ait olan herhangi bir hatırlatıcıyı gizler. Varsayılan offset **7 gündür** ve zamanlayıcı kullanıma sunulduğunda yapılandırılabilir. `auth.json` gibi `0600` izinleriyle oluşturulur.
 
-Gösterge panelinin `/api/auth/reminder` uç noktası `GET` (oku), `POST` (ayarla / yeniden zamanla) ve `DELETE` (temizle) işlemlerini sunar ve etkin bir oturum gerektirir.
+Gösterge panelinin `/api/auth/reminder` uç noktası `GET` (oku), `POST` (ayarla / yeniden zamanla) ve `DELETE` (temizle) işlemlerini açığa çıkarır ve etkin bir oturum gerektirir.
 
-## `~/.failproofai/auth.json` dosyasında neler var
+## `~/.failproofai/auth.json` içinde neler var
 
 ```json
 {
@@ -67,21 +68,21 @@ Gösterge panelinin `/api/auth/reminder` uç noktası `GET` (oku), `POST` (ayarl
 }
 ```
 
-`0600` izinleriyle oluşturulur (yalnızca sahibi okuma/yazma). Erişim belirteci 1 saatlik HS256 JWT'sidir; yenileme belirteci, sunucunun `SHA-256(token)` olarak depoladığı opak 256 bit rastgele bir dizedir. Yenileme belirteci tekrarı sunucu tarafında algılanır ve kullanıcı için tüm oturumları iptal eder.
+`0600` izinleriyle oluşturulur (yalnızca sahibin okuma/yazma erişimi). Erişim belirteci 1 saatlik bir HS256 JWT'dir; yenileme belirteci, sunucunun `SHA-256(token)` olarak depoladığı opak bir 256 bitlik rastgele dizedir. Yenileme belirteci yeniden oynatması sunucu tarafında algılanır ve kullanıcı için her oturumu iptal eder.
 
 ## Ortam değişkenleri
 
 | Değişken | Varsayılan | Amaç |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | API sunucusu temel URL'sini geçersiz kılın. Kendi barındırılan API sunucusuna karşı yerel geliştirme için yararlıdır. |
-| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | `auth.json` dosyasının saklandığı konumu geçersiz kılın. Çoğunlukla testler için. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | API sunucusu temel URL'sini geçersiz kılın. Kendi kendini barındıran bir API sunucusu üzerinde yerel geliştirme için kullanışlıdır. |
+| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | `auth.json` dosyasının depolandığı yeri geçersiz kılın. Çoğunlukla testler için. |
 
-Tam listeyi [Ortam değişkenleri](/tr/cli/environment-variables) bölümünde görmek için.
+Tam liste için [Ortam değişkenleri](/tr/cli/environment-variables) bölümüne bakın.
 
 ## Sorun giderme
 
-**"Could not reach the api-server"** — CLI, `FAILPROOF_API_URL` adresine TCP bağlantısı açamıyor. Ağ bağlantınızı kontrol edin veya kendi barındırılan API sunucusu çalıştırıyorsanız `FAILPROOF_API_URL` ayarlayın.
+**"Could not reach the api-server"** — CLI, `FAILPROOF_API_URL` adresine TCP bağlantısı açamıyor. Ağınızı kontrol edin veya kendi kendini barındıran bir API sunucusu çalıştırıyorsanız `FAILPROOF_API_URL` değerini ayarlayın.
 
-**"Rate limited"** — o e-posta adresi için 15 dakikalık bir pencere içinde çok fazla oturum açma denemesi (5/e-posta) veya IP (20/IP), ya da önceki istek sonrasında aynı e-posta için 30 saniyelik yeniden gönderme bekleme süresi. Hata iletisi, yeniden deneme süresini saniye cinsinden içerir.
+**"Rate limited"** — o e-posta için 15 dakikalık bir pencerede çok fazla oturum açma denemesi (5/e-posta) veya IP (20/IP) veya aynı e-posta için önceki istekten sonra 30 saniyelik yeniden gönderme bekleme süresi. Hata mesajı, yeniden deneme-sonrası penceresini saniye cinsinden içerir.
 
-**Code rejected** — OTP yanlış, süresi dolmuş veya satır 5 yanlış tahminde kilitlenmiş. Yeni bir kod istemek için `failproofai auth login` komutunu çalıştırın.
+**Code rejected** — OTP yanlış, süresi dolmuş veya satır 5 yanlış tahminin kilitlenmesine ulaştı. Yeni bir kod talep etmek için `failproofai auth login` öğesini tekrar çalıştırın.

@@ -1,6 +1,6 @@
 ---
 title: Primeiros passos
-description: "Instale o failproofai, ative as políticas e deixe seus agentes rodarem de forma confiável"
+description: "Instale o failproofai, ative as políticas e deixe seus agentes rodando com confiabilidade"
 icon: rocket
 ---
 
@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Isso grava entradas de hook nos CLIs de agentes instalados (o `~/.claude/settings.json` do Claude Code, o `~/.codex/hooks.json` do OpenAI Codex, o `~/.copilot/hooks/failproofai.json` do GitHub Copilot CLI, o `~/.cursor/hooks.json` do Cursor Agent, o shim de plugin gerado pelo OpenCode em `~/.config/opencode/plugins/failproofai.mjs` mais uma entrada de registro no array `plugin` do `~/.config/opencode/opencode.json`, o `~/.pi/agent/settings.json` do Pi, ou o `~/.gemini/settings.json` do Gemini CLI). Quando mais de um estiver presente, você será solicitado a escolher; passe `--cli claude codex copilot cursor opencode pi gemini` (qualquer subconjunto) para pular a confirmação.
+    Isso registra entradas de hook nos CLIs de agente instalados (o `~/.claude/settings.json` do Claude Code, o `~/.codex/hooks.json` do OpenAI Codex, o `~/.copilot/hooks/failproofai.json` do GitHub Copilot CLI, o `~/.cursor/hooks.json` do Cursor Agent, o shim de plugin gerado pelo OpenCode em `~/.config/opencode/plugins/failproofai.mjs` mais uma entrada de registro no array `plugin` de `~/.config/opencode/opencode.json`, o `~/.pi/agent/settings.json` do Pi, o `~/.gemini/settings.json` do Gemini CLI ou o `~/.hermes/config.yaml` do Hermes). Se mais de um estiver presente, você será solicitado a escolher; passe `--cli claude codex copilot cursor opencode pi gemini hermes` (qualquer subconjunto) para pular a seleção.
 
-    O suporte ao GitHub Copilot CLI, Cursor Agent, OpenCode, Pi e Gemini CLI está em **beta** — instale com `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` ou `--cli gemini`.
+    O suporte ao GitHub Copilot CLI, Cursor Agent, OpenCode, Pi e Gemini CLI está em **beta** — instale com `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` ou `--cli gemini`. O Hermes (hermes-agent, um gateway Slack/Telegram) é instalado no escopo de usuário com `--cli hermes` e é **também** uma fonte de auditoria offline.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +49,7 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli gemini --scope project
+    failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -57,7 +58,7 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Exibe todas as políticas, se estão habilitadas e quaisquer parâmetros configurados.
+    Exibe todas as políticas, se estão ativadas e quaisquer parâmetros configurados.
   </Step>
   <Step title="Abrir o painel">
     ```bash
@@ -67,7 +68,7 @@ bun add -g failproofai
     Abre um painel local em `http://localhost:8020` onde você pode navegar pelas sessões, inspecionar chamadas de ferramentas e gerenciar políticas.
   </Step>
   <Step title="Executar seu agente">
-    Inicie o Claude Code normalmente. Se o agente tentar algo arriscado, o failproofai o intercepta automaticamente. Deixe-o rodando sem supervisão e revise o que aconteceu no painel.
+    Inicie o Claude Code normalmente. Se o agente tentar algo arriscado, o failproofai intercepta automaticamente. Deixe-o rodando sem supervisão e revise o que aconteceu no painel.
   </Step>
 </Steps>
 
@@ -95,9 +96,9 @@ As políticas rodam no seu processo local. Nada é enviado para um serviço remo
 
 ---
 
-## Configure políticas para a equipe com políticas baseadas em convenção
+## Configurar políticas de equipe com políticas baseadas em convenção
 
-A maneira mais rápida de estabelecer padrões de qualidade em toda a equipe é a convenção `.failproofai/policies/`. Coloque arquivos de política nesse diretório e eles são carregados automaticamente — sem flags, sem alterações de configuração, sem comandos de instalação.
+A maneira mais rápida de estabelecer padrões de qualidade em toda a sua equipe é a convenção `.failproofai/policies/`. Coloque arquivos de política nesse diretório e eles são carregados automaticamente — sem flags, sem alterações de configuração, sem comandos de instalação.
 
 <Steps>
   <Step title="Criar o diretório de políticas">
@@ -131,18 +132,18 @@ A maneira mais rápida de estabelecer padrões de qualidade em toda a equipe é 
     });
     ```
   </Step>
-  <Step title="Commitar no git">
+  <Step title="Fazer commit no git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    Todo membro da equipe que tiver o failproofai instalado receberá essas políticas automaticamente. Nenhuma configuração por desenvolvedor é necessária.
+    Todo membro da equipe que tiver o failproofai instalado receberá essas políticas automaticamente. Sem configuração por desenvolvedor.
   </Step>
 </Steps>
 
 <Tip>
-Faça commit de `.failproofai/policies/` no seu repositório para que toda a equipe compartilhe os mesmos padrões. À medida que a equipe descobre novos modos de falha, adicione políticas e faça push — todos recebem a atualização no próximo `git pull`. Com o tempo, essas políticas se tornam um padrão de qualidade vivo que continua melhorando.
+Faça commit de `.failproofai/policies/` no seu repositório para que toda a equipe compartilhe os mesmos padrões. À medida que a equipe descobrir novos modos de falha, adicione políticas e faça push — todos recebem a atualização no próximo `git pull`. Com o tempo, essas políticas se tornam um padrão de qualidade vivo que continua melhorando.
 </Tip>
 
 ---
@@ -187,7 +188,7 @@ Remove as entradas de hook do `~/.claude/settings.json`. Os arquivos de configur
   Escreva suas próprias políticas em JavaScript
 </Card>
 
-<Card title="Monitor de agentes" icon="chart-line" href="/pt-br/dashboard">
+<Card title="Monitor de agente" icon="chart-line" href="/pt-br/dashboard">
   Monitore sessões e revise a atividade das políticas
 </Card>
 

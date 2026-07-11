@@ -1,47 +1,47 @@
 ---
 title: Biến môi trường
-description: "Cấu hình hành vi failproofai bằng biến môi trường"
+description: "Cấu hình hành vi failproofai bằng các biến môi trường"
 ---
 
 ## Dashboard
 
 | Biến | Mô tả |
 |----------|-------------|
-| `PORT` | Cổng Dashboard (mặc định: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Ghi đè vị trí tìm kiếm thư mục dự án Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Các trang dashboard được ẩn, cách nhau bằng dấu phẩy |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Các máy chủ/IP được phép truy cập tài nguyên phát triển. Tương tự như `--allowed-origins`. |
+| `PORT` | Cổng dashboard (mặc định: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | Ghi đè vị trí tìm thấy thư mục dự án Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Các trang dashboard cách nhau bằng dấu phẩy để ẩn |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Host/IP được phép truy cập tài nguyên dev. Tương tự như `--allowed-origins`. |
 
 ## Logging
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Mức độ nhật ký máy chủ (mặc định: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Đường dẫn tệp nhật ký hook tùy chỉnh, hoặc `true` cho mặc định (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Cấp độ log của server (mặc định: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Đường dẫn tập tin log hook tùy chỉnh, hoặc `true` cho mặc định (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetry
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Vô hiệu hóa telemetry sử dụng nặc danh |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Tắt telemetry sử dụng ẩn danh |
 
 ## Authentication
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Ghi đè URL cơ sở api-server được sử dụng bởi `failproofai auth` và hộp thoại xác thực dashboard. Mặc định là `https://api.befailproof.ai`; đặt thành `http://localhost:8080` (hoặc nơi khác) khi chạy api-server cục bộ. |
-| `FAILPROOFAI_AUTH_DIR` | Ghi đè vị trí lưu trữ `auth.json` (mặc định: `~/.failproofai`). Chủ yếu hữu ích cho các bài kiểm tra cô lập. |
+| `FAILPROOF_API_URL` | Ghi đè URL cơ sở api-server được sử dụng bởi `failproofai auth` và hộp thoại xác thực dashboard. Mặc định là `https://api.befailproof.ai`; đặt thành `http://localhost:8080` (hoặc bất kỳ đâu) khi chạy api-server cục bộ. |
+| `FAILPROOFAI_AUTH_DIR` | Ghi đè nơi lưu trữ `auth.json` (mặc định: `~/.failproofai`). Hầu hết hữu ích cho các bài kiểm tra cách ly. |
 
-## First-run prompt
-
-| Biến | Mô tả |
-|----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua lời nhắc cài đặt chính sách lần đầu tiên khi gọi `failproofai` |
-
-## LLM (cho đánh giá chính sách)
+## Lời nhắc lần đầu chạy
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | Điểm cuối LLM API (mặc định: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Khóa API cho các chính sách được hỗ trợ bởi LLM |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua lời nhắc cung cấp cài đặt chính sách lần đầu gọi `failproofai` trống |
+
+## LLM (để đánh giá chính sách)
+
+| Biến | Mô tả |
+|----------|-------------|
+| `FAILPROOFAI_LLM_BASE_URL` | Điểm cuối API LLM (mặc định: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | Khóa API cho các chính sách hỗ trợ LLM |
 | `FAILPROOFAI_LLM_MODEL` | Tên mô hình (mặc định: `gpt-4o-mini`) |

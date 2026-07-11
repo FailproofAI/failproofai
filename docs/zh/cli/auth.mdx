@@ -5,13 +5,13 @@ description: "通过 CLI 登录 FailproofAI，以启用提醒和个性化功能"
 
 ```bash
 failproofai auth login    # 邮箱 + 一次性验证码
-failproofai auth logout   # 吊销当前会话
-failproofai auth whoami   # 打印已登录的身份信息
+failproofai auth logout   # 撤销当前会话
+failproofai auth whoami   # 打印当前登录身份
 ```
 
-旧版 `--login` / `--logout` / `--whoami` 标志形式仍作为别名受支持，以保持向后兼容性。
+旧版 `--login` / `--logout` / `--whoami` 标志形式仍可作为别名使用，以保持向后兼容性。
 
-身份验证为可选功能。无论您是否登录，策略、仪表板、`/audit` 页面及所有其他本地功能的运行方式完全相同。登录功能的存在是为了让**需要**稳定身份的功能（目前是重新审计提醒，未来还会有更多）有所依托。
+身份认证为可选功能。无论您是否登录，策略、仪表板、`/audit` 页面及所有其他本地功能的工作方式完全相同。登录功能的存在是为了让**需要**稳定身份的特性（目前是重新审计提醒，未来还会有更多）有所依托。
 
 ## 登录流程
 
@@ -19,29 +19,29 @@ failproofai auth whoami   # 打印已登录的身份信息
 failproofai auth login
 ```
 
-提示输入您的邮箱，向该地址发送一个 6 位一次性验证码，然后提示输入验证码。成功后，将在 `~/.failproofai/auth.json`（权限为 `0600`）中写入会话信息。此后该会话将在应用内仪表板中可见——在 `/audit` 页面点击 `[ set a reminder ]` 时，系统将识别您为已登录状态。
+提示输入您的邮箱，向该地址发送 6 位一次性验证码，提示输入验证码，成功后将写入 `~/.failproofai/auth.json`（权限模式 `0600`）。同一会话随后在应用内仪表板中可见——在 `/audit` 页面点击 `[ set a reminder ]` 时将识别您为已登录状态。
 
-仪表板还在 `/audit` 页面以模态对话框的形式提供相同的登录流程，供从未使用过 CLI 的用户使用。
+对于从未使用 CLI 的用户，仪表板在 `/audit` 页面以模态对话框的形式提供相同的登录流程。
 
-## 登出
+## 退出登录
 
 ```bash
 failproofai auth logout
 ```
 
-在服务器端吊销当前会话，并删除 `~/.failproofai/auth.json`。如果无法连接到 API 服务器，无论如何都会删除本地文件——本地的登出意图始终优先。
+撤销服务器上的当前会话并删除 `~/.failproofai/auth.json`。若 API 服务器不可达，无论如何都会删除本地文件——本地的退出登录意图始终优先。
 
-## 身份验证
+## 身份确认
 
 ```bash
 failproofai auth whoami
 ```
 
-当有效会话存在时，打印 `<email> (<user uuid>)` 并以退出码 0 退出；否则打印 `not signed in` 并以退出码 1 退出。如果访问令牌距离过期不足一分钟，将在后台静默刷新。
+当有效会话存在时，打印 `<email> (<user uuid>)` 并以退出码 0 退出；否则打印 `not signed in` 并以退出码 1 退出。若访问令牌距过期不足一分钟，则在后台静默刷新。
 
 ## 持久化重新审计提醒
 
-当您在 `/audit` 页面点击 **`[ set a reminder ]`**（或通过该按钮触发的模态框登录）时，仪表板会在 `~/.failproofai/next-audit.json` 写入一个小型配套文件：
+当您在 `/audit` 页面点击 **`[ set a reminder ]`**（或通过该按钮触发的模态框登录）时，仪表板会在 `~/.failproofai/next-audit.json` 写入一个小型辅助文件：
 
 ```json
 {
@@ -51,9 +51,9 @@ failproofai auth whoami
 }
 ```
 
-该文件与设置它时所用的邮箱绑定——将 CLI 会话切换到不同账号后，属于前一用户的提醒将被隐藏。默认偏移量为 **7 天**，调度器上线后可进行配置。与 `auth.json` 一样，以 `0600` 权限创建。
+该文件与设置时所用的邮箱绑定——将 CLI 会话切换到其他账户后，属于上一用户的提醒将被隐藏。默认间隔为 **7 天**，调度器上线后可进行配置。与 `auth.json` 一样，文件以 `0600` 权限创建。
 
-仪表板的 `/api/auth/reminder` 接口提供 `GET`（读取）、`POST`（设置/重新调度）和 `DELETE`（清除）方法，并需要有效会话。
+仪表板的 `/api/auth/reminder` 端点提供 `GET`（读取）、`POST`（设置/重新调度）和 `DELETE`（清除）操作，需要有效会话。
 
 ## `~/.failproofai/auth.json` 的内容
 
@@ -67,21 +67,21 @@ failproofai auth whoami
 }
 ```
 
-以 `0600` 权限创建（仅所有者可读写）。访问令牌为有效期 1 小时的 HS256 JWT；刷新令牌为不透明的 256 位随机字符串，服务器以 `SHA-256(token)` 的形式存储。服务器端会检测刷新令牌的重放攻击，一旦检测到将吊销该用户的所有会话。
+以 `0600` 权限创建（仅所有者可读写）。访问令牌是有效期为 1 小时的 HS256 JWT；刷新令牌是不透明的 256 位随机字符串，服务器以 `SHA-256(token)` 的形式存储。服务器端会检测刷新令牌的重放攻击，并撤销该用户的所有会话。
 
 ## 环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | 覆盖 API 服务器的基础 URL。适用于针对自托管 API 服务器进行本地开发。 |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | 覆盖 API 服务器的基础 URL。适用于本地针对自托管 API 服务器进行开发。 |
 | `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | 覆盖 `auth.json` 的存储位置。主要用于测试。 |
 
-请参阅[环境变量](/zh/cli/environment-variables)以获取完整列表。
+完整列表请参见[环境变量](/zh/cli/environment-variables)。
 
 ## 故障排查
 
-**"Could not reach the api-server"** — CLI 无法与 `FAILPROOF_API_URL` 建立 TCP 连接。请检查您的网络连接，或在运行自托管 API 服务器时设置 `FAILPROOF_API_URL`。
+**"Could not reach the api-server"** — CLI 无法与 `FAILPROOF_API_URL` 建立 TCP 连接。请检查您的网络，或在运行自托管 API 服务器时设置 `FAILPROOF_API_URL`。
 
-**"Rate limited"** — 在 15 分钟窗口内，该邮箱（5 次/邮箱）或 IP（20 次/IP）的登录尝试次数过多，或在同一邮箱上次请求后 30 秒内重新发送。错误消息中包含以秒为单位的重试等待时间。
+**"Rate limited"** — 该邮箱（5次/邮箱）或 IP（20次/IP）在 15 分钟内登录尝试次数过多，或同一邮箱上次请求后的 30 秒重发冷却未结束。错误消息中包含以秒为单位的重试等待时间。
 
-**验证码被拒绝** — OTP 错误、已过期，或该记录达到 5 次错误猜测的锁定上限。请重新运行 `failproofai auth login` 以请求新的验证码。
+**验证码被拒绝** — OTP 错误、已过期，或该行达到了 5 次错误猜测锁定上限。请重新运行 `failproofai auth login` 以获取新的验证码。

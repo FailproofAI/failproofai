@@ -1,6 +1,6 @@
 ---
 title: Umgebungsvariablen
-description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
+description: "Das Verhalten von failproofai mit Umgebungsvariablen konfigurieren"
 ---
 
 ## Dashboard
@@ -8,7 +8,7 @@ description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
 | Variable | Beschreibung |
 |----------|-------------|
 | `PORT` | Dashboard-Port (Standard: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Überschreibt den Speicherort der Claude Code-Projektordner |
+| `CLAUDE_PROJECTS_PATH` | Überschreibt den Pfad, unter dem Claude Code-Projektordner gesucht werden |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Kommagetrennte Liste von Dashboard-Seiten, die ausgeblendet werden sollen |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs, die auf Entwicklungsressourcen zugreifen dürfen. Entspricht `--allowed-origins`. |
 
@@ -17,7 +17,7 @@ description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
 | Variable | Beschreibung |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Server-Protokollierungsstufe (Standard: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Benutzerdefinierter Pfad zur Hook-Protokolldatei oder `true` für den Standardpfad (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Benutzerdefinierter Pfad zur Hook-Protokolldatei oder `true` für den Standard (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetrie
 
@@ -29,14 +29,14 @@ description: "Konfiguriere das Verhalten von failproofai mit Umgebungsvariablen"
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Überschreibt die Basis-URL des API-Servers, die von `failproofai auth` und dem Dashboard-Authentifizierungsdialog verwendet wird. Standard ist `https://api.befailproof.ai`; bei einem lokalen API-Server auf `http://localhost:8080` (oder den entsprechenden Wert) setzen. |
+| `FAILPROOF_API_URL` | Überschreibt die Basis-URL des API-Servers, die von `failproofai auth` und dem Dashboard-Authentifizierungsdialog verwendet wird. Standardmäßig `https://api.befailproof.ai`; auf `http://localhost:8080` (oder einen anderen Wert) setzen, wenn ein lokaler API-Server verwendet wird. |
 | `FAILPROOFAI_AUTH_DIR` | Überschreibt den Speicherort von `auth.json` (Standard: `~/.failproofai`). Hauptsächlich für isolierte Tests nützlich. |
 
 ## Erststart-Eingabeaufforderung
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Überspringt die Eingabeaufforderung, die beim ersten Aufruf von `failproofai` ohne Argumente anbietet, Richtlinien zu installieren |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Überspringt die Eingabeaufforderung, die beim ersten einfachen `failproofai`-Aufruf die Installation von Richtlinien anbietet |
 
 ## LLM (für die Richtlinienauswertung)
 

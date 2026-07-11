@@ -1,13 +1,13 @@
 ---
-title: Politikaları Yükle
-description: "Politikaları etkinleştirerek her agent araç çağrısında çalışmasını sağlayın"
+title: Politikaları yükle
+description: "Politikaları etkinleştirerek her agent araç çağrısında çalışmasını sağla"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-failproofai'nin araç çağrılarını kesintiye uğratabilmesi için yüklü agent CLI'nizin (Claude Code, OpenAI Codex veya GitHub Copilot CLI _(beta)_) ayarlar dosyasına hook girişleri yazar.
+Yüklü agent CLI'nizin (Claude Code, OpenAI Codex veya GitHub Copilot CLI _(beta)_) ayar dosyasına hook girdileri yazarak failproofai'ın araç çağrılarını engellenmesini sağlar.
 
 Takma adlar: `failproofai p -i`
 
@@ -15,43 +15,43 @@ Takma adlar: `failproofai p -i`
 
 | Bayrak | Açıklama |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | Yüklenecek Agent CLI'ler; boşlukla ayrılmış (örn. `--cli claude codex copilot`) veya tekrarlı. Yüklü CLI'leri algılamak ve sorulup seçim yapmak için atlayın. |
-| `--scope user` | Kullanıcı kapsamı ayarlar dosyasına yükleyin (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Varsayılan. |
-| `--scope project` | Proje kapsamı ayarlar dosyasına yükleyin (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Yalnızca Claude — `<cwd>/.claude/settings.local.json` dosyasına yükleyin. Codex ve Copilot'un `local` kapsamı yoktur. |
+| `--cli claude\|codex\|copilot` | Yüklenecek Agent CLI'ler; boşlukla ayrılmış (örn. `--cli claude codex copilot`) veya tekrarlı. Yüklü CLI'leri otomatik olarak algılamak ve istemek için atlayın. |
+| `--scope user` | Kullanıcı kapsamlı ayar dosyasına yükle (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Varsayılan. |
+| `--scope project` | Proje kapsamlı ayar dosyasına yükle (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Yalnızca Claude — `<cwd>/.claude/settings.local.json` dosyasına yükle. Codex ve Copilot'un `local` kapsamı yoktur. |
 | `--custom <path>` / `-c` | Özel hook politikaları içeren JS dosyasının yolu |
 
 ## Davranış
 
-- **Politik adı yok** - politika seçimi için etkileşimli bir istem açar
-- **Belirli adlar** - bu politikaları etkinleştirir (zaten etkin olan politikalara eklenir)
-- **`all`** - tüm kullanılabilir politikaları etkinleştirir
+- **Politika adı yok** - politika seçmek için etkileşimli istem açar
+- **Belirli adlar** - bu politikaları etkinleştirir (zaten etkinleştirilenler korunur)
+- **`all`** - mevcut tüm politikaları etkinleştirir
 
-Yükleme katkı sağlayıcıdır: `--install` komutunu tekrar çalıştırmak yeni politikaları ekler, mevcut olanları kaldırmaz.
+Yükleme toplamalıdır: `--install` komutunu yeniden çalıştırmak yeni politikaları ekler, mevcut olanları kaldırmaz.
 
 ## Örnekler
 
 ```bash
-# Tüm varsayılan politikaları global olarak yükleyin (etkileşimli)
+# Tüm varsayılan politikaları genel olarak yükle (etkileşimli)
 failproofai policies --install
 
-# Geçerli proje için belirli politikaları yükleyin
+# Geçerli proje için belirli politikaları yükle
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# Tüm politikaları bir kerede etkinleştirin
+# Tüm politikaları aynı anda etkinleştir
 failproofai policies --install all
 
-# Özel politika dosyasıyla yükleyin
+# Özel politika dosyası ile yükle
 failproofai policies --install --custom ./my-policies.js
 
-# OpenAI Codex için yükleyin (proje kapsamı)
+# OpenAI Codex için yükle (proje kapsamı)
 failproofai policies --install --cli codex --scope project
 
-# GitHub Copilot CLI (beta) için geçerli proje için yükleyin
+# GitHub Copilot CLI (beta) için geçerli proje kapsamında yükle
 failproofai policies --install --cli copilot --scope project
 
-# Üç CLI için de aynı anda yükleyin
+# Üç CLI için aynı anda yükle
 failproofai policies --install --cli claude codex copilot
 ```
 
-`--custom <path>` sağlandığında, dosya hemen doğrulanır - en az bir kez `customPolicies.add()` çağrısı yapmalıdır. Çözümlenmiş yol, `policies-config.json` dosyasında `customPoliciesPath` olarak kaydedilir.
+`--custom <path>` sağlandığında, dosya hemen doğrulanır - en az bir kez `customPolicies.add()` çağrısı yapmalıdır. Çözümlenen yol, `customPoliciesPath` olarak `policies-config.json` dosyasına kaydedilir.

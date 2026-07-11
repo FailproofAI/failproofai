@@ -9,8 +9,8 @@ description: "Configure o comportamento do failproofai com variáveis de ambient
 |----------|-----------|
 | `PORT` | Porta do dashboard (padrão: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | Substitui o local onde as pastas de projetos do Claude Code são encontradas |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Páginas do dashboard separadas por vírgula para ocultar |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs com permissão de acesso aos recursos de desenvolvimento. Equivalente a `--allowed-origins`. |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Páginas do dashboard a ocultar, separadas por vírgula |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs com permissão para acessar recursos de desenvolvimento. Equivalente a `--allowed-origins`. |
 
 ## Logging
 
@@ -29,14 +29,14 @@ description: "Configure o comportamento do failproofai com variáveis de ambient
 
 | Variável | Descrição |
 |----------|-----------|
-| `FAILPROOF_API_URL` | Substitui a URL base do servidor de API usada pelo `failproofai auth` e pelo diálogo de autenticação do dashboard. O padrão é `https://api.befailproof.ai`; defina como `http://localhost:8080` (ou outro endereço) ao executar um servidor de API local. |
+| `FAILPROOF_API_URL` | Substitui a URL base do servidor de API usado pelo `failproofai auth` e pelo diálogo de autenticação do dashboard. O padrão é `https://api.befailproof.ai`; defina como `http://localhost:8080` (ou outro endereço) ao executar um servidor de API local. |
 | `FAILPROOFAI_AUTH_DIR` | Substitui o local onde o `auth.json` é armazenado (padrão: `~/.failproofai`). Útil principalmente para testes isolados. |
 
-## Prompt de primeira execução
+## Prompt de primeiro uso
 
 | Variável | Descrição |
 |----------|-----------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignora o prompt que oferece a instalação de políticas na primeira invocação simples do `failproofai` |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignora o prompt que oferece a instalação de políticas na primeira execução simples do `failproofai` |
 
 ## LLM (para avaliação de políticas)
 

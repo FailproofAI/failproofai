@@ -1,17 +1,17 @@
 ---
 title: Accedi
-description: "Accedi a FailproofAI dalla CLI per abilitare promemoria e funzioni personalizzate"
+description: "Accedi a FailproofAI dalla CLI per abilitare i promemoria e le funzioni personalizzate"
 ---
 
 ```bash
 failproofai auth login    # email + codice monouso
 failproofai auth logout   # revoca questa sessione
-failproofai auth whoami   # stampa l'identità dell'utente connesso
+failproofai auth whoami   # stampa l'identità con accesso effettuato
 ```
 
 La forma legacy con flag `--login` / `--logout` / `--whoami` è ancora accettata come alias per compatibilità retroattiva.
 
-L'autenticazione è facoltativa. Le policy, la dashboard, la pagina `/audit` e tutte le altre funzioni locali funzionano esattamente allo stesso modo che tu sia connesso o meno. La superficie di login esiste affinché le funzioni che **richiedono** un'identità stabile (promemoria di re-audit oggi, altre in futuro) abbiano un punto di ancoraggio.
+L'autenticazione è facoltativa. Le politiche, la dashboard, la pagina `/audit` e tutte le altre funzioni locali funzionano esattamente allo stesso modo, che tu sia connesso o meno. La pagina di accesso esiste affinché le funzioni che **richiedono** un'identità stabile (promemoria per la re-audizione oggi, altre in futuro) abbiano un punto di ancoraggio.
 
 ## Flusso di accesso
 
@@ -19,9 +19,9 @@ L'autenticazione è facoltativa. Le policy, la dashboard, la pagina `/audit` e t
 failproofai auth login
 ```
 
-Richiede la tua email, invia un codice monouso a 6 cifre a quell'indirizzo, richiede il codice e al termine scrive `~/.failproofai/auth.json` (permessi `0600`). La stessa sessione sarà quindi visibile nella dashboard in-app — cliccando su `[ imposta un promemoria ]` in `/audit` ti vedrà come connesso.
+Richiede la tua email, invia un codice monouso di 6 cifre a quell'indirizzo, richiede il codice e, in caso di successo, scrive `~/.failproofai/auth.json` (modalità `0600`). La stessa sessione è quindi visibile nella dashboard dell'app — facendo clic su `[ set a reminder ]` su `/audit` ti vedrà come connesso.
 
-La dashboard espone lo stesso flusso come finestra di dialogo modale su `/audit` per gli utenti che non usano mai la CLI.
+La dashboard espone lo stesso flusso come finestra di dialogo modale su `/audit` per gli utenti che non toccano mai la CLI.
 
 ## Disconnessione
 
@@ -29,19 +29,19 @@ La dashboard espone lo stesso flusso come finestra di dialogo modale su `/audit`
 failproofai auth logout
 ```
 
-Revoca la sessione corrente sul server ed elimina `~/.failproofai/auth.json`. Se l'api-server è irraggiungibile, il file locale viene rimosso comunque — l'intenzione locale di disconnessione ha sempre la priorità.
+Revoca la sessione corrente sul server ed elimina `~/.failproofai/auth.json`. Se il server API non è raggiungibile, il file locale viene comunque rimosso — l'intenzione locale di disconnessione ha sempre priorità.
 
-## Controllo identità
+## Verifica identità
 
 ```bash
 failproofai auth whoami
 ```
 
-Stampa `<email> (<user uuid>)` e esce con codice 0 quando esiste una sessione valida, oppure stampa `not signed in` e esce con codice 1 altrimenti. Aggiorna silenziosamente il token di accesso in background se è entro un minuto dalla scadenza.
+Stampa `<email> (<user uuid>)` ed esce con codice 0 quando esiste una sessione valida, oppure stampa `not signed in` ed esce con codice 1 in caso contrario. Aggiorna silenziosamente il token di accesso in background se è a meno di un minuto dalla scadenza.
 
-## Promemoria persistente di re-audit
+## Promemoria persistente per re-audizione
 
-Quando clicchi su **`[ imposta un promemoria ]`** nella pagina `/audit` (o accedi tramite la finestra di dialogo modale a cui il pulsante è collegato), la dashboard scrive un piccolo file companion in `~/.failproofai/next-audit.json`:
+Quando fai clic su **`[ set a reminder ]`** sulla pagina `/audit` (o accedi tramite la finestra modale che il pulsante attiva), la dashboard scrive un piccolo file companion in `~/.failproofai/next-audit.json`:
 
 ```json
 {
@@ -51,9 +51,9 @@ Quando clicchi su **`[ imposta un promemoria ]`** nella pagina `/audit` (o acced
 }
 ```
 
-Questo file è associato all'email per cui è stato impostato — cambiando la sessione CLI su un account diverso nascondi qualsiasi promemoria che appartiene all'utente precedente. L'offset predefinito è **7 giorni**, configurabile in seguito quando arriverà lo scheduler. Creato con permessi `0600` come `auth.json`.
+Questo file è limitato all'email per cui è stato impostato — cambiando la sessione CLI su un account diverso nascondi qualsiasi promemoria appartenente all'utente precedente. L'offset predefinito è **7 giorni**, configurabile in seguito quando lo scheduler sarà disponibile. Creato con permessi `0600` come `auth.json`.
 
-L'endpoint `/api/auth/reminder` della dashboard espone `GET` (lettura), `POST` (impostazione / riprogrammazione) e `DELETE` (cancellazione) e richiede una sessione attiva.
+L'endpoint `/api/auth/reminder` della dashboard espone `GET` (lettura), `POST` (imposta / riprogramma) e `DELETE` (cancella) e richiede una sessione attiva.
 
 ## Cosa contiene `~/.failproofai/auth.json`
 
@@ -67,21 +67,21 @@ L'endpoint `/api/auth/reminder` della dashboard espone `GET` (lettura), `POST` (
 }
 ```
 
-Creato con permessi `0600` (lettura/scrittura solo del proprietario). Il token di accesso è un JWT HS256 di 1 ora; il token di refresh è una stringa casuale opaca di 256 bit che il server archivia come `SHA-256(token)`. La riproduzione del token di refresh viene rilevata lato server e revoca ogni sessione dell'utente.
+Creato con permessi `0600` (lettura/scrittura solo proprietario). Il token di accesso è un JWT HS256 di 1 ora; il token di refresh è una stringa casuale opaca di 256 bit che il server memorizza come `SHA-256(token)`. La riproduzione del token di refresh viene rilevata lato server e revoca tutte le sessioni per l'utente.
 
 ## Variabili di ambiente
 
-| Variabile | Predefinita | Scopo |
+| Variabile | Predefinito | Scopo |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Sovrascrivi l'URL base dell'api-server. Utile per lo sviluppo locale con un api-server self-hosted. |
-| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Sovrascrivi dove viene archiviato `auth.json`. Principalmente per i test. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Sovrascrive l'URL base del server API. Utile per sviluppo locale con un server API self-hosted. |
+| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Sovrascrive dove è archiviato `auth.json`. Principalmente per i test. |
 
-Vedi [Variabili di ambiente](/it/cli/environment-variables) per l'elenco completo.
+Consulta [Variabili di ambiente](/it/cli/environment-variables) per l'elenco completo.
 
 ## Risoluzione dei problemi
 
-**"Could not reach the api-server"** — la CLI non riesce ad aprire una connessione TCP a `FAILPROOF_API_URL`. Controlla la tua rete, oppure imposta `FAILPROOF_API_URL` se stai eseguendo un api-server self-hosted.
+**"Could not reach the api-server"** — la CLI non può aprire una connessione TCP a `FAILPROOF_API_URL`. Controlla la tua rete o imposta `FAILPROOF_API_URL` se stai utilizzando un server API self-hosted.
 
-**"Rate limited"** — troppi tentativi di login in una finestra di 15 minuti per quell'email (5/email) o IP (20/IP), oppure un cooldown di resend di 30 secondi dopo la richiesta precedente per la stessa email. Il messaggio di errore include la finestra di retry-after in secondi.
+**"Rate limited"** — troppi tentativi di accesso in una finestra di 15 minuti per quell'email (5/email) o IP (20/IP), oppure un cooldown di ripetizione di 30 secondi dopo la richiesta precedente per la stessa email. Il messaggio di errore include la finestra retry-after in secondi.
 
-**Code rejected** — l'OTP era sbagliato, scaduto, o la riga ha raggiunto il suo blocco di 5 tentativi errati. Esegui di nuovo `failproofai auth login` per richiedere un codice nuovo.
+**Code rejected** — l'OTP era errato, scaduto, oppure la riga ha raggiunto il blocco di 5 tentativi sbagliati. Esegui nuovamente `failproofai auth login` per richiedere un codice nuovo.

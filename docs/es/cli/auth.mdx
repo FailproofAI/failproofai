@@ -6,12 +6,12 @@ description: "Inicia sesión en FailproofAI desde la CLI para activar recordator
 ```bash
 failproofai auth login    # email + código de un solo uso
 failproofai auth logout   # revocar esta sesión
-failproofai auth whoami   # mostrar la identidad del usuario autenticado
+failproofai auth whoami   # mostrar la identidad de la sesión activa
 ```
 
-La forma antigua con las flags `--login` / `--logout` / `--whoami` sigue aceptándose como alias por compatibilidad retroactiva.
+La forma antigua con los flags `--login` / `--logout` / `--whoami` sigue siendo aceptada como alias por compatibilidad con versiones anteriores.
 
-La autenticación es opcional. Las políticas, el panel de control, la página `/audit` y todas las demás funciones locales funcionan exactamente igual independientemente de si has iniciado sesión o no. La funcionalidad de inicio de sesión existe para que las características que **necesitan** una identidad estable (recordatorios de re-auditoría hoy, más en el futuro) tengan un punto de anclaje.
+La autenticación es opcional. Las políticas, el panel de control, la página `/audit` y todas las demás funciones locales funcionan exactamente igual estés o no conectado. La pantalla de inicio de sesión existe para que las funciones que **necesitan** una identidad estable (recordatorios de re-auditoría hoy, más en el futuro) tengan un punto de anclaje.
 
 ## Flujo de inicio de sesión
 
@@ -19,17 +19,17 @@ La autenticación es opcional. Las políticas, el panel de control, la página `
 failproofai auth login
 ```
 
-Solicita tu email, envía un código de un solo uso de 6 dígitos a esa dirección, pide el código y, si tiene éxito, escribe `~/.failproofai/auth.json` (modo `0600`). La misma sesión queda visible en el panel de control de la aplicación — al hacer clic en `[ set a reminder ]` en `/audit`, el sistema te reconocerá como autenticado.
+Solicita tu correo electrónico, envía un código de 6 dígitos de un solo uso a esa dirección, pide el código y, si es correcto, escribe `~/.failproofai/auth.json` (modo `0600`). La misma sesión queda visible en el panel de control de la aplicación: al hacer clic en `[ set a reminder ]` en `/audit`, el sistema te reconocerá como conectado.
 
-El panel de control expone el mismo flujo como un diálogo modal en `/audit` para los usuarios que nunca usan la CLI.
+El panel de control ofrece el mismo flujo como un diálogo modal en `/audit` para los usuarios que nunca usan la CLI.
 
-## Cerrar sesión
+## Cierre de sesión
 
 ```bash
 failproofai auth logout
 ```
 
-Revoca la sesión actual en el servidor y elimina `~/.failproofai/auth.json`. Si el servidor de API no está disponible, el archivo local se elimina de todos modos — la intención local de cerrar sesión siempre prevalece.
+Revoca la sesión actual en el servidor y elimina `~/.failproofai/auth.json`. Si el servidor de la API no está disponible, el archivo local se elimina de todas formas: la intención de cerrar sesión localmente siempre tiene prioridad.
 
 ## Verificación de identidad
 
@@ -37,11 +37,11 @@ Revoca la sesión actual en el servidor y elimina `~/.failproofai/auth.json`. Si
 failproofai auth whoami
 ```
 
-Muestra `<email> (<uuid del usuario>)` y termina con código 0 cuando existe una sesión válida, o `not signed in` y termina con código 1 en caso contrario. Renueva silenciosamente el token de acceso en segundo plano si está a menos de un minuto de expirar.
+Imprime `<email> (<user uuid>)` y termina con código 0 cuando existe una sesión válida, o `not signed in` y termina con código 1 en caso contrario. Renueva silenciosamente el token de acceso en segundo plano si está a menos de un minuto de expirar.
 
-## Recordatorio de re-auditoría persistente
+## Recordatorio persistente de re-auditoría
 
-Cuando haces clic en **`[ set a reminder ]`** en la página `/audit` (o inicias sesión a través del modal que activa ese botón), el panel de control escribe un pequeño archivo complementario en `~/.failproofai/next-audit.json`:
+Cuando haces clic en **`[ set a reminder ]`** en la página `/audit` (o inicias sesión mediante el modal que activa ese botón), el panel de control escribe un pequeño archivo auxiliar en `~/.failproofai/next-audit.json`:
 
 ```json
 {
@@ -51,9 +51,9 @@ Cuando haces clic en **`[ set a reminder ]`** en la página `/audit` (o inicias 
 }
 ```
 
-Este archivo está asociado al email con el que se configuró — cambiar la sesión de la CLI a una cuenta diferente oculta cualquier recordatorio que pertenezca al usuario anterior. El desplazamiento predeterminado es de **7 días**, configurable más adelante cuando se implemente el planificador. Se crea con permisos `0600`, igual que `auth.json`.
+Este archivo está vinculado al correo con el que se configuró: si cambias la sesión de la CLI a otra cuenta, cualquier recordatorio perteneciente al usuario anterior quedará oculto. El desplazamiento predeterminado es de **7 días**, configurable más adelante cuando se implemente el planificador. Se crea con permisos `0600`, igual que `auth.json`.
 
-El endpoint `/api/auth/reminder` del panel de control expone los métodos `GET` (leer), `POST` (establecer / reprogramar) y `DELETE` (eliminar), y requiere una sesión activa.
+El endpoint `/api/auth/reminder` del panel de control expone `GET` (lectura), `POST` (establecer / reprogramar) y `DELETE` (eliminar), y requiere una sesión activa.
 
 ## Contenido de `~/.failproofai/auth.json`
 
@@ -67,21 +67,21 @@ El endpoint `/api/auth/reminder` del panel de control expone los métodos `GET` 
 }
 ```
 
-Se crea con permisos `0600` (solo lectura/escritura del propietario). El token de acceso es un JWT HS256 con validez de 1 hora; el token de actualización es una cadena aleatoria opaca de 256 bits que el servidor almacena como `SHA-256(token)`. La reutilización del token de actualización se detecta en el servidor y revoca todas las sesiones del usuario.
+Se crea con permisos `0600` (solo lectura/escritura del propietario). El token de acceso es un JWT HS256 con validez de 1 hora; el token de actualización es una cadena aleatoria opaca de 256 bits que el servidor almacena como `SHA-256(token)`. La reutilización de tokens de actualización se detecta en el servidor y revoca todas las sesiones del usuario.
 
 ## Variables de entorno
 
 | Variable | Valor predeterminado | Propósito |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Reemplaza la URL base del servidor de API. Útil para el desarrollo local contra un servidor de API autohospedado. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Reemplaza la URL base del servidor de la API. Útil para desarrollo local contra un servidor de API autohospedado. |
 | `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Reemplaza la ubicación donde se almacena `auth.json`. Principalmente para pruebas. |
 
 Consulta [Variables de entorno](/es/cli/environment-variables) para ver la lista completa.
 
 ## Solución de problemas
 
-**"Could not reach the api-server"** — la CLI no puede abrir una conexión TCP a `FAILPROOF_API_URL`. Verifica tu red, o configura `FAILPROOF_API_URL` si estás ejecutando un servidor de API autohospedado.
+**"Could not reach the api-server"** — la CLI no puede abrir una conexión TCP con `FAILPROOF_API_URL`. Comprueba tu red o define `FAILPROOF_API_URL` si estás ejecutando un servidor de API autohospedado.
 
-**"Rate limited"** — demasiados intentos de inicio de sesión en una ventana de 15 minutos para ese email (5/email) o IP (20/IP), o un período de espera de 30 segundos para reenviar tras la solicitud anterior del mismo email. El mensaje de error incluye el tiempo de espera antes de reintentar, expresado en segundos.
+**"Rate limited"** — demasiados intentos de inicio de sesión en una ventana de 15 minutos para ese correo (5/correo) o IP (20/IP), o un período de espera de 30 segundos para reenviar después de la solicitud anterior para el mismo correo. El mensaje de error incluye el tiempo de espera en segundos.
 
-**Código rechazado** — el OTP era incorrecto, había expirado o la entrada alcanzó su bloqueo por 5 intentos fallidos. Ejecuta `failproofai auth login` de nuevo para solicitar un código nuevo.
+**Código rechazado** — el OTP era incorrecto, había expirado o la entrada alcanzó el bloqueo tras 5 intentos fallidos. Ejecuta `failproofai auth login` de nuevo para solicitar un nuevo código.

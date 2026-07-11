@@ -1,15 +1,15 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI oferece aos agentes de IA 39 políticas de falha integradas que detectam loops, vazamentos de segredos, chamadas destrutivas de ferramentas e muito mais em uma única instalação."
+description: "FailproofAI oferece 39 políticas de falha integradas para agentes de IA que detectam loops, vazamentos de segredos, chamadas de ferramentas destrutivas e muito mais em uma única instalação."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks e políticas para **tratamento de falhas de IA**, **recuperação de erros** e **confiabilidade de LLM**. Mantenha seus agentes de IA confiáveis e em execução autônoma no **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI** e no **Agents SDK**.
+Hooks e políticas para **tratamento de falhas de IA**, **recuperação de erros** e **confiabilidade de LLMs**. Mantenha seus agentes de IA confiáveis e funcionando de forma autônoma no **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI**, **Hermes** e no **Agents SDK**.
 
-Agentes de IA falham de maneiras previsíveis. Eles executam comandos destrutivos, vazam segredos, desviam das tarefas, ficam presos em loops ou fazem push direto para a main. Sem supervisão, pequenas falhas se transformam em interrupções, credenciais expostas e trabalho perdido.
+Agentes de IA falham de maneiras previsíveis. Eles executam comandos destrutivos, vazam segredos, desviam da tarefa, ficam presos em loops ou fazem push direto para a branch principal. Sem supervisão, falhas pequenas evoluem para quedas de serviço, credenciais expostas e trabalho perdido.
 
-FailproofAI resolve isso com **políticas**. Essas regras se conectam a cada chamada de ferramenta do agente para **detectar falhas**, **mitigá-las** (bloquear, instruir, sanitizar) e **alertar você** quando algo precisa de atenção. Um painel local permite revisar cada chamada de ferramenta, falha do agente e ação de recuperação após o fato.
+O FailproofAI resolve isso com **políticas**. Essas regras se integram a cada chamada de ferramenta do agente para **detectar falhas**, **mitigá-las** (bloquear, instruir, sanitizar) e **alertar você** quando algo precisa de atenção. Um painel local permite revisar todas as chamadas de ferramenta, falhas do agente e ações de recuperação posteriormente.
 
 Nenhum dado sai da sua máquina.
 
@@ -18,7 +18,7 @@ Nenhum dado sai da sua máquina.
 <CardGroup cols={2}>
 
 <Card title="39 políticas integradas" icon="shield" href="/pt-br/built-in-policies">
-  Bloqueie comandos destrutivos, evite vazamento de segredos, mantenha os agentes dentro dos limites do projeto e muito mais. Tudo pronto para uso.
+  Bloqueie comandos destrutivos, evite vazamentos de segredos, mantenha os agentes dentro dos limites do projeto e muito mais. Tudo pronto para uso.
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/pt-br/custom-policies">
@@ -26,11 +26,11 @@ Nenhum dado sai da sua máquina.
 </Card>
 
 <Card title="Monitor de agentes" icon="chart-line" href="/pt-br/dashboard">
-  Veja o que seus agentes fizeram enquanto você estava ausente. Navegue pelas sessões, inspecione chamadas de ferramentas e revise onde as políticas foram acionadas.
+  Veja o que seus agentes fizeram enquanto você estava ausente. Navegue por sessões, inspecione chamadas de ferramentas e revise onde as políticas foram acionadas.
 </Card>
 
-<Card title="Configuração simples" icon="gear" href="/pt-br/configuration">
-  Ajuste qualquer política sem escrever código. Defina listas de permissões, branches protegidos ou limites por projeto ou globalmente.
+<Card title="Configuração simplificada" icon="gear" href="/pt-br/configuration">
+  Ajuste qualquer política sem escrever código. Defina listas de permissões, branches protegidas ou limites por projeto ou globalmente.
 </Card>
 
 </CardGroup>
@@ -54,4 +54,4 @@ failproofai policies --install   # enable policies (or skip — `failproofai` wi
 failproofai                      # launch the dashboard
 ```
 
-Consulte o guia [Primeiros passos](/pt-br/getting-started) para um passo a passo completo.
+Consulte o guia de [Primeiros passos](/pt-br/getting-started) para o passo a passo completo.

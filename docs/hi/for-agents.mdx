@@ -1,38 +1,38 @@
 ---
 title: "एजेंट्स के लिए"
-description: "एक कमांड में अपने कोडिंग एजेंट को Failproof AI ज्ञान जोड़ें। Claude Code, Cursor, Windsurf और अन्य के साथ काम करता है।"
+description: "एक कमांड में अपने कोडिंग एजेंट को Failproof AI नॉलेज से जोड़ें। Claude Code, Cursor, Windsurf और अन्य के साथ काम करता है।"
 ---
 
-एक कमांड में अपने कोडिंग एजेंट को पूरी Failproof AI रेफरेंस जोड़ें। Claude Code, Cursor, Windsurf और किसी भी अन्य एजेंट के साथ काम करता है जो स्किल्स को सपोर्ट करता है।
+एक कमांड में अपने कोडिंग एजेंट को पूर्ण Failproof AI संदर्भ से जोड़ें। Claude Code, Cursor, Windsurf और किसी भी अन्य एजेंट के साथ काम करता है जो स्किल्स को सपोर्ट करते हैं।
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` यह डिटेक्ट करता है कि आपके पास कौन से एजेंट इंस्टॉल हैं और प्रत्येक के लिए स्वचालित रूप से सही फॉर्मेट में स्किल जोड़ता है।
+`npx skills` आपके द्वारा इंस्टॉल किए गए एजेंट्स को डिटेक्ट करता है और स्किल को प्रत्येक के लिए सही फॉर्मेट में स्वचालित रूप से जोड़ता है।
 
-## स्किल में क्या शामिल है
+## स्किल क्या कवर करता है
 
 | क्षेत्र | क्या शामिल है |
 |------|----------------|
-| Policies | बिल्ट-इन पॉलिसी के नाम, इवेंट टाइप, पैरामीटर, एनेबल/डिसेबल |
-| Custom policies | `customPolicies.add()`, मैच फिल्टर, `allow`/`deny`/`instruct` API |
-| Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuration | `policies-config.json` संरचना, स्कोप मर्जिंग, `policyParams` |
+| नीतियां | बिल्ट-इन पॉलिसी नाम, इवेंट टाइप, पैरामीटर, सक्षम/अक्षम करें |
+| कस्टम पॉलिसीज | `customPolicies.add()`, मैच फिल्टर, `allow`/`deny`/`instruct` API |
+| संदर्भ ऑब्जेक्ट | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
+| कॉन्फ़िगरेशन | `policies-config.json` संरचना, स्कोप मर्जिंग, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, स्कोप्स |
-| Dashboard | सेशन व्यूअर, पॉलिसी एक्टिविटी, एनवायरनमेंट वेरिएबल्स |
-| Architecture | हुक हैंडलर फ्लो, एक्जिट कोड्स, stdin/stdout कॉन्ट्रैक्ट |
+| डैशबोर्ड | सेशन व्यूअर, पॉलिसी गतिविधि, पर्यावरण चर |
+| आर्किटेक्चर | हुक हैंडलर फ्लो, एक्जिट कोड, stdin/stdout कॉन्ट्रैक्ट |
 
-## क्या स्किल संपूर्ण है?
+## क्या स्किल पूरी है?
 
-Mintlify नेविगेशन में सभी पृष्ठों से `llms.txt` जेनरेट करता है। Failproof AI डॉक्स पूरी API को कवर करते हैं - हर पॉलिसी, ऑप्शन और उदाहरण शामिल है। यदि आपको कुछ गायब मिले, तो सोर्स `https://docs.befailproof.ai/llms-full.txt` पर है।
+Mintlify नेविगेशन में सभी पेजों से `llms.txt` जेनरेट करता है। Failproof AI दस्तावेज़ पूर्ण API को कवर करते हैं - प्रत्येक पॉलिसी, विकल्प और उदाहरण शामिल हैं। यदि आपको कुछ कमी मिलती है, तो स्रोत `https://docs.befailproof.ai/llms-full.txt` पर है।
 
-लक्षित संदर्भ के लिए, सीधे किसी विशिष्ट पृष्ठ से लिंक करें:
+लक्षित संदर्भ के लिए, सीधे किसी विशिष्ट पेज से लिंक करें:
 
 ```bash
-# सिर्फ कस्टम पॉलिसीज API
+# केवल कस्टम पॉलिसीज API
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# सिर्फ बिल्ट-इन पॉलिसीज
+# केवल बिल्ट-इन पॉलिसीज
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

@@ -1,17 +1,17 @@
 ---
 title: Đăng nhập
-description: "Đăng nhập vào FailproofAI từ CLI để bật nhắc nhở và các tính năng được cá nhân hóa"
+description: "Đăng nhập vào FailproofAI từ CLI để bật các lời nhắc và tính năng cá nhân hóa"
 ---
 
 ```bash
-failproofai auth login    # email + mã một lần
-failproofai auth logout   # thu hồi phiên này
-failproofai auth whoami   # in danh tính đã đăng nhập
+failproofai auth login    # email + one-time code
+failproofai auth logout   # revoke this session
+failproofai auth whoami   # print the signed-in identity
 ```
 
-Dạng cờ cũ `--login` / `--logout` / `--whoami` vẫn được chấp nhận như một bí danh để tương thích ngược.
+Dạng cờ legacy `--login` / `--logout` / `--whoami` vẫn được chấp nhận như một bí danh để tương thích ngược.
 
-Xác thực là tùy chọn. Các chính sách, bảng điều khiển, trang `/audit`, và mọi tính năng cục bộ khác hoạt động hoàn toàn giống nhau cho dù bạn đã đăng nhập hay chưa. Giao diện đăng nhập tồn tại để các tính năng **cần** một danh tính ổn định (nhắc nhở tái kiểm toán ngày hôm nay, nhiều tính năng hơn trong tương lai) có nơi để neo.
+Xác thực là tùy chọn. Policies, dashboard, trang `/audit`, và mọi tính năng cục bộ khác hoạt động giống nhau dù bạn đã đăng nhập hay chưa. Giao diện đăng nhập tồn tại để các tính năng **cần** một danh tính ổn định (những lời nhắc kiểm toán lại ngay hôm nay, nhiều hơn trong tương lai) có chỗ để neo.
 
 ## Luồng đăng nhập
 
@@ -19,9 +19,9 @@ Xác thực là tùy chọn. Các chính sách, bảng điều khiển, trang `/
 failproofai auth login
 ```
 
-Yêu cầu nhập email của bạn, gửi mã một lần 6 chữ số đến địa chỉ đó, yêu cầu nhập mã, và khi thành công sẽ ghi `~/.failproofai/auth.json` (chế độ `0600`). Cùng phiên đó sẽ hiển thị trong bảng điều khiển trong ứng dụng — nhấp vào `[ set a reminder ]` trên `/audit` sẽ thấy bạn đã đăng nhập.
+Yêu cầu email của bạn, gửi mã một lần 6 chữ số đến địa chỉ đó, yêu cầu mã, và khi thành công sẽ ghi `~/.failproofai/auth.json` (chế độ `0600`). Phiên làm việc tương tự sau đó sẽ hiển thị trên dashboard trong ứng dụng — nhấp vào `[ set a reminder ]` trên `/audit` sẽ thấy bạn đã đăng nhập.
 
-Bảng điều khiển hiển thị cùng một luồng như một hộp thoại phương thức trên `/audit` cho những người dùng không bao giờ sử dụng CLI.
+Dashboard hiển thị cùng luồng dưới dạng hộp thoại phương thức trên `/audit` cho những người dùng không bao giờ sử dụng CLI.
 
 ## Đăng xuất
 
@@ -29,7 +29,7 @@ Bảng điều khiển hiển thị cùng một luồng như một hộp thoại
 failproofai auth logout
 ```
 
-Thu hồi phiên hiện tại trên máy chủ và xóa `~/.failproofai/auth.json`. Nếu máy chủ api không thể truy cập được, tệp cục bộ sẽ bị xóa bất kể — ý định cục bộ để đăng xuất luôn thắng.
+Thu hồi phiên làm việc hiện tại trên máy chủ và xóa `~/.failproofai/auth.json`. Nếu máy chủ API không thể truy cập được, tệp cục bộ sẽ bị xóa dù sao — ý định cục bộ để đăng xuất luôn thắng.
 
 ## Kiểm tra danh tính
 
@@ -37,11 +37,11 @@ Thu hồi phiên hiện tại trên máy chủ và xóa `~/.failproofai/auth.jso
 failproofai auth whoami
 ```
 
-In `<email> (<user uuid>)` và thoát 0 khi một phiên hợp lệ tồn tại, hoặc `not signed in` và thoát 1 trong trường hợp khác. Yên tĩnh làm mới mã truy cập trong nền nếu nó trong vòng một phút sắp hết hạn.
+In ra `<email> (<user uuid>)` và thoát với mã 0 khi tồn tại phiên làm việc hợp lệ, hoặc in ra `not signed in` và thoát với mã 1 nếu không. Im lặng làm mới token truy cập ở nền tảng nếu nó cách hết hạn dưới một phút.
 
-## Nhắc nhở tái kiểm toán dai dẳng
+## Lời nhắc kiểm toán lại liên tục
 
-Khi bạn nhấp vào **`[ set a reminder ]`** trên trang `/audit` (hoặc đăng nhập thông qua phương thức mà nút đó kiểm soát truy cập), bảng điều khiển sẽ ghi một tệp đồng hành nhỏ tại `~/.failproofai/next-audit.json`:
+Khi bạn nhấp vào **`[ set a reminder ]`** trên trang `/audit` (hoặc đăng nhập qua hộp thoại phương thức mà nút gating), dashboard sẽ ghi một tệp đi kèm nhỏ tại `~/.failproofai/next-audit.json`:
 
 ```json
 {
@@ -51,11 +51,11 @@ Khi bạn nhấp vào **`[ set a reminder ]`** trên trang `/audit` (hoặc đă
 }
 ```
 
-Tệp này được giới hạn trong phạm vi email mà nó được đặt cho — chuyển phiên CLI sang một tài khoản khác sẽ ẩn bất kỳ nhắc nhở nào thuộc về người dùng trước đó. Độ lệch mặc định là **7 ngày**, có thể cấu hình sau khi trình lập lịch được triển khai. Được tạo với quyền `0600` như `auth.json`.
+Tệp này được xác định phạm vi cho email nó được đặt — chuyển phiên CLI sang tài khoản khác sẽ ẩn bất kỳ lời nhắc nào thuộc về người dùng trước đó. Độ lệch mặc định là **7 ngày**, có thể cấu hình sau khi trình lập lịch được phát hành. Được tạo với quyền `0600` giống như `auth.json`.
 
-Điểm cuối `/api/auth/reminder` của bảng điều khiển hiển thị `GET` (đọc), `POST` (đặt / sắp xếp lại), và `DELETE` (xóa) và yêu cầu một phiên hoạt động.
+Điểm cuối `/api/auth/reminder` của dashboard hiển thị `GET` (đọc), `POST` (đặt / lên lịch lại), và `DELETE` (xóa) và yêu cầu một phiên làm việc hoạt động.
 
-## Cái gì nằm trong `~/.failproofai/auth.json`
+## Nội dung của `~/.failproofai/auth.json`
 
 ```json
 {
@@ -67,21 +67,21 @@ Tệp này được giới hạn trong phạm vi email mà nó được đặt c
 }
 ```
 
-Được tạo với quyền `0600` (chỉ chủ sở hữu có thể đọc/ghi). Mã truy cập là JWT HS256 1 giờ; mã làm mới là một chuỗi ngẫu nhiên 256-bit không rõ ràng mà máy chủ lưu trữ dưới dạng `SHA-256(token)`. Phát lại mã làm mới được phát hiện phía máy chủ và thu hồi mọi phiên cho người dùng.
+Được tạo với quyền `0600` (đọc/ghi chỉ dành cho chủ sở hữu). Token truy cập là JWT HS256 1 giờ; token làm mới là một chuỗi ngẫu nhiên không rõ ràng 256 bit mà máy chủ lưu trữ dưới dạng `SHA-256(token)`. Phát lại token làm mới được phát hiện ở phía máy chủ và thu hồi mọi phiên làm việc cho người dùng.
 
-## Các biến môi trường
+## Biến môi trường
 
 | Biến | Mặc định | Mục đích |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Ghi đè URL cơ sở máy chủ api. Hữu ích cho phát triển cục bộ dựa trên máy chủ api tự lưu trữ. |
-| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Ghi đè vị trí lưu trữ `auth.json`. Chủ yếu cho các bài kiểm tra. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Ghi đè URL cơ sở máy chủ API. Hữu ích cho phát triển cục bộ so với máy chủ API tự lưu trữ. |
+| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Ghi đè nơi `auth.json` được lưu trữ. Chủ yếu dành cho các bài kiểm tra. |
 
-Xem [Các biến môi trường](/vi/cli/environment-variables) để có danh sách đầy đủ.
+Xem [Environment variables](/vi/cli/environment-variables) để xem danh sách đầy đủ.
 
 ## Khắc phục sự cố
 
-**"Could not reach the api-server"** — CLI không thể mở kết nối TCP đến `FAILPROOF_API_URL`. Kiểm tra mạng của bạn, hoặc đặt `FAILPROOF_API_URL` nếu bạn đang chạy máy chủ api tự lưu trữ.
+**"Could not reach the api-server"** — CLI không thể mở kết nối TCP đến `FAILPROOF_API_URL`. Kiểm tra mạng của bạn, hoặc đặt `FAILPROOF_API_URL` nếu bạn đang chạy máy chủ API tự lưu trữ.
 
-**"Rate limited"** — quá nhiều lần thử đăng nhập trong cửa sổ 15 phút cho email đó (5/email) hoặc IP (20/IP), hoặc thời gian chờ gửi lại 30 giây sau yêu cầu trước đó cho cùng email. Thông báo lỗi bao gồm cửa sổ retry-after tính bằng giây.
+**"Rate limited"** — quá nhiều nỗ lực đăng nhập trong cửa sổ 15 phút cho email đó (5/email) hoặc IP (20/IP), hoặc hết thời gian gửi lại 30 giây sau yêu cầu trước đó cho cùng email. Thông báo lỗi bao gồm cửa sổ thử lại trong vài giây.
 
-**Code rejected** — OTP sai, hết hạn, hoặc hàng đó chạm vào khóa 5 lần đoán sai. Chạy `failproofai auth login` lại để yêu cầu mã mới.
+**Code rejected** — OTP sai, hết hạn, hoặc hàng đó đạt khóa 5 lần đoán sai. Chạy `failproofai auth login` lại để yêu cầu mã mới.

@@ -1,33 +1,33 @@
 ---
 title: "エージェント向け"
-description: "コマンド一つで Failproof AI の知識をコーディングエージェントに追加できます。Claude Code、Cursor、Windsurf などに対応しています。"
+description: "1つのコマンドでコーディングエージェントに Failproof AI の知識を追加できます。Claude Code、Cursor、Windsurf などに対応しています。"
 ---
 
-コマンド一つで Failproof AI の完全なリファレンスをコーディングエージェントに追加できます。Claude Code、Cursor、Windsurf、その他スキルに対応したあらゆるエージェントで動作します。
+1つのコマンドで Failproof AI のリファレンス全体をコーディングエージェントに追加できます。Claude Code、Cursor、Windsurf、およびスキルをサポートするその他のエージェントに対応しています。
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` はインストール済みのエージェントを自動検出し、それぞれに適したフォーマットでスキルを追加します。
+`npx skills` はインストール済みのエージェントを自動検出し、各エージェントに適したフォーマットでスキルを追加します。
 
-## スキルがカバーする範囲
+## スキルがカバーする内容
 
 | 領域 | 含まれる内容 |
-|------|----------------|
+|------|-------------|
 | ポリシー | 組み込みポリシー名、イベントタイプ、パラメータ、有効化/無効化 |
 | カスタムポリシー | `customPolicies.add()`、マッチフィルター、`allow`/`deny`/`instruct` API |
 | コンテキストオブジェクト | `ctx.eventType`、`ctx.toolName`、`ctx.toolInput`、`ctx.session` |
 | 設定 | `policies-config.json` の構造、スコープのマージ、`policyParams` |
 | CLI | `failproofai policies --install`、`--uninstall`、`--custom`、スコープ |
-| ダッシュボード | セッションビューアー、ポリシーアクティビティ、環境変数 |
+| ダッシュボード | セッションビューア、ポリシーアクティビティ、環境変数 |
 | アーキテクチャ | フックハンドラーのフロー、終了コード、stdin/stdout コントラクト |
 
 ## スキルは完全ですか？
 
-Mintlify はナビゲーション内のすべてのページから `llms.txt` を生成します。Failproof AI のドキュメントは完全な API をカバーしており、すべてのポリシー・オプション・サンプルが含まれています。不足している内容を見つけた場合は、`https://docs.befailproof.ai/llms-full.txt` がソースです。
+Mintlify はナビゲーション内のすべてのページから `llms.txt` を生成します。Failproof AI のドキュメントはすべての API を網羅しており、すべてのポリシー、オプション、サンプルが含まれています。不足している内容が見つかった場合は、`https://docs.befailproof.ai/llms-full.txt` でソースを確認できます。
 
-特定のコンテキストが必要な場合は、特定のページに直接リンクしてください：
+特定のコンテキストのみが必要な場合は、特定のページに直接リンクできます。
 
 ```bash
 # カスタムポリシー API のみ

@@ -1,25 +1,31 @@
+---
+---
+title: معالج Hook (داخلي)
+description: "العملية الفرعية التي يستدعيها Claude Code عند كل حدث أداة"
+---
+
 ```bash
 failproofai --hook <EventType>
 ```
 
-זהו הפקודה הרשומה ב-`settings.json` של Claude Code על ידי `failproofai policies --install`. בדרך כלל אתה לא קורא לזה ישירות.
+هذا هو الأمر المسجل في `settings.json` الخاص بـ Claude Code بواسطة `failproofai policies --install`. لا تستدعيه عادة مباشرة.
 
-קורא payload של JSON מ-stdin, מערך את כל המדיניות המופעלות, ויוצא עם קוד המציין את ההחלטה:
+يقرأ حمولة JSON من stdin، ويقيّم جميع السياسات المفعّلة، ويخرج برمز يشير إلى القرار:
 
-| קוד יציאה | החלטה | השפעה |
+| رمز الخروج | القرار | التأثير |
 |-----------|---------|--------|
-| `0` | `allow` | אפשר את הפעולה |
-| `1` | `deny` | חסום את הפעולה - Claude רואה את סיבת הדחייה |
-| `2` | `instruct` | הזריק הנחיות להקשר של Claude |
+| `0` | `allow` | السماح بالإجراء |
+| `1` | `deny` | حظر الإجراء - يرى Claude سبب الحظر |
+| `2` | `instruct` | حقن التوجيهات في سياق Claude |
 
-### סוגי אירועים נתמכים
+### أنواع الأحداث المدعومة
 
-| קטגוריה | אירועים |
-|----------|---------|
-| **ביצוע כלים** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **מחזור חיים הפעלה** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **אינטראקציה של משתמש** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **תת-סוכנים ומשימות** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
-| **תצורה** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
-| **מערכת קבצים** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
-| **הקשר** | `PreCompact`, `PostCompact` |
+| الفئة | الأحداث |
+|-------|---------|
+| **تنفيذ الأداة** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **دورة حياة الجلسة** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **تفاعل المستخدم** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **الوكلاء الفرعيون والمهام** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **التكوين** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **نظام الملفات** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
+| **السياق** | `PreCompact`, `PostCompact` |

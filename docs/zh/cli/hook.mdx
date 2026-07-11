@@ -1,5 +1,5 @@
 ---
-title: Hook 处理程序（内部）
+title: Hook 处理器（内部）
 description: "Claude Code 在每个工具事件上调用的子进程"
 ---
 
@@ -7,19 +7,19 @@ description: "Claude Code 在每个工具事件上调用的子进程"
 failproofai --hook <EventType>
 ```
 
-这是由 `failproofai policies --install` 注册到 Claude Code 的 `settings.json` 中的命令。通常情况下，你不需要直接调用它。
+这是由 `failproofai policies --install` 在 Claude Code 的 `settings.json` 中注册的命令。通常情况下，你不需要直接调用它。
 
-该命令从 stdin 读取 JSON 负载，评估所有已启用的策略，并以退出码的形式返回决策结果：
+该命令从 stdin 读取 JSON 数据，评估所有已启用的策略，并以表示决策结果的退出码退出：
 
 | 退出码 | 决策 | 效果 |
 |--------|------|------|
 | `0` | `allow` | 允许该操作 |
-| `1` | `deny` | 阻止该操作——Claude 会看到拒绝原因 |
+| `1` | `deny` | 阻止该操作 - Claude 将看到拒绝原因 |
 | `2` | `instruct` | 向 Claude 的上下文中注入指导信息 |
 
 ### 支持的事件类型
 
-| 分类 | 事件 |
+| 类别 | 事件 |
 |------|------|
 | **工具执行** | `PreToolUse`、`PostToolUse`、`PostToolUseFailure`、`PermissionRequest`、`PermissionDenied` |
 | **会话生命周期** | `SessionStart`、`SessionEnd`、`Stop`、`StopFailure` |

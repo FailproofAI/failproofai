@@ -1,28 +1,28 @@
 ---
-title: Обработчик hook (внутренний)
-description: "Подпроцесс, который Claude Code вызывает при каждом событии инструмента"
+title: Hook handler (внутренний)
+description: "Подпроцесс, который Claude Code вызывает на каждом событии инструмента"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Это команда, зарегистрированная в `settings.json` Claude Code командой `failproofai policies --install`. Обычно вы не вызываете её напрямую.
+Это команда, зарегистрированная в `settings.json` Claude Code командой `failproofai policies --install`. Обычно вы не вызываете эту команду напрямую.
 
-Считывает JSON-полезную нагрузку из stdin, оценивает все включённые политики и выходит с кодом, указывающим решение:
+Считывает JSON payload из stdin, вычисляет все включенные политики и завершается с кодом, указывающим на решение:
 
 | Код выхода | Решение | Эффект |
 |-----------|---------|--------|
 | `0` | `allow` | Разрешить действие |
-| `1` | `deny` | Заблокировать действие — Claude видит причину отказа |
-| `2` | `instruct` | Внести рекомендации в контекст Claude |
+| `1` | `deny` | Заблокировать действие — Claude увидит причину отказа |
+| `2` | `instruct` | Внести указания в контекст Claude |
 
 ### Поддерживаемые типы событий
 
 | Категория | События |
 |-----------|---------|
-| **Выполнение инструментов** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **Жизненный цикл сессии** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **Выполнение инструмента** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **Жизненный цикл сеанса** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Взаимодействие пользователя** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **Подагенты и задачи** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Конфигурация** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |

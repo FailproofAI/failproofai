@@ -1,9 +1,9 @@
 ---
 title: "Para agentes"
-description: "Añade el conocimiento de Failproof AI a tu agente de programación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y más."
+description: "Añade el conocimiento de Failproof AI a tu agente de código en un solo comando. Compatible con Claude Code, Cursor, Windsurf y más."
 ---
 
-Añade la referencia completa de Failproof AI a tu agente de programación con un solo comando. Compatible con Claude Code, Cursor, Windsurf y cualquier otro agente que soporte skills.
+Añade la referencia completa de Failproof AI a tu agente de código en un solo comando. Compatible con Claude Code, Cursor, Windsurf y cualquier otro agente que soporte skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
@@ -15,22 +15,22 @@ npx skills add https://docs.befailproof.ai
 
 | Área | Qué incluye |
 |------|-------------|
-| Policies | Nombres de políticas integradas, tipos de eventos, parámetros, activar/desactivar |
-| Custom policies | `customPolicies.add()`, filtros de coincidencia, API `allow`/`deny`/`instruct` |
+| Políticas | Nombres de políticas integradas, tipos de eventos, parámetros, activar/desactivar |
+| Políticas personalizadas | `customPolicies.add()`, filtros de coincidencia, API `allow`/`deny`/`instruct` |
 | Objeto de contexto | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuración | Estructura de `policies-config.json`, fusión de scopes, `policyParams` |
-| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | Visor de sesiones, actividad de políticas, variables de entorno |
+| Configuración | Estructura de `policies-config.json`, fusión de ámbitos, `policyParams` |
+| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, ámbitos |
+| Panel de control | Visor de sesiones, actividad de políticas, variables de entorno |
 | Arquitectura | Flujo del hook handler, códigos de salida, contrato stdin/stdout |
 
-## ¿Está completo el skill?
+## ¿El skill está completo?
 
 Mintlify genera `llms.txt` a partir de todas las páginas de la navegación. La documentación de Failproof AI cubre la API completa: cada política, opción y ejemplo está incluido. Si encuentras algo que falta, el origen está en `https://docs.befailproof.ai/llms-full.txt`.
 
 Para contexto específico, enlaza directamente a una página concreta:
 
 ```bash
-# Solo la API de custom policies
+# Solo la API de políticas personalizadas
 npx skills add https://docs.befailproof.ai/custom-policies
 
 # Solo las políticas integradas

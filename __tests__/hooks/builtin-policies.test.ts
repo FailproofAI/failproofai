@@ -2303,6 +2303,18 @@ describe("hooks/builtin-policies", () => {
       expect(result.reason).toContain("uncommitted changes");
     });
 
+    it("allows in plan mode without running git (research-only, nothing to commit)", async () => {
+      // Regression: Stop workflow gates must not fire in Claude Code plan mode,
+      // where the agent makes no changes by design. The guard short-circuits
+      // before any git subprocess runs, even when the tree looks dirty.
+      vi.mocked(execSync).mockReturnValue("M  src/index.ts\n");
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo", permissionMode: "plan" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("allow");
+      expect(result.reason).toContain("Plan mode");
+      expect(execSync).not.toHaveBeenCalled();
+    });
+
     it("denies when there are untracked files", async () => {
       vi.mocked(execSync).mockReturnValue("?? newfile.ts\n");
       const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo" } });
@@ -2469,6 +2481,18 @@ describe("hooks/builtin-policies", () => {
       expect(result.decision).toBe("deny");
       expect(result.reason).toContain("push -u");
       expect(result.reason).toContain("new-feature");
+    });
+
+    it("allows in plan mode even when the branch was never pushed (the reported bug)", async () => {
+      // Regression for the plan-mode false positive: a plan-only turn makes no
+      // commits/pushes, so requiring `git push -u` before stop is a contradiction.
+      mockPushScenario({ branch: "new-feature", hasTracking: false });
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo", permissionMode: "plan" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("allow");
+      expect(result.reason).toContain("Plan mode");
+      expect(execSync).not.toHaveBeenCalled();
+      expect(execFileSync).not.toHaveBeenCalled();
     });
 
     it("deny message includes branch name and remote", async () => {
@@ -2685,6 +2709,16 @@ describe("hooks/builtin-policies", () => {
       expect(result.decision).toBe("deny");
       expect(result.reason).toContain("No pull request");
       expect(result.reason).toContain("gh pr create");
+    });
+
+    it("allows in plan mode without checking for a PR (research-only)", async () => {
+      mockPrScenario({ prResult: null });
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo", permissionMode: "plan" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("allow");
+      expect(result.reason).toContain("Plan mode");
+      expect(execSync).not.toHaveBeenCalled();
+      expect(execFileSync).not.toHaveBeenCalled();
     });
 
     it("deny message includes the branch name", async () => {
@@ -3013,6 +3047,19 @@ describe("hooks/builtin-policies", () => {
       expect(result.reason).toContain("Rebase or merge origin/main");
     });
 
+    it("allows in plan mode without probing for conflicts (research-only)", async () => {
+      mockConflictsScenario({
+        mergeTreeStatus: 1,
+        mergeTreeStdout: "treeoid123\nsrc/app.ts\n\nCONFLICT (content): ...\n",
+      });
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo", permissionMode: "plan" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("allow");
+      expect(result.reason).toContain("Plan mode");
+      expect(execSync).not.toHaveBeenCalled();
+      expect(execFileSync).not.toHaveBeenCalled();
+    });
+
     it("deny reason falls back to \"one or more files\" when stdout parse yields no files", async () => {
       mockConflictsScenario({
         mergeTreeStatus: 1,
@@ -3257,6 +3304,18 @@ describe("hooks/builtin-policies", () => {
       expect(result.decision).toBe("deny");
       expect(result.reason).toContain("failing");
       expect(result.reason).toContain('"test"');
+    });
+
+    it("allows in plan mode without querying CI (research-only)", async () => {
+      mockCiScenario("feat/branch", JSON.stringify([
+        { status: "completed", conclusion: "failure", name: "test" },
+      ]));
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: "/repo", permissionMode: "plan" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("allow");
+      expect(result.reason).toContain("Plan mode");
+      expect(execSync).not.toHaveBeenCalled();
+      expect(execFileSync).not.toHaveBeenCalled();
     });
 
     it("denies listing multiple failed checks by name", async () => {

@@ -1,13 +1,13 @@
 ---
-title: İlkeleri Listele
-description: "Hangi ilkelerin etkin olduğunu, parametrelerini ve özel ilkeleri görün"
+title: Politikaları listele
+description: "Hangi politikaların etkin olduğunu, parametrelerini ve özel politikaları görün"
 ---
 
 ```bash
 failproofai policies
 ```
 
-Tüm ilkeleri, durumlarını, yapılandırılmış parametrelerini ve özel ilkeleri gösterir.
+Tüm politikaları durumları, yapılandırılmış parametreleri ve özel politikaları ile gösterir.
 
 ## Örnek çıktı
 
@@ -16,16 +16,16 @@ Failproof AI Hook Policies (user)
 
   Status  Name                          Description
   ──────  ──────────────────────────────────────────────────────────────
-  ✓       block-sudo                    Block sudo commands
+  ✓       block-sudo                    Sudo komutlarını engelle
             allowPatterns: ["sudo systemctl status"]
-  ✓       block-rm-rf                   Block recursive deletions
-  ✗       block-curl-pipe-sh            Block curl|bash patterns
-  ✓       sanitize-api-keys             Redact API keys from output
+  ✓       block-rm-rf                   Özyinelemeli silmeleri engelle
+  ✗       block-curl-pipe-sh            curl|bash düzenini engelle
+  ✓       sanitize-api-keys             API anahtarlarını çıktıdan kaldır
             additionalPatterns: [{ regex: "MY_TOKEN_...", label: "..." }]
 
   ── Custom Policies (/home/alice/myproject/my-policies.js) ──────────────
-  ✓       require-jira-ticket           Block commits without ticket
-  ✓       approval-gate                 Approval gate for destructive ops
+  ✓       require-jira-ticket           Bilet olmayan commit'leri engelle
+  ✓       approval-gate                 Yıkıcı işlemler için onay kapısı
 ```
 
-`policyParams` içindeki bilinmeyen anahtarlar burada işaretlenir, böylece yazım hatalarını erkenden yakalayabilirsiniz.
+`policyParams` içindeki bilinmeyen anahtarlar burada işaretlenir, böylece yazım hatalarını erken yakalayabilirsiniz.

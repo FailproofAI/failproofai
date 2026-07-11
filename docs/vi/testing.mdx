@@ -1,14 +1,14 @@
 ---
-title: Kiểm thử
+title: Thử nghiệm
 description: "Unit tests, E2E tests, và test helpers"
 icon: flask-vial
 ---
 
-failproofai có hai bộ kiểm thử: **unit tests** (nhanh, mocked) và **end-to-end tests** (subprocess thực).
+failproofai có hai bộ test: **unit tests** (nhanh, mocked) và **end-to-end tests** (gọi subprocess thực tế).
 
 ---
 
-## Chạy kiểm thử
+## Chạy tests
 
 ```bash
 # Chạy tất cả unit tests một lần
@@ -17,10 +17,10 @@ bun run test:run
 # Chạy unit tests ở chế độ watch
 bun run test
 
-# Chạy E2E tests (cần setup - xem bên dưới)
+# Chạy E2E tests (yêu cầu thiết lập - xem bên dưới)
 bun run test:e2e
 
-# Kiểm tra kiểu mà không cần build
+# Type-check mà không build
 bunx tsc --noEmit
 
 # Lint
@@ -36,7 +36,7 @@ Unit tests nằm trong `__tests__/` và sử dụng [Vitest](https://vitest.dev)
 ```text
 __tests__/
   hooks/
-    builtin-policies.test.ts      # Logic policy cho mỗi builtin
+    builtin-policies.test.ts      # Logic policy cho từng builtin
     hooks-config.test.ts          # Config loading và scope merging
     policy-evaluator.test.ts      # Param injection và evaluation order
     custom-hooks-registry.test.ts # globalThis registry add/get/clear
@@ -110,17 +110,17 @@ describe("block-sudo", () => {
 
 ## End-to-end tests
 
-E2E tests gọi nhị phân `failproofai` thực làm subprocess, pipe payload JSON tới stdin, và assert stdout output cũng như exit code. Điều này kiểm thử đường dẫn tích hợp hoàn chỉnh mà Claude Code sử dụng.
+E2E tests gọi binary `failproofai` thực tế dưới dạng subprocess, pipe payload JSON vào stdin, và kiểm tra stdout output cùng exit code. Điều này test đường dẫn tích hợp hoàn chỉnh mà Claude Code sử dụng.
 
-### Setup
+### Thiết lập
 
-E2E tests chạy nhị phân trực tiếp từ nguồn repo. Trước lần chạy đầu tiên, build bundle CJS mà các file custom hook sử dụng khi import từ `'failproofai'`:
+E2E tests chạy binary trực tiếp từ repo source. Trước lần chạy đầu tiên, build CJS bundle mà các tệp custom hook sử dụng khi import từ `'failproofai'`:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
 ```
 
-Sau đó chạy các kiểm thử:
+Sau đó chạy tests:
 
 ```bash
 bun run test:e2e
@@ -133,14 +133,14 @@ Rebuild `dist/` bất cứ khi nào bạn thay đổi public hook API (`src/hook
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # Spawn the binary, pipe payload JSON, capture exit code + stdout + stderr
-    fixture-env.ts      # Per-test isolated temp directories with config files
-    payloads.ts         # Claude-accurate payload factories for each event type
+    hook-runner.ts      # Spawn binary, pipe payload JSON, capture exit code + stdout + stderr
+    fixture-env.ts      # Per-test isolated temp directories với config files
+    payloads.ts         # Claude-accurate payload factories cho mỗi event type
   hooks/
-    builtin-policies.e2e.test.ts   # Each builtin policy with real subprocess
-    custom-hooks.e2e.test.ts       # Custom hook loading and evaluation
-    config-scopes.e2e.test.ts      # Config merging across project/local/global
-    policy-params.e2e.test.ts      # Parameter injection for each parameterized policy
+    builtin-policies.e2e.test.ts   # Mỗi builtin policy với real subprocess
+    custom-hooks.e2e.test.ts       # Custom hook loading và evaluation
+    config-scopes.e2e.test.ts      # Config merging qua project/local/global
+    policy-params.e2e.test.ts      # Parameter injection cho mỗi parameterized policy
 ```
 
 ### Sử dụng E2E helpers
@@ -151,7 +151,7 @@ __tests__/e2e/
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - temp dir; pass as payload.cwd to pick up .failproofai/policies-config.json
+// env.cwd    - temp dir; pass as payload.cwd để pick up .failproofai/policies-config.json
 // env.home   - isolated home dir; no real ~/.failproofai leaks in
 
 env.writeConfig({
@@ -162,9 +162,9 @@ env.writeConfig({
 });
 ```
 
-`createFixtureEnv()` đăng ký cleanup `afterEach` tự động.
+`createFixtureEnv()` tự động đăng ký `afterEach` cleanup.
 
-**`runHook`** - gọi nhị phân:
+**`runHook`** - gọi binary:
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -249,12 +249,12 @@ E2E tests sử dụng `vitest.config.e2e.mts` với:
 - `pool: "forks"` - true process isolation (tests spawn subprocesses)
 - `testTimeout: 20_000` - 20s per test (binary startup + hook eval)
 
-Pool `forks` rất quan trọng: thread-based workers chia sẻ `globalThis`, điều này có thể gây ảnh hưởng tới các tests spawning subprocess. Process-based forks tránh điều này.
+`forks` pool rất quan trọng: thread-based workers chia sẻ `globalThis`, điều này có thể can thiệp vào subprocess-spawning tests. Process-based forks tránh điều này.
 
 ---
 
 ## CI
 
-Full CI run (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) được yêu cầu pass trước khi merge. E2E suite chạy như một separate CI job song song.
+Full CI run (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) phải pass trước khi merge. E2E suite chạy như một separate CI job song song.
 
-Xem [Contributing](../CONTRIBUTING.md) để biết complete pre-merge checklist.
+Xem [Contributing](../CONTRIBUTING.md) để có danh sách pre-merge hoàn chỉnh.

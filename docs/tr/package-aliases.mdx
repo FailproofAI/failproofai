@@ -1,6 +1,6 @@
 ---
 title: Paket Takma Adları
-description: "Tescilli typosquat-önleme takma adları ve bunların nasıl çalıştığı"
+description: "Kayıtlı yazım hatası önleme takma adları ve bunların nasıl çalıştığı"
 icon: copy
 ---
 
@@ -16,52 +16,52 @@ bun add -g failproofai
 
 ---
 
-## Neden takma ad adlarına sahibiz
+## Neden takma ad adlarını sahibi oluyoruz
 
-Typosquatting, kötü amaçlı bir aktörün popüler bir paketin adından bir tuş kadar uzak olan bir paket adını tescil ettiği yaygın bir tedarik zinciri saldırısıdır. Kurulum komutunu yanlış yazan şüphesiz kullanıcılar, saldırganın kontrol ettiği kodu tam sistem erişimi ile çalıştırırlar - Failproof AI'nin savunması için tasarlandığı tam olarak bu tür bir tehdit.
+Yazım hatası saldırısı (typosquatting), kötü niyetli bir aktörün popüler bir pakete bir tuş uzaklıkta olan bir paket adını kaydettiği yaygın bir tedarik zinciri saldırısıdır. Yükleme komutunu yanlış yazan kullanıcılar, tam sistem erişimi ile saldırgan tarafından kontrol edilen kodu çalıştırmakta bulunur - tam olarak Failproof AI'nin savunması için tasarlandığı tehdit türü.
 
-Bu yüzey alanını ortadan kaldırmak için **`failproofai`'nin tüm yaygın yazım hataları ve biçim varyantlarına npm'de önceden sahip oluyuz**. Bu adlardan hiçbiri üçüncü bir taraf tarafından tescil edilemez. Her biri, gerçek `failproofai` paketine kuran ve devreden ince bir vekil olarak işlev görmektedir.
+Bu riski ortadan kaldırmak için, **npm'de `failproofai`'nin tüm yaygın yazım hatalarını ve biçimlendirme varyantlarını önceden sahibi oluyoruz**. Bu adların hiçbiri üçüncü bir taraf tarafından kaydedilemez. Her biri, gerçek `failproofai` paketine yüklemeyi ve delegasyonu sağlayan ince bir vekil (proxy) olarak işlev görmektedir.
 
 ---
 
-## Tescilli takma adları
+## Kayıtlı takma adlar
 
-**Biçim varyantları** - "failproof ai" yazmanın farklı yolları:
+**Biçimlendirme varyantları** - "failproof ai"i yazmanın farklı yolları:
 
 | Paket | Durum |
 |---------|--------|
 | `failproof` | ✅ Yayımlandı |
-| `failproof-ai` | ⏳ npm desteği beklemede |
-| `fail-proof-ai` | ⏳ npm desteği beklemede |
-| `failproof_ai` | ⏳ npm desteği beklemede |
-| `fail_proof_ai` | ⏳ npm desteği beklemede |
-| `fail-proofai` | ⏳ npm desteği beklemede |
+| `failproof-ai` | ⏳ npm desteği bekleniyor |
+| `fail-proof-ai` | ⏳ npm desteği bekleniyor |
+| `failproof_ai` | ⏳ npm desteği bekleniyor |
+| `fail_proof_ai` | ⏳ npm desteği bekleniyor |
+| `fail-proofai` | ⏳ npm desteği bekleniyor |
 
-**`failprof*` yazım hataları** - "proof" adından bir `o` eksik:
+**`failprof*` yazım hatası** - "proof"tan bir `o` eksik:
 
 | Paket | Durum |
 |---------|--------|
 | `failprof` | ✅ Yayımlandı |
 | `failprof-ai` | ✅ Yayımlandı |
-| `failprofai` | ⏳ npm desteği beklemede |
-| `fail-prof-ai` | ⏳ npm desteği beklemede |
-| `failprof_ai` | ⏳ npm desteği beklemede |
+| `failprofai` | ⏳ npm desteği bekleniyor |
+| `fail-prof-ai` | ⏳ npm desteği bekleniyor |
+| `failprof_ai` | ⏳ npm desteği bekleniyor |
 
-**`faliproof*` yazım hataları** - `a` ve `i` yer değiştirmiş:
+**`faliproof*` yazım hatası** - `a` ve `i` yer değiştirmiş:
 
 | Paket | Durum |
 |---------|--------|
 | `faliproof` | ✅ Yayımlandı |
 | `faliproof-ai` | ✅ Yayımlandı |
-| `faliproofai` | ⏳ npm desteği beklemede |
+| `faliproofai` | ⏳ npm desteği bekleniyor |
 
-> **Neden beklemede?** npm'nin spam-önleme politikası, noktalama işaretleri kaldırıldıktan ve benzerlik kontrolleri yapıldıktan sonra mevcut bir paketle aynı dizeye normalleşen adları engeller. npm desteğine bu adları anti-squatting amaçları için ayırması için başvurduk. Onay verildikten sonra etkinleştirileceklerdir.
+> **Neden beklemede?** npm'nin spam önleme politikası, noktalama işaretleri çıkarıldıktan sonra ve benzerlik kontrolleri yapıldıktan sonra mevcut bir paketle aynı dizeye normalleşen adları engeller. npm desteği ile iletişime geçerek bu adları saldırı önleme amaçları için ayırttırmaya çalışıyoruz. Onay aldıktan sonra aktifleştirileceklerdir.
 
-Yayımlanmış herhangi bir takma adın bizim tarafımızdan sahiplenildiğini doğrulayabilirsiniz:
+Yayımlanmış herhangi bir takma adın bizim tarafımızdan sahibi olunduğunu doğrulayabilirsiniz:
 
 ```bash
 npm info failproof
-# Şunu arayın: maintainers alanında "ExosphereHost Inc."
+# Bak: "ExosphereHost Inc." bakımcılar alanında
 ```
 
 ---
@@ -70,13 +70,13 @@ npm info failproof
 
 Her takma ad paketi:
 
-1. `failproofai`'yi bir bağımlılık olarak listeler - böylece gerçek paket (kurulum kancasının `postinstall` kurulumu dahil) kurulumda çalışır
-2. Tüm argümanları `failproofai` ikilisine aktaran kendi adıyla eşleşen bir ikili sunar (ör. `failprof-ai`)
+1. `failproofai`'yi bir bağımlılık olarak listeler - böylece gerçek paket (yükleme sonrası kancası kurulumu dahil) yükleme sırasında çalışır
+2. Tüm argümanları `failproofai` ikili dosyasına vekil olarak gönderen kendi adıyla eşleşen bir ikili dosya sunar (örn. `failprof-ai`)
 
-Vekil iki satırlık bir Node betiğidir; hiçbir mantık, ağ çağrısı yoktur ve `failproofai`'nin kendisinin yaptığının ötesinde veri toplama yoktur.
+Vekil iki satırlık bir Node betiğidir; hiçbir mantık, ağ çağrısı ve `failproofai`'nin kendisinin yaptığı ötesinde veri toplama yoktur.
 
 ---
 
 ## Kaçırdığımız bir ad bulursanız
 
-[failproofai/failproofai](https://github.com/failproofai/failproofai/issues) adresinde bir issue açın ve biz bunu tescil edeceğiz.
+[failproofai/failproofai](https://github.com/failproofai/failproofai/issues) adresinde bir konu açın ve biz adını kaydetmiş olacağız.

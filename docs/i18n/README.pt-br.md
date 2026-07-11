@@ -19,7 +19,7 @@
 
 **Resolução de falhas em tempo de execução para agentes de codificação.**
 Integra-se ao Claude Code e ao Codex. Detecta loops, ações perigosas e vazamentos de segredos
-antes que virem incidentes. Latência zero. Executa localmente.
+antes que se tornem incidentes. Latência zero. Roda localmente.
 
 </div>
 
@@ -78,9 +78,18 @@ antes que virem incidentes. Latência zero. Executa localmente.
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Instale hooks para um ou qualquer combinação: `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini`). Omita `--cli` para detectar automaticamente os CLIs instalados e exibir um prompt.
+> Instale hooks para um ou qualquer combinação: `failproofai policies --install --cli opencode pi gemini` (ou `--cli claude codex copilot cursor opencode pi gemini hermes`). Omita `--cli` para detectar automaticamente os CLIs instalados e ser solicitado a escolher.
+>
+> **Hermes** (hermes-agent, um gateway para Slack/Telegram) é suportado tanto para **aplicação de hooks em tempo real** (`--cli hermes` — uma única instalação intercepta chamadas de ferramentas de todas as plataformas e subagentes) quanto para **auditoria** offline a partir de sessões do gateway gravadas no `~/.hermes/state.db`.
 
 ---
 
@@ -88,11 +97,11 @@ antes que virem incidentes. Latência zero. Executa localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt na primeira execução
+failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt da primeira execução
 failproofai
 ```
 
-30 políticas integradas são ativadas imediatamente. Dashboard disponível em `localhost:8020`. Desative o prompt de primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas nativas são ativadas imediatamente. Dashboard disponível em `localhost:8020`. Desative o prompt da primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -106,14 +115,14 @@ failproofai
 | `block-rm-rf` | Exclusão recursiva de arquivos |
 | `sanitize-api-keys` | Vazamento de chaves de API no contexto do agente |
 
-→ [Todas as 30 políticas integradas](https://docs.befailproof.ai/built-in-policies)
+→ [Todas as 30 políticas nativas](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
 ## Suas próprias políticas
 
-Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
-Faça commit e toda a equipe receberá na próxima atualização.
+Adicione um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem nenhuma flag necessária.
+Faça o commit e toda a equipe receberá a política no próximo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -143,8 +152,8 @@ Três decisões disponíveis para cada política:
 
 ## Visibilidade da sessão
 
-Cada chamada de ferramenta que seu agente realiza é registrada localmente. O dashboard mostra o que foi executado,
-o que foi bloqueado e o que a política informou ao agente — para que você não fique no escuro
+Cada chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
+o que foi bloqueado e o que a política comunicou ao agente — para que você não fique no escuro
 quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/dashboard)
 
 ---
@@ -153,8 +162,8 @@ quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/dash
 
 | | |
 |---|---|
-| [Primeiros Passos](https://docs.befailproof.ai/getting-started) | Instalação e primeiros passos |
-| [Políticas Integradas](https://docs.befailproof.ai/built-in-policies) | Todas as 30 políticas com parâmetros |
+| [Primeiros Passos](https://docs.befailproof.ai/getting-started) | Instalação e primeiras etapas |
+| [Políticas Nativas](https://docs.befailproof.ai/built-in-policies) | Todas as 30 políticas com parâmetros |
 | [Políticas Personalizadas](https://docs.befailproof.ai/custom-policies) | Crie as suas próprias |
 | [Configuração](https://docs.befailproof.ai/configuration) | Escopos de configuração e regras de mesclagem |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor de sessão e atividade de políticas |
@@ -164,18 +173,18 @@ quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/dash
 
 ## Licença
 
-MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai requer um acordo separado. Consulte [LICENSE](./LICENSE) para o texto completo.
+MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do failproofai em si requer um acordo separado. Consulte [LICENSE](./LICENSE) para o texto completo.
 
 ---
 
 ## Contribuindo
 
-Consulte [CONTRIBUTING.md](./CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
+Consulte [CONTRIBUTING.md](./CONTRIBUTING.md). Novas políticas, casos extremos e traduções são sempre bem-vindos.
 
 > **Faça o build antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
-> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` em relação ao
+> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` a partir do
 > bundle compilado em `dist/` — sem um build você encontrará erros de hook `Cannot find package 'failproofai'`.
-> Refaça o build após alterar `src/`. Consulte
+> Recompile após alterar `src/`. Consulte
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

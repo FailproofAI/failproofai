@@ -1,6 +1,6 @@
 ---
 title: 環境変数
-description: "環境変数による failproofai の動作設定"
+description: "環境変数で failproofai の動作を設定する"
 ---
 
 ## ダッシュボード
@@ -8,40 +8,40 @@ description: "環境変数による failproofai の動作設定"
 | 変数 | 説明 |
 |----------|-------------|
 | `PORT` | ダッシュボードのポート番号（デフォルト: `8020`） |
-| `CLAUDE_PROJECTS_PATH` | Claude Code のプロジェクトフォルダの検索場所を上書き |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 非表示にするダッシュボードページをカンマ区切りで指定 |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 開発リソースへのアクセスを許可するホスト/IP。`--allowed-origins` と同等。 |
+| `CLAUDE_PROJECTS_PATH` | Claude Code のプロジェクトフォルダの検索場所を上書きする |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 非表示にするダッシュボードページをカンマ区切りで指定する |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 開発リソースへのアクセスを許可するホスト/IP。`--allowed-origins` と同じ。 |
 
 ## ログ
 
 | 変数 | 説明 |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | サーバーのログレベル（デフォルト: `warn`） |
-| `FAILPROOFAI_HOOK_LOG_FILE` | フックログファイルのカスタムパス。`true` を指定するとデフォルトパス（`~/.failproofai/logs/hooks.log`）を使用。 |
+| `FAILPROOFAI_HOOK_LOG_FILE` | フックログファイルのカスタムパス、または `true` を指定するとデフォルトパス（`~/.failproofai/logs/hooks.log`）を使用する |
 
 ## テレメトリー
 
 | 変数 | 説明 |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 匿名利用テレメトリーを無効化 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 匿名使用状況テレメトリーを無効にする |
 
 ## 認証
 
 | 変数 | 説明 |
 |----------|-------------|
-| `FAILPROOF_API_URL` | `failproofai auth` およびダッシュボードの認証ダイアログが使用する API サーバーのベース URL を上書き。デフォルトは `https://api.befailproof.ai`。ローカルの API サーバーを使用する場合は `http://localhost:8080`（または任意のアドレス）に設定。 |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` の保存場所を上書き（デフォルト: `~/.failproofai`）。主に独立したテスト環境で使用。 |
+| `FAILPROOF_API_URL` | `failproofai auth` およびダッシュボードの認証ダイアログが使用する API サーバーのベース URL を上書きする。デフォルトは `https://api.befailproof.ai`。ローカルの API サーバーを使用する場合は `http://localhost:8080`（または該当するアドレス）に設定する。 |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json` の保存場所を上書きする（デフォルト: `~/.failproofai`）。主に独立したテスト環境で利用する。 |
 
-## 初回実行プロンプト
+## 初回起動時のプロンプト
 
 | 変数 | 説明 |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | `failproofai` を初めて単体で実行した際にポリシーのインストールを促すプロンプトをスキップ |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | `failproofai` を初めて引数なしで実行した際に表示されるポリシーインストールの案内をスキップする |
 
 ## LLM（ポリシー評価用）
 
 | 変数 | 説明 |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | LLM API エンドポイント（デフォルト: `https://api.openai.com/v1`） |
-| `FAILPROOFAI_LLM_API_KEY` | LLM 機能を使用するポリシーの API キー |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM API のエンドポイント（デフォルト: `https://api.openai.com/v1`） |
+| `FAILPROOFAI_LLM_API_KEY` | LLM を使用したポリシー向けの API キー |
 | `FAILPROOFAI_LLM_MODEL` | モデル名（デフォルト: `gpt-4o-mini`） |

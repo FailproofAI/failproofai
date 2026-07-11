@@ -1,12 +1,11 @@
 ---
-
 ---
 title: Kiến trúc
 description: "Cách hook handler, config loading, và policy evaluation hoạt động nội bộ"
 icon: sitemap
 ---
 
-Tài liệu này giải thích cách failproofai hoạt động nội bộ: cách hệ thống hook chặn các lệnh gọi công cụ của agent, cách cấu hình được tải và hợp nhất, cách các chính sách được đánh giá, và cách dashboard theo dõi hoạt động của agent.
+Tài liệu này giải thích cách failproofai hoạt động nội bộ: cách hệ thống hook chặn các lệnh gọi công cụ của agent, cách cấu hình được tải và hợp nhất, cách các chính sách được đánh giá, và cách dashboard giám sát hoạt động của agent.
 
 ---
 
@@ -14,10 +13,10 @@ Tài liệu này giải thích cách failproofai hoạt động nội bộ: các
 
 failproofai có hai hệ thống con độc lập:
 
-1. **Hook handler** - Một CLI subprocess nhanh mà Claude Code gọi trên mỗi lệnh gọi công cụ agent. Đánh giá các chính sách và trả về một quyết định.
-2. **Agent Monitor (Dashboard)** - Một ứng dụng web Next.js để theo dõi các phiên làm việc của agent và quản lý các chính sách.
+1. **Hook handler** - Một quy trình CLI nhanh mà Claude Code gọi trên mỗi lệnh gọi công cụ của agent. Đánh giá các chính sách và trả về một quyết định.
+2. **Agent Monitor (Dashboard)** - Một ứng dụng web Next.js để giám sát các phiên làm việc của agent và quản lý các chính sách.
 
-Cả hai hệ thống con chia sẻ các tệp cấu hình trong `~/.failproofai/` và thư mục `.failproofai/` của dự án, nhưng chúng chạy dưới dạng các quy trình riêng biệt và chỉ giao tiếp thông qua hệ thống tệp.
+Cả hai hệ thống con đều chia sẻ các tệp cấu hình trong `~/.failproofai/` và thư mục `.failproofai/` của dự án, nhưng chúng chạy dưới dạng các quy trình riêng biệt và chỉ giao tiếp qua hệ thống tệp.
 
 ---
 
@@ -25,7 +24,7 @@ Cả hai hệ thống con chia sẻ các tệp cấu hình trong `~/.failproofai
 
 ### Tích hợp với Claude Code
 
-Khi bạn chạy `failproofai policies --install`, nó ghi các mục như thế này vào `~/.claude/settings.json`:
+Khi bạn chạy `failproofai policies --install`, nó sẽ ghi các mục như thế này vào `~/.claude/settings.json`:
 
 ```json
 {
@@ -46,7 +45,7 @@ Khi bạn chạy `failproofai policies --install`, nó ghi các mục như thế
 }
 ```
 
-Claude Code sau đó gọi `failproofai --hook PreToolUse` như một subprocess trước mỗi lệnh gọi công cụ, truyền một payload JSON trên stdin.
+Claude Code sau đó gọi `failproofai --hook PreToolUse` như một quy trình con trước mỗi lệnh gọi công cụ, truyền một payload JSON vào stdin.
 
 ### Định dạng payload
 
@@ -62,13 +61,13 @@ Claude Code sau đó gọi `failproofai --hook PreToolUse` như một subprocess
 }
 ```
 
-Đối với các sự kiện `PostToolUse`, payload cũng chứa `tool_result` với kết quả của công cụ.
+Đối với các sự kiện `PostToolUse`, payload cũng chứa `tool_result` với đầu ra của công cụ.
 
-Handler thực thi giới hạn 1 MB cho stdin. Các payload vượt quá giới hạn này sẽ bị loại bỏ và tất cả các chính sách ngầm cho phép.
+Handler áp dụng giới hạn stdin 1 MB. Các payload vượt quá giới hạn này bị loại bỏ và tất cả các chính sách ngầm cho phép.
 
 ### Định dạng phản hồi
 
-**Deny (PreToolUse):**
+**Từ chối (PreToolUse):**
 ```json
 {
   "hookSpecificOutput": {
@@ -78,7 +77,7 @@ Handler thực thi giới hạn 1 MB cho stdin. Các payload vượt quá giới
 }
 ```
 
-**Deny (PostToolUse):**
+**Từ chối (PostToolUse):**
 ```json
 {
   "hookSpecificOutput": {
@@ -87,7 +86,7 @@ Handler thực thi giới hạn 1 MB cho stdin. Các payload vượt quá giới
 }
 ```
 
-**Instruct (bất kỳ sự kiện nào ngoại trừ Stop):**
+**Hướng dẫn (bất kỳ sự kiện nào trừ Stop):**
 ```json
 {
   "hookSpecificOutput": {
@@ -96,17 +95,17 @@ Handler thực thi giới hạn 1 MB cho stdin. Các payload vượt quá giới
 }
 ```
 
-**Instruct sự kiện Stop:**
-- Exit code: `2`
+**Hướng dẫn sự kiện Stop:**
+- Mã thoát: `2`
 - Lý do được ghi vào stderr (không phải stdout)
 
-**Allow:**
-- Exit code: `0`
-- stdout trống
+**Cho phép:**
+- Mã thoát: `0`
+- stdout rỗng
 
-**Allow với thông báo:**
+**Cho phép với tin nhắn:**
 
-`allow(message)` cho phép một chính sách gửi ngữ cảnh thông tin trở lại Claude ngay cả khi hoạt động được phép. Hook handler ghi JSON sau đây vào **stdout** (không phải một tệp cấu hình — đây là phản hồi của handler đối với Claude Code, giống như các phản hồi deny và instruct ở trên):
+`allow(message)` cho phép một chính sách gửi bối cảnh thông tin quay lại Claude ngay cả khi hoạt động được phép. Hook handler ghi JSON sau đây vào **stdout** (không phải tệp cấu hình — đây là phản hồi của handler đối với Claude Code, giống như các phản hồi từ chối và hướng dẫn ở trên):
 
 ```json
 // Written to stdout by the hook handler process
@@ -116,13 +115,13 @@ Handler thực thi giới hạn 1 MB cho stdin. Các payload vượt quá giới
   }
 }
 ```
-- Exit code: `0` (hoạt động được phép)
-- Khi nhiều chính sách trả về `allow` với một thông báo, các thông báo của chúng được nối với dòng mới thành một chuỗi `additionalContext` duy nhất
-- Nếu không có chính sách nào cung cấp một thông báo, stdout sẽ trống (giống như trước đây)
+- Mã thoát: `0` (hoạt động được phép)
+- Khi nhiều chính sách trả về `allow` với một tin nhắn, các tin nhắn của chúng được nối với các dòng mới thành một chuỗi `additionalContext` duy nhất
+- Nếu không có chính sách nào cung cấp tin nhắn, stdout trống (giống như trước đây)
 
-### Pipeline xử lý
+### Đường ống xử lý
 
-`src/hooks/handler.ts` thực hiện toàn bộ pipeline:
+`src/hooks/handler.ts` triển khai đầy đủ đường ống:
 
 ```text
 stdin JSON
@@ -141,13 +140,13 @@ stdin JSON
   → exit
 ```
 
-Toàn bộ quy trình chạy dưới 100ms cho các payload điển hình mà không có các lệnh gọi LLM.
+Toàn bộ quá trình chạy dưới 100ms cho các payload điển hình không có lệnh gọi LLM.
 
 ---
 
-## Config loading
+## Tải cấu hình
 
-`src/hooks/hooks-config.ts` thực hiện config loading ba phạm vi.
+`src/hooks/hooks-config.ts` triển khai tải cấu hình ba phạm vi.
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← project  (highest priority)
@@ -156,39 +155,39 @@ Toàn bộ quy trình chạy dưới 100ms cho các payload điển hình mà kh
 ```
 
 Logic hợp nhất:
-- `enabledPolicies` - hợp nhất được khử trùng lặp trên cả ba tệp
-- `policyParams` - mỗi chính sách, tệp đầu tiên xác định nó sẽ thắng toàn bộ
+- `enabledPolicies` - liên kết không trùng lặp trên cả ba tệp
+- `policyParams` - mỗi khóa chính sách, tệp đầu tiên xác định nó sẽ thắng hoàn toàn
 - `customPoliciesPath` - tệp đầu tiên xác định nó sẽ thắng
 - `llm` - tệp đầu tiên xác định nó sẽ thắng
 
-Dashboard web sử dụng `readHooksConfig()` (chỉ toàn cầu) để đọc và ghi, vì nó không được gọi với một project cwd.
+Dashboard web sử dụng `readHooksConfig()` (toàn cầu duy nhất) để đọc và ghi, vì nó không được gọi với cwd của dự án.
 
 ---
 
-## Policy evaluation
+## Đánh giá chính sách
 
 `src/hooks/policy-evaluator.ts` chạy các chính sách theo thứ tự.
 
 Đối với mỗi chính sách:
 
-1. Tra cứu lược đồ `params` của chính sách (nếu có).
-2. Đọc `policyParams[policy.name]` từ config đã hợp nhất.
-3. Hợp nhất các giá trị do người dùng cung cấp vào các giá trị mặc định của lược đồ để tạo `ctx.params`.
-4. Gọi `policy.fn(ctx)` với ngữ cảnh đã được giải quyết.
-5. Nếu kết quả là `deny`, dừng lại ngay lập tức và trả về quyết định đó.
+1. Tra cứu lược đồ `params` của chính sách (nếu nó có).
+2. Đọc `policyParams[policy.name]` từ cấu hình đã hợp nhất.
+3. Hợp nhất các giá trị do người dùng cung cấp trên các giá trị mặc định của lược đồ để tạo ra `ctx.params`.
+4. Gọi `policy.fn(ctx)` với bối cảnh đã được giải quyết.
+5. Nếu kết quả là `deny`, dừng ngay lập tức và trả về quyết định đó.
 6. Nếu kết quả là `instruct`, tích lũy thông báo và tiếp tục.
-7. Nếu kết quả là `allow`, tiếp tục với chính sách tiếp theo.
+7. Nếu kết quả là `allow`, tiếp tục đến chính sách tiếp theo.
 
 Sau khi tất cả các chính sách chạy:
-- Nếu bất kỳ `deny` nào được trả về, phát hành phản hồi deny.
-- Nếu bất kỳ kết quả `instruct` nào được thu thập, phát hành một phản hồi instruct duy nhất với tất cả các thông báo được nối.
-- Ngoài ra, phát hành phản hồi allow (stdout trống, exit 0).
+- Nếu bất kỳ `deny` nào được trả về, phát ra phản hồi từ chối.
+- Nếu có bất kỳ phản hồi `instruct` nào được thu thập, phát ra một phản hồi hướng dẫn duy nhất với tất cả các thông báo được nối lại.
+- Nếu không, phát ra phản hồi cho phép (stdout trống, thoát 0).
 
 ---
 
-## Builtin policies
+## Chính sách tích hợp sẵn
 
-`src/hooks/builtin-policies.ts` định nghĩa tất cả 39 chính sách tích hợp sẵn như các đối tượng `BuiltinPolicyDefinition`:
+`src/hooks/builtin-policies.ts` định nghĩa tất cả 39 chính sách tích hợp sẵn dưới dạng các đối tượng `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -206,15 +205,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-Các chính sách chấp nhận `params` khai báo `PolicyParamsSchema` với các loại và giá trị mặc định cho mỗi tham số. Policy evaluator tiêm các giá trị đã được giải quyết vào `ctx.params` trước khi gọi `fn`. Các hàm chính sách đọc `ctx.params` mà không cần null-guarding vì các giá trị mặc định luôn được áp dụng trước.
+Các chính sách chấp nhận `params` khai báo một `PolicyParamsSchema` với các kiểu và giá trị mặc định cho mỗi tham số. Người đánh giá chính sách tiêm các giá trị được giải quyết vào `ctx.params` trước khi gọi `fn`. Các hàm chính sách đọc `ctx.params` mà không cần bảo vệ null vì các giá trị mặc định luôn được áp dụng trước.
 
-Pattern matching bên trong các chính sách sử dụng các token lệnh được phân tích (argv), không phải so khớp chuỗi thô. Điều này ngăn chặn bypass thông qua shell operator injection (ví dụ: một mẫu cho `sudo systemctl status *` không thể bị bypass bằng cách thêm `; rm -rf /` vào lệnh).
+So khớp mẫu bên trong các chính sách sử dụng các token lệnh được phân tích cú pháp (argv), không phải so khớp chuỗi thô. Điều này ngăn chặn việc vượt qua thông qua tiêm toán tử shell (ví dụ: một mẫu cho `sudo systemctl status *` không thể bị vượt qua bằng cách nối thêm `; rm -rf /` vào lệnh).
 
 ---
 
-## Custom policies
+## Chính sách tùy chỉnh
 
-`src/hooks/custom-hooks-registry.ts` thực hiện một registry được hỗ trợ bởi `globalThis`:
+`src/hooks/custom-hooks-registry.ts` triển khai một sổ đăng ký được hỗ trợ bởi `globalThis`:
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -229,23 +228,23 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` tải tệp chính sách của người dùng:
 
-1. Đọc `customPoliciesPath` từ config; bỏ qua nếu không có.
+1. Đọc `customPoliciesPath` từ cấu hình; bỏ qua nếu không có.
 2. Giải quyết đến đường dẫn tuyệt đối; kiểm tra tệp tồn tại.
-3. Viết lại tất cả `from "failproofai"` imports đến đường dẫn dist thực tế để `customPolicies` giải quyết đến cùng một registry `globalThis`.
-4. Viết lại một cách đệ quy các import local chuyên cần để đảm bảo tương thích ESM.
-5. Ghi các tệp `.mjs` tạm thời và `import()` tệp mục nhập.
-6. Gọi `getCustomHooks()` để truy xuất các hook đã đăng ký.
-7. Dọn dẹp tất cả các tệp tạm thời trong một khối `finally`.
+3. Viết lại tất cả các mục nhập `from "failproofai"` thành đường dẫn dist thực tế để `customPolicies` phân giải thành cùng một sổ đăng ký `globalThis`.
+4. Viết lại một cách đệ quy các mục nhập cục bộ chuyên qua để đảm bảo khả năng tương thích ESM.
+5. Ghi các tệp `.mjs` tạm thời và `import()` tệp entry.
+6. Gọi `getCustomHooks()` để lấy các hook đã đăng ký.
+7. Dọn sạch tất cả các tệp tạm thời trong khối `finally`.
 
-Nếu xảy ra bất kỳ lỗi nào (tệp không tìm thấy, lỗi cú pháp, lỗi import), lỗi sẽ được ghi vào `~/.failproofai/hook.log` và loader sẽ trả về một mảng trống. Các chính sách tích hợp sẵn không bị ảnh hưởng.
+Trong trường hợp có lỗi (tệp không tìm thấy, lỗi cú pháp, lỗi nhập), lỗi được ghi vào `~/.failproofai/hook.log` và loader trả về một mảng trống. Các chính sách tích hợp sẵn không bị ảnh hưởng.
 
-Các chính sách tùy chỉnh được đánh giá sau tất cả các chính sách tích hợp sẵn. Một chính sách tùy chỉnh `deny` vẫn ngắn mạch các chính sách tùy chỉnh tiếp theo (nhưng tất cả các builtins đã chạy ở thời điểm này).
+Các chính sách tùy chỉnh được đánh giá sau tất cả các chính sách tích hợp sẵn. Một chính sách tùy chỉnh `deny` vẫn làm ngắn mạch các chính sách tùy chỉnh tiếp theo (nhưng tất cả các chính sách tích hợp sẵn đã chạy tại thời điểm đó).
 
 ---
 
-## Activity logging
+## Ghi nhật ký hoạt động
 
-Sau mỗi sự kiện hook, handler thêm một dòng JSONL vào `~/.failproofai/hook-activity.jsonl`:
+Sau mỗi sự kiện hook, handler nối thêm một dòng JSONL vào `~/.failproofai/hook-activity.jsonl`:
 
 ```json
 {
@@ -260,11 +259,11 @@ Sau mỗi sự kiện hook, handler thêm một dòng JSONL vào `~/.failproofai
 }
 ```
 
-Một dòng cho mỗi chính sách đưa ra quyết định không phải allow. Các quyết định Allow không được ghi vào nhật ký (để giữ tệp nhỏ).
+Một dòng cho mỗi chính sách đã đưa ra quyết định không cho phép. Các quyết định cho phép không được ghi nhật ký (để giữ tệp nhỏ).
 
 ---
 
-## Kiến trúc Dashboard
+## Kiến trúc dashboard
 
 Dashboard là một ứng dụng **Next.js 16** sử dụng App Router với React Server Components và Server Actions.
 
@@ -288,16 +287,16 @@ app/
 
 **Luồng dữ liệu:**
 
-- Các thành phần trang gọi `lib/projects.ts` và `lib/log-entries.ts` để đọc dữ liệu dự án/phiên trực tiếp từ hệ thống tệp (không có lớp API để đọc).
-- Trang Policies sử dụng Server Actions cho tất cả các thay đổi (toggle, cập nhật params, install/remove).
-- Trình xem phiên phân tích định dạng transcript JSONL của Claude và hiển thị một dòng thời gian của các tin nhắn và lệnh gọi công cụ.
+- Các thành phần trang gọi `lib/projects.ts` và `lib/log-entries.ts` để đọc dữ liệu dự án/phiên làm việc trực tiếp từ hệ thống tệp (không có lớp API cho các lần đọc).
+- Trang Policies sử dụng Server Actions cho tất cả các thay đổi (bật/tắt, cập nhật tham số, cài đặt/xóa).
+- Trình xem phiên làm việc phân tích định dạng bảng điểm JSONL của Claude và hiển thị dòng thời gian của các thông báo và lệnh gọi công cụ.
 
 **Các quyết định thiết kế chính:**
 
-- Không có cơ sở dữ liệu - tất cả trạng thái liên tục nằm trong các tệp thuần (`~/.failproofai/`, `~/.claude/projects/`).
+- Không có cơ sở dữ liệu - tất cả trạng thái liên tục là trong các tệp thô (`~/.failproofai/`, `~/.claude/projects/`).
 - Server Actions cho các thay đổi - không cần REST API cho các hoạt động CRUD.
-- React Server Components cho các trang đọc - tải ban đầu nhanh hơn, không có client bundle cho việc tìm nạp dữ liệu.
-- Các thành phần client chỉ khi cần tương tác (toggles chính sách, tìm kiếm hoạt động, trình xem nhật ký).
+- React Server Components cho các trang đọc - tải ban đầu nhanh hơn, không có gói máy khách cho tìm nạp dữ liệu.
+- Các thành phần máy khách chỉ khi cần tương tác (bật/tắt chính sách, tìm kiếm hoạt động, trình xem nhật ký).
 
 ---
 

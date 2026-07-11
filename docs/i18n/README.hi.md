@@ -18,8 +18,8 @@
 **अनुवाद:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
 **कोडिंग एजेंटों के लिए रनटाइम विफलता समाधान।**
-Claude Code और Codex में हुक करता है। लूप्स, खतरनाक कार्यों और सीक्रेट लीक को पकड़ता है
-इससे पहले कि वे घटनाएं बनें। शून्य विलंबता। स्थानीय रूप से चलता है।
+Claude Code और Codex में हुक करता है। लूप, खतरनाक कार्यों और सीक्रेट लीक को
+पकड़ता है इससे पहले कि वे समस्या बनें। शून्य विलंबता। स्थानीय रूप से चलता है।
 
 </div>
 
@@ -78,9 +78,18 @@ Claude Code और Codex में हुक करता है। लूप्
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi gemini` (या `--cli claude codex copilot cursor opencode pi gemini`)। स्वचालित रूप से इंस्टॉल किए गए CLIs को खोजने और प्रॉम्प्ट करने के लिए `--cli` को छोड़ें।
+> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi gemini` (या `--cli claude codex copilot cursor opencode pi gemini hermes`)। स्वचालित रूप से स्थापित CLIs का पता लगाने और संकेत देने के लिए `--cli` को छोड़ दें।
+>
+> **Hermes** (hermes-agent, एक Slack/Telegram गेटवे) **लाइव-हुक प्रवर्तन** (`--cli hermes` — एक इंस्टॉल प्रत्येक प्लेटफॉर्म और सबएजेंट से टूल कॉल को रोकता है) और इसके गेटवे सत्रों की ऑफलाइन **ऑडिट** रिप्ले दोनों के लिए समर्थित है।
 
 ---
 
@@ -88,32 +97,32 @@ Claude Code और Codex में हुक करता है। लूप्
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # या बस `failproofai` चलाएं और पहली बार चलाने वाले प्रॉम्प्ट को स्वीकार करें
+failproofai policies --install   # या बस `failproofai` चलाएं और पहली बार के संकेत को स्वीकार करें
 failproofai
 ```
 
-30 बिल्ट-इन पॉलिसीज तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर उपलब्ध है। `FAILPROOFAI_NO_FIRST_RUN=1` के साथ पहली बार चलाने वाले प्रॉम्प्ट को अक्षम करें।
+30 बिल्ट-इन नीतियां तुरंत सक्रिय हो जाती हैं। `localhost:8020` पर डैशबोर्ड। पहली बार के संकेत को `FAILPROOFAI_NO_FIRST_RUN=1` के साथ अक्षम करें।
 
 ---
 
 ## यह क्या रोकता है
 
-| पॉलिसी | यह क्या ब्लॉक करता है |
+| नीति | यह क्या ब्लॉक करता है |
 |---|---|
-| `block-push-master` | `main` / `master` को सीधे पुश करना |
+| `block-push-master` | `main` / `master` के लिए सीधे पुश |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` पर कमिट, मर्ज, रीबेस करना |
-| `block-rm-rf` | पुनरावर्ती फाइल हटाना |
-| `sanitize-api-keys` | API कीज़ एजेंट संदर्भ में लीक होना |
+| `block-work-on-main` | `main` / `master` पर प्रतिबद्धता, विलय, रीबेस |
+| `block-rm-rf` | पुनरावर्ती फ़ाइल हटाना |
+| `sanitize-api-keys` | API कुंजियां एजेंट संदर्भ में लीक हो रही हैं |
 
-→ [सभी 30 बिल्ट-इन पॉलिसीज](https://docs.befailproof.ai/built-in-policies)
+→ [सभी 30 बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## आपकी अपनी पॉलिसीज
+## आपकी अपनी नीतियां
 
-`.failproofai/policies/` में एक फाइल ड्रॉप करें — यह स्वचालित रूप से लोड हो जाती है, किसी फ्लैग की आवश्यकता नहीं।
-इसे कमिट करें और पूरी टीम को अगली पुल पर यह मिल जाएगी।
+`.failproofai/policies/` में एक फ़ाइल ड्रॉप करें — यह स्वचालित रूप से लोड होती है, किसी फ्लैग की आवश्यकता नहीं है।
+इसे प्रतिबद्ध करें और पूरी टीम को अगले पुल पर यह मिल जाता है।
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -129,35 +138,35 @@ customPolicies.add({
 });
 ```
 
-प्रत्येक पॉलिसी के लिए तीन निर्णय उपलब्ध हैं:
+प्रत्येक नीति के लिए तीन निर्णय उपलब्ध हैं:
 
 | निर्णय | प्रभाव |
 |---|---|
 | `allow()` | ऑपरेशन की अनुमति दें |
 | `deny(message)` | इसे ब्लॉक करें — संदेश एजेंट को वापस जाता है |
-| `instruct(message)` | इसे आगे बढ़ने दें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
+| `instruct(message)` | इसे जाने दें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
 
-→ [कस्टम पॉलिसीज गाइड](https://docs.befailproof.ai/custom-policies)
+→ [कस्टम नीतियां गाइड](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## सेशन दृश्यमानता
+## सत्र दृश्यता
 
-आपका एजेंट जो भी टूल कॉल करता है वह स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
-क्या ब्लॉक किया गया, और पॉलिसी ने एजेंट को क्या बताया — इसलिए आप अनुमान नहीं लगा रहे हैं
+आपके एजेंट द्वारा किया जाने वाला प्रत्येक टूल कॉल स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
+क्या ब्लॉक किया गया, और नीति ने एजेंट को क्या बताया — इसलिए आप अनुमान नहीं लगा रहे हैं
 जब कुछ गलत हो जाता है। → [डैशबोर्ड गाइड](https://docs.befailproof.ai/dashboard)
 
 ---
 
-## डॉक्यूमेंटेशन
+## दस्तावेज़
 
 | | |
 |---|---|
-| [शुरुआत करें](https://docs.befailproof.ai/getting-started) | इंस्टॉलेशन और पहले कदम |
-| [बिल्ट-इन पॉलिसीज](https://docs.befailproof.ai/built-in-policies) | सभी 30 पॉलिसीज पैरामीटर के साथ |
-| [कस्टम पॉलिसीज](https://docs.befailproof.ai/custom-policies) | अपनी खुद की लिखें |
+| [शुरुआत करना](https://docs.befailproof.ai/getting-started) | इंस्टॉलेशन और पहले कदम |
+| [बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies) | सभी 30 नीतियां पैरामीटर के साथ |
+| [कस्टम नीतियां](https://docs.befailproof.ai/custom-policies) | अपनी खुद की लिखें |
 | [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िग स्कोप और मर्ज नियम |
-| [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सेशन मॉनिटर और पॉलिसी गतिविधि |
+| [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सत्र मॉनिटर और नीति गतिविधि |
 | [आर्किटेक्चर](https://docs.befailproof.ai/architecture) | हुक सिस्टम कैसे काम करता है |
 
 ---
@@ -170,15 +179,14 @@ customPolicies.add({
 
 ## योगदान
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) देखें। नई पॉलिसीज, एज केस, और अनुवाद सभी स्वागत हैं।
+[CONTRIBUTING.md](./CONTRIBUTING.md) देखें। नई नीतियां, किनारे के मामलों और अनुवाद सभी स्वागत है।
 
-> **बिल्ड शुरू करने से पहले।** पहले `bun install && bun run build` चलाएं। यह रेपो
-> failproofai के अपने हुक को स्वयं पर चलाता है, और वे `failproofai` इंपोर्ट को संकलित
-> `dist/` बंडल के विरुद्ध हल करते हैं — बिल्ड के बिना आपको `Cannot find package 'failproofai'`
-> हुक त्रुटियां मिलेंगी। `src/` बदलने के बाद पुनः बिल्ड करें। देखें
-> [इन-रेपो डेव हुक काम करने से पहले बिल्ड करें](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
+> **शुरू करने से पहले बिल्ड करें।** पहले `bun install && bun run build` चलाएं। यह रेपो
+> failproofai की अपनी नीतियों को अपने आप पर चलाता है, और वे `failproofai` आयात को संकलित `dist/` बंडल के विरुद्ध हल करते हैं — बिल्ड के बिना आप `Cannot find package 'failproofai'`
+> हुक त्रुटियों से टकराएंगे। `src/` के बदलने के बाद फिर से बिल्ड करें। देखें
+> [इन-रेपो डेव हुक के काम करने से पहले बिल्ड करें](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) और [Nikita Agarwal](https://github.com/nk-ag) द्वारा निर्मित।
+[Nivedit Jain](https://github.com/NiveditJain) और [Nikita Agarwal](https://github.com/nk-ag) द्वारा बनाया गया।
 [befailproof.ai](https://befailproof.ai)

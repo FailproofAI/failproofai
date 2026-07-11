@@ -7,7 +7,7 @@ description: "エージェントのツール呼び出しごとにポリシーが
 failproofai policies --install [policy-names...] [options]
 ```
 
-インストール済みのエージェント CLI（Claude Code、OpenAI Codex、または GitHub Copilot CLI _（ベータ）_）の設定ファイルにフックエントリを書き込み、failproofai がツール呼び出しをインターセプトできるようにします。
+インストール済みのエージェント CLI（Claude Code、OpenAI Codex、または GitHub Copilot CLI _(ベータ版)_）の設定ファイルにフックエントリを書き込み、failproofai がツール呼び出しをインターセプトできるようにします。
 
 エイリアス: `failproofai p -i`
 
@@ -15,43 +15,43 @@ failproofai policies --install [policy-names...] [options]
 
 | フラグ | 説明 |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | インストール対象のエージェント CLI。スペース区切り（例: `--cli claude codex copilot`）または繰り返し指定が可能。省略するとインストール済みの CLI を自動検出してプロンプトを表示。 |
-| `--scope user` | ユーザースコープの設定ファイルにインストール（Claude: `~/.claude/settings.json`、Codex: `~/.codex/hooks.json`、Copilot: `~/.copilot/hooks/failproofai.json`）。デフォルト。 |
-| `--scope project` | プロジェクトスコープの設定ファイルにインストール（Claude: `<cwd>/.claude/settings.json`、Codex: `<cwd>/.codex/hooks.json`、Copilot: `<cwd>/.github/hooks/failproofai.json`）。 |
-| `--scope local` | Claude のみ — `<cwd>/.claude/settings.local.json` にインストール。Codex と Copilot には `local` スコープはありません。 |
+| `--cli claude\|codex\|copilot` | インストール対象のエージェント CLI。スペース区切り（例: `--cli claude codex copilot`）または繰り返し指定が可能。省略するとインストール済みの CLI を自動検出し、プロンプトを表示する。 |
+| `--scope user` | ユーザースコープの設定ファイルにインストールする（Claude: `~/.claude/settings.json`、Codex: `~/.codex/hooks.json`、Copilot: `~/.copilot/hooks/failproofai.json`）。デフォルト。 |
+| `--scope project` | プロジェクトスコープの設定ファイルにインストールする（Claude: `<cwd>/.claude/settings.json`、Codex: `<cwd>/.codex/hooks.json`、Copilot: `<cwd>/.github/hooks/failproofai.json`）。 |
+| `--scope local` | Claude のみ — `<cwd>/.claude/settings.local.json` にインストールする。Codex と Copilot には `local` スコープは存在しない。 |
 | `--custom <path>` / `-c` | カスタムフックポリシーを含む JS ファイルへのパス |
 
 ## 動作
 
-- **ポリシー名を指定しない場合** — ポリシーを選択するインタラクティブなプロンプトが開きます
-- **特定の名前を指定した場合** — 指定したポリシーを有効化します（既に有効なポリシーに追加されます）
-- **`all`** — 利用可能なすべてのポリシーを有効化します
+- **ポリシー名を指定しない場合** — インタラクティブなプロンプトを開き、ポリシーを選択できる
+- **特定の名前を指定した場合** — 指定したポリシーを有効化する（既に有効なポリシーに追加される）
+- **`all`** — 利用可能なすべてのポリシーを有効化する
 
-インストールは追加的に行われます。`--install` を再度実行すると、既存のポリシーを削除せずに新しいポリシーが追加されます。
+インストールは追加型です。`--install` を再度実行しても、既存のポリシーが削除されることなく新しいポリシーが追加されます。
 
-## 例
+## 使用例
 
 ```bash
-# すべてのデフォルトポリシーをグローバルにインストール（インタラクティブ）
+# すべてのデフォルトポリシーをグローバルにインストールする（インタラクティブ）
 failproofai policies --install
 
-# 現在のプロジェクトに特定のポリシーをインストール
+# 現在のプロジェクトに特定のポリシーをインストールする
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# すべてのポリシーを一括で有効化
+# すべてのポリシーを一括で有効化する
 failproofai policies --install all
 
-# カスタムポリシーファイルとともにインストール
+# カスタムポリシーファイルを指定してインストールする
 failproofai policies --install --custom ./my-policies.js
 
-# OpenAI Codex 用にインストール（プロジェクトスコープ）
+# OpenAI Codex 向けにインストールする（プロジェクトスコープ）
 failproofai policies --install --cli codex --scope project
 
-# GitHub Copilot CLI（ベータ）用に現在のプロジェクトへインストール
+# GitHub Copilot CLI（ベータ版）向けに現在のプロジェクトへインストールする
 failproofai policies --install --cli copilot --scope project
 
-# 3つの CLI すべてに一括でインストール
+# 3 つの CLI すべてに一括でインストールする
 failproofai policies --install --cli claude codex copilot
 ```
 
-`--custom <path>` が指定された場合、ファイルは即座に検証されます — `customPolicies.add()` を少なくとも1回呼び出している必要があります。解決されたパスは `policies-config.json` に `customPoliciesPath` として保存されます。
+`--custom <path>` を指定した場合、ファイルは即座に検証されます。少なくとも 1 回 `customPolicies.add()` を呼び出している必要があります。解決されたパスは `customPoliciesPath` として `policies-config.json` に保存されます。

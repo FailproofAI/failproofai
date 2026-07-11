@@ -1,6 +1,6 @@
 ---
 title: 包别名
-description: "已注册的防错字抢注别名及其工作原理"
+description: "已注册的防域名抢注别名及其工作原理"
 icon: copy
 ---
 
@@ -16,17 +16,17 @@ bun add -g failproofai
 
 ---
 
-## 为什么我们持有这些别名
+## 为何我们持有这些别名
 
-错字抢注（Typosquatting）是一种常见的供应链攻击手段——恶意攻击者注册一个与热门包名仅差一个按键的包名，毫无防备的用户在安装时输错命令，最终以完整系统权限运行了攻击者控制的代码。这正是 Failproof AI 旨在防御的威胁类型。
+域名抢注（typosquatting）是一种常见的供应链攻击手段——恶意者注册一个与热门包名相差仅一个按键的包名。不知情的用户在拼错安装命令时，就会以完整的系统权限运行攻击者控制的代码，而这正是 Failproof AI 旨在防御的威胁类型。
 
-为了消除这一攻击面，**我们在 npm 上抢先注册了 `failproofai` 所有常见的拼写错误和格式变体**。任何第三方都无法注册这些名称。每个别名都是一个轻量代理，安装后会委托给真正的 `failproofai` 包。
+为消除这一攻击面，**我们在 npm 上抢先注册了 `failproofai` 所有常见的拼写错误及格式变体**。这些名称均无法被第三方注册。每个别名都是一个轻量级代理包，安装时会委托给真正的 `failproofai` 包。
 
 ---
 
 ## 已注册的别名
 
-**格式变体** — "failproof ai" 的不同书写方式：
+**格式变体** - "failproof ai" 的不同书写方式：
 
 | 包名 | 状态 |
 |---------|--------|
@@ -37,7 +37,7 @@ bun add -g failproofai
 | `fail_proof_ai` | ⏳ 等待 npm 支持 |
 | `fail-proofai` | ⏳ 等待 npm 支持 |
 
-**`failprof*` 错字** — "proof" 中少了一个 `o`：
+**`failprof*` 拼写错误** - "proof" 中少了一个 `o`：
 
 | 包名 | 状态 |
 |---------|--------|
@@ -47,7 +47,7 @@ bun add -g failproofai
 | `fail-prof-ai` | ⏳ 等待 npm 支持 |
 | `failprof_ai` | ⏳ 等待 npm 支持 |
 
-**`faliproof*` 错字** — `a` 和 `i` 互换：
+**`faliproof*` 拼写错误** - `a` 和 `i` 位置互换：
 
 | 包名 | 状态 |
 |---------|--------|
@@ -55,9 +55,9 @@ bun add -g failproofai
 | `faliproof-ai` | ✅ 已发布 |
 | `faliproofai` | ⏳ 等待 npm 支持 |
 
-> **为什么是"等待支持"？** npm 的垃圾包防护策略会拦截那些在去除标点符号并进行相似度检查后，与已有包名规范化结果相同的包名。我们已联系 npm 支持团队，申请以防抢注为由保留这些名称，待审批通过后即可激活。
+> **为何处于等待状态？** npm 的防垃圾包策略会屏蔽在去除标点符号并进行相似性检查后，与已有包名规范化结果相同的新包名。我们已联系 npm 支持团队，申请以防抢注为目的保留这些名称，待审核通过后即可启用。
 
-您可以通过以下命令验证任意已发布的别名均归我们所有：
+您可以验证任意已发布别名均由我们持有：
 
 ```bash
 npm info failproof
@@ -70,13 +70,13 @@ npm info failproof
 
 每个别名包：
 
-1. 将 `failproofai` 列为依赖项——因此安装时会运行真正的包（包括其 `postinstall` 钩子设置）
-2. 暴露一个与自身同名的二进制文件（例如 `failprof-ai`），将所有参数代理转发给 `failproofai` 二进制文件
+1. 将 `failproofai` 列为依赖项——安装时会运行真正的包（包括其 `postinstall` 钩子设置）
+2. 暴露一个与自身同名的可执行文件（例如 `failprof-ai`），将所有参数代理转发给 `failproofai` 二进制文件
 
-代理是一个两行的 Node 脚本，没有任何逻辑处理、网络请求，也不会收集 `failproofai` 本身之外的任何数据。
+该代理仅为两行 Node 脚本，不含任何逻辑、网络请求，也不会收集 `failproofai` 本身以外的任何数据。
 
 ---
 
-## 如果您发现我们遗漏了某个名称
+## 如果您发现我们遗漏的包名
 
-请在 [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) 提交 Issue，我们会及时注册该名称。
+请在 [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) 提交 issue，我们将及时注册。

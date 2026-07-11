@@ -19,9 +19,9 @@
 
 **תרגומים:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה לסוכנים קוד.**
-מתחברים ל-Claude Code ו-Codex. תופסים לולאות, פעולות מסוכנות, והדלפות סודות
-לפני שהם הופכים לתקריות. אפס עיכוב. רץ באופן מקומי.
+**פתרון כשלים בזמן ריצה לסוכני קידוד.**
+משתלבים ב-Claude Code וב-Codex. תופסים לולאות, פעולות מסוכנות ודיווחי סודות
+לפני שהם הופכים לתקריות. אפס זיכרון זמני. פועל בעמודה השדורה.
 
 </div>
 
@@ -31,7 +31,7 @@
 
 ---
 
-## CLIs סוכנים נתמכים
+## CLIs של סוכנים נתמכים
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -80,9 +80,18 @@
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> התקן hook-ים עבור אחד או כל שילוב: `failproofai policies --install --cli opencode pi gemini` (או `--cli claude codex copilot cursor opencode pi gemini`). הוסר `--cli` להתקלת אוטומטית של CLIs מותקנים ושאילתה.
+> התקן hooks לאחד או לכל שילוב: `failproofai policies --install --cli opencode pi gemini` (או `--cli claude codex copilot cursor opencode pi gemini hermes`). השמט `--cli` לגילוי אוטומטי של CLIs מותקנים ולהנחיה.
+>
+> **Hermes** (hermes-agent, שער Slack/Telegram) נתמך גם ל**אכיפת hook חי** (`--cli hermes` — התקנה אחת מיירטת קריאות כלים מכל פלטפורמה וסוכן משנה) וגם **ביקורת** במצב לא מקוון של הפעלות השער שלו מ`~/.hermes/state.db` הבודד.
 
 ---
 
@@ -90,11 +99,11 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את הודעת ההרצה הראשונה
+failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את ההנחיה בהפעלה ראשונה
 failproofai
 ```
 
-30 מדיניות מובנות מופעלות מייד. לוח בקרה ב-`localhost:8020`. השבת את הודעת ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניויות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. בטל את הנחיית ההפעלה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -102,20 +111,20 @@ failproofai
 
 | מדיניות | מה זה חוסם |
 |---|---|
-| `block-push-master` | דחיפות ישירות ל-`main` / `master` |
+| `block-push-master` | דחיפה ישירה ל-`main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | commits, merges, rebases על `main` / `master` |
+| `block-work-on-main` | commits, merges, rebases ב-`main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | API keys הדולפות להקשר הסוכן |
+| `sanitize-api-keys` | API keys דולפים להקשר של סוכן |
 
-→ [כל 30 המדיניות המובנות](https://docs.befailproof.ai/built-in-policies)
+→ [כל 30 המדיניויות המובנות](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
 ## המדיניויות שלך
 
-שחרר קובץ ל-`.failproofai/policies/` — זה נטען באופן אוטומטי, ללא דגלים נדרשים.
-בצע commit שלו והצוות כולו יקבל אותו בעת ה-pull הבא.
+זרוק קובץ ל-`.failproofai/policies/` — הוא טוען באופן אוטומטי, ללא דגלים.
+בצע commit וכל הצוות יקבל אותו בפול הבא.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -125,7 +134,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("כתיבה לנתיבי production מחסומה.");
     return allow();
   },
 });
@@ -135,19 +144,19 @@ customPolicies.add({
 
 | החלטה | השפעה |
 |---|---|
-| `allow()` | אפשר את הפעולה |
+| `allow()` | אשר את הפעולה |
 | `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לזה לעבור, אך הוסף הקשר להודעה הבאה של הסוכן |
+| `instruct(message)` | תן לה לעבור, אך הוסף הקשר להנחיה הבאה של הסוכן |
 
-→ [מדריך מדיניות מותאם אישית](https://docs.befailproof.ai/custom-policies)
+→ [מדריך מדיניויות מותאמות אישית](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## נראות הפעילות
+## גלויות הפעלה
 
-כל קריאת כלי שהסוכן שלך מבצע מתועדת באופן מקומי. לוח הבקרה מציג מה רץ,
-מה נחסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
-כשמשהו הולך לא בסדר. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
+כל קריאת כלים שהסוכן שלך עושה מתועדת בעמודה השדורה. לוח הבקרה מראה מה רץ,
+מה היה חסום, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
+כשמשהו הולך בצעד הלא נכון. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -155,30 +164,30 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [התחל](https://docs.befailproof.ai/getting-started) | התקנה והצעדים הראשונים |
+| [התחלה](https://docs.befailproof.ai/getting-started) | התקנה ושלבים ראשונים |
 | [מדיניויות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניויות עם פרמטרים |
-| [מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
-| [הגדרה](https://docs.befailproof.ai/configuration) | הגדרות היקף וכללי מיזוג |
-| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מנטר פעילות ופעילות מדיניות |
-| [אדריכלות](https://docs.befailproof.ai/architecture) | כיצד מערכת ה-hook עובדת |
+| [מדיניויות מותאמות אישית](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
+| [תצורה](https://docs.befailproof.ai/configuration) | טווחי תצורה וכללי מיזוג |
+| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מוניטור הפעלה ופעילות מדיניות |
+| [ארכיטקטורה](https://docs.befailproof.ai/architecture) | איך מערכת ה-hook עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חופשי לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכמה נפרדת. ראה [LICENSE](./LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](./LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניויות חדשות, cases קצה, ותרגומים כולם בברכה.
+ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה, ותרגומים - כלם מובאים בברכה.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` תחילה. ריפו זה מריץ
-> את hook-ים של failproofai בעצמו, והם פותרים את `failproofai` import כנגד
-> bundle `dist/` המהדורה — בלי build תקבל `Cannot find package 'failproofai'`
-> hook errors. בנה מחדש אחרי שינוי `src/`. ראה
-> [בנה לפני שה-in-repo dev hooks יעבדו](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` תחילה. המאגר הזה מריץ
+> את ה-hooks שלו עצמו, והם פותרים את ייבוא `failproofai` כנגד ה-bundle המחומר `dist/` —
+> ללא בנייה תוכל להיתקל בשגיאות hook `Cannot find package 'failproofai'`. בנה מחדש
+> לאחר שינוי `src/`. ראה
+> [בנה לפני שה-dev hooks בתוך המאגר יעבדו](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

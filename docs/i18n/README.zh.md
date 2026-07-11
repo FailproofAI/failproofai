@@ -17,8 +17,8 @@
 
 **翻译版本：** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**为编码智能体提供运行时故障处理能力。**
-集成 Claude Code 和 Codex，在循环、危险操作和密钥泄露酿成事故之前将其拦截。零延迟，本地运行。
+**面向编程智能体的运行时故障修复工具。**
+接入 Claude Code 和 Codex，在循环、危险操作和密钥泄露演变成事故之前将其拦截。零延迟，本地运行。
 
 </div>
 
@@ -77,9 +77,18 @@
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> 可为一个或多个 CLI 安装 hooks：`failproofai policies --install --cli opencode pi gemini`（或 `--cli claude codex copilot cursor opencode pi gemini`）。省略 `--cli` 则自动检测已安装的 CLI 并提示选择。
+> 可为一个或多个 CLI 安装 hooks：`failproofai policies --install --cli opencode pi gemini`（或 `--cli claude codex copilot cursor opencode pi gemini hermes`）。省略 `--cli` 参数将自动检测已安装的 CLI 并提示选择。
+>
+> **Hermes**（hermes-agent，一个 Slack/Telegram 网关）同时支持**实时 hook 执行**（`--cli hermes` — 一次安装即可拦截所有平台和子智能体的工具调用）以及离线**审计**回放，可从单一的 `~/.hermes/state.db` 文件回放其网关会话。
 
 ---
 
@@ -87,11 +96,11 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # 或直接运行 `failproofai` 并在首次运行提示中确认
+failproofai policies --install   # 或直接运行 `failproofai` 并接受首次运行提示
 failproofai
 ```
 
-30 条内置策略立即生效。Dashboard 地址为 `localhost:8020`。设置 `FAILPROOFAI_NO_FIRST_RUN=1` 可禁用首次运行提示。
+30 条内置策略即时生效。访问 `localhost:8020` 查看控制台。使用 `FAILPROOFAI_NO_FIRST_RUN=1` 禁用首次运行提示。
 
 ---
 
@@ -111,7 +120,7 @@ failproofai
 
 ## 自定义策略
 
-将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何额外参数。提交到代码库后，团队成员在下次拉取时即可同步生效。
+将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何额外参数。提交到代码库后，团队所有成员在下次拉取时即可生效。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -132,16 +141,16 @@ customPolicies.add({
 | 决策 | 效果 |
 |---|---|
 | `allow()` | 允许该操作 |
-| `deny(message)` | 拦截操作——消息将返回给智能体 |
-| `instruct(message)` | 放行，但在智能体的下一次提示中附加上下文 |
+| `deny(message)` | 阻止该操作——消息将返回给智能体 |
+| `instruct(message)` | 放行该操作，但向智能体的下一个提示词中追加上下文信息 |
 
 → [自定义策略指南](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## 会话可视化
+## 会话可见性
 
-智能体的每一次工具调用都会在本地记录日志。Dashboard 展示了哪些操作已执行、哪些被拦截，以及策略向智能体返回了什么内容——让你在出现问题时不再两眼一抹黑。→ [Dashboard 指南](https://docs.befailproof.ai/dashboard)
+智能体发起的每次工具调用都会在本地记录日志。控制台展示已执行的操作、被拦截的操作以及策略向智能体反馈的内容——让你在出现问题时不再茫然无措。→ [控制台指南](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -149,28 +158,28 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [快速入门](https://docs.befailproof.ai/getting-started) | 安装与初始配置 |
-| [内置策略](https://docs.befailproof.ai/built-in-policies) | 全部 30 条策略及其参数说明 |
-| [自定义策略](https://docs.befailproof.ai/custom-policies) | 编写你自己的策略 |
+| [快速上手](https://docs.befailproof.ai/getting-started) | 安装与入门步骤 |
+| [内置策略](https://docs.befailproof.ai/built-in-policies) | 全部 30 条策略及参数说明 |
+| [自定义策略](https://docs.befailproof.ai/custom-policies) | 编写自己的策略 |
 | [配置](https://docs.befailproof.ai/configuration) | 配置作用域与合并规则 |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | 会话监控与策略活动 |
+| [控制台](https://docs.befailproof.ai/dashboard) | 会话监控与策略活动 |
 | [架构](https://docs.befailproof.ai/architecture) | Hook 系统的工作原理 |
 
 ---
 
 ## 许可证
 
-MIT 附加 [Commons Clause](https://commonsclause.com/)——个人及内部使用免费；将 failproofai 本身用于商业转售需另行签订协议。完整条款请参阅 [LICENSE](./LICENSE)。
+MIT 附加 [Commons Clause](https://commonsclause.com/) — 免费用于内部和个人用途；将 failproofai 本身作为商业产品转售需另行签订协议。完整条款请参阅 [LICENSE](./LICENSE)。
 
 ---
 
 ## 贡献
 
-请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md)。欢迎贡献新策略、边界用例以及翻译。
+请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md)。欢迎贡献新策略、边界用例和翻译内容。
 
-> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库使用 failproofai 自身的 hooks 对自身进行管控，这些 hooks 会将 `failproofai` 的导入解析到编译后的 `dist/` 包——若未构建，则会出现 `Cannot find package 'failproofai'` 的 hook 错误。修改 `src/` 后需重新构建。详见 [构建说明：让仓库内开发 hooks 正常工作](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
+> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库会对自身运行 failproofai 的 hooks，这些 hooks 从编译后的 `dist/` 包中解析 `failproofai` 导入——如果未执行构建，将会遇到 `Cannot find package 'failproofai'` hook 错误。修改 `src/` 后需重新构建。详见 [构建后才能使用仓库内开发 hooks](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
 
 ---
 
-由 [Nivedit Jain](https://github.com/NiveditJain) 和 [Nikita Agarwal](https://github.com/nk-ag) 共同构建。
+由 [Nivedit Jain](https://github.com/NiveditJain) 和 [Nikita Agarwal](https://github.com/nk-ag) 共同打造。
 [befailproof.ai](https://befailproof.ai)

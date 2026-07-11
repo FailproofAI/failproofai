@@ -1,5 +1,5 @@
 ---
-title: Se connecter
+title: Connexion
 description: "Connectez-vous à FailproofAI depuis la CLI pour activer les rappels et les fonctionnalités personnalisées"
 ---
 
@@ -9,19 +9,19 @@ failproofai auth logout   # révoquer cette session
 failproofai auth whoami   # afficher l'identité connectée
 ```
 
-L'ancienne syntaxe avec les flags `--login` / `--logout` / `--whoami` est toujours acceptée comme alias pour la rétrocompatibilité.
+L'ancienne forme avec les flags `--login` / `--logout` / `--whoami` est toujours acceptée comme alias pour la rétrocompatibilité.
 
-L'authentification est optionnelle. Les politiques, le tableau de bord, la page `/audit` et toutes les autres fonctionnalités locales fonctionnent exactement de la même façon, que vous soyez connecté ou non. La fonctionnalité de connexion existe pour que les fonctionnalités qui **nécessitent** une identité stable (rappels de ré-audit aujourd'hui, d'autres à venir) aient un point d'ancrage.
+L'authentification est optionnelle. Les politiques, le tableau de bord, la page `/audit` et toutes les autres fonctionnalités locales fonctionnent exactement de la même manière que vous soyez connecté ou non. La surface de connexion existe afin que les fonctionnalités qui **nécessitent** une identité stable (rappels de ré-audit aujourd'hui, d'autres à l'avenir) disposent d'un ancrage.
 
-## Processus de connexion
+## Flux de connexion
 
 ```bash
 failproofai auth login
 ```
 
-Demande votre adresse e-mail, envoie un code à usage unique à 6 chiffres à cette adresse, demande le code, puis en cas de succès écrit `~/.failproofai/auth.json` (mode `0600`). La même session devient alors visible dans le tableau de bord intégré — en cliquant sur `[ set a reminder ]` sur `/audit`, vous serez reconnu comme connecté.
+Demande votre adresse e-mail, envoie un code à usage unique à 6 chiffres à cette adresse, vous invite à saisir ce code, puis en cas de succès écrit `~/.failproofai/auth.json` (mode `0600`). La même session est alors visible dans le tableau de bord intégré — en cliquant sur `[ set a reminder ]` dans `/audit`, vous apparaîtrez comme connecté.
 
-Le tableau de bord expose le même processus sous forme de fenêtre modale sur `/audit` pour les utilisateurs qui n'utilisent jamais la CLI.
+Le tableau de bord propose le même flux sous forme de boîte de dialogue modale sur `/audit` pour les utilisateurs qui ne touchent jamais à la CLI.
 
 ## Déconnexion
 
@@ -37,11 +37,11 @@ Révoque la session actuelle sur le serveur et supprime `~/.failproofai/auth.jso
 failproofai auth whoami
 ```
 
-Affiche `<email> (<user uuid>)` et quitte avec le code 0 lorsqu'une session valide existe, ou `not signed in` et quitte avec le code 1 dans le cas contraire. Rafraîchit silencieusement le jeton d'accès en arrière-plan s'il expire dans moins d'une minute.
+Affiche `<email> (<user uuid>)` et quitte avec le code 0 lorsqu'une session valide existe, ou `not signed in` et quitte avec le code 1 dans le cas contraire. Actualise silencieusement le jeton d'accès en arrière-plan s'il expire dans moins d'une minute.
 
-## Rappel de ré-audit persistant
+## Rappel de ré-audit récurrent
 
-Lorsque vous cliquez sur **`[ set a reminder ]`** sur la page `/audit` (ou que vous vous connectez via la fenêtre modale que le bouton conditionne), le tableau de bord crée un petit fichier complémentaire à `~/.failproofai/next-audit.json` :
+Lorsque vous cliquez sur **`[ set a reminder ]`** dans la page `/audit` (ou que vous vous connectez via la boîte de dialogue modale que le bouton conditionne), le tableau de bord écrit un petit fichier complémentaire dans `~/.failproofai/next-audit.json` :
 
 ```json
 {
@@ -51,9 +51,9 @@ Lorsque vous cliquez sur **`[ set a reminder ]`** sur la page `/audit` (ou que v
 }
 ```
 
-Ce fichier est associé à l'adresse e-mail pour laquelle il a été défini — changer de session CLI vers un autre compte masque tout rappel appartenant à l'utilisateur précédent. Le délai par défaut est de **7 jours**, configurable ultérieurement lorsque le planificateur sera disponible. Créé avec les permissions `0600` comme `auth.json`.
+Ce fichier est rattaché à l'adresse e-mail pour laquelle il a été défini — changer de session CLI pour un autre compte masque tout rappel appartenant à l'utilisateur précédent. Le décalage par défaut est de **7 jours**, configurable ultérieurement lorsque le planificateur sera disponible. Créé avec les permissions `0600` comme `auth.json`.
 
-L'endpoint `/api/auth/reminder` du tableau de bord expose `GET` (lecture), `POST` (définir / reprogrammer) et `DELETE` (supprimer), et nécessite une session active.
+Le endpoint `/api/auth/reminder` du tableau de bord expose `GET` (lecture), `POST` (définir / replanifier) et `DELETE` (effacer), et nécessite une session active.
 
 ## Contenu de `~/.failproofai/auth.json`
 
@@ -67,21 +67,21 @@ L'endpoint `/api/auth/reminder` du tableau de bord expose `GET` (lecture), `POST
 }
 ```
 
-Créé avec les permissions `0600` (lecture/écriture réservées au propriétaire). Le jeton d'accès est un JWT HS256 valide 1 heure ; le jeton de rafraîchissement est une chaîne aléatoire opaque de 256 bits que le serveur stocke sous la forme `SHA-256(token)`. La réutilisation du jeton de rafraîchissement est détectée côté serveur et révoque toutes les sessions de l'utilisateur.
+Créé avec les permissions `0600` (lecture/écriture réservées au propriétaire). Le jeton d'accès est un JWT HS256 valable 1 heure ; le jeton de rafraîchissement est une chaîne aléatoire opaque de 256 bits que le serveur stocke sous la forme `SHA-256(token)`. La réutilisation du jeton de rafraîchissement est détectée côté serveur et révoque toutes les sessions de l'utilisateur.
 
 ## Variables d'environnement
 
-| Variable | Valeur par défaut | Utilité |
+| Variable | Valeur par défaut | Description |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Remplace l'URL de base du serveur API. Utile pour le développement local avec un serveur API auto-hébergé. |
-| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Remplace l'emplacement où `auth.json` est stocké. Principalement pour les tests. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Remplace l'URL de base du serveur API. Utile pour le développement local contre un serveur API auto-hébergé. |
+| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Remplace l'emplacement de stockage de `auth.json`. Principalement utilisé pour les tests. |
 
 Consultez [Variables d'environnement](/fr/cli/environment-variables) pour la liste complète.
 
 ## Dépannage
 
-**« Could not reach the api-server »** — la CLI ne peut pas établir une connexion TCP vers `FAILPROOF_API_URL`. Vérifiez votre réseau, ou définissez `FAILPROOF_API_URL` si vous utilisez un serveur API auto-hébergé.
+**« Could not reach the api-server »** — la CLI ne parvient pas à ouvrir une connexion TCP vers `FAILPROOF_API_URL`. Vérifiez votre réseau, ou définissez `FAILPROOF_API_URL` si vous utilisez un serveur API auto-hébergé.
 
-**« Rate limited »** — trop de tentatives de connexion sur une fenêtre de 15 minutes pour cet e-mail (5/e-mail) ou cette adresse IP (20/IP), ou un délai de renvoi de 30 secondes après la demande précédente pour le même e-mail. Le message d'erreur indique le délai d'attente avant de réessayer en secondes.
+**« Rate limited »** — trop de tentatives de connexion dans une fenêtre de 15 minutes pour cette adresse e-mail (5/email) ou cette adresse IP (20/IP), ou un délai de renvoi de 30 secondes après la précédente requête pour la même adresse e-mail. Le message d'erreur indique le délai avant nouvelle tentative en secondes.
 
-**Code refusé** — le code OTP était incorrect, expiré, ou la ligne a atteint son verrouillage après 5 tentatives incorrectes. Exécutez à nouveau `failproofai auth login` pour demander un nouveau code.
+**Code refusé** — le code OTP était incorrect, expiré, ou le nombre maximal de 5 mauvaises tentatives a été atteint. Exécutez `failproofai auth login` à nouveau pour demander un nouveau code.

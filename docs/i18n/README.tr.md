@@ -17,14 +17,14 @@
 
 **Çeviriler:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Kodlama ajanları için çalışma zamanı hata çözümü.**
-Claude Code ve Codex ile entegre olur. Döngüleri, tehlikeli işlemleri ve gizli sızıntıları
-olay haline gelmeden yakalar. Sıfır gecikme. Yerel olarak çalışır.
+**Kodlama ajanları için çalışma zamanı hatası çözümü.**
+Claude Code ve Codex'e bağlanır. Döngüleri, tehlikeli işlemleri ve gizli diliş sızıntılarını
+olaylar haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI işlemde" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI çalışmada" width="800" />
 </p>
 
 ---
@@ -78,9 +78,18 @@ olay haline gelmeden yakalar. Sıfır gecikme. Yerel olarak çalışır.
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Bir veya birkaç kombinasyon için hook'ları yükleyin: `failproofai policies --install --cli opencode pi gemini` (veya `--cli claude codex copilot cursor opencode pi gemini`). Kurulu CLI'ları otomatik olarak algılamak ve istemde görüntülemek için `--cli` parametresini atlayın.
+> Bir veya herhangi bir kombinasyon için kanca yükleyin: `failproofai policies --install --cli opencode pi gemini` (veya `--cli claude codex copilot cursor opencode pi gemini hermes`). Yüklü CLI'ları otomatik olarak algılamak ve istemek için `--cli` öğesini atlayın.
+>
+> **Hermes** (hermes-agent, bir Slack/Telegram ağ geçidi) hem **canlı kanca uygulaması** (`--cli hermes` — bir kurulum her platformdan ve alt ajantan araç çağrılarını keser) hem de çevrimdışı **denetim** için desteklenir. tek `~/.hermes/state.db` dosyasından ağ geçidi oturumlarının tekrar oynatılması.
 
 ---
 
@@ -88,22 +97,22 @@ olay haline gelmeden yakalar. Sıfır gecikme. Yerel olarak çalışır.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalışmada istemi kabul edin
+failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalıştırma istemini kabul edin
 failproofai
 ```
 
-30 yerleşik ilke hemen devreye girer. Gösterge paneli `localhost:8020` adresinde bulunur. İlk çalışma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
+30 yerleşik ilke hemen etkinleşir. Pano `localhost:8020` adresinde. İlk çalıştırma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
 
 ---
 
-## Ne engeller
+## Neleri durdurur
 
-| İlke | Ne engellediği |
+| İlke | Neyi engeller |
 |---|---|
-| `block-push-master` | `main` / `master` dalına doğrudan itme |
+| `block-push-master` | `main` / `master` öğesine doğrudan itme işlemleri |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` üzerinde değişiklikleri kaydetme, birleştirme, yeniden temellendirme |
-| `block-rm-rf` | Tekrarlamalı dosya silme |
+| `block-work-on-main` | `main` / `master` üzerine işlemeler, birleştirmeler, yeniden temeller |
+| `block-rm-rf` | Özyinelemeli dosya silme |
 | `sanitize-api-keys` | API anahtarlarının ajan bağlamına sızması |
 
 → [Tüm 30 yerleşik ilke](https://docs.befailproof.ai/built-in-policies)
@@ -112,8 +121,8 @@ failproofai
 
 ## Kendi ilkeleriniz
 
-`.failproofai/policies/` klasörüne bir dosya bırakın — otomatik olarak yüklenir, hiçbir parametre gerekmez.
-Bunu kaydedin ve tüm takım bir sonraki çekme sırasında alır.
+`.failproofai/policies/` içine bir dosya bırakın — otomatik olarak yüklenir, bayrak gerekmez.
+Taahhüt edin ve tüm takım bir sonraki çekişte alacaktır.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -123,19 +132,19 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Production yollarına yazma işlemleri engellenir.");
+      return deny("Üretim yollarına yazma işlemleri engellendi.");
     return allow();
   },
 });
 ```
 
-Her ilke için kullanılabilir üç karar:
+Her ilkeye sunulan üç karar:
 
 | Karar | Etki |
 |---|---|
 | `allow()` | İşleme izin ver |
-| `deny(message)` | Engelle — mesaj ajana geri döner |
-| `instruct(message)` | İzin ver, ancak ajanın bir sonraki isteme bağlam ekle |
+| `deny(message)` | Engelle — ileti ajana geri gider |
+| `instruct(message)` | İzin ver, ama ajana sonraki tavsiyeye bağlam ekle |
 
 → [Özel ilkeler rehberi](https://docs.befailproof.ai/custom-policies)
 
@@ -143,8 +152,9 @@ Her ilke için kullanılabilir üç karar:
 
 ## Oturum görünürlüğü
 
-Ajanınızın yaptığı her araç çağrısı yerel olarak günlüğe kaydedilir. Gösterge paneli neyin çalıştığını,
-neyin engellendiğini ve ilkenin ajana söylediklerini gösterir — böylece bir şeyler yanlış gittiğinde tahmin yapmıyorsunuz. → [Gösterge paneli rehberi](https://docs.befailproof.ai/dashboard)
+Ajanınızın yaptığı her araç çağrısı yerel olarak günlüğe kaydedilir. Pano neyin çalıştığını,
+neyin engellediğini ve ilkenin ajana ne söylediğini gösterir — böylece bir şey
+yanlış gittiğinde tahmin etmezsiniz. → [Pano rehberi](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -156,24 +166,24 @@ neyin engellendiğini ve ilkenin ajana söylediklerini gösterir — böylece bi
 | [Yerleşik İlkeler](https://docs.befailproof.ai/built-in-policies) | Tüm 30 ilke ve parametreleri |
 | [Özel İlkeler](https://docs.befailproof.ai/custom-policies) | Kendi ilkelerinizi yazın |
 | [Yapılandırma](https://docs.befailproof.ai/configuration) | Yapılandırma kapsamları ve birleştirme kuralları |
-| [Gösterge Paneli](https://docs.befailproof.ai/dashboard) | Oturum monitörü ve ilke aktivitesi |
-| [Mimari](https://docs.befailproof.ai/architecture) | Hook sistemi nasıl çalışır |
+| [Pano](https://docs.befailproof.ai/dashboard) | Oturum monitörü ve ilke etkinliği |
+| [Mimari](https://docs.befailproof.ai/architecture) | Kanca sistemi nasıl çalışır |
 
 ---
 
 ## Lisans
 
-MIT ve [Commons Clause](https://commonsclause.com/) — dahili ve kişisel kullanım için ücretsiz; failproofai'nin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) dosyasına bakın.
+MIT ve [Commons Clause](https://commonsclause.com/) — dahili ve kişisel kullanım için ücretsiz; failproofai'nin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) bölümüne bakın.
 
 ---
 
-## Katkıda Bulunma
+## Katkıda bulunmak
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) dosyasına bakın. Yeni ilkeler, kenar durumlar ve çeviriler hoş karşılanır.
+[CONTRIBUTING.md](./CONTRIBUTING.md) bölümüne bakın. Yeni ilkeler, sınır durumları ve çeviriler hepsi hoş geldiniz.
 
-> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi hook'larını kendisi üzerinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketine karşı çözer — derleme olmadan `Cannot find package 'failproofai'` hook hatalarına rastlarsınız. `src/` değişikliklerinden sonra yeniden derleyin. Bkz. [In-repo dev hook'larının çalışması için derleme gerekli](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi kancalarını kendisinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketi karşı çözer — bir derleme olmadan `Cannot find package 'failproofai'` kanca hatalarına çarparsınız. `src/` değişikliğinden sonra yeniden derleyin. [Depo içi geliştirme kanalarının çalışması için önce derleme](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) bölümüne bakın.
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) ve [Nikita Agarwal](https://github.com/nk-ag) tarafından yapılmıştır.
+[Nivedit Jain](https://github.com/NiveditJain) ve [Nikita Agarwal](https://github.com/nk-ag) tarafından oluşturulmuştur.
 [befailproof.ai](https://befailproof.ai)

@@ -1,22 +1,23 @@
 ---
 title: Auditer les sessions passées (bêta)
-description: "Comptabiliser la fréquence des comportements inefficaces ou risqués dans les transcriptions passées"
+description: "Comptez la fréquence à laquelle l'agent a effectué des actions inutiles ou risquées dans les transcriptions passées"
 ---
 
 <Note>
-  **Fonctionnalité bêta.** L'audit est livré en bêta pendant que nous recueillons les premiers retours.
-  Le catalogue de détecteurs et le format des rapports sont susceptibles d'évoluer avant la prochaine version stable.
-  N'hésitez pas à ouvrir un ticket si quelque chose vous semble incorrect.
+  **Fonctionnalité bêta.** L'audit est publié en version bêta le temps que nous
+  recueillions les premiers retours. Le catalogue de détecteurs et le format du
+  rapport sont susceptibles de changer avant la prochaine version stable.
+  N'hésitez pas à ouvrir une issue si quelque chose vous semble incorrect.
 </Note>
 
-L'audit rejoue vos transcriptions passées de l'agent CLI à travers le moteur de politiques de failproofai
-et génère un rapport visuel partageable sur la **page `/audit` du tableau de bord**
-— l'archétype de votre agent, un score de 0 à 100, et précisément quelles politiques
-auraient détecté quoi.
+L'audit rejoue vos transcriptions passées de l'agent CLI à travers le moteur de
+politiques de failproofai et génère un rapport visuel partageable sur la **page
+du tableau de bord `/audit`** — l'archétype de votre agent, un score de 0 à
+100, et précisément quelles politiques auraient détecté quoi.
 
 ## Lancer l'audit
 
-Trois façons de procéder — toutes aboutissent au même rapport `/audit`.
+Trois façons de démarrer — toutes aboutissent au même rapport `/audit`.
 
 <CodeGroup>
 
@@ -36,61 +37,62 @@ failproofai
 
 <CardGroup cols={3}>
   <Card title="Sans installation" icon="bolt">
-    `npx -y failproofai audit` télécharge failproofai, lance l'analyse et ouvre le
-    tableau de bord pour vous — aucune installation préalable nécessaire.
+    `npx -y failproofai audit` télécharge failproofai, lance l'analyse et ouvre
+    le tableau de bord pour vous — aucune installation préalable requise.
   </Card>
   <Card title="Depuis le CLI" icon="terminal">
-    `failproofai audit` exécute l'analyse dans votre terminal, puis ouvre
+    `failproofai audit` lance l'analyse dans votre terminal, puis ouvre
     `localhost:8020/audit` automatiquement une fois terminé.
   </Card>
   <Card title="Depuis le tableau de bord" icon="gauge">
-    Lancez `failproofai` et cliquez sur **Audit** dans la barre de navigation (entre Politiques et
-    Projets), ou ouvrez `/audit` directement.
+    Lancez `failproofai` et cliquez sur **Audit** dans la barre de navigation
+    (entre Policies et Projects), ou ouvrez `/audit` directement.
   </Card>
 </CardGroup>
 
 <Tip>
-  Exécutez `failproofai audit -h` (ou `--help`) pour afficher l'aide. L'audit fonctionne **entièrement
-  hors ligne** — aucun compte ni connexion réseau requis — et le tableau de bord reste actif
-  jusqu'à ce que vous l'arrêtiez avec `Ctrl+C`.
+  Lancez `failproofai audit -h` (ou `--help`) pour afficher l'aide. L'audit
+  s'exécute **entièrement hors ligne** — aucun compte ni connexion réseau requis
+  — et le tableau de bord reste actif jusqu'à ce que vous l'arrêtiez avec
+  `Ctrl+C`.
 </Tip>
 
-Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) et indique la fréquence à laquelle l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling avec sleep, relecture de fichiers venant d'être modifiés, et bien d'autres.
+Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) et indique à quelle fréquence l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling avec sleep, relecture de fichiers venant d'être édités, et bien d'autres.
 
-Pour chaque transcription, chaque événement d'utilisation d'outil est rejoué à travers les 39 politiques intégrées **et** à travers 8 détecteurs réservés à l'audit, qui identifient des comportements non encore couverts par les politiques en temps réel. Les comptages sont agrégés par politique/détecteur sur l'ensemble des sessions.
+Pour chaque transcription, chaque événement d'utilisation d'outil est rejoué à travers les 39 politiques intégrées **et** à travers 8 détecteurs exclusifs à l'audit qui repèrent des motifs non encore couverts par les politiques en temps réel. Les comptages sont agrégés par politique / détecteur sur l'ensemble des sessions.
 
 ## Ce que vous obtenez
 
-La page `/audit` est une **affiche** sur un seul écran, partageable, suivie de quatre sections sous le pli :
+La page `/audit` est une **affiche** plein écran partageable, suivie de quatre sections situées sous le pli :
 
-1. **Affiche** — l'identité de votre agent en un coup d'œil : son **archétype** (parmi 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), ses mots-clés de persona, la rareté de cet archétype, et un **score de 0 à 100** avec une bande de niveau (`S` jusqu'à `bottom tier`). Conçu pour être partagé — publiez sur X ou LinkedIn, ou téléchargez en PNG.
-2. **`// strengths`** — ce que votre agent fait déjà bien, sous forme de données réelles issues de l'analyse (ex. : % d'appels d'outils propres, `0` tentatives de push sur main), affiché uniquement lorsque la politique concernée n'a enregistré aucun incident.
-3. **`// quirks`** — ce qui a échappé au contrôle : un tableau classé des comportements que failproofai aurait interceptés — *quand* c'est arrivé pour la dernière fois, *ce qui a glissé* (et le détecteur intégré qui l'aurait bloqué), sa *sévérité*, et la fréquence d'apparition (`new` / `recurring` / `N× seen`).
-4. **`// how to improve`** — la liste des correctifs recommandés : une ligne par politique avec une commande `failproofai policy add <slug>` à copier-coller, plus un bouton **install all** qui active toutes les recommandations d'un coup et affiche votre **score projeté** si vous le faisiez.
-5. **`// come back better`** — ancrez la bonne habitude : configurez un **rappel** par e-mail pour relancer l'audit (`3d` / `7d` / `14d` / `30d`) ou relancez-le maintenant, et **invitez un ami** à effectuer le sien (envoyé depuis failproof.ai, en Cc pour vous). Les rappels et invitations nécessitent une connexion — voir [`failproofai auth`](/fr/cli/auth).
+1. **Affiche** — l'identité de votre agent en un coup d'œil : son **archétype** (l'un des 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), ses mots-clés de persona, la rareté de cet archétype, et un **score de 0 à 100** avec un niveau (`S` jusqu'à `bottom tier`). Conçue pour être partagée — publiez-la sur X ou LinkedIn, ou téléchargez-la en PNG.
+2. **`// strengths`** — ce que votre agent fait déjà bien, exprimé en chiffres réels issus de l'analyse (ex. : taux d'appels d'outils propres, `0` tentative de push sur main), affiché uniquement lorsque la politique concernée affiche un bilan sans faille.
+3. **`// quirks`** — ce qui a échappé : un tableau classé des comportements que failproofai aurait détectés — *quand* c'est arrivé la dernière fois, *ce qui a échappé* (et la politique intégrée qui l'aurait bloqué), sa *sévérité*, et la fréquence à laquelle c'a été *observé* (`new` / `recurring` / `N× seen`).
+4. **`// how to improve`** — la liste des correctifs recommandés : une ligne par politique avec un `failproofai policy add <slug>` à copier-coller, ainsi qu'un bouton **install all** qui active toutes les recommandations en une fois et affiche votre **score projeté** si vous le faisiez.
+5. **`// come back better`** — ancrez la bonne habitude : définissez un **rappel** par e-mail pour un nouvel audit (`3d` / `7d` / `14d` / `30d`) ou relancez l'audit maintenant, et **invitez un ami** à effectuer son propre audit (envoyé depuis failproof.ai, en Cc à vous). Les rappels et invitations nécessitent une connexion — voir [`failproofai auth`](/fr/cli/auth).
 
-## Détecteurs réservés à l'audit
+## Détecteurs exclusifs à l'audit
 
-Ces détecteurs identifient des comportements «inutilement coûteux» qui ne sont pas (encore) appliqués en temps réel. Ils ne s'exécutent que lors de l'audit et ne bloquent jamais un appel d'outil en direct.
+Ces détecteurs repèrent des motifs de comportement inefficaces qui ne sont pas (encore) appliqués en temps réel. Ils ne s'exécutent que pendant l'audit et ne bloquent jamais un appel d'outil en direct.
 
-| Détecteur | Ce qu'il comptabilise |
+| Détecteur | Ce qu'il compte |
 |---|---|
 | `redundant-cd-cwd` | Commandes Bash commençant par `cd <cwd> && …` alors que les commandes s'exécutent déjà dans `cwd`. |
-| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` sur un seul fichier source — utiliser plutôt l'outil `Read`. |
-| `prefer-edit-over-sed-awk` | Éditions en place avec `sed -i` / `awk … > file` — utiliser plutôt l'outil `Edit`. |
-| `prefer-write-over-heredoc` | Écriture de fichiers avec heredoc / `echo > file` multiligne — utiliser plutôt l'outil `Write`. |
-| `sleep-polling-loop` | Longs `sleep N` (≥ 30s) ou boucles de polling `while …; sleep …; done`. |
-| `find-from-root` | `find /`, `find /home`, `find /usr`, etc. — limiter la portée à `cwd`. |
-| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, ignorant les hooks. |
-| `reread-after-edit` | Lecture (`Read`) d'un fichier qui vient d'être modifié (`Edit`/`Write`) dans la même session. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` sur un seul fichier source — utilisez plutôt l'outil `Read`. |
+| `prefer-edit-over-sed-awk` | Modifications en place avec `sed -i` / `awk … > file` — utilisez plutôt l'outil `Edit`. |
+| `prefer-write-over-heredoc` | Écriture de fichiers via heredoc / `echo > file` multi-ligne — utilisez plutôt l'outil `Write`. |
+| `sleep-polling-loop` | Longues pauses `sleep N` (≥ 30s) ou boucles de polling `while …; sleep …; done`. |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, etc. — limitez la portée à `cwd`. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, contournant les hooks. |
+| `reread-after-edit` | Lecture (`Read`) d'un fichier qui vient d'être modifié via `Edit`/`Write` dans la même session. |
 
 ## Caches
 
-- **Cache par transcription** dans `~/.failproofai/cache/audit/<sha1>.json`, indexé par `(mtime, size, engineVersion, detectorVersion)` — invalidé automatiquement lorsque la transcription ou le code des politiques/détecteurs change. Chaque entrée stocke également un horodatage `cachedAt` comme **métadonnée de TTL** (non incluse dans la clé de cache) ; les entrées de plus de **7 jours** sont rejetées à la lecture afin que les résultats anciens ne survivent pas à l'évolution des détecteurs.
-- **Cache du résultat global** dans `~/.failproofai/audit-dashboard.json` (mode 0600). Permet au tableau de bord de s'afficher instantanément lors de la navigation sans relancer l'analyse. Également rejeté à la lecture au-delà du **TTL de 7 jours** — `/audit` revient alors à son état vide et invite à effectuer une nouvelle analyse. Cliquez sur `[ re-audit now ]` en bas du rapport pour actualiser — ce nouveau passage envoie `noCache: true`, ce qui contourne le cache par transcription et réanalyse toutes les transcriptions au lieu de retourner le résultat mis en cache ; l'exécution diffuse la progression via une bande fixe en haut de l'écran et remplace le résultat en cas de succès (sans rechargement de page ; en cas d'échec, le rapport précédent est conservé).
+- **Cache par transcription** dans `~/.failproofai/cache/audit/<sha1>.json`, indexé par `(mtime, size, engineVersion, detectorVersion)` — invalidé automatiquement lorsque la transcription ou le code des politiques/détecteurs change. Chaque entrée stocke également un horodatage `cachedAt` comme **métadonnée TTL** (ne faisant pas partie de la clé de cache) ; les entrées de plus de **7 jours** sont rejetées à la lecture afin que des résultats anciens ne survivent pas à l'évolution des détecteurs.
+- **Cache du résultat global** dans `~/.failproofai/audit-dashboard.json` (mode 0600). Permet au tableau de bord de s'afficher instantanément lors de la navigation sans relancer l'analyse. Également rejeté à la lecture au-delà du **TTL de 7 jours** — `/audit` bascule alors vers son état vide et invite à relancer une analyse. Cliquez sur `[ re-audit now ]` en bas du rapport pour actualiser — le re-audit envoie `noCache: true`, ce qui contourne le cache par transcription et ré-analyse chaque transcription au lieu de retourner le résultat mis en cache ; l'exécution diffuse sa progression via une bannière épinglée en haut et remplace le résultat en place en cas de succès (sans rechargement de page ; un re-audit échoué conserve le rapport précédent).
 
-## Notes
+## Remarques
 
-- **Aucune modification.** L'audit rejoue en mode lecture seule. `warn-repeated-tool-calls` est ignoré car son sidecar par session serait autrement modifié.
-- **Politiques de workflow ignorées.** Les politiques `require-*-before-stop` se déclenchent uniquement sur les événements `Stop` et via `execSync` sur l'état git en direct — elles n'ont pas d'interprétation pertinente de type «qu'aurait-il pu se passer en 2025», et n'apparaissent donc pas dans les comptages de l'audit.
+- **Aucune mutation.** L'audit rejoue en mode lecture seule. `warn-repeated-tool-calls` est ignoré car son fichier sidecar par session serait autrement modifié.
+- **Politiques de workflow ignorées.** Les politiques `require-*-before-stop` ne se déclenchent que sur les événements `Stop` et utilisent `execSync` sur l'état git actif — elles n'ont pas d'interprétation significative dans un contexte rétroactif type « qu'aurait-il se passé en 2025 », et n'apparaissent donc pas dans les comptages de l'audit.
 - **Politiques personnalisées ignorées.** Les hooks personnalisés fournis par l'utilisateur ne sont pas rejoués (ils peuvent avoir changé depuis la session d'origine).

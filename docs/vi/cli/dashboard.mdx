@@ -1,29 +1,29 @@
 ---
 title: Xem các phiên làm việc
-description: "Khởi động bảng điều khiển để duyệt các phiên của agent và quản lý chính sách"
+description: "Khởi chạy bảng điều khiển để duyệt các phiên hoạt động của agent và quản lý chính sách"
 ---
 
 ```bash
 failproofai
 ```
 
-Khởi động bảng điều khiển web tại `http://localhost:8020`.
+Khởi chạy bảng điều khiển web tại `http://localhost:8020`.
 
 ## Tùy chọn
 
-| Cờ | Mô tả |
+| Flag | Mô tả |
 |------|-------------|
 | `--port <number>` | Cổng để lắng nghe (mặc định: `8020`) |
-| `--allowed-origins <origins>` | Các host/IP được phép truy cập tài nguyên dev, ngăn cách bằng dấu phẩy |
+| `--allowed-origins <origins>` | Các host/IP được phân tách bằng dấu phẩy được phép truy cập tài nguyên dev |
 
-Để trỏ bảng điều khiển đến thư mục dự án Claude không phải mặc định, hãy đặt biến môi trường `CLAUDE_PROJECTS_PATH` khi khởi động.
+Để trỏ bảng điều khiển đến thư mục dự án Claude không phải mặc định, hãy đặt biến môi trường `CLAUDE_PROJECTS_PATH` khi khởi chạy.
 
 ## Ví dụ
 
 ```bash
-# Khởi động trên một cổng khác
+# Launch on a different port
 failproofai --port 9000
 
-# Sử dụng đường dẫn dự án Claude tùy chỉnh thông qua biến môi trường
+# Use a custom Claude projects path via environment variable
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

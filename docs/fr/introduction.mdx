@@ -1,15 +1,15 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI donne aux agents IA 39 politiques de défaillance intégrées qui détectent les boucles, les fuites de secrets, les appels d'outils destructeurs et bien plus encore, en une seule installation."
+description: "FailproofAI offre aux agents IA 39 politiques de sécurité intégrées qui détectent les boucles, les fuites de secrets, les appels d'outils destructeurs, et bien plus encore, en une seule installation."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks et politiques pour la **gestion des défaillances de l'IA**, la **récupération d'erreurs** et la **fiabilité des LLM**. Gardez vos agents IA fiables et autonomes sur **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI** et le **Agents SDK**.
+Hooks et politiques pour la **gestion des défaillances IA**, la **récupération après erreur** et la **fiabilité des LLM**. Gardez vos agents IA fiables et autonomes sur **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI**, **Hermes** et l'**Agents SDK**.
 
-Les agents IA échouent de manière prévisible. Ils exécutent des commandes destructrices, exposent des secrets, dérivent hors de leur tâche, se retrouvent bloqués dans des boucles ou poussent directement sur main. Sans surveillance, de petites défaillances s'enchaînent et provoquent des pannes, des identifiants compromis et du travail perdu.
+Les agents IA échouent de manière prévisible. Ils exécutent des commandes destructrices, exposent des secrets, dérivent hors de leur tâche, se retrouvent bloqués dans des boucles ou poussent directement sur la branche principale. Laissées sans surveillance, de petites défaillances se transforment en pannes, en identifiants compromis et en travail perdu.
 
-FailproofAI résout ce problème grâce à des **politiques**. Ces règles s'accrochent à chaque appel d'outil de l'agent pour **détecter les défaillances**, les **atténuer** (bloquer, instruire, assainir) et **vous alerter** lorsqu'un problème nécessite votre attention. Un tableau de bord local vous permet de consulter chaque appel d'outil, chaque défaillance d'agent et chaque action corrective après coup.
+FailproofAI résout ce problème grâce aux **politiques**. Ces règles s'accrochent à chaque appel d'outil de l'agent pour **détecter les défaillances**, **les atténuer** (bloquer, instruire, assainir) et **vous alerter** lorsqu'une intervention est nécessaire. Un tableau de bord local vous permet de consulter chaque appel d'outil, chaque défaillance d'agent et chaque action de récupération après coup.
 
 Aucune donnée ne quitte votre machine.
 
@@ -26,11 +26,11 @@ Aucune donnée ne quitte votre machine.
 </Card>
 
 <Card title="Moniteur d'agents" icon="chart-line" href="/fr/dashboard">
-  Voyez ce que vos agents ont fait pendant votre absence. Parcourez les sessions, inspectez les appels d'outils, examinez où les politiques se sont déclenchées.
+  Voyez ce que vos agents ont fait pendant votre absence. Parcourez les sessions, inspectez les appels d'outils, consultez où les politiques ont été déclenchées.
 </Card>
 
-<Card title="Configuration facile" icon="gear" href="/fr/configuration">
-  Ajustez n'importe quelle politique sans code. Définissez des listes d'autorisation, des branches protégées ou des seuils par projet ou de manière globale.
+<Card title="Configuration simplifiée" icon="gear" href="/fr/configuration">
+  Ajustez n'importe quelle politique sans code. Définissez des listes d'autorisation, des branches protégées ou des seuils par projet ou globalement.
 </Card>
 
 </CardGroup>
@@ -54,4 +54,4 @@ failproofai policies --install   # enable policies (or skip — `failproofai` wi
 failproofai                      # launch the dashboard
 ```
 
-Consultez le guide [Prise en main](/fr/getting-started) pour une présentation complète.
+Consultez le guide [Premiers pas](/fr/getting-started) pour une présentation complète.

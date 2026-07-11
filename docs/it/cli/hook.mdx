@@ -1,6 +1,6 @@
 ---
-title: Handler hook (interno)
-description: "Il sottoprocesso che Claude Code chiama su ogni evento di strumento"
+title: Gestore di hook (interno)
+description: "Il sottoprocesso che Claude Code chiama su ogni evento dello strumento"
 ---
 
 ```bash
@@ -9,13 +9,13 @@ failproofai --hook <EventType>
 
 Questo è il comando registrato nel `settings.json` di Claude Code da `failproofai policies --install`. Normalmente non lo chiami direttamente.
 
-Legge un payload JSON da stdin, valuta tutte le policy abilitate e esce con un codice che indica la decisione:
+Legge un payload JSON da stdin, valuta tutte le politiche abilitate ed esce con un codice che indica la decisione:
 
 | Codice di uscita | Decisione | Effetto |
 |-----------|----------|--------|
 | `0` | `allow` | Consenti l'azione |
-| `1` | `deny` | Blocca l'azione - Claude vede il motivo del blocco |
-| `2` | `instruct` | Inietta indicazioni nel contesto di Claude |
+| `1` | `deny` | Blocca l'azione - Claude vede il motivo del rifiuto |
+| `2` | `instruct` | Inietta guida nel contesto di Claude |
 
 ### Tipi di evento supportati
 
@@ -23,8 +23,8 @@ Legge un payload JSON da stdin, valuta tutte le policy abilitate e esce con un c
 |----------|--------|
 | **Esecuzione dello strumento** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Ciclo di vita della sessione** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **Interazione utente** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Subagenti e attività** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **Interazione dell'utente** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **Suagenti e attività** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Configurazione** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **File system** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **Contesto** | `PreCompact`, `PostCompact` |

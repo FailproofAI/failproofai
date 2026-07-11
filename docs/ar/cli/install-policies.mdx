@@ -1,57 +1,57 @@
 ---
 title: تثبيت السياسات
-description: "تفعيل السياسات بحيث يتم تشغيلها على كل استدعاء أداة وكيل"
+description: "فعّل السياسات لكي تعمل على كل استدعاء أداة وكيل"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-يكتب إدخالات hook في ملف إعدادات CLI الوكيل المثبت لديك (Claude Code أو OpenAI Codex أو GitHub Copilot CLI _(beta)_) بحيث يعترض failproofai استدعاءات الأدوات.
+يكتب إدخالات خطاف في ملف الإعدادات الخاص بواجهة سطر الأوامر للوكيل المثبتة لديك (Claude Code أو OpenAI Codex أو GitHub Copilot CLI _(beta)_) بحيث يعترض failproofai استدعاءات الأدوات.
 
-الأسماء المختصرة: `failproofai p -i`
+الأسماء المستعارة: `failproofai p -i`
 
 ## الخيارات
 
 | العلم | الوصف |
-|------|---------|
-| `--cli claude\|codex\|copilot` | CLI الوكيل المراد التثبيت له؛ مفصول بمسافات (مثل `--cli claude codex copilot`) أو متكرر. حذف للكشف عن CLIs المثبتة والطلب منك الاختيار. |
-| `--scope user` | التثبيت في ملف الإعدادات ذو النطاق الخاص بالمستخدم (Claude: `~/.claude/settings.json`؛ Codex: `~/.codex/hooks.json`؛ Copilot: `~/.copilot/hooks/failproofai.json`). الافتراضي. |
-| `--scope project` | التثبيت في ملف الإعدادات ذو النطاق الخاص بالمشروع (Claude: `<cwd>/.claude/settings.json`؛ Codex: `<cwd>/.codex/hooks.json`؛ Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+|------|-------------|
+| `--cli claude\|codex\|copilot` | واجهات سطر الأوامر للوكيل المراد التثبيت لها؛ مفصولة بمسافات (مثل `--cli claude codex copilot`) أو مكررة. اتركها فارغة للكشف التلقائي عن واجهات سطر الأوامر المثبتة والمطالبة. |
+| `--scope user` | التثبيت في ملف إعدادات النطاق العام (`~/.claude/settings.json` لـ Claude؛ `~/.codex/hooks.json` لـ Codex؛ `~/.copilot/hooks/failproofai.json` لـ Copilot). الخيار الافتراضي. |
+| `--scope project` | التثبيت في ملف إعدادات نطاق المشروع (`<cwd>/.claude/settings.json` لـ Claude؛ `<cwd>/.codex/hooks.json` لـ Codex؛ `<cwd>/.github/hooks/failproofai.json` لـ Copilot). |
 | `--scope local` | Claude فقط — التثبيت في `<cwd>/.claude/settings.local.json`. Codex و Copilot لا يملكان نطاق `local`. |
-| `--custom <path>` / `-c` | المسار إلى ملف JS يحتوي على سياسات hook مخصصة |
+| `--custom <path>` / `-c` | المسار إلى ملف JavaScript يحتوي على سياسات خطاف مخصصة |
 
 ## السلوك
 
-- **بدون أسماء سياسات** - يفتح موجه تفاعلي لاختيار السياسات
-- **أسماء محددة** - تفعيل تلك السياسات (مضافة إلى أي سياسات مفعلة بالفعل)
-- **`all`** - تفعيل كل سياسة متاحة
+- **بدون أسماء سياسات** - يفتح موجه تفاعلي لتحديد السياسات
+- **أسماء محددة** - تفعيل تلك السياسات (تضاف إلى أي سياسات مفعلة بالفعل)
+- **`all`** - تفعيل كل السياسات المتاحة
 
-التثبيت هو إضافي: تشغيل `--install` مرة أخرى يضيف سياسات جديدة دون إزالة السياسات الموجودة.
+التثبيت عملية إضافية: تشغيل `--install` مرة أخرى يضيف سياسات جديدة دون إزالة السياسات الموجودة.
 
 ## أمثلة
 
 ```bash
-# Install all default policies globally (interactive)
+# تثبيت جميع السياسات الافتراضية عالميًا (تفاعلي)
 failproofai policies --install
 
-# Install specific policies for the current project
+# تثبيت سياسات محددة للمشروع الحالي
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# Enable all policies at once
+# تفعيل جميع السياسات دفعة واحدة
 failproofai policies --install all
 
-# Install with a custom policies file
+# التثبيت مع ملف سياسات مخصص
 failproofai policies --install --custom ./my-policies.js
 
-# Install for OpenAI Codex (project scope)
+# التثبيت لـ OpenAI Codex (نطاق المشروع)
 failproofai policies --install --cli codex --scope project
 
-# Install for GitHub Copilot CLI (beta) for the current project
+# التثبيت لـ GitHub Copilot CLI (beta) للمشروع الحالي
 failproofai policies --install --cli copilot --scope project
 
-# Install for all three CLIs at once
+# التثبيت لجميع واجهات سطر الأوامر الثلاث في وقت واحد
 failproofai policies --install --cli claude codex copilot
 ```
 
-عند توفير `--custom <path>`، يتم التحقق من صحة الملف فوراً - يجب أن يستدعي `customPolicies.add()` مرة واحدة على الأقل. يتم حفظ المسار المحل في `policies-config.json` باسم `customPoliciesPath`.
+عند توفير `--custom <path>`، يتم التحقق من صحة الملف فورًا - يجب أن يستدعي `customPolicies.add()` مرة واحدة على الأقل. يتم حفظ المسار المحل في `policies-config.json` باسم `customPoliciesPath`.

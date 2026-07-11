@@ -1,5 +1,5 @@
 ---
-title: Manejador de hooks (interno)
+title: Manejador de hook (interno)
 description: "El subproceso que Claude Code invoca en cada evento de herramienta"
 ---
 
@@ -7,17 +7,17 @@ description: "El subproceso que Claude Code invoca en cada evento de herramienta
 failproofai --hook <EventType>
 ```
 
-Este es el comando registrado en el archivo `settings.json` de Claude Code por `failproofai policies --install`. Normalmente no se llama directamente.
+Este es el comando que `failproofai policies --install` registra en el archivo `settings.json` de Claude Code. Normalmente no se llama directamente.
 
 Lee un payload JSON desde stdin, evalúa todas las políticas habilitadas y termina con un código que indica la decisión:
 
 | Código de salida | Decisión | Efecto |
-|------------------|----------|--------|
-| `0` | `allow` | Permite la acción |
-| `1` | `deny` | Bloquea la acción — Claude recibe el motivo del rechazo |
-| `2` | `instruct` | Inyecta orientación en el contexto de Claude |
+|-----------------|----------|--------|
+| `0` | `allow` | Permitir la acción |
+| `1` | `deny` | Bloquear la acción — Claude recibe el motivo del rechazo |
+| `2` | `instruct` | Inyectar orientación en el contexto de Claude |
 
-### Tipos de eventos soportados
+### Tipos de eventos compatibles
 
 | Categoría | Eventos |
 |-----------|---------|

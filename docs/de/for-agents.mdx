@@ -3,25 +3,25 @@ title: "Für Agenten"
 description: "Failproof AI-Wissen in einem Befehl zu deinem Coding-Agenten hinzufügen. Funktioniert mit Claude Code, Cursor, Windsurf und mehr."
 ---
 
-Füge die vollständige Failproof AI-Referenz in einem Befehl zu deinem Coding-Agenten hinzu. Funktioniert mit Claude Code, Cursor, Windsurf und jedem anderen Agenten, der Skills unterstützt.
+Füge die vollständige Failproof AI-Referenz in einem einzigen Befehl zu deinem Coding-Agenten hinzu. Funktioniert mit Claude Code, Cursor, Windsurf und jedem anderen Agenten, der Skills unterstützt.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` erkennt automatisch, welche Agenten du installiert hast, und fügt den Skill für jeden im richtigen Format hinzu.
+`npx skills` erkennt automatisch, welche Agenten installiert sind, und fügt den Skill für jeden im richtigen Format hinzu.
 
 ## Was der Skill abdeckt
 
 | Bereich | Inhalt |
 |---------|--------|
 | Policies | Integrierte Policy-Namen, Event-Typen, Parameter, aktivieren/deaktivieren |
-| Benutzerdefinierte Policies | `customPolicies.add()`, Match-Filter, `allow`/`deny`/`instruct`-API |
+| Custom policies | `customPolicies.add()`, Match-Filter, `allow`/`deny`/`instruct`-API |
 | Context-Objekt | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Konfiguration | `policies-config.json`-Struktur, Scope-Zusammenführung, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, Scopes |
 | Dashboard | Session-Viewer, Policy-Aktivität, Umgebungsvariablen |
-| Architektur | Hook-Handler-Flow, Exit-Codes, stdin/stdout-Vertrag |
+| Architektur | Hook-Handler-Ablauf, Exit-Codes, stdin/stdout-Vertrag |
 
 ## Ist der Skill vollständig?
 

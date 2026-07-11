@@ -4,7 +4,7 @@ description: "钩子处理器、配置加载和策略评估的内部工作原理
 icon: sitemap
 ---
 
-本文档介绍 failproofai 的内部工作原理：钩子系统如何拦截 Agent 工具调用、配置如何加载与合并、策略如何评估，以及控制台如何监控 Agent 活动。
+本文档介绍 failproofai 的内部工作原理：钩子系统如何拦截 Agent 工具调用、配置如何加载与合并、策略如何评估，以及仪表板如何监控 Agent 活动。
 
 ---
 
@@ -12,10 +12,10 @@ icon: sitemap
 
 failproofai 包含两个独立子系统：
 
-1. **钩子处理器** - 一个高速 CLI 子进程，Claude Code 在每次 Agent 工具调用时都会调用它。负责评估策略并返回决策。
-2. **Agent 监控器（控制台）** - 一个用于监控 Agent 会话和管理策略的 Next.js Web 应用。
+1. **钩子处理器** - 一个快速的 CLI 子进程，Claude Code 在每次 Agent 工具调用时都会调用它。负责评估策略并返回决策结果。
+2. **Agent 监控器（仪表板）** - 一个用于监控 Agent 会话和管理策略的 Next.js Web 应用。
 
-两个子系统共享 `~/.failproofai/` 和项目 `.failproofai/` 目录中的配置文件，但它们以独立进程运行，仅通过文件系统进行通信。
+两个子系统共享 `~/.failproofai/` 和项目 `.failproofai/` 目录中的配置文件，但各自作为独立进程运行，仅通过文件系统进行通信。
 
 ---
 
@@ -23,7 +23,7 @@ failproofai 包含两个独立子系统：
 
 ### 与 Claude Code 的集成
 
-运行 `failproofai policies --install` 后，它会将如下条目写入 `~/.claude/settings.json`：
+当你运行 `failproofai policies --install` 时，它会将如下条目写入 `~/.claude/settings.json`：
 
 ```json
 {
@@ -60,9 +60,9 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 
-对于 `PostToolUse` 事件，载荷还会包含 `tool_result` 字段，其中包含工具的输出内容。
+对于 `PostToolUse` 事件，载荷还会包含 `tool_result` 字段，其中记录了工具的输出。
 
-处理器对 stdin 强制执行 1 MB 的限制。超出此限制的载荷将被丢弃，所有策略隐式允许通过。
+处理器对 stdin 强制限制为 1 MB。超出此限制的载荷将被丢弃，所有策略默认隐式放行。
 
 ### 响应格式
 
@@ -85,7 +85,7 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 
-**指令（除 Stop 外的任何事件）：**
+**指令（除 Stop 以外的任意事件）：**
 ```json
 {
   "hookSpecificOutput": {
@@ -98,13 +98,13 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 - 退出码：`2`
 - 原因写入 stderr（而非 stdout）
 
-**允许：**
+**放行：**
 - 退出码：`0`
 - stdout 为空
 
-**带消息的允许：**
+**附带消息的放行：**
 
-`allow(message)` 允许策略在操作被允许时向 Claude 回传信息性上下文。钩子处理器将以下 JSON 写入 **stdout**（这不是配置文件——这是处理器向 Claude Code 的响应，与 deny 和 instruct 响应方式相同）：
+`allow(message)` 允许策略在操作被放行的同时，向 Claude 发送信息性上下文。钩子处理器会将以下 JSON 写入 **stdout**（这不是配置文件——这是处理器对 Claude Code 的响应，与拒绝和指令响应的方式相同）：
 
 ```json
 // 由钩子处理器进程写入 stdout
@@ -114,9 +114,9 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
   }
 }
 ```
-- 退出码：`0`（操作被允许）
-- 当多个策略返回带消息的 `allow` 时，消息将以换行符拼接为单个 `additionalContext` 字符串
-- 若没有策略提供消息，stdout 为空（与之前相同）
+- 退出码：`0`（操作被放行）
+- 若多个策略均返回附带消息的 `allow`，其消息将以换行符连接，合并为单个 `additionalContext` 字符串
+- 若没有策略提供消息，则 stdout 为空（与之前的行为一致）
 
 ### 处理流水线
 
@@ -127,25 +127,25 @@ stdin JSON
   → 解析载荷（最大 1 MB）
   → 提取会话元数据（session_id、cwd、tool_name、tool_input 等）
   → readMergedHooksConfig(cwd)    ← 合并项目 + 本地 + 全局配置
-  → 注册已启用的内置策略并解析参数
+  → 注册已启用的内置策略（含已解析的参数）
   → 从 customPoliciesPath 加载自定义策略（如已设置）
   → 将自定义策略注册到策略注册表
-  → 评估所有策略（先评估内置策略，再评估自定义策略）
-      → 首个 deny 立即短路退出
-      → instruct 决策持续累积
-      → allow 消息持续累积
+  → 评估所有策略（先执行内置策略，再执行自定义策略）
+      → 首个 deny 立即短路
+      → instruct 决策累积
+      → allow 消息累积
   → 将 JSON 决策写入 stdout
   → 将事件持久化到 ~/.failproofai/hook-activity.jsonl
   → 退出
 ```
 
-对于典型载荷，整个过程在 100ms 内完成，无需调用任何 LLM。
+对于典型载荷，整个处理过程无需调用 LLM，在 100ms 以内完成。
 
 ---
 
 ## 配置加载
 
-`src/hooks/hooks-config.ts` 实现了三层配置加载。
+`src/hooks/hooks-config.ts` 实现了三级作用域的配置加载。
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← 项目级（最高优先级）
@@ -154,33 +154,33 @@ stdin JSON
 ```
 
 合并逻辑：
-- `enabledPolicies` - 对三个文件的并集去重
-- `policyParams` - 按策略键名，第一个定义该键的文件完全优先
-- `customPoliciesPath` - 第一个定义该值的文件优先
-- `llm` - 第一个定义该值的文件优先
+- `enabledPolicies` - 对三个文件取去重并集
+- `policyParams` - 按策略名称为键，首个定义该键的文件整体优先
+- `customPoliciesPath` - 首个定义该字段的文件优先
+- `llm` - 首个定义该字段的文件优先
 
-Web 控制台使用 `readHooksConfig()`（仅全局配置）进行读写，因为它不以项目 cwd 调用。
+Web 仪表板使用 `readHooksConfig()`（仅读取全局配置）进行读写，因为它不以项目的 cwd 调用。
 
 ---
 
 ## 策略评估
 
-`src/hooks/policy-evaluator.ts` 按顺序依次运行策略。
+`src/hooks/policy-evaluator.ts` 按顺序运行各策略。
 
 对于每条策略：
 
-1. 查找策略的 `params` 模式（如有）。
-2. 从合并配置中读取 `policyParams[policy.name]`。
-3. 将用户提供的值覆盖到模式默认值之上，生成 `ctx.params`。
-4. 以解析后的上下文调用 `policy.fn(ctx)`。
+1. 查找该策略的 `params` 模式（如有）。
+2. 从合并后的配置中读取 `policyParams[policy.name]`。
+3. 将用户提供的值覆盖模式默认值，生成 `ctx.params`。
+4. 使用解析后的上下文调用 `policy.fn(ctx)`。
 5. 若结果为 `deny`，立即停止并返回该决策。
-6. 若结果为 `instruct`，累积消息并继续。
-7. 若结果为 `allow`，继续到下一条策略。
+6. 若结果为 `instruct`，累积消息并继续执行。
+7. 若结果为 `allow`，继续执行下一条策略。
 
 所有策略运行完毕后：
-- 若有任何 `deny` 返回，输出 deny 响应。
-- 若收集到任何 `instruct` 返回，输出单个 instruct 响应，所有消息拼接在一起。
-- 否则，输出 allow 响应（stdout 为空，退出码 0）。
+- 若存在任意 `deny` 结果，则输出拒绝响应。
+- 若收集到任意 `instruct` 结果，则输出单条指令响应，所有消息以换行符连接。
+- 否则，输出放行响应（stdout 为空，退出码为 0）。
 
 ---
 
@@ -204,15 +204,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-接受 `params` 的策略会声明一个 `PolicyParamsSchema`，其中包含每个参数的类型和默认值。策略评估器在调用 `fn` 之前将解析后的值注入 `ctx.params`。策略函数读取 `ctx.params` 时无需空值保护，因为默认值始终优先应用。
+接受 `params` 的策略会声明一个 `PolicyParamsSchema`，其中包含各参数的类型和默认值。策略评估器在调用 `fn` 之前，会将解析后的值注入 `ctx.params`。策略函数读取 `ctx.params` 时无需进行空值判断，因为默认值始终会被预先填充。
 
-策略内部的模式匹配使用解析后的命令 token（argv），而非原始字符串匹配。这可以防止通过 Shell 操作符注入绕过（例如，针对 `sudo systemctl status *` 的模式不会因在命令后追加 `; rm -rf /` 而被绕过）。
+策略内部的模式匹配使用解析后的命令令牌（argv），而非原始字符串匹配。这可防止通过 Shell 操作符注入绕过规则（例如，针对 `sudo systemctl status *` 的模式，无法通过在命令末尾追加 `; rm -rf /` 来绕过）。
 
 ---
 
 ## 自定义策略
 
-`src/hooks/custom-hooks-registry.ts` 实现了一个基于 `globalThis` 的注册表：
+`src/hooks/custom-hooks-registry.ts` 实现了基于 `globalThis` 的注册表：
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -225,25 +225,25 @@ export function getCustomHooks(): CustomHook[] { ... }
 export function clearCustomHooks(): void { ... }  // 用于测试
 ```
 
-`src/hooks/custom-hooks-loader.ts` 加载用户的策略文件：
+`src/hooks/custom-hooks-loader.ts` 负责加载用户的策略文件：
 
 1. 从配置中读取 `customPoliciesPath`；若不存在则跳过。
 2. 解析为绝对路径；检查文件是否存在。
-3. 将所有 `from "failproofai"` 的导入重写为实际的 dist 路径，使 `customPolicies` 解析到同一个 `globalThis` 注册表。
-4. 递归重写传递性本地导入以确保 ESM 兼容性。
-5. 写入临时 `.mjs` 文件并 `import()` 入口文件。
+3. 将所有 `from "failproofai"` 的导入重写为实际的 dist 路径，使 `customPolicies` 能解析到同一个 `globalThis` 注册表。
+4. 递归重写传递性本地导入，以确保 ESM 兼容性。
+5. 写入临时 `.mjs` 文件，并通过 `import()` 加载入口文件。
 6. 调用 `getCustomHooks()` 获取已注册的钩子。
 7. 在 `finally` 块中清理所有临时文件。
 
-发生任何错误（文件未找到、语法错误、导入失败）时，错误将记录到 `~/.failproofai/hook.log`，加载器返回空数组。内置策略不受影响。
+发生任何错误时（文件未找到、语法错误、导入失败），错误会被记录到 `~/.failproofai/hook.log`，加载器返回空数组。内置策略不受影响。
 
-自定义策略在所有内置策略之后评估。自定义策略的 `deny` 仍会短路后续自定义策略（但所有内置策略此时已完成评估）。
+自定义策略在所有内置策略执行完毕后才会被评估。自定义策略的 `deny` 仍会短路后续自定义策略（但此时所有内置策略已经执行完毕）。
 
 ---
 
 ## 活动日志
 
-每次钩子事件后，处理器会向 `~/.failproofai/hook-activity.jsonl` 追加一行 JSONL：
+每次钩子事件发生后，处理器会向 `~/.failproofai/hook-activity.jsonl` 追加一行 JSONL 记录：
 
 ```json
 {
@@ -258,44 +258,44 @@ export function clearCustomHooks(): void { ... }  // 用于测试
 }
 ```
 
-每条记录对应一条做出非 allow 决策的策略。Allow 决策不记录日志（以保持文件精简）。
+每条记录对应一个做出非放行决策的策略。放行决策不会被记录（以保持文件精简）。
 
 ---
 
-## 控制台架构
+## 仪表板架构
 
-控制台是一个 **Next.js 16** 应用，使用 App Router，结合 React Server Components 和 Server Actions。
+仪表板是一个 **Next.js 16** 应用，使用 App Router，搭配 React Server Components 和 Server Actions。
 
 ```text
 app/
   layout.tsx                  ← 根布局（主题、遥测、导航）
-  projects/page.tsx           ← Server 组件：列出所有 Claude 项目
-  project/[name]/page.tsx     ← Server 组件：列出项目中的会话
+  projects/page.tsx           ← 服务端组件：列出所有 Claude 项目
+  project/[name]/page.tsx     ← 服务端组件：列出项目中的会话
   project/[name]/session/
-    [sessionId]/page.tsx      ← Server 组件：渲染会话查看器
-  policies/page.tsx           ← Client 组件：策略管理 + 活动日志
+    [sessionId]/page.tsx      ← 服务端组件：渲染会话查看器
+  policies/page.tsx           ← 客户端组件：策略管理 + 活动日志
   actions/
-    get-hooks-config.ts       ← 读取配置 + 策略列表
-    update-hooks-config.ts    ← 切换策略开关
+    get-hooks-config.ts       ← 读取配置和策略列表
+    update-hooks-config.ts    ← 启用/禁用策略
     update-policy-params.ts   ← 更新策略参数
     get-hook-activity.ts      ← 分页/搜索活动日志
-    install-hooks-web.ts      ← 从浏览器安装/移除钩子
+    install-hooks-web.ts      ← 通过浏览器安装/移除钩子
   api/
     download/[project]/[session]/route.ts   ← 按 CLI 会话导出（JSONL 或 JSON）
 ```
 
 **数据流：**
 
-- 页面组件调用 `lib/projects.ts` 和 `lib/log-entries.ts` 直接从文件系统读取项目/会话数据（读取操作无 API 层）。
-- 策略页面使用 Server Actions 处理所有变更操作（切换、参数更新、安装/移除）。
+- 页面组件调用 `lib/projects.ts` 和 `lib/log-entries.ts`，直接从文件系统读取项目/会话数据（读取操作无 API 层）。
+- 策略页面的所有变更操作（切换、参数更新、安装/移除）均使用 Server Actions。
 - 会话查看器解析 Claude 的 JSONL 转录格式，并渲染消息和工具调用的时间线。
 
 **关键设计决策：**
 
-- 无数据库——所有持久化状态存储在纯文本文件中（`~/.failproofai/`、`~/.claude/projects/`）。
-- 变更操作使用 Server Actions——无需为 CRUD 操作构建 REST API。
-- 读取页面使用 React Server Components——更快的首屏加载，无需客户端数据获取 bundle。
-- 仅在需要交互性时使用 Client 组件（策略切换、活动搜索、日志查看器）。
+- 无数据库——所有持久化状态均存储于普通文件（`~/.failproofai/`、`~/.claude/projects/`）中。
+- 使用 Server Actions 进行变更操作——CRUD 操作无需 REST API。
+- 读取页面使用 React Server Components——首次加载更快，无需为数据获取打包客户端代码。
+- 仅在需要交互性的地方使用客户端组件（策略切换、活动搜索、日志查看器）。
 
 ---
 
@@ -304,29 +304,29 @@ app/
 ```text
 failproofai/
 ├── bin/
-│   └── failproofai.mjs           # CLI 路由（hook / dashboard / install 等）
+│   └── failproofai.mjs           # CLI 路由器（hook / dashboard / install 等）
 ├── src/hooks/
 │   ├── handler.ts                # 钩子事件流水线
 │   ├── builtin-policies.ts       # 39 条策略定义
 │   ├── policy-evaluator.ts       # 策略执行引擎
 │   ├── policy-registry.ts        # 策略注册与查找
 │   ├── policy-types.ts           # TypeScript 接口定义
-│   ├── hooks-config.ts           # 多层配置加载
+│   ├── hooks-config.ts           # 多级作用域配置加载
 │   ├── custom-hooks-registry.ts  # 基于 globalThis 的钩子注册表
-│   ├── custom-hooks-loader.ts    # 用户 JS 钩子的 ESM 加载器
-│   ├── manager.ts                # 安装/移除/列出操作
+│   ├── custom-hooks-loader.ts    # 用于用户 JS 钩子的 ESM 加载器
+│   ├── manager.ts                # 安装 / 移除 / 列出操作
 │   ├── install-prompt.ts         # 交互式策略选择提示
-│   ├── hook-logger.ts            # 记录日志到 hook.log
+│   ├── hook-logger.ts            # 写入 hook.log 的日志记录
 │   ├── hook-activity-store.ts    # 将活动持久化到 hook-activity.jsonl
 │   └── llm-client.ts             # LLM API 客户端（用于 AI 驱动的策略）
-├── app/                          # Next.js 控制台（页面 + Server Actions）
-├── lib/                          # 共享工具函数
+├── app/                          # Next.js 仪表板（页面 + Server Actions）
+├── lib/                          # 共享工具库
 │   ├── projects.ts               # 从文件系统枚举 Claude 项目
 │   ├── log-entries.ts            # 解析 Claude 转录 JSONL 格式
 │   ├── paths.ts                  # 解析系统路径
 │   └── ...
 ├── components/                   # 共享 React UI 组件
-├── contexts/                     # React context 提供者（主题、自动刷新、遥测）
+├── contexts/                     # React Context Provider（主题、自动刷新、遥测）
 ├── examples/                     # 自定义钩子示例文件
 └── __tests__/                    # 单元测试与端到端测试
 ```

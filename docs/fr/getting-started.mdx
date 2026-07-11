@@ -1,13 +1,13 @@
 ---
-title: Prise en main
-description: "Installez failproofai, activez les politiques et laissez vos agents s'exécuter en toute fiabilité"
+title: Démarrage
+description: "Installez failproofai, activez les politiques et laissez vos agents s'exécuter de manière fiable"
 icon: rocket
 ---
 
 ## Prérequis
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0 (optionnel - uniquement nécessaire pour compiler depuis les sources)
+- **Bun** >= 1.3.0 (optionnel - nécessaire uniquement pour la compilation depuis les sources)
 
 ---
 
@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="Activer les politiques">
-    Les politiques sont des règles qui s'exécutent avant et après chaque appel d'outil d'un agent. Elles interceptent les commandes destructrices, les fuites de secrets et autres modes de défaillance avant qu'ils ne causent des dommages.
+    Les politiques sont des règles qui s'exécutent avant et après chaque appel d'outil d'agent. Elles interceptent les commandes destructrices, les fuites de secrets et d'autres modes d'échec avant qu'ils ne causent des dommages.
 
     ```bash
     failproofai policies --install
     ```
 
-    Cette commande inscrit des entrées de hook dans vos CLIs d'agents installés (le `~/.claude/settings.json` de Claude Code, le `~/.codex/hooks.json` d'OpenAI Codex, le `~/.copilot/hooks/failproofai.json` de GitHub Copilot CLI, le `~/.cursor/hooks.json` de Cursor Agent, le shim de plugin généré par OpenCode dans `~/.config/opencode/plugins/failproofai.mjs` ainsi qu'une entrée dans le tableau `plugin` de `~/.config/opencode/opencode.json`, le `~/.pi/agent/settings.json` de Pi, ou le `~/.gemini/settings.json` de Gemini CLI). Si plusieurs CLIs sont présents, vous serez invité à en sélectionner un ; passez `--cli claude codex copilot cursor opencode pi gemini` (ou tout sous-ensemble) pour ignorer cette invite.
+    Cette commande inscrit des entrées de hook dans vos CLIs d'agent installés (le `~/.claude/settings.json` de Claude Code, le `~/.codex/hooks.json` d'OpenAI Codex, le `~/.copilot/hooks/failproofai.json` de GitHub Copilot CLI, le `~/.cursor/hooks.json` de Cursor Agent, le shim de plugin généré par OpenCode à `~/.config/opencode/plugins/failproofai.mjs` ainsi qu'une entrée d'enregistrement dans le tableau `plugin` de `~/.config/opencode/opencode.json`, le `~/.pi/agent/settings.json` de Pi, le `~/.gemini/settings.json` de Gemini CLI, ou le `~/.hermes/config.yaml` de Hermes). Si plusieurs sont présents, une invite s'affichera ; passez `--cli claude codex copilot cursor opencode pi gemini hermes` (tout sous-ensemble) pour ignorer l'invite.
 
-    La prise en charge de GitHub Copilot CLI, Cursor Agent, OpenCode, Pi et Gemini CLI est en **bêta** — installez avec `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` ou `--cli gemini`.
+    La prise en charge de GitHub Copilot CLI, Cursor Agent, OpenCode, Pi et Gemini CLI est en **bêta** — installez avec `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` ou `--cli gemini`. Hermes (hermes-agent, une passerelle Slack/Telegram) s'installe en portée utilisateur avec `--cli hermes` et constitue **également** une source d'audit hors ligne.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +49,7 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli gemini --scope project
+    failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -66,8 +67,8 @@ bun add -g failproofai
 
     Ouvre un tableau de bord local à l'adresse `http://localhost:8020` où vous pouvez parcourir les sessions, inspecter les appels d'outils et gérer les politiques.
   </Step>
-  <Step title="Lancer votre agent">
-    Démarrez Claude Code comme d'habitude. Si l'agent tente quelque chose de risqué, failproofai l'intercepte automatiquement. Laissez-le tourner sans surveillance et examinez ce qui s'est passé dans le tableau de bord.
+  <Step title="Exécuter votre agent">
+    Démarrez Claude Code comme d'habitude. Si l'agent tente quelque chose de risqué, failproofai l'intercepte automatiquement. Laissez-le tourner sans surveillance et consultez ce qui s'est passé dans le tableau de bord.
   </Step>
 </Steps>
 
@@ -75,7 +76,7 @@ bun add -g failproofai
 
 ## Fonctionnement des politiques
 
-À chaque fois qu'un agent exécute un outil, Claude Code appelle failproofai comme sous-processus :
+Chaque fois qu'un agent exécute un outil, Claude Code appelle failproofai en tant que sous-processus :
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -87,7 +88,7 @@ Chaque politique retourne l'une des trois décisions suivantes :
 
 - **allow** - l'agent continue normalement
 - **deny** - l'action est bloquée et l'agent est informé de la raison
-- **instruct** - du contexte supplémentaire est ajouté au prompt de l'agent
+- **instruct** - du contexte supplémentaire est ajouté à l'invite de l'agent
 
 <Note>
 Les politiques s'exécutent dans votre processus local. Rien n'est envoyé à un service distant.
@@ -95,9 +96,9 @@ Les politiques s'exécutent dans votre processus local. Rien n'est envoyé à un
 
 ---
 
-## Définir des politiques d'équipe avec les politiques par convention
+## Configurer les politiques d'équipe avec les politiques basées sur les conventions
 
-La façon la plus rapide d'établir des standards de qualité au sein de votre équipe est la convention `.failproofai/policies/`. Déposez des fichiers de politiques dans ce répertoire et ils sont chargés automatiquement — pas d'options, pas de modifications de configuration, pas de commandes d'installation.
+La manière la plus rapide d'établir des standards de qualité au sein de votre équipe est la convention `.failproofai/policies/`. Déposez des fichiers de politique dans ce répertoire et ils sont chargés automatiquement — sans indicateurs, sans modifications de configuration, sans commandes d'installation.
 
 <Steps>
   <Step title="Créer le répertoire des politiques">
@@ -105,8 +106,8 @@ La façon la plus rapide d'établir des standards de qualité au sein de votre �
     mkdir -p .failproofai/policies
     ```
   </Step>
-  <Step title="Ajouter des fichiers de politiques">
-    Copiez les exemples de démarrage ou écrivez les vôtres :
+  <Step title="Ajouter des fichiers de politique">
+    Copiez les exemples de démarrage ou rédigez les vôtres :
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
@@ -137,12 +138,12 @@ La façon la plus rapide d'établir des standards de qualité au sein de votre �
     git commit -m "Add team quality policies"
     ```
 
-    Chaque membre de l'équipe qui a failproofai installé récupère ces politiques automatiquement. Aucune configuration individuelle n'est nécessaire.
+    Chaque membre de l'équipe ayant failproofai installé récupère ces politiques automatiquement. Aucune configuration par développeur n'est nécessaire.
   </Step>
 </Steps>
 
 <Tip>
-Committez `.failproofai/policies/` dans votre dépôt pour que toute l'équipe partage les mêmes standards. Au fur et à mesure que votre équipe découvre de nouveaux modes de défaillance, ajoutez des politiques et poussez-les — tout le monde reçoit la mise à jour au prochain `git pull`. Au fil du temps, ces politiques deviennent un standard de qualité vivant qui ne cesse de s'améliorer.
+Validez `.failproofai/policies/` dans votre dépôt afin que toute l'équipe partage les mêmes standards. Au fur et à mesure que votre équipe découvre de nouveaux modes d'échec, ajoutez des politiques et poussez — tout le monde reçoit la mise à jour au prochain `git pull`. Au fil du temps, ces politiques deviennent un standard de qualité vivant qui ne cesse de s'améliorer.
 </Tip>
 
 ---
@@ -156,8 +157,8 @@ Toute la configuration et les journaux restent sur votre machine :
 | `~/.failproofai/policies-config.json` | Configuration globale des politiques |
 | `~/.failproofai/hook-activity.jsonl` | Historique d'exécution des hooks |
 | `~/.failproofai/hook.log` | Journal de débogage pour les erreurs de hooks personnalisés |
-| `.failproofai/policies-config.json` | Configuration par projet (commitée) |
-| `.failproofai/policies-config.local.json` | Remplacements personnels (ignorés par git) |
+| `.failproofai/policies-config.json` | Configuration par projet (validée dans git) |
+| `.failproofai/policies-config.local.json` | Substitutions personnelles (ignorées par git) |
 
 ---
 

@@ -3,7 +3,7 @@
 ## 0.0.13-beta.2 — 2026-07-10
 
 ### Fixes
-- Skip the `require-*-before-stop` workflow gates during Claude Code plan mode (`permission_mode: "plan"`) — plan mode makes no commits/pushes/PRs by design, so the gates were wrongly demanding actions plan mode forbids (e.g. `git push` with nothing to push, blocking the agent from finishing). (#487)
+- Skip the `require-*-before-stop` workflow gates during Claude Code plan mode (`permission_mode: "plan"`) — plan mode makes no commits/pushes/PRs by design, so the gates were wrongly demanding actions plan mode forbids (e.g. `git push` with nothing to push, blocking the agent from finishing). (#488)
 
 ## 0.0.13-beta.1 — 2026-07-10
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.13-beta.2 — 2026-07-11
+
+### Docs
+- Fix translation regressions from the #486 docs sync: strip hallucinated `{#…}` heading-ID syntax that broke MDX parsing (`ja/built-in-policies`), restore dropped YAML frontmatter (`tr/cli/hook`) and the `--cli …|hermes` inline code span (`he/configuration`), and un-translate an inline-code placeholder (`de/cli/auth`). (#487)
+
 ## 0.0.13-beta.1 — 2026-07-10
 
 ### Features

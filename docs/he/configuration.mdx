@@ -202,7 +202,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← יורד לכלל ה
   - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**היקף משתמש בלבד** — Hermes אין לו תצורת פרויקט/מקומית). Hermes הוא **שער** Slack/Telegram, כך שהתקנה אחת מיירטת קריאות כלים מכל פלטפורמה (Slack/Telegram/cli/cron) **וגם** תוך-אג'נטים. רשומות Hook הן זוג `{command, timeout}` (timeout בשניות) תחת מפת `hooks:` שבאופן events snake_case של Hermes (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`); המטפל מנרמל אירועים דרך `HERMES_EVENT_MAP` וגם שמות כלים דרך `HERMES_TOOL_MAP` כך שמדיניות מובנות נשרפות ללא שינוי. התצורה נערכת דרך תעודת YAML דורכת-שומרת-הערות `Document` כך שהגדרות אחרות של המנהל שורדות, והתקנה מוגדרת `hooks_auto_accept: true` כך השער חסר-TTY מריץ את ה-hooks ללא בקשת הסכמה. המעריך משדרת חוזה `{"decision":"block","reason"}` stdout של Hermes (Hermes מתעלם מקודי יציאה). **מגבלות:** Hermes אין להשקע stop `Stop` של turn-end, כך שה`require-*-before-stop` מובנה לעולם לא נשרפים עבורו (בלא הגבלה, לא שבור); `instruct` מדרדר ל-allow-עם-logged-note (אין ערוץ הקשר נוסף); ו-redaction-secret של פלט (`sanitize-*`) לא יכול לשכתב פלט כלים דרך חוזה shell-hook. Hermes הוא **גם** מקור ביקורת **offline** — הדשבורד קורא ישיבות שער שלו ישירות מ`~/.hermes/state.db`.
 - **`policies-config.json`** — אומר ל-failproofai איזו מדיניות להעריך ועם אילו פרמטרים (משותף על פני כל ה-CLI של ה-agent)
 
-עבור מטרה לחלק agent מסוים העבור space-separated או חוזר על כל תת-קבוצה:
+עבור `--cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes` למטרה סוכן ספציפי (space-separated או חוזר לכל תת-קבוצה):
 
 ```bash
 failproofai policies --install --cli codex --scope project

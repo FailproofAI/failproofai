@@ -444,8 +444,10 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         { cwd: env.cwd, env: { ...process.env, HOME: env.home, FAILPROOFAI_TELEMETRY_DISABLED: "1", FAILPROOFAI_BINARY_OVERRIDE: BINARY_PATH } },
       );
       // Run `pi list` under the fixture HOME so it doesn't pick up the
-      // developer's real ~/.pi/agent/settings.json state.
-      const result = spawnSync("pi", ["list"], {
+      // developer's real ~/.pi/agent/settings.json state. pi ≥0.80 no longer
+      // trusts project-local .pi/settings.json by default — `--approve`
+      // opts in per-command so `pi list` includes the project package we wrote.
+      const result = spawnSync("pi", ["list", "--approve"], {
         cwd: env.cwd,
         encoding: "utf8",
         env: { ...process.env, HOME: env.home },
@@ -469,7 +471,11 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         `bun ${BINARY_PATH} policies --uninstall --cli pi --scope project`,
         { cwd: env.cwd, env: baseEnv },
       );
-      const result = spawnSync("pi", ["list"], {
+      // --approve: pi ≥0.80 needs explicit per-command trust to read the
+      // project-local .pi/settings.json (see the install roundtrip above).
+      // Without it `pi list` prints "No packages installed." unconditionally,
+      // making this negative assertion pass vacuously.
+      const result = spawnSync("pi", ["list", "--approve"], {
         cwd: env.cwd,
         encoding: "utf8",
         env: { ...process.env, HOME: env.home },

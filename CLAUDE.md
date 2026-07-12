@@ -195,6 +195,15 @@ v0.72.1):
 Note: `~/.pi/settings.json` does NOT exist on a fresh install; user-scope
 settings live one level deeper under `~/.pi/agent/`.
 
+**Project-local trust (pi ≥0.80).** Newer Pi (verified against pi-coding-agent
+v0.80.3) no longer trusts a **project-local** `.pi/settings.json` by default:
+`pi list` gained a `--approve`/`-a` flag ("Trust project-local files for this
+command"), and without it project packages are silently ignored (`pi list`
+prints `No packages installed.`). User-scope packages
+(`~/.pi/agent/settings.json`) are always trusted. The live `pi list` roundtrip
+tests in `__tests__/e2e/hooks/pi-integration.e2e.test.ts` pass `--approve` so
+they see the project-scope package failproofai's installer writes.
+
 **Schema** is a flat string array — `{"packages": ["./relative/path", ...]}`.
 Each entry is a path Pi resolves relative to the directory containing
 `settings.json` (so `<cwd>/.pi/` for project scope). For dogfood we write

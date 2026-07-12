@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.13-beta.3 — 2026-07-12
+
+### Fixes
+- Sync audit of all seven agent CLI hook harnesses against upstream docs: Claude, Codex, Copilot, Cursor, and OpenCode are up to date (no hook-event-name or settings-file-shape drift). Flags two `*_TOOL_MAP` drifts for reviewer decision rather than auto-editing (removing a live tool mapping on a possibly-reorganized docs page would regress canonicalization): Gemini's `save_memory` tool is no longer in the upstream tools reference (`GEMINI_TOOL_MAP` entry now stale), and Pi's `PI_TOOL_MAP` maps `glob`, which is absent from the audited upstream tool set (`find`/`ls` documented instead). Pi's larger upstream event surface (33 events) vs the repo's curated 7 is intentional (same design as Cursor), not drift. (#489)
+
 ## 0.0.13-beta.2 — 2026-07-10
 
 ### Fixes

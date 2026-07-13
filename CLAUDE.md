@@ -201,8 +201,10 @@ v0.80.3) no longer trusts a **project-local** `.pi/settings.json` by default:
 command"), and without it project packages are silently ignored (`pi list`
 prints `No packages installed.`). User-scope packages
 (`~/.pi/agent/settings.json`) are always trusted. The live `pi list` roundtrip
-tests in `__tests__/e2e/hooks/pi-integration.e2e.test.ts` pass `--approve` so
-they see the project-scope package failproofai's installer writes.
+tests in `__tests__/e2e/hooks/pi-integration.e2e.test.ts` detect the installed
+Pi version and pass `--approve` only on ≥0.80 (older Pi trusts project files
+unconditionally and rejects the unknown flag), so they see the project-scope
+package failproofai's installer writes on either side of the cutoff.
 
 **Schema** is a flat string array — `{"packages": ["./relative/path", ...]}`.
 Each entry is a path Pi resolves relative to the directory containing

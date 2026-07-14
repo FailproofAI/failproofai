@@ -1,0 +1,610 @@
+---
+title: "トラブルシューティング"
+description: "AgentEye トラブルシューティングドキュメント。"
+---
+
+
+このガイドでは、本番環境で発生しやすい症状を具体的な診断方法と修正手順にマッピングしています。追加の監視インフラを構築しなくても、既存のツールでインシデントを解決できます。対象範囲は、サーバー、コレクター、ダッシュボード、AIアシスタント、Python SDK、ヘルスおよび証明書モニタリング、バックアップ、ClickHouse連携アナリティクス、マルチテナントです。
+
+ダッシュボードのページは `/<org-slug>/…` 配下に組織スコープされており、イベントストリームは組織ホーム (`/<org-slug>/`) です。このガイドのページ名（例：`/sessions`、`/queries`）は、これらの組織スコープのルートを指します。
+
+---
+
+## ログの確認
+
+AgentEye はロギングや監視スタックをバンドルしていません。サーバーとダッシュボードはどちらも構造化ログを **stdout** に書き出すため、`kubectl` や `docker` で直接読み取れます。アグリゲーターは不要です。
+
+### Kubernetes
+
+サーバーとダッシュボードのライブログを表示する：
+
+```bash
+kubectl logs -n agenteye -l app=server    -f --timestamps
+kubectl logs -n agenteye -l app=dashboard -f --timestamps
+```
+
+便利なバリエーション：
+
+| 目的 | コマンド |
+|---|---|
+| 直近200行（フォローなし） | `kubectl logs -n agenteye -l app=server --tail=200 --timestamps` |
+| 前回クラッシュ時のログ | `kubectl logs -n agenteye <pod-name> --previous` |
+| 全レプリカを一括テール | `kubectl logs -n agenteye -l app=server --max-log-requests=10 -f` |
+| Postgres（StatefulSet） | `kubectl logs -n agenteye postgres-0 -f` |
+
+### Docker Compose
+
+```bash
+docker logs -f agenteye-server
+docker logs -f agenteye-dashboard
+```
+
+### ダッシュボードとサーバー間の単一リクエストの追跡
+
+ダッシュボードの各リクエストには `request_id` が付与され、`x-request-id` ヘッダーを通じてサーバーへ伝搬されます。サーバーはレスポンスヘッダーと、そのリクエストに関するすべてのログ行にこのIDを含めます。リクエストをエンドツーエンドで追跡するには：
+
+1. レスポンスヘッダーからIDを取得する：
+   ```bash
+   curl -i https://dashboard.example.com/api/events | grep -i x-request-id
+   # x-request-id: 9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   ```
+2. 両方のPodのログから該当IDを検索する：
+   ```bash
+   REQ=9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   kubectl logs -n agenteye -l app=dashboard --tail=5000 | grep "$REQ"
+   kubectl logs -n agenteye -l app=server    --tail=5000 | grep "$REQ"
+   ```
+
+ダッシュボードの `proxy passthrough`、`withAuth: authorized`、`upstream response` の各行と、サーバーの `http request received` / `http request completed` のペアが、同じ `request_id` を共有しているのを確認できます。
+
+### JSON ログと `jq`
+
+ダッシュボードに `AE_LOG_JSON=1` を設定（`NODE_ENV=production` の場合はデフォルトで有効）すると、1行1JSONオブジェクト形式で出力されます。構造的にフィルタリングできます：
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.level == "warn" or .level == "error")'
+
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.route == "POST /api/keys")'
+```
+
+Rust サーバーは `key=value` 形式のトレースログを出力するため、`jq` なしで grep できます：
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'status=5'   # 5xx
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'actor_key_id='
+```
+
+### ログの詳細度を上げる
+
+| コンポーネント | 環境変数 | 例 |
+|---|---|---|
+| サーバー | `RUST_LOG` | `RUST_LOG=debug` または `RUST_LOG=agenteye_server=debug,info` |
+| ダッシュボード | `AE_LOG_LEVEL` | `AE_LOG_LEVEL=debug` |
+
+サーバーで `debug` を設定すると、認証ごとに `api key authenticated` ログが追加されます。ダッシュボードで `debug` を設定すると、`upstream request`、`session validated`、`proxy passthrough` の各ログが追加されます。
+
+### ログの保持期間
+
+コンテナの stdout は揮発性です。kubelet はログファイルをローテーション（デフォルトでコンテナあたり約10MiB）し、ディスク上に少数のファイルのみ保持します。Podが削除されるとログも失われます。より長期間の保持やPodをまたいだ検索が必要な場合は、`/var/log/containers/` をテールするログコレクター（Loki、CloudWatch、Cloud Logging、Datadogなど）をクラスターに設定してください。AgentEye は特定の選択を要求・規定しません。
+
+---
+
+## 認証の問題
+
+### `docker pull` が "unauthorized" で失敗する
+
+`AGENTEYE_TOKEN` を使って Docker を GHCR に対して認証済みであることを確認してください：
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+トークンには `agenteye-enterprise` 組織に対する `read:packages` 権限が必要です。トークンが機能しない場合は `support@exosphere.host` にお問い合わせください。
+
+### `gh release download` が 404 または 401 を返す
+
+- `AGENTEYE_TOKEN` がシェルにエクスポートされていることを確認する：`echo $AGENTEYE_TOKEN`
+- `GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download ...` の形式で使用していることを確認する（`gh` CLI は `GITHUB_TOKEN` を読み取ります）
+- トークンには `agenteye-enterprise/releases` に対する `contents:read` が必要です
+
+---
+
+## サーバーの問題
+
+### サーバーが "invalid port number" で失敗する
+
+`POSTGRES_PASSWORD`（または他の認証情報）にURLで特殊扱いされる文字（`/`、`+`、`=`）が含まれており、`DATABASE_URL` のパースが失敗しています。16進エンコードを使ってパスワードを再生成してください：
+
+```bash
+NEW_PASS=$(openssl rand -hex 24)
+```
+
+その後、Kubernetes シークレットと Postgres 内のパスワードを更新（または Docker Compose 用の `.env` を再作成）し、サーバーを再起動してください。詳細な手順は [enterprise-docs/kubernetes-deployment.md](/ja/agenteye/kubernetes-deployment) の「PostgreSQL credentials」セクションを参照してください。
+
+### サーバーが起動直後に終了する
+
+コンテナのログを確認してください：
+
+```bash
+docker logs agenteye-server
+```
+
+よくある原因：
+- `DATABASE_URL` が未設定または形式が不正：サーバーはエラーをログに記録して終了します。
+- Postgres に到達できない：Postgres コンテナまたはマネージドDBが稼働しており、ホスト/ポートが正しいことを確認してください。
+- マイグレーションが失敗した：SQLエラーのログを確認してください。
+
+### `GET /health` が 200 以外を返すかタイムアウトする
+
+初回起動時にサーバーがマイグレーションを実行中の可能性があります。数秒待ってから再試行してください：
+
+```bash
+curl http://localhost:8080/health
+```
+
+問題が続く場合は、`docker logs agenteye-server` でエラーを確認してください。
+
+### `GET /ready` が 503 を返す
+
+`/ready` はレディネスプローブです。サーバーが **Postgres または ClickHouse** に到達できない場合に `503` を返します。レスポンスボディに問題のある依存関係が記載されています：
+
+```bash
+curl -s http://localhost:8080/ready
+# {"status":"not_ready","checks":{"postgres":"ok","clickhouse":"down","redis":"ok"}}
+```
+
+`down` と報告された依存関係を修正してください：ClickHouse/Postgres の Pod は `Running` ですか？`CLICKHOUSE_URL` / `DATABASE_URL` は正しく、到達可能ですか？Kubernetes では、`/ready` が回復するまで Pod は `NotReady` 状態になります。これは想定動作であり、まさにヘルスモニタリングがアラートを発するシグナルです。Redis は readiness の失敗原因にはなりません。報告はされますが、readiness を失敗させません。
+
+### コレクターが 401 Unauthorized を返す
+
+コレクターの API キーに `events:add` 権限がないか、キーが無効化されています。正しい権限で新しいキーを作成してください：
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-collector","permissions":["events:add"]}'
+```
+
+### 認証済みリクエストが突然遅くなった（〜5ms から〜200ms に）
+
+これは `REDIS_URL` が設定されているのに Redis がダウンしているときの症状です。すべてのキャッシュ呼び出しが100ms後にタイムアウトし、Postgres にフォールスルーします。認証と OTP のパスでは、リクエストごとにこのフォールスルーが2回発生します。
+
+サーバーログで確認する：
+
+```
+auth cache: L2 get failed error=redis call timed out
+```
+
+対処法：
+
+1. `redis-cli -h <your-redis> ping` で Redis がクラスターネットワーク上で到達可能か確認する。
+2. Redis が一時的にダウンして復旧した場合は、**サーバー Pod を再起動**してください。`redis::aio::ConnectionManager` は基盤となる接続が切断された後に確実に再接続しないため、Pod の再起動によってクリーンに新しい接続を確立します。ダッシュボードも同様です。
+3. 現時点で Redis を使いたくない場合は、デプロイメントから `REDIS_URL` を削除して再起動してください。両サービスはキャッシュなしで動作します（正確性は保たれ、レイテンシは Redis 導入前のベースラインに戻ります）。
+
+### サーバーのログに `OTP request rate-limited` が記録されるが、ユーザーは一度しか試みていないと言っている
+
+Redis が到達不能だったかどうかを確認してください。フォールバックパスは `SELECT COUNT(*) FROM otp_codes WHERE created_at > now() - interval '15 minutes'` を使用しており、既に生成された OTP の行が見えます。ユーザーが1時間ほど「再送信」をクリックし続けていた場合、15分のウィンドウ内にまだ5件以上のコードが含まれている可能性があります。ウィンドウが切れるまで待つか、`DELETE FROM otp_codes WHERE user_id = $1 AND created_at > now() - interval '15 minutes'`（オペレーターコンソール）で解消できます。
+
+### `ALLOWED_EMAILS` / `SESSION_TTL_SECS` / `OTP_TTL_SECS` を変更して再起動したが、何も変わらない
+
+これらの環境変数は**初回起動時のシードのみ**です。`settings` テーブルに対応するキーの行が存在する場合、その行が正規の設定です。環境変数は初回起動時に一度だけ読み込まれ、以降の再起動では無視されます。
+
+初回起動後に変更するには、ダッシュボードにログインして `/settings` で編集してください。変更はすべてのレプリカに数秒以内に適用されます。再起動は不要です。
+
+環境変数から強制的に再シードする必要がある場合（まれで、通常は開発時のみ有用）は、`DELETE FROM settings WHERE key = '<key>'` を実行してサーバーを再起動してください。次回起動時に現在の環境変数の値が読み込まれます。本番環境では `/settings` での編集が推奨されます。
+
+---
+
+## コレクターの問題
+
+### コレクターは起動しているが、ダッシュボードにイベントが表示されない
+
+1. コレクターが稼働していることを確認する：`systemctl status agenteye-collector`（Linux）またはプロセスを確認する。
+2. `AGENTEYE_URL` が `http(s)://your-server-host:8080/events`（`/events` パスに注意）を指していることを確認する。
+3. ワンショットフラッシュを実行して即座に出力を確認する：
+   ```bash
+   agenteye-collector flush
+   ```
+4. Python SDK が実際にファイルを書き込んでいるか確認する：`ls ${AGENTEYE_HOME:-~/.agenteye}/events/`
+5. `${AGENTEYE_HOME:-~/.agenteye}/failed/` にファイルが存在する場合、アップロードが失敗しています。コレクターのログでエラーを確認してください。4xx（不正なキーまたはURL）またはネットワークの問題の可能性があります。
+
+### `$AGENTEYE_HOME/events/` にファイルが蓄積され、アップロードされない
+
+- コレクターが起動していない可能性があります。`agenteye-collector start` で起動してください。起動時に既存のイベントを自動的にフラッシュします。
+- コレクターのヘルスを確認する：`agenteye-collector health`
+- コレクターは稼働しているがサーバーに到達できない可能性があります。コレクターとサーバーホスト間のファイアウォールルールを確認してください。
+
+### `$AGENTEYE_HOME/failed/` 内のファイル
+
+ファイルはすべての再試行（デフォルト：指数バックオフで5回）が尽きた後に `failed/` に移動されます。これは以下のいずれかを意味します：
+- サーバーが 4xx エラーを返した（不正なキー、誤ったURL、またはペイロードの問題）
+- 全リトライウィンドウの間、サーバーに到達できなかった
+
+根本的な問題を修正してから、手動で再キューに入れてください：
+
+```bash
+mv ${AGENTEYE_HOME:-~/.agenteye}/failed/*.jsonl ${AGENTEYE_HOME:-~/.agenteye}/events/
+agenteye-collector flush
+```
+
+### コレクターがすべてのアップロードで `network error` を報告する（TLSハンドシェイクが失敗）
+
+`curl -k` で `AGENTEYE_URL` に対して成功するが、コレクターバイナリがすべてのアップロードで `error sending request for url (...)` エラーで失敗する場合、AgentEye サーバーが公的に信頼された CA によって署名されていない TLS 証明書を提示しています。
+
+**本番環境での対処法**は `deploy/base/certificates/domain.env` で設定された ACME インジェストホスト名を使用することです（[`kubernetes-deployment.md`](/ja/agenteye/kubernetes-deployment) のフェーズ 3.1 / 4.2 を参照）。`INGEST_DOMAIN` がパブリックの Traefik LB に解決され、cert-manager が Let's Encrypt 証明書を発行したら、コレクターはシステムトラストストアでサーバー証明書を検証します。**`AGENTEYE_TLS_CA` は不要**です。以前の自己署名デプロイに対して設定していた場合は削除してください。
+
+**症状：コレクターは昨日まで動作していたが、約90日後に失敗するようになった。** これは、デプロイメントが `ingest-tls` に従来の `selfsigned` 発行者を使い続けていることを意味します。90日間隔で証明書がローテーションされ、ピン留めされた CA ファイルが古くなっています。恒久的な修正として、クラスターを ACME 発行者に切り替えてください（デプロイガイドのフェーズ 3.1）。短期的な回避策として、現在のサーバー証明書を再抽出して `AGENTEYE_TLS_CA` を更新します：
+
+```bash
+kubectl get secret ingest-tls-cert -n agenteye \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /etc/agenteye/server-ca.crt
+```
+
+```bash
+export AGENTEYE_TLS_CA=/etc/agenteye/server-ca.crt
+agenteye-collector flush
+```
+
+`AGENTEYE_TLS_CA` は追加のトラストアンカーを追加します。標準のパブリックルートは引き続き信頼されます。
+
+### デプロイ後に `ingest-tls` 証明書が `Ready: False` のままになる
+
+```bash
+kubectl describe certificate ingest-tls -n agenteye
+```
+
+`Events` と参照されている `Order` / `Challenge` を確認してください。よくある原因：
+
+- **DNS がパブリック LB に解決されていない。** HTTP-01 バリデーターが `INGEST_DOMAIN` に到達できません。`dig +short INGEST_DOMAIN` で確認してください。`traefik-public` ロードバランサーの `EXTERNAL-IP` と同じアドレスに解決されるはずです。DNS が伝搬されると cert-manager は自動的に再試行します。証明書を削除する必要はありません。
+- **ロードバランサー/セキュリティグループでポート80がブロックされている。** HTTP-01 では、Let's Encrypt のパブリックバリデーターからポート80に到達可能である必要があります。上流の WAF や SG が `:80` を制限している場合は開放してください（Traefik の設定は HTTPS にリダイレクトしますが、Boulder はリダイレクトに従いレスポンスを受け入れます）。
+- **`dnsNames` が置換されていない。** `kubectl get certificate ingest-tls -n agenteye -o jsonpath='{.spec.dnsNames}'` が `INGEST_DOMAIN_PLACEHOLDER` を表示する場合は、`domain.env` のステップをスキップしています。`domain.env.example` から作成して再適用してください。
+- **Let's Encrypt によるレート制限。** 同一ホスト名への繰り返しの失敗したオーダーは、重複証明書または検証失敗の制限に達します。少なくとも1時間待ってから再試行してください。正確なレート制限メッセージは Order のステータスで確認できます。
+
+### `dashboard-tls` 証明書が `Ready: False` のままになる / ブラウザに警告が表示される
+
+`ingest-tls` と同じ診断フロー（`kubectl describe certificate dashboard-tls -n agenteye`）です。DNS、ポート80、プレースホルダー、レート制限の原因がすべて該当するほか、ダッシュボード固有の原因が2つあります：
+
+- **`DASHBOARD_DOMAIN` が誤ったロードバランサーに解決される。** *ダッシュボード* の Traefik LB を指している必要があります。パブリックインジェスト用ではありません。ホスト名を `dig +short` で確認し、ダッシュボードの LB アドレスと比較してください。
+- **ダッシュボードの Traefik インスタンスがチャレンジを処理できない。** cert-manager の HTTP-01 ソルバー用にスコープされた Ingress プロバイダーを有効にするバンドルされたダッシュボード値ファイルでインストールする必要があります。これがないとソルバーがルーティングできず、Order は永遠に `pending` 状態のままになります。提供された values でインスタンスをアップグレードしてください。保留中のチャレンジは自動的に完了します。
+- **ロードバランサーが IP 制限されていた。** ソースレンジはポート80にも適用され、Let's Encrypt のバリデーターをブロックします。初回発行時と約75日ごとの更新時の両方に影響します。LB を再開放するか、ロックダウン前にサポートと DNS-01 ソルバーについて調整してください。
+
+発行が失敗している間、ダッシュボードは以前の証明書（または新規インストールの場合は ingress のデフォルト）を引き続き提供します。アクセスはブラウザ警告で劣化しますが、ダウンにはなりません。
+
+### ダッシュボードが信頼された証明書を取得した後も、CLI が TLS 検証をスキップし続ける
+
+`--insecure` はログイン時に `cli.json` に保存されます。ダッシュボードが公的に信頼された証明書を提供するようになったら、`agenteye --base-url https://<your-dashboard-domain> --secure login` で再ログインしてください。検証が有効に保存され、起動時の警告が消えます。
+
+---
+
+## ダッシュボードの問題
+
+### `ADMIN_EMAIL` ユーザーを無効化または編集できない
+
+これは仕様です。`ADMIN_EMAIL` に一致するユーザーはサーバーの起動のたびに保護済みとしてマークされます。ダッシュボードはその行の無効化ボタンを非表示にし、API は `DELETE /users/:id` および `PUT /users/:id` に対して `403 Forbidden` を返します。データベーストリガーも保護された行を無効化しようとする直接の `UPDATE` 文を拒否します。
+
+ブートストラップ管理者をローテーションするには、環境の `ADMIN_EMAIL` を変更してサーバーを再起動してください。新しいメールアドレスが保護済みとしてアップサートされます。以前の管理者はデータベースでフラグが解除されるまで保護済み状態のままですが（以前のメールアドレスを明示的に削除するまでは有効な管理者のままなので通常は問題ありません）。
+
+### ダッシュボードにイベントが表示されない
+
+1. ダッシュボードの環境変数（`AGENTEYE_SERVER_URL`、`AGENTEYE_API_KEY`）のサーバー URL と API キーが正しいことを確認する。
+2. ダッシュボードの API キーに `events:read` 権限が必要です。
+3. イベントが実際に取り込まれているか確認する：`curl http://your-server:8080/events -H "Authorization: Bearer $ADMIN_KEY"`
+
+### `/errors` は空だが `/events` に赤い行が表示される
+
+新しいバージョンの SDK は、専用の `event_type: "error"` 行としてではなく、ペイロードに `outcome: "error"` を持つ `agent_end` / `tool_result` / `hook_completed` イベントとして失敗を送信します。`/errors` ページは現在、両方にマッチします。`/events` ストリームが赤く表示する行（明示的な `event_type='error'`、ペイロードの `outcome`/`status` が失敗セット内、`is_error: true`、または truthy な `error` フィールド）はすべて `/errors` に表示されます。以前、`/events` で赤い行が見えているのに「このウィンドウにエラーなし」と表示されていた場合は、ダッシュボードとサーバーを一緒にアップグレードしてください（拡張フィルターは `GET /events` に対する `errored=true` です）。2つのビューが一致するようになります。
+
+### 広い時間範囲で `/models`、`/tools`、`/hooks` の読み込みが遅いまたは失敗する
+
+**症状：** 大規模なイベントテーブル（数百万行）で、`/models`、`/tools`、`/hooks` を開いたり、時間範囲を `7d`、`30d`、`all` に広げたりすると、チャートがスピンしてからロードエラーが表示されます。サーバーは `latency_aggregate` リクエストに対して ClickHouse の `MEMORY_LIMIT_EXCEEDED`（コード 241）またはクエリタイムアウトをログに記録します。
+
+**原因：** 古いビルドでは、これらのページのレイテンシおよびディストリビューション集計を、完全な生イベント `payload` を読み込んでリクエスト/レスポンスイベントをインメモリのソートと結合でペアリングするクエリで計算していました。そのため、ピーク時のクエリメモリはウィンドウのサイズに比例して増加し、ビジーなテナントで広い範囲を指定すると ClickHouse のクエリごとのメモリ上限を超える可能性がありました。
+
+**修正：** この修正を含むビルドにアップグレードしてください。集計はコンパクトなプロモートカラムのみを読み込み、ストリーミング集計でイベントをペアリングするようになりました。ピーク時のメモリが生ペイロードに比例して増加しなくなるため、広い範囲でもメモリ上限内に収まり、短時間で返るようになります。この改善は完全にクエリ側のものであり、次回のページロード時に既存のすべてのデータに適用されます。再取り込みやバックフィルは不要です。
+
+### ダッシュボードが読み込まれない / 空白ページ
+
+ダッシュボードコンテナのログを確認してください：
+
+```bash
+docker logs agenteye-dashboard
+```
+
+最もよくある原因は、`AGENTEYE_SERVER_URL` または `AGENTEYE_API_KEY` が未設定か、到達不能なサーバーを指していることです。
+
+### ダッシュボードアナリティクス / テレメトリ
+
+ダッシュボードはデフォルトで匿名のプロダクト使用状況アナリティクスを PostHog に送信します。ダッシュボード自身の `/ingest` パス（`https://us.i.posthog.com` へのリバースプロキシ）を経由して送信されます。ファーストパーティとして送信することで、ブラウザの広告ブロッカーに遮断されません。これはダッシュボードのコア機能とは独立しています：
+
+- PostHog に到達するのは **ダッシュボードコンテナ**（ブラウザではなく）です。`https://us.i.posthog.com` へのアウトバウンドアクセスがブロックされている場合、テレメトリは静かにno-opになります。ダッシュボードは正常に動作し、ユーザーへのエラーは表示されません。
+- エージェント、セッション、イベントデータは一切含まれません。ダッシュボードのUI使用状況のみです。
+- テレメトリを完全に無効にするには、ダッシュボードコンテナに `AE_ANALYTICS_DISABLED=1` を設定して再起動してください。デプロイガイドの [テレメトリとプライバシー](/ja/agenteye/deployment#telemetry--privacy) を参照してください。
+
+### CLI アナリティクス / テレメトリ
+
+`agenteye` CLI はデフォルトで匿名の使用状況アナリティクスを PostHog に送信します。実行されたコマンド、成功/終了ステータス、所要時間が対象です。これは CLI の機能とは独立しています：
+
+- PostHog の `https://us.i.posthog.com` に直接到達するのは **CLI を実行しているマシン**です。アウトバウンドアクセスがブロックされている場合、テレメトリは静かにno-opになります（送信は時間制限があるため、コマンドを遅延させることはありません）。CLI は正常に動作します。
+- エージェント、セッション、イベントデータは一切含まれません。コマンドの**引数やフラグの値**（ダッシュボードURL、トークン、メール、セッションID、クエリフィルター）は送信されません。
+- 無効にするには、CLI の環境に `AGENTEYE_ANALYTICS_DISABLED=1`（またはクロスツール共通の `DO_NOT_TRACK=1`）を設定してください。CLI ガイドの [テレメトリとプライバシー](/ja/agenteye/cli#telemetry--privacy) を参照してください。
+
+---
+
+## AIアシスタントの問題
+
+完全なセットアップは [enterprise-docs/assistant.md](/ja/agenteye/assistant) を参照してください。
+
+### アシスタントバブルが表示されない
+
+バブルは以下の**すべて**が満たされている場合にのみ表示されます：
+
+- サインインしているユーザーに `agent:use` 権限がある。
+- `AGENTEYE_AGENT_URL` がダッシュボードに設定されており、`agent` サービスに到達できる。
+- `agent` サービスに LLM エンドポイントが設定されている（`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL` 経由のゲートウェイ、または Bedrock/Vertex）。何も設定されていない場合、agent は「not configured」と報告し、バブルは非表示のままになります。
+
+ダッシュボードホストから agent のヘルスを確認してください：`curl http://agent:9100/health` は `{"status":"ok","llm_configured":true,...}` を返すはずです。
+
+### アシスタントが何かを読めないと言う
+
+ツールはユーザーごとに制限されています。ユーザーに `evaluations:read`（または `events:read`、`dashboards:read`）がない場合、対応するツールは提供されず、アシスタントはそのデータを読めないと言います。関連する読み取り権限を付与してください。
+
+### メッセージ送信時に "assistant not configured"（HTTP 503）が発生する
+
+`agent` コンテナに LLM エンドポイントが設定されていないか、ダッシュボードの `AGENTEYE_AGENT_TOKEN` が agent のものと一致していません。両方を設定して再起動してください。
+
+### `agent` コンテナが負荷の下で再起動する / OOM になる
+
+各会話はショートリブドの子プロセスを起動します。コンテナが init プロセスで実行されていることを確認してください（イメージは `tini` を使用しています。Compose では `init: true` を設定）。また、十分なメモリ制限を設定してください。必要に応じて `AGENTEYE_AGENT_MAX_STEPS` を下げてください。
+
+---
+
+## CLI の問題
+
+### `agenteye` が `ModuleNotFoundError: No module named 'click'` で起動に失敗する
+
+バージョン **0.1.6** の `agenteye` CLI の新規インストールが起動時にクラッシュすることがあります：
+
+```
+ModuleNotFoundError: No module named 'click'
+```
+
+0.1.6 は `typer` によって `click` が間接的にインストールされることを前提としていましたが、現在の `typer` のリリースではそれが行われなくなり、クリーンな環境でパッケージが不足します。**0.1.7 以降にアップグレード**してください。`click` への直接依存が追加されています：
+
+```bash
+pipx upgrade agenteye      # pipx でインストールした場合（または：pipx install --force agenteye）
+uv tool upgrade agenteye   # uv でインストールした場合
+pip install --upgrade agenteye
+```
+
+インストールガイダンスは [enterprise-docs/cli.md](/ja/agenteye/cli) を参照してください。
+
+---
+
+## Python SDK の問題
+
+### `$AGENTEYE_HOME/events/` にファイルが表示されない
+
+SDK はイベントをバッファリングし、デフォルトで500msごとにフラッシュします。フラッシュ前にプロセスが終了すると、イベントが失われる可能性があります。短命なスクリプトでは `agenteye.configure(flush_interval=0.1)` でフラッシュを早くするか、少なくとも1フラッシュサイクル分プロセスを実行し続けてください。
+
+`AGENTEYE_HOME` が設定されている場合は、SDK が `~/.agenteye/events/` ではなく `$AGENTEYE_HOME/events/` に書き込んでいることを確認してください（SDK ≥ 0.0.1b5 が必要）。
+
+### `ValueError: Reserved field names cannot be used as custom fields`
+
+`timestamp`、`type`、`environment` という名前は予約済みであり、カスタムフィールドとして使用できません。これらのいずれかを渡すと以下のエラーが発生します：
+
+```
+ValueError: Reserved field names cannot be used as custom fields: [...]
+```
+
+問題のあるカスタムフィールド名を変更してください。`session_id` と `agent_id` はカスタムフィールドではなくイベント呼び出しの明示的なパラメーターであることに注意してください。これらをカスタムフィールドとして渡すと `TypeError` が発生します。
+
+---
+
+## ヘルスモニタリングの問題
+
+### Slack（Robusta）にアラートが届かない
+
+Robusta のヘルスアラートは**オプトイン**です。インストールして Slack チャンネルを指定するまで何も送信されません。リリースとそのシンクを確認してください：
+
+```bash
+kubectl get pods -n robusta          # robusta-runner と robusta-forwarder が Running であるべき
+kubectl logs -n robusta -l app=robusta-runner --tail=50
+```
+
+よくある原因：Slack の `api_key` / `slack_channel` が設定されていない（またはトークンが失効している）；`api_key` が Robusta クラウドリレートークン（`robusta integrations slack`）だが、バンドルされた `disableCloudRouting: true` はセルフホストの Slack **bot トークン**（`xoxb-…`）が必要（または `disableCloudRouting: false` を設定する）；シンクの `scope` が Pod が稼働しているネームスペースを除外している（バンドルされた values は `agenteye` にスコープされています）；まだ障害が発生していない。Pod をダウンさせてテストアラートを強制発行する：
+
+```bash
+kubectl -n agenteye delete pod -l app=clickhouse   # 再作成されます
+```
+
+インストールと設定については [enterprise-docs/health-monitoring.md](/ja/agenteye/health-monitoring#2-pod-failure-alerting-with-robusta-opt-in) を参照してください。
+
+### サーバーが `NotReady` を繰り返す
+
+レディネスプローブが `/ready` にアクセスし、Postgres または ClickHouse が到達不能な場合に失敗します。サーバーが `NotReady` と `Ready` を行き来している場合は、依存関係が断続的に利用不可能になっています。ClickHouse と Postgres の Pod とサーバーの `CLICKHOUSE_URL` / `DATABASE_URL` を確認してください。`/ready` が何を報告しているか確認する：
+
+```bash
+kubectl -n agenteye exec deploy/server -- sh -c 'curl -s localhost:8080/ready'
+```
+
+このプローブは意図的に寛容（失敗閾値を大きく）に設定されているため、持続的なフラッピングは過剰なプローブではなく実際の依存関係の問題を示しています。Liveness は `/health` のままなので、readiness のフラッピングはPodの**再起動を引き起こしません**。
+
+## 証明書モニタリングの問題
+
+### CronJob が Slack 通知を送信しない
+
+`cert-renewal-check` CronJob は、シークレットに保存された Slack webhook URL が必要です。存在を確認してください：
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+ない場合は作成してください：
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+シークレットがない場合でも CronJob は実行され、結果を stdout にログします。以下でログを確認できます：
+
+```bash
+kubectl logs -n agenteye -l job-name --tail=50
+```
+
+### 通知を受け取る前にクライアント証明書が期限切れになった
+
+CronJob は12時間ごとに実行されます。実行されていない場合は、ステータスを確認してください：
+
+```bash
+kubectl get cronjob cert-renewal-check -n agenteye
+```
+
+手動チェックを実行する：
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check manual-cert-check -n agenteye
+kubectl logs -n agenteye -l job-name=manual-cert-check
+```
+
+期限切れの証明書を直ちに再発行するには：
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+その後、コレクターを実行しているクラスターに再生成された `collector-mtls-secret.yaml` を適用し、再起動してください：
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+---
+
+## バックアップの問題
+
+### `agenteye-backup` が "No space left on device" で失敗する
+
+`agenteye-backup` CronJob は Postgres + ClickHouse を `backup-tmp` という `emptyDir` スクラッチボリューム（デフォルト `30Gi`）にダンプし、`tar` アーカイブを S3 に**ストリーミング**します。圧縮アーカイブはスクラッチに書き戻されないため、スクラッチには*生ダンプ*だけを格納できれば十分です。Pod がエビクトされたり `No space left on device` が発生した場合、**生ダンプ**がスクラッチサイズを超えていることを意味します（ClickHouse の `events` ダンプが支配的で、時間とともに増大します）。失敗したジョブのログを確認してください：
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job>
+```
+
+修正：オーバーレイで CronJob の `backup-tmp` `emptyDir` の `sizeLimit` を生ダンプの合計サイズより大きく設定し、ノードのエフェメラルストレージが実際に保持できることを確認してください（`sizeLimit` はキャップであり、予約ではありません）。ダンプが単一ノードのディスクを超える場合は、`backup-tmp` の `emptyDir` を PVC（EBS/PD）に置き換えるか、ソースでダンプを圧縮してください。
+
+> 古いリリースではダンプと同じ `20Gi` スクラッチに `.tar.gz` を書き込んでいたため、`ダンプ + アーカイブ` がそれを超えて Pod がアップロード前にエビクトされていました。これは S3 の問題のように見えますが実際はディスクの問題です。アップロードをストリーミングにすることでこの二重使用がなくなりました。
+
+### `agenteye-backup` が `curl` のインストールで失敗する
+
+このジョブは `postgres:16` イメージで実行され、ClickHouse HTTP ダンプのために起動時に `curl` をインストールします。Debian パッケージミラーへのエグレスがないクラスターでは `apt-get` ステップが失敗します。バックアップ Pod からそのエグレスを許可するか、`curl` を組み込んだミラー/カスタムバックアップイメージを作成してオーバーレイで参照してください。
+
+### `agenteye-backup` は実行されるがオブジェクトストレージに何も保存されない
+
+ベースには実際の `BACKUP_BUCKET`（`ts-prod-agenteye/backups`）と `agenteye-backup` ServiceAccount が含まれています。このジョブはアーカイブを S3 に**ストリーミング**します（`tar cz … | aws s3 cp - s3://…`）。バックアップ Pod がバケットへの書き込みアクセスを持っていない場合、アップロードはエラーになります。スクリプトは `set -euo pipefail` で実行されるため、パイプ内のどこかで失敗すると `upload` ステップでジョブ全体が失敗します（サイレントにno-opにはなりません。Pod の EXIT トラップは `backup FAILED during step: upload` とログします）。これはスクラッチスペースのエビクションを修正した後に到達するステップでもあるため、以前にバックアップがアーカイブステップでエビクトされていた場合は、アップロードが成功するようになったか確認してください。失敗したジョブのログで S3 アクセスエラーを検索してください：
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job> | grep -iE 's3|upload|denied'
+```
+
+修正：オーバーレイで `BACKUP_BUCKET` を所有するバケットに設定し、既存の `agenteye-backup` ServiceAccount に書き込みアクセス（IRSA / Workload Identity / Pod Identity）をアノテートしてください。[enterprise-docs/kubernetes-deployment.md](/ja/agenteye/kubernetes-deployment) の**バックアップ**セクションを参照してください。
+
+---
+
+## ClickHouse バックエンドの evaluations / sessions / queries
+
+### アップグレード後に `/queries` ページのサイドバーが空になる
+
+3つのテーブル（`events`、`evaluations`、`agent_sessions`）が期待されています。アップグレード後に SchemaBrowser サイドバーが空の場合、サーバーが起動時に ClickHouse DDL を適用できなかったことを示します。`failed to apply CH DDL statement` のサーバーログを確認してください：
+
+```bash
+kubectl logs -n agenteye deploy/server | grep -E 'clickhouse|CH DDL'
+```
+
+最もよくある原因は、マイグレーション実行中に ClickHouse が到達不能だったことです。サーバーは CH に到達できない場合に起動を拒否するため、スタックした Pod は通常、サイレントに壊れたクエリページではなく `CrashLoopBackOff` になりますが、部分的な DDL 適用（1ステートメントは OK、次の5ステートメントは 5xx）によってスキーマが半途端な状態になることがあります。CH が到達可能であることを確認してからサーバー Pod を再起動してください：
+
+```bash
+kubectl rollout restart deploy/server -n agenteye
+```
+
+### 新しい evaluations が `/sessions` または `/queries` に表示されない
+
+アップグレード後、新しい evaluations は Postgres ではなく ClickHouse に書き込まれ、`/sessions`（`evaluations:read` が必要）および `/queries` に表示されます。表示されない場合：
+
+1. エバリュエーターパイプラインが有効（サーバーに `EVALUATOR_ENDPOINT` が設定されている）で、終端の結果を生成しているか確認する。`evaluation_finalized` のログ行を確認してください。
+2. サーバーから CH に到達できるか確認する：`kubectl exec -n agenteye deploy/server -- curl -fsS http://clickhouse:8123/ping`
+3. CH テーブルをスポットチェックする：`kubectl exec -n agenteye clickhouse-0 -- clickhouse-client -q 'SELECT count() FROM agenteye.evaluations'`
+
+### 負荷下でクエリが "Memory limit exceeded" で失敗する、または ClickHouse が `OOMKilled` になる
+
+**症状：** 重いダッシュボード/クエリ負荷の下で、分析ページ（イベントストリーム、`/sessions`、モデル/レイテンシビュー、SQL エディタ）が失敗またはタイムアウトし始める。サーバーが一時的に `NotReady` になり、ClickHouse Pod の再起動回数が増加する。これはほぼ常に CPU やディスクではなく**メモリ**の問題です。
+
+**メモリの問題であることを確認する**（スループットの問題ではないことを確認し、レプリケーションが解決策ではないことを確認する）：
+
+1. OOM キルが発生していないかPodを確認する：
+   ```bash
+   kubectl -n agenteye describe pod clickhouse-0 | grep -iE 'Restart Count|Last State|Reason|OOMKilled'
+   ```
+   再起動回数が増加し、`Reason: OOMKilled` / `Exit Code: 137` が見えれば確定です。
+
+2. ClickHouse が何を拒否しているか確認する：
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT name, value FROM system.errors WHERE value>0 ORDER BY value DESC"
+   ```
+   `MEMORY_LIMIT_EXCEEDED` のカウントが多い場合がシグネチャです。メッセージには *"maximum: N GiB"* と記載されています。**この N は Pod のメモリ制限の `0.9 倍`**（`deploy/base/clickhouse/configmap.yaml` の `max_server_memory_usage_to_ram_ratio`）です。重い読み取りが N を超えると拒否されます。
+
+3. 問題でないことを確認する。CPU、パート数、ディスクがすべて低ければ、レプリカの追加やシャーディングはコストの無駄です：
+   ```bash
+   kubectl -n agenteye top pod clickhouse-0
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT table, count() parts FROM system.parts WHERE active AND database='agenteye' GROUP BY table"
+   ```
+
+**原因：** ClickHouse Pod のメモリ制限が分析的なワーキングセットに対して小さすぎます。最も重い読み取りは生 JSON `payload` カラムを引き込み、そこで `JSONExtract*` を実行し、`FINAL` を使用します。各操作に数GiBが必要になる場合があります。設定されたキャッシュ（`mark_cache_size` + `uncompressed_cache_size`）が Pod より大きい場合、同じバジェットに課金されてクエリメモリを圧迫します。
+
+**修正 — ClickHouse のメモリをスケールアップ：**
+
+1. オーバーレイで `clickhouse` StatefulSet のコンテナ `resources` をパッチして ClickHouse のメモリ制限を上げます（他のコンポーネントの `resources` に使用するオーバーレイメカニズムと同じ）。使用可能なサーバーバジェットは `0.9 × 制限` なので、`6Gi` 制限で約 5.4 GiB、`16Gi` で約 14 GiB になります。スケジューラーが予約するように `requests.memory` も実際のフロアに設定してください。これを適用すると **CH Pod が再作成されます**（単一レプリカ → 約 30〜60 秒の分析ダウンタイム）。トラフィックが少ない時間帯に実施してください。
+2. `deploy/base/clickhouse/configmap.yaml` のキャッシュを制限に比例して設定してください。小さいPodでは数百MiBの小さいキャッシュが安全です。メモリ制限の増加に合わせてのみ上げてください。クエリごとの `max_memory_usage` は `users.xml` プロファイル（後述の固定ノードセクション参照）で明示的に設定され、サーバーレベルの上限（`0.9 × 制限`）を下回るよう保たれているため、1つのクエリがコンテナが持つ以上の RAM を*使用することはできません*。
+3. ノード自体が上限の場合、ClickHouse が見えるホストメモリを確認してください：
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT formatReadableSize(value) FROM system.asynchronous_metrics WHERE metric='OSMemoryTotal'"
+   ```
+   これが Pod の制限をわずかに上回るだけであれば、ClickHouse を（オーバーレイのノードセレクター/アフィニティ経由で）より大きい（メモリ最適化）ノードに移動してから制限を上げてください。
+
+**メモリを追加できない場合：クエリを RAM に収めて高速に失敗させてください。低速ディスクへのスピルは避けてください。** ノードが固定で Pod を拡張できない場合は、1つのクエリが使用できる量を制限し（ノード全体を占有できないように）、**低速（非SSD）データディスク**では大きな集計/ソートのディスクへのスピルを**許可しないでください**。低速ディスクへのスピルはサーバーのクライアント読み取りタイムアウトより遅いため、スピル中のクエリはダッシュボードに `500` を返しながら ClickHouse が処理し続けます。クエリを RAM に収め、バジェット超過の場合は高速に拒否する（`MEMORY_LIMIT_EXCEEDED`、サブ秒）ことでロードが回復します。これらを適用する際の ClickHouse の注意点：
+
+- **これらは*プロファイル*設定であり、ClickHouse は `<profiles>` を `users_config`（`users.xml` / `users.d/*.xml`）からのみ読み取ります。`config.d` からは読み取りません。** `config.d/agenteye.xml` に `<profiles>` ブロックを配置しても**サイレントに無視されます**（`max_execution_time`、`max_memory_usage` などが単純に適用されません）。そのため、バンドルされた設定はこれらを `clickhouse-config` ConfigMap の `users.xml` キーとして出荷し、`/etc/clickhouse-server/users.d/agenteye.xml` にマウントされます。
+- デフォルト値：`max_memory_usage`（クエリごとの上限 — 1つのクエリがサーバーバジェット全体を消費できない）、`max_bytes_before_external_group_by` / `max_bytes_before_external_sort` = **`0`（スピル無効）** でクエリが低速ディスクをクロールする代わりに RAM に収まるようにし、`max_execution_time`（暴走ガード、サーバーのクライアント読み取りタイムアウトに合わせる）。
+- **有効であることを確認する**（これは `config.d` の問題を検出する方法でもあります）：
+  ```bash
+  kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+    "SELECT name, value FROM system.settings
+     WHERE name IN ('max_memory_usage','max_bytes_before_external_group_by','max_execution_time')"
+  ```
+  ゼロでない `max_memory_usage` と `max_bytes_before_external_group_by = 0` が期待される結果です。`max_memory_usage` が `0`/デフォルトの場合、プロファイルが適用されていません。設定が `config.d` ではなく `users.d` マウントに存在することを確認してください。
+
+トレードオフ：スピルが無効の場合、ワーキングセットが `max_memory_usage` を超えるクエリは、ゆっくり完了する代わりに**拒否されます**（`MEMORY_LIMIT_EXCEEDED`）。低速ディスクでは、スピル中のクエリはクライアントタイムアウトを超えて結局失敗するため、この高速な拒否が望ましいです。データディスクが**高速（SSD）**の場合は、`max_bytes_before_external_*` の閾値を上げて大きなクエリがディスクにスピルして完了できるようにすることも検討できます。
+
+---
+
+## マルチテナント（組織）
+
+### 組織を有効にするアップグレード中のエラー（古い/新しいサーバー Pod が混在）
+
+**症状：** 組織対応リリースのローリングデプロイ中、一部のリクエストが失敗する。サーバーログに `api_keys` パスでの `there is no unique or exclusion constraint matching the ON CONFLICT specification` が表示され、ロールアウト中にアラート/Slack/Webhook チャンネルの発火が停止する。
+
+**原因：** このアップグレードは `api_keys(name)` の古いインスタンス全体のユニークインデックスをPer-org部分インデックスに置き換え、アラートチャンネル設定（および `default_user_permissions`）をグローバルな `settings` テーブルからPer-orgの `org_settings` に移動します。**古い**サーバー Pod はまだ `ON CONFLICT (name)` を発行し（一致する制約がなくなった）、古い `settings` 行（現在は空）からチャンネル設定を読み取ります。古いPodと新しいPodはこの2つのパスで安全に共存できません。
+
+**修正：** この特定のアップグレードをバージョン混在でゆっくりロールアウトしないでください。クリーンに切り替えてください。古いサーバーをゼロにスケールダウン（または短いメンテナンスウィンドウを設ける）し、新バージョンをマイグレーションと一緒に起動してください。古いレプリカと新しいレプリカを並行して実行しないでください。通常のトラフィックとインジェストはカットオーバー直後に再開します。これはバージョン移行ウィンドウのみに影響します。
+
+### 組織のプロビジョニングが `CREATE USER` / `CREATE ROW POLICY` で失敗する、または1つの組織が別の組織のデータを読める
+
+**症状：** 組織の作成時に `CREATE USER`、`CREATE ROW POLICY`、または「access management is disabled」というエラーが返される。または、あるいはより深刻なことに、ある組織のメンバーが SQL エディタやアシスタントで別の

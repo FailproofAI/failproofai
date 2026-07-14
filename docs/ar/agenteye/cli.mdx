@@ -1,0 +1,293 @@
+---
+---
+title: "CLI"
+description: "توثيق AgentEye CLI."
+---
+
+
+أداة سطر الأوامر AgentEye (`agenteye`) هي عميل طرفي لنشرك على AgentEye. تستعلم عن بيانتك (الجلسات وسجلات الأحداث والتقييمات) وتدير المؤسسة (مفاتيح API والمستخدمون والإعدادات والتنبيهات والحوادث والاستعلامات المحفوظة) — كل ما يفعله لوحة المعلومات، من نص برمجي أو من وكيل ترميز. كل أمر يدعم علم `--json`، لذا يعمل بنفس الفعالية لشخص في موجه أوامر أو لوكيل ترميز (Claude Code أو Cursor) ينفذ أمرًا ويحلل النتيجة.
+
+> هذه هي أداة **`agenteye` CLI**، وهي أداة مختلفة عن عفريت **collector** (`agenteye-collector`). يتحدث الـ CLI مع **لوحة المعلومات**؛ يرسل المجمع الأحداث إلى الخادم. انظر [تثبيت Collector](/ar/agenteye/collector-installation) للمجمع.
+
+---
+
+## التثبيت
+
+يتم نشر أداة سطر الأوامر على PyPI العام باسم **`agenteye`**. نظرًا لأن SDK Python من AgentEye يستخدم أيضًا اسم توزيع `agenteye`، قم بتثبيت أداة سطر الأوامر في بيئة **معزولة** (`pipx` أو `uv tool`) حتى لا يتصادم الاثنان في virtualenv واحد:
+
+```bash
+pipx install agenteye
+# أو
+uv tool install agenteye
+```
+
+يعمل `pip install agenteye` العادي أيضًا إذا كنت لا تثبت Python SDK في نفس البيئة. تتطلب أداة سطر الأوامر Python 3.10+ ولا تحتاج إلى رمز GitHub؛ إنها حزمة عامة.
+
+الأمر المثبت هو **`agenteye`**:
+
+```bash
+agenteye --version
+agenteye --help
+```
+
+---
+
+## المصادقة
+
+تتحقق أداة سطر الأوامر من هويتك في **لوحة المعلومات** برمز لمرة واحدة يُرسل عبر البريد الإلكتروني:
+
+```bash
+agenteye login --email you@example.com
+# يتم إرسال رمز مكون من 6 أرقام إليك عبر البريد الإلكتروني؛ الصقه في الموجه.
+```
+
+يتم تخزين رمز الجلسة في `~/.agenteye/cli.json` (قابل للقراءة فقط من قبلك، بصلاحية `0600`) وهو صحيح لمدة 24 ساعة افتراضيًا. عند انتهاء صلاحيته، قم بتشغيل `agenteye login` مرة أخرى.
+
+```bash
+agenteye whoami     # اعرض المستخدم الحالي والمنظمة النشطة والصلاحيات
+agenteye logout     # اسحب الجلسة وامسح الرمز المخزن
+```
+
+لن يرمي `whoami` أخطاء على جلسة مفقودة أو منتهية الصلاحية — بدلاً من ذلك يبلغ `logged_in: false`، لذا يمكن للنص البرمجي أو الوكيل فحص حالة المصادقة بأمان (قد يخرج بكود غير صفري إذا لم يتم تعيين عنوان URL أساسي أو كانت لوحة المعلومات غير قابلة للوصول).
+
+**المتطلبات:** يجب أن يُسمح لبريدك الإلكتروني بتسجيل الدخول إلى لوحة المعلومات (اطلب من مسؤول AgentEye)، وأن تكون لوحة المعلومات قابلة للوصول على عنوان URL الأساسي (انظر [التكوين](#configuration)). إذا طلبت رمزًا ولم يصل أي رمز، فمن المحتمل أن بريدك الإلكتروني لم يتم تفعيله بعد لدخول لوحة المعلومات.
+
+---
+
+## اختيار منظمتك (متعدد المستأجرين)
+
+إذا كان حسابك ينتمي إلى أكثر من منظمة واحدة، اختر النشطة **عند تسجيل الدخول** — يتم حفظها واستخدامها في كل أمر لاحق:
+
+```bash
+agenteye login --org acme           # المصادقة وتعيين المستأجر النشط في خطوة واحدة
+agenteye orgs list                  # المنظمات التي يمكنك الوصول إليها (النشطة معلمة)
+agenteye orgs switch globex         # غيّر الافتراضي المحفوظ
+agenteye --org globex sessions      # تجاوز أمر واحد
+```
+
+إذا كنت تنتمي إلى منظمة واحدة فقط، يتم تحديدها تلقائيًا ويمكنك تجاهل `--org` تمامًا. إذا كنت تنتمي إلى عدة منظمات ولم تختر واحدة، تسرد أداة سطر الأوامر المنظمات وتطلب منك إعادة التشغيل مع `--org <slug>`. يتم إرسال المنظمة النشطة إلى لوحة المعلومات في كل طلب، وتتم معالجة صلاحياتك **لكل منظمة** — يعرض `agenteye whoami` المنظمة النشطة وصلاحياتك فيها وجميع عضوياتك.
+
+---
+
+## التكوين
+
+| الإعداد | العلم | متغير البيئة | الافتراضي |
+|---|---|---|---|
+| عنوان URL الأساسي للوحة المعلومات | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **مطلوب** (لا يوجد افتراضي) |
+| المنظمة النشطة/المستأجر | `--org` | `AGENTEYE_ORG` | يتم اختياره عند تسجيل الدخول؛ يحفظ في `~/.agenteye/cli.json` |
+| رمز الجلسة | `--token` | `AGENTEYE_CLI_TOKEN` | من `~/.agenteye/cli.json` |
+| إخراج JSON | `--json` | `AGENTEYE_CLI_JSON` | قيد الإيقاف |
+| تجاوز التحقق من TLS | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | قيد الإيقاف (يحفظ عند تسجيل الدخول) |
+| انتظار الطلب (ثانية) | `--timeout` | — | 30 |
+| تعطيل قياس المراسلات الاستخدام | _(بلا)_ | `AGENTEYE_ANALYTICS_DISABLED` (أو `DO_NOT_TRACK`) | قيد الإيقاف (قياس المراسلات قيد التشغيل) |
+
+ترتيب الحل هو **العلم → متغير البيئة → ملف التكوين**. لا يوجد افتراضي؛ يجب أن تشير أداة سطر الأوامر إلى لوحة المعلومات، إما لكل أمر (`--base-url https://agenteye.example.com`) أو مرة واحدة عبر البيئة (يتم حفظه أيضًا بعد `login` الأول):
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
+```
+
+دليل التكوين يحترم `AGENTEYE_HOME` (نفس الاتفاقية المستخدمة من قبل SDK والمجمع)؛ إذا تم تعيينه، يعيش `cli.json` في `$AGENTEYE_HOME/cli.json`.
+
+### TLS ذاتي التوقيع أو داخلي
+
+إذا كانت لوحة المعلومات مقدمة عبر HTTPS بشهادة ذاتية التوقيع أو داخلية (على سبيل المثال، اسم مضيف موازن التحميل الخام)، يرفضها التحقق من TLS برسالة خطأ `CERTIFICATE_VERIFY_FAILED`. مرر `--insecure` لتجاوز التحقق من الشهادة:
+
+```bash
+agenteye --base-url https://agenteye.internal --insecure login
+```
+
+يتم **حفظ `--insecure` في `cli.json` عند تسجيل الدخول**، لذا الأوامر اللاحقة تتجاوز التحقق تلقائيًا؛ لا تحتاج إلى تكرار العلم. مرر `--secure` لاستدعاء تم التحقق منه لمرة واحدة، أو لحفظ التحقق مرة أخرى عند تسجيل الدخول التالي. تطبع أداة سطر الأوامر تحذيرًا على stderr قبل أي أمر يتصل بلوحة المعلومات أثناء تعطيل التحقق. يزيل تجاوز التحقق الحماية من هجمات الوسيط؛ تأكد من أنك تثق في مسار الشبكة إلى لوحة المعلومات (VPN أو شبكة فرعية خاصة وما إلى ذلك) قبل الاعتماد على ذلك.
+
+---
+
+## قياس المراسلات والخصوصية
+
+تُرسل أداة سطر الأوامر **تحليلات استخدام مجهولة** إلى خدمة تحليلات Exosphere (PostHog): الأوامر التي يتم تشغيلها (على سبيل المثال `sessions` أو `keys create`)، ما إذا نجحت، وكم من الوقت استغرقت. تُعلم إشارة الاستخدام هذه بالميزات المحددة الأولويات.
+
+- **بيانات الوكيل أو الجلسة أو الحدث لا تترك أبدًا البنية التحتية لديك.** يتم الإبلاغ عن استخدام أداة سطر الأوامر فقط: اسم الأمر والأمر الفرعي (على سبيل المثال `keys create`)، **أسماء** الأعلام التي استخدمتها (أبدًا قيمها)، الحالة والمدة — بالإضافة إلى حدث لكل إجراء للطفرات (على سبيل المثال `api_key_created` أو `query_run`) تحمل فقط أسماء ثابتة/تعدادات وعدادات غير دقيقة. عنوان URL لوحة المعلومات ورمز الجلسة والبريد الإلكتروني وتجنب المنظمة وعناصر الموارد و SQL وأسرار المفاتيح وفلاتر الاستعلام **لن تُرسل أبدًا**. يتم التعرف على المشغلين فقط بواسطة معرّف داخلي معتم، وليس أبدًا عبر البريد الإلكتروني.
+- **قياس المراسلات مُفعّل افتراضيًا**. لتعطيله، اضبط `AGENTEYE_ANALYTICS_DISABLED=1` في بيئة أداة سطر الأوامر (تحترم أداة سطر الأوامر أيضًا اتفاقية أداة متعددة `DO_NOT_TRACK=1`).
+- تُرسل أداة سطر الأوامر مباشرة إلى PostHog (`https://us.i.posthog.com`). **الجهاز الذي يقوم بتشغيل أداة سطر الأوامر** يحتاج إلى وصول خارج إلى هذا المضيف؛ إذا تم حظره، لا يفعل قياس المراسلات شيئًا بسرية (الإرسال محدود بالوقت لذا لا يؤخر أو يكسر الأمر) والـ CLI غير متضرر.
+
+---
+
+## الخيارات العامة والاتفاقيات
+
+اقرأ هذا مرة واحدة؛ تنطبق على كل أمر.
+
+- **تأتي الخيارات العامة قبل الأمر.** `agenteye --json sessions` صحيح؛ `agenteye sessions --json` خطأ في الاستخدام. الخيارات العامة هي `--json` و `--base-url` و `--org` و `--token` و `--insecure`/`--secure` و `--timeout` و `--quiet` و `--no-color`.
+- **يطبع `--json` JSON نقي إلى stdout، وليس شيء آخر.** تذهب سطور الحالة البشرية والتحذيرات والأخطاء إلى **stderr**، لذا يبقى التقاط stdout `--json` نظيفًا للأنابيب إلى `jq` حتى عندما تظهر سطر الحالة. بدون `--json` تحصل على عرض مربع وملون لعيون البشر.
+- **اكتشف باستخدام `--help`.** كل أمر وأمر فرعي به `--help` (و `h-` الاسم المستعار): `agenteye -h` و `agenteye sessions -h` و `agenteye keys create -h`. يسرد المساعدة على المستوى الأعلى أيضًا رموز الخروج والخيارات العامة. لا توجد عملية على سطح قابل للقراءة من قبل الآلة؛ استخدم `--help` لكل أمر، بالإضافة إلى `agenteye query schema` و `agenteye settings schema` الخاص بالمجال لتلك السجلات الاثنين.
+- **التأكيدات تتخطى تلقائيًا للنصوص البرمجية والوكلاء.** تطالب أوامر إنشاء/تحديث/حذف بـ "هل أنت متأكد؟" في محطة طرفية تفاعلية، لكن **تتخطاها تلقائيًا تحت `--json` أو في أي وقت لا يكون stdin عبارة عن TTY** — لذا لا تعلق الأجهزة والوكلاء أبدًا. مرر `--yes`/`-y` لتخطيها بشكل صريح. لأن الموجه لن يعمل لوكيل، يجب على الوكيل تأكيد الإجراءات المدمرة مع الإنسان أولاً.
+- **الترقيم:** النتائج هي الأحدث أولاً والمُرقمة بالمؤشر. `--limit N` (الاسم المستعار `-n`) تغطي الصفوف و **افتراضيًا 50**؛ `--all` ترقيم تلقائي (في أجزاء من 200 صف) **يصل إلى `--limit`** — لذا `--all` العارية تتوقف عند 50. للاجتياز الكامل مرر حد أعلى صريح عالي: `--all --limit 1000`. يتحكم `--page-size N` في الجزء لكل طلب (كحد أقصى 200)؛ `--cursor <id>` يستأنف من `next_cursor` للصفحة السابقة.
+- **فلاتر الوقت:** `--since` يأخذ نافذة نسبية — `15m` أو `1h` أو `6h` أو `24h` أو `7d` أو `30d` أو `all` (إعدادات لوحة المعلومات). `--from`/`--to` يأخذ طوابع زمنية ISO-8601 UTC صريحة **مع `T` و منطقة زمنية** (على سبيل المثال `2026-06-01T00:00:00Z`) لنطاق مخصص ويتجاوز `--since`؛ القيمة المفصولة بمسافة أو بدون منطقة زمنية هي خطأ استخدام.
+- **`--fields a,b,c`** (على `events` و `sessions` و `evals` و `errors`) تقيد الإخراج إلى تلك المفاتيح، للجدول و `--json`. يتم رفض الأسماء غير المعروفة مع القائمة الصحيحة — طريقة رخيصة لاكتشاف أسماء الحقول.
+- **`--file payload.json`** (أو `--file -` لقراءة stdin) توفر نص جسم طلب JSON كامل حيث يكون لموارد شكل معقد — على `alerts create/update` و `settings set` و `users create/update`. يستخدم SQL استعلام محفوظ `--sql @file.sql` بدلاً من ذلك.
+- **فلاتر متعددة القيم** مفصولة بفواصل → مطابقة كمجموعة (اتحاد داخل عامل تصفية واحد، و AND عبر الفلاتر): `--event-type tool_use,tool_result`. خيارات النقر ليست متغيرة الحجم، لذا `--add a b` فاصل — استخدم `--add a,b` أو كرر العلم (`--add a --add b`) أو اقتبس (`--add "a b"`).
+
+---
+
+## مرجع الأمر
+
+لدى أداة سطر الأوامر **18 أمر على المستوى الأعلى**. جميع أوامر القراءة تقبل `--json` والخيارات العامة أعلاه؛ قم بتشغيل `agenteye <command> -h` (أو `<command> <subcommand> -h`) لقائمة الأعلام الشاملة وشكل JSON لأي واحد.
+
+### الهوية — `login` · `logout` · `whoami` · `orgs` · `version` · `help`
+
+```bash
+agenteye login --email you@example.com [--org acme]   # رمز لمرة واحدة يرسل عبر البريد؛ يحفظ الجلسة
+agenteye logout                                       # امسح الجلسة المحفوظة على هذه الآلة
+agenteye whoami                                       # المستخدم الحالي والمنظمة النشطة والصلاحيات
+agenteye version                                      # اطبع إصدار CLI (مثل --version)
+agenteye help                                         # مساعدة على المستوى الأعلى (مثل --help)
+```
+
+يفحص `orgs` وينقل المستأجر النشط:
+
+```bash
+agenteye orgs list        # منظماتك + دورك في كل واحدة (النشطة معلمة)
+agenteye orgs switch acme # غيّر المنظمة النشطة المحفوظة (حذف الرمز للاختيار من قائمة على TTY)
+agenteye orgs current     # بطاقة الهوية للمنظمة النشطة
+agenteye orgs perms       # صلاحياتك في المنظمة النشطة، مجمعة حسب المورد
+```
+
+### المراقبة (القراءة فقط) — `events` · `sessions` · `evals` · `errors` · `list`
+
+لا تحتاج أي من هذه إلى تأكيد. فلاتر مشتركة: `--session-id` و `--agent-id` و `--env` (**وليس** `--environment`)، ونطاق الوقت (`--since` / `--from` / `--to`).
+
+```bash
+# events (الاسم المستعار: مسار متعدد الخطوات الخام) — الأحدث أولاً
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all --limit 1000
+agenteye --json events --since 1h --search timeout --all | jq '.events[].payload'
+
+# sessions — صف واحد لكل تشغيل وكيل (وقت/بيئة/وكيل/جلسة/حالة؛ لا تصفية نقاط)
+agenteye --json sessions --since 24h --status error
+agenteye --json sessions --agent-id checkout-bot --env prod --all --limit 1000
+
+# evals — نتائج التقييم + الدرجات؛ --score تصفي حسب المقياس، --aggregate تتدحرج
+agenteye --json evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3
+agenteye --json evals --aggregate --since 7d --env prod        # خليط الحالة + إحصائيات نقاط لكل مفتاح
+
+# errors — أحداث خاطئة؛ --aggregate للعد/الجلسات/الوكلاء/آخر مرة رؤية
+agenteye --json errors --since 24h --aggregate
+agenteye --json errors --since 24h --error-type timeout --all --limit 1000
+
+# list — اكتشف قيم الفلتر الصحيحة قبل أن تصفي
+agenteye list envs        # أيضًا: agents event_types score_filters models hooks triggers tools error_types
+```
+
+`--score KEY:MIN..MAX` (على **`evals`**، وليس `sessions`) قابل للتكرار وموحد بـ AND؛ كلا الحدود اختيارية (`..0.5` تعني ≤ 0.5، `0.9..` تعني ≥ 0.9). حتى 20 مرشح درجة لكل طلب. `evals --scores-full` يرجع كائن النقاط الكامل بدلاً من الملخص. لقراءة **جلسة واحدة من البداية إلى النهاية**، ادمج مسار الحدث مع تقييمه:
+
+```bash
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+agenteye --json evals  --session-id run-001                       # نقاطها + حالتها
+```
+
+### الإدارة (مراقبة الأذونات) — `keys` · `users` · `settings` · `alerts` · `incidents`
+
+**`keys`** — مفاتيح API. يتم إنشاء السر محليًا وإرساله إلى الخادم (الذي يحفظ فقط التجزئة) و**يُعرض مرة واحدة** على الإنشاء/إعادة التوليد — احسبه بعد ذلك. مع `--json` يظهر فقط في حقل `key`. مرجع حسب **الاسم**.
+
+```bash
+agenteye keys list                                   # المفاتيح النشطة أولاً، ثم المسحوبة
+agenteye keys show ci-bot
+agenteye keys create ci-bot --add events:read.add    # نطاق لما تحتاجه؛ يطبع السر مرة واحدة
+agenteye keys create ops --permission-set standard --remove queries:run   # البذرة من قيمة محددة مسبقًا، ثم التقص
+agenteye keys update ci-bot --add evaluations:read --yes
+agenteye keys regenerate ci-bot --yes                # دوّر السر (القديم يتوقف عن العمل)
+agenteye keys disable ci-bot --yes                   # اسحب
+```
+
+تعمل الأذونات مثل `(permission-set ∪ --add) − --remove`. الرموز هي `slug:action` (على سبيل المثال `events:read`) أو `slug:action.action` لتوسيع عدة على مورد واحد (`events:read.add` → `events:read` و `events:add`). الإعدادات المسبقة: `read-only` و `standard` و `admin`. لا يمكن منح أذونات بشرية فقط (`keys:update`) إلى مفتاح.
+
+**`users`** — أعضاء المنظمة، مرجع حسب **البريد الإلكتروني** (يُقبل معرف UUID أيضًا).
+
+```bash
+agenteye users list [--active-only]
+agenteye users show dev@corp.com
+agenteye users create dev@corp.com --permission-set standard
+agenteye users update dev@corp.com --add alerts:write --remove queries:delete   # يتنبأ ويؤكد
+agenteye users disable dev@corp.com --yes            # يحتوي على حراس محمية/ذاتية
+agenteye users enable dev@corp.com
+```
+
+**`settings`** — سجل ثابت (تقرأ وتغيير المفاتيح الموجودة؛ لا يمكنك إنشاء مفاتيح جديدة).
+
+```bash
+agenteye settings list                               # مفتاح · قيمة · نوع · محدّث (أسرار مقنعة)
+agenteye settings schema                             # ما يقبله كل مفتاح (النوع · النطاق · الوصف)
+agenteye settings set session_ttl_secs --value 86400 --yes
+```
+
+**`alerts`** — تعريفات التنبيهات، مرجع حسب **الاسم**. `create` يأخذ NAME موضعي بالإضافة إلى أعلام أو نص جسم طلب JSON كامل عبر `--file`.
+
+```bash
+agenteye alerts list
+agenteye alerts show high-errors
+agenteye alerts create high-errors --file alert.json          # NAME مطلوب (موضعي)
+agenteye alerts update high-errors --severity critical --yes
+agenteye alerts test high-errors --yes                        # أرسل إخطار اختبار
+agenteye alerts delete high-errors --yes
+```
+
+**`incidents`** — حوادث التنبيهات، مرجع حسب معرّف (قبول معرفات قصيرة). `show` يطبع سجل النشاط الكامل — اقرأه قبل التصرف.
+
+```bash
+agenteye incidents list --state firing                # أيضًا: acknowledged و resolved
+agenteye incidents count
+agenteye incidents show <id>
+agenteye incidents ack <id>
+agenteye incidents assign <id> you@corp.com           # يجب أن يكون المكلّف مشغلاً
+agenteye incidents resolve <id> --yes
+agenteye incidents open --alert-id <id> --severity critical    # افتح واحدة يدويًا ضد تنبيه
+agenteye incidents comment-add <id> "root cause: upstream 5xx"
+agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <comment-id>
+agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
+```
+
+### التحليلات والمساعد — `query` · `agent`
+
+**`query`** — SQL ClickHouse محفوظ بالإضافة إلى عداء ad-hoc. يتم الرجوع للاستعلامات المحفوظة حسب **الاسم**؛ يتم التحقق من SQL من جانب الخادم (SELECT/WITH فقط، انتهاء مهلة البيان، حد الصف).
+
+```bash
+agenteye query schema [TABLE]                         # تخطيط العمود لعروض التحليلات
+agenteye query run --sql "select count(*) from analytics.events"
+agenteye query run errs --arg prod --limit 100        # قم بتشغيل استعلام محفوظ + موضعي $1
+agenteye query list ; agenteye query show errs
+agenteye query create errs --sql @errs.sql --description "errored events (24h)"
+agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
+```
+
+**`agent`** — مساعد لوحة المعلومات المدمج (نفس المحلل المتاح للقراءة فقط الذي يمكنك الدردشة معه في لوحة المعلومات). يتم الرجوع للدردشات بواسطة معرّف دردشة قصير (قرار البادئة).
+
+```bash
+agenteye agent health                                 # هل المساعد قيد الإعدادات/قابل للوصول
+agenteye agent models                                 # الطرز التي يمكنك تمريرها إلى --model (الافتراضي معلم)
+agenteye agent ask "which agents errored most in the last day?"    # يبدأ دردشة؛ يطبع معرف قصير
+agenteye agent ask --chat <short-id> "and which tools did they call?"   # متابعة تلك الدردشة
+agenteye agent chats ; agenteye agent show <short-id>
+agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete <short-id>
+```
+
+---
+
+## رموز الخروج
+
+| الرمز | المعنى |
+|---|---|
+| 0 | نجاح |
+| 1 | خطأ غير متوقع (على سبيل المثال لوحة المعلومات أرجعت 5xx) |
+| 2 | خطأ الاستخدام (وسائط غير صحيحة، أمر/علم مجهول، تصادم الأسماء) |
+| 3 | لا يمكن الوصول إلى لوحة المعلومات |
+| 4 | غير مسجل الدخول أو انتهت صلاحية الجلسة؛ قم بتشغيل `agenteye login` |
+| 5 | مصادق عليه، لكن حسابك يفتقد الأذونات المطلوبة (رسالة الاسم) |
+| 6 | المورد المطلوب لم يتم العثور عليه (على سبيل المثال معرف جلسة أو حادثة مجهولة) |
+
+هذه تجعل أداة سطر الأوامر آمنة للنصوص البرمجية: يمكن للوكيل الترميز أن ينقسم على `4` لمطالبتك بإعادة المصادقة، أو `5` لسطح الأذونات المفقودة. انظر [CLI recipes for agents](/ar/agenteye/cli-recipes) لأنماط معالجة رموز الخروج وأشكال إخراج JSON.
+
+---
+
+## انظر أيضا
+
+- **[CLI recipes for agents](/ar/agenteye/cli-recipes)** — أنماط استعلام copy-paste و `jq` one-liners و `--fields` الإسقاطات ومعالجة رموز الخروج وأشكال إخراج JSON، مكتوبة لوكلاء الترميز الذين يقودون أداة سطر الأوامر.
+- **[AgentEye CLI skill](/ar/agenteye/cli-skill)** — حزم أداة سطر الأوامر هذه كـ Claude Code / Codex *skill* قابل للتثبيت بحيث يقود وكيل ترميز AgentEye من طلبات اللغة الطبيعية.
+- **[API Keys](/ar/agenteye/api-keys)** — نموذج الأذونات خلف `keys create --add …`.
+- **[AI Assistant](/ar/agenteye/assistant)** — تفعيل المساعد الذي يتحدث إليه `agent ask`.

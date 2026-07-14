@@ -1,0 +1,94 @@
+---
+title: "Health Monitoring"
+description: "AgentEye Health Monitoring Dokumentation."
+---
+
+Erkennen Sie, wann eine AgentEye-Instanz selbst **ausgefallen oder beeinträchtigt** ist – nicht nur, wenn sich Ihre Agents falsch verhalten. Die Erkennung ist **Kubernetes-nativ** und, entscheidend, **unabhängig von AgentEye**: Sie liest den Pod-Zustand aus der Kubernetes-Control-Plane und prüft die harten Abhängigkeiten von AgentEye, sodass sie auch dann ausgelöst wird, wenn der Server, ClickHouse oder Postgres selbst ausgefallen ist.
+
+Es gibt zwei Ebenen. Die erste ist eingebaut; die zweite ist optional aktivierbar.
+
+## 1. Abhängigkeitsbewusste Readiness-Prüfung (eingebaut)
+
+Der Server stellt zwei Probe-Endpunkte mit bewusst unterschiedlichen Aufgaben bereit:
+
+| Endpunkt | Probe | Prüft | Auth |
+|---|---|---|---|
+| `GET /health` | Liveness | Prozess ist am Leben (immer `{"status":"ok"}`) | keine |
+| `GET /ready` | Readiness | Kann tatsächlich Anfragen bedienen: **Postgres + ClickHouse** erreichbar | keine |
+
+`/ready` gibt `200` mit `"status":"ready"` und jede Prüfung als `"ok"` zurück, wenn beide harten Abhängigkeiten erreichbar sind, und `503` mit `"status":"not_ready"`, wenn eine davon nicht erreichbar ist. Beide Antworten enthalten einen kurzen Body:
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+Redis ist ein optionaler Cache, an dem der Server vorbeifällt, sodass er zwar zur Information gemeldet wird, aber die Readiness **nie** zum Fehlschlag bringt. Es zeigt `"ok"`, wenn ein Cache konfiguriert ist, und `"not_configured"` andernfalls; es ist nie `"down"`.
+
+In den mitgelieferten Kubernetes-Manifesten zeigt die **Readiness**-Probe auf `/ready`, während **Liveness** auf `/health` bleibt. Die Wirkung: Ein Server, der zwar *läuft, aber seine Datenbank nicht erreichen kann*, wird aus dem Service genommen und als `NotReady` angezeigt – ein Zustand, auf den Ihr Cluster-Monitoring (siehe unten) aufmerksam machen kann – während Liveness günstig bleibt, sodass eine kurze Störung der Abhängigkeit nie einen Pod-Neustart auslöst. Die Probe verwendet einen großzügigen Fehlerschwellenwert, damit ein kurzer Ausreißer Replicas nicht aus der Rotation kippt.
+
+## 2. Pod-Failure-Benachrichtigung mit Robusta (optional)
+
+[Robusta](https://github.com/robusta-dev/robusta) ist ein Kubernetes-nativer Monitor, der den API-Server beobachtet und Pod-Fehler (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`, `Failed`, Evictions) an Slack sendet. Da er die Control-Plane beobachtet statt AgentEye zu befragen, löst er auch dann Benachrichtigungen aus, wenn AgentEye gar nicht reagieren kann.
+
+Robusta wird als optionales Add-on im Release-Bundle ausgeliefert. Aktivieren Sie es mit dem Standard-Robusta-Helm-Chart und der unten gezeigten kleinen Values-Datei:
+
+1. Fügen Sie das Chart-Repo hinzu und holen Sie sich ein Slack-**Bot-Token** (`xoxb-…`) für den gewünschten Channel:
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   Da die folgende Konfiguration alles im Cluster hält
+   (`disableCloudRouting: true`), stammt das Token von einer selbst gehosteten Slack-App:
+   Erstellen Sie eine App unter `https://api.slack.com/apps`, fügen Sie den Bot-Scope `chat:write` hinzu,
+   installieren Sie sie in Ihrem Workspace, kopieren Sie das **Bot User OAuth Token** (`xoxb-…`) und
+   laden Sie den Bot in den Channel ein (`/invite @your-app`).
+
+2. Erstellen Sie eine `values.yaml` mit einem deployment-spezifischen Label (`clusterName`) und Ihrem
+   Slack-Channel, begrenzt auf den `agenteye`-Namespace:
+
+   ```yaml
+   clusterName: "acme-prod"            # deployment-spezifisches Label; erscheint in jeder Benachrichtigung
+   enablePrometheusStack: false        # nur Pod-Crash-Benachrichtigungen; kein Metrics-Stack
+   disableCloudRouting: true           # direkte Zustellung an Slack, im Cluster
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-… (bevorzugt --set oder ein Secret verwenden)
+         scope:
+           include:
+             - namespace: [agenteye]   # nur Benachrichtigungen aus dem AgentEye-Namespace; entfernen zum Erweitern
+   ```
+
+3. Installieren Sie es und pinnen Sie `--version` auf ein bekannt gutes Robusta-Chart-Release
+   ([Releases](https://github.com/robusta-dev/robusta/releases)), damit Sie nie ein ungetestetes Chart installieren:
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <pin-a-known-good-version> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### Was gemeldet wird
+
+- Kubernetes-**Pod-Zustand** (welcher AgentEye-Pod ausfällt und warum) sowie der **Image-Tag** jedes Pods, d. h. die laufende Komponenten-**Version**.
+- **Keine AgentEye-Ereignisdaten und keine Kundendaten** verlassen jemals den Cluster.
+- Die mitgelieferten Values beschränken Benachrichtigungen auf den **`agenteye`-Namespace**, sodass unabhängige Workloads im selben Cluster nicht gemeldet werden.
+
+### Eine Anlaufstelle für jedes Deployment
+
+Richten Sie Robusta bei jedem Deployment auf **einen gemeinsamen Slack-Channel**, jeweils mit eigenem `clusterName`. Jede Benachrichtigung ist mit diesem Label versehen, sodass ein einziger Channel den Gesundheitszustand Ihrer gesamten Flotte zeigt und Sie auf einen Blick erkennen, welches Deployment betroffen ist.
+
+### Vollständige Cluster-Ausfälle
+
+Ein rein im Cluster laufender Watcher kann einen **vollständigen Cluster- oder Netzwerkausfall** nicht melden (er fällt mit dem Cluster aus). Falls Sie das benötigen, aktivieren Sie den optionalen **Robusta-UI-Sink**: Setzen Sie `disableCloudRouting: false` und fügen Sie einen `robusta_sink` (mit einem Token aus `robusta gen-config`) zu `sinksConfig` hinzu. Damit erhalten Sie ein aggregiertes Multi-Cluster-Dashboard, das jeden Cluster markiert, der aufgehört hat, sich zu melden.
+
+## Fehlerbehebung
+
+Weitere Informationen finden Sie im Abschnitt **Health Monitoring** unter
+[enterprise-docs/troubleshooting.md](/de/agenteye/troubleshooting) zu den Themen Keine eingehenden Benachrichtigungen und Server kippt ständig auf `NotReady`.

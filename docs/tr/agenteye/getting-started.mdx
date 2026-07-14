@@ -1,0 +1,235 @@
+---
+title: "AgentEye'a Başlarken"
+description: "AgentEye'a Başlarken belgelendirmesi."
+---
+
+Bu kılavuz, tam bir AgentEye kurulumunu adım adım anlatır: sunucuyu ve panoyu dağıtmak, aracı makinesine toplayıcıyı yüklemek ve Python aracı kodunuzu işaretlemek.
+
+---
+
+## AgentEye Nedir?
+
+AgentEye, **yapay zeka ajanları için kendi altyapınızda çalıştırılan gözlemlenebilirlik ve değerlendirme platformudur**. Ajanlarınızın ne yaptığını — bir çalışmanın her adımını — kaydeder ve tamamlanan her çalışmanın kalitesini otomatik olarak puanlar; böylece ajanlarınızın üretim ortamında nasıl davrandığını görebilir ve kullanıcılarınız sorunları fark etmeden gerilemeyi yakalayabilirsiniz.
+
+Veriler tek yönde akar: aracı kodunuz **olay**ları **Python SDK** aracılığıyla yayınlar → hafif **toplayıcı** daemon bunları toplu olarak paketler ve **sunucuya** gönderir → olaylar ve analizler **ClickHouse**'da saklanır (kuruluşlar, kullanıcılar, API anahtarları, panolar ve kaydedilmiş sorgular gibi işletimsel durum **Postgres**'de yaşar) → her şeyi **panoda** keşfedersiniz.
+
+Ne elde edersiniz:
+
+- **Olaylar** — her aracı çalışmasının ham, adım adım izi (araç çağrıları, model çağrıları, kancalar, hatalar).
+- **Oturumlar** — bu olaylar bir satıra toplu halde, her biri **otomatik olarak değerlendirilmiş** ve puanlanmış.
+- **Değerlendirmeler** — kendi değerlendirici hizmetleriniz tarafından üretilen kalite puanları; kalite düşüşü manuel inceleme olmadan yüzeye çıkar.
+- **Sorgular & panolar** — verileriniz üzerinde kaydedilmiş ClickHouse SQL, paylaşılan, kuruluş kapsamlı panolara grafik halinde yerleştirilmiş.
+- **Uyarılar & olaylar** — sizi sayfalayan eşik kuralları (e-posta, Slack, webhook, panoda) artı bunları sınıflandırmak için bir olay iş akışı.
+- **CLI & yapay zeka asistanı** — bir terminal istemcisi (`agenteye`) ve panoda düz İngilizce'de soru sormak için bir asistan.
+
+Tüm bunları kendi altyapınızda çalıştırırsınız — tek bir Docker Compose yığını olarak (bu kılavuz), bir üretim Kubernetes kurulumu olarak veya tek bir ortak konumlandırılmış pod olarak. Bu kılavuzun geri kalanı Compose yığınını baştan sona kurar.
+
+---
+
+## Adım 1: Kimlik Doğrulama
+
+Tüm AgentEye yapıtları `agenteye-enterprise` GitHub kuruluşundan dağıtılır. Bir kurumsal geliştirici olarak kendi GitHub PAT'ınızı oluşturabilirsiniz. Tam adımlar ve gerekli izinler için [enterprise-docs/github-token.md](/tr/agenteye/github-token) bölümünü izleyin.
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Docker'ı GHCR'a karşı kimlik doğrulaması yapın
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## Adım 2: Sunucuyu ve Panoyu Dağıtın
+
+Sunucu, toplayıcılardan olayları alır ve bunları sorgulanabilir hale getirir; pano onları keşfettiğiniz yerdir. Alınan olaylar ve analizler ClickHouse'da yaşar (gerekli analitik deposu), Postgres ise kuruluşlar, kullanıcılar, API anahtarları, panolar ve kaydedilmiş sorgular gibi işletimsel durumu tutar.
+
+**Yayınlanan compose dosyasını indirin:**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**Sırlarınızı ayarlayın:**
+
+Dağıtımın varsayılan `admin` kimlik bilgileriyle çalışmaması için bir `.env` dosyası oluşturun. En az `ADMIN_KEY` ve `POSTGRES_PASSWORD` ayarlayın:
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+Ayrıca `ADMIN_KEY` dosyasını mevcut kabuğunuzda dışa aktarın; böylece sonraki adımlar (ör. Adım 3 `curl`) buna doğrudan başvurabilir:
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**Yığını başlatın:**
+
+```bash
+docker compose up -d
+```
+
+Bu, gerekli ClickHouse analitik deposu ve isteğe bağlı Redis önbelleği ile sunucu ve panoyu içeren tam yığını başlatır. Sunucunun başlaması için ClickHouse sağlıklı olmalıdır.
+
+Sunucu şimdi `http://localhost:8080` adresinde ve pano `http://localhost:3000` adresinde dinliyor.
+
+Üretim dağıtımları için (özel Postgres, TLS, ters proxy), bkz. [enterprise-docs/deployment.md](/tr/agenteye/deployment).
+
+---
+
+## Adım 3: Toplayıcı için bir API Anahtarı Oluşturun
+
+Her toplayıcı kapsamlı bir API anahtarı ile kimlik doğrulaması yapar. Adım 2'de ayarladığınız `ADMIN_KEY` kullanarak bir tane oluşturun:
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+`key` değerini kendiniz sağlarsınız; Adım 4'teki toplayıcı yapılandırmasında kullanırsınız. Tam anahtar yönetimi için [enterprise-docs/api-keys.md](/tr/agenteye/api-keys) bölümüne bakın.
+
+---
+
+## Adım 4: Toplayıcıyı Yükleyin
+
+AI ajanlarınızı çalıştıran her makinede toplayıcı daemon'u yükleyin.
+
+**İkili dosyasını indirin (Linux x86_64):**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> Bu, **Linux x86_64** derlemesini indirir. macOS (Apple Silicon veya Intel), Linux arm64 veya Docker / systemd / launchd kurulumu için [collector-installation.md](/tr/agenteye/collector-installation) bölümüne bakın; bu, her platform için indirmeyi listeler — yukarıdaki komut başka bir yerde çalışmayacak olan bir Linux ikilisini yükler.
+
+**Yapılandırın:**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**Daemon'u başlatın:**
+
+```bash
+agenteye-collector start
+```
+
+Bağlantıyı tek seferlik bir flush ile doğrulayın (bekleyen olayları drainledikten sonra çıkar):
+
+```bash
+agenteye-collector flush
+```
+
+Docker, systemd ve launchd kurulumu için [enterprise-docs/collector-installation.md](/tr/agenteye/collector-installation) bölümüne bakın.
+
+---
+
+## Adım 5: Python SDK'yı Yükleyin
+
+Aracı kodunu işaretlemek istediğiniz her makinede, GitHub Releases'dan wheel'ı yükleyin.
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## Adım 6: Aracınızı İşaretleyin
+
+Aracı kodunuza olaylar ekleyin. En azından `agent_start` ve `agent_end` yayınlayın:
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# your agent logic here
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+Olaylar arabelleğe alınır ve her 500 ms'de `$AGENTEYE_HOME/events/` (veya `AGENTEYE_HOME` ayarlanmamışsa `~/.agenteye/events/`) dosyasına temizlenir. Toplayıcı bunları otomatik olarak alır.
+
+Tam olay API'sı için [enterprise-docs/python-sdk.md](/tr/agenteye/python-sdk) bölümüne bakın.
+
+---
+
+## Adım 7: Panoda Olayları Görüntüleyin
+
+`http://your-dashboard-host:3000` adresini açın ve oturum açın. AgentEye size tek kullanımlı bir kod gönderir (veya tek tıklamalı bir sihirli bağlantı), böylece yönetilecek bir şifre yoktur.
+
+![AgentEye oturum açma ekranı; e-postanıza tek kullanımlı bir kod gönderir](/agenteye/images/login.png)
+
+İçeri girdiğinizde, **Olaylar** sayfası alınan tüm olayların canlı izini gösterir. Belirli bir çalışmaya ayrıntılı olarak gitmek için `session_id` veya `agent_id` ile filtreleyin.
+
+![Canlı Olaylar akışı, olay türüne göre renk kodlanmış ve ortam, aracı ve oturum ile filtrelenebilir](/agenteye/images/events-stream.png)
+
+**Oturumlar** sayfası bu olayları çalışma başına bir satıra toplar. AgentEye tamamlanan oturumları otomatik olarak değerlendirir; bu nedenle her çalışma puanlanır ve kalite gerileme manuel inceleme olmadan yüzeye çıkar; en son değerlendirme puanı her satırda bir bakışta görülür:
+
+![Oturumlar listesi, çalışma başına bir satır, durum rozetleri ve değerlendirme puanı rozetleriyle](/agenteye/images/sessions-list.png)
+
+Oturumların nasıl puanlandığını yapılandırmak için [enterprise-docs/evaluation-suite.md](/tr/agenteye/evaluation-suite) bölümüne bakın.
+
+Herhangi bir oturuma tıklayın; **yürütme grafiğini** açmak için; git tarzı görünüm; ajanların, araçların, kancaların ve model çağrılarının zaman içinde nasıl çıktığını; paralel alt ajanlar kendi şeritlerinde ve sağ kısımda çalışma başına döküm:
+
+![Bir oturumun git tarzı yürütme grafiği, olay zaman çizelgesiyle yan yana, araç/model/kanca döküm paneli](/agenteye/images/session-detail.png)
+
+---
+
+## Adım 8: Keşfet, grafik oluştur ve uyarı ver
+
+Olaylar akıyor; **analiz** sayfaları ham etkinliği cevaplara dönüştürür; böylece aracı davranışını ölçebilir, bulguları ekip genelinde paylaşabilir ve bir şey gerilediği anda sayfa alabilirsiniz. Pano sayfaları kuruluş kapsamlı; bu nedenle adres çubuğunda gördüğünüz URL'ler kuruluş slug'ınızla başına gelmektedir (`/<org>/…`).
+
+- **Sorgular** (`/<org>/queries`): olaylarınız ve değerlendirmelerinizin üzerinde kaydedilmiş, yeniden kullanılabilir sorguların bir kütüphanesinden başlayın (yerleşik ön ayarlar artı kendi sorgualarınız)…
+
+![Kaydedilmiş sorguların kütüphanesi: yerleşik ön ayarlar ve özel olanlardan oluşan yeniden kullanılabilir sorguların ızgarası](/agenteye/images/queries.png)
+
+  …ardından bir satırda SQL bestecisinde açın ve canlı sonuçlarla ince ayar yapın ve çalıştırın:
+
+```python
+```
+
+- **Panolar** (`/<org>/dashboards`): sorguları satır, çubuk, alan veya pasta kutucukları olarak paylaşılan, kuruluş genelindeki panolara sabitleyin.
+
+![Kaydedilmiş sorgulardan oluşturulmuş bir pano: saat başına olaylar satırı, tür başına hatalar çubuğu, gecikme alan grafiği ve model başına token'lar](/agenteye/images/dashboard-fleet.png)
+
+- **Uyarılar** (`/<org>/alerts`): herhangi bir eşiği e-posta, Slack, webhook veya panoda bildiren bir sayfalama kuralına dönüştürün. Bkz. [enterprise-docs/alerts.md](/tr/agenteye/alerts).
+
+---
+
+## Sonraki Adımlar
+
+- [Dağıtım](/tr/agenteye/deployment): üretim için kilitlenme
+- [API Anahtarları](/tr/agenteye/api-keys): erişimi yönetin
+- [Sorun Giderme](/tr/agenteye/troubleshooting): sorunları tanılayın

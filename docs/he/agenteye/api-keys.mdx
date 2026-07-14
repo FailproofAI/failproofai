@@ -1,0 +1,255 @@
+---
+title: "מפתחות API"
+description: "תיעוד מפתחות API של AgentEye."
+---
+
+
+AgentEye משתמש במפתחות API דקים להשתלטה על גישה לשרת. כל מפתח נושא הרשאה אחת או יותר המגדירות את מה שהוא יכול לעשות.
+
+---
+
+## הרשאות
+
+השרת אוכף קטלוג קבוע של הרשאות; כל אחת מהן שומרת על נתיבי HTTP ספציפיים. **מפתח admin** מחזיק בכולן; מפתח בתחום מחזיק בתת-קבוצה שתאשרו בעת יצירה. מחרוזות הרשאות לא ידועות נדחות בעת יצירת מפתח.
+
+> **לא ניתן להקצות למפתחות.** שתי הרשאות תקפות הן dashboard-only של אדם ולא יכולות להיות ממונות למפתח API: `orgs:admin` (ניהול אינסטנסיה, המיוחד למפעיל) ו-`keys:update`. בקשה ל-`POST /keys` או `PATCH /keys/:id` שמנסה להעניק אחת מהן נדחית עם HTTP 422. ראה את השורה `keys:update` למטה כדי להבין מדוע מפתח bearer עשוי ליצור מפתחות אך לעולם לא לערוך אותם.
+
+### קבלה וביצוע שאילתות של אירועים
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `events:add` | `POST /events` | קבל אירועים בערך מאספן. זו ההרשאה היחידה שאספן צריך. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | בצע שאילתות על אירועים, רשום את הסביבות הידועות, רשום את מזהי המודל שנראו בנתונים (בו משתמשים בתצוגת Models ובמסננים מודל), חשב את ההצבירה של latency המנעה את מפת החום / פס האחוזון, וייצא הפעלה כ-JSONL. נקודות קצה של ההיבט של סרגל המסננים המשותף `GET /events/environments` ו-`GET /events/models` נגישות עם **כל אחד** מ-`events:read` **או** `evaluations:read`, כך שדף ההפעלות (סגור `evaluations:read`) משחזר את אותו ממד per-org. |
+
+### הפעלות והערכות
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | רשום הפעלות, קרא תוצאות הערכה, בריאות ההערכה שנאספו המשמשות לוח מחוונים, וזה המצב של שורת חריטה evaluation-job. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | שורת הערכה מחודשת ידנית עבור הפעלה מוגמרת. |
+
+### לוחות מחוונים
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | רשום לוחות מחוונים, טען אחד, וקרא את אריחיו. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | צור וערוך לוחות מחוונים, הוסף / ערוך / הסר אריחים, וסדר מחדש את רשת האריח. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | מחק לוח מחוונים שלם (מחיקה ברמת אריח נמצאת תחת `dashboards:write`). |
+
+### שאילתות שמורות (SQL composer)
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | רשום שאילתות שמורות, טען אחת, וסקור את סכמת ClickHouse read-only שאליה יוצב ה-composer. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | צור וערוך שאילתות שמורות. SQL בעדיין מנותב דרך אותו תפקיד read-only ובדיקות `sql_guard` כמו קריאה `queries:run`. |
+| `queries:delete` | `DELETE /queries/:id` | מחק שאילתה שמורה. |
+| `queries:run` | `POST /queries/run` | בצע SQL שמור או ad-hoc כנגד תפקיד read-only המשמש את ה-composer. |
+
+### עוזר AI
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | שוחח עם עוזר AI של לוח המחוונים וטפל בשיחות שלך (פרטיות). נדרש ב-**משתמש** כדי לראות את עגינת העוזר; המפתח שלו של העוזר הוא `dashboard-assistant` וזרוע בנפרד (ראה למטה). |
+
+### מפתחות API
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `keys:create` | `POST /keys` | צור מפתח API בתחום חדש. **לא** מעניק עריכה של הרשאות של מפתח קיים (זה `keys:update`). |
+| `keys:read` | `GET /keys` | רשום מפתחות קיימים. Secrets אף פעם לא מוחזרים על ידי נקודת קצה זו. |
+| `keys:update` | `PATCH /keys/:id` | ערוך הרשאות של מפתח קיים. הרשאה **dashboard-only** של אדם; היא לא יכולה להיות מהוקצית למפתח API (מפתח bearer עשוי ליצור מפתחות אך לעולם לא לערוך אותם). |
+| `keys:disable` | `POST /keys/:id/disable` | שלול מפתח. מפתחות מוגנים (`admin`, `dashboard-assistant`) לא יכולים להיות מחוסלים; סובב אותם דרך env var + הפעל מחדש. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | סובב את ה-secret של מפתח. מפתחות מוגנים לא יכולים להיווצר מחדש דרך נקודת קצה זו. |
+
+### משתמשי לוח מחוונים
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `users:create` | `POST /users`, `GET /users/defaults` | הזמן משתמש לוח מחוונים חדש (הוציא דוא"ל + כניסת OTP) וקרא את ערכת ההרשאות שהתוצבה בלוח המחוונים המשמשת זרע את טופס ההזמנה. |
+| `users:read` | `GET /users`, `GET /users/:id` | רשום משתמשים וטען רשומת משתמש יחידה. |
+| `users:update` | `PUT /users/:id` | ערוך הרשאות של משתמש. עדכונים שלחו דוא"ל לשינוי הרשאות למשתמש המושפע ונכנסו לתוקף בבקשתו הבאה; לא נדרש כניסה מחדש. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | הפוך משתמש (שלול את הפעלותיו מיד) והפוך משתמש מוסקה לפעיל. |
+
+הרשאות אלה תומכות בדף **Users** של לוח המחוונים, כאשר ההיקפים המוקצים של כל חברה מוצגים כחתיכות:
+
+![דף Users: כרטיס לכל משתמש לוח מחוונים עם הדוא"ל שלו, הרשאות מוקצות, ועריכה/הפוך פקדים](/agenteye/images/users.png)
+
+### הגדרות תפעוליות
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | הצג הגדרות תפעוליות מנוהלות בלוח המחוונים ושלהן metadata; רשום עקיפות מחלון הקשר לכל מודל; ופתור את החלון האפקטיבי עבור מודל. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | ערוך הגדרות תפעוליות והוסף, שנה, או הסר עקיפות מחלון הקשר לכל מודל. שינויים משפיעים על אירועים חדשים ללא הפעלה מחדש של השרת. |
+
+![דף Settings: הגדרות תפעוליות מנוהלות בלוח המחוונים כגון כניסות מורשות ותוחלות חיים של הפעלה/OTP, הניתנות לעריכה ללא הפעלה מחדש](/agenteye/images/settings.png)
+
+### התראות והתקריות
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | הצג הגדרות התראות שהוגדרו. |
+| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | צור, ערוך, מחק, ובדוק שריפת הגדרות התראות. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | הצג התקריות והנתיב של ההערמה שלהן. |
+| `incidents:write` | `POST /alerts/:id/incidents` | פתח התקרייה ידנית כנגד התראה קיימת. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | הודה בהתקריות, הקצה, פתור, ותיאור התקריות. |
+
+### ביקורות
+
+| הרשאה | נתיבי HTTP | מה זה מאפשר |
+|---|---|---|
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | הצג הגדרות ביקורת, היסטוריית הריצה, ותוצאות. |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | צור, ערוך, מחק, והרץ ביקורות; הערמת תוצאות (הודא / השתק / דחה / פתור / פתח מחדש / הקצה). |
+
+> כאשר Audits הושקו, בעלי זכויות קיימים הורחבו לאורך אותן צורות תפקיד כמו התראות: כל משתמש וערכת הרשאות המחזיקים `alerts:read` קיבלו `audits:read`, וכל בעל `alerts:write` קיבל `audits:write`. מפתחות API קיימים **לא** הורחבו — הקצה `audits:*` למפתח בעצמאות אם הוא צריך את משטח הביקורת.
+
+> Stored grants של ה-legacy `alerts:ack` token מנותחים כ-`incidents:ack` כך שעל-קוראים שומרים על גישה ללא rekeying. ה-token כבר לא ניתן להקצאה מעורך המשתמשים של לוח המחוונים; המטריצה מציעה `incidents:ack` במקום.
+
+> נקודת קצה של picker-הנמען `GET /alerts/recipients` (אשר רשומה את דוא"ל החברים שעורך ההתראה יכול להודיע) נגישה על ידי בעל **כל אחד** מ-`alerts:read` **או** `alerts:write`, כך שעורכי התראות יכולים למלא את ה-picker ללא הקצאה של `users:read`.
+
+> צופה לוחות מחוונים צריך **הן** `dashboards:read` (כדי לטעון את התצוגות השמורות) **והן** `evaluations:read` (מדדי הבריאות מחושבים מנתוני הערכה). הקצה `dashboards:write` כדי לאפשר למשתמש ליצור או לערוך לוחות מחוונים, ו-`dashboards:delete` כדי להסיר אותם.
+
+> `/health` ו-`/auth/*` (בקשת OTP, אימות OTP, בדיקת הפעלה, התנתקות) הם לא מאומתים בעיצוב; הם זרימת ההתחברות וחוקר חיות. `GET /access-granters` דורש מפתח תקף אך אין הרשאה ספציפית, כך שכל משתמש מחובר יכול לראות אילו admins יש ליצור קשר איתם בנוגע לשינויי גישה.
+
+---
+
+## ערכות הרשאות
+
+ערכות הרשאות מאפשרות לך להחיל תפקיד שם תחת בחירה ידנית של אסימונים בודדים בכל פעם. במקום לבחור תריסר הרשאות אחת אחת עבור כל משתמש לוח מחוונים או מפתח API חדש, אתה בוחר ערכה, וכולם שהוקצו לו נושא הענקה עקבית וניתנת לבדיקה. עריכה של ערכת מותאם מחודשת את ההענקה החדשה לכל משתמש שכבר הוקצה לו, כך ששינוי תפקיד הוא עריכה אחת ולא טיפול בכל חברה.
+
+כל ארגון זרוע עם שלוש ערכות מובנות:
+
+| ערכה | הרשאות | מיועד ל |
+|---|---|---|
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | גישה לצפייה בלבד בכל משטח תפעולי. |
+| `standard` | הכל ב-`read-only`, בתוספת `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | קרא בלבד בתוספת פעולות על-קורא יומיומיות: הרץ שאילתות, הערך הפעלות מחדש, הודא התקריות, והשתמש בעוזר ה-AI. |
+| `admin` | כל הרשאה הניתנת להקצאה | שליטה מלאה בארגון. |
+
+שלוש הערכות המובנות הן **בלתי ניתנות לשינוי**; שמותיהן תמיד אומרות אותו דבר, כך ש-`read-only`, `standard`, ו-`admin` בטוחים להפניה בתוך מדיניות והעלאה. מפעיל יכול ליצור **ערכות מותאמות** נוספות למודל תפקידים ספציפיים לארגון שלך (לדוגמה, תפקיד "dashboard author" או תפקיד "collector-only").
+
+ערכות מוצעות בלוח המחוונים ומנוהלות דרך ה-API ב-`GET /permission-sets` (רשום, סגור על ידי `users:read`) ו-`POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (צור, ערוך, מחק ערכה מותאמת, סגור על ידי `settings:write`). מחיקה או עריכה של ערכה מובנית מוסרבת.
+
+חברות בערכה היא מה שתומך בשתי תכונות אחרות:
+
+- **`DEFAULT_USER_PERMISSIONS`** (ההענקה שנבחרה מראש בעת פתיחת admin + משתמש חדש) מתחברת לערכה `standard`. ראה [Deployment](/he/agenteye/deployment).
+- **דגל `--set`** ב-`agenteye-orgctl` (ניהול חברים של מפעיל) מתחיל חברה מערכה בשם, שלאחר מכן אתה משופר עם `--add` / `--remove`. ראה [Tenant Management](/he/agenteye/tenant-management).
+
+> כאשר ערכה כוללת הרשאה שאינה key-assignable (לדוגמה, ערכה מותאמת הנושאת `keys:update`), זריעת מפתח מהערכה זו מטילה את האסימונים הלא-assignable; השרת אחרת רח מפתח עם HTTP 422. משתמשי לוח מחוונים אינם כפופים להגבלה זו.
+
+---
+
+## מפתח Admin Bootstrap
+
+מפתח ה-admin הוא ה-credential שורש היחיד המאפשר למפעיל להעלות גישה מכלום: איתו אתה יכול ליצור כל מפתח scoped אחר, להזמין את משתמשי לוח המחוונים הראשונים, ולהגדיר את ההתקנה לפני שיש מפתח אחר כלשהו. זה המפתח היחיד שאתה לא יוצר דרך ה-keys API; הוא מסופק מהסביבה כך שהשרת ניתן להגעה בהפעלה הראשונה.
+
+קבע את משתנה הסביבה `ADMIN_KEY` בשרת. בכל הפעלה, השרת upserts ערך זה כמפתח admin עם כל ההרשאות.
+
+כדי לסובב: שנה `ADMIN_KEY` לסוד חדש והפעל מחדש את השרת.
+
+---
+
+## ארגון scoping
+
+**ארגונים עצמם נוצרים ומנוהלים out-of-band על ידי מפעיל, לא דרך API מפתחות זה.** Org ו-member lifecycle (צור / שנה שם / מחק / טהר ארגון; הוסף / עדכן / הסר חברה) נעשה עם ה-**`agenteye-orgctl`** CLI שפועל בתוך pod השרת; אין HTTP API או כפתור לוח מחוונים עבורו. ראה [Tenant Management](/he/agenteye/tenant-management). מה *הוא* ללא שינוי: **מפתחות API per-org עדיין מטבעות בלוח המחוונים (או דרך API מפתחות זה)** על ידי חברי ארגון.
+
+בפריסה מרובת-ארגון, כל מפתח שחברי ארגון יוצרים (דרך API מפתחות זה או דף ה-**Keys** של לוח המחוונים) שייך ל-**ארגון אחד** ויכול רק אי פעם לקרוא או לכתוב נתוני ארגון זה; הארגון חתום על המפתח בעת יצירה ו-enforced בכל בקשה. שני ה-bootstrap keys הם החריג היחיד: מפתח ה-`admin` (זרוע מ-`ADMIN_KEY`) ומפתח ה-`dashboard-assistant` (זרוע מ-`AGENT_API_KEY`) הם **instance-scoped** (הם לא נושאים ארגון). קונטיינר לוח המחוונים מתחבר עם מפתח ה-`admin` כך שהוא יכול לתיווך בקשות per-org בשם חברים שנכנסו. פריסות חד-דיירנו לא צריכות לחשוב על זה; כל המפתחות שייכים לארגון `default` המובנה.
+
+---
+
+## יצירת מפתחות
+
+השתמש במפתח admin (או כל מפתח עם הרשאה `keys:create`) כדי ליצור מפתחות scoped נוספים.
+
+### מפתח אספן (קבל בלבד)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "your-collector-secret",
+    "permissions": ["events:add"]
+  }'
+```
+
+### מפתח לוח מחוונים (קרא בלבד)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dashboard",
+    "key": "your-dashboard-secret",
+    "permissions": ["events:read", "keys:read"]
+  }'
+```
+
+כאשר אתה יוצר מפתח דרך HTTP API, אתה מספק את ערך ה-`key` בעצמך; בחר סוד חזק ואחזור אותו בבטחה. (לוח המחוונים עובד בדרך ההפוכה: זה יוצר סוד חזק בשבילך ומציג אותו פעם אחת בעת יצירה; ראה [Key Management in the Dashboard](#key-management-in-the-dashboard).) התגובה מאשרת שהמפתח נוצר:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "prod-collector",
+  "permissions": ["events:add"],
+  "created_at": "2026-04-01T12:00:00Z"
+}
+```
+
+---
+
+## רשימת מפתחות
+
+```bash
+curl -s http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+סודות מפתחות אינם מוחזרים בתגובות רשימה, רק IDs, שמות והרשאות.
+
+---
+
+## הפוך מפתח
+
+הפיכה משלול גישה מיד ללא מחיקת רשומת המפתח.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/disable \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+---
+
+## סיבוב מפתח
+
+יצר סוד חדש למפתח קיים. הסוד הישן מבוטל מיד.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/regenerate \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+התגובה כוללת את ה-secret plaintext החדש, **הוצג רק פעם אחת**.
+
+---
+
+## ניהול מפתח בלוח המחוונים
+
+דף ה-**Keys** בלוח המחוונים מספק UI עבור כל הפעולות לעיל. אתה צריך מפתח עם הרשאה `keys:read` כדי לראות את הרשימה, ו-`keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` עבור פעולות create / edit / disable / regenerate בהתאמה. עריכה של הרשאות של מפתח (`keys:update`) היא נפרדת מיצירת אחד (`keys:create`), כך שתוכל להקצות למפעיל את היכולת ליצור מפתחות ללא יכולת לעשות rescope למפתחות קיימים, או להיפך. מפתח ה-admin מכסה את כל אלה.
+
+כאשר אתה יוצר מפתח מלוח המחוונים אתה לא מספק את ה-secret; לוח המחוונים יוצר סוד חזק בשבילך ומציג אותו **פעם אחת** בעת יצירה. העתק אותו מיד ואחזור אותו בבטחה; הוא לעולם לא מוצג שוב, בדיוק כמו עם regenerate. אתה עדיין יכול לבחור את הרשאות של המפתח ישירות, או לזרוע אותם מערכה הרשאות (ראה למטה).
+
+![דף API Keys: כרטיס לכל מפתח המציג את שמו, הרשאות מוקצות, וזמן יצירה, עם פעולות regenerate ו-disable; מפתחות מוגנים כמו `admin` מסומנים](/agenteye/images/api-keys.png)
+
+---
+
+## פריסת מפתח מומלצת
+
+| מפתח | הרשאות | בשימוש על ידי |
+|---|---|---|
+| `admin` (bootstrap דרך `ADMIN_KEY` env var) | הכל | Ops/setup, וקונטיינר לוח המחוונים (מתחבר עם `ADMIN_KEY`, תיווך בקשות משתמש עם בדיקות הרשאות) |
+| מפתח אספן לכל-host | `events:add` | אספן על כל מכונת agent |
+| `dashboard-assistant` (bootstrap דרך `AGENT_API_KEY` env var) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | קונטיינר עוזר AI, זרוע אוטומטית, **מוגן**; לא יכול להיות ערוך דרך ה-API |
+| מפתח טלמטריה של עוזר (אופציונלי) | `events:add` | self-instrumentation של עוזר AI, אם מופעל |
+
+> **מפתח עוזר.** מפתח ה-עוזר **זרוע אוטומטית** על ידי השרת מ-`AGENT_API_KEY` env var (אותו סוד שהעוזר מציג כ-`AGENTEYE_API_KEY`); אין שלב key-minting ידני וללא מפתח admin. הרשאותיו קבועות בקוד מקור כך שלא ניתן להרחיב scope על ידי misconfiguration: קרא על פני events / evaluations / dashboards, בתוספת dashboards-write ו-queries-read / write / run עבור זרימת יצירת Ask AI to write a query. כל SQL עדיין הולך דרך אותו תפקיד read-only ובדיקות `sql_guard` כמו שאילתה שנכתבה על ידי משתמש, כך זה מרחיב את *משטח הקמתה*, לא את משטח הנתונים; פעולות כושלות (`queries:delete`, `dashboards:delete`) בשפט קבועות מפתח העוזר. כמו מפתח ה-`admin`, זה **מוגן**: לא יכול להיות מוסקה או regenerated דרך מפתחות API, רק סובב על ידי שינוי `AGENT_API_KEY` והפעלה מחדש. לוח המחוונים *משתמשים* בנוסף צריך הרשאה `agent:use` כדי לראות ולהשתמש בעוזר. אם אתה מפעיל self-instrumentation, תן לעוזר מפתח `events:add`-בלבד נפרד.

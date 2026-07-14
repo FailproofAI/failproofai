@@ -1,0 +1,167 @@
+---
+title: "Quản lý Tenant (tổ chức & thành viên)"
+description: "Tài liệu Quản lý Tenant AgentEye (tổ chức & thành viên)."
+---
+
+
+Một phiên bản AgentEye duy nhất phục vụ nhiều **tổ chức** (tenants) hoàn toàn bị cách ly, vì vậy một phiên bản có thể lưu trữ các nhóm, đơn vị kinh doanh hoặc khách hàng khác biệt mà không lộ dữ liệu của một tenant cho tenant khác. Mọi hàng dữ liệu (sự kiện, đánh giá, phiên làm việc, bảng điều khiển, truy vấn đã lưu, cảnh báo, khóa API và thành viên) đều thuộc chính xác một tổ chức. Cách ly chính được thực thi trong mã ứng dụng: mọi yêu cầu được phạm vi hóa theo tổ chức với các vị từ `org_id` rõ ràng. Trên ClickHouse — nơi lưu trữ các sự kiện và đánh giá có khối lượng cao — điều này được hỗ trợ bởi việc thực thi mạnh mẽ ở cấp động cơ: mỗi tổ chức nhận được một người dùng ClickHouse chỉ đọc riêng với chính sách hàng cho mỗi tổ chức, do đó ngay cả SQL phân tích không đáng tin cậy cũng không bao giờ có thể đọc các hàng của tenant khác. Trên PostgreSQL, bảo mật cấp hàng bổ sung tính năng phòng chống sâu trên đường dẫn truy vấn chỉ đọc (`/queries/run`), thu hẹp phạm vi mà đường dẫn có thể nhìn thấy ngay cả khi bộ lọc cấp ứng dụng bị thiếu; kết nối ghi của chính máy chủ chạy dưới dạng chủ sở hữu bảng và do đó hoạt động thông qua phạm vi `org_id` cấp ứng dụng giống nhau.
+
+Vòng đời tenant được kiểm soát bởi người vận hành, trong khi mọi thứ các thành viên làm hàng ngày vẫn tự phục vụ trong bảng điều khiển. Tổ chức và tư cách thành viên của chúng được tạo và quản lý bằng CLI **`agenteye-orgctl`**, được cung cấp bên trong hình ảnh máy chủ và chạy **bên trong pod máy chủ hiện có**. Tạo và xóa tenant được cố ý giữ ngoài bảng điều khiển và API HTTP: không có **API HTTP và nút bảng điều khiển** cho vòng đời tenant, do đó nó bị chặn bởi quyền truy cập shell cluster/pod hơn là bề mặt ứng dụng.
+
+Trong một tổ chức, các thành viên làm việc hoàn toàn trong bảng điều khiển và API: họ đăng nhập, chuyển đổi giữa các tổ chức họ thuộc về, quản lý khóa API của riêng họ, xây dựng bảng điều khiển và truy vấn đã lưu, và cấu hình cảnh báo cho tổ chức của họ. Sự phân chia là rõ ràng: các nhà vận hành cung cấp và ngừng hoạt động các tenant và thành viên của họ thông qua CLI; các thành viên chạy mọi thứ bên trong một tenant thông qua giao diện người dùng.
+
+> **Các phiên bản triển khai của một tenant không cần bất kỳ điều này nào.** Cài đặt một tenant chạy mà không cần bất kỳ hành động từ người vận hành nào. Tất cả dữ liệu, người dùng và khóa sống trong một tổ chức `default` tích hợp được cung cấp tự động. Bạn chỉ cần hướng dẫn này khi bạn quyết định thêm một tổ chức thứ hai.
+
+---
+
+## Điều kiện tiên quyết
+
+Trước khi bạn tạo **tổ chức thứ hai** của mình (tổ chức `default` tích hợp không cần gì):
+
+- **PostgreSQL 15+.** Lược đồ tư cách thành viên tổ chức sử dụng khóa ngoại `ON DELETE SET NULL` danh sách cột yêu cầu PostgreSQL 15+. Nâng cấp PostgreSQL trước khi cung cấp một tổ chức thứ hai.
+- **Một `ORG_CH_SECRET` mạnh mẽ và ổn định.** Mật khẩu ClickHouse của mỗi tổ chức được lấy dưới dạng `HMAC(ORG_CH_SECRET, org_id)`, do đó mặc định phát triển tích hợp được biết công khai sẽ mang lại thông tin đăng nhập cho mỗi tổ chức có thể dẫn xuất công khai. `agenteye-orgctl org create` **từ chối chạy trong khi `ORG_CH_SECRET` không được đặt hoặc để ở mặc định phát triển tích hợp**. Đặt giá trị của riêng bạn trước tiên (xem [Triển khai → biến môi trường](/vi/agenteye/deployment) và, trên Kubernetes, [§2.6 của hướng dẫn Kubernetes](/vi/agenteye/kubernetes-deployment#26-multi-tenant-org-isolation-key-optional)). Giữ nó giống nhau trên tất cả các bản sao máy chủ và không xoay nó một cách tùy tiện; xoay nó bỏ rơi từng người dùng ClickHouse của tổ chức cho đến khi khởi động lại tiếp theo cung cấp lại chúng.
+
+---
+
+## Chạy CLI
+
+`agenteye-orgctl` được cung cấp trong **hình ảnh giống như máy chủ** (cùng với `agenteye-server`). Bạn **không** triển khai một pod, Job hoặc Deployment riêng biệt cho nó; bạn thực thi nó bên trong pod máy chủ đang chạy, do đó nó đọc cùng `DATABASE_URL`, `CLICKHOUSE_URL` và `ORG_CH_SECRET` mà máy chủ sử dụng.
+
+**Kubernetes:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl <args>
+```
+
+**Docker Compose:**
+
+```bash
+docker compose exec server agenteye-orgctl <args>
+```
+
+Các ví dụ dưới đây hiển thị `agenteye-orgctl <args>` trơn tru để ngắn gọn; tiền tố mỗi cái với bất kỳ dòng nào trong hai dòng trên khớp với phiên bản triển khai của bạn.
+
+---
+
+## Tham chiếu lệnh
+
+### Tổ chức
+
+| Lệnh | Nó làm gì |
+|---|---|
+| `org create --slug <slug> --name <name>` | Tạo một tổ chức mới. Từ chối chạy trong khi `ORG_CH_SECRET` không được đặt hoặc để ở mặc định phát triển tích hợp (đặt của riêng bạn trước tiên, xem Điều kiện tiên quyết). Cung cấp người dùng ClickHouse chỉ đọc của tổ chức + chính sách hàng. |
+| `org list` | Liệt kê tất cả các tổ chức (slug, tên và trạng thái vòng đời). |
+| `org rename --slug <slug> --name <new name>` | Thay đổi tên hiển thị của tổ chức. Slug (được sử dụng trong URL và khóa) không thay đổi. |
+| `org delete --slug <slug>` | **Xóa mềm** tổ chức và loại bỏ người dùng ClickHouse của nó. Dữ liệu **được giữ lại**. Điều này thu hồi quyền truy cập và giải phóng thông tin đăng nhập ClickHouse cho mỗi tổ chức, nhưng không xóa sự kiện. Có thể đảo ngược bởi các nhà vận hành; bước đầu tiên an toàn trước một cuộc thanh lọc. |
+| `org purge --slug <slug>` | **Xóa dữ liệu không thể đảo ngược.** Tổ chức phải đã được `delete` rồi. Không bao giờ được phép trên tổ chức `default` tích hợp. Chỉ sử dụng khi bạn chắc chắn rằng dữ liệu của tenant nên bị hủy. |
+
+### Thành viên
+
+| Lệnh | Nó làm gì |
+|---|---|
+| `member add --org <slug> --email <email> [--set <permission-set>] [--add perm1,perm2] [--remove perm3] [--protected]` | Thêm một thành viên vào một tổ chức. Tùy chọn bắt đầu từ một bộ quyền tích hợp, sau đó thêm/loại bỏ các quyền riêng lẻ. `--protected` ghim thành viên để bảng điều khiển không thể xóa hoặc hạ cấp họ (xem bên dưới). Thành viên mới nhận được OTP khi đầu tiên đăng nhập bảng điều khiển. |
+| `member list --org <slug>` | Liệt kê các thành viên của tổ chức. Các cột đầu ra là `EMAIL`, `SET` (bộ tích hợp mà thành viên bắt đầu, hoặc `-`), `PROT` (liệu thành viên có được bảo vệ hay không) và `PERMISSIONS` (quyền hiệu lực của họ). Một email hiển thị với dấu `*` ở cuối là quản trị viên phiên bản; họ có quyền truy cập vào mọi tổ chức. |
+| `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...] [--protected \| --unprotect]` | Thay đổi quyền của thành viên và/hoặc cờ bảo vệ. `--set` thay thế từ một bộ tích hợp; `--add` / `--remove` điều chỉnh các quyền riêng lẻ; `--protected` / `--unprotect` bật tính năng bảo vệ. Truyền chỉ `--protected`/`--unprotect` (không có cờ cấp) thay đổi bảo vệ một mình và để nguyên quyền hiện có. |
+| `member remove --org <slug> --email <email>` | Loại bỏ một thành viên khỏi tổ chức. Từ chối nếu thành viên được bảo vệ; `--unprotect` họ trước tiên. (Một người có thể là thành viên của một số tổ chức; điều này chỉ ảnh hưởng đến tổ chức được đặt tên.) |
+
+Một người có thể là thành viên của nhiều hơn một tổ chức với **các** quyền khác nhau ở mỗi tổ chức, ví dụ một quản trị viên trong một tổ chức và chỉ đọc ở tổ chức khác. Mỗi tư cách thành viên được quản lý độc lập cho mỗi tổ chức: việc cấp hoặc thay đổi quyền của một người trong một tổ chức không ảnh hưởng đến tư cách thành viên của họ trong bất kỳ tổ chức nào khác.
+
+### Thành viên được bảo vệ (quản trị viên tổ chức không thể xóa)
+
+Bảo vệ đảm bảo một tổ chức không bao giờ có thể vô tình khoá chính nó ra khỏi tự quản lý. Theo mặc định, các quản trị viên của chính một tổ chức có thể thêm và xóa lẫn nhau thông qua trang người dùng tự phục vụ của bảng điều khiển, vì vậy họ có thể xóa quản trị viên cuối cùng và để tổ chức mà không có ai có thể quản lý nó.
+
+![Trang Người dùng: một thẻ cho mỗi người dùng bảng điều khiển với email, quyền cấp và điều khiển chỉnh sửa/vô hiệu hóa của họ](/agenteye/images/users.png)
+
+Để ngăn điều đó, đánh dấu một thành viên **được bảo vệ**:
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email owner@acme.example --set admin --protected
+```
+
+Một thành viên được bảo vệ **không thể bị xóa hoặc hạ cấp thông qua bảng điều khiển**; những hành động đó trả về lỗi. Chỉ một nhà vận hành mới có thể thay đổi họ và chỉ thông qua CLI này: chạy `member update --org acme --email owner@acme.example --unprotect` trước tiên, sau đó xóa hoặc hạ cấp. Điều này đảm bảo mọi tổ chức giữ ít nhất một quản trị viên mà các thành viên của riêng họ không thể khoá, trong khi vẫn giữ kiểm soát tenant cho nhà vận hành. Bảo vệ **cho mỗi tổ chức**; bảo vệ ai đó trong một tổ chức không ảnh hưởng đến tư cách thành viên của họ ở tổ chức khác.
+
+### Bộ quyền tích hợp
+
+`--set` chấp nhận một trong ba bộ tích hợp, được áp dụng cho mỗi tổ chức:
+
+| Bộ | Dự định cho |
+|---|---|
+| `admin` | Quyền truy cập đầy đủ trong tổ chức, bao gồm quản lý khóa API và người dùng của tổ chức. |
+| `standard` | Sử dụng hàng ngày: đọc + chạy truy vấn, xây dựng bảng điều khiển, thừa nhận sự cố. |
+| `read-only` | Quyền truy cập chỉ xem dữ liệu và bảng điều khiển của tổ chức. |
+
+Bắt đầu từ một bộ với `--set`, sau đó tinh chỉnh bằng `--add` / `--remove` bằng cách sử dụng các mã thông báo quyền riêng lẻ được liệt kê trong [Khóa API](/vi/agenteye/api-keys). Các mã thông báo quyền tự chúng giống hệt với các mã được sử dụng cho khóa API.
+
+---
+
+## Ví dụ thực hành
+
+Cung cấp một tenant `acme` mới, thêm quản trị viên đầu tiên của nó, để họ tạo một khóa, sau đó loại bỏ tổ chức.
+
+**1. Tạo tổ chức** (`ORG_CH_SECRET` phải đã được đặt thành giá trị mạnh mẽ, ổn định, không được để không đặt hoặc mặc định phát triển tích hợp):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+```
+
+**2. Thêm thành viên đầu tiên làm quản trị viên tổ chức:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+```
+
+Alice nhận được OTP lần đầu tiên cô đăng nhập vào bảng điều khiển. Từ đó trở đi, cô ấy làm việc hoàn toàn trong giao diện người dùng dưới tiền tố URL tổ chức của cô (ví dụ `/acme/sessions`).
+
+**3. Tạo khóa API cho mỗi tổ chức (trong bảng điều khiển):**
+
+Nhà vận hành **không** tạo khóa dữ liệu cho mỗi tổ chức từ CLI. Alice (hoặc bất kỳ thành viên tổ chức nào có `keys:create`) tạo khóa bộ sưu tập / bảng điều khiển cho tổ chức `acme` từ trang **Khóa** của bảng điều khiển. Mọi khóa cô tạo được tự động đóng dấu bằng tổ chức của cô và chỉ có thể đọc hoặc ghi dữ liệu của `acme`. Xem [Khóa API](/vi/agenteye/api-keys).
+
+**4. Điều chỉnh thành viên sau:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member update --org acme --email alice@acme.example --add alerts:write
+
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member list --org acme
+```
+
+**5. Xóa mềm tổ chức** (thu hồi quyền truy cập + loại bỏ người dùng ClickHouse của nó; dữ liệu được giữ lại):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org delete --slug acme
+```
+
+**6. Thanh lọc tổ chức** (không thể đảo ngược; chỉ sau khi xóa mềm; không bao giờ tổ chức `default`):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org purge --slug acme
+```
+
+Trên Docker Compose, thay thế mỗi tiền tố `kubectl -n agenteye exec deploy/server --` bằng `docker compose exec server`.
+
+---
+
+## Phân chia trách nhiệm
+
+Mọi thứ một thành viên tổ chức cần hàng ngày tự phục vụ trong bảng điều khiển và API, được phạm vi tự động cho tổ chức hiện tại của họ:
+
+- **Khóa API cho mỗi tổ chức** được tạo và quản lý bởi các thành viên tổ chức trong bảng điều khiển (hoặc thông qua API khóa với khóa mang `keys:create`). CLI **không** tạo khóa dữ liệu. Xem [Khóa API](/vi/agenteye/api-keys).
+- **Chuyển đổi tổ chức** được xây dựng vào bảng điều khiển; các thành viên chuyển đổi giữa các tổ chức họ thuộc về từ bộ chuyển đổi tổ chức, và các trang có phạm vi tổ chức sống dưới `/<org-slug>/…`.
+- **Bảng điều khiển, truy vấn đã lưu, cảnh báo và tất cả việc sử dụng dữ liệu** xảy ra hoàn toàn trong giao diện người dùng và API, được phạm vi cho tổ chức hiện tại của thành viên.
+
+Nhà vận hành, sử dụng `agenteye-orgctl`, chỉ sở hữu vòng đời tổ chức + thành viên ****: tạo / đổi tên / xóa / thanh lọc một tổ chức và thêm / danh sách / cập nhật / xóa một thành viên.
+
+---
+
+## Xem thêm
+
+- [Triển khai](/vi/agenteye/deployment): `ORG_CH_SECRET` và phần còn lại của môi trường máy chủ.
+- [Triển khai Kubernetes](/vi/agenteye/kubernetes-deployment): §2.6 tạo Bí mật `agenteye-org-ch-secret` trước tổ chức đa tenant đầu tiên của bạn.
+- [Khóa API](/vi/agenteye/api-keys): mô hình khóa cho mỗi tổ chức và các mã thông báo quyền được sử dụng bởi `--add` / `--remove`.
+- [Khắc phục sự cố](/vi/agenteye/troubleshooting): các vấn đề về cung cấp đa tenant và cách ly ClickHouse.

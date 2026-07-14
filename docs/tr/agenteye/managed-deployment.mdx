@@ -1,0 +1,171 @@
+---
+title: "Kubernetes Kümenizi Üzerinde Yönetilen Dağıtım"
+description: "AgentEye Kubernetes Kümenizi Üzerinde Yönetilen Dağıtım belgeleri."
+---
+
+
+AgentEye, yapay zeka ve LLM ajanları için kendi kendine barındırılan gözlemlenebilirlik ve değerlendirme platformudur. Ajan oturumlarını, araç çağrılarını, model isteklerini ve hataları yakalar, bunları aranabilir analitik ve değerlendirmelere dönüştürür ve sonuçları opsiyonel salt okunur yapay zeka asistanı ile bir panoda sunar.
+
+Yönetilen dağıtım modelinde, adanmış bir Kubernetes kümesi sağlarsınız ve Exosphere platform'un tamamını bu küme içinde çalıştırır, her bileşeni sizin adınıza dağıtır, yapılandırır, işletir, yedekler ve yükseltir. Ekibiniz platform'un değerini (ajan görünürlüğü, analitik, değerlendirme ve opsiyonel asistan) veritabanlarını, sertifikaları veya yükseltmeleri işletmek zorunda kalmadan elde eder. Tüm veriler bulut hesabınız içinde kalır.
+
+---
+
+## Önkoşullar
+
+- Konteyner görüntülerini çekmek ve yapıtları indirmek için **GitHub PAT** (bkz. [GitHub Token Kurulumu](/tr/agenteye/github-token))
+- **Adanmış bir Kubernetes kümesi** (aşağıdaki gereksinimlere bakın)
+- Veritabanı yedekleri için **depolama bucket'ı**
+- **Ağ bağlantısı**: kümenin yük dengeleyicisine gelen port 443
+
+---
+
+## Adım 1: Adanmış Kubernetes Kümesi Hazırlayın
+
+AgentEye'a adanmış bir Kubernetes kümesi oluşturun. Bu küme diğer iş yükleriyle paylaşılmamalıdır, böylece tam platform (uygulama hizmetleri, veritabanları, analitik ve caching) mevcut altyapınızı etkilemeden izolasyon içinde çalışır.
+
+| Gereksinim | Ayrıntılar |
+|---|---|
+| **Dağıtım** | Herhangi bir uyumlu Kubernetes: EKS, GKE, AKS veya kendi kendine yönetilen |
+| **Sürüm** | 1.27 veya sonrası |
+| **Node havuzu** | Minimum: **3 düğüm, her biri 4 vCPU / 8 GB RAM** (standart genel amaçlı örnekler) |
+| **Depolama** | Blok hacimler sağlayan varsayılan StorageClass (AWS'de `gp3`, GCP'de `pd-ssd` gibi) |
+| **Yük Dengeleyici** | Küme, bulut LoadBalancer hizmetleri sağlayabilmelidir (EKS, GKE, AKS'de varsayılan) |
+
+> Exosphere küme içinde diğer her şeyi yükler ve yönetir: ingress denetleyicileri, TLS sertifikaları, veritabanları, caching, izleme ve tüm uygulama dağıtımları.
+
+---
+
+## Adım 2: AgentEye Ekibine Erişim Verin
+
+Exosphere'in ad alanlarını, özel kaynak tanımlarını, ingress denetleyicilerini ve depolama sağlayıcılarını yönetmek için cluster-admin erişimine (veya eşdeğer geniş RBAC'ye) ihtiyacı vardır.
+
+| Gereksinim | Ayrıntılar |
+|---|---|
+| **Erişim yöntemi** | IAM rolü (EKS/GKE için tercih edilen), kubeconfig veya SSO tabanlı erişim |
+| **VPN / bastion** | Kubernetes API sunucusu özel ise, Exosphere işletim ekibine VPN kimlik bilgilerini veya bastion erişimini sağlayın |
+
+---
+
+## Adım 3: Ağ Bağlantısını Yapılandırın
+
+Ağ ekibinizin kümenin yük dengeleyicilerine **port 443**'te gelen trafiğe izin vermesi gerekir. Dağıtım iki ayrı yük dengeleyici çalıştırır: biri etkinlik alımı (mTLS korumalı) için, diğeri pano için:
+
+| Trafik | Kaynak | Hedef | Güvenlik |
+|---|---|---|---|
+| **Etkinlik alımı** | Kümelerinizde Toplayıcı podları | Alım LoadBalancer'ı, port 443 | mTLS (istemci sertifikası) + API anahtarı |
+| **Pano** | Geliştirici tarayıcıları | Pano LoadBalancer'ı, port 443 | HTTPS sizin alan adınızda, parolasız email OTP oturum açma |
+
+Alım uç noktası karşılıklı TLS ile korunur; toplayıcılar her istekte geçerli bir istemci sertifikası **ve** geçerli bir API anahtarı sunmalıdır. Pano kendi yük dengeleyicisinde ve hostname'de çalışır ve oturum açma, beyaz listeye alınmış e-posta adresleri/etki alanlarıyla sınırlıdır.
+
+**DNS kayıtları (bir kez):** kontrol ettiğiniz bir etki alanı altında iki CNAME kaydı oluşturursunuz — biri alım uç noktası için biri pano için (örn. `agenteye.your-company.example`) — Exosphere'in sağladığı yük dengeleyici hostname'lerine işaret ederek. Exosphere, otomatik olarak yenilemeler dahil olmak üzere her iki hostname için de halka açık güvenilen TLS sertifikaları sağlar.
+
+> **Port 80 notu:** otomatik sertifika verme ve yenileme, her yük dengeleyicinin port 80'inde HTTP üzerinden doğrulama yapar. Güvenlik duruşunuz pano yük dengeleyicisini şirket IP aralıklarıyla kısıtlamayı gerektiriyorsa, önce Exosphere'e söyleyin — sertifika doğrulamayı DNS tabanlı bir yönteme değiştiririz (sizin tarafınızda bir ek DNS kaydı) böylece yenilemeler sınırlama arkasında çalışmaya devam eder.
+
+> **Giden:** Küme düğümlerinin `ghcr.io`'dan konteyner görüntülerini çekmek için internet erişimine ihtiyacı vardır. Ağınız giden trafiği kısıtlarsa, `ghcr.io`'yu beyaz listeye alın veya görüntüleri dahili kayıt defterinize yansıtın.
+
+---
+
+## Adım 4: Yedekleme Depolama Bucket'ı Sağlayın
+
+Veritabanı yedekleri, sizin sahip olduğunuz bir bulut depolama bucket'ında depolanır.
+
+| Gereksinim | Ayrıntılar |
+|---|---|
+| **Hizmet** | S3 (AWS), GCS (GCP) veya Azure Blob Storage |
+| **Erişim** | IAM rolü aracılığıyla küme düğümlerine yazma erişimi verin (EKS'de IRSA, GKE'de Workload Identity) veya kimlik bilgileri sağlayın |
+| **Saklama** | Bucket'ın yaşam döngüsü ilkesini (saklama süresi, arşivleme kuralları) siz kontrol edersiniz. Exosphere yedekleri yazar; ne kadar süre tutacağınıza siz karar verirsiniz |
+
+Tek bir günlük yedekleme PostgreSQL'i (ilişkisel durum) ve ClickHouse'u (etkinlikler ve değerlendirmeler) tek sıkıştırılmış bir arşive döker ve bucket'ınıza yükler. Yedeklemeler ayrıca her yükseltmeden önce çalışır.
+
+---
+
+## Adım 5: İletişim Kişisi Belirleyin
+
+Küme düzeyinde sorunlar için (düğüm durumu, bulut hesap sınırları, ağ değişiklikleri) sizin tarafınızdan bir kişi veya Slack/Teams kanalı sağlayın. Günlük işlemlerde bu kişi ile iletişim gerekmez.
+
+---
+
+## Ne Dağıtıyoruz
+
+Exosphere küme erişimi aldığında, aşağıdaki bileşenler sizin için dağıtılır ve yönetilir:
+
+| Bileşen | Rol |
+|---|---|
+| **AgentEye Server** | Toplayıcılardan etkinlikleri alan, analitik çalıştıran ve pano'ya veri sunan HTTP API |
+| **Pano** | Ajan oturumlarını, araç çağrılarını, model isteklerini ve hataları görüntülemek için web arayüzü; opsiyonel salt okunur yapay zeka asistanını barındırır |
+| **ClickHouse** | Alınan etkinlikler, analitik ve değerlendirmeler için gerekli kanonik depo |
+| **PostgreSQL** | Kuruluşlar, API anahtarları, kullanıcılar, panolar ve kaydedilen sorgular için ilişkisel depo |
+| **Redis** | Opsiyonel paylaşılan önbellek ve hız sınırı arka ucu; kullanılamıyorsa platform incelikle bozulur |
+| **Yapay zeka asistanı (opsiyonel)** | Dahili salt okunur asistan konteyneri; LLM uç noktası yapılandırılana kadar devre dışı kalır |
+| **Ingress denetleyicileri** | İki yük dengeleyici (biri mTLS korumalı alım için, biri pano için) TLS'yi halka açık güvenilen, otomatik yenilenen sertifikalarla sonlandıran ve alım uç noktasında mTLS uygulayan |
+| **cert-manager** | TLS sertifikası sağlamasını ve mTLS istemci sertifikası verişini otomatikleştirir |
+| **Sertifika izleme** | Zamanlanmış bir iş sertifika süresini kontrol eder ve sertifikalar yenileme yaklaştığında uyarılar gönderir (ör. Slack'e) |
+
+Yönetilen teklif ayrıca platform'un değerlendirme hattını işletir ve bu hatt, ajan aktivitesini değerlendirme kriterlerinize göre puanlar. Ne sunan bu yetenekler için [Asistan](/tr/agenteye/assistant) ve [Değerlendirme Paketi](/tr/agenteye/evaluation-suite)'ne bakın.
+
+---
+
+## Size Sağlananlar
+
+Dağıtım tamamlandıktan sonra aşağıdakileri alırsınız:
+
+| Öğe | Ayrıntılar |
+|---|---|
+| **Pano URL'si** | Alan adınız altında bir hostname (ör. `https://agenteye.your-company.example`), halka açık güvenilen, otomatik yenilenen TLS sertifikası ile sunulan. Sağladığımız yük dengeleyici hostname'ine bir CNAME oluşturursunuz; oturum açma parolasız email OTP'dir |
+| **Toplayıcı uç noktası** | Alım hostname'inin `/events` yolu (ör. `https://ingest.your-company.example/events`), mTLS korumalı |
+| **İstemci sertifikası paketi** | Küme başına: istemci sert., özel anahtar ve CA sertifikası Kubernetes Secret manifest'i olarak teslim edilir. Küme başına bir kez uygulayın |
+| **GitHub PAT** | Toplayıcı ikili dosyalarını ve Python SDK paketlerini indirmek için |
+| **Toplayıcı API anahtarları** | `events:add` izniyle kapsamlı anahtarlar, toplayıcı dağıtımı başına bir adet |
+| **Kurulum kılavuzları** | Toplayıcı ve Python SDK için adım adım belgeler |
+
+---
+
+## Kurulumdan Sonra Yapacağınız İşler
+
+Tek devam eden çalışmanız AgentEye kümesinde değil kendi ajan makinelerinizde:
+
+1. **Toplayıcıyı yükleyin** yapay zeka ajanları çalıştıran her Kubernetes kümesinde: istemci sertifikasını monte edin ve uç nokta URL'sini ve API anahtarını yapılandırın. Bkz. [Toplayıcı Kurulumu](/tr/agenteye/collector-installation).
+2. **Python SDK'yı entegre edin** ajan kodunuza. Bkz. [Python SDK](/tr/agenteye/python-sdk).
+3. **Pano'yu açın** tarayıcınızda ajan aktivitesini görüntülemek için.
+
+Küme işletimi yok, veritabanı yönetimi yok, sertifika yenileme yok, yükseltme yok.
+
+---
+
+## Güvenlik
+
+- **Veriler bulut hesabınızda kalır.** Küme, depolama ve veritabanları tümü ortamınızda çalışır. Hiçbir veri sınırınızı terk etmez.
+- **Erişimi siz kontrol edersiniz.** Küme hesabınızdadır. Herhangi bir zamanda Exosphere'in erişimini denetleyebilir, izleyebilir veya iptal edebilirsiniz. Tüm işlemler bulutunuzun denetim günlüğünden geçer (CloudTrail, GCP Audit Logs vb.).
+- **Etkinlik alımında mTLS.** Her toplayıcı isteği hem geçerli bir istemci sertifikası hem de API anahtarı gerektirir. Sızan anahtar sert. olmadan işe yaramaz; çalınan sert. geçerli anahtar olmadan işe yaramaz.
+- **Pano erişim kontrolü.** Pano kendi yük dengeleyicisinde, etkinlik alımından ayrı olarak çalışır ve oturum açma, beyaz listeye alınmış e-posta adresleri/etki alanlarıyla sınırlı parolasız email OTP'dir. Yük dengeleyicide IP kaynak aralığı beyaz listesi istekle kullanılabilir; otomatik sertifika yenileme yük dengeleyiciye ulaşması gerektiğinden, Exosphere kısıtlamayı DNS tabanlı sertifika doğrulaması ile eşleştirir böylece yenilemeler çalışmaya devam eder.
+- **Küme başına sertifikalar.** Kümelerinizin her biri kendi istemci sertifikasını alır. Bir küme tehlikeye girerse, bu sertifika bağımsız olarak iptal edilir ve diğerlerini etkilemez.
+
+---
+
+## Dağıtım Zaman Çizelgesi
+
+| Aşama | Süre | Sizin katılımınız |
+|---|---|---|
+| **Küme hazırlama** | 1-2 gün | Kümeyi hazırlayın ve Exosphere'e erişim verin |
+| **Platform kurulumu** | 1 gün | Hiçbiri; Exosphere tüm altyapı bileşenlerini yükler |
+| **Uygulama dağıtımı** | 1 gün | Hiçbiri; Exosphere sunucuyu, pano'yu dağıtır ve API anahtarları oluşturur |
+| **Toplayıcı dağıtımı** | 1-3 gün | Kümelerinizde toplayıcıları yükleyin (Exosphere'in rehberliğiyle) |
+| **Üretim deneme** | 1 hafta | Hiçbiri; Exosphere izler ve ayarlar |
+
+Tipik toplam: Kickoff'tan üretime hazır'a kadar **~2 hafta**.
+
+---
+
+## Destek
+
+Sorular veya sorunlar için Exosphere'e `support@exosphere.host` adresinde ulaşın.
+
+---
+
+## Sonraki Adımlar
+
+- [Başlangıç](/tr/agenteye/getting-started): uçtan uca kılavuz
+- [Toplayıcı Kurulumu](/tr/agenteye/collector-installation): toplayıcıyı yükleyin ve yapılandırın
+- [Python SDK](/tr/agenteye/python-sdk): ajan kodunuzu çalıştırın
+- [API Anahtarları](/tr/agenteye/api-keys): erişimi ve izinleri yönetin
+- [Sorun Giderme](/tr/agenteye/troubleshooting): yaygın sorunlar ve çözümleri

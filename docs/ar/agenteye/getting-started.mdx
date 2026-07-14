@@ -1,0 +1,236 @@
+---
+---
+title: "البدء مع AgentEye"
+description: "وثائق البدء مع AgentEye."
+---
+
+
+يرشدك هذا الدليل خلال إعداد AgentEye كامل: نشر الخادم والشاشة الرئيسية، وتثبيت جامع البيانات على جهاز الوكيل، وتجهيز كود وكيل Python الخاص بك.
+
+---
+
+## ما هو AgentEye؟
+
+AgentEye هي **منصة قابلة للاستضافة ذاتياً للمراقبة والتقييم لوكلاء الذكاء الاصطناعي**. تسجل ما يفعله وكلاؤك — في كل خطوة من خطوات التشغيل — وتقيّم تلقائياً جودة كل تشغيل مكتمل، حتى تتمكن من رؤية كيف يتصرف وكلاؤك في الإنتاج واكتشاف التراجعات قبل أن يكتشفها مستخدموك.
+
+تتدفق البيانات في اتجاه واحد: ينبعث كود الوكيل **الأحداث** عبر **Python SDK** → محل جمع بيانات خفيف الوزن يجمع البيانات وينقلها إلى **الخادم** → يتم تخزين الأحداث والتحليلات في **ClickHouse** (الحالة التشغيلية مثل المؤسسات والمستخدمين ومفاتيح API والشاشات والاستعلامات المحفوظة تعيش في **Postgres**) → تستكشف كل شيء في **الشاشة الرئيسية**.
+
+ما ستحصل عليه:
+
+- **الأحداث** — سجل خام لكل خطوة من كل تشغيل وكيل (استدعاءات الأدوات، استدعاءات النموذج، الخطافات، الأخطاء).
+- **الجلسات** — تلك الأحداث مدمجة في صف واحد لكل تشغيل، يتم **تقييم كل منها تلقائياً** وتسجيله.
+- **التقييمات** — درجات الجودة التي تنتجها خدمات المقيّم الخاصة بك، بحيث يظهر انخفاض الجودة بدون مراجعة يدوية.
+- **الاستعلامات والشاشات** — استعلامات ClickHouse SQL المحفوظة على بيانتك، مرسومة في شاشات مشتركة في نطاق المؤسسة.
+- **التنبيهات والحوادث** — قواعد العتبة التي تخطرك (بريد إلكتروني، Slack، webhook، في الشاشة) بالإضافة إلى سير عمل الحوادث لفرزها.
+- **CLI والمساعد الذكي** — عميل طرفي (`agenteye`) ومساعد في الشاشة للإجابة على الأسئلة باللغة الطبيعية.
+
+تقوم بتشغيل كل هذا في البنية التحتية الخاصة بك، كمكدس Docker Compose واحد (هذا الدليل) أو تثبيت Kubernetes للإنتاج أو وحدة واحدة في نفس المكان. يعد الجزء المتبقي من هذا الدليل مكدس Compose من النهاية إلى النهاية.
+
+---
+
+## الخطوة 1: المصادقة
+
+يتم توزيع جميع عناصر AgentEye من منظمة `agenteye-enterprise` على GitHub. بصفتك مطوراً في المؤسسة، يمكنك إنشاء رمز وصول شخصي لـ GitHub الخاص بك. اتبع [enterprise-docs/github-token.md](/ar/agenteye/github-token) للحصول على الخطوات الدقيقة والأذونات المطلوبة.
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Authenticate Docker against GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## الخطوة 2: نشر الخادم والشاشة الرئيسية
+
+يستقبل الخادم الأحداث من جامعي البيانات ويجعلها قابلة للاستعلام عنها؛ الشاشة الرئيسية هي المكان الذي تستكشف فيه الأحداث. تعيش الأحداث المدخلة والتحليلات في ClickHouse (متجر التحليلات المطلوب)، بينما يحتفظ Postgres بالحالة التشغيلية مثل المؤسسات والمستخدمين ومفاتيح API والشاشات والاستعلامات المحفوظة.
+
+**تحميل ملف compose المنشور:**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**اضبط أسرارك:**
+
+أنشئ ملف `.env` حتى لا ينبغي للنشر أن يعمل على بيانات اعتماد `admin` الافتراضية. على الأقل اضبط `ADMIN_KEY` و `POSTGRES_PASSWORD`:
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+قم أيضاً بتصدير `ADMIN_KEY` في الجلسة الحالية حتى تتمكن الخطوات اللاحقة (مثل `curl` في الخطوة 3) من الإشارة إليه مباشرة:
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**ابدأ المكدس:**
+
+```bash
+docker compose up -d
+```
+
+يضع هذا المكدس الكامل، بما في ذلك متجر تحليلات ClickHouse المطلوب وذاكرة تخزين مؤقت Redis اختيارية، جنباً إلى جنب مع الخادم والشاشة الرئيسية. يجب أن يكون ClickHouse صحياً لبدء الخادم.
+
+الخادم يستمع الآن على `http://localhost:8080` والشاشة الرئيسية على `http://localhost:3000`.
+
+لنشر الإنتاج (Postgres مخصص، TLS، proxy عكسي)، انظر [enterprise-docs/deployment.md](/ar/agenteye/deployment).
+
+---
+
+## الخطوة 3: إنشاء مفتاح API لجامع البيانات
+
+يقوم كل جامع بيانات بالمصادقة باستخدام مفتاح API محدود النطاق. استخدم `ADMIN_KEY` الذي قمت بتعيينه في الخطوة 2 لإنشاء واحد:
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+تقدم قيمة `key` بنفسك؛ استخدمها في تكوين جامع البيانات في الخطوة 4. انظر [enterprise-docs/api-keys.md](/ar/agenteye/api-keys) لإدارة المفاتيح الكاملة.
+
+---
+
+## الخطوة 4: تثبيت جامع البيانات
+
+على كل جهاز يقوم بتشغيل وكلاء الذكاء الاصطناعي الخاصة بك، قم بتثبيت خدمة جامع البيانات.
+
+**تحميل الملف الثنائي (Linux x86_64):**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> يحمل هذا الملف الثنائي **Linux x86_64**. لـ macOS (Apple Silicon أو Intel) أو Linux arm64 أو إعداد Docker / systemd / launchd، انظر [collector-installation.md](/ar/agenteye/collector-installation)، والذي يسرد التحميل لكل منصة — الأمر أعلاه يثبت ملف ثنائي Linux لن يعمل في أي مكان آخر.
+
+**التكوين:**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**ابدأ الخدمة:**
+
+```bash
+agenteye-collector start
+```
+
+تحقق من الاتصال باستخدام مسح لمرة واحدة (الخروج بعد تفريغ أي أحداث معلقة):
+
+```bash
+agenteye-collector flush
+```
+
+لإعداد Docker و systemd و launchd انظر [enterprise-docs/collector-installation.md](/ar/agenteye/collector-installation).
+
+---
+
+## الخطوة 5: تثبيت Python SDK
+
+على كل جهاز تريد تجهيز كود الوكيل فيه، قم بتثبيت العجلة من إصدارات GitHub.
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## الخطوة 6: تجهيز وكيلك
+
+أضف أحداثاً إلى كود الوكيل الخاص بك. على الأقل، انبعث `agent_start` و `agent_end`:
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# your agent logic here
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+يتم تخزين الأحداث مؤقتاً وتفريغها إلى `$AGENTEYE_HOME/events/` (أو `~/.agenteye/events/` إذا لم يتم تعيين `AGENTEYE_HOME`) كل 500 ميلي ثانية. يلتقطها جامع البيانات تلقائياً.
+
+انظر [enterprise-docs/python-sdk.md](/ar/agenteye/python-sdk) لواجهة برمجة تطبيقات الحدث الكاملة.
+
+---
+
+## الخطوة 7: عرض الأحداث في الشاشة الرئيسية
+
+افتح `http://your-dashboard-host:3000` وقم بتسجيل الدخول. تقوم AgentEye بإرسال بريد إلكتروني برمز لمرة واحدة (أو رابط سحري بنقرة واحدة)، لذلك لا توجد كلمة مرور يجب إدارتها.
+
+![شاشة تسجيل الدخول إلى AgentEye، التي ترسل رمزاً لمرة واحدة إلى بريدك الإلكتروني](/agenteye/images/login.png)
+
+بمجرد دخولك، تعرض صفحة **الأحداث** سجل مباشر لجميع الأحداث المدخلة. قم بالتصفية حسب `session_id` أو `agent_id` للتعمق في تشغيل معين.
+
+![تدفق الأحداث المباشر، مرمز بألوان حسب نوع الحدث وقابل للتصفية حسب البيئة والوكيل والجلسة](/agenteye/images/events-stream.png)
+
+تجمع صفحة **الجلسات** تلك الأحداث في صف واحد لكل تشغيل. تقيّم AgentEye الجلسات المكتملة تلقائياً، لذلك يتم تسجيل كل تشغيل وتظهر انخفاضات جودة بدون مراجعة يدوية؛ تظهر أحدث نتيجة تقييم على كل صف في لمحة:
+
+![قائمة الجلسات، صف واحد لكل تشغيل، مع حبوب الحالة وشارات درجة التقييم](/agenteye/images/sessions-list.png)
+
+لتكوين كيفية تسجيل الجلسات، انظر [enterprise-docs/evaluation-suite.md](/ar/agenteye/evaluation-suite).
+
+انقر على أي جلسة لفتح **رسم البياني للتنفيذ** الخاص بها، وهو عرض بنمط git لكيفية تطور الوكلاء والأدوات والخطافات واستدعاءات النموذج بمرور الوقت، مع وكلاء فرعيين متوازيين على مسارهم الخاص وتفصيل لكل تشغيل في السكة اليمنى:
+
+![رسم بياني لتنفيذ الجلسة بنمط git بجانب الجدول الزمني للأحداث الخاص به، مع لوحة تفصيل الأداة/النموذج/الخطاف](/agenteye/images/session-detail.png)
+
+---
+
+## الخطوة 8: استكشاف وإنشاء مخططات بيانية والتنبيهات
+
+مع تدفق الأحداث، تحول صفحات **التحليل** النشاط الخام إلى إجابات، بحيث يمكنك قياس سلوك الوكيل ومشاركة النتائج عبر الفريق والحصول على صفحة في اللحظة التي يحدث فيها شيء ما يتراجع. صفحات الشاشة الرئيسية محدودة النطاق بالمؤسسة، لذا فإن عناوين URL التي تراها في شريط العنوان لها بادئة مع حرف المؤسسة الخاص بك (`/<org>/…`).
+
+- **الاستعلامات** (`/<org>/queries`): ابدأ من مكتبة استعلامات محفوظة وقابلة لإعادة الاستخدام على أحداثك والتقييمات (إعدادات مدمجة مسبقاً بالإضافة إلى إعداداتك الخاصة)…
+
+![مكتبة الاستعلامات المحفوظة: شبكة استعلامات قابلة لإعادة الاستخدام، كل من الإعدادات المسبقة والاستعلامات المخصصة](/agenteye/images/queries.png)
+
+  …ثم افتح واحد في منشئ SQL لتعديله وتشغيله مع النتائج المباشرة:
+
+![منشئ استعلام SQL يقوم بتشغيل استعلام محفوظ، مع شريط الجانب للمخطط ونبكة النتائج المباشرة](/agenteye/images/query-lab.png)
+
+- **الشاشات** (`/<org>/dashboards`): حدّد الاستعلامات كبلاط خطية أو شريطية أو منطقة أو دائرية في شاشات مشتركة في جميع أنحاء المؤسسة.
+
+![شاشة مدمجة من الاستعلامات المحفوظة: خط أحداث لكل ساعة وشريط أخطاء حسب النوع ومخطط منطقة زمن انتظار والرموز حسب النموذج](/agenteye/images/dashboard-fleet.png)
+
+- **التنبيهات** (`/<org>/alerts`): ارفع أي عتبة إلى قاعدة الصفحة التي تخطرك بالبريد الإلكتروني أو Slack أو webhook أو في الشاشة. انظر [enterprise-docs/alerts.md](/ar/agenteye/alerts).
+
+---
+
+## الخطوات التالية
+
+- [النشر](/ar/agenteye/deployment): تعزيز للإنتاج
+- [مفاتيح API](/ar/agenteye/api-keys): إدارة الوصول
+- [استكشاف الأخطاء](/ar/agenteye/troubleshooting): تشخيص المشاكل

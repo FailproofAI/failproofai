@@ -1,0 +1,171 @@
+---
+title: "在您的 Kubernetes 集群上进行托管部署"
+description: "AgentEye 在您的 Kubernetes 集群上进行托管部署的文档。"
+---
+
+
+AgentEye 是一个面向 AI 和 LLM Agent 的自托管可观测性与评估平台。它捕获 Agent 会话、工具调用、模型请求和错误，将其转化为可搜索的分析数据和评估结果，并在仪表板中展示，同时提供可选的只读 AI 助手。
+
+在托管部署模式下，您提供一个专用的 Kubernetes 集群，Exosphere 在其中运行完整平台，代您部署、配置、运维、备份和升级每个组件。您的团队无需自行管理数据库、证书或版本升级，即可获得平台的全部价值（Agent 可见性、分析、评估以及可选的助手）。所有数据始终保留在您的云账户内。
+
+---
+
+## 前置条件
+
+- 用于拉取容器镜像和下载制品的 **GitHub PAT**（请参阅 [GitHub Token 设置](/zh/agenteye/github-token)）
+- 一个**专用 Kubernetes 集群**（请参阅下方要求）
+- 用于数据库备份的**存储桶**
+- **网络连通性**：集群负载均衡器的 443 端口入站访问
+
+---
+
+## 第一步：部署专用 Kubernetes 集群
+
+创建一个专用于 AgentEye 的 Kubernetes 集群。该集群不应与其他工作负载共享，以确保整个平台（应用服务、数据库、分析和缓存）在隔离环境中运行，不影响您现有的基础设施。
+
+| 要求 | 详情 |
+|---|---|
+| **发行版** | 任何符合标准的 Kubernetes：EKS、GKE、AKS 或自托管 |
+| **版本** | 1.27 或更高 |
+| **节点池** | 最低配置：**3 个节点，每节点 4 vCPU / 8 GB 内存**（标准通用实例） |
+| **存储** | 默认 StorageClass，支持块存储卷（例如 AWS 上的 `gp3`、GCP 上的 `pd-ssd`） |
+| **负载均衡器** | 集群必须能够创建云 LoadBalancer 服务（EKS、GKE、AKS 默认支持） |
+
+> Exosphere 会在集群内安装和管理其余所有组件：Ingress 控制器、TLS 证书、数据库、缓存、监控以及所有应用部署。
+
+---
+
+## 第二步：向 AgentEye 团队授予访问权限
+
+Exosphere 需要 cluster-admin 权限（或同等范围的 RBAC 权限）来管理命名空间、自定义资源定义、Ingress 控制器和存储供应器。
+
+| 要求 | 详情 |
+|---|---|
+| **访问方式** | IAM 角色（EKS/GKE 首选）、kubeconfig 或基于 SSO 的访问 |
+| **VPN / 跳板机** | 如果 Kubernetes API Server 为私有网络，请为 Exosphere 运维团队提供 VPN 凭证或跳板机访问权限 |
+
+---
+
+## 第三步：配置网络连通性
+
+您的网络团队需要允许集群负载均衡器的 **443 端口**入站流量。部署会运行两个独立的负载均衡器：一个用于事件采集（mTLS 保护），一个用于仪表板：
+
+| 流量类型 | 来源 | 目标 | 安全措施 |
+|---|---|---|---|
+| **事件采集** | 您集群中的 Collector Pod | Ingest LoadBalancer，443 端口 | mTLS（客户端证书）+ API Key |
+| **仪表板** | 开发者浏览器 | Dashboard LoadBalancer，443 端口 | 您域名上的 HTTPS，无密码邮件 OTP 登录 |
+
+Ingest 端点受双向 TLS 保护；Collector 每次请求都必须同时提供有效的客户端证书**和**有效的 API Key。仪表板运行在独立的负载均衡器和主机名上，登录仅限于您加入白名单的邮箱地址/域名。
+
+**DNS 记录（一次性操作）：** 您需要在自己控制的域名下创建两条 CNAME 记录——一条指向 Ingest 端点，一条指向仪表板（例如 `agenteye.your-company.example`）——均指向 Exosphere 提供的负载均衡器主机名。Exosphere 随后会自动为两个主机名申请公开受信任的 TLS 证书，包括自动续期。
+
+> **关于 80 端口：** 自动证书申请和续期需要通过每个负载均衡器的 80 端口进行 HTTP 验证。如果您的安全策略要求将仪表板负载均衡器限制为企业 IP 段，请提前告知 Exosphere——我们会切换为基于 DNS 的证书验证方式（您需额外添加一条 DNS 记录），确保续期在限制策略下仍能正常工作。
+
+> **出站流量：** 集群节点需要访问互联网，以从 `ghcr.io` 拉取容器镜像。如果您的网络限制出站流量，请将 `ghcr.io` 加入白名单，或将镜像同步至内部镜像仓库。
+
+---
+
+## 第四步：提供备份存储桶
+
+数据库备份存储在您自己拥有的云存储桶中。
+
+| 要求 | 详情 |
+|---|---|
+| **服务** | S3（AWS）、GCS（GCP）或 Azure Blob Storage |
+| **访问权限** | 通过 IAM 角色（EKS 上的 IRSA，GKE 上的 Workload Identity）为集群节点授予写入权限，或直接提供凭证 |
+| **保留策略** | 您控制存储桶的生命周期策略（保留期限、归档规则）。Exosphere 负责写入备份；保留时长由您决定 |
+
+每日执行一次全量备份，将 PostgreSQL（关系型状态数据）和 ClickHouse（事件与评估数据）打包为一个压缩归档文件并上传至您的存储桶。每次升级前也会执行备份。
+
+---
+
+## 第五步：指定联系人
+
+请在您方指定一位负责人或 Slack/Teams 频道，用于处理集群层面的问题：节点健康状态、云账户配额、网络变更等。日常运维无需联系此负责人。
+
+---
+
+## 我们部署的内容
+
+Exosphere 获得集群访问权限后，将为您部署并管理以下组件：
+
+| 组件 | 职责 |
+|---|---|
+| **AgentEye Server** | HTTP API，接收来自 Collector 的事件，运行分析，并向仪表板提供数据 |
+| **仪表板** | Web 界面，用于查看 Agent 会话、工具调用、模型请求和错误；承载可选的只读 AI 助手 |
+| **ClickHouse** | 必需的核心存储，用于存储采集的事件、分析数据和评估结果 |
+| **PostgreSQL** | 关系型存储，用于组织、API Key、用户、仪表板和保存的查询 |
+| **Redis** | 可选的共享缓存和限流后端；不可用时平台可优雅降级 |
+| **AI 助手（可选）** | 内部只读助手容器；在配置 LLM 端点之前保持禁用状态 |
+| **Ingress 控制器** | 两个负载均衡器（一个用于 mTLS 保护的 Ingest，一个用于仪表板），使用公开受信任、自动续期的证书终止 TLS，并在 Ingest 端点上强制执行 mTLS |
+| **cert-manager** | 自动化 TLS 证书申请及 mTLS 客户端证书签发 |
+| **证书监控** | 定时任务，检查证书到期时间，并在证书临近续期时发送告警（例如发送至 Slack） |
+
+托管服务还会运行平台的评估流水线，根据您的评估标准对 Agent 活动进行评分。请参阅 [助手](/zh/agenteye/assistant) 和 [评估套件](/zh/agenteye/evaluation-suite) 了解这些功能的详细介绍。
+
+---
+
+## 我们向您提供的内容
+
+部署完成后，您将收到：
+
+| 内容 | 详情 |
+|---|---|
+| **仪表板 URL** | 您域名下的一个主机名（例如 `https://agenteye.your-company.example`），使用公开受信任、自动续期的 TLS 证书。您只需创建一条指向我们提供的负载均衡器主机名的 CNAME；登录方式为无密码邮件 OTP |
+| **Collector 端点** | Ingest 主机名的 `/events` 路径（例如 `https://ingest.your-company.example/events`），受 mTLS 保护 |
+| **客户端证书包** | 按集群分发：包含客户端证书、私钥和 CA 证书，以 Kubernetes Secret 清单形式交付。每个集群应用一次即可 |
+| **GitHub PAT** | 用于下载 Collector 二进制文件和 Python SDK 包 |
+| **Collector API Key** | 具有 `events:add` 权限的范围密钥，每个 Collector 部署一个 |
+| **安装指南** | Collector 和 Python SDK 的分步文档 |
+
+---
+
+## 设置完成后您需要做的事
+
+您唯一持续性的工作是在自己的 Agent 机器上，而非 AgentEye 集群：
+
+1. **在每个运行 AI Agent 的 Kubernetes 集群中安装 Collector**：挂载客户端证书，配置端点 URL 和 API Key。请参阅 [Collector 安装](/zh/agenteye/collector-installation)。
+2. **将 Python SDK 集成到您的 Agent 代码中**。请参阅 [Python SDK](/zh/agenteye/python-sdk)。
+3. **在浏览器中打开仪表板**查看 Agent 活动。
+
+无需进行集群运维、数据库管理、证书续期或版本升级。
+
+---
+
+## 安全性
+
+- **数据始终保留在您的云账户中。** 集群、存储和数据库均运行在您的环境内，数据不会离开您的边界。
+- **您掌控访问权限。** 集群在您的账户下。您可以随时审计、监控或撤销 Exosphere 的访问权限。所有操作均通过您的云审计日志（CloudTrail、GCP Audit Logs 等）记录。
+- **事件采集使用 mTLS。** 每次 Collector 请求都需要同时提供有效的客户端证书和 API Key。泄露的 API Key 在没有证书的情况下毫无用处；被盗的证书在没有有效 API Key 的情况下同样无效。
+- **仪表板访问控制。** 仪表板运行在独立的负载均衡器上，与事件采集完全分离，登录方式为无密码邮件 OTP，仅限您白名单内的邮箱地址/域名。负载均衡器上的 IP 来源范围白名单可按需提供；由于自动证书续期需要访问负载均衡器，Exosphere 会将该限制与基于 DNS 的证书验证配对使用，确保续期正常工作。
+- **按集群颁发证书。** 您的每个集群都有独立的客户端证书。若某个集群遭到入侵，可单独吊销该证书，不影响其他集群。
+
+---
+
+## 部署时间线
+
+| 阶段 | 时长 | 您的参与 |
+|---|---|---|
+| **集群部署** | 1-2 天 | 部署集群并向 Exosphere 授予访问权限 |
+| **平台搭建** | 1 天 | 无需参与；Exosphere 安装所有基础设施组件 |
+| **应用部署** | 1 天 | 无需参与；Exosphere 部署服务器、仪表板并创建 API Key |
+| **Collector 上线** | 1-3 天 | 在您的集群中安装 Collector（Exosphere 提供指导） |
+| **生产磨合期** | 1 周 | 无需参与；Exosphere 负责监控和调优 |
+
+典型总耗时：从启动到生产就绪约 **2 周**。
+
+---
+
+## 支持
+
+如有问题，请通过 `support@exosphere.host` 联系 Exosphere。
+
+---
+
+## 下一步
+
+- [快速入门](/zh/agenteye/getting-started)：端到端操作指南
+- [Collector 安装](/zh/agenteye/collector-installation)：安装和配置 Collector
+- [Python SDK](/zh/agenteye/python-sdk)：为您的 Agent 代码添加埋点
+- [API Key](/zh/agenteye/api-keys)：管理访问权限和权限设置
+- [故障排查](/zh/agenteye/troubleshooting)：常见问题与解决方案

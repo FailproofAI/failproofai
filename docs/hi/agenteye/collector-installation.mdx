@@ -1,0 +1,400 @@
+---
+title: "कलेक्टर इंस्टॉलेशन"
+description: "AgentEye कलेक्टर इंस्टॉलेशन डॉक्यूमेंटेशन।"
+---
+
+
+`agenteye-collector` डेमॉन गारंटी देता है कि आपके एजेंट्स की टेलीमेट्री AgentEye तक पहुंचे बिना कभी आपके एप्लिकेशन को ब्लॉक किए। आपका कोड लोकल डायरेक्टरी में इवेंट्स लिखता है और आगे बढ़ता है; कलेक्टर वहां से जिम्मेदारी संभालता है, प्रत्येक फाइल को मिलीसेकंड में अपलोड करता है और रीस्टार्ट्स, नेटवर्क आउटेज और ट्रांजिएंट सर्वर एरर्स को सहता है। विफल अपलोड्स को एक्सपोनेंशियल बैकऑफ के साथ रिट्राई किया जाता है, और एक आवधिक रिकवरी स्वीप किसी भी चीज को फिर से कतार में डालता है जो क्रैश या डिप्लॉय के पीछे छूट गई हो। परिणाम टिकाऊ, फायर-एंड-फॉरगेट डिलीवरी है: आपके एजेंट्स पूर्ण गति से चलते रहते हैं जबकि कलेक्टर यह सुनिश्चित करता है कि कोई भी इवेंट ट्रांजिट में खो न जाए।
+
+तकनीकी रूप से, कलेक्टर एक हल्का डेमॉन है जो `$AGENTEYE_HOME/events/` (डिफॉल्ट: `~/.agenteye/events/`) को देखता है जिसे Python SDK द्वारा लिखी गई `.jsonl` फाइलें ढूंढता है और उन्हें AgentEye सर्वर पर अपलोड करता है।
+
+> **नाम परिवर्तित:** कलेक्टर कमांड अब **`agenteye-collector`** है (पहले `agenteye` हुआ करता था)। छोटा `agenteye` नाम अब AgentEye CLI को संबंधित है। यदि आप किसी मौजूदा इंस्टॉल को अपग्रेड कर रहे हैं, तो [enterprise-docs/collector-migration.md](/hi/agenteye/collector-migration) देखें।
+
+---
+
+## पूर्वापेक्षाएं
+
+- आपका `AGENTEYE_TOKEN`: एक GitHub PAT जिसे आप स्वयं जनरेट करते हैं (देखें [enterprise-docs/github-token.md](/hi/agenteye/github-token))
+- सर्वर URL और एक कलेक्टर API कुंजी (देखें [enterprise-docs/api-keys.md](/hi/agenteye/api-keys))
+
+---
+
+## विकल्प A: बायनरी (अनुशंसित)
+
+पूर्व-निर्मित स्टेटिक बायनरीज Linux, macOS और Windows (x86_64 और arm64) के लिए उपलब्ध हैं। `agenteye-enterprise/releases` रेपो से अपने प्लेटफॉर्म के लिए बायनरी सीधे नवीनतम `collector/v<version>` रिलीज़ टैग के अंतर्गत डाउनलोड करें।
+
+उपलब्ध आर्टिफैक्ट नाम:
+
+| प्लेटफॉर्म | आर्टिफैक्ट |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**`gh` CLI के साथ डाउनलोड करें** (संस्करण बदलें और अपने प्लेटफॉर्म के आर्टिफैक्ट को चुनें):
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**या `curl` के साथ:**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## विकल्प B: Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> वर्तमान बीटा बिल्ड्स फ्लोटिंग `:beta-latest` टैग प्रकाशित करते हैं; `:latest` केवल स्थिर रिलीज़ को असाइन किया जाता है। दोहराए जा सकने वाले डिप्लॉयमेंट्स के लिए, `:v0.0.1-beta.13` जैसा पिन किया गया संस्करण टैग पसंद करें।
+
+**चलाएं:**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+आधिकारिक इमेज नॉन-रूट यूजर के रूप में चलती है, इसलिए `AGENTEYE_HOME` स्पष्ट रूप से सेट करें और होस्ट स्पूल को इसमें माउंट करें। वॉल्यूम माउंट वही `~/.agenteye/` डायरेक्टरी शेयर करता है जिसमें Python SDK होस्ट पर लिखता है। यदि आपने `AGENTEYE_HOME` कहीं अन्य जगह होस्ट पर पहले से सेट किया है, तो `$HOME/.agenteye` की जगह वह डायरेक्टरी माउंट करें।
+
+---
+
+## कॉन्फ़िगरेशन
+
+सभी विकल्पों को तीन तरीकों से सेट किया जा सकता है (उच्चतम प्राथमिकता पहली):
+
+1. CLI फ्लैग: `agenteye-collector start --url https://...`
+2. पर्यावरण चर: `AGENTEYE_URL=https://...`
+3. कॉन्फ़िग फाइल: `~/.agenteye/config.json`
+
+### आवश्यक विकल्प
+
+| विकल्प | CLI फ्लैग | Env var | config.json कुंजी |
+|---|---|---|---|
+| बैकएंड URL | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| API कुंजी | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### वैकल्पिक विकल्प (डिफॉल्ट के साथ)
+
+| विकल्प | CLI फ्लैग | Env var | config.json कुंजी | डिफॉल्ट |
+|---|---|---|---|---|
+| अधिकतम समवर्ती अपलोड्स | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| स्वीपर इंटरवल (s) | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| स्वीपर न्यूनतम फाइल आयु (s) | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| प्रति स्वीप अधिकतम फाइलें | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| अधिकतम अपलोड प्रयास | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| रिट्राई बेस डिले (ms) | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### mTLS विकल्प (वैकल्पिक)
+
+उन डिप्लॉयमेंट्स के लिए जिन्हें म्यूचुअल TLS (mTLS) की आवश्यकता होती है, कलेक्टर TLS हैंडशेक के दौरान एक क्लाइंट सर्टिफिकेट प्रस्तुत कर सकता है। जब ये विकल्प सेट नहीं होते हैं, कलेक्टर मानक HTTPS का उपयोग करता है।
+
+| विकल्प | CLI फ्लैग | Env var | config.json कुंजी |
+|---|---|---|---|
+| क्लाइंट सर्टिफिकेट (PEM) | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| क्लाइंट निजी कुंजी (PEM) | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| कस्टम CA सर्टिफिकेट (PEM) | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+`--tls-cert` और `--tls-key` को एक साथ सेट किया जाना चाहिए। फाइलें PEM-एनकोडेड होनी चाहिए।
+
+`--tls-ca` स्वतंत्र है और केवल तभी आवश्यक है जब AgentEye सर्वर एक TLS सर्टिफिकेट प्रस्तुत करता है जिसे सार्वजनिक रूप से विश्वसनीय CA द्वारा जारी नहीं किया गया है (उदाहरण के लिए, यदि आपके पास वास्तविक DNS डोमेन नहीं है तो क्लस्टर-इन-द `cert-manager` जारीकर्ता द्वारा स्व-हस्ताक्षरित)। कलेक्टर आपूर्ति किए गए CA को एक अतिरिक्त ट्रस्ट एंकर के रूप में जोड़ता है; मानक सार्वजनिक रूट्स विश्वसनीय रहते हैं, इसलिए मौजूदा डिप्लॉयमेंट्स प्रभावित नहीं होते हैं। फाइल में एक एकल PEM सर्ट या पूरी चेन हो सकती है (एकाधिक संयोजित PEM ब्लॉक)।
+
+**अपने एप्लिकेशन पॉड में साइडकार के रूप में कलेक्टर चला रहे हैं?** एंड-टू-एंड EKS पैटर्न के लिए [enterprise-docs/single-pod-deployment.md](/hi/agenteye/single-pod-deployment) देखें: AWS सीक्रेट्स मैनेजर + सीक्रेट्स स्टोर CSI ड्राइवर + IRSA के माध्यम से mTLS बंडल, स्वचालित रोटेशन के साथ।
+
+Kubernetes में सीक्रेट हैंड-ऑफ पैटर्न के साथ चलाते समय, सर्टिफिकेट सीक्रेट को वॉल्यूम के रूप में माउंट करें और इन पथों को माउंट की गई फाइलों की ओर इशारा करें:
+
+```yaml
+# उदाहरण: कलेक्टर डिप्लॉयमेंट स्निपेट
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # केवल तब जब सर्वर सर्ट सार्वजनिक रूप से विश्वसनीय नहीं है (उदा. क्लस्टर-इन-द
+      # स्व-हस्ताक्षरित CA)। समान सीक्रेट आमतौर पर tls.crt/tls.key के साथ ca.crt भी रखता है।
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### उदाहरण `~/.agenteye/config.json`
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+mTLS के साथ:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+mTLS प्लस कस्टम CA के साथ (स्व-हस्ताक्षरित AgentEye सर्वर):
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+यदि `AGENTEYE_HOME` सेट है, तो वह डायरेक्टरी `~/.agenteye` की जगह उपयोग की जाती है।
+
+---
+
+## पहली बार सेटअप
+
+इंस्टॉल करने के बाद, अपने सर्वर URL और API कुंजी के साथ कलेक्टर को कॉन्फ़िगर करें:
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> किसी भी डिप्लॉयमेंट के लिए `https` का उपयोग करें जो अविश्वसनीय नेटवर्क पार करता है ताकि इवेंट्स सादे पाठ में न भेजे जाएं। सादा पाठ `http://your-server-host:8080/events` फॉर्म केवल समान होस्ट पर सर्वर के विरुद्ध विशुद्ध रूप से स्थानीय परीक्षण के लिए उपयुक्त है।
+
+**कनेक्शन परीक्षण करें** (वन-शॉट फ्लश, लंबित इवेंट्स को निकालने के बाद निकलता है):
+
+```bash
+agenteye-collector flush
+```
+
+`flush` अपनी प्रगति को stdout में रिपोर्ट करता है। जब स्पूल खाली हो तो यह `No pending files.` प्रिंट करता है और `0` को निकलता है। अन्यथा यह प्रति फाइल एक लाइन प्रिंट करता है (`[UPLOADED] <file>` या `[FAILED] <file> (<reason>)`), `Done: <uploaded>/<total> uploaded, <failed> failed.` सारांश के बाद। यह `flush` को आपके URL, कुंजी और TLS सेटिंग्स को सही करने से पहले डेमॉन शुरू करने से पहले परीक्षण करने का एक सुविधाजनक वन-शॉट तरीका बनाता है।
+
+---
+
+## डेमॉन के रूप में चलाना
+
+### सीधे
+
+```bash
+agenteye-collector start
+```
+
+### कंटेनर / Docker
+
+जब कलेक्टर और आपका एप्लिकेशन एक कंटेनर साझा करते हैं, तो उन्हें एक प्रक्रिया पर्यवेक्षक के तहत चलाएं। सबसे सरल विकल्प `supervisord` है; यह हर मुख्य डिस्ट्रो में आता है, क्रैश की गई प्रक्रियाओं को रीस्टार्ट करता है, सिग्नल को फॉरवर्ड करता है और सुंदर शटडाउन के लिए प्रतीक्षा करता है।
+
+**`Dockerfile`:**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# आधिकारिक इमेज से agenteye-collector बायनरी खींचें।
+# एक विशिष्ट टैग पिन करें (:beta-latest वर्तमान बीटा के लिए, या एक :v<version> टैग);
+# :latest केवल स्थिर रिलीज़ के लिए प्रकाशित है।
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf`:**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+क्यों ये सेटिंग्स:
+
+- agenteye-collector पर `autorestart=true`: किसी भी निकास पर रीस्टार्ट करें (क्रैश, पैनिक, OOM)।
+- ऐप पर `autorestart=unexpected`: केवल गैर-शून्य निकास पर रीस्टार्ट करें, इसलिए एक वन-शॉट एजेंट जो `0` को निकलता है लूप नहीं करता।
+- `stopwaitsecs=30`: कलेक्टर को SIGTERM पर लंबित अपलोड्स को निकालने के लिए जगह देता है इससे पहले कि supervisord SIGKILL को एस्केलेट करे।
+- `stdout_logfile=/dev/stdout`, `*_maxbytes=0`: दोनों प्रोग्रामों के आउटपुट को कंटेनर stdout में स्ट्रीम करें; कंटेनर के अंदर कोई लॉग फाइल नहीं।
+
+`docker run -e` पर पहले की तरह `AGENTEYE_URL` / `AGENTEYE_KEY` (और कोई भी TLS env vars) पास करें; supervisord पर्यावरण को विरासत में लेता है।
+
+> **अलग कंटेनर्स?** यदि आप कलेक्टर को इसके अपने कंटेनर के रूप में चलाते हैं (Docker Compose सर्विस, Kubernetes साइडकार, आदि), `supervisord` का उपयोग न करें; कंटेनर रनटाइम की रीस्टार्ट पॉलिसी पहले से ही यह काम करती है। EKS साइडकार पैटर्न के लिए [enterprise-docs/single-pod-deployment.md](/hi/agenteye/single-pod-deployment) देखें।
+
+**Kubernetes लाइवनेस प्रोब** (चाहे कलेक्टर अकेले चले या supervisord के तहत):
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+चलने वाला डेमॉन हर 30 सेकंड में `$AGENTEYE_HOME/health.json` को एक हार्टबीट लिखता है। `agenteye-collector health` वह फाइल पढ़ता है और केवल तब `0` (स्वस्थ) को निकलता है जब हार्टबीट ताजा हो और अपलोड कार्य सामान्य रूप से चल रहे हों; यह `1` (अस्वस्थ) को तब निकलता है जब हार्टबीट 90 सेकंड से पुराना हो (उदाहरण के लिए, डेमॉन बंद हो गया) या जब वॉचर और स्वीपर एक अप्रत्याशित निकास के बाद रीस्टार्ट कर रहे हों। हार्टबीट केवल `start` द्वारा लिखा जाता है, इसलिए वन-शॉट `flush` कमांड के बजाय लंबे-जीवित डेमॉन के विरुद्ध प्रोब चलाएं।
+
+### systemd (Linux, प्रोडक्शन के लिए अनुशंसित)
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/agenteye/env` बनाएं:
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## कलेक्टर को अपग्रेड करना
+
+कलेक्टर स्वयं को अपडेट नहीं करता। अपग्रेड करने के लिए:
+
+- **बायनरी:** नवीनतम `collector/v<version>` रिलीज़ से अपने प्लेटफॉर्म के लिए नई `agenteye-collector-<os>-<arch>` आर्टिफैक्ट डाउनलोड करें (देखें [विकल्प A](#option-a-binary-recommended)), `/usr/local/bin/agenteye-collector` को बदलें, फिर सर्विस रीस्टार्ट करें (`sudo systemctl restart agenteye-collector`, दोबारा `launchctl load`, या अपने सुपरवाइजर को रीस्टार्ट करें)।
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (या एक पिन किया गया `:v<version>` टैग; `:latest` केवल स्थिर रिलीज़ के लिए मौजूद है) और कंटेनर को फिर से बनाएं।
+
+`AGENTEYE_TOKEN` निजी रिलीज़ रेपो से नई बायनरीज/इमेजेज डाउनलोड करने के लिए आवश्यक है, लेकिन चलने वाले डेमॉन द्वारा **आवश्यक नहीं** है।
+
+---
+
+## सबकमांड्स
+
+| कमांड | विवरण |
+|---|---|
+| `agenteye-collector start` | लंबे-जीवित डेमॉन शुरू करें। स्टार्टअप पर यह पिछले रन से बचे हुए किसी भी इवेंट को फ्लश करता है, फिर नई फाइलों को देखता है और उन्हें अपलोड करता है। वॉचर और स्वीपर एक अप्रत्याशित निकास पर स्वचालित रूप से रीस्टार्ट होते हैं, और हर 30 सेकंड में `health.json` को एक हार्टबीट लिखा जाता है। |
+| `agenteye-collector flush` | वन-शॉट: सभी लंबित फाइलें अपलोड करें और बाहर निकलें। जब स्पूल खाली हो तो `No pending files.` प्रिंट करें, अन्यथा एक प्रति-फाइल `[UPLOADED]`/`[FAILED]` लॉग और `Done: <uploaded>/<total> uploaded, <failed> failed.` सारांश। |
+| `agenteye-collector health` | डेमॉन के `health.json` हार्टबीट को पढ़ें। जब ताजा और स्वस्थ हो तो `0` को निकलें; जब हार्टबीट पुराना हो (90s से अधिक पुराना) या कार्य रीस्टार्ट हो रहे हों तो `1` को निकलें। |
+
+---
+
+## डायरेक्टरी लेआउट
+
+```
+~/.agenteye/
+├── config.json       <- वैकल्पिक कॉन्फ़िग फाइल
+├── events/           <- SDK द्वारा लिखी गई .jsonl फाइलें, कलेक्टर द्वारा उठाई गई
+└── failed/           <- फाइलें जो सभी अपलोड प्रयासों में विफल रहीं
+```
+
+`failed/` में फाइलें स्वचालित रूप से रिट्राई नहीं की जाती हैं। उन्हें मैनुअली रीकयू करने के लिए, उन्हें `events/` में वापस ले जाएं और `agenteye-collector flush` चलाएं।

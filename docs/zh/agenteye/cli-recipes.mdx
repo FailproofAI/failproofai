@@ -1,0 +1,170 @@
+---
+title: "面向 Agent 的 CLI 使用手册"
+description: "AgentEye 面向 Agent 的 CLI 使用手册文档。"
+---
+
+
+直接在脚本或编码 Agent 中拉取会话、事件和评估数据（并触发重新评估），输出为 stdout 上干净的 JSON，可直接通过管道传入 `jq`。这些手册将 AgentEye 的可观测性数据转化为终端用户或 AI 编码 Agent（Claude Code、Cursor）可查询和自动化的形式，无需点击仪表板。
+
+以下示例均可直接复制粘贴用于 AgentEye CLI（`agenteye`）。安装、认证及完整选项列表，请参阅 [CLI](/zh/agenteye/cli)；运行 `agenteye -h` 或 `agenteye <command> -h` 查看内置帮助。
+
+## 黄金法则
+
+1. **全局选项必须放在命令*之前*。** `agenteye --json sessions` 是正确的；`agenteye sessions --json` 则不对。全局选项包括 `--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet`、`--no-color`。
+2. **解析输出时务必传入 `--json`。** 数据以 JSON 格式输出到 **stdout**；人类可读的状态信息和错误输出到 **stderr**，因此 stdout 保持干净，可直接管道传入 `jq`。
+3. **根据退出码判断结果**，而非 stderr 文本：`0` 成功 · `2` 参数错误 · `3` 无法连接仪表板 · `4` 未登录或会话已过期 · `5` 缺少权限。
+4. **用 `-h` 探索命令。** 每个命令都记录了其过滤器、值格式和 JSON 结构。
+
+## 一次性初始化
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # 避免重复输入 --base-url
+agenteye login --email you@example.com                       # 粘贴邮件中的验证码；有效期约 24 小时
+```
+
+## 执行操作前确认认证状态
+
+`whoami` 在会话缺失或已过期时不会报错，而是返回 `logged_in:false`，因此 Agent 可以安全地探测认证状态。（如果未设置 base URL 或仪表板不可达，它仍可能以非零退出码退出。）
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "未认证。请运行：agenteye login" >&2; exit 1
+fi
+```
+
+## 查找失败或低分会话
+
+```bash
+# 过去 24 小时内评估出错的会话
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# 某个 Agent 的 helpfulness 评分 <= 0.5 的评估
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+评分过滤在 **`evals`** 上，而非 `sessions`。`--score KEY:MIN..MAX` 可重复使用，多个条件取 AND；任一边界均可省略（`..0.5` 表示 ≤ 0.5，`0.9..` 表示 ≥ 0.9）。每次请求最多可传入 20 个评分过滤条件；超出则返回 HTTP 400。`sessions` 与 `evals` 共享 `--env`、`--status`、`--agent-id`、`--session-id` 及时间范围过滤器，但不支持 `--score`。
+
+## 完整读取一个会话
+
+没有单独的 `session show` 命令——将事件轨迹与会话评估结合使用：
+
+```bash
+# 会话的最新评估（状态 + 评分）
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# 运行中的所有事件（增大 --limit 以获取完整数据）
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# 仅获取会话中的工具调用
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+## 获取全部数据（分页）
+
+结果按最新优先排序，并使用游标分页。
+
+```bash
+# 一次性获取：以每页 200 条的方式最多获取 500 条数据
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# 手动分页：将 next_cursor 传回
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## 使用 --fields 精简输出
+
+限制返回的字段（在表格和 `--json` 模式下均有效），以减少 Agent 需要处理的数据量。
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+未知字段名会被拒绝（退出码 `2`）并返回有效字段列表，这也是探索字段名的便捷方式。
+
+## 探索有效的过滤器值
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # --env 的可用值
+agenteye --json list tools | jq -r '.values[]'          # 工具名称；也可查询 agents、models、event_types 等
+agenteye --json list score_filters | jq -r '.values[]'  # --score KEY:MIN..MAX 中有效的 KEY
+```
+
+## 选择组织（多租户）
+
+如果您属于多个组织，可在登录时选择当前租户（该设置会被保存）：
+
+```bash
+agenteye login --org acme --email you@corp.com   # 登录的同时设置租户
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # 仅对单次命令生效的覆盖
+```
+
+多组织账户在未指定 `--org` 时会以非零退出码退出，并打印可供选择的组织列表。
+
+## 为 SDK/收集器创建 API Key
+
+```bash
+# Secret 仅打印一次——使用 --json 时为 .key 字段
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # 轮换密钥；使用 agenteye keys disable ci-bot --yes 撤销
+```
+
+## 运行已保存或临时查询
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # 已保存的查询 + 位置参数 $1
+```
+
+## 非交互式处理告警事件
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> 变更操作在使用 `--json` 或 stdin 不是 TTY 时会自动跳过确认提示，因此 Agent 不会卡住；在其他情况下，可显式传入 `--yes`/`-y` 跳过确认。
+
+## 脚本中的退出码处理
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "会话已过期，请运行 'agenteye login'。" >&2 ;;
+  5) echo "缺少权限（请联系管理员获取 evaluations:read 权限）。" >&2 ;;
+  3) echo "仪表板不可达，请检查 URL。" >&2 ;;
+  *) echo "未知错误（退出码 ${code}）。" >&2 ;;
+esac
+```
+
+## JSON 输出结构
+
+| 命令 | stdout JSON（使用 `--json`） |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` 或 `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}`（`key` 仅显示一次） |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| create/update/delete（任意） | 资源对象，或删除时返回 `{"deleted": true, "id"}` |
+| 失败（任意，使用 `--json`） | stdout 输出 `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` |
+
+- 每条 **event** 记录（`events`）：`id, session_id, agent_id, event_type, ts, payload, environment`。
+- 每条 **evaluation** 记录（`evals`）：`id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`。
+- 每条 **session** 记录（`sessions`）：`session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`。
+
+每个命令的 `--fields` 仅接受其自身记录中的字段名——`sessions` 和 `evals` 的字段集不同，因此对一个命令有效的字段名可能会被另一个命令拒绝。

@@ -1,0 +1,202 @@
+---
+title: "AI Asistanı"
+description: "AgentEye AI Asistanı belgelendirmesi."
+---
+
+
+Pano, isteğe bağlı bir **AI asistanı** içerir; panelinin sağ kenarına yerleştirilmiş bir sohbet paneli olup ajanlarınız hakkında doğal dile sorular yanıtlar ("bu hafta üretimde kalite nasıl değişiyor?", "bugün hangi oturumlar hata verdi?", "bu oturumu özetle") ve kullanıcı her işlemi izin verdiğinde, kendi adlarına SQL sorguları ve panoları oluşturur ve kaydeder. İlgili oturumlar, sorgular ve panolara doğrudan tıklanabilir bağlantılar belirtir ve **sayfa-farkında**dır: bir oturumu görüntülerken "bu oturum" hakkında sorun ve ne demek istediğinizi bilir.
+
+Yerleştirme varsayılan olarak ince bir **44px dikey raylı** olarak görünür: bir `›_` komut istemi karakteri ve renkli bir sistem durumu noktası. Rayla tıklayın (veya `⌘J` / `Ctrl+J` tuşlarına basın) tam sohbet paneline genişletmek için. Genişletilmiş panel sol kenarını sürükleyerek **320 ile 640 piksel arasında yeniden boyutlandırılabilir**; tercih ettiğiniz genişlik yeniden yüklemeler arasında hatırlanır.
+
+Claude Agent SDK üzerinde bir küçük dahili **`agent`** konteyner olarak çalışır ve buna sadece pano erişebilir. **Varsayılan olarak devre dışıdır** ve bir LLM uç noktası yapılandırana kadar gizli kalır.
+
+---
+
+## Neler yapabilir ve yapamaz
+
+- **Soran kullanıcının görebileceği operasyonel verileri okur.** Olaylar, değerlendirmeler, oturumlar, değerlendirme işi sırası, kaydedilmiş sorgular ve kaydedilmiş panolar, her istek için kullanıcının okuma izinleriyle sınırlandırılır. Okuma araçları hemen çalışır.
+- **Yazma işlemleri işlem başına onay ile kontrol edilir.** Kaydedilmiş sorgular oluşturabilir (`create_saved_query`, `update_saved_query`), taslak SQL'i salt okunur rolde doğrulamak için çalıştırabilir (`run_query`) ve bu sorgulardan pano derleyebilir (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`). Her yazma işlemi sohbet içinde bir **Onayla / Reddet / Bir soru sorun** istemi için duraklatılır; SDK operatör Onayla'ya tıklayana kadar aracı çağırmaz. **Silme asistana asla kullanılmaz**; yıkıcı işlemler operatörlerin elinde kalır.
+- **Taslak SQL, kullanıcı tarafından yazılan SQL ile aynı `sql_guard` doğrulama ve salt okunur rollerinden geçer** (yalnızca SELECT/WITH, çok-deyim yok). Yürütme sorgunun dokunduğu tablalara göre yönlendirilir: analitik tabloları (olaylar, değerlendirmeler, oturumlar) referans alan sorgular kuruluşun salt okunur ClickHouse kullanıcısı olarak çalışır (satır ilkesiyle o kuruluşla sınırlandırılır, 10 sn yürütme sınırı ve 100k satır sınırı ile) yalnızca ilişkisel tablolara dokunan sorgular salt okunur Postgres rolünde çalışır (10 sn, 10k satır). Asistan veri yüzeyini genişletemez; sadece operatörün zaten erişimi olan sorgu yüzeyine yazma yapabilir.
+- **Adanmış asistan anahtarı** kullanır (aşağıya bakın) sabit izin seti ile hazırlanır; model kötü davranırsa bile bu kapsamları aşamaz.
+- Her pano kullanıcısı asistanı görmek ve kullanmak için **`agent:use`** iznine ihtiyaç duyar. Araçlar her istek için kullanıcının kendi veri izinleriyle eşleşecek şekilde filtrelenir, bu nedenle bir `events:read` kullanıcısı etkinlik araçları alır ama `dashboards:write` araçları almaz.
+
+---
+
+## Sayfa-farkında AI yerleştirme: `/queries` üzerinde besteci, başka yerde sohbet
+
+Sağ taraf asistan yerleştirmesi **sayfa-farkında**dır. Model seçici, sohbet geçmişi, model sistem durumu noktası ve sohbet girdisi değişmez, ancak **boş durum şablonu çipleri, yer tutucu metni ve bir kullanıcının mesajının hangi arka uç uç noktasına vurduğu** geçerli rotaya göre otomatik olarak değişir. Yerleştirme "hangi sayfada duruyorsanız o sayfa için AI yardımcısı" olur.
+
+**İki arka uç, sayfa başına seçilir (çip başına geçersiz kılma ile).**
+
+| Rota                           | Sayfa-varsayılan arka uç                                            | Neden                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/queries`, `/queries/new`     | `POST /api/agent/compose-sql` (araç döngüsü yok)                    | Kullanıcı tazeden başlıyor; ≤1s ilk-token SQL doğrudan editöre akıtılır                                                  |
+| `/queries/<id>` (mevcut)       | `POST /api/agent/chat` (tam araç-döngü asistanı), sayfa varsayılanı | Serbest yazılan mesajlar kullanıcının her şeyi sormasını sağlar ("bunu açıkla", "bu ne yapar?"); yeniden düzenleme çipleri çip başına türü ile compose-sql'ye geri seçilir |
+| başka her sayfa                | `POST /api/agent/chat` (tam araç-döngü asistanı)                    | Araçlar oku + onay-kapılı yazma araçları                                                                                  |
+
+`/queries/<id>` üzerindeki çipleri iki akışı sorunsuzca karıştırabilecek şekilde açık bir `kind` taşır. Varsayılan çip seti iki **sohbet** çippi (`ekranda sorguyu açıkla`, `bu sorgu ne yapar?`) artı beş **compose-sql** çippi (`tarih aralığına göre parametrize et`, `status='error' filtresi ekle`, vb.). Serbest yazılan mesajlar sayfa varsayılanına (sohbet) geri düşer, bu nedenle "bu neden bu kadar yavaş?" gibi bir soru düz yazı yanıt alır, oysa `tarih aralığına göre parametrize et` çipine tıklamak compose uç noktasına yönlendirir ve SQL'yi düzenler.
+
+Besteci **düzenleme modunda** çalıştığında (kullanıcı `/queries/<id>` veya `/queries/new` üzerinde önerilen SQL zaten yüklenmiş olarak olduğu için boş olmayan bir `currentSql` görür), sistem istemi "yeni sorgu oluştur"dan "sağlanan SQL'yi en az düzeyde değiştir: tablo seçimini, sütun adlarını, birleştirme yapısını, takma adları, girintiyi koru"ya geçer. Model ayrı bir grup before/after çalışılmış örnek gösterilir (parametrize, filtre ekle, saatlik gruplandırmaya dönüştür), bu nedenle çip-tıklanan yeniden düzenleme editörün SQL'sine göre en az fark üretir, tamamdan yeniden yazılmaz.
+
+Bir besteci çipine tıklayın (veya `/queries/new` üzerinde serbest yazın) → SQL asistan mesajı olarak bir çitli ` ```sql ` blok halinde akar. **Akış sonlandığında, geçerli rotada Monaco monte edilmişse, editör otomatik olarak diff görünümünde açılır** (sol tarafta orijinal, sağ tarafta önerilen, üstte bir `▾ AI önerdi bir düzenleme` ipucu ve aşağıda **Kabul Et / Reddet** düğmeleri). Kullanıcının bir `Editöre Ekle` düğmesini bulmak veya tıklamak gerekmez. Ekle düğmesi SQL blok altında manuel bir yeniden tetikleyici olarak işlenir (Reddetme'den sonra veya kullanıcı uzaklaştığında ve geri döndüğünde kullanışlı) ve bu, kullanıcı editör olmayan bir sayfada olduğunda tek yoldur (örneğin kayıtlı sorgular listesi); orada SQL `sessionStorage` içinde saklanır ve `/queries/new` sayfasına yönlendirilir, burada yeni monte edilen editör saklı alanı bağlama al ve aynı diff görünümü açar.
+
+Önerilen SQL, editörde zaten olan şeyin byte-özdeş olması halinde (no-op düzenleme), otomatik açılış atlanır; boş bir diff açmayız. Bu durumda `Editöre Ekle` düğmesi de no-op'tir.
+
+Kullanıcı `/queries/new` üzerinde bir öneriye onay verdiğinde, araç çubuğunun birincil eylem **`kaydet`** yazısı yerine `oluştur`; SQL asistan tarafından kendilerine verildi; zihinsel model "bunu sonlandır", "tamamdan yaz" değil. Etiket yerleştirme SQL eklediğinde çevrilir ve sayfa gezintisine kadar `kaydet` olarak kalır. `/queries/<id>` üzerinde düğme her zaman `kaydet` yazıp durdu; orada hiçbir şey değişmez.
+
+`/queries` dışında, yerleştirme tamamen önceki gibi çalışır: araç onay kartları ile tam sohbet, sayfa-bağlam farkındalığı, alıntılar.
+
+**İzinler / Kapılar.** Besteci uç noktası kullanıcı başına `queries:run` izni ile kapı işlevi görür (okuma-eşdeğer; kullanıcı hala Kabul Et ve Çalıştır'a tıklamalı ve Çalıştır Rust sunucusunda mevcut `sql_guard` + `references_ch_tables` yönlendirmesinden geçer). Sohbet uç noktası `agent:use` ile kapı işlevi görür. Her ikisi de `agent` konteynerinde yapılandırılan bir LLM bağlantısı gerektirir; hiçbiri yapılandırılmamışsa, yerleştirme her iki yolda da "asistan bu dağıtıma yapılandırılmamış" banner sunuyor.
+
+**Reddişler.** Besteci salt okunur analitik sorguyla yerine getiremediği herhangi bir isteği reddeder ve SQL yerine `-- REFUSE: <tek-cümle-nedeni>` yayınlar. Veri yazacak veya analitik görünümler dışında tablolara (`api_keys`, `users`, `dashboards`, `saved_queries`, `evaluation_jobs`) ulaşacak istekleri reddeder ve besteci yolunda sade metin isteklerini ("bunu açıkla", "bu ne yapar?") reddeder; bunlar sohbet yoluna aittir ve orada sade metin yanıtı üretirler. Yerleştirme reddetme dizesini asistan mesajında satıriçi kırmızı hata çippi olarak işler; hiçbir şey eklenmez.
+
+**Model seçimi.** Sohbet yolu ile paylaşılır. Yerleştirme başlığındaki model seçici her iki uç noktaya uygulanır (besteci çağrısı seçilen modeli `resolveModel()` üzerinden aracı servise iletir). `AGENTEYE_AGENT_MODELS` birden fazla model listelediğinde, operatörler besteci için bir Haiku-sınıfı seçeneği sohbet için bir Sonnet-sınıfı seçeneği ile karıştırabilirler; kullanıcı konuşma başına seçer.
+
+**Sayfa başına şablonlar.** Her sayfanın kendi şablonı (başlık, gövde metni, yer tutucu metni ve öneri çipleri) vardır, böylece yerleştirme durduğunuz sayfaya uyum sağlar. Belirli bir rotada sunulan çipleri bestenin ayarlandığı aynı amaçlara eşlenir, bu nedenle bir öneriye tıklamak beklediğiniz düzenlemeyi üretir.
+
+**Devre dışı bırakmak.** Sohbet yolu ile aynı: yerleştirme + besteci her ikisi de `agent` konteyneri ve onun LLM bağlantısı tarafından kapılı. Belirli bir kullanıcı için sohbet-yalnız davranış istiyorsanız, `queries:run` iznini kaldırın (editörün **Çalıştır** düğmesini de devre dışı bırakır); besteci-yalnız davranış istiyorsanız, o kullanıcının rollerinden `agent:use` kaldırın, sonra `queries:run` ayrı olarak yeniden ekleyin, böylece yazarı tarafından yazılan SQL'i yine de çalıştırabilirler.
+
+---
+
+## Bunu etkinleştirmek
+
+`agent` servisi Docker Compose dosyasında ve Kubernetes manifestlerinde gönderilir. Asistanı açmak için **(1)** bir LLM uç noktası ve **(2)** asistanın adanmış veri anahtarı sağlayın.
+
+### 1. Bir LLM bağlantısı seçin
+
+Bunlardan birini seçin ve `agent` serviste karşılık gelen değişkenleri ayarlayın:
+
+**a) Anthropic doğrudan**
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**b) Portkey üzerinden (önerilen; model-katalog slug, yalnızca anahtar)**
+
+```
+PORTKEY_API_KEY=<your-portkey-key>
+AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
+```
+
+Bu en basit yol: Portkey'de bir **Anthropic integrasyon** ayarlayın (Model
+Katalog); bir **slug** alır. Modeli `@<slug>/<model>` olarak adlandırın ve slug
+sağlayıcı + kimlik bilgisi yönlendirmesi taşır, bu nedenle **sanal anahtar gerekli değildir**,
+sadece Portkey API anahtarınız. Aracı yalnızca `x-portkey-api-key` gönderir ve Portkey ağ geçidine işaret eder; Portkey geri kalanını çözer. (Bir *sade* model adı "x-portkey-config veya x-portkey-provider başlığı gerekli" ile başarısız olur; `@slug/` öneki
+anahtara göre işlemeyi mümkün kılan şeydir.) Kendi kendine barındırılan bir ağ geçidi için `PORTKEY_BASE_URL` ayarlayın.
+
+İstek başına yönlendirmeyi slug yerine tercih ediyor musunuz? `PORTKEY_VIRTUAL_KEY=<vk>` ayarlayın (veya
+`PORTKEY_CONFIG=<id>`) sade `AGENTEYE_AGENT_MODEL` ile.
+
+**c) Herhangi bir uyumlu Anthropic ağ geçidi (LiteLLM, kendi kendine barındırılan, …)**
+
+```
+ANTHROPIC_BASE_URL=https://your-gateway
+# Newline-sınırlandırılmış "Ad: Değer" başlık satırları (JSON DEĞİL):
+ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
+```
+
+**d) Amazon Bedrock / Google Vertex**
+
+```
+CLAUDE_CODE_USE_BEDROCK=1   # + ortamda standart AWS kimlik bilgileri
+# veya
+CLAUDE_CODE_USE_VERTEX=1    # + ortamda standart GCP kimlik bilgileri
+```
+
+İsteğe bağlı olarak varsayılan modeli `AGENTEYE_AGENT_MODEL` ile sabitleyin (varsayılan `claude-sonnet-4-6`). Kullanıcıların birden fazla model arasında **seçmesine** izin vermek için `AGENTEYE_AGENT_MODELS` virgülle ayrılmış bir izin listesine ayarlayın (örn.
+`@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); sohbet başlığında bir model seçici görünür ve her kullanıcının seçimi hatırlanır. Aracı yalnızca bu izin listesindeki bir modeli çağırır.
+
+### 2. Asistan anahtarını sağlayın
+
+Herhangi bir rastgele gizli dizi seçin ve bunu **agent**e `AGENTEYE_API_KEY` ve **server**e `AGENT_API_KEY` olarak verin (aynı değer). Başlangıçta sunucu bunu `dashboard-assistant` adlı adanmış bir anahtar olarak tohumlar; bu sabit izin seti ile: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`. Yazma izinleri yalnızca onay-kapılı araçlarla çalıştırılır (yukarıda "Neler yapabilir ve yapamaz"a bakın). **Manuel anahtar hazırlama adımı ve yönetici anahtarı yok**. İzin seti sunucuda sabitlenmiş ve tohumlanmış anahtar **korumalı**dır: anahtarlar API'si üzerinden devre dışı bırakılamaz veya yeniden oluşturulamaz; değeri değiştirerek ve sunucuyu yeniden başlatarak döndürün. Yönetici/pano anahtarını **yeniden kullanmayın**.
+
+```bash
+SECRET="$(openssl rand -base64 32)"
+# agent serviste:
+AGENTEYE_API_KEY="$SECRET"
+# server serviste:
+AGENT_API_KEY="$SECRET"
+```
+
+Kubernetes'te bu sizin için bağlanır: `AGENTEYE_API_KEY` `agenteye-agent` sırrına koyun ve sunucu Deployment zaten aynı değeri `AGENT_API_KEY` olarak okur.
+
+### 3. Paylaşılan pano↔agent belirtecini ayarlayın
+
+Aynı `AGENTEYE_AGENT_TOKEN` **hem** `dashboard` hem de `agent` servislerinde ayarlayın. Pano, dahili aracı servisi çağırırken bunu sunuyor; aracı onsuz çağrıları reddeder.
+
+### 4. Kullanıcılara erişim verin
+
+İlgili pano operatörlerine `agent:use` iznini verin (bkz. [enterprise-docs/api-keys.md](/tr/agenteye/api-keys)). Bunu yapmayanlar asistanı asla görmezler.
+
+Bir LLM uç noktası ve salt okunur anahtar ayarlandıktan sonra, **sunucuyu** (salt okunur anahtarı tohumlamak için) ve **aracı** servisi yeniden başlatın. Asistan yerleştirmesi sağ kenarında `agent:use` kullanıcısı için görünür, varsayılan olarak kapatılır; rayla tıklayın veya `⌘J` / `Ctrl+J` tuşlarına basın genişletmek için.
+
+---
+
+## Ortam değişkeni başvurusu
+
+**`agent`** serviste ayarlayın:
+
+| Değişken | Amaç |
+|---|---|
+| `PORTKEY_API_KEY` | Portkey üzerinden yönlendir (aracı bu anahtar yardımıyla ağ geçidi bağlantısını kurar) |
+| `PORTKEY_VIRTUAL_KEY` | Anthropic kimlik bilgileriniz için Portkey sanal anahtarı (anahtar varsayılan config'i varsa isteğe bağlı) |
+| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Adlandırılmış Portkey yapılandırması / kendi kendine barındırılan Portkey ağ geçidi URL'si (isteğe bağlı) |
+| `PORTKEY_PROVIDER` | Portkey sağlayıcı slug — `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` yanında üçüncü bir yönlendirme seçeneği (bunlardan hiçbiri ayarlanmadığında kullanılır) |
+| `ANTHROPIC_API_KEY` | Doğrudan Anthropic erişimi (ağ geçidi / Bedrock / Vertex için alternatif) |
+| `ANTHROPIC_AUTH_TOKEN` | `Authorization: Bearer` yerine `x-api-key` üzerinden kimlik doğrulayan bir ağ geçidi için taşıyıcı belirteci (isteğe bağlı) |
+| `ANTHROPIC_BASE_URL` | Portkey olmayan ağ geçidi için uç nokta |
+| `ANTHROPIC_CUSTOM_HEADERS` | Portkey olmayan ağ geçidi için ekstra başlıklar: newline-sınırlandırılmış `Ad: Değer` satırları (JSON değil) |
+| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Bedrock / Vertex üzerinden yönlendir |
+| `AGENTEYE_AGENT_MODEL` | Varsayılan model kimliği (varsayılan `claude-sonnet-4-6`) |
+| `AGENTEYE_AGENT_MODELS` | Kullanıcının sohbet başlığında seçebileceği virgülle ayrılmış modeller izin listesi. Tek bir sabit model için ayarlanmamış bırakın. Yukarıdaki varsayılan bunlardan biri olmalıdır (yoksa eklenir). |
+| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Pod başına maksimum eş zamanlı sohbetler (varsayılan 4); fazla istekler 429 alır |
+| `AGENTEYE_API_KEY` | Asistanın veri anahtarı. Sunucunun `AGENT_API_KEY` ile **aynı** değeri ayarlayın, başlangıçta sabit kapsamlı izin seti ile tohumlar (adım 2'ye bakın). |
+| `AGENTEYE_AGENT_TOKEN` | Pano ile paylaşılan gizli dizi |
+| `AGENTEYE_SERVER_URL` | AgentEye sunucu URL'si (varsayılan `http://server:8080`) |
+| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Multi-tenancy.** Varsayılan olarak kapalı (başarısız-kapalı): asistan kuruluş bağlamı taşımayan `/chat` isteğini `400` ile reddeder, çünkü çalıştırdığı her araç bir kuruluşla sınırlandırılır. Pano kuruluş-farkında olması sonrasında her zaman bu bağlamı gönderir, bu nedenle normalde bunu ayarlanmamış bırakırsınız. `1` olarak ayarlayın **sadece** henüz kuruluş-farkında olmayan pano kuruluş-farkında aracı ile konuştuğunda geçiş yaşadığı sırada, bu nedenle asistan reddetme yerine `default` kuruluşuna geri döner. Pano yükseltmesi geliştiğinde temizleyin. |
+| `AGENTEYE_AGENT_MAX_STEPS` | Yanıt başına maksimum araç-kullanım adımları (varsayılan 8) |
+| `AGENTEYE_AGENT_TIMEOUT_MS` | Genel `/chat` istek zaman aşımı (tüm model dönüşleri + araç adımları), milisaniye cinsinden (varsayılan 90000); SQL aracının kendi 10s sınırı vardır |
+| `AGENTEYE_AGENT_SELF_TELEMETRY` | Asistanın kendi çalışmalarını AgentEye'a kaydetmek için `1` |
+| `AGENTEYE_TELEMETRY_API_KEY` | Kendi kendine araçlama için ayrı `events:add`-yalnızca anahtar |
+| `AGENTEYE_AGENT_ENV` | Asistanın kendi kendine telemetriye uygulanan ortam etiketi (varsayılan `prod`) |
+
+**`dashboard`** serviste ayarlayın:
+
+| Değişken | Amaç |
+|---|---|
+| `AGENTEYE_AGENT_URL` | Panoda aracı servise nereden ulaştığı. Çerçeveli Kubernetes manifestleri ve Compose dosyası bunu `http://agent:9100` olarak ayarlar. Asistanı tamamen gizlemek için ayarlanmamış bırakın. |
+| `AGENTEYE_AGENT_TOKEN` | Aracının belirteci ile eşleşmelidir |
+
+---
+
+## Telemetri & Kullanıcıların Ne Sorduğunu Görmek
+
+İstem **içeriği varsayılan olarak kendi sistemleriniz içinde kalır**. Üç katman:
+
+1. **Sohbet deposu**: her istem ve yanıt AgentEye veritabanınızda kaydedilir (kullanıcı başına, özel) ve asistanın geçmiş seçicisinden yeniden yüklenebilir. Bu, kullanıcıların ne sorduğunun kalıcı kaydıdır.
+2. **Ürün analitiği**: pano **yalnızca meta verileri** (asistanın ne sıklıkta kullanıldığı, araç sayıları, gecikme) analitiğinize kaydeder. İstem **metni** bu yolda asla dahil edilmez.
+3. **Kendi kendine araçlama (isteğe bağlı)**: `AGENTEYE_AGENT_SELF_TELEMETRY=1` ayarlayın (artı bir `events:add`-yalnızca `AGENTEYE_TELEMETRY_API_KEY`) ve asistan kendi çalışmalarını AgentEye'a `dashboard-assistant` ajanı olarak kaydeder. Daha sonra kullanıcı istemi ve asistanın akıl yürütmesini başka tüm şeyler için kullandığınız aynı oturumlar/olaylar görünümlerinde izlersiniz. Not: bu olaylar `events:read` sahip herkese görünür; bu çok geniş ise, bunu kapalı bırakın.
+
+---
+
+## Devre dışı bırakmak
+
+Bunlardan herhangi biri asistanı devre dışı bırakır (yerleştirme rayı kayboluyor):
+
+- Panoda `AGENTEYE_AGENT_URL` kaldırın, **veya**
+- Aracıda LLM uç noktasını yapılandırılmamış bırakın (hiçbir `ANTHROPIC_API_KEY` / ağ geçidi / Bedrock / Vertex), **veya**
+- `agent` servisi hiç dağıtmayın.
+
+---
+
+## Güvenlik özeti
+
+- **Sessiz yazma yok**: asistanın yazma araçları (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) sohbet içinde Onayla düğmesinde açık operatör tıklaması olmadan yürütülemez; SDK'nın ön çağrı kapısı arka kanala aracıya ulaşan bir onay kadar aracı engeller. Bunu devre dışı bırakan ayar yoktur.
+- **Sabit, dar veri kapsamı**: asistan sunucuya adanmış bir anahtarla kimlik doğrular; izin seti sunucuda sabittir (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`). Model ne denerse desin yazabilirse sunucu bu kapsamın dışındaki her şeyi reddeder.
+- **Silme yüzeyi yok**: anahtar silme izni taşımaz ve silme aracı açığa çıkmaz. Operatörler pano UI'si üzerinden siler, asistan üzerinden asla.
+- **Yalnızca dahili**: aracının herkese açık rotası yok; sadece pano bunu çağırabilir ve sadece paylaşılan belirteci ile. (Kubernetes'te, bir NetworkPolicy aracıyı sadece AgentEye sunucusuna ve LLM uç noktasına ulaşmak ile sınırlar.)
+- **Kullanıcı başına kapsamlı**: sadece `agent:use` kullanıcıları asistanı alırlar ve sadece her kullanıcının okuma izinleriyle eşleşen araçlar verilir.
+- **Ham HTML yok / bağlantı sızdırması yok**: cevaplar sanitizlenmiş markdown olarak işlenir; harici bağlantılar etkisizleştirilir.
+
+Yaygın sorunlar için [enterprise-docs/troubleshooting.md](/tr/agenteye/troubleshooting) bölümüne bakın.

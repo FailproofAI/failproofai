@@ -1,0 +1,167 @@
+---
+title: "Kiracı Yönetimi (organizasyonlar ve üyeler)"
+description: "AgentEye Kiracı Yönetimi (organizasyonlar ve üyeler) belgelendirmesi."
+---
+
+
+Tek bir AgentEye dağıtımı, birden fazla tamamen izole **organizasyonu** (kiracı) sunarak, bir örneğin farklı takımlar, iş birimleri veya müşterileri barındırabilir ve herhangi bir kiracının verilerini diğerine maruz bırakmaz. Tüm veri satırları (olaylar, değerlendirmeler, oturumlar, panolar, kaydedilen sorgular, uyarılar, API anahtarları ve üyeler) tam olarak bir kuruluşa aittir. Birincil izolasyon, uygulama kodunda zorlanır: her istek, açık `org_id` yüklemleriyle kendi kuruluşuyla kapsamlandırılır. ClickHouse'da — yüksek hacimli olaylar ve değerlendirmelerin bulunduğu yer — bu, güçlü motor düzeyinde zorlama ile desteklenir: her kuruluş, kuruluş başına satır politikası ile özel salt okunur bir ClickHouse kullanıcısı alır, böylece güvenilmeyen analitik SQL asla başka bir kiracının satırlarını okuyamaz. PostgreSQL'de, satır düzeyinde güvenlik, salt okunur sorgu yolunda (`/queries/run`) derinlemesine savunma ekler, uygulama düzeyinde bir filtre hiçbir zaman eksik olsa bile bu yolun görebileceği şeyi daraltır; sunucunun kendi yazma bağlantısı tablo sahibi olarak çalışır ve dolayısıyla aynı uygulama düzeyinde `org_id` kapsamlandırması aracılığıyla işler.
+
+Kiracı yaşam döngüsü operatör tarafından kontrol edilirken, üyelerin günlük yaptığı her şey panoda self-servis olarak kalır. Organizasyonlar ve üyeliklikleri **`agenteye-orgctl`** CLI ile oluşturulur ve yönetilir; bu, sunucu görüntüsünün içinde gemi alır ve **mevcut sunucu pod'unda çalışır**. Kiracı oluşturma ve silme, panonun ve HTTP API'sinin dışında tutulur: kiracı yaşam döngüsü için **HTTP API ve pano düğmesi yoktur**, bu nedenle uygulama yüzeyinden ziyade küme/pod kabuğu erişiminin arkasında kalır.
+
+Bir kuruluş içinde, üyeler tamamen panode ve API'de çalışırlar: oturum açarlar, ait oldukları kuruluşlar arasında geçiş yaparlar, kendi API anahtarlarını yönetirler, panolar ve kaydedilen sorgular oluştururlar ve kuruluşları için uyarılar yapılandırırlar. Bölüm temizdir: operatörler CLI aracılığıyla kiracıları ve üyelerini sağlarlar ve hizmet dışı bırakırlar; üyeler bir kiracı içindeki her şeyi UI aracılığıyla çalıştırırlar.
+
+> **Tek kiracılı dağıtımlar buna ihtiyaç duymaz.** Tek kiracılı bir kurulum, operatör işlemi olmadan çalışır. Tüm veriler, kullanıcılar ve anahtarlar, otomatik olarak sağlanan yerleşik `default` kuruluşunda bulunur. İkinci bir kuruluş eklemeye karar verdiğinizde bu kılavuza ihtiyacınız olur.
+
+---
+
+## Ön Koşullar
+
+**İkinci** kuruluşunuzu oluşturmadan önce (yerleşik `default` kuruluşu hiçbir şeye ihtiyaç duymaz):
+
+- **PostgreSQL 15+.** Kuruluş-üyelik şeması, PostgreSQL 15+ gerektiren sütun listesi `ON DELETE SET NULL` yabancı anahtarı kullanır. İkinci bir kuruluş sağlamadan önce PostgreSQL'i yükseltin.
+- **Güçlü, istikrarlı `ORG_CH_SECRET`.** Her kuruluşun ClickHouse şifresi `HMAC(ORG_CH_SECRET, org_id)` olarak türetilir, bu nedenle herkese açık yerleşik geliştirme varsayılanı herkese açık olarak türetilebilir kuruluş başına kimlik bilgileri verir. `agenteye-orgctl org create` **`ORG_CH_SECRET` ayarlanmamış veya yerleşik geliştirme varsayılanında bırakıldığı sürece çalışmaktan CABEDİR**. Önce kendi değerinizi ayarlayın ([Dağıtım → ortam değişkenleri](/tr/agenteye/deployment) ve Kubernetes'te, [Kubernetes kılavuzunun §2.6'sı](/tr/agenteye/kubernetes-deployment#26-multi-tenant-org-isolation-key-optional) bölümüne bakın). Tüm sunucu kopyaları arasında aynı tutun ve geçici olarak döndürmeyin; döndürmek, bir sonraki başlatmada yeniden sağlanana kadar her kuruluşun ClickHouse kullanıcısını sahipsiz bırakır.
+
+---
+
+## CLI'yi Çalıştırma
+
+`agenteye-orgctl` **sunucuyla aynı görüntüde** gönderilir (`agenteye-server` ile birlikte). Bunun için ayrı bir pod, Job veya Deployment dağıtmayın; zaten çalışan sunucu pod'unun içinde exec yapın, böylece sunucunun kullandığı aynı `DATABASE_URL`, `CLICKHOUSE_URL` ve `ORG_CH_SECRET`'i okur.
+
+**Kubernetes:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl <args>
+```
+
+**Docker Compose:**
+
+```bash
+docker compose exec server agenteye-orgctl <args>
+```
+
+Aşağıdaki örnekler kısalık için boş `agenteye-orgctl <args>`'i gösterir; her birinin başına dağıtımınızla eşleşen yukarıdaki iki satırdan hangisi ekleme yapın.
+
+---
+
+## Komut referansı
+
+### Organizasyonlar
+
+| Komut | Ne yaptığı |
+|---|---|
+| `org create --slug <slug> --name <name>` | Yeni bir organizasyon oluştur. `ORG_CH_SECRET` ayarlanmamış veya yerleşik geliştirme varsayılanında bırakıldı ise çalışmaktan kaçın (önce kendi değerini ayarlayın, Ön Koşullara bakın). Kuruluşun salt okunur ClickHouse kullanıcısı + satır politikasını sağlar. |
+| `org list` | Tüm organizasyonları listele (slug, ad ve yaşam döngüsü durumu). |
+| `org rename --slug <slug> --name <new name>` | Organizasyonun görüntü adını değiştir. Slug (URL'ler ve anahtarlarda kullanılan) değiştirilmez. |
+| `org delete --slug <slug>` | Kuruluşu **yazılı olarak sil** ve ClickHouse kullanıcısını kaldır. Veriler **korunur**. Bu, erişimi iptal eder ve kuruluş başına ClickHouse kimlik bilgisini serbest bırakır, ancak olayları silmez. Operatörler tarafından geri alınabilir; temizleme öncesi güvenli ilk adım. |
+| `org purge --slug <slug>` | **Geri alınamaz veri silme.** Kuruluş zaten `delete` edilmiş olmalı. Yerleşik `default` kuruluşta hiçbir zaman izin verilmez. Kiracının verilerinin yok edilmesi gerektiğinden emin olduğunuz zaman kullanın. |
+
+### Üyeler
+
+| Komut | Ne yaptığı |
+|---|---|
+| `member add --org <slug> --email <email> [--set <permission-set>] [--add perm1,perm2] [--remove perm3] [--protected]` | Bir kuruluşa üye ekle. İsteğe bağlı olarak yerleşik izin setinden başla, ardından bireysel izinleri ekle/kaldır. `--protected`, üyeyi sabitler, böylece pano onları kaldıramaz veya indirgemez (aşağıya bakın). Yeni üye, panosunda ilk oturum açışlarında OTP alır. |
+| `member list --org <slug>` | Kuruluşun üyelerini listele. Çıktı sütunları `EMAIL`, `SET` (üyenin başladığı yerleşik set, veya `-`), `PROT` (üyenin korunup korunmadığı) ve `PERMISSIONS` (etkili izinleri) dir. Sondaki `*` ile gösterilen bir e-posta, örnek yöneticisidir; tüm kuruluşlara erişimi vardır. |
+| `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...] [--protected \| --unprotect]` | Üyenin izinlerini ve/veya korunan bayrağını değiştir. `--set`, yerleşik setinden değiştirir; `--add` / `--remove` bireysel izinleri ayarlar; `--protected` / `--unprotect` korumayı değiştirir. Yalnızca `--protected`/`--unprotect` geçirmek (izin bayraklarısız) korumayı tek başına değiştirir ve mevcut izinleri dokunulmadan bırakır. |
+| `member remove --org <slug> --email <email>` | Üyeyi kuruluştan kaldır. Üye korunmuşsa reddedilir; önce `--unprotect` yapın. (Bir kişi birden fazla kuruluşun üyesi olabilir; bu yalnızca adlandırılan kuruluşu etkiler.) |
+
+Bir kişi, **farklı** izinlerle birden fazla kuruluşun üyesi olabilir, örneğin bir kuruluşta yönetici ve diğerinde salt okunur. Her üyelik, kuruluş başına bağımsız olarak yönetilir: bir kuruluştaki bir kişinin izinleri verme veya değiştirme, başka kuruluştaki üyeliğini etkilemez.
+
+### Korunan üyeler (kaldırılamayan kuruluş yöneticisi)
+
+Koruma, bir kuruluşun kendisini yönetimden asla yanlışlıkla kilitlemeyeceğini garanti eder. Varsayılan olarak, bir kuruluşun kendi yöneticileri, panonun self-servis kullanıcılar sayfası aracılığıyla birbirini ekleyebilir ve kaldırabilirler, bu nedenle son yöneticiyi kaldırabilir ve kuruluşu onu yönetebilecek hiç kimsenin olmadığı halde bırakabilirler.
+
+![Kullanıcılar sayfası: her pano kullanıcısı için e-posta, verilen izinler ve düzenle/devre dışı bırak denetimleri içeren bir kart](/agenteye/images/users.png)
+
+Bunu önlemek için, bir üyeyi **korunan** olarak işaretleyin:
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email owner@acme.example --set admin --protected
+```
+
+Korunan bir üye **panonun aracılığıyla kaldırılamaz veya indirgenemez**; bu işlemler bir hata döndürür. Yalnızca bir operatör onları değiştirebilir ve yalnızca bu CLI aracılığıyla: ilk olarak `member update --org acme --email owner@acme.example --unprotect`'i çalıştırın, ardından kaldırın veya indirgeyin. Bu, her kuruluşun kendi üyelerinin kilitleyemeyeceği en az bir yöneticiyi tutmayı garanti ederken, kiracı kontrolünü operatör tarafından tutarak. Koruma **kuruluş başına**'dır; birini bir kuruluşta korumak, başka kuruluştaki üyeliğini etkilemez.
+
+### Yerleşik izin setleri
+
+`--set`, kuruluş başına uygulanan üç yerleşik setten birini kabul eder:
+
+| Set | Amaçlanan hedef |
+|---|---|
+| `admin` | Kuruluş içinde tam erişim, kuruluşun API anahtarlarını ve kullanıcılarını yönetme dahil. |
+| `standard` | Günlük kullanım: sorguları oku ve çalıştır, panolar oluştur, olayları kabul et. |
+| `read-only` | Kuruluşun verileri ve panolarına salt görüntüleme erişimi. |
+
+`--set` ile setinden başlayın, ardından [API Anahtarları](/tr/agenteye/api-keys) bölümünde listelenen bireysel izin belirteçlerini kullanarak `--add` / `--remove` ile ince ayar yapın. İzin belirteçlerinin kendileri API anahtarları için kullanılanlara özdeştir.
+
+---
+
+## Çalışılmış örnek
+
+Yeni `acme` kiracısını sağlayın, ilk yöneticisini ekleyin, bir anahtar oluşturmalarını sağlayın, sonra kuruluşu hizmet dışı bırakın.
+
+**1. Kuruluşu oluştur** (`ORG_CH_SECRET` zaten güçlü, istikrarlı bir değer olarak ayarlanmış olmalı, ayarlanmamış veya yerleşik geliştirme varsayılanında değil):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+```
+
+**2. İlk üyeyi kuruluş yöneticisi olarak ekle:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+```
+
+Alice, panoda ilk oturum açışında bir OTP alır. Bundan sonra tamamen kuruluşunun URL öneki altında UI'de çalışır (örn. `/acme/sessions`).
+
+**3. Kuruluş başına API anahtarı oluştur (panoda):**
+
+Operatör CLI'den kuruluş başına veri anahtarları oluşturmaz. Alice (veya `keys:create` izni olan herhangi bir kuruluş üyesi) panonun **Anahtarlar** sayfasından `acme` kuruluşu için toplayıcı / pano anahtarları oluşturur. Oluşturduğu her anahtar otomatik olarak kuruluşuyla damgalanır ve yalnızca `acme` verilerini okuyabilir veya yazabilir. [API Anahtarları](/tr/agenteye/api-keys) bölümüne bakın.
+
+**4. Üyeyi sonra ayarla:**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member update --org acme --email alice@acme.example --add alerts:write
+
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member list --org acme
+```
+
+**5. Kuruluşu yazılı olarak sil** (erişimi iptal eder + ClickHouse kullanıcısını kaldırır; veriler korunur):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org delete --slug acme
+```
+
+**6. Kuruluşu temizle** (geri alınamaz; yalnızca yazılı silme sonrası; asla `default` kuruluşu değil):
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org purge --slug acme
+```
+
+Docker Compose'ta, her `kubectl -n agenteye exec deploy/server --` önekini `docker compose exec server` ile değiştirin.
+
+---
+
+## Sorumluluk Bölümü
+
+Kuruluş üyesinin günlük ihtiyaç duyduğu her şey panoda ve API'de self-servis olarak, geçerli kuruluşlarıyla otomatik olarak kapsamlandırılır:
+
+- **Kuruluş başına API anahtarları** panonun anahtarlarının yanı sıra kuruluş üyeleri tarafından oluşturulur ve yönetilir (veya `keys:create` taşıyan bir anahtar ile anahtarlar API'si aracılığıyla). CLI veri anahtarlarını oluşturmaz. [API Anahtarları](/tr/agenteye/api-keys) bölümüne bakın.
+- **Kuruluş değişimi** panoya yerleştirilir; üyeler, kuruluş değiştiricisinden ait oldukları kuruluşlar arasında geçiş yaparlar ve kuruluş kapsamlı sayfalar `/<org-slug>/…` altında bulunur.
+- **Panolar, kaydedilen sorgular, uyarılar ve tüm veri kullanımı** tamamen UI ve API'de meydana gelir, üyenin geçerli kuruluşuyla kapsamlandırılır.
+
+`agenteye-orgctl` kullanan operatör, yalnızca kuruluş + üye **yaşam döngüsünü** sahiplenler: kuruluş oluştur / yeniden adlandır / sil / temizle ve üye ekle / listele / güncelle / kaldır.
+
+---
+
+## Ayrıca Bakınız
+
+- [Dağıtım](/tr/agenteye/deployment): `ORG_CH_SECRET` ve sunucu ortamının geri kalanı.
+- [Kubernetes Dağıtımı](/tr/agenteye/kubernetes-deployment): §2.6, ilk çok kiracılı kuruluşunuzdan önce `agenteye-org-ch-secret` Gizli'sini oluşturur.
+- [API Anahtarları](/tr/agenteye/api-keys): kuruluş başına anahtar modeli ve `--add` / `--remove` tarafından kullanılan izin belirteçleri.
+- [Sorun Giderme](/tr/agenteye/troubleshooting): çok kiracılı sağlama ve ClickHouse izolasyonu sorunları.

@@ -1,0 +1,170 @@
+---
+title: "Ajanlar için CLI tarifleri"
+description: "Ajanlar için AgentEye CLI tarifleri belgelendirmesi."
+---
+
+
+Oturum, olay ve değerlendirme verilerini (ve yeniden değerlendirmeleri tetikleyin) doğrudan bir betikten veya kodlama ajanından çekin, `jq` içine doğrudan akan temiz JSON çıktısı ile. Bu tarifler, AgentEye'ın gözlenebilirlik verilerini, bir terminal kullanıcısının veya bir AI kodlama ajanının (Claude Code, Cursor) pano üzerinden tıklamadan sorgulayabileceği ve otomatikleştirebileceği bir şeye dönüştürür.
+
+Aşağıdaki desenler AgentEye CLI'si (`agenteye`) için kopyala-yapıştır hazırlığındadır. Kurulum, kimlik doğrulama ve tam seçenek listesi için [CLI](/tr/agenteye/cli) bölümüne bakın; yerleşik yardım için `agenteye -h` veya `agenteye <command> -h` komutunu çalıştırın.
+
+## Altın kurallar
+
+1. **Global seçenekler komutun *öncesinde* gelir.** `agenteye --json sessions` doğrudur; `agenteye sessions --json` değildir. Global seçenekler şunlardır: `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Çıktıyı ayrıştırdığınız zaman `--json` geçirin.** Veriler **stdout** üzerinden JSON olarak çıkış yapar; insan durumu ve hatalar **stderr** üzerine gider, böylece stdout temiz kalır ve `jq` içine yönlendirilebilir.
+3. **Çıkış koduna göre dallanma yapın**, stderr metnine göre değil: `0` tamam · `2` hatalı argümanlar · `3` panoya ulaşılamıyor · `4` giriş yapılmamış veya süresi dolmuş · `5` izin yok.
+4. **`-h` ile keşfedin.** Her komut filtrelerini, değer biçimlerini ve JSON şeklini belgelendiren.
+
+## Tek seferlik kurulum
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # böylece --base-url tekrarlamaz
+agenteye login --email you@example.com                       # e-posta ile gelen kodu yapıştırın; ~24s geçerli
+```
+
+## İş yapmadan önce kimlik doğrulamayı doğrulayın
+
+`whoami` eksik veya süresi dolmuş oturumlarda hata vermez; bunun yerine `logged_in:false` bildirir, böylece bir ajan kimlik doğrulama durumunu güvenli bir şekilde araştırabilir. (Temel URL ayarlanmamışsa veya pano ulaşılamazsa yine de sıfır olmayan çıkış verebilir.)
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "Not authenticated. Run: agenteye login" >&2; exit 1
+fi
+```
+
+## Başarısız veya düşük puanlı oturumları bulun
+
+```bash
+# son 24 saatte değerlendirmesi hata veren oturumlar
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# bir ajan için yardımcılık açısından <= 0.5 puan alan değerlendirmeler
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+Puan filtreleme **`evals`** üzerinde olur, `sessions` üzerinde değil. `--score KEY:MIN..MAX` tekrarlanabilir ve VE-birleştirilir; her iki sınır isteğe bağlıdır (`..0.5` ≤ 0.5 anlamına gelir, `0.9..` ≥ 0.9 anlamına gelir). İstek başına 20'ye kadar puan filtresi geçirebilirsiniz; daha fazla HTTP 400 döndürür. `sessions`, `--env`, `--status`, `--agent-id`, `--session-id` ve zaman aralığı filtrelerini `evals` ile paylaşır, ancak `--score` değerine sahip değildir.
+
+## Bir oturumu baştan sona okuyun
+
+Tek bir `session show` komutu yoktur — olay izini oturumun değerlendirmesi ile birleştirin:
+
+```bash
+# oturumun en son değerlendirmesi (durum + puanlar)
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# koşudaki her olay (tam tarama için --limit yükseltin)
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# bir oturumdaki sadece araç çağrıları
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+## Her şeyi getir (sayfalandırma)
+
+Sonuçlar en yeniden başa ve imleç-sayfalandırılmış şekildedir.
+
+```bash
+# tek çekim: 200 satırlık sayfalarda 500'e kadar satır getir
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# manuel sayfalandırma: sonraki imleci geri besleyin
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## Çıktıyı --fields ile daraltın
+
+Bir ajanın okuması gereken şeyi azaltmak için anahtarları (hem tabloda hem de `--json`'de) kısıtlayın.
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+Bilinmeyen alan adları geçerli listeyle reddedilir (çıkış `2`) — alan adlarını keşfetmenin ucuz bir yolu.
+
+## Geçerli filtre değerlerini bulun
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # --env için değerler
+agenteye --json list tools | jq -r '.values[]'          # araç adları; ayrıca ajanlar, modeller, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # --score KEY:MIN..MAX için geçerli KEY
+```
+
+## Kuruluşunuzu seçin (çok kiracılı)
+
+Birden fazla kuruluşa aitse, oturum açmada etkin kiracıyı seçin (kaydedilir):
+
+```bash
+agenteye login --org acme --email you@corp.com   # oturum açma ile aynı adımda kiracıyı ayarla
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # bir komut için geçersiz kıl
+```
+
+`--org` olmayan çok kuruluşlu oturum açma sıfır olmayan çıkış verir ve aralarından seçim yapılacak kuruluşları yazdırır.
+
+## SDK/toplayıcı için bir API anahtarı sağlayın
+
+```bash
+# gizli bir kez yazdırılır — --json ile bu .key alanıdır
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # döndür; iptal etmek için agenteye keys disable ci-bot --yes
+```
+
+## Kaydedilmiş veya geçici bir sorgu çalıştırın
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # kaydedilmiş bir sorgu + konumsal $1
+```
+
+## Etkileşimsiz olarak bir olayı ayırıştırın
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> Mutasyonlar `--json` altında veya stdin bir TTY değilse onay istemini otomatik olarak atlar, böylece ajanlar asla takılmaz; başka yerlerde açıkça atlamak için `--yes`/`-y` geçirin.
+
+## Bir betik içinde çıkış kodu işleme
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "Session expired - run 'agenteye login'." >&2 ;;
+  5) echo "Missing permission (ask an admin for evaluations:read)." >&2 ;;
+  3) echo "Dashboard unreachable - check the URL." >&2 ;;
+  *) echo "Unexpected error (exit ${code})." >&2 ;;
+esac
+```
+
+## JSON çıktı şekilleri
+
+| Komut | stdout JSON (`--json` ile) |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` veya `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` bir kez gösterilir) |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| oluştur/güncelle/sil (herhangi bir) | kaynak nesnesi veya silmeler için `{"deleted": true, "id"}` |
+| başarısızlık (herhangi bir, `--json` ile) | stdout üzerinde `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` |
+
+- Her **olay** öğesi (`events`): `id, session_id, agent_id, event_type, ts, payload, environment`.
+- Her **değerlendirme** öğesi (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- Her **oturum** öğesi (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+
+Her komutun `--fields`, tam olarak kendi öğesinin alan adlarını kabul eder — küme `sessions` ve `evals` arasında farklılık gösterir, bu nedenle biri için geçerli bir ad diğeri tarafından reddedilebilir.

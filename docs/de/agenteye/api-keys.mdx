@@ -1,0 +1,255 @@
+---
+title: "API Keys"
+description: "AgentEye API Keys Dokumentation."
+---
+
+
+AgentEye verwendet fein abgestufte API Keys, um den Zugriff auf den Server zu steuern. Jeder Key trägt eine oder mehrere Berechtigungen, die bestimmen, was er tun darf.
+
+---
+
+## Berechtigungen
+
+Der Server erzwingt einen festen Katalog von Berechtigungen; jede davon sichert bestimmte HTTP-Routen ab. Ein **Admin-Key** besitzt alle davon; ein scoped Key enthält die Teilmenge, die du bei der Erstellung vergibst. Unbekannte Berechtigungs-Strings werden beim Erstellen eines Keys abgelehnt.
+
+> **Nicht an Keys zuweisbar.** Zwei gültige Berechtigungen sind ausschließlich für Menschen/Dashboards vorgesehen und können keinem API Key gewährt werden: `orgs:admin` (Instanzverwaltung, die nur Operatoren vorbehalten ist) und `keys:update`. Eine Anfrage an `POST /keys` oder `PATCH /keys/:id`, die versucht, eine dieser beiden zu gewähren, wird mit HTTP 422 abgelehnt. Warum ein Bearer Key zwar Keys erstellen, sie aber nie bearbeiten darf, erläutert die Zeile `keys:update` weiter unten.
+
+### Events Ingest & Abfrage
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `events:add` | `POST /events` | Batches von Events eines Collectors einlesen. Die einzige Berechtigung, die ein Collector benötigt. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Events abfragen, bekannte Umgebungen auflisten, im Datensatz gesehene Model-Bezeichner auflisten (verwendet von der Models-Ansicht und Model-Filtern), das Latenz-Aggregat berechnen, das die Heatmap/Perzentilbänder antreibt, und eine Session als JSONL exportieren. Die gemeinsamen Filter-Leisten-Facetten-Endpunkte `GET /events/environments` und `GET /events/models` sind mit **entweder** `events:read` **oder** `evaluations:read` erreichbar, sodass die Sessions-Seite (gesichert durch `evaluations:read`) dieselbe pro-Org-Facette wiederverwendet. |
+
+### Sessions & Evaluierungen
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Sessions auflisten, Evaluierungsergebnisse lesen, den zusammengefassten Eval-Zustand für Dashboards abrufen und den Status der Evaluierungs-Job-Warteschlange einsehen. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Eine Neubewertung für eine abgeschlossene Session manuell in die Warteschlange einreihen. |
+
+### Dashboards
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Dashboards auflisten, eines laden und seine Kacheln lesen. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Dashboards erstellen und bearbeiten, Kacheln hinzufügen, bearbeiten oder entfernen sowie das Kachelraster neu anordnen. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | Ein gesamtes Dashboard löschen (das Löschen auf Kachelebene liegt unter `dashboards:write`). |
+
+### Gespeicherte Abfragen (SQL-Composer)
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Gespeicherte Abfragen auflisten, eine laden und das schreibgeschützte ClickHouse-Schema inspizieren, auf das der Composer abzielt. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Gespeicherte Abfragen erstellen und bearbeiten. SQL wird weiterhin über dieselbe schreibgeschützte Rolle und `sql_guard`-Prüfungen wie ein `queries:run`-Aufruf geleitet. |
+| `queries:delete` | `DELETE /queries/:id` | Eine gespeicherte Abfrage löschen. |
+| `queries:run` | `POST /queries/run` | Gespeicherte oder ad-hoc SQL gegen die vom Composer verwendete schreibgeschützte Rolle ausführen. |
+
+### KI-Assistent
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Mit dem Dashboard-KI-Assistenten sprechen und eigene (private) Konversationen verwalten. Muss dem **Nutzer** zugewiesen sein, damit das Assistenten-Dock sichtbar ist; der eigene Key des Assistenten ist `dashboard-assistant` und wird separat bereitgestellt (siehe unten). |
+
+### API Keys
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `keys:create` | `POST /keys` | Einen neuen scoped API Key erstellen. Gewährt **nicht** das Bearbeiten der Berechtigungen eines bestehenden Keys (das ist `keys:update`). |
+| `keys:read` | `GET /keys` | Bestehende Keys auflisten. Secrets werden von diesem Endpunkt niemals zurückgegeben. |
+| `keys:update` | `PATCH /keys/:id` | Die Berechtigungen eines bestehenden Keys bearbeiten. Eine **ausschließlich für Menschen/Dashboards** vorgesehene Berechtigung; sie kann keinem API Key zugewiesen werden (ein Bearer Key darf Keys erstellen, sie aber niemals bearbeiten). |
+| `keys:disable` | `POST /keys/:id/disable` | Einen Key widerrufen. Geschützte Keys (`admin`, `dashboard-assistant`) können nicht deaktiviert werden; rotiere sie über Umgebungsvariable + Neustart. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Das Secret eines Keys rotieren. Geschützte Keys können über diese Route nicht neu generiert werden. |
+
+### Dashboard-Nutzer
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `users:create` | `POST /users`, `GET /users/defaults` | Einen neuen Dashboard-Nutzer einladen (sendet E-Mail + OTP-Login) und den dashboard-konfigurierten Standard-Berechtigungssatz lesen, der zum Vorausfüllen des Einladungsformulars verwendet wird. |
+| `users:read` | `GET /users`, `GET /users/:id` | Nutzer auflisten und einen einzelnen Nutzerdatensatz laden. |
+| `users:update` | `PUT /users/:id` | Die Berechtigungen eines Nutzers bearbeiten. Änderungen lösen eine E-Mail über die Berechtigungsänderung an den betroffenen Nutzer aus und werden bei seiner nächsten Anfrage wirksam; kein erneutes Einloggen erforderlich. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Einen Nutzer deaktivieren (widerruft seine Sessions sofort) und einen zuvor deaktivierten Nutzer wieder aktivieren. |
+
+Diese Berechtigungen bilden die Grundlage der **Users**-Seite im Dashboard, wo die gewährten Scopes jedes Mitglieds als Chips dargestellt werden:
+
+![Die Users-Seite: eine Karte pro Dashboard-Nutzer mit E-Mail, gewährten Berechtigungen sowie Bearbeiten- und Deaktivieren-Steuerelementen](/agenteye/images/users.png)
+
+### Betriebseinstellungen
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Dashboard-verwaltete Betriebseinstellungen und deren Metadaten anzeigen; modellspezifische Kontextfenster-Überschreibungen auflisten; das effektive Fenster für ein Modell auflösen. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Betriebseinstellungen bearbeiten sowie modellspezifische Kontextfenster-Überschreibungen hinzufügen, ändern oder entfernen. Änderungen wirken sich auf neue Events aus, ohne den Server neu starten zu müssen. |
+
+![Die Settings-Seite: dashboard-verwaltete Betriebseinstellungen wie erlaubte Anmeldemethoden und Session-/OTP-Laufzeiten, ohne Neustart bearbeitbar](/agenteye/images/settings.png)
+
+### Alerts & Incidents
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Konfigurierte Alert-Definitionen anzeigen. |
+| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Alert-Definitionen erstellen, bearbeiten, löschen und testweise auslösen. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Incidents und deren Triage-Verlauf einsehen. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Einen Incident manuell für einen bestehenden Alert öffnen. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Incidents bestätigen, zuweisen, auflösen und kommentieren. |
+
+### Audits
+
+| Berechtigung | HTTP-Routen | Was sie erlaubt |
+|---|---|---|
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Audit-Definitionen, Ausführungsverlauf und Befunde anzeigen. |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Audits erstellen, bearbeiten, löschen und ausführen; Befunde triagieren (bestätigen / stummschalten / abweisen / auflösen / wieder öffnen / zuweisen). |
+
+> Als Audits eingeführt wurden, wurden bestehende Berechtigungsinhaber analog zu den Rollen bei Alerts erweitert: Jeder Nutzer und jedes Berechtigungs-Set mit `alerts:read` erhielt `audits:read`, und jeder Inhaber von `alerts:write` erhielt `audits:write`. Bestehende API Keys wurden **nicht** erweitert — weise einem Key `audits:*` explizit zu, wenn er die Audit-Oberfläche benötigt.
+
+> Gespeicherte Grants des veralteten `alerts:ack`-Tokens werden als `incidents:ack` interpretiert, damit On-Caller ohne Neuvergabe weiterhin Zugriff haben. Das Token ist im Dashboard-Nutzer-Editor nicht mehr zuweisbar; die Matrix bietet stattdessen `incidents:ack` an.
+
+> Der Empfänger-Picker-Endpunkt `GET /alerts/recipients` (der die Mitglieds-E-Mails auflistet, die ein Alert-Editor benachrichtigen kann) ist für Inhaber von **entweder** `alerts:read` **oder** `alerts:write` erreichbar, sodass Alert-Editoren den Picker befüllen können, ohne `users:read` zu benötigen.
+
+> Ein Dashboard-Betrachter benötigt **sowohl** `dashboards:read` (zum Laden der gespeicherten Ansichten) als auch `evaluations:read` (die Gesundheitsmetriken werden aus Evaluierungsdaten berechnet). Weise `dashboards:write` zu, damit ein Nutzer Dashboards erstellen oder bearbeiten kann, und `dashboards:delete`, um sie zu löschen.
+
+> `/health` und `/auth/*` (OTP-Anfrage, OTP-Verifizierung, Session-Prüfung, Logout) sind konzeptionell nicht authentifiziert; sie bilden den Login-Flow und den Liveness-Probe. `GET /access-granters` erfordert einen gültigen Key, aber keine bestimmte Berechtigung, sodass jeder eingeloggte Nutzer sehen kann, welche Admins bei Zugriffsänderungen zu kontaktieren sind.
+
+---
+
+## Berechtigungs-Sets
+
+Berechtigungs-Sets ermöglichen es, eine benannte Rolle anzuwenden, anstatt jedes Mal einzelne Tokens manuell auszuwählen. Statt dutzende Berechtigungen einzeln für jeden neuen Dashboard-Nutzer oder API Key zu wählen, wählst du ein Set, und alle, denen es zugewiesen ist, tragen einen konsistenten, nachvollziehbaren Grant. Das Bearbeiten eines benutzerdefinierten Sets wendet den neuen Grant auf alle bereits zugewiesenen Nutzer erneut an, sodass eine Rollenänderung eine einzige Bearbeitung statt einer Durchsicht aller Mitglieder ist.
+
+Jede Organisation wird mit drei eingebauten Sets bereitgestellt:
+
+| Set | Berechtigungen | Vorgesehen für |
+|---|---|---|
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Nur-Lese-Zugriff auf alle Betriebsoberflächen. |
+| `standard` | alles in `read-only`, plus `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Nur-Lesen plus die alltäglichen On-Caller-Aktionen: Abfragen ausführen, Sessions neu bewerten, Incidents bestätigen und den KI-Assistenten nutzen. |
+| `admin` | alle zuweisbaren Berechtigungen | Vollständige Kontrolle über die Organisation. |
+
+Die drei eingebauten Sets sind **unveränderlich**; ihre Namen bedeuten immer dasselbe, sodass `read-only`, `standard` und `admin` sicher in Richtlinien und beim Onboarding referenziert werden können. Ein Operator kann zusätzliche **benutzerdefinierte Sets** erstellen, um für deine Organisation spezifische Rollen abzubilden (z. B. eine Rolle als Dashboard-Autor oder eine Collector-only-Rolle).
+
+Sets sind im Dashboard sichtbar und werden über die API verwaltet: `GET /permission-sets` (auflisten, gesichert durch `users:read`) sowie `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (benutzerdefiniertes Set erstellen, bearbeiten, löschen, gesichert durch `settings:write`). Das Löschen oder Bearbeiten eines eingebauten Sets wird abgelehnt.
+
+Set-Mitgliedschaft ist die Grundlage für zwei weitere Funktionen:
+
+- **`DEFAULT_USER_PERMISSIONS`** (der Grant, der vorausgewählt ist, wenn ein Admin **+ neuer Nutzer** öffnet) ist standardmäßig das `standard`-Set. Siehe [Deployment](/de/agenteye/deployment).
+- **Das `--set`-Flag** bei `agenteye-orgctl` (Operator-Mitgliederverwaltung) startet ein Mitglied aus einem benannten Set, das du dann mit `--add` / `--remove` feinjustierst. Siehe [Tenant Management](/de/agenteye/tenant-management).
+
+> Wenn ein Set eine Berechtigung enthält, die nicht Key-zuweisbar ist (z. B. ein benutzerdefiniertes Set mit `keys:update`), lässt das Ableiten eines Keys aus diesem Set die nicht zuweisbaren Tokens weg; andernfalls würde der Server den Key mit HTTP 422 ablehnen. Für Dashboard-Nutzer gilt diese Einschränkung nicht.
+
+---
+
+## Bootstrap-Admin-Key
+
+Der Admin-Key ist die einzige Root-Berechtigung, die es einem Operator ermöglicht, den Zugriff von Grund auf aufzubauen: Damit kannst du alle anderen scoped Keys erstellen, die ersten Dashboard-Nutzer einladen und die Instanz konfigurieren, bevor irgendein anderer Key existiert. Er ist der einzige Key, den du nicht über die Keys-API erstellst; er wird aus der Umgebung bereitgestellt, damit der Server beim ersten Start erreichbar ist.
+
+Setze die Umgebungsvariable `ADMIN_KEY` auf dem Server. Bei jedem Start führt der Server einen Upsert dieses Werts als Admin-Key mit allen Berechtigungen durch.
+
+Zum Rotieren: Ändere `ADMIN_KEY` zu einem neuen Secret und starte den Server neu.
+
+---
+
+## Organisations-Scoping
+
+**Organisationen selbst werden von einem Operator außerhalb des Bandes erstellt und verwaltet, nicht über diese Keys-API.** Der Lebenszyklus von Orgs und Mitgliedern (Org erstellen / umbenennen / löschen / bereinigen; Mitglied hinzufügen / aktualisieren / entfernen) erfolgt mit dem **`agenteye-orgctl`**-CLI, das innerhalb des Server-Pods läuft; es gibt keine HTTP-API oder Dashboard-Schaltfläche dafür. Siehe [Tenant Management](/de/agenteye/tenant-management). Was sich **nicht** ändert: **Pro-Org-API-Keys werden weiterhin im Dashboard (oder über diese Keys-API)** von Org-Mitgliedern erstellt.
+
+In einem Multi-Org-Deployment gehört jeder Key, den ein Org-Mitglied erstellt (über diese Keys-API oder die Dashboard-**Keys**-Seite), zu **einer Organisation** und kann nur die Daten dieser Org lesen oder schreiben; die Org wird beim Erstellen auf den Key gestempelt und bei jeder Anfrage durchgesetzt. Die beiden Bootstrap-Keys sind die einzige Ausnahme: Der `admin`-Key (aus `ADMIN_KEY` bereitgestellt) und der `dashboard-assistant`-Key (aus `AGENT_API_KEY` bereitgestellt) sind **instanzweit gültig** (sie tragen keine Org). Der Dashboard-Container authentifiziert sich mit dem `admin`-Key, sodass er pro-Org-Anfragen im Namen eingeloggter Mitglieder proxyen kann. Single-Tenant-Deployments müssen darüber nicht nachdenken; alle Keys gehören zur eingebauten `default`-Org.
+
+---
+
+## Keys erstellen
+
+Verwende den Admin-Key (oder einen Key mit der Berechtigung `keys:create`), um weitere scoped Keys zu erstellen.
+
+### Collector-Key (nur Ingest)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "your-collector-secret",
+    "permissions": ["events:add"]
+  }'
+```
+
+### Dashboard-Key (nur Lesen)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dashboard",
+    "key": "your-dashboard-secret",
+    "permissions": ["events:read", "keys:read"]
+  }'
+```
+
+Wenn du einen Key über die HTTP-API erstellst, gibst du den `key`-Wert selbst an; wähle ein starkes Secret und speichere es sicher. (Das Dashboard funktioniert umgekehrt: Es generiert ein starkes Secret für dich und zeigt es einmalig bei der Erstellung an; siehe [Key-Verwaltung im Dashboard](#key-management-in-the-dashboard).) Die Antwort bestätigt, dass der Key erstellt wurde:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "prod-collector",
+  "permissions": ["events:add"],
+  "created_at": "2026-04-01T12:00:00Z"
+}
+```
+
+---
+
+## Keys auflisten
+
+```bash
+curl -s http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+Key-Secrets werden in Listenantwortern nicht zurückgegeben, nur IDs, Namen und Berechtigungen.
+
+---
+
+## Einen Key deaktivieren
+
+Das Deaktivieren widerruft den Zugriff sofort, ohne den Key-Datensatz zu löschen.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/disable \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+---
+
+## Einen Key neu generieren
+
+Generiert ein neues Secret für einen bestehenden Key. Das alte Secret wird sofort ungültig.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/regenerate \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+Die Antwort enthält das neue Klartext-Secret, das **nur einmal angezeigt** wird.
+
+---
+
+## Key-Verwaltung im Dashboard
+
+Die **Keys**-Seite im Dashboard bietet eine Oberfläche für alle oben genannten Operationen. Du benötigst einen Key mit der Berechtigung `keys:read`, um die Liste anzuzeigen, sowie `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` für die jeweiligen Aktionen zum Erstellen, Bearbeiten, Deaktivieren und Neu-Generieren. Das Bearbeiten der Berechtigungen eines Keys (`keys:update`) ist vom Erstellen eines Keys (`keys:create`) getrennt, sodass du einem Operator die Möglichkeit geben kannst, Keys zu erstellen, ohne bestehende umzuscopieren – oder umgekehrt. Der Admin-Key deckt all das ab.
+
+Wenn du einen Key über das Dashboard erstellst, gibst du das Secret nicht selbst an; das Dashboard generiert ein starkes Secret für dich und zeigt es **einmalig** bei der Erstellung an. Kopiere es sofort und speichere es sicher; es wird nie wieder angezeigt, genau wie bei einem Neustart. Du kannst die Berechtigungen des Keys dennoch direkt auswählen oder sie aus einem Berechtigungs-Set ableiten (siehe unten).
+
+![Die API Keys-Seite: eine Karte pro Key mit Name, gewährten Berechtigungen und Erstellungszeit sowie Aktionen zum Neu-Generieren und Deaktivieren; geschützte Keys wie admin sind markiert](/agenteye/images/api-keys.png)
+
+---
+
+## Empfohlenes Key-Layout
+
+| Key | Berechtigungen | Verwendet von |
+|---|---|---|
+| `admin` (Bootstrap via `ADMIN_KEY`-Umgebungsvariable) | alle | Ops/Setup und der Dashboard-Container (authentifiziert sich mit `ADMIN_KEY`, proxyt Nutzeranfragen mit Berechtigungsprüfungen) |
+| Pro-Host-Collector-Key | `events:add` | Collector auf jedem Agent-Rechner |
+| `dashboard-assistant` (Bootstrap via `AGENT_API_KEY`-Umgebungsvariable) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | KI-Assistent-Container, automatisch bereitgestellt, **geschützt**; kann nicht über die API bearbeitet werden |
+| Assistent-Telemetrie-Key (optional) | `events:add` | KI-Assistent-Selbstinstrumentierung, falls aktiviert |
+
+> **Assistenten-Key.** Der Key des Assistenten wird vom Server **automatisch bereitgestellt** aus der Umgebungsvariable `AGENT_API_KEY` (dasselbe Secret, das der Agent als `AGENTEYE_API_KEY` präsentiert); es gibt keinen manuellen Key-Erstellungsschritt und keinen Admin-Key, der dabei involviert ist. Seine Berechtigungen sind im Quellcode fest verankert, sodass der Scope durch Fehlkonfiguration nicht erweitert werden kann: Lesen über Events, Evaluierungen und Dashboards, plus Dashboards-Write und Queries-Read/-Write/-Run für den Authoring-Flow von KI-gestützten Abfragen. Alle SQL-Anfragen laufen weiterhin über dieselbe schreibgeschützte Rolle und `sql_guard`-Prüfungen wie eine nutzerverfasste Abfrage, sodass dies die *Authoring-Oberfläche* erweitert, nicht die Datenoberfläche; destruktive Operationen (`queries:delete`, `dashboards:delete`) bleiben absichtlich vom Assistenten-Key ausgeschlossen. Wie der `admin`-Key ist er **geschützt**: Er kann nicht über die Keys-API deaktiviert oder neu generiert werden, sondern nur durch Ändern von `AGENT_API_KEY` und Neustart rotiert werden. Dashboard-*Nutzer* benötigen zusätzlich die Berechtigung `agent:use`, um den Assistenten zu sehen und zu verwenden. Wenn du die Selbstinstrumentierung aktivierst, gib dem Assistenten einen separaten Key mit nur `events:add`.

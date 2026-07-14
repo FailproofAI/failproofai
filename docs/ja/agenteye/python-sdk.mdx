@@ -1,0 +1,383 @@
+---
+title: "Python SDK"
+description: "AgentEye Python SDK のドキュメント。"
+---
+
+
+AgentEye Python SDK は、エージェントの動作（すべてのエージェント実行、ツール呼び出し、モデルリクエスト、フック、人間による介入）に対する完全な可視性を提供します。これにより、デバッグ・監査・評価を行うことができます。構造化されたイベントをローカルの JSONL ファイルに書き込むことでエージェントコードを計測し、コレクターデーモンがそれらを自動的にプラットフォームへ送信します。
+
+---
+
+## インストール
+
+`AGENTEYE_TOKEN` を使用して GitHub Releases からホイールをダウンロードしてください。トークンをまだお持ちでない場合は、[GitHub トークンのセットアップ](/ja/agenteye/github-token)でセットアップ手順と必要な権限をご確認ください。
+
+**`gh` CLI + pip を使用する場合:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**`gh` CLI + uv を使用する場合:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**curl を使用する場合（`gh` CLI 不要）:**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## クイックスタート
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. デフォルト: $AGENTEYE_HOME または ~/.agenteye
+    flush_interval=0.5,      # float, フラッシュ間隔（秒）
+    environment=None,        # str | None. デプロイ環境のラベル
+)
+```
+
+`event.*` を呼び出す前に一度だけ実行してください。省略しても問題ありません。デフォルト設定でそのまま動作します。すべての引数はキーワード専用です。上記のように名前を指定して渡してください。
+
+`base_dir` が `None`（デフォルト）の場合、SDK は `$AGENTEYE_HOME` が設定されていればその値を使用し、設定されていなければ `~/.agenteye` にフォールバックします。これはコレクター自身の解決方法と一致するため、`AGENTEYE_HOME` 環境変数を一つ設定するだけで、SDK とコレクターの両方に対して共有イベントスプールを構成できます。サイドカー構成やシングルポッドのデプロイなど、両プロセスがスプールパスを共有する必要がある場合に必要です。
+
+---
+
+## 環境
+
+すべてのイベントにデプロイ環境のラベル（`production`、`staging`、`qa`、`canary` など）を付与します。一度設定するだけで、SDK が自動的にすべてのイベントに付加します。
+
+**オプション 1: `configure()` で設定する場合:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**オプション 2: 環境変数で設定する場合:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**優先順位:** `configure(environment=...)` は環境変数よりも優先されます。どちらも設定されていない場合は `"dev"` がデフォルト値となります。
+
+環境の値はダッシュボードのファーストクラスフィルターとして表示され、高速クエリのためにサーバー上のインデックス付きカラムとして保存されます。
+
+**制約:** 環境の値にリテラルのカンマ `,` を含めることは**できません**。ダッシュボードのフィルターはカンマ区切りのマルチセレクトをワイヤ上で使用するため（`?environment=prod,staging`）、`prod,blue` という名前の環境は2つの値に分割されてしまいます。カンマを含む環境を持つイベントは、インジェスト時に拒否されます。
+
+---
+
+## イベントリファレンス
+
+すべてのイベントメソッドには以下の2つのフィールドが必要です:
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `session_id` | `str` | トップレベルのエージェント実行を識別する |
+| `agent_id` | `str` | セッション内でイベントを発行したエージェントを識別する |
+
+すべてのメソッドはカスタムメタデータ用の任意の `**kwargs` も受け付けます（[カスタムフィールド](#custom-fields)を参照）。
+
+---
+
+### `event.agent_start()`
+
+エージェントが処理を開始したときに発行されます。
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - ネストされたエージェントの親 agent_id
+)
+```
+
+---
+
+### `event.agent_end()`
+
+エージェントが処理を終了したときに発行されます。
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+エージェントがツールを呼び出したときに発行されます。`tool_result` と対で使用し、SDK が `duration_ms` を自動計算します。
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, 必須
+    tool_call_id="toolu_01",    # str, 必須 - 対応する tool_result との相関キー
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+ツールが結果を返したときに発行されます。`tool_call_id` を通じて `tool_use` と対応付けられます。
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # 対応する tool_use と一致する必要がある
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - ツールが例外を発生させた場合に設定
+    # duration_ms は自動計算されるため渡さないこと
+)
+```
+
+---
+
+### `event.model_request()`
+
+LLM にプロンプトを送信する直前に発行されます。
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - 会話のターン
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - 文字列またはコンテンツブロックのリスト
+    tools=[                      # list[dict] | None - モデルに提供するツールスキーマ
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+`messages` のエントリは、プレーンな文字列の `content` または Anthropic スタイルのブロックリスト形式の `content` を受け付けます。サンプリングパラメータ（`temperature`、`max_tokens` など）は追加の kwargs として渡すことができます。
+
+---
+
+### `event.model_response()`
+
+LLM がレスポンスを返したときに発行されます。
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - 文字列、またはコンテンツブロックのリスト
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` はプレーンな文字列（汎用プロバイダー向け）または Anthropic スタイルのコンテンツブロックのリストを受け付けます。ツール呼び出しは `content` 内に `{"type": "tool_use", ...}` ブロックとして格納されており、別途 `tool_calls` フィールドはありません。
+
+---
+
+### `event.hook_triggered()`
+
+フックが発火したときに発行されます。`hook_completed` と対で使用し、SDK が `duration_ms` を自動計算します。
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, 必須
+    hook_id="hook-abc",         # str, 必須 - 相関キー
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+フックが完了したときに発行されます。`hook_id` を通じて `hook_triggered` と対応付けられます。
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # 対応する hook_triggered と一致する必要がある
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms は自動計算されるため渡さないこと
+)
+```
+
+---
+
+### `event.error()`
+
+未処理のエラーが発生したときに発行されます。
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, 必須
+    message="timed out",        # str, 必須
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## ヒューマン・イン・ザ・ループイベント
+
+ヒューマン・イン・ザ・ループイベントは、人間がエージェントの実行に介入する瞬間（承認待ち、入力提供、一時停止、またはエージェントの停止）を監視する機能を提供します。人間が応答するまでの時間の計測（SDK は対となるイベントで `duration_ms` を自動計算）、エージェントを一時停止または中断した人物の監査、そしてダッシュボードに表示される承認・監視ワークフローの構築が可能になります。
+
+### `event.human_wait()`
+
+エージェントが人間の入力を待って実行を一時停止したときに発行されます。`human_input` と対で使用し、SDK が `duration_ms`（人間が応答するまでの時間）を自動計算します。
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, 必須 - 対応する human_input との相関キー
+    prompt="Do you approve this action?",        # str | None - 人間に表示される質問
+    options=["approve", "reject", "defer"],      # list[str] | None - 人間に提示される選択肢
+    reason="approval_required",                  # str | None - エージェントが待機している理由
+)
+```
+
+### `event.human_input()`
+
+人間が入力を提供し、エージェントが実行を再開したときに発行されます。`input_id` を通じて `human_wait` と対応付けられます。`duration_ms` は自動計算されるため、呼び出し元が渡す必要はありません。
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, 必須 - 対応する human_wait と一致する必要がある
+    response="approve",    # str | None - 人間の回答（自由入力または選択肢から選んだもの）
+    # duration_ms は自動計算されるため渡さないこと
+)
+```
+
+### `event.human_pause()`
+
+人間がエージェントを能動的に一時停止したとき（例: ダッシュボードのコントロールを使用）に発行されます。エージェントは中断されますが、終了はしません。
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - エージェントを一時停止した人物
+)
+```
+
+### `event.human_interrupt()`
+
+人間がエージェントの実行中に能動的に停止させたときに発行されます。`human_pause` とは異なり、エージェントの処理は中断ではなく終了します。
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - エージェントを中断した人物
+    at_step="tool_use:web_search",   # str | None - 停止時にエージェントが実行していた処理
+)
+```
+
+---
+
+## カスタムフィールド
+
+追加のキーワード引数はすべて、標準フィールドの後にイベントへ付加されます:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # カスタムフィールド
+    region="us-east-1",         # カスタムフィールド
+)
+```
+
+`timestamp`、`type`、`environment` は予約済みであり、カスタムフィールドとして渡した場合は `ValueError`（`Reserved field names cannot be used as custom fields: [...]`）が発生します。`session_id` と `agent_id` はすべてのイベントメソッドで必須パラメータのため、2度目に渡すことはできません。その場合、Python が `TypeError` を発生させます。環境の設定には `configure(environment=...)` または `AGENTEYE_ENVIRONMENT` 変数を使用してください。
+
+---
+
+## イベントの書き込み方法
+
+イベントはプロセス内でバッファリングされ、`flush_interval` 秒ごと（デフォルト 500 ms）にディスクへフラッシュされます。フラッシュのたびに1つの JSONL ファイルが書き込まれます:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+コレクターはこのディレクトリを監視し、ファイルを自動的にアップロードします。これらのファイルを直接管理する必要はありません。

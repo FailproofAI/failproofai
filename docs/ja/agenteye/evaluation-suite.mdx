@@ -1,0 +1,355 @@
+---
+title: "評価スイート"
+description: "AgentEye 評価スイートのドキュメント。"
+---
+
+AgentEye は、完了したエージェントセッションを評価するために、イベントトランスクリプト全体を **顧客が管理する単一の評価サービス** に POST して採点します。評価サービスはスコアをインラインで返すか、AgentEye がポーリングするための `job_id` を返します。結果は保存され、ダッシュボードに表示されます。
+
+このガイドでは以下を説明します：
+
+1. セッション完了の検出方法
+2. 評価サービスが実装すべき HTTP コントラクト
+3. AgentEye サーバーの設定
+4. 結果の確認方法
+5. トラブルシューティング
+
+コントラクトを代わりに実装してくれる Python ヘルパーについては、[PyPI の `agenteye-evaluator` パッケージ](https://pypi.org/project/agenteye-evaluator/)を参照してください。
+
+---
+
+## 仕組み
+
+```text
+ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Evaluator service
+   (agent_end)        server   ◀──── done | pending ────
+                          │
+                          │     GET /evaluate/{job_id} ─────▶
+                          │     ◀──── done ──────────────
+                          ▼
+                     evaluations  (terminal results)
+```
+
+AgentEye SDK がセッションの `agent_end` イベントを発行すると、サーバーは評価をスケジュールします。その後、イベントトランスクリプト全体を評価サービスに POST します。評価サービスは次のいずれかを返します：
+
+- **インラインで結果を返す**：`{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}` を返します。結果はセッションの評価タイムラインに追記されます。`reasoning` と `summary` は省略可能です。
+- **処理を遅延させる**：`{"status":"pending", "job_id":"abc-123"}` を返します。AgentEye はその後、評価サービスが `{"status":"done", ...}` または `{"status":"error", "error":"..."}` を返すまで `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` を呼び出し続けます。
+
+  ポーリング間隔はジョブごとに設定可能です。`pending` レスポンスに `next_poll_secs` を含めることでデフォルト値を上書きできます。指定がない場合、AgentEye は `GET /config` の `default_poll_interval_secs` を使用し、それも指定がない場合はサーバーの `EVALUATOR_POLLING_INTERVAL_SECS`（デフォルト 10 秒）にフォールバックします。すべての値は [1 秒, 1 時間] の範囲にクランプされます。
+
+`agent_end` を発行しないセッション（例：エージェントプロセスがクラッシュした場合）にも対応できます。評価サービスの `GET /config` が `{"inactivity_timeout_secs": 1800}` を返せば、AgentEye はその時間アイドル状態のセッションも評価します。このフォールバックを無効にするには、フィールドを `null` にするか省略してください。
+
+`EVALUATOR_ENDPOINT` が未設定の場合、パイプラインは完全に無効化されます。
+
+セッションには**複数の終端評価が時系列で蓄積される**ことがあります。`agent_end` イベントが発生するたびに（およびダッシュボードから手動で再評価するたびに）、新しい評価行が追記されます。これは再開された会話を評価するための公式のやり方です。ユーザーがエージェントを終了し、後で戻ってきてイベントを追加送信し、再びエージェントを終了すると、更新されたトランスクリプト全体に対して 2 回目の評価が実行されます。ダッシュボードでは最新の評価がメインとして表示され、過去の評価は折りたたみ可能なタイムラインとして表示されます。あるセッションで評価が実行中の場合、そのセッションの追加 `agent_end` イベントは無視されます。実行中の評価が完了した後の次の `agent_end` イベントで、新しい評価が通常どおりキューに追加されます。
+
+アイドルタイムアウトによるフォールバックは、再開されたセッションにも再適用されます。過去の終端評価の後に新しいイベントが到着し、その後セッションが `inactivity_timeout_secs` を超えてアイドル状態になった場合、新しい評価がキューに追加されます。
+
+一時的な障害（5xx、429、タイムアウト、ネットワークエラー）は `EVALUATOR_MAX_ATTEMPTS` まで指数バックオフでリトライされます。4xx レスポンスは終端扱いです。AgentEye は複数のサーバーインスタンスを水平スケールして実行しても安全です。作業はパーティション分割されているため、同じセッションが同時に 2 度ディスパッチされることはありません。
+
+---
+
+## HTTP コントラクト
+
+認証が必要なすべてのルートは **ベアラートークン認証** を使用します。同じ値を両側で設定する必要があります：
+
+- AgentEye サーバー：環境変数 `EVALUATOR_TOKEN`
+- 評価サービス：同様の方法で設定（`agenteye-evaluator` SDK は慣例として `EVALUATOR_TOKEN` を読み取ります）
+
+`EVALUATOR_TOKEN` が未設定の場合、サーバーは `Authorization` ヘッダーを送信しません。その場合、評価サービスは匿名リクエストを受け入れることができますが、これは内部ネットワーク専用の場合は問題ありませんが、公開インターネット上での使用は推奨されません。
+
+### 評価サービスが提供すべきルート
+
+| ルート | ボディ / パラメーター | レスポンス |
+|---|---|---|
+| `GET /health` | なし | `{"status":"ok"}` （オープン、認証不要） |
+| `GET /config` | なし | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` または `{"status":"pending", "job_id":"..."}` |
+| `GET /evaluate/{id}` | なし | `/evaluate` と同じレスポンス形式 |
+
+### サーバーが送信する `EvalRequest` ボディ
+
+```json
+{
+  "schema_version": "1",
+  "session_id":     "session-abc123",
+  "agent_id":       "planner",
+  "environment":    "production",
+  "started_at":     "2026-05-10T12:00:00Z",
+  "ended_at":       "2026-05-10T12:05:00Z",
+  "events": [
+    { "id": 1234, "ts": "...", "event_type": "agent_start", "payload": { ... } },
+    ...
+  ]
+}
+```
+
+### レスポンスの形式
+
+**同期（完了）：**
+
+```json
+{
+  "status": "done",
+  "scores": { "helpfulness": 0.85, "tool_efficiency": 0.6 },
+  "reasoning": {
+    "helpfulness": "answered the question directly with citations",
+    "tool_efficiency": "called list_files three times when one would have done"
+  },
+  "summary": "strong answer quality, weak tool selection"
+}
+```
+
+`reasoning`（スコアごとの根拠マップ）と `summary`（全体的な概要の段落）はどちらも省略可能です。`reasoning` のキーは `scores` のキーに対応させてください。ダッシュボードでは各エントリがスコアバーの下にインラインで表示されます。`scores` のみを返す古い評価サービスも変更なしで動作し続けます。`reasoning` と `summary` は null として扱われ、対応する UI 要素は省略されます。
+
+**非同期（遅延）：**
+
+```json
+{ "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
+```
+
+`next_poll_secs` は省略可能です。省略した場合、サーバーは `/config` の `default_poll_interval_secs`、次に `EVALUATOR_POLLING_INTERVAL_SECS` 環境変数にフォールバックします。
+
+**評価サービス側の終端エラー：**
+
+```json
+{ "status": "error", "error": "model service unavailable" }
+```
+
+サーバーはその他の 2xx ボディをプロトコルエラーとして扱い、セッションの終端 `error` として記録します。
+
+---
+
+## SDK を使った評価サービスの実装
+
+`agenteye-evaluator` Python パッケージは、上記の HTTP コントラクトを実装した型付き FastAPI ラッパーを提供します。PyPI からインストールしてください：
+
+```bash
+pip install agenteye-evaluator
+```
+
+最小構成の評価サービス：
+
+```python
+import os
+from agenteye_evaluator import Evaluator, EvalRequest, EvalResponse
+
+app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
+
+@app.evaluator
+def run(req: EvalRequest) -> EvalResponse:
+    # req.events（セッションのフルトランスクリプト）を検査してスコアを返します
+    tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
+    return EvalResponse(
+        scores={"tool_calls": float(tool_calls)},
+        reasoning={"tool_calls": f"{tool_calls} tool invocations in the transcript"},
+        summary="tight tool loop" if tool_calls < 5 else "agent looped on tools",
+    )
+```
+
+`app` インスタンスは ASGI 呼び出し可能なので、`uvicorn module:app` で起動できます。
+
+コストのかかる処理を遅延させる必要がある評価サービスの場合は、代わりに `JobPending` を返し、`@app.job_lookup` ハンドラーを登録してください。AgentEye サーバーは、終端ステータスが返されるか `EVALUATOR_MAX_POLL_DURATION_SECS` 上限（デフォルト 1 時間）に達するまで `GET /evaluate/{job_id}` をポーリングします。
+
+完全な API リファレンス、非同期パターン、およびイベントスキーマは、`agenteye-evaluator` の README が各リリース tarball に含まれています。[agenteye-enterprise リリースページ](https://github.com/agenteye-enterprise/releases)から取得するか、パッケージの PyPI ページで確認できます。
+
+---
+
+## Kubernetes での評価サービスの実行
+
+評価サービスは**お客様自身のサービス**です。AgentEye はデフォルトの評価サービスコンテナを提供しません。リリースには `deploy/examples/evaluator/` 配下に参考用の Kubernetes マニフェストが含まれており、イメージと共有ベアラートークンを差し替えるだけで適用できます。
+
+### 1. 評価サービスをコンテナ化する
+
+評価サービスの最小構成 Dockerfile：
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir agenteye-evaluator uvicorn
+COPY my_evaluator.py .
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
+    && chown -R evaluator:evaluator /app
+USER evaluator
+EXPOSE 9000
+CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
+```
+
+`runAsNonRoot`（UID 10001）により、Pod Security の restricted プロファイルとの互換性が保たれます。
+
+### 2. 共有ベアラートークンを作成する
+
+```bash
+kubectl -n agenteye create secret generic evaluator-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+AgentEye サーバーの `EVALUATOR_TOKEN` と同じ値を使用してください。サーバーはすべてのリクエストに `Authorization: Bearer <token>` を送信します。SDK は `hmac.compare_digest` を使って定数時間で検証し、不一致の場合は HTTP 401 を返します。
+
+### 3. サンプルマニフェストを適用する
+
+```bash
+# まず deploy/examples/evaluator/deployment.yaml を編集して
+# `image:` をご自身のレジストリに変更してから：
+kubectl apply -k deploy/examples/evaluator/
+```
+
+サンプルには以下が含まれます：
+
+- `runAsNonRoot`、読み取り専用ルートファイルシステム、全 capabilities ドロップ、`/health` へのライブネス＋レディネスプローブを設定した 2 レプリカの Deployment
+- ポート 9000 の ClusterIP Service
+- `secret.example.yaml` テンプレート（トークンが git に含まれないよう、Kustomization から意図的に除外されています。実際の Secret は帯域外で作成してください）
+
+### 4. AgentEye と接続する
+
+AgentEye サーバーに以下を設定してください：
+
+```bash
+EVALUATOR_ENDPOINT=http://evaluator:9000
+EVALUATOR_TOKEN=<上記で生成した値>
+```
+
+サーバーは `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` の同時リクエストを全評価サービス Pod に分散します（デフォルト：`2 × 4 = 8`）。サーバー側の設定値に合わせて `replicas` と Pod ごとのリソース制限を調整してください。
+
+### 動作確認
+
+```bash
+kubectl -n agenteye port-forward svc/evaluator 9000:9000
+curl -s http://localhost:9000/health   # → {"status":"ok"}
+```
+
+エージェントがエンドツーエンドで実行された後、AgentEye サーバーの `GET /evaluations` から `status: "done"` と評価サービスが生成したスコアを含む行が返されるはずです。
+
+---
+
+## AgentEye サーバーの設定
+
+サーバープロセスに以下を設定してください：
+
+| 環境変数 | 説明 |
+|---|---|
+| `EVALUATOR_ENDPOINT` | 評価サービスのベース URL（`http://evaluator:9000`）。未設定の場合、パイプラインは無効になります。 |
+| `EVALUATOR_TOKEN` | ベアラートークン。評価サービスに設定された値と一致する必要があります。 |
+| `EVALUATOR_WORKERS` | サーバーインスタンスごとのワーカータスク数（デフォルト 2）。 |
+| `EVALUATOR_CLAIM_BATCH` | ワーカーのティックごとにクレームする行数（デフォルト 4）。バッチは**並行**処理されます。評価サービスエンドポイントへの実効並行数は `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` です。 |
+| `EVALUATOR_POLL_IDLE_SECS` | 評価が不要な場合にワーカーがディスパッチを試みる間隔（デフォルト 2 秒）。 |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `GET /evaluate/{id}` のポーリング間隔の最終フォールバック。レスポンスごとの `next_poll_secs` も評価サービスの `default_poll_interval_secs` も設定されていない場合に使用されます（デフォルト 10 秒）。 |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | リクエストごとのタイムアウト（デフォルト 30000）。 |
+| `EVALUATOR_MAX_ATTEMPTS` | この回数だけ一時的な障害が発生すると、結果が終端 `error` として記録されます（デフォルト 5）。 |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `GET /config` の呼び出し間隔（デフォルト 300）。 |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | セッションがポーリングキューに残れる最大のウォールクロック時間。これを超えると `timeout` として終端処理されます（デフォルト 3600 秒）。評価サービスが永続的に `pending` を返し続けることを防ぎます。 |
+
+インスタンス全体で自動採点を有効にするには、両方のキーが設定された `agenteye-evaluator` Secret をプロビジョニングしてください。バンドルされた Kubernetes マニフェストでは、サーバーはこのオプションの Secret から `EVALUATOR_ENDPOINT` と `EVALUATOR_TOKEN` を読み取ります。組織の標準的なシークレット管理プロセスで作成し、変更を反映させるためにサーバーの Deployment を再起動してください。
+
+上記のチューニング設定はデフォルトでは接続されていません。デフォルト値を上書きする必要がある場合は、Deployment マニフェストのサーバーコンテナに対応する環境変数を設定してください。
+
+完全な環境変数一覧については [deployment.md](/ja/agenteye/deployment) を参照してください。
+
+---
+
+## API リファレンス
+
+| メソッド | パス | 必要なパーミッション | 目的 |
+|---|---|---|---|
+| `GET` | `/evaluations` | `evaluations:read` | 終端結果を照会します。`session_id`、`agent_id`、`environment`、`status`（`done`/`error`/`timeout`）、`ts_from`、`ts_to`、`cursor`、`limit`、`score_filters`、`latest_per_session` をサポートします。`limit` のデフォルトは 50、上限は 200 です（`/events` の上限 1000 とは異なります）。`environment` はカンマ区切りのリストを受け付けます（例：`environment=prod,staging`）。単一値でも動作します。`latest_per_session=true` を指定すると、レスポンスは `session_id` ごとに最新の行（`completed_at` が最も新しいもの）のみを返します。セッション一覧ページでセッションの評価タイムラインを現在のヘッドラインに折りたたむために使用されます。デフォルトは false（全履歴を返します）。 |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | フィルタリングされたスライスの評価ヘルスを集計します。総数、done/error/timeout の内訳、スコアキーごとの統計情報（任意の `scores` キーに対する count/avg/min/max/p50）、時間バケットのタイムラインを返します。**`/evaluations` と同じフィルターパラメーター**に加え、`featured_keys`（トレンド表示するスコアキーの CSV）と `latest_per_session` を受け付けます。ダッシュボード機能を動かします。メトリクスはサンプリングではなく、一致するセット全体に対して正確に計算されます。 |
+| `GET` | `/evaluations/environments` | `evaluations:read` | `evaluations` テーブルのユニークな environment 値を返します。評価データにスコープされたフィルタードロップダウンの選択肢を生成するために使用されます。 |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | 実行中の評価の可視性を提供します。`status`（`pending`/`polling`）でフィルタリングできます。 |
+| `GET` | `/events` | `events:read` | セッションの生イベントをストリームします。`session_id`、`agent_id`、`event_type`（CSV）、`environment`（CSV）、`ts_from`、`ts_to`、`cursor`、`limit`、`order` をサポートします。`order` は `desc`（新しい順、デフォルト）または `asc`（古い順）です。不明な値は `desc` にフォールバックします。レスポンスの `next_cursor`（イベント ID）を使ってカーソルページネーションができます。`cursor` として渡すと次のページが取得できます。`asc` の場合は該当 ID より後のイベント、`desc` の場合は該当 ID より前のイベントが返されます。`limit` のデフォルトは 50、上限は 1000 です。 |
+| `GET` | `/sessions/:session_id/export` | `events:read` | このセッションに対して評価サービスが受け取るであろう正確な JSON ボディを `session-<id>.json` という名前のダウンロード可能な添付ファイルとして返します。本番セッションを `agenteye-evaluator` を使ってオフラインでテストするために便利です。バイト列は評価パイプラインが送信するものと完全に一致します。 |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | セッションの新しい評価をキューに追加します。過去の評価の有無に関わらず実行されます。新しい結果は以前の評価を上書きするのではなく、セッションの評価タイムラインに**追記**されます。そのため過去のスコアは履歴として引き続き参照できます。キュー追加時に `202` を返します。セッションが不明な場合は `404`、評価がすでに実行中の場合は `409` を返します。新しい評価サービスをデプロイした後や、`agent_end` を発行しなかったセッションに対して使用してください。 |
+
+### スコア範囲によるフィルタリング：`score_filters`
+
+`GET /evaluations` はオプションの `score_filters` パラメーターを受け付けます。このパラメーターは `scores` オブジェクト内の数値によって結果を絞り込みます。パラメーターはカンマ区切りの `key:min..max` エントリーのリストです。どちらの境界も省略可能です。複数のエントリーは論理 AND で結合されます。指定されたキーが存在しないか非数値の行は除外されます。1 リクエストあたり最大 20 フィルターエントリーを指定できます。超過した場合は HTTP 400 が返されます。
+
+例：
+```text
+# helpfulness が [0.5, 0.8] の範囲
+GET /evaluations?score_filters=helpfulness:0.5..0.8
+
+# tool_efficiency が 0.3 以下（下限なし）
+GET /evaluations?score_filters=tool_efficiency:..0.3
+
+# helpfulness >= 0.5 かつ factuality >= 0.9
+GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
+```
+
+`/evaluations` の各レスポンスオブジェクトには以下のフィールドがあります：
+
+| フィールド | 型 | 備考 |
+|---|---|---|
+| `evaluation_id` | string（UUID） | この終端評価の正規識別子。終端評価ごとに新しい UUID が割り当てられます。1 つのセッションに複数の UUID を持てます。 |
+| `id` | string（UUID） | `evaluation_id` と同じ値を持つ後方互換エイリアス。 |
+| `session_id` | string | この評価が実行されたセッション。1 つのセッションがタイムライン上に複数の評価を持てます。 |
+| `agent_id` | string | セッションを生成したエージェントを識別します。 |
+| `environment` | string | セッションからコピーされた環境ラベル。 |
+| `status` | enum | `"done"`、`"error"`、`"timeout"` のいずれか。 |
+| `scores` | object \| null | 評価サービスが返したスコア。 |
+| `reasoning` | object \| null | 評価サービスが返したオプションのスコアごとの根拠マップ。キーは通常 `scores` のキーに対応します。ダッシュボードでは各エントリーがスコアバーの下に表示されます。 |
+| `summary` | string \| null | 評価サービスが返したオプションの全体的な概要の段落。ダッシュボードでは、スコアの内訳の上にこの評価のヘッドラインとして表示されます。 |
+| `error` | string \| null | `"error"` / `"timeout"` の場合のみ設定されます。 |
+| `attempt_count` | integer | ディスパッチの試行回数（1 以上）。 |
+| `duration_ms` | integer \| null | 最終試行の所要時間。 |
+| `completed_at` | string（ISO 8601 UTC） | 終端結果が記録された日時。結果は `completed_at` の降順（新しい順）でソートされます。 |
+| `created_at` | string（ISO 8601 UTC） | `completed_at` と同じタイムスタンプを持ちます（書き込み一回限りのセマンティクス）。 |
+
+---
+
+## パーミッション
+
+| パーミッション | 付与する権限 |
+|---|---|
+| `evaluations:read` | 評価結果の一覧表示、ダッシュボードでのスコア表示、ダッシュボードのヘルスメトリクスの読み込み。 |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` またはダッシュボードの再評価ボタンからセッションの評価を手動でキューに追加する。 |
+| `dashboards:read` | 保存済みダッシュボードの表示（メトリクスの読み込みには `evaluations:read` も必要）。 |
+| `dashboards:write` | ダッシュボードの作成と編集。 |
+| `dashboards:delete` | ダッシュボードの削除。 |
+
+ブートストラップ管理者（`ADMIN_KEY`、`ADMIN_EMAIL`）はこれらのパーミッションをすべて自動的に受け取ります。
+
+---
+
+## 結果の確認
+
+- **`/sessions/<id>`**：イベントタイムライン＋セッションのスコアとディスパッチ試行からのエラーを表示する右サイドレール。キーに `evaluations:trigger` がある場合、エクスポートボタンの横に**再評価**ボタンが表示されます。`agent_end` を発行しなかったセッションや、新しい評価サービスをデプロイした後にスコアをリフレッシュする際に便利です。ダッシュボードは新しい結果をポーリングし、確認でき次第右サイドレールを更新します。
+- **`/sessions`**：フィルタリング可能なセッショングリッド。スコア列には各セッションの評価ステータスとスコアが一目でわかるように表示されます。
+- **`/dashboards`**：保存済みの評価ヘルスビュー（後述の[ダッシュボード](#dashboards)を参照）。
+
+![セッションごとの評価ステータスピルとカラーコードのスコアバッジ（helpfulness、factuality、tool_efficiency、safety、coherence）が表示されたセッショングリッド](/agenteye/images/sessions-list.png)
+
+*セッショングリッドでは各実行の評価ステータスとスコアが一目でわかります。赤/黄/緑のバッジにより低スコアが目立ちます。*
+
+![評価スコアとディスパッチステータスが右サイドレールに表示されたセッション詳細ビュー](/agenteye/images/session-detail.png)
+
+*セッションを開くと、フルタイムラインと右サイドレールの評価スコアおよびディスパッチャーエラーが並べて表示されます。*
+
+---
+
+## ダッシュボード
+
+**ダッシュボード**ページ（`/dashboards`）では、評価フィルターの組み合わせを名前付きの再利用可能なビューとして保存し、その評価スライスの状態を一目で確認できます。ダッシュボードは**組織全体で共有**されます。`dashboards:read` を持つ全員が同じセットを参照できます。
+
+各ダッシュボードは以下を固定します：
+
+- **フィルター**：セッションページと同じコントロール（環境、ステータス、エージェント、ローリング時間ウィンドウ、スコア範囲フィルター（`key:min..max`））。
+- **表示設定**：どのスコアキーをフィーチャーするか、緑/黄/赤のヘルス閾値、表示するパネル、セッションごとの最新評価に折りたたむかどうか。
+
+各カードには一致するセッション数、done/error/timeout の内訳、各フィーチャードスコアの平均値、小さなトレンドスパークラインが表示されます。ダッシュボードを開くとフルサイズのパネルが表示されます。**「セッションで開く」**をクリックすると、そのスライスに正確に事前フィルタリングされたセッションページに移動します。メトリクスはサーバーサイドで一致するセット全体に対して計算されます（`GET /evaluations/aggregate` 経由）。そのため数値はサンプリングではなく正確な値です。
+
+![評価ディメンションごとの平均スコアバー、ツールの ok/error 内訳、トップツール、時間あたりのイベントトレンドが表示された評価ヘルスダッシュボード](/agenteye/images/dashboard-quality.png)
+
+**パーミッション：**表示には `dashboards:read` と `evaluations:read` の両方が必要です。作成・編集には `dashboards:write`、削除には `dashboards:delete` が必要です。ブートストラップ管理者はこれらをすべて自動的に受け取ります。
+
+---
+
+## トラブルシューティング
+
+**セッションは存在するが評価が作成されない。** サーバープロセスに `EVALUATOR_ENDPOINT` が設定されているか、サーバーと評価サービスが同じ `EVALUATOR_TOKEN` 値を共有しているか、評価サービスの `/health` エンドポイントがサーバーから到達可能かを確認してください。`EVALUATOR_ENDPOINT` が未設定の場合、パイプラインは無効です。
+
+**実行中の評価が積み上がる。** `GET /evaluation-jobs` で実行中のキューを確認してください。各行の `attempt_count`、`next_attempt_at`、`last_error` を調べてください。よくある原因：評価サービスに到達できない、または 5xx を返している（バックオフでリトライ）、`EVALUATOR_TOKEN` が間違っている（401 は終端）、または `pending` を無限に返す非同期評価サービス（後述）。
+
+**セッションは完了しているが終端評価が存在しない。** `GET /evaluation-jobs?status=polling` を照会してください。結果がまだ実行中の可能性があります。ジョブが `pending` で止まっている場合、サーバーが評価サービスに到達できていません。評価サービスが起動しており `EVALUATOR_TOKEN` が一致しているか確認してください。
+
+**`HTTP 401 from evaluator: invalid bearer token`。** サーバーの `EVALUATOR_TOKEN` が評価サービスに設定された値と一致していません。両者は完全に同一である必要があります。
+
+**非同期評価サービスが永続的に `pending` を返す。** サーバーは評価サービスが `done` または `error` を返すか、`EVALUATOR_MAX_POLL_DURATION_SECS`（デフォルト 1 時間）の上限に達するまで `GET /evaluate/{job_id}` をポーリングします。上限を超えると評価は `timeout` として記録され、実行中キューから削除されます。評価サービスが正当にデフォルトより長い時間を必要とする場合は、`EVALUATOR_MAX_POLL_DURATION_SECS` を引き上げてください。

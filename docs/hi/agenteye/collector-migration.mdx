@@ -1,0 +1,168 @@
+---
+title: "`agenteye-collector` में माइग्रेशन"
+description: "AgentEye `agenteye-collector` में माइग्रेशन दस्तावेज़।"
+---
+
+
+माइग्रेशन non-destructive है: इससे कोई डाउनटाइम नहीं होता और कोई डेटा नुकसान नहीं होता, और यह छोटे `agenteye` नाम को [AgentEye CLI](/hi/agenteye/cli) के लिए मुक्त करता है ताकि collector daemon और CLI एक ही मशीन पर coexist कर सकें।
+
+Collector binary का **नाम `agenteye` से `agenteye-collector` में बदल दिया गया है**। छोटा `agenteye` नाम अब AgentEye CLI को समर्पित है, जो आपके टर्मिनल से sessions, events और evaluations के लिए query करने का एक अलग tool है।
+
+यह गाइड आपको एक मौजूदा collector install को माइग्रेट करने में मदद करती है।
+
+---
+
+## क्या बदला
+
+| | पहले | अब |
+|---|---|---|
+| Command / binary | `agenteye` | `agenteye-collector` |
+| Default install path | `/usr/local/bin/agenteye` | `/usr/local/bin/agenteye-collector` |
+| Subcommands | `start`, `flush`, `health`, `update` | `start`, `flush`, `health` |
+| Self-update (`agenteye update`) | built in | **हटाया गया**: नया binary download करें या नई image pull करें |
+| Install script (`install.sh`) | प्रदान किया गया | **हटाया गया**: binary सीधे download करें (देखें [Collector Installation](/hi/agenteye/collector-installation)) |
+| `AGENTEYE_TOKEN` | binaries download करने के लिए **और** background update checks के लिए आवश्यक | केवल binaries/images **download** करने के लिए आवश्यक |
+
+Configuration unchanged है: same `~/.agenteye/config.json`, same `AGENTEYE_URL` / `AGENTEYE_KEY` / `AGENTEYE_HOME` / TLS environment variables, और same `~/.agenteye/events/` spool। **कोई config edits की आवश्यकता नहीं है।**
+
+> यदि आप renamed binary को पुराने नाम `agenteye` के तहत चलाते हैं, तो यह काम करता है लेकिन stderr पर एक-लाइन deprecation warning प्रिंट करता है जो आपको `agenteye-collector` पर स्विच करने की याद दिलाता है।
+
+---
+
+## शुरू करने से पहले
+
+- आपका **मौजूदा `agenteye` install चलता रहता है**; upgrade के क्षण कुछ नहीं टूटता। जानबूझकर माइग्रेट करें, फिर पुराने binary को अंत में हटाएं।
+- Downtime से बचने के लिए इस क्रम का पालन करें:
+  1. नया `agenteye-collector` binary install करें (या नई image pull करें)।
+  2. अपनी service definition / health probe / scripts को `agenteye-collector` को कॉल करने के लिए update करें।
+  3. Service को reload और restart करें; confirm करें कि यह healthy है।
+  4. **केवल तब** पुरानी `/usr/local/bin/agenteye` binary को हटाएं।
+
+---
+
+## 1. नया binary install करें
+
+अपने platform के लिए artifact download करें (`agenteye-collector-linux-x86_64`, `agenteye-collector-darwin-arm64`, आदि; पूरी सूची के लिए [Collector Installation → Option A](/hi/agenteye/collector-installation#option-a-binary-recommended) देखें) नवीनतम `collector/v<version>` release से और इसे `/usr/local/bin/agenteye-collector` पर रखें। Docker users: `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (या pinned `:v<version>` tag, जो preferred है; `:latest` केवल stable releases के लिए मौजूद है)।
+
+Verify करें:
+
+```bash
+agenteye-collector --version
+```
+
+---
+
+## 2. अपने deployment को update करें
+
+### systemd (Linux)
+
+`/etc/systemd/system/agenteye-collector.service` को edit करें ताकि `ExecStart` नए binary की ओर point करे:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+```
+
+फिर reload और restart करें:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+> **Brand rename:** यदि आपकी मौजूदा plist पुराने path पर है
+> `~/Library/LaunchAgents/host.exosphere.agenteye-collector.plist`, तो file को
+> `ai.befailproof.agenteye-collector.plist` में rename करें और file के अंदर
+> `<key>Label</key>` value को भी नए identifier में बदलें reloading से पहले।
+
+`~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist` में, पहली `ProgramArguments` entry को `/usr/local/bin/agenteye` से `/usr/local/bin/agenteye-collector` में बदलें, फिर reload करें:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+launchctl load   ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+### supervisord
+
+अपने `supervisord` program block में, `command` को नए binary पर set करें:
+
+```ini
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+```
+
+फिर `supervisorctl reread && supervisorctl update` करें।
+
+### Docker / Kubernetes
+
+नई image pull करें (`ghcr.io/agenteye-enterprise/collector:beta-latest` या pinned `:v<version>`, जो preferred है; `:latest` केवल stable releases के लिए मौजूद है)। Image entrypoint पहले से ही `agenteye-collector` है, तो `start` subcommand के साथ same `docker run` command बिना किसी change के काम करता रहता है।
+
+**महत्वपूर्ण: health probes को update करें।** यदि आप Kubernetes liveness/readiness probe (या कोई `docker exec`) का उपयोग करते हैं जो binary को name से चलाता है, तो command को `agenteye-collector` में बदलें:
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+```
+
+नई image `agenteye` alias ship नहीं करती, इसलिए अभी भी `agenteye` को कॉल करने वाला probe fail होगा। Probe को नई image के साथ same rollout में update करें।
+
+### Cron / manual scripts
+
+किसी भी `agenteye start|flush|health` invocations को matching `agenteye-collector start|flush|health` command से replace करें। **किसी भी `agenteye update` cron jobs को delete करें**; वह subcommand अब मौजूद नहीं है (देखें [Upgrades from now on](#upgrades-from-now-on))।
+
+---
+
+## 3. पुरानी binary को हटाएं (अंत में)
+
+एक बार service `agenteye-collector` पर चल रही है और healthy report कर रही है:
+
+```bash
+sudo rm /usr/local/bin/agenteye
+```
+
+यह विशेष रूप से महत्वपूर्ण है यदि आप AgentEye CLI का भी उपयोग करते हैं, जो अपना स्वयं का `agenteye` command install करता है; पुरानी collector binary को `/usr/local/bin/agenteye` पर रखना आपके `PATH` पर `agenteye` नाम को ambiguous बना देगा।
+
+---
+
+## अब से upgrades
+
+Collector अब खुद को update नहीं करता। Upgrade करने के लिए:
+
+- **Binary:** अपने platform के लिए नया artifact download करें (उदाहरण के लिए `agenteye-collector-linux-x86_64`; पूरी सूची के लिए [Collector Installation → Option A](/hi/agenteye/collector-installation#option-a-binary-recommended) देखें), `/usr/local/bin/agenteye-collector` को replace करें, और service को restart करें।
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (या pinned `:v<version>` tag, जो preferred है; `:latest` केवल stable releases के लिए मौजूद है) और container को recreate करें।
+
+`AGENTEYE_TOKEN` अभी भी private releases repo से download करने के लिए आवश्यक है, लेकिन running daemon को इसकी आवश्यकता नहीं है।
+
+---
+
+## Verify करें
+
+```bash
+agenteye-collector --version    # new binary is on PATH
+agenteye-collector health       # exit 0 = healthy
+agenteye-collector flush        # forwards any queued events and exits cleanly
+```
+
+फिर confirm करें कि नई events आपके dashboard में appear हो रही हैं।
+
+---
+
+## Rollback
+
+माइग्रेशन non-destructive है। यदि आपको rollback करने की आवश्यकता है, तो अपनी service definition को पुरानी `/usr/local/bin/agenteye` binary की ओर वापस point करें (जब तक आपने इसे हटाया न हो) और restart करें। Event spool और config shared हैं और unaffected हैं।
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| हर run पर `warning: the collector binary is now agenteye-collector …` | आप पुराने `agenteye` नाम के तहत binary को invoke कर रहे हैं | `agenteye-collector` को कॉल करें; service files और scripts को update करें। |
+| systemd fails: `.../agenteye: No such file or directory` | आपने `ExecStart` को update करने से पहले पुरानी binary को हटा दिया | `ExecStart=/usr/local/bin/agenteye-collector start` set करें, फिर `sudo systemctl daemon-reload` करें। |
+| Image upgrade के बाद Kubernetes pod crash-loops | Liveness probe अभी भी `agenteye` चलाता है | Probe command को `["agenteye-collector", "health"]` में बदलें। |
+| `agenteye: command not found`, लेकिन `agenteye-collector` काम करता है | Scripts/aliases अभी भी पुराने नाम को reference करते हैं | उन्हें `agenteye-collector` में update करें। |
+| `agenteye` चलाना CLI को शुरू करता है, collector को नहीं | आपके पास AgentEye CLI installed है; यह `agenteye` को own करता है | Daemon के लिए `agenteye-collector` का उपयोग करें और `/usr/local/bin/agenteye` पर कोई leftover पुरानी collector binary को हटाएं। |

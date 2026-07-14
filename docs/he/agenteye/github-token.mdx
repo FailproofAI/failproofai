@@ -1,0 +1,132 @@
+---
+title: "הגדרת Token של GitHub"
+description: "תיעוד הגדרת GitHub Token של AgentEye."
+---
+
+
+GitHub Personal Access Token (PAT) היא האישור היחיד שפותח כל artifact של AgentEye. עם token אחד אתה יכול להוריד את תמונות Docker, להוריד binaries של release, והתקן Python wheels, ללא logins לכל קומפוננטה ולא צריך לחלוק סודות. כל ה-artifacts של AgentEye מופצים מ-organization של GitHub בשם `agenteye-enterprise`; כאשר הorganzation שלך מקבל גישה, כל developer או operator יוצר ומחליף את ה-token שלהם, כך שהגישה נשארת auditable וניתן לבטל אותה לפי אדם.
+
+הגדר את ה-token כמשתנה סביבה והimageidentifier credentials של Docker פעם אחת לכל מכונה:
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+> **הערה על שם משתמש:** GHCR מתעלם משם המשתמש של `docker login` ומבחין רק דרך ה-token, כך שכל ערך לא ריק עובד. התיעוד הזה משתמש `-u x` לקיצור; deployment manifests שיוצרים Kubernetes image-pull secret עשויים להשתמש בשם משתמש תיאורי יותר כמו `agenteye-enterprise`. שניהם מקובלים.
+
+---
+
+## אפשרות A: Classic Token (מומלץ)
+
+Classic token הוא הבחירה האמינה ביותר עבור AgentEye, מכיוון שה-GHCR `docker login` ו-image-pull flow יש את התמיכה הרחבה ביותר, העקבית ביותר עבור classic tokens. שניים scopes מכסים כל מה שאתה צריך (pulling images והורדת release assets), כך שאתה מבחין פעם אחת ומתקדם ללא בעיות עם registry. אחד מהם, `read:packages`, הוא באמת read-only; השני, `repo`, הוא ה-classic scope היחיד שנותן גישה לprivate release assets, והוא בכוונה רחב — GitHub מגדיר אותו כשליטה מלאה (read and write) של private repositories.
+
+### 1. יצירת ה-token
+
+עבור ל-**GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
+
+| שדה | ערך |
+|---|---|
+| **Note** | `agenteye-<machine-or-team-name>` (למשל `agenteye-prod-server`) |
+| **Expiration** | הגדר expiry המתאים לפוליטיקת הביטחון שלך; 90 ימים הוא ברירת מחדל סבירה |
+
+> **הערה על תווית:** GitHub מתייג את השדה הזה **Note** עבור classic tokens ו-**Token name** עבור fine-grained tokens. הם משרתים את אותה מטרה: מזהה קריא לאדם ל审计וביטול מאוחר יותר.
+
+### 2. בחר scopes
+
+| Scope | למה זה נדרש |
+|---|---|
+| `read:packages` | הורדת תמונות Docker מ-`ghcr.io/agenteye-enterprise/` והורדת package assets |
+| `repo` | קריאת תוכן private repository, raw files, וrelease assets מ-`agenteye-enterprise/releases`. זה ה-scope הרחב של GitHub "Full control of private repositories" (read and write), לא scope read-only — זה פשוט ה-classic scope היחיד שנותן גישה לprivate release assets |
+
+לא נדרשים scopes אחרים.
+
+### 3. צור והעתק את ה-token
+
+לחץ על **Generate token** והעתק את הערך מיד; הוא מוצג רק פעם אחת. אחסן אותו במנהל הסודות שלך או בסביבה.
+
+---
+
+## אפשרות B: Fine-Grained Token
+
+Fine-grained tokens מגבילים את הגישה לrepositorys ספציפיים והrights, מה שהופך אותם לאפשרות המינימלית הקרובה ביותר ל-least-privilege. בחר בדרך הזו כאשר פוליטיקת הביטחון של הorganization שלך דורשת fine-grained tokens.
+
+> **הערה:** התמיכה של GHCR עבור fine-grained tokens פחות עקבית מאשר עבור classic tokens. אם `docker login` או `docker pull` נכשלים לאחר ביצוע שלבים אלה, חזור ל-classic token (אפשרות A).
+
+### 1. יצירת ה-token
+
+עבור ל-**GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+
+| שדה | ערך |
+|---|---|
+| **Token name** | `agenteye-<machine-or-team-name>` (למשל `agenteye-prod-server`) |
+| **Expiration** | הגדר expiry המתאים לפוליטיקת הביטחון שלך; 90 ימים הוא ברירת מחדל סבירה |
+| **Resource owner** | `agenteye-enterprise` |
+| **Repository access** | **Only select repositories** → `agenteye-enterprise/releases` |
+
+### 2. הגדר repository permissions
+
+תחת **Permissions → Repository permissions**, הגדר:
+
+| Permission | Access |
+|---|---|
+| **Contents** | Read-only |
+| **Packages** | Read-only |
+
+כל ההrights האחרים יכולים להישאר **No access**.
+
+> **הערה:** אם תמונות הcontainer (`ghcr.io/agenteye-enterprise/...`) פורסמו כorganization-level packages במקום repository-linked packages, Docker login עשוי להיכשל עם repository-scoped permissions לבדם. במקרה זה, הוסף organization-level permission: **Permissions → Organization permissions → Packages: Read-only**.
+
+### 3. מה כל permission נותן
+
+| Permission | משמש עבור |
+|---|---|
+| Contents: Read-only | הורדת `docker-compose.yml`, release binaries, וPython wheels מ-`agenteye-enterprise/releases` |
+| Packages: Read-only | הורדת תמונות Docker מ-`ghcr.io/agenteye-enterprise/` |
+
+### 4. צור והעתק את ה-token
+
+לחץ על **Generate token** והעתק את הערך מיד; הוא מוצג רק פעם אחת. אחסן אותו במנהל הסודות שלך או בסביבה.
+
+---
+
+## סיבוב Token
+
+סיבוב tokens לפי לוח זמנים שומר על הגישה auditable ומגביל את blast radius אם credential כלשהו דולף אי פעם. Tokens יכולים גם לפוג או להיות מבוטלים בכל עת, כך שסיבוב הוא הדרך הרגילה להישאר מובחן. לביצוע סיבוב:
+
+1. צור token חדש באמצעות השלבים לעיל.
+2. עדכן `AGENTEYE_TOKEN` בסביבה שלך או במנהל הסודות.
+3. בחן מחדש את Docker: `echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin`
+4. בטל את ה-token הישן ב-GitHub → Settings → Developer settings → Personal access tokens, ואז פתח את תת-העמוד **Tokens (classic)** או **Fine-grained tokens** התואם לסוג ה-token ומחק אותו.
+
+---
+
+## אימות ה-Token שלך
+
+אשר שה-token עובד לפני חיבורו לdeployment, כך ששגיאות ביחוד ייצוג יופיעו כאן ולא באמצע rollout. כל פקודה משתמשת באחד ה-scopes לעיל:
+
+```bash
+# Packages scope - הבחן את Docker מול GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+
+# Contents scope - fetch raw release file
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o /tmp/agenteye-compose-check.yml
+```
+
+`docker login` מוצלח מאשר את package scope; קובץ שהורד מאשר את contents scope.
+
+---
+
+## Troubleshooting
+
+| Symptom | סיבה סבירה | פתרון |
+|---|---|---|
+| `docker login` מחזיר 401 | Token חסר `Packages: Read-only` (fine-grained) או `read:packages` (classic) | הוסף את package scope וצור מחדש |
+| `curl` מחזיר 404 ב-raw GitHub URLs | Token חסר `Contents: Read-only` או `repo` scope | הוסף את contents scope וצור מחדש |
+| `gh release download` מחזיר 403 | Token לא מורשה ל-`agenteye-enterprise/releases` | אמת שה-repo כלול ב-repository access של fine-grained token, או השתמש ב-classic token עם `repo` scope |
+| Token מקובל אך תמונות לא נמצאות | Org-level package permission חסר ב-fine-grained token | הוסף organization-level `Packages: Read-only` permission |
+
+עבור בעיות גישה, צור קשר עם `support@exosphere.host`.

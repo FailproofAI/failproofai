@@ -1,0 +1,428 @@
+---
+title: "部署"
+description: "AgentEye 部署文档。"
+---
+
+
+本指南涵盖在生产环境中部署 AgentEye 服务端和控制台的相关内容。
+
+---
+
+## 架构概览
+
+```
+  [ AI agent 机器 ]                      [ 您的基础设施 ]
+
+    Python SDK
+       |  写入 JSONL                        +----------------------+
+       v                                +--->| PostgreSQL 15+       |
+ agenteye-collector --HTTP--+           |    | (关系型存储)          |
+                            |           |    +----------------------+
+                            v           |
+                       +--------+       |    +----------------------+
+                       | Server |<------+--->| ClickHouse 24+       |
+                       +--------+       |    | (事件 / 分析)         |
+                            ^           |    +----------------------+
+                        API |           |
+                            |           |    +----------------------+
+                      +-----------+     +- - >| Redis 7+（可选）     |
+                      | Dashboard |           +----------------------+
+                      +-----------+
+```
+
+- **Server**：Rust HTTP 服务；接收事件批次，将其写入 ClickHouse，并在 PostgreSQL 中维护关系型状态。
+- **Dashboard**：Next.js Web 应用；完全通过服务端 API 进行读写操作。
+- **agenteye-collector**：部署在 agent 机器上，而非服务端主机上。
+- **Postgres 15+**：**必需**。（在多租户版本中从 14 升级而来；org-membership 模式使用了列列表 `ON DELETE SET NULL` 外键，这是 Postgres 15+ 的特性。部署此版本前请先升级 Postgres。）存储 OLTP 状态：`api_keys`、`users`、`sessions`、`evaluation_jobs`（队列）、`dashboards`、`saved_queries`、`otp_codes`，以及多租户表 `orgs`、`org_memberships`、`org_settings`。
+- **ClickHouse 24+**：**必需**。用于存储所有摄入事件的分析型存储。引擎：`ReplacingMergeTree`，按月分区，按 `(session_id, ts, dedup_key)` 排序。服务端通过 `CLICKHOUSE_URL` 连接；内置的 `deploy/base/clickhouse/` 提供了针对单节点的性能调优配置。**多租户要求：** 内置配置启用了 SQL 访问管理 + `users_without_row_policies_can_read_rows=false`，使服务端能够为每个组织创建一个只读 ClickHouse 用户 + 行策略（这是 SQL 编辑器和 AI agent 的引擎级隔离边界）。如果您使用自定义 ClickHouse 配置，请保留这些设置（参见 `deploy/base/clickhouse/configmap.yaml`）。
+- **Redis 7+**：*可选*，用作共享缓存 + 速率限制后端。服务端和控制台均通过 `REDIS_URL` 进行连接。若未配置，两者均会优雅降级至仅使用 Postgres 的路径。详见下方 **Redis（可选缓存）** 部分。
+
+---
+
+## 服务端
+
+### 拉取镜像
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+> 当前构建发布于 `beta-latest` 标签下；`latest` 仅在稳定版发布时使用。生产环境中请固定使用具体的 `:v<version>` 标签；参见[可用镜像标签](#available-image-tags)。
+
+### 环境变量
+
+| 变量 | 是否必需 | 默认值 | 说明 |
+|---|---|---|---|
+| `DATABASE_URL` | 是 | 无 | Postgres DSN。使用 `postgres://` scheme 的标准 libpq 连接字符串格式，支持 `?sslmode=require` 及其他 libpq 参数。密码不得包含 `/`、`+` 或 `=` 字符；请使用 `openssl rand -hex` 生成 URL 安全的密码。 |
+| `ADMIN_KEY` | 否 | 无 | 引导管理员 API 密钥。每次启动时以全权限进行 upsert 操作。通过修改该值并重启来轮换密钥。 |
+| `LISTEN_ADDR` | 否 | `0.0.0.0:8080` | 绑定的 TCP 地址 |
+| `MAX_BODY_BYTES` | 否 | `134217728`（128 MB） | 请求体最大大小 |
+| `ADMIN_EMAIL` | 否 | 无 | 引导管理员用户邮箱。每次启动时以全权限进行 upsert 并标记为受保护：无法通过控制台/API 禁用或修改其权限。要轮换引导管理员，修改 `ADMIN_EMAIL` 并重启；新邮箱将被 upsert 为受保护状态，旧邮箱在手动清除数据库记录之前仍保留受保护状态。 |
+| `ALLOWED_EMAILS` | 否 | 无（全部阻止） | 允许创建用户和登录的邮箱列表，以逗号分隔。支持精确地址（`user@example.com`）和域名通配符（`*@example.com`）。若未设置，则无法创建或登录任何用户。**仅首次启动时生效**：首次启动时写入默认 org 的允许列表；此后每个 org 的允许列表以 [`/<org>/settings`](#operational-settings) 页面为准，修改此环境变量不再生效。 |
+| `SMTP_HOST` | 否 | 无 | 用于发送 OTP 邮件的 SMTP 服务器主机名。若未设置，OTP 代码将输出到 stdout。 |
+| `SMTP_PORT` | 否 | `587` | SMTP 服务器端口 |
+| `SMTP_USERNAME` | 否 | 无 | SMTP 认证用户名 |
+| `SMTP_PASSWORD` | 否 | 无 | SMTP 认证密码 |
+| `SMTP_FROM` | 否 | 无 | OTP 邮件的发件人地址 |
+| `SMTP_TLS` | 否 | STARTTLS | 除非明确关闭否则使用 STARTTLS：`false` 或 `0` 表示明文传输（无 TLS）；其他任何值（包括未设置）均启用 STARTTLS。 |
+| `DASHBOARD_URL` | 否 | 内置默认值 | 控制台来源地址，用于构建 OTP 邮件魔法链接和告警通知中的事件魔法链接。若未设置，将回退到内置默认值（仅 OTP 会优先使用控制台派生的请求来源）。在分域名部署时请设置此项，以确保邮件和 Slack/事件链接均指向您的控制台。详见下方 **邮件魔法链接 URL**；大多数运营人员无需设置此项。 |
+| `SESSION_TTL_SECS` | 否 | `86400`（24 小时） | 控制台会话有效期（秒）。**仅首次启动时生效**：首次部署后可通过 [`/<org>/settings`](#operational-settings) 按 org 修改。 |
+| `OTP_TTL_SECS` | 否 | `600`（10 分钟） | OTP 代码有效期（秒）。**仅首次启动时生效**：首次部署后可通过 [`/<org>/settings`](#operational-settings) 按 org 修改。 |
+| `REDIS_URL` | 否 | 无 | 可选的共享缓存 + 速率限制后端，例如 `redis://redis:6379/0`。设置后，服务端将缓存已认证的 API 密钥查找、控制台的 `/models` 聚合数据、会话列表和环境列表分面；同时将 OTP 请求速率限制从 Postgres COUNT 切换为 Redis INCR。若未设置或不可达，服务端将在无缓存模式下运行（OTP 限制回退到 Postgres，其他缓存调用直接访问数据源）。详见下方 **Redis（可选缓存）**。 |
+| `CLICKHOUSE_URL` | **是** | 无 | ClickHouse 实例的基础 URL，例如 `http://clickhouse:8123`。服务端每次启动时都会对此数据库应用事件模式，若无法连接 ClickHouse 则拒绝启动。详见下方 **ClickHouse（必需的分析存储）**。 |
+| `CLICKHOUSE_DATABASE` | 否 | `agenteye` | ClickHouse 数据库（模式）名称。若不存在，服务端将在启动时创建。 |
+| `ORG_CH_SECRET` | 否（单租户）/ **是（多 org）** | 开发默认值 | HMAC 密钥，用于派生每个组织的租户专属 ClickHouse 密码。SQL 编辑器和 AI agent 的 `run_query` 以 org 专属只读 ClickHouse 用户身份执行，其行策略在引擎层面强制租户隔离。单租户部署可使用内置开发默认值正常启动；**在配置第二个 org 之前，您必须设置一个强且稳定的值**，因为 `agenteye-orgctl org create` CLI 拒绝在内置开发默认值下运行。轮换该值会导致所有 org 的 ClickHouse 用户失效，直到下次启动时重新配置（启动时的对账会自动修复这一问题）。请保密此值，并在所有副本中保持一致。Org 配置本身仅限运营人员操作；详见下方 **Organizations（多租户）**。 |
+| `DEFAULT_ORG_NAME` | 否 | `Default` | 内置默认 org 的显示名称。**仅首次启动时生效**，且仅在 org 仍保持其初始通用身份时于启动时应用，之后被忽略。一旦通过 `agenteye-orgctl org rename` 重命名 org，重命名结果即为权威值，此环境变量不再生效。 |
+| `DEFAULT_ORG_SLUG` | 否 | `default` | 内置默认 org 的 URL slug，即其控制台路径（`/<slug>/…`）。与 `DEFAULT_ORG_NAME` 相同的仅首次启动/初始状态语义。必须为 1-40 个小写字母数字字符，允许单个内部连字符，且不得为[保留字](#organizations-multi-tenancy)；无效值将被忽略（org 保持 `default`）。允许单租户安装以例如 `/acme` 而非 `/default` 的形式呈现，无需任何部署后 CLI 步骤。 |
+| `RUST_LOG` | 否 | `info` | 日志详细程度（`debug`、`warn`、`error`、`agenteye_server=trace`） |
+| `EVALUATOR_ENDPOINT` | 否 | 无 | 评估器服务的基础 URL（例如 `http://evaluator:9000`）。若未设置，整个评估流水线为空操作；不写入任何队列行，也不运行任何工作进程。参见[评估套件](/zh/agenteye/evaluation-suite)。 |
+| `EVALUATOR_TOKEN` | 否 | 无 | 以 `Authorization: Bearer <token>` 形式发送给评估器。**必须与评估器服务配置的值相同。** 仅当评估器配置为无 token 时才可选。 |
+| `EVALUATOR_WORKERS` | 否 | `2` | 并发数：每个服务端实例中调度评估的工作任务数量。可安全地在多个水平扩展的服务端上运行。 |
+| `EVALUATOR_CLAIM_BATCH` | 否 | `4` | 单个工作进程每次轮询时最多认领的评估数量。批次**并发**调度，因此您的评估器端点上的总并发数为 `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`。 |
+| `EVALUATOR_POLL_IDLE_SECS` | 否 | `2` | 无待处理任务时工作进程在两次调度尝试之间的休眠时间（秒）。 |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | 否 | `10` | 当评估器未返回每响应的 `next_poll_secs` 且未通过 `GET /config` 公布 `default_poll_interval_secs` 时，`GET /evaluate/{id}` 轮询的最终回退周期（秒）。 |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | 否 | `30000` | 每次对评估器 HTTP 请求的超时时间（毫秒）。 |
+| `EVALUATOR_MAX_ATTEMPTS` | 否 | `5` | 达到此次数的失败尝试后，评估将被记录为终止的 `error` 状态（若失败均为请求超时，则记录为 `timeout`）。 |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | 否 | `300`（5 分钟） | 服务端重新从评估器获取 `GET /config` 的频率。 |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | 否 | `3600`（1 小时） | 会话在轮询队列中可停留的最大实际时间，超时后 AgentEye 将其终止为 `timeout` 状态。防止评估器永久返回 `pending` 的情况。 |
+| `ALERT_WORKERS` | 否 | `1` | 并发数：每个服务端实例中评估告警规则的工作任务数量。参见[告警](/zh/agenteye/alerts)。 |
+| `ALERT_CLAIM_BATCH` | 否 | `16` | 单个工作进程每次轮询时最多认领的告警数量。 |
+| `ALERT_POLL_IDLE_SECS` | 否 | `5` | 队列为空时告警工作进程的休眠时间（秒）。 |
+| `ALERT_REQUEST_TIMEOUT_MS` | 否 | `15000` | 每次触发评估的超时时间（ClickHouse 查询 + 出站 channel HTTP）。 |
+| `ALERT_MAX_ATTEMPTS` | 否 | `5` | 连续瞬态失败达到此次数后，告警以正常周期重新调度，而非指数退避。 |
+| `AUDIT_WORKERS` | 否 | `1` | 并发数：每个服务端实例中执行审计的工作任务数量。参见[审计](/zh/agenteye/audits)。 |
+| `AUDIT_CLAIM_BATCH` | 否 | `1` | 单个工作进程每次轮询时最多认领的到期审计数量。由于 agentic 调查是一个长循环，默认值为 1。 |
+| `AUDIT_POLL_IDLE_SECS` | 否 | `30` | 无待审计任务时审计工作进程的休眠时间（秒）。 |
+| `AUDIT_REQUEST_TIMEOUT_MS` | 否 | `30000` | 每次对 ClickHouse 策略查询的超时时间（毫秒）。 |
+| `AUDIT_LLM_TIMEOUT_MS` | 否 | `1440000` | 对 AI 助手服务进行 agentic 调查调用的超时时间。完整的 agent 循环需要数分钟；请将此值设置为**高于** agent 自身的 `AGENTEYE_AUDIT_TIMEOUT_MS`，以便 agent 在服务端放弃之前返回其部分发现结果。 |
+| `AUDIT_MAX_ATTEMPTS` | 否 | `5` | 连续瞬态失败达到此次数后，审计以正常周期重新调度，而非指数退避。 |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | 否 | — | 审计的 agentic 调查调用 AI 助手的 `agent` 服务，**复用与助手相同的连接**——因此这两个变量也需要在**服务端**上设置（内置的 manifests/compose 已完成此配置）。两者均设置 ⇒ 审计运行 AI 调查；任意一个未设置 ⇒ 审计**仅运行策略**（确定性 SQL 策略检查仍然运行），无论每个审计的 `llm_enabled` 标志如何。agent 还必须配置 LLM——参见 [assistant.md](/zh/agenteye/assistant)。 |
+
+**AI 助手服务——审计与沙箱设置。** Agentic 调查及其 pod 内 Python 沙箱在 **agent 服务**上调整（而非服务端），所有变量均以 `AGENTEYE_AUDIT_*` 为前缀，均为可选：
+
+| 变量 | 默认值 | 含义 |
+|---|---|---|
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | 每次调查的最大 agent 轮次。 |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | 单次调查的实际时间（20 分钟）。必须**低于**服务端的 `AUDIT_LLM_TIMEOUT_MS`。 |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | 每个 agent pod 的并发调查数（与聊天助手的配额相互独立）。 |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | bubblewrap 沙箱的每脚本限制。 |
+
+**沙箱平台要求。** 审计代码沙箱在 bubblewrap 容器内运行模型的 Python，需要**非特权用户命名空间**。agent pod 必须允许 `clone()` 标志——在 agent 上设置 `seccompProfile: Unconfined`（k8s）或 `security_opt: [seccomp:unconfined]`（compose）。当节点内核禁用非特权用户命名空间时（例如某些 GKE COS 镜像），沙箱**预检失败，审计器自动降级为仅 SQL 模式**——不报错，只是在 agent 的 `/health` 上显示 `sandbox_available: false`。
+
+### 运行
+
+在环境中设置 `DATABASE_URL` 和 `CLICKHOUSE_URL`（服务端未连接 ClickHouse 时拒绝启动），然后传递给容器：
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-server \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
+  -e ADMIN_KEY="$ADMIN_KEY" \
+  -p 8080:8080 \
+  ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+服务端在启动时自动运行数据库迁移，无需单独的迁移步骤。
+
+### 健康检查
+
+```
+GET /health    # 存活检查 - 进程启动后始终返回 {"status":"ok"}
+GET /ready     # 就绪检查 - Postgres + ClickHouse 可达时返回 200，否则返回 503
+```
+
+无需认证。**存活**探针使用 `/health`，**就绪**/负载均衡器探针使用 `/ready`。`/ready` 检查服务端不可缺少的硬依赖（Postgres + ClickHouse），因此正在运行但无法连接数据库的服务端将被移出轮换并显示为 `NotReady`；Redis 会被报告但不会导致就绪检查失败。在内置 Kubernetes manifests 中，就绪探针已指向 `/ready`，存活探针保持在 `/health`。完整说明（包括 Kubernetes 原生 pod 故障告警到 Slack 的可选功能）参见 [enterprise-docs/health-monitoring.md](/zh/agenteye/health-monitoring)。
+
+### 邮件魔法链接 URL
+
+OTP 登录邮件包含一个一键**打开控制台**的按钮。点击后用户将跳转至 `/login?token=<code>&email=<address>`；控制台将该组合兑换为会话并重定向到应用，无需手动重新输入代码。服务端通过三个层级来解析用于构建链接的控制台来源地址：
+
+1. **`X-AgentEye-Dashboard-Url` 请求头**：由控制台的 `/api/auth/otp/request` 代理从其自身的公开来源自动设置。在同域名部署中（服务端与控制台共享主机，位于一个转发代理请求头的 ingress 之后），**无需任何配置**。
+2. **`DASHBOARD_URL` 环境变量**：如果控制台的访问地址与服务端 OTP 请求端点所见的来源不同（分域名 `api.example.com` / `app.example.com`），或者 ingress 未将公开主机名传递给控制台 pod（导致 `request.nextUrl.origin` 解析为类似 `0.0.0.0:3000` 的通配符地址），请设置此项。示例：`DASHBOARD_URL=https://app.example.com`。
+3. **默认值**：`https://app.befailproof.ai`，仅在以上两者均不存在时使用。
+
+请求头值会经过验证：仅接受 `https://*` 和本地回环（`http://localhost*`、`http://127.0.0.1*`）来源，通配符绑定地址（`0.0.0.0`、`[::]`）即使带有 `https://` scheme 也会被拒绝。不符合条件的值将回退至第 2 层。
+
+通过单行命令在运行中的集群上设置，无需文件，无需重新构建 kustomize：
+
+```bash
+kubectl set env deployment/server -n agenteye \
+  DASHBOARD_URL=https://app.example.com
+```
+
+此操作将触发滚动更新；新 pod 在首次请求时读取该值。请注意，此覆盖仅存在于 Deployment 上；后续对 overlay 执行 `kustomize build | kubectl apply` 将清除此设置，除非您将相同的环境变量添加到 overlay 的 `server-env.yaml` 补丁中。
+
+---
+
+## 控制台
+
+### 拉取镜像
+
+```bash
+docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### 环境变量
+
+| 变量 | 是否必需 | 默认值 | 说明 |
+|---|---|---|---|
+| `AGENTEYE_SERVER_URL` | 是 | 无 | 服务端的基础 URL，例如 `http://localhost:8080` |
+| `AGENTEYE_API_KEY` | 是 | 无 | 控制台用于向服务端认证的 API 密钥。需要全部权限（建议使用管理员密钥）。 |
+| `AE_LOG_LEVEL` | 否 | `info` | 服务端日志详细程度：`debug`、`info`、`warn`、`error`。设置为 `debug` 可在诊断问题时查看上游请求/响应行和会话验证追踪。 |
+| `AE_LOG_JSON` | 否 | 自动 | `1` 强制 JSON 逐行输出；`0` 强制人类可读输出。未设置时，若 `NODE_ENV=production` 则自动启用 JSON。生产环境推荐使用 JSON 格式，以便通过 `jq` 或日志聚合器解析。 |
+| `AE_ANALYTICS_DISABLED` | 否 | 无 | 设置为 `1`/`true` 可禁用控制台的匿名产品使用遥测。详见下方[遥测与隐私](#telemetry--privacy)。 |
+| `REDIS_URL` | 否 | 无 | 可选的共享缓存后端，例如 `redis://redis:6379/0`。设置后，控制台在多副本间缓存 `validateSession()` 结果，并为延迟聚合/环境列表代理路由共享 Next.js 获取缓存。若 Redis 可达，边缘侧的 OTP 请求和验证速率限制也使用 Redis（Redis 不可达时开放通行；服务端侧限制是安全保障）。详见下方 **Redis（可选缓存）**。 |
+| `AGENTEYE_AGENT_URL` | 否 | 无 | 可选 AI 助手 `agent` 服务的基础 URL，例如 `http://agent:9100`。**不设置则完全隐藏助手**：控制台不显示助手气泡。参见 [enterprise-docs/assistant.md](/zh/agenteye/assistant)。 |
+| `AGENTEYE_AGENT_TOKEN` | 否 | 无 | 控制台向 `agent` 服务出示的共享密钥。必须与 agent 上配置的 `AGENTEYE_AGENT_TOKEN` 匹配。参见 [enterprise-docs/assistant.md](/zh/agenteye/assistant)。 |
+
+### 运行
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-dashboard \
+  -e AGENTEYE_SERVER_URL="http://your-server-host:8080" \
+  -e AGENTEYE_API_KEY="$ADMIN_KEY" \
+  -p 3000:3000 \
+  ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### 遥测与隐私
+
+控制台向 Exosphere 的分析服务（PostHog）发送**匿名产品使用分析数据**：访问了哪些控制台页面，以及少量 UI 操作（如创建 API 密钥或重新评估会话）。此使用信号用于指导功能优先级排序。
+
+- **任何 agent、会话或事件数据都不会离开您的基础设施。** 仅报告控制台 UI 使用情况。页面 URL 在发送前会去除标识符，运营人员仅以不透明的内部 ID 标识，绝不使用邮箱。
+- 遥测**默认启用**。若要完全关闭，请在控制台容器上设置 `AE_ANALYTICS_DISABLED=1` 并重启。
+- 分析数据发送到控制台自身的 `/ingest` 路径，由控制台反向代理至 PostHog（`https://us.i.posthog.com`）。保持请求为第一方可防止浏览器广告拦截器屏蔽。**控制台容器**需要能够访问 PostHog 的出站网络；若被阻断，遥测将静默失效，控制台不受影响。
+
+---
+
+## AI 助手（可选）
+
+控制台内置的 AI 助手让您的团队可以用自然语言查询 agent 数据（汇总会话、为 `/queries` 编辑器起草 SQL，以及将已保存的查询转化为控制台图块），无需离开控制台。它以独立的内部 `agent` 容器（基于 Claude Agents SDK）运行，仅控制台可访问，**在您配置 LLM 端点之前保持禁用状态**。
+
+要启用它，您需要在 `agent` 服务上设置 LLM 连接（通过 `PORTKEY_API_KEY` + 模型目录 slug `AGENTEYE_AGENT_MODEL=@<slug>/<model>` 使用 **Portkey**，或通过 `ANTHROPIC_API_KEY` 直连 Anthropic，或通过 `ANTHROPIC_BASE_URL` 使用其他网关，或使用 Bedrock/Vertex），以及一个**专用**数据密钥和与控制台匹配的共享 `AGENTEYE_AGENT_TOKEN`。控制台用户还需要 `agent:use` 权限。
+
+助手的数据密钥无需手动创建：选择一个随机密钥，在 `agent` 上设置为 `AGENTEYE_API_KEY`，同时在 `server` 上设置为 `AGENT_API_KEY`，服务端将在启动时以固定权限集写入该密钥。其数据访问为只读（`events:read`、`evaluations:read`、`dashboards:read`、`queries:read`），并额外持有需审批的创作权限（`dashboards:write`、`queries:write`、`queries:run`），以便代表用户起草和验证已保存的查询并构建控制台图块；所有 SQL 仍通过 org 的只读 ClickHouse 角色运行，因此这扩展了助手的创作范围，而非其可访问的数据范围。这些权限固定在代码中，无法通过配置扩展。该密钥受保护；无法通过 API 禁用或重新生成，只能通过修改值并重启来轮换。请勿将管理员/控制台密钥复用于此用途。
+
+完整设置、完整的环境变量参考、遥测选项和安全模型详见 **[enterprise-docs/assistant.md](/zh/agenteye/assistant)**。
+
+---
+
+## ClickHouse（必需的分析存储）
+
+ClickHouse 在高事件量下保持控制台响应，并允许 `/queries` SQL 编辑器在单一存储中跨事件、评估和会话进行联合查询。它是每个摄入事件、每个终止评估结果以及派生的每会话聚合数据的必需权威存储。PostgreSQL 存储关系型/可变状态表（api_keys、users、otp_codes、evaluation_jobs、dashboards、saved_queries）；分析层存储在 ClickHouse 中，以便控制台的汇总统计和您自己的 SQL 查询可以原生扫描和联合，无需跨数据库往返。服务端未设置 `CLICKHOUSE_URL` 时拒绝启动。
+
+### 模式
+
+服务端启动时创建三个 ClickHouse 对象，均为幂等操作（`CREATE IF NOT EXISTS`）：
+
+- **`agenteye.events`**：`ReplacingMergeTree(ingested_at)`，按 `toYYYYMM(ts)` 分区，按 `(session_id, ts, dedup_key)` 排序。重复插入（采集器重试）在合并时折叠为单行；服务端为每个事件计算确定性的 SHA-256 `dedup_key`，确保重试安全。
+- **`agenteye.evaluations`**：`ReplacingMergeTree(ingested_at)`，按 `toYYYYMM(finished_at)` 分区，按 `(session_id, finished_at, dedup_key)` 排序。由评估器流水线在每个终止评估结果时写入一次。与 `events` 相同的去重键模型。
+- **`agenteye.agent_sessions`**：基于 `agenteye.events` 的**视图**，非物理表。每列均为派生列（`started_at = min(ts)`、`last_event_at = max(ts)`、`ended_at = max(if event_type='agent_end', ts, NULL)`、`event_count = count()` 等）。无需每事件 upsert，无需单独回填；视图自动反映 `events` 中的所有内容。
+
+为与引用 `analytics.evaluations` / `analytics.sessions` 的已保存查询保持向后兼容，服务端还会创建一个 `analytics` ClickHouse 数据库，其中包含基于 `agenteye.*` 表的视图；`analytics.events`、`analytics.evaluations`、`analytics.agent_sessions`、`analytics.sessions` 均可正常解析。
+
+### 配置
+
+内置的 docker-compose 和 `deploy/base/clickhouse/` 提供了针对 AgentEye 工作负载调优的 ClickHouse 服务：
+
+- 内置基础 overlay 中申请 2 GiB / 限制 4 GiB 内存（适配小型 POC/预发布节点）；生产客户应覆盖配置——推荐最低配置为 2c / 4Gi 申请，6c / 8Gi 限制。`max_server_memory_usage_to_ram_ratio=0.9`
+- 5 GiB 标记缓存 + 8 GiB 未压缩缓存
+- `background_pool_size=16`，`background_merges_mutations_concurrency_ratio=2`
+- MergeTree：`parts_to_throw_insert=3000`，`parts_to_delay_insert=1500`，`non_replicated_deduplication_window=1000`
+- `local_io_method=auto`（支持的内核上使用 io_uring）
+- `fsync_metadata=0`：可接受，因为使用至少一次摄入 + ReplacingMergeTree 去重
+- `query_log` 启用，TTL 30 天；`query_thread_log` 已移除（高 QPS 下开销较大）
+- 用户端查询 `max_execution_time=30`
+- StatefulSet 模板中 100 GiB PVC（客户 overlay **应**覆盖为生产环境的快速 SSD 存储类）
+
+### 备份
+
+您的完整数据集每晚在单个可恢复归档中捕获，因此集群或存储故障后可恢复。ClickHouse 由每日 `agenteye-backup` CronJob 自动备份，该任务在一次运行中同时转储 PostgreSQL 和 ClickHouse。ClickHouse 通过其 HTTP API 读取：`agenteye.events` 和 `agenteye.evaluations` 以 ClickHouse 原生格式转储（视图和行策略由服务端在启动时重新创建，因此表数据即为完整数据），与 Postgres 转储一起打包为单个压缩归档并上传至您的对象存储。
+
+目标存储桶和云凭证按 overlay 配置。上传配置和恢复步骤详见 [enterprise-docs/kubernetes-deployment.md](/zh/agenteye/kubernetes-deployment) 的**备份**部分。
+
+---
+
+## Redis（可选缓存）
+
+Redis 是一个**可选**的共享缓存 + 速率限制后端，由服务端和控制台使用。部署 Redis 并在两个服务上设置 `REDIS_URL` 后：
+
+- **服务端**缓存已认证的 API 密钥查找、`/events/environments` + `/evaluations/environments` 列表、`/events/latency_aggregate` 汇总（控制台轮询的最重查询）、`/sessions` 列表，并将 OTP 请求速率限制从 Postgres `COUNT(*)` 切换为 Redis `INCR + EXPIRE`。
+- **控制台**缓存 `validateSession()` 结果，使典型页面加载发出的 10-20 次已认证 API 调用共享一次上游会话检查。同时在控制台边缘限制 OTP 请求和 OTP 验证的速率。
+
+**两个服务在 Redis 不可达时均会优雅降级。** 每次缓存调用在有限超时内返回 `Err`，调用方回退到数据源（服务端的 Postgres，控制台的上游 Rust 服务端）。OTP 速率限制回退到服务端的 Postgres `COUNT(*)` 路径（安全属性得以保留）；控制台的边缘 OTP 限制开放通行，而服务端侧限制仍然有效。Redis 故障只影响延迟，不影响正确性。
+
+### 配置
+
+docker-compose 套件已包含 Redis 服务，并将 `REDIS_URL=redis://redis:6379/0` 注入服务端和控制台。若要使用外部 Redis，将 `REDIS_URL` 设置为您的端点，并从 compose 文件中移除 `redis` 服务。
+
+### 内存与持久化
+
+内置 Redis 镜像使用 `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru` 运行。AOF 持久化使缓存在容器重启后存活；`everysec` 是正确的持久性/性能平衡，因为丢失最后一秒的缓存写入是无害的。LRU 淘汰策略控制内存增长。
+
+### 何时不部署 Redis
+
+- 单实例开发/QA 环境。服务端的进程内缓存本身已提供了大部分单副本收益；Redis 增加的是单实例不需要的跨副本共享。
+- 运行额外服务的运营成本超过延迟收益的气隙安装环境。
+
+---
+
+## Docker Compose（推荐）
+
+`agenteye-enterprise/releases` 仓库中提供了 `docker-compose.yml`。通过单个命令即可启动 Postgres、ClickHouse、Redis、服务端和控制台。
+
+```bash
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
+  --repo agenteye-enterprise/releases \
+  --pattern 'docker-compose.yml' \
+  --dir ./agenteye
+cd agenteye
+```
+
+**通过 `.env` 覆盖默认值：**
+
+```
+# 使用 URL 安全的密码（不含 /、+ 或 = 字符）。
+# 生成命令：openssl rand -hex 24
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+
+# 控制台认证
+ADMIN_EMAIL=admin@yourcompany.com
+ALLOWED_EMAILS=*@yourcompany.com
+
+# 用于 OTP 邮件的 SMTP（省略则将 OTP 代码输出到 stdout）
+# SMTP_HOST=smtp.yourprovider.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your-smtp-user
+# SMTP_PASSWORD=your-smtp-password
+# SMTP_FROM=noreply@yourcompany.com
+
+RUST_LOG=info
+```
+
+```bash
+docker compose up -d
+```
+
+**停止（保留数据卷）：**
+
+```bash
+docker compose down
+```
+
+**停止并清除所有数据：**
+
+```bash
+docker compose down -v
+```
+
+---
+
+## 运营设置
+
+以前通过环境变量固定的一小部分运营配置项现在可以从控制台的 **`/<org>/settings`** 页面按组织编辑；每个 org 独立配置。修改在数秒内生效，无需重启或重新部署。
+
+| 设置 | 引导环境变量 | 控制内容 |
+|---|---|---|
+| 允许登录 | `ALLOWED_EMAILS` | 允许接收 OTP 并被添加为用户的邮箱（或 `*@domain.com` 通配符） |
+| 默认用户权限 | `DEFAULT_USER_PERMISSIONS` | 管理员打开**+ 新用户**时预选的权限 token，以逗号分隔。每个 token 必须是 [API 密钥权限](/zh/agenteye/api-keys) 中列出的字符串之一。默认为 `standard` 预设：只读访问加上日常待命操作（触发重新评估、运行查询、确认事件、使用助手）。 |
+| 会话有效期 | `SESSION_TTL_SECS` | 控制台登录在需要重新认证之前的有效时长。控制台每 5 秒重新检查上游会话，因此在 `/<org>/users` 上的权限更新在受影响用户的下次请求时生效，无需重新登录。 |
+| 一次性代码有效期 | `OTP_TTL_SECS` | OTP / 魔法链接的可用时长 |
+| 告警通知渠道 | `ALERTS_ENABLED_CHANNELS` | 告警调度器允许使用的渠道类型，以逗号分隔：`email`、`slack`、`webhook`。每个告警的具体配置仍在 `/<org>/alerts/<id>` 中编辑，但调度器会通过此集合过滤所有出站投递；此处禁用的渠道将以 `skipped_disabled` 审计行短路。`dashboard` 渠道（本地审计插入）始终允许。默认三者全部开启。 |
+
+### 引导机制说明
+
+设置以每个组织为单位存储在 `org_settings` 中。首次启动时，服务端从匹配的环境变量（若未设置则使用合理的默认值）写入默认 org 的缺失行。此后，**存储的值是权威来源，环境变量将被忽略**；后续重启时修改环境变量不会影响已有 org 的值，新增的 org 从默认值开始并自行配置。
+
+这意味着：
+
+- 对于全新部署，按上述方式设置环境变量，默认 org 将在首次启动时读取它们。
+- 若要之后修改某个值，请登录控制台并在 `/<org>/settings` 下编辑。修改在数秒内在所有服务端副本上生效；无需重启。
+- 启动日志会记录哪些值已写入以及哪些已存在，方便您确认引导是否生效：
+
+  ```text
+  INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
+  ```
+
+#### 跨组织的登录语义
+
+会话和 OTP 是全局于用户的，而非单个 org，因此在登录时有两条规则协调每 org 设置：
+
+- **会话 / OTP 有效期**：用户所属的所有 org 中最严格（最短）的有效期胜出。
+- **允许登录**：规则对每个 org 的允许列表与 org 成员资格取 OR：若任意 org 的允许列表接受用户的邮箱，**或**用户已是任意 org 的成员，则该用户可以请求 OTP。
+
+### 权限
+
+访问 `/<org>/settings` 页面需要两个权限：
+
+- `settings:read`：查看页面和当前值。
+- `settings:write`：保存修改。
+
+引导管理员用户（从 `ADMIN_EMAIL` 写入）自动获得这两个权限以及所有其他权限。可根据需要在 `/<org>/users` 中将其授予其他用户。
+
+---
+
+## Organizations（多租户）
+
+单个部署可服务于多个隔离的 **organizations**（租户）；每行数据归属于且仅归属于一个 org，隔离在数据库引擎层面强制执行。单租户安装无需进行任何配置；所有数据存储在内置的 `default` org 中。（您可以通过在首次启动前设置 `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG`，或随时使用 `agenteye-orgctl org rename` 重命名，为该 org 设置更友好的名称和 URL slug，例如让其位于 `/acme` 而非 `/default`。）
+
+**租户配置仅限运营人员操作。** Organizations 及其成员资格使用 **`agenteye-orgctl`** CLI 创建和管理，该 CLI **内置于服务端镜像**中（与 `agenteye-server` 并列），**在现有服务端 pod 内**运行；**没有独立的 pod/Job、没有 HTTP API，也没有控制台按钮**。它复用服务端的 `DATABASE_URL`、`CLICKHOUSE_URL` 和 `ORG_CH_SECRET`。
+
+```bash
+# Docker Compose - 进入运行中的服务端服务：
+docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
+docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+
+# Kubernetes - 进入运行中的服务端 Deployment：
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+```
+
+可用命令：`org create | list | rename | delete | purge` 和 `member add | list | update | remove`，内置权限集 `admin`、`standard` 和 `read-only`。添加的成员在首次控制台登录时收到 OTP。
+
+**在创建第二个 org 之前：** 设置强且稳定的 `ORG_CH_SECRET`（`org create` 命令拒绝在内置开发默认值下运行），并确保 Postgres 为 **15+** 版本。**未变更：** 每 org 的 API 密钥仍由控制台/API 中的 org 成员创建；只有 org + 成员生命周期移至 CLI。完整命令参考和操作示例详见 **[enterprise-docs/tenant-management.md](/zh/agenteye/tenant-management)**。
+
+---
+
+## 上下文窗口填充
+
+每个 `model_response` 事件显示一个**上下文填充标签** — 输入加输出 token 占该模型上下文窗口的百分比。区间为 `healthy`（0–24%）、`watch`（25–49%）、`compacting`（50–74%）和 `reset context`（75–100%）。AgentEye 自动解析常见的模型 ID，因此无需初始配置。
+
+组织发送的每个模型都会出现在 **Settings → model context windows** 下。拥有 `settings:write` 权限的用户可以覆盖其窗口大小或添加私有/代理模型（0–1,000,000 token）；`0` 表示"未知"，会隐藏标签。修改对新摄入的事件生效。拥有 `settings:read` 权限的用户可以查看列表。
+
+升级后的新事件会立即计算填充值。若要同时为现有部署填充**历史**事件（以及每模型列表），请运行一次性回填命令——它内置于服务端镜像中（与 `agenteye-orgctl` 类似），在现有服务端 pod 中运行：
+
+```bash
+# 预览（打印每 org 的变更，不实际修改）：
+kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window --dry-run
+# 应用：
+kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window
+# docker compose：
+docker compose exec server agenteye-backfill-context-window
+```
+
+该命令是幂等的（可安全重复运行），并复用 pod 中的 `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL`。如果您编辑了模型窗口后希望重新计算现有事件，请再次运行。
+
+---
+
+## 生产注意事项
+
+- **Postgres**：使用托管的 Postgres 服务或专用实例，并定期备份。`DATABASE_URL` 支持所有标准 libpq 参数，包括用于加密连接的 `sslmode=require`。
+- **TLS**：将服务端和控制台放在终止 TLS 的反向代理（nginx、Caddy、Traefik）之后。
+- **防火墙**：服务端端口（默认 8080）应仅对采集器机器和控制台主机可达，而非公共互联网。
+- **管理员密钥**：将 `ADMIN_KEY` 设置为强随机密钥。引导完成后，为采集器和控制台创建专用的作用域密钥，而非在所有地方使用管理员密钥。
+- **镜像标签**：在生产环境中使用发布 manifests 中固定的版本（例如 `server:v0.0.1-beta.48`），而非浮动标签，以避免意外升级。当前 beta 构建发布于 `beta-latest` 标签下；`latest` 仅在稳定版发布时使用。
+- **健康监控**：在 Kubernetes 上，就绪探针使用 `/ready`（Postgres + ClickHouse 可达性），存活探针保持在 `/health`。若要实现全集群范围内"AgentEye 是否正常运行"的 Slack 告警，请启用可选的 Robusta 插件；参见 [enterprise-docs/health-monitoring.md](/zh/agenteye/health-monitoring)。
+
+---
+
+## 可用镜像标签
+
+| 标签 | 说明 |
+|-----|-------------|
+| `latest` | 最新稳定版 |
+| `beta-latest` | 最新预发布版（beta） |
+| `v<version>` | 固定版本，例如 `v0.0.1-beta.48`（推荐用于生产） |

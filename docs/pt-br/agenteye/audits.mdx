@@ -1,0 +1,106 @@
+---
+title: "Auditorias — detecção de melhorias por agentes"
+description: "Documentação do AgentEye Audits — detecção de melhorias por agentes."
+---
+
+Auditorias são tarefas recorrentes que analisam os logs do seu agente **entre sessões** para encontrar pontos de melhoria. Enquanto um alerta monitora uma métrica específica que você já conhece em tempo quase real, uma auditoria *investiga*: em um cronograma que você define, ela executa uma verificação de políticas determinística sobre a janela de tempo, depois envia um **agente de confiabilidade com IA** para analisar suas sessões — o agente consulta os dados diretamente, lê transcrições suspeitas e (quando necessário) executa pequenos scripts de análise, produzindo **recomendações de melhoria** com as evidências correspondentes.
+
+Use auditorias para responder "o que devo corrigir ou melhorar nos meus agentes?" — e alertas para ser notificado imediatamente quando um limite específico for ultrapassado. Cada melhoria está vinculada às sessões e consultas exatas que a embasam, e um único clique cria um alerta pré-preenchido para detectar recorrências.
+
+A interface do painel está disponível em **`/<org-slug>/audits`** (barra lateral → *analyze* → *audits*), protegida pelas permissões `audits:read` / `audits:write`.
+
+---
+
+## Como uma execução funciona
+
+Cada execução tem duas camadas — uma base determinística e uma investigação por agentes.
+
+### 1. A verificação de políticas (determinística)
+
+Antes de qualquer modelo ser executado, a auditoria realiza um conjunto de **verificações de políticas em SQL** sobre a janela de tempo: consultas agregadas delimitadas que sinalizam padrões problemáticos conhecidos e reportam *quantos* eventos / *quais* sessões corresponderam — nunca o texto correspondente em si. O catálogo inclui:
+
+- **Vazamento de segredos / credenciais** em cargas de eventos — chaves de acesso AWS, chaves de API `sk-…`, chaves privadas PEM, tokens JWT / bearer e atribuições de credencial `KEY=…`.
+- **Marcadores de injeção de prompt** — "ignore previous instructions", "reveal your system prompt" e similares.
+- **PII** — números com formato de CPF/SSN (heurístico).
+- **Negações de permissão de ferramentas** e **loops descontrolados de chamadas de ferramentas**.
+
+Hits de política são persistidos como descobertas (tipo `policy`) que **sempre aparecem** (nunca são removidos pelo limite por execução) e são entregues ao agente de IA como pontos de partida. Como essa camada não precisa de modelo, uma auditoria ainda produz os sinais de segurança mais importantes mesmo que o agente de IA esteja indisponível.
+
+### 2. A investigação por agentes (IA)
+
+A auditoria então executa um **agente autônomo de confiabilidade** (o mesmo serviço Claude Agent SDK que alimenta o assistente do painel, com um prompt específico para auditorias). Com base no **escopo** da auditoria (agentes selecionados × ambientes) e na **janela de tempo**, o agente:
+
+- executa consultas SQL somente leitura nas suas tabelas de analytics,
+- lê algumas transcrições de sessão representativas,
+- opcionalmente escreve e executa **scripts Python curtos em um sandbox isolado dentro do pod** (sem rede, sem acesso ao sistema de arquivos, segredos removidos) para análises que o SQL não consegue expressar — agrupamento de erros, cálculo de distribuições, varredura de cargas já obtidas,
+- e registra cada **melhoria** bem fundamentada que encontra.
+
+O agente percorre diversas linhas de investigação — agrupamento de erros, desvio em relação a uma linha de base, falhas de objetivo nas transcrições, uso indevido de ferramentas, trade-offs de qualidade/custo e lacunas de cobertura — conforme a **sensibilidade** da auditoria (baixa / média / alta). Cada melhoria **deve citar evidências**: os IDs das sessões que o agente inspecionou de fato e/ou o SQL executado. O servidor valida que as sessões citadas existem e **descarta qualquer melhoria sem evidência válida**, garantindo que o agente investigue sem inventar.
+
+Cada melhoria inclui:
+
+- uma **recomendação** (a mudança concreta a ser feita — ajuste de prompt, correção de schema de ferramenta, política de retry, guardrail, mais cobertura de avaliação),
+- um **impacto esperado** e uma estimativa de **esforço** (baixo / médio / alto),
+- uma **magnitude** — `big` (um operador deve ser notificado), `medium` (pertence ao relatório da execução) ou `small` (contexto do painel),
+- uma **impressão digital** estável (baseada na categoria + escopo do problema, *não* nas sessões desta execução) para que o mesmo problema seja rastreado entre execuções mesmo quando as evidências mudam,
+- e, quando um monitor determinístico simples poderia detectar recorrências, um **alerta sugerido** que você pode criar em um clique.
+
+> **A camada de IA é opcional, mas recomendada.** Se nenhum agente de IA estiver configurado para o pipeline de auditoria, as execuções ainda ocorrem, persistem as descobertas de política e reportam honestamente "análise indisponível" para a camada de agentes, em vez de passar silenciosamente.
+
+### Modos de falha
+
+As melhorias são classificadas no **catálogo de modos de falha** duráveis da sua organização (ou propõem um novo modo). Os modos fornecem identidade estável aos padrões entre execuções e rastreamento de recorrência em longo prazo.
+
+## Ciclo de vida de triagem
+
+Na página de uma descoberta (`/audits/<id>/findings/<finding-id>`):
+
+| Ação | Efeito |
+|---|---|
+| **acknowledge** | Mantém a descoberta visível, mas reduz sua prioridade pela metade. |
+| **resolve** | Marca como corrigido. Se o padrão realmente retornar, reabre como **new** — tornando uma regressão evidente, sem ser silenciosamente arquivada no histórico. |
+| **mute** / **dismiss** | Supressão permanente: a impressão digital do padrão é memorizada e nunca mais aparece, mesmo entre execuções. Use mute para "conhecido, aceito"; dismiss para "não é útil". |
+| **reopen** | Remove a supressão / resolução e classifica o padrão novamente. |
+| **assign** | Direciona a descoberta a um operador (membro da organização) para responsabilização. Prioridade e estado de supressão permanecem inalterados. |
+
+O ruído de baixo sinal é controlado por auditoria com um limite de descobertas por execução (`top_k`) para as melhorias geradas por agentes. Descobertas de política ignoram esse limite (são relevantes para segurança e sempre exibidas). Tudo que for cortado pelo limite é contabilizado nas estatísticas da execução — nada é descartado silenciosamente.
+
+## Agendamento
+
+- **Cadência** (`schedule_interval_secs`): de horária a semanal; **diária é o padrão**. Auditorias são deliberadamente menos frequentes que alertas — uma investigação por agentes examina janelas inteiras e leva minutos para executar.
+- **Janela**: lookback contínuo fixo (por exemplo, "cada execução analisa os últimos 7 dias") ou **desde a última execução** (padrão) — cada execução continua de onde a anterior bem-sucedida terminou, com uma pequena sobreposição para que eventos no limite nunca sejam perdidos.
+- A próxima execução é agendada um intervalo completo após a **conclusão** da anterior, portanto uma execução lenta nunca empilha uma segunda execução simultânea da mesma auditoria.
+- **Run now** na página da auditoria a agenda para execução imediata.
+
+## Seleção de modelo
+
+Ao criar uma auditoria, você pode escolher qual modelo a investigação utiliza, a partir da **lista de modelos configurados pelo operador** para o serviço de agentes. Com um único modelo configurado, o seletor o exibe como legenda; com vários, você escolhe. Deixar sem definir usa o padrão configurado.
+
+## Notificações
+
+Quando uma execução encontra descobertas **novas**, a auditoria notifica os canais configurados da sua organização — os mesmos canais e configurações do gate `alerts.enabled_channels` usados pelo pipeline de alertas:
+
+- **Slack** — um resumo dos novos itens significativos (`big`) com um link direto.
+- **Email** — um **relatório de auditoria** formatado listando as novas melhorias (maior severidade, recomendações por item, link direto), enviado quando a auditoria tem um canal de **email** vinculado e há pelo menos uma nova descoberta.
+
+Descobertas recorrentes já conhecidas não geram novas notificações.
+
+## Referência de configuração
+
+As definições de auditoria são gerenciadas no painel (`/audits/new`) ou via API. As configurações por auditoria incluem a cadência e janela do agendamento, o escopo (`{"environments": [...], "agent_ids": [...]}`), a sensibilidade (`low` / `medium` / `high`), os canais de notificação, o limite de descobertas por execução (`top_k`) e o modelo (via `llm_budget.model`). Configurações do servidor no nível do operador (timeouts, sandbox, a URL do serviço de agentes) estão documentadas em [deployment.md](/pt-br/agenteye/deployment).
+
+## API
+
+Todos os endpoints são com escopo de organização e seguem a autenticação padrão por bearer key (consulte [api-keys.md](/pt-br/agenteye/api-keys)).
+
+| Endpoint | Permissão | Finalidade |
+|---|---|---|
+| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Listar / criar definições de auditoria. |
+| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Inspecionar, editar, excluir uma auditoria. |
+| `POST /audits/:id/run` | `audits:write` | Agendar a auditoria para execução imediata. |
+| `GET /audits/:id/runs` | `audits:read` | Histórico de execuções (janela, status, estatísticas, contagens de descobertas). |
+| `GET /audits/findings` | `audits:read` | Descobertas de toda a organização, filtráveis por `audit_id`, `status`; ordenadas por prioridade. |
+| `GET /audits/findings/:fid` | `audits:read` | Detalhes completos da descoberta (recomendação, evidências, prioridade). |
+| `POST /audits/findings/:fid/status` | `audits:write` | Triagem: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
+
+Para os casos "a auditoria executou mas não encontrou nada", "o sandbox de código está desativado" e "email de auditoria não entregue", consulte [troubleshooting.md](/pt-br/agenteye/troubleshooting#audits).

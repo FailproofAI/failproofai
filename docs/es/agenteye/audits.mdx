@@ -1,0 +1,107 @@
+---
+title: "Auditorías — detección de mejoras agénticas"
+description: "Documentación de Auditorías de AgentEye — detección de mejoras agénticas."
+---
+
+
+Las auditorías son tareas recurrentes que analizan los registros de tu agente **a través de sesiones** para encontrar oportunidades de mejora. Mientras que una alerta vigila en tiempo casi real una métrica que ya conoces, una auditoría *investiga*: según la programación que establezcas, ejecuta un pase de políticas determinista sobre la ventana de tiempo y luego desencadena un **agente de fiabilidad con IA** sobre tus sesiones — el agente consulta los datos directamente, lee transcripciones sospechosas y (cuando resulta útil) ejecuta pequeños scripts de análisis, para finalmente redactar **recomendaciones de mejora** con la evidencia que respalda cada una.
+
+Usa las auditorías para responder a "¿qué debería corregir o mejorar en mis agentes?" — y las alertas para recibir una notificación en el momento en que se supere un umbral específico. Cada mejora enlaza a las sesiones y consultas exactas que la originaron, y con un solo clic puedes crear una alerta preconfigurada para detectar recurrencias.
+
+La superficie del panel es **`/<org-slug>/audits`** (barra lateral → *analyze* → *audits*), protegida por los permisos `audits:read` / `audits:write`.
+
+---
+
+## Cómo funciona una ejecución
+
+Cada ejecución tiene dos capas: un nivel determinista de base y una investigación agéntica.
+
+### 1. El pase de políticas (determinista)
+
+Antes de que se ejecute cualquier modelo, la auditoría lleva a cabo un catálogo de **verificaciones de políticas SQL** sobre la ventana de tiempo: consultas de agregación acotadas que señalan patrones problemáticos conocidos e informan *cuántos* eventos / *qué* sesiones coincidieron — nunca el texto coincidente en sí. El catálogo incluye:
+
+- **Filtración de secretos o credenciales** en los payloads de eventos — claves de acceso de AWS, claves de API `sk-…`, claves privadas PEM, tokens JWT / bearer y asignaciones de credenciales `KEY=…`.
+- **Marcadores de inyección de prompt** — "ignore previous instructions", "reveal your system prompt" y similares.
+- **PII** — números con formato de SSN (heurístico).
+- **Denegaciones de permisos de herramientas** y **bucles descontrolados de llamadas a herramientas**.
+
+Los hallazgos de políticas se persisten como resultados (tipo `policy`) que **siempre aparecen** (nunca son recortados por el límite por ejecución) y se entregan al agente de IA como pistas iniciales. Como esta capa no requiere ningún modelo, una auditoría sigue produciendo sus señales de seguridad más importantes incluso si el agente de IA no está disponible.
+
+### 2. La investigación agéntica (IA)
+
+A continuación, la auditoría ejecuta un **agente de fiabilidad autónomo** (el mismo servicio Claude Agent SDK que impulsa el asistente del panel, con un prompt específico para auditorías). Dado el **alcance** de la auditoría (agentes × entornos seleccionados) y la **ventana de tiempo**, el agente:
+
+- ejecuta consultas SQL de solo lectura contra tus tablas de análisis,
+- lee un puñado de transcripciones de sesiones representativas,
+- opcionalmente escribe y ejecuta breves **scripts de Python en un sandbox aislado dentro del pod** (sin red, sin acceso al sistema de archivos, secretos depurados) para análisis que SQL no puede expresar — agrupación de errores, cálculo de distribuciones, análisis de payloads ya obtenidos,
+- y registra cada **mejora** bien fundamentada que encuentra.
+
+Trabaja a través de varias líneas de investigación — agrupación de errores, desviación respecto a una línea base, fallos de objetivos en transcripciones, mal uso de herramientas, equilibrios calidad/coste y brechas de cobertura — según la **sensibilidad** de la auditoría (baja / media / alta). Cada mejora **debe citar evidencia**: los IDs de sesión que el agente inspeccionó realmente y/o el SQL que ejecutó. El servidor valida que las sesiones citadas existan y **descarta cualquier mejora sin evidencia superviviente**, de modo que el agente investiga pero nunca inventa.
+
+Cada mejora incluye:
+
+- una **recomendación** (el cambio concreto a realizar — un ajuste de prompt, una corrección del esquema de herramienta, una política de reintentos, una salvaguarda, mayor cobertura de evaluación),
+- un **impacto esperado** y una estimación de **esfuerzo** (bajo / medio / alto),
+- una **magnitud** — `big` (un operador debe ser notificado), `medium` (pertenece al informe de la ejecución) o `small` (contexto del panel),
+- una **huella** estable (derivada de la categoría + alcance del problema, *no* de las sesiones de esta ejecución) para que el mismo problema se rastree ejecución tras ejecución aunque la evidencia cambie,
+- y, cuando un vigilante determinista simple podría detectar recurrencias, una **alerta sugerida** que puedes crear con un solo clic.
+
+> **La capa de IA es opcional pero recomendada.** Si no hay ningún agente de IA configurado para la pipeline de auditorías, las ejecuciones igualmente se llevan a cabo, persisten los hallazgos de políticas e informan honestamente que "el análisis no está disponible" para la capa agéntica, en lugar de pasar silenciosamente.
+
+### Modos de fallo
+
+Las mejoras se clasifican en el **catálogo de modos de fallo** duradero de tu organización (o proponen un nuevo modo). Los modos otorgan a los patrones una identidad estable entre ejecuciones y permiten el seguimiento de recurrencias a largo plazo.
+
+## Ciclo de vida del triaje
+
+En la página de un hallazgo (`/audits/<id>/findings/<finding-id>`):
+
+| Acción | Efecto |
+|---|---|
+| **acknowledge** | Mantiene el hallazgo visible pero reduce su prioridad a la mitad. |
+| **resolve** | Lo marca como resuelto. Si el patrón realmente reaparece más tarde, se reabre como **nuevo** — de modo que una regresión es visible, no se pliega silenciosamente al historial. |
+| **mute** / **dismiss** | Supresión duradera: la huella del patrón se recuerda y nunca vuelve a aparecer, incluso entre ejecuciones. Usa mute para "conocido y aceptado"; dismiss para "no es útil". |
+| **reopen** | Elimina la supresión / resolución y vuelve a clasificar el patrón. |
+| **assign** | Enruta el hallazgo a un operador (un miembro de la organización) como responsable. El estado de prioridad y supresión no cambia. |
+
+El ruido de baja señal se controla por auditoría con un límite de hallazgos por ejecución (`top_k`) sobre las mejoras agénticas. Los hallazgos de políticas omiten este límite (son relevantes para la seguridad y siempre se muestran). Todo lo que quede fuera del límite se contabiliza en las estadísticas de la ejecución — nada se descarta silenciosamente.
+
+## Programación
+
+- **Cadencia** (`schedule_interval_secs`): de horaria a semanal; **diaria por defecto**. Las auditorías son deliberadamente más espaciadas que las alertas — una investigación agéntica escanea ventanas completas y se ejecuta durante minutos.
+- **Ventana**: ya sea un periodo de retrovisión fijo (p. ej., "cada ejecución escanea los últimos 7 días") o **desde la última ejecución** (por defecto) — cada ejecución retoma donde terminó la anterior exitosa, con una pequeña superposición para que los eventos en los límites nunca se pierdan.
+- La siguiente ejecución se programa un intervalo completo después de que la anterior **finalice**, de modo que una ejecución lenta nunca apila una segunda ejecución concurrente de la misma auditoría.
+- **Run now** en la página de la auditoría la hace inmediatamente elegible para ejecutarse.
+
+## Selección de modelo
+
+Al crear una auditoría puedes elegir qué modelo usa la investigación, de la **lista de modelos que tu operador ha configurado** para el servicio de agentes. Con un único modelo configurado, el selector lo muestra como leyenda; con varios, puedes elegir. Si se deja sin configurar, se usa el modelo predeterminado configurado.
+
+## Notificaciones
+
+Cuando una ejecución genera hallazgos **nuevos**, la auditoría notifica a los canales configurados de tu organización — la misma puerta de `alerts.enabled_channels` y los ajustes que usa la pipeline de alertas:
+
+- **Slack** — un resumen de los nuevos elementos significativos (`big`) con un enlace directo.
+- **Email** — un **informe de auditoría** diseñado que lista las nuevas mejoras (severidad máxima, recomendaciones por elemento, enlace directo), enviado cuando la auditoría tiene un canal de **email** adjunto y hay al menos un nuevo hallazgo.
+
+Los hallazgos recurrentes pero conocidos no generan nuevas notificaciones.
+
+## Referencia de configuración
+
+Las definiciones de auditoría se gestionan en el panel (`/audits/new`) o a través de la API. Los ajustes por auditoría incluyen la cadencia y ventana de programación, el alcance (`{"environments": [...], "agent_ids": [...]}`), la sensibilidad (`low` / `medium` / `high`), los canales de notificación, el límite de hallazgos por ejecución (`top_k`) y el modelo (mediante `llm_budget.model`). Los ajustes del servidor a nivel de operador (tiempos de espera, sandbox, la URL del servicio de agentes) están documentados en [deployment.md](/es/agenteye/deployment).
+
+## API
+
+Todos los endpoints tienen alcance de organización y siguen la autenticación estándar por clave bearer (consulta [api-keys.md](/es/agenteye/api-keys)).
+
+| Endpoint | Permiso | Propósito |
+|---|---|---|
+| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Listar / crear definiciones de auditoría. |
+| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Inspeccionar, editar, eliminar una auditoría. |
+| `POST /audits/:id/run` | `audits:write` | Hacer que la auditoría se ejecute de inmediato. |
+| `GET /audits/:id/runs` | `audits:read` | Historial de ejecuciones (ventana, estado, estadísticas, conteo de hallazgos). |
+| `GET /audits/findings` | `audits:read` | Hallazgos a nivel de organización, filtrables por `audit_id`, `status`; ordenados por prioridad. |
+| `GET /audits/findings/:fid` | `audits:read` | Detalle completo del hallazgo (recomendación, evidencia, prioridad). |
+| `POST /audits/findings/:fid/status` | `audits:write` | Triaje: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
+
+Para los casos "la auditoría se ejecutó pero no encontró nada", "el sandbox de código está deshabilitado" y "el email de auditoría no se entregó", consulta [troubleshooting.md](/es/agenteye/troubleshooting#audits).

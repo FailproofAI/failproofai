@@ -1,0 +1,235 @@
+---
+title: "Bắt đầu với AgentEye"
+description: "Tài liệu Bắt đầu với AgentEye."
+---
+
+
+Hướng dẫn này sẽ đưa bạn qua toàn bộ quá trình thiết lập AgentEye: triển khai máy chủ và bảng điều khiển, cài đặt bộ thu thập trên máy chạy agent, và tích hợp mã Python agent của bạn.
+
+---
+
+## AgentEye là gì?
+
+AgentEye là một **nền tảng quan sát và đánh giá tự lưu trữ cho các AI agent**. Nó ghi lại những gì các agent của bạn làm — từng bước của một lần chạy — và tự động chấm điểm chất lượng của mỗi lần chạy hoàn thành, để bạn có thể thấy cách các agent của bạn hoạt động trong môi trường sản xuất và phát hiện các suy thoái trước khi người dùng của bạn làm.
+
+Dữ liệu chảy theo một hướng: mã agent của bạn phát ra **events** thông qua **Python SDK** → một daemon **bộ thu thập** nhẹ nhàng phân loại và gửi chúng đến **máy chủ** → events và phân tích được lưu trữ trong **ClickHouse** (trạng thái hoạt động như các tổ chức, người dùng, API keys, bảng điều khiển và các truy vấn đã lưu sống trong **Postgres**) → bạn khám phá mọi thứ trong **bảng điều khiển**.
+
+Những gì bạn nhận được:
+
+- **Events** — dấu vết thô, từng bước của mỗi lần chạy agent (lệnh gọi công cụ, lệnh gọi mô hình, hooks, lỗi).
+- **Sessions** — những events đó được tổng hợp thành một hàng cho mỗi lần chạy, mỗi cái được **tự động đánh giá** và chấm điểm.
+- **Evaluations** — điểm chất lượng do các dịch vụ đánh giá của riêng bạn tạo ra, để các sụt giảm chất lượng hiển thị mà không cần xem xét thủ công.
+- **Queries & dashboards** — SQL ClickHouse đã lưu trên dữ liệu của bạn, được vẽ biểu đồ thành các bảng điều khiển được chia sẻ, phạm vi tổ chức.
+- **Alerts & incidents** — quy tắc ngưỡng trang bạn (email, Slack, webhook, trong bảng điều khiển) cộng với quy trình xử lý sự cố để phân loại chúng.
+- **CLI & AI assistant** — máy khách terminal (`agenteye`) và trợ lý trong bảng điều khiển để đặt câu hỏi bằng tiếng Anh đơn giản.
+
+Bạn chạy tất cả nó trong cơ sở hạ tầng của riêng mình, dưới dạng một ngăn xếp Docker Compose duy nhất (hướng dẫn này), cài đặt Kubernetes sản xuất, hoặc một pod đặt cùng nhau duy nhất. Phần còn lại của hướng dẫn này thiết lập ngăn xếp Compose từ đầu đến cuối.
+
+---
+
+## Bước 1: Xác thực
+
+Tất cả các tạo tác AgentEye được phân phối từ tổ chức GitHub `agenteye-enterprise`. Là nhà phát triển doanh nghiệp, bạn có thể tạo PAT GitHub của riêng mình. Làm theo [enterprise-docs/github-token.md](/vi/agenteye/github-token) để biết các bước chính xác và quyền cần thiết.
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Authenticate Docker against GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## Bước 2: Triển khai Máy chủ và Bảng điều khiển
+
+Máy chủ nhận các events từ các bộ thu thập và làm cho chúng có thể truy vấn được; bảng điều khiển là nơi bạn khám phá chúng. Các events được nhập vào và phân tích sống trong ClickHouse (kho phân tích bắt buộc), trong khi Postgres giữ trạng thái hoạt động như các tổ chức, người dùng, API keys, bảng điều khiển và các truy vấn đã lưu.
+
+**Tải xuống tệp compose được xuất bản:**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**Đặt bí mật của bạn:**
+
+Tạo tệp `.env` để triển khai không chạy trên thông tin đăng nhập mặc định `admin`. Ít nhất hãy đặt `ADMIN_KEY` và `POSTGRES_PASSWORD`:
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+Cũng xuất `ADMIN_KEY` trong shell hiện tại của bạn để các bước sau này (ví dụ: `curl` Bước 3) có thể tham chiếu nó trực tiếp:
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**Khởi động ngăn xếp:**
+
+```bash
+docker compose up -d
+```
+
+Điều này đưa ngăn xếp đầy đủ lên, bao gồm kho phân tích ClickHouse bắt buộc và bộ nhớ cache Redis tùy chọn, cùng với máy chủ và bảng điều khiển. ClickHouse phải lành mạnh để máy chủ khởi động.
+
+Máy chủ hiện đang lắng nghe tại `http://localhost:8080` và bảng điều khiển tại `http://localhost:3000`.
+
+Để triển khai sản xuất (Postgres tùy chỉnh, TLS, reverse proxy), hãy xem [enterprise-docs/deployment.md](/vi/agenteye/deployment).
+
+---
+
+## Bước 3: Tạo API Key cho Bộ thu thập
+
+Mỗi bộ thu thập xác thực bằng API key có phạm vi. Sử dụng `ADMIN_KEY` bạn đặt ở Bước 2 để tạo một cái:
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+Bạn cung cấp giá trị `key` tự mình; sử dụng nó trong cấu hình bộ thu thập ở Bước 4. Xem [enterprise-docs/api-keys.md](/vi/agenteye/api-keys) để quản lý key đầy đủ.
+
+---
+
+## Bước 4: Cài đặt Bộ thu thập
+
+Trên mỗi máy chạy các AI agent của bạn, hãy cài đặt daemon bộ thu thập.
+
+**Tải xuống tệp nhị phân (Linux x86_64):**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> Điều này tải xuống bản dựng **Linux x86_64**. Đối với macOS (Apple Silicon hoặc Intel), Linux arm64, hoặc Docker / systemd / launchd setup, xem [collector-installation.md](/vi/agenteye/collector-installation), liệt kê tải xuống cho mỗi nền tảng — lệnh trên cài đặt một tệp nhị phân Linux sẽ không chạy ở nơi khác.
+
+**Cấu hình:**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**Khởi động daemon:**
+
+```bash
+agenteye-collector start
+```
+
+Xác minh kết nối với xả một lần (thoát sau khi xả mọi events đang chờ):
+
+```bash
+agenteye-collector flush
+```
+
+Đối với Docker, systemd và launchd setup, xem [enterprise-docs/collector-installation.md](/vi/agenteye/collector-installation).
+
+---
+
+## Bước 5: Cài đặt Python SDK
+
+Trên mỗi máy nơi bạn muốn tích hợp mã agent, hãy cài đặt wheel từ GitHub Releases.
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## Bước 6: Tích hợp Agent của bạn
+
+Thêm events vào mã agent của bạn. Ít nhất, phát ra `agent_start` và `agent_end`:
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# your agent logic here
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+Events được lưu đệm và xả đến `$AGENTEYE_HOME/events/` (hoặc `~/.agenteye/events/` nếu `AGENTEYE_HOME` không được đặt) mỗi 500 ms. Bộ thu thập chọn chúng lên tự động.
+
+Xem [enterprise-docs/python-sdk.md](/vi/agenteye/python-sdk) để biết đầy đủ API events.
+
+---
+
+## Bước 7: Xem Events trong Bảng điều khiển
+
+Mở `http://your-dashboard-host:3000` và đăng nhập. AgentEye gửi cho bạn một mã dùng một lần (hoặc một liên kết ma thuật click đơn lần), vì vậy không có mật khẩu để quản lý.
+
+![Màn hình đăng nhập AgentEye, gửi mã dùng một lần đến email của bạn](/agenteye/images/login.png)
+
+Khi bạn vào, trang **Events** hiển thị một dấu vết trực tiếp của tất cả các events được nhập vào. Lọc theo `session_id` hoặc `agent_id` để đi sâu vào một lần chạy cụ thể.
+
+![Luồng Events trực tiếp, được tô màu theo loại event và có thể lọc theo môi trường, agent và session](/agenteye/images/events-stream.png)
+
+Trang **Sessions** tổng hợp những events đó thành một hàng cho mỗi lần chạy. AgentEye tự động đánh giá các sessions hoàn thành, vì vậy mỗi lần chạy được chấm điểm và các suy thoái chất lượng hiển thị mà không cần xem xét thủ công; điểm đánh giá mới nhất xuất hiện trên mỗi hàng ngay lập tức:
+
+![Danh sách Sessions, một hàng cho mỗi lần chạy, với các huy hiệu trạng thái và huy hiệu điểm đánh giá](/agenteye/images/sessions-list.png)
+
+Để cấu hình cách các sessions được chấm điểm, xem [enterprise-docs/evaluation-suite.md](/vi/agenteye/evaluation-suite).
+
+Nhấp vào bất kỳ session nào để mở **execution graph** của nó, một khung nhìn theo kiểu git về cách các agents, công cụ, hooks và lệnh gọi mô hình diễn ra theo thời gian, với các sub-agents song song trên các làn riêng của chúng và một bảng phân tích theo lần chạy trong thanh ray bên phải:
+
+![Biểu đồ thực thi theo kiểu git của một session cạnh dòng thời gian events của nó, với bảng phân tích tool/model/hook](/agenteye/images/session-detail.png)
+
+---
+
+## Bước 8: Khám phá, biểu đồ và cảnh báo
+
+Với các events chảy, các trang **analyze** chuyển hoạt động thô thành câu trả lời, để bạn có thể đo lường hành vi agent, chia sẻ phát hiện trên toàn đội ngũ và nhận trang thông báo khoảnh khắc có gì đó suy thoái. Các trang bảng điều khiển được phạm vi tổ chức, vì vậy các URL bạn thấy trong thanh địa chỉ được đặt tiền tố với slug org của bạn (`/<org>/…`).
+
+- **Queries** (`/<org>/queries`): bắt đầu từ một thư viện các truy vấn đã lưu, có thể tái sử dụng trên các events và evaluations của bạn (các cài đặt sẵn tích hợp cộng với các truy vấn của riêng bạn)…
+
+![Thư viện truy vấn đã lưu: một lưới các truy vấn có thể tái sử dụng, cả cài đặt sẵn tích hợp và truy vấn tùy chỉnh](/agenteye/images/queries.png)
+
+  …sau đó mở một cái trong nhà soạn SQL để điều chỉnh nó và chạy nó với kết quả trực tiếp:
+
+![Nhà soạn truy vấn SQL chạy một truy vấn đã lưu, với một thanh bên lược đồ và một lưới kết quả trực tiếp](/agenteye/images/query-lab.png)
+
+- **Dashboards** (`/<org>/dashboards`): ghim các truy vấn dưới dạng các tile đường, thanh, diện tích hoặc bánh vào các bảng điều khiển được chia sẻ, toàn org.
+
+![Bảng điều khiển được xây dựng từ các truy vấn đã lưu: một dòng events mỗi giờ, một thanh lỗi theo loại, biểu đồ diện tích độ trễ và tokens theo mô hình](/agenteye/images/dashboard-fleet.png)
+
+- **Alerts** (`/<org>/alerts`): thăng cấp bất kỳ ngưỡng nào thành quy tắc trang thông báo bằng email, Slack, webhook hoặc trong bảng điều khiển. Xem [enterprise-docs/alerts.md](/vi/agenteye/alerts).
+
+---
+
+## Các bước tiếp theo
+
+- [Deployment](/vi/agenteye/deployment): củng cố cho sản xuất
+- [API Keys](/vi/agenteye/api-keys): quản lý quyền truy cập
+- [Troubleshooting](/vi/agenteye/troubleshooting): chẩn đoán các vấn đề

@@ -26,7 +26,10 @@
                 "groups": [
                   {
                     "group": "Getting Started",
-                    "pages": ["introduction", "getting-started"]
+                    "pages": [
+                      "introduction",
+                      "getting-started"
+                    ]
                   },
                   {
                     "group": "Core Concepts",
@@ -52,7 +55,9 @@
                   },
                   {
                     "group": "Tools",
-                    "pages": ["dashboard"]
+                    "pages": [
+                      "dashboard"
+                    ]
                   },
                   {
                     "group": "Advanced",
@@ -70,7 +75,9 @@
                 "groups": [
                   {
                     "group": "Examples",
-                    "pages": ["examples"]
+                    "pages": [
+                      "examples"
+                    ]
                   }
                 ]
               }
@@ -84,7 +91,10 @@
                 "groups": [
                   {
                     "group": "快速开始",
-                    "pages": ["zh/introduction", "zh/getting-started"]
+                    "pages": [
+                      "zh/introduction",
+                      "zh/getting-started"
+                    ]
                   },
                   {
                     "group": "核心概念",
@@ -102,13 +112,17 @@
                       "zh/cli/remove-policies",
                       "zh/cli/list-policies",
                       "zh/cli/hook",
+                      "zh/cli/auth",
+                      "zh/cli/audit",
                       "zh/cli/version",
                       "zh/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "工具",
-                    "pages": ["zh/dashboard"]
+                    "pages": [
+                      "zh/dashboard"
+                    ]
                   },
                   {
                     "group": "进阶",
@@ -126,7 +140,9 @@
                 "groups": [
                   {
                     "group": "示例",
-                    "pages": ["zh/examples"]
+                    "pages": [
+                      "zh/examples"
+                    ]
                   }
                 ]
               }
@@ -140,7 +156,10 @@
                 "groups": [
                   {
                     "group": "はじめに",
-                    "pages": ["ja/introduction", "ja/getting-started"]
+                    "pages": [
+                      "ja/introduction",
+                      "ja/getting-started"
+                    ]
                   },
                   {
                     "group": "基本概念",
@@ -158,13 +177,17 @@
                       "ja/cli/remove-policies",
                       "ja/cli/list-policies",
                       "ja/cli/hook",
+                      "ja/cli/auth",
+                      "ja/cli/audit",
                       "ja/cli/version",
                       "ja/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "ツール",
-                    "pages": ["ja/dashboard"]
+                    "pages": [
+                      "ja/dashboard"
+                    ]
                   },
                   {
                     "group": "上級",
@@ -182,7 +205,9 @@
                 "groups": [
                   {
                     "group": "例",
-                    "pages": ["ja/examples"]
+                    "pages": [
+                      "ja/examples"
+                    ]
                   }
                 ]
               }
@@ -196,7 +221,10 @@
                 "groups": [
                   {
                     "group": "시작하기",
-                    "pages": ["ko/introduction", "ko/getting-started"]
+                    "pages": [
+                      "ko/introduction",
+                      "ko/getting-started"
+                    ]
                   },
                   {
                     "group": "핵심 개념",
@@ -214,13 +242,17 @@
                       "ko/cli/remove-policies",
                       "ko/cli/list-policies",
                       "ko/cli/hook",
+                      "ko/cli/auth",
+                      "ko/cli/audit",
                       "ko/cli/version",
                       "ko/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "도구",
-                    "pages": ["ko/dashboard"]
+                    "pages": [
+                      "ko/dashboard"
+                    ]
                   },
                   {
                     "group": "고급",
@@ -238,7 +270,9 @@
                 "groups": [
                   {
                     "group": "예제",
-                    "pages": ["ko/examples"]
+                    "pages": [
+                      "ko/examples"
+                    ]
                   }
                 ]
               }
@@ -252,7 +286,10 @@
                 "groups": [
                   {
                     "group": "Primeros pasos",
-                    "pages": ["es/introduction", "es/getting-started"]
+                    "pages": [
+                      "es/introduction",
+                      "es/getting-started"
+                    ]
                   },
                   {
                     "group": "Conceptos principales",
@@ -270,13 +307,17 @@
                       "es/cli/remove-policies",
                       "es/cli/list-policies",
                       "es/cli/hook",
+                      "es/cli/auth",
+                      "es/cli/audit",
                       "es/cli/version",
                       "es/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Herramientas",
-                    "pages": ["es/dashboard"]
+                    "pages": [
+                      "es/dashboard"
+                    ]
                   },
                   {
                     "group": "Avanzado",
@@ -294,21 +335,26 @@
                 "groups": [
                   {
                     "group": "Ejemplos",
-                    "pages": ["es/examples"]
+                    "pages": [
+                      "es/examples"
+                    ]
                   }
                 ]
               }
             ]
           },
           {
-            "language": "pt-BR",
+            "language": "pt-br",
             "tabs": [
               {
                 "tab": "Documentação",
                 "groups": [
                   {
                     "group": "Começando",
-                    "pages": ["pt-br/introduction", "pt-br/getting-started"]
+                    "pages": [
+                      "pt-br/introduction",
+                      "pt-br/getting-started"
+                    ]
                   },
                   {
                     "group": "Conceitos principais",
@@ -326,13 +372,17 @@
                       "pt-br/cli/remove-policies",
                       "pt-br/cli/list-policies",
                       "pt-br/cli/hook",
+                      "pt-br/cli/auth",
+                      "pt-br/cli/audit",
                       "pt-br/cli/version",
                       "pt-br/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Ferramentas",
-                    "pages": ["pt-br/dashboard"]
+                    "pages": [
+                      "pt-br/dashboard"
+                    ]
                   },
                   {
                     "group": "Avançado",
@@ -350,7 +400,9 @@
                 "groups": [
                   {
                     "group": "Exemplos",
-                    "pages": ["pt-br/examples"]
+                    "pages": [
+                      "pt-br/examples"
+                    ]
                   }
                 ]
               }
@@ -364,7 +416,10 @@
                 "groups": [
                   {
                     "group": "Erste Schritte",
-                    "pages": ["de/introduction", "de/getting-started"]
+                    "pages": [
+                      "de/introduction",
+                      "de/getting-started"
+                    ]
                   },
                   {
                     "group": "Kernkonzepte",
@@ -382,13 +437,17 @@
                       "de/cli/remove-policies",
                       "de/cli/list-policies",
                       "de/cli/hook",
+                      "de/cli/auth",
+                      "de/cli/audit",
                       "de/cli/version",
                       "de/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Werkzeuge",
-                    "pages": ["de/dashboard"]
+                    "pages": [
+                      "de/dashboard"
+                    ]
                   },
                   {
                     "group": "Fortgeschritten",
@@ -406,7 +465,9 @@
                 "groups": [
                   {
                     "group": "Beispiele",
-                    "pages": ["de/examples"]
+                    "pages": [
+                      "de/examples"
+                    ]
                   }
                 ]
               }
@@ -420,7 +481,10 @@
                 "groups": [
                   {
                     "group": "Démarrage",
-                    "pages": ["fr/introduction", "fr/getting-started"]
+                    "pages": [
+                      "fr/introduction",
+                      "fr/getting-started"
+                    ]
                   },
                   {
                     "group": "Concepts clés",
@@ -438,13 +502,17 @@
                       "fr/cli/remove-policies",
                       "fr/cli/list-policies",
                       "fr/cli/hook",
+                      "fr/cli/auth",
+                      "fr/cli/audit",
                       "fr/cli/version",
                       "fr/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Outils",
-                    "pages": ["fr/dashboard"]
+                    "pages": [
+                      "fr/dashboard"
+                    ]
                   },
                   {
                     "group": "Avancé",
@@ -462,7 +530,9 @@
                 "groups": [
                   {
                     "group": "Exemples",
-                    "pages": ["fr/examples"]
+                    "pages": [
+                      "fr/examples"
+                    ]
                   }
                 ]
               }
@@ -476,7 +546,10 @@
                 "groups": [
                   {
                     "group": "Начало работы",
-                    "pages": ["ru/introduction", "ru/getting-started"]
+                    "pages": [
+                      "ru/introduction",
+                      "ru/getting-started"
+                    ]
                   },
                   {
                     "group": "Основные концепции",
@@ -494,13 +567,17 @@
                       "ru/cli/remove-policies",
                       "ru/cli/list-policies",
                       "ru/cli/hook",
+                      "ru/cli/auth",
+                      "ru/cli/audit",
                       "ru/cli/version",
                       "ru/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Инструменты",
-                    "pages": ["ru/dashboard"]
+                    "pages": [
+                      "ru/dashboard"
+                    ]
                   },
                   {
                     "group": "Продвинутый",
@@ -518,7 +595,9 @@
                 "groups": [
                   {
                     "group": "Примеры",
-                    "pages": ["ru/examples"]
+                    "pages": [
+                      "ru/examples"
+                    ]
                   }
                 ]
               }
@@ -532,7 +611,10 @@
                 "groups": [
                   {
                     "group": "शुरू करें",
-                    "pages": ["hi/introduction", "hi/getting-started"]
+                    "pages": [
+                      "hi/introduction",
+                      "hi/getting-started"
+                    ]
                   },
                   {
                     "group": "मूल अवधारणाएँ",
@@ -550,13 +632,17 @@
                       "hi/cli/remove-policies",
                       "hi/cli/list-policies",
                       "hi/cli/hook",
+                      "hi/cli/auth",
+                      "hi/cli/audit",
                       "hi/cli/version",
                       "hi/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "उपकरण",
-                    "pages": ["hi/dashboard"]
+                    "pages": [
+                      "hi/dashboard"
+                    ]
                   },
                   {
                     "group": "उन्नत",
@@ -574,7 +660,9 @@
                 "groups": [
                   {
                     "group": "उदाहरण",
-                    "pages": ["hi/examples"]
+                    "pages": [
+                      "hi/examples"
+                    ]
                   }
                 ]
               }
@@ -588,7 +676,10 @@
                 "groups": [
                   {
                     "group": "Başlangıç",
-                    "pages": ["tr/introduction", "tr/getting-started"]
+                    "pages": [
+                      "tr/introduction",
+                      "tr/getting-started"
+                    ]
                   },
                   {
                     "group": "Temel Kavramlar",
@@ -606,13 +697,17 @@
                       "tr/cli/remove-policies",
                       "tr/cli/list-policies",
                       "tr/cli/hook",
+                      "tr/cli/auth",
+                      "tr/cli/audit",
                       "tr/cli/version",
                       "tr/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Araçlar",
-                    "pages": ["tr/dashboard"]
+                    "pages": [
+                      "tr/dashboard"
+                    ]
                   },
                   {
                     "group": "Gelişmiş",
@@ -630,7 +725,9 @@
                 "groups": [
                   {
                     "group": "Örnekler",
-                    "pages": ["tr/examples"]
+                    "pages": [
+                      "tr/examples"
+                    ]
                   }
                 ]
               }
@@ -644,7 +741,10 @@
                 "groups": [
                   {
                     "group": "Bắt đầu",
-                    "pages": ["vi/introduction", "vi/getting-started"]
+                    "pages": [
+                      "vi/introduction",
+                      "vi/getting-started"
+                    ]
                   },
                   {
                     "group": "Khái niệm cốt lõi",
@@ -662,13 +762,17 @@
                       "vi/cli/remove-policies",
                       "vi/cli/list-policies",
                       "vi/cli/hook",
+                      "vi/cli/auth",
+                      "vi/cli/audit",
                       "vi/cli/version",
                       "vi/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Công cụ",
-                    "pages": ["vi/dashboard"]
+                    "pages": [
+                      "vi/dashboard"
+                    ]
                   },
                   {
                     "group": "Nâng cao",
@@ -686,7 +790,9 @@
                 "groups": [
                   {
                     "group": "Ví dụ",
-                    "pages": ["vi/examples"]
+                    "pages": [
+                      "vi/examples"
+                    ]
                   }
                 ]
               }
@@ -700,7 +806,10 @@
                 "groups": [
                   {
                     "group": "Per iniziare",
-                    "pages": ["it/introduction", "it/getting-started"]
+                    "pages": [
+                      "it/introduction",
+                      "it/getting-started"
+                    ]
                   },
                   {
                     "group": "Concetti chiave",
@@ -718,13 +827,17 @@
                       "it/cli/remove-policies",
                       "it/cli/list-policies",
                       "it/cli/hook",
+                      "it/cli/auth",
+                      "it/cli/audit",
                       "it/cli/version",
                       "it/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "Strumenti",
-                    "pages": ["it/dashboard"]
+                    "pages": [
+                      "it/dashboard"
+                    ]
                   },
                   {
                     "group": "Avanzato",
@@ -742,7 +855,9 @@
                 "groups": [
                   {
                     "group": "Esempi",
-                    "pages": ["it/examples"]
+                    "pages": [
+                      "it/examples"
+                    ]
                   }
                 ]
               }
@@ -756,7 +871,10 @@
                 "groups": [
                   {
                     "group": "البداية",
-                    "pages": ["ar/introduction", "ar/getting-started"]
+                    "pages": [
+                      "ar/introduction",
+                      "ar/getting-started"
+                    ]
                   },
                   {
                     "group": "المفاهيم الأساسية",
@@ -774,13 +892,17 @@
                       "ar/cli/remove-policies",
                       "ar/cli/list-policies",
                       "ar/cli/hook",
+                      "ar/cli/auth",
+                      "ar/cli/audit",
                       "ar/cli/version",
                       "ar/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "الأدوات",
-                    "pages": ["ar/dashboard"]
+                    "pages": [
+                      "ar/dashboard"
+                    ]
                   },
                   {
                     "group": "متقدم",
@@ -798,7 +920,9 @@
                 "groups": [
                   {
                     "group": "أمثلة",
-                    "pages": ["ar/examples"]
+                    "pages": [
+                      "ar/examples"
+                    ]
                   }
                 ]
               }
@@ -812,7 +936,10 @@
                 "groups": [
                   {
                     "group": "תחילת עבודה",
-                    "pages": ["he/introduction", "he/getting-started"]
+                    "pages": [
+                      "he/introduction",
+                      "he/getting-started"
+                    ]
                   },
                   {
                     "group": "מושגי יסוד",
@@ -830,13 +957,17 @@
                       "he/cli/remove-policies",
                       "he/cli/list-policies",
                       "he/cli/hook",
+                      "he/cli/auth",
+                      "he/cli/audit",
                       "he/cli/version",
                       "he/cli/environment-variables"
                     ]
                   },
                   {
                     "group": "כלים",
-                    "pages": ["he/dashboard"]
+                    "pages": [
+                      "he/dashboard"
+                    ]
                   },
                   {
                     "group": "מתקדם",
@@ -854,7 +985,9 @@
                 "groups": [
                   {
                     "group": "דוגמאות",
-                    "pages": ["he/examples"]
+                    "pages": [
+                      "he/examples"
+                    ]
                   }
                 ]
               }
@@ -865,50 +998,828 @@
       {
         "product": "AgentEye",
         "icon": "eye",
-        "tabs": [
+        "languages": [
           {
-            "tab": "Docs",
-            "groups": [
+            "language": "en",
+            "tabs": [
               {
-                "group": "Getting started",
-                "pages": ["agenteye/getting-started", "agenteye/github-token"]
-              },
-              {
-                "group": "Deployment",
-                "pages": [
-                  "agenteye/deployment",
-                  "agenteye/managed-deployment",
-                  "agenteye/kubernetes-deployment",
-                  "agenteye/single-pod-deployment",
-                  "agenteye/collector-installation",
-                  "agenteye/collector-migration"
+                "tab": "Docs",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "agenteye/getting-started",
+                      "agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "agenteye/deployment",
+                      "agenteye/managed-deployment",
+                      "agenteye/kubernetes-deployment",
+                      "agenteye/single-pod-deployment",
+                      "agenteye/collector-installation",
+                      "agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "agenteye/python-sdk",
+                      "agenteye/cli",
+                      "agenteye/cli-recipes",
+                      "agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "agenteye/evaluation-suite",
+                      "agenteye/audits",
+                      "agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "agenteye/api-keys",
+                      "agenteye/tenant-management",
+                      "agenteye/health-monitoring",
+                      "agenteye/assistant",
+                      "agenteye/troubleshooting"
+                    ]
+                  }
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "language": "zh",
+            "tabs": [
               {
-                "group": "Instrumentation and CLI",
-                "pages": [
-                  "agenteye/python-sdk",
-                  "agenteye/cli",
-                  "agenteye/cli-recipes",
-                  "agenteye/cli-skill"
+                "tab": "文档",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "zh/agenteye/getting-started",
+                      "zh/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "zh/agenteye/deployment",
+                      "zh/agenteye/managed-deployment",
+                      "zh/agenteye/kubernetes-deployment",
+                      "zh/agenteye/single-pod-deployment",
+                      "zh/agenteye/collector-installation",
+                      "zh/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "zh/agenteye/python-sdk",
+                      "zh/agenteye/cli",
+                      "zh/agenteye/cli-recipes",
+                      "zh/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "zh/agenteye/evaluation-suite",
+                      "zh/agenteye/audits",
+                      "zh/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "zh/agenteye/api-keys",
+                      "zh/agenteye/tenant-management",
+                      "zh/agenteye/health-monitoring",
+                      "zh/agenteye/assistant",
+                      "zh/agenteye/troubleshooting"
+                    ]
+                  }
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "language": "ja",
+            "tabs": [
               {
-                "group": "Quality",
-                "pages": [
-                  "agenteye/evaluation-suite",
-                  "agenteye/audits",
-                  "agenteye/alerts"
+                "tab": "ドキュメント",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "ja/agenteye/getting-started",
+                      "ja/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "ja/agenteye/deployment",
+                      "ja/agenteye/managed-deployment",
+                      "ja/agenteye/kubernetes-deployment",
+                      "ja/agenteye/single-pod-deployment",
+                      "ja/agenteye/collector-installation",
+                      "ja/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "ja/agenteye/python-sdk",
+                      "ja/agenteye/cli",
+                      "ja/agenteye/cli-recipes",
+                      "ja/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "ja/agenteye/evaluation-suite",
+                      "ja/agenteye/audits",
+                      "ja/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "ja/agenteye/api-keys",
+                      "ja/agenteye/tenant-management",
+                      "ja/agenteye/health-monitoring",
+                      "ja/agenteye/assistant",
+                      "ja/agenteye/troubleshooting"
+                    ]
+                  }
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "language": "ko",
+            "tabs": [
               {
-                "group": "Operations",
-                "pages": [
-                  "agenteye/api-keys",
-                  "agenteye/tenant-management",
-                  "agenteye/health-monitoring",
-                  "agenteye/assistant",
-                  "agenteye/troubleshooting"
+                "tab": "문서",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "ko/agenteye/getting-started",
+                      "ko/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "ko/agenteye/deployment",
+                      "ko/agenteye/managed-deployment",
+                      "ko/agenteye/kubernetes-deployment",
+                      "ko/agenteye/single-pod-deployment",
+                      "ko/agenteye/collector-installation",
+                      "ko/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "ko/agenteye/python-sdk",
+                      "ko/agenteye/cli",
+                      "ko/agenteye/cli-recipes",
+                      "ko/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "ko/agenteye/evaluation-suite",
+                      "ko/agenteye/audits",
+                      "ko/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "ko/agenteye/api-keys",
+                      "ko/agenteye/tenant-management",
+                      "ko/agenteye/health-monitoring",
+                      "ko/agenteye/assistant",
+                      "ko/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "es",
+            "tabs": [
+              {
+                "tab": "Documentación",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "es/agenteye/getting-started",
+                      "es/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "es/agenteye/deployment",
+                      "es/agenteye/managed-deployment",
+                      "es/agenteye/kubernetes-deployment",
+                      "es/agenteye/single-pod-deployment",
+                      "es/agenteye/collector-installation",
+                      "es/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "es/agenteye/python-sdk",
+                      "es/agenteye/cli",
+                      "es/agenteye/cli-recipes",
+                      "es/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "es/agenteye/evaluation-suite",
+                      "es/agenteye/audits",
+                      "es/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "es/agenteye/api-keys",
+                      "es/agenteye/tenant-management",
+                      "es/agenteye/health-monitoring",
+                      "es/agenteye/assistant",
+                      "es/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "pt-br",
+            "tabs": [
+              {
+                "tab": "Documentação",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "pt-br/agenteye/getting-started",
+                      "pt-br/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "pt-br/agenteye/deployment",
+                      "pt-br/agenteye/managed-deployment",
+                      "pt-br/agenteye/kubernetes-deployment",
+                      "pt-br/agenteye/single-pod-deployment",
+                      "pt-br/agenteye/collector-installation",
+                      "pt-br/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "pt-br/agenteye/python-sdk",
+                      "pt-br/agenteye/cli",
+                      "pt-br/agenteye/cli-recipes",
+                      "pt-br/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "pt-br/agenteye/evaluation-suite",
+                      "pt-br/agenteye/audits",
+                      "pt-br/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "pt-br/agenteye/api-keys",
+                      "pt-br/agenteye/tenant-management",
+                      "pt-br/agenteye/health-monitoring",
+                      "pt-br/agenteye/assistant",
+                      "pt-br/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "de",
+            "tabs": [
+              {
+                "tab": "Dokumentation",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "de/agenteye/getting-started",
+                      "de/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "de/agenteye/deployment",
+                      "de/agenteye/managed-deployment",
+                      "de/agenteye/kubernetes-deployment",
+                      "de/agenteye/single-pod-deployment",
+                      "de/agenteye/collector-installation",
+                      "de/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "de/agenteye/python-sdk",
+                      "de/agenteye/cli",
+                      "de/agenteye/cli-recipes",
+                      "de/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "de/agenteye/evaluation-suite",
+                      "de/agenteye/audits",
+                      "de/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "de/agenteye/api-keys",
+                      "de/agenteye/tenant-management",
+                      "de/agenteye/health-monitoring",
+                      "de/agenteye/assistant",
+                      "de/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "fr",
+            "tabs": [
+              {
+                "tab": "Documentation",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "fr/agenteye/getting-started",
+                      "fr/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "fr/agenteye/deployment",
+                      "fr/agenteye/managed-deployment",
+                      "fr/agenteye/kubernetes-deployment",
+                      "fr/agenteye/single-pod-deployment",
+                      "fr/agenteye/collector-installation",
+                      "fr/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "fr/agenteye/python-sdk",
+                      "fr/agenteye/cli",
+                      "fr/agenteye/cli-recipes",
+                      "fr/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "fr/agenteye/evaluation-suite",
+                      "fr/agenteye/audits",
+                      "fr/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "fr/agenteye/api-keys",
+                      "fr/agenteye/tenant-management",
+                      "fr/agenteye/health-monitoring",
+                      "fr/agenteye/assistant",
+                      "fr/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "ru",
+            "tabs": [
+              {
+                "tab": "Документация",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "ru/agenteye/getting-started",
+                      "ru/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "ru/agenteye/deployment",
+                      "ru/agenteye/managed-deployment",
+                      "ru/agenteye/kubernetes-deployment",
+                      "ru/agenteye/single-pod-deployment",
+                      "ru/agenteye/collector-installation",
+                      "ru/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "ru/agenteye/python-sdk",
+                      "ru/agenteye/cli",
+                      "ru/agenteye/cli-recipes",
+                      "ru/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "ru/agenteye/evaluation-suite",
+                      "ru/agenteye/audits",
+                      "ru/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "ru/agenteye/api-keys",
+                      "ru/agenteye/tenant-management",
+                      "ru/agenteye/health-monitoring",
+                      "ru/agenteye/assistant",
+                      "ru/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "hi",
+            "tabs": [
+              {
+                "tab": "दस्तावेज़",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "hi/agenteye/getting-started",
+                      "hi/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "hi/agenteye/deployment",
+                      "hi/agenteye/managed-deployment",
+                      "hi/agenteye/kubernetes-deployment",
+                      "hi/agenteye/single-pod-deployment",
+                      "hi/agenteye/collector-installation",
+                      "hi/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "hi/agenteye/python-sdk",
+                      "hi/agenteye/cli",
+                      "hi/agenteye/cli-recipes",
+                      "hi/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "hi/agenteye/evaluation-suite",
+                      "hi/agenteye/audits",
+                      "hi/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "hi/agenteye/api-keys",
+                      "hi/agenteye/tenant-management",
+                      "hi/agenteye/health-monitoring",
+                      "hi/agenteye/assistant",
+                      "hi/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "tr",
+            "tabs": [
+              {
+                "tab": "Belgeler",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "tr/agenteye/getting-started",
+                      "tr/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "tr/agenteye/deployment",
+                      "tr/agenteye/managed-deployment",
+                      "tr/agenteye/kubernetes-deployment",
+                      "tr/agenteye/single-pod-deployment",
+                      "tr/agenteye/collector-installation",
+                      "tr/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "tr/agenteye/python-sdk",
+                      "tr/agenteye/cli",
+                      "tr/agenteye/cli-recipes",
+                      "tr/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "tr/agenteye/evaluation-suite",
+                      "tr/agenteye/audits",
+                      "tr/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "tr/agenteye/api-keys",
+                      "tr/agenteye/tenant-management",
+                      "tr/agenteye/health-monitoring",
+                      "tr/agenteye/assistant",
+                      "tr/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "vi",
+            "tabs": [
+              {
+                "tab": "Tài liệu",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "vi/agenteye/getting-started",
+                      "vi/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "vi/agenteye/deployment",
+                      "vi/agenteye/managed-deployment",
+                      "vi/agenteye/kubernetes-deployment",
+                      "vi/agenteye/single-pod-deployment",
+                      "vi/agenteye/collector-installation",
+                      "vi/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "vi/agenteye/python-sdk",
+                      "vi/agenteye/cli",
+                      "vi/agenteye/cli-recipes",
+                      "vi/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "vi/agenteye/evaluation-suite",
+                      "vi/agenteye/audits",
+                      "vi/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "vi/agenteye/api-keys",
+                      "vi/agenteye/tenant-management",
+                      "vi/agenteye/health-monitoring",
+                      "vi/agenteye/assistant",
+                      "vi/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "it",
+            "tabs": [
+              {
+                "tab": "Documentazione",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "it/agenteye/getting-started",
+                      "it/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "it/agenteye/deployment",
+                      "it/agenteye/managed-deployment",
+                      "it/agenteye/kubernetes-deployment",
+                      "it/agenteye/single-pod-deployment",
+                      "it/agenteye/collector-installation",
+                      "it/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "it/agenteye/python-sdk",
+                      "it/agenteye/cli",
+                      "it/agenteye/cli-recipes",
+                      "it/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "it/agenteye/evaluation-suite",
+                      "it/agenteye/audits",
+                      "it/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "it/agenteye/api-keys",
+                      "it/agenteye/tenant-management",
+                      "it/agenteye/health-monitoring",
+                      "it/agenteye/assistant",
+                      "it/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "ar",
+            "tabs": [
+              {
+                "tab": "المستندات",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "ar/agenteye/getting-started",
+                      "ar/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "ar/agenteye/deployment",
+                      "ar/agenteye/managed-deployment",
+                      "ar/agenteye/kubernetes-deployment",
+                      "ar/agenteye/single-pod-deployment",
+                      "ar/agenteye/collector-installation",
+                      "ar/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "ar/agenteye/python-sdk",
+                      "ar/agenteye/cli",
+                      "ar/agenteye/cli-recipes",
+                      "ar/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "ar/agenteye/evaluation-suite",
+                      "ar/agenteye/audits",
+                      "ar/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "ar/agenteye/api-keys",
+                      "ar/agenteye/tenant-management",
+                      "ar/agenteye/health-monitoring",
+                      "ar/agenteye/assistant",
+                      "ar/agenteye/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "language": "he",
+            "tabs": [
+              {
+                "tab": "תיעוד",
+                "groups": [
+                  {
+                    "group": "Getting started",
+                    "pages": [
+                      "he/agenteye/getting-started",
+                      "he/agenteye/github-token"
+                    ]
+                  },
+                  {
+                    "group": "Deployment",
+                    "pages": [
+                      "he/agenteye/deployment",
+                      "he/agenteye/managed-deployment",
+                      "he/agenteye/kubernetes-deployment",
+                      "he/agenteye/single-pod-deployment",
+                      "he/agenteye/collector-installation",
+                      "he/agenteye/collector-migration"
+                    ]
+                  },
+                  {
+                    "group": "Instrumentation and CLI",
+                    "pages": [
+                      "he/agenteye/python-sdk",
+                      "he/agenteye/cli",
+                      "he/agenteye/cli-recipes",
+                      "he/agenteye/cli-skill"
+                    ]
+                  },
+                  {
+                    "group": "Quality",
+                    "pages": [
+                      "he/agenteye/evaluation-suite",
+                      "he/agenteye/audits",
+                      "he/agenteye/alerts"
+                    ]
+                  },
+                  {
+                    "group": "Operations",
+                    "pages": [
+                      "he/agenteye/api-keys",
+                      "he/agenteye/tenant-management",
+                      "he/agenteye/health-monitoring",
+                      "he/agenteye/assistant",
+                      "he/agenteye/troubleshooting"
+                    ]
+                  }
                 ]
               }
             ]

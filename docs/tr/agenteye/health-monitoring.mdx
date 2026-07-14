@@ -1,0 +1,122 @@
+---
+title: "Sistem Durumu İzleme"
+description: "AgentEye Sistem Durumu İzleme belgeleri."
+---
+
+
+AgentEye dağıtımının **kendisinin** aşağı olduğunu veya bozulmuş olduğunu bilin; yalnızca
+aracılarınızın kötü davranışını değil. Algılama **Kubernetes'e özgüdür** ve önemlisi,
+**AgentEye'den bağımsızdır**: Kubernetes kontrol düzleminden pod durumunu okur ve
+AgentEye'ın sabit bağımlılıklarını kontrol eder; bu sayede sunucu, ClickHouse veya Postgres
+aşağı olduğunda bile uyarı tetiklenir.
+
+İki katman vardır. Birincisi yerleşiktir; ikincisi seçmeli kullanım olanağı sunar.
+
+## 1. Bağımlılık farkında hazırlık durumu (yerleşik)
+
+Sunucu, kasıtlı olarak farklı görevlere sahip iki araştırma uç noktasını ortaya koymaktadır:
+
+| Uç Nokta | Araştırma | Kontroller | Yetkilendirme |
+|---|---|---|---|
+| `GET /health` | liveness | süreç canlı (her zaman `{"status":"ok"}`) | yok |
+| `GET /ready` | readiness | gerçekten sunabilir: **Postgres + ClickHouse** erişilebilir | yok |
+
+`/ready`, her iki sabit bağımlılık da erişilebilir olduğunda `200` ve `"status":"ready"` ile
+her kontrol `"ok"` olarak döner; biri erişilemez olduğunda `503` ve `"status":"not_ready"` ile
+döner. Her iki yanıt da küçük bir gövde içerir:
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+Redis, sunucunun geçtiği isteğe bağlı bir önbellektir; bu nedenle bilgi için raporlanır ancak
+hazırlık durumunu **asla** başarısız kılamaz. Bir önbellek yapılandırıldığında `"ok"` olarak
+gösterilir; aksi takdirde `"not_configured"` olarak gösterilir; hiçbir zaman `"down"` değildir.
+
+Paketlenmiş Kubernetes bildirimlerinde **readiness** araştırması `/ready` konumuna işaret eder
+ve **liveness** `/health` konumunda kalır. Etki: veritabanına ulaşamayan ancak çalışan bir sunucu,
+Service'ten çıkartılır ve `NotReady` olarak gösterilir; bu durum küme izlemenizin (aşağıya bakınız)
+uyarı verebileceği bir durumdur; liveness ucuz kalır, böylece kısa bir bağımlılık sorunu asla pod
+yeniden başlatmasını tetiklemez. Araştırma, anında bir soruna yanıt vermesi için cömert bir
+başarısızlık eşiği kullanır.
+
+## 2. Robusta ile pod hatası uyarısı (seçmeli)
+
+[Robusta](https://github.com/robusta-dev/robusta), API sunucusunu izleyen ve pod hatalarını
+(`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`, `Failed`, tahliyeler)
+Slack'e gönderen Kubernetes'e özgü bir izleme aracıdır. Kontrol düzlemini izlediği için
+AgentEye'a sorgulamadığından, AgentEye hiç sunulamadığında bile uyarı verir.
+
+Robusta, sürüm paketinde seçmeli bir eklenti olarak gönderilir. Standart Robusta Helm grafiği
+ve aşağıda gösterilen küçük değerler dosyasıyla etkinleştirin:
+
+1. Grafik deposunu ekleyin ve kanal için bir Slack **bot token**ı (`xoxb-…`) alın:
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   Aşağıdaki yapılandırma her şeyi küme içinde tutar (`disableCloudRouting: true`),
+   token kendi kendine barındırılan bir Slack uygulamasından gelir: `https://api.slack.com/apps`
+   adresinde bir uygulama oluşturun, `chat:write` bot kapsamını ekleyin, çalışma alanına yükleyin,
+   **Bot User OAuth Token**ı (`xoxb-…`) kopyalayın ve botu kanala davet edin (`/invite @your-app`).
+
+2. Dağıtım başına etiket (`clusterName`) ve Slack kanalınız ile `agenteye` ad alanına
+   kapsamlı `values.yaml` oluşturun:
+
+   ```yaml
+   clusterName: "acme-prod"            # dağıtım başına etiket; her uyarıda görünür
+   enablePrometheusStack: false        # yalnızca pod kilitlenme uyarıları; metrik yığını yok
+   disableCloudRouting: true           # Slack'e doğrudan teslim et, küme içinde
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-… (--set veya gizli anahtar tercih et)
+         scope:
+           include:
+             - namespace: [agenteye]   # yalnızca AgentEye ad alanı uyarıları; genişletmek için kaldır
+   ```
+
+3. Yükleme, `--version` öğesini bilinen iyi Robusta grafik sürümüne sabitle
+   ([sürümler](https://github.com/robusta-dev/robusta/releases)) böylece test edilmemiş bir
+   grafik hiçbir zaman yüklenmez:
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <pin-a-known-good-version> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### Raporlanılan İçerik
+
+- Kubernetes **pod durumu** (hangi AgentEye podunun başarısız olduğu ve neden) ve her podun
+  **görüntü etiketi**, yani çalışan bileşen **sürümü**.
+- **AgentEye olay verisi ve müşteri verisi yok** kümeyi asla terk etmez.
+- Paketlenmiş değerler uyarıları **`agenteye` ad alanı** ile sınırlandırır; bu nedenle
+  aynı kümedeki ilişkisiz iş yükleri raporlanmaz.
+
+### Her dağıtım için bir yer
+
+Her dağıtımın Robusta'sını **bir paylaşılan Slack kanalına** işaret edin; her biri
+kendi `clusterName` değerine sahiptir. Her uyarı bu etiketle etiketlenir; bu nedenle
+tek bir kanal tüm filonuzun durumunu gösterir ve etkilenen dağıtımı bakışta belirleyebilirsiniz.
+
+### Tüm küme kesintileri
+
+Tamamen küme içi bir izleme aracı, **tüm küme veya ağ kesintisini** bildiremez
+(kümeyle birlikte aşağı iner). Buna ihtiyacınız varsa isteğe bağlı **Robusta
+UI sink** öğesini etkinleştirin: `disableCloudRouting: false` ayarlayın ve
+`robusta gen-config` adresinden token içeren bir `robusta_sink` öğesini
+`sinksConfig` öğesine ekleyin. Toplu çok kümeli pano ve kontrol etmeyi bırakan
+kümeyi işaretleyen seçenekler ekler.
+
+## Sorun Giderme
+
+[enterprise-docs/troubleshooting.md](/tr/agenteye/troubleshooting) belgesinin
+**Sistem Durumu İzleme** bölümüne bakın; "uyarı gelmiyorsa" ve "sunucu `NotReady`
+durumunda sürekli tetikleniyor" için çözümleri bulun.

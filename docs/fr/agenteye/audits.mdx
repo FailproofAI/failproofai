@@ -1,0 +1,107 @@
+---
+title: "Audits — détection des améliorations agentiques"
+description: "AgentEye Audits — documentation sur la détection des améliorations agentiques."
+---
+
+
+Les audits sont des tâches récurrentes qui explorent vos journaux d'agent **entre les sessions** pour identifier ce qui mérite d'être amélioré. Là où une alerte surveille une métrique que vous connaissez déjà en quasi-temps réel, un audit *enquête* : selon un calendrier que vous définissez, il effectue un contrôle de politique déterministe sur la fenêtre temporelle, puis confie vos sessions à un **agent de fiabilité IA** — cet agent interroge les données lui-même, lit les transcriptions suspectes, et (si nécessaire) exécute de petits scripts d'analyse, avant de rédiger des **recommandations d'amélioration** accompagnées des preuves correspondantes.
+
+Utilisez les audits pour répondre à la question « que dois-je corriger ou améliorer dans mes agents ? » — et les alertes pour être notifié dès qu'un seuil précis est franchi. Chaque amélioration renvoie aux sessions et requêtes exactes qui la sous-tendent, et un seul clic crée une alerte préremplie pour détecter les récurrences.
+
+La surface du tableau de bord est **`/<org-slug>/audits`** (barre latérale → *analyze* → *audits*), soumise aux permissions `audits:read` / `audits:write`.
+
+---
+
+## Fonctionnement d'une exécution
+
+Chaque exécution comporte deux couches : un socle déterministe et une investigation agentique.
+
+### 1. Le contrôle de politique (déterministe)
+
+Avant tout démarrage du modèle, l'audit exécute un petit catalogue de **vérifications SQL par politique** sur la fenêtre : des requêtes agrégées bornées qui signalent les patterns problématiques connus et indiquent *combien* d'événements / *quelles* sessions correspondent — jamais le texte correspondant lui-même. Le catalogue comprend :
+
+- **Fuite de secrets / identifiants** dans les charges utiles d'événements — clés d'accès AWS, clés API `sk-…`, clés privées PEM, tokens JWT / bearer, et assignations d'identifiants `KEY=…`.
+- **Marqueurs d'injection de prompt** — « ignore previous instructions », « reveal your system prompt », et similaires.
+- **Données personnelles (PII)** — numéros au format SSN (heuristique).
+- **Refus de permission d'outil** et **boucles de cycles d'appels d'outils incontrôlées**.
+
+Les correspondances de politique sont persistées comme résultats (type `policy`) qui **s'affichent toujours** (ils ne sont jamais écrêtés par le plafond par exécution), et ils sont transmis à l'agent IA comme points de départ. Cette couche ne nécessitant aucun modèle, un audit produit ses signaux de sécurité les plus importants même si l'agent IA est indisponible.
+
+### 2. L'investigation agentique (IA)
+
+L'audit lance ensuite un **agent de fiabilité autonome** (le même service Claude Agent SDK qui alimente l'assistant du tableau de bord, avec un prompt spécifique à l'audit). Compte tenu du **périmètre** de l'audit (agents sélectionnés × environnements) et de la **fenêtre temporelle**, l'agent :
+
+- exécute des requêtes SQL en lecture seule sur vos tables analytiques,
+- lit quelques transcriptions de sessions représentatives,
+- écrit et exécute optionnellement de courts **scripts Python dans un bac à sable isolé en pod** (pas de réseau, pas d'accès au système de fichiers, secrets supprimés) pour des analyses que SQL ne peut pas exprimer — regroupement d'erreurs, calcul de distributions, parcours des charges utiles déjà récupérées,
+- et enregistre chaque **amélioration** bien étayée qu'il découvre.
+
+Il explore plusieurs axes d'investigation — regroupement d'erreurs, dérive par rapport à une référence, échec d'objectif dans les transcriptions, mauvaise utilisation des outils, compromis qualité/coût, et lacunes de couverture — selon la **sensibilité** de l'audit (faible / moyenne / élevée). Chaque amélioration **doit citer des preuves** : les identifiants de session que l'agent a réellement inspectés et/ou le SQL qu'il a exécuté. Le serveur vérifie que les sessions citées existent et **écarte toute amélioration sans preuve valide**, de sorte que l'agent enquête sans jamais inventer.
+
+Chaque amélioration comporte :
+
+- une **recommandation** (le changement concret à apporter — une modification de prompt, une correction de schéma d'outil, une politique de réessai, un garde-fou, une meilleure couverture d'évaluation),
+- un **impact attendu** et une estimation de l'**effort** (faible / moyen / élevé),
+- une **magnitude** — `big` (un opérateur doit être alerté), `medium` (appartient au rapport d'exécution), ou `small` (contexte du tableau de bord),
+- une **empreinte** stable (issue de la catégorie et du périmètre du problème, *pas* des sessions de cette exécution) pour que le même problème soit suivi d'exécution en exécution même si les preuves changent,
+- et, lorsqu'un observateur déterministe simple pourrait détecter les récurrences, une **alerte suggérée** que vous pouvez créer en un clic.
+
+> **La couche IA est optionnelle mais recommandée.** Si aucun agent IA n'est configuré pour le pipeline d'audit, les exécutions se déroulent quand même, les résultats de politique sont persistés, et le rapport indique honnêtement « analyse indisponible » pour la couche agentique plutôt que de passer silencieusement.
+
+### Modes d'échec
+
+Les améliorations se classent dans le **catalogue de modes d'échec** durable de votre organisation (ou proposent un nouveau mode). Les modes donnent aux patterns une identité stable entre les exécutions et permettent un suivi des récurrences sur le long terme.
+
+## Cycle de triage
+
+Sur une page de résultat (`/audits/<id>/findings/<finding-id>`) :
+
+| Action | Effet |
+|---|---|
+| **acknowledge** | Garde le résultat visible mais divise sa priorité par deux. |
+| **resolve** | Le marque comme corrigé. Si le pattern réapparaît plus tard, il se rouvre comme **nouveau** — une régression est donc visible, pas silencieusement noyée dans l'historique. |
+| **mute** / **dismiss** | Suppression durable : l'empreinte du pattern est mémorisée et ne s'affiche plus jamais, même entre les exécutions. Utilisez mute pour « connu, accepté » ; dismiss pour « non utile ». |
+| **reopen** | Efface la suppression / résolution et classe de nouveau le pattern. |
+| **assign** | Confie le résultat à un opérateur (un membre de l'organisation) pour en assumer la responsabilité. La priorité et l'état de suppression restent inchangés. |
+
+Le bruit à faible signal est contrôlé par audit avec un plafond de résultats par exécution (`top_k`) sur les améliorations agentiques. Les résultats de politique contournent ce plafond (ils sont pertinents pour la sécurité et toujours affichés). Tout ce qui est écrêté par le plafond est comptabilisé dans les statistiques de l'exécution — rien n'est silencieusement supprimé.
+
+## Planification
+
+- **Cadence** (`schedule_interval_secs`) : de toutes les heures à une fois par semaine ; **quotidien par défaut**. Les audits sont délibérément plus grossiers que les alertes — une investigation agentique analyse des fenêtres entières et s'exécute pendant plusieurs minutes.
+- **Fenêtre** : soit un historique glissant fixe (p. ex. « chaque exécution analyse les 7 derniers jours »), soit **depuis la dernière exécution** (par défaut) — chaque exécution reprend là où la précédente réussie s'est arrêtée, avec un léger chevauchement pour ne jamais manquer les événements en limite de fenêtre.
+- La prochaine exécution est planifiée un intervalle complet après la **fin** de la précédente, de sorte qu'une exécution lente ne provoque jamais une deuxième exécution concurrente du même audit.
+- **Run now** sur la page d'audit la déclenche immédiatement.
+
+## Sélection du modèle
+
+Lors de la création d'un audit, vous pouvez choisir le modèle utilisé pour l'investigation, parmi la **liste des modèles que votre opérateur a configurés** pour le service d'agent. Avec un seul modèle configuré, le sélecteur l'affiche en légende ; avec plusieurs, vous choisissez. Laisser le champ vide utilise le modèle par défaut configuré.
+
+## Notifications
+
+Lorsqu'une exécution fait apparaître de **nouveaux** résultats, l'audit notifie les canaux configurés de votre organisation — le même portail `alerts.enabled_channels` et les mêmes paramètres que ceux utilisés par le pipeline d'alertes :
+
+- **Slack** — un résumé des nouveaux éléments significatifs (`big`) avec un lien direct.
+- **Email** — un **rapport d'audit** structuré listant les nouvelles améliorations (gravité maximale, recommandations par élément, lien direct), envoyé lorsque l'audit dispose d'un canal **email** et qu'il y a au moins un nouveau résultat.
+
+Les résultats récurrents mais déjà connus ne génèrent pas de nouvelle notification.
+
+## Référence de configuration
+
+Les définitions d'audit sont gérées dans le tableau de bord (`/audits/new`) ou via l'API. Les paramètres par audit comprennent la cadence et la fenêtre de planification, le périmètre (`{"environments": [...], "agent_ids": [...]}`), la sensibilité (`low` / `medium` / `high`), les canaux de notification, le plafond de résultats par exécution (`top_k`), et le modèle (via `llm_budget.model`). Les paramètres serveur au niveau de l'opérateur (délais d'attente, bac à sable, URL du service d'agent) sont documentés dans [deployment.md](/fr/agenteye/deployment).
+
+## API
+
+Tous les endpoints sont limités à l'organisation et suivent l'authentification standard par clé bearer (voir [api-keys.md](/fr/agenteye/api-keys)).
+
+| Endpoint | Permission | Objectif |
+|---|---|---|
+| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Lister / créer des définitions d'audit. |
+| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Consulter, modifier, supprimer un audit. |
+| `POST /audits/:id/run` | `audits:write` | Déclencher l'audit immédiatement. |
+| `GET /audits/:id/runs` | `audits:read` | Historique des exécutions (fenêtre, statut, statistiques, nombre de résultats). |
+| `GET /audits/findings` | `audits:read` | Résultats à l'échelle de l'organisation, filtrables par `audit_id`, `status` ; triés par priorité. |
+| `GET /audits/findings/:fid` | `audits:read` | Détail complet du résultat (recommandation, preuves, priorité). |
+| `POST /audits/findings/:fid/status` | `audits:write` | Triage : `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
+
+Pour les cas « l'audit s'est exécuté mais n'a rien trouvé », « le bac à sable de code est désactivé » et « l'email d'audit n'a pas été livré », consultez [troubleshooting.md](/fr/agenteye/troubleshooting#audits).

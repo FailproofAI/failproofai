@@ -1,0 +1,93 @@
+---
+title: "Health Monitoring"
+description: "תיעוד Health Monitoring של AgentEye."
+---
+
+
+דע מתי AgentEye deployment **בעצמו** מושבת או מופחתת, לא רק כשהסוכנים שלך מתנהגים בצורה לא תקינה. הגילוי הוא **Kubernetes-native** ובאופן קריטי, **בלתי תלוי ב-AgentEye**: הוא קורא את מצב הפודים מ-Kubernetes control plane ובודק את התלויות הקשות של AgentEye, כך שהוא עדיין מופעל כאשר השרת, ClickHouse או Postgres הם זה שמושבתים.
+
+ישנן שתי שכבות. הראשונה מובנית; השנייה היא opt-in.
+
+## 1. Readiness מודע לתלויות (מובנה)
+
+השרת חושף שני endpoints probe עם משימות שונות בתכוונין:
+
+| Endpoint | Probe | בדיקות | Auth |
+|---|---|---|---|
+| `GET /health` | liveness | התהליך פעיל (תמיד `{"status":"ok"}`) | אף אחד |
+| `GET /ready` | readiness | יכול להגיש בעצם: **Postgres + ClickHouse** בנגישות | אף אחד |
+
+`/ready` מחזיר `200` עם `"status":"ready"` וכל בדיקה `"ok"` כאשר שתי התלויות הקשות בנגישות, ו-`503` עם `"status":"not_ready"` כאשר אחת מהן לא בנגישות. שתי התשובות מכילות בגוף קטן:
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+Redis הוא cache אופציונלי שהשרת מונמך אחריו, כך שהוא דווח למידע אך **לעולם** לא מכשל readiness. הוא מציג `"ok"` כאשר cache מוגדר ו-`"not_configured"` אחרת; זה לעולם לא `"down"`.
+
+בהצהרות Kubernetes המצורפות ה-**readiness** probe מצביע על `/ready` ו-**liveness** נשאר על `/health`. ההשפעה: שרת ש-*פועל אך לא יכול להגיע לבסיס הנתונים שלו* מוצא מה-Service ומופיע כ-`NotReady`, מצב שהמדידה של הקלאסטר שלך (למטה) יכולה להזהיר בגינו, בעוד liveness נשאר זול כך שקצר dependency blip לעולם לא מפעיל restart של פוד. ה-probe משתמש בסף כישלון נדיב כך ש-blip לרגע לא מניף רפליקות מחוץ לסיבוב.
+
+## 2. Pod-failure alerting עם Robusta (opt-in)
+
+[Robusta](https://github.com/robusta-dev/robusta) הוא Kubernetes-native monitor שצופה בשרת ה-API ופרסם כשלי פודים (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`, `Failed`, evictions) ל-Slack. מכיוון שהוא צופה ב-control plane במקום לבקש מ-AgentEye, הוא מזהיר אפילו כאשר AgentEye לא יכול להגיש כלל.
+
+Robusta משתלם כ-opt-in add-on בחבילת ההוצאה לאור. הפעל אותו עם תרשים Helm סטנדרטי של Robusta וקובץ ערכים קטן כמופיע להלן:
+
+1. הוסף את מאגר התרשים וקבל **bot token** של Slack (`xoxb-…`) עבור הערוץ:
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   מכיוון שהתצורה להלן שומרת הכל בתוך הקלאסטר
+   (`disableCloudRouting: true`), הטוקן מגיע מאפליקציית Slack בעצמה מתוקנת: צור אפליקציה ב-`https://api.slack.com/apps`, הוסף את ה-`chat:write` bot scope, התקן אותה לחלל העבודה שלך, העתק את **Bot User OAuth Token** (`xoxb-…`), והזמן את הבוט לערוץ (`/invite @your-app`).
+
+2. יצור `values.yaml` עם תווית לכל-deployment (`clusterName`) והערוץ Slack שלך, בהיקף ל-`agenteye` namespace:
+
+   ```yaml
+   clusterName: "acme-prod"            # תווית לכל-deployment; מופיעה בכל התראה
+   enablePrometheusStack: false        # pod-crash alerts בלבד; לא metric stack
+   disableCloudRouting: true           # הספק ל-Slack ישירות, בתוך הקלאסטר
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-… (העדף --set או סוד)
+         scope:
+           include:
+             - namespace: [agenteye]   # התראות של namespace של AgentEye בלבד; הסר להרחבה
+   ```
+
+3. התקן, תופס `--version` לשחרור תרשים Robusta ידוע-טוב
+   ([releases](https://github.com/robusta-dev/robusta/releases)) כך שלעולם לא
+   תתקין תרשים שלא בדוקת:
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <pin-a-known-good-version> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### מה הוא מדווח
+
+- **מצב פוד** של Kubernetes (איזה פוד של AgentEye כושל ולמה) וכל **image tag** של פוד, כלומר **גרסת** הרכיב המפעיל.
+- **אין נתוני AgentEye event וללא נתוני לקוח** עוזבים אי פעם את הקלאסטר.
+- ערכי החבילה מגבילים התראות ל-**`agenteye` namespace**, כך שעומס עבודה לא קשור באותו קלאסטר לא דווח.
+
+### מקום אחד לכל deployment
+
+הצבע על כל ה-Robusta של deployment ב-**ערוץ Slack שותף אחד**, כל אחד עם ה-`clusterName` שלו. כל התראה מתויגת בתווית זו, כך שערוץ יחיד מראה את בריאות כל הצי שלך, ותוכל להגיד איזה deployment מושפע במבט אחד.
+
+### הפסקות קלאסטר כולל
+
+שומר בתוך-קלאסטר בלבד לא יכול להדווח על **הפסקה של קלאסטר או רשת כולה**
+(הוא משבתת עם הקלאסטר). אם אתה צריך את זה, הפעל את ה-**Robusta UI sink** האופציונלי: הגדר `disableCloudRouting: false` והוסף `robusta_sink` (עם token מ-`robusta gen-config`) ל-`sinksConfig`. זה מוסיף לוח מחוונים מצטבר מולטי-קלאסטר וציין כל קלאסטר שמפסיק לבדוק.
+
+## פתרון בעיות
+
+ראה את סעיף **Health Monitoring** של
+[enterprise-docs/troubleshooting.md](/he/agenteye/troubleshooting) עבור "אין התראות מגיעות" ו-"שרת ממשיך להפוך `NotReady`".

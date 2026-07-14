@@ -1,0 +1,170 @@
+---
+title: "Receitas de CLI para agentes"
+description: "Documentação de receitas de CLI do AgentEye para agentes."
+---
+
+
+Acesse dados de sessão, evento e avaliação (e dispare reavaliações) diretamente de um script ou agente de código, com JSON limpo no stdout que se encaixa diretamente no `jq`. Essas receitas transformam os dados de observabilidade do AgentEye em algo que um usuário de terminal ou um agente de codificação com IA (Claude Code, Cursor) pode consultar e automatizar, sem precisar clicar no dashboard.
+
+Os padrões abaixo estão prontos para copiar e colar no CLI do AgentEye (`agenteye`). Para instalação, autenticação e a lista completa de opções, consulte [CLI](/pt-br/agenteye/cli); execute `agenteye -h` ou `agenteye <command> -h` para ver a ajuda integrada.
+
+## Regras de ouro
+
+1. **As opções globais vêm *antes* do comando.** `agenteye --json sessions` está correto; `agenteye sessions --json` não está. As globais são `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Passe `--json` sempre que for fazer parsing da saída.** Os dados vão para o **stdout** como JSON; status e erros para humanos vão para o **stderr**, então o stdout permanece limpo para ser redirecionado ao `jq`.
+3. **Tome decisões com base no código de saída**, não no texto do stderr: `0` ok · `2` argumentos inválidos · `3` não foi possível alcançar o dashboard · `4` não autenticado ou sessão expirada · `5` permissão ausente.
+4. **Descubra com `-h`.** Cada comando documenta seus filtros, formatos de valores e estrutura JSON.
+
+## Configuração inicial
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # para não precisar repetir --base-url
+agenteye login --email you@example.com                       # cole o código enviado por e-mail; válido por ~24h
+```
+
+## Confirme a autenticação antes de executar qualquer operação
+
+`whoami` nunca retorna erro por sessão ausente ou expirada; ele reporta `logged_in:false` em vez disso, então um agente pode verificar o estado de autenticação com segurança. (Ainda pode sair com código diferente de zero se nenhuma URL base estiver definida ou o dashboard estiver inacessível.)
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "Not authenticated. Run: agenteye login" >&2; exit 1
+fi
+```
+
+## Encontre sessões com falha ou pontuação baixa
+
+```bash
+# sessões nas últimas 24h cuja avaliação retornou erro
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# avaliações com pontuação <= 0.5 em utilidade, para um agente específico
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+A filtragem por pontuação está em **`evals`**, não em `sessions`. `--score KEY:MIN..MAX` é repetível e combinado com AND; qualquer limite é opcional (`..0.5` significa ≤ 0,5, `0.9..` significa ≥ 0,9). Você pode passar até 20 filtros de pontuação por requisição; mais do que isso retorna HTTP 400. `sessions` compartilha os filtros `--env`, `--status`, `--agent-id`, `--session-id` e de intervalo de tempo com `evals`, mas não possui `--score`.
+
+## Leia uma sessão do início ao fim
+
+Não existe um único comando `session show` — combine o histórico de eventos com a avaliação da sessão:
+
+```bash
+# avaliação mais recente da sessão (status + pontuações)
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# todos os eventos da execução (aumente --limit para uma varredura completa)
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# apenas as chamadas de ferramenta em uma sessão
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+## Busque tudo (paginação)
+
+Os resultados são ordenados do mais recente para o mais antigo e são paginados por cursor.
+
+```bash
+# tudo de uma vez: busca até 500 registros em páginas de 200
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# paginação manual: passe next_cursor de volta
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## Reduza a saída com --fields
+
+Restrinja as chaves (tanto na tabela quanto no `--json`) para diminuir o que um agente precisa ler.
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+Nomes de campos desconhecidos são rejeitados (saída `2`) com a lista de campos válidos — uma forma prática de descobrir os nomes disponíveis.
+
+## Descubra valores de filtro válidos
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # valores para --env
+agenteye --json list tools | jq -r '.values[]'          # nomes de ferramentas; também agents, models, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # KEY válida para --score KEY:MIN..MAX
+```
+
+## Selecione sua organização (multi-tenant)
+
+Se você pertence a mais de uma organização, escolha o tenant ativo no login (ele é salvo):
+
+```bash
+agenteye login --org acme --email you@corp.com   # define o tenant no mesmo passo do login
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # sobrescreve para um único comando
+```
+
+Um login multi-organização sem `--org` sai com código diferente de zero e exibe as organizações disponíveis para escolha.
+
+## Provisione uma chave de API para o SDK/coletor
+
+```bash
+# o segredo é exibido UMA ÚNICA VEZ — com --json está no campo .key
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # rotaciona; use agenteye keys disable ci-bot --yes para revogar
+```
+
+## Execute uma consulta salva ou ad-hoc
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # uma consulta salva + um $1 posicional
+```
+
+## Faça triagem de um incidente de forma não interativa
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> Mutações ignoram automaticamente o prompt de confirmação quando `--json` está presente ou quando o stdin não é um TTY, para que agentes nunca fiquem travados; passe `--yes`/`-y` para ignorá-lo explicitamente em outros contextos.
+
+## Tratamento de código de saída em um script
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "Session expired - run 'agenteye login'." >&2 ;;
+  5) echo "Missing permission (ask an admin for evaluations:read)." >&2 ;;
+  3) echo "Dashboard unreachable - check the URL." >&2 ;;
+  *) echo "Unexpected error (exit ${code})." >&2 ;;
+esac
+```
+
+## Formatos de saída JSON
+
+| Comando | JSON no stdout (com `--json`) |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` ou `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` exibida uma única vez) |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| create/update/delete (qualquer) | o objeto do recurso, ou `{"deleted": true, "id"}` para exclusões |
+| falha (qualquer, com `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` no stdout |
+
+- Cada item de **evento** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment`.
+- Cada item de **avaliação** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- Cada item de **sessão** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+
+O `--fields` de cada comando aceita exatamente os nomes de campo do seu próprio item — o conjunto difere entre `sessions` e `evals`, então um nome válido para um pode ser rejeitado pelo outro.

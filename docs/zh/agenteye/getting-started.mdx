@@ -1,0 +1,235 @@
+---
+title: "AgentEye 入门指南"
+description: "AgentEye 入门指南文档。"
+---
+
+
+本指南将带您完成 AgentEye 的完整配置流程：部署服务端与控制台、在智能体机器上安装收集器，以及为您的 Python 智能体代码添加埋点。
+
+---
+
+## 什么是 AgentEye？
+
+AgentEye 是一款**面向 AI 智能体的自托管可观测性与评估平台**。它记录智能体的每一个动作——运行过程中的每一步——并自动对每次已完成的运行质量进行评分，帮助您掌握智能体在生产环境中的行为，在用户发现问题之前提前捕获性能退化。
+
+数据按单一方向流动：您的智能体代码通过 **Python SDK** 发送**事件** → 轻量级**收集器**守护进程批量将其上报至**服务端** → 事件与分析数据存储在 **ClickHouse** 中（组织、用户、API 密钥、控制台、保存的查询等运营状态存储在 **Postgres** 中）→ 您在**控制台**中浏览所有数据。
+
+您将获得：
+
+- **事件** — 每次智能体运行的原始逐步记录（工具调用、模型调用、钩子、错误）。
+- **会话** — 将事件聚合为每次运行一行，每行均经过**自动评估与评分**。
+- **评估** — 由您自己的评估服务生成的质量分数，无需人工审查即可发现质量下滑。
+- **查询与控制台** — 基于 ClickHouse SQL 对数据进行保存查询，并绘制为组织范围内的共享控制台。
+- **告警与事件** — 当指标超过阈值时通知您（邮件、Slack、Webhook、控制台内通知），并提供事件处理工作流。
+- **CLI 与 AI 助手** — 终端客户端（`agenteye`）以及控制台内的助手，支持用自然语言提问。
+
+所有组件均运行在您自己的基础设施上，可以作为单个 Docker Compose 栈（本指南）、生产级 Kubernetes 安装，或单个同地部署的 Pod。本指南将从头到尾搭建 Compose 栈。
+
+---
+
+## 第一步：认证
+
+所有 AgentEye 制品均通过 `agenteye-enterprise` GitHub 组织分发。作为企业开发者，您可以生成自己的 GitHub PAT。请参阅 [enterprise-docs/github-token.md](/zh/agenteye/github-token) 了解详细步骤和所需权限。
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Authenticate Docker against GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## 第二步：部署服务端与控制台
+
+服务端接收来自收集器的事件并使其可查询；控制台是您浏览数据的界面。摄入的事件与分析数据存储在 ClickHouse（必需的分析存储）中，Postgres 则保存运营状态，如组织、用户、API 密钥、控制台和保存的查询。
+
+**下载发布的 Compose 文件：**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**设置密钥：**
+
+创建 `.env` 文件，确保部署不使用默认的 `admin` 凭据。至少需要设置 `ADMIN_KEY` 和 `POSTGRES_PASSWORD`：
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+同时在当前 Shell 中导出 `ADMIN_KEY`，以便后续步骤（如第三步的 `curl`）可以直接引用：
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**启动服务栈：**
+
+```bash
+docker compose up -d
+```
+
+这将启动完整的服务栈，包括必需的 ClickHouse 分析存储、可选的 Redis 缓存，以及服务端和控制台。服务端启动前 ClickHouse 必须处于健康状态。
+
+服务端现在监听 `http://localhost:8080`，控制台监听 `http://localhost:3000`。
+
+如需生产部署（自定义 Postgres、TLS、反向代理），请参阅 [enterprise-docs/deployment.md](/zh/agenteye/deployment)。
+
+---
+
+## 第三步：为收集器创建 API 密钥
+
+每个收集器使用有范围限制的 API 密钥进行认证。使用第二步中设置的 `ADMIN_KEY` 创建一个：
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+`key` 值由您自行提供，在第四步的收集器配置中使用。完整的密钥管理说明请参阅 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)。
+
+---
+
+## 第四步：安装收集器
+
+在运行 AI 智能体的每台机器上安装收集器守护进程。
+
+**下载二进制文件（Linux x86_64）：**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> 上述命令下载的是 **Linux x86_64** 构建版本。如需 macOS（Apple Silicon 或 Intel）、Linux arm64，或 Docker / systemd / launchd 安装方式，请参阅 [collector-installation.md](/zh/agenteye/collector-installation)，其中列出了各平台的下载链接——以上命令安装的是 Linux 二进制文件，无法在其他平台上运行。
+
+**配置：**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**启动守护进程：**
+
+```bash
+agenteye-collector start
+```
+
+通过一次性刷新验证连通性（排空所有待处理事件后退出）：
+
+```bash
+agenteye-collector flush
+```
+
+Docker、systemd 和 launchd 的安装说明请参阅 [enterprise-docs/collector-installation.md](/zh/agenteye/collector-installation)。
+
+---
+
+## 第五步：安装 Python SDK
+
+在需要对智能体代码进行埋点的每台机器上，从 GitHub Releases 安装 wheel 包。
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## 第六步：为您的智能体添加埋点
+
+在智能体代码中添加事件。最低要求是发送 `agent_start` 和 `agent_end`：
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# your agent logic here
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+事件会被缓冲并每 500 毫秒刷新到 `$AGENTEYE_HOME/events/`（若未设置 `AGENTEYE_HOME`，则写入 `~/.agenteye/events/`）。收集器会自动拉取这些文件。
+
+完整的事件 API 请参阅 [enterprise-docs/python-sdk.md](/zh/agenteye/python-sdk)。
+
+---
+
+## 第七步：在控制台中查看事件
+
+打开 `http://your-dashboard-host:3000` 并登录。AgentEye 会向您发送一次性验证码（或一键魔法链接），无需管理密码。
+
+![AgentEye 登录界面，向您的邮箱发送一次性验证码](/agenteye/images/login.png)
+
+登录后，**事件**页面会显示所有已摄入事件的实时流。按 `session_id` 或 `agent_id` 筛选，即可深入查看特定运行。
+
+![实时事件流，按事件类型标色，可按环境、智能体和会话筛选](/agenteye/images/events-stream.png)
+
+**会话**页面将这些事件聚合为每次运行一行。AgentEye 会自动评估已完成的会话，因此每次运行都会被评分，质量退化无需人工审查即可浮现；每行一目了然地显示最新评估分数：
+
+![会话列表，每次运行一行，带有状态标签和评估分数徽章](/agenteye/images/sessions-list.png)
+
+如需配置会话评分方式，请参阅 [enterprise-docs/evaluation-suite.md](/zh/agenteye/evaluation-suite)。
+
+点击任意会话可查看其**执行图**，这是一个类似 git 的视图，展示智能体、工具、钩子和模型调用随时间的展开过程，并行子智能体各占独立泳道，右侧面板提供单次运行的详细分解：
+
+![会话的类 git 执行图及其事件时间线，旁边是工具/模型/钩子分解面板](/agenteye/images/session-detail.png)
+
+---
+
+## 第八步：探索、可视化与告警
+
+在事件持续流入后，**分析**页面可将原始活动转化为洞察，帮助您衡量智能体行为、在团队间共享发现，并在出现退化时第一时间收到通知。控制台页面以组织为作用域，因此地址栏中的 URL 均以您的组织 slug 为前缀（`/<org>/…`）。
+
+- **查询**（`/<org>/queries`）：从针对事件和评估数据的可复用查询库中出发（包含内置预设和您自定义的查询）……
+
+![保存的查询库：可复用查询的网格视图，包含内置预设和自定义查询](/agenteye/images/queries.png)
+
+  ……然后在 SQL 编辑器中打开某个查询，进行调整并实时查看运行结果：
+
+![SQL 查询编辑器正在运行一条保存的查询，左侧为 Schema 侧边栏，右侧为实时结果表格](/agenteye/images/query-lab.png)
+
+- **控制台**（`/<org>/dashboards`）：将查询以折线图、柱状图、面积图或饼图的形式固定为图块，组成在整个组织范围内共享的控制台。
+
+![由保存的查询构建的控制台：每小时事件数折线图、按类型分类的错误柱状图、延迟面积图和按模型统计的 Token 数](/agenteye/images/dashboard-fleet.png)
+
+- **告警**（`/<org>/alerts`）：将任何阈值提升为告警规则，通过邮件、Slack、Webhook 或控制台内通知进行提醒。请参阅 [enterprise-docs/alerts.md](/zh/agenteye/alerts)。
+
+---
+
+## 后续步骤
+
+- [部署](/zh/agenteye/deployment)：为生产环境加固
+- [API 密钥](/zh/agenteye/api-keys)：管理访问权限
+- [故障排查](/zh/agenteye/troubleshooting)：诊断问题

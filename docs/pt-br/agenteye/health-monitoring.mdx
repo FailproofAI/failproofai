@@ -1,0 +1,134 @@
+---
+title: "Monitoramento de Saúde"
+description: "Documentação de Monitoramento de Saúde do AgentEye."
+---
+
+Saiba quando um deployment do AgentEye está **ele próprio** fora do ar ou
+degradado — não apenas quando seus agentes se comportam mal. A detecção é
+**nativa do Kubernetes** e, crucialmente, **independente do AgentEye**: ela lê o
+estado dos pods a partir do plano de controle do Kubernetes e verifica as
+dependências críticas do AgentEye, então continua disparando alertas mesmo
+quando o servidor, o ClickHouse ou o Postgres é o que está fora do ar.
+
+Existem duas camadas. A primeira é integrada; a segunda é opcional.
+
+## 1. Readiness com consciência de dependências (integrado)
+
+O servidor expõe dois endpoints de probe com responsabilidades deliberadamente
+distintas:
+
+| Endpoint | Probe | Verificações | Autenticação |
+|---|---|---|---|
+| `GET /health` | liveness | processo está vivo (sempre `{"status":"ok"}`) | nenhuma |
+| `GET /ready` | readiness | consegue servir de verdade: **Postgres + ClickHouse** acessíveis | nenhuma |
+
+`/ready` retorna `200` com `"status":"ready"` e todas as verificações com `"ok"`
+quando ambas as dependências críticas estão acessíveis, e `503` com
+`"status":"not_ready"` quando uma delas está inacessível. Ambas as respostas
+carregam um corpo pequeno:
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+O Redis é um cache opcional pelo qual o servidor opera em modo degradado, por
+isso é reportado apenas para informação, mas **nunca** falha o readiness. Ele
+aparece como `"ok"` quando um cache está configurado e `"not_configured"` caso
+contrário; jamais aparece como `"down"`.
+
+Nos manifestos Kubernetes incluídos no pacote, o probe de **readiness** aponta
+para `/ready` e o de **liveness** permanece em `/health`. O efeito: um servidor
+que está *rodando mas não consegue alcançar seu banco de dados* é removido do
+Service e aparece como `NotReady` — um estado que o monitoramento do seu cluster
+(abaixo) pode alertar — enquanto o liveness permanece leve para que uma
+instabilidade momentânea de dependência nunca dispare o reinício do pod. O probe
+usa um limiar de falha generoso para que uma instabilidade momentânea não faça
+as réplicas entrarem e saírem da rotação.
+
+## 2. Alertas de falha de pod com Robusta (opcional)
+
+[Robusta](https://github.com/robusta-dev/robusta) é um monitor nativo do
+Kubernetes que observa o servidor de API e envia falhas de pod
+(`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`,
+`Failed`, despejos) para o Slack. Por observar o plano de controle em vez de
+consultar o AgentEye, ele alerta mesmo quando o AgentEye não consegue servir
+nenhuma requisição.
+
+O Robusta vem como um complemento opcional no pacote de lançamento. Habilite-o
+com o Helm chart padrão do Robusta e o pequeno arquivo de values mostrado abaixo:
+
+1. Adicione o repositório do chart e obtenha um **bot token** do Slack
+   (`xoxb-…`) para o canal:
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   Como a configuração abaixo mantém tudo dentro do cluster
+   (`disableCloudRouting: true`), o token vem de um aplicativo Slack
+   auto-hospedado: crie um app em `https://api.slack.com/apps`, adicione o
+   escopo de bot `chat:write`, instale-o no seu workspace, copie o **Bot User
+   OAuth Token** (`xoxb-…`) e convide o bot para o canal (`/invite @seu-app`).
+
+2. Crie um `values.yaml` com um label por deployment (`clusterName`) e seu
+   canal do Slack, com escopo para o namespace `agenteye`:
+
+   ```yaml
+   clusterName: "acme-prod"            # label por deployment; aparece em cada alerta
+   enablePrometheusStack: false        # apenas alertas de crash de pod; sem stack de métricas
+   disableCloudRouting: true           # entrega diretamente ao Slack, dentro do cluster
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-… (prefira --set ou um secret)
+         scope:
+           include:
+             - namespace: [agenteye]   # apenas alertas do namespace AgentEye; remova para ampliar
+   ```
+
+3. Instale fixando `--version` em uma versão conhecida e estável do chart do
+   Robusta ([releases](https://github.com/robusta-dev/robusta/releases)) para
+   nunca instalar um chart não testado:
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <fixe-uma-versao-conhecida> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### O que é reportado
+
+- **Estado dos pods** do Kubernetes (qual pod do AgentEye está falhando e por
+  quê) e a **tag de imagem** de cada pod, ou seja, a **versão** do componente
+  em execução.
+- **Nenhum dado de eventos do AgentEye e nenhum dado de cliente** jamais sai
+  do cluster.
+- Os values incluídos restringem os alertas ao **namespace `agenteye`**, de
+  forma que workloads não relacionadas no mesmo cluster não sejam reportadas.
+
+### Um único lugar para cada deployment
+
+Aponte o Robusta de cada deployment para **um canal Slack compartilhado**, cada
+um com seu próprio `clusterName`. Cada alerta é marcado com esse label, de modo
+que um único canal exibe a saúde de toda a sua frota e você consegue identificar
+qual deployment foi afetado de relance.
+
+### Interrupções totais do cluster
+
+Um watcher puramente dentro do cluster não consegue reportar uma **interrupção
+total do cluster ou da rede** (ele cai junto com o cluster). Se você precisar
+disso, habilite o **sink da UI do Robusta** opcional: defina
+`disableCloudRouting: false` e adicione um `robusta_sink` (com um token gerado
+por `robusta gen-config`) ao `sinksConfig`. Ele adiciona um dashboard
+multi-cluster agregado e sinaliza qualquer cluster que pare de fazer check-in.
+
+## Solução de Problemas
+
+Consulte a seção **Health Monitoring** em
+[enterprise-docs/troubleshooting.md](/pt-br/agenteye/troubleshooting) para os casos
+"nenhum alerta chegando" e "servidor continua alternando para `NotReady`".

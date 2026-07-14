@@ -1,0 +1,172 @@
+---
+---
+title: "Distribuzione Gestita nel Vostro Cluster Kubernetes"
+description: "Documentazione della distribuzione gestita di AgentEye nel vostro cluster Kubernetes."
+---
+
+
+AgentEye è una piattaforma di osservabilità e valutazione auto-ospitata per agenti AI e LLM. Cattura sessioni di agenti, chiamate di strumenti, richieste di modelli ed errori, li trasforma in analytics e valutazioni ricercabili, e presenta i risultati in un dashboard con un assistente AI facoltativo in sola lettura.
+
+Nel modello di distribuzione gestita, voi fornite un cluster Kubernetes dedicato ed Exosphere esegue l'intera piattaforma al suo interno, distribuendo, configurando, operando, eseguendo il backup e aggiornando ogni componente per vostro conto. Il vostro team ottiene il valore della piattaforma (visibilità degli agenti, analytics, valutazione e l'assistente facoltativo) senza gestire database, certificati o aggiornamenti. Tutti i dati rimangono all'interno del vostro account cloud.
+
+---
+
+## Prerequisiti
+
+- Un **GitHub PAT** per scaricare immagini di container e artefatti (vedere [Configurazione del Token GitHub](/it/agenteye/github-token))
+- Un **cluster Kubernetes dedicato** (vedere i requisiti di seguito)
+- Un **bucket di storage** per i backup del database
+- **Connettività di rete**: porta 443 in ingresso al load balancer del cluster
+
+---
+
+## Fase 1: Provisioning di un Cluster Kubernetes Dedicato
+
+Creare un cluster Kubernetes dedicato ad AgentEye. Non deve essere condiviso con altri carichi di lavoro, in modo che l'intera piattaforma (servizi applicativi, database, analytics e caching) funzioni in isolamento senza impattare l'infrastruttura esistente.
+
+| Requisito | Dettagli |
+|---|---|
+| **Distribuzione** | Qualsiasi Kubernetes conforme: EKS, GKE, AKS, o auto-gestito |
+| **Versione** | 1.27 o successiva |
+| **Pool di nodi** | Minimo: **3 nodi, 4 vCPU / 8 GB RAM ciascuno** (istanze general-purpose standard) |
+| **Storage** | Una StorageClass predefinita che provisioning di volumi a blocchi (es. `gp3` su AWS, `pd-ssd` su GCP) |
+| **Load Balancer** | Il cluster deve essere in grado di effettuare il provisioning di servizi LoadBalancer nel cloud (predefinito su EKS, GKE, AKS) |
+
+> Exosphere installa e gestisce tutto il resto all'interno del cluster: controller di ingress, certificati TLS, database, caching, monitoraggio e tutte le distribuzioni di applicazioni.
+
+---
+
+## Fase 2: Concedere Accesso al Team di AgentEye
+
+Exosphere ha bisogno di accesso cluster-admin (o RBAC ampio equivalente) per gestire namespace, definizioni di risorse personalizzate, controller di ingress e provisioner di storage.
+
+| Requisito | Dettagli |
+|---|---|
+| **Metodo di accesso** | Ruolo IAM (preferito per EKS/GKE), kubeconfig, o accesso basato su SSO |
+| **VPN / bastion** | Se il server API Kubernetes è privato, fornire credenziali VPN o accesso bastion per il team delle operazioni Exosphere |
+
+---
+
+## Fase 3: Configurare la Connettività di Rete
+
+Il vostro team di rete deve permettere il traffico in ingresso sulla **porta 443** ai load balancer del cluster. La distribuzione esegue due load balancer separati: uno per l'acquisizione di eventi (protetto da mTLS) e uno per il dashboard:
+
+| Traffico | Sorgente | Destinazione | Sicurezza |
+|---|---|---|---|
+| **Acquisizione di eventi** | Pod di raccolta nei vostri cluster | LoadBalancer di acquisizione, porta 443 | mTLS (certificato client) + chiave API |
+| **Dashboard** | Browser degli sviluppatori | Dashboard LoadBalancer, porta 443 | HTTPS nel vostro dominio, accesso OTP email senza password |
+
+L'endpoint di acquisizione è protetto da TLS reciproco; i raccoglitori devono presentare un certificato client valido **e** una chiave API valida ad ogni richiesta. Il dashboard funziona nel suo load balancer e hostname separati, con l'accesso limitato agli indirizzi email/domini che avete consentito.
+
+**Record DNS (una tantum):** voi create due record CNAME in un dominio che controllate — uno per l'endpoint di acquisizione e uno per il dashboard (es. `agenteye.your-company.example`) — puntando ai nomi host del load balancer che Exosphere fornisce. Exosphere provisioning automaticamente certificati TLS pubblicamente affidabili per entrambi i nomi host, inclusi i rinnovi.
+
+> **Nota porta 80:** il rilascio automatico dei certificati e il rinnovo si validano sulla porta 80 di ogni load balancer tramite HTTP. Se la vostra postura di sicurezza richiede di limitare il dashboard load balancer a intervalli IP aziendali, comunicatelo a Exosphere — passiamo alla convalida dei certificati basata su DNS (un record DNS extra dal vostro lato) in modo che i rinnovi continuino a funzionare dietro la restrizione.
+
+> **In uscita:** I nodi del cluster hanno bisogno di accesso a Internet per scaricare immagini di container da `ghcr.io`. Se la vostra rete limita il traffico in uscita, consentite `ghcr.io` o specchiate le immagini nel vostro registro interno.
+
+---
+
+## Fase 4: Fornire un Bucket di Storage per il Backup
+
+I backup del database sono archiviati in un bucket di cloud storage che voi possedete.
+
+| Requisito | Dettagli |
+|---|---|
+| **Servizio** | S3 (AWS), GCS (GCP), o Azure Blob Storage |
+| **Accesso** | Concedere accesso in scrittura ai nodi del cluster tramite ruolo IAM per account di servizio (IRSA su EKS, Workload Identity su GKE) o fornire credenziali |
+| **Conservazione** | Voi controllate la politica del ciclo di vita del bucket (periodo di conservazione, regole di archiviazione). Exosphere scrive i backup; voi decidete quanto tempo conservarli |
+
+Un singolo backup giornaliero esegue il dump sia di PostgreSQL (stato relazionale) che di ClickHouse (eventi e valutazioni) in un singolo archivio compresso e lo carica nel vostro bucket. I backup vengono eseguiti anche prima di ogni aggiornamento.
+
+---
+
+## Fase 5: Designare un Punto di Contatto
+
+Fornite una persona o un canale Slack/Teams dal vostro lato per i problemi a livello di cluster: salute dei nodi, limiti dell'account cloud, modifiche di rete. Le operazioni quotidiane non coinvolgono questo contatto.
+
+---
+
+## Cosa Distribuiamo
+
+Una volta che Exosphere ha accesso al cluster, i seguenti componenti vengono distribuiti e gestiti per voi:
+
+| Componente | Ruolo |
+|---|---|
+| **Server AgentEye** | API HTTP che riceve eventi dai raccoglitori, esegue analytics e fornisce dati al dashboard |
+| **Dashboard** | Interfaccia web per visualizzare sessioni di agenti, chiamate di strumenti, richieste di modelli ed errori; ospita l'assistente AI facoltativo in sola lettura |
+| **ClickHouse** | Archivio canonico obbligatorio per eventi acquisiti, analytics e valutazioni |
+| **PostgreSQL** | Archivio relazionale per organizzazioni, chiavi API, utenti, dashboard e query salvate |
+| **Redis** | Cache condivisa facoltativa e backend per limitare la frequenza; la piattaforma si degrada elegantemente se non disponibile |
+| **Assistente AI (facoltativo)** | Container assistente interno in sola lettura; rimane disabilitato fino a quando non viene configurato un endpoint LLM |
+| **Controller di ingress** | Due load balancer (uno per acquisizione protetta da mTLS, uno per il dashboard) che terminano TLS con certificati pubblicamente affidabili e auto-rinnovati e applicano mTLS nell'endpoint di acquisizione |
+| **cert-manager** | Automatizza il provisioning di certificati TLS e il rilascio di certificati client mTLS |
+| **Monitoraggio certificati** | Un lavoro pianificato verifica la scadenza dei certificati e invia avvisi (es. a Slack) quando i certificati si avvicinano al rinnovo |
+
+L'offerta gestita opera anche la pipeline di valutazione della piattaforma, che valuta l'attività dell'agente rispetto ai vostri criteri di valutazione. Vedere [Assistant](/it/agenteye/assistant) e [Evaluation Suite](/it/agenteye/evaluation-suite) per cosa queste funzionalità forniscono.
+
+---
+
+## Cosa Vi Forniamo
+
+Dopo il completamento della distribuzione, ricevete:
+
+| Elemento | Dettagli |
+|---|---|
+| **URL del Dashboard** | Un nome host sotto il vostro dominio (es. `https://agenteye.your-company.example`), fornito con un certificato TLS pubblicamente affidabile e auto-rinnovato. Voi create un CNAME al nome host del load balancer che forniamo; l'accesso è passwordless OTP email |
+| **Endpoint di raccolta** | Il percorso `/events` del nome host di acquisizione (es. `https://ingest.your-company.example/events`), protetto da mTLS |
+| **Bundle certificato client** | Per cluster: certificato client, chiave privata e certificato CA consegnati come manifesto Kubernetes Secret. Applicateli una volta per cluster |
+| **GitHub PAT** | Per scaricare i binari del raccoglitore e i pacchetti Python SDK |
+| **Chiavi API del raccoglitore** | Chiavi ambite con permesso `events:add`, una per distribuzione di raccoglitore |
+| **Guide di installazione** | Documentazione passo passo per il raccoglitore e Python SDK |
+
+---
+
+## Cosa Fate Dopo la Configurazione
+
+Il vostro unico lavoro in corso è sulle vostre proprie macchine di agenti, non sul cluster AgentEye:
+
+1. **Installare il raccoglitore** in ogni cluster Kubernetes che esegue agenti AI: montare il certificato client e configurare l'URL dell'endpoint e la chiave API. Vedere [Installazione del Raccoglitore](/it/agenteye/collector-installation).
+2. **Integrare Python SDK** nel vostro codice di agente. Vedere [Python SDK](/it/agenteye/python-sdk).
+3. **Aprire il dashboard** nel vostro browser per visualizzare l'attività dell'agente.
+
+Nessuna operazione di cluster, nessuna gestione di database, nessun rinnovo di certificati, nessun aggiornamento.
+
+---
+
+## Sicurezza
+
+- **I dati rimangono nel vostro account cloud.** Il cluster, lo storage e i database vengono tutti eseguiti nel vostro ambiente. Nessun dato esce dal vostro confine.
+- **Voi controllate l'accesso.** Il cluster è nel vostro account. Potete controllare, monitorare o revocare l'accesso di Exosphere in qualsiasi momento. Tutte le operazioni passano attraverso il registro di audit del vostro cloud (CloudTrail, GCP Audit Logs, ecc.).
+- **mTLS su acquisizione di eventi.** Ogni richiesta del raccoglitore richiede sia un certificato client valido che una chiave API. Una chiave trapelata è inutile senza il certificato; un certificato rubato è inutile senza una chiave valida.
+- **Controllo dell'accesso al dashboard.** Il dashboard funziona nel suo load balancer separato, distinto dall'acquisizione di eventi, e l'accesso è passwordless OTP email limitato agli indirizzi email/domini che consentite. Un elenco di intervalli IP sorgente nel load balancer è disponibile su richiesta; poiché il rinnovo automatico del certificato deve raggiungere il load balancer, Exosphere accoppia la restrizione alla convalida del certificato basata su DNS in modo che i rinnovi continuino a funzionare.
+- **Certificati per cluster.** Ognuno dei vostri cluster riceve il suo certificato client. Se un cluster viene compromesso, quel certificato viene revocato indipendentemente senza influire sugli altri.
+
+---
+
+## Timeline di Distribuzione
+
+| Fase | Durata | Vostro coinvolgimento |
+|---|---|---|
+| **Provisioning del cluster** | 1-2 giorni | Effettuare il provisioning del cluster e concedere accesso a Exosphere |
+| **Configurazione della piattaforma** | 1 giorno | Nessuno; Exosphere installa tutti i componenti infrastrutturali |
+| **Distribuzione dell'applicazione** | 1 giorno | Nessuno; Exosphere distribuisce il server, il dashboard e crea chiavi API |
+| **Rollout del raccoglitore** | 1-3 giorni | Installare i raccoglitori nei vostri cluster (con guida da Exosphere) |
+| **Rodaggio in produzione** | 1 settimana | Nessuno; Exosphere monitora e ottimizza |
+
+Totale tipico: **~2 settimane** dal via ai ready per la produzione.
+
+---
+
+## Supporto
+
+Per domande o problemi, contattate Exosphere a `support@exosphere.host`.
+
+---
+
+## Passaggi Successivi
+
+- [Guida Introduttiva](/it/agenteye/getting-started): procedura dettagliata end-to-end
+- [Installazione del Raccoglitore](/it/agenteye/collector-installation): installa e configura il raccoglitore
+- [Python SDK](/it/agenteye/python-sdk): strumenta il tuo codice di agente
+- [Chiavi API](/it/agenteye/api-keys): gestisci accesso e permessi
+- [Risoluzione dei Problemi](/it/agenteye/troubleshooting): problemi comuni e soluzioni

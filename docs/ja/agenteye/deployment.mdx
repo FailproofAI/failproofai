@@ -1,0 +1,415 @@
+---
+title: "デプロイメント"
+description: "AgentEye デプロイメントドキュメント。"
+---
+
+
+このガイドでは、AgentEye サーバーとダッシュボードを本番環境にデプロイする方法を説明します。
+
+---
+
+## アーキテクチャ概要
+
+```
+  [ AIエージェントマシン ]                  [ あなたのインフラ ]
+
+    Python SDK
+       |  JSONLを書き込む                       +----------------------+
+       v                                +--->| PostgreSQL 15+       |
+ agenteye-collector --HTTP--+           |    | (リレーショナルストア)   |
+                            |           |    +----------------------+
+                            v           |
+                       +--------+       |    +----------------------+
+                       | Server |<------+--->| ClickHouse 24+       |
+                       +--------+       |    | (イベント / 分析)     |
+                            ^           |    +----------------------+
+                        API |           |
+                            |           |    +----------------------+
+                      +-----------+     +- - >| Redis 7+ (オプション) |
+                      | Dashboard |           +----------------------+
+                      +-----------+
+```
+
+- **Server**: Rust 製 HTTP サービス。イベントバッチを受信し、ClickHouse に書き込み、PostgreSQL でリレーショナル状態を管理します。
+- **Dashboard**: Next.js ウェブアプリ。サーバー API 経由でのみ読み書きします。
+- **agenteye-collector**: サーバーホストではなく、エージェントマシンにデプロイします。
+- **Postgres 15+**: **必須**。（マルチテナントリリースで 14 から引き上げ。org-membership スキーマが列リスト `ON DELETE SET NULL` 外部キーを使用しており、これは Postgres 15+ の機能です。このバージョンをデプロイする前に Postgres をアップグレードしてください。）OLTP 状態を保管します: `api_keys`、`users`、`sessions`、`evaluation_jobs`（キュー）、`dashboards`、`saved_queries`、`otp_codes`、およびマルチテナントテーブル `orgs`、`org_memberships`、`org_settings`。
+- **ClickHouse 24+**: **必須**。すべての取り込みイベントの分析ストア。エンジン: `ReplacingMergeTree`、月単位でパーティション分割、`(session_id, ts, dedup_key)` 順。サーバーは `CLICKHOUSE_URL` 経由で接続します。同梱の `deploy/base/clickhouse/` にはパフォーマンスチューニング済みシングルノード設定が含まれています。**マルチテナント要件:** 同梱設定では SQL アクセス管理と `users_without_row_policies_can_read_rows=false` が有効化されており、サーバーが組織ごとに読み取り専用 ClickHouse ユーザーと行ポリシーを作成できます（SQL エディターと AI エージェントのエンジンレベルの分離境界）。独自の ClickHouse 設定を使用する場合は、これらの設定を引き継いでください（`deploy/base/clickhouse/configmap.yaml` 参照）。
+- **Redis 7+**: *オプション*の共有キャッシュ + レート制限バックエンド。サーバーとダッシュボードの両方が `REDIS_URL` 経由で接続します。存在しない場合、どちらも Postgres のみのパスに安全にフォールバックします。後述の **Redis（オプションキャッシュ）** を参照してください。
+
+---
+
+## サーバー
+
+### イメージのプル
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+> 現在のビルドは `beta-latest` で公開されています。`latest` は安定版リリースにのみ割り当てられます。本番環境では特定の `:v<バージョン>` タグを固定してください。[利用可能なイメージタグ](#available-image-tags)を参照してください。
+
+### 環境変数
+
+| 変数 | 必須 | デフォルト | 説明 |
+|---|---|---|---|
+| `DATABASE_URL` | はい | なし | Postgres DSN。`postgres://` スキームの標準 libpq 接続文字列形式。`?sslmode=require` などの libpq パラメーターをサポートします。パスワードに `/`、`+`、`=` を含めないでください。URL セーフなパスワードの生成には `openssl rand -hex` を使用してください。 |
+| `ADMIN_KEY` | いいえ | なし | ブートストラップ管理者 API キー。起動のたびに全権限でアップサートされます。値を変更して再起動することでローテーションできます。 |
+| `LISTEN_ADDR` | いいえ | `0.0.0.0:8080` | バインドする TCP アドレス |
+| `MAX_BODY_BYTES` | いいえ | `134217728`（128 MB） | リクエストボディの最大サイズ |
+| `ADMIN_EMAIL` | いいえ | なし | ブートストラップ管理者ユーザーのメールアドレス。起動のたびに全権限でアップサートされ、保護済みとしてマークされます（ダッシュボード/API から無効化や権限変更が不可）。ブートストラップ管理者をローテーションするには、`ADMIN_EMAIL` を変更して再起動してください。新しいメールアドレスが保護済みとしてアップサートされ、以前のアドレスは手動でデータベースから削除するまで保護が維持されます。 |
+| `ALLOWED_EMAILS` | いいえ | なし（すべてブロック） | ユーザー作成およびログインを許可するメールアドレスのカンマ区切りリスト。完全なアドレス（`user@example.com`）とドメインワイルドカード（`*@example.com`）をサポートします。未設定の場合、ユーザーの作成もログインもできません。**初回起動時のシードのみ**: 初回起動時にデフォルト org のアローリストをシードします。それ以降は各 org の [`/<org>/settings`](#operational-settings) ページが正式な設定元となり、この環境変数の変更は無効です。 |
+| `SMTP_HOST` | いいえ | なし | OTP メール送信用 SMTP サーバーのホスト名。未設定の場合、OTP コードは stdout に記録されます。 |
+| `SMTP_PORT` | いいえ | `587` | SMTP サーバーのポート |
+| `SMTP_USERNAME` | いいえ | なし | SMTP 認証ユーザー名 |
+| `SMTP_PASSWORD` | いいえ | なし | SMTP 認証パスワード |
+| `SMTP_FROM` | いいえ | なし | OTP メールの送信者メールアドレス |
+| `SMTP_TLS` | いいえ | STARTTLS | 明示的に無効にしない限り STARTTLS が使用されます。`false` または `0` でプレーンテキスト（TLS なし）送信になります。それ以外の値（未設定を含む）では STARTTLS が有効になります。 |
+| `DASHBOARD_URL` | いいえ | 組み込みデフォルト | OTP メールのマジックリンクとアラート通知のインシデントマジックリンクの構築に使用するダッシュボードのオリジン。未設定の場合、組み込みデフォルト（OTP のみの場合はダッシュボード由来のリクエストオリジンを優先）にフォールバックします。メールと Slack/インシデントリンクの両方をあなたのダッシュボードに向けるために、ドメインが分かれている場合はこれを設定してください。後述の **Email マジックリンク URL** を参照してください。ほとんどのオペレーターはこの設定は不要です。 |
+| `SESSION_TTL_SECS` | いいえ | `86400`（24 時間） | ダッシュボードセッションの有効期間（秒）。**初回起動時のシードのみ**: 初回デプロイ後は [`/<org>/settings`](#operational-settings) から org ごとに編集してください。 |
+| `OTP_TTL_SECS` | いいえ | `600`（10 分） | OTP コードの有効期間（秒）。**初回起動時のシードのみ**: 初回デプロイ後は [`/<org>/settings`](#operational-settings) から org ごとに編集してください。 |
+| `REDIS_URL` | いいえ | なし | オプションの共有キャッシュ + レート制限バックエンド（例: `redis://redis:6379/0`）。設定すると、サーバーは認証済み API キーのルックアップ、ダッシュボードの `/models` 集計、セッションリスト、env リストファセットをキャッシュし、OTP リクエストのレート制限を Postgres COUNT から Redis INCR に切り替えます。未設定または接続不可の場合、サーバーはキャッシュなしで動作します（OTP 制限は Postgres にフォールバック、その他のキャッシュ呼び出しはソースオブトゥルースにフォールスルー）。後述の **Redis（オプションキャッシュ）** を参照してください。 |
+| `CLICKHOUSE_URL` | **はい** | なし | ClickHouse インスタンスのベース URL（例: `http://clickhouse:8123`）。サーバーは起動のたびにこのデータベースにイベントスキーマを適用し、ClickHouse に到達できない場合は起動を拒否します。後述の **ClickHouse（必須分析ストア）** を参照してください。 |
+| `CLICKHOUSE_DATABASE` | いいえ | `agenteye` | ClickHouse データベース（スキーマ）名。存在しない場合、サーバーが起動時に作成します。 |
+| `ORG_CH_SECRET` | いいえ（シングルテナント） / **はい（マルチ org）** | 開発用デフォルト | 各組織のテナントごとの ClickHouse パスワードの導出元となる HMAC キー。SQL エディターと AI エージェントの `run_query` は org 専用の読み取り専用 ClickHouse ユーザーとして実行され、行ポリシーがエンジンレベルでテナント分離を強制します。シングルテナントデプロイメントは組み込み開発用デフォルトで正常に起動できますが、**2 番目の org をプロビジョニングする前に強力で安定した値を設定する必要があります**（`agenteye-orgctl org create` CLI は組み込み開発用デフォルトでの実行を拒否します）。ローテーションすると次回起動時の再プロビジョニングまで各 org の ClickHouse ユーザーが孤立します（起動時の調整で自動的に修復されます）。秘密を保持し、レプリカ間で変更しないでください。org プロビジョニング自体はオペレーター専用です。後述の **組織（マルチテナント）** を参照してください。 |
+| `DEFAULT_ORG_NAME` | いいえ | `Default` | 組み込みデフォルト org にシードされる表示名。**初回起動時のシードのみ**（org がまだ新規移行後の汎用 ID を持っている間のみ）。org の名前を変更（`agenteye-orgctl org rename`）すると、その名前が正式となり、この環境変数は以降無効です。 |
+| `DEFAULT_ORG_SLUG` | いいえ | `default` | 組み込みデフォルト org の URL スラグ（ダッシュボードのパス `/<slug>/…`）。`DEFAULT_ORG_NAME` と同じ初回起動時のみ / 未変更時のみのセマンティクスです。1〜40 文字の小文字英数字で、単独の内部ハイフンを使用でき、[予約語](#organizations-multi-tenancy)でない必要があります。無効な値は無視されます（org は `default` を維持）。シングルテナントのインストールを、デプロイ後の CLI 手順なしに `/default` の代わりに `/acme` などで表示できます。 |
+| `RUST_LOG` | いいえ | `info` | ログの冗長性（`debug`、`warn`、`error`、`agenteye_server=trace`） |
+| `EVALUATOR_ENDPOINT` | いいえ | なし | 評価サービスのベース URL（例: `http://evaluator:9000`）。未設定の場合、評価パイプライン全体が no-op になります（キュー行の書き込みなし、ワーカーなし）。[Evaluation Suite](/ja/agenteye/evaluation-suite) を参照してください。 |
+| `EVALUATOR_TOKEN` | いいえ | なし | 評価サービスへの `Authorization: Bearer <token>` として送信されます。**評価サービスに設定されている値と同一である必要があります。** 評価サービスがトークンなしで設定されている場合のみオプションです。 |
+| `EVALUATOR_WORKERS` | いいえ | `2` | 並行数: 評価をディスパッチするサーバーインスタンスごとのワーカータスク数。水平スケールされた複数のサーバーで安全に実行できます。 |
+| `EVALUATOR_CLAIM_BATCH` | いいえ | `4` | 1 回のティックでシングルワーカーがクレームする評価の最大数。バッチは**並行して**ディスパッチされるため、評価エンドポイントへの総並行数は `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` になります。 |
+| `EVALUATOR_POLL_IDLE_SECS` | いいえ | `2` | 処理待ちがない場合にワーカーがディスパッチ試行間にスリープする時間。 |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | いいえ | `10` | 評価サービスがレスポンスごとの `next_poll_secs` を返さず、`GET /config` から `default_poll_interval_secs` もアドバタイズしない場合の `GET /evaluate/{id}` ポーリングの最終フォールバック間隔（秒）。 |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | いいえ | `30000` | 評価サービスへの HTTP リクエストごとのタイムアウト（ミリ秒）。 |
+| `EVALUATOR_MAX_ATTEMPTS` | いいえ | `5` | この回数の失敗後、評価は終端的な `error`（失敗がリクエストタイムアウトの場合は `timeout`）として記録されます。 |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | いいえ | `300`（5 分） | サーバーが評価サービスから `GET /config` を再フェッチする頻度。 |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | いいえ | `3600`（1 時間） | AgentEye がセッションを `timeout` として終了するまでのポーリングキュー内の最大経過時間。永遠に `pending` を返す評価サービスに対するガード。 |
+| `ALERT_WORKERS` | いいえ | `1` | 並行数: アラートルールを評価するサーバーインスタンスごとのワーカータスク数。[Alerts](/ja/agenteye/alerts) を参照してください。 |
+| `ALERT_CLAIM_BATCH` | いいえ | `16` | 1 回のティックでシングルワーカーがクレームするアラートの最大数。 |
+| `ALERT_POLL_IDLE_SECS` | いいえ | `5` | キューが空のときにアラートワーカーがスリープする時間。 |
+| `ALERT_REQUEST_TIMEOUT_MS` | いいえ | `15000` | トリガー評価ごとのタイムアウト（ClickHouse クエリ + アウトバウンドチャンネル HTTP）。 |
+| `ALERT_MAX_ATTEMPTS` | いいえ | `5` | 通常のケイデンスへの再スケジュール（指数バックオフの代わり）が行われるまでの連続した一時的失敗回数。 |
+| `AUDIT_WORKERS` | いいえ | `1` | 並行数: 監査を実行するサーバーインスタンスごとのワーカータスク数。[Audits](/ja/agenteye/audits) を参照してください。 |
+| `AUDIT_CLAIM_BATCH` | いいえ | `1` | 1 回のティックでシングルワーカーがクレームする監査の最大数。エージェント型の調査は 1 つの長いループであるため、デフォルトは 1 です。 |
+| `AUDIT_POLL_IDLE_SECS` | いいえ | `30` | 監査が予定されていないときに監査ワーカーがスリープする時間。 |
+| `AUDIT_REQUEST_TIMEOUT_MS` | いいえ | `30000` | ClickHouse へのポリシークエリごとのタイムアウト（ミリ秒）。 |
+| `AUDIT_LLM_TIMEOUT_MS` | いいえ | `1440000` | AI アシスタントサービスへのエージェント型調査呼び出しのタイムアウト。完全なエージェントループは数分かかるため、サーバーがあきらめる前にエージェントが部分的な調査結果を返せるよう、エージェント自身の `AGENTEYE_AUDIT_TIMEOUT_MS` より**大きく**設定してください。 |
+| `AUDIT_MAX_ATTEMPTS` | いいえ | `5` | 通常のケイデンスへの再スケジュール（指数バックオフの代わり）が行われるまでの連続した一時的失敗回数。 |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | いいえ | — | 監査のエージェント型調査は AI アシスタント `agent` サービスを呼び出します。**アシスタントと同じ接続を再利用する**ため、これら 2 つを**サーバー**にも設定してください（同梱のマニフェスト/compose はそうなっています）。両方設定 ⇒ 監査が AI 調査を実行。どちらか未設定 ⇒ 監査は**ポリシーのみ**で実行（決定論的 SQL ポリシーパスは引き続き実行）、監査ごとの `llm_enabled` フラグに関わらず。エージェントにも LLM が設定されている必要があります。[assistant.md](/ja/agenteye/assistant) を参照してください。 |
+
+**AI アシスタントサービス — 監査 + サンドボックス設定。** エージェント型調査とそのインポッド Python サンドボックスは、**エージェントサービス**（サーバーではない）で調整します。すべて `AGENTEYE_AUDIT_*` プレフィックス、すべてオプション:
+
+| 変数 | デフォルト | 意味 |
+|---|---|---|
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | 調査ごとの最大エージェントターン数。 |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | 1 回の調査の経過時間（20 分）。サーバーの `AUDIT_LLM_TIMEOUT_MS` より**小さく**設定する必要があります。 |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | エージェントポッドごとの同時調査数（チャットアシスタントの予算とは別）。 |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | bubblewrap サンドボックスのスクリプトごとの制限。 |
+
+**サンドボックスのプラットフォーム要件。** 監査コードサンドボックスはモデルの Python を bubblewrap ジェイル内で実行しますが、これには**非特権ユーザー名前空間**が必要です。エージェントポッドは `clone()` フラグを許可する必要があります。k8s の場合は `seccompProfile: Unconfined`、compose の場合は `security_opt: [seccomp:unconfined]` をエージェントに設定してください。ノードカーネルが非特権ユーザー名前空間を無効にしている場合（一部の GKE COS イメージなど）、**サンドボックスのプリフライトが失敗し、監査は自動的に SQL のみに切り替わります**。エラーにはならず、エージェントの `/health` に `sandbox_available: false` が表示されるだけです。
+
+### 実行
+
+`DATABASE_URL` と `CLICKHOUSE_URL` を環境に設定し（サーバーは ClickHouse なしでの起動を拒否します）、コンテナに渡します:
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-server \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
+  -e ADMIN_KEY="$ADMIN_KEY" \
+  -p 8080:8080 \
+  ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+サーバーは起動時にデータベースマイグレーションを自動実行します。別途マイグレーション手順は不要です。
+
+### ヘルスチェック
+
+```
+GET /health    # 生存確認  - プロセス起動後は常に {"status":"ok"}
+GET /ready     # 準備確認  - Postgres + ClickHouse が到達可能なら 200、そうでなければ 503
+```
+
+認証不要です。**生存確認**プローブには `/health` を、**準備確認** / ロードバランサープローブには `/ready` を使用してください。`/ready` はサーバーがサービスを提供するために必要なハード依存関係（Postgres + ClickHouse）をチェックするため、動作中でもデータベースに到達できないサーバーはローテーションから外され `NotReady` と表示されます。Redis は報告されますが準備確認を失敗させることはありません。同梱の Kubernetes マニフェストでは、準備確認プローブはすでに `/ready` を指しており、生存確認は `/health` のままです。Kubernetes ネイティブのポッド障害アラートを Slack に送信するオプトイン機能を含む全体像については、[enterprise-docs/health-monitoring.md](/ja/agenteye/health-monitoring) を参照してください。
+
+### Email マジックリンク URL
+
+OTP ログインメールにはワンタップで**ダッシュボードを開く**ボタンが含まれています。クリックすると `/login?token=<code>&email=<address>` に移動し、ダッシュボードはそのペアをセッションと交換してアプリにリダイレクトします（手動でのコード再入力は不要）。サーバーはリンクの構築に使用するダッシュボードのオリジンを 3 段階で解決します:
+
+1. **`X-AgentEye-Dashboard-Url` ヘッダー**: ダッシュボードの `/api/auth/otp/request` プロキシが、自身のパブリックオリジンから自動的に設定します。同一オリジンのデプロイメント（サーバーとダッシュボードがプロキシヘッダーを転送する 1 つのイングレスの背後でホストを共有している場合）では、**設定は不要です**。
+2. **`DASHBOARD_URL` 環境変数**: ダッシュボードがサーバーの OTP リクエストエンドポイントから見えるオリジンとは異なるオリジンで到達可能な場合（`api.example.com` / `app.example.com` の分割）、またはイングレスがパブリックホストをダッシュボードポッドに伝播しない場合（`request.nextUrl.origin` が `0.0.0.0:3000` のようなワイルドカードバインドに解決される場合）に設定してください。例: `DASHBOARD_URL=https://app.example.com`。
+3. **デフォルト**: `https://app.befailproof.ai`。上記のいずれも存在しない場合のみ使用されます。
+
+ヘッダー値は検証されます。`https://*` およびループバック（`http://localhost*`、`http://127.0.0.1*`）オリジンのみ受け付け、ワイルドカードバインドアドレス（`0.0.0.0`、`[::]`）は `https://` スキームでも拒否されます。それ以外はティア 2 にフォールスルーします。
+
+ワンライナーで実行中のクラスターに設定できます（ファイルなし、kustomize の再ビルドなし）:
+
+```bash
+kubectl set env deployment/server -n agenteye \
+  DASHBOARD_URL=https://app.example.com
+```
+
+これによりロールアウトがトリガーされ、新しいポッドは最初のリクエストで値を受け取ります。このオーバーライドは Deployment にのみ存在するため、オーバーレイに対して後で `kustomize build | kubectl apply` を実行すると、オーバーレイの `server-env.yaml` パッチに同じ環境変数を追加しない限り上書きされます。
+
+---
+
+## ダッシュボード
+
+### イメージのプル
+
+```bash
+docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### 環境変数
+
+| 変数 | 必須 | デフォルト | 説明 |
+|---|---|---|---|
+| `AGENTEYE_SERVER_URL` | はい | なし | サーバーのベース URL（例: `http://localhost:8080`） |
+| `AGENTEYE_API_KEY` | はい | なし | ダッシュボードがサーバーへの認証に使用する API キー。全権限が必要です（管理者キー推奨）。 |
+| `AE_LOG_LEVEL` | いいえ | `info` | サーバーサイドのログ冗長性: `debug`、`info`、`warn`、`error`。問題診断時にアップストリームリクエスト/レスポンス行とセッション検証トレースを確認するには `debug` に設定してください。 |
+| `AE_LOG_JSON` | いいえ | 自動 | `1` で JSON 形式の行ごと出力を強制、`0` で人間が読みやすい出力を強制。未設定の場合、`NODE_ENV=production` であれば JSON が自動的に有効になります。本番環境では `jq` やログアグリゲーターでパースしやすいよう JSON が推奨されます。 |
+| `AE_ANALYTICS_DISABLED` | いいえ | なし | `1`/`true` に設定すると、ダッシュボードの匿名プロダクト利用テレメトリが無効になります。後述の[テレメトリとプライバシー](#telemetry--privacy)を参照してください。 |
+| `REDIS_URL` | いいえ | なし | オプションの共有キャッシュバックエンド（例: `redis://redis:6379/0`）。設定すると、ダッシュボードはレプリカ間で `validateSession()` の結果をキャッシュし、レイテンシ集計 / env リストプロキシルートの Next.js フェッチキャッシュを共有します。エッジサイドの OTP リクエストと検証のレート制限も、Redis が存在する場合はそれを使用します（Redis に到達できない場合はオープンフォールバック、サーバーサイドの制限がセキュリティの最終防衛線）。後述の **Redis（オプションキャッシュ）** を参照してください。 |
+| `AGENTEYE_AGENT_URL` | いいえ | なし | オプションの AI アシスタント `agent` サービスのベース URL（例: `http://agent:9100`）。**未設定でアシスタントを完全に非表示にします**: ダッシュボードにアシスタントバブルが表示されなくなります。[enterprise-docs/assistant.md](/ja/agenteye/assistant) を参照してください。 |
+| `AGENTEYE_AGENT_TOKEN` | いいえ | なし | ダッシュボードが `agent` サービスに提示する共有シークレット。エージェントに設定された `AGENTEYE_AGENT_TOKEN` と一致する必要があります。[enterprise-docs/assistant.md](/ja/agenteye/assistant) を参照してください。 |
+
+### 実行
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-dashboard \
+  -e AGENTEYE_SERVER_URL="http://your-server-host:8080" \
+  -e AGENTEYE_API_KEY="$ADMIN_KEY" \
+  -p 3000:3000 \
+  ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### テレメトリとプライバシー
+
+ダッシュボードは**匿名のプロダクト利用分析**を Exosphere の分析サービス（PostHog）に送信します。対象はどのダッシュボードページが閲覧されたか、API キーの作成やセッションの再評価などの一部の UI アクションです。この利用シグナルは機能の優先順位付けに活用されます。
+
+- **エージェント、セッション、イベントデータはあなたのインフラの外に出ません。** レポートされるのはダッシュボード UI の利用のみです。ページ URL は送信前に識別子が取り除かれ、オペレーターは不透明な内部 ID でのみ識別されます（メールアドレスは使用されません）。
+- テレメトリは**デフォルトで有効**です。完全に無効にするには、ダッシュボードコンテナに `AE_ANALYTICS_DISABLED=1` を設定して再起動してください。
+- 分析はダッシュボード自身の `/ingest` パスに送信され、ダッシュボードがそれを PostHog（`https://us.i.posthog.com`）にリバースプロキシします。リクエストをファーストパーティに保つことで、ブラウザの広告ブロッカーにブロックされません。**ダッシュボードコンテナ**は PostHog へのアウトバウンドアクセスが必要です。ブロックされている場合、テレメトリは静かに何もせず、ダッシュボードへの影響はありません。
+
+---
+
+## AI アシスタント（オプション）
+
+ダッシュボード内 AI アシスタントを使用すると、チームがダッシュボードを離れることなく、平易な言葉でエージェントデータに対して質問できます（セッションの要約、`/queries` エディター用の SQL のドラフト作成、保存済みクエリのダッシュボードタイルへの変換など）。Claude Agents SDK 上で動作する別の内部 `agent` コンテナとして実行され、ダッシュボードのみがアクセスできます。**LLM エンドポイントを設定するまで無効のままです。**
+
+有効化するには、`agent` サービスに LLM 接続（**Portkey** の場合は `PORTKEY_API_KEY` + モデルカタログスラグ `AGENTEYE_AGENT_MODEL=@<slug>/<model>`、Anthropic 直接の場合は `ANTHROPIC_API_KEY`、別のゲートウェイの場合は `ANTHROPIC_BASE_URL`、または Bedrock/Vertex）、**専用の**データキー、そしてダッシュボードと一致する共有 `AGENTEYE_AGENT_TOKEN` を設定します。ダッシュボードユーザーにはさらに `agent:use` 権限が必要です。
+
+アシスタントのデータキーは手動で発行する必要はありません。ランダムなシークレットを選択し、`agent` に `AGENTEYE_API_KEY` として設定し、`server` に `AGENT_API_KEY` として設定すると、サーバーが起動時に固定された権限セットでシードします。そのデータアクセスは読み取り専用（`events:read`、`evaluations:read`、`dashboards:read`、`queries:read`）であり、承認ゲート付きの作成スコープ（`dashboards:write`、`queries:write`、`queries:run`）も持っており、ユーザーに代わって保存済みクエリのドラフトと検証、ダッシュボードタイルの構築ができます。すべての SQL は org の読み取り専用 ClickHouse ロールを通じて実行されるため、これはアシスタントが作成できるものを広げるものであり、アクセスできるデータを広げるものではありません。スコープはコード内で固定されており、設定で変更できません。このキーは保護されており、API 経由での無効化や再生成はできず、値を変更して再起動することでのみローテーションできます。管理者/ダッシュボードキーをこの用途に再利用しないでください。
+
+完全なセットアップ、環境変数リファレンス、テレメトリオプション、セキュリティモデルは **[enterprise-docs/assistant.md](/ja/agenteye/assistant)** に記載されています。
+
+---
+
+## ClickHouse（必須分析ストア）
+
+ClickHouse は高イベント量でもダッシュボードを高速に保ち、`/queries` SQL エディターが単一ストアでイベント、評価、セッションをジョインできるようにします。すべての取り込みイベント、すべての終端評価結果、および派生したセッションごとの集計の必須正規ストアです。PostgreSQL はリレーショナル / 可変状態テーブル（api_keys、users、otp_codes、evaluation_jobs、dashboards、saved_queries）を保持し、分析サーフェスは ClickHouse に置かれているため、ダッシュボードのロールアップと独自の SQL クエリはデータベースをまたいだラウンドトリップなしにネイティブにスキャン・ジョインできます。サーバーは `CLICKHOUSE_URL` なしでは起動を拒否します。
+
+### スキーマ
+
+サーバー起動時に 3 つの ClickHouse オブジェクトが作成されます。すべてべき等（`CREATE IF NOT EXISTS`）です:
+
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`、`toYYYYMM(ts)` でパーティション分割、`(session_id, ts, dedup_key)` 順。重複挿入（コレクターのリトライ）はマージ時に 1 行に集約されます。サーバーはすべてのイベントに対して決定論的な SHA-256 `dedup_key` を計算するため、リトライは安全です。
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`、`toYYYYMM(finished_at)` でパーティション分割、`(session_id, finished_at, dedup_key)` 順。評価パイプラインによって終端評価結果ごとに 1 度書き込まれます。`events` と同じ dedup キーモデル。
+- **`agenteye.agent_sessions`**: `agenteye.events` 上の**ビュー**（物理テーブルではありません）。すべての列は派生値（`started_at = min(ts)`、`last_event_at = max(ts)`、`ended_at = max(if event_type='agent_end', ts, NULL)`、`event_count = count()` など）です。イベントごとのアップサートや個別のバックフィルは不要で、ビューは `events` の内容を自動的に反映します。
+
+`analytics.evaluations` / `analytics.sessions` を参照する保存済みクエリとの後方互換性のため、サーバーは `agenteye.*` テーブル上のビューを持つ `analytics` ClickHouse データベースも作成します。`analytics.events`、`analytics.evaluations`、`analytics.agent_sessions`、`analytics.sessions` はすべて正しく解決されます。
+
+### 設定
+
+同梱の docker-compose と `deploy/base/clickhouse/` には AgentEye のワークロード向けにチューニングされた ClickHouse サービスが含まれています:
+
+- 同梱ベースオーバーレイでのメモリ: リクエスト 2 GiB / 制限 4 GiB（小規模 POC/ステージングノードに合わせたサイズ）。本番環境のお客様はオーバーレイでスケールアップしてください。推奨最低値はリクエスト 2c/4Gi、制限 6c/8Gi。`max_server_memory_usage_to_ram_ratio=0.9`
+- マークキャッシュ 5 GiB + 非圧縮キャッシュ 8 GiB
+- `background_pool_size=16`、`background_merges_mutations_concurrency_ratio=2`
+- MergeTree: `parts_to_throw_insert=3000`、`parts_to_delay_insert=1500`、`non_replicated_deduplication_window=1000`
+- `local_io_method=auto`（対応カーネルでは io_uring）
+- `fsync_metadata=0`: at-least-once 取り込み + ReplacingMergeTree dedup のため許容
+- `query_log` は 30 日 TTL で有効。`query_thread_log` は削除済み（高 QPS でコストが高い）
+- ユーザーサイドクエリに `max_execution_time=30`
+- StatefulSet テンプレートで 100 GiB PVC（お客様のオーバーレイでは本番環境向けに高速 SSD ストレージクラスにオーバーライドすることを推奨）
+
+### バックアップ
+
+データセット全体は毎夜 1 つのリストア可能なアーカイブにキャプチャされるため、クラスターやストレージの損失から回復できます。ClickHouse は毎日の `agenteye-backup` CronJob によって自動的にバックアップされ、PostgreSQL と ClickHouse を 1 回のパスで一緒にダンプします。ClickHouse は HTTP API 経由で読み取られます。`agenteye.events` と `agenteye.evaluations` は ClickHouse ネイティブ形式でダンプされ（ビューと行ポリシーはサーバー起動時に再作成されるため、テーブルデータが完全な内容です）、Postgres ダンプとともに 1 つの圧縮アーカイブにまとめられてオブジェクトストレージにアップロードされます。
+
+宛先バケットとクラウド認証情報はオーバーレイごとに設定します。アップロード設定とリストア手順については、[enterprise-docs/kubernetes-deployment.md](/ja/agenteye/kubernetes-deployment) の**バックアップ**セクションを参照してください。
+
+---
+
+## Redis（オプションキャッシュ）
+
+Redis はサーバーとダッシュボードが使用する**オプション**の共有キャッシュ + レート制限バックエンドです。Redis をデプロイし、両サービスに `REDIS_URL` を設定すると:
+
+- **Server** は認証済み API キーのルックアップ、`/events/environments` + `/evaluations/environments` リスト、`/events/latency_aggregate` ロールアップ（ダッシュボードがポーリングする最も重いクエリ）、`/sessions` リストをキャッシュし、OTP リクエストのレート制限を Postgres `COUNT(*)` から Redis `INCR + EXPIRE` に切り替えます。
+- **Dashboard** は `validateSession()` の結果をキャッシュし、典型的なページロードが発行する 10〜20 の認証済み API 呼び出しがすべて 1 つのアップストリームセッションチェックを共有できるようにします。OTP リクエストと OTP 検証のレート制限もダッシュボードエッジで行います。
+
+**Redis に到達できない場合、両サービスは安全にデグレードします。** すべてのキャッシュ呼び出しは有界タイムアウト内に `Err` を返し、呼び出し元はソースオブトゥルース（サーバーでは Postgres、ダッシュボードではアップストリームの Rust サーバー）にフォールバックします。OTP レート制限はサーバー上の Postgres `COUNT(*)` パスにフォールバックします（セキュリティプロパティは維持されます）。ダッシュボードのエッジ OTP 制限はオープンフォールバックしますが、サーバーサイドの制限は引き続き機能します。Redis のダウンはレイテンシを低下させますが、正確性には影響しません。
+
+### 設定
+
+docker-compose バンドルにはすでに Redis サービスが含まれており、`REDIS_URL=redis://redis:6379/0` がサーバーとダッシュボードに設定されています。外部 Redis を使用するには、`REDIS_URL` をエンドポイントに設定し、compose ファイルから `redis` サービスを削除してください。
+
+### メモリと永続化
+
+同梱の Redis イメージは `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru` で実行されます。AOF 永続化によりキャッシュはコンテナ再起動後も存続します。`everysec` はキャッシュ書き込みの最後の 1 秒を失っても無害なため、適切な耐久性/パフォーマンスのバランスです。LRU エビクションによりメモリの増大を抑制します。
+
+### Redis をデプロイしないケース
+
+- 単一インスタンスの開発/QA 環境。サーバー上のインプロセスキャッシュだけでもレプリカごとのメリットの大部分が得られます。Redis はシングルインスタンス設定では不要なクロスレプリカ共有を追加するものです。
+- エアギャップ環境で、もう 1 つサービスを運用するコストがレイテンシの改善を上回る場合。
+
+---
+
+## Docker Compose（推奨）
+
+`docker-compose.yml` は `agenteye-enterprise/releases` リポジトリで入手できます。1 つのコマンドで Postgres、ClickHouse、Redis、サーバー、ダッシュボードを起動できます。
+
+```bash
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
+  --repo agenteye-enterprise/releases \
+  --pattern 'docker-compose.yml' \
+  --dir ./agenteye
+cd agenteye
+```
+
+**`.env` でデフォルトをオーバーライド:**
+
+```
+# URL セーフなパスワードを使用してください（/、+、= 文字を含まない）。
+# 生成方法: openssl rand -hex 24
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+
+# ダッシュボード認証
+ADMIN_EMAIL=admin@yourcompany.com
+ALLOWED_EMAILS=*@yourcompany.com
+
+# OTP メール用 SMTP（省略すると OTP コードが stdout に記録されます）
+# SMTP_HOST=smtp.yourprovider.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your-smtp-user
+# SMTP_PASSWORD=your-smtp-password
+# SMTP_FROM=noreply@yourcompany.com
+
+RUST_LOG=info
+```
+
+```bash
+docker compose up -d
+```
+
+**停止（データボリュームを保持）:**
+
+```bash
+docker compose down
+```
+
+**停止してすべてのデータを削除:**
+
+```bash
+docker compose down -v
+```
+
+---
+
+## 運用設定
+
+以前は環境変数で固定されていた少数の運用上の調整項目が、ダッシュボードの **`/<org>/settings`** ページから組織ごとに編集できるようになりました。各 org が独自に設定します。変更は数秒以内に有効になります（再起動や再デプロイは不要）。
+
+| 設定 | ブートストラップ環境変数 | 制御内容 |
+|---|---|---|
+| 許可されたサインイン | `ALLOWED_EMAILS` | OTP の受信とユーザー追加が許可されるメールアドレス（または `*@domain.com` ワイルドカード） |
+| デフォルトユーザー権限 | `DEFAULT_USER_PERMISSIONS` | 管理者が **+ new user** を開いたときにあらかじめ選択される権限トークンのカンマ区切りリスト。各トークンは [API key permissions](/ja/agenteye/api-keys) に記載された文字列のいずれかである必要があります。デフォルトは `standard` プリセット: 読み取り専用アクセスに加え、日常的なオンコールアクション（再評価のトリガー、クエリの実行、インシデントの確認、アシスタントの使用）。 |
+| セッション有効期間 | `SESSION_TTL_SECS` | ダッシュボードのログインが再認証なしに有効な期間。ダッシュボードは 5 秒ごとにアップストリームセッションを再確認するため、`/<org>/users` での権限更新は対象ユーザーの次のリクエストで有効になります（再ログイン不要）。 |
+| ワンタイムコードの有効期間 | `OTP_TTL_SECS` | OTP / マジックリンクが使用可能な期間 |
+| アラート通知チャンネル | `ALERTS_ENABLED_CHANNELS` | アラートディスパッチャーが使用を許可されるチャンネル種別のカンマ区切りリスト: `email`、`slack`、`webhook`。アラートごとの設定は引き続き `/<org>/alerts/<id>` で行いますが、ディスパッチャーはすべてのアウトバウンド配信をこのセットでフィルタリングします。ここで無効にされたチャンネルは `skipped_disabled` 監査行で短絡されます。`dashboard` チャンネル（ローカル監査挿入）は常に許可されます。デフォルトは 3 つすべて有効。 |
+
+### ブートストラップの仕組み
+
+設定は `org_settings` に組織ごとに保存されます。初回起動時、サーバーはデフォルト org の欠落している行に対応する環境変数（または環境変数が未設定の場合は適切なデフォルト値）からシードします。それ以降は**保存された値がソースオブトゥルースとなり、環境変数は無視されます**。後から環境変数を変更して再起動しても、ライブ org の値には影響せず、追加の org はデフォルトから始まって独自に設定します。
+
+つまり:
+
+- 新規デプロイでは、上記の環境変数を設定すると、デフォルト org が初回起動時にそれらを読み込みます。
+- 後から値を変更するには、ダッシュボードにログインして `/<org>/settings` で編集してください。変更はすべてのサーバーレプリカに数秒以内に適用されます（再起動不要）。
+- ブートストラップが有効だったことを確認するため、起動ログ行にシードされた内容と既に存在していた内容が記録されます:
+
+  ```text
+  INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
+  ```
+
+#### 組織をまたいだサインインのセマンティクス
+
+セッションと OTP はユーザーに対してグローバルであり、単一の org に紐付けられません。そのため、2 つのルールがサインイン時に org ごとの設定を調整します:
+
+- **セッション / OTP の有効期間**: ユーザーが所属する org の中で最も厳しい（最短の）有効期間が優先されます。
+- **許可されたサインイン**: ゲートはすべての org のアローリストと org メンバーシップを OR 結合します。任意の org のアローリストがそのメールアドレスを許可している場合、**またはその**ユーザーがすでにいずれかの org のメンバーである場合に、OTP をリクエストできます。
+
+### 権限
+
+`/<org>/settings` ページへのアクセスは 2 つの権限でゲートされています:
+
+- `settings:read`: ページと現在の値の閲覧。
+- `settings:write`: 変更の保存。
+
+ブートストラップ管理者ユーザー（`ADMIN_EMAIL` からシード）は、他のすべての権限とともに両方を自動的に取得します。必要に応じて `/<org>/users` から他のユーザーに付与してください。
+
+---
+
+## 組織（マルチテナント）
+
+1 つのデプロイメントで複数の独立した**組織**（テナント）を提供できます。データのすべての行はちょうど 1 つの org に属し、分離はデータベースエンジンで強制されます。シングルテナントインストールではここで何もする必要はありません。すべてのデータは組み込みの `default` org に存在します。（その org に分かりやすい名前と URL スラグを付けて、例えば `/default` の代わりに `/acme` に配置することもできます。初回起動前に `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` を設定するか、`agenteye-orgctl org rename` でいつでも名前を変更できます。）
+
+**テナントプロビジョニングはオペレーター専用です。** 組織とそのメンバーシップは、**`agenteye-orgctl`** CLI で作成・管理します。この CLI はサーバーイメージ内に同梱されており（`agenteye-server` と並んで）、**既存のサーバーポッド内で実行されます**。**別個のポッド/ジョブ、HTTP API、ダッシュボードボタンはありません。** サーバーの `DATABASE_URL`、`CLICKHOUSE_URL`、`ORG_CH_SECRET` を再利用します。
+
+```bash
+# Docker Compose - 実行中のサーバーサービスに exec:
+docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
+docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+
+# Kubernetes - 実行中のサーバー Deployment に exec:
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+```
+
+利用可能なサブコマンド: `org create | list | rename | delete | purge` と `member add | list | update | remove`。組み込み権限セット `admin`、`standard`、`read-only` があります。追加されたメンバーは最初のダッシュボードログイン時に OTP を受け取ります。
+
+**2 番目の org を作成する前に:** 強力で安定した `ORG_CH_SECRET` を設定してください（`org create` コマンドは組み込み開発用デフォルトでの実行を拒否します）。また Postgres が **15+** であることを確認してください。**変更なし:** org ごとの API キーは引き続き org メンバーがダッシュボード/API でミントします。org とメンバーのライフサイクルのみ CLI に移動しました。完全なコマンドリファレンスと実例: **[enterprise-docs/tenant-management.md](/ja/agenteye/tenant-management)**。
+
+---
+
+## コンテキストウィンドウ充填率
+
+各 `model_response` イベントには**コンテキスト充填率ピル**が表示されます。入力トークンと出力トークンの合計をそのモデルのコンテキストウィンドウに対するパーセンテージで表します。バンドは `healthy`（0〜24%）、`watch`（25〜49%）、`compacting`（50〜74%）、`reset context`（75〜100%）です。AgentEye は一般的なモデル ID を自動的に解決するため、初期設定は不要です。
+
+組織が送信した各モデルは **Settings → model context windows** に表示されます。`settings:write` 権限を持つユーザーはそのウィンドウをオーバーライドしたり、プライベート/プロキシモデルを追加したりできます（0〜1,000,000 トークン）。`0` は「不明」を意味し、ピルを非表示にします。変更は新たに取り込まれたイベントに適用されます。`settings:read` 権限を持つユーザーはリストを閲覧できます。
+
+アップグレード後の新しいイベントには、その時点から充填率が入ります。既存のデプロイメントで**過去の**イベント（およびモデルごとのリスト）にも入力するには、ワンオフのバックフィルを実行します。これはサーバーイメージ内に同梱されており（`agenteye-orgctl` と同様）、既存のサーバーポッド内で実行されます:
+
+```bash
+# プレビュー（org ごとのミューテーションを表示、変更なし）:
+kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window --dry-run
+# 適用:
+kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window
+# docker compose:
+docker compose exec server agenteye-backfill-context-window
+```
+
+べき等（再実行しても安全）であり、ポッドの `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL` を再利用します。モデルウィンドウを編集した後、既存のイベントを再計算したい場合は再実行してください。
+
+---
+
+## 本番環境での考慮事項
+
+- **Postgres**: マネージド Postgres サービスまたは定期バックアップ付きの専用インスタンスを使用してください。`DATABASE_URL` は `sslmode=require` などの標準 libpq パラメーターをすべてサポートしています。
+- **TLS**: TLS を終端するリバースプロキシ（nginx、Caddy、Traefik）の背後にサーバーとダッシュボードを配置してください。
+- **ファイアウォール**: サーバーポート（デフォルト 8080）はコレクターマシンとダッシュボードホストからのみアクセス可能にし、パブリックインターネットからは到達できないようにして

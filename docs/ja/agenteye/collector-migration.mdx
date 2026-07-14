@@ -1,0 +1,167 @@
+---
+title: "`agenteye-collector` への移行"
+description: "AgentEye の `agenteye-collector` への移行に関するドキュメント。"
+---
+
+移行は非破壊的です。ダウンタイムもデータ損失も発生せず、短い `agenteye` という名前を [AgentEye CLI](/ja/agenteye/cli) のために解放することで、コレクターデーモンと CLI を同一マシン上で共存させることができます。
+
+コレクターのバイナリは **`agenteye` から `agenteye-collector` に改名されました**。短い `agenteye` という名前は、ターミナルからセッション、イベント、評価を照会するための別ツールである AgentEye CLI のものになりました。
+
+このガイドでは、既存のコレクターインストールを移行する手順を説明します。
+
+---
+
+## 変更点
+
+| | 変更前 | 変更後 |
+|---|---|---|
+| コマンド／バイナリ | `agenteye` | `agenteye-collector` |
+| デフォルトのインストールパス | `/usr/local/bin/agenteye` | `/usr/local/bin/agenteye-collector` |
+| サブコマンド | `start`, `flush`, `health`, `update` | `start`, `flush`, `health` |
+| 自己更新（`agenteye update`） | 組み込み | **削除**：新しいバイナリをダウンロードするか、新しいイメージを pull してください |
+| インストールスクリプト（`install.sh`） | 提供あり | **削除**：バイナリを直接ダウンロードしてください（[コレクターのインストール](/ja/agenteye/collector-installation)を参照） |
+| `AGENTEYE_TOKEN` | バイナリの**ダウンロード**およびバックグラウンドの更新チェックに必要 | バイナリ／イメージの**ダウンロード**のみに必要 |
+
+設定は変更なしです。同じ `~/.agenteye/config.json`、同じ `AGENTEYE_URL` / `AGENTEYE_KEY` / `AGENTEYE_HOME` / TLS 環境変数、そして同じ `~/.agenteye/events/` スプールが使われます。**設定ファイルの編集は不要です。**
+
+> 改名されたバイナリを古い名前 `agenteye` で実行した場合も動作しますが、`agenteye-collector` への切り替えを促す 1 行の非推奨警告が stderr に表示されます。
+
+---
+
+## 開始前に
+
+- **既存の `agenteye` のインストールはそのまま動き続けます**。アップグレードした瞬間に何かが壊れることはありません。計画的に移行を行い、古いバイナリの削除は最後に行ってください。
+- ダウンタイムを避けるために、以下の順序で作業してください：
+  1. 新しい `agenteye-collector` バイナリをインストール（または新しいイメージを pull）する。
+  2. サービス定義／ヘルスプローブ／スクリプトを `agenteye-collector` を呼び出すように更新する。
+  3. サービスをリロードして再起動し、正常に動作していることを確認する。
+  4. **その後で初めて**、古い `/usr/local/bin/agenteye` バイナリを削除する。
+
+---
+
+## 1. 新しいバイナリのインストール
+
+お使いのプラットフォーム向けのアーティファクト（`agenteye-collector-linux-x86_64`、`agenteye-collector-darwin-arm64` など；完全なリストは [コレクターのインストール → オプション A](/ja/agenteye/collector-installation#option-a-binary-recommended) を参照）を最新の `collector/v<version>` リリースからダウンロードし、`/usr/local/bin/agenteye-collector` に配置してください。Docker をご利用の方は `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest`（または固定された `:v<version>` タグを推奨；`:latest` は安定版リリースにのみ存在します）を実行してください。
+
+動作確認：
+
+```bash
+agenteye-collector --version
+```
+
+---
+
+## 2. デプロイメントの更新
+
+### systemd（Linux）
+
+`/etc/systemd/system/agenteye-collector.service` を編集し、`ExecStart` が新しいバイナリを指すようにします：
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+```
+
+その後、リロードして再起動します：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd（macOS）
+
+> **ブランド名の変更：** 既存の plist が古いパス
+> `~/Library/LaunchAgents/host.exosphere.agenteye-collector.plist` にある場合は、
+> ファイルを `ai.befailproof.agenteye-collector.plist` に改名し、
+> ファイル内の `<key>Label</key>` の値も新しい識別子に変更してからリロードしてください。
+
+`~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist` 内の最初の `ProgramArguments` エントリを `/usr/local/bin/agenteye` から `/usr/local/bin/agenteye-collector` に変更し、リロードします：
+
+```bash
+launchctl unload ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+launchctl load   ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+### supervisord
+
+`supervisord` のプログラムブロックで、`command` を新しいバイナリに設定します：
+
+```ini
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+```
+
+その後、`supervisorctl reread && supervisorctl update` を実行します。
+
+### Docker / Kubernetes
+
+新しいイメージを pull します（`ghcr.io/agenteye-enterprise/collector:beta-latest` または固定された `:v<version>` タグを推奨；`:latest` は安定版リリースにのみ存在します）。イメージのエントリポイントはすでに `agenteye-collector` になっているため、`start` サブコマンドを使った同じ `docker run` コマンドが変更なしで動作します。
+
+**重要：ヘルスプローブを更新してください。** バイナリ名でコマンドを実行する Kubernetes の liveness/readiness プローブ（または `docker exec`）を使用している場合は、コマンドを `agenteye-collector` に変更してください：
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+```
+
+新しいイメージには `agenteye` というエイリアスが含まれていないため、`agenteye` を呼び出し続けるプローブは失敗します。新しいイメージへのロールアウトと同時にプローブを更新してください。
+
+### Cron ／手動スクリプト
+
+`agenteye start|flush|health` の呼び出しをすべて対応する `agenteye-collector start|flush|health` コマンドに置き換えてください。**`agenteye update` の cron ジョブはすべて削除してください**。そのサブコマンドはもう存在しません（[今後のアップグレード](#upgrades-from-now-on)を参照）。
+
+---
+
+## 3. 古いバイナリの削除（最後に行う）
+
+サービスが `agenteye-collector` で動作し、正常であることを確認したら：
+
+```bash
+sudo rm /usr/local/bin/agenteye
+```
+
+この手順は、AgentEye CLI を併用する場合に特に重要です。AgentEye CLI は独自の `agenteye` コマンドをインストールするため、古いコレクターバイナリが `/usr/local/bin/agenteye` に残っていると、`PATH` 上で `agenteye` という名前が曖昧になります。
+
+---
+
+## 今後のアップグレード
+
+コレクターはもはや自己更新を行いません。アップグレードするには：
+
+- **バイナリ：** お使いのプラットフォーム向けの新しいアーティファクト（例：`agenteye-collector-linux-x86_64`；完全なリストは [コレクターのインストール → オプション A](/ja/agenteye/collector-installation#option-a-binary-recommended) を参照）をダウンロードし、`/usr/local/bin/agenteye-collector` を置き換えて、サービスを再起動してください。
+- **Docker：** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest`（または固定された `:v<version>` タグを推奨；`:latest` は安定版リリースにのみ存在します）を実行し、コンテナを再作成してください。
+
+`AGENTEYE_TOKEN` はプライベートリリースリポジトリからのダウンロードに引き続き必要ですが、実行中のデーモンにはもう必要ありません。
+
+---
+
+## 動作確認
+
+```bash
+agenteye-collector --version    # 新しいバイナリが PATH 上にある
+agenteye-collector health       # 終了コード 0 = 正常
+agenteye-collector flush        # キューに入ったイベントを転送してクリーンに終了
+```
+
+その後、新しいイベントがダッシュボードに表示されることを確認してください。
+
+---
+
+## ロールバック
+
+移行は非破壊的です。ロールバックが必要な場合は、サービス定義を古い `/usr/local/bin/agenteye` バイナリに戻し（まだ削除していない場合）、再起動してください。イベントスプールと設定は共有されており、影響を受けません。
+
+---
+
+## トラブルシューティング
+
+| 症状 | 原因 | 対処法 |
+|---|---|---|
+| 実行のたびに `warning: the collector binary is now agenteye-collector …` が表示される | 古い `agenteye` という名前でバイナリを呼び出している | 代わりに `agenteye-collector` を呼び出してください；サービスファイルとスクリプトを更新してください。 |
+| systemd が失敗する：`.../agenteye: No such file or directory` | `ExecStart` を更新する前に古いバイナリを削除した | `ExecStart=/usr/local/bin/agenteye-collector start` を設定し、`sudo systemctl daemon-reload` を実行してください。 |
+| イメージのアップグレード後に Kubernetes Pod がクラッシュループに陥る | liveness プローブがまだ `agenteye` を実行している | プローブのコマンドを `["agenteye-collector", "health"]` に変更してください。 |
+| `agenteye: command not found` が表示されるが `agenteye-collector` は動作する | スクリプト／エイリアスがまだ古い名前を参照している | `agenteye-collector` に更新してください。 |
+| `agenteye` を実行するとコレクターではなく CLI が起動する | AgentEye CLI がインストールされており、`agenteye` はその管轄になっている | デーモンには `agenteye-collector` を使用し、`/usr/local/bin/agenteye` に残っている古いコレクターバイナリを削除してください。 |

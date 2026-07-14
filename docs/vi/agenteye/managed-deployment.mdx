@@ -1,0 +1,172 @@
+---
+---
+title: "Triển khai được quản lý trên Cluster Kubernetes của bạn"
+description: "Tài liệu Triển khai được quản lý AgentEye trên Cluster Kubernetes của bạn."
+---
+
+
+AgentEye là một nền tảng quan sát và đánh giá tự lưu trữ cho các agent AI và LLM. Nó ghi lại các phiên làm việc của agent, các lệnh gọi công cụ, yêu cầu mô hình và lỗi, chuyển chúng thành phân tích và đánh giá có thể tìm kiếm, và hiển thị kết quả trên bảng điều khiển với trợ lý AI chỉ đọc tùy chọn.
+
+Trong mô hình triển khai được quản lý, bạn cung cấp một cluster Kubernetes chuyên dụng và Exosphere chạy toàn bộ nền tảng bên trong nó, triển khai, định cấu hình, vận hành, sao lưu và nâng cấp từng thành phần thay bạn. Nhóm của bạn nhận được giá trị của nền tảng (khả năng hiển thị agent, phân tích, đánh giá và trợ lý tùy chọn) mà không cần vận hành cơ sở dữ liệu, chứng chỉ hoặc nâng cấp. Tất cả dữ liệu được lưu giữ trong tài khoản đám mây của bạn.
+
+---
+
+## Điều kiện tiên quyết
+
+- Một **GitHub PAT** để kéo các image container và tải xuống các artifact (xem [GitHub Token Setup](/vi/agenteye/github-token))
+- Một **cluster Kubernetes chuyên dụng** (xem yêu cầu bên dưới)
+- Một **storage bucket** cho sao lưu cơ sở dữ liệu
+- **Kết nối mạng**: cổng 443 đến bộ cân bằng tải của cluster
+
+---
+
+## Bước 1: Cấp phát Cluster Kubernetes chuyên dụng
+
+Tạo một cluster Kubernetes dành riêng cho AgentEye. Nó không nên được chia sẻ với các khối công việc khác, vì vậy toàn bộ nền tảng (dịch vụ ứng dụng, cơ sở dữ liệu, phân tích và bộ nhớ đệm) chạy trong sự cô lập mà không ảnh hưởng đến cơ sở hạ tầng hiện có của bạn.
+
+| Yêu cầu | Chi tiết |
+|---|---|
+| **Phân phối** | Bất kỳ Kubernetes nào tuân thủ: EKS, GKE, AKS hoặc tự quản lý |
+| **Phiên bản** | 1.27 hoặc mới hơn |
+| **Nhóm nút** | Tối thiểu: **3 nút, 4 vCPU / 8 GB RAM mỗi cái** (các instance mục đích chung tiêu chuẩn) |
+| **Lưu trữ** | StorageClass mặc định cấp phát các khối lượng khối (ví dụ: `gp3` trên AWS, `pd-ssd` trên GCP) |
+| **Bộ cân bằng tải** | Cluster phải có khả năng cấp phát các dịch vụ LoadBalancer trên đám mây (mặc định trên EKS, GKE, AKS) |
+
+> Exosphere cài đặt và quản lý mọi thứ khác bên trong cluster: bộ điều khiển ingress, chứng chỉ TLS, cơ sở dữ liệu, bộ nhớ đệm, giám sát và tất cả các triển khai ứng dụng.
+
+---
+
+## Bước 2: Cấp quyền truy cập cho Nhóm AgentEye
+
+Exosphere cần quyền truy cập cluster-admin (hoặc RBAC rộng tương đương) để quản lý các không gian tên, định nghĩa tài nguyên tùy chỉnh, bộ điều khiển ingress và các nhà cung cấp lưu trữ.
+
+| Yêu cầu | Chi tiết |
+|---|---|
+| **Phương pháp truy cập** | IAM role (ưu tiên cho EKS/GKE), kubeconfig hoặc truy cập dựa trên SSO |
+| **VPN / bastion** | Nếu máy chủ API Kubernetes là riêng tư, cung cấp thông tin đăng nhập VPN hoặc truy cập bastion cho nhóm hoạt động Exosphere |
+
+---
+
+## Bước 3: Định cấu hình Kết nối mạng
+
+Nhóm mạng của bạn cần cho phép lưu lượng đến trên **cổng 443** đến các bộ cân bằng tải của cluster. Triển khai chạy hai bộ cân bằng tải riêng biệt: một cho việc nhập sự kiện (bảo vệ bằng mTLS) và một cho bảng điều khiển:
+
+| Lưu lượng | Nguồn | Đích | Bảo mật |
+|---|---|---|---|
+| **Nhập sự kiện** | Pod bộ sưu tập trong các cluster của bạn | Ingress LoadBalancer, cổng 443 | mTLS (chứng chỉ máy khách) + khóa API |
+| **Bảng điều khiển** | Trình duyệt nhà phát triển | Dashboard LoadBalancer, cổng 443 | HTTPS trên tên miền của bạn, đăng nhập OTP email không mật khẩu |
+
+Điểm cuối nhập được bảo vệ bằng mutual TLS; các bộ sưu tập phải trình bày một chứng chỉ máy khách hợp lệ **và** một khóa API hợp lệ trên mỗi yêu cầu. Bảng điều khiển chạy trên bộ cân bằng tải và tên máy chủ riêng của nó, với quyền truy cập bị hạn chế đối với các địa chỉ/tên miền email được phép.
+
+**Bản ghi DNS (một lần):** bạn tạo hai bản ghi CNAME trong một tên miền mà bạn kiểm soát - một cho điểm cuối nhập và một cho bảng điều khiển (ví dụ: `agenteye.your-company.example`) - trỏ đến các tên máy chủ bộ cân bằng tải mà Exosphere cung cấp. Exosphere sau đó cấp phát tự động các chứng chỉ TLS được tin cậy công khai cho cả hai tên máy chủ, bao gồm cả các lần gia hạn.
+
+> **Ghi chú cổng 80:** cấp phát chứng chỉ tự động và gia hạn xác thực qua HTTP trên cổng 80 của mỗi bộ cân bằng tải. Nếu tư thế bảo mật của bạn yêu cầu hạn chế bộ cân bằng tải bảng điều khiển đối với các dải IP công ty, hãy cho Exosphere biết trước - chúng tôi chuyển xác thực chứng chỉ thành phương pháp dựa trên DNS (một bản ghi DNS bổ sung ở phía bạn) để các lần gia hạn tiếp tục hoạt động phía sau hạn chế.
+
+> **Đi ra ngoài:** Các nút cluster cần quyền truy cập internet để kéo các image container từ `ghcr.io`. Nếu mạng của bạn hạn chế lưu lượng đi ra, hãy cho phép `ghcr.io` hoặc sao gương các image đến sổ đăng ký nội bộ của bạn.
+
+---
+
+## Bước 4: Cung cấp Bucket Lưu trữ Sao lưu
+
+Sao lưu cơ sở dữ liệu được lưu trữ trong một bucket lưu trữ đám mây mà bạn sở hữu.
+
+| Yêu cầu | Chi tiết |
+|---|---|
+| **Dịch vụ** | S3 (AWS), GCS (GCP) hoặc Azure Blob Storage |
+| **Truy cập** | Cấp quyền truy cập ghi cho các nút cluster thông qua IAM role cho các tài khoản dịch vụ (IRSA trên EKS, Workload Identity trên GKE) hoặc cung cấp thông tin đăng nhập |
+| **Giữ lại** | Bạn kiểm soát chính sách vòng đời của bucket (khoảng thời gian giữ lại, quy tắc lưu trữ). Exosphere ghi sao lưu; bạn quyết định thời gian giữ chúng |
+
+Một sao lưu hàng ngày duy nhất xả cả PostgreSQL (trạng thái quan hệ) và ClickHouse (sự kiện và đánh giá) vào một kho lưu trữ nén và tải nó lên bucket của bạn. Sao lưu cũng chạy trước mỗi lần nâng cấp.
+
+---
+
+## Bước 5: Chỉ định một Người liên hệ
+
+Cung cấp một người hoặc kênh Slack/Teams ở phía bạn cho các vấn đề cấp cluster: sức khỏe nút, giới hạn tài khoản đám mây, các thay đổi mạng. Hoạt động hàng ngày không liên quan đến liên hệ này.
+
+---
+
+## Những gì chúng tôi triển khai
+
+Khi Exosphere có quyền truy cập cluster, các thành phần sau sẽ được triển khai và quản lý cho bạn:
+
+| Thành phần | Vai trò |
+|---|---|
+| **AgentEye Server** | API HTTP nhận các sự kiện từ các bộ sưu tập, chạy phân tích và cung cấp dữ liệu cho bảng điều khiển |
+| **Bảng điều khiển** | Giao diện web để xem các phiên làm việc của agent, lệnh gọi công cụ, yêu cầu mô hình và lỗi; lưu trữ trợ lý AI chỉ đọc tùy chọn |
+| **ClickHouse** | Kho dữ liệu chính yêu cầu cho các sự kiện, phân tích và đánh giá được nhập |
+| **PostgreSQL** | Kho dữ liệu quan hệ cho các tổ chức, khóa API, người dùng, bảng điều khiển và các truy vấn đã lưu |
+| **Redis** | Bộ nhớ đệm dùng chung tùy chọn và phần phụ trợ giới hạn tốc độ; nền tảng giảm độ che phủ một cách khoan dung nếu nó không khả dụng |
+| **Trợ lý AI (tùy chọn)** | Thùng chứa trợ lý chỉ đọc nội bộ; giữ bị vô hiệu cho đến khi một điểm cuối LLM được định cấu hình |
+| **Bộ điều khiển ingress** | Hai bộ cân bằng tải (một cho nhập được bảo vệ bằng mTLS, một cho bảng điều khiển) kết thúc TLS với chứng chỉ được tin cậy công khai, tự gia hạn và thực thi mTLS trên điểm cuối nhập |
+| **cert-manager** | Tự động hóa cấp phát chứng chỉ TLS và cấp phát chứng chỉ máy khách mTLS |
+| **Giám sát chứng chỉ** | Một công việc lên lịch kiểm tra hết hạn chứng chỉ và gửi cảnh báo (ví dụ: tới Slack) khi các chứng chỉ gần gia hạn |
+
+Việc cung cấp được quản lý cũng vận hành quy trình đánh giá của nền tảng, điều này đánh giá hoạt động của agent theo tiêu chí đánh giá của bạn. Xem [Assistant](/vi/agenteye/assistant) và [Evaluation Suite](/vi/agenteye/evaluation-suite) để biết những khả năng này cung cấp gì.
+
+---
+
+## Những gì chúng tôi cung cấp cho bạn
+
+Sau khi triển khai hoàn tất, bạn sẽ nhận được:
+
+| Mục | Chi tiết |
+|---|---|
+| **URL bảng điều khiển** | Một tên máy chủ dưới tên miền của bạn (ví dụ: `https://agenteye.your-company.example`), được cung cấp với chứng chỉ TLS được tin cậy công khai, tự gia hạn. Bạn tạo một CNAME đến tên máy chủ bộ cân bằng tải mà chúng tôi cung cấp; đăng nhập là OTP email không mật khẩu |
+| **Điểm cuối bộ sưu tập** | Đường dẫn `/events` của tên máy chủ nhập (ví dụ: `https://ingest.your-company.example/events`), được bảo vệ bằng mTLS |
+| **Gói chứng chỉ máy khách** | Mỗi cluster: chứng chỉ máy khách, khóa riêng và chứng chỉ CA được cung cấp dưới dạng kê khai Secret của Kubernetes. Áp dụng nó một lần cho mỗi cluster |
+| **GitHub PAT** | Để tải xuống các tệp nhị phân bộ sưu tập và các gói Python SDK |
+| **Khóa API bộ sưu tập** | Các khóa được giới hạn phạm vi với quyền `events:add`, một cho mỗi triển khai bộ sưu tập |
+| **Hướng dẫn cài đặt** | Tài liệu từng bước cho bộ sưu tập và Python SDK |
+
+---
+
+## Những gì bạn làm sau khi thiết lập
+
+Công việc đang diễn ra duy nhất của bạn là trên các máy agent của riêng bạn, không phải cluster AgentEye:
+
+1. **Cài đặt bộ sưu tập** trong mỗi cluster Kubernetes chạy các agent AI: gắn chứng chỉ máy khách và định cấu hình URL điểm cuối và khóa API. Xem [Collector Installation](/vi/agenteye/collector-installation).
+2. **Tích hợp Python SDK** vào mã agent của bạn. Xem [Python SDK](/vi/agenteye/python-sdk).
+3. **Mở bảng điều khiển** trong trình duyệt của bạn để xem hoạt động của agent.
+
+Không cần vận hành cluster, không cần quản lý cơ sở dữ liệu, không cần gia hạn chứng chỉ, không cần nâng cấp.
+
+---
+
+## Bảo mật
+
+- **Dữ liệu được lưu giữ trong tài khoản đám mây của bạn.** Cluster, lưu trữ và cơ sở dữ liệu đều chạy trong môi trường của bạn. Không có dữ liệu nào rời khỏi ranh giới của bạn.
+- **Bạn kiểm soát quyền truy cập.** Cluster nằm trong tài khoản của bạn. Bạn có thể kiểm toán, giám sát hoặc thu hồi quyền truy cập của Exosphere bất cứ lúc nào. Tất cả các hoạt động đi qua nhật ký kiểm toán của đám mây của bạn (CloudTrail, GCP Audit Logs, v.v.).
+- **mTLS trên nhập sự kiện.** Mỗi yêu cầu bộ sưu tập yêu cầu cả chứng chỉ máy khách hợp lệ và khóa API. Một khóa bị rò rỉ là vô dụng mà không có chứng chỉ; một chứng chỉ bị đánh cắp là vô dụng mà không có khóa hợp lệ.
+- **Kiểm soát truy cập bảng điều khiển.** Bảng điều khiển chạy trên bộ cân bằng tải riêng, riêng biệt từ nhập sự kiện, và đăng nhập là OTP email không mật khẩu được hạn chế đối với các địa chỉ/tên miền email được phép. Danh sách cho phép dải nguồn IP trên bộ cân bằng tải có sẵn khi yêu cầu; vì gia hạn chứng chỉ tự động phải tiếp cận bộ cân bằng tải, Exosphere ghép hạn chế với xác thực chứng chỉ dựa trên DNS để các lần gia hạn tiếp tục hoạt động.
+- **Chứng chỉ cho mỗi cluster.** Mỗi cluster của bạn nhận chứng chỉ máy khách của riêng nó. Nếu một cluster bị xâm phạm, chứng chỉ đó sẽ bị thu hồi độc lập mà không ảnh hưởng đến những chứng chỉ khác.
+
+---
+
+## Lịch trình triển khai
+
+| Giai đoạn | Thời lượng | Sự tham gia của bạn |
+|---|---|---|
+| **Cấp phát cluster** | 1-2 ngày | Cấp phát cluster và cấp quyền truy cập cho Exosphere |
+| **Thiết lập nền tảng** | 1 ngày | Không có; Exosphere cài đặt tất cả các thành phần cơ sở hạ tầng |
+| **Triển khai ứng dụng** | 1 ngày | Không có; Exosphere triển khai máy chủ, bảng điều khiển và tạo khóa API |
+| **Triển khai bộ sưu tập** | 1-3 ngày | Cài đặt các bộ sưu tập trong các cluster của bạn (với hướng dẫn từ Exosphere) |
+| **Chạy sản xuất** | 1 tuần | Không có; Exosphere giám sát và điều chỉnh |
+
+Tổng cộng thường xuyên: **~2 tuần** từ khởi động đến sẵn sàng sản xuất.
+
+---
+
+## Hỗ trợ
+
+Đối với các câu hỏi hoặc vấn đề, hãy liên hệ với Exosphere tại `support@exosphere.host`.
+
+---
+
+## Các bước tiếp theo
+
+- [Getting Started](/vi/agenteye/getting-started): hướng dẫn toàn bộ
+- [Collector Installation](/vi/agenteye/collector-installation): cài đặt và định cấu hình bộ sưu tập
+- [Python SDK](/vi/agenteye/python-sdk): công cụ code agent của bạn
+- [API Keys](/vi/agenteye/api-keys): quản lý quyền truy cập và quyền
+- [Troubleshooting](/vi/agenteye/troubleshooting): các vấn đề chung và cách khắc phục

@@ -1,0 +1,401 @@
+---
+title: "התקנת Collector"
+description: "תיעוד התקנת AgentEye Collector."
+---
+
+
+ה-daemon `agenteye-collector` מבטיח שהטלמטריה של הסוכנים שלך תגיע ל-AgentEye מבלי לחסום את האפליקציה שלך אי פעם. הקוד שלך כותב אירועים לספריה מקומית ומעביר הלאה; ה-collector משתלט משם, מעלה כל קובץ תוך מילישניות ומשרד הפעלות מחדש, הפסקות רשת וטעויות שרת חולפות. העלאות שנכשלו מנסו שוב עם exponential backoff, וסיור התאוששות תקופתי מכניס לתור מחדש כל דבר שנותר מ-crash או deploy. התוצאה היא משלוח עמיד ו-fire-and-forget: הסוכנים שלך ממשיכים לרוץ במהירות מלאה בזמן שה-collector מוודא שלא יאבדו אירועים בדרך.
+
+מבחינה מכנית, ה-collector הוא daemon קל משקל שמראיין `$AGENTEYE_HOME/events/` (ברירת מחדל: `~/.agenteye/events/`) לקבצי `.jsonl` שנכתבו על ידי Python SDK ומעלה אותם לשרת AgentEye.
+
+> **שונה שם:** הפקודה של ה-collector כעת היא **`agenteye-collector`** (בעבר היתה `agenteye`). השם הקצר `agenteye` שייך כעת ל-AgentEye CLI. אם אתה משדרג התקנה קיימת, ראה [enterprise-docs/collector-migration.md](/he/agenteye/collector-migration).
+
+---
+
+## דרישות קדם
+
+- ה-`AGENTEYE_TOKEN` שלך: GitHub PAT שאתה מייצר בעצמך (ראה [enterprise-docs/github-token.md](/he/agenteye/github-token))
+- כתובת ה-URL של השרת ומפתח API של collector (ראה [enterprise-docs/api-keys.md](/he/agenteye/api-keys))
+
+---
+
+## אפשרות A: Binary (מומלץ)
+
+Binary סטטיים שנבנו מראש זמינים ל-Linux, macOS ו-Windows (x86_64 ו-arm64). הורד את ה-binary עבור הפלטפורמה שלך ישירות מריפו `agenteye-enterprise/releases` תחת תג ההשחרור האחרון `collector/v<version>`.
+
+שמות artifacts זמינים:
+
+| פלטפורמה | Artifact |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**הורד באמצעות CLI של `gh`** (החלף את הגרסה ובחר את ה-artifact של הפלטפורמה שלך):
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**או עם `curl`:**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## אפשרות B: Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> בניות beta נוכחיות מפרסמות את התג הצף `:beta-latest`; `:latest` מוקצה רק לשחרורים יציבים. להטמעות חוזרות, עדיף תג גרסה קבועה כמו `:v0.0.1-beta.13`.
+
+**הפעל:**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+התמונה הרשמית פועלת כמשתמש שאינו root, אז הגדר `AGENTEYE_HOME` בהפרשה וחבר את ה-spool של המארח אליו. העלאת הנפח משתפת את אותה ספריית `~/.agenteye/` שה-Python SDK כותב אליה על המארח. אם כבר הגדרת `AGENTEYE_HOME` במקום אחר על המארח, חבר את הספריה הזאת במקום `$HOME/.agenteye`.
+
+---
+
+## תצורה
+
+ניתן להגדיר את כל האפשרויות בשלוש דרכים (סדר עדיפויות מהגבוה לנמוך):
+
+1. דגל CLI: `agenteye-collector start --url https://...`
+2. משתנה סביבה: `AGENTEYE_URL=https://...`
+3. קובץ תצורה: `~/.agenteye/config.json`
+
+### אפשרויות נדרשות
+
+| אפשרות | דגל CLI | משתנה סביבה | מפתח config.json |
+|---|---|---|---|
+| כתובת URL של Backend | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| מפתח API | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### אפשרויות אופציונליות (עם ברירות מחדל)
+
+| אפשרות | דגל CLI | משתנה סביבה | מפתח config.json | ברירת מחדל |
+|---|---|---|---|---|
+| עלאות מקביליות מקסימום | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| מרווח Sweeper (s) | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| גיל קובץ מינימום של Sweeper (s) | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| קבצים מקסימום לכל sweep | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| ניסיונות העלאה מקסימום | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| קידום בסיסי של נסיון (ms) | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### אפשרויות mTLS (אופציונליות)
+
+להטמעות הדורשות TLS הדדי (mTLS), ה-collector יכול להציג תעודת קליינט במהלך handshake של TLS. כאשר האפשרויות הללו אינן מוגדרות, ה-collector משתמש ב-HTTPS סטנדרטי.
+
+| אפשרות | דגל CLI | משתנה סביבה | מפתח config.json |
+|---|---|---|---|
+| תעודת קליינט (PEM) | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| מפתח פרטי של קליינט (PEM) | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| תעודת CA מותאמת (PEM) | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+יש להגדיר `--tls-cert` ו-`--tls-key` ביחד. הקבצים חייבים להיות מקודדים PEM.
+
+`--tls-ca` אינו תלוי ודרוש רק כאשר שרת AgentEye מציג תעודת TLS שלא הוצאה על ידי CA שנחשב לאמין בציבור (למשל ממוקד עצמי על ידי issuer `cert-manager` בתוך cluster כאשר אין לך תחום DNS אמיתי). ה-collector מוסיף את ה-CA המסופק כנקודת אמון נוספת; השורשים הציבוריים הסטנדרטיים נשארים מהימנים, אז הטמעות קיימות לא מושפעות. הקובץ עשוי להכיל תעודת PEM יחידה או שרשרת מלאה (בלוקי PEM מרובים בשרשור).
+
+**הפעלת ה-collector כ-sidecar בחלונית האפליקציה שלך?** ראה [enterprise-docs/single-pod-deployment.md](/he/agenteye/single-pod-deployment) בשביל דפוס EKS מקצה לקצה: חבילת mTLS שמועברת דרך AWS Secrets Manager + Secrets Store CSI Driver + IRSA, עם סיבוב אוטומטי.
+
+כאשר פועלים ב-Kubernetes עם דפוס הסגה של Secret, חבר את ה-Secret של התעודה כנפח והצבע את הנתיבים הללו לקבצים המחוברים:
+
+```yaml
+# דוגמה: קטע Deployment של collector
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # רק כאשר תעודת השרת אינה נחשבת לאמון בציבור (למשל
+      # CA ממוקד עצמי בתוך cluster). ה-Secret הזהה בדרך כלל נושא ca.crt
+      # לצד tls.crt/tls.key.
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### דוגמה `~/.agenteye/config.json`
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+עם mTLS:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+עם mTLS בתוספת CA מותאם (שרת AgentEye ממוקד עצמי):
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+אם `AGENTEYE_HOME` מוגדר, הספריה הזאת משמשת במקום `~/.agenteye`.
+
+---
+
+## הגדרה בפעם הראשונה
+
+לאחר ההתקנה, קבע את ה-collector עם כתובת ה-URL של השרת ומפתח ה-API שלך:
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> השתמש ב-`https` עבור כל הטמעה החוצה רשת לא מהימנה כדי שאירועים לא ישלחו בטקסט רגיל. טופס `http://your-server-host:8080/events` בטקסט רגיל מתאים רק לבדיקה טהורה מקומית נגד שרת באותו מארח.
+
+**בדוק את החיבור** (flush חד פעמי, יוצא לאחר ניקוז אירועים תלויים):
+
+```bash
+agenteye-collector flush
+```
+
+`flush` דוחה את ההתקדמות שלו ל-stdout. כאשר ה-spool ריק זה מדפיס `No pending files.` ויוצא `0`. אחרת זה מדפיס שורה אחת לכל קובץ (`[UPLOADED] <file>` או `[FAILED] <file> (<reason>)`), ואחריה סיכום `Done: <uploaded>/<total> uploaded, <failed> failed.`. זה הופך את `flush` לבדיקה חד פעמית נוחה שהכתובת, המפתח וההגדרות של TLS שלך נכונות לפני שתתחיל את ה-daemon.
+
+---
+
+## הפעלה כ-Daemon
+
+### ישיר
+
+```bash
+agenteye-collector start
+```
+
+### Container / Docker
+
+כאשר ה-collector והאפליקציה שלך משתפים container, הפעל אותם תחת מפקח תהליך. האפשרות הפשוטה ביותר היא `supervisord`; זה משולח בכל distro עיקרי, הפעל מחדש תהליכים שהתרסקו, העביר אותות והמתן לשדרוג מסודר.
+
+**`Dockerfile`:**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# משוך את ה-binary של agenteye-collector מהתמונה הרשמית.
+# קבע תג ספציפי (:beta-latest עבור beta נוכחיות, או תג :v<version>);
+# :latest פורסם רק עבור שחרורים יציבים.
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf`:**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+למה הגדרות אלה:
+
+- `autorestart=true` על agenteye-collector: הפעל מחדש בכל יציאה (crash, panic, OOM).
+- `autorestart=unexpected` על האפליקציה: הפעל מחדש רק בעלייה שאינה אפסית, אז סוכן חד פעמי שיוצא 0 לא לולאה.
+- `stopwaitsecs=30`: נותן לה-collector מקום לניקוז עלאות תלויות על SIGTERM לפני שה-supervisord מעלה ל-SIGKILL.
+- `stdout_logfile=/dev/stdout`, `*_maxbytes=0`: זרם את הפלט של שני התוכניות ל-container stdout; אין קבצי יומן בתוך ה-container.
+
+עבור `docker run -e` אמור `AGENTEYE_URL` / `AGENTEYE_KEY` (וכל משתני TLS env) כבעבר; supervisord יורש את הסביבה.
+
+> **מיכלים נפרדים?** אם אתה מפעיל את ה-collector כמיכל משלו (שירות Docker Compose, sidecar של Kubernetes וכו'), אל תשתמש ב-supervisord; מדיניות ההפעלה מחדש של זמן ריצה של ה-container כבר עושה עבודה זו. ראה [enterprise-docs/single-pod-deployment.md](/he/agenteye/single-pod-deployment) לדפוס ה-sidecar של EKS.
+
+**בדיקת בריאות ב-Kubernetes** (חל בין אם ה-collector פועל לבדו או תחת supervisord):
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+ה-daemon הפועל כותב heartbeat ל-`$AGENTEYE_HOME/health.json` כל 30 שניות. `agenteye-collector health` קורא את הקובץ הזה ויוצא `0` (בריא) רק כאשר ה-heartbeat טרי ותפקידי ההעלאה פועלים כרגיל; זה יוצא `1` (לא בריא) כאשר ה-heartbeat ישן יותר מ-90 שניות (למשל, ה-daemon התחיל) או בזמן שה-watcher וה-sweeper מתחילים מחדש לאחר יציאה בלתי צפויה. ה-heartbeat נכתב רק על ידי `start`, אז הפעל את הבדיקה נגד ה-daemon ארוך הטווח ולא את הפקודה `flush` של חד פעמי.
+
+### systemd (Linux, מומלץ לייצור)
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+צור `/etc/agenteye/env`:
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## שדרוג ה-Collector
+
+ה-collector לא מעדכן את עצמו. כדי לשדרג:
+
+- **Binary:** הורד את ה-artifact החדש `agenteye-collector-<os>-<arch>` מהשחרור `collector/v<version>` האחרון (ראה [אפשרות A](#option-a-binary-recommended)), החלף `/usr/local/bin/agenteye-collector`, ואז הפעל מחדש את השירות (`sudo systemctl restart agenteye-collector`, re-`launchctl load`, או הפעל מחדש את ה-supervisor).
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (או תג `:v<version>` קבוע; `:latest` קיים רק עבור שחרורים יציבים) ובנה מחדש את ה-container.
+
+`AGENTEYE_TOKEN` נדרש להורדת binary/image חדשים מריפו releases פרטי, אך **לא** נדרש על ידי ה-daemon הפועל.
+
+---
+
+## Subcommands
+
+| פקודה | תיאור |
+|---|---|
+| `agenteye-collector start` | התחל את ה-daemon ארוך הטווח. בהפעלה זה משפשף אירועים שנותרו מהרצה קודמת, ואז מראיין קבצים חדשים ומעלה אותם. ה-watcher וה-sweeper מתחילים מחדש באופן אוטומטי בעלייה בלתי צפויה, וה-heartbeat נכתב ל-`health.json` כל 30 שניות. |
+| `agenteye-collector flush` | חד פעמי: העלה את כל הקבצים התלויים ויצא. מדפיס `No pending files.` כאשר ה-spool ריק, אחרת רישום לכל קובץ `[UPLOADED]`/`[FAILED]` וסיכום `Done: <uploaded>/<total> uploaded, <failed> failed.`. |
+| `agenteye-collector health` | קרא את ה-heartbeat של `health.json` של ה-daemon. יצא `0` כאשר טרי ובריא; יצא `1` כאשר ה-heartbeat הוא מיושן (ישן יותר מ-90 שניות) או התפקידים מתחילים מחדש. |
+
+---
+
+## פריסת ספרייה
+
+```
+~/.agenteye/
+├── config.json       <- קובץ תצורה אופציונלי
+├── events/           <- קבצי .jsonl שנכתבו על ידי SDK, בחרו על ידי ה-collector
+└── failed/           <- קבצים שנכשלו כל ניסיונות העלאה
+```
+
+קבצים ב-`failed/` לא מנסו שוב באופן אוטומטי. כדי להכניס אותם לתור שוב באופן ידני, הזז אותם חזרה ל-`events/` והפעל `agenteye-collector flush`.

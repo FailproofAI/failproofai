@@ -1,0 +1,400 @@
+---
+title: "Collector Installation"
+description: "AgentEye Collector Installation documentation."
+---
+
+
+`agenteye-collector` daemon'u, ajanlarınızın telemetrisinin AgentEye'a ulaşmasını sağlarken uygulamanızı asla engellemez. Kodunuz olayları yerel bir dizine yazar ve devam eder; collector oradan sahiplik üstlenir, her dosyayı milisaniyeler içinde yükler ve yeniden başlatmaları, ağ kesintilerini ve geçici sunucu hatalarını atlatır. Başarısız yüklemeler üstel geri çekilme ile yeniden denenir ve periyodik bir kurtarma taraması, bir çökme veya dağıtım tarafından geride bırakılan her şeyi yeniden sıraya alır. Sonuç dayanıklı, fire-and-forget teslimatıdır: ajanlarınız tam hızla çalışmaya devam ederken collector, transit sırasında hiçbir olayın kaybolmamasını sağlar.
+
+Mekanik olarak, collector `$AGENTEYE_HOME/events/` (varsayılan: `~/.agenteye/events/`) dizinini Python SDK tarafından yazılan `.jsonl` dosyaları için izleyen ve bunları AgentEye sunucusuna yükleyen hafif bir daemon'dur.
+
+> **Yeniden Adlandırıldı:** collector komutu artık **`agenteye-collector`** adıyla anılır (eski adı `agenteye` idi). Kısa `agenteye` adı şimdi AgentEye CLI'ye aittir. Mevcut bir yüklemeden yükseltme yapıyorsanız, [enterprise-docs/collector-migration.md](/tr/agenteye/collector-migration) adresine bakın.
+
+---
+
+## Ön Koşullar
+
+- `AGENTEYE_TOKEN`: kendiniz oluşturduğunuz bir GitHub PAT (bkz. [enterprise-docs/github-token.md](/tr/agenteye/github-token))
+- Sunucu URL'si ve bir collector API anahtarı (bkz. [enterprise-docs/api-keys.md](/tr/agenteye/api-keys))
+
+---
+
+## Seçenek A: İkili Dosya (önerilir)
+
+Önceden derlenmiş statik ikili dosyalar Linux, macOS ve Windows (x86_64 ve arm64) için mevcuttur. İkili dosyayı platformunuz için doğrudan `agenteye-enterprise/releases` repo'sundan en son `collector/v<version>` release etiketi altında indirin.
+
+Kullanılabilir yapı adları:
+
+| Platform | Yapı |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**`gh` CLI ile indirin** (sürümü değiştirin ve platformunuzun yapı adını seçin):
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**Veya `curl` ile:**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## Seçenek B: Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> Mevcut beta derlemeleri kayan `:beta-latest` etiketini yayınlar; `:latest` yalnızca kararlı sürümlere atanır. Tekrarlanabilir dağıtımlar için `:v0.0.1-beta.13` gibi sabitlenmiş bir sürüm etiketi tercih edin.
+
+**Çalıştırın:**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+Resmi görüntü root olmayan bir kullanıcı olarak çalışır, bu nedenle `AGENTEYE_HOME` açıkça ayarlayın ve host spool'unu ona bağlayın. Hacim bağlaması, Python SDK'sının host üzerinde yazma yaptığı `~/.agenteye/` dizinini paylaşır. Zaten host üzerinde başka bir yerde `AGENTEYE_HOME` ayarladıysanız, `$HOME/.agenteye` yerine o dizini bağlayın.
+
+---
+
+## Yapılandırma
+
+Tüm seçenekler üç şekilde ayarlanabilir (en yüksek öncelik ilk sırada):
+
+1. CLI bayrağı: `agenteye-collector start --url https://...`
+2. Çevre değişkeni: `AGENTEYE_URL=https://...`
+3. Yapılandırma dosyası: `~/.agenteye/config.json`
+
+### Gerekli seçenekler
+
+| Seçenek | CLI bayrağı | Çevre değişkeni | config.json anahtarı |
+|---|---|---|---|
+| Backend URL | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| API anahtarı | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### İsteğe bağlı seçenekler (varsayılanlarla)
+
+| Seçenek | CLI bayrağı | Çevre değişkeni | config.json anahtarı | Varsayılan |
+|---|---|---|---|---|
+| Maksimum eşzamanlı yüklemeler | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| Sweeper aralığı (s) | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| Sweeper min dosya yaşı (s) | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| Sweep başına maksimum dosya | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| Maksimum yükleme denemeleri | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| Yeniden deneme temel gecikmesi (ms) | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### mTLS seçenekleri (isteğe bağlı)
+
+Karşılıklı TLS (mTLS) gerektiren dağıtımlar için collector, TLS el sıkışması sırasında bir istemci sertifikası sunabilir. Bu seçenekler ayarlanmadığında, collector standart HTTPS kullanır.
+
+| Seçenek | CLI bayrağı | Çevre değişkeni | config.json anahtarı |
+|---|---|---|---|
+| İstemci sertifikası (PEM) | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| İstemci özel anahtarı (PEM) | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| Özel CA sertifikası (PEM) | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+`--tls-cert` ve `--tls-key` birlikte ayarlanmalıdır. Dosyalar PEM kodlu olmalıdır.
+
+`--tls-ca` bağımsızdır ve yalnızca AgentEye sunucusu halka açık olarak güvenilen bir CA tarafından verilmemiş bir TLS sertifikası sunduğunda gereklidir (örneğin, gerçek bir DNS etki alanınız olmadığında bir kümede bulunan `cert-manager` veren tarafından kendi imzası). Collector, sağlanan CA'yı ek bir güven noktası olarak ekler; standart genel kökler güvenilir kalır, bu nedenle mevcut dağıtımlar etkilenmez. Dosya tek bir PEM sertifikası veya tam bir zincir (birden çok birleştirilmiş PEM bloğu) içerebilir.
+
+**Collector'u uygulamanız pod'unda bir sidecar olarak çalıştırıyor musunuz?** End-to-end EKS deseni için [enterprise-docs/single-pod-deployment.md](/tr/agenteye/single-pod-deployment) adresine bakın: mTLS paketi AWS Secrets Manager + Secrets Store CSI Driver + IRSA aracılığıyla teslim edildi, otomatik döndürmeyle.
+
+Kubernetes'te Secret el değişimi deseniyle çalışırken, sertifika Secret'ı bir birim olarak bağlayın ve bu yolları bağlanmış dosyalara işaret ettirin:
+
+```yaml
+# Örnek: collector Deployment snippet'i
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # Yalnızca sunucu sertifikası halka açık olarak güvenilmediğinde (örneğin, kümede
+      # kendi imzası olan CA). Aynı Secret genellikle tls.crt/tls.key ile birlikte ca.crt'yi taşır.
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### Örnek `~/.agenteye/config.json`
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+mTLS ile:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+mTLS artı özel CA (kendi imzası olan AgentEye sunucusu) ile:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+`AGENTEYE_HOME` ayarlanırsa, `~/.agenteye` yerine o dizin kullanılır.
+
+---
+
+## İlk Kurulum
+
+Yükledikten sonra collector'u sunucu URL'si ve API anahtarı ile yapılandırın:
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> Güvenilmeyen bir ağı geçen herhangi bir dağıtım için olaylar düz metin olarak gönderilmemesi için `https` kullanın. `http://your-server-host:8080/events` düz metin formu yalnızca aynı host üzerinde bir sunucu olmak üzere tamamen yerel testler için uygundur.
+
+**Bağlantıyı test edin** (tek atış flush, bekleyen olayları boşalttıktan sonra çıkar):
+
+```bash
+agenteye-collector flush
+```
+
+`flush`, ilerlemeyi stdout'a raporlar. Spool boş olduğunda `No pending files.` yazdırır ve `0` ile çıkar. Aksi takdirde dosya başına bir satır yazdırır (`[UPLOADED] <file>` veya `[FAILED] <file> (<reason>)`), ardından bir `Done: <uploaded>/<total> uploaded, <failed> failed.` özeti. Bu, URL'niz, anahtarınız ve TLS ayarlarınızın daemon'u başlatmadan önce doğru olduğunu kontrol etmek için uygun bir tek atış kontrol sağlar.
+
+---
+
+## Daemon Olarak Çalıştırma
+
+### Doğrudan
+
+```bash
+agenteye-collector start
+```
+
+### Konteyner / Docker
+
+Collector ve uygulamanız bir konteyner paylaştığında, onları bir süreç denetçisi altında çalıştırın. En basit seçenek `supervisord`; her büyük distro'da yer alır, kilitlenmemiş süreçleri yeniden başlatır, sinyalleri iletir ve düzgün kapatmayı bekler.
+
+**`Dockerfile`:**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# agenteye-collector ikili dosyasını resmi görüntüden çekin.
+# Belirli bir etiketi sabitleyin (:beta-latest mevcut betalar için veya bir :v<version> etiketi);
+# :latest yalnızca kararlı sürümler için yayınlanır.
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf`:**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+Bu ayarların nedenleri:
+
+- agenteye-collector üzerinde `autorestart=true`: herhangi bir çıkış üzerinde yeniden başlat (çökme, panik, OOM).
+- Uygulama üzerinde `autorestart=unexpected`: yalnızca sıfır olmayan çıkış üzerinde yeniden başlat, böylece 0 ile çıkan tek atış bir ajan döngüye girmez.
+- `stopwaitsecs=30`: collector'a SIGTERM üzerinde bekleyen yüklemeleri boşaltmak için yer verir, supervisord SIGKILL'e geçmeden.
+- `stdout_logfile=/dev/stdout`, `*_maxbytes=0`: her iki programın çıkışını konteyner stdout'una akış edin; konteyner içinde günlük dosyası yoktur.
+
+`docker run -e` üzerinde `AGENTEYE_URL` / `AGENTEYE_KEY` (ve herhangi bir TLS çevre değişkeni) geçirin; supervisord ortamı devralır.
+
+> **Ayrı konteynerler?** Collector'u ayrı kendi konteynerinde çalıştırırsanız (Docker Compose hizmeti, Kubernetes sidecar vb.), supervisord kullanmayın; konteyner çalışma zamanının yeniden başlatma politikası bu işi zaten yapar. EKS sidecar deseni için [enterprise-docs/single-pod-deployment.md](/tr/agenteye/single-pod-deployment) adresine bakın.
+
+**Kubernetes liveness probe** (collector tek başına veya supervisord altında çalışmasından bağımsız olarak geçerlidir):
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+Çalışan daemon `$AGENTEYE_HOME/health.json` dosyasına her 30 saniyede bir kalp atışı yazar. `agenteye-collector health` bu dosyayı okur ve kalp atışı taze ve yükleme görevleri normal çalışıyorken `0` (sağlıklı) ile çıkar; kalp atışı 90 saniyeden daha eski olduğunda (örneğin daemon durduruldu) veya watcher ve sweeper beklenmeyen çıkıştan sonra yeniden başlarken `1` (sağlıksız) ile çıkar. Kalp atışı yalnızca `start` tarafından yazılır, bu nedenle probu tek atış `flush` komutu yerine uzun süreli daemon'a karşı çalıştırın.
+
+### systemd (Linux, üretim için önerilir)
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/agenteye/env` oluşturun:
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## Collector'u Yükseltme
+
+Collector kendini güncellemez. Yükseltmek için:
+
+- **İkili dosya:** en son `collector/v<version>` release'den yeni `agenteye-collector-<os>-<arch>` yapısını indirin (bkz. [Seçenek A](#seçenek-a-ikili-dosya-önerilir)), `/usr/local/bin/agenteye-collector` değiştirin, ardından servisi yeniden başlatın (`sudo systemctl restart agenteye-collector`, yeniden `launchctl load` yapın veya denetçinizi yeniden başlatın).
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (veya sabitlenmiş bir `:v<version>` etiketi; `:latest` yalnızca kararlı sürümler için mevcuttur) ve konteyner'i yeniden oluşturun.
+
+`AGENTEYE_TOKEN` özel releases repo'sundan yeni ikili dosyaları/görüntüleri indirmek için gereklidir, ancak çalışan daemon tarafından **gerekli değildir**.
+
+---
+
+## Alt Komutlar
+
+| Komut | Açıklama |
+|---|---|
+| `agenteye-collector start` | Uzun süreli daemon'u başlat. Başlangıçta önceki çalıştırmadan geride kalan tüm olayları temizler, ardından yeni dosyaları izler ve yükler. Watcher ve sweeper beklenmeyen çıkışta otomatik olarak yeniden başlar ve kalp atışı her 30 saniyede `health.json` dosyasına yazılır. |
+| `agenteye-collector flush` | Tek atış: tüm bekleyen dosyaları yükle ve çık. Spool boş olduğunda `No pending files.` yazdırır, aksi takdirde dosya başına `[UPLOADED]`/`[FAILED]` günlüğü ve `Done: <uploaded>/<total> uploaded, <failed> failed.` özeti. |
+| `agenteye-collector health` | Daemon'un `health.json` kalp atışını oku. Taze ve sağlıklı olduğunda `0` ile çık; kalp atışı eski olduğunda (90s'den eski) veya görevler yeniden başlarken `1` ile çık. |
+
+---
+
+## Dizin Düzeni
+
+```
+~/.agenteye/
+├── config.json       <- isteğe bağlı yapılandırma dosyası
+├── events/           <- SDK tarafından yazılan .jsonl dosyaları, collector tarafından alınır
+└── failed/           <- tüm yükleme denemelerinde başarısız olan dosyalar
+```
+
+`failed/` içindeki dosyalar otomatik olarak yeniden denenmez. Bunları el ile yeniden sıraya almak için bunları `events/` dizinine geri taşıyın ve `agenteye-collector flush` çalıştırın.

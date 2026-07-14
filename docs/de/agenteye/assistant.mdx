@@ -1,0 +1,204 @@
+---
+title: "KI-Assistent"
+description: "Dokumentation des AgentEye KI-Assistenten."
+---
+
+
+Das Dashboard enthält einen optionalen **KI-Assistenten** – ein Chat-Panel, das am rechten Rand des Dashboards angedockt ist und natürlichsprachliche Fragen zu Ihren Agenten beantwortet („Wie entwickelt sich die Qualität in Prod diese Woche?", „Welche Sessions sind heute fehlgeschlagen?", „Fasse diese Session zusammen"). Mit Genehmigung des Benutzers entwirft und speichert er auch SQL-Abfragen und Dashboards. Er verlinkt direkt auf relevante Sessions, Abfragen und Dashboards – und er ist **seitenorientiert**: Fragen Sie nach „dieser Session", während Sie sie gerade ansehen, versteht er den Kontext.
+
+Das Dock erscheint standardmäßig als schmale **44px breite vertikale Leiste**: ein `›_` Prompt-Symbol plus ein farbiger Status-Punkt. Klicken Sie auf die Leiste (oder drücken Sie `⌘J` / `Ctrl+J`), um das vollständige Chat-Panel zu öffnen. Das geöffnete Panel ist durch Ziehen am linken Rand zwischen 320 und 640 Pixeln **größenveränderbar**; Ihre bevorzugte Breite wird seitenübergreifend gespeichert.
+
+Er läuft als kleiner interner **`agent`**-Container (auf dem Claude Agent SDK), den nur das Dashboard erreichen kann. Er ist **standardmäßig deaktiviert** und bleibt verborgen, bis Sie einen LLM-Endpunkt konfigurieren.
+
+---
+
+## Was er kann und was nicht
+
+- **Liest die operativen Daten, die der anfragende Benutzer sehen kann.** Events, Evaluierungen, Sessions, die Evaluierungs-Job-Warteschlange, gespeicherte Abfragen und gespeicherte Dashboards – je Anfrage auf die Leserechte des Benutzers eingeschränkt. Leseoperationen werden sofort ausgeführt.
+- **Schreibzugriffe sind durch aktionsspezifische Genehmigungen gesperrt.** Er kann gespeicherte Abfragen erstellen (`create_saved_query`, `update_saved_query`), Entwurfs-SQL gegen die Nur-Lese-Rolle zur Validierung ausführen (`run_query`) sowie Dashboards aus diesen Abfragen zusammenstellen (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`). Jede Schreiboperation hält mit einem **Genehmigen / Ablehnen / Frage stellen**-Prompt im Chat an; das SDK ruft das Tool erst auf, wenn der Operator auf „Genehmigen" klickt. **Löschoperationen stehen dem Assistenten nie zur Verfügung**; destruktive Aktionen bleiben den Operatoren vorbehalten.
+- **Entworfenes SQL durchläuft dieselbe `sql_guard`-Validierung und Nur-Lese-Rollen wie benutzerseitig erstelltes SQL** (nur SELECT/WITH, keine Multi-Statements). Die Ausführung wird danach geroutet, welche Tabellen die Abfrage betrifft: Abfragen, die auf die Analysetabellen (Events, Evaluierungen, Sessions) zugreifen, laufen als Nur-Lese-ClickHouse-Benutzer der Organisation (auf diese Org per Row-Policy eingeschränkt, mit 10s Ausführungslimit und 100k-Zeilen-Limit), während Abfragen, die nur relationale Tabellen betreffen, auf einer Nur-Lese-Postgres-Rolle ausgeführt werden (10s, 10k Zeilen). Der Assistent kann die Datenbasis nicht erweitern – er kann nur über die Abfrageoberfläche arbeiten, die der Operator bereits hat.
+- Er verwendet einen **dedizierten Assistenten-Schlüssel** (siehe unten), der mit einem festen Berechtigungsset erstellt wird; selbst bei Fehlfunktion des Modells kann es diese Bereiche nicht überschreiten.
+- Jeder Dashboard-Benutzer benötigt die **`agent:use`**-Berechtigung, um den Assistenten zu sehen und zu verwenden. Tools werden je Anfrage entsprechend den eigenen Datenberechtigungen des Benutzers gefiltert: Ein Benutzer mit `events:read` erhält Event-Tools, aber keine `dashboards:write`-Tools.
+
+---
+
+## Seitenorientiertes KI-Dock: Composer auf `/queries`, Chat anderswo
+
+Das rechte Assistenten-Dock ist **seitenorientiert**. Die Modellauswahl, der Gesprächsverlauf, der Modell-Status-Punkt und die Chat-Eingabe bleiben unverändert, aber die **Vorschlag-Chips im leeren Zustand, der Platzhaltertext und welcher Backend-Endpunkt eine Benutzernachricht verarbeitet** wechseln automatisch basierend auf der aktuellen Route. Das Dock wird zum „KI-Helfer für die Seite, auf der Sie sich gerade befinden".
+
+**Zwei Backends, seitenweise ausgewählt (mit Chip-spezifischen Überschreibungen).**
+
+| Route                          | Seitenstandardes Backend                                                | Begründung                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/queries`, `/queries/new`     | `POST /api/agent/compose-sql` (keine Tool-Schleife)                        | Der Benutzer fängt neu an; SQL mit ≤1s bis zum ersten Token direkt in den Editor gestreamt                                          |
+| `/queries/<id>` (vorhandene)     | `POST /api/agent/chat` (vollständiger Tool-Loop-Assistent), Seitenstandard    | Freitext-Nachrichten sollen dem Benutzer erlauben, alles zu fragen („erkläre das", „was macht das?"); Refactoring-Chips wählen per Chip-`kind` wieder compose-sql |
+| jede andere Seite               | `POST /api/agent/chat` (vollständiger Tool-Loop-Assistent)                   | Lesetools + genehmigungspflichtige Schreibtools                                                                                   |
+
+Chips auf `/queries/<id>` tragen ein explizites `kind`, damit eine einzelne Seite beide Abläufe nahtlos kombinieren kann. Das Standard-Chip-Set besteht aus zwei **Chat**-Chips (`explain the query on screen`, `what does this query do?`) sowie fünf **compose-sql**-Chips (`parameterize by date range`, `add a status='error' filter` usw.). Freitext-Nachrichten fallen auf das Seitenstandardverhalten zurück (Chat), sodass eine Frage wie „Warum ist das so langsam?" eine Prosaantwort erhält, während ein Klick auf den `parameterize by date range`-Chip über den Compose-Endpunkt geroutet wird und das SQL bearbeitet.
+
+Wenn der Composer im **Bearbeitungsmodus** läuft (er sieht ein nicht leeres `currentSql`, weil der Benutzer auf `/queries/<id>` oder `/queries/new` ist und bereits SQL vorgeschlagen wurde), wechselt sein System-Prompt von „erstelle eine neue Abfrage" zu „Modifiziere das bereitgestellte SQL minimal: Tabellenauswahl, Spaltennamen, Join-Struktur, Aliasse und Einrückung beibehalten". Dem Modell werden separate Vorher-/Nachher-Beispiele gezeigt (parametrisieren, Filter hinzufügen, in stündliche Buckets konvertieren), sodass ein Chip-getriggertes Refactoring ein minimales Diff zum SQL des Editors erzeugt – kein komplettes Neuschreiben.
+
+Auf einen Compose-Chip klicken (oder auf `/queries/new` frei tippen) → Das SQL wird als Fence-Block ` ```sql ` in die Assistentennachricht gestreamt. **In dem Moment, in dem der Stream abgeschlossen ist, und Monaco auf der aktuellen Route eingebunden ist, öffnet der Editor automatisch die Diff-Ansicht** (Original links, Vorschlag rechts, ein `▾ AI proposed an edit`-Hinweis oben, und **Accept / Reject**-Schaltflächen unten). Der Benutzer muss keinen `Insert into editor`-Button suchen oder anklicken, um das Diff zu sehen. Die Insert-Schaltfläche wird weiterhin unterhalb des SQL-Blocks als manuelle Wiederholung angezeigt (nützlich nach einem Ablehnen oder wenn der Benutzer weg- und zurücknavigiert ist) und bleibt der einzige Weg, wenn der Benutzer auf einer Nicht-Editor-Seite ist (z. B. die gespeicherte-Abfragen-Liste); dort legt sie das SQL in `sessionStorage` ab und navigiert zu `/queries/new`, wo der frisch eingebundene Editor das Stash beim Mounten liest und dieselbe Diff-Ansicht öffnet.
+
+Wenn das vorgeschlagene SQL byteidentisch mit dem bereits im Editor befindlichen ist (ein Null-Edit), wird die automatische Öffnung übersprungen; ein leeres Diff wird nicht angezeigt. Die `Insert into editor`-Schaltfläche ist in diesem Fall ebenfalls wirkungslos.
+
+Wenn der Benutzer einen Vorschlag auf `/queries/new` akzeptiert, zeigt die primäre Aktion der Toolbar **`save`** statt `create`; das SQL wurde vom Assistenten bereitgestellt; das mentale Modell ist „Abschließen", nicht „von Grund auf schreiben". Das Label wechselt, sobald das Dock SQL einfügt, und bleibt `save` bis zur nächsten Seitennavigation. Auf `/queries/<id>` lautete die Schaltfläche immer `save`; dort ändert sich nichts.
+
+Außerhalb von `/queries` funktioniert das Dock wie bisher: vollständiger Chat mit Tool-Genehmigungskarten, seitenbasierter Kontextbewusstsein, Zitierlinks.
+
+**Berechtigungen / Gating.** Der Compose-Endpunkt setzt die benutzerspezifische `queries:run`-Berechtigung voraus (leseartig; der Benutzer muss noch auf „Akzeptieren" und „Ausführen" klicken, und „Ausführen" läuft durch die bestehende `sql_guard`- und `references_ch_tables`-Weiterleitung auf dem Rust-Server). Der Chat-Endpunkt setzt `agent:use` voraus. Beide benötigen eine auf dem `agent`-Container konfigurierte LLM-Verbindung; falls keine konfiguriert ist, zeigt das Dock auf beiden Pfaden ein Banner „Der Assistent ist in dieser Deployment-Umgebung nicht konfiguriert" an.
+
+**Ablehnungen.** Der Composer lehnt jede Anfrage ab, die er nicht mit einer Nur-Lese-Analyseabfrage erfüllen kann, und gibt `-- REFUSE: <ein-Satz-Begründung>` statt SQL aus. Er lehnt Anfragen ab, die Daten schreiben oder auf Tabellen außerhalb der Analyseviews zugreifen würden (`api_keys`, `users`, `dashboards`, `saved_queries`, `evaluation_jobs`), und er lehnt reine Prosaanfragen ab („explain this", „what does this do?") auf dem Compose-Pfad; diese gehören auf den Chat-Pfad und erhalten dort eine Prosaantwort. Das Dock rendert den Ablehnungstext als roten Inline-Fehler-Chip in der Assistentennachricht; es wird nichts eingefügt.
+
+**Modellauswahl.** Gemeinsam mit dem Chat-Pfad. Die Modellauswahl im Dock-Header gilt für beide Endpunkte (der Compose-Aufruf gibt das ausgewählte Modell an `resolveModel()` auf dem Agent-Service weiter). Wenn `AGENTEYE_AGENT_MODELS` mehrere Modelle auflistet, können Operatoren für den Composer eine Haiku-Klasse-Option und für den Chat eine Sonnet-Klasse-Option verwenden; der Benutzer wählt pro Unterhaltung.
+
+**Seitenspezifische Vorlagen.** Jede Seite hat ihre eigene Vorlage (Überschrift, Beschreibungstext, Platzhaltertext und Vorschlag-Chips), sodass sich das Dock an die aktuelle Seite anpasst. Die auf einer Route angebotenen Chips entsprechen denselben Absichten, für die der Composer optimiert ist, sodass ein Klick auf einen Vorschlag die erwartete Bearbeitung erzeugt.
+
+**Deaktivierung.** Wie beim Chat-Pfad: Dock und Composer sind beide vom `agent`-Container und seiner LLM-Verbindung abhängig. Wenn Sie für einen bestimmten Benutzer nur Chat-Verhalten möchten, entfernen Sie die `queries:run`-Berechtigung (dadurch wird auch die **Run**-Schaltfläche des Editors deaktiviert); wenn Sie nur Composer-Verhalten möchten, entfernen Sie `agent:use` aus den Rollen dieses Benutzers und fügen Sie `queries:run` separat hinzu, damit er weiterhin selbst erstelltes SQL ausführen kann.
+
+---
+
+## Aktivierung
+
+Der `agent`-Service ist in der Docker-Compose-Datei und den Kubernetes-Manifesten enthalten. Um den Assistenten zu aktivieren, müssen Sie **(1)** einen LLM-Endpunkt und **(2)** den dedizierten Datenschlüssel des Assistenten bereitstellen.
+
+### 1. LLM-Verbindung wählen
+
+Wählen Sie eine der folgenden Optionen und setzen Sie die entsprechenden Variablen auf dem `agent`-Service:
+
+**a) Direkt über Anthropic**
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**b) Über Portkey (empfohlen; Model-Catalog-Slug, nur Schlüssel)**
+
+```
+PORTKEY_API_KEY=<your-portkey-key>
+AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
+```
+
+Dies ist der einfachste Weg: Richten Sie in Portkey eine **Anthropic-Integration** (Model
+Catalog) ein; sie erhält einen **Slug**. Benennen Sie das Modell als `@<slug>/<model>`, und der Slug
+übernimmt das Provider- und Credential-Routing, sodass **kein virtueller Schlüssel benötigt wird** –
+nur Ihr Portkey-API-Schlüssel. Der Agent sendet nur `x-portkey-api-key` und zeigt auf das
+Portkey-Gateway; Portkey übernimmt den Rest. (Ein *einfacher* Modellname schlägt fehl mit
+„x-portkey-config or x-portkey-provider header is required"; das Präfix `@slug/` ist das, was den schlüsselbasierten Betrieb ermöglicht.) Für ein selbst gehostetes Gateway setzen Sie `PORTKEY_BASE_URL`.
+
+Bevorzugen Sie Request-spezifisches Routing statt eines Slugs? Setzen Sie `PORTKEY_VIRTUAL_KEY=<vk>` (oder
+`PORTKEY_CONFIG=<id>`) mit einem einfachen `AGENTEYE_AGENT_MODEL`.
+
+**c) Jedes andere Anthropic-kompatible Gateway (LiteLLM, selbst gehostet, …)**
+
+```
+ANTHROPIC_BASE_URL=https://your-gateway
+# Newline-delimited "Name: Value" header lines (NOT JSON):
+ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
+```
+
+**d) Amazon Bedrock / Google Vertex**
+
+```
+CLAUDE_CODE_USE_BEDROCK=1   # + standard AWS credentials in the environment
+# or
+CLAUDE_CODE_USE_VERTEX=1    # + standard GCP credentials in the environment
+```
+
+Das Standardmodell kann optional mit `AGENTEYE_AGENT_MODEL` festgelegt werden (Standard: `claude-sonnet-4-6`). Um Benutzern die **Auswahl** zwischen mehreren Modellen zu ermöglichen, setzen Sie `AGENTEYE_AGENT_MODELS` auf eine kommagetrennte Erlaubnisliste (z. B.
+`@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); dann erscheint eine Modellauswahl im
+Chat-Header, und die Wahl jedes Benutzers wird gespeichert. Der Agent ruft nur ein Modell auf dieser Erlaubnisliste auf.
+
+### 2. Assistenten-Schlüssel bereitstellen
+
+Wählen Sie ein beliebiges zufälliges Geheimnis und geben Sie es dem **Agent** als `AGENTEYE_API_KEY` und dem **Server** als `AGENT_API_KEY` (denselben Wert). Beim Start legt der Server es als dedizierten Schlüssel namens `dashboard-assistant` mit diesem festen Berechtigungsset an: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`. Die Schreibberechtigungen werden ausschließlich durch genehmigungspflichtige Tools ausgeübt (siehe „Was er kann und was nicht" oben). Es gibt **keinen manuellen Schlüsselerstellungsschritt und keinen Admin-Schlüssel**. Das Berechtigungsset ist im Server festgelegt, und der angelegte Schlüssel ist **geschützt**: Er kann nicht über die Schlüssel-API deaktiviert oder neu generiert werden; rotieren Sie ihn, indem Sie den Wert ändern und den Server neu starten. Verwenden Sie den Admin-/Dashboard-Schlüssel **nicht** wieder.
+
+```bash
+SECRET="$(openssl rand -base64 32)"
+# on the agent service:
+AGENTEYE_API_KEY="$SECRET"
+# on the server service:
+AGENT_API_KEY="$SECRET"
+```
+
+Auf Kubernetes ist dies für Sie eingerichtet: Legen Sie `AGENTEYE_API_KEY` im Secret `agenteye-agent` ab, und das Server-Deployment liest denselben Wert bereits als `AGENT_API_KEY`.
+
+### 3. Gemeinsamen Dashboard↔Agent-Token setzen
+
+Setzen Sie dasselbe `AGENTEYE_AGENT_TOKEN` auf **beiden** Services – `dashboard` und `agent`. Das Dashboard präsentiert es beim Aufruf des internen Agent-Service; der Agent lehnt Aufrufe ohne dieses Token ab.
+
+### 4. Benutzerzugriff gewähren
+
+Geben Sie den entsprechenden Dashboard-Operatoren die Berechtigung `agent:use` (siehe [enterprise-docs/api-keys.md](/de/agenteye/api-keys)). Benutzer ohne diese Berechtigung sehen den Assistenten nie.
+
+Sobald ein LLM-Endpunkt und der Nur-Lese-Schlüssel gesetzt sind, starten Sie den **Server** (um den Nur-Lese-Schlüssel anzulegen) und den **Agent**-Service neu. Das Assistenten-Dock erscheint am rechten Rand für jeden `agent:use`-Benutzer, standardmäßig eingeklappt; klicken Sie auf die Leiste oder drücken Sie `⌘J` / `Ctrl+J`, um es zu öffnen.
+
+---
+
+## Referenz der Umgebungsvariablen
+
+Auf dem **`agent`**-Service setzen:
+
+| Variable | Zweck |
+|---|---|
+| `PORTKEY_API_KEY` | Routing über Portkey (der Agent baut die Gateway-Verbindung daraus auf) |
+| `PORTKEY_VIRTUAL_KEY` | Portkey Virtual Key für Ihre Anthropic-Zugangsdaten (optional, wenn der Schlüssel eine Standardkonfiguration hat) |
+| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Benannte Portkey-Konfiguration / selbst gehostete Portkey-Gateway-URL (optional) |
+| `PORTKEY_PROVIDER` | Portkey-Provider-Slug – eine dritte Routing-Option neben `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` (nur verwendet, wenn keines davon gesetzt ist) |
+| `ANTHROPIC_API_KEY` | Direkter Anthropic-Zugriff (Alternative zu einem Gateway / Bedrock / Vertex) |
+| `ANTHROPIC_AUTH_TOKEN` | Bearer-Token für ein Gateway, das über `Authorization: Bearer` statt `x-api-key` authentifiziert (optional) |
+| `ANTHROPIC_BASE_URL` | Endpunkt für ein Nicht-Portkey-Gateway |
+| `ANTHROPIC_CUSTOM_HEADERS` | Zusätzliche Header für ein Nicht-Portkey-Gateway: zeilengetrennte `Name: Value`-Zeilen (kein JSON) |
+| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Routing über Bedrock / Vertex |
+| `AGENTEYE_AGENT_MODEL` | Standard-Modell-ID (Standard: `claude-sonnet-4-6`) |
+| `AGENTEYE_AGENT_MODELS` | Kommagetrennte Erlaubnisliste von Modellen, die der Benutzer im Chat-Header auswählen kann. Nicht gesetzt lassen für ein einzelnes festes Modell. Das obige Standard muss eines davon sein (sonst wird es hinzugefügt). |
+| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Maximale gleichzeitige Chats pro Pod (Standard: 4); überschüssige Anfragen erhalten 429 |
+| `AGENTEYE_API_KEY` | Datenschlüssel des Assistenten. Denselben Wert wie `AGENT_API_KEY` des Servers setzen, der ihn beim Start mit einem festen, eingeschränkten Berechtigungsset anlegt (siehe Schritt 2). |
+| `AGENTEYE_AGENT_TOKEN` | Gemeinsames Geheimnis mit dem Dashboard |
+| `AGENTEYE_SERVER_URL` | AgentEye-Server-URL (Standard: `http://server:8080`) |
+| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Mandantenfähigkeit.** Standardmäßig deaktiviert (fail-closed): Der Assistent lehnt eine `/chat`-Anfrage ohne Organisationskontext mit `400` ab, da jedes Tool, das er ausführt, auf eine Org beschränkt ist. Das Dashboard sendet diesen Kontext immer, sobald es org-fähig ist, daher bleibt dies normalerweise ungesetzt. Auf `1` setzen **nur** während einer Übergangsphase, in der ein noch nicht org-fähiges Dashboard mit einem org-fähigen Agent kommuniziert, damit der Assistent auf die `default`-Org zurückfällt statt abzulehnen. Nach dem Dashboard-Upgrade löschen. |
+| `AGENTEYE_AGENT_MAX_STEPS` | Maximale Tool-Verwendungsschritte pro Antwort (Standard: 8) |
+| `AGENTEYE_AGENT_TIMEOUT_MS` | Gesamter `/chat`-Anfrage-Timeout (alle Modell-Runden + Tool-Schritte) in Millisekunden (Standard: 90000); das SQL-Tool hat ein eigenes 10s-Limit |
+| `AGENTEYE_AGENT_SELF_TELEMETRY` | `1`, um die eigenen Ausführungen des Assistenten in AgentEye aufzuzeichnen |
+| `AGENTEYE_TELEMETRY_API_KEY` | Separater `events:add`-Only-Schlüssel für die Selbst-Instrumentierung |
+| `AGENTEYE_AGENT_ENV` | Umgebungs-Tag für die eigene Selbsttelemetrie des Assistenten (Standard: `prod`) |
+
+Auf dem **`dashboard`**-Service setzen:
+
+| Variable | Zweck |
+|---|---|
+| `AGENTEYE_AGENT_URL` | Wo das Dashboard den Agent-Service erreicht. Die mitgelieferten Kubernetes-Manifeste und die Compose-Datei setzen dies auf `http://agent:9100`. Nicht gesetzt lassen, um den Assistenten vollständig auszublenden. |
+| `AGENTEYE_AGENT_TOKEN` | Muss mit dem Token des Agents übereinstimmen |
+
+---
+
+## Telemetrie & was Benutzer fragen
+
+Prompt-**Inhalte bleiben standardmäßig in Ihren eigenen Systemen**. Drei Ebenen:
+
+1. **Konversationsspeicher**: Jeder Prompt und jede Antwort wird in Ihrer AgentEye-Datenbank gespeichert (pro Benutzer, privat) und kann über den Verlauf-Umschalter des Assistenten neu geladen werden. Dies ist die dauerhafte Aufzeichnung der Benutzerfragen.
+2. **Produkt-Analytics**: Das Dashboard zeichnet **nur Metadaten** auf (wie oft der Assistent verwendet wird, Tool-Anzahl, Latenz) in Ihrer Analytics. Prompt-**Text** wird auf diesem Pfad nie einbezogen.
+3. **Selbst-Instrumentierung (optional)**: Setzen Sie `AGENTEYE_AGENT_SELF_TELEMETRY=1` (plus einen `events:add`-Only-`AGENTEYE_TELEMETRY_API_KEY`), und der Assistent zeichnet seine eigenen Ausführungen als `dashboard-assistant`-Agent in AgentEye auf. Sie können dann Benutzer-Prompts und das Reasoning des Assistenten in denselben Sessions/Events-Ansichten beobachten, die Sie für alles andere verwenden. Hinweis: Diese Events sind für jeden mit `events:read` sichtbar; wenn das zu weitgehend ist, lassen Sie dies deaktiviert.
+
+---
+
+## Deaktivierung
+
+Jede dieser Optionen deaktiviert den Assistenten (die Dock-Leiste verschwindet):
+
+- `AGENTEYE_AGENT_URL` auf dem Dashboard nicht setzen, **oder**
+- den LLM-Endpunkt auf dem Agent unkonfiguriert lassen (kein `ANTHROPIC_API_KEY` / Gateway / Bedrock / Vertex), **oder**
+- den `agent`-Service gar nicht deployen.
+
+---
+
+## Sicherheitsübersicht
+
+- **Keine stillen Schreibvorgänge**: Die Schreibtools des Assistenten (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) können ohne expliziten Operator-Klick auf die Genehmigen-Schaltfläche im Chat nicht ausgeführt werden; das Pre-Call-Gate des SDK blockiert das Tool, bis eine Genehmigung über einen Back-Channel beim Agent eingeht. Es gibt keine Einstellung, die dieses Gate deaktiviert.
+- **Festes, enges Datenschema**: Der Assistent authentifiziert sich beim Server mit einem dedizierten Schlüssel, dessen Berechtigungsset im Server festgelegt ist (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`). Die einzigen Schreibvorgänge, die er ausführen kann, sind gespeicherte Abfragen und Dashboards; der Server lehnt alles außerhalb dieses Bereichs ab, unabhängig davon, was das Modell versucht.
+- **Keine Löschoberfläche**: Der Schlüssel trägt keine Löschberechtigung, und kein Lösch-Tool wird bereitgestellt. Operatoren löschen über die Dashboard-UI, nie über den Assistenten.
+- **Nur intern**: Der Agent hat keine öffentliche Route; nur das Dashboard kann ihn aufrufen, und nur mit dem gemeinsamen Token. (In Kubernetes beschränkt eine NetworkPolicy den Agent darauf, nur den AgentEye-Server und den LLM-Endpunkt zu erreichen.)
+- **Benutzerbasierte Einschränkung**: Nur `agent:use`-Benutzer erhalten Zugang zum Assistenten, und er erhält nur die Tools, die den Leseberechtigungen jedes Benutzers entsprechen.
+- **Kein rohes HTML / keine Link-Exfiltration**: Antworten werden als bereinigtes Markdown gerendert; externe Links werden entschärft.
+
+Häufige Probleme finden Sie unter [enterprise-docs/troubleshooting.md](/de/agenteye/troubleshooting).

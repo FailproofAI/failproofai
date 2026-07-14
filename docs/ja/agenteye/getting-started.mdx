@@ -1,0 +1,235 @@
+---
+title: "AgentEye のスタートガイド"
+description: "AgentEye のスタートガイドドキュメント"
+---
+
+
+このガイドでは、AgentEye のセットアップを一通り説明します。サーバーとダッシュボードのデプロイ、エージェントマシンへのコレクターのインストール、Python エージェントコードへのインストルメンテーションの追加まで順を追って解説します。
+
+---
+
+## AgentEye とは？
+
+AgentEye は **AI エージェント向けのセルフホスト型オブザーバビリティ・評価プラットフォーム**です。エージェントの動作、つまり実行の各ステップを記録し、完了した各実行の品質を自動的にスコアリングします。これにより、本番環境でのエージェントの挙動を把握し、ユーザーより先に品質低下を検知できます。
+
+データは一方向に流れます。エージェントコードが **Python SDK** を通じて**イベント**を送出 → 軽量な**コレクター**デーモンがそれをまとめて**サーバー**に送信 → イベントと分析データが **ClickHouse** に保存（組織、ユーザー、API キー、ダッシュボード、保存クエリなどの運用状態は **Postgres** に保存）→ **ダッシュボード**ですべてを確認。
+
+主な機能：
+
+- **Events（イベント）** — エージェント実行のステップごとの生の記録（ツール呼び出し、モデル呼び出し、フック、エラー）。
+- **Sessions（セッション）** — イベントを実行単位で集約した行。各実行は**自動評価**されスコアが付きます。
+- **Evaluations（評価）** — 独自のエバリュエーターサービスが生成する品質スコア。手動レビューなしで品質低下を検知できます。
+- **Queries & Dashboards（クエリ＆ダッシュボード）** — データに対する保存済み ClickHouse SQL と、組織共有のダッシュボードへのグラフ表示。
+- **Alerts & Incidents（アラート＆インシデント）** — 閾値ルールによるページング通知（メール、Slack、Webhook、ダッシュボード内）と、トリアージのためのインシデントワークフロー。
+- **CLI & AI アシスタント** — ターミナルクライアント（`agenteye`）と、自然言語で質問できるダッシュボード内アシスタント。
+
+すべて自社インフラで運用できます。単一の Docker Compose スタック（本ガイド）、本番向け Kubernetes インストール、または単一のコロケーションポッドとして構成可能です。以降のガイドでは Compose スタックをエンドツーエンドでセットアップします。
+
+---
+
+## Step 1: 認証
+
+AgentEye のすべてのアーティファクトは `agenteye-enterprise` GitHub 組織から配布されています。エンタープライズ開発者は独自の GitHub PAT を生成できます。具体的な手順と必要な権限については [enterprise-docs/github-token.md](/ja/agenteye/github-token) をご確認ください。
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Docker を GHCR に対して認証する
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## Step 2: サーバーとダッシュボードのデプロイ
+
+サーバーはコレクターからイベントを受け取りクエリ可能にします。ダッシュボードはそれらを確認する場所です。取り込まれたイベントと分析データは ClickHouse（必須の分析ストア）に保存され、Postgres には組織、ユーザー、API キー、ダッシュボード、保存クエリなどの運用状態が保存されます。
+
+**公開された Compose ファイルをダウンロードします：**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**シークレットを設定します：**
+
+デフォルトの `admin` 認証情報でデプロイが実行されないよう、`.env` ファイルを作成します。最低限 `ADMIN_KEY` と `POSTGRES_PASSWORD` を設定してください：
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+後続のステップ（例：Step 3 の `curl`）から直接参照できるよう、現在のシェルにも `ADMIN_KEY` をエクスポートします：
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**スタックを起動します：**
+
+```bash
+docker compose up -d
+```
+
+これにより、必須の ClickHouse 分析ストアとオプションの Redis キャッシュを含む完全なスタックが、サーバーおよびダッシュボードとともに起動します。サーバーの起動には ClickHouse が正常に動作している必要があります。
+
+サーバーは `http://localhost:8080` で、ダッシュボードは `http://localhost:3000` でリクエストを待ち受けます。
+
+本番デプロイ（カスタム Postgres、TLS、リバースプロキシ）については [enterprise-docs/deployment.md](/ja/agenteye/deployment) をご参照ください。
+
+---
+
+## Step 3: コレクター用 API キーの作成
+
+各コレクターはスコープ付き API キーで認証します。Step 2 で設定した `ADMIN_KEY` を使用して作成します：
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+`key` の値は自分で指定します。Step 4 のコレクター設定で使用します。キー管理の詳細については [enterprise-docs/api-keys.md](/ja/agenteye/api-keys) をご参照ください。
+
+---
+
+## Step 4: コレクターのインストール
+
+AI エージェントを実行するすべてのマシンにコレクターデーモンをインストールします。
+
+**バイナリをダウンロードします（Linux x86_64）：**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> これは **Linux x86_64** ビルドをダウンロードします。macOS（Apple Silicon または Intel）、Linux arm64、Docker / systemd / launchd のセットアップについては [collector-installation.md](/ja/agenteye/collector-installation) を参照してください。各プラットフォーム向けのダウンロードが記載されています。上記コマンドでインストールされる Linux バイナリは他の環境では動作しません。
+
+**設定します：**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**デーモンを起動します：**
+
+```bash
+agenteye-collector start
+```
+
+ワンショットフラッシュで接続を確認します（保留中のイベントを送出後に終了します）：
+
+```bash
+agenteye-collector flush
+```
+
+Docker、systemd、launchd のセットアップについては [enterprise-docs/collector-installation.md](/ja/agenteye/collector-installation) をご参照ください。
+
+---
+
+## Step 5: Python SDK のインストール
+
+エージェントコードをインストルメントするマシンに、GitHub Releases から wheel をインストールします。
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## Step 6: エージェントのインストルメンテーション
+
+エージェントコードにイベントを追加します。最低限、`agent_start` と `agent_end` を送出してください：
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# ここにエージェントのロジック
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+イベントはバッファリングされ、500 ミリ秒ごとに `$AGENTEYE_HOME/events/`（`AGENTEYE_HOME` が未設定の場合は `~/.agenteye/events/`）にフラッシュされます。コレクターが自動的に収集します。
+
+完全なイベント API については [enterprise-docs/python-sdk.md](/ja/agenteye/python-sdk) をご参照ください。
+
+---
+
+## Step 7: ダッシュボードでイベントを確認する
+
+`http://your-dashboard-host:3000` を開いてサインインします。AgentEye はワンタイムコード（またはワンクリックのマジックリンク）をメールで送信するため、パスワードの管理は不要です。
+
+![メールにワンタイムコードを送信する AgentEye のサインイン画面](/agenteye/images/login.png)
+
+サインイン後、**Events** ページには取り込まれたすべてのイベントのライブストリームが表示されます。`session_id` や `agent_id` でフィルタリングして特定の実行を詳しく確認できます。
+
+![イベントタイプ別に色分けされ、環境・エージェント・セッションでフィルタリング可能なライブイベントストリーム](/agenteye/images/events-stream.png)
+
+**Sessions** ページでは、それらのイベントが実行単位で集約されて表示されます。AgentEye は完了したセッションを自動的に評価するため、すべての実行にスコアが付き、手動レビューなしで品質低下を検知できます。最新の評価スコアが各行に一目でわかるように表示されます：
+
+![実行ごとに1行で表示される Sessions リスト。ステータスのピルと評価スコアのバッジ付き](/agenteye/images/sessions-list.png)
+
+セッションのスコアリング方法の設定については [enterprise-docs/evaluation-suite.md](/ja/agenteye/evaluation-suite) をご参照ください。
+
+任意のセッションをクリックすると、その**実行グラフ**が開きます。エージェント、ツール、フック、モデル呼び出しが時系列でどのように展開したかを git スタイルで表示し、並列サブエージェントは専用のレーンに表示され、右パネルには実行ごとの内訳が表示されます：
+
+![セッションの git スタイル実行グラフとイベントタイムライン、ツール/モデル/フックの内訳パネル](/agenteye/images/session-detail.png)
+
+---
+
+## Step 8: 探索、チャート、アラート
+
+イベントが流れ始めたら、**analyze** ページで生のアクティビティを洞察に変えます。エージェントの動作を計測し、チームで知見を共有し、何か問題が発生した瞬間に通知を受け取ることができます。ダッシュボードページは組織スコープのため、アドレスバーに表示される URL には組織のスラッグ（`/<org>/…`）がプレフィックスとして付きます。
+
+- **Queries**（`/<org>/queries`）：イベントと評価に対する保存済み再利用可能クエリのライブラリから開始します（組み込みプリセットと独自クエリ）…
+
+![保存済みクエリライブラリ：組み込みプリセットとカスタムクエリを並べたグリッド表示](/agenteye/images/queries.png)
+
+  …そして SQL コンポーザーで開いて調整し、ライブ結果を確認できます：
+
+![保存済みクエリを実行する SQL クエリコンポーザー。スキーマサイドバーとライブ結果グリッド付き](/agenteye/images/query-lab.png)
+
+- **Dashboards**（`/<org>/dashboards`）：クエリを折れ線・棒・面・円グラフのタイルとして組織共有ダッシュボードにピン留めできます。
+
+![保存済みクエリで構築したダッシュボード：時間別イベント数の折れ線グラフ、タイプ別エラーの棒グラフ、レイテンシの面グラフ、モデル別トークン数](/agenteye/images/dashboard-fleet.png)
+
+- **Alerts**（`/<org>/alerts`）：任意の閾値をページングルールに昇格し、メール・Slack・Webhook・ダッシュボード内で通知を受け取れます。[enterprise-docs/alerts.md](/ja/agenteye/alerts) をご参照ください。
+
+---
+
+## 次のステップ
+
+- [Deployment（デプロイ）](/ja/agenteye/deployment)：本番環境向けの堅牢化
+- [API Keys（API キー）](/ja/agenteye/api-keys)：アクセス管理
+- [Troubleshooting（トラブルシューティング）](/ja/agenteye/troubleshooting)：問題の診断

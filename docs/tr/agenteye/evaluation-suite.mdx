@@ -1,0 +1,371 @@
+---
+title: "Değerlendirme Paketi"
+description: "AgentEye Değerlendirme Paketi belgelendirmesi."
+---
+
+
+AgentEye, tamamlanan ajan oturumlarını tam etkinlik transkriptini
+**tek bir müşteriye ait değerlendirici hizmete** POST göndererek puanlandırır. Değerlendirici puanları satır içinde döndürebilir veya AgentEye'ın yoklama yapması için bir `job_id` geri verebilir. Sonuçlar depolanır ve panoda gösterilir.
+
+Bu kılavuz aşağıdakileri kapsar:
+
+1. Oturum tamamlanmasının nasıl algılandığı.
+2. Değerlendircinin uygulaması gereken HTTP sözleşmesi.
+3. AgentEye sunucusunun yapılandırılması.
+4. Sonuçların görüntülenmesi.
+5. Sorun giderme.
+
+Sözleşmeyi sizin için uygulayan Python yardımcısı için
+[PyPI üzerinde `agenteye-evaluator` paketi](https://pypi.org/project/agenteye-evaluator/) başlığına bakınız.
+
+---
+
+## Nasıl çalışır
+
+```text
+ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Değerlendirici hizmeti
+   (agent_end)        sunucu   ◀──── done | pending ────
+                          │
+                          │     GET /evaluate/{job_id} ─────▶
+                          │     ◀──── done ──────────────
+                          ▼
+                     evaluations  (terminal sonuçları)
+```
+
+AgentEye SDK bir oturum için `agent_end` etkinliği yayınladığında, sunucu bir değerlendirmeyi zamanlar. Daha sonra tam etkinlik transkriptini değerlendirici hizmetinize POSTler; bu, şunlardan birini yapabilir:
+
+- **Sonucu satır içinde döndür** `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}` ile. Sonuç oturumun değerlendirme zaman çizelgesine eklenir. `reasoning` ve `summary` isteğe bağlıdır.
+- **Erteleme** `{"status":"pending", "job_id":"abc-123"}` ile. AgentEye daha sonra değerlendirici `{"status":"done", ...}` veya `{"status":"error", "error":"..."}` dönene kadar `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` çağrısını yapar.
+
+  Yoklama temposu iş başına yapılır: bir `pending` yanıtı `next_poll_secs` içerebilir; aksi takdirde AgentEye `GET /config` yanıtından `default_poll_interval_secs` değerini kullanır; aksi takdirde sunucu `EVALUATOR_POLLING_INTERVAL_SECS` (varsayılan 10s) değerine geri döner. Tüm değerler [1s, 1h] aralığına sınırlandırılır.
+
+Hiçbir zaman `agent_end` yayan olmayan oturumlar (örneğin, çökmüş bir ajan süreci)
+da alınabilir: değerlendircinin `GET /config` yanıtı
+`{"inactivity_timeout_secs": 1800}` döndürebilir ve AgentEye bu kadar uzun süre boşta kalmış herhangi bir oturumu değerlendirir. Bu geri dönüşü devre dışı bırakmak için alanı `null` olarak ayarlayın veya atla.
+
+`EVALUATOR_ENDPOINT` ayarlanmadığında işlem hattı tamamen inaktiftir.
+
+Bir oturum zaman içinde **birden fazla terminal değerlendirmesi biriktirilebilir**: her `agent_end` etkinliği (ve panodaki her manuel yeniden değerlendirme) yeni bir değerlendirme satırı ekler. Bu, devam ettirilen bir konuşmayı değerlendirmenin desteklenen yoludur: bir kullanıcı ajanı sonlandırır, daha sonra geri gelir, daha fazla etkinlik gönderir, ajanı yeniden sonlandırır ve ikinci bir değerlendirme tam güncellenmiş transkript üzerinde çalışır. Panel en son değerlendirmeyi başlık olarak ve önceki değerlendirmeleri daraltılabilir zaman çizelgesi olarak gösterir. Bir oturum için bir değerlendirme çalışırken, o oturum için ek `agent_end` etkinlikleri yoksayılır; çalışan değerlendirme tamamlandıktan sonraki sonraki etkinlik yeni bir değerlendirmeyi normal olarak kuyruğa alacaktır.
+
+Etkinliksizlik geri dönüşü devam ettirilen oturumlarla da yeniden başlar: önceki bir terminal değerlendirmeden sonra yeni etkinlikler gelirse ve oturum daha sonra `inactivity_timeout_secs` öncesinde boşta kalırsa, yeni bir değerlendirme kuyruğa alınır.
+
+Geçici arızalar (5xx, 429, zaman aşımları, ağ hataları) `EVALUATOR_MAX_ATTEMPTS` kadar katlanarak artan geri alma ile yeniden denenilir; 4xx yanıtları terminaldir. AgentEye birden çok yatay olarak ölçeklendirilmiş sunucu örnekleriyle çalıştırmak için güvenlidir; iş bölümlendirilir, böylece aynı oturum asla eşzamanlı olarak iki kez gönderilmez.
+
+---
+
+## HTTP sözleşmesi
+
+Kimliği doğrulanmış her rota **bearer token kimlik doğrulaması** kullanır. Her iki tarafta da aynı değer yapılandırılmalıdır:
+
+- AgentEye sunucusu: ortam değişkeni `EVALUATOR_TOKEN`
+- Değerlendirici hizmeti: aynı şekilde yapılandırılmış (`agenteye-evaluator` SDK'sı kural gereği `EVALUATOR_TOKEN` okur)
+
+`EVALUATOR_TOKEN` ayarlanmamışsa, sunucu hiçbir `Authorization` başlığı göndermez; değerlendirici daha sonra anonim istekleri kabul edebilir, bu da yalnızca dahili ağ için iyidir ancak genel internet üzerinde önerilmez.
+
+### Değerlendircinin sunması gereken rotalar
+
+| Rota | Gövde / parametreler | Yanıt |
+|---|---|---|
+| `GET /health` | hiçbiri | `{"status":"ok"}` (açık, kimlik doğrulaması yok) |
+| `GET /config` | hiçbiri | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| atlanmış}` |
+| `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` veya `{"status":"pending", "job_id":"..."}` |
+| `GET /evaluate/{id}` | hiçbiri | `/evaluate` ile aynı yanıt şekli |
+
+### Sunucu tarafından gönderilen `EvalRequest` gövdesi
+
+```json
+{
+  "schema_version": "1",
+  "session_id":     "session-abc123",
+  "agent_id":       "planner",
+  "environment":    "production",
+  "started_at":     "2026-05-10T12:00:00Z",
+  "ended_at":       "2026-05-10T12:05:00Z",
+  "events": [
+    { "id": 1234, "ts": "...", "event_type": "agent_start", "payload": { ... } },
+    ...
+  ]
+}
+```
+
+### Yanıt şekilleri
+
+**Senkron (done):**
+
+```json
+{
+  "status": "done",
+  "scores": { "helpfulness": 0.85, "tool_efficiency": 0.6 },
+  "reasoning": {
+    "helpfulness": "answered the question directly with citations",
+    "tool_efficiency": "called list_files three times when one would have done"
+  },
+  "summary": "strong answer quality, weak tool selection"
+}
+```
+
+`reasoning` (puan başına gerekçelendirme haritası) ve `summary` (genel bir paragraf anlatısı) her ikisi de isteğe bağlıdır. `reasoning` içindeki anahtarlar `scores` içindeki anahtarları yansıtmalıdır; panel her girdiyi skor çubuğunun altında satır içinde gösterir. Yalnızca `scores` döndüren eski değerlendirciler değiştirilmeden çalışmaya devam eder; `reasoning` ve `summary` basitçe null olarak okunur ve karşılık gelen UI olanakları atlanır.
+
+**Zaman uyumsuz (erteleme):**
+
+```json
+{ "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
+```
+
+`next_poll_secs` isteğe bağlıdır; atlanırsa sunucu değerlendircinin `/config` yanıtından `default_poll_interval_secs` seçeneğini daha sonra kendi `EVALUATOR_POLLING_INTERVAL_SECS` ortam değişkenini kullanır.
+
+**Terminal değerlendirici tarafı hatası:**
+
+```json
+{ "status": "error", "error": "model service unavailable" }
+```
+
+Sunucu diğer 2xx gövdesini protokol hatası olarak behandle eder ve oturum için terminal bir `error` kaydeder.
+
+---
+
+## SDK ile değerlendirici yazma
+
+`agenteye-evaluator` Python paketi, yukarıdaki HTTP sözleşmesini uygulayan yazılı bir FastAPI sarmalayıcı sağlar. PyPI'den kurun:
+
+```bash
+pip install agenteye-evaluator
+```
+
+Minimum uygulanabilir değerlendirici:
+
+```python
+import os
+from agenteye_evaluator import Evaluator, EvalRequest, EvalResponse
+
+app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
+
+@app.evaluator
+def run(req: EvalRequest) -> EvalResponse:
+    # Inspect req.events (the full session transcript) and return scores.
+    tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
+    return EvalResponse(
+        scores={"tool_calls": float(tool_calls)},
+        reasoning={"tool_calls": f"{tool_calls} tool invocations in the transcript"},
+        summary="tight tool loop" if tool_calls < 5 else "agent looped on tools",
+    )
+```
+
+`app` örneği ASGI çağrılabilirdir, bu nedenle `uvicorn module:app` onu çalıştırır.
+
+Pahalı işi erteleme gerektiren değerlendirciler için, bunun yerine `JobPending` döndürün ve bir `@app.job_lookup` işleyiciyi kaydedin; AgentEye sunucusu terminal bir durum döndürülene veya `EVALUATOR_MAX_POLL_DURATION_SECS` sınırına (varsayılan 1 h) kadar ulaşılana kadar `GET /evaluate/{job_id}` yoklaması yapar.
+
+Tam API referansı, zaman uyumsuz desen ve etkinlik şeması: `agenteye-evaluator`
+README, [agenteye-enterprise sürümleri sayfasındaki](https://github.com/agenteye-enterprise/releases) her sürüm tarball içinde gemidir veya paketin PyPI sayfasında okuyabilirsiniz.
+
+---
+
+## Kubernetes'te değerlendirici çalıştırma
+
+Değerlendirici **sizin hizmetinizdir**: AgentEye varsayılan bir değerlendirici kapsayıcısı göndermez. Sürüm, `deploy/examples/evaluator/` altında, görüntüyü ve paylaşılan bir bearer token'ı değiştirdikten sonra olduğu gibi uygulayabileceğiniz referans Kubernetes manifestlerini içerir.
+
+### 1. Değerlendirici uygulamasını konteynırlaştır
+
+Değerlendirici için minimal bir Dockerfile:
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir agenteye-evaluator uvicorn
+COPY my_evaluator.py .
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
+    && chown -R evaluator:evaluator /app
+USER evaluator
+EXPOSE 9000
+CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
+```
+
+`runAsNonRoot` (UID 10001) kapsayıcıyı Pod Güvenliği kısıtlanmış profilleriyle uyumlu tutar.
+
+### 2. Paylaşılan bearer token oluştur
+
+```bash
+kubectl -n agenteye create secret generic evaluator-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+AgentEye sunucusunda `EVALUATOR_TOKEN` olarak aynı değeri kullanın. Sunucu her istekte `Authorization: Bearer <token>` gönderir; SDK sabit zamanlı bir kontrol için `hmac.compare_digest` kullanır ve uyuşmazlıkları HTTP 401 ile reddeder.
+
+### 3. Örnek manifestleri uygula
+
+```bash
+# Önce deploy/examples/evaluator/deployment.yaml dosyasını düzenleyin
+# `image:` değerini kayıt defterinize gösterecek şekilde ayarlayın, sonra:
+kubectl apply -k deploy/examples/evaluator/
+```
+
+Örnek şunları içerir:
+
+- `runAsNonRoot` ile 2 çoğaltmalı Deployment, salt okunur kök dosya sistemi,
+  tüm yetkileri bırakılmış, `/health` üzerinde canlılık + hazırlık
+- 9000 numaralı bağlantı noktasında ClusterIP Hizmeti
+- `secret.example.yaml` şablonu (kasıtlı olarak Kustomization'tan hariç; gerçek sırrı
+  bant dışı oluşturun, böylece hiçbir token git'e girmez)
+
+### 4. AgentEye'ı buna bağla
+
+AgentEye sunucusunda şunları ayarlayın:
+
+```bash
+EVALUATOR_ENDPOINT=http://evaluator:9000
+EVALUATOR_TOKEN=<yukarıda oluşturulan değer>
+```
+
+Sunucu `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`
+eşzamanlı istekleri tüm değerlendirici pod'ları arasında dağıtır (varsayılanlar: `2 × 4 = 8`).
+Bu sunucu tarafı kontrolleriyle birlikte `replicas` ve pod başına kaynak sınırlarını ölçeklendirin.
+
+### Doğrulama
+
+```bash
+kubectl -n agenteye port-forward svc/evaluator 9000:9000
+curl -s http://localhost:9000/health   # → {"status":"ok"}
+```
+
+Bir ajan uçtan uca çalıştırıldıktan sonra, AgentEye sunucusundaki `GET /evaluations` değerlendirici tarafından üretilen puanlarla birlikte `status: "done"` içeren bir satır döndürmelidir.
+
+---
+
+## AgentEye sunucusunu yapılandırma
+
+Sunucu işleminde ayarlayın:
+
+| Ortam değişkeni | Anlamı |
+|---|---|
+| `EVALUATOR_ENDPOINT` | Değerlendirici temel URL'si (`http://evaluator:9000`). Ayarlanmamış = işlem hattı devre dışı. |
+| `EVALUATOR_TOKEN` | Bearer token. Değerlendirici hizmetinin yapılandırıldığı değerle eşleşmelidir. |
+| `EVALUATOR_WORKERS` | Sunucu örneği başına çalışan görevleri (varsayılan 2). |
+| `EVALUATOR_CLAIM_BATCH` | Çalışan işaretlemesi başına talep edilen satırlar (varsayılan 4). Toplu işler **eşzamanlı** olarak işlenir; değerlendirici uç noktasındaki etkin eşzamanlılık `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | Hiçbir değerlendirme yapılması gerekmediğinde çalışanın gönderim denemeleri arasında uyuması gereken süre (varsayılan 2s). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `GET /evaluate/{id}` temposu için nihai geri dönüş, ne yanıt başına `next_poll_secs` ne de değerlendircinin `default_poll_interval_secs` ayarlandığında (varsayılan 10s). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | İstek başına zaman aşımı (varsayılan 30000). |
+| `EVALUATOR_MAX_ATTEMPTS` | Bu kadar geçici başarısızlıktan sonra sonuç terminal `error` olarak kaydedilir (varsayılan 5). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `GET /config` temposu (varsayılan 300). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Bir oturumun yoklama kuyruğunda kalabileceği maksimum duvar saati süresi, bundan sonra `timeout` olarak sonlandırılır (varsayılan 3600s). Değerlendircinin sonsuza kadar `pending` döndürdüğünü korur. |
+
+Tüm örnek arasında otomatik puanlamayı etkinleştirmek için `agenteye-evaluator` Secret'ini her iki anahtar kümesiyle sağlayın. Paketlenmiş Kubernetes manifestlerinde, sunucu bu isteğe bağlı Secret'ten `EVALUATOR_ENDPOINT` ve `EVALUATOR_TOKEN` okur. Kuruluşunuzun standart gizli yönetim süreci aracılığıyla oluşturun, ardından değişikliği alması için sunucu Deployment'ını yeniden başlatın.
+
+Yukarıdaki ayar düğmeleri varsayılan olarak bağlanmaz; varsayılanları geçersiz kılmanız gerekirse Deployment manifestinde sunucu kapsayıcısında karşılık gelen ortam değişkenlerini gösterin.
+
+Tam ortam değişkeni tablosu için [deployment.md](/tr/agenteye/deployment) sayfasını görün.
+
+---
+
+## API referansı
+
+| Yöntem | Yol | Gerekli izin | Amaç |
+|---|---|---|---|
+| `GET` | `/evaluations` | `evaluations:read` | Terminal sonuçları sorgula. `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session` seçeneğini destekler. `limit` varsayılan olarak 50 ve 200 ile sınırlandırılmıştır (`/events` ile farklı olarak 1000 ile sınırlandırılır). `environment` virgülle ayrılmış bir liste kabul eder (örneğin `environment=prod,staging`); tek değerler yine de çalışır. `latest_per_session=true` ile yanıt `session_id` başına en fazla bir satır içerir (`completed_at` ile en son), oturumun değerlendirme zaman çizelgesini mevcut başlığına daraltmak için oturumlar listesi sayfası tarafından kullanılır. Varsayılan false (tam geçmişi döndürür). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | Filtrelenmiş bir dilim için yuvarlanmış eval sağlığı: toplam sayı, done/error/timeout dökümü, puan anahtarı başına istatistikler (keyfi `scores` anahtarları üzerinde sayı/ortalama/min/maks/p50) ve zaman dilimi zaman çizelgesi. **/evaluations** ile aynı filtre parametrelerini artı `featured_keys` (trend için skor anahtarı CSV'si) ve `latest_per_session` kabul eder. Panolar özelliğini güçlendirir; metrikler tam eşleşen küme üzerinde tam olmalı, örneklenmiş değil. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | `evaluations` tablosundan farklı ortam değerleri. Değerlendirme tarafından okunabilir verilere kapsamlı filtre açılır menülerini doldurmak için kullanılır. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | Uçuştaki değerlendirmelere görünürlük. `status` (`pending`/`polling`) ile filtreleyin. |
+| `GET` | `/events` | `events:read` | Bir oturumun ham etkinliklerini akış. `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit` ve `order` seçeneğini destekler. `order` `desc` (yeniden sıralı, varsayılan) veya `asc` (en eski birinci); tanınmayan bir değer `desc` seçeneğine geri döner. Yanıtın `next_cursor` (bir etkinlik kimliği) aracılığıyla imleci sayfalandırın: sonraki sayfa almak için onu `cursor` olarak geri geçirin; `asc` ile sonraki sayfa bu kimliğin sonraki etkinlikleridir, `desc` ile bu kimlikten önceki etkinliklerdir. `limit` varsayılan olarak 50 ve 1000 ile sınırlandırılmıştır. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | Değerlendirici bu oturum için alacağı tam JSON gövdesini döndürür, `session-<id>.json` adlı indirilebilir bir ek olarak sunulur. Üretim oturumlarını çevrimdışı test için `agenteye-evaluator` aracılığıyla yeniden oynatmak için kullanışlı. Baytlar, değerlendirici işlem hattının gönderdiği bayt-özdeştir. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | Bir oturum için yeni bir değerlendirmeyi kuyruğa al; daha önce bir değerlendirme var mı yoksa yok mu yapılır. Yeni sonuç, önceki puanların tarih olarak görünür kalması için önceki sonucu geçersiz kılmak yerine oturumun değerlendirme zaman çizelgesine **eklenir**. Kuyruğa alma'da `202`, bilinmeyen oturum için `404`, bir değerlendirme zaten uçuşta ise `409` döndürür. Yeni bir değerlendirici dağıtıldıktan sonra veya hiçbir zaman `agent_end` yayan olmayan oturumlar için kullanın. |
+
+### Skor aralığında filtreleme: `score_filters`
+
+`GET /evaluations`, `scores` nesnesi içindeki sayısal değerlere göre sonuçları daraltacak isteğe bağlı bir `score_filters` parametresini kabul eder. Parametresi, virgülle ayrılmış `key:min..max` girdilerinin bir listesidir; her sınır atlanabilir. Birden çok giriş mantıksal AND ile birleşir. Adlandırılmış anahtarın bulunmadığı veya sayısal olmayan satırlar hariç tutulur. İstek en fazla 20 filtre girişi taşıyabilir; bunun aşılması HTTP 400 döndürür.
+
+Örnekler:
+```text
+# helpfulness in [0.5, 0.8]
+GET /evaluations?score_filters=helpfulness:0.5..0.8
+
+# tool_efficiency at most 0.3 (no lower bound)
+GET /evaluations?score_filters=tool_efficiency:..0.3
+
+# helpfulness >= 0.5 AND factuality >= 0.9
+GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
+```
+
+Her `/evaluations` yanıt nesnesi şu alanlara sahiptir:
+
+| Alan | Tür | Notlar |
+|---|---|---|
+| `evaluation_id` | string (UUID) | Bu terminal değerlendirme için kanonik tanımlayıcı. Her terminal değerlendirme yeni bir UUID alır; tek bir oturum birden fazla tutabilir. |
+| `id` | string (UUID) | `evaluation_id` ile aynı değeri taşıyan geriye dönük uyumluluk takma adı. |
+| `session_id` | string | Bu değerlendirmenin çalıştığı oturum. Bir oturum zaman çizelgesinde birden fazla değerlendirmeye sahip olabilir. |
+| `agent_id` | string | Oturumu üretmiş ajanı tanımlar. |
+| `environment` | string | Ortam etiketi oturumdan kopyalanır. |
+| `status` | enum | `"done"`, `"error"`, `"timeout"` içinden biri. |
+| `scores` | object \| null | Değerlendirici tarafından döndürülen puanlar. |
+| `reasoning` | object \| null | Değerlendirici tarafından döndürülen isteğe bağlı puan başına gerekçelendirme haritası. Anahtarlar genellikle `scores` içindeki anahtarları yansıtır. Panel her girdiyi skor çubuğunun altında gösterir. |
+| `summary` | string \| null | Değerlendirici tarafından döndürülen isteğe bağlı bir paragraf genel anlatısı. Panel bunu puan başına dökümün üstünde değerlendirmenin başlığı olarak gösterir. |
+| `error` | string \| null | Yalnızca `"error"` / `"timeout"` üzerinde doldurulur. |
+| `attempt_count` | integer | Gönderim denemesi sayısı (≥ 1). |
+| `duration_ms` | integer \| null | Son deneşin süresi. |
+| `completed_at` | string (ISO 8601 UTC) | Terminal sonuç kaydedildiğinde. Sonuçlar `completed_at` (yeniye birinci) ile sıralanır. |
+| `created_at` | string (ISO 8601 UTC) | `completed_at` ile aynı zaman damgasını taşır (yazma sonra semantik). |
+
+---
+
+## İzinler
+
+| İzin | Vermeler |
+|---|---|
+| `evaluations:read` | Değerlendirme sonuçlarını listele, panoda puanları görüntüle ve panel sağlık metriklerini yükle. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` aracılığıyla bir oturum için değerlendirmeyi manuel olarak kuyruğa al veya panelin yeniden değerlendirme düğmesi. |
+| `dashboards:read` | Kayıtlı panoları görüntüle (metriklerini yüklemek için `evaluations:read` da gerekir). |
+| `dashboards:write` | Panolar oluştur ve düzenle. |
+| `dashboards:delete` | Panoları sil. |
+
+Önyükleme yöneticisi (`ADMIN_KEY`, `ADMIN_EMAIL`) otomatik olarak bunların tümünü alır.
+
+---
+
+## Sonuçları görüntüleme
+
+- **`/sessions/<id>`**: etkinlikler zaman çizelgesi + oturumun puanlarını ve gönderim denemesinden herhangi bir hatayı gösteren sağ ray. Anahtarınız `evaluations:trigger` varsa, hiçbir zaman `agent_end` yayan oturumlar için yararlı olan dışa aktarma düğmesinin yanında bir **yeniden değerlendirme** düğmesi görünür veya yeni bir değerlendirici dağıtıldıktan sonra puanları yenileme. Panel yeni sonucu yoklar ve iniş yaptığında sağ rayı günceller.
+- **`/sessions`**: filtrelenebilir oturum ızgarası; skor sütunu her oturumun değerlendirme durumunu ve puanlarını bir bakışta gösterir.
+- **`/dashboards`**: kayıtlı eval-sağlık görünümleri (aşağıdaki [Panolar](#dashboards) bölümüne bakınız).
+
+![Oturum başına değerlendirme durumu hapları ve renkle kodlanmış skor rozeti (yararlılık, gerçeklik, araç verimliliği, güvenlik, tutarlılık) ile sessler ızgarası](/agenteye/images/sessions-list.png)
+
+*Oturumlar ızgarası her çalışmanın değerlendirme durumunu ve puanlarını bir bakışta gösterir; kırmızı/kehribar/yeşil rozetler düşük puanları öne çıkarır.*
+
+![Sağ rayda değerlendirme puanları ve gönderim durumunu gösteren oturum detayı görünümü](/agenteye/images/session-detail.png)
+
+*Bir oturum açılarak tam zaman çizelgesi sağ rayda değerlendirme puanları ve herhangi bir gönderici hatası ile birlikte gösterilir.*
+
+---
+
+## Panolar
+
+**Panolar** sayfası (`/dashboards`) bir değerlendirme filtresi kombinasyonunu adlandırılmış, yeniden kullanılabilir bir görünüm olarak kaydetmenize ve bu dilimin değerlendirmelerinin bir bakışta nasıl yapıldığını izlemenize olanak tanır. Panolar **tüm kuruluşunuz arasında paylaşılır**; `dashboards:read` sahip olan herkes aynı kümeyi görür.
+
+Her panel şunları sabitler:
+
+- **Filtreler**: oturumlar sayfası ile aynı denetimler: ortam, durum,
+  ajan, kayan zaman penceresi ve skor aralığı filtreleri (`key:min..max`).
+- **Ekran yapılandırması**: hangi skor anahtarlarının öne çıkarılacağı, yeşil/kehribar/kırmızı
+  sağlık eşikleri, gösterilecek paneller ve oturum başına en son değerlendirmeyi daraltıp daraltan şey.
+
+Her kart eşleşen oturumların sayısını, bir done/error/timeout dökümünü,
+her öne çıkarılmış puanın ortalamasını ve küçük bir trend sparkline'ını gösterir. Bir panoyu açılarak tam boyut panelleri gösterir; **"oturumları aç"** tam olarak o dilime önceden filtrelenmiş oturumlar sayfasına sizi düşürür. Metrikler sunucu tarafı hesaplanır tam eşleşen küme üzerinde (via `GET /evaluations/aggregate`), bu nedenle sayılar örneklenmiş yerine kesindir.
+
+![Değerlendirici boyutu başına ortalama skor çubukları, araç tamam-karşı-hata dökümü, en yüksek araçlar ve saatlik olaylar trendi içeren eval-sağlık panosu](/agenteye/images/dashboard-quality.png)
+
+**İzinler:** görüntüleme `dashboards:read` ve `evaluations:read` ikisini de gerektirir;
+oluşturma ve düzenleme `dashboards:write` gerektirir; silme `dashboards:delete` gerektirir.
+Önyükleme yöneticisi bunların tümünü otomatik olarak alır.
+
+---
+
+## Sorun giderme
+
+**Oturumlar var ama hiçbir değerlendirme oluşturulmaz.** Sunucu işleminde `EVALUATOR_ENDPOINT` ayarlandığını, sunucu ve değerlendircinin aynı `EVALUATOR_TOKEN` değerini paylaştığını ve değerlendircinin `/health` uç noktasının sunucudan erişilebilir olduğunu doğrulayın. `EVALUATOR_ENDPOINT` ayarlanmadığında işlem hattı inaktiftir.
+
+**Uçuştaki değerlendirmeler yığılır.** Uçuştaki kuyruğu görmek için `GET /evaluation-jobs` sorgusunu yapın. Her satırda `attempt_count`, `next_attempt_at` ve `last_error` şekline bakın. Yaygın nedenler: değerlendirici hizmeti erişilemez veya 5xx döndürüyor (geri alma ile yeniden denenilir), yanlış `EVALUATOR_TOKEN` (401 terminaldir) veya süresiz `pending` döndüren zaman uyumsuz bir değerlendirici (aşağıya bakınız).
+
+**Oturumlar tamamlandı ama terminal değerlendirmesi yok.** `GET /evaluation-jobs?status=polling` sorgusunu yapın; sonuç hala uçuştaki olabilir.
+Bir iş `pending` içinde sıkışırsa, sunucu değerlendirciye ulaşmada sorun yaşıyor; değerlendircinin açık olduğunu ve `EVALUATOR_TOKEN` eşleşmesi doğrulayın.
+
+**Değerlendirciden `HTTP 401: geçersiz bearer token`**. Sunucudaki `EVALUATOR_TOKEN` değerlendirici hizmetinin yapılandırıldığı değerle eşleşmez. Özdeş olmalıdırlar.
+
+**Zaman uyumsuz değerlendirici sonsuza kadar `pending` döndürür.** Sunucu `GET /evaluate/{job_id}` yoklaması yapıyor terminal bir durum döndürülene veya `EVALUATOR_MAX_POLL_DURATION_SECS` (varsayılan 1 h) kadar ulaşılana kadar. Sınırdan sonra değerlendirme `timeout` olarak kaydedilir ve uçuştaki kuyruktan kaldırılır. Değerlendircinin varsayılandan daha uzun süre meşru olarak ihtiyacı varsa `EVALUATOR_MAX_POLL_DURATION_SECS` yükseltin.

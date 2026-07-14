@@ -1,0 +1,131 @@
+---
+title: "GitHub Token Setup"
+description: "AgentEye GitHub Token Setup Dokumentation."
+---
+
+Ein GitHub Personal Access Token (PAT) ist die einzige Zugangsdaten, die alle AgentEye-Artefakte freischaltet. Mit einem einzigen Token können Sie Docker-Images abrufen, Release-Binärdateien herunterladen und Python-Wheels installieren – ohne separate Anmeldungen für einzelne Komponenten und ohne gemeinsam genutzte Secrets, die weitergegeben werden müssen. Alle AgentEye-Artefakte werden über die GitHub-Organisation `agenteye-enterprise` verteilt. Sobald Ihrer Organisation Zugriff gewährt wurde, generiert und rotiert jeder Entwickler oder Operator sein eigenes Token, sodass der Zugriff pro Person nachvollziehbar und widerrufbar bleibt.
+
+Setzen Sie das Token einmalig pro Maschine als Umgebungsvariable und Docker-Credential:
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+> **Hinweis zum Benutzernamen:** GHCR ignoriert den bei `docker login` angegebenen Benutzernamen und authentifiziert ausschließlich anhand des Tokens – daher funktioniert jeder nicht leere Wert. In dieser Dokumentation wird der Kürze halber `-u x` verwendet. Deployment-Manifeste, die ein Kubernetes-Image-Pull-Secret erstellen, können einen aussagekräftigeren Benutzernamen wie `agenteye-enterprise` verwenden. Beides wird akzeptiert.
+
+---
+
+## Option A: Klassisches Token (Empfohlen)
+
+Ein klassisches Token ist die zuverlässigste Wahl für AgentEye, da der `docker login`- und Image-Pull-Ablauf von GHCR klassische Tokens am breitesten und konsistentesten unterstützt. Zwei Berechtigungsbereiche decken alles ab, was Sie benötigen (Images abrufen und Release-Assets herunterladen), sodass Sie sich einmalig authentifizieren und ohne Troubleshooting von Registry-Eigenheiten weitermachen können. Einer davon, `read:packages`, ist tatsächlich nur lesend; der andere, `repo`, ist der einzige klassische Bereich, der Zugriff auf private Release-Assets gewährt, und er ist bewusst weit gefasst – GitHub definiert ihn als vollständige Kontrolle (Lesen und Schreiben) über private Repositories.
+
+### 1. Token erstellen
+
+Navigieren Sie zu **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
+
+| Feld | Wert |
+|---|---|
+| **Note** | `agenteye-<Maschinen- oder Teamname>` (z. B. `agenteye-prod-server`) |
+| **Expiration** | Setzen Sie ein Ablaufdatum entsprechend Ihrer Sicherheitsrichtlinie; 90 Tage sind ein sinnvoller Standardwert |
+
+> **Hinweis zur Bezeichnung:** GitHub nennt dieses Feld **Note** bei klassischen Tokens und **Token name** bei fein abgestuften Tokens. Beide dienen demselben Zweck: ein für Menschen lesbarer Bezeichner zur späteren Überprüfung und zum Widerruf.
+
+### 2. Berechtigungsbereiche auswählen
+
+| Bereich | Warum er benötigt wird |
+|---|---|
+| `read:packages` | Docker-Images von `ghcr.io/agenteye-enterprise/` abrufen und Paket-Assets herunterladen |
+| `repo` | Private Repository-Inhalte, Rohdateien und Release-Assets von `agenteye-enterprise/releases` lesen. Dies ist GitHubs weitgefasster Bereich "Full control of private repositories" (Lesen und Schreiben), kein nur lesender Bereich – er ist schlicht der einzige klassische Bereich, der Zugriff auf private Release-Assets gewährt |
+
+Keine weiteren Bereiche sind erforderlich.
+
+### 3. Token generieren und kopieren
+
+Klicken Sie auf **Generate token** und kopieren Sie den Wert sofort – er wird nur einmal angezeigt. Speichern Sie ihn in Ihrem Secret-Manager oder Ihrer Umgebung.
+
+---
+
+## Option B: Fein abgestuftes Token (Fine-Grained Token)
+
+Fein abgestufte Tokens begrenzen den Zugriff auf bestimmte Repositories und Berechtigungen und stellen damit die strikteste Option mit geringstem Rechteprinzip dar. Wählen Sie diesen Weg, wenn die Sicherheitsrichtlinie Ihrer Organisation fein abgestufte Tokens vorschreibt.
+
+> **Hinweis:** Die GHCR-Unterstützung für fein abgestufte Tokens ist weniger konsistent als für klassische Tokens. Wenn `docker login` oder `docker pull` nach diesen Schritten fehlschlägt, verwenden Sie stattdessen ein klassisches Token (Option A).
+
+### 1. Token erstellen
+
+Navigieren Sie zu **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+
+| Feld | Wert |
+|---|---|
+| **Token name** | `agenteye-<Maschinen- oder Teamname>` (z. B. `agenteye-prod-server`) |
+| **Expiration** | Setzen Sie ein Ablaufdatum entsprechend Ihrer Sicherheitsrichtlinie; 90 Tage sind ein sinnvoller Standardwert |
+| **Resource owner** | `agenteye-enterprise` |
+| **Repository access** | **Only select repositories** → `agenteye-enterprise/releases` |
+
+### 2. Repository-Berechtigungen setzen
+
+Unter **Permissions → Repository permissions** setzen Sie:
+
+| Berechtigung | Zugriff |
+|---|---|
+| **Contents** | Read-only |
+| **Packages** | Read-only |
+
+Alle anderen Berechtigungen können auf **No access** belassen werden.
+
+> **Hinweis:** Falls die Container-Images (`ghcr.io/agenteye-enterprise/...`) als organisationsweite Pakete statt als repository-verknüpfte Pakete veröffentlicht sind, schlägt der Docker-Login möglicherweise mit ausschließlich repository-bezogenen Berechtigungen fehl. Fügen Sie in diesem Fall eine Berechtigung auf Organisationsebene hinzu: **Permissions → Organization permissions → Packages: Read-only**.
+
+### 3. Was jede Berechtigung gewährt
+
+| Berechtigung | Verwendungszweck |
+|---|---|
+| Contents: Read-only | Herunterladen von `docker-compose.yml`, Release-Binärdateien und Python-Wheels aus `agenteye-enterprise/releases` |
+| Packages: Read-only | Abrufen von Docker-Images von `ghcr.io/agenteye-enterprise/` |
+
+### 4. Token generieren und kopieren
+
+Klicken Sie auf **Generate token** und kopieren Sie den Wert sofort – er wird nur einmal angezeigt. Speichern Sie ihn in Ihrem Secret-Manager oder Ihrer Umgebung.
+
+---
+
+## Token rotieren
+
+Das regelmäßige Rotieren von Tokens hält den Zugriff nachvollziehbar und begrenzt den Schaden, falls ein Credential jemals kompromittiert werden sollte. Tokens können auch jederzeit ablaufen oder widerrufen werden, daher ist die Rotation der übliche Weg, um authentifiziert zu bleiben. Zum Rotieren:
+
+1. Generieren Sie ein neues Token anhand der obigen Schritte.
+2. Aktualisieren Sie `AGENTEYE_TOKEN` in Ihrer Umgebung oder Ihrem Secret-Manager.
+3. Docker neu authentifizieren: `echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin`
+4. Widerrufen Sie das alte Token unter GitHub → Settings → Developer settings → Personal access tokens, öffnen Sie dann die Unterseite **Tokens (classic)** oder **Fine-grained tokens** entsprechend dem Token-Typ und löschen Sie es.
+
+---
+
+## Token überprüfen
+
+Bestätigen Sie, dass das Token funktioniert, bevor Sie es in ein Deployment einbinden, damit Authentifizierungsfehler hier und nicht mitten im Rollout auftreten. Jeder Befehl prüft einen der oben genannten Bereiche:
+
+```bash
+# Packages scope - Docker gegen GHCR authentifizieren
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+
+# Contents scope - eine Release-Rohdatei abrufen
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o /tmp/agenteye-compose-check.yml
+```
+
+Ein erfolgreicher `docker login` bestätigt den Packages-Bereich; eine heruntergeladene Datei bestätigt den Contents-Bereich.
+
+---
+
+## Fehlerbehebung
+
+| Symptom | Wahrscheinliche Ursache | Lösung |
+|---|---|---|
+| `docker login` gibt 401 zurück | Token fehlt `Packages: Read-only` (fein abgestuft) oder `read:packages` (klassisch) | Paketbereich hinzufügen und neu generieren |
+| `curl` gibt 404 für GitHub-Raw-URLs zurück | Token fehlt `Contents: Read-only` oder `repo`-Bereich | Contents-Bereich hinzufügen und neu generieren |
+| `gh release download` gibt 403 zurück | Token ist nicht für `agenteye-enterprise/releases` autorisiert | Prüfen Sie, ob das Repository im Repository-Zugriff des fein abgestuften Tokens enthalten ist, oder verwenden Sie ein klassisches Token mit `repo`-Bereich |
+| Token akzeptiert, aber Images nicht gefunden | Organisationsweite Paketberechtigung fehlt beim fein abgestuften Token | Berechtigung `Packages: Read-only` auf Organisationsebene hinzufügen |
+
+Bei Zugriffsproblemen wenden Sie sich an `support@exosphere.host`.

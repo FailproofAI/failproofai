@@ -1,0 +1,308 @@
+---
+title: "Uyarılar"
+description: "AgentEye Uyarılar belgelendirmesi."
+---
+
+Uyarılar bir kuralı düzenli olarak değerlendirir ve bir değer eşiği aştığında sizi bilgilendirir. AgentEye'ı pasif bir panodan önemli olan şeyler için sayfalama yüzeyine dönüştürür: hata oranı artışları, gecikme gerilemeleri, değerlendirici puan düşüşleri veya ClickHouse sorgusu olarak ifade edebileceğiniz herhangi bir özel olay.
+
+Bu rehber, bir uyarının ne olduğunu, beş tetikleme türünü, dört bildirim kanalını, olayın yaşam döngüsünü ve operasyonel kontrolleri kapsar.
+
+![Uyarılar sayfası: her biri tetikleme türünü, değerlendirme penceresini, kanalları ve bir bilgi/uyarı/kritik önem rozeti gösteran uyarı kuralı kartlarının ızgarası](/agenteye/images/alerts.png)
+
+---
+
+## Konseptler
+
+- **Uyarı** — kural. *Ne* kontrol edileceğini (tetikleyici), *ne sıklıkta* (değerlendirme aralığı), *ne zaman kırılmış sayılacağını* (bileşik mantık), *ne kadar acil olduğunu* (önem) ve *kime/nereye bildirileceğini* (kanallar) belirtir.
+- **Olay** — bir uyarı tetiklendiğinde ne olur. Bir uyarının aynı anda en fazla bir açık olayı vardır. Tekrarlanan ihlaller aynı olayın kanıtını günceller. Olaylar bir operatör tarafından çözülür; kural tetiklemeyi durdurduğunda otomatik çözümleme planlanmıştır ancak şu anda etkinleştirilmemiştir.
+- **Kanal** — bir bildirimin gittiği yer: e-posta, Slack, genel webhook veya panoda. Her uyarı herhangi bir kombinasyon ekleyebilir.
+
+Uyarılar ve olaylar bir kuruluşa aittir ve o kuruluşun operatörleri tarafından paylaşılır (tek kiracılı bir dağıtımda bu basitçe yerleşik `default` kuruluştur). Olaylar bireysel bir operatöre triaj için atanabilir.
+
+---
+
+## Tetikleme türleri
+
+Beş tür, her birinin kendine ait JSON özellikleri vardır. "Kırılmış"ı nasıl tanımlamak istediğinize uyan birini seçin. Pano **yeni uyarı** formu aynı özellikleri sizin için oluşturur ve tetikleme türünü seçtikçe koşul düzenleyicisini değiştirir:
+
+![Temel bilgileri (ad, açıklama, etkinleştirildi) ve metrik eşiği, özel SQL, değerlendirme puanı, değerlendirme hatalarını ve olay başına seçenekleri gösteren tetikleyici seçiciyi içeren yeni uyarı formu](/agenteye/images/alert-new.png)
+
+### 1. `metric_threshold`
+
+En basiti. Kapalı bir listeden bir metrik, bir operatör, bir eşik ve bir zaman penceresi seçin.
+
+| Metrik | Ne saydığı |
+|---|---|
+| `event_count` | Penceredeki toplam olaylar |
+| `error_count` | `event_type = 'error'` VEYA `error_type IS NOT NULL` olan herhangi bir olay |
+| `error_rate` | `error_count / event_count` (0..1) |
+| `p95_latency_ms` | `duration_ms` olan tüm olaylar arasında `quantile(0.95)(duration_ms)` |
+| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
+| `token_sum` | `SUM(input_tokens + output_tokens)` |
+
+Operatörler: `>`, `>=`, `<`, `<=`, `==` (ayrıca `gt`, `gte`, `lt`, `lte`, `eq` olarak kabul edilir).
+
+İsteğe bağlı filtreler: `environment`, `event_type`.
+
+Örnek spec:
+
+```json
+{
+  "metric": "p95_latency_ms",
+  "filter": { "environment": "production" },
+  "window_secs": 900,
+  "op": ">",
+  "value": 5000
+}
+```
+
+### 2. `custom_sql`
+
+Önceden ayarlanmış metrikler kapsamayan her şey için. Operatör tarafından sağlanan SQL, işlemci bunu çalıştırmadan önce aynı `/queries/run` korumasından geçer (yalnızca SELECT/WITH, tek ifade, 10.000 satır sınırı). İki mod:
+
+- **satırlar modu** (no `op`/`value`): sorgu en az bir satır döndürür döndürmez uyarı tetiklenir.
+- **değer modu**: sorgu bir sütunu `metric_value` olarak takma ad oluşturmalıdır; işlemci ilk satırın `metric_value`sini `op` kullanarak `value`a karşılaştırır.
+
+```json
+{
+  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
+  "op": ">",
+  "value": 100
+}
+```
+
+### 3. `evaluation_score`
+
+`agenteye.evaluations` okunur ve adlandırılmış bir puanın bir pencere boyunca ortalaması karşılaştırılır.
+
+```json
+{
+  "score_key": "hallucination",
+  "op": ">",
+  "value": 0.6,
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+`min_count` tek örnek aykırılıklarına karşı koruma sağlar; işlemci pencerede en az N değerlendirme mevcut olana kadar tetiklenmez.
+
+### 4. `eval_compound`
+
+*Birkaç* değerlendirici puanı arasında aynı anda ortaya çıkan kalite gerilemeleri yakala. `evaluation_score` tek bir adlandırılmış puanı izlerken, `eval_compound` birden çok değerlendirme puanı koşulunu tek bir uyarıya birleştirir ve sonuçlarını seçilen mantıkla birleştirir; böylece bir kural "helpfulness düşerse **VEYA** hallucination yükselirse tetikle", "yalnızca helpfulness **VE** tool-efficiency her ikisi de düşerse tetikle" veya "**bu üçten en az 2**si ihlal ederse tetikle" ifade edebilir.
+
+Her koşul `agenteye.evaluations`den adlandırılmış bir puanın ortalamasını paylaşılan pencere boyunca okur ve bunu kendi operatörü ve eşiği ile test eder. Boolean sonuçları daha sonra `combinator` tarafından birleştirilir:
+
+| Combinator | Mantık | Tetiklenir |
+|---|---|---|
+| `"any"` | VEYA | en az bir koşul ihlal edilirse |
+| `"all"` | VE | her koşul ihlal edilirse |
+| `{ "at_least": N }` | N-içinden-M | en az N koşul ihlal edilirse |
+
+```json
+{
+  "combinator": { "at_least": 2 },
+  "conditions": [
+    { "score_key": "hallucination", "op": ">", "value": 0.8 },
+    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
+    { "score_key": "tone",          "op": "<", "value": 0.5 }
+  ],
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+- `combinator`: `"any"`, `"all"` veya `{ "at_least": N }`.
+- `conditions[]`: her `{ score_key, op, value }`, diğer tetikleyicilerle aynı operatörleri kullanarak (`>`, `>=`, `<`, `<=`, `==`).
+- `window_secs`: her koşula uygulanan paylaşılan geri izleme (varsayılan `3600`).
+- `min_count`: o koşul ihlal edilmeden önce koşul başına minimum değerlendirme sayısı; pencerede çok az örneği olan bir koşul "ihlal edilmedi" olarak sayılır (varsayılan `1`).
+- `environment`: isteğe bağlı; her koşulu bir ortama kısıtlar.
+
+Bildirimin kanıtı her koşulun gözlenen ortalamasını, test edilen eşiği, kaç değerlendirme görüldüğünü ve ihlal edilip edilmediğini kaydeder; böylece hangi kontrollerin tetiklendiğini tam olarak görebilirsiniz.
+
+### 5. `per_event`
+
+"X ile eşleşen herhangi bir olay geldi" uyarıları için. Toplama yok; işlemci geri izleme penceresinde bir eşleşme görür görmez tetiklenir.
+
+```json
+{
+  "event_type": "error",
+  "lookback_secs": 60,
+  "environment": "production",
+  "tool_name": "bash",
+  "agent_id": "caa",
+  "error_type": "TimeoutError",
+  "message_contains": "vertex-ai timed out"
+}
+```
+
+Tüm filtreler VE-birleştirilmiştir; bıraktığınız herhangi bir alan sınırlandırılmamıştır.
+
+| Alan | Amaç |
+|---|---|
+| `agent_id` | Hataları belirli bir aracıya (Error sayfasında gösterilen) kısıtla. |
+| `error_type` | Tüm hatalardan ziyade belirli bir hata sınıfına (`TimeoutError` gibi) kısıtla. |
+| `message_contains` | `payload.message`e karşı büyük/küçük harfe duyarsız alt dize eşleştirmesi. Aynı aracıdan her hataya karşı uyarı vermeden belirli bir arıza modunu yakalamak için kullanışlıdır (örneğin `prompt is too long`). 200 karakterle sınırlı; desen değil, değişmez bir dize olarak eşleştirilir. |
+
+İpucu: aynı olay üzerinde çift bildirimi yapmamak için `lookback_secs`i kabaca uyarının `eval_interval_secs`sine eşleşecek şekilde ayarlayın.
+
+**`/errors`ten kısayol:** hatalar görünümündeki her hata grubunun temsilci satırının ve bir hata olayı için oturum olayı ayrıntı panelinin, `/alerts/new`i bu satırın `event_type` + ortamına kili bir `per_event` tetikleyicisinin önceden doldurulmuş olarak açan bir **+ alert** düğmesi vardır; mevcut olduğunda `error_type`den kaynak alan bir ad dahil. Yine kanalları seçer ve geri izlemeyi onaylarsınız, ancak eşleyici sizin için doldurulmuştur. Operatörler düğmenin görünmesi için `alerts:write` gerekir.
+
+---
+
+## Bileşik mantık (N içinden M)
+
+Her uyarının tetikleyiciye ek olarak iki tam sayı kontrol düğmesi vardır:
+
+- `eval_window`: kaç son değerlendirmeye bakılacağı (varsayılan 1)
+- `min_breaches`: uyarı tetiklenmeden önce kaç tanesinin ihlal edilmesi gerektiği (varsayılan 1)
+
+`1 of 1` (varsayılan) "ilk ihlalde tetikle"dir. `3 of 5` "kuralın son 5 değerlendirmeden 3'ünü ihlal ettiğinde tetikle" anlamına gelir, tek bir kötü ölçüm gürültü olduğu titrek sinyaller için kullanışlıdır. İşlemci uyarı başına bir halka arabelleği tutar; durumu kendiniz yönetmek zorunda değilsiniz.
+
+---
+
+## Değerlendirme aralığı
+
+`eval_interval_secs` işlemcinin kuralınızı ne sıklıkta çalıştıracağını kontrol eder. `[30, 86400]` ile sınırlandırılmıştır. Panodaki Presets: 1m / 5m / 15m / 1h. Temel alınan sinyalin ne kadar hızlı hareket ettiğine eşleşen bir aralık seçin: 15 saniyede değerlendirilen 5 dakikalık bir hata oranı uyarısı CPU'yu boşa harcar; bir olay başına uyarı kısa bir geri izleme gerektirir veya tick'ler arasındaki olayları sessizce bırakacaktır.
+
+---
+
+## Kanallar
+
+Her uyarı bu dördünün herhangi bir kombinasyonunu ekleyebilir. Kanala özgü kimlik bilgileri (Slack webhook URL'si, genel webhook URL'si + imzalama sırrı, varsayılan e-posta alıcıları) **`/settings`** tarafından bir kez yapılandırılır ve her uyarıdan anahtar ile referans gösterilir. Bu şekilde bir Slack kanalı her birin kendi webhook URL kopyasını depolaması gerekmeden birçok uyarıya hizmet verebilir.
+
+Üç harici kanal türü (e-posta, Slack, webhook) ayrıca kuruluş çapında bir kill anahtarı `alerts.enabled_channels` tarafından geçit oluşturulmuştur. Tetiklenen bir uyarı bu sette olmayan bir kanal türü eklediğinde, işlemci bunu atlar ve durum `skipped_disabled` ve hedef `<channel_disabled>` olan bir `alert_notifications` satırı kaydeder (tüm Slack teslimatını global olarak duraklatmanıza izin vererek her kuralı düzenleme gerekmeden). Panodaki kanal her zaman izin verilir. Bkz. [Yapılandırma](#yapılandırma).
+
+### E-posta
+
+OTP giriş e-postalarını göndererek aynı SMTP taşımasını yeniden kullanır. Alıcılar şu sırada çözümlenir:
+
+1. Kanala özgü `recipients[]` geçersiz kılması (boş olmadığında).
+2. `alerts.email_default_recipients` ayarı (e-posta dizelerinin bir dizisi).
+
+SMTP yapılandırılmamışsa kanal bir no-op'tır; işlemci yine de hedefi `<smtp_unconfigured>` olan bir `alert_notifications` satırı kaydeder böylece denetim izi yanlış yapılandırmayı görünür kılar.
+
+### Slack
+
+Bir [gelen webhook URL'sine](https://api.slack.com/messaging/webhooks) Block Kit iletisi gönderir.
+
+- Varsayılan URL: `alerts.slack_default_webhook` (`/settings` içinde ayarlanır).
+- Uyarı başına geçersiz kılma: kanalın `webhook_setting_key`sini başka herhangi bir URL türü ayar anahtarına ayarlayın, örneğin `alerts.slack_oncall`, `alerts.slack_costs`.
+
+Başlık bir önem emoji'si (`:rotating_light:` / `:warning:` / `:bell:`) içerir ve ileti olay sayfasına derin bağlantı veren bir düğme taşır.
+
+### Genel webhook
+
+PagerDuty, Opsgenie veya kendi alım uç noktanız için bir JSON-POST entegrasyonu. Gövde şekli:
+
+```json
+{
+  "schema_version": 1,
+  "event": "alert.firing",
+  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
+  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
+  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
+}
+```
+
+`alerts.webhook_signing_secret` ayarlandığında, istek `X-AgentEye-Signature: sha256=<hex>` başlığı içerir, sırrı kullanarak gövdenin HMAC-SHA256'sı. Yükü güvenmeden önce alıcı tarafında doğrulayın.
+
+Başlık `X-AgentEye-Event` `alert.firing` / `alert.test` taşır. (`alert.resolved` planlanan otomatik çözümleme özelliği için ayrılmıştır ve şu anda yayınlanmamaktadır.)
+
+### Panodaki
+
+Harici teslimat yok: uyarı basitçe pano olayları sayfasının yüzeylendiği bir `alert_notifications` satırı yazar. Kuralı ayarlarken ve harici bir sistemi spam yapmak istemiyorsanız veya operatörlerin normal triaj sırasında kontrol ettiği düşük aciliyet uyarıları için kullanışlıdır.
+
+---
+
+## Olay yaşam döngüsü
+
+```
+firing  ──ack──▶  acknowledged
+   │                    │
+   └────────────────────┴───── operator resolve ───▶  resolved
+```
+
+- **firing** — işlemci az önce olayı açtı veya başka bir ihlal algıladı. Tetikleme bildirimi tam olarak bir kez yayılır (olayın `notified_firing_at` zaman damgasına göre geçit oluşturulmuş).
+- **acknowledged** — bir operatör `/incidents/:id` üzerinde *ack* düğmesine bastı. Olay hala açık olarak kabul edilir; sonraki ihlaller kanıtını yeniden bildirmeden günceller.
+- **resolved** — bir operatör *resolve* düğmesine bastı. Kural tetiklemeyi durdurduğunda otomatik çözümleme planlanmıştır ancak şu anda etkinleştirilmemiştir, bu nedenle açık bir olay bir operatör bunu çözene kadar açık kalır.
+
+Yeni bir olay, önceki olay çözüldükten sonra herhangi bir noktada aynı uyarı üzerinde yeniden açılabilir.
+
+**Aktivite zaman çizelgesi.** Bir olay üzerinde her eylem — açılmış, onaylanmış, çözülmüş — ek bir aktivite günlüğüne kaydedilir ve olayın *aktivite* zaman çizelgesinde gösterilir, her giriş bunu gerçekleştiren operatöre (e-posta ile) veya işlemcinin kendi başına aldığı eylemler için **automated** olarak atfedilir (ihlalde otomatik-açılış). Onay paylaşılmıştır: birden çok operatör aynı olayı onaylayabilir ve her biri ayrı, atfedilen bir giriş olarak görünür.
+
+**Incidents** gelen kutusu açık olayları duruma göre gruplandırır ve önem ve atanana göre filtrelemenizi sağlar:
+
+![Ciddi rozetleri ve atanmışları gösteren uyarı bağlantılı ve ad-hoc olay kartlarını gösteren Incidents gelen kutusu](/agenteye/images/incidents.png)
+
+Bir olayın açılması ihlal kanıtını, atanmışları ve abone olanları, atfedilen aktivite zaman çizelgesini ve bir yorum başlığını gösterir:
+
+![Bir olay ayrıntı görünümü: ana uyarı, ihlal özeti, atanmışlar, aboneler, atfedilen aktivite günlüğü ve sohbet](/agenteye/images/incident-detail.png)
+
+---
+
+## Gerekli İzinler
+
+Yazarlık uyarı *kuralları* ve triaj *olayları* ayrı kaygılar ve ayrı hibeler olan şey; bu nedenle on-call'a bir olaya erişim verebilir kuralları yeniden yazma yeteneği vermeden.
+
+- `alerts:read`: uyarı kurallarını görüntüle.
+- `alerts:write`: uyarı kuralları oluştur, düzenle, sil ve test bildirimi tetikle.
+- `incidents:read`: olayları görüntüle.
+- `incidents:write`: uyarıya bağlı olmayan manuel (ad-hoc) olaylar açılır.
+- `incidents:ack`: olayları onayla, ata, yorum yap ve çözümle.
+
+> **Eski `alerts:ack`.** Eski `alerts:ack` token'ına sahip anahtarlar ve operatörler çalışmaya devam eder: `incidents:ack` olarak onurlandırılır (ve `incidents:read` ima eder), böylece mevcut on-callerlar kimlik bilgileri yeniden yayınlamadan erişimlerini korurlar. Yeni hibeler `incidents:*` ailesiyle verin.
+
+API anahtarlarında (`POST /keys`) ve operatörlerde (`PUT /users/:id`) hibe verin. Pano `PermGate`, bir izin eksik olduğunda ilgili düğmeleri kilitler; eylemin yanında `// 403` göreceksiniz.
+
+> **E-posta alıcı seçici.** Uyarı editörünün alıcı seçici kuruluşunuzun üyelerini listeler böylece onları ada göre seçebilirsiniz. `alerts:read` veya `alerts:write` tutan herhangi bir operatör için yükler; bu amaç için takımınızın dizinini görüntülemek **herhangi bir** `users:read` gerektirmez ve seçici yalnızca üye e-posta adreslerini döndürür, asla tam kullanıcı kayıtlarını döndürmez.
+
+---
+
+## Yapılandırma
+
+İşlemci tarafından tüketilen ortam değişkenleri:
+
+| Var | Varsayılan | Amaç |
+|---|---|---|
+| `ALERT_WORKERS` | `1` | Sunucu örneği başına worker görevleri. Çoğu dağıtımın sadece bir tane gerekir. |
+| `ALERT_CLAIM_BATCH` | `16` | Tek bir worker tick işlemlerinin maksimum uyarı sayısı. |
+| `ALERT_POLL_IDLE_SECS` | `5` | Kuyruk boş olduğunda worker uyku. |
+| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Tetikleyici başına değerlendirme zaman aşımı. |
+| `DASHBOARD_URL` | `https://app.befailproof.ai` | Bildirimler içinde olay sihir linkini oluşturmak için kullanılan başlangıç. Pano ana bilgisayarınıza ayarlayın. |
+
+Geçici bir değerlendirme başarısızlığından (ClickHouse ulaşılamaz, sorgu zaman aşımı) sonra işlemci kuralı üstel geri çekilme ile yeniden dener. Bir kural 5 arka arkaya geçici başarısızlık biriktirdikten sonra, normal temposunda yeniden planlanır, geri çekilmeye devam etmek yerine, böylece kalıcı olarak başarısız bir kural yine de yeniden değerlendirilmeye devam eder. Bu tavan sabitlenmiş olup operatör tarafından ayarlanamaz.
+
+Kanal ayarları (`/settings`ten yönetilen, env değil):
+
+- `alerts.email_default_recipients` (`email_list`): e-posta dizeleri JSON dizisi — e-posta kanalları için varsayılan alıcılar.
+- `alerts.slack_default_webhook` (`url`): varsayılan Slack gelen-webhook URL'si.
+- `alerts.webhook_default_url` (`url`): varsayılan genel-webhook URL'si.
+- `alerts.webhook_signing_secret` (`secret`): HMAC-SHA256 anahtarı. GET yanıtında her zaman `""` olarak döndürülür; döndürmek için yeni bir değer yazın.
+- `alerts.enabled_channels` (`channel_set`): uyarı tetiklendiğinde gönderilenin kuruluş çapında harici kanal türleri kümesi; üçü de varsayılan (`email`, `slack`, `webhook`). Bir türü buradan çıkarmak, her kuralı düzenlemeden tüm uyarılar için bu kanalı global olarak bastırır. Panodaki kanal her zaman teslim edilir ve bu ayardan etkilenmez.
+
+---
+
+## Yeni bir uyarıyı doğrula
+
+Yeni bir uyarıya güvenmeden önce:
+
+1. Bunu en az bir bildirim kanalı ile etkinleştirilmiş olarak kaydedin.
+2. Uyarı ayrıntı sayfasından **test** seçin ve her yapılandırılmış hedefin sentetik bildirimi almasını doğrulayın.
+3. İlk gerçek ihlaldan sonra, olayın **Incidents** altında görünmesini ve ölçülen değerinin karşılık gelen pano sorgusuyla eşleşmesini doğrulayın.
+
+Olaylar bir koşul temizlendiğinde otomatik olarak çözülmez. Bir operatör bunları olay ayrıntı sayfasından çözmelidir.
+
+---
+
+## Sorun Giderme
+
+| Belirti | Olası Nedeni |
+|---|---|
+| Uyarı asla tetiklenmez | `enabled = false`, veya hiçbir kanal eklenmemiş veya temel CH sorgusu 0 satır döndürür. Kanalları doğrulamak için *test* kullanın; metriği doğrulamak için `/queries/run` kullanın. |
+| Slack bildirimi eksik | `alerts.slack_default_webhook` (veya uyarı başına geçersiz kılma anahtarı) ayarlanmamıştır: `<unset:…>` satırları için `alert_notifications.target` kontrol edin; veya `slack` türü `alerts.enabled_channels` içinde global olarak devre dışı bırakılmıştır: durum `skipped_disabled` ve hedef `<channel_disabled>` olan `alert_notifications` satırlarını kontrol edin. |
+| Genel webhook 401 | Alıcı bir imza gerektirir ancak `alerts.webhook_signing_secret` ayarlanmamıştır. Alıcıda HMAC'ın `hmac_sha256(secret, body)` eşleşip eşleşmediğini doğrulayın. |
+| E-posta "tüm gönderiler başarısız oldu" | SMTP kimlik bilgileri yanlış veya `from` adresi yayın tarafından reddedilir. OTP e-postalarını gönderip göndermeyen aynı yüzey: bunlar işe yarıyorsa SMTP taşıması iyidir. |
+| Olay tekrar tekrar açılır | Bileşik düğmeler çok agresiftir: `min_breaches` veya `eval_window`'ü yükseltmeyi deneyin böylece geçici artışlar çözdüğünüz olayları yeniden açmazsınız. |

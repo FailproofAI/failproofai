@@ -1,0 +1,309 @@
+---
+---
+title: "Cảnh báo"
+description: "Tài liệu về Cảnh báo AgentEye."
+---
+
+Cảnh báo đánh giá một quy tắc theo lịch trình và thông báo cho bạn khi có điều gì vượt quá ngưỡng. Chúng biến AgentEye từ một bảng điều khiển thụ động thành một bề mặt báo cáo cho những điều quan trọng: tăng đột ngột tỷ lệ lỗi, hồi quy độ trễ, giảm điểm đánh giá, hoặc bất kỳ sự kiện tùy chỉnh nào mà bạn có thể biểu diễn dưới dạng truy vấn ClickHouse.
+
+Hướng dẫn này bao gồm cảnh báo là gì, năm loại kích hoạt, bốn kênh thông báo, vòng đời sự cố, và các điều khiển vận hành.
+
+![Trang Cảnh báo: một lưới các thẻ quy tắc cảnh báo, mỗi thẻ hiển thị loại kích hoạt, cửa sổ đánh giá, kênh, và huy hiệu mức độ nghiêm trọng thông tin/cảnh báo/tới hạn của nó](/agenteye/images/alerts.png)
+
+---
+
+## Khái niệm
+
+- **Cảnh báo** — quy tắc. Nó nói *cái gì* để kiểm tra (kích hoạt), *tần suất* (khoảng đánh giá), *khi nào coi là bị hỏng* (logic phức hợp), *mức độ khẩn cấp* (mức độ nghiêm trọng), và *ai/nơi* để thông báo (kênh).
+- **Sự cố** — những gì xảy ra khi cảnh báo phát động. Một cảnh báo có tối đa một sự cố mở tại một thời điểm. Những lần vi phạm lặp lại cập nhật bằng chứng của cùng một sự cố. Sự cố được giải quyết bởi một điều hành viên; giải quyết tự động khi quy tắc dừng phát động được lên kế hoạch nhưng hiện không được bật.
+- **Kênh** — nơi thông báo đi: email, Slack, webhook chung, hoặc trong bảng điều khiển. Mỗi cảnh báo có thể đính kèm bất kỳ sự kết hợp nào.
+
+Cảnh báo và sự cố thuộc về một tổ chức và được chia sẻ giữa các điều hành viên của tổ chức đó (trong triển khai một người thuê đó chỉ là `default` org được xây dựng sẵn). Sự cố có thể được gán cho một điều hành viên cá nhân để phân loại.
+
+---
+
+## Các loại kích hoạt
+
+Năm loại, mỗi loại có thông số kỹ thuật JSON riêng. Chọn loại phù hợp với cách bạn muốn mô tả "bị hỏng". Biểu mẫu **cảnh báo mới** trên bảng điều khiển xây dựng cùng một thông số kỹ thuật cho bạn, chuyển đổi trình chỉnh sửa điều kiện để phù hợp với loại kích hoạt bạn chọn:
+
+![Biểu mẫu cảnh báo mới, với các thông tin cơ bản (tên, mô tả, được bật) và bộ chọn kích hoạt hiển thị ngưỡng metric, SQL tùy chỉnh, điểm đánh giá, các lỗi đánh giá, và tùy chọn cho mỗi sự kiện](/agenteye/images/alert-new.png)
+
+### 1. `metric_threshold`
+
+Đơn giản nhất. Chọn một metric từ danh sách đóng, một toán tử, một ngưỡng, và một cửa sổ thời gian.
+
+| Metric | Nó đếm gì |
+|---|---|
+| `event_count` | Tổng số sự kiện trong cửa sổ |
+| `error_count` | `event_type = 'error'` HOẶC bất kỳ sự kiện nào với `error_type IS NOT NULL` |
+| `error_rate` | `error_count / event_count` (0..1) |
+| `p95_latency_ms` | `quantile(0.95)(duration_ms)` trên tất cả các sự kiện với `duration_ms` |
+| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
+| `token_sum` | `SUM(input_tokens + output_tokens)` |
+
+Toán tử: `>`, `>=`, `<`, `<=`, `==` (cũng được chấp nhận dưới dạng `gt`, `gte`, `lt`, `lte`, `eq`).
+
+Bộ lọc tùy chọn: `environment`, `event_type`.
+
+Ví dụ thông số kỹ thuật:
+
+```json
+{
+  "metric": "p95_latency_ms",
+  "filter": { "environment": "production" },
+  "window_secs": 900,
+  "op": ">",
+  "value": 5000
+}
+```
+
+### 2. `custom_sql`
+
+Cho bất kỳ điều gì mà các metric được đặt sẵn không bao gồm. SQL được cung cấp bởi toán tử đi qua cùng một bảo vệ `/queries/run` (chỉ SELECT/WITH, một câu lệnh, giới hạn 10.000 hàng) trước khi dispatcher chạy nó. Hai chế độ:
+
+- **chế độ hàng** (không có `op`/`value`): cảnh báo phát động ngay khi truy vấn trả về ít nhất một hàng.
+- **chế độ giá trị**: truy vấn phải có bí danh một cột là `metric_value`; dispatcher so sánh `metric_value` của hàng đầu tiên với `value` sử dụng `op`.
+
+```json
+{
+  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
+  "op": ">",
+  "value": 100
+}
+```
+
+### 3. `evaluation_score`
+
+Đọc từ `agenteye.evaluations` và so sánh trung bình của một điểm được đặt tên trên một cửa sổ.
+
+```json
+{
+  "score_key": "hallucination",
+  "op": ">",
+  "value": 0.6,
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+`min_count` bảo vệ chống lại các ngoại lệ đơn mẫu; dispatcher sẽ không phát động cho đến khi có ít nhất N đánh giá tồn tại trong cửa sổ.
+
+### 4. `eval_compound`
+
+Bắt một hồi quy chất lượng chỉ hiện ra trên *nhiều* điểm đánh giá cùng một lúc. Khi `evaluation_score` theo dõi một điểm được đặt tên, `eval_compound` soạn thảo nhiều điều kiện điểm đánh giá thành một cảnh báo và kết hợp kết quả của chúng với một logic được chọn; vì vậy một quy tắc có thể biểu diễn "phát động nếu tính hữu ích giảm **hoặc** ảo tưởng tăng", "chỉ phát động nếu tính hữu ích **và** hiệu quả công cụ cùng giảm", hoặc "phát động nếu **ít nhất 2 trên** ba kiểm tra này vi phạm".
+
+Mỗi điều kiện đọc trung bình của một điểm được đặt tên từ `agenteye.evaluations` trong cửa sổ chia sẻ và kiểm tra nó với toán tử và ngưỡng riêng của nó. Kết quả boolean sau đó được kết hợp bởi `combinator`:
+
+| Combinator | Logic | Phát động khi |
+|---|---|---|
+| `"any"` | OR | ít nhất một điều kiện vi phạm |
+| `"all"` | AND | mọi điều kiện vi phạm |
+| `{ "at_least": N }` | M-of-N | ít nhất N điều kiện vi phạm |
+
+```json
+{
+  "combinator": { "at_least": 2 },
+  "conditions": [
+    { "score_key": "hallucination", "op": ">", "value": 0.8 },
+    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
+    { "score_key": "tone",          "op": "<", "value": 0.5 }
+  ],
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+- `combinator`: `"any"`, `"all"`, hoặc `{ "at_least": N }`.
+- `conditions[]`: mỗi `{ score_key, op, value }`, sử dụng cùng các toán tử như các kích hoạt khác (`>`, `>=`, `<`, `<=`, `==`).
+- `window_secs`: lookback được chia sẻ áp dụng cho mọi điều kiện (mặc định `3600`).
+- `min_count`: số lượng đánh giá tối thiểu trên mỗi điều kiện trước khi điều kiện đó có thể vi phạm; một điều kiện có quá ít mẫu trong cửa sổ được tính là "không vi phạm" (mặc định `1`).
+- `environment`: tùy chọn; hạn chế mọi điều kiện chỉ trong một môi trường.
+
+Bằng chứng thông báo ghi lại trung bình được quan sát của mỗi điều kiện, ngưỡng nó được kiểm tra, có bao nhiêu đánh giá được nhìn thấy, và liệu nó có vi phạm hay không; vì vậy bạn có thể thấy chính xác những kiểm tra nào được kích hoạt.
+
+### 5. `per_event`
+
+Cho các cảnh báo "bất kỳ sự kiện nào khớp X đã đến". Không có tổng hợp; dispatcher phát động ngay khi nó thấy kết quả khớp trong cửa sổ lookback.
+
+```json
+{
+  "event_type": "error",
+  "lookback_secs": 60,
+  "environment": "production",
+  "tool_name": "bash",
+  "agent_id": "caa",
+  "error_type": "TimeoutError",
+  "message_contains": "vertex-ai timed out"
+}
+```
+
+Tất cả các bộ lọc được kết hợp bằng AND; bất kỳ trường nào bạn để trống là không bị ràng buộc.
+
+| Trường | Mục đích |
+|---|---|
+| `agent_id` | Hạn chế lỗi từ một tác nhân cụ thể (cái được hiển thị trên hàng `/errors`). |
+| `error_type` | Hạn chế cho một lớp lỗi cụ thể (ví dụ: `TimeoutError`) thay vì mọi lỗi. |
+| `message_contains` | Khớp chuỗi con không phân biệt chữ hoa chữ thường với `payload.message`. Hữu ích cho việc bắt một chế độ lỗi cụ thể (ví dụ: `prompt is too long`) mà không cảnh báo trên mọi lỗi từ cùng một tác nhân. Giới hạn 200 ký tự; khớp dưới dạng chuỗi cơ bản, không phải mẫu. |
+
+Mẹo: đặt `lookback_secs` để phù hợp với `eval_interval_secs` của cảnh báo để bạn không thông báo lại trên cùng một sự kiện.
+
+**Phím tắt từ `/errors`:** mỗi hàng đại diện nhóm lỗi trên chế độ xem lỗi (và bảng chi tiết sự kiện phiên cho một sự kiện lỗi) có nút **+ alert** mở `/alerts/new` được điền trước với kích hoạt `per_event` khóa trên `event_type` + môi trường của hàng đó, bao gồm tên được gieo từ `error_type` của payload khi có. Bạn vẫn chọn kênh và xác nhận lookback, nhưng bộ so khớp được điền cho bạn. Các điều hành viên cần `alerts:write` để nút xuất hiện.
+
+---
+
+## Logic phức hợp (M of N)
+
+Mỗi cảnh báo có hai nút số nguyên bên cạnh kích hoạt:
+
+- `eval_window`: có bao nhiêu đánh giá gần đây để xem (mặc định 1)
+- `min_breaches`: có bao nhiêu trong số đó phải vi phạm trước khi cảnh báo phát động (mặc định 1)
+
+`1 of 1` (mặc định) là "phát động khi lần vi phạm đầu tiên". `3 of 5` nghĩa là "phát động khi quy tắc đã vi phạm 3 trên 5 đánh giá gần đây", hữu ích cho các tín hiệu không ổn định nơi một phép đo xấu là nhiễu. Dispatcher duy trì một bộ đệm vòng cho mỗi cảnh báo; bạn không phải quản lý trạng thái.
+
+---
+
+## Khoảng đánh giá
+
+`eval_interval_secs` kiểm soát tần suất dispatcher chạy quy tắc của bạn. Được giới hạn trong `[30, 86400]`. Các cài đặt trước trên bảng điều khiển: 1m / 5m / 15m / 1h. Chọn một khoảng phù hợp với tốc độ di chuyển của tín hiệu cơ bản: một cảnh báo tỷ lệ lỗi 5 phút được đánh giá mỗi 15 giây lãng phí CPU; một cảnh báo cho mỗi sự kiện cần một lookback ngắn hoặc nó sẽ im lặng bỏ qua các sự kiện giữa các tick.
+
+---
+
+## Kênh
+
+Mỗi cảnh báo có thể đính kèm bất kỳ sự kết hợp nào của bốn kênh này. Thông tin đăng nhập theo kênh (URL webhook Slack, URL webhook chung + bí mật ký, các người nhận email mặc định) được cấu hình một lần trong **`/settings`** và được tham chiếu bằng khóa từ mỗi cảnh báo. Bằng cách này, một kênh Slack có thể phục vụ nhiều cảnh báo mà không cần mỗi cảnh báo lưu trữ bản sao riêng của URL webhook.
+
+Ba loại kênh bên ngoài (email, Slack, webhook) cũng được gated bởi một công tắc tắt toàn org, `alerts.enabled_channels`. Khi một cảnh báo phát động đính kèm một loại kênh không nằm trong bộ này, dispatcher bỏ qua nó và ghi một hàng `alert_notifications` với trạng thái `skipped_disabled` và mục tiêu `<channel_disabled>` (cho phép bạn tạm dừng toàn cầu, ví dụ, tất cả gửi Slack mà không chỉnh sửa từng quy tắc). Kênh trong bảng điều khiển luôn được cho phép. Xem [Cấu hình](#configuration).
+
+### Email
+
+Sử dụng lại cùng vận chuyển SMTP gửi email đăng nhập OTP. Người nhận giải quyết theo thứ tự:
+
+1. Ghi đè `recipients[]` theo kênh (khi không trống).
+2. Cài đặt `alerts.email_default_recipients` (một mảng các chuỗi email).
+
+Nếu SMTP không được cấu hình, kênh là không hoạt động; dispatcher vẫn ghi một hàng `alert_notifications` với mục tiêu `<smtp_unconfigured>` nên audit trail làm cho cấu hình sai được hiển thị.
+
+### Slack
+
+Gửi một thông báo Block Kit tới một [URL webhook đến](https://api.slack.com/messaging/webhooks).
+
+- URL mặc định: `alerts.slack_default_webhook` (được đặt trong `/settings`).
+- Ghi đè cho mỗi cảnh báo: đặt `webhook_setting_key` của kênh thành bất kỳ khóa cài đặt kiểu URL nào khác, ví dụ: `alerts.slack_oncall`, `alerts.slack_costs`.
+
+Tiêu đề bao gồm biểu tượng mức độ nghiêm trọng (`:rotating_light:` / `:warning:` / `:bell:`), và thông báo mang một nút liên kết sâu tới trang sự cố.
+
+### Webhook chung
+
+Tích hợp JSON-POST cho PagerDuty, Opsgenie, hoặc điểm cuối tiếp nhận của bạn. Hình dạng cơ thể:
+
+```json
+{
+  "schema_version": 1,
+  "event": "alert.firing",
+  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
+  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
+  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
+}
+```
+
+Khi `alerts.webhook_signing_secret` được đặt, yêu cầu bao gồm tiêu đề `X-AgentEye-Signature: sha256=<hex>`, HMAC-SHA256 của cơ thể sử dụng bí mật. Xác minh nó trên phía nhận trước khi tin tưởng tải trọng.
+
+Tiêu đề `X-AgentEye-Event` mang `alert.firing` / `alert.test`. (`alert.resolved` được dành riêng cho tính năng tự động giải quyết được lên kế hoạch và hiện không được phát hành.)
+
+### Trong bảng điều khiển
+
+Không có gửi bên ngoài: cảnh báo chỉ ghi một hàng `alert_notifications` mà trang sự cố của bảng điều khiển bề mặt. Hữu ích khi bạn đang điều chỉnh một quy tắc và không muốn spam một hệ thống bên ngoài, hoặc cho các cảnh báo ưu tiên thấp mà các điều hành viên kiểm tra trong quá trình phân loại thông thường.
+
+---
+
+## Vòng đời sự cố
+
+```
+firing  ──ack──▶  acknowledged
+   │                    │
+   └────────────────────┴───── operator resolve ───▶  resolved
+```
+
+- **firing** — dispatcher vừa mở sự cố hoặc phát hiện một vi phạm khác. Thông báo phát động được quạt ra chính xác một lần (được gated bởi dấu thời gian `notified_firing_at` trên sự cố).
+- **acknowledged** — một điều hành viên nhấn *ack* trên `/incidents/:id`. Sự cố vẫn được coi là mở; các vi phạm tiếp theo sẽ cập nhật bằng chứng của nó mà không thông báo lại.
+- **resolved** — một điều hành viên nhấn *resolve*. Giải quyết tự động khi quy tắc dừng phạm được lên kế hoạch nhưng hiện không được bật, vì vậy một sự cố mở vẫn mở cho đến khi một điều hành viên giải quyết nó.
+
+Một sự cố mới có thể mở lại cùng một cảnh báo tại bất kỳ điểm nào sau khi cảnh báo trước đó được giải quyết.
+
+**Dòng thời gian hoạt động.** Mỗi hành động trên một sự cố — mở, ack, giải quyết — được ghi trong nhật ký hoạt động chỉ nối thêm và được hiển thị trên dòng thời gian *activity* của sự cố, mỗi mục được ghi lại cho điều hành viên đã thực hiện nó (theo email) hoặc cho **automated** cho các hành động dispatcher thực hiện độc lập (tự động mở khi vi phạm). Xác nhận được chia sẻ: nhiều điều hành viên có thể ack cùng một sự cố và mỗi cái xuất hiện như một mục riêng, được ghi lại.
+
+Hộp thư **Sự cố** nhóm các sự cố mở theo trạng thái và cho phép bạn lọc theo mức độ nghiêm trọng và người được gán:
+
+![Hộp thư Sự cố hiển thị các thẻ sự cố liên kết cảnh báo và ad-hoc với huy hiệu mức độ nghiêm trọng và người được gán](/agenteye/images/incidents.png)
+
+Mở một sự cố cho thấy bằng chứng vi phạm, những người được gán và người theo dõi, dòng thời gian hoạt động được ghi lại, và một chuỗi bình luận:
+
+![Chế độ xem chi tiết sự cố: cảnh báo cha, tóm tắt vi phạm, những người được gán, người theo dõi, nhật ký hoạt động được ghi lại, và cuộc trò chuyện](/agenteye/images/incident-detail.png)
+
+---
+
+## Quyền bắt buộc
+
+Soạn thảo *quy tắc* cảnh báo và phân loại *sự cố* là những mối quan tâm riêng biệt với các quyền riêng biệt, vì vậy bạn có thể cấp cho một vòng xoay on-call quyền truy cập sự cố mà không cũng trao cho nó khả năng viết lại các quy tắc.
+
+- `alerts:read`: xem các quy tắc cảnh báo.
+- `alerts:write`: tạo, chỉnh sửa, xóa các quy tắc cảnh báo, và kích hoạt thông báo kiểm tra.
+- `incidents:read`: xem sự cố.
+- `incidents:write`: mở các sự cố thủ công (ad-hoc) không gắn liền với cảnh báo.
+- `incidents:ack`: ack, gán, bình luận, và giải quyết sự cố.
+
+> **Legacy `alerts:ack`.** Các khóa và điều hành viên được cấp mã thông báo `alerts:ack` cũ hơn tiếp tục hoạt động: nó được chấp nhận là `incidents:ack` (và ngụ ý `incidents:read`), vì vậy các on-caller hiện tại giữ quyền truy cập của họ mà không cấp lại thông tin xác thực. Phát hành các khoản cấp mới với gia đình `incidents:*`.
+
+Cấp trên các khóa API (`POST /keys`) và các điều hành viên (`PUT /users/:id`). `PermGate` của bảng điều khiển khóa các nút liên quan khi thiếu quyền; bạn sẽ thấy `// 403` bên cạnh hành động.
+
+> **Bộ chọn người nhận email.** Bộ chọn người nhận của trình chỉnh sửa cảnh báo liệt kê các thành viên của tổ chức của bạn để bạn có thể chọn họ theo tên. Nó tải cho bất kỳ điều hành viên nào giữ `alerts:read` hoặc `alerts:write`; xem danh mục của nhóm của bạn cho mục đích này **không** yêu cầu `users:read`, và bộ chọn chỉ trả về địa chỉ email thành viên, không bao giờ toàn bộ hồ sơ người dùng.
+
+---
+
+## Cấu hình
+
+Các biến môi trường được tiêu thụ bởi dispatcher:
+
+| Var | Mặc định | Mục đích |
+|---|---|---|
+| `ALERT_WORKERS` | `1` | Nhiệm vụ worker trên mỗi phiên bản máy chủ. Hầu hết các triển khai chỉ cần một. |
+| `ALERT_CLAIM_BATCH` | `16` | Cảnh báo tối đa một tick worker xử lý. |
+| `ALERT_POLL_IDLE_SECS` | `5` | Worker ngủ khi hàng đợi trống. |
+| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Hết thời gian đánh giá kích hoạt trên mỗi lần. |
+| `DASHBOARD_URL` | `https://app.befailproof.ai` | Nguồn gốc được sử dụng để xây dựng magic-link sự cố trong thông báo. Đặt thành máy chủ bảng điều khiển của bạn. |
+
+Sau khi thất bại tạm thời trong đánh giá (ClickHouse không thể tiếp cận, hết thời gian truy vấn), dispatcher thử lại quy tắc với backoff lũy thừa. Khi một quy tắc đã tích lũy **5** lỗi tạm thời liên tiếp, nó được lên lịch lại ở tốc độ bình thường thay vì tiếp tục backoff, vì vậy một quy tắc không ngừng thất bại vẫn được đánh giá lại. Trần này là cố định và không thể điều chỉnh bởi điều hành viên.
+
+Cài đặt kênh (được quản lý từ `/settings`, không phải env):
+
+- `alerts.email_default_recipients` (`email_list`): mảng JSON của các chuỗi email — người nhận mặc định cho kênh email.
+- `alerts.slack_default_webhook` (`url`): URL webhook đến Slack mặc định.
+- `alerts.webhook_default_url` (`url`): URL webhook chung mặc định.
+- `alerts.webhook_signing_secret` (`secret`): khóa HMAC-SHA256. Luôn được trả về dưới dạng `""` trong phản hồi GET; gõ giá trị mới để xoay.
+- `alerts.enabled_channels` (`channel_set`): bộ toàn org của các loại kênh bên ngoài được gửi khi cảnh báo phát động; mặc định tất cả ba (`email`, `slack`, `webhook`). Loại bỏ một loại ở đây sẽ loại bỏ kênh đó toàn cầu cho mọi cảnh báo mà không chỉnh sửa từng quy tắc. Kênh trong bảng điều khiển luôn được gửi và không bị ảnh hưởng bởi cài đặt này.
+
+---
+
+## Xác minh cảnh báo mới
+
+Trước khi dựa vào cảnh báo mới:
+
+1. Lưu nó dưới dạng bật với ít nhất một kênh thông báo.
+2. Chọn **test** trên trang chi tiết cảnh báo và xác nhận mỗi điểm đến được cấu hình nhận thông báo tổng hợp.
+3. Sau lần vi phạm thực tế đầu tiên, xác nhận sự cố xuất hiện dưới **Sự cố** và giá trị đo được của nó phù hợp với truy vấn bảng điều khiển tương ứng.
+
+Sự cố không tự động giải quyết khi một điều kiện rõ ràng. Một điều hành viên phải giải quyết chúng từ trang chi tiết sự cố.
+
+---
+
+## Khắc phục sự cố
+
+| Triệu chứng | Nguyên nhân có thể |
+|---|---|
+| Cảnh báo không bao giờ phát động | `enabled = false`, hoặc không có kênh đính kèm, hoặc truy vấn CH cơ bản trả về 0 hàng. Sử dụng *test* để xác nhận kênh; sử dụng `/queries/run` để xác nhận metric. |
+| Thông báo Slack bị mất | `alerts.slack_default_webhook` (hoặc khóa ghi đè cho mỗi cảnh báo) không được đặt: kiểm tra `alert_notifications.target` cho các hàng `<unset:…>`; hoặc loại `slack` được tắt toàn cầu trong `alerts.enabled_channels`: kiểm tra các hàng `alert_notifications` với trạng thái `skipped_disabled` và mục tiêu `<channel_disabled>`. |
+| Webhook chung 401 | Người nhận yêu cầu chữ ký nhưng `alerts.webhook_signing_secret` không được đặt. Xác minh ở bên nhận rằng HMAC phù hợp với `hmac_sha256(secret, body)`. |
+| Email "từ tất cả gửi không thành công" | Thông tin xác thực SMTP sai hoặc địa chỉ `from` bị từ chối bởi chuyên chở của bạn. Cùng bề mặt gửi email OTP: nếu những cái đó hoạt động, vận chuyển SMTP ổn. |
+| Sự cố mở lại lặp đi lặp lại | Các nút phức hợp quá tích cực: thử tăng `min_breaches` hoặc `eval_window` để các tăng đột ngột tạm thời không mở lại các sự cố bạn đã giải quyết. |

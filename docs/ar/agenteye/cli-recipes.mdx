@@ -1,0 +1,169 @@
+---
+title: "وصفات CLI للوكلاء"
+description: "وثائق وصفات AgentEye CLI للوكلاء."
+---
+
+اسحب بيانات الجلسة والحدث والتقييم (وشغّل إعادة التقييمات) مباشرة من سكريبت أو وكيل ترميز، مع JSON نظيف على stdout يمكن توجيهه مباشرة إلى `jq`. تحول هذه الوصفات بيانات القابلية للملاحظة في AgentEye إلى شيء يمكن لمستخدم المحطة الطرفية أو وكيل ترميز ذكي (Claude Code، Cursor) الاستعلام عنه وأتمتته، دون الحاجة للنقر عبر لوحة التحكم.
+
+الأنماط أدناه جاهزة للنسخ واللصق في AgentEye CLI (`agenteye`). للتثبيت والمصادقة وقائمة الخيارات الكاملة، انظر [CLI](/ar/agenteye/cli)؛ شغّل `agenteye -h` أو `agenteye <command> -h` للحصول على المساعدة المدمجة.
+
+## القواعد الذهبية
+
+1. **تأتي الخيارات العامة *قبل* الأمر.** `agenteye --json sessions` صحيح؛ `agenteye sessions --json` ليس كذلك. الخيارات العامة هي `--json`، `--base-url`، `--org`، `--token`، `--insecure`/`--secure`، `--timeout`، `--quiet`، `--no-color`.
+2. **مرّر `--json` كلما حللت المخرجات.** تذهب البيانات إلى **stdout** بصيغة JSON؛ حالة المستخدم والأخطاء تذهب إلى **stderr**، لذا يبقى stdout نظيفاً للتوجيه إلى `jq`.
+3. **افرع بناءً على رمز الخروج**، وليس على نص stderr: `0` موافق · `2` حجج سيئة · `3` لا يمكن الوصول إلى لوحة التحكم · `4` لم تسجل الدخول أو انتهت صلاحية الجلسة · `5` صلاحية مفقودة.
+4. **اكتشف باستخدام `-h`.** كل أمر يوثق مرشحاته وتنسيقات القيم وشكل JSON.
+
+## إعداد لمرة واحدة
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # لتتجنب تكرار --base-url
+agenteye login --email you@example.com                       # الصق الرمز المرسل بالبريد؛ صالح ~24h
+```
+
+## تأكد من المصادقة قبل القيام بالعمل
+
+`whoami` لا يرمي أخطاء على جلسة مفقودة أو منتهية الصلاحية؛ بدلاً من ذلك تقارير `logged_in:false`، لذا يمكن للوكيل اختبار حالة المصادقة بأمان. (لا يزال يمكن أن يخرج بقيمة غير صفرية إذا لم تكن هناك عنوان URL أساسي محدد أو كانت لوحة التحكم غير قابلة للوصول.)
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "Not authenticated. Run: agenteye login" >&2; exit 1
+fi
+```
+
+## ابحث عن الجلسات الفاشلة أو منخفضة الدرجات
+
+```bash
+# جلسات في آخر 24 ساعة حيث فشل التقييم
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# تقييمات بدرجة <= 0.5 في المساعدة، لوكيل واحد
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+تصفية الدرجات موجودة في **`evals`**، وليس `sessions`. `--score KEY:MIN..MAX` قابلة للتكرار ويتم دمجها بـ AND؛ أي حد اختياري (`..0.5` يعني ≤ 0.5، `0.9..` يعني ≥ 0.9). يمكنك تمرير ما يصل إلى 20 مرشح درجة لكل طلب؛ المزيد يرجع HTTP 400. يشارك `sessions` المرشحات `--env`، `--status`، `--agent-id`، `--session-id`، ونطاق الوقت مع `evals`، لكن لا يوجد `--score`.
+
+## اقرأ جلسة واحدة من البداية إلى النهاية
+
+لا يوجد أمر `session show` واحد — ادمج مسار الحدث مع التقييم الخاص بالجلسة:
+
+```bash
+# آخر تقييم للجلسة (الحالة والدرجات)
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# كل حدث في التشغيل (ارفع --limit لقائمة شاملة)
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# فقط استدعاءات الأداة في جلسة
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+## جلب كل شيء (الترقيم)
+
+النتائج هي الأحدث أولاً ومرقمة بالمؤشر.
+
+```bash
+# طلقة واحدة: جلب ما يصل إلى 500 صف في صفحات 200 صف
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# الترقيم اليدوي: أرجع next_cursor
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## قلّل المخرجات باستخدام --fields
+
+قيّد المفاتيح (في الجدول و `--json`) لتقليل ما يجب على الوكيل قراءته.
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+أسماء الحقول غير المعروفة يتم رفضها (خروج `2`) مع القائمة الصحيحة، طريقة رخيصة لاكتشاف أسماء الحقول.
+
+## اكتشف قيم المرشح الصحيحة
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # قيم --env
+agenteye --json list tools | jq -r '.values[]'          # أسماء الأدوات؛ أيضاً agents، models، event_types، ...
+agenteye --json list score_filters | jq -r '.values[]'  # KEY الصحيح لـ --score KEY:MIN..MAX
+```
+
+## اختر منظمتك (متعدد المستأجرين)
+
+إذا كنت تنتمي إلى أكثر من منظمة واحدة، اختر المستأجر النشط عند تسجيل الدخول (يتم حفظه):
+
+```bash
+agenteye login --org acme --email you@corp.com   # عيّن المستأجر في نفس خطوة تسجيل الدخول
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # استبدل لأمر واحد
+```
+
+تسجيل دخول متعدد المنظمات بدون `--org` يخرج بقيمة غير صفرية ويطبع المنظمات للاختيار منها.
+
+## وفّر مفتاح API لـ SDK/collector
+
+```bash
+# يتم طباعة السر مرة واحدة فقط — مع --json إنه حقل .key
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # تدوير؛ agenteye keys disable ci-bot --yes للإلغاء
+```
+
+## قم بتشغيل استعلام محفوظ أو مخصص
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # استعلام محفوظ + موضعي $1
+```
+
+## قم بفحص الحادث بشكل غير تفاعلي
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> الطفرات تتجاوز تلقائياً موجز التأكيد الخاص بهم تحت `--json` أو عندما لا يكون stdin TTY، لذا لا يعلق الوكلاء أبداً؛ مرّر `--yes`/`-y` لتجاوزه بشكل صريح في مكان آخر.
+
+## معالجة رمز الخروج في سكريبت
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "Session expired - run 'agenteye login'." >&2 ;;
+  5) echo "Missing permission (ask an admin for evaluations:read)." >&2 ;;
+  3) echo "Dashboard unreachable - check the URL." >&2 ;;
+  *) echo "Unexpected error (exit ${code})." >&2 ;;
+esac
+```
+
+## أشكال مخرجات JSON
+
+| الأمر | stdout JSON (مع `--json`) |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` أو `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (يتم عرض `key` مرة واحدة) |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| create/update/delete (أي) | كائن المورد، أو `{"deleted": true, "id"}` للحذف |
+| فشل (أي، مع `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` على stdout |
+
+- كل عنصر **حدث** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment`.
+- كل عنصر **تقييم** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- كل عنصر **جلسة** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+
+يقبل `--fields` لكل أمر بدقة أسماء حقول عنصره الخاص — تختلف المجموعة بين `sessions` و `evals`، لذا قد يكون الاسم الصحيح لأحدهما مرفوضاً من الآخر.

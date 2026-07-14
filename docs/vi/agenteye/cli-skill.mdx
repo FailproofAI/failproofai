@@ -1,0 +1,95 @@
+---
+title: "AgentEye CLI Agent Skill"
+description: "Tài liệu AgentEye CLI Agent Skill."
+---
+
+
+**AgentEye CLI skill** (`agenteye-cli`) là một *Agent Skill* có thể cài đặt được, dạy cho một agent lập trình — Claude Code, Codex và các công cụ tương thích — cách vận hành triển khai AgentEye của bạn thông qua [`agenteye` CLI](/vi/agenteye/cli) từ những yêu cầu bằng tiếng Anh thường: *"có gì bị hỏng hôm nay không?"*, *"cấp cho CI một key chỉ có thể push events"*, *"xác nhận sự cố đang phát triển và giao nó cho tôi"*.
+
+Nó **không phải** là một dịch vụ hoặc một binary riêng biệt. Nó là một gói hướng dẫn nhỏ hoạt động trên CLI mà bạn đã cài đặt: agent gọi `agenteye --json …`, phân tích JSON sạch sẽ và trả lời bạn bằng văn bản. Mọi thứ nó có thể làm, bạn cũng có thể tự làm bằng cách gõ các lệnh tương tự.
+
+---
+
+## Nó liên quan đến các giao diện AgentEye khác như thế nào
+
+AgentEye cung cấp cho bạn bốn cách để tiếp cận cùng một dữ liệu và điều khiển. Chúng bổ sung cho nhau:
+
+| Giao diện | Nó là gì | Chạy ở đâu | Sử dụng nó khi |
+|---|---|---|---|
+| **[CLI](/vi/agenteye/cli)** | Tham chiếu lệnh/flag cho `agenteye` | Terminal của bạn | Bạn muốn chạy hoặc viết script một lệnh cụ thể |
+| **[CLI recipes](/vi/agenteye/cli-recipes)** | Các mẫu `jq`/pipeline sẵn sàng sao chép | Terminal / scripts của bạn | Bạn đang tích hợp CLI vào tự động hóa |
+| **CLI skill** (tài liệu này) | Một cửa ra bằng ngôn ngữ tự nhiên cho CLI | Coding agent của bạn, trên workstation của bạn | Bạn muốn *chỉ cần hỏi* và để agent chọn lệnh |
+| **[In-dashboard AI Assistant](/vi/agenteye/assistant)** | Một chat nhúng trong dashboard | Một container `agent` nội bộ trong cluster của bạn | Bạn muốn Q&A trong dashboard trên dữ liệu của bạn |
+
+### vs. In-dashboard AI Assistant — một sự phân biệt quan trọng
+
+Đây là hai công cụ khác nhau với phạm vi ảnh hưởng rất khác nhau:
+
+- **In-dashboard AI Assistant** ([assistant.md](/vi/agenteye/assistant)) là một chat nhúng trong dashboard, được hỗ trợ bởi một container `agent` nội bộ. Nó **chỉ đọc cộng với việc tạo có sự phê duyệt**: nó có thể soạn thảo các truy vấn đã lưu và dashboard, nhưng mọi lần ghi đều tạm dừng để chờ nhấp phê duyệt rõ ràng của bạn, và nó không bao giờ xóa. Nó được bảo vệ bởi quyền `agent:use` và chỉ nhìn thấy dữ liệu cho tổ chức bạn đang xem.
+- **CLI skill** chạy trên *workstation của bạn* bên trong *coding agent của bạn* và điều khiển CLI `agenteye` như **bạn**. Nó có thể thực hiện **toàn bộ bề mặt của CLI, bao gồm các thay đổi** — tạo/xoay vòng/vô hiệu hóa API key, thay đổi cài đặt tổ chức, giải quyết sự cố, xóa truy vấn đã lưu — chỉ bị giới hạn bởi quyền của đăng nhập CLI của bạn. Hãy coi nó chính xác như cách bạn sẽ xử lý khi chạy những lệnh đó bằng tay.
+
+---
+
+## Điều kiện tiên quyết
+
+1. **`agenteye` CLI được cài đặt** và trên `PATH` (xem [cli.md](/vi/agenteye/cli) — `pipx install agenteye`).
+2. **URL dashboard của bạn được đặt** (`AGENTEYE_DASHBOARD_URL`, hoặc agent truyền `--base-url`).
+3. **Một phiên đã đăng nhập**: trước tiên hãy tự chạy `agenteye login`. Skill **không thể** hoàn thành đăng nhập bằng mã một lần qua email cho bạn — nó sẽ yêu cầu bạn chạy `agenteye login` nếu phiên bị thiếu hoặc hết hạn (mã thoát CLI `4`).
+
+---
+
+## Cài đặt skill
+
+Agent Skills là các thư mục chứa `SKILL.md` (cộng với các tham chiếu tùy chọn). Bạn cài đặt skill `agenteye-cli` bằng cách đặt thư mục của nó nơi agent của bạn tìm kiếm skill:
+
+- **Claude Code** — sao chép thư mục `agenteye-cli/` vào `~/.claude/skills/` (có sẵn trong mọi dự án) hoặc vào `<your-repo>/.claude/skills/` (phạm vi cho kho đó). Claude Code tự động khám phá nó; xác minh bằng danh sách `/skills` hoặc chỉ cần đặt một câu hỏi phù hợp với mô tả của nó.
+- **Codex (OpenAI)** — Codex đọc cùng `SKILL.md`. `agents/openai.yaml` đi kèm đặt `allow_implicit_invocation: true`, do đó Codex tự động chọn skill khi một tác vụ phù hợp; nếu không, gọi nó rõ ràng như `$agenteye-cli`.
+
+Skill được duy trì cùng với CLI `agenteye` và được phân phối như một phần của gói AgentEye của bạn — nếu bạn không có thư mục `agenteye-cli`, hãy liên hệ với liên lạc AgentEye của bạn. Không có gì về nó bị hạn chế: nó không cần Docker image và không cần thông tin xác thực, vì nó chỉ điều khiển CLI `agenteye` **công khai** chống lại dashboard của riêng bạn.
+
+---
+
+## An toàn — các thay đổi KHÔNG nhắc khi agent chạy CLI
+
+**Đọc điều này trước khi để agent thực hiện thay đổi.**
+
+CLI `agenteye` thường hỏi *"bạn có chắc không?"* trước một hành động phá hủy. Nó **tự động bỏ qua xác nhận đó bất cứ khi nào nó không được gắn vào terminal — đó chính xác là cách một coding agent chạy nó — và `--json` cũng bỏ qua nó.** Do đó lời nhắc an toàn sẽ **không** phát hành cho agent.
+
+Skill được viết để bù đắp: nó được hướng dẫn để nêu rõ lệnh chính xác mà nó sẽ chạy và nhận được **OK rõ ràng của bạn trước bất kỳ thay đổi trạng thái nào**. Giữ kỷ luật đó — khi bạn điều khiển AgentEye thông qua agent, *bạn* là bước xác nhận. Các lệnh thay đổi trạng thái cần xem:
+
+- `keys create` / `update` / `disable` / `regenerate`
+- `users create` / `update` / `disable` / `enable`
+- `settings set`
+- `alerts create` / `update` / `delete` / `test`
+- các subcommand `incidents` ghi: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- `query create` / `update` / `delete`
+- `agent rename` / `delete`
+- `orgs switch`
+
+Mọi thứ dưới **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) chỉ được đọc và không thay đổi gì.
+
+Vì agent hoạt động như **bạn**, nó chỉ có thể làm những gì đăng nhập của bạn được phép làm — quyền được giải quyết **trên mỗi tổ chức** (xem [api-keys.md](/vi/agenteye/api-keys)). Một lệnh bạn không có quyền trả về mã thoát `5` với quyền chính xác được đặt tên, do đó agent có thể cho bạn biết chính xác cần yêu cầu gì từ quản trị viên thay vì thất bại mơ hồ.
+
+---
+
+## Bạn có thể hỏi nó cái gì
+
+Skill ánh xạ ý định bằng tiếng Anh thường đến lệnh `agenteye` đúng, khám phá các giá trị hợp lệ trước (`list <kind>`, `whoami`) nên nó không đoán:
+
+- *"Có gì bị hỏng / đang phát triển trong 24 giờ qua không?"* → `errors --since 24h --aggregate`, rồi một bảng phân tích.
+- *"Tại sao session `run-001` lại thất bại?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *"Chất lượng đang xu hướng như thế nào trong tuần này?"* → `evals --aggregate --since 7d`, sau đó đi sâu vào các chạy điểm thấp.
+- *"Cấp cho CI một key chỉ có thể push events."* → `keys create ci --add events:add` (nó nêu rõ lệnh, sau đó tạo nó và ghi lại bí mật một lần).
+- *"Ai có quyền truy cập? Làm cho Dana chỉ đọc."* → `users list` → `users update dana@… --permission-set read-only` (sau khi xác nhận với bạn).
+- *"Xác nhận sự cố đang phát triển và giao nó cho tôi."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
+
+Để biết các lệnh chính xác, cờ và hình dạng JSON đằng sau những cái này, xem [cli.md](/vi/agenteye/cli) và [cli-recipes.md](/vi/agenteye/cli-recipes).
+
+---
+
+## Xem thêm
+
+- **[CLI](/vi/agenteye/cli)** — tham chiếu lệnh và cờ đầy đủ cho `agenteye`.
+- **[CLI recipes cho agents](/vi/agenteye/cli-recipes)** — các mẫu `jq` sẵn sàng sao chép và xử lý mã thoát.
+- **[AI Assistant](/vi/agenteye/assistant)** — trợ lý trong dashboard (không nên nhầm với skill terminal này).
+- **[API Keys](/vi/agenteye/api-keys)** — mô hình quyền trên mỗi tổ chức giới hạn những gì skill có thể làm.

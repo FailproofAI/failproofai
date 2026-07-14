@@ -1,0 +1,447 @@
+---
+title: "Evaluation Suite"
+description: "AgentEye Evaluation Suite 문서."
+---
+
+AgentEye는 완료된 에이전트 세션을 평가하기 위해 전체 이벤트 트랜스크립트를
+**고객이 소유한 단일 평가자 서비스**에 POST 요청으로 전송합니다. 평가자는 결과를
+인라인으로 반환하거나, AgentEye가 폴링할 수 있는 `job_id`를 돌려주는 방식으로 응답합니다.
+결과는 저장되어 대시보드에 표시됩니다.
+
+이 가이드에서 다루는 내용:
+
+1. 세션 완료 감지 방법
+2. 평가자가 구현해야 하는 HTTP 계약
+3. AgentEye 서버 구성
+4. 결과 확인
+5. 문제 해결
+
+계약을 대신 구현해 주는 Python 헬퍼에 대해서는
+[PyPI의 `agenteye-evaluator` 패키지](https://pypi.org/project/agenteye-evaluator/)를 참고하세요.
+
+---
+
+## 동작 방식
+
+```text
+ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Evaluator service
+   (agent_end)        server   ◀──── done | pending ────
+                          │
+                          │     GET /evaluate/{job_id} ─────▶
+                          │     ◀──── done ──────────────
+                          ▼
+                     evaluations  (terminal results)
+```
+
+AgentEye SDK가 세션에 대한 `agent_end` 이벤트를 발생시키면, 서버가 평가를 예약합니다.
+그런 다음 전체 이벤트 트랜스크립트를 평가자 서비스에 POST합니다. 평가자는 다음 두 가지 방식으로 응답할 수 있습니다:
+
+- **결과를 인라인으로 반환**: `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}` 형태로 반환하면
+  해당 결과가 세션의 평가 타임라인에 추가됩니다. `reasoning`과 `summary`는 선택 사항입니다.
+- **지연 처리**: `{"status":"pending", "job_id":"abc-123"}` 형태로 응답하면, AgentEye는
+  평가자가 `{"status":"done", ...}` 또는 `{"status":"error", "error":"..."}`를 반환할 때까지
+  `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123`을 호출합니다.
+
+  폴링 주기는 작업별로 설정됩니다. `pending` 응답에 `next_poll_secs`를 포함하면 기본값을
+  재정의할 수 있습니다. 그렇지 않으면 AgentEye는 `GET /config`에서 받은
+  `default_poll_interval_secs`를 사용하고, 그것도 없으면 서버의 `EVALUATOR_POLLING_INTERVAL_SECS`
+  환경 변수(기본값: 10초)로 폴백합니다. 모든 값은 [1초, 1시간] 범위로 제한됩니다.
+
+`agent_end`를 전혀 발생시키지 않는 세션(예: 에이전트 프로세스가 비정상 종료된 경우)도
+처리할 수 있습니다. 평가자의 `GET /config`가 `{"inactivity_timeout_secs": 1800}`을 반환하면,
+AgentEye는 해당 시간 동안 유휴 상태였던 세션을 평가합니다. 이 폴백을 비활성화하려면
+해당 필드를 `null`로 설정하거나 생략하세요.
+
+`EVALUATOR_ENDPOINT`가 설정되지 않으면 파이프라인은 완전히 아무 작업도 수행하지 않습니다.
+
+세션은 **시간이 지남에 따라 여러 개의 터미널 평가를 누적할 수 있습니다**. 각 `agent_end`
+이벤트(및 대시보드에서의 수동 재평가)마다 새로운 평가 행이 추가됩니다. 이것이 재개된
+대화를 평가하는 공식 방법입니다. 사용자가 에이전트를 종료했다가 나중에 다시 접속하여
+더 많은 이벤트를 보내고 에이전트를 다시 종료하면, 두 번째 평가가 전체 업데이트된
+트랜스크립트를 대상으로 실행됩니다. 대시보드는 가장 최근 평가를 헤드라인으로 표시하고,
+이전 평가들은 접을 수 있는 타임라인으로 보여줍니다. 세션에 대한 평가가 진행 중일 때
+추가로 발생하는 `agent_end` 이벤트는 무시됩니다. 진행 중인 평가가 완료된 후 다음
+이벤트가 발생하면 새로운 평가가 평소대로 대기열에 추가됩니다.
+
+비활성 폴백은 재개된 세션에도 다시 적용됩니다. 이전 터미널 평가 이후 새로운 이벤트가
+도착하고 세션이 다시 `inactivity_timeout_secs`를 초과하여 유휴 상태가 되면, 새로운
+평가가 대기열에 추가됩니다.
+
+일시적인 오류(5xx, 429, 타임아웃, 네트워크 오류)는 `EVALUATOR_MAX_ATTEMPTS`에 도달할
+때까지 지수 백오프로 재시도됩니다. 4xx 응답은 터미널 오류로 처리됩니다. AgentEye는
+수평으로 확장된 여러 서버 인스턴스와 함께 안전하게 실행될 수 있습니다. 작업이
+파티션으로 나뉘어 동일한 세션이 동시에 두 번 디스패치되지 않습니다.
+
+---
+
+## HTTP 계약
+
+인증이 필요한 모든 라우트는 **베어러 토큰 인증**을 사용합니다. 양쪽에 동일한 값이
+설정되어야 합니다:
+
+- AgentEye 서버: 환경 변수 `EVALUATOR_TOKEN`
+- 평가자 서비스: 동일한 방식으로 구성 (`agenteye-evaluator` SDK는 관례적으로
+  `EVALUATOR_TOKEN`을 읽습니다)
+
+`EVALUATOR_TOKEN`이 설정되지 않으면 서버는 `Authorization` 헤더를 전송하지 않습니다.
+평가자는 익명 요청을 허용할 수 있지만, 이는 내부 전용 네트워크에서는 괜찮으나
+공개 인터넷에서는 권장하지 않습니다.
+
+### 평가자가 제공해야 하는 라우트
+
+| 라우트 | 요청 본문 / 파라미터 | 응답 |
+|---|---|---|
+| `GET /health` | 없음 | `{"status":"ok"}` (공개, 인증 불필요) |
+| `GET /config` | 없음 | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` 또는 `{"status":"pending", "job_id":"..."}` |
+| `GET /evaluate/{id}` | 없음 | `/evaluate`와 동일한 응답 형태 |
+
+### 서버가 전송하는 `EvalRequest` 본문
+
+```json
+{
+  "schema_version": "1",
+  "session_id":     "session-abc123",
+  "agent_id":       "planner",
+  "environment":    "production",
+  "started_at":     "2026-05-10T12:00:00Z",
+  "ended_at":       "2026-05-10T12:05:00Z",
+  "events": [
+    { "id": 1234, "ts": "...", "event_type": "agent_start", "payload": { ... } },
+    ...
+  ]
+}
+```
+
+### 응답 형태
+
+**동기(완료):**
+
+```json
+{
+  "status": "done",
+  "scores": { "helpfulness": 0.85, "tool_efficiency": 0.6 },
+  "reasoning": {
+    "helpfulness": "answered the question directly with citations",
+    "tool_efficiency": "called list_files three times when one would have done"
+  },
+  "summary": "strong answer quality, weak tool selection"
+}
+```
+
+`reasoning`(점수별 근거 맵)과 `summary`(전체 요약 단락)는 모두 선택 사항입니다.
+`reasoning`의 키는 `scores`의 키와 동일해야 하며, 대시보드는 각 항목을 해당 점수
+막대 아래에 인라인으로 렌더링합니다. `scores`만 반환하는 기존 평가자는 수정 없이
+계속 작동합니다. `reasoning`과 `summary`는 null로 읽히며 해당 UI 요소는 생략됩니다.
+
+**비동기(지연):**
+
+```json
+{ "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
+```
+
+`next_poll_secs`는 선택 사항입니다. 생략된 경우 서버는 `/config`에서 받은 평가자의
+`default_poll_interval_secs`를 사용하고, 그것도 없으면 자체 `EVALUATOR_POLLING_INTERVAL_SECS`
+환경 변수를 사용합니다.
+
+**평가자 측 터미널 오류:**
+
+```json
+{ "status": "error", "error": "model service unavailable" }
+```
+
+서버는 그 외의 2xx 응답 본문을 프로토콜 오류로 처리하고 세션에 터미널 `error`를
+기록합니다.
+
+---
+
+## SDK로 평가자 작성하기
+
+`agenteye-evaluator` Python 패키지는 위의 HTTP 계약을 구현하는 타입이 지정된 FastAPI
+래퍼를 제공합니다. PyPI에서 설치하세요:
+
+```bash
+pip install agenteye-evaluator
+```
+
+최소 구성 평가자:
+
+```python
+import os
+from agenteye_evaluator import Evaluator, EvalRequest, EvalResponse
+
+app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
+
+@app.evaluator
+def run(req: EvalRequest) -> EvalResponse:
+    # Inspect req.events (the full session transcript) and return scores.
+    tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
+    return EvalResponse(
+        scores={"tool_calls": float(tool_calls)},
+        reasoning={"tool_calls": f"{tool_calls} tool invocations in the transcript"},
+        summary="tight tool loop" if tool_calls < 5 else "agent looped on tools",
+    )
+```
+
+`app` 인스턴스는 ASGI 호환이므로 `uvicorn module:app`으로 실행할 수 있습니다.
+
+비용이 많이 드는 작업을 지연해야 하는 평가자의 경우, `JobPending`을 반환하고
+`@app.job_lookup` 핸들러를 등록하세요. AgentEye 서버는 평가자가 터미널 상태를
+반환하거나 `EVALUATOR_MAX_POLL_DURATION_SECS` 제한(기본값: 1시간)에 도달할 때까지
+`GET /evaluate/{job_id}`를 폴링합니다.
+
+전체 API 레퍼런스, 비동기 패턴, 이벤트 스키마는 `agenteye-evaluator` README에서
+확인할 수 있으며, 이는 [agenteye-enterprise 릴리스 페이지](https://github.com/agenteye-enterprise/releases)의
+각 릴리스 타볼에 포함되어 있거나 패키지의 PyPI 페이지에서 읽을 수 있습니다.
+
+---
+
+## Kubernetes에서 평가자 실행하기
+
+평가자는 **사용자가 직접 제공하는 서비스**입니다. AgentEye는 기본 평가자 컨테이너를
+제공하지 않습니다. 릴리스에는 `deploy/examples/evaluator/` 아래에 참조용 Kubernetes
+매니페스트가 포함되어 있으며, 이미지와 공유 베어러 토큰만 교체하면 바로 적용할 수 있습니다.
+
+### 1. 평가자 컨테이너화
+
+평가자를 위한 최소 Dockerfile:
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir agenteye-evaluator uvicorn
+COPY my_evaluator.py .
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
+    && chown -R evaluator:evaluator /app
+USER evaluator
+EXPOSE 9000
+CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
+```
+
+`runAsNonRoot`(UID 10001)를 사용하면 컨테이너가 Pod Security 제한 프로파일과
+호환됩니다.
+
+### 2. 공유 베어러 토큰 생성
+
+```bash
+kubectl -n agenteye create secret generic evaluator-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+AgentEye 서버의 `EVALUATOR_TOKEN`과 동일한 값을 사용하세요. 서버는 모든 요청에
+`Authorization: Bearer <token>` 헤더를 전송하며, SDK는 `hmac.compare_digest`를
+사용하여 상수 시간 검사를 수행하고 불일치 시 HTTP 401을 반환합니다.
+
+### 3. 예제 매니페스트 적용
+
+```bash
+# 먼저 deploy/examples/evaluator/deployment.yaml를 편집하여
+# `image:`를 자신의 레지스트리로 변경한 다음:
+kubectl apply -k deploy/examples/evaluator/
+```
+
+예제에 포함된 내용:
+
+- `runAsNonRoot`, 읽기 전용 루트 파일시스템, 모든 권한 제거, `/health` 기반
+  liveness + readiness 프로브가 설정된 2-레플리카 Deployment
+- 포트 9000의 ClusterIP Service
+- `secret.example.yaml` 템플릿(토큰이 git에 저장되지 않도록 의도적으로 Kustomization에서
+  제외됨; 실제 시크릿은 별도로 생성하세요)
+
+### 4. AgentEye와 연결하기
+
+AgentEye 서버에 다음을 설정하세요:
+
+```bash
+EVALUATOR_ENDPOINT=http://evaluator:9000
+EVALUATOR_TOKEN=<위에서 생성한 값>
+```
+
+서버는 `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`만큼의 동시 요청을 모든 평가자
+파드에 분산합니다(기본값: `2 × 4 = 8`). 이 서버 측 설정과 함께 `replicas` 및
+파드당 리소스 제한을 적절히 조정하세요.
+
+### 검증
+
+```bash
+kubectl -n agenteye port-forward svc/evaluator 9000:9000
+curl -s http://localhost:9000/health   # → {"status":"ok"}
+```
+
+에이전트가 처음부터 끝까지 실행된 후, AgentEye 서버의 `GET /evaluations`는
+`status: "done"`과 평가자가 생성한 점수가 포함된 행을 반환해야 합니다.
+
+---
+
+## AgentEye 서버 구성
+
+서버 프로세스에 다음 환경 변수를 설정하세요:
+
+| 환경 변수 | 설명 |
+|---|---|
+| `EVALUATOR_ENDPOINT` | 평가자의 기본 URL(`http://evaluator:9000`). 미설정 시 파이프라인이 비활성화됩니다. |
+| `EVALUATOR_TOKEN` | 베어러 토큰. 평가자 서비스에 설정된 값과 동일해야 합니다. |
+| `EVALUATOR_WORKERS` | 서버 인스턴스당 워커 태스크 수 (기본값: 2). |
+| `EVALUATOR_CLAIM_BATCH` | 워커 틱당 클레임하는 행 수 (기본값: 4). 배치는 **동시에** 처리됩니다. 평가자 엔드포인트의 실효 동시성은 `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`입니다. |
+| `EVALUATOR_POLL_IDLE_SECS` | 평가가 예정되지 않은 경우 워커가 디스패치 시도 사이에 대기하는 시간 (기본값: 2초). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | 응답별 `next_poll_secs`나 평가자의 `default_poll_interval_secs`가 없을 때 `GET /evaluate/{id}` 주기의 최종 폴백 (기본값: 10초). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | 요청당 타임아웃 (기본값: 30000). |
+| `EVALUATOR_MAX_ATTEMPTS` | 이 횟수만큼 일시적 오류가 발생하면 결과가 터미널 `error`로 기록됩니다 (기본값: 5). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `GET /config` 주기 (기본값: 300). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | 세션이 폴링 대기열에 남아있을 수 있는 최대 실제 경과 시간. 초과 시 `timeout`으로 종료됩니다 (기본값: 3600초). 평가자가 계속 `pending`을 반환하는 경우를 방지합니다. |
+
+인스턴스 전체에 자동 채점을 활성화하려면, 두 키가 모두 설정된 `agenteye-evaluator`
+시크릿을 프로비저닝하세요. 번들로 제공되는 Kubernetes 매니페스트에서 서버는 이 선택적
+시크릿으로부터 `EVALUATOR_ENDPOINT`와 `EVALUATOR_TOKEN`을 읽습니다. 조직의 표준
+시크릿 관리 프로세스를 통해 시크릿을 생성한 후, 변경 사항을 적용하기 위해 서버
+Deployment를 재시작하세요.
+
+위의 튜닝 설정은 기본적으로 연결되어 있지 않습니다. 기본값을 재정의해야 하는 경우
+Deployment 매니페스트의 서버 컨테이너에 해당 환경 변수를 노출하세요.
+
+전체 환경 변수 표는 [deployment.md](/ko/agenteye/deployment)를 참고하세요.
+
+---
+
+## API 레퍼런스
+
+| 메서드 | 경로 | 필요 권한 | 목적 |
+|---|---|---|---|
+| `GET` | `/evaluations` | `evaluations:read` | 터미널 결과 조회. `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session` 지원. `limit` 기본값은 50이며 최대 200입니다(최대 1000인 `/events`와 다릅니다). `environment`는 쉼표로 구분된 목록을 허용합니다(예: `environment=prod,staging`). 단일 값도 작동합니다. `latest_per_session=true` 설정 시 `session_id`당 최대 하나의 행만 반환합니다(`completed_at` 기준 최신). 세션 목록 페이지에서 세션의 평가 타임라인을 현재 헤드라인으로 접는 데 사용됩니다. 기본값은 false(전체 이력 반환). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | 필터링된 슬라이스에 대한 집계된 평가 상태: 총 개수, done/error/timeout 분류, 점수 키별 통계(임의 `scores` 키에 대한 count/avg/min/max/p50), 시간 버킷 타임라인. `/evaluations`와 동일한 필터 파라미터에 `featured_keys`(트렌드를 표시할 점수 키의 CSV)와 `latest_per_session`을 추가로 허용합니다. Dashboards 기능을 지원하며, 메트릭은 샘플링 없이 전체 매칭 세트에 대해 정확하게 계산됩니다. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | `evaluations` 테이블의 고유 environment 값. 평가 읽기 가능 데이터 범위의 필터 드롭다운을 채우는 데 사용됩니다. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | 진행 중인 평가 상태 조회. `status` (`pending`/`polling`)로 필터링 가능. |
+| `GET` | `/events` | `events:read` | 세션의 원시 이벤트 스트리밍. `session_id`, `agent_id`, `event_type`(CSV), `environment`(CSV), `ts_from`, `ts_to`, `cursor`, `limit`, `order` 지원. `order`는 `desc`(최신 순, 기본값) 또는 `asc`(오래된 순)이며, 인식할 수 없는 값은 `desc`로 폴백됩니다. 응답의 `next_cursor`(이벤트 id)를 통해 커서 페이지네이션을 사용하세요. `cursor`로 전달하면 다음 페이지를 가져옵니다. `asc`의 경우 해당 id 이후 이벤트를, `desc`의 경우 그 이전 이벤트를 반환합니다. `limit` 기본값은 50이며 최대 1000입니다. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | 이 세션에 대해 평가자가 받을 정확한 JSON 본문을 `session-<id>.json`이라는 이름의 다운로드 가능한 첨부 파일로 반환합니다. 오프라인 테스트를 위해 프로덕션 세션을 `agenteye-evaluator`를 통해 재현하는 데 유용합니다. 평가자 파이프라인이 전송하는 내용과 바이트 단위로 동일합니다. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | 세션에 대한 새로운 평가를 대기열에 추가합니다. 이전 평가 존재 여부와 관계없이 실행됩니다. 새 결과는 이전 결과를 덮어쓰지 않고 세션의 평가 타임라인에 **추가**되어 이전 점수가 이력으로 남습니다. 대기열 추가 시 `202`, 알 수 없는 세션의 경우 `404`, 평가가 이미 진행 중인 경우 `409`를 반환합니다. 새 평가자 배포 후 또는 `agent_end`를 발생시키지 않은 세션에 사용하세요. |
+
+### 점수 범위로 필터링: `score_filters`
+
+`GET /evaluations`는 `scores` 객체 내의 숫자 값으로 결과를 좁히는 선택적
+`score_filters` 파라미터를 허용합니다. 이 파라미터는 쉼표로 구분된 `key:min..max`
+항목의 목록이며, 각 경계는 생략할 수 있습니다. 여러 항목은 논리 AND로 결합됩니다.
+지정된 키가 없거나 숫자가 아닌 행은 제외됩니다. 요청당 최대 20개의 필터 항목을
+허용하며, 초과 시 HTTP 400을 반환합니다.
+
+예시:
+```text
+# helpfulness가 [0.5, 0.8] 범위인 경우
+GET /evaluations?score_filters=helpfulness:0.5..0.8
+
+# tool_efficiency가 최대 0.3인 경우 (하한 없음)
+GET /evaluations?score_filters=tool_efficiency:..0.3
+
+# helpfulness >= 0.5 AND factuality >= 0.9
+GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
+```
+
+각 `/evaluations` 응답 객체의 필드:
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `evaluation_id` | string (UUID) | 이 터미널 평가의 표준 식별자. 각 터미널 평가는 새로운 UUID를 받으며, 하나의 세션이 여러 개를 가질 수 있습니다. |
+| `id` | string (UUID) | `evaluation_id`와 동일한 값을 가지는 하위 호환 별칭. |
+| `session_id` | string | 이 평가가 실행된 세션. 하나의 세션이 타임라인에 여러 평가를 가질 수 있습니다. |
+| `agent_id` | string | 세션을 생성한 에이전트 식별자. |
+| `environment` | string | 세션에서 복사된 환경 레이블. |
+| `status` | enum | `"done"`, `"error"`, `"timeout"` 중 하나. |
+| `scores` | object \| null | 평가자가 반환한 점수. |
+| `reasoning` | object \| null | 평가자가 반환한 선택적 점수별 근거 맵. 키는 일반적으로 `scores`의 키와 동일합니다. 대시보드는 각 항목을 점수 막대 아래에 렌더링합니다. |
+| `summary` | string \| null | 평가자가 반환한 선택적 전체 요약 단락. 대시보드는 점수별 분류 위에 평가의 헤드라인으로 표시합니다. |
+| `error` | string \| null | `"error"` / `"timeout"` 상태에서만 채워집니다. |
+| `attempt_count` | integer | 디스패치 시도 횟수 (≥ 1). |
+| `duration_ms` | integer \| null | 마지막 시도의 소요 시간. |
+| `completed_at` | string (ISO 8601 UTC) | 터미널 결과가 기록된 시간. 결과는 `completed_at` 기준으로 정렬됩니다(최신 순). |
+| `created_at` | string (ISO 8601 UTC) | `completed_at`과 동일한 타임스탬프 (쓰기 한 번 시맨틱스). |
+
+---
+
+## 권한
+
+| 권한 | 부여 내용 |
+|---|---|
+| `evaluations:read` | 평가 결과 목록 조회, 대시보드에서 점수 확인, 대시보드 상태 메트릭 로드. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` 또는 대시보드의 재평가 버튼을 통해 세션 평가를 수동으로 대기열에 추가. |
+| `dashboards:read` | 저장된 대시보드 조회 (메트릭 로드에는 `evaluations:read`도 필요). |
+| `dashboards:write` | 대시보드 생성 및 편집. |
+| `dashboards:delete` | 대시보드 삭제. |
+
+부트스트랩 관리자(`ADMIN_KEY`, `ADMIN_EMAIL`)는 이 모든 권한을 자동으로 받습니다.
+
+---
+
+## 결과 확인
+
+- **`/sessions/<id>`**: 이벤트 타임라인 + 세션 점수와 디스패치 시도 오류를 표시하는
+  오른쪽 패널. 키에 `evaluations:trigger` 권한이 있으면 내보내기 버튼 옆에
+  **재평가** 버튼이 나타납니다. `agent_end`를 발생시키지 않은 세션이나 새 평가자
+  배포 후 점수를 갱신하는 데 유용합니다. 대시보드는 새 결과를 폴링하고 결과가
+  도착하면 오른쪽 패널을 업데이트합니다.
+- **`/sessions`**: 필터링 가능한 세션 그리드. 점수 열에 각 세션의 평가 상태와
+  점수가 한눈에 표시됩니다.
+- **`/dashboards`**: 저장된 평가 상태 뷰 (아래 [Dashboards](#dashboards) 참고).
+
+![세션별 평가 상태 pill과 색상 코딩된 점수 배지(helpfulness, factuality, tool_efficiency, safety, coherence)가 있는 Sessions 그리드](/agenteye/images/sessions-list.png)
+
+*세션 그리드는 각 실행의 평가 상태와 점수를 한눈에 보여줍니다. 빨간색/노란색/녹색 배지로 낮은 점수가 눈에 띕니다.*
+
+![오른쪽 패널에 평가 점수와 디스패치 상태가 표시된 세션 상세 뷰](/agenteye/images/session-detail.png)
+
+*세션을 열면 평가 점수와 오른쪽 패널의 디스패처 오류가 전체 타임라인과 함께 표시됩니다.*
+
+---
+
+## Dashboards
+
+**Dashboards** 페이지(`/dashboards`)에서는 평가 필터 조합을 이름이 있는 재사용 가능한
+뷰로 저장하고, 해당 평가 슬라이스의 상태를 한눈에 모니터링할 수 있습니다. 대시보드는
+**조직 전체에서 공유됩니다**. `dashboards:read` 권한이 있는 모든 사용자가 동일한 세트를
+볼 수 있습니다.
+
+각 대시보드에 고정되는 내용:
+
+- **필터**: 세션 페이지와 동일한 컨트롤: 환경, 상태, 에이전트, 롤링 시간 창,
+  점수 범위 필터(`key:min..max`).
+- **표시 구성**: 강조할 점수 키, 녹색/노란색/빨간색 상태 임계값, 표시할 패널,
+  세션당 최신 평가로 접을지 여부.
+
+각 카드에는 매칭된 세션 수, done/error/timeout 분류, 각 주요 점수의 평균,
+작은 트렌드 스파크라인이 표시됩니다. 대시보드를 열면 전체 크기 패널이 표시되며,
+**"세션에서 열기"**를 클릭하면 해당 슬라이스로 미리 필터링된 세션 페이지로 이동합니다.
+메트릭은 서버 측에서 전체 매칭 세트에 대해 계산됩니다(`GET /evaluations/aggregate` 사용).
+따라서 숫자는 샘플링 없이 정확합니다.
+
+![평가자 차원별 평균 점수 막대, 도구 ok-vs-error 분류, 상위 도구, 시간당 이벤트 트렌드가 있는 평가 상태 대시보드](/agenteye/images/dashboard-quality.png)
+
+**권한:** 조회에는 `dashboards:read`와 `evaluations:read` 모두 필요합니다.
+생성 및 편집에는 `dashboards:write`, 삭제에는 `dashboards:delete`가 필요합니다.
+부트스트랩 관리자는 이 모든 권한을 자동으로 받습니다.
+
+---
+
+## 문제 해결
+
+**세션이 존재하지만 평가가 생성되지 않습니다.** 서버 프로세스에 `EVALUATOR_ENDPOINT`가
+설정되어 있는지, 서버와 평가자가 동일한 `EVALUATOR_TOKEN` 값을 공유하는지, 서버에서
+평가자의 `/health` 엔드포인트에 접근할 수 있는지 확인하세요. `EVALUATOR_ENDPOINT`가
+설정되지 않으면 파이프라인은 아무 작업도 수행하지 않습니다.
+
+**진행 중인 평가가 쌓입니다.** `GET /evaluation-jobs`를 조회하여 진행 중인 대기열을
+확인하세요. 각 행의 `attempt_count`, `next_attempt_at`, `last_error`를 검사하세요.
+일반적인 원인: 평가자 서비스에 접근할 수 없거나 5xx를 반환하는 경우(백오프로 재시도),
+잘못된 `EVALUATOR_TOKEN`(401은 터미널 오류), 또는 계속 `pending`을 반환하는 비동기
+평가자(아래 참고).
+
+**세션이 완료되었지만 터미널 평가가 없습니다.** `GET /evaluation-jobs?status=polling`을
+조회하세요. 결과가 아직 진행 중일 수 있습니다. 작업이 `pending` 상태에 멈춰 있다면,
+서버가 평가자에 접근하는 데 문제가 있는 것입니다. 평가자가 실행 중인지, `EVALUATOR_TOKEN`이
+일치하는지 확인하세요.
+
+**`HTTP 401 from evaluator: invalid bearer token`.** 서버의 `EVALUATOR_TOKEN`이 평가자
+서비스에 설정된 값과 일치하지 않습니다. 두 값이 정확히 동일해야 합니다.
+
+**비동기 평가자가 계속 `pending`을 반환합니다.** 서버는 평가자가 `done` 또는 `error`를
+반환하거나 `EVALUATOR_MAX_POLL_DURATION_SECS` 제한(기본값: 1시간)에 도달할 때까지
+`GET /evaluate/{job_id}`를 폴링합니다. 제한에 도달하면 평가가 `timeout`으로 기록되고
+진행 중인 대기열에서 제거됩니다. 평가자가 기본값보다 더 오랜 시간이 합법적으로
+필요한 경우 `EVALUATOR_MAX_POLL_DURATION_SECS`를 늘리세요.

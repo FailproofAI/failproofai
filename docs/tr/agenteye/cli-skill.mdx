@@ -1,0 +1,95 @@
+---
+title: "AgentEye CLI Agent Skill"
+description: "AgentEye AgentEye CLI Agent Skill belgelendirmesi."
+---
+
+
+**AgentEye CLI becerisi** (`agenteye-cli`), kurulabilir bir *Agent Skill*'dir ve bir kodlama ajanı — Claude Code, Codex ve uyumlu araçlar — için AgentEye dağıtımını düz İngilizce isteklerle [`agenteye` CLI](/tr/agenteye/cli) aracılığıyla çalıştırmayı öğretir: *"bugün bir şey bozuk mu?"*, *"CI'ye sadece olayları itebilen bir anahtar ver"*, *"çalışan olayı kabul et ve bana ata"*.
+
+Bu, bir hizmet veya ayrı bir ikili **değildir**. Zaten yüklü olduğunuz CLI'nin üstünde çalışan küçük bir talimat paketidir: ajan `agenteye --json …` çalıştırır, temiz JSON'u ayrıştırır ve cevabı metinle veriri. Yapabileceği her şeyi, aynı komutları yazarak kendiniz yapabilirsiniz.
+
+---
+
+## Diğer AgentEye arayüzleriyle ilişkisi
+
+AgentEye, aynı verilere ve denetimlere ulaşmanın dört yolunu sunar. Birbirini tamamlarlar:
+
+| Arayüz | Ne olduğu | Nerede çalışır | Şunu kullanın |
+|---|---|---|---|
+| **[CLI](/tr/agenteye/cli)** | `agenteye` için komut/bayrak referansı | Terminal'iniz | Belirli bir komutu çalıştırmak veya komut dosyası yazmak istediğinizde |
+| **[CLI tarifleri](/tr/agenteye/cli-recipes)** | Kopyala-yapıştır `jq`/boru desenleri | Terminal'iniz / komut dosyaları | CLI'ı otomasyon içine entegre ettiğinizde |
+| **CLI becerisi** (bu belge) | CLI için doğal dil giriş kapısı | Kodlama ajanınızda, iş istasyonunuzda | Sadece sorup ajanın komutu seçmesini istediğinizde |
+| **[Kontrol paneli içi AI Asistanı](/tr/agenteye/assistant)** | Kontrol paneline gömülü sohbet | Kümenizde iç bir `agent` kapsayıcısı | Verileriniz hakkında kontrol paneli içi S&C istediğinizde |
+
+### Kontrol paneli içi AI Asistanı ile karşılaştırma — önemli bir ayrım
+
+Bunlar çok farklı etki yarıçaplarına sahip iki farklı araçtır:
+
+- **Kontrol paneli içi AI Asistanı** ([assistant.md](/tr/agenteye/assistant)), kontrol paneline gömülü bir sohbet olup, iç bir `agent` kapsayıcısı tarafından desteklenir. **Sadece okuma artı onay geçidi yazma**: kaydedilmiş sorguları ve kontrol panellerini taslaklandırabilir, ancak her yazma işlemi sizin açık tıklama onayınız için duraklatılır ve hiçbir zaman silmez. `agent:use` izni ile geçit kilitlidir ve yalnızca görüntülediğiniz org'un verilerini görür.
+- **CLI becerisi**, iş istasyonunuzda *sizin* kodlama ajanınız içinde çalışır ve `agenteye` CLI'ı **siz** olarak çalıştırır. CLI'ın **tam yüzeyini, mutasyonlar dahil** gerçekleştirebilir — API anahtarları oluşturmak/döndürmek/devre dışı bırakmak, org ayarlarını değiştirmek, olayları çözmek, kaydedilmiş sorguları silmek — yalnızca CLI oturumunuzun izinleriyle sınırlıdır. Bunu, bu komutları elle çalıştırmak gibi dikkatli bir şekilde ele alın.
+
+---
+
+## Ön Koşullar
+
+1. **`agenteye` CLI yüklü** ve `PATH`'de ([cli.md](/tr/agenteye/cli)'ye bakın — `pipx install agenteye`).
+2. **Kontrol paneli URL'iniz ayarlanmış** (`AGENTEYE_DASHBOARD_URL` veya ajan `--base-url` geçer).
+3. **Oturum açılmış bir oturum**: önce kendiniz `agenteye login` çalıştırın. Beceri, e-postayla gönderilen tek seferlik kod oturumunuzu **tamamlayamaz** — oturum eksikse veya süresi dolmuşsa `agenteye login` çalıştırmanızı söyler (CLI çıkış kodu `4`).
+
+---
+
+## Beceriyi yükleme
+
+Agent Skills, `SKILL.md` içeren klasörlerdir (artı isteğe bağlı referanslar). `agenteye-cli` becerisini ajanınızın baktığı yere beceri klasörünü kopyalayarak yüklersiniz:
+
+- **Claude Code** — `agenteye-cli/` klasörünü `~/.claude/skills/`'e (her projede kullanılabilir) veya `<your-repo>/.claude/skills/`'e (o depoya kapsamlı) kopyalayın. Claude Code otomatik olarak keşfeder; `/skills` listesi ile doğrulayın veya açıklaması eşleşen bir soruya sorun.
+- **Codex (OpenAI)** — Codex aynı `SKILL.md`'yi okur. Paketlenmiş `agents/openai.yaml`, `allow_implicit_invocation: true` ayarlar, bu nedenle Codex bir görev eşleştiğinde beceriyi otomatik seçer; aksi takdirde `$agenteye-cli` olarak açıkça çağırın.
+
+Beceri, `agenteye` CLI'ı ile birlikte korunur ve AgentEye paketinizin bir parçası olarak dağıtılır — `agenteye-cli` klasörünüz yoksa AgentEye kişinize danışın. Hiçbir şey kapı kilitli değildir: Docker görüntüsüne ve kimlik bilgisine ihtiyacı yoktur, çünkü yalnızca **genel** `agenteye` CLI'ı kendi kontrol panelinize karşı çalıştırır.
+
+---
+
+## Güvenlik — mutasyonlar bir ajan CLI çalıştırırken istem vermez
+
+**Bir ajanın değişiklik yapmasına izin vermeden önce bunu okuyun.**
+
+`agenteye` CLI normalde bir yıkıcı işlemden önce *"emin misiniz?"* sorar. **Terminal'e bağlı olmadığı zaman bu — tam olarak bir kodlama ajanı tarafından çalıştırıldığı gibi — ve `--json` de atlar.** Bu nedenle güvenlik istemi ajan için **tetiklenmez**.
+
+Beceri bunu telafi etmek için yazılmıştır: tam olarak çalıştıracağı komutu belirtmesi ve herhangi bir durum değişikliğinden önce sizden açık **TAMAM** alması talimatı verilir. Bu disiplini koruyun — AgentEye'ı bir ajan aracılığıyla çalıştırdığınızda, *siz* onay adımısınız. İzlemek için durum değiştiren komutlar:
+
+- `keys create` / `update` / `disable` / `regenerate`
+- `users create` / `update` / `disable` / `enable`
+- `settings set`
+- `alerts create` / `update` / `delete` / `test`
+- yazma `incidents` alt komutları: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- `query create` / `update` / `delete`
+- `agent rename` / `delete`
+- `orgs switch`
+
+**Gözlemle**'nin altındaki her şey (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) salt okunur ve hiçbir şeyi değiştirmez.
+
+Ajan **siz** olarak hareket ettiği için, yalnızca oturumunuzun izin verdiği şeyleri yapabilir — izinler **org başına** çözümlenir ([api-keys.md](/tr/agenteye/api-keys)'ye bakın). İzin almadığınız bir komut, tam izin adıyla çıkış kodu `5` döndürür, bu nedenle ajan size tam olarak ne için admin'den istemesi gerektiğini söyleyebilir ve karamsar bir şekilde başarısız olmak yerine.
+
+---
+
+## Ne sorabileceğiniz
+
+Beceri, düz İngilizce niyeti doğru `agenteye` komutuna eşler, önce geçerli değerleri keşfeder (`list <kind>`, `whoami`) böylece tahmin etmez:
+
+- *"Hiçbir şey bozuk mu / son 24 saatte başarısız mı?"* → `errors --since 24h --aggregate`, ardından bir döküm.
+- *"Oturum `run-001` neden başarısız oldu?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *"Bu haftada kalite nasıl eğilim gösteriyor?"* → `evals --aggregate --since 7d`, ardından düşük puanlı çalışmalara dalın.
+- *"CI'ye sadece olayları itebilen bir anahtar ver."* → `keys create ci --add events:add` (komutu belirtir, ardından oluşturur ve tek seferlik gizliyi yakalar).
+- *"Kimin erişimi var? Dana'yı salt okunur yap."* → `users list` → `users update dana@… --permission-set read-only` (sizinle onayladıktan sonra).
+- *"Çalışan olayı kabul et ve bana ata."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
+
+Bunların arkasındaki tam komutlar, bayraklar ve JSON şekilleri için, [cli.md](/tr/agenteye/cli) ve [cli-recipes.md](/tr/agenteye/cli-recipes)'ye bakın.
+
+---
+
+## Ayrıca bkz.
+
+- **[CLI](/tr/agenteye/cli)** — `agenteye` için tam komut ve bayrak referansı.
+- **[Ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes)** — kopyala-yapıştır `jq` desenleri ve çıkış kodu işleme.
+- **[AI Asistanı](/tr/agenteye/assistant)** — kontrol paneli içi asistan (bu terminal becerisinden farklı).
+- **[API Anahtarları](/tr/agenteye/api-keys)** — becerinizin yapabileceğini sınırlayan org başına izin modeli.

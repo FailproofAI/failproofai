@@ -1,0 +1,383 @@
+---
+title: "Python SDK"
+description: "AgentEye Python SDK 문서."
+---
+
+
+AgentEye Python SDK는 에이전트의 동작(모든 에이전트 실행, 도구 호출, 모델 요청, 훅, 사람의 개입)에 대한 완전한 가시성을 제공하여 디버깅, 감사, 평가를 수행할 수 있게 해줍니다. 에이전트 코드를 계측하여 구조화된 이벤트를 로컬 JSONL 파일에 기록하며, 수집기 데몬이 이를 자동으로 플랫폼에 전송합니다.
+
+---
+
+## 설치
+
+`AGENTEYE_TOKEN`을 사용하여 GitHub Releases에서 wheel 파일을 다운로드합니다. 아직 토큰이 없다면 [GitHub Token Setup](/ko/agenteye/github-token)에서 설정 단계와 필요한 권한을 확인하세요.
+
+**`gh` CLI + pip 사용:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**`gh` CLI + uv 사용:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**curl 사용 (`gh` CLI 없이):**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## 빠른 시작
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. 기본값: $AGENTEYE_HOME 또는 ~/.agenteye
+    flush_interval=0.5,      # float, 플러시 주기(초)
+    environment=None,        # str | None. 배포 환경 레이블
+)
+```
+
+`event.*` 호출 전에 한 번만 실행하세요. 생략해도 안전하며, 기본값으로 즉시 동작합니다. 모든 인수는 키워드 전용이므로 위와 같이 이름으로 전달해야 합니다.
+
+`base_dir`가 `None`(기본값)인 경우, SDK는 `$AGENTEYE_HOME`이 설정되어 있으면 해당 값을 사용하고, 그렇지 않으면 `~/.agenteye`로 폴백합니다. 이는 수집기 자체의 경로 결정 방식과 동일하므로, `AGENTEYE_HOME` 환경 변수 하나로 SDK와 수집기 양쪽의 공유 이벤트 스풀을 설정할 수 있습니다. 두 프로세스가 스풀 경로에 동의해야 하는 사이드카/단일 파드 배포에서 필수적입니다.
+
+---
+
+## 환경(Environment)
+
+모든 이벤트에 배포 환경(`production`, `staging`, `qa`, `canary` 등)을 레이블로 지정합니다. 한 번만 설정하면 SDK가 모든 이벤트에 자동으로 첨부합니다.
+
+**방법 1: `configure()`를 통해:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**방법 2: 환경 변수를 통해:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**우선순위:** `configure(environment=...)`가 환경 변수보다 우선합니다. 둘 다 설정되지 않은 경우 `"dev"`가 기본값입니다.
+
+환경 값은 대시보드에서 1급 필터로 표시되며, 빠른 쿼리를 위해 서버의 인덱스된 컬럼에 저장됩니다.
+
+**제약:** 환경 값에는 **리터럴 `,` 쉼표가 포함되어서는 안 됩니다**. 대시보드 필터는 쉼표로 구분된 다중 선택을 와이어에서 사용하므로(`?environment=prod,staging`), `prod,blue`처럼 쉼표가 포함된 환경 이름은 두 개의 값으로 분리됩니다. 쉼표가 포함된 환경의 이벤트는 수집 시 거부됩니다.
+
+---
+
+## 이벤트 레퍼런스
+
+모든 이벤트 메서드에는 다음 두 필드가 필요합니다:
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `session_id` | `str` | 최상위 에이전트 실행을 식별합니다 |
+| `agent_id` | `str` | 세션 내에서 이벤트를 발생시킨 에이전트를 식별합니다 |
+
+모든 메서드는 커스텀 메타데이터를 위한 임의의 `**kwargs`도 허용합니다([커스텀 필드](#custom-fields) 참조).
+
+---
+
+### `event.agent_start()`
+
+에이전트가 작업을 시작할 때 발생합니다.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - 중첩 에이전트의 경우 부모 agent_id
+)
+```
+
+---
+
+### `event.agent_end()`
+
+에이전트가 작업을 완료할 때 발생합니다.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+에이전트가 도구를 호출할 때 발생합니다. `tool_result`와 쌍으로 사용하며, SDK가 `duration_ms`를 자동으로 계산합니다.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, 필수
+    tool_call_id="toolu_01",    # str, 필수 - 대응하는 tool_result와의 상관 키
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+도구가 반환될 때 발생합니다. `tool_call_id`를 통해 `tool_use`와 연관됩니다.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # 이전 tool_use와 일치해야 함
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - 도구에서 예외가 발생한 경우 설정
+    # duration_ms는 자동으로 계산됩니다 - 전달하지 마세요
+)
+```
+
+---
+
+### `event.model_request()`
+
+LLM에 프롬프트를 전송하기 직전에 발생합니다.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - 대화 턴
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - 문자열 또는 콘텐츠 블록 리스트
+    tools=[                      # list[dict] | None - 모델에 제공되는 도구 스키마
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+`messages` 항목은 일반 문자열 `content` 또는 Anthropic 스타일의 블록 리스트 `content`를 모두 허용합니다. 샘플링 파라미터(`temperature`, `max_tokens` 등)는 추가 kwargs로 전달할 수 있습니다.
+
+---
+
+### `event.model_response()`
+
+LLM이 응답을 반환할 때 발생합니다.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - 문자열 또는 콘텐츠 블록 리스트
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content`는 일반 문자열(일반 공급자) 또는 Anthropic 스타일의 콘텐츠 블록 리스트를 모두 허용합니다. 도구 호출은 `{"type": "tool_use", ...}` 블록으로 `content` 안에 포함되며, 별도의 `tool_calls` 필드는 없습니다.
+
+---
+
+### `event.hook_triggered()`
+
+훅이 실행될 때 발생합니다. `hook_completed`와 쌍으로 사용하며, SDK가 `duration_ms`를 자동으로 계산합니다.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, 필수
+    hook_id="hook-abc",         # str, 필수 - 상관 키
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+훅이 완료될 때 발생합니다. `hook_id`를 통해 `hook_triggered`와 연관됩니다.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # 이전 hook_triggered와 일치해야 함
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms는 자동으로 계산됩니다 - 전달하지 마세요
+)
+```
+
+---
+
+### `event.error()`
+
+처리되지 않은 오류가 발생할 때 발생합니다.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, 필수
+    message="timed out",        # str, 필수
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## Human-in-the-Loop 이벤트
+
+Human-in-the-loop 이벤트는 사람이 에이전트 실행에 개입하는 순간(승인 대기, 입력 제공, 일시 정지, 에이전트 중단)에 대한 감시를 제공합니다. 인간이 응답하는 데 걸리는 시간을 측정하고(SDK가 쌍을 이룬 이벤트에서 `duration_ms`를 자동 계산), 에이전트를 일시 정지하거나 중단한 사람을 감사하며, 대시보드에 표시되는 승인 및 감시 워크플로를 구축할 수 있습니다.
+
+### `event.human_wait()`
+
+에이전트가 사람의 입력을 기다리며 실행을 일시 정지할 때 발생합니다. `human_input`과 쌍으로 사용하며, SDK가 `duration_ms`(사람이 응답하는 데 걸린 시간)를 자동으로 계산합니다.
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, 필수 - 대응하는 human_input과의 상관 키
+    prompt="Do you approve this action?",        # str | None - 사람에게 표시되는 질문
+    options=["approve", "reject", "defer"],      # list[str] | None - 사람에게 제시되는 선택지
+    reason="approval_required",                  # str | None - 에이전트가 대기하는 이유
+)
+```
+
+### `event.human_input()`
+
+사람이 입력을 제공하고 에이전트가 재개될 때 발생합니다. `input_id`를 통해 `human_wait`와 연관됩니다. `duration_ms`는 자동으로 계산되므로 호출자가 전달해서는 안 됩니다.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, 필수 - 이전 human_wait와 일치해야 함
+    response="approve",    # str | None - 사람의 답변 (자유 텍스트 또는 선택된 옵션)
+    # duration_ms는 자동으로 계산됩니다 - 전달하지 마세요
+)
+```
+
+### `event.human_pause()`
+
+사람이 에이전트를 능동적으로 일시 정지할 때 발생합니다(예: 대시보드 컨트롤을 통해). 에이전트는 중단되지 않고 일시 중단됩니다.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - 에이전트를 일시 정지한 사람
+)
+```
+
+### `event.human_interrupt()`
+
+사람이 에이전트 실행 도중 능동적으로 중단시킬 때 발생합니다. `human_pause`와 달리, 에이전트의 작업이 일시 중단이 아닌 종료됩니다.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - 에이전트를 중단시킨 사람
+    at_step="tool_use:web_search",   # str | None - 중단 시점에 에이전트가 수행 중이던 작업
+)
+```
+
+---
+
+## 커스텀 필드
+
+추가 키워드 인수는 표준 필드 뒤에 이벤트에 추가됩니다:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # 커스텀 필드
+    region="us-east-1",         # 커스텀 필드
+)
+```
+
+`timestamp`, `type`, `environment`는 예약된 이름으로, 커스텀 필드로 전달하면 `ValueError`(`Reserved field names cannot be used as custom fields: [...]`)가 발생합니다. `session_id`와 `agent_id`는 모든 이벤트 메서드의 필수 파라미터이므로 두 번 제공할 수 없으며, 그렇게 하면 Python이 `TypeError`를 발생시킵니다. 환경은 `configure(environment=...)`(또는 `AGENTEYE_ENVIRONMENT` 변수)를 통해 설정하세요.
+
+---
+
+## 이벤트 기록 방식
+
+이벤트는 프로세스 내에 버퍼링되었다가 `flush_interval`초마다(기본값 500ms) 디스크에 플러시됩니다. 각 플러시는 하나의 JSONL 파일을 작성합니다:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+수집기는 이 디렉터리를 감시하고 파일을 자동으로 업로드합니다. 이 파일들을 직접 관리할 필요는 없습니다.

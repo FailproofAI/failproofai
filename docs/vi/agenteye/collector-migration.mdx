@@ -1,0 +1,169 @@
+---
+title: "Chuyển sang `agenteye-collector`"
+description: "Tài liệu chuyển sang `agenteye-collector` của AgentEye."
+---
+
+
+Quá trình chuyển đổi không phá hủy dữ liệu: không có thời gian chết và không mất dữ liệu, đồng thời giải phóng tên ngắn `agenteye` cho [AgentEye CLI](/vi/agenteye/cli) để daemon collector và CLI có thể cùng tồn tại trên cùng một máy.
+
+Tệp nhị phân collector đã được **đổi tên từ `agenteye` thành `agenteye-collector`**. Tên ngắn `agenteye` hiện thuộc về AgentEye CLI, một công cụ riêng biệt để truy vấn phiên, sự kiện và đánh giá từ terminal của bạn.
+
+Hướng dẫn này sẽ hướng dẫn bạn qua quá trình chuyển đổi một bản cài đặt collector hiện có.
+
+---
+
+## Những gì đã thay đổi
+
+| | Trước | Sau |
+|---|---|---|
+| Lệnh / tệp nhị phân | `agenteye` | `agenteye-collector` |
+| Đường dẫn cài đặt mặc định | `/usr/local/bin/agenteye` | `/usr/local/bin/agenteye-collector` |
+| Lệnh con | `start`, `flush`, `health`, `update` | `start`, `flush`, `health` |
+| Tự cập nhật (`agenteye update`) | tích hợp sẵn | **đã xóa**: tải xuống tệp nhị phân mới hoặc kéo image mới |
+| Script cài đặt (`install.sh`) | được cung cấp | **đã xóa**: tải xuống tệp nhị phân trực tiếp (xem [Collector Installation](/vi/agenteye/collector-installation)) |
+| `AGENTEYE_TOKEN` | cần thiết để tải xuống **và** cho các kiểm tra cập nhật nền | chỉ cần thiết để **tải xuống** tệp nhị phân/image |
+
+Cấu hình không thay đổi: `~/.agenteye/config.json` tương tự, các biến môi trường `AGENTEYE_URL` / `AGENTEYE_KEY` / `AGENTEYE_HOME` / TLS tương tự, và `~/.agenteye/events/` spool tương tự. **Không cần chỉnh sửa cấu hình.**
+
+> Nếu bạn chạy tệp nhị phân được đổi tên dưới tên cũ `agenteye`, nó vẫn hoạt động nhưng in cảnh báo không dùng nữa một dòng ra stderr để nhắc bạn chuyển sang `agenteye-collector`.
+
+---
+
+## Trước khi bắt đầu
+
+- **Bản cài đặt `agenteye` hiện có của bạn tiếp tục chạy**; không có gì bị hỏng khi bạn nâng cấp. Chuyển đổi một cách cố ý, sau đó xóa tệp nhị phân cũ cuối cùng.
+- Làm theo thứ tự này để tránh thời gian chết:
+  1. Cài đặt tệp nhị phân `agenteye-collector` mới (hoặc kéo image mới).
+  2. Cập nhật định nghĩa dịch vụ / kiểm tra sức khỏe / script của bạn để gọi `agenteye-collector`.
+  3. Tải lại và khởi động lại dịch vụ; xác nhận nó hoạt động bình thường.
+  4. **Chỉ sau đó** xóa tệp nhị phân `/usr/local/bin/agenteye` cũ.
+
+---
+
+## 1. Cài đặt tệp nhị phân mới
+
+Tải xuống tệu phẩm cho nền tảng của bạn (`agenteye-collector-linux-x86_64`, `agenteye-collector-darwin-arm64`, v.v.; xem [Collector Installation → Option A](/vi/agenteye/collector-installation#option-a-binary-recommended) để xem danh sách đầy đủ) từ bản phát hành `collector/v<version>` mới nhất và đặt nó tại `/usr/local/bin/agenteye-collector`. Người dùng Docker: `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (hoặc thẻ `:v<version>` được ghim, được ưa thích; `:latest` chỉ tồn tại cho các bản phát hành ổn định).
+
+Xác minh:
+
+```bash
+agenteye-collector --version
+```
+
+---
+
+## 2. Cập nhật bản triển khai của bạn
+
+### systemd (Linux)
+
+Chỉnh sửa `/etc/systemd/system/agenteye-collector.service` sao cho `ExecStart` trỏ đến tệp nhị phân mới:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+```
+
+Sau đó tải lại và khởi động lại:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+> **Thay đổi tên thương hiệu:** Nếu plist hiện có của bạn nằm ở đường dẫn cũ
+> `~/Library/LaunchAgents/host.exosphere.agenteye-collector.plist`, hãy đổi tên
+> tệp thành `ai.befailproof.agenteye-collector.plist` và cũng thay đổi
+> giá trị `<key>Label</key>` bên trong tệp thành định danh mới trước khi
+> tải lại.
+
+Trong `~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist`, thay đổi mục đầu tiên `ProgramArguments` từ `/usr/local/bin/agenteye` thành `/usr/local/bin/agenteye-collector`, sau đó tải lại:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+launchctl load   ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+### supervisord
+
+Trong khối chương trình `supervisord` của bạn, đặt `command` thành tệp nhị phân mới:
+
+```ini
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+```
+
+Sau đó `supervisorctl reread && supervisorctl update`.
+
+### Docker / Kubernetes
+
+Kéo image mới (`ghcr.io/agenteye-enterprise/collector:beta-latest` hoặc một thẻ `:v<version>` được ghim, được ưa thích; `:latest` chỉ tồn tại cho các bản phát hành ổn định). Điểm vào image đã là `agenteye-collector`, vì vậy lệnh `docker run` tương tự với lệnh con `start` tiếp tục hoạt động mà không thay đổi.
+
+**Quan trọng: cập nhật các kiểm tra sức khỏe.** Nếu bạn sử dụng kiểm tra sức khỏe liveness/readiness của Kubernetes (hoặc bất kỳ `docker exec` nào) chạy tệp nhị phân theo tên, hãy thay đổi lệnh thành `agenteye-collector`:
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+```
+
+Image mới **không** cung cấp bí danh `agenteye`, vì vậy một kiểm tra vẫn gọi `agenteye` sẽ thất bại. Cập nhật kiểm tra trong cùng một bản triển khai như image mới.
+
+### Cron / script thủ công
+
+Thay thế bất kỳ lệnh gọi `agenteye start|flush|health` nào bằng lệnh `agenteye-collector start|flush|health` tương ứng. **Xóa bất kỳ công việc cron `agenteye update` nào**; lệnh con đó không còn tồn tại (xem [Upgrades from now on](#upgrades-from-now-on)).
+
+---
+
+## 3. Xóa tệp nhị phân cũ (cuối cùng)
+
+Khi dịch vụ chạy trên `agenteye-collector` và báo cáo hoạt động bình thường:
+
+```bash
+sudo rm /usr/local/bin/agenteye
+```
+
+Điều này đặc biệt quan trọng nếu bạn cũng sử dụng AgentEye CLI, nó cài đặt lệnh `agenteye` của riêng nó; để lại tệp nhị phân collector cũ tại `/usr/local/bin/agenteye` sẽ làm cho tên `agenteye` không rõ ràng trên `PATH` của bạn.
+
+---
+
+## Nâng cấp từ bây giờ
+
+Collector không còn tự cập nhật. Để nâng cấp:
+
+- **Tệp nhị phân:** tải xuống tệu phẩm mới cho nền tảng của bạn (ví dụ `agenteye-collector-linux-x86_64`; xem [Collector Installation → Option A](/vi/agenteye/collector-installation#option-a-binary-recommended) để xem danh sách đầy đủ), thay thế `/usr/local/bin/agenteye-collector` và khởi động lại dịch vụ.
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (hoặc một thẻ `:v<version>` được ghim, được ưa thích; `:latest` chỉ tồn tại cho các bản phát hành ổn định) và tạo lại container.
+
+`AGENTEYE_TOKEN` vẫn được yêu cầu để tải xuống từ kho lưu trữ bản phát hành riêng, nhưng daemon đang chạy không còn cần nó.
+
+---
+
+## Xác minh
+
+```bash
+agenteye-collector --version    # tệp nhị phân mới nằm trên PATH
+agenteye-collector health       # exit 0 = hoạt động bình thường
+agenteye-collector flush        # chuyển tiếp bất kỳ sự kiện nào trong hàng đợi và thoát sạch sẽ
+```
+
+Sau đó xác nhận các sự kiện mới xuất hiện trong bảng điều khiển của bạn.
+
+---
+
+## Quay lại
+
+Quá trình chuyển đổi không phá hủy dữ liệu. Nếu bạn cần quay lại, hãy trỏ định nghĩa dịch vụ của bạn trở lại tệp nhị phân `/usr/local/bin/agenteye` cũ (miễn là bạn chưa xóa nó) và khởi động lại. Spool sự kiện và cấu hình được chia sẻ và không bị ảnh hưởng.
+
+---
+
+## Khắc phục sự cố
+
+| Triệu chứng | Nguyên nhân | Sửa |
+|---|---|---|
+| `warning: the collector binary is now agenteye-collector …` trên mỗi lần chạy | Bạn đang gọi tệp nhị phân dưới tên cũ `agenteye` | Gọi `agenteye-collector` thay vào đó; cập nhật tệp dịch vụ và script. |
+| systemd thất bại: `.../agenteye: No such file or directory` | Bạn đã xóa tệp nhị phân cũ trước khi cập nhật `ExecStart` | Đặt `ExecStart=/usr/local/bin/agenteye-collector start`, sau đó `sudo systemctl daemon-reload`. |
+| Pod Kubernetes crash-loop sau khi nâng cấp image | Kiểm tra sức khỏe liveness vẫn chạy `agenteye` | Thay đổi lệnh kiểm tra thành `["agenteye-collector", "health"]`. |
+| `agenteye: command not found`, nhưng `agenteye-collector` hoạt động | Script/bí danh vẫn tham chiếu tên cũ | Cập nhật chúng thành `agenteye-collector`. |
+| Chạy `agenteye` khởi động CLI, không phải collector | Bạn đã cài đặt AgentEye CLI; nó sở hữu `agenteye` | Sử dụng `agenteye-collector` cho daemon và xóa bất kỳ tệu phẩm collector cũ nào còn lại tại `/usr/local/bin/agenteye`. |

@@ -1,0 +1,934 @@
+---
+title: "Kubernetes デプロイメントガイド"
+description: "AgentEye Kubernetes デプロイメントガイドのドキュメントです。"
+---
+
+
+このガイドでは、AgentEye の全スタックを専用の Kubernetes クラスターにデプロイします。
+
+- **ClickHouse 24.8** -- イベントおよびエバリュエーション分析の正規ストア（StatefulSet、100Gi 永続ボリューム）。必須：これがないとサーバーは起動しません。
+- **PostgreSQL 16** -- 組織、API キー、ユーザー、ダッシュボード、保存済みクエリ、認証のリレーショナル/メタデータストア（StatefulSet、50Gi 永続ボリューム）
+- **Redis 7.2** -- オプションの共有キャッシュおよびレート制限バックエンド。利用不可の場合もサーバーとダッシュボードはグレースフルに機能低下します
+- **AgentEye Server** -- イベント取り込み、分析、キー管理用の Rust API（2 レプリカ）
+- **AgentEye Dashboard** -- Next.js 製 Web UI（2 レプリカ）
+- **AI アシスタント（エージェントサービス）** -- ポート 9100 で動作するダッシュボード内オプションの読み取り専用アシスタント。LLM エンドポイントが設定されるまで無効状態
+- **Traefik（パブリック）** -- コレクタートラフィック用の Ingress コントローラー（mTLS 保護）
+- **Traefik（ダッシュボード）** -- ダッシュボード用の Ingress コントローラー（VPN/IP 許可リストのみ）
+- **cert-manager** -- TLS 証明書および mTLS CA
+- **バックアップ CronJob** -- 毎日 UTC 03:00 に PostgreSQL と ClickHouse を同時にダンプ
+- **証明書更新モニター** -- クライアント証明書の有効期限が近づくとアラートを送信
+
+**推定所要時間：** 初回デプロイで 60〜90 分。
+
+Exosphere がこれらすべてをお客様に代わって管理するマネージドデプロイメントモデルについては、[enterprise-docs/managed-deployment.md](/ja/agenteye/managed-deployment) をご覧ください。
+
+---
+
+## 前提条件
+
+開始前に各確認コマンドを実行してください。すべてのチェックがパスする必要があります。
+
+| 要件 | 最低バージョン | 確認コマンド | 期待される結果 |
+|---|---|---|---|
+| Kubernetes クラスター | 1.27+ | `kubectl version` | Server Version >= v1.27 |
+| Kustomize（kubectl 同梱） | Kustomize v1.14+（kubectl 1.27+ に内包） | `kubectl kustomize --help` | 使用方法テキストが表示される |
+| Helm | v3 | `helm version` | `Version:"v3.x.x"` |
+| cluster-admin RBAC | -- | `kubectl auth can-i create namespaces` | `yes` |
+| デフォルト StorageClass | -- | `kubectl get storageclass` | `(default)` と表示された行が少なくとも 1 つある |
+| LoadBalancer サポート | -- | クラウド依存（EKS、GKE、AKS はデフォルトで対応） | -- |
+| GitHub PAT | -- | `echo $AGENTEYE_TOKEN` | 空でないこと（[enterprise-docs/github-token.md](/ja/agenteye/github-token) 参照） |
+| openssl | -- | `openssl version` | OpenSSL 1.x または 3.x |
+| クラウドストレージバケット | -- | PostgreSQL と ClickHouse のバックアップ用（S3、GCS、または Azure Blob） | -- |
+
+**クラスターサイジング：** 最低 3 ノード、各ノード 4 vCPU / 8 GB RAM。全要件については [enterprise-docs/managed-deployment.md](/ja/agenteye/managed-deployment) を参照してください。
+
+### 一括チェックの実行
+
+```bash
+echo "--- Prerequisites Check ---"
+kubectl version --client -o yaml 2>/dev/null | grep -q gitVersion && echo "PASS: kubectl" || echo "FAIL: kubectl not found"
+helm version --short 2>/dev/null | grep -q v3 && echo "PASS: helm v3" || echo "FAIL: helm v3 not found"
+kubectl auth can-i create namespaces 2>/dev/null | grep -q yes && echo "PASS: cluster-admin" || echo "FAIL: no cluster-admin"
+kubectl get storageclass 2>/dev/null | grep -q default && echo "PASS: default StorageClass" || echo "FAIL: no default StorageClass"
+[ -n "$AGENTEYE_TOKEN" ] && echo "PASS: AGENTEYE_TOKEN set" || echo "FAIL: AGENTEYE_TOKEN not set"
+openssl version >/dev/null 2>&1 && echo "PASS: openssl" || echo "FAIL: openssl not found"
+echo "---"
+```
+
+### デプロイメント構成
+
+**取り込みエンドポイント**はお客様が管理するホスト名（例：`ingest.your-company.example`）で提供されます。cert-manager は HTTP-01 チャレンジにより Let's Encrypt からパブリック信頼済み TLS 証明書を要求するため、コレクターはシステムトラストストアでサーバー証明書を検証します。カスタマーごとの CA ピン留めは不要です。
+
+**ダッシュボードエンドポイント**も同様の仕組みです。お客様が管理する別のホスト名（例：`agenteye.your-company.example`）でダッシュボード Traefik LoadBalancer に向けて提供され、cert-manager がその LoadBalancer 経由で Let's Encrypt 証明書を発行します。ブラウザには警告なしで信頼済み証明書が表示されます。
+
+> **証明書の発行と更新は HTTP-01 チャレンジで検証されます。** そのため、両方の LoadBalancer がポート 80 でインターネットから到達可能である必要があります。ダッシュボード LoadBalancer を IP 制限する必要がある場合は、事前にサポートと連携して DNS-01 ソルバーを設定してください。そうしないと更新が無音で失敗し、証明書が期限切れになります。
+
+---
+
+## マニフェストの取得
+
+```bash
+git clone https://x:${AGENTEYE_TOKEN}@github.com/agenteye-enterprise/releases.git
+cd releases/deploy
+```
+
+**確認：**
+
+```bash
+ls base/kustomization.yaml
+```
+
+期待される結果：ファイルが存在すること。存在しない場合はクローンが失敗しています。`AGENTEYE_TOKEN` を確認してください。
+
+**ディレクトリ構造：**
+
+```
+deploy/
+  base/           共有 Kustomize ベース（すべての K8s リソース）
+  overlays/       クラスター固有のオーバーライド（イメージタグ、ホスト名、リソース）
+  third-party/    Traefik、cert-manager、（オプション）Robusta ヘルスモニタリング用の Helm バリューファイル
+```
+
+**base** にはフルデプロイメントに必要なすべてのリソースが含まれており、フェーズ 3.1 で設定する 2 つのパブリックホスト名の Let's Encrypt 証明書も含まれています。**overlay** は特定の環境（カスタムイメージタグ、リソース制限、環境変数設定など）に合わせてベースにパッチを適用します。**third-party** ディレクトリには外部インフラ用の Helm バリューファイルが含まれています。
+
+> **ヘルスモニタリング（オプション）：** サーバーの readiness プローブはすでに Postgres と ClickHouse のヘルス状態を反映しており、`third-party/robusta/` を使用すると Kubernetes ネイティブのポッド障害アラートを Slack にオプトインで追加できます。[enterprise-docs/health-monitoring.md](/ja/agenteye/health-monitoring) を参照してください。
+
+---
+
+## フェーズ 1 -- サードパーティインフラストラクチャ（約 30 分）
+
+### 1.1 cert-manager のインストール
+
+cert-manager は HTTPS 用の TLS 証明書と、mTLS クライアント証明書に使用するプライベート CA を管理します。
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set crds.install=true
+```
+
+**確認：**
+
+```bash
+kubectl get pods -n cert-manager
+```
+
+期待される結果：3 つのポッドがすべて `Running` 状態 -- `cert-manager`、`cert-manager-cainjector`、`cert-manager-webhook`。
+
+```bash
+kubectl get crds | grep cert-manager
+```
+
+期待される結果：`certificates.cert-manager.io`、`clusterissuers.cert-manager.io`、`issuers.cert-manager.io` が少なくとも表示される。
+
+**失敗した場合：** ポッドが `CrashLoopBackOff` 状態の場合は通常、CRD がインストールされていません。`--set crds.install=true` を付けて再実行してください。Webhook ポッドの readiness に失敗する場合は、30 秒待ってから再確認してください。起動に少し時間がかかる場合があります。
+
+---
+
+### 1.2 Traefik（パブリック取り込みコントローラー）のインストール
+
+この Traefik インスタンスは**外部** LoadBalancer でコレクタートラフィックを処理します。TLS を終端し、取り込みエンドポイントで mTLS（クライアント証明書の検証）を強制します。
+
+```bash
+helm repo add traefik https://traefik.github.io/charts
+helm repo update
+
+helm install traefik-public traefik/traefik \
+  --namespace traefik-public --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-public.yaml
+```
+
+**確認：**
+
+```bash
+kubectl get pods -n traefik-public
+```
+
+期待される結果：1 つのポッドが `Running` 状態。
+
+```bash
+kubectl get ingressclass traefik-public
+```
+
+期待される結果：IngressClass が存在すること（デフォルトクラスではありません）。
+
+**失敗した場合：** `kubectl describe pod -n traefik-public <pod-name>` でイメージプルエラーやリソース制約を確認してください。
+
+---
+
+### 1.3 Traefik（ダッシュボードコントローラー）のインストール
+
+この Traefik インスタンスは専用の LoadBalancer でダッシュボードを提供し、IP 許可リストにより制限されます。
+
+> **このインスタンスには 2 種類の許可リストメカニズムが含まれています。** このガイドでは `values-dashboard.yaml` を使用します。これはポータブルな `service.loadBalancerSourceRanges` フィールドでアクセスを制限します。`service.beta.kubernetes.io/aws-load-balancer-source-ranges` アノテーションを好む AWS 環境向けに、`values-internal.yaml` も並行して提供されています。どちらか一方を選択して一貫して使用してください。以下の手順では `values-dashboard.yaml` を前提としています。
+
+**インストール前に**、`third-party/traefik/values-dashboard.yaml` を編集して許可する送信元 IP を設定してください。`loadBalancerSourceRanges` フィールドがダッシュボードへのアクセス可能な IP を制御します。デフォルトは `0.0.0.0/0`（全 IP）です。VPN、オフィス、または既知の出口 IP に制限してください。
+
+#### 単一 IP の許可
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "<YOUR_VPN_IP>/32"
+```
+
+#### 複数 IP の許可
+
+IP または CIDR ブロックごとに 1 エントリを追加します。`/32` サフィックスは単一の IPv4 アドレスに一致し、CIDR ブロック（例：`/24`）は範囲に一致します。個別 IP と範囲を自由に組み合わせることができます。
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "203.0.113.10/32"       # office gateway
+    - "203.0.113.11/32"       # backup office gateway
+    - "198.51.100.0/24"       # VPN pool
+    - "192.0.2.50/32"         # on-call engineer home IP
+```
+
+リストを管理する際のヒント：
+
+- 1 行に 1 エントリを記載し、各 IP の所有者や用途を示す短い `#` コメントを追加してください。将来のオペレーターがそのエントリが引き続き必要かどうかを判断する際に役立ちます。
+- 常に CIDR 表記を使用してください。`203.0.113.10` のような裸の IP はクラウドプロバイダーに拒否されます。`203.0.113.10/32` のように記述してください。
+- IPv6 の場合は、同等の `/128`（単一アドレス）またはそれ以上の CIDR を使用してください（例：`2001:db8::1/128`）。IPv6 送信元範囲をサポートしていないクラウドプロバイダーもあります。プロバイダーの LoadBalancer ドキュメントを確認してください。
+- このリストは **OR** 条件です。送信元がいずれかのエントリに一致すればトラフィックが許可されます。
+
+ファイルを編集したら、以下の `helm install` に進んでください。コントローラーがすでにインストールされている場合は、同じフラグで `helm upgrade` を実行するか、実行時に Service を直接パッチしてください（次のセクション）。
+
+#### 実行時の許可リスト更新
+
+Helm アップグレードなしに、Service を直接パッチして許可 IP を変更できます。**パッチはリスト全体を置き換えます。** 新しい IP だけでなく、保持したい既存の IP もすべて含めてください。
+
+リストを新しい IP セットで置き換えるには：
+
+```bash
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["203.0.113.10/32","198.51.100.0/24","192.0.2.50/32"]}}'
+```
+
+既存のエントリを失わずに IP を**追記**するには、まず現在のリストを確認してから、統合したセットでパッチします：
+
+```bash
+# 1. 現在の許可リストを確認
+kubectl get svc traefik-dashboard -n traefik-dashboard \
+  -o jsonpath='{.spec.loadBalancerSourceRanges}'
+
+# 2. 新しい IP を含む完全なリストでパッチ
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["<EXISTING_IP_1>/32","<EXISTING_IP_2>/32","<NEW_IP>/32"]}}'
+```
+
+> 実行時のパッチは `values-dashboard.yaml` には反映されません。将来の Helm アップグレードでも変更を維持するには、バリューファイルも更新してコミットしてください。
+
+インストール：
+
+```bash
+helm install traefik-dashboard traefik/traefik \
+  --namespace traefik-dashboard --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-dashboard.yaml
+```
+
+**確認：**
+
+```bash
+kubectl get pods -n traefik-dashboard
+```
+
+期待される結果：1 つのポッドが `Running` 状態。
+
+```bash
+kubectl get ingressclass traefik-dashboard
+```
+
+期待される結果：IngressClass が存在すること。
+
+---
+
+### 1.4 LoadBalancer の待機
+
+次のステップに進む前に、両方の Traefik インスタンスに外部 IP が割り当てられている必要があります。
+
+```bash
+kubectl get svc -n traefik-public
+kubectl get svc -n traefik-dashboard
+```
+
+**確認：** 両方のサービスに `EXTERNAL-IP` が表示されていること（`<pending>` でないこと）。
+
+まだ pending の場合は、割り当てを待機します：
+
+```bash
+kubectl get svc -n traefik-public -w
+```
+
+IP が表示されたら `Ctrl+C` を押してください。IP の割り当ては通常 2〜5 分かかります。
+
+**失敗した場合：** 10 分経過しても `<pending>` の場合、クラウドプロバイダーが LoadBalancer をプロビジョニングできていない可能性があります。サブネットタグ（EKS では `kubernetes.io/role/elb` が必要）、VPC 設定、サービスクォータ、および内部インスタンスに正しい内部 LB アノテーションが設定されているかを確認してください。
+
+---
+
+## フェーズ 2 -- シークレットの作成（約 10 分）
+
+すべてのシークレットはアプリケーションのデプロイ前に手動で作成します。これにより、機密情報がマニフェストファイルに含まれることがありません。
+
+### 2.1 ネームスペースの作成
+
+```bash
+kubectl create namespace agenteye
+```
+
+**確認：**
+
+```bash
+kubectl get namespace agenteye
+```
+
+期待される結果：ステータスが `Active`。
+
+---
+
+### 2.2 イメージプルシークレット
+
+このシークレットは `ghcr.io` への認証に使用し、AgentEye コンテナイメージをプルします。PAT の生成方法については [enterprise-docs/github-token.md](/ja/agenteye/github-token) を参照してください。
+
+```bash
+kubectl create secret docker-registry agenteye-image-pull \
+  --namespace agenteye \
+  --docker-server=ghcr.io \
+  --docker-username=agenteye-enterprise \
+  --docker-password="${AGENTEYE_TOKEN}"
+```
+
+**確認：**
+
+```bash
+kubectl get secret agenteye-image-pull -n agenteye -o jsonpath='{.type}'
+```
+
+期待される結果：`kubernetes.io/dockerconfigjson`。
+
+**詳細確認** -- トークンが実際にイメージをプルできるかを検証します：
+
+オーバーレイの `kustomization.yaml` に固定されているサーバーイメージタグを使用してください（現在、バンドルされている `acme` オーバーレイとベースデプロイメントの両方で `v0.0.1-beta.48`）。リリース間でこのチェックがずれないよう、実際にデプロイするタグに置き換えてください：
+
+```bash
+kubectl run test-pull \
+  --image=ghcr.io/agenteye-enterprise/server:v0.0.1-beta.48 \
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"agenteye-image-pull"}]}}' \
+  --restart=Never -n agenteye --command -- echo ok
+
+# 数秒待ってプルを待機してから：
+kubectl logs test-pull -n agenteye
+kubectl delete pod test-pull -n agenteye
+```
+
+期待される結果：ログに `ok` が出力される。
+
+**失敗した場合：** `ErrImagePull` または `401 Unauthorized` は PAT が無効か `read:packages` スコープがないことを意味します。[enterprise-docs/github-token.md](/ja/agenteye/github-token) を再確認してください。
+
+---
+
+### 2.3 PostgreSQL 認証情報
+
+```bash
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+
+kubectl create secret generic agenteye-postgres \
+  --namespace agenteye \
+  --from-literal=POSTGRES_USER=postgres \
+  --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  --from-literal=POSTGRES_DB=agenteye
+```
+
+> **重要：** パスワードの生成には `-hex`（`-base64` ではなく）を使用します。Base64 出力には `+`、`/`、`=` が含まれる可能性があり、`DATABASE_URL` 接続文字列が壊れます。詳細は [enterprise-docs/troubleshooting.md](/ja/agenteye/troubleshooting) を参照してください。
+
+> **`POSTGRES_PASSWORD` はすぐにシークレットマネージャーに保存してください。** バックアップからの復元やデータベースへの直接接続時に必要になります。
+
+**確認：**
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye
+```
+
+期待される結果：シークレットが存在すること。
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye \
+  -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | wc -c
+```
+
+期待される結果：`48`（24 hex バイト = 48 文字）。
+
+---
+
+### 2.4 管理者 API キー
+
+```bash
+ADMIN_KEY=$(openssl rand -hex 32)
+
+kubectl create secret generic agenteye-admin-key \
+  --namespace agenteye \
+  --from-literal=ADMIN_KEY="${ADMIN_KEY}"
+```
+
+管理者キーはブートストラップ用の認証情報です。サーバーは起動のたびに全権限付きでこのキーをアップサートします。フェーズ 7 でコレクター用のスコープ付きキーを作成する際に使用します。完全な権限モデルについては [enterprise-docs/api-keys.md](/ja/agenteye/api-keys) を参照してください。
+
+> **`ADMIN_KEY` はすぐにシークレットマネージャーに保存してください。**
+
+**確認：**
+
+```bash
+kubectl get secret agenteye-admin-key -n agenteye
+```
+
+期待される結果：シークレットが存在すること。
+
+---
+
+### 2.5 認証設定（ダッシュボードログイン）
+
+ダッシュボードはユーザーログインにメール + OTP を使用します。このシークレットがなくてもサーバーは起動し、`ADMIN_KEY` の API パスは動作し続けますが、**UI からユーザーがログインできなくなります**。
+
+すべてのキーはベースマニフェストで `optional: true` として参照されているため、一部のシークレット（またはシークレットがまったくない状態）でも問題ありません。サーバーはドキュメントに記載されたデフォルト値にフォールバックします。すべてを 1 つの `agenteye-auth` シークレットにまとめることで、認証情報を一箇所でローテーションできます。
+
+```bash
+kubectl create secret generic agenteye-auth \
+  --namespace agenteye \
+  --from-literal=ADMIN_EMAIL="admin@yourcompany.com" \
+  --from-literal=ALLOWED_EMAILS="*@yourcompany.com" \
+  --from-literal=SMTP_HOST="smtp.yourprovider.com" \
+  --from-literal=SMTP_PORT="587" \
+  --from-literal=SMTP_USERNAME="your-smtp-user" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password" \
+  --from-literal=SMTP_FROM="noreply@yourcompany.com" \
+  --from-literal=SMTP_TLS="starttls" \
+  --from-literal=DEFAULT_ORG_NAME="Acme Corp" \
+  --from-literal=DEFAULT_ORG_SLUG="acme"
+```
+
+| キー | 用途 |
+|---|---|
+| `ADMIN_EMAIL` | ブートストラップ管理者ユーザー。起動のたびに全権限付きでアップサートされ、ダッシュボードからの削除/権限編集が保護されます。設定しない場合、管理者がシードされず最初のログインが不可能になります。 |
+| `ALLOWED_EMAILS` | カンマ区切りの許可リスト。厳密なアドレス（`user@example.com`）とドメインワイルドカード（`*@example.com`）をサポートします。設定しない場合、**どのユーザーもログインまたは作成できません**。 |
+| `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM` | OTP コード送信用の SMTP リレー。`SMTP_HOST` が未設定の場合、OTP コードはメール送信の代わりにサーバーの stdout に記録されます（初回起動のスモークテストに便利）。実際のメール配信にはすべての SMTP キーを一緒に設定してください。 |
+| `SMTP_TLS` | `starttls`（デフォルト）、`tls`、または `none` のいずれか。 |
+| `DEFAULT_ORG_NAME`、`DEFAULT_ORG_SLUG` | オプション。組み込みの `default` 組織にわかりやすい表示名と URL スラグを付けることで、`/default` の代わりに例えば `/acme` のような URL にできます。**初回起動時のみ**適用されます。`agenteye-orgctl org rename` で組織名を変更した後（§7.6 参照）はこれらの設定は無視されます。スラグは 1〜40 文字の小文字英数字で、内部ハイフンは 1 つまで使用できます。デフォルトの `default` のままにする場合は両方未設定のままにしてください。 |
+
+> **SMTP 認証情報はシークレットマネージャーに保存してください。**
+
+**確認：**
+
+```bash
+kubectl get secret agenteye-auth -n agenteye \
+  -o jsonpath='{.data}' | grep -o '"[A-Z_]*"' | sort -u
+```
+
+期待される結果：設定したキーが出力に表示されること。
+
+---
+
+### 2.6 マルチテナント組織分離キー（オプション）
+
+シングルテナントデプロイメントではスキップしてください。サーバーは組み込みの dev デフォルトで動作し、1 つの `default` 組織を問題なく提供します。**2 番目の組織を作成する前に**、強固で安定した `ORG_CH_SECRET` を設定してください。各組織の ClickHouse パスワードは `HMAC(ORG_CH_SECRET, org_id)` として導出されるため、公知の dev デフォルトを使用すると組織ごとの認証情報が公開的に導出可能になってしまいます。`agenteye-orgctl org create` コマンド（[§7.6 組織のプロビジョニング](#76-provision-organizations-multi-tenant)参照）は、サーバーが組み込み dev デフォルトを使用している間は実行を拒否します。
+
+```bash
+kubectl create secret generic agenteye-org-ch-secret \
+  --namespace agenteye \
+  --from-literal=ORG_CH_SECRET="$(openssl rand -base64 48)"
+
+# 新しい値を反映するためにサーバーをロールアウト再起動します。
+kubectl -n agenteye rollout restart deployment/server
+```
+
+サーバーはこれを**オプションの** `secretKeyRef` で読み取るため、このシークレットを作成しないシングルテナントクラスターでも正常に起動します。この値は**すべてのレプリカで安定かつ一致**させてください。ローテーションすると、起動時の調整で再プロビジョニングされるまで（値を一致させた状態でのローリング再起動で修復されます）、すべての組織の導出済み ClickHouse パスワードが無効になります。`deploy/base/server/secret.example.yaml` を参照してください。
+
+> **`ORG_CH_SECRET` はシークレットマネージャーに保存し、安易にローテーションしないでください。**
+
+---
+
+### 2.7 全シークレットの確認
+
+```bash
+kubectl get secrets -n agenteye -o custom-columns='NAME:.metadata.name,TYPE:.type'
+```
+
+期待される出力（デフォルトシークレットを含む）：
+
+```
+NAME                    TYPE
+agenteye-admin-key      Opaque
+agenteye-auth           Opaque
+agenteye-image-pull     kubernetes.io/dockerconfigjson
+agenteye-postgres       Opaque
+agenteye-org-ch-secret  Opaque   # §2.6（マルチテナント）を完了した場合のみ
+```
+
+続行前に 4 つのコアシークレット（`agenteye-admin-key`、`agenteye-auth`、`agenteye-image-pull`、`agenteye-postgres`）が存在している必要があります。`agenteye-org-ch-secret` はマルチテナントデプロイメントでのみ必要です（§2.6 参照）。
+
+---
+
+## フェーズ 3 -- アプリケーションのデプロイ（約 5 分）
+
+### 3.1 パブリックホスト名の設定
+
+cert-manager が Let's Encrypt 証明書を要求する前に、取り込みとダッシュボードのホスト名が必要です。テンプレートをコピーして両方を設定してください：
+
+```bash
+cp base/certificates/domain.env.example base/certificates/domain.env
+# base/certificates/domain.env を編集して以下を設定：
+#   INGEST_DOMAIN=ingest.your-company.example      （パブリック Traefik LB に解決）
+#   DASHBOARD_DOMAIN=agenteye.your-company.example （ダッシュボード Traefik LB に解決）
+```
+
+`domain.env` は gitignore されており、各デプロイメントにローカルに保存されます。いずれかのキーが欠けていると kustomize ビルドは明確にエラーとなります。
+
+> **DNS は事前に解決できる状態にしてください。** まだ LB に DNS を向ける必要はありません（フェーズ 1.2 が完了するまで存在しないため）が、ステップ 3.2 の ACME 発行では各ホスト名がその LoadBalancer に解決されるまでリトライが続きます。フェーズ 1.4 で取得した LB ホスト名を使用して今すぐ DNS を設定するか、フェーズ 4 でレコードを追加することもできます。
+
+---
+
+### 3.2 マニフェストの適用
+
+新規インストールの場合はベースを直接適用するか、この環境向けにオーバーレイを作成した場合はオーバーレイを適用してください（オーバーレイはイメージタグ、環境変数、リソース制限のみを設定し、ベースの証明書とルーティングを継承します）：
+
+```bash
+kubectl apply -k base/
+# または
+kubectl apply -k overlays/<your-env>/
+```
+
+オーバーレイはベースを自動的に含みます。両方を適用しないでください。
+
+---
+
+### 3.3 ポッドの起動待機
+
+```bash
+kubectl wait --for=condition=Ready pod -l 'app in (server,dashboard,postgres,clickhouse)' \
+  -n agenteye --timeout=180s
+```
+
+この待機はコアデータプレーンのポッドに限定されています。オプションの `agent`（AI アシスタント）と `redis` ポッドも同時に起動します。アシスタントは LLM エンドポイントを設定するまで無効状態（[enterprise-docs/assistant.md](/ja/agenteye/assistant) 参照）で、Redis はベストエフォートのキャッシュです。そのため、どちらもプラットフォームがトラフィックを提供するために Ready 状態である必要はありません。
+
+**確認：**
+
+```bash
+kubectl get pods -n agenteye
+```
+
+期待される結果（オプションの `agent` と `redis` ポッドも表示され `Running` になります）：
+
+```
+NAME                         READY   STATUS    RESTARTS   AGE
+agent-xxxxxxxxxx-xxxxx       1/1     Running   0          ...
+clickhouse-0                 1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+postgres-0                   1/1     Running   0          ...
+redis-0                      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+```
+
+**失敗した場合：**
+
+| ポッドのステータス | 考えられる原因 | デバッグコマンド |
+|---|---|---|
+| `ImagePullBackOff` | イメージプルシークレットまたは PAT が無効 | `kubectl describe pod <name> -n agenteye` |
+| `CrashLoopBackOff` | 環境変数が不正（例：DATABASE_URL） | `kubectl logs <name> -n agenteye` |
+| `Pending` | CPU/メモリ不足またはノードなし | `kubectl describe pod <name> -n agenteye`（Events を確認） |
+
+---
+
+### 3.4 ストレージの確認
+
+```bash
+kubectl get pvc -n agenteye
+```
+
+期待される結果：両方が `Bound` ステータス：
+
+| PVC | 容量 | 用途 |
+|---|---|---|
+| `postgres-data-postgres-0` | `50Gi` | PostgreSQL リレーショナル/メタデータストア |
+| `clickhouse-data-clickhouse-0` | `100Gi` | ClickHouse イベント + エバリュエーション分析ストア |
+
+オプションのキャッシュ用に `redis-data-redis-0` PVC（1Gi）も表示されます。
+
+**失敗した場合：** `Pending` はどの StorageClass もボリュームをプロビジョニングできないことを意味します。`kubectl get storageclass` でデフォルトが存在することを確認してください。本番環境では、高速 SSD StorageClass（AWS では gp3、GCP では pd-ssd）に ClickHouse ボリュームのオーバーレイを適用してください。低速ディスクではコンパクションのスループットが低下します。
+
+---
+
+### 3.5 証明書の確認
+
+```bash
+kubectl get certificates -n agenteye
+```
+
+期待される結果：3 つの証明書がすべて `Ready: True`：
+
+| 名前 | 発行者 | 用途 |
+|---|---|---|
+| `mtls-ca` | `selfsigned` | mTLS クライアント証明書発行用のプライベート CA（有効期限 10 年） |
+| `ingest-tls` | `letsencrypt-prod` | 取り込みエンドポイント用パブリック TLS 証明書（90 日、自動更新） |
+| `dashboard-tls` | `letsencrypt-prod` | ダッシュボード用パブリック TLS 証明書（90 日、自動更新） |
+
+**`ingest-tls` または `dashboard-tls` が Ready でない場合：**
+
+`kubectl describe certificate <name> -n agenteye` を実行して Events を確認してください。一般的な原因：
+
+- **DNS がまだ LB を向いていない。** Let's Encrypt はホスト名を解決してポート 80 にアクセスして検証します。`INGEST_DOMAIN` はパブリック LB に、`DASHBOARD_DOMAIN` はダッシュボード LB に解決される必要があります。CNAME/Alias が伝播するまでオーダーは `pending` のままです。DNS が正しく設定されれば、cert-manager は自動的にリトライします（Certificate を削除する必要はありません）。
+- **ホスト名が置換されていない。** `dnsNames` が `INGEST_DOMAIN_PLACEHOLDER` / `DASHBOARD_DOMAIN_PLACEHOLDER` のままの場合、ステップ 3.1 をスキップしています。`base/certificates/domain.env` を作成して再適用してください。
+- **ダッシュボード Traefik がチャレンジを提供できない**（`dashboard-tls` のみ）。ダッシュボード Traefik インスタンスはバンドルされたバリューファイルでインストールされている必要があります（フェーズ 1.2）。このファイルは cert-manager の HTTP-01 ソルバーを提供するスコープ付き Ingress プロバイダーを有効にします。これなしでインストールされたインスタンスはチャレンジをルーティングできず、オーダーが永遠に `pending` のままになります。
+
+**`mtls-ca` が Ready でない場合：** cert-manager 自体が不健全です。ステップ 1.1 の cert-manager ポッドを再確認してください。
+
+---
+
+### 3.6 CronJob の確認
+
+```bash
+kubectl get cronjobs -n agenteye
+```
+
+期待される結果：
+
+| 名前 | スケジュール | 用途 |
+|---|---|---|
+| `agenteye-backup` | `0 3 * * *` | UTC 03:00 に Postgres と ClickHouse の日次バックアップ |
+| `cert-renewal-check` | `0 3,15 * * *` | UTC 03:00 と 15:00 に証明書有効期限アラート |
+
+---
+
+### 3.7 サーバーの起動確認
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=20
+```
+
+**確認：** サーバーがポート 8080 でリッスンしていることを示す起動ログを探してください。データベース接続エラーがないことを確認してください（サーバーは Ready と報告する前に PostgreSQL と ClickHouse の両方に到達できる必要があります）。
+
+**失敗した場合：** 最も一般的な原因は、`POSTGRES_PASSWORD` に URL 安全でない文字が含まれており、`DATABASE_URL` が壊れていることです。[enterprise-docs/troubleshooting.md](/ja/agenteye/troubleshooting) を参照してください。
+
+---
+
+### 3.8 ダッシュボードのサーバー接続確認
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=20
+```
+
+**確認：** 出力に `Ready` が表示され、`ECONNREFUSED` などのエラーがないことを確認してください。
+
+**失敗した場合：** `server` Service が存在すること（`kubectl get svc server -n agenteye`）と、ダッシュボードデプロイメントで `AGENTEYE_SERVER_URL` が `http://server:8080` に設定されていることを確認してください。
+
+---
+
+## フェーズ 4 -- ネットワークアクセス（約 5 分）
+
+### 4.1 LoadBalancer アドレスの取得
+
+```bash
+PUBLIC_IP=$(kubectl get svc -n traefik-public \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+INTERNAL_IP=$(kubectl get svc -n traefik-dashboard \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+```
+
+> AWS EKS では、LoadBalancer は IP の代わりにホスト名を返します。上記コマンドの `.ip` を `.hostname` に置き換えてください。
+
+**確認：**
+
+```bash
+echo "Public  (ingest):    $PUBLIC_IP"
+echo "Internal (dashboard): $INTERNAL_IP"
+```
+
+両方が空でないこと。
+
+---
+
+### 4.2 LoadBalancer への DNS の向け先設定
+
+`base/certificates/domain.env` のホスト名がそれぞれの LoadBalancer に解決されるように DNS レコードを作成してください。`INGEST_DOMAIN` は**パブリック** Traefik LB に、`DASHBOARD_DOMAIN` は**ダッシュボード** Traefik LB に向けます：
+
+- **AWS Route 53：** `Alias = Yes` の `A` レコードで、ターゲットを LB ホスト名に設定。単純な A → IP は使用しないでください。ELB の IP はローテーションされます。
+- **その他のプロバイダー：** ホスト名から LB ホスト名への `CNAME`。
+
+確認：
+
+```bash
+dig +short ingest.your-company.example
+dig +short agenteye.your-company.example
+```
+
+それぞれ `$PUBLIC_IP` と `$INTERNAL_IP` と同じアドレスが返されるはずです（EKS の場合は同じ `*.elb.amazonaws.com` ホスト名に解決）。
+
+DNS が解決されると、cert-manager はフェーズ 3.5 の pending ACME オーダーを 1 分以内に完了します。`ingest-tls` と `dashboard-tls` の両方が `Ready: True` になるまで `kubectl get certificates -n agenteye` を再実行してください。
+
+---
+
+### 4.3 取り込みエンドポイントへの到達確認
+
+パブリック取り込みエンドポイントは相互 TLS を強制するため、`/health` を含むすべてのリクエストにクライアント証明書が必要です。フェーズ 5 で最初のクライアント証明書を発行します。すでに持っている場合は今すぐ到達性を確認してください：
+
+```bash
+curl -s --cert issued/<cluster-name>/client.crt \
+        --key issued/<cluster-name>/client.key \
+        https://ingest.your-company.example/health
+```
+
+期待される結果：`{"status":"ok"}`。`-k` は不要です。`INGEST_DOMAIN` のサーバー証明書はパブリック CA からチェーンされているため、システムトラストストアで検証されます。取り込みエンドポイントには、未加工の LoadBalancer の IP/ホスト名ではなく `INGEST_DOMAIN` ホスト名でアクセスしてください。
+
+ダッシュボードエンドポイントは `DASHBOARD_DOMAIN` でパブリック信頼済み証明書により提供され、mTLS の背後にはありません。そのため `-k` もクライアント証明書も不要です：
+
+```bash
+curl -s https://agenteye.your-company.example/ -o /dev/null -w '%{http_code}\n'
+```
+
+証明書は `DASHBOARD_DOMAIN` にバインドされているため、未加工の LB アドレスで接続すると証明書名の不一致が発生します。ダッシュボードへはホスト名でアクセスしてください。
+
+**失敗した場合：** `curl` がハングする場合は、ご利用のマシンから LB に到達できるかを確認してください（VPN、セキュリティグループ、ファイアウォールルール）。取り込みホスト名での `certificate required` ハンドシェイクエラーはクライアント証明書が提示されていないことを意味します。まずフェーズ 5 を完了してください。取り込みホスト名での TLS 検証エラーは、サーバー証明書の発行が完了していないことを意味します。フェーズ 3.5 に戻って問題を解決してください。
+
+---
+
+## フェーズ 5 -- mTLS クライアント証明書の発行（クラスターあたり約 10 分）
+
+コレクターは**2 要素**で認証します。クライアント証明書（トランスポート層、認可されたクラスターからのリクエストであることを証明）と API キー（アプリケーション層、`events:add` 権限を持つコレクターからのリクエストであることを証明）です。流出したキーは証明書なしでは無効であり、盗まれた証明書は有効なキーなしでは無効です。
+
+### 5.1 証明書の発行
+
+コレクターを実行する各クラスターには固有のクライアント証明書が必要です。マニフェストのディレクトリから：
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+`<cluster-name>` を意味のある識別子（例：`us-east-1-prod`、`staging`）に置き換えてください。
+
+**確認：** スクリプトが `==> Done!` を出力し、出力ファイルの一覧が表示される。
+
+```bash
+kubectl get certificate mtls-client-<cluster-name> -n agenteye
+```
+
+期待される結果：`Ready: True`。
+
+`issued/<cluster-name>/` の出力ファイル：
+
+| ファイル | 用途 |
+|---|---|
+| `client.crt` | クライアント証明書（有効期限 90 日） |
+| `client.key` | クライアント秘密鍵 |
+| `ca.crt` | サーバー検証用 CA 証明書 |
+| `collector-mtls-secret.yaml` | コレクタークラスター用の即適用可能な Kubernetes Secret |
+
+---
+
+### 5.1b 代替配信方法：AWS Secrets Manager
+
+証明書の使用者が `client.crt` と `client.key` をディスク上に必要とする Kubernetes Pod（アプリケーションポッドのサイドカーとして agenteye-collector を実行する典型的なケース）の場合は、証明書バンドルを AWS Secrets Manager にプッシュします。アプリケーションポッドは [Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) と IRSA を通じてマウントし、証明書のローテーションは完全に自動化されます。
+
+```bash
+cd base/certificates/client-certs
+export AWS_REGION=us-east-1     # ワークロードが実行されているリージョン
+./issue-client-cert.sh <cluster-name> --save-to aws-secrets-manager
+```
+
+再実行（更新）時、スクリプトは同じシークレットに対して `PutSecretValue` を呼び出すため、ARN と名前は安定したままです。CSI Driver は次のローテーションポーリング時に新しいバージョンを取得し、ポッド内のファイルを書き換えます。
+
+**前提条件：**
+
+- AWS アカウントに認証済みの `aws` CLI v2。
+- `jq` がインストールされていること。
+- `AWS_REGION` 環境変数が設定されていること。
+- 呼び出し元の IAM 権限（`Resource` を `arn:aws:secretsmanager:<region>:<account>:secret:agenteye/mtls-client/*` にスコープ）：
+  - `secretsmanager:CreateSecret`
+  - `secretsmanager:DescribeSecret`
+  - `secretsmanager:PutSecretValue`
+  - `secretsmanager:TagResource`
+
+**このモードでスクリプトが行うこと：**
+
+| ステップ | アクション |
+|---|---|
+| 1 | cert-manager を通じて証明書を発行/再抽出します（デフォルトモードと同じ）。 |
+| 2 | `agenteye/mtls-client/<cluster-name>` に対して `DescribeSecret` を呼び出し、作成か更新かを判断します。 |
+| 3 | 初回実行時：3 キーの JSON ペイロード（`client.crt`、`client.key`、`ca.crt`）で `CreateSecret` を実行し、`AgentEyeCluster=<cluster-name>` タグを付与。以降の実行時：`PutSecretValue` で新しいバージョンを発行し、`TagResource` でタグを更新。 |
+| 4 | アップロード成功後のみ `issued/<cluster-name>/` を削除します。失敗した場合はディレクトリが保持されるのでリトライできます。 |
+
+**シークレットが削除スケジュールされている場合**、スクリプトはリトライ前に `aws secretsmanager restore-secret --secret-id agenteye/mtls-client/<cluster-name>` を実行するよう促す明確なエラーを表示して失敗します。
+
+完全なポッドの配線（SecretProviderClass、IRSA セットアップ、ローテーション動作、トラブルシューティング）については [enterprise-docs/single-pod-deployment.md](/ja/agenteye/single-pod-deployment) を参照してください。
+
+---
+
+### 5.2 証明書の動作確認
+
+発行した証明書を mTLS イングレスに対してテストします：
+
+```bash
+curl -sk --cert issued/<cluster-name>/client.crt \
+     --key issued/<cluster-name>/client.key \
+     https://${PUBLIC_IP}/health
+```
+
+期待される結果：`{"status":"ok"}`
+
+**失敗した場合：**
+
+| エラー | 原因 | 対処法 |
+|---|---|---|
+| `certificate required` | 証明書が提示されていない | `curl` コマンドのファイルパスを確認 |
+| `bad certificate` | CA の不一致 | `mtls-ca-issuer` が証明書を発行したか確認：`kubectl describe certificate mtls-client-<name> -n agenteye` |
+| `connection refused` | ホスト名が誤っているか LB に到達できない | `/etc/hosts` または DNS を確認 |
+
+---
+
+### 5.3 コレクタークラスターへの配信
+
+`collector-mtls-secret.yaml` をコレクタークラスターを運用するチームに送付します。適用方法：
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+次に、シークレットをマウントして証明書パスを使用するようコレクターを設定します：
+
+```json
+{
+  "tls_cert": "/etc/agenteye/tls/client.crt",
+  "tls_key": "/etc/agenteye/tls/client.key"
+}
+```
+
+Kubernetes ボリュームマウントを含む完全なコレクターセットアップについては [enterprise-docs/collector-installation.md](/ja/agenteye/collector-installation) を参照してください。
+
+**確認（コレクタークラスター内）：**
+
+```bash
+kubectl get secret agenteye-collector-mtls -n <collector-namespace>
+```
+
+期待される結果：3 つのデータキー（`client.crt`、`client.key`、`ca.crt`）を持つシークレットが存在すること。
+
+---
+
+### 5.4 証明書のライフサイクル
+
+| プロパティ | 値 |
+|---|---|
+| クライアント証明書の有効期限 | 90 日 |
+| 自動更新 | cert-manager が有効期限の 15 日前に更新 |
+| CA の有効期限 | 10 年 |
+| 有効期限アラート | CronJob が有効期限の 30 日前にアラート（フェーズ 6） |
+
+cert-manager は **AgentEye クラスター**上の証明書を自動更新しますが、更新された証明書はコレクタークラスターに再配信する必要があります。古い証明書が期限切れになる前に `issue-client-cert.sh` を再実行して `collector-mtls-secret.yaml` を再適用してください。
+
+`--save-to aws-secrets-manager` を使用している場合（§ 5.1b 参照）は、同じコマンドを再実行してください。スクリプトは同じシークレットに対して `PutSecretValue` を呼び出し、Secrets Store CSI Driver を通じてシークレットをマウントしているポッドは次のローテーションポーリング時（デフォルト：1 時間ごと）に新しいバージョンを取得します。ポッドの再起動は不要です。
+
+---
+
+### 5.5 証明書の失効
+
+クラスターのコレクターアクセスを即座にブロックするには：
+
+```bash
+kubectl delete certificate mtls-client-<cluster-name> -n agenteye
+```
+
+**確認：** ステップ 5.2 の `curl` コマンドが TLS ハンドシェイクエラーで失敗するようになる。
+
+---
+
+## フェーズ 6 -- 証明書更新モニタリング（約 2 分）
+
+組み込みの CronJob が 12 時間ごと（UTC 03:00 と 15:00）に実行され、`agenteye.io/cert-type=mtls-client` ラベルの付いたすべてのクライアント証明書をチェックします。有効期限まで 30 日以内の証明書があるとアラートを送信します。
+
+### 6.1 Slack 通知の有効化（オプション）
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+このシークレットがなくても、CronJob は実行され証明書のステータスを stdout にログ出力します。
+
+**確認：**
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+期待される結果：シークレットが存在すること。
+
+---
+
+### 6.2 CronJob のテスト
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check test-cert-check -n agenteye
+
+kubectl wait --for=condition=Complete job/test-cert-check -n agenteye --timeout=60s
+
+kubectl logs -n agenteye -l job-name=test-cert-check
+```
+
+期待される結果：有効期限ステータスを含む証明書の一覧が表示される。Slack Webhook が設定されている場合は、Slack チャンネルにアラートメッセージが届くことを確認してください。
+
+**失敗した場合：** RBAC を確認してください。CronJob の ServiceAccount は cert-manager Certificate リソースへの `get, list` 権限が必要です。`kubectl describe role cert-renewal-check -n agenteye` で確認してください。
+
+テスト用 Job のクリーンアップ：
+
+```bash
+kubectl delete job test-cert-check -n agenteye
+```
+
+---
+
+## フェーズ 7 -- エンドツーエンドの検証
+
+このフェーズでは、パイプライン全体が正常に動作することを確認します：ヘルスチェック、キー作成、イベント取り込み、ダッシュボード表示。
+
+> **注：** 以下の例では利便性のために未加工の LoadBalancer アドレス（`${PUBLIC_IP}`）で取り込みエンドポイントにアクセスしているため、`-k` を使用します。サーバー証明書は LB IP ではなく `INGEST_DOMAIN` にバインドされているため、ホスト名チェックをスキップしています。取り込みエンドポイントは**すべての**パスで相互 TLS を強制するため、すべての呼び出しにクライアント証明書（`--cert`/`--key`）も必要です。パブリック証明書も検証する場合は、`${PUBLIC_IP}` の代わりに `https://ingest.your-company.example/...` を対象にして `-k` を省略してください。
+
+### 7.1 ヘルスチェック
+
+```bash
+curl -sk --cert issued/<cluster-name>/client.crt \
+        --key issued/<cluster-name>/client.key \
+        https://${PUBLIC_IP}/health
+```
+
+期待される結果：HTTP 200 で `{"status":"ok"}`。
+
+---
+
+### 7.2 スコープ付きコレクターキーの作成
+
+管理者キーはブートストラップと管理用です。コレクター用の専用 `events:add` キーを作成してください：
+
+```bash
+COLLECTOR_KEY=$(openssl rand -hex 32)
+
+curl -sk -X POST https://${PUBLIC_IP}/keys \
+  --cert issued/<cluster-name>/client.crt \
+  --key issued/<cluster-name>/client.key \
+  -H "Authorization: Bearer ${ADMIN_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "'"${COLLECTOR_KEY}"'",
+    "permissions": ["events:add"]
+  }'
+```
+
+**確認：** レスポンスに `"id"`、`"name": "prod-collector"`、`"permissions": ["events:add"]`、`"created_at"` が含まれること。
+
+**確認：** キーがキー一覧に表示されることを確認：

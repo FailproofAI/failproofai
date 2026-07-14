@@ -1,0 +1,235 @@
+---
+title: "Guida introduttiva ad AgentEye"
+description: "Documentazione di AgentEye - Guida introduttiva ad AgentEye."
+---
+
+
+Questa guida ti accompagna attraverso una configurazione completa di AgentEye: distribuire il server e il dashboard, installare il collector su una macchina agente e strumentare il codice dell'agente Python.
+
+---
+
+## Che cos'è AgentEye?
+
+AgentEye è una **piattaforma di osservabilità e valutazione auto-hosted per agenti AI**. Registra tutto ciò che fanno i tuoi agenti — ogni fase di un'esecuzione — e valuta automaticamente la qualità di ogni esecuzione completata, così puoi vedere come si comportano i tuoi agenti in produzione e rilevare le regressioni prima che lo facciano i tuoi utenti.
+
+Il flusso dei dati va in una sola direzione: il codice dell'agente emette **eventi** attraverso l'**SDK Python** → un daemon **collector** leggero raggruppa e li invia al **server** → gli eventi e l'analytics vengono archiviati in **ClickHouse** (lo stato operativo come organizzazioni, utenti, chiavi API, dashboard e query salvate risiede in **Postgres**) → esplori tutto nel **dashboard**.
+
+Quello che ottieni:
+
+- **Eventi** — la traccia grezza e per-fase di ogni esecuzione di agente (tool call, model call, hook, errori).
+- **Sessioni** — quegli eventi aggregati in una riga per esecuzione, ciascuno **automaticamente valutato** e punteggiato.
+- **Valutazioni** — punteggi di qualità prodotti dai tuoi servizi di valutazione, così i cali di qualità emergono senza revisione manuale.
+- **Query e dashboard** — SQL ClickHouse salvato sui tuoi dati, rappresentato in grafici in dashboard condivisi a livello di organizzazione.
+- **Avvisi e incident** — regole di soglia che ti notificano (email, Slack, webhook, in-dashboard) più un flusso di lavoro incident per triaging.
+- **CLI e assistente AI** — un client terminal (`agenteye`) e un assistente in-dashboard per fare domande in linguaggio naturale.
+
+Esegui tutto nella tua infrastruttura, come un singolo stack Docker Compose (questa guida), un'installazione Kubernetes in produzione, o un singolo pod co-locato. Il resto di questa guida configura lo stack Compose da capo a fondo.
+
+---
+
+## Passaggio 1: Autenticazione
+
+Tutti gli artefatti di AgentEye sono distribuiti dall'organizzazione GitHub `agenteye-enterprise`. Come sviluppatore enterprise puoi generare il tuo GitHub PAT. Segui [enterprise-docs/github-token.md](/it/agenteye/github-token) per i passaggi esatti e le autorizzazioni richieste.
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+
+# Authenticate Docker against GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+---
+
+## Passaggio 2: Distribuire il Server e il Dashboard
+
+Il server riceve gli eventi dai collector e li rende interrogabili; il dashboard è il luogo in cui li esplori. Gli eventi ingeriti e l'analytics risiedono in ClickHouse (lo store di analytics richiesto), mentre Postgres contiene lo stato operativo come organizzazioni, utenti, chiavi API, dashboard e query salvate.
+
+**Scarica il file compose pubblicato:**
+
+```bash
+mkdir -p ./agenteye
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o ./agenteye/docker-compose.yml
+cd agenteye
+```
+
+**Imposta i tuoi segreti:**
+
+Crea un file `.env` in modo che la distribuzione non venga eseguita con le credenziali predefinite `admin`. Come minimo imposta `ADMIN_KEY` e `POSTGRES_PASSWORD`:
+
+```bash
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+```
+
+Esporta anche `ADMIN_KEY` nella tua shell attuale in modo che i passaggi successivi (ad es. il `curl` del Passaggio 3) possano farvi riferimento direttamente:
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
+**Avvia lo stack:**
+
+```bash
+docker compose up -d
+```
+
+Questo avvia lo stack completo, incluso lo store di analytics ClickHouse richiesto e una cache Redis opzionale, insieme al server e al dashboard. ClickHouse deve essere healthy affinché il server si avvii.
+
+Il server è ora in ascolto su `http://localhost:8080` e il dashboard su `http://localhost:3000`.
+
+Per le distribuzioni in produzione (Postgres personalizzato, TLS, reverse proxy), vedi [enterprise-docs/deployment.md](/it/agenteye/deployment).
+
+---
+
+## Passaggio 3: Creare una Chiave API per il Collector
+
+Ogni collector si autentica con una chiave API scoped. Usa l'`ADMIN_KEY` che hai impostato al Passaggio 2 per crearne una:
+
+```bash
+curl -s -X POST http://localhost:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
+```
+
+Tu fornisci il valore `key` stesso; usalo nella configurazione del collector al Passaggio 4. Vedi [enterprise-docs/api-keys.md](/it/agenteye/api-keys) per la gestione completa delle chiavi.
+
+---
+
+## Passaggio 4: Installare il Collector
+
+Su ogni macchina che esegue i tuoi agenti AI, installa il daemon collector.
+
+**Scarica il binario (Linux x86_64):**
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+> Questo scarica il build **Linux x86_64**. Per macOS (Apple Silicon o Intel), Linux arm64, o setup Docker / systemd / launchd, vedi [collector-installation.md](/it/agenteye/collector-installation), che elenca il download per ogni piattaforma — il comando sopra installa un binario Linux che non funzionerà altrove.
+
+**Configura:**
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<EOF
+{
+  "url": "http://your-server-host:8080/events",
+  "key": "the-key-from-step-3"
+}
+EOF
+```
+
+**Avvia il daemon:**
+
+```bash
+agenteye-collector start
+```
+
+Verifica la connettività con uno flush one-shot (esce dopo aver drenato eventuali eventi in sospeso):
+
+```bash
+agenteye-collector flush
+```
+
+Per setup Docker, systemd e launchd vedi [enterprise-docs/collector-installation.md](/it/agenteye/collector-installation).
+
+---
+
+## Passaggio 5: Installare l'SDK Python
+
+Su ogni macchina in cui vuoi strumentare il codice dell'agente, installa il wheel da GitHub Releases.
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install agenteye-${VERSION}-py3-none-any.whl
+```
+
+---
+
+## Passaggio 6: Strumenta il Tuo Agente
+
+Aggiungi eventi al codice del tuo agente. Come minimo, emetti `agent_start` e `agent_end`:
+
+```python
+import agenteye
+
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="my-agent",
+    goal="answer the user query",
+)
+
+# your agent logic here
+
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="my-agent",
+    outcome="success",
+)
+```
+
+Gli eventi vengono bufferizzati e flushed a `$AGENTEYE_HOME/events/` (o `~/.agenteye/events/` se `AGENTEYE_HOME` non è impostato) ogni 500 ms. Il collector li preleva automaticamente.
+
+Vedi [enterprise-docs/python-sdk.md](/it/agenteye/python-sdk) per l'API completa degli eventi.
+
+---
+
+## Passaggio 7: Visualizza gli Eventi nel Dashboard
+
+Apri `http://your-dashboard-host:3000` e accedi. AgentEye ti invia un codice monouso (o un link magic one-click), quindi non c'è password da gestire.
+
+![The AgentEye sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
+
+Una volta dentro, la pagina **Events** mostra una traccia live di tutti gli eventi ingeriti. Filtra per `session_id` o `agent_id` per approfondire un'esecuzione specifica.
+
+![The live Events stream, colour-coded by event type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
+
+La pagina **Sessions** aggrega quegli eventi in una riga per esecuzione. AgentEye valuta automaticamente le sessioni completate, quindi ogni esecuzione è punteggiata e le regressioni di qualità emergono senza revisione manuale; il punteggio di valutazione più recente appare su ogni riga a colpo d'occhio:
+
+![The Sessions list, one row per run, with status pills and evaluation score badges](/agenteye/images/sessions-list.png)
+
+Per configurare come vengono punteggiati le sessioni, vedi [enterprise-docs/evaluation-suite.md](/it/agenteye/evaluation-suite).
+
+Fai clic su qualsiasi sessione per aprire il suo **execution graph**, una vista in stile git di come agenti, tool, hook e model call si sono sviluppati nel tempo, con sub-agenti paralleli sulle loro corsie e una suddivisione per-esecuzione nel pannello destro:
+
+![A session's git-style execution graph beside its event timeline, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
+
+---
+
+## Passaggio 8: Esplora, rappresenta in grafici e avvisa
+
+Con gli eventi che fluiscono, le pagine **analyze** trasformano l'attività grezza in risposte, così puoi misurare il comportamento dell'agente, condividere i risultati con il team e ricevere una notifica nel momento in cui qualcosa regredisce. Le pagine del dashboard hanno scope a livello di organizzazione, quindi gli URL che vedi nella barra degli indirizzi sono preceduti dal tuo slug org (`/<org>/…`).
+
+- **Queries** (`/<org>/queries`): inizia da una libreria di query salvate e riutilizzabili sui tuoi eventi e valutazioni (preset built-in più i tuoi)…
+
+![The saved-queries library: a grid of reusable queries, both built-in presets and custom ones](/agenteye/images/queries.png)
+
+  …quindi aprine una nel compositore SQL per modificarla ed eseguirla con risultati live:
+
+![The SQL query composer running a saved query, with a schema sidebar and a live result grid](/agenteye/images/query-lab.png)
+
+- **Dashboards** (`/<org>/dashboards`): fissa le query come tile di linea, barra, area o torta in dashboard condivisi a livello di organizzazione.
+
+![A dashboard built from saved queries: an events-per-hour line, an errors-by-type bar, a latency area chart, and tokens-by-model](/agenteye/images/dashboard-fleet.png)
+
+- **Alerts** (`/<org>/alerts`): promuovi qualsiasi soglia in una regola di paging che notifica per email, Slack, webhook o in-dashboard. Vedi [enterprise-docs/alerts.md](/it/agenteye/alerts).
+
+---
+
+## Passaggi Successivi
+
+- [Deployment](/it/agenteye/deployment): irrigidisci per la produzione
+- [API Keys](/it/agenteye/api-keys): gestisci l'accesso
+- [Troubleshooting](/it/agenteye/troubleshooting): diagnostica i problemi

@@ -1,0 +1,95 @@
+---
+title: "Compétence d'agent CLI AgentEye"
+description: "Documentation de la compétence d'agent CLI AgentEye."
+---
+
+
+La **compétence CLI AgentEye** (`agenteye-cli`) est une *compétence d'agent* installable qui apprend à un agent de codage — Claude Code, Codex et les outils compatibles — à exploiter votre déploiement AgentEye via la [`agenteye` CLI](/fr/agenteye/cli) à partir de requêtes en langage naturel : *« est-ce que quelque chose est cassé aujourd'hui ? »*, *« donne à la CI une clé qui peut uniquement pousser des événements »*, *« accuse réception de l'incident en cours et assigne-le-moi »*.
+
+Il ne s'agit **pas** d'un service ni d'un binaire distinct. C'est un petit paquet d'instructions qui s'appuie sur la CLI que vous avez déjà installée : l'agent exécute `agenteye --json …`, analyse le JSON propre renvoyé et vous répond en langage naturel. Tout ce qu'il peut faire, vous pourriez le faire vous-même en saisissant les mêmes commandes.
+
+---
+
+## Relation avec les autres interfaces AgentEye
+
+AgentEye vous offre quatre façons d'accéder aux mêmes données et contrôles. Elles se complètent :
+
+| Interface | Description | Où elle s'exécute | À utiliser quand |
+|---|---|---|---|
+| **[CLI](/fr/agenteye/cli)** | La référence des commandes et options pour `agenteye` | Votre terminal | Vous souhaitez exécuter ou scripter une commande précise |
+| **[Recettes CLI](/fr/agenteye/cli-recipes)** | Modèles `jq`/pipeline à copier-coller | Votre terminal / vos scripts | Vous intégrez la CLI dans une automatisation |
+| **Compétence CLI** (ce document) | Une interface en langage naturel pour la CLI | Votre agent de codage, sur votre poste de travail | Vous souhaitez simplement poser une question et laisser l'agent choisir la commande |
+| **[Assistant IA intégré au tableau de bord](/fr/agenteye/assistant)** | Un chat intégré au tableau de bord | Un conteneur `agent` interne dans votre cluster | Vous souhaitez poser des questions en langage naturel sur vos données depuis le tableau de bord |
+
+### Par rapport à l'assistant IA intégré au tableau de bord — une distinction importante
+
+Ce sont deux outils différents avec des périmètres d'action très différents :
+
+- L'**assistant IA intégré au tableau de bord** ([assistant.md](/fr/agenteye/assistant)) est un chat intégré au tableau de bord, adossé à un conteneur `agent` interne. Il fonctionne en **lecture seule avec approbation pour toute création** : il peut rédiger des requêtes et des tableaux de bord sauvegardés, mais chaque écriture s'interrompt pour attendre votre approbation explicite, et il ne supprime jamais rien. Il est soumis à la permission `agent:use` et ne voit que les données de l'organisation que vous consultez.
+- La **compétence CLI** s'exécute sur *votre* poste de travail, à l'intérieur de *votre* agent de codage, et pilote la CLI `agenteye` en tant que **vous**. Elle peut effectuer l'**ensemble des actions disponibles dans la CLI, y compris les mutations** — créer/faire tourner/désactiver des clés API, modifier les paramètres d'organisation, résoudre des incidents, supprimer des requêtes sauvegardées — dans la seule limite des permissions de votre session CLI. Traitez-la avec exactement autant de précaution que si vous exécutiez ces commandes manuellement.
+
+---
+
+## Prérequis
+
+1. La **CLI `agenteye` installée** et accessible via `PATH` (voir [cli.md](/fr/agenteye/cli) — `pipx install agenteye`).
+2. L'**URL de votre tableau de bord** configurée (`AGENTEYE_DASHBOARD_URL`, ou passée par l'agent via `--base-url`).
+3. Une **session active** : exécutez `agenteye login` vous-même au préalable. La compétence **ne peut pas** réaliser à votre place la connexion par code à usage unique envoyé par e-mail — elle vous indiquera d'exécuter `agenteye login` si la session est manquante ou expirée (code de sortie CLI `4`).
+
+---
+
+## Installation de la compétence
+
+Les compétences d'agent sont des dossiers contenant un fichier `SKILL.md` (plus des références optionnelles). Vous installez la compétence `agenteye-cli` en plaçant son dossier à l'endroit où votre agent recherche les compétences :
+
+- **Claude Code** — copiez le dossier `agenteye-cli/` dans `~/.claude/skills/` (disponible pour tous les projets) ou dans `<votre-dépôt>/.claude/skills/` (limité à ce dépôt). Claude Code le découvre automatiquement ; vérifiez avec la liste `/skills`, ou posez simplement une question correspondant à sa description.
+- **Codex (OpenAI)** — Codex lit le même `SKILL.md`. Le fichier `agents/openai.yaml` fourni définit `allow_implicit_invocation: true`, de sorte que Codex sélectionne automatiquement la compétence lorsqu'une tâche correspond ; sinon, invoquez-la explicitement avec `$agenteye-cli`.
+
+La compétence est maintenue aux côtés de la CLI `agenteye` et distribuée dans le cadre de votre package AgentEye — si vous ne disposez pas du dossier `agenteye-cli`, contactez votre interlocuteur AgentEye. Rien n'y est verrouillé : elle n'a besoin ni d'image Docker ni d'identifiant, car elle ne fait que piloter la CLI **publique** `agenteye` contre votre propre tableau de bord.
+
+---
+
+## Sécurité — les mutations ne demandent PAS confirmation lorsqu'un agent exécute la CLI
+
+**Lisez ceci avant d'autoriser un agent à effectuer des modifications.**
+
+La CLI `agenteye` demande normalement *« êtes-vous sûr ? »* avant une action destructrice. Elle **ignore automatiquement cette confirmation lorsqu'elle n'est pas attachée à un terminal — ce qui correspond exactement à la façon dont un agent de codage l'exécute — et `--json` la passe également.** La demande de confirmation ne se **déclenchera donc pas** pour l'agent.
+
+La compétence est conçue pour compenser ce comportement : elle est instruite d'indiquer la commande exacte qu'elle va exécuter et d'obtenir votre **accord explicite avant tout changement d'état**. Maintenez cette discipline — lorsque vous pilotez AgentEye via un agent, *c'est vous* qui êtes l'étape de confirmation. Les commandes modifiant l'état à surveiller :
+
+- `keys create` / `update` / `disable` / `regenerate`
+- `users create` / `update` / `disable` / `enable`
+- `settings set`
+- `alerts create` / `update` / `delete` / `test`
+- les sous-commandes `incidents` avec écriture : `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- `query create` / `update` / `delete`
+- `agent rename` / `delete`
+- `orgs switch`
+
+Tout ce qui relève d'**Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) est en lecture seule et ne modifie rien.
+
+L'agent agissant en tant que **vous**, il ne peut effectuer que ce que votre session est autorisée à faire — les permissions sont résolues **par organisation** (voir [api-keys.md](/fr/agenteye/api-keys)). Une commande pour laquelle vous ne disposez pas de la permission retourne le code de sortie `5` avec le nom exact de la permission manquante, ce qui permet à l'agent de vous indiquer précisément ce que vous devez demander à un administrateur, plutôt que d'échouer sans explication.
+
+---
+
+## Ce que vous pouvez lui demander
+
+La compétence fait correspondre une intention exprimée en langage naturel à la bonne commande `agenteye`, en découvrant d'abord les valeurs valides (`list <kind>`, `whoami`) pour ne pas avoir à les deviner :
+
+- *« Est-ce que quelque chose est cassé / en échec ces dernières 24 heures ? »* → `errors --since 24h --aggregate`, puis une ventilation détaillée.
+- *« Pourquoi la session `run-001` a-t-elle échoué ? »* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *« Comment évolue la qualité cette semaine ? »* → `evals --aggregate --since 7d`, puis exploration des exécutions avec un score faible.
+- *« Donne à la CI une clé qui peut uniquement pousser des événements. »* → `keys create ci --add events:add` (elle indique la commande, la crée et capture le secret à usage unique).
+- *« Qui a accès ? Passe Dana en lecture seule. »* → `users list` → `users update dana@… --permission-set read-only` (après confirmation de votre part).
+- *« Accuse réception de l'incident en cours et assigne-le-moi. »* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> vous@…`.
+
+Pour les commandes exactes, les options et les structures JSON sous-jacentes, consultez [cli.md](/fr/agenteye/cli) et [cli-recipes.md](/fr/agenteye/cli-recipes).
+
+---
+
+## Voir aussi
+
+- **[CLI](/fr/agenteye/cli)** — référence complète des commandes et options pour `agenteye`.
+- **[Recettes CLI pour agents](/fr/agenteye/cli-recipes)** — modèles `jq` à copier-coller et gestion des codes de sortie.
+- **[Assistant IA](/fr/agenteye/assistant)** — l'assistant intégré au tableau de bord (à ne pas confondre avec cette compétence en terminal).
+- **[Clés API](/fr/agenteye/api-keys)** — le modèle de permissions par organisation qui délimite ce que la compétence peut faire.

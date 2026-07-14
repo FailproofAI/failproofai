@@ -1,0 +1,87 @@
+---
+title: "健康监控"
+description: "AgentEye 健康监控文档。"
+---
+
+了解 AgentEye 部署本身何时**出现故障或性能下降**，而不仅仅是监测代理行为异常。检测机制**原生支持 Kubernetes**，更重要的是，它**独立于 AgentEye**：通过 Kubernetes 控制平面读取 Pod 状态，并检查 AgentEye 的强依赖项，因此即使服务器、ClickHouse 或 Postgres 本身发生故障，告警依然能够触发。
+
+系统分为两层：第一层为内置功能，第二层为可选功能。
+
+## 1. 感知依赖的就绪探针（内置）
+
+服务器暴露两个探针端点，各司其职：
+
+| 端点 | 探针类型 | 检查内容 | 鉴权 |
+|---|---|---|---|
+| `GET /health` | 存活探针 | 进程是否存活（始终返回 `{"status":"ok"}`） | 无 |
+| `GET /ready` | 就绪探针 | 能否正常提供服务：**Postgres + ClickHouse** 是否可达 | 无 |
+
+当两个强依赖项均可达时，`/ready` 返回 `200`，响应体中 `"status":"ready"` 且所有检查项均为 `"ok"`；若任一依赖不可达，则返回 `503`，`"status":"not_ready"`。两种响应均携带如下格式的响应体：
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+Redis 是可选缓存组件，服务器在其不可用时仍可降级运行，因此 Redis 状态仅作参考，**不会**影响就绪判断。配置了缓存时显示 `"ok"`，未配置时显示 `"not_configured"`，永远不会出现 `"down"`。
+
+在随附的 Kubernetes 清单中，**就绪探针**指向 `/ready`，**存活探针**保持指向 `/health`。效果如下：一个*正在运行但无法连接数据库*的服务器会被从 Service 中摘除，并显示为 `NotReady` 状态，集群监控系统（见下文）可对此发出告警；而存活探针保持轻量，短暂的依赖波动不会触发 Pod 重启。探针配置了较宽松的失败阈值，避免瞬间抖动导致副本频繁进出轮换。
+
+## 2. 使用 Robusta 进行 Pod 故障告警（可选）
+
+[Robusta](https://github.com/robusta-dev/robusta) 是一个 Kubernetes 原生监控工具，监听 API Server 并将 Pod 故障（`CrashLoopBackOff`、`OOMKilled`、`ImagePullBackOff`、`Pending`/`NotReady`、`Failed`、驱逐等）推送至 Slack。由于它直接观察控制平面而非查询 AgentEye，即使 AgentEye 完全不可用时依然能发出告警。
+
+Robusta 作为可选附加组件随发布包提供。使用标准 Robusta Helm Chart 和以下 values 文件启用：
+
+1. 添加 Chart 仓库，并为目标频道准备好 Slack **Bot Token**（`xoxb-…`）：
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   由于以下配置将所有流量保持在集群内（`disableCloudRouting: true`），Token 需来自自托管的 Slack 应用：在 `https://api.slack.com/apps` 创建应用，添加 `chat:write` Bot 权限范围，将其安装到工作区，复制 **Bot User OAuth Token**（`xoxb-…`），并将 Bot 邀请到对应频道（`/invite @your-app`）。
+
+2. 创建 `values.yaml`，填入每个部署的标识标签（`clusterName`）和 Slack 频道，并将范围限定在 `agenteye` 命名空间：
+
+   ```yaml
+   clusterName: "acme-prod"            # 每个部署的唯一标签，出现在所有告警中
+   enablePrometheusStack: false        # 仅 Pod 崩溃告警，不启用指标栈
+   disableCloudRouting: true           # 直接在集群内推送至 Slack
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-…（建议使用 --set 或 Secret）
+         scope:
+           include:
+             - namespace: [agenteye]   # 仅推送 AgentEye 命名空间的告警，删除此项可扩大范围
+   ```
+
+3. 安装时固定 `--version` 为已知稳定的 Robusta Chart 版本（[发布列表](https://github.com/robusta-dev/robusta/releases)），避免安装未经测试的 Chart：
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <pin-a-known-good-version> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### 告警内容
+
+- Kubernetes **Pod 状态**（哪个 AgentEye Pod 出现故障及原因）以及每个 Pod 的**镜像标签**（即运行中组件的**版本**）。
+- **不会有任何 AgentEye 事件数据或客户数据**离开集群。
+- 随附的 values 文件将告警范围限制在 **`agenteye` 命名空间**，同一集群中的其他工作负载不会被上报。
+
+### 统一管理所有部署
+
+将每个部署的 Robusta 都指向**同一个共享 Slack 频道**，每个部署使用各自的 `clusterName`。所有告警都会带上该标签，因此一个频道即可掌握整个集群群的健康状态，一眼便能看出是哪个部署出现了问题。
+
+### 整个集群中断
+
+纯集群内部的监控工具**无法上报整个集群或网络中断**（因为它会随集群一起宕机）。如果需要此类能力，请启用可选的 **Robusta UI Sink**：将 `disableCloudRouting` 设为 `false`，并在 `sinksConfig` 中添加 `robusta_sink`（Token 通过 `robusta gen-config` 获取）。这将提供一个聚合的多集群仪表盘，并标记任何停止上报心跳的集群。
+
+## 故障排查
+
+请参阅 [enterprise-docs/troubleshooting.md](/zh/agenteye/troubleshooting) 中的**健康监控**章节，了解"告警未送达"和"服务器持续 `NotReady` 抖动"等问题的处理方法。

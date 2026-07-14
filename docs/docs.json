@@ -13,7 +13,11 @@
   },
   "favicon": "/favicon.ico",
   "navigation": {
-    "languages": [
+    "products": [
+      {
+        "product": "FailproofAI",
+        "icon": "shield-check",
+        "languages": [
       {
         "language": "en",
         "tabs": [
@@ -955,6 +959,32 @@
                 "group": "דוגמאות",
                 "pages": [
                   "he/examples"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+        ]
+      },
+      {
+        "product": "AgentEye",
+        "icon": "eye",
+        "tabs": [
+          {
+            "tab": "Docs",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "agenteye/overview",
+                  "agenteye/instrumentation"
+                ]
+              },
+              {
+                "group": "Quality",
+                "pages": [
+                  "agenteye/evaluations"
                 ]
               }
             ]

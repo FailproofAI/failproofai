@@ -1,0 +1,32 @@
+---
+title: AgentEye overview
+description: Self-hosted observability and evaluation for AI agents.
+icon: eye
+---
+
+AgentEye is a self-hosted observability and evaluation platform for AI agents. It records each step of an agent run, turns those events into sessions, and evaluates completed sessions so teams can debug production behavior and catch quality regressions.
+
+## What AgentEye provides
+
+- **Events** capture model calls, tool calls, hooks, errors, and human interventions.
+- **Sessions** group the full trail for one agent run.
+- **Evaluations** score completed sessions with your own evaluator service.
+- **Queries and dashboards** let teams explore operational and quality data.
+- **Alerts and incidents** notify operators about errors, latency, and score regressions.
+
+## How data flows
+
+```text
+Agent code -> Python SDK -> local event spool -> Collector -> AgentEye server -> Dashboard
+```
+
+The Python SDK writes structured events to a local spool. A lightweight collector uploads them to the AgentEye server, where they become available for querying, evaluation, dashboards, and alerting.
+
+<CardGroup cols={2}>
+  <Card title="Instrument an agent" icon="code" href="/agenteye/instrumentation">
+    Emit your first session and tool events with the Python SDK.
+  </Card>
+  <Card title="Evaluate sessions" icon="chart-line" href="/agenteye/evaluations">
+    Connect your own evaluator and track quality over time.
+  </Card>
+</CardGroup>

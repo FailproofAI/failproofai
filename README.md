@@ -74,9 +74,11 @@ before they become incidents. Zero latency. Runs locally.
   </a>
 </p>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes factory devin antigravity`). Omit `--cli` to auto-detect installed CLIs and prompt.
+> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity`). Omit `--cli` to auto-detect installed CLIs and prompt.
 >
 > **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
+>
+> **OpenClaw** (openclaw gateway, a self-hosted multi-channel assistant) is supported for both **live-hook enforcement** (`--cli openclaw`, user-scope) and offline **audit** replay of its JSONL sessions (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Enforcement uses OpenClaw's **in-process plugin hooks** (a shipped `openclaw-plugin/` that async-spawns failproofai — its file-based internal hooks are observation-only and can't block): `before_tool_call` blocks a tool, and `before_agent_finalize` is a real turn-end gate, so the `require-*-before-stop` builtins enforce.
 >
 > **Factory Droid** (`droid`) is supported for both **live-hook enforcement** (`--cli factory`, user + project scope) and offline **audit** replay of its on-disk JSONL sessions. droid blocks tool calls off hook **exit code 2** (not a JSON decision) and honors `{decision:"block"}` only on the turn-end `Stop` event — failproofai emits the right shape per event automatically.
 >

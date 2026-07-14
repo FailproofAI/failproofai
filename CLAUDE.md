@@ -628,6 +628,31 @@ For production users the recommended Antigravity install is:
 failproofai policies --install --cli antigravity --scope project
 ```
 
+### VS Code agent hooks (covered by the `copilot` / `claude` integrations — no dedicated id)
+
+VS Code's built-in **Copilot Chat agent mode** (Preview, `github.copilot-chat`)
+ships its own lifecycle-hooks engine, but it is NOT a separate failproofai
+integration — it reuses hook-config paths failproofai already writes, so it's
+covered for free. Verified live against VS Code 1.127 (`github.copilot-chat`
+v0.55.0): the agent discovers and loads hook configs from **`.github/hooks/*.json`**,
+**`~/.copilot/hooks/*.json`**, and **`~/.claude/settings.json`** (governed by the
+`chat.hookFilesLocations` setting, whose default includes all three), using the
+Claude-shaped `{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason}}`
+contract over a snake_case stdin payload.
+
+Those are exactly the paths the **`copilot`** integration
+(`.github/hooks/failproofai.json` project, `~/.copilot/hooks/failproofai.json`
+user) and the **`claude`** integration (`~/.claude/settings.json`) already write.
+So **`failproofai policies --install --cli copilot`** (or `--cli claude`) already
+enforces inside VS Code agent-mode sessions — no `vscode` id, no new code. (VS
+Code's logs were observed loading `failproofai.json` from both `[local] .github/hooks/`
+and `[user] ~/.copilot/hooks/` during a live probe.)
+
+**Caveat:** the hooks feature is a **Preview** and requires an active GitHub
+Copilot subscription + agent mode; the OpenAI ChatGPT / Claude Code VS Code
+extensions are separate runtimes (the Claude Code extension routes through
+failproofai's `claude` hooks in `~/.claude/settings.json` — also already covered).
+
 ## Workflow rules
 
 ### One PR per branch

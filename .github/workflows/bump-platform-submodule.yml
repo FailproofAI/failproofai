@@ -32,6 +32,10 @@ jobs:
         with:
           app-id: ${{ secrets.VERSION_BOT_APP_ID }}
           private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
+          # Without an explicit owner/repository, the action scopes the token
+          # to this repository, which cannot checkout the private platform repo.
+          owner: FailproofAI
+          repositories: platform
 
       - name: Checkout FailproofAI/platform main
         uses: actions/checkout@v7

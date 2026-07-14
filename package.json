@@ -11,6 +11,7 @@
     "scripts/",
     "lib/",
     "pi-extension/",
+    "openclaw-plugin/",
     ".next/standalone/",
     "dist/",
     "README.md"

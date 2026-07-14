@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -619,6 +619,85 @@ export const GEMINI_TOOL_MAP: Record<string, string> = {
   write_todos: "TodoWrite",
   save_memory: "Memory",
   ask_user: "AskUser",
+};
+
+// ── OpenClaw (openclaw gateway) ─────────────────────────────────────────────
+//
+// OpenClaw is a self-hosted assistant gateway (23+ chat channels). Like Hermes
+// it is a dual-pillar integration (live hooks + audit) and USER-scope only
+// (`~/.openclaw/openclaw.json`; workspace plugins are disabled by default).
+//
+// Enforcement is via OpenClaw's IN-PROCESS PLUGIN hooks (its file-based
+// "internal hooks" are observation-only and cannot block) — so failproofai
+// ships a plugin (`openclaw-plugin/`) that async-spawns the binary and maps a
+// flat `{permission, reason}` verdict back to each hook's native return shape.
+// The shim forwards a Claude-shaped stdin (params→tool_input, toolName→
+// tool_name, transcriptPath→transcript_path, stopHookActive→stop_hook_active),
+// so the handler + builtins work unchanged; canonicalization stays binary-side
+// via the maps below (no inline maps in the shim, unlike OpenCode/Pi).
+//
+// Per-hook capability (verified live against openclaw v2026.7.1):
+//   before_tool_call    → PreToolUse       ✅ deny  ({block:true, blockReason})
+//   after_tool_call     → PostToolUse      observation
+//   before_agent_run    → UserPromptSubmit ✅ deny  ({outcome:"block", reason})
+//   before_agent_finalize → Stop           ✅ revise ({action:"revise", reason});
+//                           carries transcriptPath + stopHookActive (≈ Claude Stop)
+//   session_start/end   → SessionStart/End observation
+//   subagent_ended      → SubagentStop     observation only (cannot veto)
+//   before_compaction   → PreCompact       observation
+// Omitted: agent_end (would double-fire Stop); message_sending (outbound-msg
+// cancel gate — OpenClaw-only capability, deferred).
+export const OPENCLAW_HOOK_SCOPES = ["user"] as const;
+export type OpenClawHookScope = (typeof OPENCLAW_HOOK_SCOPES)[number];
+
+export const OPENCLAW_HOOK_EVENT_TYPES = [
+  "before_tool_call",
+  "after_tool_call",
+  "before_agent_run",
+  "before_agent_finalize",
+  "session_start",
+  "session_end",
+  "subagent_ended",
+  "before_compaction",
+] as const;
+export type OpenClawHookEventType = (typeof OPENCLAW_HOOK_EVENT_TYPES)[number];
+
+export const OPENCLAW_EVENT_MAP: Record<OpenClawHookEventType, HookEventType> = {
+  before_tool_call: "PreToolUse",
+  after_tool_call: "PostToolUse",
+  before_agent_run: "UserPromptSubmit",
+  before_agent_finalize: "Stop",
+  session_start: "SessionStart",
+  session_end: "SessionEnd",
+  subagent_ended: "SubagentStop",
+  before_compaction: "PreCompact",
+};
+
+// OpenClaw native tool ids (verified against source src/agents/tool-catalog.ts
+// and a live before_tool_call payload: tool `exec`, params `{command}`). Names
+// with a Claude canonical are mapped so builtin policies fire; OpenClaw-specific
+// tools (process, apply_patch, memory_*, sessions_*, browser, canvas, …) pass
+// through unchanged so they still appear in the audit, just unmatched.
+export const OPENCLAW_TOOL_MAP: Record<string, string> = {
+  exec: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  grep: "Grep",
+  glob: "Glob",
+  web_search: "WebSearch",
+  web_fetch: "WebFetch",
+};
+
+// OpenClaw tool-INPUT key canonicalization, keyed by the *canonical* tool name
+// (the handler canonicalizes the name before calling canonicalizeToolInput).
+// `exec` already delivers `command` (matches Bash builtins), so no entry; the
+// file tools deliver the path as `path`, which Claude builtins read as
+// `file_path`. Mirrors HERMES_TOOL_INPUT_MAP / PI_TOOL_INPUT_MAP.
+export const OPENCLAW_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path" },
+  Write: { path: "file_path" },
+  Edit: { path: "file_path" },
 };
 
 export const HOOK_EVENT_TYPES = [

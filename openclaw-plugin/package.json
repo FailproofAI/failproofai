@@ -1,0 +1,12 @@
+{
+  "name": "@failproofai/openclaw-plugin",
+  "version": "0.0.1",
+  "description": "failproofai policy bridge for OpenClaw (openclaw gateway)",
+  "type": "module",
+  "main": "./index.js",
+  "private": true,
+  "keywords": [
+    "openclaw-plugin",
+    "failproofai"
+  ]
+}

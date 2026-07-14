@@ -22,6 +22,7 @@ import {
   pi,
   gemini,
   hermes,
+  openclaw,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -73,9 +74,9 @@ afterEach(() => {
 });
 
 describe("integrations registry", () => {
-  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, gemini, and hermes in declared order", () => {
+  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, gemini, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -108,6 +109,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('hermes') returns hermes", () => {
     expect(getIntegration("hermes")).toBe(hermes);
+  });
+
+  it("getIntegration('openclaw') returns openclaw", () => {
+    expect(getIntegration("openclaw")).toBe(openclaw);
   });
 
   it("getIntegration throws for unknown id", () => {
@@ -1295,5 +1300,87 @@ describe("GEMINI_TOOL_MAP", () => {
     expect(GEMINI_TOOL_MAP.write_todos).toBe("TodoWrite");
     expect(GEMINI_TOOL_MAP.save_memory).toBe("Memory");
     expect(GEMINI_TOOL_MAP.ask_user).toBe("AskUser");
+  });
+});
+
+describe("OpenClaw integration", () => {
+  it("is user-scope only and points at ~/.openclaw/openclaw.json", () => {
+    expect(openclaw.scopes).toEqual(["user"]);
+    // getSettingsPath ignores scope/cwd (OpenClaw has no project config).
+    const p = openclaw.getSettingsPath("user");
+    expect(p).toBe(join(homedir(), ".openclaw", "openclaw.json"));
+    expect(openclaw.getSettingsPath("project", "/some/where")).toBe(p);
+  });
+
+  it("writeHookEntries registers the plugin path + enables the entry with allowConversationAccess", () => {
+    const settings: Record<string, unknown> = {};
+    openclaw.writeHookEntries(settings, "");
+    const plugins = settings.plugins as Record<string, any>;
+    expect(Array.isArray(plugins.load.paths)).toBe(true);
+    expect(plugins.load.paths.some((p: string) => p.endsWith("openclaw-plugin"))).toBe(true);
+    expect(plugins.entries.failproofai.enabled).toBe(true);
+    expect(plugins.entries.failproofai.hooks.allowConversationAccess).toBe(true);
+  });
+
+  it("writeHookEntries is idempotent (double install → single path entry)", () => {
+    const settings: Record<string, unknown> = {};
+    openclaw.writeHookEntries(settings, "");
+    openclaw.writeHookEntries(settings, "");
+    const plugins = settings.plugins as Record<string, any>;
+    const ours = plugins.load.paths.filter((p: string) => p.includes("openclaw-plugin"));
+    expect(ours).toHaveLength(1);
+  });
+
+  it("writeHookEntries preserves operator config (other plugins, deny list, load extras)", () => {
+    const settings: Record<string, unknown> = {
+      plugins: {
+        deny: ["untrusted"],
+        load: { paths: ["/opt/other-plugin"], watch: true },
+        entries: { other: { enabled: true, config: { x: 1 } } },
+      },
+    };
+    openclaw.writeHookEntries(settings, "");
+    const plugins = settings.plugins as Record<string, any>;
+    expect(plugins.deny).toEqual(["untrusted"]);
+    expect(plugins.load.watch).toBe(true);
+    expect(plugins.load.paths).toContain("/opt/other-plugin");
+    expect(plugins.entries.other).toEqual({ enabled: true, config: { x: 1 } });
+    expect(plugins.entries.failproofai.enabled).toBe(true);
+  });
+
+  it("isFailproofaiHook recognizes our load.paths string entry and the marked sentinel", () => {
+    expect(openclaw.isFailproofaiHook("/x/failproofai/openclaw-plugin")).toBe(true);
+    expect(openclaw.isFailproofaiHook("/abs/openclaw-plugin")).toBe(true);
+    expect(openclaw.isFailproofaiHook("/opt/other-plugin")).toBe(false);
+    expect(openclaw.isFailproofaiHook({ [FAILPROOFAI_HOOK_MARKER]: true })).toBe(true);
+  });
+
+  it("removeHooksFromFile reverses install and prunes empties, leaving operator config intact", () => {
+    const file = join(tempDir, "openclaw.json");
+    const settings: Record<string, unknown> = {
+      plugins: { deny: ["untrusted"], load: { paths: ["/opt/other-plugin"] }, entries: { other: { enabled: true } } },
+    };
+    openclaw.writeHookEntries(settings, "");
+    writeFileSync(file, JSON.stringify(settings));
+
+    const removed = openclaw.removeHooksFromFile(file);
+    expect(removed).toBeGreaterThanOrEqual(2); // path + entry
+
+    const after = JSON.parse(readFileSync(file, "utf-8")) as Record<string, any>;
+    expect(after.plugins.entries.failproofai).toBeUndefined();
+    expect(after.plugins.entries.other).toEqual({ enabled: true });
+    expect(after.plugins.load.paths).toEqual(["/opt/other-plugin"]);
+    expect(after.plugins.deny).toEqual(["untrusted"]);
+  });
+
+  it("removeHooksFromFile deletes an empty plugins object when nothing else remains", () => {
+    const file = join(tempDir, "openclaw2.json");
+    const settings: Record<string, unknown> = {};
+    openclaw.writeHookEntries(settings, "");
+    writeFileSync(file, JSON.stringify(settings));
+
+    openclaw.removeHooksFromFile(file);
+    const after = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    expect(after.plugins).toBeUndefined();
   });
 });

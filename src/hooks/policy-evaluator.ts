@@ -275,6 +275,36 @@ export async function evaluatePolicies(
         };
       }
 
+      // OpenClaw: the shipped openclaw-plugin parses a flat {permission, reason}
+      // verdict and maps it per plugin-hook — before_tool_call → {block:true,
+      // blockReason}; before_agent_run → {outcome:"block", reason};
+      // before_agent_finalize (Stop) → {action:"revise", reason}. For Stop we
+      // emit the MANDATORY ACTION wording so the revise loop carries the
+      // directive. Observation hooks (after_tool_call / session_* /
+      // subagent_ended / before_compaction) ignore stdout, so the flat deny is
+      // logged but cannot veto — a documented limitation. Mirrors the Pi branch.
+      if (session?.cli === "openclaw") {
+        if (eventType === "Stop") {
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       // OpenCode: `session.idle` is a notification-only bus event — by the
       // time the plugin handler fires, OpenCode has already gone idle and
       // throwing from the handler does not force-retry. The only working
@@ -594,6 +624,44 @@ export async function evaluatePolicies(
       };
     }
 
+    // OpenClaw: Stop (before_agent_finalize) can force a revise, so we emit the
+    // MANDATORY ACTION wording as a flat deny — the shim maps it to
+    // {action:"revise", reason}. Every other event lacks an additional-context
+    // channel (before_tool_call's return is {params,block,blockReason} only), so
+    // instruct degrades to allow + stderr note, like Hermes.
+    if (session?.cli === "openclaw") {
+      if (eventType === "Stop") {
+        const policyAttribution = policyNames.length === 1
+          ? `policy: ${policyNames[0]}`
+          : `policies: ${policyNames.join(", ")}`;
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          permission: "allow",
+          reason: `Instruction from failproofai: ${combined}`,
+        }),
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
     // OpenCode: same rationale as the deny branch above — emit
     // additionalContext so the shim submits a follow-up via
     // client.session.prompt instead of throwing into a dead handler.
@@ -707,6 +775,28 @@ export async function evaluatePolicies(
       return {
         exitCode: 0,
         stdout: JSON.stringify(response),
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "allow",
+      };
+    }
+
+    // OpenClaw: same flat shape as Pi — {permission:"allow", reason}. The shim
+    // returns undefined (no block) for an allow verdict regardless, so the note
+    // surfaces via stderr; keeping the flat stdout shape keeps the shim's parse
+    // path uniform across every verdict.
+    if (session?.cli === "openclaw") {
+      const stderrMsg = allowEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          permission: "allow",
+          reason: `Note from failproofai: ${combined}`,
+        }),
         stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,

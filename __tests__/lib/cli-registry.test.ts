@@ -12,7 +12,7 @@ import {
 
 describe("lib/cli-registry", () => {
   it("KNOWN_CLI_IDS lists all supported CLIs in stable order", () => {
-    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
+    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
   });
 
   it("getCliEntry returns the entry for known ids and undefined for unknown", () => {
@@ -74,7 +74,7 @@ describe("lib/cli-registry", () => {
 
   it("listExternalCliEntries excludes claude", () => {
     const ids = listExternalCliEntries().map((c) => c.id);
-    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
+    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
   });
 
   it("each CLI has a unique badgeClasses string", () => {

@@ -20,6 +20,10 @@ export const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
  *  its download with `RangeError("Invalid session ID")`. */
 export const HERMES_SESSION_RE = /^[A-Za-z0-9_-]+$/;
 
+/** OpenClaw sessions are UUID-named files. Kept in sync with
+ *  OPENCLAW_SESSION_ID_RE in lib/openclaw-sessions.ts. */
+export const OPENCLAW_SESSION_RE = /^[0-9a-fA-F-]{36}$/;
+
 export type DownloadSource =
   | { kind: "file"; path: string }
   | { kind: "synthesized"; body: string; contentType: string; extension: string };
@@ -29,6 +33,7 @@ export type DownloadSource =
 export function isValidSessionId(cli: CliId, sessionId: string): boolean {
   if (cli === "opencode") return OPENCODE_SESSION_RE.test(sessionId);
   if (cli === "hermes") return HERMES_SESSION_RE.test(sessionId);
+  if (cli === "openclaw") return OPENCLAW_SESSION_RE.test(sessionId);
   return UUID_RE.test(sessionId);
 }
 
@@ -99,6 +104,13 @@ export async function resolveDownloadSource(
     if (!result) return null;
     const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
     return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+  }
+
+  if (cli === "openclaw") {
+    // OpenClaw writes real JSONL transcripts on disk — stream the file verbatim.
+    const { findOpenClawTranscript } = await import("./openclaw-sessions");
+    const path = findOpenClawTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

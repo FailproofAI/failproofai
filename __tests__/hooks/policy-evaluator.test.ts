@@ -271,6 +271,54 @@ describe("hooks/policy-evaluator", () => {
     expect(result.stderr).toContain("prefer git mv"); // surfaced on stderr for logs
   });
 
+  it("OpenClaw deny on PreToolUse emits flat {permission:'deny'} (shim maps to {block:true})", async () => {
+    registerPolicy("blocker", "desc", () => ({ decision: "deny", reason: "no sudo" }), {
+      events: ["PreToolUse"],
+    });
+    const result = await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, { cli: "openclaw" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.decision).toBe("deny");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.permission).toBe("deny");
+    expect(parsed.reason).toContain("no sudo");
+  });
+
+  it("OpenClaw deny on Stop emits MANDATORY-ACTION wording (shim maps to {action:'revise'})", async () => {
+    registerPolicy("commit", "desc", () => ({ decision: "deny", reason: "commit first" }), {
+      events: ["Stop"],
+    });
+    const result = await evaluatePolicies("Stop", {}, { cli: "openclaw" });
+    expect(result.exitCode).toBe(0);
+    expect(result.decision).toBe("deny");
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.permission).toBe("deny");
+    expect(String(parsed.reason)).toContain("MANDATORY ACTION REQUIRED");
+    expect(String(parsed.reason)).toContain("commit first");
+  });
+
+  it("OpenClaw instruct on Stop emits MANDATORY-ACTION deny (revise); on tool events degrades to allow + note", async () => {
+    registerPolicy("advise-stop", "desc", () => ({ decision: "instruct", reason: "run tests" }), {
+      events: ["Stop"],
+    });
+    const stop = await evaluatePolicies("Stop", {}, { cli: "openclaw" });
+    const stopParsed = JSON.parse(stop.stdout) as Record<string, unknown>;
+    expect(stop.decision).toBe("instruct");
+    expect(stopParsed.permission).toBe("deny"); // revise on Stop
+    expect(String(stopParsed.reason)).toContain("MANDATORY ACTION REQUIRED");
+
+    clearPolicies();
+    registerPolicy("advise-tool", "desc", () => ({ decision: "instruct", reason: "prefer git mv" }), {
+      events: ["PreToolUse"],
+    });
+    const pre = await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, { cli: "openclaw" });
+    expect(pre.decision).toBe("instruct");
+    const preParsed = JSON.parse(pre.stdout) as Record<string, unknown>;
+    expect(preParsed.permission).toBe("allow"); // does NOT block — no context channel on tool events
+    expect(preParsed.reason).toContain("prefer git mv");
+    expect(pre.stderr).toContain("prefer git mv");
+  });
+
   it("Cursor SubagentStop + instruct emits {followup_message} JSON (parity with Stop branch)", async () => {
     // The Cursor Stop instruct branch was widened to also match SubagentStop
     // so custom policies subscribing to SubagentStop on Cursor get the same

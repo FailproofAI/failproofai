@@ -10,6 +10,7 @@ import { getCachedOpenCodeSessionLog } from "@/lib/opencode-sessions";
 import { getCachedPiSessionLog } from "@/lib/pi-sessions";
 import { getCachedGeminiSessionLog } from "@/lib/gemini-sessions";
 import { getCachedHermesSessionLog } from "@/lib/hermes-sessions";
+import { getCachedOpenClawSessionLog } from "@/lib/openclaw-sessions";
 import { decodeFolderName } from "@/lib/paths";
 import { baseSessionId } from "@/lib/utils/session-id";
 import { resolveProjectPath, UUID_RE } from "@/lib/projects";
@@ -53,7 +54,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" = "claude";
+  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" | "openclaw" = "claude";
   let externalCwd: string | undefined;
 
   try {
@@ -116,7 +117,15 @@ export default async function SessionPage({ params }: SessionPageProps) {
                     externalCwd = hermes.cwd;
                     cli = "hermes";
                   } else {
-                    error = "Session log file not found.";
+                    const openclaw = await getCachedOpenClawSessionLog(decodedSessionId);
+                    if (openclaw) {
+                      entries = openclaw.entries;
+                      rawLines = openclaw.rawLines;
+                      externalCwd = openclaw.cwd;
+                      cli = "openclaw";
+                    } else {
+                      error = "Session log file not found.";
+                    }
                   }
                 }
               }
@@ -146,7 +155,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
                 ? `Gemini CLI${externalCwd ? ` · ${externalCwd}` : ""}`
                 : cli === "hermes"
                   ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
-                  : decodedName;
+                  : cli === "openclaw"
+                    ? `OpenClaw${externalCwd ? ` · ${externalCwd}` : ""}`
+                    : decodedName;
 
   return (
     <main className="min-h-screen bg-background">

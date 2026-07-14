@@ -19,6 +19,7 @@ import { listOpenCodeTranscriptMetadata, streamOpenCodeEvents } from "./opencode
 import { listPiTranscriptMetadata, streamPiEvents } from "./pi";
 import { listGeminiTranscriptMetadata, streamGeminiEvents } from "./gemini";
 import { listHermesTranscriptMetadata, streamHermesEvents } from "./hermes";
+import { listOpenClawTranscriptMetadata, streamOpenClawEvents } from "./openclaw";
 
 export type { ListOpts };
 
@@ -68,6 +69,11 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "hermes",
     listTranscripts: listHermesTranscriptMetadata,
     streamEvents: streamHermesEvents,
+  },
+  openclaw: {
+    cli: "openclaw",
+    listTranscripts: listOpenClawTranscriptMetadata,
+    streamEvents: streamOpenClawEvents,
   },
 };
 

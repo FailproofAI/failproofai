@@ -30,6 +30,8 @@ import {
   GEMINI_HOOK_SCOPES,
   HERMES_HOOK_EVENT_TYPES,
   HERMES_HOOK_SCOPES,
+  OPENCLAW_HOOK_EVENT_TYPES,
+  OPENCLAW_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -1575,6 +1577,153 @@ export const hermes: Integration = {
   },
 };
 
+// ── OpenClaw integration ────────────────────────────────────────────────────
+//
+// OpenClaw is a self-hosted assistant gateway. Enforcement is via its in-process
+// PLUGIN hooks (file-based "internal hooks" are observation-only), so failproofai
+// ships a static plugin package (`openclaw-plugin/`, like Pi's pi-extension) that
+// async-spawns the binary and maps verdicts back. Install registers the plugin in
+// `~/.openclaw/openclaw.json` (JSON):
+//   • plugins.load.paths[]  → the shipped openclaw-plugin dir (absolute path)
+//   • plugins.entries.failproofai = { enabled: true, hooks: { allowConversationAccess: true } }
+//     (allowConversationAccess is required for the raw-conversation hooks
+//      before_agent_run / before_agent_finalize; verified live v2026.7.1).
+// USER scope only — OpenClaw has no project config (workspace plugins are
+// disabled by default). We NEVER delete the shipped plugin dir on uninstall
+// (unlike OpenCode's generated shim) — uninstall only edits openclaw.json.
+// Detected via the `openclaw` binary on PATH.
+
+const OPENCLAW_PLUGIN_ID = "failproofai";
+
+interface OpenClawPluginsSection {
+  load?: { paths?: string[]; [k: string]: unknown };
+  entries?: Record<string, Record<string, unknown>>;
+  allow?: string[];
+  deny?: string[];
+  [k: string]: unknown;
+}
+interface OpenClawSettingsFile {
+  plugins?: OpenClawPluginsSection;
+  [k: string]: unknown;
+}
+
+/** Absolute path to the failproofai-shipped OpenClaw plugin package. */
+function getOpenClawPluginPath(): string {
+  const fromEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (fromEnv) return resolve(fromEnv, "openclaw-plugin");
+  return resolve(fileURLToPath(import.meta.url), "..", "..", "..", "openclaw-plugin");
+}
+
+/** True iff a plugins.load.paths entry was written by failproofai. */
+function isFailproofaiOpenClawPath(p: unknown): boolean {
+  if (typeof p !== "string") return false;
+  return /(?:^|\/)openclaw-plugin\/?$/.test(p) || (p.includes("openclaw-plugin") && p.includes("failproofai"));
+}
+
+export const openclaw: Integration = {
+  id: "openclaw",
+  displayName: "OpenClaw",
+  scopes: OPENCLAW_HOOK_SCOPES,
+  eventTypes: OPENCLAW_HOOK_EVENT_TYPES,
+
+  // USER scope only (~/.openclaw/openclaw.json); OpenClaw has no project config.
+  getSettingsPath() {
+    return resolve(homedir(), ".openclaw", "openclaw.json");
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry() {
+    // OpenClaw registers plugins at the package level — one registration covers
+    // all hooks (the plugin's index.js wires every api.on(...) handler). This
+    // sentinel satisfies the interface; writeHookEntries does the real work.
+    return {
+      [FAILPROOFAI_HOOK_MARKER]: true,
+      _openclawPluginPath: getOpenClawPluginPath(),
+    };
+  },
+
+  isFailproofaiHook(hook) {
+    if (typeof hook === "string") return isFailproofaiOpenClawPath(hook);
+    if (!hook || typeof hook !== "object") return false;
+    const h = hook as Record<string, unknown>;
+    if (h[FAILPROOFAI_HOOK_MARKER] === true) return true;
+    if (typeof h.source === "string") return isFailproofaiOpenClawPath(h.source);
+    return false;
+  },
+
+  writeHookEntries(settings) {
+    const s = settings as OpenClawSettingsFile;
+    const plugins = (s.plugins ??= {});
+    const load = (plugins.load ??= {});
+    if (!Array.isArray(load.paths)) load.paths = [];
+    const dir = getOpenClawPluginPath();
+    // Idempotent: replace any existing failproofai path, otherwise append.
+    const idx = load.paths.findIndex((p) => isFailproofaiOpenClawPath(p));
+    if (idx >= 0) load.paths[idx] = dir;
+    else load.paths.push(dir);
+
+    // Enable the plugin + grant conversation access (needed for before_agent_run
+    // / before_agent_finalize). Only set our own keys — operator config on this
+    // entry (e.g. hooks.timeouts.<hookName>) and other entries are preserved.
+    const entries = (plugins.entries ??= {});
+    const entry = (entries[OPENCLAW_PLUGIN_ID] ??= {});
+    entry.enabled = true;
+    const hooks = ((entry.hooks as Record<string, unknown>) ??= {});
+    hooks.allowConversationAccess = true;
+  },
+
+  removeHooksFromFile(settingsPath) {
+    if (!existsSync(settingsPath)) return 0;
+    const settings = this.readSettings(settingsPath) as OpenClawSettingsFile;
+    const plugins = settings.plugins;
+    if (!plugins) return 0;
+    let removed = 0;
+
+    if (Array.isArray(plugins.load?.paths)) {
+      const before = plugins.load.paths.length;
+      plugins.load.paths = plugins.load.paths.filter((p) => !isFailproofaiOpenClawPath(p));
+      removed += before - plugins.load.paths.length;
+      if (plugins.load.paths.length === 0) delete plugins.load.paths;
+      if (plugins.load && Object.keys(plugins.load).length === 0) delete plugins.load;
+    }
+    if (plugins.entries && OPENCLAW_PLUGIN_ID in plugins.entries) {
+      delete plugins.entries[OPENCLAW_PLUGIN_ID];
+      removed += 1;
+      if (Object.keys(plugins.entries).length === 0) delete plugins.entries;
+    }
+    // Prune an empty plugins object so uninstall leaves openclaw.json clean.
+    if (Object.keys(plugins).length === 0) delete settings.plugins;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as OpenClawSettingsFile;
+      const paths = settings.plugins?.load?.paths;
+      const pathPresent = Array.isArray(paths) && paths.some((p) => isFailproofaiOpenClawPath(p));
+      const entryEnabled = settings.plugins?.entries?.[OPENCLAW_PLUGIN_ID]?.enabled === true;
+      return pathPresent && entryEnabled;
+    } catch {
+      return false;
+    }
+  },
+
+  detectInstalled() {
+    return binaryExists("openclaw");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -1591,6 +1740,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   pi,
   gemini,
   hermes,
+  openclaw,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

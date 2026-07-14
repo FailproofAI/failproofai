@@ -1,0 +1,6 @@
+{
+  "id": "failproofai",
+  "name": "failproofai",
+  "description": "Real-time policy enforcement for OpenClaw by failproofai",
+  "configSchema": {}
+}

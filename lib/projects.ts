@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" | "openclaw";
 
 export interface ProjectFolder {
   name: string;
@@ -145,6 +145,7 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getPiProjects },
     { getGeminiProjects },
     { getHermesProjects },
+    { getOpenClawProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -153,8 +154,9 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./pi-projects"),
     import("./gemini-projects"),
     import("./hermes-projects"),
+    import("./openclaw-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, gemini, hermes] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, gemini, hermes, openclaw] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -184,8 +186,12 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Hermes projects:", error);
       return [] as ProjectFolder[];
     }),
+    getOpenClawProjects().catch((error) => {
+      logError("Error reading OpenClaw projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, gemini, hermes);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, gemini, hermes, openclaw);
 }
 
 /**

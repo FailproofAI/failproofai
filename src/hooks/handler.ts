@@ -14,6 +14,7 @@ import type {
   PiHookEventType,
   GeminiHookEventType,
   HermesHookEventType,
+  OpenClawHookEventType,
 } from "./types";
 import {
   CODEX_EVENT_MAP,
@@ -21,6 +22,7 @@ import {
   PI_EVENT_MAP,
   GEMINI_EVENT_MAP,
   HERMES_EVENT_MAP,
+  OPENCLAW_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import type { PolicyFunction, PolicyResult } from "./policy-types";
@@ -71,6 +73,13 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
     // Hermes sends snake_case event names (pre_tool_call, on_session_start, …);
     // map to PascalCase. Has no turn-end Stop event, so no Stop mapping exists.
     const mapped = HERMES_EVENT_MAP[raw as HermesHookEventType];
+    if (mapped) return mapped;
+  }
+  if (cli === "openclaw") {
+    // The openclaw-plugin shim forwards raw snake_case plugin-hook names
+    // (before_tool_call, before_agent_finalize, …); map to PascalCase.
+    // before_agent_finalize is the real turn-end gate → Stop.
+    const mapped = OPENCLAW_EVENT_MAP[raw as OpenClawHookEventType];
     if (mapped) return mapped;
   }
   // claude / copilot / unknown — already PascalCase, pass through.

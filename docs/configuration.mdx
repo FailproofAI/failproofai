@@ -223,7 +223,7 @@ failproofai policies --install --cli goose --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw`):
+When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
 - **One CLI detected** — auto-selects that CLI without prompting.
 - **Multiple CLIs detected** in an interactive terminal — shows an arrow-key single-select prompt grouped into a `Detected (N)` section (with an `Install for all N detected` aggregate row + each detected CLI individually) and a `Not installed (M) · install hooks ahead of time` section listing every undetected supported CLI as a forward-install option (↑↓ to move, Enter to select, ^C to quit). The uninstall flow shows only the Detected section.

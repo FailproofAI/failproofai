@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -178,6 +178,27 @@ export function assertPiAllow(result: HookRunResult): void {
   if (result.parsed) {
     expect(result.parsed.permission).not.toBe("deny");
   }
+}
+
+// ── Factory (droid) assertions ─────────────────────────────────────────────
+// Factory drives tool blocking off EXIT CODE 2 + stderr (it ignores a JSON
+// decision on tool events — verified live against droid v0.171.0). The Stop
+// event is the exception: droid reads `{decision:"block", reason}` on stdout.
+
+export function assertFactoryDeny(result: HookRunResult): void {
+  // Non-Stop deny: exit 2, no stdout, blocked message on stderr.
+  expect(result.exitCode).toBe(2);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toMatch(/Blocked/i);
+}
+
+export function assertFactoryStopBlock(result: HookRunResult): void {
+  // Stop deny/instruct: droid honors `{decision:"block", reason}` on stdout at
+  // exit 0 ("if decision is block, Droid does not stop").
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
 }
 
 export function assertCopilotStopBlock(result: HookRunResult): void {

@@ -30,6 +30,8 @@ import {
   HERMES_HOOK_SCOPES,
   OPENCLAW_HOOK_EVENT_TYPES,
   OPENCLAW_HOOK_SCOPES,
+  FACTORY_HOOK_EVENT_TYPES,
+  FACTORY_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -1564,6 +1566,143 @@ export const openclaw: Integration = {
   },
 };
 
+// ── Factory Droid (droid) integration ───────────────────────────────────────
+//
+// Factory's droid CLI uses a Claude-compatible external-command hook system,
+// but its hooks.json puts event names at the TOP LEVEL — there is NO `"hooks"`
+// wrapper (the file IS the events object). Verified live against droid
+// v0.171.0: a `{"hooks":{…}}` wrapper is rejected with `WARN Ignoring unknown
+// hook event keys keys:["hooks"]`. Tool events (PreToolUse / PostToolUse) carry
+// `"matcher": "*"`; non-tool events omit the matcher. Deny is exit-2 + stderr
+// (see policy-evaluator.ts). Event names are already PascalCase, so no event
+// canonicalization is needed. Settings paths: ~/.factory/hooks.json (user) and
+// <cwd>/.factory/hooks.json (project); no "local" scope.
+
+interface FactoryHookMatcher {
+  matcher?: string;
+  hooks: Array<ClaudeHookEntry | Record<string, unknown>>;
+}
+
+/** The Factory settings file IS the top-level events map (no wrapper key). */
+type FactorySettingsFile = Record<string, FactoryHookMatcher[] | unknown>;
+
+export const factory: Integration = {
+  id: "factory",
+  displayName: "Factory Droid",
+  scopes: FACTORY_HOOK_SCOPES,
+  eventTypes: FACTORY_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".factory", "hooks.json");
+      case "project":
+        return resolve(base, ".factory", "hooks.json");
+      case "local":
+        // Factory has no "local" scope; the CLI rejects --cli factory --scope
+        // local before reaching here, but fall back to project so callers don't
+        // crash.
+        return resolve(base, ".factory", "hooks.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli factory`
+        : `"${binaryPath}" --hook ${eventType} --cli factory`;
+    return {
+      type: "command",
+      command,
+      // droid reads `timeout` in SECONDS (verified against droid v0.171.0). 30s.
+      timeout: 30,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as Record<string, FactoryHookMatcher[]>;
+
+    for (const eventType of FACTORY_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      if (!Array.isArray(s[eventType])) s[eventType] = [];
+      const matchers: FactoryHookMatcher[] = s[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Tool events match all tools via `matcher: "*"`; non-tool events carry
+        // no matcher (verified live against droid v0.171.0).
+        const isToolEvent = eventType === "PreToolUse" || eventType === "PostToolUse";
+        matchers.push(isToolEvent ? { matcher: "*", hooks: [hookEntry] } : { hooks: [hookEntry] });
+      }
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as FactorySettingsFile;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings)) {
+      const matchers = settings[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i] as FactoryHookMatcher;
+        if (!matcher || !matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings[eventType];
+    }
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as FactorySettingsFile;
+      for (const matchers of Object.values(settings)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers as FactoryHookMatcher[]) {
+          if (!matcher || !matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("droid");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -1580,6 +1719,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   pi,
   hermes,
   openclaw,
+  factory,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

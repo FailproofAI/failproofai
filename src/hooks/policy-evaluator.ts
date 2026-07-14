@@ -305,6 +305,36 @@ export async function evaluatePolicies(
         // for tool events.
       }
 
+      // Factory droid: droid drives tool blocking off EXIT CODE 2 (it ignores a
+      // JSON `{decision:…}` on tool events — verified live against droid
+      // v0.171.0: `Hook returned exit code 2, throwing ToolExecutionControlError`).
+      // The one exception is `Stop`, where droid does NOT honor exit-2
+      // force-retry; there it reads `{decision:"block", reason}` on stdout at
+      // exit 0 ("if decision is block, Droid does not stop"). So: Stop → JSON
+      // block; every other event (PreToolUse / PostToolUse / UserPromptSubmit /
+      // SubagentStop / …) → exit 2 + the blocked message on stderr.
+      if (session?.cli === "factory") {
+        if (eventType === "Stop") {
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 2,
+          stdout: "",
+          stderr: blockedMessage + "\n",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -581,6 +611,41 @@ export async function evaluatePolicies(
           decision: "instruct",
         };
       }
+    }
+
+    // Factory droid: on Stop, emit the MANDATORY ACTION wording as a
+    // `{decision:"block", reason}` on stdout (exit 0) — droid's only turn-end
+    // force-retry channel. Every other event lacks an additional-context
+    // channel (droid honors JSON only for the Stop block), so instruct degrades
+    // to allow + stderr note, like Hermes.
+    if (session?.cli === "factory") {
+      if (eventType === "Stop") {
+        const policyAttribution = policyNames.length === 1
+          ? `policy: ${policyNames[0]}`
+          : `policies: ${policyNames.join(", ")}`;
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
     }
 
     if (eventType === "Stop" || eventType === "SubagentStop") {

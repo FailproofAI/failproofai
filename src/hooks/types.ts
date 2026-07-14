@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -589,6 +589,82 @@ export const OPENCLAW_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Edit: { path: "file_path" },
 };
 
+// ── Factory Droid (droid) ───────────────────────────────────────────────────
+//
+// Factory's droid CLI ships a Claude-compatible external-command hook system,
+// but with two schema quirks verified LIVE against droid v0.171.0:
+//
+//   1. **Event names live at the TOP LEVEL of hooks.json — there is NO `"hooks"`
+//      wrapper.** The published docs are wrong; droid rejects a `{"hooks":{…}}`
+//      wrapper with `WARN Ignoring unknown hook event keys keys:["hooks"]`. The
+//      correct shape is:
+//        { "PreToolUse": [ { "matcher": "*", "hooks": [ { … } ] } ],
+//          "Stop":       [ { "hooks": [ { … } ] } ] }
+//      Tool events (PreToolUse / PostToolUse) MUST carry `"matcher": "*"`
+//      (matches all tools); non-tool events omit the matcher.
+//
+//   2. **Deny is driven by EXIT CODE 2 + stderr, NOT a JSON decision.** droid
+//      ignores a `{decision:…}` object on tool events and blocks purely on
+//      exit code 2 (verified live: `Hook returned exit code 2, throwing
+//      ToolExecutionControlError`). The one exception is the `Stop` event,
+//      where droid does NOT support exit-2 force-retry — there we emit
+//      `{decision:"block", reason}` JSON on stdout at exit 0 (docs: "if
+//      decision is block, Droid does not stop"). Both branches live in
+//      policy-evaluator.ts's `cli === "factory"` handling.
+//
+// Event names are already PascalCase (matching Claude's canonical set), so
+// there is NO FACTORY_EVENT_MAP and NO handler.ts canonicalization branch — the
+// binary sees the events verbatim. The stdin payload is Claude snake_case
+// (`session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`,
+// `tool_name`, `tool_input:{command,…}`), so no payload normalization is needed
+// either.
+//
+// Settings paths (verified against droid v0.171.0):
+//   user    → ~/.factory/hooks.json
+//   project → <cwd>/.factory/hooks.json
+//
+// Audit pillar: sessions at ~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl
+// (Claude-style encoded-cwd folders), one JSONL per session alongside a
+// `<sessionId>.settings.json` sibling we ignore. See lib/factory-sessions.ts.
+
+export const FACTORY_HOOK_SCOPES = ["user", "project"] as const;
+export type FactoryHookScope = (typeof FACTORY_HOOK_SCOPES)[number];
+
+export const FACTORY_HOOK_EVENT_TYPES = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "Notification",
+  "Stop",
+  "SubagentStop",
+  "PreCompact",
+  "SessionEnd",
+] as const;
+export type FactoryHookEventType = (typeof FACTORY_HOOK_EVENT_TYPES)[number];
+
+/**
+ * Factory droid's tool names → Claude PascalCase canonical names so existing
+ * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged.
+ * Verified against droid v0.171.0: shell runs as `Execute`, file writes as
+ * `Create`, URL fetches as `FetchUrl`. `tool_input.command` is already the
+ * canonical Bash key, so there is NO FACTORY_TOOL_INPUT_MAP. Unknown tools
+ * (MCP, extensions) pass through unchanged via the `?? raw` fallback.
+ */
+export const FACTORY_TOOL_MAP: Record<string, string> = {
+  Execute: "Bash",
+  Read: "Read",
+  Edit: "Edit",
+  Create: "Write",
+  Grep: "Grep",
+  Glob: "Glob",
+  LS: "LS",
+  FetchUrl: "WebFetch",
+  WebSearch: "WebSearch",
+  TodoWrite: "TodoWrite",
+  Task: "Task",
+};
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -661,7 +737,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

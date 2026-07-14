@@ -108,6 +108,13 @@ export async function resolveDownloadSource(
     return path ? { kind: "file", path } : null;
   }
 
+  if (cli === "factory") {
+    // Factory (droid) writes real JSONL transcripts on disk — stream verbatim.
+    const { findFactoryTranscript } = await import("./factory-sessions");
+    const path = findFactoryTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the
   // if-chain above, so guard with a runtime fallback.
   const _exhaustive: never = cli;

@@ -254,6 +254,7 @@ describe("ProjectList", () => {
       "Pi",
       "Hermes",
       "OpenClaw",
+      "Factory Droid",
     ]);
   });
 

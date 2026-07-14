@@ -587,3 +587,85 @@ export const PiPayloads = {
     };
   },
 };
+
+/**
+ * Factory (droid) payload factories. droid's hook stdin is Claude snake_case
+ * (`session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`,
+ * `tool_name`, `tool_input`) with already-PascalCase event names — so no payload
+ * or event canonicalization is needed. droid's tool registry uses
+ * `Execute`/`Read`/`Edit`/`Create`/… which the handler maps to Claude builtins
+ * via FACTORY_TOOL_MAP (see src/hooks/types.ts). Verified live against droid
+ * v0.171.0.
+ */
+const FACTORY_SESSION_ID = "test-session-factory-001";
+
+export const FactoryPayloads = {
+  preToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: FACTORY_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PreToolUse",
+        tool_name: "Execute",
+        tool_input: { command },
+      };
+    },
+    write(filePath: string, content: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: FACTORY_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PreToolUse",
+        tool_name: "Create",
+        tool_input: { file_path: filePath, content },
+      };
+    },
+    read(filePath: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: FACTORY_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PreToolUse",
+        tool_name: "Read",
+        tool_input: { file_path: filePath },
+      };
+    },
+  },
+  postToolUse: {
+    bash(command: string, output: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: FACTORY_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PostToolUse",
+        tool_name: "Execute",
+        tool_input: { command },
+        tool_response: output,
+      };
+    },
+  },
+  userPromptSubmit(prompt: string, cwd: string): Record<string, unknown> {
+    return {
+      session_id: FACTORY_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      permission_mode: "default",
+      hook_event_name: "UserPromptSubmit",
+      prompt,
+    };
+  },
+  stop(cwd: string): Record<string, unknown> {
+    return {
+      session_id: FACTORY_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      permission_mode: "default",
+      hook_event_name: "Stop",
+    };
+  },
+};

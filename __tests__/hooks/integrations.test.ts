@@ -22,6 +22,7 @@ import {
   pi,
   hermes,
   openclaw,
+  factory,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -37,6 +38,7 @@ import {
   PI_EVENT_MAP,
   HERMES_HOOK_EVENT_TYPES,
   HERMES_EVENT_MAP,
+  FACTORY_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
@@ -71,7 +73,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -104,6 +106,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('openclaw') returns openclaw", () => {
     expect(getIntegration("openclaw")).toBe(openclaw);
+  });
+
+  it("getIntegration('factory') returns factory", () => {
+    expect(getIntegration("factory")).toBe(factory);
   });
 
   it("getIntegration throws for unknown id", () => {
@@ -1171,5 +1177,102 @@ describe("OpenClaw integration", () => {
     openclaw.removeHooksFromFile(file);
     const after = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
     expect(after.plugins).toBeUndefined();
+  });
+});
+
+describe("Factory Droid integration", () => {
+  it("getSettingsPath maps user → ~/.factory/hooks.json and project → <cwd>/.factory/hooks.json", () => {
+    expect(factory.getSettingsPath("project", tempDir)).toBe(
+      resolve(tempDir, ".factory", "hooks.json"),
+    );
+    expect(factory.getSettingsPath("user")).toMatch(/\.factory\/hooks\.json$/);
+  });
+
+  it("scopes are user|project (no local)", () => {
+    expect(factory.scopes).toEqual(["user", "project"]);
+  });
+
+  it("buildHookEntry includes --cli factory and a 30s timeout", () => {
+    const entry = factory.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
+    expect(entry.command).toContain("--cli factory");
+    expect(entry.command).toContain("--hook PreToolUse");
+    expect(entry.timeout).toBe(30);
+    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("project scope uses npx -y failproofai", () => {
+    const entry = factory.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli factory");
+  });
+
+  it("writeHookEntries stores event names at the TOP LEVEL (no `hooks` wrapper)", () => {
+    const settings: Record<string, unknown> = {};
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    // No wrapper key — the file IS the events object.
+    expect(settings.hooks).toBeUndefined();
+    for (const eventType of FACTORY_HOOK_EVENT_TYPES) {
+      expect(Array.isArray(settings[eventType])).toBe(true);
+    }
+  });
+
+  it("writeHookEntries adds matcher:'*' for tool events and omits it elsewhere", () => {
+    const settings: Record<string, unknown> = {};
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const pre = (settings.PreToolUse as Array<Record<string, unknown>>)[0];
+    const post = (settings.PostToolUse as Array<Record<string, unknown>>)[0];
+    const stop = (settings.Stop as Array<Record<string, unknown>>)[0];
+    expect(pre.matcher).toBe("*");
+    expect(post.matcher).toBe("*");
+    expect(stop.matcher).toBeUndefined();
+  });
+
+  it("re-running writeHookEntries is idempotent", () => {
+    const settings: Record<string, unknown> = {};
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    factory.writeHookEntries(settings, "/different/path/failproofai", "user");
+    const pre = settings.PreToolUse as Array<{ hooks: unknown[] }>;
+    expect(pre).toHaveLength(1);
+    expect(pre[0].hooks).toHaveLength(1);
+  });
+
+  it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
+    const settingsPath = factory.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    factory.writeSettings(settingsPath, settings);
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const removed = factory.removeHooksFromFile(settingsPath);
+    expect(removed).toBe(FACTORY_HOOK_EVENT_TYPES.length);
+
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    for (const eventType of FACTORY_HOOK_EVENT_TYPES) {
+      expect(after[eventType]).toBeUndefined();
+    }
+  });
+
+  it("removeHooksFromFile preserves a user's own hook entries", () => {
+    const settingsPath = factory.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {
+      PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "my-own-hook" }] }],
+    };
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    factory.writeSettings(settingsPath, settings);
+
+    factory.removeHooksFromFile(settingsPath);
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, any>;
+    // The user's own hook survives; only the failproofai-marked entry is gone.
+    const flattened = (after.PreToolUse ?? []).flatMap((m: any) => m.hooks ?? []);
+    expect(flattened.some((h: any) => h.command === "my-own-hook")).toBe(true);
+    expect(flattened.some((h: any) => h[FAILPROOFAI_HOOK_MARKER] === true)).toBe(false);
+  });
+
+  it("hooksInstalledInSettings detects installed hooks", () => {
+    const settingsPath = factory.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    factory.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    factory.writeSettings(settingsPath, settings);
+
+    expect(factory.hooksInstalledInSettings("project", tempDir)).toBe(true);
   });
 });

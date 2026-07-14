@@ -18,6 +18,7 @@ import {
   HERMES_TOOL_INPUT_MAP,
   OPENCLAW_TOOL_MAP,
   OPENCLAW_TOOL_INPUT_MAP,
+  FACTORY_TOOL_MAP,
 } from "./types";
 
 /**
@@ -37,6 +38,9 @@ export function canonicalizeToolName(
   if (cli === "pi") return PI_TOOL_MAP[raw] ?? raw;
   if (cli === "hermes") return HERMES_TOOL_MAP[raw] ?? raw;
   if (cli === "openclaw") return OPENCLAW_TOOL_MAP[raw] ?? raw;
+  // Factory droid: Execute→Bash, Create→Write, FetchUrl→WebFetch, … (verified
+  // live against droid v0.171.0). tool_input keys are already canonical.
+  if (cli === "factory") return FACTORY_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 

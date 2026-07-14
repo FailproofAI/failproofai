@@ -74,9 +74,11 @@ before they become incidents. Zero latency. Runs locally.
   </a>
 </p>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes`). Omit `--cli` to auto-detect installed CLIs and prompt.
+> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes factory`). Omit `--cli` to auto-detect installed CLIs and prompt.
 >
 > **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
+>
+> **Factory Droid** (`droid`) is supported for both **live-hook enforcement** (`--cli factory`, user + project scope) and offline **audit** replay of its on-disk JSONL sessions. droid blocks tool calls off hook **exit code 2** (not a JSON decision) and honors `{decision:"block"}` only on the turn-end `Stop` event — failproofai emits the right shape per event automatically.
 
 ---
 

@@ -31,6 +31,7 @@ import { findCodexTranscript } from "../../lib/codex-sessions";
 import { findCopilotTranscript } from "../../lib/copilot-sessions";
 import { findCursorTranscript } from "../../lib/cursor-sessions";
 import { findPiTranscript } from "../../lib/pi-sessions";
+import { findFactoryTranscript } from "../../lib/factory-sessions";
 import type { IntegrationType } from "./types";
 
 export function resolveTranscriptPath(
@@ -54,6 +55,10 @@ export function resolveTranscriptPath(
       return findCursorTranscript(sessionId) ?? undefined;
     case "pi":
       return findPiTranscript(sessionId) ?? undefined;
+    case "factory":
+      // Factory writes real JSONL at
+      // ~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl (Claude-style).
+      return findFactoryTranscript(sessionId) ?? undefined;
     case "opencode":
       return `opencode-db://${sessionId}`;
     case "hermes":

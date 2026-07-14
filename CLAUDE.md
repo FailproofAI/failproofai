@@ -415,6 +415,74 @@ For production users the recommended OpenClaw install is:
 failproofai policies --install --cli openclaw --scope user
 ```
 
+### Factory droid hooks (`~/.factory/hooks.json`)
+
+Factory's **droid** CLI is a **dual-pillar** integration (live hooks + audit),
+supporting **user + project** scope. Unlike Hermes/OpenClaw it uses a
+Claude/Codex-style **external shell-hook system** — the installed command is
+`bun bin/failproofai.mjs --hook <event> --cli factory` (dev) /
+`npx -y failproofai --hook <event> --cli factory` (production project scope).
+The entire contract below was **verified live against droid v0.171.0**.
+
+**Schema: event names at the TOP LEVEL — NO `"hooks"` wrapper.** The published
+docs are **wrong**: droid rejects a `{"hooks":{…}}` wrapper with
+`WARN Ignoring unknown hook event keys keys:["hooks"]`. The `hooks.json` file
+**is** the events object:
+
+```json
+{ "PreToolUse":  [ { "matcher": "*", "hooks": [ { "type": "command", "command": "…", "timeout": 30 } ] } ],
+  "PostToolUse": [ { "matcher": "*", "hooks": [ … ] } ],
+  "Stop":        [ { "hooks": [ … ] } ] }
+```
+
+Tool events (`PreToolUse`, `PostToolUse`) MUST include `"matcher": "*"` (matches
+all tools per the docs). Non-tool events use `{ "hooks": [ … ] }` with **no**
+matcher. `writeHookEntries` in `integrations.ts` branches on this; the file has
+**no** top-level wrapper key, so `removeHooksFromFile` / `hooksInstalledInSettings`
+iterate the top-level event keys directly.
+
+**Events** (`FACTORY_HOOK_EVENT_TYPES`, all PascalCase): `SessionStart`,
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`,
+`SubagentStop`, `PreCompact`, `SessionEnd`. Because they're already canonical
+there is **no `FACTORY_EVENT_MAP` and no `handler.ts` branch**. The stdin
+payload is Claude snake_case (`session_id`, `transcript_path`, `cwd`,
+`permission_mode`, `hook_event_name`, `tool_name`, `tool_input:{command,…}`), so
+**no payload normalization** is needed.
+
+**Tool-name canonicalization** (`FACTORY_TOOL_MAP`): `Execute→Bash`, `Read→Read`,
+`Edit→Edit`, `Create→Write`, `Grep→Grep`, `Glob→Glob`, `LS→LS`,
+`FetchUrl→WebFetch`, `WebSearch→WebSearch`, `TodoWrite→TodoWrite`, `Task→Task`.
+`tool_input.command` is already the canonical Bash key, so there is **no**
+`FACTORY_TOOL_INPUT_MAP`.
+
+**Deny contract = EXIT CODE 2 + reason on stderr** (NOT a JSON decision — droid
+ignores a `{decision:…}` object on tool events and drives blocking purely off
+exit code 2; verified live: `Hook returned exit code 2, throwing
+ToolExecutionControlError`). The **`Stop`** event is the exception — droid does
+**not** support exit-2 force-retry there, so we emit `{decision:"block",
+reason}` JSON on **stdout at exit 0** (docs: "if decision is block, Droid does
+not stop"). So `policy-evaluator.ts`'s `cli === "factory"` branch: Stop →
+exit 0 + `{decision:"block", reason: <MANDATORY ACTION text>}`; every other
+event (PreToolUse, PostToolUse, …) → exit 2 + the blocked message on stderr.
+`instruct()` degrades to allow + stderr note on non-Stop events (no
+additional-context channel), and to the Stop `{decision:"block"}` shape on Stop.
+
+**Audit pillar.** Sessions are real JSONL at
+`~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` (Claude-style encoded-cwd
+folders, e.g. `-home-chetan`), one per session alongside a
+`<sessionId>.settings.json` sibling we **ignore**. JSONL lines:
+`{type:"session_start", id, cwd, …}` (carries cwd),
+`{type:"message", message:{role, content:[…], visibility}, timestamp, …}`,
+`{type:"compaction_state", …}`. `lib/factory-sessions.ts` (pure parser, cloned
+from the Claude/OpenClaw pattern) + `lib/factory-projects.ts` enumerate and
+parse them; `FACTORY_HOME` overrides the home dir for tests. Transcript
+downloads stream the real file (no synthesis).
+
+For production users the recommended Factory install is:
+```bash
+failproofai policies --install --cli factory --scope project
+```
+
 ## Workflow rules
 
 ### One PR per branch

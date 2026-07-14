@@ -10,6 +10,7 @@ import { getCachedOpenCodeSessionLog } from "@/lib/opencode-sessions";
 import { getCachedPiSessionLog } from "@/lib/pi-sessions";
 import { getCachedHermesSessionLog } from "@/lib/hermes-sessions";
 import { getCachedOpenClawSessionLog } from "@/lib/openclaw-sessions";
+import { getCachedFactorySessionLog } from "@/lib/factory-sessions";
 import { decodeFolderName } from "@/lib/paths";
 import { baseSessionId } from "@/lib/utils/session-id";
 import { resolveProjectPath, UUID_RE } from "@/lib/projects";
@@ -53,7 +54,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" = "claude";
+  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" = "claude";
   let externalCwd: string | undefined;
 
   try {
@@ -116,7 +117,15 @@ export default async function SessionPage({ params }: SessionPageProps) {
                     externalCwd = openclaw.cwd;
                     cli = "openclaw";
                   } else {
-                    error = "Session log file not found.";
+                    const factory = await getCachedFactorySessionLog(decodedSessionId);
+                    if (factory) {
+                      entries = factory.entries;
+                      rawLines = factory.rawLines;
+                      externalCwd = factory.cwd;
+                      cli = "factory";
+                    } else {
+                      error = "Session log file not found.";
+                    }
                   }
                 }
               }
@@ -146,7 +155,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
                 ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
                 : cli === "openclaw"
                   ? `OpenClaw${externalCwd ? ` · ${externalCwd}` : ""}`
-                  : decodedName;
+                  : cli === "factory"
+                    ? `Factory Droid${externalCwd ? ` · ${externalCwd}` : ""}`
+                    : decodedName;
 
   return (
     <main className="min-h-screen bg-background">
@@ -216,7 +227,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
                               ? "Pi"
                               : cli === "hermes"
                                 ? "Hermes"
-                                : "OpenClaw"))
+                                : cli === "openclaw"
+                                  ? "OpenClaw"
+                                  : "Factory Droid"))
                 : decodedName
             }
             sessionId={decodedSessionId}

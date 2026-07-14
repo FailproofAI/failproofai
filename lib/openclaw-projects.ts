@@ -17,20 +17,38 @@ import { formatDate } from "./format-date";
 export interface OpenClawSessionRef {
   sessionId: string;
   agentId: string;
-  sessionKey?: string;
-  title?: string;
-  /** Channel the session ran in (parsed from the sessionKey), e.g. telegram. */
-  channel?: string;
-  /** Chat id + type parsed from the sessionKey when present. */
+  /** Channel/source the session last ran in (from sessions.json metadata) —
+   *  e.g. "telegram", "slack", or "local" for a CLI session. Drives grouping. */
+  channel: string;
+  /** Human-readable label from `origin.label` (e.g. "Chetan (@chhhee10) id:…"). */
+  label?: string;
+  /** Chat id (e.g. "telegram:8674922496") + type ("direct"/"group") for the
+   *  gateway-metadata columns. */
   chatId?: string;
   chatType?: string;
   mtimeMs: number;
   sizeBytes: number;
 }
 
-/** Read the per-agent sessions.json index → sessionId → {sessionKey, lastMs}. */
-function readSessionsIndex(agentId: string): Map<string, { sessionKey: string; lastMs?: number }> {
-  const out = new Map<string, { sessionKey: string; lastMs?: number }>();
+interface SessionIndexMeta {
+  lastMs?: number;
+  channel?: string;
+  chatType?: string;
+  label?: string;
+  chatId?: string;
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+/** Read the per-agent sessions.json index → sessionId → routing metadata.
+ *  OpenClaw routes gateway sessions through the agent's default key
+ *  (`agent:<id>:main`) and records the channel in metadata fields
+ *  (`lastChannel`, `chatType`, `origin.{label,provider,from}`, `lastTo`) rather
+ *  than in the key — verified live against v2026.7.1. */
+function readSessionsIndex(agentId: string): Map<string, SessionIndexMeta> {
+  const out = new Map<string, SessionIndexMeta>();
   const indexPath = join(openclawHome(), "agents", agentId, "sessions", "sessions.json");
   let raw: unknown;
   try {
@@ -39,43 +57,33 @@ function readSessionsIndex(agentId: string): Map<string, { sessionKey: string; l
     return out;
   }
   if (!raw || typeof raw !== "object") return out;
-  for (const [sessionKey, v] of Object.entries(raw as Record<string, unknown>)) {
+  for (const v of Object.values(raw as Record<string, unknown>)) {
     if (!v || typeof v !== "object") continue;
-    const entry = v as Record<string, unknown>;
-    const sessionId = typeof entry.sessionId === "string" ? entry.sessionId : undefined;
+    const e = v as Record<string, unknown>;
+    const sessionId = str(e.sessionId);
     if (!sessionId) continue;
+    const origin = (e.origin && typeof e.origin === "object" ? e.origin : {}) as Record<string, unknown>;
     const lastMs =
-      typeof entry.lastInteractionAt === "number"
-        ? entry.lastInteractionAt
-        : typeof entry.updatedAt === "number"
-          ? entry.updatedAt
+      typeof e.lastInteractionAt === "number"
+        ? e.lastInteractionAt
+        : typeof e.updatedAt === "number"
+          ? (e.updatedAt as number)
           : undefined;
-    out.set(sessionId, { sessionKey, lastMs });
+    out.set(sessionId, {
+      lastMs,
+      channel: str(e.lastChannel) ?? str(origin.provider) ?? str(origin.surface),
+      chatType: str(e.chatType) ?? str(origin.chatType),
+      label: str(origin.label),
+      chatId: str(e.lastTo) ?? str(origin.from),
+    });
   }
   return out;
-}
-
-/** Parse an OpenClaw sessionKey into channel metadata. Keys look like
- *  `agent:<agentId>:<channel>:<account>:<chatType>:<chatId>` for gateway
- *  sessions; the local/CLI key is `agent:main:main` (no real channel). */
-function parseSessionKey(sessionKey: string | undefined): {
-  channel?: string;
-  chatType?: string;
-  chatId?: string;
-} {
-  if (!sessionKey) return {};
-  const seg = sessionKey.split(":");
-  // seg: [agent, agentId, channel, account, chatType, chatId]
-  if (seg.length < 3) return {};
-  const channel = seg[2];
-  if (channel === "main") return {}; // local/CLI session — no channel
-  return { channel, chatType: seg[4], chatId: seg[5] };
 }
 
 /** List every OpenClaw session across all agents. Fail-open ([] on any error). */
 export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
   const transcripts = listOpenClawTranscripts();
-  const indexByAgent = new Map<string, Map<string, { sessionKey: string; lastMs?: number }>>();
+  const indexByAgent = new Map<string, Map<string, SessionIndexMeta>>();
   const refs: OpenClawSessionRef[] = [];
   for (const t of transcripts) {
     let idx = indexByAgent.get(t.agentId);
@@ -84,14 +92,14 @@ export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
       indexByAgent.set(t.agentId, idx);
     }
     const meta = idx.get(t.sessionId);
-    const parsed = parseSessionKey(meta?.sessionKey);
     refs.push({
       sessionId: t.sessionId,
       agentId: t.agentId,
-      sessionKey: meta?.sessionKey,
-      channel: parsed.channel,
-      chatType: parsed.chatType,
-      chatId: parsed.chatId,
+      // Gateway sessions group by channel; CLI/local runs have none.
+      channel: meta?.channel ?? "local",
+      label: meta?.label,
+      chatType: meta?.chatType,
+      chatId: meta?.chatId,
       mtimeMs: meta?.lastMs ?? t.mtimeMs,
       sizeBytes: t.sizeBytes,
     });
@@ -105,23 +113,23 @@ export const getCachedOpenClawSessions = runtimeCache(getOpenClawSessions, 2);
 // ── Dashboard history browser (projects list + project-detail sessions) ──
 
 /**
- * Surface OpenClaw sessions as synthetic "projects" grouped by agentId — gateway
- * sessions run in the container workspace, not a host repo. One ProjectFolder
- * per agentId; its `name` is `openclaw-<agentId>`, reversed in
- * `getOpenClawSessionsByEncodedName`.
+ * Surface OpenClaw sessions as synthetic "projects" grouped by **channel**
+ * (telegram/slack/…/local) — gateway sessions run per channel, not in a host
+ * repo. Mirrors Hermes's group-by-source. One ProjectFolder per channel; its
+ * `name` is `openclaw-<channel>`, reversed in `getOpenClawSessionsByEncodedName`.
  */
 export async function getOpenClawProjects(): Promise<ProjectFolder[]> {
   const sessions = await getOpenClawSessions();
-  const latestByAgent = new Map<string, number>();
+  const latestByChannel = new Map<string, number>();
   for (const s of sessions) {
-    latestByAgent.set(s.agentId, Math.max(latestByAgent.get(s.agentId) ?? 0, s.mtimeMs));
+    latestByChannel.set(s.channel, Math.max(latestByChannel.get(s.channel) ?? 0, s.mtimeMs));
   }
   const out: ProjectFolder[] = [];
-  for (const [agentId, latest] of latestByAgent) {
+  for (const [channel, latest] of latestByChannel) {
     const lastModified = new Date(latest);
     out.push({
-      name: `openclaw-${agentId}`,
-      path: `openclaw:${agentId}`,
+      name: `openclaw-${channel}`,
+      path: `openclaw:${channel}`,
       isDirectory: true,
       lastModified,
       lastModifiedFormatted: formatDate(lastModified),
@@ -138,20 +146,22 @@ export interface OpenClawProjectByName {
 }
 
 /** Resolve the OpenClaw sessions for a synthetic project name
- *  (`openclaw-<agentId>`), for the project-detail page. */
+ *  (`openclaw-<channel>`), for the project-detail page. Session names use the
+ *  human-readable `origin.label` (e.g. "Chetan (@chhhee10) id:…") rather than
+ *  the raw session key. */
 export async function getOpenClawSessionsByEncodedName(
   name: string,
 ): Promise<OpenClawProjectByName> {
   if (!name.startsWith("openclaw-")) return { cwd: null, sessions: [] };
-  const agentId = name.slice("openclaw-".length);
+  const channel = name.slice("openclaw-".length);
   const sessions = await getOpenClawSessions();
-  const matched = sessions.filter((s) => s.agentId === agentId);
+  const matched = sessions.filter((s) => s.channel === channel);
   return {
-    cwd: `openclaw:${agentId}`,
+    cwd: `openclaw:${channel}`,
     sessions: matched.map((s) => {
       const lastModified = new Date(s.mtimeMs);
       return {
-        name: s.sessionKey ?? s.sessionId,
+        name: s.label ?? s.chatId ?? s.sessionId,
         path: s.sessionId,
         lastModified,
         lastModifiedFormatted: formatDate(lastModified),

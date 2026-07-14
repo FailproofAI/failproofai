@@ -355,6 +355,34 @@ export async function evaluatePolicies(
         };
       }
 
+      // Antigravity CLI: its OWN response shapes (NOT Claude's) — verified live
+      // against agy v1.1.2. Tool/prompt events honor `{decision:"deny", reason}`
+      // on stdout at exit 0 (hard block). The Stop event has no exit-2 retry;
+      // instead `{decision:"continue", reason}` re-enters the loop and injects
+      // the reason as a system message — that is how the 5 require-*-before-stop
+      // builtins enforce on Antigravity.
+      if (session?.cli === "antigravity") {
+        if (eventType === "Stop") {
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "continue", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -682,6 +710,57 @@ export async function evaluatePolicies(
         exitCode: 0,
         stdout: JSON.stringify({ decision: "block", reason: reasonText }),
         stderr: "",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Antigravity CLI: its OWN instruct shapes (verified live agy v1.1.2).
+    //   • UserPromptSubmit (canonical for PreInvocation) → `{injectSteps:[{
+    //     ephemeralMessage}]}` injects the instruction as a transient system
+    //     message before the model runs.
+    //   • Stop → `{decision:"continue", reason}` re-enters the loop with the
+    //     MANDATORY-ACTION directive (Antigravity's only turn-end channel).
+    //   • Every other event lacks an additional-context channel → degrade to
+    //     allow + stderr note, like Hermes.
+    if (session?.cli === "antigravity") {
+      if (eventType === "UserPromptSubmit") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            injectSteps: [{ ephemeralMessage: `Instruction from failproofai: ${combined}` }],
+          }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      if (eventType === "Stop") {
+        const policyAttribution = policyNames.length === 1
+          ? `policy: ${policyNames[0]}`
+          : `policies: ${policyNames.join(", ")}`;
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "continue", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,
         reason: combined,

@@ -732,3 +732,68 @@ export const DevinPayloads = {
     };
   },
 };
+
+/**
+ * Antigravity (agy) payload factories. Antigravity pipes a camelCase protojson
+ * payload (`toolCall:{name,args}`, `conversationId`, `workspacePaths`,
+ * `transcriptPath`) — the handler normalizes these to snake_case before
+ * canonicalization. `run_command`'s args are PascalCase (`CommandLine`, `Cwd`).
+ * Verified live against agy v1.1.2. Note: no `hook_event_name` field — the
+ * event comes solely from the `--hook <event>` arg.
+ */
+const ANTIGRAVITY_CONVERSATION_ID = "test-conversation-antigravity-001";
+
+export const AntigravityPayloads = {
+  preToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        conversationId: ANTIGRAVITY_CONVERSATION_ID,
+        workspacePaths: [cwd],
+        transcriptPath: TRANSCRIPT_PATH,
+        modelName: "auto",
+        stepIdx: 19,
+        toolCall: {
+          name: "run_command",
+          args: { CommandLine: command, Cwd: cwd, WaitMsBeforeAsync: 5000 },
+        },
+      };
+    },
+  },
+  postToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        conversationId: ANTIGRAVITY_CONVERSATION_ID,
+        workspacePaths: [cwd],
+        transcriptPath: TRANSCRIPT_PATH,
+        modelName: "auto",
+        stepIdx: 20,
+        toolCall: {
+          name: "run_command",
+          args: { CommandLine: command, Cwd: cwd },
+        },
+      };
+    },
+  },
+  // PreInvocation → canonical UserPromptSubmit.
+  preInvocation(cwd: string): Record<string, unknown> {
+    return {
+      conversationId: ANTIGRAVITY_CONVERSATION_ID,
+      workspacePaths: [cwd],
+      transcriptPath: TRANSCRIPT_PATH,
+      modelName: "auto",
+      invocationNum: 3,
+      initialNumSteps: 10,
+    };
+  },
+  stop(cwd: string): Record<string, unknown> {
+    return {
+      conversationId: ANTIGRAVITY_CONVERSATION_ID,
+      workspacePaths: [cwd],
+      transcriptPath: TRANSCRIPT_PATH,
+      modelName: "auto",
+      executionNum: 1,
+      terminationReason: "model_stop",
+      fullyIdle: true,
+    };
+  },
+};

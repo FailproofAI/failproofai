@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -220,6 +220,38 @@ export function assertDevinStopBlock(result: HookRunResult): void {
   expect(result.parsed?.decision).toBe("block");
   expect(typeof result.parsed?.reason).toBe("string");
   expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
+}
+
+// ── Antigravity (agy) assertions ───────────────────────────────────────────
+// Antigravity has its OWN response shapes (NOT Claude's), verified live against
+// agy v1.1.2: tool/prompt deny → `{decision:"deny", reason}` on stdout (exit 0);
+// Stop deny/instruct → `{decision:"continue", reason}` (re-enters the loop);
+// UserPromptSubmit instruct → `{injectSteps:[{ephemeralMessage}]}`.
+
+export function assertAntigravityDeny(result: HookRunResult): void {
+  // Tool/prompt deny: exit 0, `{decision:"deny", reason}` on stdout.
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("deny");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/Blocked/i);
+}
+
+export function assertAntigravityStopContinue(result: HookRunResult): void {
+  // Stop deny/instruct: `{decision:"continue", reason}` carrying the force-retry
+  // MANDATORY ACTION wording — "continue" re-enters the agent loop.
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("continue");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
+}
+
+export function assertAntigravityInjectSteps(result: HookRunResult): void {
+  // UserPromptSubmit (canonical for PreInvocation) instruct → injectSteps with
+  // an ephemeralMessage carrying the failproofai instruction.
+  expect(result.exitCode).toBe(0);
+  const steps = result.parsed?.injectSteps as Array<Record<string, unknown>> | undefined;
+  expect(Array.isArray(steps)).toBe(true);
+  expect(steps?.[0]?.ephemeralMessage).toMatch(/^Instruction from failproofai:/);
 }
 
 export function assertCopilotStopBlock(result: HookRunResult): void {

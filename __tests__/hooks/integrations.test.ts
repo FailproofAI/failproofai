@@ -24,6 +24,7 @@ import {
   openclaw,
   factory,
   devin,
+  antigravity,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -41,6 +42,7 @@ import {
   HERMES_EVENT_MAP,
   FACTORY_HOOK_EVENT_TYPES,
   DEVIN_HOOK_EVENT_TYPES,
+  ANTIGRAVITY_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
@@ -75,7 +77,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -112,6 +114,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('factory') returns factory", () => {
     expect(getIntegration("factory")).toBe(factory);
+  });
+
+  it("getIntegration('antigravity') returns antigravity", () => {
+    expect(getIntegration("antigravity")).toBe(antigravity);
   });
 
   it("getIntegration('devin') returns devin", () => {
@@ -1394,5 +1400,127 @@ describe("Devin CLI integration", () => {
     devin.writeSettings(settingsPath, settings);
 
     expect(devin.hooksInstalledInSettings("project", tempDir)).toBe(true);
+  });
+});
+
+describe("Antigravity CLI integration", () => {
+  it("getSettingsPath maps user → ~/.gemini/config/hooks.json and project → <cwd>/.agents/hooks.json", () => {
+    expect(antigravity.getSettingsPath("project", tempDir)).toBe(
+      resolve(tempDir, ".agents", "hooks.json"),
+    );
+    expect(antigravity.getSettingsPath("user")).toMatch(/\.gemini\/config\/hooks\.json$/);
+  });
+
+  it("scopes are user|project (no local)", () => {
+    expect(antigravity.scopes).toEqual(["user", "project"]);
+  });
+
+  it("subscribes to the 4 verified agy events", () => {
+    expect(ANTIGRAVITY_HOOK_EVENT_TYPES).toEqual([
+      "PreToolUse",
+      "PostToolUse",
+      "PreInvocation",
+      "Stop",
+    ]);
+  });
+
+  it("buildHookEntry includes --cli antigravity and a 30s timeout", () => {
+    const entry = antigravity.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
+    expect(entry.command).toContain("--cli antigravity");
+    expect(entry.command).toContain("--hook PreToolUse");
+    expect(entry.timeout).toBe(30);
+    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("project scope uses npx -y failproofai", () => {
+    const entry = antigravity.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli antigravity");
+  });
+
+  it("writeHookEntries nests events under a named 'failproofai' hook key", () => {
+    const settings: Record<string, unknown> = {};
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const named = settings.failproofai as Record<string, unknown>;
+    expect(named).toBeDefined();
+    for (const eventType of ANTIGRAVITY_HOOK_EVENT_TYPES) {
+      expect(Array.isArray(named[eventType])).toBe(true);
+    }
+  });
+
+  it("tool events use a {matcher:'*', hooks} wrapper; PreInvocation/Stop are flat handler arrays", () => {
+    const settings: Record<string, unknown> = {};
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const named = settings.failproofai as Record<string, any[]>;
+
+    // Tool events → wrapper with matcher "*".
+    const pre = named.PreToolUse[0];
+    const post = named.PostToolUse[0];
+    expect(pre.matcher).toBe("*");
+    expect(Array.isArray(pre.hooks)).toBe(true);
+    expect(pre.hooks[0][FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    expect(post.matcher).toBe("*");
+
+    // Flat events → the handler object sits directly in the array (no wrapper).
+    const preInvocation = named.PreInvocation[0];
+    const stop = named.Stop[0];
+    expect(preInvocation.matcher).toBeUndefined();
+    expect(preInvocation.hooks).toBeUndefined();
+    expect(preInvocation.type).toBe("command");
+    expect(preInvocation[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    expect(stop.matcher).toBeUndefined();
+    expect(stop.type).toBe("command");
+    expect(stop[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("re-running writeHookEntries is idempotent (tool wrapper + flat handler)", () => {
+    const settings: Record<string, unknown> = {};
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    antigravity.writeHookEntries(settings, "/different/path/failproofai", "user");
+    const named = settings.failproofai as Record<string, any[]>;
+    expect(named.PreToolUse).toHaveLength(1);
+    expect(named.PreToolUse[0].hooks).toHaveLength(1);
+    expect(named.Stop).toHaveLength(1);
+  });
+
+  it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
+    const settingsPath = antigravity.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    antigravity.writeSettings(settingsPath, settings);
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const removed = antigravity.removeHooksFromFile(settingsPath);
+    expect(removed).toBe(ANTIGRAVITY_HOOK_EVENT_TYPES.length);
+
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    // The named hook is dropped entirely once empty.
+    expect(after.failproofai).toBeUndefined();
+  });
+
+  it("removeHooksFromFile preserves other named hooks", () => {
+    const settingsPath = antigravity.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {
+      "lint-checker": {
+        PostToolUse: [{ matcher: "run_command", hooks: [{ type: "command", command: "./lint.sh" }] }],
+      },
+    };
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    antigravity.writeSettings(settingsPath, settings);
+
+    antigravity.removeHooksFromFile(settingsPath);
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, any>;
+    // The user's own named hook survives; the failproofai named hook is gone.
+    expect(after["lint-checker"]).toBeDefined();
+    expect(after["lint-checker"].PostToolUse[0].hooks[0].command).toBe("./lint.sh");
+    expect(after.failproofai).toBeUndefined();
+  });
+
+  it("hooksInstalledInSettings detects installed hooks", () => {
+    const settingsPath = antigravity.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    antigravity.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    antigravity.writeSettings(settingsPath, settings);
+
+    expect(antigravity.hooksInstalledInSettings("project", tempDir)).toBe(true);
   });
 });

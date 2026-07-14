@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -723,6 +723,107 @@ export const DEVIN_TOOL_MAP: Record<string, string> = {
   exec: "Bash",
 };
 
+// ── Antigravity CLI (antigravity) ────────────────────────────────────────────
+//
+// Antigravity's `agy` CLI has its OWN hook contract — it is NOT a Claude-clone.
+// Verified LIVE against agy v1.1.2 (shipped docs at
+// ~/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/hooks.md):
+//
+//   1. **hooks.json is a NAMED-hook schema.** Each top-level key is a hook
+//      *name* ("failproofai"), whose value is an event→handlers map. Tool events
+//      (PreToolUse / PostToolUse) use a `{matcher, hooks:[…]}` wrapper;
+//      non-tool events (PreInvocation / Stop) are FLAT arrays of handler
+//      objects:
+//        { "failproofai": {
+//            "PreToolUse":  [ { "matcher":"*", "hooks":[ {type,command,timeout} ] } ],
+//            "PreInvocation": [ { type, command, timeout } ],
+//            "Stop":          [ { type, command, timeout } ] } }
+//      Multiple named hooks merge; `"enabled": false` disables a named hook.
+//
+//   2. **camelCase (protojson) stdin payload.** Antigravity pipes camelCase
+//      fields (`toolCall:{name,args}`, `conversationId`, `workspacePaths`,
+//      `transcriptPath`, `stepIdx`, `modelName`) — handler.ts normalizes these
+//      to canonical snake_case (`tool_name`, `tool_input`, `session_id`, `cwd`,
+//      `transcript_path`) right after JSON.parse. Tool `args` are PascalCase
+//      (`CommandLine`, `Cwd`) — canonicalized via ANTIGRAVITY_TOOL_INPUT_MAP.
+//
+//   3. **Antigravity's OWN response shapes** (policy-evaluator.ts
+//      `cli === "antigravity"` branch):
+//        • Deny (tool events) → exit 0, `{decision:"deny", reason}` on stdout.
+//        • Deny on Stop        → exit 0, `{decision:"continue", reason}` —
+//          "continue" re-enters the loop (how require-*-before-stop enforces).
+//        • Instruct on UserPromptSubmit (canonical for PreInvocation) → exit 0,
+//          `{injectSteps:[{ephemeralMessage:"Instruction from failproofai: …"}]}`.
+//        • Instruct on Stop → `{decision:"continue", reason}`.
+//        • Other instruct events → stderr note only (degrade like Hermes).
+//
+//   4. **ANTIGRAVITY_EVENT_MAP** maps the `--hook` arg to a canonical event:
+//      PreToolUse→PreToolUse, PostToolUse→PostToolUse,
+//      PreInvocation→UserPromptSubmit, Stop→Stop.
+//
+// Settings paths (verified against agy v1.1.2):
+//   user    → ~/.gemini/config/hooks.json
+//   project → <cwd>/.agents/hooks.json
+//
+// Audit pillar: plain JSONL transcripts at
+// ~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/
+// transcript_full.jsonl (one step per line); the conversation index lives in
+// SQLite at ~/.gemini/antigravity-cli/conversation_summaries.db. See
+// lib/antigravity-sessions.ts + lib/antigravity-projects.ts. `ANTIGRAVITY_HOME`
+// overrides the home dir for tests.
+
+export const ANTIGRAVITY_HOOK_SCOPES = ["user", "project"] as const;
+export type AntigravityHookScope = (typeof ANTIGRAVITY_HOOK_SCOPES)[number];
+
+/** The events failproofai installs into Antigravity's hooks.json. Tool events
+ *  use the `{matcher, hooks}` wrapper; PreInvocation / Stop are flat arrays. */
+export const ANTIGRAVITY_HOOK_EVENT_TYPES = [
+  "PreToolUse",
+  "PostToolUse",
+  "PreInvocation",
+  "Stop",
+] as const;
+export type AntigravityHookEventType = (typeof ANTIGRAVITY_HOOK_EVENT_TYPES)[number];
+
+/** Antigravity `--hook` arg → canonical HookEventType. PreInvocation is
+ *  Antigravity's before-model event → maps to UserPromptSubmit (where instruct
+ *  injects `injectSteps`). Verified against agy v1.1.2. */
+export const ANTIGRAVITY_EVENT_MAP: Record<AntigravityHookEventType, HookEventType> = {
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  PreInvocation: "UserPromptSubmit",
+  Stop: "Stop",
+};
+
+/**
+ * Antigravity's tool names → Claude PascalCase canonical names so existing
+ * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged.
+ * Tool names are the lowercased `CORTEX_STEP_TYPE_*` step types. `run_command`
+ * → `Bash` is VERIFIED live (agy v1.1.2); the rest are reasonable best-effort
+ * mappings. Unknown tools pass through unchanged via the `?? raw` fallback.
+ */
+export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
+  run_command: "Bash",
+  view_file: "Read",
+  edit_file: "Edit",
+  write_file: "Write",
+  list_directory: "LS",
+  grep_search: "Grep",
+  find_filepath: "Glob",
+  read_url_content: "WebFetch",
+  search_web: "WebSearch",
+};
+
+/**
+ * Antigravity's `run_command` args are PascalCase (`CommandLine`, `Cwd`, …).
+ * Map `CommandLine`→`command` so Bash builtins (`block-sudo`, …) match, and
+ * `Cwd`→`cwd`. Keyed by the CANONICAL tool name (canonicalizeToolInput runs
+ * after canonicalizeToolName). Verified against agy v1.1.2.
+ */
+export const ANTIGRAVITY_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Bash: { CommandLine: "command", Cwd: "cwd" },
+};
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -795,7 +896,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

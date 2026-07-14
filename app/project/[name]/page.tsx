@@ -10,6 +10,7 @@ import { getCachedHermesSessionsByEncodedName } from "@/lib/hermes-projects";
 import { getCachedOpenClawSessionsByEncodedName } from "@/lib/openclaw-projects";
 import { getCachedFactorySessionsByEncodedName } from "@/lib/factory-projects";
 import { getCachedDevinSessionsByEncodedName } from "@/lib/devin-projects";
+import { getCachedAntigravitySessionsByEncodedName } from "@/lib/antigravity-projects";
 import { logWarn } from "@/lib/logger";
 import { decodeFolderName } from "@/lib/paths";
 import { notFound } from "next/navigation";
@@ -48,7 +49,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   }
   // Note: decodeFolderName is lossy when cwds contain `-` (every `-` becomes `/`),
   // so each external CLI looks up sessions by re-encoding cwd and matching the slug.
-  const [codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin] = await Promise.all([
+  const [codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity] = await Promise.all([
     getCachedCodexSessionsByEncodedName(name),
     getCachedCopilotSessionsByEncodedName(name),
     getCachedCursorSessionsByEncodedName(name),
@@ -58,6 +59,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     getCachedOpenClawSessionsByEncodedName(name),
     getCachedFactorySessionsByEncodedName(name),
     getCachedDevinSessionsByEncodedName(name),
+    getCachedAntigravitySessionsByEncodedName(name),
   ]);
   const codexSessions = codex.sessions;
   const copilotSessions = copilot.sessions;
@@ -68,6 +70,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const openclawSessions = openclaw.sessions;
   const factorySessions = factory.sessions;
   const devinSessions = devin.sessions;
+  const antigravitySessions = antigravity.sessions;
 
   if (
     !claudeExists &&
@@ -79,7 +82,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     hermesSessions.length === 0 &&
     openclawSessions.length === 0 &&
     factorySessions.length === 0 &&
-    devinSessions.length === 0
+    devinSessions.length === 0 &&
+    antigravitySessions.length === 0
   ) {
     notFound();
   }
@@ -88,7 +92,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   // `decodeFolderName(name)` is ambiguous for cwds containing `-` (every `-`
   // becomes `/`). Each external transcript records the literal cwd, so they
   // round-trip correctly. First non-null wins (Codex → Copilot → Cursor → OpenCode → Pi).
-  const canonicalRoot = codex.cwd ?? copilot.cwd ?? cursor.cwd ?? opencode.cwd ?? pi.cwd ?? hermes.cwd ?? openclaw.cwd ?? factory.cwd ?? devin.cwd ?? decodedName;
+  const canonicalRoot = codex.cwd ?? copilot.cwd ?? cursor.cwd ?? opencode.cwd ?? pi.cwd ?? hermes.cwd ?? openclaw.cwd ?? factory.cwd ?? devin.cwd ?? antigravity.cwd ?? decodedName;
 
   // Project header metadata
   let lastModified: Date | null = null;
@@ -102,7 +106,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       logWarn(`Failed to get stats for project ${decodedName}:`, error);
     }
   }
-  const newestExternal = [codexSessions[0], copilotSessions[0], cursorSessions[0], opencodeSessions[0], piSessions[0], hermesSessions[0], openclawSessions[0], factorySessions[0], devinSessions[0]]
+  const newestExternal = [codexSessions[0], copilotSessions[0], cursorSessions[0], opencodeSessions[0], piSessions[0], hermesSessions[0], openclawSessions[0], factorySessions[0], devinSessions[0], antigravitySessions[0]]
     .filter((s): s is SessionFile => !!s)
     .map((s) => s.lastModified)
     .reduce<Date | null>((acc, d) => (!acc || d.getTime() > acc.getTime() ? d : acc), null);
@@ -122,6 +126,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     ...openclawSessions,
     ...factorySessions,
     ...devinSessions,
+    ...antigravitySessions,
   ].sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
 
   // Path line: prefer the Claude storage dir if present (matches existing UX);

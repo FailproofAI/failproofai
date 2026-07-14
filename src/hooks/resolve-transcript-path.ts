@@ -32,6 +32,7 @@ import { findCopilotTranscript } from "../../lib/copilot-sessions";
 import { findCursorTranscript } from "../../lib/cursor-sessions";
 import { findPiTranscript } from "../../lib/pi-sessions";
 import { findFactoryTranscript } from "../../lib/factory-sessions";
+import { findAntigravityTranscript } from "../../lib/antigravity-sessions";
 import type { IntegrationType } from "./types";
 
 export function resolveTranscriptPath(
@@ -59,6 +60,10 @@ export function resolveTranscriptPath(
       // Factory writes real JSONL at
       // ~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl (Claude-style).
       return findFactoryTranscript(sessionId) ?? undefined;
+    case "antigravity":
+      // Antigravity writes real JSONL at ~/.gemini/antigravity-cli/brain/
+      // <conversationId>/.system_generated/logs/transcript_full.jsonl.
+      return findAntigravityTranscript(sessionId) ?? undefined;
     case "devin":
       // Devin keeps sessions in SQLite (~/.local/share/devin/cli/sessions.db);
       // there is no on-disk transcript file, so hand back a virtual path (like

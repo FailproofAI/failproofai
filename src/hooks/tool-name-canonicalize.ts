@@ -20,6 +20,8 @@ import {
   OPENCLAW_TOOL_INPUT_MAP,
   FACTORY_TOOL_MAP,
   DEVIN_TOOL_MAP,
+  ANTIGRAVITY_TOOL_MAP,
+  ANTIGRAVITY_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -45,6 +47,9 @@ export function canonicalizeToolName(
   // Devin CLI: exec→Bash (verified live against devin v3000.1.27).
   // tool_input.command is already canonical.
   if (cli === "devin") return DEVIN_TOOL_MAP[raw] ?? raw;
+  // Antigravity CLI: run_command→Bash (verified agy v1.1.2), view_file→Read, …
+  // (best-effort). tool_input keys are PascalCase → ANTIGRAVITY_TOOL_INPUT_MAP.
+  if (cli === "antigravity") return ANTIGRAVITY_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -74,6 +79,9 @@ export function canonicalizeToolInput(
   // OpenClaw file tools (read/write/edit) deliver the path as `path`; exec
   // already delivers `command`. Map path → file_path so path builtins fire.
   else if (cli === "openclaw") perToolMap = OPENCLAW_TOOL_INPUT_MAP[toolName];
+  // Antigravity's run_command args are PascalCase (`CommandLine`, `Cwd`); map
+  // to `command`/`cwd` so Bash builtins fire (verified agy v1.1.2).
+  else if (cli === "antigravity") perToolMap = ANTIGRAVITY_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

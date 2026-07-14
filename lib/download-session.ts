@@ -130,6 +130,13 @@ export async function resolveDownloadSource(
     return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
+  if (cli === "antigravity") {
+    // Antigravity (agy) writes real JSONL transcripts on disk — stream verbatim.
+    const { findAntigravityTranscript } = await import("./antigravity-sessions");
+    const path = findAntigravityTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the
   // if-chain above, so guard with a runtime fallback.
   const _exhaustive: never = cli;

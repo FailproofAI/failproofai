@@ -74,13 +74,15 @@ before they become incidents. Zero latency. Runs locally.
   </a>
 </p>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes factory devin`). Omit `--cli` to auto-detect installed CLIs and prompt.
+> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes factory devin antigravity`). Omit `--cli` to auto-detect installed CLIs and prompt.
 >
 > **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
 >
 > **Factory Droid** (`droid`) is supported for both **live-hook enforcement** (`--cli factory`, user + project scope) and offline **audit** replay of its on-disk JSONL sessions. droid blocks tool calls off hook **exit code 2** (not a JSON decision) and honors `{decision:"block"}` only on the turn-end `Stop` event — failproofai emits the right shape per event automatically.
 >
 > **Devin CLI** (`devin`, Cognition) is supported for both **live-hook enforcement** (`--cli devin`, user + project scope) and offline **audit** replay of its SQLite sessions (`~/.local/share/devin/cli/sessions.db`). Devin is a **pure Claude-clone** — same event names, same snake_case payload, same `"hooks"`-wrapper config (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — blocking via `{decision:"block"}` JSON on every event.
+>
+> **Antigravity CLI** (`agy`) is supported for both **live-hook enforcement** (`--cli antigravity`, user + project scope) and offline **audit** replay of its plain-JSONL sessions (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity has its **own** contract (not a Claude-clone): a **named-hook** `hooks.json` schema (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), a camelCase stdin payload that failproofai normalizes, and its own response shapes — `{decision:"deny"}` to block a tool, `{decision:"continue"}` to force another turn at `Stop`, `{injectSteps}` to inject a reminder before the model runs.
 
 ---
 

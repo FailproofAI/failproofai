@@ -14,6 +14,7 @@ import type {
   PiHookEventType,
   HermesHookEventType,
   OpenClawHookEventType,
+  AntigravityHookEventType,
 } from "./types";
 import {
   CODEX_EVENT_MAP,
@@ -21,6 +22,7 @@ import {
   PI_EVENT_MAP,
   HERMES_EVENT_MAP,
   OPENCLAW_EVENT_MAP,
+  ANTIGRAVITY_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import type { PolicyFunction, PolicyResult } from "./policy-types";
@@ -72,6 +74,12 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
     // (before_tool_call, before_agent_finalize, …); map to PascalCase.
     // before_agent_finalize is the real turn-end gate → Stop.
     const mapped = OPENCLAW_EVENT_MAP[raw as OpenClawHookEventType];
+    if (mapped) return mapped;
+  }
+  if (cli === "antigravity") {
+    // Antigravity's --hook args are PreToolUse|PostToolUse|PreInvocation|Stop.
+    // PreInvocation (before-model) → UserPromptSubmit. Verified agy v1.1.2.
+    const mapped = ANTIGRAVITY_EVENT_MAP[raw as AntigravityHookEventType];
     if (mapped) return mapped;
   }
   // claude / copilot / unknown — already PascalCase, pass through.
@@ -138,6 +146,24 @@ export async function handleHookEvent(
         payload_size: payload.length,
       });
     }
+  }
+
+  // Antigravity (agy) pipes a camelCase protojson payload; normalize the fields
+  // the handler downstream reads to canonical snake_case BEFORE any
+  // canonicalization runs. `toolCall.{name,args}` → `tool_name`/`tool_input`,
+  // `conversationId` → `session_id`, `workspacePaths[0]` → `cwd`,
+  // `transcriptPath` → `transcript_path`. Verified against agy v1.1.2.
+  if (cli === "antigravity") {
+    const tc = parsed.toolCall as { name?: string; args?: unknown } | undefined;
+    if (tc && typeof tc === "object") {
+      if (tc.name !== undefined) parsed.tool_name = tc.name;
+      if (tc.args !== undefined) parsed.tool_input = tc.args;
+    }
+    if (typeof parsed.conversationId === "string") parsed.session_id = parsed.conversationId;
+    if (Array.isArray(parsed.workspacePaths) && typeof parsed.workspacePaths[0] === "string") {
+      parsed.cwd = parsed.workspacePaths[0];
+    }
+    if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
   }
 
   // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)

@@ -47,6 +47,12 @@ vi.mock("@/lib/hermes-projects", () => ({
   getHermesProjects: vi.fn(async () => []),
 }));
 
+// Antigravity reads the real ~/.gemini/antigravity-cli/brain dir; mock it to []
+// so a developer's local Antigravity sessions don't leak into these assertions.
+vi.mock("@/lib/antigravity-projects", () => ({
+  getAntigravityProjects: vi.fn(async () => []),
+}));
+
 import { readdir, stat } from "fs/promises";
 import { extractSessionId, getProjectFolders, getSessionFiles, type ProjectFolder } from "@/lib/projects";
 import { getCodexProjects } from "@/lib/codex-projects";

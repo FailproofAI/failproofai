@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity";
 
 export interface ProjectFolder {
   name: string;
@@ -147,6 +147,7 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getOpenClawProjects },
     { getFactoryProjects },
     { getDevinProjects },
+    { getAntigravityProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -157,8 +158,9 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./openclaw-projects"),
     import("./factory-projects"),
     import("./devin-projects"),
+    import("./antigravity-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -196,8 +198,12 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Devin projects:", error);
       return [] as ProjectFolder[];
     }),
+    getAntigravityProjects().catch((error) => {
+      logError("Error reading Antigravity projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity);
 }
 
 /**

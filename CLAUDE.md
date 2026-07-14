@@ -544,6 +544,90 @@ For production users the recommended Devin install is:
 failproofai policies --install --cli devin --scope project
 ```
 
+### Antigravity CLI hooks (`~/.gemini/config/hooks.json` / `.agents/hooks.json`)
+
+Antigravity (`agy`) is the 11th CLI — a **dual-pillar** integration (live-hook
+enforcement **and** audit) that, unlike Factory/Devin, has its **OWN** hook
+contract (NOT a Claude-clone). Verified **live against agy v1.1.2** (shipped
+docs at `~/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/hooks.md`).
+Binary probe: `agy`.
+
+**NAMED-hook schema.** `hooks.json`'s top-level key is a hook *name*
+(`"failproofai"`), whose value is an event→handlers map. Tool events
+(`PreToolUse`/`PostToolUse`) wrap handlers in a `{matcher, hooks:[…]}` group;
+non-tool events (`PreInvocation`/`Stop`) are **flat** arrays of handler objects:
+
+```json
+{ "failproofai": {
+    "PreToolUse":  [ { "matcher": "*", "hooks": [ { "type":"command", "command":"…", "timeout":30 } ] } ],
+    "PostToolUse": [ { "matcher": "*", "hooks": [ { "type":"command", "command":"…", "timeout":30 } ] } ],
+    "PreInvocation": [ { "type":"command", "command":"…", "timeout":30 } ],
+    "Stop":          [ { "type":"command", "command":"…", "timeout":30 } ] } }
+```
+
+`writeHookEntries`/`removeHooksFromFile`/`hooksInstalledInSettings` operate under
+`settings.failproofai`, handling both the wrapper (`{matcher,hooks:[]}`) and flat
+(`[{…}]`) shapes, and preserve any other named-hook keys (e.g. a user's
+`"lint-checker"`). Multiple named hooks merge; `"enabled": false` disables one.
+Settings paths:
+
+| Scope   | Path                          |
+|---------|-------------------------------|
+| user    | `~/.gemini/config/hooks.json` |
+| project | `<cwd>/.agents/hooks.json`    |
+
+No `local` scope. `timeout` is in **seconds** (30). Command: project
+`npx -y failproofai --hook <event> --cli antigravity`; user
+`"<binaryPath>" --hook <event> --cli antigravity`. `ANTIGRAVITY_HOOK_EVENT_TYPES`
+= `["PreToolUse","PostToolUse","PreInvocation","Stop"]`.
+
+**Event map.** `ANTIGRAVITY_EVENT_MAP`: `PreToolUse→PreToolUse`,
+`PostToolUse→PostToolUse`, `PreInvocation→UserPromptSubmit`, `Stop→Stop`. The
+`canonicalizeEventType` branch in `handler.ts` maps the `--hook` arg.
+
+**camelCase → snake_case normalization.** Antigravity pipes camelCase protojson.
+`handler.ts` normalizes it right after `JSON.parse` (before any canonicalization):
+`toolCall.{name,args}` → `tool_name`/`tool_input`, `conversationId` →
+`session_id`, `workspacePaths[0]` → `cwd`, `transcriptPath` → `transcript_path`.
+After that the existing extraction works. `run_command`'s args are PascalCase
+(`CommandLine`/`Cwd`) → `ANTIGRAVITY_TOOL_INPUT_MAP` (keyed by canonical `Bash`)
+maps them to `command`/`cwd`. Tool names via `ANTIGRAVITY_TOOL_MAP`
+(`run_command→Bash` VERIFIED; `view_file→Read`, `edit_file→Edit`, … best-effort;
+unknown tools pass through).
+
+**Response shapes (Antigravity's OWN — `policy-evaluator.ts` `cli === "antigravity"`):**
+
+| Case | Shape (exit 0) |
+|------|----------------|
+| Deny (tool/prompt events) | `{decision:"deny", reason}` |
+| Deny on `Stop` | `{decision:"continue", reason}` — `"continue"` re-enters the loop (how `require-*-before-stop` enforces) |
+| Instruct on `UserPromptSubmit` (canonical for `PreInvocation`) | `{injectSteps:[{ephemeralMessage:"Instruction from failproofai: …"}]}` |
+| Instruct on `Stop` | `{decision:"continue", reason}` |
+| Instruct on other events | stderr note only (degrade like Hermes) |
+
+**Audit pillar.** Plain-JSONL transcripts at
+`~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl`
+(one step per line: `{step_index, source, type, status, created_at, content?,
+tool_calls?}`). `type` enum (uppercase): `USER_INPUT` → user message,
+`PLANNER_RESPONSE` (text and/or `tool_calls:[{name, args}]`) → assistant turn,
+`<TOOL>` (e.g. `RUN_COMMAND`, the uppercased tool name) → the result step paired
+back onto the matching `tool_use`, `CONVERSATION_HISTORY`/`CHECKPOINT` → skipped.
+The conversation index is SQLite at `conversation_summaries.db`
+(`conversation_summaries` table: `conversation_id, title, step_count,
+workspace_uris, last_modified_time, …`) — read via `lib/sqlite-reader.ts` for
+title/cwd enrichment, but the `brain/` transcripts are the source of truth for
+existence (the DB can be checkpointed empty). `workspace_uris` gives cwd →
+per-project grouping; when absent we recover cwd from the first `run_command`
+`Cwd` arg, else a synthetic `antigravity` project. `lib/antigravity-sessions.ts`
+(pure parser + `findAntigravityTranscript`) + `lib/antigravity-projects.ts` +
+`src/audit/cli-adapters/antigravity.ts`. `ANTIGRAVITY_HOME` overrides the home
+dir for tests.
+
+For production users the recommended Antigravity install is:
+```bash
+failproofai policies --install --cli antigravity --scope project
+```
+
 ## Workflow rules
 
 ### One PR per branch

@@ -34,6 +34,8 @@ import {
   FACTORY_HOOK_SCOPES,
   DEVIN_HOOK_EVENT_TYPES,
   DEVIN_HOOK_SCOPES,
+  ANTIGRAVITY_HOOK_EVENT_TYPES,
+  ANTIGRAVITY_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -1837,6 +1839,184 @@ export const devin: Integration = {
   },
 };
 
+// ── Antigravity CLI (antigravity) integration ────────────────────────────────
+//
+// Antigravity's `agy` CLI uses a NAMED-hook schema: the hooks.json top-level key
+// is a hook *name* ("failproofai"), whose value is an event→handlers map. Tool
+// events (PreToolUse / PostToolUse) wrap handlers in `{matcher, hooks:[…]}`;
+// non-tool events (PreInvocation / Stop) are FLAT arrays of handler objects.
+// Verified live against agy v1.1.2. Settings paths:
+//   user    → ~/.gemini/config/hooks.json
+//   project → <cwd>/.agents/hooks.json
+// No "local" scope. Deny/instruct semantics live in policy-evaluator.ts's
+// `cli === "antigravity"` branch (Antigravity's OWN `{decision:"deny"}` /
+// `{decision:"continue"}` / `{injectSteps}` shapes — NOT Claude's).
+
+/** The Antigravity settings file is `{ "<hookName>": { <event>: … } }`. Our
+ *  named hook is "failproofai". */
+const ANTIGRAVITY_HOOK_NAME = "failproofai";
+
+interface AntigravityToolMatcher {
+  matcher?: string;
+  hooks: Array<ClaudeHookEntry | Record<string, unknown>>;
+}
+/** An Antigravity named-hook body: tool events → `{matcher, hooks}[]`; flat
+ *  events (PreInvocation / Stop) → `handler[]`. */
+type AntigravityNamedHook = Record<
+  string,
+  AntigravityToolMatcher[] | Array<ClaudeHookEntry | Record<string, unknown>>
+>;
+
+const ANTIGRAVITY_TOOL_EVENTS = new Set(["PreToolUse", "PostToolUse"]);
+
+export const antigravity: Integration = {
+  id: "antigravity",
+  displayName: "Antigravity CLI",
+  scopes: ANTIGRAVITY_HOOK_SCOPES,
+  eventTypes: ANTIGRAVITY_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".gemini", "config", "hooks.json");
+      case "project":
+        return resolve(base, ".agents", "hooks.json");
+      case "local":
+        // Antigravity has no "local" scope; the CLI rejects it before reaching
+        // here, but fall back to project so callers don't crash.
+        return resolve(base, ".agents", "hooks.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli antigravity`
+        : `"${binaryPath}" --hook ${eventType} --cli antigravity`;
+    return {
+      type: "command",
+      command,
+      // Antigravity reads `timeout` in SECONDS (verified agy v1.1.2). 30s.
+      timeout: 30,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as Record<string, unknown>;
+    if (!s[ANTIGRAVITY_HOOK_NAME] || typeof s[ANTIGRAVITY_HOOK_NAME] !== "object") {
+      s[ANTIGRAVITY_HOOK_NAME] = {};
+    }
+    const named = s[ANTIGRAVITY_HOOK_NAME] as AntigravityNamedHook;
+
+    for (const eventType of ANTIGRAVITY_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      const isToolEvent = ANTIGRAVITY_TOOL_EVENTS.has(eventType);
+
+      if (isToolEvent) {
+        if (!Array.isArray(named[eventType])) named[eventType] = [] as AntigravityToolMatcher[];
+        const matchers = named[eventType] as AntigravityToolMatcher[];
+        let found = false;
+        for (const matcher of matchers) {
+          if (!matcher.hooks) continue;
+          const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+          if (idx >= 0) {
+            matcher.hooks[idx] = hookEntry;
+            found = true;
+            break;
+          }
+        }
+        if (!found) matchers.push({ matcher: "*", hooks: [hookEntry] });
+      } else {
+        // Flat array of handler objects (PreInvocation / Stop).
+        if (!Array.isArray(named[eventType])) named[eventType] = [] as Array<ClaudeHookEntry | Record<string, unknown>>;
+        const handlers = named[eventType] as Array<ClaudeHookEntry | Record<string, unknown>>;
+        const idx = handlers.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) handlers[idx] = hookEntry;
+        else handlers.push(hookEntry);
+      }
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as Record<string, unknown>;
+    const named = settings[ANTIGRAVITY_HOOK_NAME];
+    if (!named || typeof named !== "object") {
+      this.writeSettings(settingsPath, settings);
+      return 0;
+    }
+    const namedHook = named as AntigravityNamedHook;
+
+    let removed = 0;
+    for (const eventType of Object.keys(namedHook)) {
+      const value = namedHook[eventType];
+      if (!Array.isArray(value)) continue;
+      if (ANTIGRAVITY_TOOL_EVENTS.has(eventType)) {
+        const matchers = value as AntigravityToolMatcher[];
+        for (let i = matchers.length - 1; i >= 0; i--) {
+          const matcher = matchers[i];
+          if (!matcher || !matcher.hooks) continue;
+          const before = matcher.hooks.length;
+          matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+          removed += before - matcher.hooks.length;
+          if (matcher.hooks.length === 0) matchers.splice(i, 1);
+        }
+        if (matchers.length === 0) delete namedHook[eventType];
+      } else {
+        const handlers = value as Array<Record<string, unknown>>;
+        const before = handlers.length;
+        const filtered = handlers.filter((h) => !isMarkedHook(h));
+        removed += before - filtered.length;
+        if (filtered.length === 0) delete namedHook[eventType];
+        else namedHook[eventType] = filtered as Array<ClaudeHookEntry | Record<string, unknown>>;
+      }
+    }
+    // Drop the named hook entirely if it has no remaining events.
+    if (Object.keys(namedHook).length === 0) delete settings[ANTIGRAVITY_HOOK_NAME];
+
+    this.writeSettings(settingsPath, settings);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as Record<string, unknown>;
+      const named = settings[ANTIGRAVITY_HOOK_NAME];
+      if (!named || typeof named !== "object") return false;
+      for (const value of Object.values(named as AntigravityNamedHook)) {
+        if (!Array.isArray(value)) continue;
+        for (const item of value) {
+          if (isMarkedHook(item as Record<string, unknown>)) return true;
+          const matcher = item as AntigravityToolMatcher;
+          if (matcher && Array.isArray(matcher.hooks) && matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) {
+            return true;
+          }
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("agy");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -1855,6 +2035,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   openclaw,
   factory,
   devin,
+  antigravity,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

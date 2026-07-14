@@ -256,6 +256,7 @@ describe("ProjectList", () => {
       "OpenClaw",
       "Factory Droid",
       "Devin CLI",
+      "Antigravity CLI",
     ]);
   });
 

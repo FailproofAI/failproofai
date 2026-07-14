@@ -75,6 +75,11 @@ export function resolveTranscriptPath(
       // Hermes live-hook payloads carry no transcript file; the audit path
       // reads sessions straight from ~/.hermes/state.db (see hermes-sessions.ts).
       return undefined;
+    case "openclaw":
+      // OpenClaw's plugin shim forwards transcript_path in stdin (handled by the
+      // early return above); its audit path reads the real JSONL sessions
+      // directly via lib/openclaw-sessions.ts, so no discovery is needed here.
+      return undefined;
     default:
       return undefined;
   }

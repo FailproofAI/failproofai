@@ -30,21 +30,21 @@ before they become incidents. Zero latency. Runs locally.
     <img src="assets/logos/claude.svg" alt="Claude Code" width="64" height="64" />
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://developers.openai.com/codex" title="OpenAI Codex">
+  <a href="https://learn.chatgpt.com" title="OpenAI Codex">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
       <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="64" height="64" />
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks" title="GitHub Copilot CLI">
+  <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
       <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="64" height="64" />
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://cursor.com/docs/hooks" title="Cursor Agent CLI">
+  <a href="https://cursor.com" title="Cursor Agent CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
       <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="64" height="64" />
@@ -52,33 +52,33 @@ before they become incidents. Zero latency. Runs locally.
   </a>
 </p>
 <p align="center">
-  <a href="https://opencode.ai/docs/plugins/" title="OpenCode">
+  <a href="https://opencode.ai/" title="OpenCode">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
       <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="64" height="64" />
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://pi.dev" title="Pi (pi-coding-agent)">
+  <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
       <img src="assets/logos/pi-light.svg" alt="Pi" width="64" height="64" />
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+  <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
       <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="OpenClaw (openclaw gateway)">
+  <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
     <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
   </a>
 </p>
 <p align="center">
-  <a href="https://docs.factory.ai" title="Factory Droid (droid)">
+  <a href="https://factory.ai/" title="Factory Droid (droid)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
       <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
@@ -93,7 +93,7 @@ before they become incidents. Zero latency. Runs locally.
     <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://block.github.io/goose" title="Goose (codename goose)">
+  <a href="https://goose-docs.ai/" title="Goose (codename goose)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
       <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />

@@ -3,6 +3,11 @@ name: Bump platform submodule pointer
 # When this repo's main moves, push a matching gitlink bump to the
 # FailproofAI/platform monorepo so its `failproofai/oss` submodule tracks
 # upstream automatically. Direct push to platform `main` — no PR.
+#
+# The platform repo is governed by the `failproofai-rules` ruleset (PR + 1 review
+# required on main), which rejects a plain GITHUB_TOKEN push with GH013. We
+# instead mint a token for the version-bot GitHub App — a bypass actor on that
+# ruleset — so the push is accepted.
 
 on:
   push:
@@ -19,37 +24,37 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
+      # Token for the version-bot GitHub App — a bypass actor on the org
+      # ruleset, so pushes to platform main bypass the PR requirement.
+      - name: Mint version-bot app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
+          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
+
       - name: Checkout FailproofAI/platform main
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v7
         with:
           repository: FailproofAI/platform
-          token: ${{ secrets.PLATFORM_BUMP_TOKEN }}
+          # Persist the app token so `git push` below bypasses the ruleset.
+          # The version-bot App is a bypass actor on `failproofai-rules`.
+          token: ${{ steps.app-token.outputs.token }}
           ref: main
           fetch-depth: 1
           # Don't fetch submodule contents — we only edit the gitlink.
           submodules: false
-          # Don't persist the cross-repo token in git config; auth is
-          # set inline on the push/fetch commands below.
-          persist-credentials: false
 
       - name: Bump failproofai/oss gitlink and push
         env:
           NEW_SHA: ${{ github.sha }}
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
           UPSTREAM_REPO: ${{ github.repository }}
-          PLATFORM_BUMP_TOKEN: ${{ secrets.PLATFORM_BUMP_TOKEN }}
         run: |
           set -euo pipefail
 
-          # GitHub's git-over-HTTPS smart protocol expects Basic auth with
-          # `x-access-token:<pat>` (Bearer works for the REST API but not
-          # for `git push`/`git fetch`). Matches actions/checkout's own
-          # internal extraheader format.
-          AUTH_B64=$(printf '%s' "x-access-token:${PLATFORM_BUMP_TOKEN}" | base64 -w0)
-          AUTH_HEADER="Authorization: basic ${AUTH_B64}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name  "agenteye-bot"
+          git config user.email "agenteye-bot@users.noreply.github.com"
 
           CURRENT_SHA=$(git ls-tree HEAD failproofai/oss | awk '{print $3}')
           if [ -z "$CURRENT_SHA" ]; then
@@ -81,12 +86,12 @@ jobs:
           # Race-safe push: if platform main moved between checkout and push,
           # rebase the single bump commit on top and try again.
           for attempt in 1 2 3; do
-            if git -c http.extraheader="$AUTH_HEADER" push origin main; then
+            if git push origin main; then
               echo "Pushed bump on attempt $attempt"
               exit 0
             fi
             echo "Push failed on attempt $attempt — rebasing onto latest main"
-            git -c http.extraheader="$AUTH_HEADER" fetch origin main
+            git fetch origin main
             git rebase origin/main
           done
 

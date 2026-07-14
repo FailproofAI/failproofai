@@ -477,8 +477,11 @@ describe("hooks/policy-evaluator", () => {
       expect(result.decision).toBe("allow");
       expect(result.policyName).toBe("failproofai/info1");
       expect(result.policyNames).toEqual(["failproofai/info1", "failproofai/info2"]);
-      const parsed = JSON.parse(result.stdout);
-      expect(parsed.reason).toBe("Commit check passed\nPush check passed");
+      // Stop has no agent-facing context channel, so the combined note is kept
+      // OUT of stdout (prevents droid-style "…skipping…" noise on a fine turn);
+      // it stays in the return `reason` + stderr for diagnostics.
+      expect(result.stdout).toBe("");
+      expect(result.reason).toBe("Commit check passed\nPush check passed");
       expect(result.stderr).toContain("[failproofai] failproofai/info1: Commit check passed");
       expect(result.stderr).toContain("[failproofai] failproofai/info2: Push check passed");
     });
@@ -950,11 +953,13 @@ describe("hooks/policy-evaluator", () => {
       expect(result.exitCode).toBe(0);
       expect(result.decision).toBe("allow");
       expect(result.policyNames).toEqual(["failproofai/wf-commit", "failproofai/wf-push", "failproofai/wf-pr", "failproofai/wf-ci"]);
-      const parsed = JSON.parse(result.stdout);
-      expect(parsed.reason).toContain("All changes committed");
-      expect(parsed.reason).toContain("All commits pushed");
-      expect(parsed.reason).toContain("PR #42 exists");
-      expect(parsed.reason).toContain("All CI checks passed");
+      // Stop has no context channel → the combined note lives in the return
+      // `reason` + stderr (NOT stdout), so it isn't rendered as agent-facing noise.
+      expect(result.stdout).toBe("");
+      expect(result.reason).toContain("All changes committed");
+      expect(result.reason).toContain("All commits pushed");
+      expect(result.reason).toContain("PR #42 exists");
+      expect(result.reason).toContain("All CI checks passed");
     });
 
     it("allow messages from early policies are discarded when a later policy denies", async () => {
@@ -1004,8 +1009,9 @@ describe("hooks/policy-evaluator", () => {
       expect(result.decision).toBe("allow");
       expect(result.policyName).toBe("failproofai/informative");
       expect(result.policyNames).toEqual(["failproofai/informative"]);
-      const parsed = JSON.parse(result.stdout);
-      expect(parsed.reason).toBe("CI is green");
+      // Stop note → return `reason` + stderr, stdout stays empty.
+      expect(result.stdout).toBe("");
+      expect(result.reason).toBe("CI is green");
     });
 
     it("policy that throws is skipped — subsequent policies still run", async () => {

@@ -798,30 +798,43 @@ export const ANTIGRAVITY_EVENT_MAP: Record<AntigravityHookEventType, HookEventTy
 /**
  * Antigravity's tool names → Claude PascalCase canonical names so existing
  * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged.
- * Tool names are the lowercased `CORTEX_STEP_TYPE_*` step types. `run_command`
- * → `Bash` is VERIFIED live (agy v1.1.2); the rest are reasonable best-effort
- * mappings. Unknown tools pass through unchanged via the `?? raw` fallback.
+ * Tool names VERIFIED against the agy binary's tool registry + live transcripts:
+ * the file tool is `write_to_file` (NOT `write_file`), listing is `list_dir`
+ * (NOT `list_directory`), and glob is `find_by_name` (NOT `find_filepath`) — the
+ * earlier best-effort names were wrong, so `block-env-files`/`block-secrets-write`
+ * silently no-op'd on Antigravity file writes. Unknown tools pass through via the
+ * `?? raw` fallback.
  */
 export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
   run_command: "Bash",
+  write_to_file: "Write",
+  read_file: "Read",
   view_file: "Read",
   edit_file: "Edit",
-  write_file: "Write",
-  list_directory: "LS",
+  replace_file_content: "Edit",
+  list_dir: "LS",
+  find_by_name: "Glob",
   grep_search: "Grep",
-  find_filepath: "Glob",
   read_url_content: "WebFetch",
   search_web: "WebSearch",
 };
 
 /**
- * Antigravity's `run_command` args are PascalCase (`CommandLine`, `Cwd`, …).
- * Map `CommandLine`→`command` so Bash builtins (`block-sudo`, …) match, and
- * `Cwd`→`cwd`. Keyed by the CANONICAL tool name (canonicalizeToolInput runs
- * after canonicalizeToolName). Verified against agy v1.1.2.
+ * Antigravity tool args are PascalCase. Keyed by the CANONICAL tool name
+ * (canonicalizeToolInput runs after canonicalizeToolName). VERIFIED live:
+ * `run_command` delivers `CommandLine`/`Cwd`; `write_to_file` delivers the path
+ * as `TargetFile` and body as `CodeContent`. Without the Write/Edit/Read entries
+ * the path/content builtins (`block-env-files`, `block-secrets-write`,
+ * `block-read-outside-cwd`) never saw a `file_path` and silently no-op'd on
+ * Antigravity file operations. Read/Edit path keys are best-effort within the
+ * same tool family (all file tools operate on `TargetFile`); extra keys are
+ * harmless (only remapped when present).
  */
 export const ANTIGRAVITY_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Bash: { CommandLine: "command", Cwd: "cwd" },
+  Write: { TargetFile: "file_path", CodeContent: "content" },
+  Edit: { TargetFile: "file_path" },
+  Read: { TargetFile: "file_path", AbsolutePath: "file_path", File: "file_path" },
 };
 
 // ── Goose (codename goose, Block) ────────────────────────────────────────────

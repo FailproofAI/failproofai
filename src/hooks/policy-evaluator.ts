@@ -934,13 +934,20 @@ export async function evaluatePolicies(
       eventType === "PostToolUse" ||
       eventType === "UserPromptSubmit" ||
       eventType === "PermissionRequest";
-    const response = supportsHookSpecificOutput
-      ? { hookSpecificOutput: { hookEventName: eventType, additionalContext: `Note from failproofai: ${combined}` } }
-      : { reason: combined };
     const stderrMsg = allowEntries
       .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
       .join("\n");
-    return { exitCode: 0, stdout: JSON.stringify(response), stderr: stderrMsg + "\n", policyName: policyNames[0], policyNames, reason: combined, decision: "allow" };
+    // Only events with a real additional-context channel carry the allow-note
+    // to the agent. Everything else (Stop, SubagentStop, Session*, PreCompact, …)
+    // has NO channel, so we keep informational allow-notes OUT of stdout — a
+    // bare `{reason}` there is rendered as noise (e.g. droid printing a Stop's
+    // "…skipping commit check…skipping PR check…" wall on a perfectly fine turn).
+    // The note is still logged to stderr + the activity store for diagnostics.
+    if (supportsHookSpecificOutput) {
+      const response = { hookSpecificOutput: { hookEventName: eventType, additionalContext: `Note from failproofai: ${combined}` } };
+      return { exitCode: 0, stdout: JSON.stringify(response), stderr: stderrMsg + "\n", policyName: policyNames[0], policyNames, reason: combined, decision: "allow" };
+    }
+    return { exitCode: 0, stdout: "", stderr: stderrMsg + "\n", policyName: policyNames[0], policyNames, reason: combined, decision: "allow" };
   }
   return { exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow" };
 }

@@ -977,14 +977,46 @@
               {
                 "group": "Getting started",
                 "pages": [
-                  "agenteye/overview",
-                  "agenteye/instrumentation"
+                  "agenteye/getting-started",
+                  "agenteye/github-token"
+                ]
+              },
+              {
+                "group": "Deployment",
+                "pages": [
+                  "agenteye/deployment",
+                  "agenteye/managed-deployment",
+                  "agenteye/kubernetes-deployment",
+                  "agenteye/single-pod-deployment",
+                  "agenteye/collector-installation",
+                  "agenteye/collector-migration"
+                ]
+              },
+              {
+                "group": "Instrumentation and CLI",
+                "pages": [
+                  "agenteye/python-sdk",
+                  "agenteye/cli",
+                  "agenteye/cli-recipes",
+                  "agenteye/cli-skill"
                 ]
               },
               {
                 "group": "Quality",
                 "pages": [
-                  "agenteye/evaluations"
+                  "agenteye/evaluation-suite",
+                  "agenteye/audits",
+                  "agenteye/alerts"
+                ]
+              },
+              {
+                "group": "Operations",
+                "pages": [
+                  "agenteye/api-keys",
+                  "agenteye/tenant-management",
+                  "agenteye/health-monitoring",
+                  "agenteye/assistant",
+                  "agenteye/troubleshooting"
                 ]
               }
             ]

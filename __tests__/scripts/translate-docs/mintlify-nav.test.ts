@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildLanguageNav,
   generateLanguagesArray,
+  getNavigationPageReferences,
 } from "@/scripts/translate-docs/mintlify-nav";
 
 const sampleEnglishTabs = [
@@ -37,9 +38,7 @@ const sampleEnglishTabs = [
 describe("buildLanguageNav", () => {
   it("prefixes all page paths with the language code", () => {
     const nav = buildLanguageNav(sampleEnglishTabs, "es");
-    const allPages = nav.tabs.flatMap((t) =>
-      t.groups.flatMap((g) => g.pages),
-    );
+    const allPages = nav.tabs.flatMap((t) => t.groups.flatMap((g) => g.pages));
     for (const page of allPages) {
       expect(page).toMatch(/^es\//);
     }
@@ -104,11 +103,7 @@ describe("generateLanguagesArray", () => {
   });
 
   it("creates entries for each requested language", () => {
-    const langs = generateLanguagesArray(sampleEnglishTabs, [
-      "es",
-      "ja",
-      "zh",
-    ]);
+    const langs = generateLanguagesArray(sampleEnglishTabs, ["es", "ja", "zh"]);
     expect(langs).toHaveLength(4); // en + 3
     expect(langs.map((l) => l.language)).toEqual(["en", "es", "ja", "zh"]);
   });
@@ -133,5 +128,51 @@ describe("generateLanguagesArray", () => {
     for (const page of koPages) {
       expect(page).toMatch(/^ko\//);
     }
+  });
+});
+
+describe("getNavigationPageReferences", () => {
+  it("collects localized and English-only product pages", () => {
+    const references = getNavigationPageReferences({
+      products: [
+        {
+          product: "FailproofAI",
+          languages: [
+            { language: "en", tabs: sampleEnglishTabs },
+            {
+              language: "es",
+              tabs: [
+                {
+                  tab: "Documentación",
+                  groups: [{ group: "Inicio", pages: ["es/introduction"] }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          product: "AgentEye",
+          tabs: [
+            {
+              tab: "Docs",
+              groups: [{ group: "Start", pages: ["agenteye/getting-started"] }],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(references).toContainEqual({
+      page: "introduction",
+      language: "en",
+    });
+    expect(references).toContainEqual({
+      page: "es/introduction",
+      language: "es",
+    });
+    expect(references).toContainEqual({
+      page: "agenteye/getting-started",
+      language: undefined,
+    });
   });
 });

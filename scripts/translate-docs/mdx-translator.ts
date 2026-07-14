@@ -1,14 +1,15 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLanguageByCode } from "./config";
 import { translateContent } from "./translator";
-import {
-  readCache,
-  writeCache,
-  isCached,
-  setCacheEntry,
-} from "./cache";
+import { readCache, writeCache, isCached, setCacheEntry } from "./cache";
 import type { TranslationResult, TranslationCache } from "./types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -98,28 +99,19 @@ export function stripStrayTrailingFence(content: string): string {
  * e.g. href="/built-in-policies" -> href="/es/built-in-policies"
  *      [Getting started](/getting-started) -> [Getting started](/es/getting-started)
  */
-export function rewriteInternalLinks(
-  content: string,
-  lang: string,
-): string {
+export function rewriteInternalLinks(content: string, lang: string): string {
   // Rewrite MDX component href attributes pointing to internal paths
-  let result = content.replace(
-    /href="(\/[^"]*?)"/g,
-    (_match, path: string) => {
-      // Skip external URLs and anchors
-      if (path.startsWith("/http") || path === "/") return `href="${path}"`;
-      return `href="/${lang}${path}"`;
-    },
-  );
+  let result = content.replace(/href="(\/[^"]*?)"/g, (_match, path: string) => {
+    // Skip external URLs and anchors
+    if (path.startsWith("/http") || path === "/") return `href="${path}"`;
+    return `href="/${lang}${path}"`;
+  });
 
   // Rewrite Markdown links with internal paths
-  result = result.replace(
-    /\]\((\/[^)]*?)\)/g,
-    (_match, path: string) => {
-      if (path.startsWith("/http") || path === "/") return `](${path})`;
-      return `](/${lang}${path})`;
-    },
-  );
+  result = result.replace(/\]\((\/[^)]*?)\)/g, (_match, path: string) => {
+    if (path.startsWith("/http") || path === "/") return `](${path})`;
+    return `](/${lang}${path})`;
+  });
 
   return result;
 }
@@ -130,7 +122,12 @@ export function rewriteInternalLinks(
 export async function translateMdxPage(
   sourcePath: string,
   lang: string,
-  options: { force?: boolean; dryRun?: boolean; model?: string; cache?: TranslationCache } = {},
+  options: {
+    force?: boolean;
+    dryRun?: boolean;
+    model?: string;
+    cache?: TranslationCache;
+  } = {},
 ): Promise<TranslationResult> {
   const relPath = relative(DOCS_DIR, sourcePath);
   const outputPath = join(DOCS_DIR, lang, relPath);
@@ -186,7 +183,14 @@ export async function translateMdxPage(
   // Update cache — skip if caller manages the cache (batch write)
   if (!options.cache) {
     const cache = readCache();
-    setCacheEntry(cache, relPath, lang, sourceContent, inputTokens, outputTokens);
+    setCacheEntry(
+      cache,
+      relPath,
+      lang,
+      sourceContent,
+      inputTokens,
+      outputTokens,
+    );
     writeCache(cache);
   }
 
@@ -213,8 +217,13 @@ export function getEnglishMdxPages(): string[] {
       if (statSync(full).isDirectory()) {
         // Skip language directories at the top level
         if (!prefix && isLanguageDir(entry)) continue;
-        // Skip non-doc directories like logo, i18n
-        if (!prefix && (entry === "logo" || entry === "i18n")) continue;
+        // AgentEye is synced from its own repository and intentionally remains
+        // English-only. Translating it here would create unreferenced files.
+        if (
+          !prefix &&
+          (entry === "logo" || entry === "i18n" || entry === "agenteye")
+        )
+          continue;
         walk(full, rel);
       } else if (entry.endsWith(".mdx")) {
         results.push(full);
@@ -228,8 +237,20 @@ export function getEnglishMdxPages(): string[] {
 
 function isLanguageDir(name: string): boolean {
   const langCodes = [
-    "zh", "ja", "ko", "es", "pt-br", "de", "fr",
-    "ru", "hi", "tr", "vi", "it", "ar", "he",
+    "zh",
+    "ja",
+    "ko",
+    "es",
+    "pt-br",
+    "de",
+    "fr",
+    "ru",
+    "hi",
+    "tr",
+    "vi",
+    "it",
+    "ar",
+    "he",
   ];
   return langCodes.includes(name);
 }

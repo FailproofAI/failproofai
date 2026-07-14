@@ -4,7 +4,16 @@ import {
   rewriteInternalLinks,
   sanitizeJsxAttributes,
   stripStrayTrailingFence,
+  getEnglishMdxPages,
 } from "@/scripts/translate-docs/mdx-translator";
+
+describe("getEnglishMdxPages", () => {
+  it("excludes English-only AgentEye pages from automatic translation", () => {
+    const pages = getEnglishMdxPages();
+    expect(pages.length).toBeGreaterThan(0);
+    expect(pages.some((page) => page.includes("/agenteye/"))).toBe(false);
+  });
+});
 
 describe("rewriteInternalLinks", () => {
   it("rewrites MDX component href attributes with language prefix", () => {

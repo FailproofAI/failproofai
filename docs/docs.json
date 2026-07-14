@@ -18,953 +18,848 @@
         "product": "FailproofAI",
         "icon": "shield-check",
         "languages": [
-      {
-        "language": "en",
-        "tabs": [
           {
-            "tab": "Docs",
-            "groups": [
+            "language": "en",
+            "tabs": [
               {
-                "group": "Getting Started",
-                "pages": [
-                  "introduction",
-                  "getting-started"
+                "tab": "Docs",
+                "groups": [
+                  {
+                    "group": "Getting Started",
+                    "pages": ["introduction", "getting-started"]
+                  },
+                  {
+                    "group": "Core Concepts",
+                    "pages": [
+                      "built-in-policies",
+                      "custom-policies",
+                      "configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "cli/dashboard",
+                      "cli/install-policies",
+                      "cli/remove-policies",
+                      "cli/list-policies",
+                      "cli/hook",
+                      "cli/auth",
+                      "cli/audit",
+                      "cli/version",
+                      "cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Tools",
+                    "pages": ["dashboard"]
+                  },
+                  {
+                    "group": "Advanced",
+                    "pages": [
+                      "architecture",
+                      "testing",
+                      "package-aliases",
+                      "for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Core Concepts",
-                "pages": [
-                  "built-in-policies",
-                  "custom-policies",
-                  "configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "cli/dashboard",
-                  "cli/install-policies",
-                  "cli/remove-policies",
-                  "cli/list-policies",
-                  "cli/hook",
-                  "cli/auth",
-                  "cli/audit",
-                  "cli/version",
-                  "cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Tools",
-                "pages": [
-                  "dashboard"
-                ]
-              },
-              {
-                "group": "Advanced",
-                "pages": [
-                  "architecture",
-                  "testing",
-                  "package-aliases",
-                  "for-agents"
+                "tab": "Examples",
+                "groups": [
+                  {
+                    "group": "Examples",
+                    "pages": ["examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Examples",
-            "groups": [
+            "language": "zh",
+            "tabs": [
               {
-                "group": "Examples",
-                "pages": [
-                  "examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "zh",
-        "tabs": [
-          {
-            "tab": "文档",
-            "groups": [
-              {
-                "group": "快速开始",
-                "pages": [
-                  "zh/introduction",
-                  "zh/getting-started"
-                ]
-              },
-              {
-                "group": "核心概念",
-                "pages": [
-                  "zh/built-in-policies",
-                  "zh/custom-policies",
-                  "zh/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "zh/cli/dashboard",
-                  "zh/cli/install-policies",
-                  "zh/cli/remove-policies",
-                  "zh/cli/list-policies",
-                  "zh/cli/hook",
-                  "zh/cli/version",
-                  "zh/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "工具",
-                "pages": [
-                  "zh/dashboard"
+                "tab": "文档",
+                "groups": [
+                  {
+                    "group": "快速开始",
+                    "pages": ["zh/introduction", "zh/getting-started"]
+                  },
+                  {
+                    "group": "核心概念",
+                    "pages": [
+                      "zh/built-in-policies",
+                      "zh/custom-policies",
+                      "zh/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "zh/cli/dashboard",
+                      "zh/cli/install-policies",
+                      "zh/cli/remove-policies",
+                      "zh/cli/list-policies",
+                      "zh/cli/hook",
+                      "zh/cli/version",
+                      "zh/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "工具",
+                    "pages": ["zh/dashboard"]
+                  },
+                  {
+                    "group": "进阶",
+                    "pages": [
+                      "zh/architecture",
+                      "zh/testing",
+                      "zh/package-aliases",
+                      "zh/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "进阶",
-                "pages": [
-                  "zh/architecture",
-                  "zh/testing",
-                  "zh/package-aliases",
-                  "zh/for-agents"
+                "tab": "示例",
+                "groups": [
+                  {
+                    "group": "示例",
+                    "pages": ["zh/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "示例",
-            "groups": [
+            "language": "ja",
+            "tabs": [
               {
-                "group": "示例",
-                "pages": [
-                  "zh/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "ja",
-        "tabs": [
-          {
-            "tab": "ドキュメント",
-            "groups": [
-              {
-                "group": "はじめに",
-                "pages": [
-                  "ja/introduction",
-                  "ja/getting-started"
-                ]
-              },
-              {
-                "group": "基本概念",
-                "pages": [
-                  "ja/built-in-policies",
-                  "ja/custom-policies",
-                  "ja/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "ja/cli/dashboard",
-                  "ja/cli/install-policies",
-                  "ja/cli/remove-policies",
-                  "ja/cli/list-policies",
-                  "ja/cli/hook",
-                  "ja/cli/version",
-                  "ja/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "ツール",
-                "pages": [
-                  "ja/dashboard"
+                "tab": "ドキュメント",
+                "groups": [
+                  {
+                    "group": "はじめに",
+                    "pages": ["ja/introduction", "ja/getting-started"]
+                  },
+                  {
+                    "group": "基本概念",
+                    "pages": [
+                      "ja/built-in-policies",
+                      "ja/custom-policies",
+                      "ja/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "ja/cli/dashboard",
+                      "ja/cli/install-policies",
+                      "ja/cli/remove-policies",
+                      "ja/cli/list-policies",
+                      "ja/cli/hook",
+                      "ja/cli/version",
+                      "ja/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "ツール",
+                    "pages": ["ja/dashboard"]
+                  },
+                  {
+                    "group": "上級",
+                    "pages": [
+                      "ja/architecture",
+                      "ja/testing",
+                      "ja/package-aliases",
+                      "ja/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "上級",
-                "pages": [
-                  "ja/architecture",
-                  "ja/testing",
-                  "ja/package-aliases",
-                  "ja/for-agents"
+                "tab": "例",
+                "groups": [
+                  {
+                    "group": "例",
+                    "pages": ["ja/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "例",
-            "groups": [
+            "language": "ko",
+            "tabs": [
               {
-                "group": "例",
-                "pages": [
-                  "ja/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "ko",
-        "tabs": [
-          {
-            "tab": "문서",
-            "groups": [
-              {
-                "group": "시작하기",
-                "pages": [
-                  "ko/introduction",
-                  "ko/getting-started"
-                ]
-              },
-              {
-                "group": "핵심 개념",
-                "pages": [
-                  "ko/built-in-policies",
-                  "ko/custom-policies",
-                  "ko/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "ko/cli/dashboard",
-                  "ko/cli/install-policies",
-                  "ko/cli/remove-policies",
-                  "ko/cli/list-policies",
-                  "ko/cli/hook",
-                  "ko/cli/version",
-                  "ko/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "도구",
-                "pages": [
-                  "ko/dashboard"
+                "tab": "문서",
+                "groups": [
+                  {
+                    "group": "시작하기",
+                    "pages": ["ko/introduction", "ko/getting-started"]
+                  },
+                  {
+                    "group": "핵심 개념",
+                    "pages": [
+                      "ko/built-in-policies",
+                      "ko/custom-policies",
+                      "ko/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "ko/cli/dashboard",
+                      "ko/cli/install-policies",
+                      "ko/cli/remove-policies",
+                      "ko/cli/list-policies",
+                      "ko/cli/hook",
+                      "ko/cli/version",
+                      "ko/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "도구",
+                    "pages": ["ko/dashboard"]
+                  },
+                  {
+                    "group": "고급",
+                    "pages": [
+                      "ko/architecture",
+                      "ko/testing",
+                      "ko/package-aliases",
+                      "ko/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "고급",
-                "pages": [
-                  "ko/architecture",
-                  "ko/testing",
-                  "ko/package-aliases",
-                  "ko/for-agents"
+                "tab": "예제",
+                "groups": [
+                  {
+                    "group": "예제",
+                    "pages": ["ko/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "예제",
-            "groups": [
+            "language": "es",
+            "tabs": [
               {
-                "group": "예제",
-                "pages": [
-                  "ko/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "es",
-        "tabs": [
-          {
-            "tab": "Documentación",
-            "groups": [
-              {
-                "group": "Primeros pasos",
-                "pages": [
-                  "es/introduction",
-                  "es/getting-started"
-                ]
-              },
-              {
-                "group": "Conceptos principales",
-                "pages": [
-                  "es/built-in-policies",
-                  "es/custom-policies",
-                  "es/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "es/cli/dashboard",
-                  "es/cli/install-policies",
-                  "es/cli/remove-policies",
-                  "es/cli/list-policies",
-                  "es/cli/hook",
-                  "es/cli/version",
-                  "es/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Herramientas",
-                "pages": [
-                  "es/dashboard"
+                "tab": "Documentación",
+                "groups": [
+                  {
+                    "group": "Primeros pasos",
+                    "pages": ["es/introduction", "es/getting-started"]
+                  },
+                  {
+                    "group": "Conceptos principales",
+                    "pages": [
+                      "es/built-in-policies",
+                      "es/custom-policies",
+                      "es/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "es/cli/dashboard",
+                      "es/cli/install-policies",
+                      "es/cli/remove-policies",
+                      "es/cli/list-policies",
+                      "es/cli/hook",
+                      "es/cli/version",
+                      "es/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Herramientas",
+                    "pages": ["es/dashboard"]
+                  },
+                  {
+                    "group": "Avanzado",
+                    "pages": [
+                      "es/architecture",
+                      "es/testing",
+                      "es/package-aliases",
+                      "es/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Avanzado",
-                "pages": [
-                  "es/architecture",
-                  "es/testing",
-                  "es/package-aliases",
-                  "es/for-agents"
+                "tab": "Ejemplos",
+                "groups": [
+                  {
+                    "group": "Ejemplos",
+                    "pages": ["es/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Ejemplos",
-            "groups": [
+            "language": "pt-BR",
+            "tabs": [
               {
-                "group": "Ejemplos",
-                "pages": [
-                  "es/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "pt-BR",
-        "tabs": [
-          {
-            "tab": "Documentação",
-            "groups": [
-              {
-                "group": "Começando",
-                "pages": [
-                  "pt-br/introduction",
-                  "pt-br/getting-started"
-                ]
-              },
-              {
-                "group": "Conceitos principais",
-                "pages": [
-                  "pt-br/built-in-policies",
-                  "pt-br/custom-policies",
-                  "pt-br/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "pt-br/cli/dashboard",
-                  "pt-br/cli/install-policies",
-                  "pt-br/cli/remove-policies",
-                  "pt-br/cli/list-policies",
-                  "pt-br/cli/hook",
-                  "pt-br/cli/version",
-                  "pt-br/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Ferramentas",
-                "pages": [
-                  "pt-br/dashboard"
+                "tab": "Documentação",
+                "groups": [
+                  {
+                    "group": "Começando",
+                    "pages": ["pt-br/introduction", "pt-br/getting-started"]
+                  },
+                  {
+                    "group": "Conceitos principais",
+                    "pages": [
+                      "pt-br/built-in-policies",
+                      "pt-br/custom-policies",
+                      "pt-br/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "pt-br/cli/dashboard",
+                      "pt-br/cli/install-policies",
+                      "pt-br/cli/remove-policies",
+                      "pt-br/cli/list-policies",
+                      "pt-br/cli/hook",
+                      "pt-br/cli/version",
+                      "pt-br/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Ferramentas",
+                    "pages": ["pt-br/dashboard"]
+                  },
+                  {
+                    "group": "Avançado",
+                    "pages": [
+                      "pt-br/architecture",
+                      "pt-br/testing",
+                      "pt-br/package-aliases",
+                      "pt-br/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Avançado",
-                "pages": [
-                  "pt-br/architecture",
-                  "pt-br/testing",
-                  "pt-br/package-aliases",
-                  "pt-br/for-agents"
+                "tab": "Exemplos",
+                "groups": [
+                  {
+                    "group": "Exemplos",
+                    "pages": ["pt-br/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Exemplos",
-            "groups": [
+            "language": "de",
+            "tabs": [
               {
-                "group": "Exemplos",
-                "pages": [
-                  "pt-br/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "de",
-        "tabs": [
-          {
-            "tab": "Dokumentation",
-            "groups": [
-              {
-                "group": "Erste Schritte",
-                "pages": [
-                  "de/introduction",
-                  "de/getting-started"
-                ]
-              },
-              {
-                "group": "Kernkonzepte",
-                "pages": [
-                  "de/built-in-policies",
-                  "de/custom-policies",
-                  "de/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "de/cli/dashboard",
-                  "de/cli/install-policies",
-                  "de/cli/remove-policies",
-                  "de/cli/list-policies",
-                  "de/cli/hook",
-                  "de/cli/version",
-                  "de/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Werkzeuge",
-                "pages": [
-                  "de/dashboard"
+                "tab": "Dokumentation",
+                "groups": [
+                  {
+                    "group": "Erste Schritte",
+                    "pages": ["de/introduction", "de/getting-started"]
+                  },
+                  {
+                    "group": "Kernkonzepte",
+                    "pages": [
+                      "de/built-in-policies",
+                      "de/custom-policies",
+                      "de/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "de/cli/dashboard",
+                      "de/cli/install-policies",
+                      "de/cli/remove-policies",
+                      "de/cli/list-policies",
+                      "de/cli/hook",
+                      "de/cli/version",
+                      "de/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Werkzeuge",
+                    "pages": ["de/dashboard"]
+                  },
+                  {
+                    "group": "Fortgeschritten",
+                    "pages": [
+                      "de/architecture",
+                      "de/testing",
+                      "de/package-aliases",
+                      "de/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Fortgeschritten",
-                "pages": [
-                  "de/architecture",
-                  "de/testing",
-                  "de/package-aliases",
-                  "de/for-agents"
+                "tab": "Beispiele",
+                "groups": [
+                  {
+                    "group": "Beispiele",
+                    "pages": ["de/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Beispiele",
-            "groups": [
+            "language": "fr",
+            "tabs": [
               {
-                "group": "Beispiele",
-                "pages": [
-                  "de/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "fr",
-        "tabs": [
-          {
-            "tab": "Documentation",
-            "groups": [
-              {
-                "group": "Démarrage",
-                "pages": [
-                  "fr/introduction",
-                  "fr/getting-started"
-                ]
-              },
-              {
-                "group": "Concepts clés",
-                "pages": [
-                  "fr/built-in-policies",
-                  "fr/custom-policies",
-                  "fr/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "fr/cli/dashboard",
-                  "fr/cli/install-policies",
-                  "fr/cli/remove-policies",
-                  "fr/cli/list-policies",
-                  "fr/cli/hook",
-                  "fr/cli/version",
-                  "fr/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Outils",
-                "pages": [
-                  "fr/dashboard"
+                "tab": "Documentation",
+                "groups": [
+                  {
+                    "group": "Démarrage",
+                    "pages": ["fr/introduction", "fr/getting-started"]
+                  },
+                  {
+                    "group": "Concepts clés",
+                    "pages": [
+                      "fr/built-in-policies",
+                      "fr/custom-policies",
+                      "fr/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "fr/cli/dashboard",
+                      "fr/cli/install-policies",
+                      "fr/cli/remove-policies",
+                      "fr/cli/list-policies",
+                      "fr/cli/hook",
+                      "fr/cli/version",
+                      "fr/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Outils",
+                    "pages": ["fr/dashboard"]
+                  },
+                  {
+                    "group": "Avancé",
+                    "pages": [
+                      "fr/architecture",
+                      "fr/testing",
+                      "fr/package-aliases",
+                      "fr/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Avancé",
-                "pages": [
-                  "fr/architecture",
-                  "fr/testing",
-                  "fr/package-aliases",
-                  "fr/for-agents"
+                "tab": "Exemples",
+                "groups": [
+                  {
+                    "group": "Exemples",
+                    "pages": ["fr/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Exemples",
-            "groups": [
+            "language": "ru",
+            "tabs": [
               {
-                "group": "Exemples",
-                "pages": [
-                  "fr/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "ru",
-        "tabs": [
-          {
-            "tab": "Документация",
-            "groups": [
-              {
-                "group": "Начало работы",
-                "pages": [
-                  "ru/introduction",
-                  "ru/getting-started"
-                ]
-              },
-              {
-                "group": "Основные концепции",
-                "pages": [
-                  "ru/built-in-policies",
-                  "ru/custom-policies",
-                  "ru/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "ru/cli/dashboard",
-                  "ru/cli/install-policies",
-                  "ru/cli/remove-policies",
-                  "ru/cli/list-policies",
-                  "ru/cli/hook",
-                  "ru/cli/version",
-                  "ru/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Инструменты",
-                "pages": [
-                  "ru/dashboard"
+                "tab": "Документация",
+                "groups": [
+                  {
+                    "group": "Начало работы",
+                    "pages": ["ru/introduction", "ru/getting-started"]
+                  },
+                  {
+                    "group": "Основные концепции",
+                    "pages": [
+                      "ru/built-in-policies",
+                      "ru/custom-policies",
+                      "ru/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "ru/cli/dashboard",
+                      "ru/cli/install-policies",
+                      "ru/cli/remove-policies",
+                      "ru/cli/list-policies",
+                      "ru/cli/hook",
+                      "ru/cli/version",
+                      "ru/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Инструменты",
+                    "pages": ["ru/dashboard"]
+                  },
+                  {
+                    "group": "Продвинутый",
+                    "pages": [
+                      "ru/architecture",
+                      "ru/testing",
+                      "ru/package-aliases",
+                      "ru/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Продвинутый",
-                "pages": [
-                  "ru/architecture",
-                  "ru/testing",
-                  "ru/package-aliases",
-                  "ru/for-agents"
+                "tab": "Примеры",
+                "groups": [
+                  {
+                    "group": "Примеры",
+                    "pages": ["ru/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Примеры",
-            "groups": [
+            "language": "hi",
+            "tabs": [
               {
-                "group": "Примеры",
-                "pages": [
-                  "ru/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "hi",
-        "tabs": [
-          {
-            "tab": "दस्तावेज़",
-            "groups": [
-              {
-                "group": "शुरू करें",
-                "pages": [
-                  "hi/introduction",
-                  "hi/getting-started"
-                ]
-              },
-              {
-                "group": "मूल अवधारणाएँ",
-                "pages": [
-                  "hi/built-in-policies",
-                  "hi/custom-policies",
-                  "hi/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "hi/cli/dashboard",
-                  "hi/cli/install-policies",
-                  "hi/cli/remove-policies",
-                  "hi/cli/list-policies",
-                  "hi/cli/hook",
-                  "hi/cli/version",
-                  "hi/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "उपकरण",
-                "pages": [
-                  "hi/dashboard"
+                "tab": "दस्तावेज़",
+                "groups": [
+                  {
+                    "group": "शुरू करें",
+                    "pages": ["hi/introduction", "hi/getting-started"]
+                  },
+                  {
+                    "group": "मूल अवधारणाएँ",
+                    "pages": [
+                      "hi/built-in-policies",
+                      "hi/custom-policies",
+                      "hi/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "hi/cli/dashboard",
+                      "hi/cli/install-policies",
+                      "hi/cli/remove-policies",
+                      "hi/cli/list-policies",
+                      "hi/cli/hook",
+                      "hi/cli/version",
+                      "hi/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "उपकरण",
+                    "pages": ["hi/dashboard"]
+                  },
+                  {
+                    "group": "उन्नत",
+                    "pages": [
+                      "hi/architecture",
+                      "hi/testing",
+                      "hi/package-aliases",
+                      "hi/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "उन्नत",
-                "pages": [
-                  "hi/architecture",
-                  "hi/testing",
-                  "hi/package-aliases",
-                  "hi/for-agents"
+                "tab": "उदाहरण",
+                "groups": [
+                  {
+                    "group": "उदाहरण",
+                    "pages": ["hi/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "उदाहरण",
-            "groups": [
+            "language": "tr",
+            "tabs": [
               {
-                "group": "उदाहरण",
-                "pages": [
-                  "hi/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "tr",
-        "tabs": [
-          {
-            "tab": "Belgeler",
-            "groups": [
-              {
-                "group": "Başlangıç",
-                "pages": [
-                  "tr/introduction",
-                  "tr/getting-started"
-                ]
-              },
-              {
-                "group": "Temel Kavramlar",
-                "pages": [
-                  "tr/built-in-policies",
-                  "tr/custom-policies",
-                  "tr/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "tr/cli/dashboard",
-                  "tr/cli/install-policies",
-                  "tr/cli/remove-policies",
-                  "tr/cli/list-policies",
-                  "tr/cli/hook",
-                  "tr/cli/version",
-                  "tr/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Araçlar",
-                "pages": [
-                  "tr/dashboard"
+                "tab": "Belgeler",
+                "groups": [
+                  {
+                    "group": "Başlangıç",
+                    "pages": ["tr/introduction", "tr/getting-started"]
+                  },
+                  {
+                    "group": "Temel Kavramlar",
+                    "pages": [
+                      "tr/built-in-policies",
+                      "tr/custom-policies",
+                      "tr/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "tr/cli/dashboard",
+                      "tr/cli/install-policies",
+                      "tr/cli/remove-policies",
+                      "tr/cli/list-policies",
+                      "tr/cli/hook",
+                      "tr/cli/version",
+                      "tr/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Araçlar",
+                    "pages": ["tr/dashboard"]
+                  },
+                  {
+                    "group": "Gelişmiş",
+                    "pages": [
+                      "tr/architecture",
+                      "tr/testing",
+                      "tr/package-aliases",
+                      "tr/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Gelişmiş",
-                "pages": [
-                  "tr/architecture",
-                  "tr/testing",
-                  "tr/package-aliases",
-                  "tr/for-agents"
+                "tab": "Örnekler",
+                "groups": [
+                  {
+                    "group": "Örnekler",
+                    "pages": ["tr/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Örnekler",
-            "groups": [
+            "language": "vi",
+            "tabs": [
               {
-                "group": "Örnekler",
-                "pages": [
-                  "tr/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "vi",
-        "tabs": [
-          {
-            "tab": "Tài liệu",
-            "groups": [
-              {
-                "group": "Bắt đầu",
-                "pages": [
-                  "vi/introduction",
-                  "vi/getting-started"
-                ]
-              },
-              {
-                "group": "Khái niệm cốt lõi",
-                "pages": [
-                  "vi/built-in-policies",
-                  "vi/custom-policies",
-                  "vi/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "vi/cli/dashboard",
-                  "vi/cli/install-policies",
-                  "vi/cli/remove-policies",
-                  "vi/cli/list-policies",
-                  "vi/cli/hook",
-                  "vi/cli/version",
-                  "vi/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Công cụ",
-                "pages": [
-                  "vi/dashboard"
+                "tab": "Tài liệu",
+                "groups": [
+                  {
+                    "group": "Bắt đầu",
+                    "pages": ["vi/introduction", "vi/getting-started"]
+                  },
+                  {
+                    "group": "Khái niệm cốt lõi",
+                    "pages": [
+                      "vi/built-in-policies",
+                      "vi/custom-policies",
+                      "vi/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "vi/cli/dashboard",
+                      "vi/cli/install-policies",
+                      "vi/cli/remove-policies",
+                      "vi/cli/list-policies",
+                      "vi/cli/hook",
+                      "vi/cli/version",
+                      "vi/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Công cụ",
+                    "pages": ["vi/dashboard"]
+                  },
+                  {
+                    "group": "Nâng cao",
+                    "pages": [
+                      "vi/architecture",
+                      "vi/testing",
+                      "vi/package-aliases",
+                      "vi/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Nâng cao",
-                "pages": [
-                  "vi/architecture",
-                  "vi/testing",
-                  "vi/package-aliases",
-                  "vi/for-agents"
+                "tab": "Ví dụ",
+                "groups": [
+                  {
+                    "group": "Ví dụ",
+                    "pages": ["vi/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Ví dụ",
-            "groups": [
+            "language": "it",
+            "tabs": [
               {
-                "group": "Ví dụ",
-                "pages": [
-                  "vi/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "it",
-        "tabs": [
-          {
-            "tab": "Documentazione",
-            "groups": [
-              {
-                "group": "Per iniziare",
-                "pages": [
-                  "it/introduction",
-                  "it/getting-started"
-                ]
-              },
-              {
-                "group": "Concetti chiave",
-                "pages": [
-                  "it/built-in-policies",
-                  "it/custom-policies",
-                  "it/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "it/cli/dashboard",
-                  "it/cli/install-policies",
-                  "it/cli/remove-policies",
-                  "it/cli/list-policies",
-                  "it/cli/hook",
-                  "it/cli/version",
-                  "it/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "Strumenti",
-                "pages": [
-                  "it/dashboard"
+                "tab": "Documentazione",
+                "groups": [
+                  {
+                    "group": "Per iniziare",
+                    "pages": ["it/introduction", "it/getting-started"]
+                  },
+                  {
+                    "group": "Concetti chiave",
+                    "pages": [
+                      "it/built-in-policies",
+                      "it/custom-policies",
+                      "it/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "it/cli/dashboard",
+                      "it/cli/install-policies",
+                      "it/cli/remove-policies",
+                      "it/cli/list-policies",
+                      "it/cli/hook",
+                      "it/cli/version",
+                      "it/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "Strumenti",
+                    "pages": ["it/dashboard"]
+                  },
+                  {
+                    "group": "Avanzato",
+                    "pages": [
+                      "it/architecture",
+                      "it/testing",
+                      "it/package-aliases",
+                      "it/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "Avanzato",
-                "pages": [
-                  "it/architecture",
-                  "it/testing",
-                  "it/package-aliases",
-                  "it/for-agents"
+                "tab": "Esempi",
+                "groups": [
+                  {
+                    "group": "Esempi",
+                    "pages": ["it/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "Esempi",
-            "groups": [
+            "language": "ar",
+            "tabs": [
               {
-                "group": "Esempi",
-                "pages": [
-                  "it/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "language": "ar",
-        "tabs": [
-          {
-            "tab": "المستندات",
-            "groups": [
-              {
-                "group": "البداية",
-                "pages": [
-                  "ar/introduction",
-                  "ar/getting-started"
-                ]
-              },
-              {
-                "group": "المفاهيم الأساسية",
-                "pages": [
-                  "ar/built-in-policies",
-                  "ar/custom-policies",
-                  "ar/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "ar/cli/dashboard",
-                  "ar/cli/install-policies",
-                  "ar/cli/remove-policies",
-                  "ar/cli/list-policies",
-                  "ar/cli/hook",
-                  "ar/cli/version",
-                  "ar/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "الأدوات",
-                "pages": [
-                  "ar/dashboard"
+                "tab": "المستندات",
+                "groups": [
+                  {
+                    "group": "البداية",
+                    "pages": ["ar/introduction", "ar/getting-started"]
+                  },
+                  {
+                    "group": "المفاهيم الأساسية",
+                    "pages": [
+                      "ar/built-in-policies",
+                      "ar/custom-policies",
+                      "ar/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "ar/cli/dashboard",
+                      "ar/cli/install-policies",
+                      "ar/cli/remove-policies",
+                      "ar/cli/list-policies",
+                      "ar/cli/hook",
+                      "ar/cli/version",
+                      "ar/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "الأدوات",
+                    "pages": ["ar/dashboard"]
+                  },
+                  {
+                    "group": "متقدم",
+                    "pages": [
+                      "ar/architecture",
+                      "ar/testing",
+                      "ar/package-aliases",
+                      "ar/for-agents"
+                    ]
+                  }
                 ]
               },
               {
-                "group": "متقدم",
-                "pages": [
-                  "ar/architecture",
-                  "ar/testing",
-                  "ar/package-aliases",
-                  "ar/for-agents"
+                "tab": "أمثلة",
+                "groups": [
+                  {
+                    "group": "أمثلة",
+                    "pages": ["ar/examples"]
+                  }
                 ]
               }
             ]
           },
           {
-            "tab": "أمثلة",
-            "groups": [
+            "language": "he",
+            "tabs": [
               {
-                "group": "أمثلة",
-                "pages": [
-                  "ar/examples"
+                "tab": "תיעוד",
+                "groups": [
+                  {
+                    "group": "תחילת עבודה",
+                    "pages": ["he/introduction", "he/getting-started"]
+                  },
+                  {
+                    "group": "מושגי יסוד",
+                    "pages": [
+                      "he/built-in-policies",
+                      "he/custom-policies",
+                      "he/configuration"
+                    ]
+                  },
+                  {
+                    "group": "CLI",
+                    "pages": [
+                      "he/cli/dashboard",
+                      "he/cli/install-policies",
+                      "he/cli/remove-policies",
+                      "he/cli/list-policies",
+                      "he/cli/hook",
+                      "he/cli/version",
+                      "he/cli/environment-variables"
+                    ]
+                  },
+                  {
+                    "group": "כלים",
+                    "pages": ["he/dashboard"]
+                  },
+                  {
+                    "group": "מתקדם",
+                    "pages": [
+                      "he/architecture",
+                      "he/testing",
+                      "he/package-aliases",
+                      "he/for-agents"
+                    ]
+                  }
+                ]
+              },
+              {
+                "tab": "דוגמאות",
+                "groups": [
+                  {
+                    "group": "דוגמאות",
+                    "pages": ["he/examples"]
+                  }
                 ]
               }
             ]
           }
-        ]
-      },
-      {
-        "language": "he",
-        "tabs": [
-          {
-            "tab": "תיעוד",
-            "groups": [
-              {
-                "group": "תחילת עבודה",
-                "pages": [
-                  "he/introduction",
-                  "he/getting-started"
-                ]
-              },
-              {
-                "group": "מושגי יסוד",
-                "pages": [
-                  "he/built-in-policies",
-                  "he/custom-policies",
-                  "he/configuration"
-                ]
-              },
-              {
-                "group": "CLI",
-                "pages": [
-                  "he/cli/dashboard",
-                  "he/cli/install-policies",
-                  "he/cli/remove-policies",
-                  "he/cli/list-policies",
-                  "he/cli/hook",
-                  "he/cli/version",
-                  "he/cli/environment-variables"
-                ]
-              },
-              {
-                "group": "כלים",
-                "pages": [
-                  "he/dashboard"
-                ]
-              },
-              {
-                "group": "מתקדם",
-                "pages": [
-                  "he/architecture",
-                  "he/testing",
-                  "he/package-aliases",
-                  "he/for-agents"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "דוגמאות",
-            "groups": [
-              {
-                "group": "דוגמאות",
-                "pages": [
-                  "he/examples"
-                ]
-              }
-            ]
-          }
-        ]
-      }
         ]
       },
       {
@@ -976,10 +871,7 @@
             "groups": [
               {
                 "group": "Getting started",
-                "pages": [
-                  "agenteye/getting-started",
-                  "agenteye/github-token"
-                ]
+                "pages": ["agenteye/getting-started", "agenteye/github-token"]
               },
               {
                 "group": "Deployment",

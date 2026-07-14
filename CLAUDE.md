@@ -392,6 +392,88 @@ For production users the recommended Hermes install is:
 failproofai policies --install --cli hermes --scope user
 ```
 
+### OpenClaw hooks (`~/.openclaw/openclaw.json`)
+
+Like Hermes, this repo does **not** ship a dogfood OpenClaw config — OpenClaw
+(openclaw gateway) is a downstream self-hosted assistant, not something we run
+in-repo. OpenClaw is a **dual-pillar** integration: an **audit** adapter
+(`src/audit/cli-adapters/openclaw.ts`, reads `~/.openclaw/agents/<id>/sessions/*.jsonl`)
+**and** a **live-hook** integration (`openclaw` in `INTEGRATIONS`).
+
+**OpenClaw's enforcement surface is its IN-PROCESS PLUGIN hooks, not shell hooks.**
+OpenClaw has two extension surfaces: file-based **internal hooks**
+(`~/.openclaw/hooks/`) which are **observation-only and cannot block**, and typed
+**plugin hooks** (`api.on(name, handler, {priority, timeoutMs})`) which have
+block/cancel semantics. So — like OpenCode — failproofai ships a **plugin**
+(`openclaw-plugin/`, a static package like `pi-extension/`, shipped in the npm
+tarball via `package.json` "files") that async-spawns the binary and translates
+the verdict. The install registers it in `~/.openclaw/openclaw.json` (JSON):
+
+- `plugins.load.paths[]` ← the shipped `openclaw-plugin/` dir (absolute path)
+- `plugins.entries.failproofai = { enabled: true, hooks: { allowConversationAccess: true } }`
+  (`allowConversationAccess` is required for the raw-conversation hooks
+  `before_agent_run` / `before_agent_finalize`; verified live)
+
+**User-scope only** — OpenClaw has no project config (workspace plugins are
+disabled by default), so `getSettingsPath` ignores scope/cwd. Uninstall only
+edits `openclaw.json`; it **never deletes the shipped plugin dir**.
+
+**Async spawn, never `spawnSync`.** OpenClaw is a long-running multi-channel
+gateway; a sync spawn on every hook would stall every channel. The shim
+(`openclaw-plugin/index.js`) uses async `spawn` + a 30s guard and **fails open**
+(any spawn/parse/timeout error → allow). It carries **no inline tool maps**
+(unlike the OpenCode/Pi shims) — it forwards raw event/tool names and a
+Claude-shaped stdin (`params→tool_input`, `toolName→tool_name`,
+`transcriptPath→transcript_path`, `stopHookActive→stop_hook_active`,
+`sessionKey→session_id`), and the binary canonicalizes via the `OPENCLAW_*`
+maps in `types.ts` (single source of truth).
+
+**Verdict mapping** (`policy-evaluator.ts` emits a flat Pi-style
+`{permission, reason}`; the shim maps per-hook):
+
+| OpenClaw plugin hook | Canonical (`OPENCLAW_EVENT_MAP`) | Veto / mutate? | Shim return on deny |
+|----------------------|----------------------------------|----------------|---------------------|
+| `before_tool_call`   | `PreToolUse`      | ✅ block  | `{block: true, blockReason}` |
+| `after_tool_call`    | `PostToolUse`     | observation | — |
+| `before_agent_run`   | `UserPromptSubmit`| ✅ block  | `{outcome: "block", reason}` |
+| `before_agent_finalize` | `Stop`         | ✅ revise | `{action: "revise", reason}` |
+| `session_start` / `session_end` | `SessionStart` / `SessionEnd` | observation | — |
+| `subagent_ended`     | `SubagentStop`    | observation only | — (cannot veto) |
+| `before_compaction`  | `PreCompact`      | observation | — |
+
+**`before_agent_finalize` is a real turn-end gate** (carries `transcriptPath` +
+`stopHookActive`, ≈ Claude's Stop payload), so the 5 `require-*-before-stop`
+builtins **enforce** on OpenClaw — a deny becomes a `{action:"revise"}` that
+re-runs the turn (unlike Hermes, which has no Stop event at all). **Instruct**
+degrades to allow + stderr note on non-Stop events (no additional-context
+channel); on Stop it emits the MANDATORY-ACTION deny so the revise loop carries
+the directive. **Omitted hooks:** `agent_end` (would double-fire Stop) and
+`message_sending` (outbound-message cancel gate — an OpenClaw-only capability,
+deferred).
+
+**No headless consent prompt** (unlike Hermes, which needed `hooks_auto_accept`)
+— verified live: registering plugin hooks does not prompt on a headless gateway.
+
+**Setup gotcha worth knowing** (hit during live verification): a config
+`env.<PROVIDER>_API_KEY` is **not enough** to make a provider usable — the agent
+runtime only registers a provider once an **auth profile** exists
+(`openclaw models auth paste-api-key --provider <p>`); until then you get a
+misleading `Unknown model: <p>/<model>`. Also, a restrictive `plugins.allow`
+gates **bundled provider discovery** (`openclaw doctor --fix` sets
+`plugins.bundledDiscovery: "compat"`).
+
+**Audit pillar.** Sessions are real JSONL at
+`~/.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl` (UUID-named) + a
+`sessions.json` index keyed by sessionKey. Siblings `<uuid>.trajectory.jsonl`
+(OTel trace) and `.trajectory-path.json` are **ignored**. `OPENCLAW_HOME`
+overrides the home dir for tests. Transcript downloads stream the real file
+(no synthesis, unlike Hermes).
+
+For production users the recommended OpenClaw install is:
+```bash
+failproofai policies --install --cli openclaw --scope user
+```
+
 ## Workflow rules
 
 ### One PR per branch

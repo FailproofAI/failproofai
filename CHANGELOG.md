@@ -10,6 +10,9 @@
 ### Fixes
 - Fix the Pi live `pi list` roundtrip e2e tests against pi-coding-agent ≥0.80: newer Pi no longer trusts project-local `.pi/settings.json` by default, so the tests now detect the installed Pi version and pass `pi list --approve` on ≥0.80 (older Pi trusts project settings without the flag and would reject it) to include the project-scope package failproofai's installer writes (previously `pi list` printed "No packages installed." — failing the install roundtrip and making the uninstall roundtrip pass vacuously). Gated behind `detectPiVersion()`, so it only runs where `pi` is installed. (#491)
 
+### Docs
+- Document OpenClaw across `CLAUDE.md` (new "OpenClaw hooks" section), the README (install examples + logo), and the reference docs — `configuration` / `getting-started` / `dashboard` / `introduction`. (#489)
+
 ## 0.0.13-beta.2 — 2026-07-10
 
 ### Fixes

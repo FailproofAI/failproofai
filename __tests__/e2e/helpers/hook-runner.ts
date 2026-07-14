@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -195,6 +195,27 @@ export function assertFactoryDeny(result: HookRunResult): void {
 export function assertFactoryStopBlock(result: HookRunResult): void {
   // Stop deny/instruct: droid honors `{decision:"block", reason}` on stdout at
   // exit 0 ("if decision is block, Droid does not stop").
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
+}
+
+// ── Devin (Cognition) assertions ───────────────────────────────────────────
+// Devin is a pure Claude-clone that honors `{decision:"block", reason}` on
+// stdout at exit 0 for EVERY event (verified live against devin v3000.1.27 —
+// the block overrode `--permission-mode dangerous`).
+
+export function assertDevinDeny(result: HookRunResult): void {
+  // Non-Stop deny: exit 0, `{decision:"block", reason}` on stdout.
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(typeof result.parsed?.reason).toBe("string");
+}
+
+export function assertDevinStopBlock(result: HookRunResult): void {
+  // Stop deny/instruct: `{decision:"block", reason}` carrying the force-retry
+  // MANDATORY ACTION wording.
   expect(result.exitCode).toBe(0);
   expect(result.parsed?.decision).toBe("block");
   expect(typeof result.parsed?.reason).toBe("string");

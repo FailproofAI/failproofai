@@ -20,6 +20,7 @@ import { listPiTranscriptMetadata, streamPiEvents } from "./pi";
 import { listHermesTranscriptMetadata, streamHermesEvents } from "./hermes";
 import { listOpenClawTranscriptMetadata, streamOpenClawEvents } from "./openclaw";
 import { listFactoryTranscriptMetadata, streamFactoryEvents } from "./factory";
+import { listDevinTranscriptMetadata, streamDevinEvents } from "./devin";
 
 export type { ListOpts };
 
@@ -74,6 +75,11 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "factory",
     listTranscripts: listFactoryTranscriptMetadata,
     streamEvents: streamFactoryEvents,
+  },
+  devin: {
+    cli: "devin",
+    listTranscripts: listDevinTranscriptMetadata,
+    streamEvents: streamDevinEvents,
   },
 };
 

@@ -335,6 +335,26 @@ export async function evaluatePolicies(
         };
       }
 
+      // Devin CLI: a pure Claude-clone that honors `{decision:"block", reason}`
+      // on stdout at exit 0 for EVERY event (verified live against devin
+      // v3000.1.27 — the block overrode `--permission-mode dangerous`). On Stop
+      // the reason carries the MANDATORY-ACTION force-retry wording; on other
+      // events it's the plain blocked message. One branch covers all events.
+      if (session?.cli === "devin") {
+        const reasonText =
+          eventType === "Stop"
+            ? `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`
+            : blockedMessage;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -641,6 +661,27 @@ export async function evaluatePolicies(
         exitCode: 0,
         stdout: "",
         stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Devin CLI: a pure Claude-clone. On Stop, emit the MANDATORY ACTION
+    // wording as `{decision:"block", reason}` on stdout (exit 0) — Devin's
+    // turn-end force-retry channel (its exit-2 is not a force-retry). Every
+    // other event falls through to the generic Claude additionalContext path
+    // below (Devin honors `hookSpecificOutput.additionalContext`).
+    if (session?.cli === "devin" && eventType === "Stop") {
+      const policyAttribution = policyNames.length === 1
+        ? `policy: ${policyNames[0]}`
+        : `policies: ${policyNames.join(", ")}`;
+      const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+        stderr: "",
         policyName: policyNames[0],
         policyNames,
         reason: combined,

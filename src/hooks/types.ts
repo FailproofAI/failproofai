@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -665,6 +665,64 @@ export const FACTORY_TOOL_MAP: Record<string, string> = {
   Task: "Task",
 };
 
+// ── Devin CLI (devin) ───────────────────────────────────────────────────────
+//
+// Devin's CLI (Cognition) is a **pure Claude-clone** external-command hook
+// system — verified LIVE against devin v3000.1.27. Unlike Factory, it uses the
+// standard Claude `"hooks"`-wrapper schema (its config.json also holds
+// `org_id`, `theme_mode`, etc., so writes are merge-preserving via
+// readJsonFile/writeJsonFile). No quirks:
+//
+//   • Config lives under a `"hooks"` key exactly like Claude's settings.json:
+//       user    → ~/.config/devin/config.json  (the `"hooks"` key)
+//       project → <cwd>/.devin/config.json      (the `"hooks"` key)
+//   • Event names are already PascalCase (matching Claude's canonical set), so
+//     there is NO DEVIN_EVENT_MAP and NO handler.ts canonicalization branch.
+//   • The stdin payload is pure Claude snake_case (no normalization needed):
+//       PreToolUse  → {hook_event_name, tool_name:"exec", tool_input:{command}, tool_use_id}
+//       PostToolUse → adds tool_response:{success, output, error}
+//       Stop        → {stop_hook_active}
+//   • Deny contract = `{"decision":"block","reason"}` JSON on stdout at exit 0
+//     (VERIFIED live — it blocked and overrode `--permission-mode dangerous`).
+//     Both non-Stop and Stop use the same `{decision:"block"}` shape (Stop's
+//     reason carries the MANDATORY-ACTION force-retry wording). Devin is
+//     Claude-compatible, so instruct on context-injection events emits
+//     `{hookSpecificOutput:{hookEventName, additionalContext}}`. See
+//     policy-evaluator.ts's `cli === "devin"` branch.
+//
+// Audit pillar: sessions live in SQLite at
+// ~/.local/share/devin/cli/sessions.db (tables `sessions` — one row per
+// session WITH a `working_directory` — and `message_nodes`, whose
+// `chat_message` column is OpenAI-style JSON `{role, content, tool_calls?,
+// tool_call_id?}`). See lib/devin-sessions.ts. `DEVIN_HOME` overrides the home
+// dir for tests.
+
+export const DEVIN_HOOK_SCOPES = ["user", "project"] as const;
+export type DevinHookScope = (typeof DEVIN_HOOK_SCOPES)[number];
+
+export const DEVIN_HOOK_EVENT_TYPES = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PermissionRequest",
+  "Stop",
+  "SessionEnd",
+] as const;
+export type DevinHookEventType = (typeof DEVIN_HOOK_EVENT_TYPES)[number];
+
+/**
+ * Devin's tool names → Claude PascalCase canonical names so existing builtin
+ * policies (which match `toolName === "Bash"`, etc.) fire unchanged. Verified
+ * live against devin v3000.1.27: the shell tool runs as `exec` and its
+ * `tool_input.command` is already the canonical Bash key, so there is NO
+ * DEVIN_TOOL_INPUT_MAP. All other Devin tool names pass through unchanged via
+ * the `?? raw` fallback.
+ */
+export const DEVIN_TOOL_MAP: Record<string, string> = {
+  exec: "Bash",
+};
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -737,7 +795,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

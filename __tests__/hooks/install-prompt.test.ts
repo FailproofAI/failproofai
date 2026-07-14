@@ -141,9 +141,9 @@ describe("hooks/install-prompt", () => {
         "install",
       );
 
-      // 1 aggregate "all" + 2 detected + 7 undetected
-      expect(options).toHaveLength(10);
-      expect(undetected).toEqual(["copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"]);
+      // 1 aggregate "all" + 2 detected + 8 undetected
+      expect(options).toHaveLength(11);
+      expect(undetected).toEqual(["copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"]);
 
       expect(options[0]).toMatchObject({ isAll: true, detected: true, value: ["claude", "codex"] });
       expect(options[0].label).toBe("Install for all 2 detected");
@@ -165,6 +165,7 @@ describe("hooks/install-prompt", () => {
         "Hermes",
         "OpenClaw",
         "Factory Droid",
+        "Devin CLI",
       ]);
     });
 
@@ -181,16 +182,16 @@ describe("hooks/install-prompt", () => {
       expect(options.every((o) => o.detected)).toBe(true);
     });
 
-    it("install with all 9 detected: no aggregate-row needed beyond the standard one, no undetected section", async () => {
+    it("install with all 10 detected: no aggregate-row needed beyond the standard one, no undetected section", async () => {
       const { buildCliMenuOptions } = await import("../../src/hooks/install-prompt");
       const { options, undetected } = buildCliMenuOptions(
-        ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"],
+        ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"],
         "install",
       );
 
       expect(undetected).toEqual([]);
-      expect(options).toHaveLength(10); // aggregate + 9 detected
-      expect(options[0].label).toBe("Install for all 9 detected");
+      expect(options).toHaveLength(11); // aggregate + 10 detected
+      expect(options[0].label).toBe("Install for all 10 detected");
     });
 
     it("install with 1 detected + many undetected: skips aggregate row (1 ≯ 1)", async () => {

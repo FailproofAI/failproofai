@@ -23,6 +23,7 @@ import {
   hermes,
   openclaw,
   factory,
+  devin,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -39,6 +40,7 @@ import {
   HERMES_HOOK_EVENT_TYPES,
   HERMES_EVENT_MAP,
   FACTORY_HOOK_EVENT_TYPES,
+  DEVIN_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
@@ -73,7 +75,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -110,6 +112,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('factory') returns factory", () => {
     expect(getIntegration("factory")).toBe(factory);
+  });
+
+  it("getIntegration('devin') returns devin", () => {
+    expect(getIntegration("devin")).toBe(devin);
   });
 
   it("getIntegration throws for unknown id", () => {
@@ -1274,5 +1280,119 @@ describe("Factory Droid integration", () => {
     factory.writeSettings(settingsPath, settings);
 
     expect(factory.hooksInstalledInSettings("project", tempDir)).toBe(true);
+  });
+});
+
+describe("Devin CLI integration", () => {
+  it("getSettingsPath maps user → ~/.config/devin/config.json and project → <cwd>/.devin/config.json", () => {
+    expect(devin.getSettingsPath("project", tempDir)).toBe(
+      resolve(tempDir, ".devin", "config.json"),
+    );
+    expect(devin.getSettingsPath("user")).toMatch(/\.config\/devin\/config\.json$/);
+  });
+
+  it("scopes are user|project (no local)", () => {
+    expect(devin.scopes).toEqual(["user", "project"]);
+  });
+
+  it("subscribes to the 7 verified devin events", () => {
+    expect(DEVIN_HOOK_EVENT_TYPES).toEqual([
+      "SessionStart",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "PermissionRequest",
+      "Stop",
+      "SessionEnd",
+    ]);
+  });
+
+  it("every devin event is a canonical HookEventType (no event map needed)", () => {
+    const canonical = new Set<string>(HOOK_EVENT_TYPES);
+    for (const ev of DEVIN_HOOK_EVENT_TYPES) {
+      expect(canonical.has(ev), `${ev} must be a HookEventType`).toBe(true);
+    }
+  });
+
+  it("buildHookEntry includes --cli devin and a 60s timeout", () => {
+    const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
+    expect(entry.command).toContain("--cli devin");
+    expect(entry.command).toContain("--hook PreToolUse");
+    expect(entry.command).toBe(`"/usr/bin/failproofai" --hook PreToolUse --cli devin`);
+    expect(entry.timeout).toBe(60);
+    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("project scope uses npx -y failproofai", () => {
+    const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli devin");
+  });
+
+  it("writeHookEntries stores events under a Claude-style `hooks` wrapper", () => {
+    const settings: Record<string, unknown> = {};
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, unknown[]>;
+    expect(hooks).toBeDefined();
+    for (const eventType of DEVIN_HOOK_EVENT_TYPES) {
+      expect(Array.isArray(hooks[eventType])).toBe(true);
+    }
+  });
+
+  it("writeHookEntries preserves other top-level config keys (org_id, theme_mode)", () => {
+    const settings: Record<string, unknown> = { org_id: "acme", theme_mode: "dark" };
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    expect(settings.org_id).toBe("acme");
+    expect(settings.theme_mode).toBe("dark");
+  });
+
+  it("re-running writeHookEntries is idempotent", () => {
+    const settings: Record<string, unknown> = {};
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    devin.writeHookEntries(settings, "/different/path/failproofai", "user");
+    const hooks = settings.hooks as Record<string, Array<{ hooks: unknown[] }>>;
+    expect(hooks.PreToolUse).toHaveLength(1);
+    expect(hooks.PreToolUse[0].hooks).toHaveLength(1);
+  });
+
+  it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
+    const settingsPath = devin.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    devin.writeSettings(settingsPath, settings);
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const removed = devin.removeHooksFromFile(settingsPath);
+    expect(removed).toBe(DEVIN_HOOK_EVENT_TYPES.length);
+
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    expect(after.hooks).toBeUndefined();
+  });
+
+  it("removeHooksFromFile preserves a user's own hook entries and other keys", () => {
+    const settingsPath = devin.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {
+      org_id: "acme",
+      hooks: {
+        PreToolUse: [{ hooks: [{ type: "command", command: "my-own-hook" }] }],
+      },
+    };
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    devin.writeSettings(settingsPath, settings);
+
+    devin.removeHooksFromFile(settingsPath);
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, any>;
+    expect(after.org_id).toBe("acme");
+    const flattened = (after.hooks?.PreToolUse ?? []).flatMap((m: any) => m.hooks ?? []);
+    expect(flattened.some((h: any) => h.command === "my-own-hook")).toBe(true);
+    expect(flattened.some((h: any) => h[FAILPROOFAI_HOOK_MARKER] === true)).toBe(false);
+  });
+
+  it("hooksInstalledInSettings detects installed hooks", () => {
+    const settingsPath = devin.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    devin.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    devin.writeSettings(settingsPath, settings);
+
+    expect(devin.hooksInstalledInSettings("project", tempDir)).toBe(true);
   });
 });

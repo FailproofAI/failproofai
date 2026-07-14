@@ -59,6 +59,11 @@ export function resolveTranscriptPath(
       // Factory writes real JSONL at
       // ~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl (Claude-style).
       return findFactoryTranscript(sessionId) ?? undefined;
+    case "devin":
+      // Devin keeps sessions in SQLite (~/.local/share/devin/cli/sessions.db);
+      // there is no on-disk transcript file, so hand back a virtual path (like
+      // opencode) — audit/download read the DB directly.
+      return `devin-db://${sessionId}`;
     case "opencode":
       return `opencode-db://${sessionId}`;
     case "hermes":

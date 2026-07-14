@@ -669,3 +669,66 @@ export const FactoryPayloads = {
     };
   },
 };
+
+/**
+ * Devin (Cognition) payload factories. Devin is a pure Claude-clone: its hook
+ * stdin is Claude snake_case (`session_id`, `transcript_path`, `cwd`,
+ * `permission_mode`, `hook_event_name`, `tool_name`, `tool_input`) with
+ * already-PascalCase event names — so no payload or event canonicalization is
+ * needed. Devin's shell tool is `exec` (mapped to Bash via DEVIN_TOOL_MAP);
+ * `tool_input.command` is already canonical. Verified live against devin
+ * v3000.1.27.
+ */
+const DEVIN_SESSION_ID = "test-session-devin-001";
+
+export const DevinPayloads = {
+  preToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: DEVIN_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PreToolUse",
+        tool_name: "exec",
+        tool_input: { command },
+        tool_use_id: "call_devin_0001",
+      };
+    },
+  },
+  postToolUse: {
+    bash(command: string, output: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: DEVIN_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        permission_mode: "default",
+        hook_event_name: "PostToolUse",
+        tool_name: "exec",
+        tool_input: { command },
+        tool_response: { success: true, output, error: null },
+        tool_use_id: "call_devin_0001",
+      };
+    },
+  },
+  userPromptSubmit(prompt: string, cwd: string): Record<string, unknown> {
+    return {
+      session_id: DEVIN_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      permission_mode: "default",
+      hook_event_name: "UserPromptSubmit",
+      prompt,
+    };
+  },
+  stop(cwd: string): Record<string, unknown> {
+    return {
+      session_id: DEVIN_SESSION_ID,
+      transcript_path: TRANSCRIPT_PATH,
+      cwd,
+      permission_mode: "default",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    };
+  },
+};

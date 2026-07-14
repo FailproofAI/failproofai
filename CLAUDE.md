@@ -483,6 +483,67 @@ For production users the recommended Factory install is:
 failproofai policies --install --cli factory --scope project
 ```
 
+### Devin CLI hooks (`~/.config/devin/config.json` / `.devin/config.json`)
+
+Devin's CLI (Cognition) is a **dual-pillar** integration (live hooks + audit),
+supporting **user + project** scope. It is a **pure Claude-clone** — the entire
+contract below was **verified live against devin v3000.1.27** — so the
+Integration in `integrations.ts` mirrors `claudeCode` verbatim, changing only
+`getSettingsPath` and the `--cli devin` command flag.
+
+**Config lives under a Claude-style `"hooks"` key** (the file also holds
+`org_id`, `theme_mode`, etc., so `readSettings`/`writeSettings` use the
+merge-preserving `readJsonFile`/`writeJsonFile` helpers like Claude/Copilot):
+
+| Scope   | Path                              |
+|---------|-----------------------------------|
+| user    | `~/.config/devin/config.json`     |
+| project | `<cwd>/.devin/config.json`        |
+
+There is **no `local` scope**. Devin does not expose a `$DEVIN_PROJECT_DIR`; the
+installed command uses `"<binaryPath>" --hook <event> --cli devin` (user) /
+`npx -y failproofai --hook <event> --cli devin` (project). `buildHookEntry`
+emits `{type:"command", command, timeout:60, [FAILPROOFAI_HOOK_MARKER]:true}`
+— Devin reads Claude's seconds-based `timeout`.
+
+**Events** (`DEVIN_HOOK_EVENT_TYPES`, all PascalCase → **no `DEVIN_EVENT_MAP`,
+no `handler.ts` branch**): `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
+`PostToolUse`, `PermissionRequest`, `Stop`, `SessionEnd`. The stdin payload is
+**pure Claude snake_case → no normalization**: PreToolUse `{hook_event_name,
+tool_name:"exec", tool_input:{command}, tool_use_id}`; PostToolUse adds
+`tool_response:{success, output, error}`; Stop `{stop_hook_active}`.
+
+**Tool-name canonicalization** (`DEVIN_TOOL_MAP`): `exec→Bash` only (the shell
+tool; `tool_input.command` is already the canonical Bash key, so there is **no**
+`DEVIN_TOOL_INPUT_MAP`). All other Devin tool names pass through unchanged.
+
+**Deny contract = `{"decision":"block","reason"}` JSON on stdout at exit 0**
+(VERIFIED live — the block overrode `--permission-mode dangerous`).
+`policy-evaluator.ts`'s `cli === "devin"` deny branch emits this shape for
+**every** event: non-Stop → `{decision:"block", reason: blockedMessage}`;
+Stop → `{decision:"block", reason: <MANDATORY ACTION text>}` (force-retry for the
+5 `require-*-before-stop` builtins). **Instruct**: Devin is Claude-compatible, so
+on Stop it emits the `{decision:"block"}` MANDATORY text, and every
+context-injection event falls through to the generic Claude
+`{hookSpecificOutput:{hookEventName, additionalContext}}` path.
+
+**Audit pillar** (VERIFIED): sessions live in SQLite at
+`~/.local/share/devin/cli/sessions.db`. The `sessions` table has one row per
+session **with a real `working_directory`** (so sessions group by project cwd
+like Claude, unlike cwd-less Hermes); `message_nodes.chat_message` is
+OpenAI-style JSON (`{role, content, tool_calls?:[{id, name, arguments}],
+tool_call_id?}`). `lib/devin-sessions.ts` (pure, unit-tested parser, cloned from
+the Hermes SQLite pattern) + `lib/devin-projects.ts` enumerate and parse them via
+the shared WAL-aware `lib/sqlite-reader.ts`; `resolve-transcript-path.ts` returns
+a `devin-db://<id>` virtual path (like opencode) and `download-session.ts`
+synthesizes a JSONL export. `DEVIN_HOME` (data dir) / `DEVIN_DB_PATH` (db file)
+override for tests.
+
+For production users the recommended Devin install is:
+```bash
+failproofai policies --install --cli devin --scope project
+```
+
 ## Workflow rules
 
 ### One PR per branch

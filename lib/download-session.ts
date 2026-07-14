@@ -24,6 +24,10 @@ export const HERMES_SESSION_RE = /^[A-Za-z0-9_-]+$/;
  *  OPENCLAW_SESSION_ID_RE in lib/openclaw-sessions.ts. */
 export const OPENCLAW_SESSION_RE = /^[0-9a-fA-F-]{36}$/;
 
+/** Devin session IDs are word-slug style (e.g. `estimated-seeker`). Kept in
+ *  sync with DEVIN_SESSION_ID_RE in lib/devin-sessions.ts. */
+export const DEVIN_SESSION_RE = /^[A-Za-z0-9_-]+$/;
+
 export type DownloadSource =
   | { kind: "file"; path: string }
   | { kind: "synthesized"; body: string; contentType: string; extension: string };
@@ -34,6 +38,7 @@ export function isValidSessionId(cli: CliId, sessionId: string): boolean {
   if (cli === "opencode") return OPENCODE_SESSION_RE.test(sessionId);
   if (cli === "hermes") return HERMES_SESSION_RE.test(sessionId);
   if (cli === "openclaw") return OPENCLAW_SESSION_RE.test(sessionId);
+  if (cli === "devin") return DEVIN_SESSION_RE.test(sessionId);
   return UUID_RE.test(sessionId);
 }
 
@@ -113,6 +118,16 @@ export async function resolveDownloadSource(
     const { findFactoryTranscript } = await import("./factory-sessions");
     const path = findFactoryTranscript(sessionId);
     return path ? { kind: "file", path } : null;
+  }
+
+  if (cli === "devin") {
+    // Devin keeps sessions in SQLite (~/.local/share/devin/cli/sessions.db).
+    // Synthesize a JSONL export of the session's raw chat_message rows.
+    const { getDevinSessionLog } = await import("./devin-sessions");
+    const result = await getDevinSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

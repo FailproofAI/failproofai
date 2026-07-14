@@ -27,7 +27,7 @@
 import type { IntegrationType } from "@/src/hooks/types";
 
 /** Canonical CLI ids the registry knows about. Mirrors `INTEGRATION_TYPES`. */
-export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory"] as const satisfies readonly IntegrationType[];
+export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin"] as const satisfies readonly IntegrationType[];
 export type CliId = (typeof KNOWN_CLI_IDS)[number];
 
 /** Per-CLI metadata consumed by the dashboard. */
@@ -83,6 +83,11 @@ const CLI_ENTRIES: Record<CliId, CliEntry> = {
     id: "factory",
     label: "Factory Droid",
     badgeClasses: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  },
+  devin: {
+    id: "devin",
+    label: "Devin CLI",
+    badgeClasses: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   },
 };
 

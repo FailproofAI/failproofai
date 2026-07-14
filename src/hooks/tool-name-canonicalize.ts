@@ -19,6 +19,7 @@ import {
   OPENCLAW_TOOL_MAP,
   OPENCLAW_TOOL_INPUT_MAP,
   FACTORY_TOOL_MAP,
+  DEVIN_TOOL_MAP,
 } from "./types";
 
 /**
@@ -41,6 +42,9 @@ export function canonicalizeToolName(
   // Factory droid: Execute→Bash, Create→Write, FetchUrl→WebFetch, … (verified
   // live against droid v0.171.0). tool_input keys are already canonical.
   if (cli === "factory") return FACTORY_TOOL_MAP[raw] ?? raw;
+  // Devin CLI: exec→Bash (verified live against devin v3000.1.27).
+  // tool_input.command is already canonical.
+  if (cli === "devin") return DEVIN_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 

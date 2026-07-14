@@ -32,6 +32,8 @@ import {
   OPENCLAW_HOOK_SCOPES,
   FACTORY_HOOK_EVENT_TYPES,
   FACTORY_HOOK_SCOPES,
+  DEVIN_HOOK_EVENT_TYPES,
+  DEVIN_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -1703,6 +1705,138 @@ export const factory: Integration = {
   },
 };
 
+// ── Devin CLI (devin) integration ────────────────────────────────────────────
+//
+// Devin's CLI (Cognition) is a **pure Claude-clone** external-command hook
+// system, verified live against devin v3000.1.27. It uses the standard Claude
+// `"hooks"`-wrapper schema, so this Integration mirrors `claudeCode` verbatim —
+// only the settings paths and the `--cli devin` command flag differ. The
+// config file also carries the operator's own keys (`org_id`, `theme_mode`,
+// …), so readSettings/writeSettings use the merge-preserving JSON helpers.
+//
+// Settings paths (verified against devin v3000.1.27):
+//   user    → ~/.config/devin/config.json  (the `"hooks"` key)
+//   project → <cwd>/.devin/config.json      (the `"hooks"` key)
+// No "local" scope. Event names are already PascalCase (no event map / no
+// handler branch); the stdin payload is Claude snake_case (no normalization).
+// Deny/instruct semantics live in policy-evaluator.ts's `cli === "devin"`
+// branch (`{decision:"block", reason}` on stdout at exit 0).
+
+export const devin: Integration = {
+  id: "devin",
+  displayName: "Devin CLI",
+  scopes: DEVIN_HOOK_SCOPES,
+  eventTypes: DEVIN_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".config", "devin", "config.json");
+      case "project":
+        return resolve(base, ".devin", "config.json");
+      case "local":
+        // Devin has no "local" scope; the CLI rejects --cli devin --scope local
+        // before reaching here, but fall back to project so callers don't crash.
+        return resolve(base, ".devin", "config.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli devin`
+        : `"${binaryPath}" --hook ${eventType} --cli devin`;
+    return {
+      type: "command",
+      command,
+      // Devin reads `timeout` in SECONDS like Claude. 60 = 60s.
+      timeout: 60,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as ClaudeSettings;
+    if (!s.hooks) s.hooks = {};
+
+    for (const eventType of DEVIN_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      if (!s.hooks[eventType]) s.hooks[eventType] = [];
+      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      if (!found) matchers.push({ hooks: [hookEntry] });
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as ClaudeSettings;
+    if (!settings.hooks) return 0;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings.hooks)) {
+      const matchers = settings.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i];
+        if (!matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings.hooks[eventType];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as ClaudeSettings;
+      if (!settings.hooks) return false;
+      for (const matchers of Object.values(settings.hooks)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers) {
+          if (!matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("devin");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -1720,6 +1854,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   hermes,
   openclaw,
   factory,
+  devin,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

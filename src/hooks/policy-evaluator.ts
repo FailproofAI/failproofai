@@ -285,8 +285,8 @@ export async function evaluatePolicies(
       // shim already routes `hookSpecificOutput.additionalContext` through
       // that path (see buildOpenCodePluginShim's applyDecision), so we emit
       // the deny reason as additionalContext instead of exit-2. Mirrors the
-      // Cursor `followup_message` (line ~157) and Copilot `{decision:"block"}`
-      // (line ~299) Stop branches. SubagentStop is widened in for forward
+      // Cursor `followup_message` and Copilot `{decision:"block"}` Stop
+      // branches. SubagentStop is widened in for forward
       // compat — OpenCode doesn't yet expose subagent boundaries to plugins.
       if (session?.cli === "opencode") {
         if (eventType === "Stop" || eventType === "SubagentStop") {
@@ -509,8 +509,8 @@ export async function evaluatePolicies(
     // Branch first so the rest of the function only handles Claude-shaped
     // responses. We match both Stop and SubagentStop so custom policies
     // subscribing to SubagentStop on Cursor get the same force-retry
-    // semantics — mirrors the cli==="copilot" Stop|SubagentStop widening
-    // at line ~472. Ref: https://cursor.com/docs/hooks (Stdout Response Format).
+    // semantics — mirrors the cli==="copilot" Stop|SubagentStop widening.
+    // Ref: https://cursor.com/docs/hooks (Stdout Response Format).
     if (session?.cli === "cursor") {
       if (eventType === "Stop" || eventType === "SubagentStop") {
         const response = {
@@ -782,7 +782,7 @@ export async function evaluatePolicies(
       // `[WARNING] Hook warning: ...` but does NOT trigger retry. The
       // documented retry shape is `{decision: "block", reason}` JSON on
       // stdout (exit 0). Mirrors the cli==="copilot" branch in the deny
-      // path at line ~279 so custom instruct policies enforce on Copilot.
+      // path so custom instruct policies enforce on Copilot.
       if (session?.cli === "copilot") {
         return {
           exitCode: 0,

@@ -12,7 +12,7 @@ import {
 
 describe("lib/cli-registry", () => {
   it("KNOWN_CLI_IDS lists all supported CLIs in stable order", () => {
-    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
+    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw"]);
   });
 
   it("getCliEntry returns the entry for known ids and undefined for unknown", () => {
@@ -22,7 +22,6 @@ describe("lib/cli-registry", () => {
     expect(getCliEntry("cursor")?.label).toBe("Cursor Agent");
     expect(getCliEntry("opencode")?.label).toBe("OpenCode");
     expect(getCliEntry("pi")?.label).toBe("Pi");
-    expect(getCliEntry("gemini")?.label).toBe("Gemini CLI");
     expect(getCliEntry("hermes")?.label).toBe("Hermes");
     expect(getCliEntry("unknown")).toBeUndefined();
   });
@@ -30,7 +29,6 @@ describe("lib/cli-registry", () => {
   it("getCliLabel falls back to the id itself for unknown", () => {
     expect(getCliLabel("claude")).toBe("Claude Code");
     expect(getCliLabel("pi")).toBe("Pi");
-    expect(getCliLabel("gemini")).toBe("Gemini CLI");
     expect(getCliLabel("xyz")).toBe("xyz");
   });
 
@@ -41,7 +39,6 @@ describe("lib/cli-registry", () => {
     expect(getCliBadgeClasses("cursor")).toContain("emerald");
     expect(getCliBadgeClasses("opencode")).toContain("amber");
     expect(getCliBadgeClasses("pi")).toContain("pink");
-    expect(getCliBadgeClasses("gemini")).toContain("sky");
     expect(getCliBadgeClasses("hermes")).toContain("indigo");
     expect(getCliBadgeClasses("unknown")).toContain("orange"); // falls back to claude
   });
@@ -52,7 +49,6 @@ describe("lib/cli-registry", () => {
     expect(isKnownCli("cursor")).toBe(true);
     expect(isKnownCli("opencode")).toBe(true);
     expect(isKnownCli("pi")).toBe(true);
-    expect(isKnownCli("gemini")).toBe(true);
     expect(isKnownCli("hermes")).toBe(true);
     expect(isKnownCli("nope")).toBe(false);
     expect(isKnownCli(null)).toBe(false);
@@ -74,7 +70,7 @@ describe("lib/cli-registry", () => {
 
   it("listExternalCliEntries excludes claude", () => {
     const ids = listExternalCliEntries().map((c) => c.id);
-    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
+    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw"]);
   });
 
   it("each CLI has a unique badgeClasses string", () => {

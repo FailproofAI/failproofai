@@ -712,20 +712,19 @@ Stop uygulaması yedi desteklenen CLI arasında biraz farklı görünür; çünk
 | Codex | Aynı ajan döngüsü, hemen | Claude ile aynı. |
 | GitHub Copilot CLI | Aynı ajan döngüsü, hemen | Claude ile aynı (Copilot'un `{decision:"block", reason}` yeniden deneme kanalını kullanır — ampirik olarak Copilot CLI 1.0.41'e karşı doğrulanmıştır). |
 | Cursor Agent | Aynı ajan döngüsü, hemen | Claude ile aynı (Cursor'un `{followup_message}` kanalını kullanır — `loop_limit`, varsayılan 5 yeniden denemeler ile sınırlandırılmış). |
-| Gemini CLI | Aynı ajan döngüsü, hemen | Claude ile aynı (Gemini'nin `{decision:"block", reason}` kanalını kullanır; `AfterAgent` üzerinde). |
 | OpenCode | Aynı ajan döngüsü, hemen | Claude ile aynı (OpenCode'un `client.session.prompt(...)` SDK çağrısını kullanır; `hookSpecificOutput.additionalContext` aracılığıyla yönlendirilmiş). |
 | **Pi (pi-coding-agent)** | **Sonraki kullanıcı sırası** | **Kapı devreye girdiğinde Pi görünen şekilde durur** — ajan döngüsü çıkar ve komut isteminin başına dönersiniz. Kapı daha sonra bir sonraki iletişim gönderdiğinizde devreye girer: failproofai iş akışı adımını tamamlamadan önce (commit, push vb.) bir `MANDATORY ACTION REQUIRED` yönergesini o sıraya ait sistem komutunun başına ekler; ne istedinizi yapmadan önce.
 
 <Note>
-**Pi sınırlaması.** Pi'nin `AgentEndEvent` (Claude'un `Stop` hook'unun yukarı akış eşdeğeri) hiçbir Result türü yoktur — Pi'nin ajan döngüsü zaten çıkmış olduğu süredir. Pi, Claude / Copilot / Cursor / Gemini / OpenCode'un yapabildiği şekilde aynı döngüyü yeniden denemeye zorlanamazı.  failproofai kapıyı Pi'nin `before_agent_start` olayına kaydırır (sonraki kullanıcı iletişim sonrasında devreye girer) — iş akışı kontrolü hala uygulanır, yalnızca mevcut sıra yerine sonraki sıra üzerinde.
+**Pi sınırlaması.** Pi'nin `AgentEndEvent` (Claude'un `Stop` hook'unun yukarı akış eşdeğeri) hiçbir Result türü yoktur — Pi'nin ajan döngüsü zaten çıkmış olduğu süredir. Pi, Claude / Copilot / Cursor / OpenCode'un yapabildiği şekilde aynı döngüyü yeniden denemeye zorlanamazı.  failproofai kapıyı Pi'nin `before_agent_start` olayına kaydırır (sonraki kullanıcı iletişim sonrasında devreye girer) — iş akışı kontrolü hala uygulanır, yalnızca mevcut sıra yerine sonraki sıra üzerinde.
 
 **Bunu pratikte ne anlama gelir:**
 
 - Pi durundan sonra, reddetme nedeni oturum kimliği tarafından bellek içinde anahtarlanmış şekilde yakalanır. Aynı Pi işlemi içinde gönderdiğiniz çok sonraki istişare bunu boşaltır: LLM sistem komutunun üstünde `MANDATORY ACTION REQUIRED` yönergesini görür, commits (veya pushes / açıklık PR / CI'yi bekler) ve ancak o zaman istediğiniz şeye devam eder. Yakalanan reddetme nedeni tek atış — bir kez boşaltıldıktan sonra kapı açıktır.
-- Kapı Pi'nin işlem ömrü tarafından sınırlandırılır. Turlar arasında Pi'yi `Ctrl+C` yaparsanız veya çıkarsanız, bellek içi giriş işlemle birlikte bırakılır ve kapı kaçırılır. Claude, Copilot, Cursor, Gemini ve OpenCode'un aynı sınırı vardır (ajanı öldürün ve kapı kaçırılır) — Pi sadece bunu daha görünür hale getirir; çünkü ajan kapı devreye girmeden önce görünen şekilde çıkar.
+- Kapı Pi'nin işlem ömrü tarafından sınırlandırılır. Turlar arasında Pi'yi `Ctrl+C` yaparsanız veya çıkarsanız, bellek içi giriş işlemle birlikte bırakılır ve kapı kaçırılır. Claude, Copilot, Cursor ve OpenCode'un aynı sınırı vardır (ajanı öldürün ve kapı kaçırılır) — Pi sadece bunu daha görünür hale getirir; çünkü ajan kapı devreye girmeden önce görünen şekilde çıkar.
 - Beklemede olan bir reddetme herhangi bir nedenle `session_shutdown` üzerine de temizlenir (`new` / `resume` / `fork` / `quit`), bu nedenle önceki oturumdan eski bir kapı, aynı Pi işlemi içinde başlatılan yeni bir oturuma sızamaz.
 
-Claude tarzı aynı döngü yeniden denemesine ihtiyacınız varsa, `Stop` ilkelerinizi desteklenen diğer altı CLI'den birinin altında çalıştırın. Pi yukarı akışını gelecek bir Result türü ile izliyoruz; `AgentEndEvent` üzerinde bu boşluğu kapatmamıza izin verecektir.
+Claude tarzı aynı döngü yeniden denemesine ihtiyacınız varsa, `Stop` ilkelerinizi desteklenen diğer beş CLI'den birinin altında çalıştırın. Pi yukarı akışını gelecek bir Result türü ile izliyoruz; `AgentEndEvent` üzerinde bu boşluğu kapatmamıza izin verecektir.
 </Note>
 
 ### `require-commit-before-stop`

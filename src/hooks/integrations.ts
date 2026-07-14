@@ -26,8 +26,6 @@ import {
   OPENCODE_HOOK_SCOPES,
   PI_HOOK_EVENT_TYPES,
   PI_HOOK_SCOPES,
-  GEMINI_HOOK_EVENT_TYPES,
-  GEMINI_HOOK_SCOPES,
   HERMES_HOOK_EVENT_TYPES,
   HERMES_HOOK_SCOPES,
   OPENCLAW_HOOK_EVENT_TYPES,
@@ -312,8 +310,7 @@ export const codex: Integration = {
       type: "command",
       // Codex reads `timeout` in SECONDS (the field is literally `timeout`,
       // default 600 per https://developers.openai.com/codex/hooks) — same unit as
-      // Claude/Cursor/Copilot, and unlike Gemini, whose `timeout` is in
-      // milliseconds (default 60000). 60 = 60s, not 60000ms (~16.7h).
+      // Claude/Cursor/Copilot. 60 = 60s.
       command,
       timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
@@ -1288,163 +1285,6 @@ function makePiProjectRelativeEntry(extPath: string): string {
   // works for the local user.
   return extResolved;
 }
-// ── Gemini CLI integration ──────────────────────────────────────────────────
-//
-// Gemini's hook contract is the closest thing to a Claude Code clone we've
-// shipped: same `{matcher, hooks: [{type, command, timeout}]}` settings shape,
-// PascalCase event names, snake_case stdin payload field names (session_id,
-// tool_name, tool_input, hook_event_name, cwd, transcript_path), subprocess
-// execution model, and `$CLAUDE_PROJECT_DIR` env-var alias on top of its own
-// `$GEMINI_PROJECT_DIR`. The integration is structurally identical to
-// claudeCode below, with three deltas:
-//
-//   • Settings paths: ~/.gemini/settings.json (user) / <cwd>/.gemini/settings.json (project).
-//     System scope (/etc/gemini-cli/settings.json) is documented but not exposed.
-//
-//   • Matcher field: each Gemini matcher entry carries an explicit `matcher`
-//     regex (e.g. `"write_file|replace"`). We default to `"*"` so policies fire
-//     on every tool call, mirroring the failproofai default of "every event,
-//     every tool". Users can hand-edit settings.json to scope tighter; we
-//     preserve their `matcher` field across re-installs by NOT replacing
-//     entries that aren't failproofai-marked.
-//
-//   • Tool name canonicalization happens in handler.ts (snake_case →
-//     PascalCase via GEMINI_TOOL_MAP) so policies match unchanged; not the
-//     install layer's concern.
-//
-// Detected via the `gemini` binary on PATH.
-//
-// Ref: https://geminicli.com/docs/hooks/
-
-interface GeminiHookMatcher {
-  matcher?: string;
-  hooks?: Array<ClaudeHookEntry | Record<string, unknown>>;
-}
-
-interface GeminiSettingsFile {
-  hooks?: Record<string, GeminiHookMatcher[]>;
-  [key: string]: unknown;
-}
-
-export const gemini: Integration = {
-  id: "gemini",
-  displayName: "Gemini CLI",
-  scopes: GEMINI_HOOK_SCOPES,
-  eventTypes: GEMINI_HOOK_EVENT_TYPES,
-
-  getSettingsPath(scope, cwd) {
-    const base = cwd ? resolve(cwd) : process.cwd();
-    switch (scope) {
-      case "user":
-        return resolve(homedir(), ".gemini", "settings.json");
-      case "project":
-        return resolve(base, ".gemini", "settings.json");
-      case "local":
-        // Gemini has no "local" scope; CLI rejects --cli gemini --scope local
-        // before reaching here, but fall back to project so callers don't crash.
-        return resolve(base, ".gemini", "settings.json");
-    }
-  },
-
-  readSettings(settingsPath) {
-    return readJsonFile(settingsPath);
-  },
-
-  writeSettings(settingsPath, settings) {
-    writeJsonFile(settingsPath, settings);
-  },
-
-  buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli gemini`
-        : `"${binaryPath}" --hook ${eventType} --cli gemini`;
-    return {
-      type: "command",
-      command,
-      timeout: 60_000,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
-  },
-
-  isFailproofaiHook: isMarkedHook,
-
-  writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as GeminiSettingsFile;
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of GEMINI_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      if (!s.hooks[eventType]) s.hooks[eventType] = [];
-      const matchers: GeminiHookMatcher[] = s.hooks[eventType];
-
-      // Idempotent: replace an existing failproofai-marked entry inside our
-      // own matcher; otherwise append a new `{matcher: "*", hooks: [...]}`.
-      // Hand-written matchers (with their own `matcher` regex) are never
-      // touched — we identify our matcher by checking whether ANY of its
-      // inner hooks are failproofai-marked.
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) matchers.push({ matcher: "*", hooks: [hookEntry] });
-    }
-  },
-
-  removeHooksFromFile(settingsPath) {
-    const settings = this.readSettings(settingsPath) as GeminiSettingsFile;
-    if (!settings.hooks) return 0;
-
-    let removed = 0;
-    for (const eventType of Object.keys(settings.hooks)) {
-      const matchers = settings.hooks[eventType];
-      if (!Array.isArray(matchers)) continue;
-      for (let i = matchers.length - 1; i >= 0; i--) {
-        const matcher = matchers[i];
-        if (!matcher.hooks) continue;
-        const before = matcher.hooks.length;
-        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
-        removed += before - matcher.hooks.length;
-        if (matcher.hooks.length === 0) matchers.splice(i, 1);
-      }
-      if (matchers.length === 0) delete settings.hooks[eventType];
-    }
-    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
-
-    this.writeSettings(settingsPath, settings as Record<string, unknown>);
-    return removed;
-  },
-
-  hooksInstalledInSettings(scope, cwd) {
-    const settingsPath = this.getSettingsPath(scope, cwd);
-    if (!existsSync(settingsPath)) return false;
-    try {
-      const settings = this.readSettings(settingsPath) as GeminiSettingsFile;
-      if (!settings.hooks) return false;
-      for (const matchers of Object.values(settings.hooks)) {
-        if (!Array.isArray(matchers)) continue;
-        for (const matcher of matchers) {
-          if (!matcher.hooks) continue;
-          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
-        }
-      }
-    } catch {
-      // Corrupt settings — treat as not installed
-    }
-    return false;
-  },
-
-  detectInstalled() {
-    return binaryExists("gemini");
-  },
-};
-
 // ── Hermes (hermes-agent) — live hooks (Pillar 1) ────────────────────────────
 //
 // External-command CLI like codex/cursor, but its config is YAML
@@ -1738,7 +1578,6 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   cursor,
   opencode,
   pi,
-  gemini,
   hermes,
   openclaw,
 };

@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    यह आपके इंस्टॉल किए गए agent CLIs में hook entries लिखता है (Claude Code के `~/.claude/settings.json`, OpenAI Codex के `~/.codex/hooks.json`, GitHub Copilot CLI के `~/.copilot/hooks/failproofai.json`, Cursor Agent के `~/.cursor/hooks.json`, OpenCode के generated plugin shim में `~/.config/opencode/plugins/failproofai.mjs` plus `~/.config/opencode/opencode.json` के `plugin` array में एक registration entry, Pi के `~/.pi/agent/settings.json`, Gemini CLI के `~/.gemini/settings.json`, या Hermes के `~/.hermes/config.yaml`)। जब एक से अधिक मौजूद हों तो आपसे prompt किया जाएगा; prompt को छोड़ने के लिए `--cli claude codex copilot cursor opencode pi gemini hermes` (कोई भी subset) पास करें।
+    यह आपके इंस्टॉल किए गए agent CLIs में hook entries लिखता है (Claude Code के `~/.claude/settings.json`, OpenAI Codex के `~/.codex/hooks.json`, GitHub Copilot CLI के `~/.copilot/hooks/failproofai.json`, Cursor Agent के `~/.cursor/hooks.json`, OpenCode के generated plugin shim में `~/.config/opencode/plugins/failproofai.mjs` plus `~/.config/opencode/opencode.json` के `plugin` array में एक registration entry, Pi के `~/.pi/agent/settings.json`, या Hermes के `~/.hermes/config.yaml`)। जब एक से अधिक मौजूद हों तो आपसे prompt किया जाएगा; prompt को छोड़ने के लिए `--cli claude codex copilot cursor opencode pi hermes` (कोई भी subset) पास करें।
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, और Gemini CLI सपोर्ट **beta** है — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, या `--cli gemini` के साथ इंस्टॉल करें। Hermes (hermes-agent, एक Slack/Telegram gateway) user-scope के साथ `--cli hermes` के साथ इंस्टॉल होता है और **साथ ही** एक offline audit source है।
+    GitHub Copilot CLI, Cursor Agent, OpenCode, और Pi सपोर्ट **beta** है — `--cli copilot`, `--cli cursor`, `--cli opencode`, या `--cli pi` के साथ इंस्टॉल करें। Hermes (hermes-agent, एक Slack/Telegram gateway) user-scope के साथ `--cli hermes` के साथ इंस्टॉल होता है और **साथ ही** एक offline audit source है।
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

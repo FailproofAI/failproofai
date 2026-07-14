@@ -253,68 +253,9 @@ workaround (queue the instruction in `tool_call`, drain in the next `context`
 handler by inserting a system message into `event.messages`) is feasible
 but deferred until upstream Pi adds a first-class channel.
 
-### Gemini hooks (`.gemini/settings.json`)
-
-This repo also ships a `.gemini/settings.json` for Gemini CLI sessions, mirroring
-the `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/failproofai.json`,
-`.cursor/hooks.json`, and `.opencode/` setups. Gemini's hook contract is
-intentionally close to Claude Code's: same `{matcher, hooks: [{type, command,
-timeout}]}` matcher-wrapper schema, same PascalCase event names, same
-snake_case stdin payload field names (`session_id`, `tool_name`, `tool_input`,
-`hook_event_name`, `cwd`, `transcript_path`), and a subprocess execution model.
-
-Verified empirically against gemini-cli v0.40.1 — drop a `.gemini/settings.json`
-at the repo root and Gemini picks up failproofai hooks on the next session.
-Settings file paths:
-
-| Scope   | Path                              |
-|---------|-----------------------------------|
-| user    | `~/.gemini/settings.json`         |
-| project | `<cwd>/.gemini/settings.json`     |
-| system  | `/etc/gemini-cli/settings.json` (documented but not exposed by failproofai) |
-
-Gemini exposes both `$GEMINI_PROJECT_DIR` and `$CLAUDE_PROJECT_DIR` (alias
-provided for back-compat) in the hook's environment. The dogfood config in this
-repo uses `$GEMINI_PROJECT_DIR` for clarity; the existing `bun
-$CLAUDE_PROJECT_DIR/...` form would also work because of the alias.
-
-For production users (outside this repo), the recommended Gemini install is:
-```bash
-failproofai policies --install --cli gemini --scope project
-```
-which writes a portable `npx -y failproofai --hook ... --cli gemini` command.
-Same self-reference caveat applies — do **not** install the standard `npx`
-form from inside this repo (it would overwrite the dev `bun bin/failproofai.mjs`
-path, re-fetching failproofai on every hook).
-
-**Tool-name canonicalization.** Gemini's tools are snake_case
-(`run_shell_command`, `read_file`, `read_many_files`, `write_file`, `replace`,
-`glob`, `grep_search`, `list_directory`, `web_fetch`, `google_web_search`,
-`write_todos`, `save_memory`, `ask_user`). The handler translates to Claude
-PascalCase via `GEMINI_TOOL_MAP` so existing builtin policies (matching
-`toolName === "Bash"` etc.) fire unchanged. Unknown tools (MCP `mcp_*`,
-extensions, Skills) pass through unchanged.
-
-**Per-event capability matrix** (verified against gemini-cli v0.40.1 / docs as
-of 2026-04-13):
-
-| Gemini event           | Canonical                  | Veto / mutate? | Notes |
-|------------------------|----------------------------|----------------|-------|
-| `BeforeTool`           | `PreToolUse`               | ✅ deny        | `{decision:"deny", reason}` shape; can rewrite via `hookSpecificOutput.tool_input` (not used today). |
-| `AfterTool`            | `PostToolUse`              | observation    | `additionalContext` injection supported. |
-| `BeforeAgent`          | `UserPromptSubmit`         | ✅ deny        | `{decision:"deny", reason}` + `additionalContext` injection. |
-| `AfterAgent`           | `Stop`                     | ✅ force-retry | `{decision:"block", reason}` mirrors Claude's exit-2-from-Stop "do this before stopping" semantics. Gemini's exit-2 is documented as per-action only ("turn continues"), so we use the JSON shape. |
-| `SessionStart`         | `SessionStart`             | observation    | `additionalContext` injection supported. |
-| `SessionEnd`           | `SessionEnd`               | observation    | No context-injection channel — emitted via stderr only. |
-| `PreCompress`          | `PreCompact`               | observation    | Same. |
-| `Notification`         | `Notification`             | observation    | Same. |
-| `BeforeModel`          | (Gemini-only, no canonical) | observation   | Binary still records activity but no policies match. |
-| `AfterModel`           | (Gemini-only, no canonical) | observation   | Same. |
-| `BeforeToolSelection`  | (Gemini-only, no canonical) | observation   | Same. |
-
 ### Hermes hooks (`~/.hermes/config.yaml`)
 
-Unlike the seven CLIs above, this repo does **not** ship a dogfood Hermes config —
+Unlike the six CLIs above, this repo does **not** ship a dogfood Hermes config —
 Hermes (hermes-agent) is a downstream client's Slack/Telegram gateway, not something
 we run in-repo. Hermes is a **dual-pillar** integration: an **audit** adapter
 (`src/audit/cli-adapters/hermes.ts`, reads `~/.hermes/state.db` directly) **and** a

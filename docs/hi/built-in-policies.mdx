@@ -705,7 +705,7 @@ detect करें जब एजेंट stuck हों या unexpectedly b
 
 ### Per-CLI Stop semantics
 
-Stop enforcement सातों supported CLIs में थोड़ा अलग दिखता है क्योंकि प्रत्येक एक अलग "agent finished" hook contract expose करता है। **outcome** same है — एजेंट workflow gate failing होने पर stop नहीं हो सकता — लेकिन **mechanics** अलग हैं। नीचे की table summarize करती है; केवल Pi के पास एक user-visible quirk है जो समझने के लायक है इससे पहले आप एक `require-*-before-stop` नीति को enable करें।
+Stop enforcement छहों supported CLIs में थोड़ा अलग दिखता है क्योंकि प्रत्येक एक अलग "agent finished" hook contract expose करता है। **outcome** same है — एजेंट workflow gate failing होने पर stop नहीं हो सकता — लेकिन **mechanics** अलग हैं। नीचे की table summarize करती है; केवल Pi के पास एक user-visible quirk है जो समझने के लायक है इससे पहले आप एक `require-*-before-stop` नीति को enable करें।
 
 | CLI | जब gate fires | आप क्या देखते हैं |
 |---|---|---|
@@ -713,20 +713,19 @@ Stop enforcement सातों supported CLIs में थोड़ा अल
 | Codex | Same agent loop, immediately | Claude के समान। |
 | GitHub Copilot CLI | Same agent loop, immediately | Claude के समान (Copilot के `{decision:"block", reason}` retry channel का उपयोग करता है — Copilot CLI 1.0.41 के विरुद्ध empirically verified)। |
 | Cursor Agent | Same agent loop, immediately | Claude के समान (Cursor के `{followup_message}` channel का उपयोग करता है — `loop_limit` द्वारा capped, default 5 retries)। |
-| Gemini CLI | Same agent loop, immediately | Claude के समान (Gemini के `{decision:"block", reason}` channel का उपयोग करता है `AfterAgent` पर)। |
 | OpenCode | Same agent loop, immediately | Claude के समान (OpenCode के `client.session.prompt(...)` SDK call का उपयोग करता है `hookSpecificOutput.additionalContext` के through routed)। |
 | **Pi (pi-coding-agent)** | **Next user turn** | **Pi visibly stops** जब gate fires — इसका agent loop exit होता है और आपको prompt में वापस किया जाता है। Gate फिर next time fires जब आप एक prompt submit करते हैं: failproofai एक `MANDATORY ACTION REQUIRED` directive को उस turn के system prompt में prepend करता है, LLM को instruct करते हुए workflow step (commit, push, आदि) को complete करने के लिए आप जो माँगते हैं उससे पहले। |
 
 <Note>
-**Pi limitation.** Pi के `AgentEndEvent` (Claude के `Stop` hook के upstream equivalent) के पास कोई Result type नहीं है — जब यह fires, Pi के agent loop पहले ही exit हो चुका है। Pi को Claude / Copilot / Cursor / Gemini / OpenCode के तरीके से same loop को retry के लिए force नहीं किया जा सकता। failproofai gate को Pi के `before_agent_start` event में shift करता है (जो next user prompt के बाद fires) ताकि workflow check अभी भी enforce हो, बस next turn पर current के बजाय।
+**Pi limitation.** Pi के `AgentEndEvent` (Claude के `Stop` hook के upstream equivalent) के पास कोई Result type नहीं है — जब यह fires, Pi के agent loop पहले ही exit हो चुका है। Pi को Claude / Copilot / Cursor / OpenCode के तरीके से same loop को retry के लिए force नहीं किया जा सकता। failproofai gate को Pi के `before_agent_start` event में shift करता है (जो next user prompt के बाद fires) ताकि workflow check अभी भी enforce हो, बस next turn पर current के बजाय।
 
 **इसका व्यावहारिक मतलब क्या है:**
 
 - Pi stop करने के बाद, deny reason को in-memory में Pi session id द्वारा keyed capture किया जाता है। बिल्कुल next prompt आप same Pi process में submit करते हैं drains it: LLM को अपने system prompt के top में `MANDATORY ACTION REQUIRED` directive दिखाई देता है, commit करता है (या push / PR खोलता है / CI wait करता है), और फिर ही आपके request के साथ continue करता है। Captured deny reason एक one-shot है — एक बार drain होने के बाद, gate clear है।
-- Gate Pi के process lifetime द्वारा bounded है। यदि आप Pi को `Ctrl+C` करते हैं या turns के बीच quit करते हैं, in-memory entry process के साथ drop हो जाता है और gate miss हो जाता है। Claude, Copilot, Cursor, Gemini, और OpenCode के पास same bound है (एजेंट को kill करो और gate miss हो जाता है) — Pi बस इसे अधिक visible बनाता है क्योंकि एजेंट visibly exit होता है gate firing से पहले।
+- Gate Pi के process lifetime द्वारा bounded है। यदि आप Pi को `Ctrl+C` करते हैं या turns के बीच quit करते हैं, in-memory entry process के साथ drop हो जाता है और gate miss हो जाता है। Claude, Copilot, Cursor, और OpenCode के पास same bound है (एजेंट को kill करो और gate miss हो जाता है) — Pi बस इसे अधिक visible बनाता है क्योंकि एजेंट visibly exit होता है gate firing से पहले।
 - Pending deny भी `session_shutdown` पर किसी भी कारण के लिए clear किया जाता है (`new` / `resume` / `fork` / `quit`), तो prior session से एक stale gate same Pi process में started fresh session में leak नहीं हो सकता।
 
-यदि आपको Claude-style same-loop retry चाहिए, run अपनी `Stop` नीतियों के अंतर्गत किसी और छः supported CLIs के। हम Pi upstream को track कर रहे हैं एक future Result type के लिए `AgentEndEvent` पर जो हमें इस gap को close करने देगा।
+यदि आपको Claude-style same-loop retry चाहिए, run अपनी `Stop` नीतियों के अंतर्गत किसी और पाँच supported CLIs के। हम Pi upstream को track कर रहे हैं एक future Result type के लिए `AgentEndEvent` पर जो हमें इस gap को close करने देगा।
 </Note>
 
 ### `require-commit-before-stop`

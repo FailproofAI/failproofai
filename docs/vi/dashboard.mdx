@@ -25,11 +25,11 @@ Bảng điều khiển đọc trực tiếp từ hệ thống tệp - các thư 
 
 ### Dự án
 
-Liệt kê tất cả các dự án Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_ và Hermes được tìm thấy trên máy của bạn. Các dự án Claude được phát hiện từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được phát hiện bằng cách quét mỗi bản ghi tạm dưới `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được phát hiện bằng cách quét từng `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó; các dự án Cursor Agent được phát hiện bằng cách quét siêu dữ liệu cho mỗi phiên dưới `~/.cursor/agent-sessions/<sessionId>/` (có thể cấu hình qua `CURSOR_HOME`, với `conversations/` và `sessions/` được thử như giải pháp thay thế) cho một vô hướng `cwd` trong `meta.json` / `session.json` / `workspace.yaml`; các dự án OpenCode được phát hiện bằng cách truy vấn cơ sở dữ liệu SQLite của nó tại `~/.local/share/opencode/opencode.db` qua `opencode db --format json` (chúng tôi đọc các bảng `session` và `project` và nhóm theo `project_id`); các dự án Pi được phát hiện bằng cách quét bản ghi tạm JSONL cho mỗi phiên dưới `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (có thể cấu hình qua `PI_SESSIONS_DIR`) và lấy `cwd` từ bản ghi đầu tiên của mỗi phiên; các dự án Gemini CLI được phát hiện bằng cách quét `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (có thể cấu hình qua `GEMINI_SESSIONS_DIR`) và khôi phục cwd chính tắc từ dấu `.project_root` phía bên cạnh; các phiên cổng Hermes được đọc trực tiếp từ kho lưu trữ SQLite của nó tại `~/.hermes/state.db` (có thể cấu hình qua `HERMES_DB_PATH`) và được nhóm thành các dự án `hermes-<source>` theo `source` (Slack/Telegram/cli/cron — các phiên cổng không có cwd). Một dự án đã được sử dụng bởi nhiều CLI được hiển thị dưới dạng một hàng duy nhất với tất cả các huy hiệu phù hợp. Sử dụng menu thả xuống **CLI** phía trên bảng để lọc theo một agent CLI cụ thể; URL lưu lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`.
+Liệt kê tất cả các dự án Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ và Hermes được tìm thấy trên máy của bạn. Các dự án Claude được phát hiện từ `~/.claude/projects/` (hoặc đường dẫn được đặt bởi `CLAUDE_PROJECTS_PATH`); các dự án Codex được phát hiện bằng cách quét mỗi bản ghi tạm dưới `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` và nhóm theo `cwd` được ghi trong bản ghi đầu tiên của mỗi phiên; các dự án Copilot CLI được phát hiện bằng cách quét từng `~/.copilot/session-state/<sessionId>/workspace.yaml` (có thể cấu hình qua `COPILOT_HOME`) và nhóm theo trường `cwd` của nó; các dự án Cursor Agent được phát hiện bằng cách quét siêu dữ liệu cho mỗi phiên dưới `~/.cursor/agent-sessions/<sessionId>/` (có thể cấu hình qua `CURSOR_HOME`, với `conversations/` và `sessions/` được thử như giải pháp thay thế) cho một vô hướng `cwd` trong `meta.json` / `session.json` / `workspace.yaml`; các dự án OpenCode được phát hiện bằng cách truy vấn cơ sở dữ liệu SQLite của nó tại `~/.local/share/opencode/opencode.db` qua `opencode db --format json` (chúng tôi đọc các bảng `session` và `project` và nhóm theo `project_id`); các dự án Pi được phát hiện bằng cách quét bản ghi tạm JSONL cho mỗi phiên dưới `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (có thể cấu hình qua `PI_SESSIONS_DIR`) và lấy `cwd` từ bản ghi đầu tiên của mỗi phiên; các phiên cổng Hermes được đọc trực tiếp từ kho lưu trữ SQLite của nó tại `~/.hermes/state.db` (có thể cấu hình qua `HERMES_DB_PATH`) và được nhóm thành các dự án `hermes-<source>` theo `source` (Slack/Telegram/cli/cron — các phiên cổng không có cwd). Một dự án đã được sử dụng bởi nhiều CLI được hiển thị dưới dạng một hàng duy nhất với tất cả các huy hiệu phù hợp. Sử dụng menu thả xuống **CLI** phía trên bảng để lọc theo một agent CLI cụ thể; URL lưu lựa chọn của bạn dưới dạng `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`.
 
 Mỗi dự án hiển thị:
 - Tên dự án (được lấy từ đường dẫn thư mục)
-- Một huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), `GitHub Copilot` (xanh), `Cursor Agent` (lục bảo), `OpenCode` (hổ phách), `Pi` (hồng), `Gemini CLI` (xanh da trời) và/hoặc `Hermes` (chàm)
+- Một huy hiệu CLI — `Claude Code` (cam), `OpenAI Codex` (tím), `GitHub Copilot` (xanh), `Cursor Agent` (lục bảo), `OpenCode` (hổ phách), `Pi` (hồng) và/hoặc `Hermes` (chàm)
 - Ngày của hoạt động phiên gần đây nhất
 
 Nhấp vào một dự án để xem các phiên của nó.
@@ -48,7 +48,7 @@ Nhấp vào một phiên để mở trình xem phiên.
 
 ### Trình xem phiên
 
-Trình xem phiên trả lời câu hỏi quan trọng cho các agent tự động: agent đã làm gì, và nó có duy trì được theo dõi không? Một huy hiệu CLI bên cạnh tiêu đề cho biết phiên là bản ghi Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI hay Hermes. Nó hiển thị một dòng thời gian của mọi thứ đã xảy ra trong một phiên:
+Trình xem phiên trả lời câu hỏi quan trọng cho các agent tự động: agent đã làm gì, và nó có duy trì được theo dõi không? Một huy hiệu CLI bên cạnh tiêu đề cho biết phiên là bản ghi Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi hay Hermes. Nó hiển thị một dòng thời gian của mọi thứ đã xảy ra trong một phiên:
 
 - **Tin nhắn** - Các phản hồi văn bản và lời nhắc của người dùng từ Claude
 - **Cuộc gọi công cụ** - Mọi công cụ mà Claude gọi, cùng với đầu vào và đầu ra
@@ -56,7 +56,7 @@ Trình xem phiên trả lời câu hỏi quan trọng cho các agent tự độn
 
 Thanh thống kê ở phía trên cùng hiển thị thời lượng phiên, tổng số lệnh gọi công cụ và tóm tắt các quyết định hook (số lượng allow / deny / instruct).
 
-Nhấp vào nút **Download Logs** để xuất phiên. Đối với các phiên Claude Code, Codex, Copilot, Cursor, Pi và Gemini, bạn sẽ nhận được bản ghi JSONL trên đĩa nguyên gốc byte-for-byte; đối với OpenCode (các phiên của nó nằm trong SQLite, không phải trên đĩa), bạn sẽ nhận được một tài liệu JSON phản ánh các bảng `session` / `messages` / `parts` cơ bản.
+Nhấp vào nút **Download Logs** để xuất phiên. Đối với các phiên Claude Code, Codex, Copilot, Cursor và Pi, bạn sẽ nhận được bản ghi JSONL trên đĩa nguyên gốc byte-for-byte; đối với OpenCode (các phiên của nó nằm trong SQLite, không phải trên đĩa), bạn sẽ nhận được một tài liệu JSON phản ánh các bảng `session` / `messages` / `parts` cơ bản.
 
 ### Kiểm toán
 
@@ -76,16 +76,16 @@ Một trang hai tab để quản lý chính sách và xem xét hoạt động.
 
 <Tabs>
   <Tab title="Tab Chính sách">
-  - Chọn nhiều agent CLI nào mà failproofai bảo vệ từ một bảng điều khiển duy nhất — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI và Hermes đều có một hàng với trạng thái cài đặt (`Active` / `Detected` / `Inactive`), đường dẫn cài đặt phạm vi người dùng và một điểm nhấn có thương hiệu. Chọn hoặc bỏ chọn các CLI bạn muốn và nhấp `Apply changes` để cài đặt/gỡ cài đặt chênh lệch trong một bước. Các CLI có tệp nhị phân được phát hiện trên PATH được tính sẵn.
+  - Chọn nhiều agent CLI nào mà failproofai bảo vệ từ một bảng điều khiển duy nhất — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi và Hermes đều có một hàng với trạng thái cài đặt (`Active` / `Detected` / `Inactive`), đường dẫn cài đặt phạm vi người dùng và một điểm nhấn có thương hiệu. Chọn hoặc bỏ chọn các CLI bạn muốn và nhấp `Apply changes` để cài đặt/gỡ cài đặt chênh lệch trong một bước. Các CLI có tệp nhị phân được phát hiện trên PATH được tính sẵn.
   - Bật hoặc tắt các chính sách riêng lẻ bằng một lần nhấp (ghi vào `~/.failproofai/policies-config.json` — được chia sẻ trên mọi CLI được cài đặt)
   - Mở rộng một chính sách để cấu hình các tham số của nó (đối với các chính sách hỗ trợ `policyParams`)
   - Đặt đường dẫn tệp chính sách tùy chỉnh
   </Tab>
   <Tab title="Tab Hoạt động">
   - Lịch sử được phân trang đầy đủ của mọi sự kiện hook đã được kích hoạt trên tất cả các phiên
-  - Lọc theo quyết định, loại sự kiện, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), tên chính sách hoặc ID phiên
-  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh = GitHub Copilot, lục bảo = Cursor Agent, hổ phách = OpenCode, hồng = Pi, xanh da trời = Gemini CLI, chàm = Hermes), tên công cụ, ID phiên và lý do cho các quyết định deny/instruct
-  - Nhấp vào ID phiên để mở bản ghi của nó — trình xem tự động phát hiện CLI nào được kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) và hiển thị huy hiệu CLI phù hợp trong tiêu đề
+  - Lọc theo quyết định, loại sự kiện, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), tên chính sách hoặc ID phiên
+  - Mỗi hàng hiển thị: dấu thời gian, tên chính sách, quyết định, huy hiệu CLI (cam = Claude Code, tím = OpenAI Codex, xanh = GitHub Copilot, lục bảo = Cursor Agent, hổ phách = OpenCode, hồng = Pi, chàm = Hermes), tên công cụ, ID phiên và lý do cho các quyết định deny/instruct
+  - Nhấp vào ID phiên để mở bản ghi của nó — trình xem tự động phát hiện CLI nào được kích hoạt hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) và hiển thị huy hiệu CLI phù hợp trong tiêu đề
   </Tab>
 </Tabs>
 

@@ -10,7 +10,6 @@ const ALL_CLIS: IntegrationType[] = [
   "copilot",
   "cursor",
   "pi",
-  "gemini",
   "opencode",
 ];
 

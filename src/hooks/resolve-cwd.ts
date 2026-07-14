@@ -13,7 +13,7 @@
  *     the dashboard renders an em-dash, and `readMergedHooksConfig(cwd)` /
  *     `loadAllCustomHooks({ sessionCwd })` skip project-scope discovery.
  *
- *   • Claude / Codex / Copilot / Gemini / Pi / OpenCode: stdin's top-level
+ *   • Claude / Codex / Copilot / Pi / OpenCode: stdin's top-level
  *     `cwd` is reliable for every event; passthrough.
  *
  * Mirrors the dispatch pattern of `resolve-permission-mode.ts` and

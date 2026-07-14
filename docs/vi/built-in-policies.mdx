@@ -718,20 +718,19 @@ Thực thi Stop trông hơi khác nhau trên bảy CLI được hỗ trợ vì m
 | Codex | Cùng vòng lặp agent, ngay lập tức | Giống như Claude. |
 | GitHub Copilot CLI | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng kênh `{decision:"block", reason}` retry của Copilot — đã xác minh theo kinh nghiệm đối với Copilot CLI 1.0.41). |
 | Cursor Agent | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng kênh `{followup_message}` của Cursor — bị giới hạn ở `loop_limit`, mặc định 5 lần thử lại). |
-| Gemini CLI | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng kênh `{decision:"block", reason}` của Gemini trên `AfterAgent`). |
 | OpenCode | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng lệnh gọi SDK `client.session.prompt(...)` của OpenCode được định tuyến qua `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **Lần tới người dùng** | **Pi dừng lại rõ ràng** khi cổng kích hoạt — vòng lặp agent của nó thoát và bạn quay lại dấu nhắc. Cổng sau đó kích hoạt lần tiếp theo bạn gửi dấu nhắc: failproofai thêm tiền tố `MANDATORY ACTION REQUIRED` vào lời nhắc hệ thống của lần đó, hướng dẫn LLM hoàn thành bước quy trình làm việc (commit, push, v.v.) trước khi làm bất cứ điều gì bạn yêu cầu. |
 
 <Note>
-**Giới hạn Pi.** `AgentEndEvent` của Pi (tương đương thượng nguồn của hook `Stop` của Claude) không có loại Result — khi nó kích hoạt, vòng lặp agent của Pi đã thoát. Pi không thể bị buộc thử lại cùng một vòng lặp theo cách Claude / Copilot / Cursor / Gemini / OpenCode. failproofai thay đổi cổng sang sự kiện `before_agent_start` của Pi (được kích hoạt sau dấu nhắc người dùng tiếp theo) để kiểm tra quy trình làm việc vẫn thực thi, chỉ trên lần tới thay vì lần hiện tại.
+**Giới hạn Pi.** `AgentEndEvent` của Pi (tương đương thượng nguồn của hook `Stop` của Claude) không có loại Result — khi nó kích hoạt, vòng lặp agent của Pi đã thoát. Pi không thể bị buộc thử lại cùng một vòng lặp theo cách Claude / Copilot / Cursor / OpenCode. failproofai thay đổi cổng sang sự kiện `before_agent_start` của Pi (được kích hoạt sau dấu nhắc người dùng tiếp theo) để kiểm tra quy trình làm việc vẫn thực thi, chỉ trên lần tới thay vì lần hiện tại.
 
 **Điều này có nghĩa gì trong thực tế:**
 
 - Sau khi Pi dừng lại, lý do từ chối được ghi vào bộ nhớ trong bằng id phiên Pi. Dấu nhắc rất tiếp theo bạn gửi trong cùng quy trình Pi lấy ra nó: LLM nhìn thấy chỉ thị `MANDATORY ACTION REQUIRED` ở đầu lời nhắc hệ thống của nó, commit (hoặc push / mở PR / chờ CI) và chỉ khi đó tiếp tục với yêu cầu của bạn. Lý do từ chối được ghi lại là một lần — sau khi lấy ra, cổng rõ ràng.
-- Cổng bị ràng buộc bởi vòng đời quá trình Pi. Nếu bạn `Ctrl+C` Pi hoặc thoát giữa các lần, mục bộ nhớ trong được loại bỏ cùng với quá trình và cổng bị bỏ lỡ. Claude, Copilot, Cursor, Gemini và OpenCode có cùng ranh giới (giết agent và cổng bị bỏ lỡ) — Pi chỉ làm cho nó rõ ràng hơn vì agent rõ ràng thoát trước khi cổng kích hoạt.
+- Cổng bị ràng buộc bởi vòng đời quá trình Pi. Nếu bạn `Ctrl+C` Pi hoặc thoát giữa các lần, mục bộ nhớ trong được loại bỏ cùng với quá trình và cổng bị bỏ lỡ. Claude, Copilot, Cursor và OpenCode có cùng ranh giới (giết agent và cổng bị bỏ lỡ) — Pi chỉ làm cho nó rõ ràng hơn vì agent rõ ràng thoát trước khi cổng kích hoạt.
 - Một từ chối đang chờ cũng bị xóa trên `session_shutdown` vì lý do gì đó (`new` / `resume` / `fork` / `quit`), vì vậy cổng cũ từ phiên trước không thể bị rò rỉ vào phiên mới được khởi động trong cùng quy trình Pi.
 
-Nếu bạn cần thử lại cùng vòng lặp kiểu Claude, hãy chạy các chính sách `Stop` của bạn dưới bất kỳ sáu CLI được hỗ trợ khác. Chúng tôi đang theo dõi Pi thượng nguồn để có loại Result trong tương lai trên `AgentEndEvent` sẽ cho phép chúng tôi đóng khoảng cách này.
+Nếu bạn cần thử lại cùng vòng lặp kiểu Claude, hãy chạy các chính sách `Stop` của bạn dưới bất kỳ năm CLI được hỗ trợ khác. Chúng tôi đang theo dõi Pi thượng nguồn để có loại Result trong tương lai trên `AgentEndEvent` sẽ cho phép chúng tôi đóng khoảng cách này.
 </Note>
 
 ### `require-commit-before-stop`

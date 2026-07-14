@@ -710,7 +710,7 @@ Todas las políticas de flujo de trabajo son **fail-open**: si la herramienta re
 
 ### Semántica de Stop por CLI
 
-La aplicación del Stop se ve ligeramente diferente entre los siete CLIs compatibles porque cada uno expone un contrato de hook distinto para "el agente ha terminado". El **resultado** es el mismo — el agente no puede detenerse mientras una condición de flujo de trabajo esté fallando — pero los **mecanismos** difieren. La tabla a continuación resume esto; solo Pi tiene un comportamiento visible para el usuario que vale la pena entender antes de habilitar una política `require-*-before-stop`.
+La aplicación del Stop se ve ligeramente diferente entre los seis CLIs compatibles porque cada uno expone un contrato de hook distinto para "el agente ha terminado". El **resultado** es el mismo — el agente no puede detenerse mientras una condición de flujo de trabajo esté fallando — pero los **mecanismos** difieren. La tabla a continuación resume esto; solo Pi tiene un comportamiento visible para el usuario que vale la pena entender antes de habilitar una política `require-*-before-stop`.
 
 | CLI | Cuándo se activa la condición | Lo que ves |
 |---|---|---|
@@ -718,20 +718,19 @@ La aplicación del Stop se ve ligeramente diferente entre los siete CLIs compati
 | Codex | En el mismo bucle del agente, inmediatamente | Igual que Claude. |
 | GitHub Copilot CLI | En el mismo bucle del agente, inmediatamente | Igual que Claude (usa el canal de reintento `{decision:"block", reason}` de Copilot — verificado empíricamente contra Copilot CLI 1.0.41). |
 | Cursor Agent | En el mismo bucle del agente, inmediatamente | Igual que Claude (usa el canal `{followup_message}` de Cursor — limitado a `loop_limit`, por defecto 5 reintentos). |
-| Gemini CLI | En el mismo bucle del agente, inmediatamente | Igual que Claude (usa el canal `{decision:"block", reason}` de Gemini en `AfterAgent`). |
 | OpenCode | En el mismo bucle del agente, inmediatamente | Igual que Claude (usa la llamada SDK `client.session.prompt(...)` de OpenCode enrutada a través de `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **En el siguiente turno del usuario** | **Pi se detiene visiblemente** cuando se activa la condición — su bucle de agente termina y se te devuelve el prompt. La condición se activa la próxima vez que envíes un prompt: failproofai antepone una directiva `MANDATORY ACTION REQUIRED` al system prompt de ese turno, instruyendo al LLM a completar el paso del flujo de trabajo (commit, push, etc.) antes de hacer lo que pediste. |
 
 <Note>
-**Limitación de Pi.** El `AgentEndEvent` de Pi (el equivalente upstream del hook `Stop` de Claude) no tiene tipo Result — para cuando se activa, el bucle del agente de Pi ya ha terminado. Pi no puede ser forzado a reintentar el mismo bucle como Claude / Copilot / Cursor / Gemini / OpenCode. failproofai traslada la condición al evento `before_agent_start` de Pi (que se activa después del siguiente prompt del usuario) para que la comprobación del flujo de trabajo siga siendo efectiva, solo en el siguiente turno en lugar del actual.
+**Limitación de Pi.** El `AgentEndEvent` de Pi (el equivalente upstream del hook `Stop` de Claude) no tiene tipo Result — para cuando se activa, el bucle del agente de Pi ya ha terminado. Pi no puede ser forzado a reintentar el mismo bucle como Claude / Copilot / Cursor / OpenCode. failproofai traslada la condición al evento `before_agent_start` de Pi (que se activa después del siguiente prompt del usuario) para que la comprobación del flujo de trabajo siga siendo efectiva, solo en el siguiente turno en lugar del actual.
 
 **Lo que esto significa en la práctica:**
 
 - Después de que Pi se detenga, el motivo de la denegación se captura en memoria indexado por el id de sesión de Pi. El siguiente prompt que envíes en el mismo proceso de Pi lo drena: el LLM ve la directiva `MANDATORY ACTION REQUIRED` al inicio de su system prompt, hace el commit (o push / abre el PR / espera a CI), y solo entonces continúa con tu solicitud. El motivo de denegación capturado es de un solo uso — una vez drenado, la condición queda libre.
-- La condición está limitada por el tiempo de vida del proceso de Pi. Si haces `Ctrl+C` en Pi o sales entre turnos, la entrada en memoria se descarta junto con el proceso y la condición se pierde. Claude, Copilot, Cursor, Gemini y OpenCode tienen el mismo límite (matar el agente hace que se pierda la condición) — Pi simplemente lo hace más visible porque el agente termina visiblemente antes de que se active la condición.
+- La condición está limitada por el tiempo de vida del proceso de Pi. Si haces `Ctrl+C` en Pi o sales entre turnos, la entrada en memoria se descarta junto con el proceso y la condición se pierde. Claude, Copilot, Cursor y OpenCode tienen el mismo límite (matar el agente hace que se pierda la condición) — Pi simplemente lo hace más visible porque el agente termina visiblemente antes de que se active la condición.
 - Una denegación pendiente también se limpia en `session_shutdown` por cualquier motivo (`new` / `resume` / `fork` / `quit`), de modo que una condición obsoleta de una sesión anterior no puede filtrarse a una sesión nueva iniciada en el mismo proceso de Pi.
 
-Si necesitas el reintento en el mismo bucle al estilo Claude, ejecuta tus políticas de `Stop` bajo cualquiera de los otros seis CLIs compatibles. Estamos siguiendo Pi upstream para un futuro tipo Result en `AgentEndEvent` que nos permitiría cerrar esta brecha.
+Si necesitas el reintento en el mismo bucle al estilo Claude, ejecuta tus políticas de `Stop` bajo cualquiera de los otros cinco CLIs compatibles. Estamos siguiendo Pi upstream para un futuro tipo Result en `AgentEndEvent` que nos permitiría cerrar esta brecha.
 </Note>
 
 ### `require-commit-before-stop`

@@ -704,7 +704,7 @@ Alle Workflow-Richtlinien sind **fail-open**: Wenn das erforderliche Tool nicht 
 
 ### Stop-Semantik je CLI
 
-Die Stop-Durchsetzung sieht bei den sieben unterstützten CLIs etwas unterschiedlich aus, da jede eine andere Vertragsgestaltung für den Hook „Agent fertig" bietet. Das **Ergebnis** ist dasselbe — der Agent kommt nicht damit durch, anzuhalten, während ein Workflow-Gate fehlschlägt — aber die **Mechanik** unterscheidet sich. Die folgende Tabelle fasst dies zusammen; nur Pi hat eine für Benutzer sichtbare Besonderheit, die Sie verstehen sollten, bevor Sie eine `require-*-before-stop`-Richtlinie aktivieren.
+Die Stop-Durchsetzung sieht bei den sechs unterstützten CLIs etwas unterschiedlich aus, da jede eine andere Vertragsgestaltung für den Hook „Agent fertig" bietet. Das **Ergebnis** ist dasselbe — der Agent kommt nicht damit durch, anzuhalten, während ein Workflow-Gate fehlschlägt — aber die **Mechanik** unterscheidet sich. Die folgende Tabelle fasst dies zusammen; nur Pi hat eine für Benutzer sichtbare Besonderheit, die Sie verstehen sollten, bevor Sie eine `require-*-before-stop`-Richtlinie aktivieren.
 
 | CLI | Wann das Gate auslöst | Was Sie sehen |
 |---|---|---|
@@ -712,20 +712,19 @@ Die Stop-Durchsetzung sieht bei den sieben unterstützten CLIs etwas unterschied
 | Codex | Gleiche Agentenschleife, sofort | Wie Claude. |
 | GitHub Copilot CLI | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Copilots `{decision:"block", reason}`-Wiederholungskanal — empirisch verifiziert gegen Copilot CLI 1.0.41). |
 | Cursor Agent | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Cursors `{followup_message}`-Kanal — begrenzt auf `loop_limit`, standardmäßig 5 Wiederholungen). |
-| Gemini CLI | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Geminis `{decision:"block", reason}`-Kanal auf `AfterAgent`). |
 | OpenCode | Gleiche Agentenschleife, sofort | Wie Claude (verwendet OpenCodes `client.session.prompt(...)`-SDK-Aufruf, der über `hookSpecificOutput.additionalContext` geleitet wird). |
 | **Pi (pi-coding-agent)** | **Nächster Benutzerturn** | **Pi hält sichtbar an**, wenn das Gate auslöst — seine Agentenschleife beendet sich und Sie gelangen zurück zur Eingabeaufforderung. Das Gate löst dann beim nächsten Absenden einer Eingabe aus: failproofai stellt eine `MANDATORY ACTION REQUIRED`-Direktive an den Systempromt dieses Turns voran und weist das LLM an, den Workflow-Schritt (Commit, Push usw.) abzuschließen, bevor es das Gewünschte tut. |
 
 <Note>
-**Pi-Einschränkung.** Pis `AgentEndEvent` (das Upstream-Äquivalent zu Claudes `Stop`-Hook) hat keinen Result-Typ — wenn er auslöst, hat Pis Agentenschleife bereits beendet. Pi kann nicht dazu gezwungen werden, dieselbe Schleife zu wiederholen, wie es Claude / Copilot / Cursor / Gemini / OpenCode können. failproofai verlagert das Gate auf Pis `before_agent_start`-Ereignis (das nach der nächsten Benutzereingabe auslöst), sodass die Workflow-Prüfung trotzdem greift, nur beim nächsten Turn statt beim aktuellen.
+**Pi-Einschränkung.** Pis `AgentEndEvent` (das Upstream-Äquivalent zu Claudes `Stop`-Hook) hat keinen Result-Typ — wenn er auslöst, hat Pis Agentenschleife bereits beendet. Pi kann nicht dazu gezwungen werden, dieselbe Schleife zu wiederholen, wie es Claude / Copilot / Cursor / OpenCode können. failproofai verlagert das Gate auf Pis `before_agent_start`-Ereignis (das nach der nächsten Benutzereingabe auslöst), sodass die Workflow-Prüfung trotzdem greift, nur beim nächsten Turn statt beim aktuellen.
 
 **Was das in der Praxis bedeutet:**
 
 - Nachdem Pi anhält, wird der Ablehnungsgrund im Speicher gespeichert, indexiert nach Pi-Sitzungs-ID. Die nächste Eingabe, die Sie im selben Pi-Prozess absenden, entleert ihn: Das LLM sieht die `MANDATORY ACTION REQUIRED`-Direktive am Anfang seines Systemprompts, führt einen Commit durch (oder Push / öffnet den PR / wartet auf CI) und fährt erst dann mit Ihrer Anfrage fort. Der gespeicherte Ablehnungsgrund ist einmalig — sobald entleert, ist das Gate frei.
-- Das Gate ist durch die Prozesslebensdauer von Pi begrenzt. Wenn Sie Pi zwischen den Turns mit `Ctrl+C` beenden oder schließen, wird der In-Memory-Eintrag zusammen mit dem Prozess gelöscht und das Gate wird verfehlt. Claude, Copilot, Cursor, Gemini und OpenCode haben dieselbe Einschränkung (Agent beenden und das Gate wird verfehlt) — bei Pi ist es nur sichtbarer, weil der Agent sichtbar beendet wird, bevor das Gate auslöst.
+- Das Gate ist durch die Prozesslebensdauer von Pi begrenzt. Wenn Sie Pi zwischen den Turns mit `Ctrl+C` beenden oder schließen, wird der In-Memory-Eintrag zusammen mit dem Prozess gelöscht und das Gate wird verfehlt. Claude, Copilot, Cursor und OpenCode haben dieselbe Einschränkung (Agent beenden und das Gate wird verfehlt) — bei Pi ist es nur sichtbarer, weil der Agent sichtbar beendet wird, bevor das Gate auslöst.
 - Ein ausstehender Deny wird auch bei `session_shutdown` aus beliebigem Grund (`new` / `resume` / `fork` / `quit`) gelöscht, sodass ein veraltetes Gate einer vorherigen Sitzung nicht in eine neue Sitzung überlaufen kann, die im selben Pi-Prozess gestartet wurde.
 
-Wenn Sie das Claude-ähnliche Wiederholen in derselben Schleife benötigen, führen Sie Ihre `Stop`-Richtlinien unter einer der anderen sechs unterstützten CLIs aus. Wir verfolgen Pi upstream auf einen zukünftigen Result-Typ bei `AgentEndEvent`, der es uns ermöglichen würde, diese Lücke zu schließen.
+Wenn Sie das Claude-ähnliche Wiederholen in derselben Schleife benötigen, führen Sie Ihre `Stop`-Richtlinien unter einer der anderen fünf unterstützten CLIs aus. Wir verfolgen Pi upstream auf einen zukünftigen Result-Typ bei `AgentEndEvent`, der es uns ermöglichen würde, diese Lücke zu schließen.
 </Note>
 
 ### `require-commit-before-stop`

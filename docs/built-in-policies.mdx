@@ -710,7 +710,7 @@ All workflow policies are **fail-open**: if the required tool is not available (
 
 ### Per-CLI Stop semantics
 
-Stop enforcement looks slightly different across the seven supported CLIs because each one exposes a different "agent finished" hook contract. The **outcome** is the same — the agent doesn't get away with stopping while a workflow gate is failing — but the **mechanics** differ. The table below summarizes; only Pi has a user-visible quirk worth understanding before you enable a `require-*-before-stop` policy.
+Stop enforcement looks slightly different across the six supported CLIs because each one exposes a different "agent finished" hook contract. The **outcome** is the same — the agent doesn't get away with stopping while a workflow gate is failing — but the **mechanics** differ. The table below summarizes; only Pi has a user-visible quirk worth understanding before you enable a `require-*-before-stop` policy.
 
 | CLI | When the gate fires | What you see |
 |---|---|---|
@@ -718,20 +718,19 @@ Stop enforcement looks slightly different across the seven supported CLIs becaus
 | Codex | Same agent loop, immediately | Same as Claude. |
 | GitHub Copilot CLI | Same agent loop, immediately | Same as Claude (uses Copilot's `{decision:"block", reason}` retry channel — verified empirically against Copilot CLI 1.0.41). |
 | Cursor Agent | Same agent loop, immediately | Same as Claude (uses Cursor's `{followup_message}` channel — capped at `loop_limit`, default 5 retries). |
-| Gemini CLI | Same agent loop, immediately | Same as Claude (uses Gemini's `{decision:"block", reason}` channel on `AfterAgent`). |
 | OpenCode | Same agent loop, immediately | Same as Claude (uses OpenCode's `client.session.prompt(...)` SDK call routed through `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **Next user turn** | **Pi visibly stops** when the gate fires — its agent loop exits and you're returned to the prompt. The gate then fires the next time you submit a prompt: failproofai prepends a `MANDATORY ACTION REQUIRED` directive to that turn's system prompt, instructing the LLM to complete the workflow step (commit, push, etc.) before doing whatever you asked. |
 
 <Note>
-**Pi limitation.** Pi's `AgentEndEvent` (the upstream equivalent of Claude's `Stop` hook) has no Result type — by the time it fires, Pi's agent loop has already exited. Pi cannot be forced to retry the same loop the way Claude / Copilot / Cursor / Gemini / OpenCode can. failproofai shifts the gate to Pi's `before_agent_start` event (which fires after the next user prompt) so the workflow check still enforces, just on the next turn rather than the current one.
+**Pi limitation.** Pi's `AgentEndEvent` (the upstream equivalent of Claude's `Stop` hook) has no Result type — by the time it fires, Pi's agent loop has already exited. Pi cannot be forced to retry the same loop the way Claude / Copilot / Cursor / OpenCode can. failproofai shifts the gate to Pi's `before_agent_start` event (which fires after the next user prompt) so the workflow check still enforces, just on the next turn rather than the current one.
 
 **What this means in practice:**
 
 - After Pi stops, the deny reason is captured in-memory keyed by Pi session id. The very next prompt you submit in the same Pi process drains it: the LLM sees the `MANDATORY ACTION REQUIRED` directive at the top of its system prompt, commits (or pushes / opens the PR / waits for CI), and only then continues with your request. The captured deny reason is one-shot — once drained, the gate is clear.
-- The gate is bounded by Pi's process lifetime. If you `Ctrl+C` Pi or quit between turns, the in-memory entry is dropped along with the process and the gate is missed. Claude, Copilot, Cursor, Gemini, and OpenCode have the same bound (kill the agent and the gate is missed) — Pi just makes it more visible because the agent visibly exits before the gate fires.
+- The gate is bounded by Pi's process lifetime. If you `Ctrl+C` Pi or quit between turns, the in-memory entry is dropped along with the process and the gate is missed. Claude, Copilot, Cursor, and OpenCode have the same bound (kill the agent and the gate is missed) — Pi just makes it more visible because the agent visibly exits before the gate fires.
 - A pending deny is also cleared on `session_shutdown` for any reason (`new` / `resume` / `fork` / `quit`), so a stale gate from a prior session cannot leak into a fresh session started in the same Pi process.
 
-If you need Claude-style same-loop retry, run your `Stop` policies under any of the other six supported CLIs. We are tracking Pi upstream for a future Result type on `AgentEndEvent` that would let us close this gap.
+If you need Claude-style same-loop retry, run your `Stop` policies under any of the other five supported CLIs. We are tracking Pi upstream for a future Result type on `AgentEndEvent` that would let us close this gap.
 </Note>
 
 ### `require-commit-before-stop`

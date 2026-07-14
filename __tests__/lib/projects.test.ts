@@ -40,9 +40,6 @@ vi.mock("@/lib/pi-projects", () => ({
   getPiProjects: vi.fn(async () => []),
 }));
 
-vi.mock("@/lib/gemini-projects", () => ({
-  getGeminiProjects: vi.fn(async () => []),
-}));
 // Mock hermes-projects too — getProjectFolders() calls getHermesProjects(),
 // which does real ~/.hermes/state.db I/O; without this the suite is non-hermetic
 // and fails on any box with a real gateway DB.
@@ -57,7 +54,6 @@ import { getCopilotProjects } from "@/lib/copilot-projects";
 import { getCursorProjects } from "@/lib/cursor-projects";
 import { getOpenCodeProjects } from "@/lib/opencode-projects";
 import { getPiProjects } from "@/lib/pi-projects";
-import { getGeminiProjects } from "@/lib/gemini-projects";
 import { getHermesProjects } from "@/lib/hermes-projects";
 
 const mockGetCodexProjects = vi.mocked(getCodexProjects);
@@ -65,7 +61,6 @@ const mockGetCopilotProjects = vi.mocked(getCopilotProjects);
 const mockGetCursorProjects = vi.mocked(getCursorProjects);
 const mockGetOpenCodeProjects = vi.mocked(getOpenCodeProjects);
 const mockGetPiProjects = vi.mocked(getPiProjects);
-const mockGetGeminiProjects = vi.mocked(getGeminiProjects);
 const mockGetHermesProjects = vi.mocked(getHermesProjects);
 
 const mockReaddir = vi.mocked(readdir);
@@ -534,26 +529,6 @@ describe("getProjectFolders", () => {
     expect(result[0].cli).toEqual(["claude"]);
   });
 
-  it("includes Gemini-only projects (no matching Claude/Codex/Copilot/Cursor/OpenCode/Pi folder)", async () => {
-    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
-    mockReaddir.mockResolvedValueOnce([] as any);
-    mockGetGeminiProjects.mockResolvedValueOnce([
-      {
-        name: "-home-u-gemini-only",
-        path: "/home/u/gemini-only",
-        isDirectory: true,
-        lastModified: new Date("2026-08-15T00:00:00Z"),
-        lastModifiedFormatted: "2026-08-15T00:00:00.000Z",
-        cli: ["gemini"],
-      } satisfies ProjectFolder,
-    ]);
-
-    const result = await getProjectFolders();
-    expect(result).toHaveLength(1);
-    expect(result[0].cli).toEqual(["gemini"]);
-    expect(result[0].path).toBe("/home/u/gemini-only");
-  });
-
   it("surfaces a standalone Hermes project", async () => {
     mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
     mockReaddir.mockResolvedValueOnce([] as any);
@@ -572,45 +547,6 @@ describe("getProjectFolders", () => {
     expect(result).toHaveLength(1);
     expect(result[0].cli).toEqual(["hermes"]);
     expect(result[0].path).toBe("hermes:slack");
-  });
-
-  it("merges a Gemini project with the same encoded name into one row with both badges", async () => {
-    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
-    mockReaddir.mockResolvedValueOnce([
-      { name: "-home-u-shared", isDirectory: () => true, isFile: () => false } as any,
-    ] as any);
-    mockStat.mockResolvedValueOnce({ mtime: new Date("2026-04-01T00:00:00Z") } as any);
-    mockGetGeminiProjects.mockResolvedValueOnce([
-      {
-        name: "-home-u-shared",
-        path: "/home/u/shared",
-        isDirectory: true,
-        lastModified: new Date("2026-09-01T00:00:00Z"),
-        lastModifiedFormatted: "2026-09-01T00:00:00.000Z",
-        cli: ["gemini"],
-      } satisfies ProjectFolder,
-    ]);
-
-    const result = await getProjectFolders();
-    expect(result).toHaveLength(1);
-    // Claude registered first → cli order is ["claude", "gemini"]; lastModified
-    // takes the newer Gemini date (Sept > April) so the row sorts to the top.
-    expect(result[0].cli).toEqual(["claude", "gemini"]);
-    expect(result[0].lastModified.toISOString()).toBe("2026-09-01T00:00:00.000Z");
-  });
-
-  it("falls back gracefully when getGeminiProjects rejects", async () => {
-    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
-    mockReaddir.mockResolvedValueOnce([
-      { name: "-home-u-claude", isDirectory: () => true, isFile: () => false } as any,
-    ] as any);
-    mockStat.mockResolvedValueOnce({ mtime: new Date("2026-04-01T00:00:00Z") } as any);
-    mockGetGeminiProjects.mockRejectedValueOnce(new Error("scan failed"));
-
-    const result = await getProjectFolders();
-    // Claude row still surfaces even though Gemini scan blew up.
-    expect(result).toHaveLength(1);
-    expect(result[0].cli).toEqual(["claude"]);
   });
 
   it("falls back gracefully when getCursorProjects rejects", async () => {

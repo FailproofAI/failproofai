@@ -53,9 +53,9 @@ function isAgentInternalPath(resolved: string): boolean {
  *   • Pi:           `.pi/settings.json` (project) and `.pi/agent/settings.json`
  *                   (user); also the Pi-managed extension dir
  *                   `.pi/extensions/` / `.pi/agent/extensions/`.
- *   • Gemini CLI:   `.gemini/settings.json` (both project and user scope —
- *                   user is `~/.gemini/settings.json`); also the Gemini-managed
- *                   hooks scripts dir `.gemini/hooks/`.
+ *   • Antigravity CLI (agy): reuses `~/.gemini/` — `~/.gemini/settings.json`
+ *                   and the customization-root hook config
+ *                   `~/.gemini/config/hooks.json`.
  * These must NEVER be edited by the agent itself — that would let it disable
  * its own protections.
  */
@@ -74,9 +74,9 @@ function isAgentSettingsFile(resolved: string): boolean {
   // Pi: settings + extensions dirs (project and user-scope variants).
   if (/[\\/]\.pi[\\/](?:agent[\\/])?settings\.json$/.test(resolved)) return true;
   if (/[\\/]\.pi[\\/](?:agent[\\/])?extensions[\\/]/.test(resolved)) return true;
-  // Gemini: settings.json + hooks dir referenced by `command: $GEMINI_PROJECT_DIR/.gemini/hooks/...`.
+  // Antigravity (agy) reuses ~/.gemini/: settings.json + the customization-root hooks.json.
   if (/[\\/]\.gemini[\\/]settings\.json$/.test(resolved)) return true;
-  if (/[\\/]\.gemini[\\/]hooks[\\/]/.test(resolved)) return true;
+  if (/[\\/]\.gemini[\\/]config[\\/]hooks\.json$/.test(resolved)) return true;
   return false;
 }
 

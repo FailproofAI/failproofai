@@ -14,7 +14,6 @@ import {
   OPENCODE_TOOL_INPUT_MAP,
   PI_TOOL_MAP,
   PI_TOOL_INPUT_MAP,
-  GEMINI_TOOL_MAP,
   HERMES_TOOL_MAP,
   HERMES_TOOL_INPUT_MAP,
   OPENCLAW_TOOL_MAP,
@@ -34,7 +33,6 @@ export function canonicalizeToolName(
   if (cli === "copilot") return COPILOT_TOOL_MAP[raw] ?? raw;
   if (cli === "cursor") return CURSOR_TOOL_MAP[raw] ?? raw;
   if (cli === "codex") return CODEX_TOOL_MAP[raw] ?? raw;
-  if (cli === "gemini") return GEMINI_TOOL_MAP[raw] ?? raw;
   if (cli === "opencode") return OPENCODE_TOOL_MAP[raw] ?? raw;
   if (cli === "pi") return PI_TOOL_MAP[raw] ?? raw;
   if (cli === "hermes") return HERMES_TOOL_MAP[raw] ?? raw;

@@ -24,11 +24,11 @@ failproofai
 
 ### 프로젝트
 
-머신에서 발견된 모든 Claude Code, OpenAI Codex, GitHub Copilot CLI _(베타)_, Cursor Agent _(베타)_, OpenCode _(베타)_, Pi _(베타)_, Gemini CLI _(베타)_, Hermes 프로젝트를 나열합니다. Claude 프로젝트는 `~/.claude/projects/`(또는 `CLAUDE_PROJECTS_PATH`로 설정된 경로)에서 검색됩니다. Codex 프로젝트는 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 아래의 모든 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에 기록된 `cwd`로 그룹화하여 검색됩니다. Copilot CLI 프로젝트는 각 `~/.copilot/session-state/<sessionId>/workspace.yaml`(`COPILOT_HOME`으로 구성 가능)을 스캔하고 `cwd` 필드로 그룹화하여 검색됩니다. Cursor Agent 프로젝트는 `~/.cursor/agent-sessions/<sessionId>/`(`CURSOR_HOME`으로 구성 가능, `conversations/` 및 `sessions/`가 폴백으로 검색됨) 아래의 세션별 메타데이터를 스캔하여 `meta.json` / `session.json` / `workspace.yaml`의 `cwd` 스칼라로 검색됩니다. OpenCode 프로젝트는 `opencode db --format json`을 통해 `~/.local/share/opencode/opencode.db`의 SQLite DB를 쿼리하여 검색되며(`session` 및 `project` 테이블을 읽고 `project_id`로 그룹화), Pi 프로젝트는 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`(`PI_SESSIONS_DIR`으로 구성 가능) 아래의 세션별 JSONL 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에서 `cwd`를 가져와 검색됩니다. Gemini CLI 프로젝트는 `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`(`GEMINI_SESSIONS_DIR`으로 구성 가능)을 스캔하고 인접한 `.project_root` 텍스트 마커에서 정규 cwd를 복원하여 검색됩니다. Hermes 게이트웨이 세션은 `~/.hermes/state.db`(`HERMES_DB_PATH`으로 구성 가능)의 SQLite 저장소에서 직접 읽어오며 `source`(Slack/Telegram/cli/cron — 게이트웨이 세션에는 cwd가 없음)로 `hermes-<source>` 프로젝트로 그룹화됩니다. 여러 CLI에서 사용된 프로젝트는 일치하는 모든 배지가 있는 단일 행으로 표시됩니다. 테이블 위의 **CLI** 드롭다운을 사용하여 특정 에이전트 CLI로 필터링하세요. URL은 선택 내용을 `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`로 보존합니다.
+머신에서 발견된 모든 Claude Code, OpenAI Codex, GitHub Copilot CLI _(베타)_, Cursor Agent _(베타)_, OpenCode _(베타)_, Pi _(베타)_, Hermes 프로젝트를 나열합니다. Claude 프로젝트는 `~/.claude/projects/`(또는 `CLAUDE_PROJECTS_PATH`로 설정된 경로)에서 검색됩니다. Codex 프로젝트는 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 아래의 모든 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에 기록된 `cwd`로 그룹화하여 검색됩니다. Copilot CLI 프로젝트는 각 `~/.copilot/session-state/<sessionId>/workspace.yaml`(`COPILOT_HOME`으로 구성 가능)을 스캔하고 `cwd` 필드로 그룹화하여 검색됩니다. Cursor Agent 프로젝트는 `~/.cursor/agent-sessions/<sessionId>/`(`CURSOR_HOME`으로 구성 가능, `conversations/` 및 `sessions/`가 폴백으로 검색됨) 아래의 세션별 메타데이터를 스캔하여 `meta.json` / `session.json` / `workspace.yaml`의 `cwd` 스칼라로 검색됩니다. OpenCode 프로젝트는 `opencode db --format json`을 통해 `~/.local/share/opencode/opencode.db`의 SQLite DB를 쿼리하여 검색되며(`session` 및 `project` 테이블을 읽고 `project_id`로 그룹화), Pi 프로젝트는 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`(`PI_SESSIONS_DIR`으로 구성 가능) 아래의 세션별 JSONL 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에서 `cwd`를 가져와 검색됩니다. Hermes 게이트웨이 세션은 `~/.hermes/state.db`(`HERMES_DB_PATH`으로 구성 가능)의 SQLite 저장소에서 직접 읽어오며 `source`(Slack/Telegram/cli/cron — 게이트웨이 세션에는 cwd가 없음)로 `hermes-<source>` 프로젝트로 그룹화됩니다. 여러 CLI에서 사용된 프로젝트는 일치하는 모든 배지가 있는 단일 행으로 표시됩니다. 테이블 위의 **CLI** 드롭다운을 사용하여 특정 에이전트 CLI로 필터링하세요. URL은 선택 내용을 `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`로 보존합니다.
 
 각 프로젝트에는 다음이 표시됩니다:
 - 프로젝트 이름 (폴더 경로에서 파생)
-- CLI 배지 — `Claude Code` (주황색), `OpenAI Codex` (보라색), `GitHub Copilot` (파란색), `Cursor Agent` (에메랄드), `OpenCode` (호박색), `Pi` (분홍색), `Gemini CLI` (하늘색), 및/또는 `Hermes` (남색)
+- CLI 배지 — `Claude Code` (주황색), `OpenAI Codex` (보라색), `GitHub Copilot` (파란색), `Cursor Agent` (에메랄드), `OpenCode` (호박색), `Pi` (분홍색), 및/또는 `Hermes` (남색)
 - 가장 최근 세션 활동 날짜
 
 프로젝트를 클릭하면 해당 세션이 표시됩니다.
@@ -47,7 +47,7 @@ failproofai
 
 ### 세션 뷰어
 
-세션 뷰어는 자율 에이전트에 대한 핵심 질문에 답합니다: 에이전트가 무엇을 했으며, 제대로 작동했는가? 헤더 옆의 CLI 배지는 세션이 Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI 또는 Hermes 트랜스크립트인지 나타냅니다. 세션에서 발생한 모든 일의 타임라인을 보여줍니다:
+세션 뷰어는 자율 에이전트에 대한 핵심 질문에 답합니다: 에이전트가 무엇을 했으며, 제대로 작동했는가? 헤더 옆의 CLI 배지는 세션이 Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi 또는 Hermes 트랜스크립트인지 나타냅니다. 세션에서 발생한 모든 일의 타임라인을 보여줍니다:
 
 - **메시지** - Claude의 텍스트 응답과 사용자 프롬프트
 - **툴 호출** - Claude가 호출한 모든 툴, 입력 및 출력 포함
@@ -55,7 +55,7 @@ failproofai
 
 상단의 통계 바에는 세션 지속 시간, 총 툴 호출 수, 훅 결정 요약(allow / deny / instruct 수)이 표시됩니다.
 
-**로그 다운로드** 버튼을 클릭하여 세션을 내보냅니다. Claude Code, Codex, Copilot, Cursor, Pi, Gemini 세션의 경우 디스크의 원본 JSONL 트랜스크립트를 바이트 단위로 그대로 받을 수 있으며, OpenCode(세션이 디스크가 아닌 SQLite에 저장됨)의 경우 기본 `session` / `messages` / `parts` 테이블을 미러링하는 JSON 문서를 받습니다.
+**로그 다운로드** 버튼을 클릭하여 세션을 내보냅니다. Claude Code, Codex, Copilot, Cursor, Pi 세션의 경우 디스크의 원본 JSONL 트랜스크립트를 바이트 단위로 그대로 받을 수 있으며, OpenCode(세션이 디스크가 아닌 SQLite에 저장됨)의 경우 기본 `session` / `messages` / `parts` 테이블을 미러링하는 JSON 문서를 받습니다.
 
 ### 감사
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="정책 탭">
-  - 단일 패널에서 failproofai가 보호할 에이전트 CLI를 다중 선택 — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI, Hermes 각각에 설치 상태(`Active` / `Detected` / `Inactive`), 사용자 범위 설정 경로, 브랜드 색상 강조가 있는 행이 있습니다. 원하는 CLI를 체크 또는 체크 해제하고 `Apply changes`를 클릭하면 한 번에 차이를 설치/제거합니다. PATH에서 바이너리가 감지된 CLI는 미리 체크됩니다.
+  - 단일 패널에서 failproofai가 보호할 에이전트 CLI를 다중 선택 — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Hermes 각각에 설치 상태(`Active` / `Detected` / `Inactive`), 사용자 범위 설정 경로, 브랜드 색상 강조가 있는 행이 있습니다. 원하는 CLI를 체크 또는 체크 해제하고 `Apply changes`를 클릭하면 한 번에 차이를 설치/제거합니다. PATH에서 바이너리가 감지된 CLI는 미리 체크됩니다.
   - 단일 클릭으로 개별 정책을 켜거나 끕니다(`~/.failproofai/policies-config.json`에 기록 — 모든 설치된 CLI에서 공유됨)
   - 정책을 펼쳐 매개변수를 구성합니다(`policyParams`를 지원하는 정책의 경우)
   - 사용자 지정 정책 파일 경로 설정
   </Tab>
   <Tab title="활동 탭">
   - 모든 세션에서 실행된 모든 훅 이벤트의 전체 페이지네이션 기록
-  - 결정, 이벤트 유형, CLI(Claude Code / OpenAI Codex / GitHub Copilot _(베타)_ / Cursor Agent _(베타)_ / OpenCode _(베타)_ / Pi _(베타)_ / Gemini CLI _(베타)_ / Hermes), 정책 이름 또는 세션 ID로 필터링
-  - 각 행에는 타임스탬프, 정책 이름, 결정, CLI 배지(주황색 = Claude Code, 보라색 = OpenAI Codex, 파란색 = GitHub Copilot, 에메랄드 = Cursor Agent, 호박색 = OpenCode, 분홍색 = Pi, 하늘색 = Gemini CLI, 남색 = Hermes), 툴 이름, 세션 ID, deny/instruct 결정 이유가 표시됩니다
-  - 세션 ID를 클릭하면 트랜스크립트가 열립니다 — 뷰어는 어떤 CLI가 훅을 실행했는지(Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`)를 자동으로 감지하고 헤더에 일치하는 CLI 배지를 렌더링합니다
+  - 결정, 이벤트 유형, CLI(Claude Code / OpenAI Codex / GitHub Copilot _(베타)_ / Cursor Agent _(베타)_ / OpenCode _(베타)_ / Pi _(베타)_ / Hermes), 정책 이름 또는 세션 ID로 필터링
+  - 각 행에는 타임스탬프, 정책 이름, 결정, CLI 배지(주황색 = Claude Code, 보라색 = OpenAI Codex, 파란색 = GitHub Copilot, 에메랄드 = Cursor Agent, 호박색 = OpenCode, 분홍색 = Pi, 남색 = Hermes), 툴 이름, 세션 ID, deny/instruct 결정 이유가 표시됩니다
+  - 세션 ID를 클릭하면 트랜스크립트가 열립니다 — 뷰어는 어떤 CLI가 훅을 실행했는지(Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`)를 자동으로 감지하고 헤더에 일치하는 CLI 배지를 렌더링합니다
   </Tab>
 </Tabs>
 

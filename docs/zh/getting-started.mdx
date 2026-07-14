@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    此命令会将 hook 条目写入已安装的 Agent CLI 配置文件中（Claude Code 的 `~/.claude/settings.json`、OpenAI Codex 的 `~/.codex/hooks.json`、GitHub Copilot CLI 的 `~/.copilot/hooks/failproofai.json`、Cursor Agent 的 `~/.cursor/hooks.json`、OpenCode 在 `~/.config/opencode/plugins/failproofai.mjs` 生成的插件 shim 及 `~/.config/opencode/opencode.json` 的 `plugin` 数组注册项、Pi 的 `~/.pi/agent/settings.json`、Gemini CLI 的 `~/.gemini/settings.json`，或 Hermes 的 `~/.hermes/config.yaml`）。若检测到多个 CLI，系统会提示你选择；也可以通过 `--cli claude codex copilot cursor opencode pi gemini hermes`（任意子集）跳过提示。
+    此命令会将 hook 条目写入已安装的 Agent CLI 配置文件中（Claude Code 的 `~/.claude/settings.json`、OpenAI Codex 的 `~/.codex/hooks.json`、GitHub Copilot CLI 的 `~/.copilot/hooks/failproofai.json`、Cursor Agent 的 `~/.cursor/hooks.json`、OpenCode 在 `~/.config/opencode/plugins/failproofai.mjs` 生成的插件 shim 及 `~/.config/opencode/opencode.json` 的 `plugin` 数组注册项、Pi 的 `~/.pi/agent/settings.json`，或 Hermes 的 `~/.hermes/config.yaml`）。若检测到多个 CLI，系统会提示你选择；也可以通过 `--cli claude codex copilot cursor opencode pi hermes`（任意子集）跳过提示。
 
-    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 和 Gemini CLI 的支持目前处于 **beta** 阶段 — 请分别使用 `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` 或 `--cli gemini` 进行安装。Hermes（hermes-agent，一个 Slack/Telegram 网关）使用 `--cli hermes` 安装用户级作用域，同时也是一个**离线**审计数据源。
+    GitHub Copilot CLI、Cursor Agent、OpenCode 和 Pi 的支持目前处于 **beta** 阶段 — 请分别使用 `--cli copilot`、`--cli cursor`、`--cli opencode` 或 `--cli pi` 进行安装。Hermes（hermes-agent，一个 Slack/Telegram 网关）使用 `--cli hermes` 安装用户级作用域，同时也是一个**离线**审计数据源。
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

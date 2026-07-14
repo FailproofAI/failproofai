@@ -704,7 +704,7 @@ Toutes les politiques de workflow sont **fail-open** : si l'outil requis n'est p
 
 ### Sémantique Stop par CLI
 
-L'application du Stop se présente légèrement différemment selon les sept CLI supportés, car chacun expose un contrat de hook "agent terminé" différent. Le **résultat** est le même — l'agent ne peut pas s'arrêter tant qu'une porte de workflow est en échec — mais les **mécanismes** diffèrent. Le tableau ci-dessous résume la situation ; seul Pi présente une particularité visible par l'utilisateur qu'il convient de comprendre avant d'activer une politique `require-*-before-stop`.
+L'application du Stop se présente légèrement différemment selon les six CLI supportés, car chacun expose un contrat de hook "agent terminé" différent. Le **résultat** est le même — l'agent ne peut pas s'arrêter tant qu'une porte de workflow est en échec — mais les **mécanismes** diffèrent. Le tableau ci-dessous résume la situation ; seul Pi présente une particularité visible par l'utilisateur qu'il convient de comprendre avant d'activer une politique `require-*-before-stop`.
 
 | CLI | Quand la porte se déclenche | Ce que vous voyez |
 |---|---|---|
@@ -712,20 +712,19 @@ L'application du Stop se présente légèrement différemment selon les sept CLI
 | Codex | Dans la même boucle agent, immédiatement | Identique à Claude. |
 | GitHub Copilot CLI | Dans la même boucle agent, immédiatement | Identique à Claude (utilise le canal de relance `{decision:"block", reason}` de Copilot — vérifié empiriquement contre Copilot CLI 1.0.41). |
 | Cursor Agent | Dans la même boucle agent, immédiatement | Identique à Claude (utilise le canal `{followup_message}` de Cursor — limité à `loop_limit`, 5 relances par défaut). |
-| Gemini CLI | Dans la même boucle agent, immédiatement | Identique à Claude (utilise le canal `{decision:"block", reason}` de Gemini sur `AfterAgent`). |
 | OpenCode | Dans la même boucle agent, immédiatement | Identique à Claude (utilise l'appel SDK `client.session.prompt(...)` d'OpenCode acheminé via `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **Au prochain tour utilisateur** | **Pi s'arrête visiblement** lorsque la porte se déclenche — sa boucle agent se termine et vous êtes renvoyé au prompt. La porte se déclenche ensuite la prochaine fois que vous soumettez un prompt : failproofai ajoute en tête du system prompt de ce tour une directive `MANDATORY ACTION REQUIRED`, demandant au LLM de compléter l'étape de workflow (commit, push, etc.) avant de faire ce que vous avez demandé. |
 
 <Note>
-**Limitation de Pi.** L'`AgentEndEvent` de Pi (l'équivalent upstream du hook `Stop` de Claude) n'a pas de type Result — au moment où il se déclenche, la boucle agent de Pi a déjà terminé. Pi ne peut pas être forcé à relancer la même boucle comme Claude / Copilot / Cursor / Gemini / OpenCode le peuvent. failproofai déplace la porte vers l'événement `before_agent_start` de Pi (qui se déclenche après le prochain prompt utilisateur) afin que la vérification de workflow s'applique quand même, simplement au tour suivant plutôt qu'au tour courant.
+**Limitation de Pi.** L'`AgentEndEvent` de Pi (l'équivalent upstream du hook `Stop` de Claude) n'a pas de type Result — au moment où il se déclenche, la boucle agent de Pi a déjà terminé. Pi ne peut pas être forcé à relancer la même boucle comme Claude / Copilot / Cursor / OpenCode le peuvent. failproofai déplace la porte vers l'événement `before_agent_start` de Pi (qui se déclenche après le prochain prompt utilisateur) afin que la vérification de workflow s'applique quand même, simplement au tour suivant plutôt qu'au tour courant.
 
 **Ce que cela signifie en pratique :**
 
 - Après l'arrêt de Pi, la raison du deny est capturée en mémoire, indexée par l'identifiant de session Pi. Le tout prochain prompt soumis dans le même processus Pi la draine : le LLM voit la directive `MANDATORY ACTION REQUIRED` en tête de son system prompt, effectue le commit (ou le push / ouvre la PR / attend le CI), puis continue avec votre demande. La raison du deny capturée est à usage unique — une fois drainée, la porte est levée.
-- La porte est bornée par la durée de vie du processus Pi. Si vous faites `Ctrl+C` sur Pi ou quittez entre deux tours, l'entrée en mémoire est perdue avec le processus et la porte est manquée. Claude, Copilot, Cursor, Gemini et OpenCode ont la même contrainte (tuer l'agent fait manquer la porte) — Pi la rend simplement plus visible car l'agent se termine visiblement avant que la porte ne se déclenche.
+- La porte est bornée par la durée de vie du processus Pi. Si vous faites `Ctrl+C` sur Pi ou quittez entre deux tours, l'entrée en mémoire est perdue avec le processus et la porte est manquée. Claude, Copilot, Cursor et OpenCode ont la même contrainte (tuer l'agent fait manquer la porte) — Pi la rend simplement plus visible car l'agent se termine visiblement avant que la porte ne se déclenche.
 - Un deny en attente est également effacé à `session_shutdown` pour toute raison (`new` / `resume` / `fork` / `quit`), afin qu'une porte périmée d'une session précédente ne puisse pas fuiter dans une nouvelle session démarrée dans le même processus Pi.
 
-Si vous avez besoin d'une relance dans la même boucle à la manière de Claude, exécutez vos politiques `Stop` sous l'un des six autres CLI supportés. Nous suivons l'évolution de Pi en amont pour un futur type Result sur `AgentEndEvent` qui nous permettrait de combler cet écart.
+Si vous avez besoin d'une relance dans la même boucle à la manière de Claude, exécutez vos politiques `Stop` sous l'un des cinq autres CLI supportés. Nous suivons l'évolution de Pi en amont pour un futur type Result sur `AgentEndEvent` qui nous permettrait de combler cet écart.
 </Note>
 
 ### `require-commit-before-stop`

@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    このコマンドは、インストール済みのエージェント CLI にフックエントリを書き込みます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` と `~/.config/opencode/opencode.json` の `plugin` 配列へのエントリ、Pi の `~/.pi/agent/settings.json`、Gemini CLI の `~/.gemini/settings.json`、または Hermes の `~/.hermes/config.yaml`）。複数が存在する場合はプロンプトで選択を求められます。`--cli claude codex copilot cursor opencode pi gemini hermes`（任意のサブセット）を渡すとプロンプトをスキップできます。
+    このコマンドは、インストール済みのエージェント CLI にフックエントリを書き込みます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` と `~/.config/opencode/opencode.json` の `plugin` 配列へのエントリ、Pi の `~/.pi/agent/settings.json`、または Hermes の `~/.hermes/config.yaml`）。複数が存在する場合はプロンプトで選択を求められます。`--cli claude codex copilot cursor opencode pi hermes`（任意のサブセット）を渡すとプロンプトをスキップできます。
 
-    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI のサポートは**ベータ版**です — それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi`、`--cli gemini` でインストールしてください。Hermes（hermes-agent、Slack/Telegram ゲートウェイ）は `--cli hermes` でユーザースコープにインストールでき、オフライン監査ソースとしても機能します。
+    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi のサポートは**ベータ版**です — それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` でインストールしてください。Hermes（hermes-agent、Slack/Telegram ゲートウェイ）は `--cli hermes` でユーザースコープにインストールでき、オフライン監査ソースとしても機能します。
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

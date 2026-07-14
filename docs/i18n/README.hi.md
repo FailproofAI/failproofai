@@ -72,13 +72,6 @@ Claude Code और Codex में हुक करता है। लूप, �
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -87,7 +80,7 @@ Claude Code और Codex में हुक करता है। लूप, �
   </a>
 </p>
 
-> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi gemini` (या `--cli claude codex copilot cursor opencode pi gemini hermes`)। स्वचालित रूप से स्थापित CLIs का पता लगाने और संकेत देने के लिए `--cli` को छोड़ दें।
+> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi` (या `--cli claude codex copilot cursor opencode pi hermes`)। स्वचालित रूप से स्थापित CLIs का पता लगाने और संकेत देने के लिए `--cli` को छोड़ दें।
 >
 > **Hermes** (hermes-agent, एक Slack/Telegram गेटवे) **लाइव-हुक प्रवर्तन** (`--cli hermes` — एक इंस्टॉल प्रत्येक प्लेटफॉर्म और सबएजेंट से टूल कॉल को रोकता है) और इसके गेटवे सत्रों की ऑफलाइन **ऑडिट** रिप्ले दोनों के लिए समर्थित है।
 

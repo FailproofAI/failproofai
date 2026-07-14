@@ -712,20 +712,19 @@ L'applicazione di Stop varia leggermente tra i sette CLI supportati perché ognu
 | Codex | Stesso loop dell'agent, immediatamente | Come Claude. |
 | GitHub Copilot CLI | Stesso loop dell'agent, immediatamente | Come Claude (usa il canale di retry `{decision:"block", reason}` di Copilot — verificato empiricamente contro Copilot CLI 1.0.41). |
 | Cursor Agent | Stesso loop dell'agent, immediatamente | Come Claude (usa il canale `{followup_message}` di Cursor — limitato a `loop_limit`, default 5 retry). |
-| Gemini CLI | Stesso loop dell'agent, immediatamente | Come Claude (usa il canale `{decision:"block", reason}` di Gemini su `AfterAgent`). |
 | OpenCode | Stesso loop dell'agent, immediatamente | Come Claude (usa la chiamata SDK `client.session.prompt(...)` di OpenCode instradato tramite `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **Turno utente successivo** | **Pi si ferma visibilmente** quando il gate si attiva — il suo loop di agent esce e sei riportato al prompt. Il gate si attiva quindi la prossima volta che invii un prompt: failproofai prepone una direttiva `MANDATORY ACTION REQUIRED` al prompt di sistema di quel turno, istruendo il LLM a completare il passo del workflow (commit, push, ecc.) prima di fare tutto quello che hai chiesto. |
 
 <Note>
-**Limitazione di Pi.** L'evento `AgentEndEvent` di Pi (l'equivalente upstream dell'hook `Stop` di Claude) non ha un tipo Result — nel momento in cui si attiva, il loop di agent di Pi è già uscito. Pi non può essere forzato a riprovare lo stesso loop nel modo in cui Claude / Copilot / Cursor / Gemini / OpenCode possono. failproofai sposta il gate all'evento `before_agent_start` di Pi (che si attiva dopo il prossimo prompt dell'utente) in modo che il controllo del workflow ancora si applichi, solo al turno successivo piuttosto che al turno corrente.
+**Limitazione di Pi.** L'evento `AgentEndEvent` di Pi (l'equivalente upstream dell'hook `Stop` di Claude) non ha un tipo Result — nel momento in cui si attiva, il loop di agent di Pi è già uscito. Pi non può essere forzato a riprovare lo stesso loop nel modo in cui Claude / Copilot / Cursor / OpenCode possono. failproofai sposta il gate all'evento `before_agent_start` di Pi (che si attiva dopo il prossimo prompt dell'utente) in modo che il controllo del workflow ancora si applichi, solo al turno successivo piuttosto che al turno corrente.
 
 **Cosa significa nella pratica:**
 
 - Dopo che Pi si ferma, il motivo della negazione viene catturato in memoria keyed dall'ID sessione di Pi. Il prossimo prompt che invii nello stesso processo Pi lo scarica: l'LLM vede la direttiva `MANDATORY ACTION REQUIRED` in cima al suo prompt di sistema, fa il commit (o push / apre il PR / aspetta CI), e solo allora continua con la tua richiesta. Il motivo della negazione catturato è monouso — una volta scaricato, il gate è pulito.
-- Il gate è limitato dalla durata del processo di Pi. Se fai `Ctrl+C` su Pi o esci tra i turni, la voce in memoria viene eliminata insieme al processo e il gate viene mancato. Claude, Copilot, Cursor, Gemini e OpenCode hanno lo stesso limite (uccidi l'agent e il gate viene mancato) — Pi lo rende solo più visibile perché l'agent si ferma visibilmente prima che il gate si attivi.
+- Il gate è limitato dalla durata del processo di Pi. Se fai `Ctrl+C` su Pi o esci tra i turni, la voce in memoria viene eliminata insieme al processo e il gate viene mancato. Claude, Copilot, Cursor e OpenCode hanno lo stesso limite (uccidi l'agent e il gate viene mancato) — Pi lo rende solo più visibile perché l'agent si ferma visibilmente prima che il gate si attivi.
 - Una negazione in sospeso viene anche cancellata su `session_shutdown` per qualsiasi motivo (`new` / `resume` / `fork` / `quit`), quindi un gate stantio da una sessione precedente non può fuoriuscire in una sessione fresca avviata nello stesso processo Pi.
 
-Se hai bisogno del retry dello stesso loop nello stile di Claude, esegui le tue politiche di `Stop` sotto uno dei sei altri CLI supportati. Stiamo monitorando Pi upstream per un tipo Result futuro su `AgentEndEvent` che ci permetterebbe di chiudere questo gap.
+Se hai bisogno del retry dello stesso loop nello stile di Claude, esegui le tue politiche di `Stop` sotto uno dei cinque altri CLI supportati. Stiamo monitorando Pi upstream per un tipo Result futuro su `AgentEndEvent` che ci permetterebbe di chiudere questo gap.
 </Note>
 
 ### `require-commit-before-stop`

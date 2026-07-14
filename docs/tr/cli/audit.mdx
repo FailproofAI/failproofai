@@ -47,7 +47,7 @@ failproofai
   Kullanımı görmek için `failproofai audit -h` (veya `--help`) komutunu çalıştırın. Denetim **tamamen çevrimdışı** çalışır — hesap veya ağ gerekmez — ve kontrol paneli `Ctrl+C` ile durdurana kadar sunulmaya devam eder.
 </Tip>
 
-Kontrol paneli bu makinedeki geçmiş ajan CLI transkriptlerini tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) ve ajanın failproofai'nin durdurmak için tasarlandığı şeyleri ne sıklıkla yaptığını bildirir — ortam değişkeni kontrolleri, zorla göndermeler, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenen dosyaları yeniden okuma ve daha fazlası.
+Kontrol paneli bu makinedeki geçmiş ajan CLI transkriptlerini tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) ve ajanın failproofai'nin durdurmak için tasarlandığı şeyleri ne sıklıkla yaptığını bildirir — ortam değişkeni kontrolleri, zorla göndermeler, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenen dosyaları yeniden okuma ve daha fazlası.
 
 Her transkript için, her araç-kullanım olayı 39 yerleşik politika **ve** henüz çalışma zamanı politikaları tarafından kapsanmayan desenleri yakalayan 8 denetim-yalnızca dedektörü aracılığıyla yeniden oynatılır. Sayılar tüm oturumlar arasında politika / dedektör başına toplanır.
 

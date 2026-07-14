@@ -24,11 +24,11 @@ O dashboard lê diretamente do sistema de arquivos — suas pastas de projetos d
 
 ### Projetos
 
-Lista todos os projetos Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_ e Hermes encontrados na sua máquina. Os projetos Claude são descobertos em `~/.claude/projects/` (ou no caminho definido por `CLAUDE_PROJECTS_PATH`); os projetos Codex são descobertos varrendo todas as transcrições em `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` e agrupando pelo `cwd` registrado no primeiro registro de cada sessão; os projetos Copilot CLI são descobertos varrendo cada `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurável via `COPILOT_HOME`) e agrupando pelo campo `cwd`; os projetos Cursor Agent são descobertos varrendo metadados por sessão em `~/.cursor/agent-sessions/<sessionId>/` (configurável via `CURSOR_HOME`, com `conversations/` e `sessions/` como alternativas) em busca de um escalar `cwd` em `meta.json` / `session.json` / `workspace.yaml`; os projetos OpenCode são descobertos consultando seu banco SQLite em `~/.local/share/opencode/opencode.db` via `opencode db --format json` (lemos as tabelas `session` e `project` e agrupamos por `project_id`); os projetos Pi são descobertos varrendo transcrições JSONL por sessão em `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (configurável via `PI_SESSIONS_DIR`) e extraindo o `cwd` do primeiro registro de cada sessão; os projetos Gemini CLI são descobertos varrendo `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (configurável via `GEMINI_SESSIONS_DIR`) e recuperando o cwd canônico a partir do marcador de texto `.project_root` adjacente; as sessões do gateway Hermes são lidas diretamente do seu armazenamento SQLite em `~/.hermes/state.db` (configurável via `HERMES_DB_PATH`) e agrupadas em projetos `hermes-<source>` por `source` (Slack/Telegram/cli/cron — sessões do gateway não possuem cwd). Um projeto utilizado por múltiplos CLIs é exibido como uma única linha com todos os badges correspondentes. Use o menu suspenso **CLI** acima da tabela para filtrar por um agente CLI específico; a URL preserva sua seleção como `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`.
+Lista todos os projetos Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ e Hermes encontrados na sua máquina. Os projetos Claude são descobertos em `~/.claude/projects/` (ou no caminho definido por `CLAUDE_PROJECTS_PATH`); os projetos Codex são descobertos varrendo todas as transcrições em `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` e agrupando pelo `cwd` registrado no primeiro registro de cada sessão; os projetos Copilot CLI são descobertos varrendo cada `~/.copilot/session-state/<sessionId>/workspace.yaml` (configurável via `COPILOT_HOME`) e agrupando pelo campo `cwd`; os projetos Cursor Agent são descobertos varrendo metadados por sessão em `~/.cursor/agent-sessions/<sessionId>/` (configurável via `CURSOR_HOME`, com `conversations/` e `sessions/` como alternativas) em busca de um escalar `cwd` em `meta.json` / `session.json` / `workspace.yaml`; os projetos OpenCode são descobertos consultando seu banco SQLite em `~/.local/share/opencode/opencode.db` via `opencode db --format json` (lemos as tabelas `session` e `project` e agrupamos por `project_id`); os projetos Pi são descobertos varrendo transcrições JSONL por sessão em `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (configurável via `PI_SESSIONS_DIR`) e extraindo o `cwd` do primeiro registro de cada sessão; as sessões do gateway Hermes são lidas diretamente do seu armazenamento SQLite em `~/.hermes/state.db` (configurável via `HERMES_DB_PATH`) e agrupadas em projetos `hermes-<source>` por `source` (Slack/Telegram/cli/cron — sessões do gateway não possuem cwd). Um projeto utilizado por múltiplos CLIs é exibido como uma única linha com todos os badges correspondentes. Use o menu suspenso **CLI** acima da tabela para filtrar por um agente CLI específico; a URL preserva sua seleção como `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`.
 
 Cada projeto exibe:
 - Nome do projeto (derivado do caminho da pasta)
-- Um badge de CLI — `Claude Code` (laranja), `OpenAI Codex` (roxo), `GitHub Copilot` (azul), `Cursor Agent` (esmeralda), `OpenCode` (âmbar), `Pi` (rosa), `Gemini CLI` (celeste) e/ou `Hermes` (índigo)
+- Um badge de CLI — `Claude Code` (laranja), `OpenAI Codex` (roxo), `GitHub Copilot` (azul), `Cursor Agent` (esmeralda), `OpenCode` (âmbar), `Pi` (rosa) e/ou `Hermes` (índigo)
 - Data da atividade mais recente da sessão
 
 Clique em um projeto para ver suas sessões.
@@ -47,7 +47,7 @@ Clique em uma sessão para abrir o visualizador de sessão.
 
 ### Visualizador de sessão
 
-O visualizador de sessão responde à pergunta central dos agentes autônomos: o que o agente fez, e ele se manteve no curso? Um badge de CLI ao lado do cabeçalho indica se a sessão é uma transcrição do Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI ou Hermes. Ele exibe uma linha do tempo de tudo que aconteceu em uma sessão:
+O visualizador de sessão responde à pergunta central dos agentes autônomos: o que o agente fez, e ele se manteve no curso? Um badge de CLI ao lado do cabeçalho indica se a sessão é uma transcrição do Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ou Hermes. Ele exibe uma linha do tempo de tudo que aconteceu em uma sessão:
 
 - **Mensagens** — Respostas de texto do Claude e prompts do usuário
 - **Chamadas de ferramentas** — Cada ferramenta que o Claude invocou, com sua entrada e saída
@@ -55,7 +55,7 @@ O visualizador de sessão responde à pergunta central dos agentes autônomos: o
 
 A barra de estatísticas no topo mostra a duração da sessão, total de chamadas de ferramentas e um resumo das decisões de hook (contagens de allow / deny / instruct).
 
-Clique no botão **Download Logs** para exportar a sessão. Para sessões do Claude Code, Codex, Copilot, Cursor, Pi e Gemini, você recebe a transcrição JSONL original em disco byte a byte; para o OpenCode (cujas sessões ficam no SQLite, não em disco) você recebe um documento JSON espelhando as tabelas subjacentes `session` / `messages` / `parts`.
+Clique no botão **Download Logs** para exportar a sessão. Para sessões do Claude Code, Codex, Copilot, Cursor e Pi, você recebe a transcrição JSONL original em disco byte a byte; para o OpenCode (cujas sessões ficam no SQLite, não em disco) você recebe um documento JSON espelhando as tabelas subjacentes `session` / `messages` / `parts`.
 
 ### Auditoria
 
@@ -75,16 +75,16 @@ Uma página com duas abas para gerenciar políticas e revisar atividade.
 
 <Tabs>
   <Tab title="Aba Políticas">
-  - Selecione múltiplos CLIs de agentes que o failproofai protege em um único painel — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI e Hermes têm uma linha com status de instalação (`Active` / `Detected` / `Inactive`), o caminho de configurações de escopo do usuário e um destaque com a cor da marca. Marque ou desmarque os CLIs desejados e clique em `Apply changes` para instalar/desinstalar as alterações em uma etapa. CLIs cujo binário é detectado no PATH são pré-selecionados.
+  - Selecione múltiplos CLIs de agentes que o failproofai protege em um único painel — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi e Hermes têm uma linha com status de instalação (`Active` / `Detected` / `Inactive`), o caminho de configurações de escopo do usuário e um destaque com a cor da marca. Marque ou desmarque os CLIs desejados e clique em `Apply changes` para instalar/desinstalar as alterações em uma etapa. CLIs cujo binário é detectado no PATH são pré-selecionados.
   - Ative ou desative políticas individuais com um único clique (escreve em `~/.failproofai/policies-config.json` — compartilhado entre todos os CLIs instalados)
   - Expanda uma política para configurar seus parâmetros (para políticas que suportam `policyParams`)
   - Defina um caminho personalizado para o arquivo de políticas
   </Tab>
   <Tab title="Aba Atividade">
   - Histórico paginado completo de cada evento de hook que foi acionado em todas as sessões
-  - Filtre por decisão, tipo de evento, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), nome da política ou ID de sessão
-  - Cada linha exibe: timestamp, nome da política, decisão, badge de CLI (laranja = Claude Code, roxo = OpenAI Codex, azul = GitHub Copilot, esmeralda = Cursor Agent, âmbar = OpenCode, rosa = Pi, celeste = Gemini CLI, índigo = Hermes), nome da ferramenta, ID de sessão e o motivo das decisões deny/instruct
-  - Clique em um ID de sessão para abrir sua transcrição — o visualizador detecta automaticamente qual CLI acionou o hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) e renderiza o badge de CLI correspondente no cabeçalho
+  - Filtre por decisão, tipo de evento, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), nome da política ou ID de sessão
+  - Cada linha exibe: timestamp, nome da política, decisão, badge de CLI (laranja = Claude Code, roxo = OpenAI Codex, azul = GitHub Copilot, esmeralda = Cursor Agent, âmbar = OpenCode, rosa = Pi, índigo = Hermes), nome da ferramenta, ID de sessão e o motivo das decisões deny/instruct
+  - Clique em um ID de sessão para abrir sua transcrição — o visualizador detecta automaticamente qual CLI acionou o hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) e renderiza o badge de CLI correspondente no cabeçalho
   </Tab>
 </Tabs>
 

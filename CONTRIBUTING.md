@@ -20,7 +20,7 @@ The dev server starts at `http://localhost:8020`.
 ### Build before the in-repo dev hooks will work
 
 This repo **dogfoods failproofai on itself**: `.claude/settings.json` (and the
-sibling `.codex/`, `.cursor/`, `.gemini/`, `.github/hooks/`, … configs) register
+sibling `.codex/`, `.cursor/`, `.github/hooks/`, … configs) register
 hooks that run `bun bin/failproofai.mjs --hook <Event>`. Those hooks load the
 custom policies in `.failproofai/policies/*.mjs`, which `import` the
 `failproofai` package — resolved against the **compiled `dist/index.js` bundle**.

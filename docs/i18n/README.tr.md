@@ -72,13 +72,6 @@ olaylar haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -87,7 +80,7 @@ olaylar haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır
   </a>
 </p>
 
-> Bir veya herhangi bir kombinasyon için kanca yükleyin: `failproofai policies --install --cli opencode pi gemini` (veya `--cli claude codex copilot cursor opencode pi gemini hermes`). Yüklü CLI'ları otomatik olarak algılamak ve istemek için `--cli` öğesini atlayın.
+> Bir veya herhangi bir kombinasyon için kanca yükleyin: `failproofai policies --install --cli opencode pi` (veya `--cli claude codex copilot cursor opencode pi hermes`). Yüklü CLI'ları otomatik olarak algılamak ve istemek için `--cli` öğesini atlayın.
 >
 > **Hermes** (hermes-agent, bir Slack/Telegram ağ geçidi) hem **canlı kanca uygulaması** (`--cli hermes` — bir kurulum her platformdan ve alt ajantan araç çağrılarını keser) hem de çevrimdışı **denetim** için desteklenir. tek `~/.hermes/state.db` dosyasından ağ geçidi oturumlarının tekrar oynatılması.
 

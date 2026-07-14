@@ -74,7 +74,7 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
           <h3 className="empty-headline">run your first audit.</h3>
           <p className="empty-sub">
             we&apos;ll walk every transcript across your installed CLIs — Claude Code,
-            Codex, Copilot, Cursor, OpenCode, Pi, Gemini — and count every wasteful
+            Codex, Copilot, Cursor, OpenCode, Pi — and count every wasteful
             or risky action. you&apos;ll get a tier, a score, and a punch-list.
           </p>
 

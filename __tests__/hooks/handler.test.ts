@@ -612,116 +612,12 @@ describe("hooks/handler", () => {
       );
     });
 
-    it("canonicalizes Gemini BeforeTool → PreToolUse before evaluating", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        policyName: null,
-        reason: null,
-        decision: "allow",
-      });
-      mockStdin(JSON.stringify({ tool_name: "run_shell_command", hook_event_name: "BeforeTool" }));
-      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
-
-      await handleHookEvent("BeforeTool", "gemini");
-
-      expect(evaluatePolicies).toHaveBeenCalledWith(
-        "PreToolUse",
-        expect.any(Object),
-        expect.any(Object),
-        expect.any(Object),
-      );
-      expect(persistHookActivity).toHaveBeenCalledWith(
-        expect.objectContaining({ integration: "gemini", eventType: "PreToolUse" }),
-      );
-    });
-
-    it("canonicalizes Gemini snake_case tool name run_shell_command → Bash before evaluating", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        policyName: null,
-        reason: null,
-        decision: "allow",
-      });
-      mockStdin(JSON.stringify({ tool_name: "run_shell_command", hook_event_name: "BeforeTool" }));
-      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
-
-      await handleHookEvent("BeforeTool", "gemini");
-
-      // The mutated payload passed to evaluatePolicies should carry the canonicalized tool_name
-      expect(evaluatePolicies).toHaveBeenCalledWith(
-        "PreToolUse",
-        expect.objectContaining({ tool_name: "Bash" }),
-        expect.any(Object),
-        expect.any(Object),
-      );
-      // Activity store should also see canonicalized toolName=Bash, NOT raw run_shell_command
-      expect(persistHookActivity).toHaveBeenCalledWith(
-        expect.objectContaining({ integration: "gemini", toolName: "Bash" }),
-      );
-    });
-
-    it("canonicalizes every Gemini tool name in GEMINI_TOOL_MAP", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      const cases: Array<[string, string]> = [
-        ["run_shell_command", "Bash"],
-        ["read_file", "Read"],
-        ["read_many_files", "Read"],
-        ["write_file", "Write"],
-        ["replace", "Edit"],
-        ["glob", "Glob"],
-        ["grep_search", "Grep"],
-        ["list_directory", "LS"],
-        ["web_fetch", "WebFetch"],
-        ["google_web_search", "WebSearch"],
-        ["write_todos", "TodoWrite"],
-        ["save_memory", "Memory"],
-        ["ask_user", "AskUser"],
-      ];
-      for (const [raw, canonical] of cases) {
-        vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-          exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
-        });
-        mockStdin(JSON.stringify({ tool_name: raw, hook_event_name: "BeforeTool" }));
-        await handleHookEvent("BeforeTool", "gemini");
-        expect(evaluatePolicies).toHaveBeenLastCalledWith(
-          "PreToolUse",
-          expect.objectContaining({ tool_name: canonical }),
-          expect.any(Object),
-          expect.any(Object),
-        );
-      }
-    });
-
-    it("passes through unknown Gemini tool names (MCP, extensions) unchanged", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-        exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
-      });
-      mockStdin(JSON.stringify({ tool_name: "mcp_github_create_issue", hook_event_name: "BeforeTool" }));
-
-      await handleHookEvent("BeforeTool", "gemini");
-
-      // Unknown tool names are NOT in GEMINI_TOOL_MAP — must pass through unchanged so MCP tools aren't lost
-      expect(evaluatePolicies).toHaveBeenCalledWith(
-        "PreToolUse",
-        expect.objectContaining({ tool_name: "mcp_github_create_issue" }),
-        expect.any(Object),
-        expect.any(Object),
-      );
-    });
-
     it("does NOT canonicalize tool names when cli=claude (other CLIs unaffected)", async () => {
       const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
       vi.mocked(evaluatePolicies).mockResolvedValueOnce({
         exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
       });
-      // A Claude session that somehow has a Gemini-shaped tool name should NOT be remapped.
+      // A Claude session that somehow has a snake_case tool name should NOT be remapped.
       mockStdin(JSON.stringify({ tool_name: "run_shell_command", hook_event_name: "PreToolUse" }));
 
       await handleHookEvent("PreToolUse", "claude");
@@ -731,75 +627,6 @@ describe("hooks/handler", () => {
         expect.objectContaining({ tool_name: "run_shell_command" }),
         expect.any(Object),
         expect.any(Object),
-      );
-    });
-
-    it("canonicalizes all 11 Gemini events to canonical names (BeforeAgent → UserPromptSubmit, etc.)", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      const cases: Array<[string, string]> = [
-        ["SessionStart", "SessionStart"],
-        ["SessionEnd", "SessionEnd"],
-        ["BeforeAgent", "UserPromptSubmit"],
-        ["AfterAgent", "Stop"],
-        ["BeforeTool", "PreToolUse"],
-        ["AfterTool", "PostToolUse"],
-        ["PreCompress", "PreCompact"],
-        ["Notification", "Notification"],
-        // Gemini-only events with no Claude canonical — passthrough.
-        ["BeforeModel", "BeforeModel"],
-        ["AfterModel", "AfterModel"],
-        ["BeforeToolSelection", "BeforeToolSelection"],
-      ];
-      for (const [raw, canonical] of cases) {
-        vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-          exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
-        });
-        mockStdin(JSON.stringify({ hook_event_name: raw }));
-        await handleHookEvent(raw, "gemini");
-        expect(evaluatePolicies).toHaveBeenLastCalledWith(
-          canonical,
-          expect.any(Object),
-          expect.any(Object),
-          expect.any(Object),
-        );
-      }
-    });
-
-    it("tags telemetry with cli=gemini and canonicalized tool_name=Bash when invoked with --cli gemini", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: '{"decision":"deny","reason":"sudo blocked"}',
-        stderr: "",
-        policyName: "block-sudo",
-        reason: "sudo blocked",
-        decision: "deny",
-      });
-      mockStdin(JSON.stringify({ tool_name: "run_shell_command", hook_event_name: "BeforeTool" }));
-      const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
-
-      await handleHookEvent("BeforeTool", "gemini");
-
-      // Telemetry should see the canonicalized tool name (Bash, not run_shell_command)
-      expect(trackHookEvent).toHaveBeenCalledWith(
-        "test-instance-id",
-        "hook_policy_triggered",
-        expect.objectContaining({ cli: "gemini", event_type: "PreToolUse", tool_name: "Bash" }),
-      );
-    });
-
-    it("tags activity store entry with integration=gemini and canonicalized eventType for Gemini hook fires", async () => {
-      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
-      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
-        exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow",
-      });
-      mockStdin(JSON.stringify({ tool_name: "read_file", hook_event_name: "BeforeTool" }));
-      const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
-
-      await handleHookEvent("BeforeTool", "gemini");
-
-      expect(persistHookActivity).toHaveBeenCalledWith(
-        expect.objectContaining({ integration: "gemini", eventType: "PreToolUse", toolName: "Read" }),
       );
     });
 

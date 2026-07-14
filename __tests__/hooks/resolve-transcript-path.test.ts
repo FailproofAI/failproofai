@@ -13,16 +13,12 @@ vi.mock("../../lib/cursor-sessions", () => ({
 vi.mock("../../lib/pi-sessions", () => ({
   findPiTranscript: vi.fn(),
 }));
-vi.mock("../../lib/gemini-sessions", () => ({
-  findGeminiTranscript: vi.fn(),
-}));
 
 import { resolveTranscriptPath } from "../../src/hooks/resolve-transcript-path";
 import { findCodexTranscript } from "../../lib/codex-sessions";
 import { findCopilotTranscript } from "../../lib/copilot-sessions";
 import { findCursorTranscript } from "../../lib/cursor-sessions";
 import { findPiTranscript } from "../../lib/pi-sessions";
-import { findGeminiTranscript } from "../../lib/gemini-sessions";
 import type { IntegrationType } from "../../src/hooks/types";
 
 describe("resolveTranscriptPath", () => {
@@ -37,7 +33,6 @@ describe("resolveTranscriptPath", () => {
       "copilot",
       "cursor",
       "pi",
-      "gemini",
       "opencode",
     ];
     it.each(cases)(
@@ -60,7 +55,6 @@ describe("resolveTranscriptPath", () => {
       "copilot",
       "cursor",
       "pi",
-      "gemini",
       "opencode",
     ];
     it.each(cases)("returns undefined when no stdin path AND no sessionId (%s)", (cli) => {
@@ -107,13 +101,6 @@ describe("resolveTranscriptPath", () => {
       const out = resolveTranscriptPath("pi", {}, "sess-pi");
       expect(findPiTranscript).toHaveBeenCalledWith("sess-pi");
       expect(out).toBe("/home/u/.pi/agent/sessions/encoded/2026-05-05_sess-pi.jsonl");
-    });
-
-    it("gemini → findGeminiTranscript(sessionId)", () => {
-      vi.mocked(findGeminiTranscript).mockReturnValue("/home/u/.gemini/tmp/projhash/chats/sess-gemini.json");
-      const out = resolveTranscriptPath("gemini", {}, "sess-gemini");
-      expect(findGeminiTranscript).toHaveBeenCalledWith("sess-gemini");
-      expect(out).toBe("/home/u/.gemini/tmp/projhash/chats/sess-gemini.json");
     });
 
     it("opencode → synthetic opencode-db://<sessionId> marker (transcripts live in SQLite)", () => {

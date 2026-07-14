@@ -57,7 +57,7 @@ failproofai
   `Ctrl+C`.
 </Tip>
 
-Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) et indique à quelle fréquence l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling avec sleep, relecture de fichiers venant d'être édités, et bien d'autres.
+Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) et indique à quelle fréquence l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling avec sleep, relecture de fichiers venant d'être édités, et bien d'autres.
 
 Pour chaque transcription, chaque événement d'utilisation d'outil est rejoué à travers les 39 politiques intégrées **et** à travers 8 détecteurs exclusifs à l'audit qui repèrent des motifs non encore couverts par les politiques en temps réel. Les comptages sont agrégés par politique / détecteur sur l'ensemble des sessions.
 

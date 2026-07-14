@@ -38,9 +38,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Questo scrive voci di hook nei tuoi agent CLI installati (il file `~/.claude/settings.json` di Claude Code, il file `~/.codex/hooks.json` di OpenAI Codex, il file `~/.copilot/hooks/failproofai.json` di GitHub Copilot CLI, il file `~/.cursor/hooks.json` di Cursor Agent, lo shim del plugin generato di OpenCode in `~/.config/opencode/plugins/failproofai.mjs` più una voce di registrazione nell'array `plugin` di `~/.config/opencode/opencode.json`, il file `~/.pi/agent/settings.json` di Pi, il file `~/.gemini/settings.json` di Gemini CLI, o il file `~/.hermes/config.yaml` di Hermes). Quando è presente più di uno, ti verrà chiesto; passa `--cli claude codex copilot cursor opencode pi gemini hermes` (qualsiasi sottoinsieme) per saltare la richiesta.
+    Questo scrive voci di hook nei tuoi agent CLI installati (il file `~/.claude/settings.json` di Claude Code, il file `~/.codex/hooks.json` di OpenAI Codex, il file `~/.copilot/hooks/failproofai.json` di GitHub Copilot CLI, il file `~/.cursor/hooks.json` di Cursor Agent, lo shim del plugin generato di OpenCode in `~/.config/opencode/plugins/failproofai.mjs` più una voce di registrazione nell'array `plugin` di `~/.config/opencode/opencode.json`, il file `~/.pi/agent/settings.json` di Pi, o il file `~/.hermes/config.yaml` di Hermes). Quando è presente più di uno, ti verrà chiesto; passa `--cli claude codex copilot cursor opencode pi hermes` (qualsiasi sottoinsieme) per saltare la richiesta.
 
-    Il supporto per GitHub Copilot CLI, Cursor Agent, OpenCode, Pi e Gemini CLI è in **beta** — installa con `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` o `--cli gemini`. Hermes (hermes-agent, un gateway Slack/Telegram) si installa con ambito utente con `--cli hermes` ed è **anche** una fonte di audit offline.
+    Il supporto per GitHub Copilot CLI, Cursor Agent, OpenCode e Pi è in **beta** — installa con `--cli copilot`, `--cli cursor`, `--cli opencode` o `--cli pi`. Hermes (hermes-agent, un gateway Slack/Telegram) si installa con ambito utente con `--cli hermes` ed è **anche** una fonte di audit offline.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,7 +49,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

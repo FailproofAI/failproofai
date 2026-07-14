@@ -164,8 +164,7 @@ export async function evaluatePolicies(
         // — that shape is only honored on tool events. The only force-retry
         // channel for Stop/SubagentStop is `{followup_message}` on stdout
         // (exit 0); Cursor auto-submits the text as the next user message
-        // (capped at `loop_limit`, default 5). Mirrors the Copilot Stop
-        // branch at line ~279 and the Gemini AfterAgent branch at line ~188.
+        // (capped at `loop_limit`, default 5). Mirrors the Copilot Stop branch.
         // Without this branch, the 5 `require-*-before-stop` builtins were
         // observation-only on Cursor — the deny was logged but the agent
         // stopped cleanly. Ref: https://cursor.com/docs/hooks
@@ -202,7 +201,7 @@ export async function evaluatePolicies(
       // same flat shape — except Stop, where we emit the MANDATORY ACTION
       // wording so the shim can re-inject it as a system-prompt suffix on
       // the next before_agent_start (Pi cannot veto agent_end directly).
-      // Mirrors the Cursor/Gemini/Copilot/OpenCode Stop branches above.
+      // Mirrors the Cursor/Copilot/OpenCode Stop branches above.
       if (session?.cli === "pi") {
         if (eventType === "Stop") {
           const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
@@ -222,33 +221,6 @@ export async function evaluatePolicies(
         return {
           exitCode: 0,
           stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Gemini CLI: flat `{decision: "deny", reason}` for non-Stop events
-      // (preferred per Gemini's "Golden Rule" — exit 0 with structured JSON).
-      // For Stop (AfterAgent), use `{decision: "block", reason}` to force-retry,
-      // mirroring Claude's exit-2-from-Stop "do this before stopping" semantics.
-      // Ref: https://geminicli.com/docs/hooks/
-      if (session?.cli === "gemini") {
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
           stderr: "",
           policyName: policy.name,
           reason,
@@ -529,78 +501,6 @@ export async function evaluatePolicies(
       };
     }
 
-    // Gemini CLI:
-    //   • Stop (AfterAgent) → {decision: "block", reason: "MANDATORY ACTION..."}
-    //     mirrors Claude's exit-2-from-Stop "force retry" semantics.
-    //   • UserPromptSubmit/PostToolUse/SessionStart/PreToolUse → context
-    //     injection via {hookSpecificOutput: {hookEventName, additionalContext}}
-    //     where hookEventName is the GEMINI event name (BeforeAgent/AfterTool/
-    //     SessionStart/BeforeTool), not the canonical PascalCase form.
-    //   • Other events → stderr only (no stdout JSON shape supported).
-    if (session?.cli === "gemini") {
-      if (eventType === "Stop") {
-        const policyAttribution = policyNames.length === 1
-          ? `policy: ${policyNames[0]}`
-          : `policies: ${policyNames.join(", ")}`;
-        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (${policyAttribution}): ${combined}\n\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.`;
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-          stderr: "",
-          policyName: policyNames[0],
-          policyNames,
-          reason: combined,
-          decision: "instruct",
-        };
-      }
-      // Map back from canonical → Gemini event name. Prefer the raw event name
-      // off the session (handler.ts populates it from parsed.hook_event_name)
-      // so we don't have to maintain a reverse lookup table.
-      const supportsContext =
-        eventType === "UserPromptSubmit" ||
-        eventType === "PreToolUse" ||
-        eventType === "PostToolUse" ||
-        eventType === "SessionStart";
-      if (supportsContext) {
-        // Round-trip the agent-emitted event name so Gemini sees `BeforeTool`,
-        // `BeforeAgent`, etc. (NOT the canonical Claude form). Prefer the
-        // stdin payload's `hook_event_name` when present; fall back to the raw
-        // CLI `--hook` arg captured by handler.ts; only use the canonical
-        // event as a last resort (would never round-trip correctly, but better
-        // than emitting nothing).
-        const hookEventName = session?.hookEventName ?? session?.rawHookEventName ?? eventType;
-        const response = {
-          hookSpecificOutput: {
-            hookEventName,
-            additionalContext: `Instruction from failproofai: ${combined}`,
-          },
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policyNames[0],
-          policyNames,
-          reason: combined,
-          decision: "instruct",
-        };
-      }
-      // No context-injection channel for SessionEnd/PreCompress/Notification/
-      // BeforeModel/AfterModel/BeforeToolSelection — surface via stderr only.
-      const stderrMsg = instructEntries
-        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
-        .join("\n");
-      return {
-        exitCode: 0,
-        stdout: "",
-        stderr: stderrMsg + "\n",
-        policyName: policyNames[0],
-        policyNames,
-        reason: combined,
-        decision: "instruct",
-      };
-    }
-
     // Hermes: no additional-context channel on any event (the only actionable
     // response is `{"decision":"block"}`). So instruct degrades to allow +
     // log — we emit a non-blocking `{decision:"allow", reason}` (Hermes lets
@@ -797,47 +697,6 @@ export async function evaluatePolicies(
           permission: "allow",
           reason: `Note from failproofai: ${combined}`,
         }),
-        stderr: stderrMsg + "\n",
-        policyName: policyNames[0],
-        policyNames,
-        reason: combined,
-        decision: "allow",
-      };
-    }
-
-    // Gemini: mirror the instruct context-injection shape for events that
-    // support it; stderr-only for everything else.
-    if (session?.cli === "gemini") {
-      const supportsContext =
-        eventType === "UserPromptSubmit" ||
-        eventType === "PreToolUse" ||
-        eventType === "PostToolUse" ||
-        eventType === "SessionStart";
-      const stderrMsg = allowEntries
-        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
-        .join("\n");
-      if (supportsContext) {
-        // Same fallback chain as the instruct path above — see comment there.
-        const hookEventName = session?.hookEventName ?? session?.rawHookEventName ?? eventType;
-        const response = {
-          hookSpecificOutput: {
-            hookEventName,
-            additionalContext: `Note from failproofai: ${combined}`,
-          },
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: stderrMsg + "\n",
-          policyName: policyNames[0],
-          policyNames,
-          reason: combined,
-          decision: "allow",
-        };
-      }
-      return {
-        exitCode: 0,
-        stdout: "",
         stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,

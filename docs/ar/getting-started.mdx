@@ -38,9 +38,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    يكتب هذا إدخالات hook في أدوات الوكيل المثبتة لديك (ملف Claude Code `~/.claude/settings.json`، ملف OpenAI Codex `~/.codex/hooks.json`، ملف GitHub Copilot CLI `~/.copilot/hooks/failproofai.json`، ملف Cursor Agent `~/.cursor/hooks.json`، مكون OpenCode المولد في `~/.config/opencode/plugins/failproofai.mjs` بالإضافة إلى إدخال التسجيل في مصفوفة `plugin` في `~/.config/opencode/opencode.json`، ملف Pi `~/.pi/agent/settings.json`، ملف Gemini CLI `~/.gemini/settings.json`، أو ملف Hermes `~/.hermes/config.yaml`). عند وجود أكثر من واحد ستُطلب منك المتابعة؛ مرر `--cli claude codex copilot cursor opencode pi gemini hermes` (أي مجموعة فرعية) لتخطي الطلب.
+    يكتب هذا إدخالات hook في أدوات الوكيل المثبتة لديك (ملف Claude Code `~/.claude/settings.json`، ملف OpenAI Codex `~/.codex/hooks.json`، ملف GitHub Copilot CLI `~/.copilot/hooks/failproofai.json`، ملف Cursor Agent `~/.cursor/hooks.json`، مكون OpenCode المولد في `~/.config/opencode/plugins/failproofai.mjs` بالإضافة إلى إدخال التسجيل في مصفوفة `plugin` في `~/.config/opencode/opencode.json`، ملف Pi `~/.pi/agent/settings.json`، أو ملف Hermes `~/.hermes/config.yaml`). عند وجود أكثر من واحد ستُطلب منك المتابعة؛ مرر `--cli claude codex copilot cursor opencode pi hermes` (أي مجموعة فرعية) لتخطي الطلب.
 
-    دعم GitHub Copilot CLI و Cursor Agent و OpenCode و Pi و Gemini CLI موجود في مرحلة **تجريبية** — ثبّت باستخدام `--cli copilot` أو `--cli cursor` أو `--cli opencode` أو `--cli pi` أو `--cli gemini`. يثبّت Hermes (hermes-agent، بوابة Slack/Telegram) بنطاق المستخدم باستخدام `--cli hermes` وهو أيضًا **مصدر تدقيق** دون اتصال.
+    دعم GitHub Copilot CLI و Cursor Agent و OpenCode و Pi موجود في مرحلة **تجريبية** — ثبّت باستخدام `--cli copilot` أو `--cli cursor` أو `--cli opencode` أو `--cli pi`. يثبّت Hermes (hermes-agent، بوابة Slack/Telegram) بنطاق المستخدم باستخدام `--cli hermes` وهو أيضًا **مصدر تدقيق** دون اتصال.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,7 +49,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

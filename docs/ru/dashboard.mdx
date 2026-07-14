@@ -24,11 +24,11 @@ failproofai
 
 ### Projects
 
-Список всех найденных на вашем компьютере проектов Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_ и Hermes. Проекты Claude обнаруживаются из `~/.claude/projects/` (или пути, установленного в `CLAUDE_PROJECTS_PATH`); проекты Codex обнаруживаются путём сканирования каждой транскрипции под `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` и группировки по `cwd`, записанному в первой записи каждого сеанса; проекты Copilot CLI обнаруживаются путём сканирования каждого `~/.copilot/session-state/<sessionId>/workspace.yaml` (настраивается через `COPILOT_HOME`) и группировки по полю `cwd`; проекты Cursor Agent обнаруживаются путём сканирования метаданных для каждого сеанса под `~/.cursor/agent-sessions/<sessionId>/` (настраивается через `CURSOR_HOME`, со счётом `conversations/` и `sessions/` в качестве резервных вариантов) для скаляра `cwd` в `meta.json` / `session.json` / `workspace.yaml`; проекты OpenCode обнаруживаются путём запроса к его БД SQLite на `~/.local/share/opencode/opencode.db` через `opencode db --format json` (мы читаем таблицы `session` и `project` и группируем по `project_id`); проекты Pi обнаруживаются путём сканирования транскрипций JSONL для каждого сеанса под `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (настраивается через `PI_SESSIONS_DIR`) и извлечения `cwd` из первой записи каждого сеанса; проекты Gemini CLI обнаруживаются путём сканирования `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (настраивается через `GEMINI_SESSIONS_DIR`) и восстановления канонического cwd из текстового маркера `.project_root`; сеансы шлюза Hermes читаются непосредственно из его хранилища SQLite на `~/.hermes/state.db` (настраивается через `HERMES_DB_PATH`) и группируются в проекты `hermes-<source>` по `source` (Slack/Telegram/cli/cron — сеансы шлюза не имеют cwd). Проект, который использовался несколькими CLI, отображается как одна строка со всеми соответствующими значками. Используйте выпадающее меню **CLI** над таблицей для фильтрации по конкретному агенту; URL сохраняет ваш выбор как `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`.
+Список всех найденных на вашем компьютере проектов Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ и Hermes. Проекты Claude обнаруживаются из `~/.claude/projects/` (или пути, установленного в `CLAUDE_PROJECTS_PATH`); проекты Codex обнаруживаются путём сканирования каждой транскрипции под `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` и группировки по `cwd`, записанному в первой записи каждого сеанса; проекты Copilot CLI обнаруживаются путём сканирования каждого `~/.copilot/session-state/<sessionId>/workspace.yaml` (настраивается через `COPILOT_HOME`) и группировки по полю `cwd`; проекты Cursor Agent обнаруживаются путём сканирования метаданных для каждого сеанса под `~/.cursor/agent-sessions/<sessionId>/` (настраивается через `CURSOR_HOME`, со счётом `conversations/` и `sessions/` в качестве резервных вариантов) для скаляра `cwd` в `meta.json` / `session.json` / `workspace.yaml`; проекты OpenCode обнаруживаются путём запроса к его БД SQLite на `~/.local/share/opencode/opencode.db` через `opencode db --format json` (мы читаем таблицы `session` и `project` и группируем по `project_id`); проекты Pi обнаруживаются путём сканирования транскрипций JSONL для каждого сеанса под `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (настраивается через `PI_SESSIONS_DIR`) и извлечения `cwd` из первой записи каждого сеанса; сеансы шлюза Hermes читаются непосредственно из его хранилища SQLite на `~/.hermes/state.db` (настраивается через `HERMES_DB_PATH`) и группируются в проекты `hermes-<source>` по `source` (Slack/Telegram/cli/cron — сеансы шлюза не имеют cwd). Проект, который использовался несколькими CLI, отображается как одна строка со всеми соответствующими значками. Используйте выпадающее меню **CLI** над таблицей для фильтрации по конкретному агенту; URL сохраняет ваш выбор как `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`.
 
 Каждый проект показывает:
 - Имя проекта (производное от пути папки)
-- Значок CLI — `Claude Code` (оранжевый), `OpenAI Codex` (фиолетовый), `GitHub Copilot` (синий), `Cursor Agent` (изумруд), `OpenCode` (янтарь), `Pi` (розовый), `Gemini CLI` (небесно-голубой) и/или `Hermes` (индиго)
+- Значок CLI — `Claude Code` (оранжевый), `OpenAI Codex` (фиолетовый), `GitHub Copilot` (синий), `Cursor Agent` (изумруд), `OpenCode` (янтарь), `Pi` (розовый) и/или `Hermes` (индиго)
 - Дата последней активности сеанса
 
 Щёлкните по проекту, чтобы просмотреть его сеансы.
@@ -47,7 +47,7 @@ failproofai
 
 ### Session viewer
 
-Средство просмотра сеанса отвечает на ключевой вопрос для автономных агентов: что сделал агент и остался ли он на курсе? Значок CLI рядом с заголовком указывает, является ли сеанс транскрипцией Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI или Hermes. Он показывает временную шкалу всего, что произошло в сеансе:
+Средство просмотра сеанса отвечает на ключевой вопрос для автономных агентов: что сделал агент и остался ли он на курсе? Значок CLI рядом с заголовком указывает, является ли сеанс транскрипцией Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi или Hermes. Он показывает временную шкалу всего, что произошло в сеансе:
 
 - **Messages** — текстовые ответы Claude и подсказки пользователя
 - **Tool calls** — каждый инструмент, который вызвал Claude, с его входными и выходными данными
@@ -55,7 +55,7 @@ failproofai
 
 Панель статистики вверху показывает длительность сеанса, общее количество вызовов инструментов и сводку решений хуков (счётчики allow / deny / instruct).
 
-Нажмите кнопку **Download Logs** для экспорта сеанса. Для сеансов Claude Code, Codex, Copilot, Cursor, Pi и Gemini вы получаете исходную транскрипцию JSONL на диске в исходном виде; для OpenCode (чьи сеансы хранятся в SQLite, а не на диске) вы получаете JSON-документ, отражающий основные таблицы `session` / `messages` / `parts`.
+Нажмите кнопку **Download Logs** для экспорта сеанса. Для сеансов Claude Code, Codex, Copilot, Cursor и Pi вы получаете исходную транскрипцию JSONL на диске в исходном виде; для OpenCode (чьи сеансы хранятся в SQLite, а не на диске) вы получаете JSON-документ, отражающий основные таблицы `session` / `messages` / `parts`.
 
 ### Audit
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="Policies tab">
-  - Выберите несколько агентов CLI, которых защищает failproofai, из одной панели — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI и Hermes все имеют строку со статусом установки (`Active` / `Detected` / `Inactive`), путём пользовательской области видимости и фирменный цветной акцент. Отметьте или снимите отметку с CLI, которые вы хотите, и нажмите `Apply changes` для установки/удаления разницы за один шаг. CLI, чьи двоичные файлы обнаружены в PATH, предварительно отмечены.
+  - Выберите несколько агентов CLI, которых защищает failproofai, из одной панели — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi и Hermes все имеют строку со статусом установки (`Active` / `Detected` / `Inactive`), путём пользовательской области видимости и фирменный цветной акцент. Отметьте или снимите отметку с CLI, которые вы хотите, и нажмите `Apply changes` для установки/удаления разницы за один шаг. CLI, чьи двоичные файлы обнаружены в PATH, предварительно отмечены.
   - Переключайте отдельные политики вкл/выкл одним щелчком (записывает в `~/.failproofai/policies-config.json` — общее для каждого установленного CLI)
   - Разверните политику для настройки её параметров (для политик, поддерживающих `policyParams`)
   - Установите путь пользовательского файла политик
   </Tab>
   <Tab title="Activity tab">
   - Полная постраничная история каждого события хука, срабатывающего во всех сеансах
-  - Фильтруйте по решению, типу события, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), имени политики или ID сеанса
-  - Каждая строка показывает: временную метку, имя политики, решение, значок CLI (оранжевый = Claude Code, фиолетовый = OpenAI Codex, синий = GitHub Copilot, изумруд = Cursor Agent, янтарь = OpenCode, розовый = Pi, небесно-голубой = Gemini CLI, индиго = Hermes), имя инструмента, ID сеанса и причину решений deny/instruct
-  - Щёлкните по ID сеанса, чтобы открыть его транскрипцию — средство просмотра автоматически обнаруживает, какой CLI срабатил хук (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) и отображает соответствующий значок CLI в заголовке
+  - Фильтруйте по решению, типу события, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), имени политики или ID сеанса
+  - Каждая строка показывает: временную метку, имя политики, решение, значок CLI (оранжевый = Claude Code, фиолетовый = OpenAI Codex, синий = GitHub Copilot, изумруд = Cursor Agent, янтарь = OpenCode, розовый = Pi, индиго = Hermes), имя инструмента, ID сеанса и причину решений deny/instruct
+  - Щёлкните по ID сеанса, чтобы открыть его транскрипцию — средство просмотра автоматически обнаруживает, какой CLI срабатил хук (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) и отображает соответствующий значок CLI в заголовке
   </Tab>
 </Tabs>
 

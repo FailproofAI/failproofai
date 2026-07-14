@@ -20,7 +20,6 @@ import {
   cursor,
   opencode,
   pi,
-  gemini,
   hermes,
   openclaw,
   getIntegration,
@@ -36,9 +35,6 @@ import {
   OPENCODE_EVENT_MAP,
   PI_HOOK_EVENT_TYPES,
   PI_EVENT_MAP,
-  GEMINI_HOOK_EVENT_TYPES,
-  GEMINI_EVENT_MAP,
-  GEMINI_TOOL_MAP,
   HERMES_HOOK_EVENT_TYPES,
   HERMES_EVENT_MAP,
   HOOK_EVENT_TYPES,
@@ -47,7 +43,6 @@ import {
   type CursorHookEventType,
   type OpenCodeHookEventType,
   type PiHookEventType,
-  type GeminiHookEventType,
   type HermesHookEventType,
 } from "../../src/hooks/types";
 import { homedir } from "node:os";
@@ -74,9 +69,9 @@ afterEach(() => {
 });
 
 describe("integrations registry", () => {
-  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, gemini, hermes, and openclaw in declared order", () => {
+  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes", "openclaw"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -101,10 +96,6 @@ describe("integrations registry", () => {
 
   it("getIntegration('pi') returns pi", () => {
     expect(getIntegration("pi")).toBe(pi);
-  });
-
-  it("getIntegration('gemini') returns gemini", () => {
-    expect(getIntegration("gemini")).toBe(gemini);
   });
 
   it("getIntegration('hermes') returns hermes", () => {
@@ -1098,208 +1089,6 @@ describe("PI_EVENT_MAP", () => {
   it("PiHookEventType is exhaustive", () => {
     const sample: PiHookEventType = "tool_call";
     expect(PI_EVENT_MAP[sample]).toBe("PreToolUse");
-  });
-});
-
-describe("Gemini CLI integration", () => {
-  it("getSettingsPath maps user → ~/.gemini/settings.json and project → <cwd>/.gemini/settings.json", () => {
-    expect(gemini.getSettingsPath("project", tempDir)).toBe(
-      resolve(tempDir, ".gemini", "settings.json"),
-    );
-    expect(gemini.getSettingsPath("user")).toMatch(/\.gemini\/settings\.json$/);
-  });
-
-  it("getSettingsPath('local') falls back to project (no gemini local scope)", () => {
-    expect(gemini.getSettingsPath("local", tempDir)).toBe(
-      resolve(tempDir, ".gemini", "settings.json"),
-    );
-  });
-
-  it("scopes are user|project (no local; system scope ignored)", () => {
-    expect(gemini.scopes).toEqual(["user", "project"]);
-    expect(gemini.scopes).not.toContain("local");
-  });
-
-  it("eventTypes are the 11 PascalCase Gemini events", () => {
-    expect(gemini.eventTypes).toEqual(GEMINI_HOOK_EVENT_TYPES);
-    expect(gemini.eventTypes).toContain("SessionStart");
-    expect(gemini.eventTypes).toContain("SessionEnd");
-    expect(gemini.eventTypes).toContain("BeforeAgent");
-    expect(gemini.eventTypes).toContain("AfterAgent");
-    expect(gemini.eventTypes).toContain("BeforeModel");
-    expect(gemini.eventTypes).toContain("AfterModel");
-    expect(gemini.eventTypes).toContain("BeforeToolSelection");
-    expect(gemini.eventTypes).toContain("BeforeTool");
-    expect(gemini.eventTypes).toContain("AfterTool");
-    expect(gemini.eventTypes).toContain("PreCompress");
-    expect(gemini.eventTypes).toContain("Notification");
-    expect(gemini.eventTypes).toHaveLength(11);
-  });
-
-  it("buildHookEntry uses Claude-shaped {type,command,timeout,marker} with --cli gemini", () => {
-    const entry = gemini.buildHookEntry("/usr/bin/failproofai", "BeforeTool", "user") as Record<string, unknown>;
-    expect(entry.type).toBe("command");
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook BeforeTool --cli gemini');
-    expect(entry.timeout).toBe(60_000);
-    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
-    // Gemini entries use Claude's `command` field, not Copilot's bash/powershell split.
-    expect(entry.bash).toBeUndefined();
-    expect(entry.powershell).toBeUndefined();
-  });
-
-  it("project scope uses npx -y failproofai (portable across machines)", () => {
-    const entry = gemini.buildHookEntry("/usr/bin/failproofai", "BeforeTool", "project") as Record<string, unknown>;
-    expect(entry.command).toBe("npx -y failproofai --hook BeforeTool --cli gemini");
-  });
-
-  it("writeHookEntries writes the matcher-wrapper schema for all 11 events with matcher='*'", () => {
-    const settings: Record<string, unknown> = {};
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "user");
-    const hooks = settings.hooks as Record<string, Array<Record<string, unknown>>>;
-    for (const eventType of GEMINI_HOOK_EVENT_TYPES) {
-      expect(hooks[eventType]).toBeDefined();
-      const matchers = hooks[eventType];
-      expect(matchers.length).toBeGreaterThanOrEqual(1);
-      // Matcher-wrapper: each element is {matcher, hooks: [{type, command, ...}]}
-      expect(matchers[0].matcher).toBe("*");
-      const inner = matchers[0].hooks as Array<Record<string, unknown>>;
-      expect(inner).toHaveLength(1);
-      expect(inner[0].type).toBe("command");
-      expect(typeof inner[0].command).toBe("string");
-      expect(inner[0][FAILPROOFAI_HOOK_MARKER]).toBe(true);
-    }
-  });
-
-  it("re-running writeHookEntries is idempotent (replaces, doesn't duplicate)", () => {
-    const settings: Record<string, unknown> = {};
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "user");
-    gemini.writeHookEntries(settings, "/different/path/failproofai", "user");
-    const hooks = settings.hooks as Record<string, Array<Record<string, unknown>>>;
-    // Each event has exactly one matcher; the inner hook is the most recent.
-    expect(hooks.BeforeTool).toHaveLength(1);
-    const inner = (hooks.BeforeTool[0].hooks as Array<Record<string, unknown>>)[0];
-    expect(inner.command).toBe('"/different/path/failproofai" --hook BeforeTool --cli gemini');
-  });
-
-  it("writeHookEntries preserves a hand-written user hook with the same event key", () => {
-    const userHook = { type: "command", command: "/my/script.sh", timeout: 5000 };
-    const settings: Record<string, unknown> = {
-      hooks: { BeforeTool: [{ matcher: "write_file", hooks: [userHook] }] },
-    };
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "user");
-    const hooks = settings.hooks as Record<string, Array<Record<string, unknown>>>;
-    // User's hook is preserved at index 0, ours appended at index 1
-    expect(hooks.BeforeTool).toHaveLength(2);
-    const userMatcher = hooks.BeforeTool[0];
-    expect(userMatcher.matcher).toBe("write_file");
-    expect((userMatcher.hooks as Array<Record<string, unknown>>)[0].command).toBe("/my/script.sh");
-    const ourMatcher = hooks.BeforeTool[1];
-    expect(ourMatcher.matcher).toBe("*");
-    expect((ourMatcher.hooks as Array<Record<string, unknown>>)[0][FAILPROOFAI_HOOK_MARKER]).toBe(true);
-  });
-
-  it("removeHooksFromFile removes only failproofai-marked entries (preserves user hooks)", () => {
-    const userHook = { type: "command", command: "/my/script.sh", timeout: 5000 };
-    const settingsPath = gemini.getSettingsPath("project", tempDir);
-    mkdirSync(resolve(tempDir, ".gemini"), { recursive: true });
-    const settings: Record<string, unknown> = {
-      hooks: { BeforeTool: [{ matcher: "write_file", hooks: [userHook] }] },
-    };
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "project");
-    gemini.writeSettings(settingsPath, settings);
-
-    const removed = gemini.removeHooksFromFile(settingsPath);
-    // 11 events × 1 marked entry each = 11 removed
-    expect(removed).toBe(GEMINI_HOOK_EVENT_TYPES.length);
-
-    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
-    const afterHooks = after.hooks as Record<string, unknown[]>;
-    // User's BeforeTool hook still there
-    expect(afterHooks.BeforeTool).toHaveLength(1);
-    expect((afterHooks.BeforeTool[0] as Record<string, unknown>).matcher).toBe("write_file");
-    // Other event keys (which only had failproofai entries) are deleted
-    expect(afterHooks.SessionStart).toBeUndefined();
-  });
-
-  it("removeHooksFromFile clears all and removes the top-level hooks key when nothing remains", () => {
-    const settingsPath = gemini.getSettingsPath("project", tempDir);
-    mkdirSync(resolve(tempDir, ".gemini"), { recursive: true });
-    const settings: Record<string, unknown> = {};
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "project");
-    gemini.writeSettings(settingsPath, settings);
-
-    const removed = gemini.removeHooksFromFile(settingsPath);
-    expect(removed).toBe(GEMINI_HOOK_EVENT_TYPES.length);
-
-    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
-    expect(after.hooks).toBeUndefined();
-  });
-
-  it("hooksInstalledInSettings detects installed hooks", () => {
-    const settingsPath = gemini.getSettingsPath("project", tempDir);
-    mkdirSync(resolve(tempDir, ".gemini"), { recursive: true });
-    const settings: Record<string, unknown> = {};
-    gemini.writeHookEntries(settings, "/usr/bin/failproofai", "project");
-    gemini.writeSettings(settingsPath, settings);
-
-    expect(gemini.hooksInstalledInSettings("project", tempDir)).toBe(true);
-  });
-
-  it("hooksInstalledInSettings returns false when file is missing", () => {
-    expect(gemini.hooksInstalledInSettings("project", tempDir)).toBe(false);
-  });
-
-  it("hooksInstalledInSettings returns false on corrupt JSON (fail-open)", () => {
-    const settingsPath = gemini.getSettingsPath("project", tempDir);
-    mkdirSync(resolve(tempDir, ".gemini"), { recursive: true });
-    writeFileSync(settingsPath, "{not json");
-    expect(gemini.hooksInstalledInSettings("project", tempDir)).toBe(false);
-  });
-});
-
-describe("GEMINI_EVENT_MAP", () => {
-  it("maps every Gemini event to a canonical HookEventType (or passthrough)", () => {
-    expect(GEMINI_EVENT_MAP.SessionStart).toBe("SessionStart");
-    expect(GEMINI_EVENT_MAP.SessionEnd).toBe("SessionEnd");
-    expect(GEMINI_EVENT_MAP.BeforeAgent).toBe("UserPromptSubmit");
-    expect(GEMINI_EVENT_MAP.AfterAgent).toBe("Stop");
-    expect(GEMINI_EVENT_MAP.BeforeTool).toBe("PreToolUse");
-    expect(GEMINI_EVENT_MAP.AfterTool).toBe("PostToolUse");
-    expect(GEMINI_EVENT_MAP.PreCompress).toBe("PreCompact");
-    expect(GEMINI_EVENT_MAP.Notification).toBe("Notification");
-    // Three Gemini-only events have no canonical Claude equivalent — passthrough.
-    expect(GEMINI_EVENT_MAP.BeforeModel).toBe("BeforeModel");
-    expect(GEMINI_EVENT_MAP.AfterModel).toBe("AfterModel");
-    expect(GEMINI_EVENT_MAP.BeforeToolSelection).toBe("BeforeToolSelection");
-  });
-
-  it("GEMINI_EVENT_MAP keys exactly match GEMINI_HOOK_EVENT_TYPES", () => {
-    const mapKeys = Object.keys(GEMINI_EVENT_MAP).sort();
-    const eventTypes = [...GEMINI_HOOK_EVENT_TYPES].sort();
-    expect(mapKeys).toEqual(eventTypes);
-  });
-
-  it("GeminiHookEventType is exhaustive", () => {
-    const sample: GeminiHookEventType = "BeforeTool";
-    expect(GEMINI_EVENT_MAP[sample]).toBe("PreToolUse");
-  });
-});
-
-describe("GEMINI_TOOL_MAP", () => {
-  it("maps every documented Gemini snake_case tool name to a Claude PascalCase canonical name", () => {
-    expect(GEMINI_TOOL_MAP.run_shell_command).toBe("Bash");
-    expect(GEMINI_TOOL_MAP.read_file).toBe("Read");
-    expect(GEMINI_TOOL_MAP.read_many_files).toBe("Read");
-    expect(GEMINI_TOOL_MAP.write_file).toBe("Write");
-    expect(GEMINI_TOOL_MAP.replace).toBe("Edit");
-    expect(GEMINI_TOOL_MAP.glob).toBe("Glob");
-    expect(GEMINI_TOOL_MAP.grep_search).toBe("Grep");
-    expect(GEMINI_TOOL_MAP.list_directory).toBe("LS");
-    expect(GEMINI_TOOL_MAP.web_fetch).toBe("WebFetch");
-    expect(GEMINI_TOOL_MAP.google_web_search).toBe("WebSearch");
-    expect(GEMINI_TOOL_MAP.write_todos).toBe("TodoWrite");
-    expect(GEMINI_TOOL_MAP.save_memory).toBe("Memory");
-    expect(GEMINI_TOOL_MAP.ask_user).toBe("AskUser");
   });
 });
 

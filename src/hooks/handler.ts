@@ -12,7 +12,6 @@ import type {
   CodexHookEventType,
   CursorHookEventType,
   PiHookEventType,
-  GeminiHookEventType,
   HermesHookEventType,
   OpenClawHookEventType,
 } from "./types";
@@ -20,7 +19,6 @@ import {
   CODEX_EVENT_MAP,
   CURSOR_EVENT_MAP,
   PI_EVENT_MAP,
-  GEMINI_EVENT_MAP,
   HERMES_EVENT_MAP,
   OPENCLAW_EVENT_MAP,
 } from "./types";
@@ -47,9 +45,7 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
  * `session_start`); Claude Code sends PascalCase. Copilot CLI is installed
  * in "VS Code compatible" PascalCase mode (see integrations.ts), so its event
  * NAMES arrive PascalCase already (note: tool names are a separate matter and
- * are canonicalized in canonicalizeToolName below). Gemini also sends
- * PascalCase event names but with different spellings (`BeforeTool`,
- * `BeforeAgent`, `AfterAgent`); we map via GEMINI_EVENT_MAP. The internal
+ * are canonicalized in canonicalizeToolName below). The internal
  * registry, builtin policies, and policy.match.events all key on PascalCase.
  */
 function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType {
@@ -63,10 +59,6 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
   }
   if (cli === "pi") {
     const mapped = PI_EVENT_MAP[raw as PiHookEventType];
-    if (mapped) return mapped;
-  }
-  if (cli === "gemini") {
-    const mapped = GEMINI_EVENT_MAP[raw as GeminiHookEventType];
     if (mapped) return mapped;
   }
   if (cli === "hermes") {
@@ -182,8 +174,8 @@ export async function handleHookEvent(
     hookEventName: parsed.hook_event_name as string | undefined,
     // Preserve the raw CLI-side event name (eventType arg) before
     // canonicalization. Response shapes that round-trip the agent-emitted
-    // event name (e.g. Gemini's `hookSpecificOutput.hookEventName`) prefer
-    // this over the canonicalized form when stdin omits hook_event_name.
+    // event name prefer this over the canonicalized form when stdin omits
+    // hook_event_name.
     rawHookEventName: eventType,
     cli,
   };

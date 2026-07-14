@@ -24,11 +24,11 @@ failproofai
 
 ### 项目
 
-列出在你的机器上发现的所有 Claude Code、OpenAI Codex、GitHub Copilot CLI _(beta)_、Cursor Agent _(beta)_、OpenCode _(beta)_、Pi _(beta)_、Gemini CLI _(beta)_ 和 Hermes 项目。Claude 项目从 `~/.claude/projects/`（或由 `CLAUDE_PROJECTS_PATH` 设置的路径）中发现；Codex 项目通过扫描 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 下的所有记录，并按每个会话第一条记录中的 `cwd` 字段分组发现；Copilot CLI 项目通过扫描 `~/.copilot/session-state/<sessionId>/workspace.yaml`（可通过 `COPILOT_HOME` 配置），并按其 `cwd` 字段分组发现；Cursor Agent 项目通过扫描 `~/.cursor/agent-sessions/<sessionId>/`（可通过 `CURSOR_HOME` 配置，并以 `conversations/` 和 `sessions/` 作为备选路径）下的逐会话元数据，从 `meta.json` / `session.json` / `workspace.yaml` 中的 `cwd` 标量发现；OpenCode 项目通过 `opencode db --format json` 查询位于 `~/.local/share/opencode/opencode.db` 的 SQLite 数据库发现（读取 `session` 和 `project` 表并按 `project_id` 分组）；Pi 项目通过扫描 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`（可通过 `PI_SESSIONS_DIR` 配置）下的逐会话 JSONL 记录，并从每个会话的第一条记录中提取 `cwd` 发现；Gemini CLI 项目通过扫描 `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl`（可通过 `GEMINI_SESSIONS_DIR` 配置），并从同级 `.project_root` 文本标记中恢复规范化 cwd 发现；Hermes 网关会话直接从 `~/.hermes/state.db`（可通过 `HERMES_DB_PATH` 配置）的 SQLite 存储中读取，并按 `source`（Slack/Telegram/cli/cron——网关会话没有 cwd）分组为 `hermes-<source>` 项目。被多个 CLI 使用的项目在同一行显示，并附上所有匹配的徽章。使用表格上方的 **CLI** 下拉菜单按特定 Agent CLI 筛选；URL 会将你的选择保存为 `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`。
+列出在你的机器上发现的所有 Claude Code、OpenAI Codex、GitHub Copilot CLI _(beta)_、Cursor Agent _(beta)_、OpenCode _(beta)_、Pi _(beta)_ 和 Hermes 项目。Claude 项目从 `~/.claude/projects/`（或由 `CLAUDE_PROJECTS_PATH` 设置的路径）中发现；Codex 项目通过扫描 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 下的所有记录，并按每个会话第一条记录中的 `cwd` 字段分组发现；Copilot CLI 项目通过扫描 `~/.copilot/session-state/<sessionId>/workspace.yaml`（可通过 `COPILOT_HOME` 配置），并按其 `cwd` 字段分组发现；Cursor Agent 项目通过扫描 `~/.cursor/agent-sessions/<sessionId>/`（可通过 `CURSOR_HOME` 配置，并以 `conversations/` 和 `sessions/` 作为备选路径）下的逐会话元数据，从 `meta.json` / `session.json` / `workspace.yaml` 中的 `cwd` 标量发现；OpenCode 项目通过 `opencode db --format json` 查询位于 `~/.local/share/opencode/opencode.db` 的 SQLite 数据库发现（读取 `session` 和 `project` 表并按 `project_id` 分组）；Pi 项目通过扫描 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`（可通过 `PI_SESSIONS_DIR` 配置）下的逐会话 JSONL 记录，并从每个会话的第一条记录中提取 `cwd` 发现；Hermes 网关会话直接从 `~/.hermes/state.db`（可通过 `HERMES_DB_PATH` 配置）的 SQLite 存储中读取，并按 `source`（Slack/Telegram/cli/cron——网关会话没有 cwd）分组为 `hermes-<source>` 项目。被多个 CLI 使用的项目在同一行显示，并附上所有匹配的徽章。使用表格上方的 **CLI** 下拉菜单按特定 Agent CLI 筛选；URL 会将你的选择保存为 `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`。
 
 每个项目显示：
 - 项目名称（从文件夹路径派生）
-- CLI 徽章——`Claude Code`（橙色）、`OpenAI Codex`（紫色）、`GitHub Copilot`（蓝色）、`Cursor Agent`（翠绿色）、`OpenCode`（琥珀色）、`Pi`（粉色）、`Gemini CLI`（天蓝色）和/或 `Hermes`（靛蓝色）
+- CLI 徽章——`Claude Code`（橙色）、`OpenAI Codex`（紫色）、`GitHub Copilot`（蓝色）、`Cursor Agent`（翠绿色）、`OpenCode`（琥珀色）、`Pi`（粉色）和/或 `Hermes`（靛蓝色）
 - 最近一次会话活动的日期
 
 点击项目可查看其会话列表。
@@ -47,7 +47,7 @@ failproofai
 
 ### 会话查看器
 
-会话查看器回答了自主 Agent 的核心问题：Agent 做了什么，是否保持在正轨上？页眉旁的 CLI 徽章指示该会话是 Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI 还是 Hermes 的记录。它以时间线形式展示会话中发生的所有事件：
+会话查看器回答了自主 Agent 的核心问题：Agent 做了什么，是否保持在正轨上？页眉旁的 CLI 徽章指示该会话是 Claude Code、OpenAI Codex、GitHub Copilot CLI、Cursor Agent、OpenCode、Pi 还是 Hermes 的记录。它以时间线形式展示会话中发生的所有事件：
 
 - **消息** - Claude 的文本回复和用户提示
 - **工具调用** - Claude 调用的每个工具，包含其输入和输出
@@ -55,7 +55,7 @@ failproofai
 
 顶部的统计栏显示会话时长、工具调用总数，以及 Hook 决策摘要（allow / deny / instruct 计数）。
 
-点击**下载日志**按钮可导出会话。对于 Claude Code、Codex、Copilot、Cursor、Pi 和 Gemini 会话，你将获得原始的磁盘 JSONL 记录文件（逐字节原样）；对于 OpenCode（其会话存储在 SQLite 而非磁盘上），你将获得一个 JSON 文档，镜像底层的 `session` / `messages` / `parts` 表。
+点击**下载日志**按钮可导出会话。对于 Claude Code、Codex、Copilot、Cursor 和 Pi 会话，你将获得原始的磁盘 JSONL 记录文件（逐字节原样）；对于 OpenCode（其会话存储在 SQLite 而非磁盘上），你将获得一个 JSON 文档，镜像底层的 `session` / `messages` / `parts` 表。
 
 ### 审计
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="策略标签页">
-  - 在单一面板中多选 failproofai 保护哪些 Agent CLI——Claude Code、OpenAI Codex、GitHub Copilot、Cursor Agent、OpenCode、Pi、Gemini CLI 和 Hermes 各有一行，显示安装状态（`Active` / `Detected` / `Inactive`）、用户范围设置路径，以及品牌色强调。勾选或取消勾选你想要的 CLI，点击 `Apply changes` 一步完成安装/卸载差异。已在 PATH 中检测到二进制文件的 CLI 会被预先勾选。
+  - 在单一面板中多选 failproofai 保护哪些 Agent CLI——Claude Code、OpenAI Codex、GitHub Copilot、Cursor Agent、OpenCode、Pi 和 Hermes 各有一行，显示安装状态（`Active` / `Detected` / `Inactive`）、用户范围设置路径，以及品牌色强调。勾选或取消勾选你想要的 CLI，点击 `Apply changes` 一步完成安装/卸载差异。已在 PATH 中检测到二进制文件的 CLI 会被预先勾选。
   - 一键开启或关闭单个策略（写入 `~/.failproofai/policies-config.json`——所有已安装的 CLI 共享）
   - 展开策略以配置其参数（适用于支持 `policyParams` 的策略）
   - 设置自定义策略文件路径
   </Tab>
   <Tab title="活动标签页">
   - 所有会话中触发的每个 Hook 事件的完整分页历史记录
-  - 按决策、事件类型、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes）、策略名称或会话 ID 筛选
-  - 每行显示：时间戳、策略名称、决策、CLI 徽章（橙色 = Claude Code，紫色 = OpenAI Codex，蓝色 = GitHub Copilot，翠绿色 = Cursor Agent，琥珀色 = OpenCode，粉色 = Pi，天蓝色 = Gemini CLI，靛蓝色 = Hermes）、工具名称、会话 ID，以及 deny/instruct 决策的原因
-  - 点击会话 ID 可打开其记录——查看器自动检测触发 Hook 的 CLI（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`、Hermes `~/.hermes/state.db`），并在页眉中渲染对应的 CLI 徽章
+  - 按决策、事件类型、CLI（Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes）、策略名称或会话 ID 筛选
+  - 每行显示：时间戳、策略名称、决策、CLI 徽章（橙色 = Claude Code，紫色 = OpenAI Codex，蓝色 = GitHub Copilot，翠绿色 = Cursor Agent，琥珀色 = OpenCode，粉色 = Pi，靛蓝色 = Hermes）、工具名称、会话 ID，以及 deny/instruct 决策的原因
+  - 点击会话 ID 可打开其记录——查看器自动检测触发 Hook 的 CLI（Claude `~/.claude/projects/…`、Codex `~/.codex/sessions/…`、Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`、Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`、OpenCode `~/.local/share/opencode/opencode.db`、Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`、Hermes `~/.hermes/state.db`），并在页眉中渲染对应的 CLI 徽章
   </Tab>
 </Tabs>
 

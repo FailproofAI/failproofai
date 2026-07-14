@@ -273,7 +273,7 @@ export function formatMarkdown(result: AuditResult): string {
     );
   }
   out.push("");
-  out.push("> [failproofai](https://github.com/FailproofAI/failproofai) is a hook-based policy engine for Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, and Gemini CLI. The `audit` command replays past agent sessions through every builtin policy to surface patterns that were (or could've been) stopped.");
+  out.push("> [failproofai](https://github.com/FailproofAI/failproofai) is a hook-based policy engine for Claude Code, Codex, Copilot, Cursor, OpenCode, and Pi. The `audit` command replays past agent sessions through every builtin policy to surface patterns that were (or could've been) stopped.");
   out.push("");
 
   if (totalHits === 0) return out.join("\n");

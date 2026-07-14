@@ -25,11 +25,11 @@ failproofai
 
 ### Projects
 
-מפרט את כל Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_, ו-Hermes שנמצאו במחשב שלך. פרויקטי Claude מגולים מ-`~/.claude/projects/` (או הנתיב שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מגולים על ידי סריקת כל תמליל תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי `cwd` שנרשם בתיעוד הראשון של ההפעלה; פרויקטי Copilot CLI מגולים על ידי סריקת כל `~/.copilot/session-state/<sessionId>/workspace.yaml` (ניתן להגדיר דרך `COPILOT_HOME`) וקיבוץ לפי שדה `cwd` שלו; פרויקטי Cursor Agent מגולים על ידי סריקת מטא-נתונים לכל הפעלה תחת `~/.cursor/agent-sessions/<sessionId>/` (ניתן להגדיר דרך `CURSOR_HOME`, עם סדרי גיבוי `conversations/` ו-`sessions/`) עבור סקלר `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מגולים על ידי שאילתת SQLite DB שלה ב-`~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנו קוראים את טבלאות `session` ו-`project` וקיבוץ לפי `project_id`); פרויקטי Pi מגולים על ידי סריקת תמליל JSONL לכל הפעלה תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (ניתן להגדיר דרך `PI_SESSIONS_DIR`) ושליפת `cwd` מתיעוד הראשון של כל הפעלה; פרויקטי Gemini CLI מגולים על ידי סריקת `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (ניתן להגדיר דרך `GEMINI_SESSIONS_DIR`) והחזרת ה-cwd הקנוני ממסמן `.project_root` הסמוך; הפעלות שער Hermes נקראות ישירות מחנות SQLite שלה ב-`~/.hermes/state.db` (ניתן להגדיר דרך `HERMES_DB_PATH`) וקיבוץ לפרויקטי `hermes-<source>` לפי `source` (Slack/Telegram/cli/cron — להפעלות שער אין cwd). פרויקט ששימש מספר CLIs מרואה כשורה יחידה עם כל התגים המתאימים. השתמש בתפריט **CLI** מעל הטבלה לסינון לפי סוכן CLI ספציפי; ה-URL משמר את הבחירה שלך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`.
+מפרט את כל Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, ו-Hermes שנמצאו במחשב שלך. פרויקטי Claude מגולים מ-`~/.claude/projects/` (או הנתיב שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מגולים על ידי סריקת כל תמליל תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי `cwd` שנרשם בתיעוד הראשון של ההפעלה; פרויקטי Copilot CLI מגולים על ידי סריקת כל `~/.copilot/session-state/<sessionId>/workspace.yaml` (ניתן להגדיר דרך `COPILOT_HOME`) וקיבוץ לפי שדה `cwd` שלו; פרויקטי Cursor Agent מגולים על ידי סריקת מטא-נתונים לכל הפעלה תחת `~/.cursor/agent-sessions/<sessionId>/` (ניתן להגדיר דרך `CURSOR_HOME`, עם סדרי גיבוי `conversations/` ו-`sessions/`) עבור סקלר `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מגולים על ידי שאילתת SQLite DB שלה ב-`~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנו קוראים את טבלאות `session` ו-`project` וקיבוץ לפי `project_id`); פרויקטי Pi מגולים על ידי סריקת תמליל JSONL לכל הפעלה תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (ניתן להגדיר דרך `PI_SESSIONS_DIR`) ושליפת `cwd` מתיעוד הראשון של כל הפעלה; הפעלות שער Hermes נקראות ישירות מחנות SQLite שלה ב-`~/.hermes/state.db` (ניתן להגדיר דרך `HERMES_DB_PATH`) וקיבוץ לפרויקטי `hermes-<source>` לפי `source` (Slack/Telegram/cli/cron — להפעלות שער אין cwd). פרויקט ששימש מספר CLIs מרואה כשורה יחידה עם כל התגים המתאימים. השתמש בתפריט **CLI** מעל הטבלה לסינון לפי סוכן CLI ספציפי; ה-URL משמר את הבחירה שלך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|hermes`.
 
 כל פרויקט מציג:
 - שם הפרויקט (מגובש מנתיב התיקייה)
-- תג CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (אזמרגד), `OpenCode` (ענבר), `Pi` (ורוד), `Gemini CLI` (שמיים), ו/או `Hermes` (אינדיגו)
+- תג CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (אזמרגד), `OpenCode` (ענבר), `Pi` (ורוד), ו/או `Hermes` (אינדיגו)
 - תאריך של פעילות הפעלה האחרונה
 
 לחץ על פרויקט כדי לראות את הפעלות שלו.
@@ -48,7 +48,7 @@ failproofai
 
 ### מצפה הפעלה
 
-מצפה הפעלה עונה על השאלה המרכזית לסוכנים אוטונומיים: מה עשה הסוכן, והאם הוא נשאר בעקוב? תג CLI ליד הכותרת מציין אם ההפעלה היא Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI, או תמליל Hermes. הוא מציג ציר הזמן של כל מה שקרה בהפעלה:
+מצפה הפעלה עונה על השאלה המרכזית לסוכנים אוטונומיים: מה עשה הסוכן, והאם הוא נשאר בעקוב? תג CLI ליד הכותרת מציין אם ההפעלה היא Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, או תמליל Hermes. הוא מציג ציר הזמן של כל מה שקרה בהפעלה:
 
 - **הודעות** - תגובות טקסט של Claude והנחיות משתמש
 - **קריאות כלים** - כל כלי שקרא Claude, עם הקלט והפלט שלו
@@ -56,7 +56,7 @@ failproofai
 
 סרגל הנתונים בחלק העליון מציג משך הפעלה, סה"כ קריאות כלים, וסיכום החלטות קורא (ספירות allow / deny / instruct).
 
-לחץ על כפתור **Download Logs** כדי לייצא את ההפעלה. עבור Claude Code, Codex, Copilot, Cursor, Pi, ו-Gemini תקבל את תמליל JSONL המקורי על הדיסק בדיוק כפי שהוא; עבור OpenCode (שהפעלות שלה חיות ב-SQLite, לא על הדיסק) תקבל מסמך JSON המשקף את טבלאות `session` / `messages` / `parts` הבסיסיות.
+לחץ על כפתור **Download Logs** כדי לייצא את ההפעלה. עבור Claude Code, Codex, Copilot, Cursor, ו-Pi תקבל את תמליל JSONL המקורי על הדיסק בדיוק כפי שהוא; עבור OpenCode (שהפעלות שלה חיות ב-SQLite, לא על הדיסק) תקבל מסמך JSON המשקף את טבלאות `session` / `messages` / `parts` הבסיסיות.
 
 ### Audit
 
@@ -76,16 +76,16 @@ failproofai
 
 <Tabs>
   <Tab title="Policies tab">
-  - בחר מספר כלים את סוכני ה-CLI שעליהם failproofai מגן מלוח יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI, ו-Hermes כולם בעלי שורה עם סטטוס התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות הטווח השנייה משתמש, והדגש צבע ממותג. בדוק או בטל את בדיקת ה-CLIs שאתה רוצה לחץ על `Apply changes` כדי להתקין/הסר את ההבדל בשלב אחד. CLIs שהבינארית שלהם מגולה ב-PATH מסומנים מראש.
+  - בחר מספר כלים את סוכני ה-CLI שעליהם failproofai מגן מלוח יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, ו-Hermes כולם בעלי שורה עם סטטוס התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות הטווח השנייה משתמש, והדגש צבע ממותג. בדוק או בטל את בדיקת ה-CLIs שאתה רוצה לחץ על `Apply changes` כדי להתקין/הסר את ההבדל בשלב אחד. CLIs שהבינארית שלהם מגולה ב-PATH מסומנים מראש.
   - כיבוי או הדלקת מדיניות בודדות בלחיצה יחידה (כתיבה ל-`~/.failproofai/policies-config.json` — משותפת לכל CLI מותקן)
   - הרחב מדיניות כדי להגדיר את הפרמטרים שלה (עבור מדיניות התומכות `policyParams`)
   - קבע נתיב קובץ מדיניות מותאם
   </Tab>
   <Tab title="Activity tab">
   - מלא היסטוריית עמודים של כל אירוע קורא שנשדר על כל הפעלות
-  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), שם מדיניות, או מזהה הפעלה
-  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, תג CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, אזמרגד = Cursor Agent, ענבר = OpenCode, ורוד = Pi, שמיים = Gemini CLI, אינדיגו = Hermes), שם כלים, מזהה הפעלה, והסיבה להחלטות deny/instruct
-  - לחץ על מזהה הפעלה כדי לפתוח את התמליל שלה — מצפה גילוי אוטומטי אילו CLI נשדרה קורא (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) ומעניק את תג ה-CLI התואם בכותרת
+  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), שם מדיניות, או מזהה הפעלה
+  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, תג CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, אזמרגד = Cursor Agent, ענבר = OpenCode, ורוד = Pi, אינדיגו = Hermes), שם כלים, מזהה הפעלה, והסיבה להחלטות deny/instruct
+  - לחץ על מזהה הפעלה כדי לפתוח את התמליל שלה — מצפה גילוי אוטומטי אילו CLI נשדרה קורא (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) ומעניק את תג ה-CLI התואם בכותרת
   </Tab>
 </Tabs>
 

@@ -55,7 +55,7 @@ failproofai
   until you stop it with `Ctrl+C`.
 </Tip>
 
-The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
+The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
 
 For each transcript, every tool-use event is replayed through the 39 builtin policies **and** through 8 audit-only detectors that catch patterns not yet covered by runtime policies. Counts are aggregated per policy / detector across all sessions.
 

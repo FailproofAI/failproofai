@@ -24,11 +24,11 @@ Pano, dosya sisteminden doğrudan okur — Claude Code proje klasörlerinizi ve 
 
 ### Projeler
 
-Makinenizde bulunan tüm Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_ ve Hermes projelerini listeler. Claude projeleri `~/.claude/projects/` adresinden keşfedilir (veya `CLAUDE_PROJECTS_PATH` tarafından ayarlanan yol); Codex projeleri `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` altındaki her transkripti tarayarak ve her oturumun ilk kaydında kaydedilen `cwd` ye göre gruplandırılarak keşfedilir; Copilot CLI projeleri her `~/.copilot/session-state/<sessionId>/workspace.yaml` tarayarak keşfedilir (`COPILOT_HOME` üzerinden yapılandırılabilir) ve `cwd` alanına göre gruplandırılır; Cursor Agent projeleri `~/.cursor/agent-sessions/<sessionId>/` altındaki oturum başına meta verileri tarayarak keşfedilir (`CURSOR_HOME` üzerinden yapılandırılabilir, `conversations/` ve `sessions/` geri dönüş olarak problanır) `meta.json` / `session.json` / `workspace.yaml` içindeki `cwd` skaler değeri için; OpenCode projeleri `~/.local/share/opencode/opencode.db` adresindeki SQLite DB'sini `opencode db --format json` üzerinden sorgulayarak keşfedilir (`session` ve `project` tablolarını okuyuz ve `project_id` ye göre gruplandırırız); Pi projeleri `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` altındaki oturum başına JSONL transkriptlerini tarayarak keşfedilir (`PI_SESSIONS_DIR` üzerinden yapılandırılabilir) ve her oturumun ilk kaydından `cwd` yi çekeriz; Gemini CLI projeleri `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` tarayarak keşfedilir (`GEMINI_SESSIONS_DIR` üzerinden yapılandırılabilir) ve `.project_root` metin işaretçisinden kanonik cwd'yi kurtarırız; Hermes ağ geçidi oturumları doğrudan `~/.hermes/state.db` (`HERMES_DB_PATH` üzerinden yapılandırılabilir) adresindeki SQLite deposundan okunur ve `source` (Slack/Telegram/cli/cron — ağ geçidi oturumlarının cwd'si yoktur) tarafından `hermes-<source>` projelerine gruplandırılır. Birden çok CLI tarafından kullanılan bir proje, tüm eşleşen rozetleriyle tek bir satır olarak işlenir. Belirli bir aracı CLI'ye göre filtrelemek için tablonun üstündeki **CLI** açılır menüsünü kullanın; URL seçiminizi `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes` olarak korur.
+Makinenizde bulunan tüm Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_ ve Hermes projelerini listeler. Claude projeleri `~/.claude/projects/` adresinden keşfedilir (veya `CLAUDE_PROJECTS_PATH` tarafından ayarlanan yol); Codex projeleri `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` altındaki her transkripti tarayarak ve her oturumun ilk kaydında kaydedilen `cwd` ye göre gruplandırılarak keşfedilir; Copilot CLI projeleri her `~/.copilot/session-state/<sessionId>/workspace.yaml` tarayarak keşfedilir (`COPILOT_HOME` üzerinden yapılandırılabilir) ve `cwd` alanına göre gruplandırılır; Cursor Agent projeleri `~/.cursor/agent-sessions/<sessionId>/` altındaki oturum başına meta verileri tarayarak keşfedilir (`CURSOR_HOME` üzerinden yapılandırılabilir, `conversations/` ve `sessions/` geri dönüş olarak problanır) `meta.json` / `session.json` / `workspace.yaml` içindeki `cwd` skaler değeri için; OpenCode projeleri `~/.local/share/opencode/opencode.db` adresindeki SQLite DB'sini `opencode db --format json` üzerinden sorgulayarak keşfedilir (`session` ve `project` tablolarını okuyuz ve `project_id` ye göre gruplandırırız); Pi projeleri `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` altındaki oturum başına JSONL transkriptlerini tarayarak keşfedilir (`PI_SESSIONS_DIR` üzerinden yapılandırılabilir) ve her oturumun ilk kaydından `cwd` yi çekeriz; Hermes ağ geçidi oturumları doğrudan `~/.hermes/state.db` (`HERMES_DB_PATH` üzerinden yapılandırılabilir) adresindeki SQLite deposundan okunur ve `source` (Slack/Telegram/cli/cron — ağ geçidi oturumlarının cwd'si yoktur) tarafından `hermes-<source>` projelerine gruplandırılır. Birden çok CLI tarafından kullanılan bir proje, tüm eşleşen rozetleriyle tek bir satır olarak işlenir. Belirli bir aracı CLI'ye göre filtrelemek için tablonun üstündeki **CLI** açılır menüsünü kullanın; URL seçiminizi `?cli=claude|codex|copilot|cursor|opencode|pi|hermes` olarak korur.
 
 Her proje şunları gösterir:
 - Proje adı (klasör yolundan türetilmiş)
-- CLI rozeti — `Claude Code` (turuncu), `OpenAI Codex` (mor), `GitHub Copilot` (mavi), `Cursor Agent` (zümrüt), `OpenCode` (kehribar), `Pi` (pembe), `Gemini CLI` (gökyüzü), ve/veya `Hermes` (çivit)
+- CLI rozeti — `Claude Code` (turuncu), `OpenAI Codex` (mor), `GitHub Copilot` (mavi), `Cursor Agent` (zümrüt), `OpenCode` (kehribar), `Pi` (pembe), ve/veya `Hermes` (çivit)
 - En son oturum etkinliğinin tarihi
 
 Oturumlarını görmek için bir projeyi tıklayın.
@@ -47,7 +47,7 @@ Oturum görüntüleyiciyi açmak için bir oturumu tıklayın.
 
 ### Oturum görüntüleyici
 
-Oturum görüntüleyici, otonom aracılar için temel soruyu yanıtlar: aracı ne yaptı ve hız tuttu mu? Başlığın yanındaki CLI rozeti, oturumun Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI veya Hermes transkripti olup olmadığını gösterir. Bir oturumda gerçekleşen her şeyin bir zaman çizelgesini gösterir:
+Oturum görüntüleyici, otonom aracılar için temel soruyu yanıtlar: aracı ne yaptı ve hız tuttu mu? Başlığın yanındaki CLI rozeti, oturumun Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi veya Hermes transkripti olup olmadığını gösterir. Bir oturumda gerçekleşen her şeyin bir zaman çizelgesini gösterir:
 
 - **İletiler** - Claude'un metin yanıtları ve kullanıcı istemleri
 - **Araç çağrıları** - Claude'un çağırdığı her araç, girişi ve çıktısıyla
@@ -55,7 +55,7 @@ Oturum görüntüleyici, otonom aracılar için temel soruyu yanıtlar: aracı n
 
 Üstteki istatistik çubuğu oturum süresini, toplam araç çağrılarını ve kanca kararlarının bir özetini gösterir (allow / deny / instruct sayıları).
 
-Oturumu dışa aktarmak için **İndirme Günlükleri** düğmesini tıklayın. Claude Code, Codex, Copilot, Cursor, Pi ve Gemini oturumları için orijinal disk üzerindeki JSONL transkriptini bayt-bayt alırsınız; OpenCode (oturumları diskte değil SQLite'de yaşayan) için temel `session` / `messages` / `parts` tablolarını yansıtan bir JSON belgesi alırsınız.
+Oturumu dışa aktarmak için **İndirme Günlükleri** düğmesini tıklayın. Claude Code, Codex, Copilot, Cursor ve Pi oturumları için orijinal disk üzerindeki JSONL transkriptini bayt-bayt alırsınız; OpenCode (oturumları diskte değil SQLite'de yaşayan) için temel `session` / `messages` / `parts` tablolarını yansıtan bir JSON belgesi alırsınız.
 
 ### Denetim
 
@@ -75,16 +75,16 @@ Politikaları yönetmek ve etkinliği gözden geçirmek için iki sekmeli bir sa
 
 <Tabs>
   <Tab title="Politikalar sekmesi">
-  - Tek bir panelden hangi aracı CLI'lerin failproofai tarafından korunacağını çoklu seçim yapın — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI ve Hermes'in hepsinin yükleme durumu (`Active` / `Detected` / `Inactive`) olan bir satırı, kullanıcı kapsamı ayarları yolu ve marka renkli vurguyu vardır. İstediğiniz CLI'leri işaretleyin veya işareti kaldırın ve farkı bir adımda yüklemek/kaldırmak için `Apply changes` öğesine tıklayın. İkili PATH'de algılanan CLI'ler önceden işaretlenmiş.
+  - Tek bir panelden hangi aracı CLI'lerin failproofai tarafından korunacağını çoklu seçim yapın — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi ve Hermes'in hepsinin yükleme durumu (`Active` / `Detected` / `Inactive`) olan bir satırı, kullanıcı kapsamı ayarları yolu ve marka renkli vurguyu vardır. İstediğiniz CLI'leri işaretleyin veya işareti kaldırın ve farkı bir adımda yüklemek/kaldırmak için `Apply changes` öğesine tıklayın. İkili PATH'de algılanan CLI'ler önceden işaretlenmiş.
   - Tek tıklamayla bireysel politikaları açıp kapatın (`~/.failproofai/policies-config.json` adresine yazar — tüm yüklü CLI'ler arasında paylaşılır)
   - Parametrelerini yapılandırmak için bir politikayı genişletin (`policyParams` destekleyen politikalar için)
   - Özel politika dosyası yolunu ayarla
   </Tab>
   <Tab title="Etkinlik sekmesi">
   - Tüm oturumlar arasında tetiklenen her kanca olayının tam sayfalı geçmişi
-  - Karar, olay türü, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), politika adı veya oturum ID'ye göre filtrele
-  - Her satır şunları gösterir: zaman damgası, politika adı, karar, CLI rozeti (turuncu = Claude Code, mor = OpenAI Codex, mavi = GitHub Copilot, zümrüt = Cursor Agent, kehribar = OpenCode, pembe = Pi, gökyüzü = Gemini CLI, çivit = Hermes), araç adı, oturum ID ve deny/instruct kararları için neden
-  - Transkripti açmak için bir oturum ID'sine tıklayın — görüntüleyici hangi CLI'nin kancayı tetiklediğini otomatik algılar (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) ve başlıkta eşleşen CLI rozetini işler
+  - Karar, olay türü, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), politika adı veya oturum ID'ye göre filtrele
+  - Her satır şunları gösterir: zaman damgası, politika adı, karar, CLI rozeti (turuncu = Claude Code, mor = OpenAI Codex, mavi = GitHub Copilot, zümrüt = Cursor Agent, kehribar = OpenCode, pembe = Pi, çivit = Hermes), araç adı, oturum ID ve deny/instruct kararları için neden
+  - Transkripti açmak için bir oturum ID'sine tıklayın — görüntüleyici hangi CLI'nin kancayı tetiklediğini otomatik algılar (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) ve başlıkta eşleşen CLI rozetini işler
   </Tab>
 </Tabs>
 

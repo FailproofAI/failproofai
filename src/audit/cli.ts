@@ -49,7 +49,7 @@ USAGE
 
 WHAT IT DOES
   1. Scans past sessions from every installed agent CLI (Claude, Codex, Cursor,
-     Copilot, OpenCode, Pi, Gemini) — entirely on your machine.
+     Copilot, OpenCode, Pi) — entirely on your machine.
   2. Starts the local dashboard and opens
      http://localhost:${DASHBOARD_PORT}/audit with your results.
 

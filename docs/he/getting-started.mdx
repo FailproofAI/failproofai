@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    זה כותב ערכי hook ל-CLI של סוכנים מותקנים (Claude Code של `~/.claude/settings.json`, OpenAI Codex של `~/.codex/hooks.json`, GitHub Copilot CLI של `~/.copilot/hooks/failproofai.json`, Cursor Agent של `~/.cursor/hooks.json`, OpenCode של plugin shim שנוצר ב-`~/.config/opencode/plugins/failproofai.mjs` בתוספת ערך רישום במערך `plugin` של `~/.config/opencode/opencode.json`, Pi של `~/.pi/agent/settings.json`, Gemini CLI של `~/.gemini/settings.json`, או Hermes של `~/.hermes/config.yaml`). כאשר יותר מאחד קיים תתבקע לבחור; העבר `--cli claude codex copilot cursor opencode pi gemini hermes` (כל קבוצה משנית) כדי לדלג על ההודעה.
+    זה כותב ערכי hook ל-CLI של סוכנים מותקנים (Claude Code של `~/.claude/settings.json`, OpenAI Codex של `~/.codex/hooks.json`, GitHub Copilot CLI של `~/.copilot/hooks/failproofai.json`, Cursor Agent של `~/.cursor/hooks.json`, OpenCode של plugin shim שנוצר ב-`~/.config/opencode/plugins/failproofai.mjs` בתוספת ערך רישום במערך `plugin` של `~/.config/opencode/opencode.json`, Pi של `~/.pi/agent/settings.json`, או Hermes של `~/.hermes/config.yaml`). כאשר יותר מאחד קיים תתבקע לבחור; העבר `--cli claude codex copilot cursor opencode pi hermes` (כל קבוצה משנית) כדי לדלג על ההודעה.
 
-    תמיכה ב-GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ו-Gemini CLI היא **בטא** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, או `--cli gemini`. Hermes (hermes-agent, שער Slack/Telegram) מותקן בטווח משתמש עם `--cli hermes` והוא **גם** מקור ביקורת לא מקוון.
+    תמיכה ב-GitHub Copilot CLI, Cursor Agent, OpenCode ו-Pi היא **בטא** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, או `--cli pi`. Hermes (hermes-agent, שער Slack/Telegram) מותקן בטווח משתמש עם `--cli hermes` והוא **גם** מקור ביקורת לא מקוון.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

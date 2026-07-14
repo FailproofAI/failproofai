@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Lệnh này ghi các hook entries vào CLI agents đã cài đặt của bạn (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, Gemini CLI's `~/.gemini/settings.json`, or Hermes's `~/.hermes/config.yaml`). Khi có nhiều hơn một cái có mặt, bạn sẽ được nhắc; truyền `--cli claude codex copilot cursor opencode pi gemini hermes` (bất kỳ tập hợp con nào) để bỏ qua lời nhắc.
+    Lệnh này ghi các hook entries vào CLI agents đã cài đặt của bạn (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, or Hermes's `~/.hermes/config.yaml`). Khi có nhiều hơn một cái có mặt, bạn sẽ được nhắc; truyền `--cli claude codex copilot cursor opencode pi hermes` (bất kỳ tập hợp con nào) để bỏ qua lời nhắc.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, và Gemini CLI support là **beta** — cài đặt với `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, hoặc `--cli gemini`. Hermes (hermes-agent, một gateway Slack/Telegram) cài đặt user-scope với `--cli hermes` và là **cũng** một nguồn audit offline.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, và Pi support là **beta** — cài đặt với `--cli copilot`, `--cli cursor`, `--cli opencode`, hoặc `--cli pi`. Hermes (hermes-agent, một gateway Slack/Telegram) cài đặt user-scope với `--cli hermes` và là **cũng** một nguồn audit offline.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

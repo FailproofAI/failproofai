@@ -48,7 +48,7 @@ failproofai
   运行 `failproofai audit -h`（或 `--help`）查看使用说明。审计**完全离线**运行——无需账号或网络——仪表板会持续运行，直到您按 `Ctrl+C` 停止。
 </Tip>
 
-仪表板会扫描本机上过去的智能体 CLI 记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Gemini），并报告智能体执行了哪些 failproofai 旨在阻止的操作——环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、轮询 sleep 循环、重复读取刚编辑的文件等。
+仪表板会扫描本机上过去的智能体 CLI 记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi），并报告智能体执行了哪些 failproofai 旨在阻止的操作——环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、轮询 sleep 循环、重复读取刚编辑的文件等。
 
 对于每条记录，每个工具调用事件都会通过 39 条内置策略以及 8 个仅限审计的检测器进行回放——这些检测器可识别运行时策略尚未覆盖的模式。计数按策略/检测器维度在所有会话中汇总。
 

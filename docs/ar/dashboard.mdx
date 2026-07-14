@@ -24,11 +24,11 @@ failproofai
 
 ### المشاريع
 
-يسرد جميع مشاريع Claude Code و OpenAI Codex و GitHub Copilot CLI _(إصدار تجريبي)_ و Cursor Agent _(إصدار تجريبي)_ و OpenCode _(إصدار تجريبي)_ و Pi _(إصدار تجريبي)_ و Gemini CLI _(إصدار تجريبي)_ و Hermes الموجودة على جهازك. يتم اكتشاف مشاريع Claude من `~/.claude/projects/` (أو المسار المحدد بواسطة `CLAUDE_PROJECTS_PATH`); يتم اكتشاف مشاريع Codex بمسح كل نص تحت `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` وتجميعها حسب `cwd` المسجل في السجل الأول من كل جلسة; يتم اكتشاف مشاريع Copilot CLI بمسح كل `~/.copilot/session-state/<sessionId>/workspace.yaml` (قابل للتكوين عبر `COPILOT_HOME`) وتجميعها حسب حقل `cwd` الخاص به; يتم اكتشاف مشاريع Cursor Agent بمسح البيانات الفوقية لكل جلسة تحت `~/.cursor/agent-sessions/<sessionId>/` (قابل للتكوين عبر `CURSOR_HOME`، مع اختبار `conversations/` و `sessions/` كبدائل) للبحث عن `cwd` في `meta.json` / `session.json` / `workspace.yaml`; يتم اكتشاف مشاريع OpenCode بالاستعلام عن قاعدة بيانات SQLite الخاصة به في `~/.local/share/opencode/opencode.db` عبر `opencode db --format json` (نحن نقرأ الجداول `session` و `project` ونجمعها حسب `project_id`); يتم اكتشاف مشاريع Pi بمسح نصوص JSONL لكل جلسة تحت `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (قابل للتكوين عبر `PI_SESSIONS_DIR`) واستخراج `cwd` من السجل الأول من كل جلسة; يتم اكتشاف مشاريع Gemini CLI بمسح `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` (قابل للتكوين عبر `GEMINI_SESSIONS_DIR`) واسترجاع cwd القانوني من علامة النص المجاورة `.project_root`; تتم قراءة جلسات بوابة Hermes مباشرة من متجرها SQLite في `~/.hermes/state.db` (قابل للتكوين عبر `HERMES_DB_PATH`) وتجميعها في مشاريع `hermes-<source>` حسب `source` (Slack/Telegram/cli/cron — جلسات البوابة لا تحتوي على cwd). يتم عرض المشروع الذي تم استخدامه بواسطة عدة CLIs كصف واحد مع جميع الشارات المطابقة. استخدم القائمة المنسدلة **CLI** فوق الجدول للتصفية حسب CLI وكيل معين; يحافظ عنوان URL على اختيارك كـ `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes`.
+يسرد جميع مشاريع Claude Code و OpenAI Codex و GitHub Copilot CLI _(إصدار تجريبي)_ و Cursor Agent _(إصدار تجريبي)_ و OpenCode _(إصدار تجريبي)_ و Pi _(إصدار تجريبي)_ و Hermes الموجودة على جهازك. يتم اكتشاف مشاريع Claude من `~/.claude/projects/` (أو المسار المحدد بواسطة `CLAUDE_PROJECTS_PATH`); يتم اكتشاف مشاريع Codex بمسح كل نص تحت `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` وتجميعها حسب `cwd` المسجل في السجل الأول من كل جلسة; يتم اكتشاف مشاريع Copilot CLI بمسح كل `~/.copilot/session-state/<sessionId>/workspace.yaml` (قابل للتكوين عبر `COPILOT_HOME`) وتجميعها حسب حقل `cwd` الخاص به; يتم اكتشاف مشاريع Cursor Agent بمسح البيانات الفوقية لكل جلسة تحت `~/.cursor/agent-sessions/<sessionId>/` (قابل للتكوين عبر `CURSOR_HOME`، مع اختبار `conversations/` و `sessions/` كبدائل) للبحث عن `cwd` في `meta.json` / `session.json` / `workspace.yaml`; يتم اكتشاف مشاريع OpenCode بالاستعلام عن قاعدة بيانات SQLite الخاصة به في `~/.local/share/opencode/opencode.db` عبر `opencode db --format json` (نحن نقرأ الجداول `session` و `project` ونجمعها حسب `project_id`); يتم اكتشاف مشاريع Pi بمسح نصوص JSONL لكل جلسة تحت `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (قابل للتكوين عبر `PI_SESSIONS_DIR`) واستخراج `cwd` من السجل الأول من كل جلسة; تتم قراءة جلسات بوابة Hermes مباشرة من متجرها SQLite في `~/.hermes/state.db` (قابل للتكوين عبر `HERMES_DB_PATH`) وتجميعها في مشاريع `hermes-<source>` حسب `source` (Slack/Telegram/cli/cron — جلسات البوابة لا تحتوي على cwd). يتم عرض المشروع الذي تم استخدامه بواسطة عدة CLIs كصف واحد مع جميع الشارات المطابقة. استخدم القائمة المنسدلة **CLI** فوق الجدول للتصفية حسب CLI وكيل معين; يحافظ عنوان URL على اختيارك كـ `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`.
 
 يعرض كل مشروع:
 - اسم المشروع (مشتق من مسار المجلد)
-- شارة CLI — `Claude Code` (برتقالي)، `OpenAI Codex` (بنفسجي)، `GitHub Copilot` (أزرق)، `Cursor Agent` (زمردي)، `OpenCode` (كهرماني)، `Pi` (وردي)، `Gemini CLI` (سماوي)، و/أو `Hermes` (نيلي)
+- شارة CLI — `Claude Code` (برتقالي)، `OpenAI Codex` (بنفسجي)، `GitHub Copilot` (أزرق)، `Cursor Agent` (زمردي)، `OpenCode` (كهرماني)، `Pi` (وردي)، و/أو `Hermes` (نيلي)
 - تاريخ آخر نشاط جلسة
 
 انقر على مشروع لمشاهدة جلساته.
@@ -47,7 +47,7 @@ failproofai
 
 ### عارض الجلسة
 
-يجيب عارض الجلسة على السؤال الأساسي للوكلاء المستقلين: ماذا فعل الوكيل، وهل بقي على المسار الصحيح؟ تشير شارة CLI بجانب الرأس إلى ما إذا كانت الجلسة نسخة Claude Code أو OpenAI Codex أو GitHub Copilot CLI أو Cursor Agent أو OpenCode أو Pi أو Gemini CLI أو Hermes. يعرض جدول زمني لكل ما حدث في جلسة:
+يجيب عارض الجلسة على السؤال الأساسي للوكلاء المستقلين: ماذا فعل الوكيل، وهل بقي على المسار الصحيح؟ تشير شارة CLI بجانب الرأس إلى ما إذا كانت الجلسة نسخة Claude Code أو OpenAI Codex أو GitHub Copilot CLI أو Cursor Agent أو OpenCode أو Pi أو Hermes. يعرض جدول زمني لكل ما حدث في جلسة:
 
 - **الرسائل** - استجابات نصية من Claude ومحفزات المستخدم
 - **استدعاءات الأدوات** - كل أداة استدعاها Claude، مع إدخالها وإخراجها
@@ -55,7 +55,7 @@ failproofai
 
 تعرض شريط الإحصائيات في الأعلى مدة الجلسة وإجمالي استدعاءات الأدوات وملخص قرارات الخطاف (عدد السماح/الرفض/التعليمات).
 
-انقر على زر **تحميل السجلات** لتصدير الجلسة. بالنسبة لجلسات Claude Code و Codex و Copilot و Cursor و Pi و Gemini، تحصل على نص JSONL الأصلي على القرص بالكامل; بالنسبة لـ OpenCode (التي تعيش جلساتها في SQLite وليس على القرص) تحصل على وثيقة JSON تعكس جداول `session` / `messages` / `parts` الأساسية.
+انقر على زر **تحميل السجلات** لتصدير الجلسة. بالنسبة لجلسات Claude Code و Codex و Copilot و Cursor و Pi، تحصل على نص JSONL الأصلي على القرص بالكامل; بالنسبة لـ OpenCode (التي تعيش جلساتها في SQLite وليس على القرص) تحصل على وثيقة JSON تعكس جداول `session` / `messages` / `parts` الأساسية.
 
 ### التدقيق
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="تبويب السياسات">
-  - حدد بطاقة متعددة الاختيار CLI الذي يحمي failproofai من لوحة واحدة — Claude Code و OpenAI Codex و GitHub Copilot و Cursor Agent و OpenCode و Pi و Gemini CLI و Hermes لها جميعاً صف مع حالة التثبيت (`نشط` / `مكتشف` / `غير نشط`)، مسار إعدادات نطاق المستخدم، وتمييز ملون العلامة التجارية. قم بتحديد أو إلغاء تحديد CLIs التي تريد وانقر `تطبيق التغييرات` لتثبيت/إلغاء تثبيت الفرق في خطوة واحدة. CLIs التي تم اكتشاف ملفها الثنائي على PATH يتم تحديدها مسبقاً.
+  - حدد بطاقة متعددة الاختيار CLI الذي يحمي failproofai من لوحة واحدة — Claude Code و OpenAI Codex و GitHub Copilot و Cursor Agent و OpenCode و Pi و Hermes لها جميعاً صف مع حالة التثبيت (`نشط` / `مكتشف` / `غير نشط`)، مسار إعدادات نطاق المستخدم، وتمييز ملون العلامة التجارية. قم بتحديد أو إلغاء تحديد CLIs التي تريد وانقر `تطبيق التغييرات` لتثبيت/إلغاء تثبيت الفرق في خطوة واحدة. CLIs التي تم اكتشاف ملفها الثنائي على PATH يتم تحديدها مسبقاً.
   - بدّل السياسات الفردية على أو بيقاف مع نقرة واحدة (يكتب إلى `~/.failproofai/policies-config.json` — مشترك عبر كل CLI مثبت)
   - قم بتوسيع سياسة لتكوين معاملات (للسياسات التي تدعم `policyParams`)
   - عيّن مسار ملف سياسات مخصص
   </Tab>
   <Tab title="تبويب النشاط">
   - السجل الكامل المقسم على صفحات لكل حدث خطاف تم تشغيله عبر جميع الجلسات
-  - التصفية حسب القرار ونوع الحدث و CLI (Claude Code / OpenAI Codex / GitHub Copilot _(إصدار تجريبي)_ / Cursor Agent _(إصدار تجريبي)_ / OpenCode _(إصدار تجريبي)_ / Pi _(إصدار تجريبي)_ / Gemini CLI _(إصدار تجريبي)_ / Hermes) واسم السياسة أو معرف الجلسة
-  - يعرض كل صف: الطابع الزمني واسم السياسة والقرار وشارة CLI (برتقالي = Claude Code، بنفسجي = OpenAI Codex، أزرق = GitHub Copilot، زمردي = Cursor Agent، كهرماني = OpenCode، وردي = Pi، سماوي = Gemini CLI، نيلي = Hermes) واسم الأداة ومعرف الجلسة وسبب قرارات الرفض/التعليمات
-  - انقر على معرف جلسة لفتح النص الخاص به — الكاشف التلقائي للعارض CLI الذي أطلق الخطاف (Claude `~/.claude/projects/…`، Codex `~/.codex/sessions/…`، Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`، Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`، OpenCode `~/.local/share/opencode/opencode.db`، Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`، Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`، Hermes `~/.hermes/state.db`) ويعرض شارة CLI المطابقة في الرأس
+  - التصفية حسب القرار ونوع الحدث و CLI (Claude Code / OpenAI Codex / GitHub Copilot _(إصدار تجريبي)_ / Cursor Agent _(إصدار تجريبي)_ / OpenCode _(إصدار تجريبي)_ / Pi _(إصدار تجريبي)_ / Hermes) واسم السياسة أو معرف الجلسة
+  - يعرض كل صف: الطابع الزمني واسم السياسة والقرار وشارة CLI (برتقالي = Claude Code، بنفسجي = OpenAI Codex، أزرق = GitHub Copilot، زمردي = Cursor Agent، كهرماني = OpenCode، وردي = Pi، نيلي = Hermes) واسم الأداة ومعرف الجلسة وسبب قرارات الرفض/التعليمات
+  - انقر على معرف جلسة لفتح النص الخاص به — الكاشف التلقائي للعارض CLI الذي أطلق الخطاف (Claude `~/.claude/projects/…`، Codex `~/.codex/sessions/…`، Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`، Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`، OpenCode `~/.local/share/opencode/opencode.db`، Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`، Hermes `~/.hermes/state.db`) ويعرض شارة CLI المطابقة في الرأس
   </Tab>
 </Tabs>
 

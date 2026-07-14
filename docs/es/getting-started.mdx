@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Esto escribe entradas de hooks en los CLIs de agentes instalados (el `~/.claude/settings.json` de Claude Code, el `~/.codex/hooks.json` de OpenAI Codex, el `~/.copilot/hooks/failproofai.json` de GitHub Copilot CLI, el `~/.cursor/hooks.json` de Cursor Agent, el shim de plugin generado de OpenCode en `~/.config/opencode/plugins/failproofai.mjs` junto con una entrada de registro en el array `plugin` de `~/.config/opencode/opencode.json`, el `~/.pi/agent/settings.json` de Pi, el `~/.gemini/settings.json` de Gemini CLI, o el `~/.hermes/config.yaml` de Hermes). Si hay más de uno presente, se te pedirá que elijas; pasa `--cli claude codex copilot cursor opencode pi gemini hermes` (cualquier subconjunto) para omitir la pregunta.
+    Esto escribe entradas de hooks en los CLIs de agentes instalados (el `~/.claude/settings.json` de Claude Code, el `~/.codex/hooks.json` de OpenAI Codex, el `~/.copilot/hooks/failproofai.json` de GitHub Copilot CLI, el `~/.cursor/hooks.json` de Cursor Agent, el shim de plugin generado de OpenCode en `~/.config/opencode/plugins/failproofai.mjs` junto con una entrada de registro en el array `plugin` de `~/.config/opencode/opencode.json`, el `~/.pi/agent/settings.json` de Pi, o el `~/.hermes/config.yaml` de Hermes). Si hay más de uno presente, se te pedirá que elijas; pasa `--cli claude codex copilot cursor opencode pi hermes` (cualquier subconjunto) para omitir la pregunta.
 
-    El soporte para GitHub Copilot CLI, Cursor Agent, OpenCode, Pi y Gemini CLI es **beta** — instala con `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` o `--cli gemini`. Hermes (hermes-agent, una puerta de enlace para Slack/Telegram) se instala con alcance de usuario mediante `--cli hermes` y es **también** una fuente de auditoría sin conexión.
+    El soporte para GitHub Copilot CLI, Cursor Agent, OpenCode y Pi es **beta** — instala con `--cli copilot`, `--cli cursor`, `--cli opencode` o `--cli pi`. Hermes (hermes-agent, una puerta de enlace para Slack/Telegram) se instala con alcance de usuario mediante `--cli hermes` y es **también** una fuente de auditoría sin conexión.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

@@ -82,14 +82,14 @@ export async function resolveTargetClis(
       // Uninstall flow: no agent CLIs detected — nothing to remove from. Default to
       // claude so removeHooks operates over Claude's scopes (no-op if no settings file).
       console.log(
-        "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi, gemini). " +
+        "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi)." +
           "Defaulting to Claude Code; nothing will be removed if no settings file exists.\x1B[0m",
       );
       fireDetectionEvent(["claude"], "defaulted_to_claude");
       return ["claude"];
     }
     console.log(
-      "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi, gemini). " +
+      "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi)." +
         "Defaulting to Claude Code; hooks will activate when an agent is installed.\x1B[0m",
     );
     fireDetectionEvent(["claude"], "defaulted_to_claude");

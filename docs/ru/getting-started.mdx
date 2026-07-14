@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Эта команда записывает записи хуков в установленные CLI агентов (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, Gemini CLI's `~/.gemini/settings.json`, или Hermes's `~/.hermes/config.yaml`). Если присутствует несколько, вам будет предложено выбрать; передайте `--cli claude codex copilot cursor opencode pi gemini hermes` (любое подмножество), чтобы пропустить запрос.
+    Эта команда записывает записи хуков в установленные CLI агентов (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, или Hermes's `~/.hermes/config.yaml`). Если присутствует несколько, вам будет предложено выбрать; передайте `--cli claude codex copilot cursor opencode pi hermes` (любое подмножество), чтобы пропустить запрос.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi и Gemini CLI поддерживаются в режиме **бета** — установите с помощью `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` или `--cli gemini`. Hermes (hermes-agent, шлюз Slack/Telegram) устанавливается в область пользователя с помощью `--cli hermes` и также является источником автономного аудита.
+    GitHub Copilot CLI, Cursor Agent, OpenCode и Pi поддерживаются в режиме **бета** — установите с помощью `--cli copilot`, `--cli cursor`, `--cli opencode` или `--cli pi`. Hermes (hermes-agent, шлюз Slack/Telegram) устанавливается в область пользователя с помощью `--cli hermes` и также является источником автономного аудита.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

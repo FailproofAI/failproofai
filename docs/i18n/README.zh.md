@@ -71,13 +71,6 @@
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -86,7 +79,7 @@
   </a>
 </p>
 
-> 可为一个或多个 CLI 安装 hooks：`failproofai policies --install --cli opencode pi gemini`（或 `--cli claude codex copilot cursor opencode pi gemini hermes`）。省略 `--cli` 参数将自动检测已安装的 CLI 并提示选择。
+> 可为一个或多个 CLI 安装 hooks：`failproofai policies --install --cli opencode pi`（或 `--cli claude codex copilot cursor opencode pi hermes`）。省略 `--cli` 参数将自动检测已安装的 CLI 并提示选择。
 >
 > **Hermes**（hermes-agent，一个 Slack/Telegram 网关）同时支持**实时 hook 执行**（`--cli hermes` — 一次安装即可拦截所有平台和子智能体的工具调用）以及离线**审计**回放，可从单一的 `~/.hermes/state.db` 文件回放其网关会话。
 

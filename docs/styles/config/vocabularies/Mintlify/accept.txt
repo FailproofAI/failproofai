@@ -4,7 +4,6 @@ Anthropic
 Codex
 Copilot
 Cursor
-Gemini
 OpenCode
 PreToolUse
 PostToolUse

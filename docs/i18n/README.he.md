@@ -74,13 +74,6 @@
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -89,7 +82,7 @@
   </a>
 </p>
 
-> התקן hooks לאחד או לכל שילוב: `failproofai policies --install --cli opencode pi gemini` (או `--cli claude codex copilot cursor opencode pi gemini hermes`). השמט `--cli` לגילוי אוטומטי של CLIs מותקנים ולהנחיה.
+> התקן hooks לאחד או לכל שילוב: `failproofai policies --install --cli opencode pi` (או `--cli claude codex copilot cursor opencode pi hermes`). השמט `--cli` לגילוי אוטומטי של CLIs מותקנים ולהנחיה.
 >
 > **Hermes** (hermes-agent, שער Slack/Telegram) נתמך גם ל**אכיפת hook חי** (`--cli hermes` — התקנה אחת מיירטת קריאות כלים מכל פלטפורמה וסוכן משנה) וגם **ביקורת** במצב לא מקוון של הפעלות השער שלו מ`~/.hermes/state.db` הבודד.
 

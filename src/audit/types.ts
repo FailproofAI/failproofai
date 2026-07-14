@@ -24,7 +24,7 @@ export interface NormalizedToolEvent {
   toolName: string;
   /** Canonicalized tool input (snake_case keys for OpenCode/Pi). */
   toolInput: Record<string, unknown>;
-  /** Pre-canonicalization tool name (e.g. "run_shell_command" for Gemini). */
+  /** Pre-canonicalization tool name (e.g. "exec" for OpenClaw). */
   rawToolName: string;
   /**
    * Result text from the matching tool_result block, if present in the

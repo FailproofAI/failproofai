@@ -54,7 +54,7 @@ failproofai
   bis du es mit `Ctrl+C` beendest.
 </Tip>
 
-Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) und meldet, wie oft der Agent Dinge getan hat, die failproofai unterbinden soll – Env-Var-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Einlesen gerade bearbeiteter Dateien und mehr.
+Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) und meldet, wie oft der Agent Dinge getan hat, die failproofai unterbinden soll – Env-Var-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Einlesen gerade bearbeiteter Dateien und mehr.
 
 Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 39 eingebauten Richtlinien **und** durch 8 Audit-exklusive Detektoren abgespielt, die Muster erkennen, die noch nicht von Laufzeit-Richtlinien abgedeckt werden. Die Zählungen werden pro Richtlinie bzw. Detektor über alle Sitzungen hinweg aggregiert.
 

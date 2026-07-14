@@ -72,13 +72,6 @@
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -87,7 +80,7 @@
   </a>
 </p>
 
-> Установите hooks для одного или любой комбинации: `failproofai policies --install --cli opencode pi gemini` (или `--cli claude codex copilot cursor opencode pi gemini hermes`). Опустите `--cli` для автоматического обнаружения установленных CLI и подсказок.
+> Установите hooks для одного или любой комбинации: `failproofai policies --install --cli opencode pi` (или `--cli claude codex copilot cursor opencode pi hermes`). Опустите `--cli` для автоматического обнаружения установленных CLI и подсказок.
 >
 > **Hermes** (hermes-agent, шлюз Slack/Telegram) поддерживается как для **live-hook принудительного исполнения** (`--cli hermes` — одна установка перехватывает вызовы инструментов с каждой платформы и субагента), так и для автономного **аудита** воспроизведения сессий шлюза из отдельного `~/.hermes/state.db`.
 

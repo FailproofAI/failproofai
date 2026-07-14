@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -144,7 +144,7 @@ export function assertCursorStopBlock(result: HookRunResult): void {
   // Cursor's stop / subagentStop hooks honor `{followup_message}` on stdout
   // (exit 0) — auto-submitted as next user message, capped at loop_limit
   // (default 5). The flat `{permission: "deny"}` shape is ignored on Stop.
-  // Mirrors assertCopilotStopBlock and assertGeminiStopBlock.
+  // Mirrors assertCopilotStopBlock.
   // Ref: https://cursor.com/docs/hooks
   expect(result.exitCode).toBe(0);
   expect(typeof result.parsed?.followup_message).toBe("string");
@@ -180,30 +180,6 @@ export function assertPiAllow(result: HookRunResult): void {
   }
 }
 
-// ── Gemini-shaped assertions ───────────────────────────────────────────────
-// Gemini uses a flat `{decision: "deny", reason}` JSON shape per its "Golden
-// Rule" exit-0 contract. Stop policies emit `{decision: "block", reason}` to
-// trigger AfterAgent's force-retry. Context injection uses Claude's
-// `{hookSpecificOutput: {hookEventName, additionalContext}}` shape but with
-// the hookEventName carrying the raw Gemini event name (BeforeTool/AfterTool/
-// BeforeAgent/SessionStart). Ref: https://geminicli.com/docs/hooks/
-
-export function assertGeminiDeny(result: HookRunResult): void {
-  expect(result.exitCode).toBe(0);
-  expect(result.parsed?.decision).toBe("deny");
-  expect(typeof result.parsed?.reason).toBe("string");
-  expect(result.parsed?.reason).toMatch(/Blocked/i);
-  // Gemini uses the flat shape — no Claude-style hookSpecificOutput wrapper.
-  expect(result.parsed?.hookSpecificOutput).toBeUndefined();
-}
-
-export function assertGeminiStopBlock(result: HookRunResult): void {
-  expect(result.exitCode).toBe(0);
-  expect(result.parsed?.decision).toBe("block");
-  expect(typeof result.parsed?.reason).toBe("string");
-  expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
-}
-
 export function assertCopilotStopBlock(result: HookRunResult): void {
   // Copilot's `agentStop` honors `{decision: "block", reason}` JSON on stdout
   // (exit 0) — the reason becomes the next-turn prompt and the agent retries.
@@ -213,11 +189,4 @@ export function assertCopilotStopBlock(result: HookRunResult): void {
   expect(result.parsed?.decision).toBe("block");
   expect(typeof result.parsed?.reason).toBe("string");
   expect(result.parsed?.reason).toMatch(/MANDATORY ACTION REQUIRED/);
-}
-
-export function assertGeminiInstruct(result: HookRunResult, hookEventName: string): void {
-  expect(result.exitCode).toBe(0);
-  const output = result.parsed?.hookSpecificOutput as Record<string, unknown> | undefined;
-  expect(output?.hookEventName).toBe(hookEventName);
-  expect(output?.additionalContext).toMatch(/^Instruction from failproofai:/);
 }

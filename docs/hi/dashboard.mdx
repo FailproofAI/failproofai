@@ -24,11 +24,11 @@ failproofai
 
 ### प्रोजेक्ट
 
-आपकी मशीन पर मिले सभी Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Gemini CLI _(beta)_, और Hermes प्रोजेक्ट सूचीबद्ध करता है। Claude प्रोजेक्ट `~/.claude/projects/` से खोजे जाते हैं (या `CLAUDE_PROJECTS_PATH` द्वारा निर्धारित पथ); Codex प्रोजेक्ट `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` के तहत प्रत्येक ट्रांसक्रिप्ट को स्कैन करके और प्रत्येक सेशन के पहले रिकॉर्ड में दर्ज `cwd` के अनुसार समूहबद्ध करके खोजे जाते हैं; Copilot CLI प्रोजेक्ट प्रत्येक `~/.copilot/session-state/<sessionId>/workspace.yaml` को स्कैन करके खोजे जाते हैं (`COPILOT_HOME` के माध्यम से कॉन्फ़िगर करने योग्य) और इसके `cwd` फील्ड के अनुसार समूहबद्ध किए जाते हैं; Cursor Agent प्रोजेक्ट `~/.cursor/agent-sessions/<sessionId>/` के तहत प्रति-सेशन मेटाडेटा को स्कैन करके खोजे जाते हैं (`CURSOR_HOME` के माध्यम से कॉन्फ़िगर करने योग्य, `conversations/` और `sessions/` को फॉलबैक के रूप में जांचा जाता है) `meta.json` / `session.json` / `workspace.yaml` में `cwd` स्केलर के लिए; OpenCode प्रोजेक्ट `~/.local/share/opencode/opencode.db` पर इसके SQLite DB को `opencode db --format json` के माध्यम से क्वेरी करके खोजे जाते हैं (हम `session` और `project` तालिकाएं पढ़ते हैं और `project_id` के अनुसार समूहबद्ध करते हैं); Pi प्रोजेक्ट `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` के तहत प्रति-सेशन JSONL ट्रांसक्रिप्ट को स्कैन करके खोजे जाते हैं (`PI_SESSIONS_DIR` के माध्यम से कॉन्फ़िगर करने योग्य) और प्रत्येक सेशन के पहले रिकॉर्ड से `cwd` निकाला जाता है; Gemini CLI प्रोजेक्ट `~/.gemini/tmp/<basename>/chats/session-<timestamp>-<uuid-prefix>.jsonl` को स्कैन करके खोजे जाते हैं (`GEMINI_SESSIONS_DIR` के माध्यम से कॉन्फ़िगर करने योग्य) और अनुवर्ती `.project_root` टेक्स्ट मार्कर से विहित cwd को पुनः प्राप्त किया जाता है; Hermes गेटवे सेशन सीधे इसके SQLite स्टोर से `~/.hermes/state.db` पर पढ़े जाते हैं (`HERMES_DB_PATH` के माध्यम से कॉन्फ़िगर करने योग्य) और `source` के अनुसार `hermes-<source>` प्रोजेक्ट में समूहबद्ध किए जाते हैं (Slack/Telegram/cli/cron — गेटवे सेशन का कोई cwd नहीं है)। एक प्रोजेक्ट जिसे कई CLI द्वारा उपयोग किया गया है, एक एकल पंक्ति के रूप में सभी मेल खाने वाले बैज के साथ प्रदर्शित होता है। सारणी के ऊपर **CLI** ड्रॉपडाउन का उपयोग करके किसी विशिष्ट एजेंट CLI द्वारा फ़िल्टर करें; URL आपके चयन को `?cli=claude|codex|copilot|cursor|opencode|pi|gemini|hermes` के रूप में संरक्षित करता है।
+आपकी मशीन पर मिले सभी Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, और Hermes प्रोजेक्ट सूचीबद्ध करता है। Claude प्रोजेक्ट `~/.claude/projects/` से खोजे जाते हैं (या `CLAUDE_PROJECTS_PATH` द्वारा निर्धारित पथ); Codex प्रोजेक्ट `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` के तहत प्रत्येक ट्रांसक्रिप्ट को स्कैन करके और प्रत्येक सेशन के पहले रिकॉर्ड में दर्ज `cwd` के अनुसार समूहबद्ध करके खोजे जाते हैं; Copilot CLI प्रोजेक्ट प्रत्येक `~/.copilot/session-state/<sessionId>/workspace.yaml` को स्कैन करके खोजे जाते हैं (`COPILOT_HOME` के माध्यम से कॉन्फ़िगर करने योग्य) और इसके `cwd` फील्ड के अनुसार समूहबद्ध किए जाते हैं; Cursor Agent प्रोजेक्ट `~/.cursor/agent-sessions/<sessionId>/` के तहत प्रति-सेशन मेटाडेटा को स्कैन करके खोजे जाते हैं (`CURSOR_HOME` के माध्यम से कॉन्फ़िगर करने योग्य, `conversations/` और `sessions/` को फॉलबैक के रूप में जांचा जाता है) `meta.json` / `session.json` / `workspace.yaml` में `cwd` स्केलर के लिए; OpenCode प्रोजेक्ट `~/.local/share/opencode/opencode.db` पर इसके SQLite DB को `opencode db --format json` के माध्यम से क्वेरी करके खोजे जाते हैं (हम `session` और `project` तालिकाएं पढ़ते हैं और `project_id` के अनुसार समूहबद्ध करते हैं); Pi प्रोजेक्ट `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` के तहत प्रति-सेशन JSONL ट्रांसक्रिप्ट को स्कैन करके खोजे जाते हैं (`PI_SESSIONS_DIR` के माध्यम से कॉन्फ़िगर करने योग्य) और प्रत्येक सेशन के पहले रिकॉर्ड से `cwd` निकाला जाता है; Hermes गेटवे सेशन सीधे इसके SQLite स्टोर से `~/.hermes/state.db` पर पढ़े जाते हैं (`HERMES_DB_PATH` के माध्यम से कॉन्फ़िगर करने योग्य) और `source` के अनुसार `hermes-<source>` प्रोजेक्ट में समूहबद्ध किए जाते हैं (Slack/Telegram/cli/cron — गेटवे सेशन का कोई cwd नहीं है)। एक प्रोजेक्ट जिसे कई CLI द्वारा उपयोग किया गया है, एक एकल पंक्ति के रूप में सभी मेल खाने वाले बैज के साथ प्रदर्शित होता है। सारणी के ऊपर **CLI** ड्रॉपडाउन का उपयोग करके किसी विशिष्ट एजेंट CLI द्वारा फ़िल्टर करें; URL आपके चयन को `?cli=claude|codex|copilot|cursor|opencode|pi|hermes` के रूप में संरक्षित करता है।
 
 प्रत्येक प्रोजेक्ट दिखाता है:
 - प्रोजेक्ट नाम (फोल्डर पथ से व्युत्पन्न)
-- एक CLI बैज — `Claude Code` (नारंगी), `OpenAI Codex` (बैंगनी), `GitHub Copilot` (नीला), `Cursor Agent` (पन्ना), `OpenCode` (एम्बर), `Pi` (गुलाबी), `Gemini CLI` (आसमानी), और/या `Hermes` (गहरा नीला)
+- एक CLI बैज — `Claude Code` (नारंगी), `OpenAI Codex` (बैंगनी), `GitHub Copilot` (नीला), `Cursor Agent` (पन्ना), `OpenCode` (एम्बर), `Pi` (गुलाबी), और/या `Hermes` (गहरा नीला)
 - सबसे हाल की सेशन गतिविधि की तारीख
 
 एक प्रोजेक्ट पर क्लिक करके इसके सेशन देखें।
@@ -47,7 +47,7 @@ failproofai
 
 ### सेशन दर्शक
 
-सेशन दर्शक स्वायत्त एजेंट के लिए मुख्य प्रश्न का उत्तर देता है: एजेंट ने क्या किया, और क्या वह ट्रैक पर रहा? शीर्षलेख के बगल में एक CLI बैज इंगित करता है कि सेशन Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI, या Hermes ट्रांसक्रिप्ट है। यह एक सेशन में हुई हर चीज की एक टाइमलाइन दिखाता है:
+सेशन दर्शक स्वायत्त एजेंट के लिए मुख्य प्रश्न का उत्तर देता है: एजेंट ने क्या किया, और क्या वह ट्रैक पर रहा? शीर्षलेख के बगल में एक CLI बैज इंगित करता है कि सेशन Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, या Hermes ट्रांसक्रिप्ट है। यह एक सेशन में हुई हर चीज की एक टाइमलाइन दिखाता है:
 
 - **संदेश** - Claude के टेक्स्ट प्रतिक्रियाएं और उपयोगकर्ता संकेत
 - **टूल कॉल** - हर टूल जो Claude ने आह्वान किया, इसके इनपुट और आउटपुट के साथ
@@ -55,7 +55,7 @@ failproofai
 
 शीर्ष पर सांख्यिकी बार सेशन की अवधि, कुल टूल कॉल, और हुक निर्णयों का सारांश दिखाता है (अनुमति / अस्वीकृति / निर्देश गणना)।
 
-सेशन निर्यात करने के लिए **डाउनलोड लॉग** बटन पर क्लिक करें। Claude Code, Codex, Copilot, Cursor, Pi, और Gemini सेशन के लिए आप मूल ऑन-डिस्क JSONL ट्रांसक्रिप्ट बाइट-दर-बाइट प्राप्त करते हैं; OpenCode के लिए (जिसके सेशन SQLite में रहते हैं, डिस्क पर नहीं) आप एक JSON दस्तावेज प्राप्त करते हैं जो अंतर्निहित `session` / `messages` / `parts` तालिकाओं को प्रतिबिंबित करता है।
+सेशन निर्यात करने के लिए **डाउनलोड लॉग** बटन पर क्लिक करें। Claude Code, Codex, Copilot, Cursor, और Pi सेशन के लिए आप मूल ऑन-डिस्क JSONL ट्रांसक्रिप्ट बाइट-दर-बाइट प्राप्त करते हैं; OpenCode के लिए (जिसके सेशन SQLite में रहते हैं, डिस्क पर नहीं) आप एक JSON दस्तावेज प्राप्त करते हैं जो अंतर्निहित `session` / `messages` / `parts` तालिकाओं को प्रतिबिंबित करता है।
 
 ### ऑडिट
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="नीतियां टैब">
-  - एकल पैनल से failproofai किस एजेंट CLI की रक्षा करता है, इसे बहु-चयन करें — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Gemini CLI, और Hermes सभी के पास स्थापना स्थिति (`Active` / `Detected` / `Inactive`) वाली एक पंक्ति है, उपयोगकर्ता-स्कोप सेटिंग्स पथ, और एक ब्रांड-रंगीन उच्चारण। आप जिन CLI चाहते हैं उन्हें चेक करें या अनचेक करें और `Apply changes` पर क्लिक करके एक चरण में इंस्टॉल/अनइंस्टॉल करने के लिए अंतर लागू करें। CLI जिनके बाइनरी को PATH पर पता चला है, पूर्व-जांच किए जाते हैं।
+  - एकल पैनल से failproofai किस एजेंट CLI की रक्षा करता है, इसे बहु-चयन करें — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, और Hermes सभी के पास स्थापना स्थिति (`Active` / `Detected` / `Inactive`) वाली एक पंक्ति है, उपयोगकर्ता-स्कोप सेटिंग्स पथ, और एक ब्रांड-रंगीन उच्चारण। आप जिन CLI चाहते हैं उन्हें चेक करें या अनचेक करें और `Apply changes` पर क्लिक करके एक चरण में इंस्टॉल/अनइंस्टॉल करने के लिए अंतर लागू करें। CLI जिनके बाइनरी को PATH पर पता चला है, पूर्व-जांच किए जाते हैं।
   - एकल क्लिक के साथ व्यक्तिगत नीतियों को चालू या बंद करें (`~/.failproofai/policies-config.json` में लिखते हैं — हर इंस्टॉल किए गए CLI में साझा)
   - एक नीति का विस्तार करके इसके पैरामीटर को कॉन्फ़िगर करें (उन नीतियों के लिए जो `policyParams` को समर्थन करती हैं)
   - एक कस्टम नीति फाइल पथ सेट करें
   </Tab>
   <Tab title="गतिविधि टैब">
   - सभी सेशन में फायर किए गए प्रत्येक हुक ईवेंट का पूर्ण पृष्ठांकित इतिहास
-  - निर्णय, ईवेंट प्रकार, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Gemini CLI _(beta)_ / Hermes), नीति नाम, या सेशन ID द्वारा फ़िल्टर करें
-  - प्रत्येक पंक्ति दिखाती है: टाइमस्टैम्प, नीति नाम, निर्णय, CLI बैज (नारंगी = Claude Code, बैंगनी = OpenAI Codex, नीला = GitHub Copilot, पन्ना = Cursor Agent, एम्बर = OpenCode, गुलाबी = Pi, आसमानी = Gemini CLI, गहरा नीला = Hermes), टूल नाम, सेशन ID, और अस्वीकृति/निर्देश निर्णयों का कारण
-  - ट्रांसक्रिप्ट खोलने के लिए एक सेशन ID पर क्लिक करें — दर्शक स्वचालित रूप से पता लगाता है कि कौन सा CLI हुक को आग लगाया (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Gemini CLI `~/.gemini/tmp/<basename>/chats/<session>.jsonl`, Hermes `~/.hermes/state.db`) और शीर्षलेख में मेल खाने वाले CLI बैज को प्रदान करता है
+  - निर्णय, ईवेंट प्रकार, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes), नीति नाम, या सेशन ID द्वारा फ़िल्टर करें
+  - प्रत्येक पंक्ति दिखाती है: टाइमस्टैम्प, नीति नाम, निर्णय, CLI बैज (नारंगी = Claude Code, बैंगनी = OpenAI Codex, नीला = GitHub Copilot, पन्ना = Cursor Agent, एम्बर = OpenCode, गुलाबी = Pi, गहरा नीला = Hermes), टूल नाम, सेशन ID, और अस्वीकृति/निर्देश निर्णयों का कारण
+  - ट्रांसक्रिप्ट खोलने के लिए एक सेशन ID पर क्लिक करें — दर्शक स्वचालित रूप से पता लगाता है कि कौन सा CLI हुक को आग लगाया (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`) और शीर्षलेख में मेल खाने वाले CLI बैज को प्रदान करता है
   </Tab>
 </Tabs>
 

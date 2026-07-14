@@ -252,7 +252,6 @@ describe("ProjectList", () => {
       "Cursor Agent",
       "OpenCode",
       "Pi",
-      "Gemini CLI",
       "Hermes",
       "OpenClaw",
     ]);

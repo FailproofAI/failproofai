@@ -712,20 +712,19 @@ A aplicação de Stop funciona de forma ligeiramente diferente entre os sete CLI
 | Codex | No mesmo loop do agente, imediatamente | Igual ao Claude. |
 | GitHub Copilot CLI | No mesmo loop do agente, imediatamente | Igual ao Claude (usa o canal de retry `{decision:"block", reason}` do Copilot — verificado empiricamente no Copilot CLI 1.0.41). |
 | Cursor Agent | No mesmo loop do agente, imediatamente | Igual ao Claude (usa o canal `{followup_message}` do Cursor — limitado ao `loop_limit`, padrão 5 tentativas). |
-| Gemini CLI | No mesmo loop do agente, imediatamente | Igual ao Claude (usa o canal `{decision:"block", reason}` do Gemini em `AfterAgent`). |
 | OpenCode | No mesmo loop do agente, imediatamente | Igual ao Claude (usa a chamada SDK `client.session.prompt(...)` do OpenCode roteada através de `hookSpecificOutput.additionalContext`). |
 | **Pi (pi-coding-agent)** | **Próximo turno do usuário** | **O Pi para visivelmente** quando o gate é acionado — seu loop de agente sai e você retorna ao prompt. O gate é então acionado na próxima vez que você enviar um prompt: o failproofai antepõe uma diretiva `MANDATORY ACTION REQUIRED` ao prompt do sistema daquele turno, instruindo o LLM a concluir a etapa do fluxo de trabalho (commit, push, etc.) antes de fazer o que você pediu. |
 
 <Note>
-**Limitação do Pi.** O `AgentEndEvent` do Pi (o equivalente upstream do hook `Stop` do Claude) não tem tipo Result — quando ele é acionado, o loop do agente do Pi já saiu. O Pi não pode ser forçado a repetir o mesmo loop da forma que Claude / Copilot / Cursor / Gemini / OpenCode podem. O failproofai desloca o gate para o evento `before_agent_start` do Pi (que é acionado após o próximo prompt do usuário), para que a verificação do fluxo de trabalho ainda seja aplicada, apenas no próximo turno em vez do atual.
+**Limitação do Pi.** O `AgentEndEvent` do Pi (o equivalente upstream do hook `Stop` do Claude) não tem tipo Result — quando ele é acionado, o loop do agente do Pi já saiu. O Pi não pode ser forçado a repetir o mesmo loop da forma que Claude / Copilot / Cursor / OpenCode podem. O failproofai desloca o gate para o evento `before_agent_start` do Pi (que é acionado após o próximo prompt do usuário), para que a verificação do fluxo de trabalho ainda seja aplicada, apenas no próximo turno em vez do atual.
 
 **O que isso significa na prática:**
 
 - Após o Pi parar, o motivo da negação é capturado na memória, indexado pelo ID de sessão do Pi. O próximo prompt que você enviar no mesmo processo do Pi o consome: o LLM vê a diretiva `MANDATORY ACTION REQUIRED` no topo de seu prompt de sistema, faz o commit (ou push / abre o PR / aguarda o CI), e só então continua com sua solicitação. O motivo de negação capturado é de uso único — uma vez consumido, o gate é liberado.
-- O gate é limitado ao tempo de vida do processo do Pi. Se você der `Ctrl+C` no Pi ou sair entre turnos, a entrada na memória é descartada junto com o processo e o gate é perdido. Claude, Copilot, Cursor, Gemini e OpenCode têm o mesmo limite (matar o agente faz o gate ser perdido) — o Pi apenas torna isso mais visível porque o agente sai visivelmente antes do gate ser acionado.
+- O gate é limitado ao tempo de vida do processo do Pi. Se você der `Ctrl+C` no Pi ou sair entre turnos, a entrada na memória é descartada junto com o processo e o gate é perdido. Claude, Copilot, Cursor e OpenCode têm o mesmo limite (matar o agente faz o gate ser perdido) — o Pi apenas torna isso mais visível porque o agente sai visivelmente antes do gate ser acionado.
 - Uma negação pendente também é limpa no `session_shutdown` por qualquer motivo (`new` / `resume` / `fork` / `quit`), então um gate obsoleto de uma sessão anterior não pode vazar para uma nova sessão iniciada no mesmo processo do Pi.
 
-Se você precisar do retry no mesmo loop no estilo Claude, execute suas políticas `Stop` em qualquer um dos outros seis CLIs suportados. Estamos acompanhando o upstream do Pi para um futuro tipo Result no `AgentEndEvent` que nos permitiria fechar essa lacuna.
+Se você precisar do retry no mesmo loop no estilo Claude, execute suas políticas `Stop` em qualquer um dos outros cinco CLIs suportados. Estamos acompanhando o upstream do Pi para um futuro tipo Result no `AgentEndEvent` que nos permitiria fechar essa lacuna.
 </Note>
 
 ### `require-commit-before-stop`

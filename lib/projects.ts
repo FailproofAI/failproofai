@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" | "openclaw";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw";
 
 export interface ProjectFolder {
   name: string;
@@ -143,7 +143,6 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getCursorProjects },
     { getOpenCodeProjects },
     { getPiProjects },
-    { getGeminiProjects },
     { getHermesProjects },
     { getOpenClawProjects },
   ] = await Promise.all([
@@ -152,11 +151,10 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./cursor-projects"),
     import("./opencode-projects"),
     import("./pi-projects"),
-    import("./gemini-projects"),
     import("./hermes-projects"),
     import("./openclaw-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, gemini, hermes, openclaw] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -178,10 +176,6 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Pi projects:", error);
       return [] as ProjectFolder[];
     }),
-    getGeminiProjects().catch((error) => {
-      logError("Error reading Gemini projects:", error);
-      return [] as ProjectFolder[];
-    }),
     getHermesProjects().catch((error) => {
       logError("Error reading Hermes projects:", error);
       return [] as ProjectFolder[];
@@ -191,7 +185,7 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       return [] as ProjectFolder[];
     }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, gemini, hermes, openclaw);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw);
 }
 
 /**

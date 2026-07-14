@@ -8,7 +8,6 @@ import { getCachedCopilotSessionLog } from "@/lib/copilot-sessions";
 import { getCachedCursorSessionLog } from "@/lib/cursor-sessions";
 import { getCachedOpenCodeSessionLog } from "@/lib/opencode-sessions";
 import { getCachedPiSessionLog } from "@/lib/pi-sessions";
-import { getCachedGeminiSessionLog } from "@/lib/gemini-sessions";
 import { getCachedHermesSessionLog } from "@/lib/hermes-sessions";
 import { getCachedOpenClawSessionLog } from "@/lib/openclaw-sessions";
 import { decodeFolderName } from "@/lib/paths";
@@ -54,7 +53,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "gemini" | "hermes" | "openclaw" = "claude";
+  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" = "claude";
   let externalCwd: string | undefined;
 
   try {
@@ -103,29 +102,21 @@ export default async function SessionPage({ params }: SessionPageProps) {
                 externalCwd = pi.cwd;
                 cli = "pi";
               } else {
-                const gemini = await getCachedGeminiSessionLog(decodedSessionId);
-                if (gemini) {
-                  entries = gemini.entries;
-                  rawLines = gemini.rawLines;
-                  externalCwd = gemini.cwd;
-                  cli = "gemini";
+                const hermes = await getCachedHermesSessionLog(decodedSessionId);
+                if (hermes) {
+                  entries = hermes.entries;
+                  rawLines = hermes.rawLines;
+                  externalCwd = hermes.cwd;
+                  cli = "hermes";
                 } else {
-                  const hermes = await getCachedHermesSessionLog(decodedSessionId);
-                  if (hermes) {
-                    entries = hermes.entries;
-                    rawLines = hermes.rawLines;
-                    externalCwd = hermes.cwd;
-                    cli = "hermes";
+                  const openclaw = await getCachedOpenClawSessionLog(decodedSessionId);
+                  if (openclaw) {
+                    entries = openclaw.entries;
+                    rawLines = openclaw.rawLines;
+                    externalCwd = openclaw.cwd;
+                    cli = "openclaw";
                   } else {
-                    const openclaw = await getCachedOpenClawSessionLog(decodedSessionId);
-                    if (openclaw) {
-                      entries = openclaw.entries;
-                      rawLines = openclaw.rawLines;
-                      externalCwd = openclaw.cwd;
-                      cli = "openclaw";
-                    } else {
-                      error = "Session log file not found.";
-                    }
+                    error = "Session log file not found.";
                   }
                 }
               }
@@ -151,13 +142,11 @@ export default async function SessionPage({ params }: SessionPageProps) {
             ? `OpenCode${externalCwd ? ` · ${externalCwd}` : ""}`
             : cli === "pi"
               ? `Pi${externalCwd ? ` · ${externalCwd}` : ""}`
-              : cli === "gemini"
-                ? `Gemini CLI${externalCwd ? ` · ${externalCwd}` : ""}`
-                : cli === "hermes"
-                  ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
-                  : cli === "openclaw"
-                    ? `OpenClaw${externalCwd ? ` · ${externalCwd}` : ""}`
-                    : decodedName;
+              : cli === "hermes"
+                ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
+                : cli === "openclaw"
+                  ? `OpenClaw${externalCwd ? ` · ${externalCwd}` : ""}`
+                  : decodedName;
 
   return (
     <main className="min-h-screen bg-background">
@@ -227,7 +216,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
                               ? "Pi"
                               : cli === "hermes"
                                 ? "Hermes"
-                                : "Gemini CLI"))
+                                : "OpenClaw"))
                 : decodedName
             }
             sessionId={decodedSessionId}

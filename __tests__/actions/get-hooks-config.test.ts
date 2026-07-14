@@ -17,7 +17,6 @@ const installedFlags: Record<string, boolean> = {
   cursor: false,
   opencode: false,
   pi: false,
-  gemini: false,
 };
 
 const detectedFlags: Record<string, boolean> = {
@@ -27,11 +26,10 @@ const detectedFlags: Record<string, boolean> = {
   cursor: false,
   opencode: false,
   pi: false,
-  gemini: false,
 };
 
 vi.mock("@/src/hooks/integrations", () => {
-  const ids = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"] as const;
+  const ids = ["claude", "codex", "copilot", "cursor", "opencode", "pi"] as const;
   const make = (id: (typeof ids)[number]) => ({
     id,
     displayName: id,
@@ -51,18 +49,18 @@ describe("getHooksConfigAction — clis payload", () => {
     // reset to baseline
     Object.assign(installedFlags, {
       claude: true, codex: false, copilot: false, cursor: false,
-      opencode: false, pi: false, gemini: false,
+      opencode: false, pi: false,
     });
     Object.assign(detectedFlags, {
       claude: true, codex: true, copilot: false, cursor: false,
-      opencode: false, pi: false, gemini: false,
+      opencode: false, pi: false,
     });
   });
 
   it("returns one entry per CLI in registry order", async () => {
     const config = await getHooksConfigAction();
     expect(config.clis.map((c) => c.id)).toEqual([
-      "claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini",
+      "claude", "codex", "copilot", "cursor", "opencode", "pi",
     ]);
   });
 
@@ -70,14 +68,11 @@ describe("getHooksConfigAction — clis payload", () => {
     const config = await getHooksConfigAction();
     const claude = config.clis.find((c) => c.id === "claude")!;
     const codex = config.clis.find((c) => c.id === "codex")!;
-    const gemini = config.clis.find((c) => c.id === "gemini")!;
 
     expect(claude.installed).toBe(true);
     expect(claude.detected).toBe(true);
     expect(codex.installed).toBe(false);
     expect(codex.detected).toBe(true);
-    expect(gemini.installed).toBe(false);
-    expect(gemini.detected).toBe(false);
   });
 
   it("carries the per-CLI user-scope settingsPath", async () => {
@@ -94,6 +89,5 @@ describe("getHooksConfigAction — clis payload", () => {
     const config = await getHooksConfigAction();
     expect(config.clis.find((c) => c.id === "claude")!.label).toBe("Claude Code");
     expect(config.clis.find((c) => c.id === "codex")!.label).toBe("OpenAI Codex");
-    expect(config.clis.find((c) => c.id === "gemini")!.label).toBe("Gemini CLI");
   });
 });

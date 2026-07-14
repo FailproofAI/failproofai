@@ -74,13 +74,6 @@
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
@@ -89,7 +82,7 @@
   </a>
 </p>
 
-> تثبيت الخطافات لواحدة أو أي مزيج: `failproofai policies --install --cli opencode pi gemini` (أو `--cli claude codex copilot cursor opencode pi gemini hermes`). احذف `--cli` للكشف التلقائي عن واجهات سطر الأوامر المثبتة والمطالبة.
+> تثبيت الخطافات لواحدة أو أي مزيج: `failproofai policies --install --cli opencode pi` (أو `--cli claude codex copilot cursor opencode pi hermes`). احذف `--cli` للكشف التلقائي عن واجهات سطر الأوامر المثبتة والمطالبة.
 >
 > **Hermes** (hermes-agent، بوابة Slack/Telegram) مدعومة لكل من **فرض الخطاف الحي** (`--cli hermes` — التثبيت الواحد يعترض استدعاءات الأدوات من كل منصة ووكيل فرعي) والتدقيق غير المتصل **إعادة تشغيل** لجلسات البوابة من قاعدة البيانات الواحدة `~/.hermes/state.db`.
 

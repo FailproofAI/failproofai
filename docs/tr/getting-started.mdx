@@ -37,9 +37,9 @@ bun add -g failproofai
     failproofai policies --install
     ```
 
-    Bu, yüklü ajan CLI'lerinize hook girişleri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'ın `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs` konumundaki oluşturulmuş plugin shim'i ve `~/.config/opencode/opencode.json` dosyasındaki `plugin` dizisinde bir kayıt girişi, Pi'nin `~/.pi/agent/settings.json`, Gemini CLI'nin `~/.gemini/settings.json` veya Hermes'in `~/.hermes/config.yaml` dosyası). Birden fazla varsa size sorulacak; `--cli claude codex copilot cursor opencode pi gemini hermes` (herhangi bir alt küme) geçerek sorguyu atlayabilirsiniz.
+    Bu, yüklü ajan CLI'lerinize hook girişleri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'ın `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs` konumundaki oluşturulmuş plugin shim'i ve `~/.config/opencode/opencode.json` dosyasındaki `plugin` dizisinde bir kayıt girişi, Pi'nin `~/.pi/agent/settings.json` veya Hermes'in `~/.hermes/config.yaml` dosyası). Birden fazla varsa size sorulacak; `--cli claude codex copilot cursor opencode pi hermes` (herhangi bir alt küme) geçerek sorguyu atlayabilirsiniz.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ve Gemini CLI desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` veya `--cli gemini` ile kurun. Hermes (hermes-agent, bir Slack/Telegram ağ geçidi) `--cli hermes` ile kullanıcı kapsamında yüklenir ve **ayrıca** çevrimdışı bir denetim kaynağıdır.
+    GitHub Copilot CLI, Cursor Agent, OpenCode ve Pi desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode` veya `--cli pi` ile kurun. Hermes (hermes-agent, bir Slack/Telegram ağ geçidi) `--cli hermes` ile kullanıcı kapsamında yüklenir ve **ayrıca** çevrimdışı bir denetim kaynağıdır.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,7 +48,6 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```

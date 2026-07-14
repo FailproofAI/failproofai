@@ -32,7 +32,6 @@ tracked in `src/hooks/types.ts` and written to disk by `src/hooks/integrations.t
 | Cursor Agent   | `CURSOR_HOOK_EVENT_TYPES`          | `CURSOR_EVENT_MAP`     | `.cursor/hooks.json` |
 | OpenCode       | `OPENCODE_HOOK_EVENT_TYPES`        | `OPENCODE_EVENT_MAP`   | `.opencode/opencode.json` + `.opencode/plugins/failproofai.mjs` |
 | Pi             | `PI_HOOK_EVENT_TYPES`              | `PI_EVENT_MAP`         | `.pi/settings.json` |
-| Gemini CLI     | `GEMINI_HOOK_EVENT_TYPES`          | `GEMINI_EVENT_MAP`     | `.gemini/settings.json` |
 
 ## What "drift" means — three scopes
 
@@ -62,7 +61,7 @@ For each verified CLI, compare the upstream docs to this repo across three scope
   when you only need to **inspect** a committed fixture, prefer
   `git show HEAD:<path>` (e.g. `git show HEAD:.codex/hooks.json`) — it is never
   blocked and is the reliable way to read `.claude/settings.json`, `.codex/hooks.json`,
-  `.cursor/hooks.json`, `.github/hooks/failproofai.json`, `.gemini/settings.json`,
+  `.cursor/hooks.json`, `.github/hooks/failproofai.json`,
   `.pi/settings.json`, and `.opencode/*`.
 - Do **NOT** run `failproofai policies --install` (or any `failproofai` subcommand)
   to regenerate a fixture — it is blocked. Edit fixtures by hand.
@@ -76,7 +75,7 @@ Spawn one subagent per CLI (seven, in parallel). Each subagent, for its CLI:
    **settings-file schema** (top-level keys, per-entry shape, command field name,
    timeout field name **and unit**, and whether `matcher` / `version` / `$schema`
    are present). **Use upstream casing exactly** — Codex snake_case, Cursor
-   camelCase, OpenCode dot.namespaced, Pi snake_case, Claude/Copilot/Gemini
+   camelCase, OpenCode dot.namespaced, Pi snake_case, Claude/Copilot
    PascalCase. Do **not** normalize.
 2. Compare against this repo: the CLI's `*HOOK_EVENT_TYPES` array + paired
    `*EVENT_MAP` (scope 1); its `*_TOOL_MAP` / `*_TOOL_INPUT_MAP` and its branch in
@@ -98,7 +97,6 @@ surface is documented in the package source, not a clean enumeration).
 | Cursor    | https://cursor.com/docs/hooks |
 | OpenCode  | https://opencode.ai/docs/plugins/ |
 | Pi        | https://www.npmjs.com/package/@mariozechner/pi-coding-agent |
-| Gemini    | https://geminicli.com/docs/hooks/ · https://geminicli.com/docs/reference/tools/ (tool names) |
 
 ## Phase 2 — Decide what to do (do this BEFORE editing any files)
 
@@ -122,7 +120,6 @@ changes that block a clean stop on the comment / no-op paths below.
 
      > This open sync PR is missing newly-detected drift:
      > - **Cursor**: upstream added event `afterEdit` — append to `CURSOR_HOOK_EVENT_TYPES` (+ a `CURSOR_EVENT_MAP` entry).
-     > - **Gemini**: the `run_shell_command` tool was renamed to `shell` — the `GEMINI_TOOL_MAP` key is stale.
      >
      > (hook-sync bot — please fold these into this PR rather than opening a second sync PR.)
 
@@ -140,7 +137,7 @@ requires.
 - **Append** new events just before `] as const`, preserving upstream casing.
 - **Delete** removed events; if the CLI has an `*EVENT_MAP`, also delete the same
   key from that map (the `Record` is exhaustive — a stale key fails `tsc`).
-- For **map-bearing CLIs** (Codex, Cursor, OpenCode, Pi, Gemini), do **NOT** invent
+- For **map-bearing CLIs** (Codex, Cursor, OpenCode, Pi), do **NOT** invent
   the canonical mapping for a newly-added event — leave it out of the `*EVENT_MAP`
   so `tsc` fails intentionally, and add a reviewer-checklist item to the PR body
   (see below). For **Claude and Copilot** (no map), the build stays green.
@@ -148,9 +145,9 @@ requires.
   - If `HOOK_EVENT_TYPES` (Claude) changed: in `__tests__/hooks/manager.test.ts`,
     update the `installs hooks for all <N> event types` description AND both
     `expect(Object.keys(written.hooks)).toHaveLength(<N>)` assertions.
-  - If `GEMINI_HOOK_EVENT_TYPES` changed: in `__tests__/hooks/integrations.test.ts`,
-    update the `expect(gemini.eventTypes).toHaveLength(<N>)` assertion AND the
-    matching description string.
+  - If a CLI's `*_HOOK_EVENT_TYPES` changed: in `__tests__/hooks/integrations.test.ts`,
+    update the matching `expect(<cli>.eventTypes).toHaveLength(<N>)` assertion AND the
+    description string.
   - Locate these by searching for the current count number.
 
 ### Scope 2 / Scope 3 (tool schema / settings-file shape)
@@ -211,7 +208,7 @@ The PR **body** must contain, in order:
   `__tests__/e2e/hooks/<cli>-integration.e2e.test.ts`, the seven dogfood fixtures
   (`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`,
   `.github/hooks/failproofai.json`, `.opencode/opencode.json`,
-  `.opencode/plugins/failproofai.mjs`, `.pi/settings.json`, `.gemini/settings.json`),
+  `.opencode/plugins/failproofai.mjs`, `.pi/settings.json`),
   and `CHANGELOG.md`.
 - Do **NOT** edit `.failproofai/policies-config.json` (the entrypoint manages it),
   `src/hooks/handler.ts`, `src/hooks/manager.ts`, or any other source file.

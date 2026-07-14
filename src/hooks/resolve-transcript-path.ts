@@ -22,10 +22,6 @@
  *   • Pi: shim doesn't forward transcript_path. Discover at
  *     ~/.pi/agent/sessions/<encodedCwd>/<isoTimestamp>_<sessionId>.jsonl.
  *
- *   • Gemini: docs say stdin carries transcript_path, but coverage is uneven
- *     across versions. Trust stdin first; fall back to discovery under
- *     ~/.gemini/tmp/<projectHash>/chats/<sessionId>.json.
- *
  * Mirrors the dispatch pattern of `resolve-permission-mode.ts`. Each
  * `find*Transcript` helper performs its own existsSync + path-traversal
  * containment check, so passing in a malformed sessionId is safe (returns
@@ -35,7 +31,6 @@ import { findCodexTranscript } from "../../lib/codex-sessions";
 import { findCopilotTranscript } from "../../lib/copilot-sessions";
 import { findCursorTranscript } from "../../lib/cursor-sessions";
 import { findPiTranscript } from "../../lib/pi-sessions";
-import { findGeminiTranscript } from "../../lib/gemini-sessions";
 import type { IntegrationType } from "./types";
 
 export function resolveTranscriptPath(
@@ -59,8 +54,6 @@ export function resolveTranscriptPath(
       return findCursorTranscript(sessionId) ?? undefined;
     case "pi":
       return findPiTranscript(sessionId) ?? undefined;
-    case "gemini":
-      return findGeminiTranscript(sessionId) ?? undefined;
     case "opencode":
       return `opencode-db://${sessionId}`;
     case "hermes":

@@ -54,7 +54,7 @@ failproofai
   대시보드는 `Ctrl+C`로 중지할 때까지 계속 서비스됩니다.
 </Tip>
 
-대시보드는 이 머신의 과거 에이전트 CLI 트랜스크립트(Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini)를 스캔하고, failproofai가 막도록 설계된 작업들 — env-var 검사, 강제 푸시, 불필요한 `cd <cwd>` 접두사, sleep 폴링 루프, 방금 편집한 파일 재읽기 등 — 을 에이전트가 얼마나 자주 수행했는지 보고합니다.
+대시보드는 이 머신의 과거 에이전트 CLI 트랜스크립트(Claude Code, Codex, Copilot, Cursor, OpenCode, Pi)를 스캔하고, failproofai가 막도록 설계된 작업들 — env-var 검사, 강제 푸시, 불필요한 `cd <cwd>` 접두사, sleep 폴링 루프, 방금 편집한 파일 재읽기 등 — 을 에이전트가 얼마나 자주 수행했는지 보고합니다.
 
 각 트랜스크립트에 대해 모든 도구 사용 이벤트는 39개의 내장 정책 **및** 런타임 정책으로 아직 처리되지 않는 패턴을 잡아내는 8개의 감사 전용 감지기를 통해 재실행됩니다. 횟수는 모든 세션에 걸쳐 정책/감지기별로 집계됩니다.
 

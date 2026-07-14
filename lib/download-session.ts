@@ -79,11 +79,6 @@ export async function resolveDownloadSource(
     const path = findPiTranscript(sessionId);
     return path ? { kind: "file", path } : null;
   }
-  if (cli === "gemini") {
-    const { findGeminiTranscript } = await import("./gemini-sessions");
-    const path = findGeminiTranscript(sessionId);
-    return path ? { kind: "file", path } : null;
-  }
   if (cli === "opencode") {
     // OpenCode keeps sessions in SQLite (~/.local/share/opencode/opencode.db)
     // across three tables: session / message / part. Export all three so

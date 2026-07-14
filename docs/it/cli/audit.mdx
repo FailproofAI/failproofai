@@ -52,7 +52,7 @@ failproofai
   finché non lo arresti con `Ctrl+C`.
 </Tip>
 
-Il dashboard scansiona i transcript passati da agent CLI su questa macchina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) e segnala con che frequenza l'agente ha fatto cose che failproofai è costruito per bloccare — controlli di variabili d'ambiente, push forzati, prefissi `cd <cwd>` ridondanti, loop di polling con sleep, ri-letture di file appena modificati, e altro.
+Il dashboard scansiona i transcript passati da agent CLI su questa macchina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) e segnala con che frequenza l'agente ha fatto cose che failproofai è costruito per bloccare — controlli di variabili d'ambiente, push forzati, prefissi `cd <cwd>` ridondanti, loop di polling con sleep, ri-letture di file appena modificati, e altro.
 
 Per ogni transcript, ogni evento tool-use viene rieseguito attraverso le 39 policy integrate **e** attraverso 8 rilevatori solo audit che catturano pattern non ancora coperti da policy runtime. I conteggi vengono aggregati per policy / rilevatore in tutte le sessioni.
 

@@ -47,7 +47,7 @@ failproofai
   Chạy `failproofai audit -h` (hoặc `--help`) để xem cách sử dụng. Công cụ kiểm toán chạy **hoàn toàn ngoại tuyến** — không cần tài khoản hay mạng — và dashboard tiếp tục hoạt động cho đến khi bạn dừng nó bằng `Ctrl+C`.
 </Tip>
 
-Dashboard quét các bản ghi agent CLI quá khứ trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Gemini) và báo cáo tần suất agent làm những việc mà failproofai được xây dựng để ngăn chặn — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại tệp vừa chỉnh sửa, và nhiều hơn nữa.
+Dashboard quét các bản ghi agent CLI quá khứ trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) và báo cáo tần suất agent làm những việc mà failproofai được xây dựng để ngăn chặn — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại tệp vừa chỉnh sửa, và nhiều hơn nữa.
 
 Đối với mỗi bản ghi, mỗi sự kiện tool-use được phát lại thông qua 39 chính sách tích hợp **và** thông qua 8 detector chỉ dùng cho kiểm toán để phát hiện các mẫu chưa được bao phủ bởi các chính sách thời gian chạy. Các số được tổng hợp theo chính sách/detector trên tất cả các phiên.
 

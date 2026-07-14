@@ -14,7 +14,7 @@ describe("lib/download-session: isValidSessionId", () => {
   });
 
   it("accepts UUIDs for non-opencode CLIs", () => {
-    for (const cli of ["claude", "codex", "copilot", "cursor", "pi", "gemini"] as const) {
+    for (const cli of ["claude", "codex", "copilot", "cursor", "pi"] as const) {
       expect(isValidSessionId(cli, VALID_UUID)).toBe(true);
       expect(isValidSessionId(cli, "ses_abc123")).toBe(false);
       expect(isValidSessionId(cli, "not-a-uuid")).toBe(false);
@@ -41,7 +41,6 @@ describe("lib/download-session: resolveDownloadSource", () => {
     vi.doUnmock("@/lib/copilot-sessions");
     vi.doUnmock("@/lib/cursor-sessions");
     vi.doUnmock("@/lib/pi-sessions");
-    vi.doUnmock("@/lib/gemini-sessions");
     vi.doUnmock("@/lib/opencode-sessions");
   });
 
@@ -85,7 +84,6 @@ describe("lib/download-session: resolveDownloadSource", () => {
     ["copilot", "@/lib/copilot-sessions", "findCopilotTranscript"],
     ["cursor", "@/lib/cursor-sessions", "findCursorTranscript"],
     ["pi", "@/lib/pi-sessions", "findPiTranscript"],
-    ["gemini", "@/lib/gemini-sessions", "findGeminiTranscript"],
   ] as const)(
     "%s: returns {kind:'file', path} when transcript is found",
     async (cli, modulePath, fnName) => {
@@ -102,7 +100,6 @@ describe("lib/download-session: resolveDownloadSource", () => {
     ["copilot", "@/lib/copilot-sessions", "findCopilotTranscript"],
     ["cursor", "@/lib/cursor-sessions", "findCursorTranscript"],
     ["pi", "@/lib/pi-sessions", "findPiTranscript"],
-    ["gemini", "@/lib/gemini-sessions", "findGeminiTranscript"],
   ] as const)("%s: returns null when transcript is missing", async (cli, modulePath, fnName) => {
     vi.doMock(modulePath, () => ({ [fnName]: () => null }));
     vi.resetModules();

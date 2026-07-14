@@ -4,6 +4,7 @@ import {
   buildLanguageNav,
   generateLanguagesArray,
   getNavigationPageReferences,
+  localizeProductsNavigation,
 } from "@/scripts/translate-docs/mintlify-nav";
 
 const sampleEnglishTabs = [
@@ -174,5 +175,41 @@ describe("getNavigationPageReferences", () => {
       page: "agenteye/getting-started",
       language: undefined,
     });
+  });
+});
+
+describe("localizeProductsNavigation", () => {
+  it("converts an English-only product to localized navigation", () => {
+    const [product] = localizeProductsNavigation(
+      [
+        {
+          product: "AgentEye",
+          icon: "eye",
+          tabs: [
+            {
+              tab: "Docs",
+              groups: [
+                { group: "Getting Started", pages: ["agenteye/overview"] },
+              ],
+            },
+          ],
+        },
+      ],
+      ["es", "ja"],
+    );
+
+    expect(product.tabs).toBeUndefined();
+    const languages = product.languages as Array<{
+      language: string;
+      tabs: typeof sampleEnglishTabs;
+    }>;
+    expect(languages.map((entry) => entry.language)).toEqual([
+      "en",
+      "es",
+      "ja",
+    ]);
+    expect(languages[1].tabs[0].groups[0].pages).toEqual([
+      "es/agenteye/overview",
+    ]);
   });
 });

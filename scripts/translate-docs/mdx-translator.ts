@@ -100,16 +100,20 @@ export function stripStrayTrailingFence(content: string): string {
  *      [Getting started](/getting-started) -> [Getting started](/es/getting-started)
  */
 export function rewriteInternalLinks(content: string, lang: string): string {
+  const shouldPreservePath = (path: string): boolean =>
+    path.startsWith("/http") ||
+    path === "/" ||
+    /\.(?:png|jpe?g|gif|svg|webp|ico)(?:#.*)?$/i.test(path);
+
   // Rewrite MDX component href attributes pointing to internal paths
   let result = content.replace(/href="(\/[^"]*?)"/g, (_match, path: string) => {
-    // Skip external URLs and anchors
-    if (path.startsWith("/http") || path === "/") return `href="${path}"`;
+    if (shouldPreservePath(path)) return `href="${path}"`;
     return `href="/${lang}${path}"`;
   });
 
   // Rewrite Markdown links with internal paths
   result = result.replace(/\]\((\/[^)]*?)\)/g, (_match, path: string) => {
-    if (path.startsWith("/http") || path === "/") return `](${path})`;
+    if (shouldPreservePath(path)) return `](${path})`;
     return `](/${lang}${path})`;
   });
 
@@ -217,13 +221,8 @@ export function getEnglishMdxPages(): string[] {
       if (statSync(full).isDirectory()) {
         // Skip language directories at the top level
         if (!prefix && isLanguageDir(entry)) continue;
-        // AgentEye is synced from its own repository and intentionally remains
-        // English-only. Translating it here would create unreferenced files.
-        if (
-          !prefix &&
-          (entry === "logo" || entry === "i18n" || entry === "agenteye")
-        )
-          continue;
+        // Skip non-page asset and localization directories.
+        if (!prefix && (entry === "logo" || entry === "i18n")) continue;
         walk(full, rel);
       } else if (entry.endsWith(".mdx")) {
         results.push(full);

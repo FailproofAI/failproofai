@@ -8,10 +8,10 @@ import {
 } from "@/scripts/translate-docs/mdx-translator";
 
 describe("getEnglishMdxPages", () => {
-  it("excludes English-only AgentEye pages from automatic translation", () => {
+  it("includes AgentEye pages in automatic translation", () => {
     const pages = getEnglishMdxPages();
     expect(pages.length).toBeGreaterThan(0);
-    expect(pages.some((page) => page.includes("/agenteye/"))).toBe(false);
+    expect(pages.some((page) => page.includes("/agenteye/"))).toBe(true);
   });
 });
 
@@ -80,6 +80,11 @@ See [config](/configuration) and [testing](/testing).
     const input = `[link](/getting-started#install)`;
     const result = rewriteInternalLinks(input, "es");
     expect(result).toBe(`[link](/es/getting-started#install)`);
+  });
+
+  it("preserves shared AgentEye image paths", () => {
+    const input = `![Dashboard](/agenteye/images/dashboard-fleet.png)`;
+    expect(rewriteInternalLinks(input, "es")).toBe(input);
   });
 });
 

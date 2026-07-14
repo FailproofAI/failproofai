@@ -129,6 +129,28 @@ export function generateLanguagesArray(
   return [english, ...others];
 }
 
+/** Localize every product that has English tabs or an English language entry. */
+export function localizeProductsNavigation(
+  products: unknown[],
+  langCodes: string[],
+): Record<string, unknown>[] {
+  return products.map((value) => {
+    const product = value as Record<string, unknown>;
+    const existingLanguages = product.languages as LanguageNav[] | undefined;
+    const englishTabs = existingLanguages
+      ? existingLanguages.find((entry) => entry.language === "en")?.tabs
+      : (product.tabs as NavTab[] | undefined);
+
+    if (!englishTabs) return product;
+
+    const { tabs: _tabs, ...rest } = product;
+    return {
+      ...rest,
+      languages: generateLanguagesArray(englishTabs, langCodes),
+    };
+  });
+}
+
 /**
  * Update docs.json to use the languages array structure.
  */
@@ -137,20 +159,7 @@ export function updateDocsJson(langCodes: string[]): void {
   const nav = config.navigation as Record<string, unknown>;
 
   if (Array.isArray(nav.products)) {
-    nav.products = nav.products.map((value) => {
-      const product = value as Record<string, unknown>;
-      if (!Array.isArray(product.languages)) return product;
-
-      const english = product.languages.find(
-        (entry) => (entry as LanguageNav).language === "en",
-      ) as LanguageNav | undefined;
-      if (!english?.tabs) return product;
-
-      return {
-        ...product,
-        languages: generateLanguagesArray(english.tabs, langCodes),
-      };
-    });
+    nav.products = localizeProductsNavigation(nav.products, langCodes);
     config.navigation = nav;
     writeFileSync(DOCS_JSON_PATH, JSON.stringify(config, null, 2) + "\n");
     return;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.13 — 2026-07-14
+
+### Release
+- Promote the complete `0.0.12-beta.0` through `0.0.13-beta.3` cycle to stable `0.0.13`; the per-beta sections below preserve the full feature, fix, dependency, and documentation history for this release.
+
 ## 0.0.13-beta.3 — 2026-07-13
 
 ### Fixes

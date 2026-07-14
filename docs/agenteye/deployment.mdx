@@ -112,12 +112,13 @@ docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 
 ### Run
 
-Set `DATABASE_URL` in your environment, then pass it through to the container:
+Set `DATABASE_URL` and `CLICKHOUSE_URL` in your environment (the server refuses to boot without ClickHouse), then pass them through to the container:
 
 ```bash
 docker run -d --restart unless-stopped \
   --name agenteye-server \
   -e DATABASE_URL="$DATABASE_URL" \
+  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
   -e ADMIN_KEY="$ADMIN_KEY" \
   -p 8080:8080 \
   ghcr.io/agenteye-enterprise/server:beta-latest
@@ -271,7 +272,7 @@ The bundled Redis image runs with `--appendonly yes --appendfsync everysec --max
 
 ## Docker Compose (recommended)
 
-A `docker-compose.yml` is available in the `agenteye-enterprise/releases` repo. It brings up Postgres, the server, and the dashboard with a single command.
+A `docker-compose.yml` is available in the `agenteye-enterprise/releases` repo. It brings up Postgres, ClickHouse, Redis, the server, and the dashboard with a single command.
 
 ```bash
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \

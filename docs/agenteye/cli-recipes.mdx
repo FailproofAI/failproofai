@@ -126,7 +126,7 @@ agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a pos
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
 agenteye incidents ack "$id"
-agenteye incidents assign "$id" --assignee you@corp.com
+agenteye incidents assign "$id" you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 

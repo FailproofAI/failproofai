@@ -12,7 +12,7 @@ In the managed deployment model, you provide a dedicated Kubernetes cluster and 
 
 ## Prerequisites
 
-- A **GitHub PAT** for pulling container images and downloading artifacts (see [enterprise-docs/github-token.md](/agenteye/github-token))
+- A **GitHub PAT** for pulling container images and downloading artifacts (see [GitHub Token Setup](/agenteye/github-token))
 - A **dedicated Kubernetes cluster** (see requirements below)
 - A **storage bucket** for database backups
 - **Network connectivity**: port 443 inbound to the cluster's load balancer
@@ -101,7 +101,7 @@ Once Exosphere has cluster access, the following components are deployed and man
 | **cert-manager** | Automates TLS certificate provisioning and mTLS client-certificate issuance |
 | **Certificate monitoring** | A scheduled job checks certificate expiry and sends alerts (e.g. to Slack) as certificates approach renewal |
 
-The managed offering also operates the platform's evaluation pipeline, which scores agent activity against your evaluation criteria. See [enterprise-docs/assistant.md](/agenteye/assistant) and [enterprise-docs/evaluation-suite.md](/agenteye/evaluation-suite) for what these capabilities deliver.
+The managed offering also operates the platform's evaluation pipeline, which scores agent activity against your evaluation criteria. See [Assistant](/agenteye/assistant) and [Evaluation Suite](/agenteye/evaluation-suite) for what these capabilities deliver.
 
 ---
 
@@ -124,8 +124,8 @@ After deployment is complete, you receive:
 
 Your only ongoing work is on your own agent machines, not the AgentEye cluster:
 
-1. **Install the collector** in each Kubernetes cluster running AI agents: mount the client certificate and configure the endpoint URL and API key. See [enterprise-docs/collector-installation.md](/agenteye/collector-installation).
-2. **Integrate the Python SDK** into your agent code. See [enterprise-docs/python-sdk.md](/agenteye/python-sdk).
+1. **Install the collector** in each Kubernetes cluster running AI agents: mount the client certificate and configure the endpoint URL and API key. See [Collector Installation](/agenteye/collector-installation).
+2. **Integrate the Python SDK** into your agent code. See [Python SDK](/agenteye/python-sdk).
 3. **Open the dashboard** in your browser to view agent activity.
 
 No cluster operations, no database management, no certificate renewals, no upgrades.

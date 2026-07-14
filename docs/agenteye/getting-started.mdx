@@ -64,6 +64,12 @@ POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
 ```
 
+Also export `ADMIN_KEY` in your current shell so the later steps (e.g. the Step 3 `curl`) can reference it directly:
+
+```bash
+export ADMIN_KEY=your-admin-secret
+```
+
 **Start the stack:**
 
 ```bash

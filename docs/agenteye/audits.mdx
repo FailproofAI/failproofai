@@ -62,6 +62,7 @@ On a finding page (`/audits/<id>/findings/<finding-id>`):
 | **resolve** | Marks it fixed. If the pattern genuinely returns later, it re-opens as **new** — so a regression is loud, not silently folded into history. |
 | **mute** / **dismiss** | Durable suppression: the pattern's fingerprint is remembered and never surfaces again, even across runs. Use mute for "known, accepted"; dismiss for "not useful". |
 | **reopen** | Clears suppression / resolution and ranks the pattern again. |
+| **assign** | Routes the finding to an operator (an org member) for ownership. Priority and suppression state are unchanged. |
 
 Low-signal noise is controlled per audit with a per-run findings cap (`top_k`) on the agentic improvements. Policy findings bypass the cap (they are security-relevant and always shown). Anything cut by the cap is counted in the run's stats — nothing is silently dropped.
 

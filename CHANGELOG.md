@@ -5,6 +5,9 @@
 ### Release
 - Promote the complete `0.0.12-beta.0` through `0.0.13-beta.3` cycle to stable `0.0.13`; the per-beta sections below preserve the full feature, fix, dependency, and documentation history for this release.
 
+### Docs
+- Add AgentEye enterprise product documentation as a second Mintlify product (top-level product switcher, English-only) and make the docs translation pipeline product-aware — recursive nav-reference validation (`getNavigationPageReferences`) and English-only product exclusion in `getEnglishMdxPages`. (#507)
+
 ## 0.0.13-beta.3 — 2026-07-13
 
 ### Fixes

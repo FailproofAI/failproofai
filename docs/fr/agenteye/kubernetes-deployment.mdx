@@ -1037,4 +1037,52 @@ Le nouveau membre reçoit un OTP lors de sa première connexion au tableau de bo
 | `org delete --slug <slug>` | Suppression logique + suppression de l'utilisateur ClickHouse de l'org ; **données conservées**. |
 | `org purge --slug <slug>` | Effacement irréversible des données ; l'org doit être `delete`d en premier ; jamais l'org `default`. |
 | `member list --org <slug>` | Lister les membres et leurs permissions. |
-| `member update --org <slug> --email <email> [--set ...] [--add ...] [
+| `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...]` | Modifier les permissions d'un membre. |
+| `member remove --org <slug> --email <email>` | Retirer un membre de l'organisation. |
+
+**Vérification :** `org list` affiche l'organisation avec le statut `active`. `member list --org acme` affiche le membre avec les permissions attendues. Connectez-vous au tableau de bord avec l'adresse e-mail du membre et vérifiez que l'interface utilise le préfixe `/acme/` et que les données de l'organisation par défaut ne sont pas visibles.
+
+---
+
+## Dépannage
+
+Si une étape échoue, collectez d'abord les informations de diagnostic suivantes :
+
+```bash
+# État des pods
+kubectl get pods -n agenteye -o wide
+
+# Événements récents du cluster
+kubectl get events -n agenteye --sort-by=.lastTimestamp
+
+# Logs des applications
+kubectl logs -n agenteye -l app=server --tail=200
+kubectl logs -n agenteye -l app=dashboard --tail=200
+
+# État des certificats
+kubectl describe certificate -n agenteye <cert-name>
+```
+
+Pour une liste complète des problèmes courants et de leurs solutions, consultez le [guide de dépannage](/fr/agenteye/troubleshooting).
+
+---
+
+## Documentation associée
+
+| Guide | Description |
+|---|---|
+| [Déploiement géré](/fr/agenteye/managed-deployment) | Guide de configuration d'un déploiement géré sur votre cluster Kubernetes |
+| [Bien démarrer](/fr/agenteye/getting-started) | Procédure complète avec Docker Compose |
+| [Déploiement](/fr/agenteye/deployment) | Déploiement Docker, variables d'environnement et configuration |
+| [Gestion des tenants](/fr/agenteye/tenant-management) | Provisionnement des organisations et membres avec le CLI `agenteye-orgctl` |
+| [Configuration du jeton GitHub](/fr/agenteye/github-token) | Génération du PAT GitHub pour accéder aux artefacts |
+| [Installation du collecteur](/fr/agenteye/collector-installation) | Toutes les méthodes d'installation du collecteur |
+| [SDK Python](/fr/agenteye/python-sdk) | Référence complète de l'API du SDK |
+| [Clés API](/fr/agenteye/api-keys) | Création et gestion des clés API |
+| [Dépannage](/fr/agenteye/troubleshooting) | Problèmes courants et solutions |
+
+---
+
+## Support
+
+Envoyez un e-mail à `support@exosphere.host` pour obtenir de l'aide sur le déploiement.

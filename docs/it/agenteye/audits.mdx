@@ -1,107 +1,106 @@
 ---
-title: "Audits — agentic improvement detection"
-description: "AgentEye Audits — agentic improvement detection documentation."
+title: "Audit — rilevamento di miglioramenti agentici"
+description: "AgentEye Audit — documentazione del rilevamento di miglioramenti agentici."
 ---
 
 
-Gli audit sono job ricorrenti che analizzano i tuoi log degli agenti **tra le sessioni** per trovare aree di miglioramento. Mentre un alert monitora una metrica specifica che conosci già in tempo quasi reale, un audit *indaga*: secondo una pianificazione che tu imposti, esegue una verifica di policy deterministica sulla finestra, quindi libera un **agente AI per l'affidabilità** sulle tue sessioni — l'agente interroga i dati stesso, legge transcript sospetti, ed (quando utile) esegue piccoli script di analisi, quindi redige **raccomandazioni di miglioramento** con le prove dietro ognuna.
+Gli audit sono job ricorrenti che analizzano i tuoi log degli agenti **tra sessioni** per trovare aree di miglioramento. Mentre un avviso monitora una metrica specifica che conosci già in quasi tempo reale, un audit *indaga*: secondo una pianificazione che stabilisci, esegue un passaggio deterministico delle policy sulla finestra temporale, quindi invia un **agente di affidabilità basato su IA** sulle tue sessioni — l'agente interroga direttamente i dati, legge i transcript sospetti, e (quando utile) esegue piccoli script di analisi, quindi redige **raccomandazioni di miglioramento** con le prove dietro ciascuna.
 
-Usa gli audit per rispondere a "cosa dovrei correggere o migliorare nei miei agenti?" — e gli alert per essere avvisato nel momento esatto in cui una soglia specifica viene superata. Ogni miglioramento si collega alle sessioni e alle query esatte dietro di esso, e un solo clic crea un alert precompilato per catturare ricorrenze.
+Usa gli audit per rispondere a "cosa dovrei risolvere o migliorare nei miei agenti?" — e gli avvisi per ricevere una notifica istantanea quando una soglia specifica viene superata. Ogni miglioramento è collegato alle sessioni e alle query esatte dietro di esso, e un clic crea un avviso precompilato per rilevare ricorrenze.
 
-La superficie del dashboard è **`/<org-slug>/audits`** (sidebar → *analyze* → *audits*), protetta dalle autorizzazioni `audits:read` / `audits:write`.
+La superficie del dashboard è **`/<org-slug>/audits`** (sidebar → *analyze* → *audits*), controllata dai permessi `audits:read` / `audits:write`.
 
 ---
 
-## Come funziona una esecuzione
+## Come funziona un'esecuzione
 
-Ogni esecuzione ha due livelli — una base deterministica e un'indagine agentica.
+Ogni esecuzione ha due livelli — una base deterministica e un'indagine agentia.
 
-### 1. La verifica di policy (deterministica)
+### 1. Il passaggio della policy (deterministico)
 
-Prima che qualsiasi modello venga eseguito, l'audit esegue un piccolo catalogo di **verifiche di policy SQL** sulla finestra: query aggregate delimitate che evidenziano schemi noti come problematici e segnalano *quanti* eventi / *quali* sessioni li hanno generati — mai il testo dei risultati. Il catalogo include:
+Prima che qualsiasi modello venga eseguito, l'audit esegue un piccolo catalogo di **controlli delle policy SQL** sulla finestra temporale: query aggregate delimitate che segnalano pattern noti come problematici e riportano *quanti* eventi / *quali* sessioni corrisponden — mai il testo corrispondente stesso. Il catalogo include:
 
-- **Leakage di secret / credenziali** nei payload degli eventi — chiavi di accesso AWS, chiavi API `sk-…`, chiavi private PEM, token JWT / bearer, e assegnazioni di credenziali `KEY=…`.
+- **Perdita di segreti / credenziali** nei payload degli eventi — chiavi di accesso AWS, chiavi API `sk-…`, chiavi private PEM, token JWT / bearer, e assegnamenti di credenziali `KEY=…`.
 - **Marcatori di prompt injection** — "ignora le istruzioni precedenti", "rivela il tuo system prompt", e simili.
-- **PII** — numeri simili a SSN (euristico).
-- **Negazioni di autorizzazione degli strumenti** e **loop di tool-call in fuga**.
+- **PII** — numeri a forma di SSN (euristico).
+- **Negazioni di permessi degli strumenti** e **loop di chiamate di strumenti in fuga**.
 
-I risultati della policy vengono persistiti come finding (tipo `policy`) che **affiorano sempre** (non vengono mai eliminati dal limite per-esecuzione), e vengono passati all'agente AI come piste iniziali. Poiché questo livello non necessita del modello, un audit produce comunque i suoi segnali di sicurezza più importanti anche se l'agente AI è non disponibile.
+I risultati della policy vengono memorizzati come finding (tipo `policy`) che **emergono sempre** (non vengono mai ridotti dal limite per esecuzione), e vengono consegnati all'agente IA come piste iniziali. Poiché questo livello non richiede nessun modello, un audit produce comunque i suoi segnali di sicurezza più importanti anche se l'agente IA è indisponibile.
 
-### 2. L'indagine agentica (AI)
+### 2. L'indagine agentia (IA)
 
-L'audit quindi esegue un **agente di affidabilità autonomo** (lo stesso servizio Agents SDK di Claude che alimenta l'assistente dashboard, con un prompt specifico per l'audit). Data la **portata** dell'audit (agenti selezionati × ambienti) e la **finestra temporale**, l'agente:
+L'audit quindi esegue un **agente autonomo di affidabilità** (lo stesso servizio Agents SDK di Claude che alimenta l'assistente del dashboard, con un prompt specifico per l'audit). Dato lo **scope** dell'audit (agenti selezionati × ambienti) e la **finestra temporale**, l'agente:
 
-- esegue query SQL di sola lettura sulle tue tabelle di analytics,
-- legge un certo numero di transcript di sessioni rappresentative,
-- facoltativamente scrive ed esegue brevi **script Python in una sandbox in-pod blindata** (nessuna rete, nessun accesso al filesystem, secret eliminati) per analisi che SQL non può esprimere — clustering di errori, calcolo di distribuzioni, scansione di payload già recuperati,
-- e registra ogni **miglioramento** ben comprovato che trova.
+- esegue query SQL di sola lettura rispetto alle tue tabelle di analytics,
+- legge una manciata di transcript di sessioni rappresentativi,
+- facoltativamente scrive ed esegue brevi **script Python in una sandbox chiusa in-pod** (nessuna rete, nessun accesso al filesystem, segreti scrubati) per analisi che SQL non può esprimere — clustering di errori, calcolo di distribuzioni, sweep di payload già recuperati,
+- e registra ogni **miglioramento** ben provato che trova.
 
-Lavora attraverso diverse linee investigative — clustering di errori, drift rispetto a una baseline, fallimento dell'obiettivo negli transcript, abuso di strumenti, compromessi qualità/costo, e gap di copertura — secondo la **sensibilità** dell'audit (bassa / media / alta). Ogni miglioramento **deve citare prove**: gli id di sessione che l'agente ha effettivamente ispezionato e/o l'SQL che ha eseguito. Il server valida che le sessioni citate esistano e **scarta qualsiasi miglioramento senza prove sopravvissute**, quindi l'agente indaga ma non inventa mai.
+Lavora attraverso diverse linee investigative — clustering di errori, drift rispetto a un baseline, fallimento degli obiettivi nei transcript, uso improprio degli strumenti, compromessi qualità/costo, e lacune di copertura — alla **sensibilità** dell'audit (bassa / media / alta). Ogni miglioramento **deve citare prove**: gli id di sessione che l'agente ha effettivamente ispezionato e/o la SQL che ha eseguito. Il server convalida che le sessioni citate esistono e **scarta qualsiasi miglioramento senza prove sopravvissute**, quindi l'agente indaga ma non inventa mai.
 
-Ogni miglioramento comporta:
+Ogni miglioramento include:
 
-- una **raccomandazione** (il cambio concreto da apportare — una modifica di prompt, una correzione di schema tool, una politica di retry, una guardrail, più copertura eval),
-- una stima di **impatto atteso** e **sforzo** (basso / medio / alto),
-- una **magnitudine** — `big` (un operatore dovrebbe essere avvisato), `medium` (appartiene alla relazione di esecuzione), o `small` (contesto dashboard),
-- un'**impronta** stabile (dalla categoria del problema + portata, *non* dalle sessioni di questa esecuzione) così lo stesso problema viene tracciato da esecuzione a esecuzione anche mentre le prove cambiano,
-- e, dove un semplice watcher deterministico potrebbe catturare ricorrenza, un **alert suggerito** che puoi creare con un solo clic.
+- una **raccomandazione** (il cambiamento concreto da fare — un aggiustamento del prompt, una correzione dello schema dello strumento, una policy di ripetizione, una guardrail, copertura eval maggiore),
+- un **impatto previsto** e una stima dello **sforzo** (basso / medio / alto),
+- una **magnitudine** — `big` (un operatore dovrebbe ricevere una notifica), `medium` (appartiene alla relazione della esecuzione), o `small` (contesto del dashboard),
+- un **fingerprint** stabile (dalla categoria del problema + scope, *non* dalle sessioni di questa esecuzione) così lo stesso problema viene tracciato da esecuzione a esecuzione mentre le prove cambiano,
+- e, dove un semplice osservatore deterministico potrebbe catturare ricorrenze, un **avviso suggerito** che puoi creare in un clic.
 
-> **Il livello AI è opzionale ma consigliato.** Se nessun agente AI è configurato per la pipeline audit, le esecuzioni comunque si eseguono, persistono i finding di policy, e onestamente riportano "analisi non disponibile" per il livello agentico piuttosto che passare silenziosamente.
+> **Il livello IA è facoltativo ma consigliato.** Se nessun agente IA è configurato per la pipeline di audit, le esecuzioni ancora si eseguono, persistono i finding della policy, e onestamente riportano "analisi non disponibile" per il livello agentia anziché passare silenziosamente.
 
 ### Modalità di fallimento
 
-I miglioramenti si classificano nel tuo catalogo durabile di **modalità di fallimento** (o propongono una nuova modalità). Le modalità danno ai pattern un'identità stabile tra le esecuzioni e il tracciamento di ricorrenza a lungo termine.
+I miglioramenti vengono classificati nel tuo catalogo di **modalità di fallimento** durevole dell'organizzazione (o propongono una nuova modalità). Le modalità danno ai pattern un'identità stabile tra le esecuzioni e il tracciamento della ricorrenza a lungo raggio.
 
-## Ciclo di vita della triaging
+## Ciclo di vita della triage
 
-In una pagina di finding (`/audits/<id>/findings/<finding-id>`):
+Su una pagina di finding (`/audits/<id>/findings/<finding-id>`):
 
 | Azione | Effetto |
 |---|---|
 | **acknowledge** | Mantiene il finding visibile ma dimezza la sua priorità. |
-| **resolve** | Lo contrassegna come risolto. Se il pattern ritorna genuinamente in seguito, si riapre come **new** — quindi una regressione è evidente, non silenziosamente incorporata nella storia. |
-| **mute** / **dismiss** | Soppressione duratura: l'impronta del pattern viene ricordata e non affiora mai più, anche tra le esecuzioni. Usa mute per "noto, accettato"; dismiss per "non utile". |
-| **reopen** | Cancella la soppressione / risoluzione e riclassifica il pattern. |
-| **assign** | Instrada il finding a un operatore (un membro dell'org) per la proprietà. Priorità e stato di soppressione rimangono invariati. |
+| **resolve** | Lo marca come risolto. Se il pattern genuinamente ritorna più tardi, si riapre come **new** — quindi una regressione è evidente, non silenziosamente incorporata nella storia. |
+| **mute** / **dismiss** | Soppressione durevole: il fingerprint del pattern viene ricordato e non emerge mai più, anche tra le esecuzioni. Usa mute per "noto, accettato"; dismiss per "non utile". |
+| **reopen** | Cancella soppressione / risoluzione e classifica di nuovo il pattern. |
 
-Il rumore di basso segnale è controllato per audit con un limite di finding per-esecuzione (`top_k`) sui miglioramenti agentici. I finding di policy bypassano il limite (sono rilevanti per la sicurezza e sempre mostrati). Qualsiasi cosa tagliata dal limite è contata nelle statistiche dell'esecuzione — nulla viene silenziosamente eliminato.
+Il rumore a basso segnale è controllato per audit con un limite di finding per esecuzione (`top_k`) sui miglioramenti agentici. I finding della policy bypassano il limite (sono rilevanti per la sicurezza e sempre mostrati). Qualsiasi cosa tagliata dal limite viene conteggiata nelle statistiche della esecuzione — nulla viene silenziosamente eliminato.
 
 ## Pianificazione
 
-- **Cadenza** (`schedule_interval_secs`): ogni ora fino a settimanale; **giornaliero è il default**. Gli audit sono deliberatamente più grossolani degli alert — un'indagine agentica scansiona intere finestre ed esegue per minuti.
-- **Finestra**: o una lookback rolling fissa (ad es. "ogni esecuzione scansiona gli ultimi 7 giorni") o **since-last-run** (il default) — ogni esecuzione riprende da dove è finita la precedente esecuzione riuscita, con una piccola sovrapposizione così gli eventi al confine non vengono mai persi.
-- L'esecuzione successiva è pianificata un intervallo completo dopo il completamento della precedente **completes**, quindi un'esecuzione lenta non mette mai in coda una seconda esecuzione concorrente dello stesso audit.
-- **Run now** nella pagina audit la rende dovuta immediatamente.
+- **Cadenza** (`schedule_interval_secs`): oraria a settimanale; **giornaliera è la predefinita**. Gli audit sono deliberatamente più rudi degli avvisi — un'indagine agentia scansiona intere finestre e viene eseguita per minuti.
+- **Finestra**: o un lookback rolling fisso (ad es. "ogni esecuzione scansiona gli ultimi 7 giorni") o **since-last-run** (la predefinita) — ogni esecuzione riprende da dove si è fermata l'esecuzione precedente riuscita, con un piccolo overlap così gli eventi di confine non vengono mai persi.
+- L'esecuzione successiva viene pianificata un intervallo completo dopo che la precedente si **completa**, così un'esecuzione lenta non ammassa mai una seconda esecuzione concorrente dello stesso audit.
+- **Run now** sulla pagina dell'audit lo rende dovuto immediatamente.
 
 ## Selezione del modello
 
-Quando crei un audit puoi scegliere quale modello l'indagine usa, dalla **lista di modelli che il tuo operatore ha configurato** per il servizio agenti. Con un singolo modello configurato, il picker lo mostra come caption; con più, tu scegli. Lasciarlo non impostato usa il default configurato.
+Quando crei un audit puoi scegliere quale modello l'indagine usa, dall'**elenco di modelli che il tuo operatore ha configurato** per il servizio agent. Con un singolo modello configurato, il picker lo mostra come didascalia; con diversi, scegli. Lasciarlo non impostato usa il default configurato.
 
 ## Notifiche
 
-Quando un'esecuzione affiora finding **nuovi**, l'audit notifica i canali configurati della tua organizzazione — la stessa porta `alerts.enabled_channels` e le impostazioni che la pipeline di alert usa:
+Quando un'esecuzione emerge **nuovi** finding, l'audit notifica ai canali configurati della tua organizzazione — lo stesso gate `alerts.enabled_channels` e le impostazioni che la pipeline degli avvisi usa:
 
-- **Slack** — un riepilogo degli elementi nuovi significativi (`big`) con un deep link.
-- **Email** — una **relazione di audit** progettata che elenca i nuovi miglioramenti (top severity, raccomandazioni per-item, deep link), inviata quando l'audit ha un canale **email** allegato ed esiste almeno un finding nuovo.
+- **Slack** — un riassunto degli elementi significativi (`big`) nuovi con un deep link.
+- **Email** — un **report di audit** progettato che elenca i nuovi miglioramenti (principale per gravità, raccomandazioni per elemento, deep link), inviato quando l'audit ha un canale **email** allegato e c'è almeno un finding nuovo.
 
-I finding ricorrenti ma noti non ri-notificano.
+I finding ricorrenti ma noti non notificano di nuovo.
 
 ## Riferimento di configurazione
 
-Le definizioni di audit sono gestite nel dashboard (`/audits/new`) o via API. Le impostazioni per-audit includono la cadenza di pianificazione e la finestra, la portata (`{"environments": [...], "agent_ids": [...]}`), la sensibilità (`low` / `medium` / `high`), i canali di notifica, il limite di finding per-esecuzione (`top_k`), e il modello (via `llm_budget.model`). Le impostazioni server a livello operatore (timeout, sandbox, l'URL del servizio agenti) sono documentate in [deployment.md](/it/agenteye/deployment).
+Le definizioni di audit vengono gestite nel dashboard (`/audits/new`) o tramite l'API. Le impostazioni per audit includono la cadenza e la finestra della pianificazione, lo scope (`{"environments": [...], "agent_ids": [...]}`), la sensibilità (`low` / `medium` / `high`), i canali di notifica, il limite di finding per esecuzione (`top_k`), e il modello (tramite `llm_budget.model`). Le impostazioni del server a livello di operatore (timeout, sandbox, l'URL del servizio agent) sono documentate in [deployment.md](/it/agenteye/deployment).
 
 ## API
 
-Tutti gli endpoint sono org-scoped e seguono l'auth standard bearer-key (vedi [api-keys.md](/it/agenteye/api-keys)).
+Tutti gli endpoint hanno scope org e seguono l'autenticazione standard bearer-key (vedi [api-keys.md](/it/agenteye/api-keys)).
 
-| Endpoint | Autorizzazione | Scopo |
+| Endpoint | Permesso | Scopo |
 |---|---|---|
 | `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Elenca / crea definizioni di audit. |
 | `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Ispeziona, modifica, elimina un audit. |
 | `POST /audits/:id/run` | `audits:write` | Rendi l'audit dovuto immediatamente. |
-| `GET /audits/:id/runs` | `audits:read` | Cronologia di esecuzione (finestra, status, statistiche, conteggi di finding). |
-| `GET /audits/findings` | `audits:read` | Finding a livello org, filtrabili per `audit_id`, `status`; ordinati per priorità. |
-| `GET /audits/findings/:fid` | `audits:read` | Dettaglio completo di finding (raccomandazione, prova, priorità). |
-| `POST /audits/findings/:fid/status` | `audits:write` | Triaging: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
+| `GET /audits/:id/runs` | `audits:read` | Cronologia della esecuzione (finestra, stato, statistiche, conteggi di finding). |
+| `GET /audits/findings` | `audits:read` | Finding a livello di organizzazione, filtrabili per `audit_id`, `status`; ordinati per priorità. |
+| `GET /audits/findings/:fid` | `audits:read` | Dettaglio completo del finding (raccomandazione, prove, priorità). |
+| `POST /audits/findings/:fid/status` | `audits:write` | Triage: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
 
-Per "audit eseguito ma non ha trovato nulla", "la sandbox del codice è disabilitata", e "email dell'audit non consegnata", vedi [troubleshooting.md](/it/agenteye/troubleshooting#audits).
+Per "audit eseguito ma non ha trovato nulla", "la sandbox di codice è disabilitata", e "email di audit non consegnata", vedi [troubleshooting.md](/it/agenteye/troubleshooting#audits).

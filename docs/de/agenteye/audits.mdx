@@ -4,104 +4,103 @@ description: "AgentEye Audits — Dokumentation zur agentischen Verbesserungserk
 ---
 
 
-Audits sind wiederkehrende Jobs, die Ihre Agent-Logs **sitzungsübergreifend** durchsuchen, um verbesserungswürdige Stellen zu finden. Während ein Alert eine einzelne, bereits bekannte Kennzahl nahezu in Echtzeit überwacht, *untersucht* ein Audit: Nach einem von Ihnen festgelegten Zeitplan führt er einen deterministischen Policy-Durchlauf über das Zeitfenster aus und setzt anschließend einen **KI-Zuverlässigkeits-Agenten** auf Ihre Sitzungen an — der Agent fragt die Daten selbst ab, liest verdächtige Transkripte und führt (wenn hilfreich) kleine Analyseskripte aus, bevor er **Verbesserungsempfehlungen** mit den jeweiligen Belegen verfasst.
+Audits sind wiederkehrende Jobs, die Ihre Agent-Logs **sitzungsübergreifend** durchsuchen, um verbesserungswürdige Aspekte zu finden. Während ein Alert eine bestimmte Kennzahl in nahezu Echtzeit überwacht, *untersucht* ein Audit: Nach einem von Ihnen festgelegten Zeitplan führt er einen deterministischen Policy-Durchlauf über das Zeitfenster aus, setzt dann einen **KI-Zuverlässigkeitsagenten** auf Ihre Sitzungen an — der Agent fragt die Daten selbst ab, liest verdächtige Transkripte und führt (wo hilfreich) kleine Analyseskripte aus. Anschließend erstellt er **Verbesserungsempfehlungen** mit den jeweiligen Belegen.
 
-Nutzen Sie Audits, um die Frage „Was sollte ich in meinen Agents beheben oder verbessern?" zu beantworten — und Alerts, um sofort benachrichtigt zu werden, sobald ein bestimmter Schwellenwert überschritten wird. Jede Verbesserung verweist auf die genauen Sitzungen und Abfragen, die ihr zugrunde liegen, und ein einziger Klick erstellt einen vorbefüllten Alert, um Wiederholungen abzufangen.
+Nutzen Sie Audits, um die Frage zu beantworten „Was sollte ich an meinen Agenten beheben oder verbessern?" — und Alerts, um sofort benachrichtigt zu werden, wenn ein bestimmter Schwellenwert überschritten wird. Jede Verbesserung verweist auf die genauen Sitzungen und Abfragen, auf denen sie basiert, und mit einem Klick lässt sich ein vorbefüllter Alert erstellen, um erneutes Auftreten zu erkennen.
 
-Die Dashboard-Oberfläche befindet sich unter **`/<org-slug>/audits`** (Seitenleiste → *analyze* → *audits*) und ist durch die Berechtigungen `audits:read` / `audits:write` geschützt.
+Die Dashboard-Oberfläche ist **`/<org-slug>/audits`** (Seitenleiste → *analyze* → *audits*), geschützt durch die Berechtigungen `audits:read` / `audits:write`.
 
 ---
 
-## Ablauf eines Durchlaufs
+## Ablauf eines Runs
 
-Jeder Durchlauf besteht aus zwei Schichten — einem deterministischen Fundament und einer agentischen Untersuchung.
+Jeder Run besteht aus zwei Schichten — einer deterministischen Grundlage und einer agentischen Untersuchung.
 
 ### 1. Der Policy-Durchlauf (deterministisch)
 
-Bevor ein Modell ausgeführt wird, führt der Audit einen kleinen Katalog von **SQL-Policy-Prüfungen** über das Zeitfenster aus: begrenzte Aggregatabfragen, die bekannte Fehlermuster kennzeichnen und melden, *wie viele* Ereignisse / *welche* Sitzungen übereinstimmen — niemals den übereinstimmenden Text selbst. Der Katalog umfasst:
+Bevor ein Modell ausgeführt wird, führt das Audit einen kleinen Katalog von **SQL-Policy-Prüfungen** über das Zeitfenster aus: begrenzte Aggregatabfragen, die bekannte Fehlermuster erkennen und melden, *wie viele* Ereignisse / *welche* Sitzungen übereinstimmten — niemals den übereinstimmenden Text selbst. Der Katalog umfasst:
 
-- **Geheimnis-/Zugangsdaten-Lecks** in Event-Payloads — AWS-Zugriffsschlüssel, `sk-…`-API-Schlüssel, PEM-Privatschlüssel, JWT-/Bearer-Tokens und `KEY=…`-Zugangsdatenzuweisungen.
+- **Geheimnis-/Credential-Leaks** in Event-Payloads — AWS Access Keys, `sk-…` API-Keys, PEM-Private-Keys, JWT-/Bearer-Tokens und `KEY=…`-Credential-Zuweisungen.
 - **Prompt-Injection-Marker** — „ignore previous instructions", „reveal your system prompt" und Ähnliches.
-- **PII** — SSN-artige Nummern (heuristisch).
-- **Werkzeugberechtigungs-Ablehnungen** und **unkontrollierte Werkzeugaufruf-Schleifen**.
+- **PII** — SSN-förmige Zahlen (heuristisch).
+- **Tool-Berechtigungsablehnungen** und **außer Kontrolle geratene Tool-Call-Schleifen**.
 
-Policy-Treffer werden als Findings (Art `policy`) gespeichert, die **immer angezeigt werden** (sie werden nie durch das Durchlaufs-Limit gekürzt) und dem KI-Agenten als erste Anhaltspunkte übergeben. Da diese Schicht kein Modell benötigt, liefert ein Audit seine wichtigsten Sicherheitssignale auch dann, wenn der KI-Agent nicht verfügbar ist.
+Policy-Treffer werden als Findings (Typ `policy`) gespeichert, die **immer angezeigt werden** (sie werden nie durch das pro-Run-Limit beschnitten), und sie werden dem KI-Agenten als Ausgangspunkte übergeben. Da diese Schicht kein Modell benötigt, liefert ein Audit seine wichtigsten Sicherheitssignale auch dann, wenn der KI-Agent nicht verfügbar ist.
 
 ### 2. Die agentische Untersuchung (KI)
 
-Der Audit führt anschließend einen **autonomen Zuverlässigkeits-Agenten** aus (denselben Claude Agent SDK-Dienst, der den Dashboard-Assistenten antreibt, mit einem audit-spezifischen Prompt). Basierend auf dem **Scope** des Audits (ausgewählte Agents × Umgebungen) und dem **Zeitfenster** führt der Agent folgende Schritte durch:
+Das Audit führt dann einen **autonomen Zuverlässigkeitsagenten** aus (denselben Claude Agent SDK-Dienst, der auch den Dashboard-Assistenten antreibt, mit einem auditspezifischen Prompt). Gegeben den **Scope** des Audits (ausgewählte Agenten × Umgebungen) und das **Zeitfenster** führt der Agent folgende Schritte aus:
 
 - Er führt schreibgeschützte SQL-Abfragen gegen Ihre Analytics-Tabellen aus,
 - liest eine Handvoll repräsentativer Sitzungstranskripte,
-- schreibt und führt optional kurze **Python-Skripte in einer abgesicherten In-Pod-Sandbox** aus (kein Netzwerkzugriff, kein Dateisystemzugriff, Geheimnisse werden entfernt), um Analysen durchzuführen, die SQL nicht ausdrücken kann — Fehler-Clustering, Verteilungsberechnungen, Durchsuchen bereits abgerufener Payloads,
-- und dokumentiert jede gut belegte **Verbesserung**, die er findet.
+- schreibt und führt optional kurze **Python-Skripte in einer abgesicherten In-Pod-Sandbox** aus (kein Netzwerk, kein Dateisystemzugriff, Secrets entfernt) für Analysen, die SQL nicht ausdrücken kann — Fehler-Clustering, Berechnung von Verteilungen, Durchsuchen bereits abgerufener Payloads,
+- und zeichnet jede gut belegte **Verbesserung** auf, die er findet.
 
-Er arbeitet sich durch mehrere Untersuchungslinien — Fehler-Clustering, Drift gegenüber einer Basislinie, Zielverfehlung in Transkripten, Werkzeugmissbrauch, Qualitäts-/Kosten-Kompromisse und Abdeckungslücken — entsprechend der **Sensitivität** des Audits (niedrig / mittel / hoch). Jede Verbesserung **muss Belege zitieren**: die Sitzungs-IDs, die der Agent tatsächlich inspiziert hat, und/oder das ausgeführte SQL. Der Server überprüft, ob die zitierten Sitzungen existieren, und **verwirft jede Verbesserung ohne überlebenden Beleg** — der Agent untersucht also, erfindet aber nichts.
+Er arbeitet mehrere Untersuchungslinien durch — Fehler-Clustering, Drift gegenüber einer Baseline, Zielverfehlung in Transkripten, Tool-Missbrauch, Qualitäts-/Kosten-Abwägungen und Abdeckungslücken — entsprechend der **Sensitivität** des Audits (niedrig / mittel / hoch). Jede Verbesserung **muss Belege anführen**: die tatsächlich untersuchten Sitzungs-IDs und/oder das ausgeführte SQL. Der Server überprüft, ob die angeführten Sitzungen existieren, und **verwirft jede Verbesserung ohne verbleibende Belege** — der Agent untersucht also, erfindet aber nie.
 
 Jede Verbesserung enthält:
 
-- eine **Empfehlung** (die konkrete Maßnahme — eine Prompt-Anpassung, eine Werkzeugschema-Korrektur, eine Retry-Richtlinie, eine Schutzmaßnahme, mehr Eval-Abdeckung),
-- eine **erwartete Wirkung** und eine **Aufwandsschätzung** (niedrig / mittel / hoch),
-- eine **Schwere** — `big` (ein Operator sollte benachrichtigt werden), `medium` (gehört in den Durchlaufsbericht) oder `small` (Dashboard-Kontext),
-- einen stabilen **Fingerabdruck** (aus der Kategorie + dem Scope des Problems, *nicht* den Sitzungen dieses Durchlaufs), sodass dasselbe Problem von Durchlauf zu Durchlauf verfolgt wird, auch wenn sich die Belege ändern,
-- und, falls ein einfacher deterministischer Watcher das Wiederauftreten erkennen könnte, einen **vorgeschlagenen Alert**, den Sie mit einem Klick erstellen können.
+- eine **Empfehlung** (die konkrete Änderung — eine Prompt-Anpassung, eine Tool-Schema-Korrektur, eine Retry-Policy, ein Guardrail, mehr Eval-Abdeckung),
+- einen **erwarteten Impact** und eine **Aufwandsschätzung** (niedrig / mittel / hoch),
+- eine **Größenordnung** — `big` (ein Operator sollte benachrichtigt werden), `medium` (gehört in den Run-Bericht) oder `small` (Dashboard-Kontext),
+- einen stabilen **Fingerprint** (aus der Kategorie + dem Scope des Problems, *nicht* aus den Sitzungen dieses Runs), damit dasselbe Problem run-übergreifend verfolgt wird, auch wenn sich die Belege ändern,
+- und, wo ein einfacher deterministischer Watcher das erneute Auftreten erkennen könnte, einen **vorgeschlagenen Alert**, den Sie mit einem Klick erstellen können.
 
-> **Die KI-Schicht ist optional, aber empfohlen.** Wenn kein KI-Agent für die Audit-Pipeline konfiguriert ist, werden Durchläufe trotzdem ausgeführt, die Policy-Findings gespeichert, und für die agentische Schicht wird ehrlich „Analyse nicht verfügbar" gemeldet, anstatt stillschweigend zu bestehen.
+> **Die KI-Schicht ist optional, wird aber empfohlen.** Wenn kein KI-Agent für die Audit-Pipeline konfiguriert ist, werden Runs trotzdem ausgeführt, die Policy-Findings gespeichert und für die agentische Schicht ehrlich „Analyse nicht verfügbar" gemeldet, anstatt stillschweigend zu bestehen.
 
 ### Fehlermodi
 
-Verbesserungen werden in den dauerhaften **Fehlermodus-Katalog** Ihrer Organisation eingeordnet (oder schlagen einen neuen Modus vor). Modi geben Mustern eine stabile Identität über Durchläufe hinweg und ermöglichen eine langfristige Wiederauftritts-Verfolgung.
+Verbesserungen werden in den dauerhaften **Fehlermodus-Katalog** Ihrer Organisation eingeordnet (oder schlagen einen neuen Modus vor). Modi geben Mustern eine stabile Identität über Runs hinweg und ermöglichen die Nachverfolgung von Wiederauftreten über längere Zeiträume.
 
 ## Triage-Lebenszyklus
 
 Auf einer Finding-Seite (`/audits/<id>/findings/<finding-id>`):
 
-| Aktion | Wirkung |
+| Aktion | Effekt |
 |---|---|
-| **acknowledge** | Hält das Finding sichtbar, halbiert aber seine Priorität. |
-| **resolve** | Markiert es als behoben. Wenn das Muster später tatsächlich wieder auftritt, wird es als **neu** wieder geöffnet — eine Regression ist also deutlich sichtbar und wird nicht stillschweigend in die Historie eingefaltet. |
-| **mute** / **dismiss** | Dauerhafte Unterdrückung: Der Fingerabdruck des Musters wird gespeichert und taucht nie wieder auf, auch nicht über Durchläufe hinweg. Verwenden Sie mute für „bekannt, akzeptiert"; dismiss für „nicht nützlich". |
-| **reopen** | Hebt die Unterdrückung/Auflösung auf und stuft das Muster wieder ein. |
-| **assign** | Weist das Finding einem Operator (einem Organisationsmitglied) zur Verantwortung zu. Priorität und Unterdrückungsstatus bleiben unverändert. |
+| **acknowledge** | Behält das Finding sichtbar, halbiert aber seine Priorität. |
+| **resolve** | Markiert es als behoben. Tritt das Muster später tatsächlich erneut auf, wird es als **neu** wieder geöffnet — eine Regression ist also auffällig, wird nicht stillschweigend in die Geschichte eingefügt. |
+| **mute** / **dismiss** | Dauerhafte Unterdrückung: Der Fingerprint des Musters wird gespeichert und taucht nie wieder auf, auch nicht über Runs hinweg. Verwenden Sie mute für „bekannt, akzeptiert"; dismiss für „nicht nützlich". |
+| **reopen** | Hebt die Unterdrückung/Lösung auf und stuft das Muster erneut ein. |
 
-Rauschen mit geringem Signalgehalt wird pro Audit mit einem Finding-Limit pro Durchlauf (`top_k`) für die agentischen Verbesserungen gesteuert. Policy-Findings umgehen das Limit (sie sind sicherheitsrelevant und werden immer angezeigt). Alles, was durch das Limit abgeschnitten wird, zählt in den Statistiken des Durchlaufs — nichts wird stillschweigend verworfen.
+Rauschen mit geringem Signalwert wird pro Audit mit einem pro-Run-Finding-Limit (`top_k`) für agentische Verbesserungen kontrolliert. Policy-Findings umgehen das Limit (sie sind sicherheitsrelevant und werden immer angezeigt). Alles, was durch das Limit herausfällt, wird in den Run-Statistiken gezählt — nichts wird stillschweigend verworfen.
 
 ## Zeitplanung
 
-- **Takt** (`schedule_interval_secs`): stündlich bis wöchentlich; **täglich ist der Standard**. Audits sind bewusst grobkörniger als Alerts — eine agentische Untersuchung scannt ganze Zeitfenster und läuft minutenlang.
-- **Fenster**: entweder ein fester rollierender Rückblickzeitraum (z. B. „jeder Durchlauf scannt die letzten 7 Tage") oder **since-last-run** (der Standard) — jeder Durchlauf setzt dort fort, wo der vorherige erfolgreiche endete, mit einer kleinen Überschneidung, damit Grenz-Ereignisse nie verpasst werden.
-- Der nächste Durchlauf wird einen vollständigen Intervall nach **Abschluss** des vorherigen geplant, sodass ein langsamer Durchlauf nie einen zweiten gleichzeitigen Durchlauf desselben Audits auslöst.
+- **Kadenz** (`schedule_interval_secs`): stündlich bis wöchentlich; **täglich ist der Standard**. Audits sind bewusst grobkörniger als Alerts — eine agentische Untersuchung scannt ganze Zeitfenster und läuft minutenlang.
+- **Fenster**: entweder ein fester rollierender Lookback (z. B. „jeder Run scannt die letzten 7 Tage") oder **since-last-run** (der Standard) — jeder Run setzt dort an, wo der vorherige erfolgreiche endete, mit einer kleinen Überlappung, damit Grenzereignisse nie verpasst werden.
+- Der nächste Run wird ein volles Intervall nach dem **Abschluss** des vorherigen geplant, sodass ein langsamer Run nie einen zweiten gleichzeitigen Run desselben Audits auslöst.
 - **Run now** auf der Audit-Seite macht ihn sofort fällig.
 
 ## Modellauswahl
 
-Beim Erstellen eines Audits können Sie auswählen, welches Modell die Untersuchung verwendet — aus der **Liste der Modelle, die Ihr Operator für den Agent-Dienst konfiguriert hat**. Bei einem einzigen konfigurierten Modell zeigt die Auswahl es als Beschriftung an; bei mehreren wählen Sie selbst. Ohne Auswahl wird das konfigurierte Standardmodell verwendet.
+Bei der Erstellung eines Audits können Sie auswählen, welches Modell die Untersuchung verwendet — aus der **Liste der Modelle, die Ihr Operator für den Agentendienst konfiguriert hat**. Bei einem einzigen konfigurierten Modell zeigt die Auswahl es als Beschriftung an; bei mehreren wählen Sie aus. Ohne Auswahl wird das konfigurierte Standardmodell verwendet.
 
 ## Benachrichtigungen
 
-Wenn ein Durchlauf **neue** Findings aufdeckt, benachrichtigt der Audit die konfigurierten Kanäle Ihrer Organisation — dieselbe `alerts.enabled_channels`-Steuerung und Einstellungen, die auch die Alert-Pipeline verwendet:
+Wenn ein Run **neue** Findings ergibt, benachrichtigt das Audit die konfigurierten Kanäle Ihrer Organisation — dasselbe `alerts.enabled_channels`-Gate und dieselben Einstellungen, die auch die Alerts-Pipeline verwendet:
 
-- **Slack** — eine Zusammenfassung der bedeutenden (`big`) neuen Einträge mit einem Deep-Link.
-- **E-Mail** — ein gestalteter **Auditbericht** mit den neuen Verbesserungen (höchste Schwere, Empfehlungen pro Eintrag, Deep-Link), der versendet wird, wenn der Audit einen **E-Mail**-Kanal angehängt hat und mindestens ein neues Finding vorliegt.
+- **Slack** — eine Zusammenfassung der bedeutsamen (`big`) neuen Einträge mit einem Deep Link.
+- **E-Mail** — ein gestalteter **Audit-Bericht** mit den neuen Verbesserungen (höchster Schweregrad, Empfehlungen pro Eintrag, Deep Link), der gesendet wird, wenn das Audit einen **E-Mail**-Kanal hat und mindestens ein neues Finding vorliegt.
 
 Wiederkehrende, aber bekannte Findings lösen keine erneute Benachrichtigung aus.
 
 ## Konfigurationsreferenz
 
-Audit-Definitionen werden im Dashboard (`/audits/new`) oder über die API verwaltet. Audit-spezifische Einstellungen umfassen den Zeitplan-Takt und das Fenster, den Scope (`{"environments": [...], "agent_ids": [...]}`), die Sensitivität (`low` / `medium` / `high`), die Benachrichtigungskanäle, das Finding-Limit pro Durchlauf (`top_k`) und das Modell (über `llm_budget.model`). Operator-seitige Servereinstellungen (Timeouts, Sandbox, die Agent-Dienst-URL) sind in [deployment.md](/de/agenteye/deployment) dokumentiert.
+Audit-Definitionen werden im Dashboard (`/audits/new`) oder über die API verwaltet. Pro-Audit-Einstellungen umfassen die Zeitplan-Kadenz und das Fenster, den Scope (`{"environments": [...], "agent_ids": [...]}`), die Sensitivität (`low` / `medium` / `high`), die Benachrichtigungskanäle, das pro-Run-Finding-Limit (`top_k`) und das Modell (über `llm_budget.model`). Einstellungen auf Operator-Ebene (Timeouts, Sandbox, die Agent-Service-URL) sind in [deployment.md](/de/agenteye/deployment) dokumentiert.
 
 ## API
 
-Alle Endpunkte sind organisations-begrenzt und folgen der Standard-Bearer-Key-Authentifizierung (siehe [api-keys.md](/de/agenteye/api-keys)).
+Alle Endpunkte sind org-bezogen und verwenden die Standard-Bearer-Key-Authentifizierung (siehe [api-keys.md](/de/agenteye/api-keys)).
 
 | Endpunkt | Berechtigung | Zweck |
 |---|---|---|
 | `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Audit-Definitionen auflisten / erstellen. |
-| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Einen Audit inspizieren, bearbeiten, löschen. |
-| `POST /audits/:id/run` | `audits:write` | Den Audit sofort fällig machen. |
-| `GET /audits/:id/runs` | `audits:read` | Durchlaufshistorie (Fenster, Status, Statistiken, Finding-Anzahl). |
+| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Ein Audit einsehen, bearbeiten, löschen. |
+| `POST /audits/:id/run` | `audits:write` | Das Audit sofort fällig machen. |
+| `GET /audits/:id/runs` | `audits:read` | Run-Verlauf (Fenster, Status, Statistiken, Finding-Anzahl). |
 | `GET /audits/findings` | `audits:read` | Organisationsweite Findings, filterbar nach `audit_id`, `status`; nach Priorität sortiert. |
-| `GET /audits/findings/:fid` | `audits:read` | Vollständige Finding-Details (Empfehlung, Belege, Priorität). |
+| `GET /audits/findings/:fid` | `audits:read` | Vollständiges Finding-Detail (Empfehlung, Belege, Priorität). |
 | `POST /audits/findings/:fid/status` | `audits:write` | Triage: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
 
 Für „Audit wurde ausgeführt, hat aber nichts gefunden", „die Code-Sandbox ist deaktiviert" und „Audit-E-Mail wurde nicht zugestellt" siehe [troubleshooting.md](/de/agenteye/troubleshooting#audits).

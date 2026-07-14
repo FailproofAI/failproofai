@@ -1,11 +1,10 @@
 ---
----
 title: "פריסה"
 description: "תיעוד פריסה של AgentEye."
 ---
 
 
-מדריך זה מכסה את פריסת שרת AgentEye ולוח המחוונים בייצור.
+מדריך זה מכסה את פריסת שרת AgentEye ולוח הבקרה בייצור.
 
 ---
 
@@ -31,154 +30,153 @@ description: "תיעוד פריסה של AgentEye."
                       +-----------+
 ```
 
-- **Server**: שירות HTTP ב-Rust; מקבל אצווות של אירועים, כותב אותם ל-ClickHouse ומשמר מצב יחסי ב-PostgreSQL.
-- **Dashboard**: אפליקציית Next.js; קוראת וכותבת אך ורק דרך ה-API של השרת.
-- **agenteye-collector**: מפורסת על מכונות ה-agent, לא על הוסט של השרת.
-- **Postgres 15+**: נדרש. (הועלה מ-14 בהוצאה מולטי-דיירנית; סכמת החברות בארגון משתמשת בעמודה-רשימה `ON DELETE SET NULL` במפתח חוץ, המצריך Postgres 15+. שדרגו את Postgres לפני פריסה של גרסה זו.) מאחסן מצב OLTP: `api_keys`, `users`, `sessions`, `evaluation_jobs` (תור), `dashboards`, `saved_queries`, `otp_codes`, בתוספת הטבלאות מולטי-דיירניות `orgs`, `org_memberships`, `org_settings`.
-- **ClickHouse 24+**: נדרש. חנות הניתוחים עבור כל אירוע שהוזן. Engine: `ReplacingMergeTree`, מחולק לפי חודש, מסודר לפי `(session_id, ts, dedup_key)`. השרת מתחבר דרך `CLICKHOUSE_URL`; התיקייה המרוכזת `deploy/base/clickhouse/` מספקת תצורה בעלת ביצועים מכוונת של צומת יחיד. **דרישת מולטי-דיירנית:** התיקייה המרוכזת מאפשרת ניהול גישה SQL + `users_without_row_policies_can_read_rows=false` כך שהשרת יכול ליצור משתמש ClickHouse בקריאה בלבד + מדיניות שורה אחת לכל ארגון (גבול בידוד כפוי-engine של עורך SQL וה-AI agent). אם אתה מספק תצורת ClickHouse משלך, העבר הגדרות אלה (ראה `deploy/base/clickhouse/configmap.yaml`).
-- **Redis 7+**: *אופציונלי* חסומה משותפת + תשתית קצב-הגבלה. שרת ודשבורד מתחברים שניהם דרך `REDIS_URL`. אם חסר, שניהם מתדרדרים בחן בטוב ללבד דרכים ללא Postgres. ראה **Redis (אופציונלי חסומה)** להלן.
+- **Server**: שירות HTTP בשפת Rust; מקבל אצוות אירועים, כותב אותן ל-ClickHouse ותמונת מצב יחסית שמורה ב-PostgreSQL.
+- **Dashboard**: אפליקציית Next.js; קוראת וכותבת בעקביות דרך API השרת בלבד.
+- **agenteye-collector**: מפורסת על מכונות agent, לא על מארח השרת.
+- **Postgres 15+**: נדרש. (הועלה מ-14 בהוצאה מרובה-דיירים; סכימת חברות הארגון משתמשת בעמודה `ON DELETE SET NULL` במפתח זר, שהוא Postgres 15+. שדרג את Postgres לפני פריסת גרסה זו.) מאחסן מצב OLTP: `api_keys`, `users`, `sessions`, `evaluation_jobs` (תור), `dashboards`, `saved_queries`, `otp_codes`, בתוספת טבלאות מרובות-דיירים `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: נדרש. אחסן האנליטיקה לכל אירוע שנספג. מנוע: `ReplacingMergeTree`, מחולק לפי חודש, סדור לפי `(session_id, ts, dedup_key)`. השרת מתחבר דרך `CLICKHOUSE_URL`; ה-`deploy/base/clickhouse/` המצורף משדר תצורת יחיד-קשר עם כיוונון ביצועים. **דרישת מרובה-דיירים:** התצורה המצורפת מאפשרת ניהול גישה SQL + `users_without_row_policies_can_read_rows=false` כך שהשרת יכול ליצור משתמש ClickHouse לקריאה בלבד ממנהל שורות אחד לכל ארגון (גבול בידוד שנאכף במנוע לעורך SQL וביעילות agent). אם אתה מספק תצורת ClickHouse משלך, הנקל את ההגדרות הללו (ראה `deploy/base/clickhouse/configmap.yaml`).
+- **Redis 7+**: *אופציונלי* אחסן זיכרון משותף + בקצה שיעור הגבלה. שרת ולוח בקרה מתחברים דרך `REDIS_URL`. אם חסר, שניהם יורדים בחן לנתיבים Postgres בלבד. ראה **Redis (אחסן זיכרון אופציונלי)** למטה.
 
 ---
 
 ## שרת
 
-### שלוף את התמונה
+### משוך את התמונה
 
 ```bash
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-> בנייה נוכחית מפרסמת תחת `beta-latest`; `latest` מוקצה רק לשחרורים יציבים. לייצור, צמד לתגית `:v<version>` ספציפית; ראה [תגיות תמונה זמינות](#available-image-tags).
+> בניות נוכחיות מפרסמות תחת `beta-latest`; `latest` מוקצה רק להוצאות יציבות. לייצור, הצמד גרסה ספציפית `:v<version>`; ראה [תגיות תמונה זמינות](#available-image-tags).
 
-### משתנים סביבה
+### משתני סביבה
 
 | משתנה | נדרש | ברירת מחדל | תיאור |
 |---|---|---|---|
-| `DATABASE_URL` | כן | בלא | Postgres DSN. מחרוזת חיבור libpq סטנדרטית עם סכמה `postgres://`. תומך ב-`?sslmode=require` ופרמטרים libpq אחרים. הסיסמה לא חייבת להכיל `/`, `+`, או `=`; השתמש ב-`openssl rand -hex` ליצירת סיסמאות בטוחות-URL. |
-| `ADMIN_KEY` | לא | בלא | מפתח API admin bootstrap. Upserted עם כל ההרשאות בכל הפעלה. סיבוב על ידי שינוי הערך והפעלה מחדש. |
-| `LISTEN_ADDR` | לא | `0.0.0.0:8080` | כתובת TCP להתחברות |
+| `DATABASE_URL` | כן | ללא | DSN של Postgres. מחרוזת חיבור libpq סטנדרטית עם סכימה `postgres://`. תומך ב-`?sslmode=require` ופרמטרים libpq אחרים. הסיסמה לא חייבת להיות מכילה `/`, `+`, או `=`; השתמש ב-`openssl rand -hex` ליצירת סיסמאות בטוחות-URL. |
+| `ADMIN_KEY` | לא | ללא | מפתח API אדמין bootstrap. מוערך עם כל ההרשאות בכל הפעלה. סובב על ידי שינוי הערך והפעלה מחדש. |
+| `LISTEN_ADDR` | לא | `0.0.0.0:8080` | כתובת TCP שתיקשור אליה |
 | `MAX_BODY_BYTES` | לא | `134217728` (128 MB) | גודל גוף בקשה מרבי |
-| `ADMIN_EMAIL` | לא | בלא | כתובת דוא"ל של משתמש admin bootstrap. Upserted עם כל ההרשאות בכל הפעלה וסימן מוגן: אינו יכול להיות מוגבל או שיש הרשאות שונות דרך הדשבורד/API. לסיבוב ה-admin bootstrap, שנה את `ADMIN_EMAIL` והפעל מחדש; הדוא"ל החדש מוטמע כמוגן, וקודם שימור ההגנה שלו עד לניקוי ידני בבסיס הנתונים. |
-| `ALLOWED_EMAILS` | לא | בלא (כל חסום) | רשימה מופרדת בפסיקים של דוא"לים מורשים ליצירה וכניסה של משתמש. תומך בכתובות מדויקות (`user@example.com`) ותמיכה בתחום בתחום (`*@example.com`). אם לא מוגדר, לא ניתן ליצור משתמשים או להיכנס. **זרע ברגל ראשונה בלבד**: זורעת את רשימת ההכחה של ארגון ברירת המחדל בהפעלה ראשונה; לאחר מכן, כל ארגון [`/<org>/settings`](#operational-settings) עמוד הוא מקור האמת וחוקים בעריכה של משתנה env זה אין השפעה. |
-| `SMTP_HOST` | לא | בלא | שם הוסט של שרת SMTP לשליחת דוא"ל OTP. אם לא מוגדר, קודי OTP מוקלטים ל-stdout. |
+| `ADMIN_EMAIL` | לא | ללא | כתובת דוא"ל של משתמש admin bootstrap. מוערך עם כל ההרשאות בכל הפעלה וסומן מוגן: לא ניתן להשבית או לשנות הרשאות דרך לוח הבקרה/API. כדי לסובב את admin bootstrap, שנה `ADMIN_EMAIL` והפעל מחדש; הדוא"ל החדש מוערך כמוגן, והקודם שומר על הגנתו עד לניקיון ידני במסד הנתונים. |
+| `ALLOWED_EMAILS` | לא | ללא (הכל חסום) | רשימה מופרדת בפסיקים של דוא"לים מורשים ליצירה וכניסה של משתמש. תומך בכתובות מדויקות (`user@example.com`) ותעדול דומיין (`*@example.com`). אם אינו מוגדר, אין משתמשים יכולים ליצור או להיכנס. **זריעה בהפעלה ראשונה בלבד**: זורע את רשימת ההרשאות של הארגון ברירת המחדל בהפעלה ראשונה; לאחר מכן עמוד [`/<org>/settings`](#operational-settings) של כל ארגון הוא מקור האמת ושינוי משתנה env זה אין השפעה. |
+| `SMTP_HOST` | לא | ללא | שם מארח שרת SMTP לשליחת דוא"לי OTP. אם אינו מוגדר, קודי OTP מתועדים ל-stdout. |
 | `SMTP_PORT` | לא | `587` | יציאת שרת SMTP |
-| `SMTP_USERNAME` | לא | בלא | שם משתמש אימות SMTP |
-| `SMTP_PASSWORD` | לא | בלא | סיסמת אימות SMTP |
-| `SMTP_FROM` | לא | בלא | כתובת דוא"ל שולח לדוא"ל OTP |
-| `SMTP_TLS` | לא | STARTTLS | STARTTLS משמש אלא אם כן תוציא זאת במפורש: `false` או `0` שולח טקסט רגול (ללא TLS); כל ערך אחר — לרבות לא מוגדר — מאפשר STARTTLS. |
-| `DASHBOARD_URL` | לא | ברירת מחדל מובנית | מקור דשבורד המשמש לבנייה גם הקישור הקסום של דוא"ל OTP וגם קישורי השיוך בהודעות התראה. אם לא מוגדר, זה חוזר לברירת מחדל מובנית (ו, ל-OTP בלבד, למקור דשבורד-נגזר לבקשה). קבע זאת לרכיבי תחום מפוצלים כך שקישורים בדוא"ל וSlack/incident יוצבעו בדשבורד שלך. ראה **כתובת קישור קסום של דוא"ל** להלן; מפעילים רובים לא צריכים להגדיר זאת. |
-| `SESSION_TTL_SECS` | לא | `86400` (24 שעות) | משך סשן דשבורד בשניות. **זרע ברגל ראשונה בלבד**: עדכן לכל ארגון דרך [`/<org>/settings`](#operational-settings) לאחר פריסה ראשונה. |
-| `OTP_TTL_SECS` | לא | `600` (10 דק') | תקופת תוקף קוד OTP בשניות. **זרע ברגל ראשונה בלבד**: עדכן לכל ארגון דרך [`/<org>/settings`](#operational-settings) לאחר פריסה ראשונה. |
-| `REDIS_URL` | לא | בלא | תשתית חסומה משותפת + קצב-הגבלה, למשל `redis://redis:6379/0`. כאשר מוגדר, השרת משימר בחסומה פקודות API-key מאומתות, סיכומי דשבורד `/models`, רשימת סשנים, ופן רשימה סביבה; הוא גם מעביר קצב OTP מ-Postgres COUNT ל-Redis INCR. אם לא מוגדר או לא זמין, השרת פועל ללא החסומה (קצב OTP חוזר ל-Postgres, כל קריאת חסומה אחרת חוזרת למקור האמת). ראה **Redis (אופציונלי חסומה)** להלן. |
-| `CLICKHOUSE_URL` | **כן** | בלא | כתובת URL בסיסית של מופע ClickHouse, למשל `http://clickhouse:8123`. השרת יישם את סכמת האירועים שלו למסד נתונים זה בכל התחלה ויסרב להתחיל אם לא יוכל להגיע ל-ClickHouse. ראה **ClickHouse (חנות ניתוחים נדרשת)** להלן. |
-| `CLICKHOUSE_DATABASE` | לא | `agenteye` | שם בסיס הנתונים ClickHouse (סכמה). השרת יוצר אותו בהתחלה אם הוא לא קיים. |
-| `ORG_CH_SECRET` | לא (יחיד-דיירני) / **כן (מולטי-ארגון)** | ברירת מחדל פיתוח | מפתח HMAC שממנו נגזר סיסמת ClickHouse ייחודית לדיירן של כל ארגון. עורך ה-SQL וה-`run_query` של ה-AI agent מתבצעים כמשתמש ClickHouse בקריאה-בלבד של הארגון, שמדיניות השורה שלו כוחה בידוד דיירני בתוך Engine. פריסות יחיד-דיירניות התחילו כמו נעימה על ברירת המחדל של פיתוח המובנית; **לפני אספקת ארגון שני חייב להגדיר ערך חזק וקבוע**, כי הCLI `agenteye-orgctl org create` מסרב לרוץ על ברירת המחדל של פיתוח המובנית. סיבוב משאיר כל משתמש ClickHouse של ארגון יתום עד להתחלה הבאה לספק מחדש אותם (החוקק הזמן-התחלה מרפא זאת באופן אוטומטי). שמור זאת בסוד ולא שונה על פני משכפלות. פרוביזיה ארגון עצמו היא אופרטור-בלבד; ראה **ארגונים (מולטי-דיירנות)** להלן. |
-| `DEFAULT_ORG_NAME` | לא | `Default` | שם תצוגה זרוע לארגון ברירת המחדל המובנה. **זרע ברגל ראשונה בלבד**, ורק בזמן שהארגון עדיין נושא את הזהות הגנרית שלו זה עתה הנדידה, יושם בהתחלה, ואז התעלם. לאחר שינוי שם הארגון (`agenteye-orgctl org rename`) השם הוא סמכות ולא עוד לעדכן משתנה env זה. |
-| `DEFAULT_ORG_SLUG` | לא | `default` | תיבת URL לארגון ברירת המחדל המובנה, נתיב הדשבורד שהוא חי בו (`/<slug>/…`). אותה דינמיקה ברגל ראשונה בלבד / טהור בלבד כמו `DEFAULT_ORG_NAME`. חייב להיות 1-40 אלפא-ספרות קטנות עם מקפים פנימיים יחידים ולא [מילה שמורה](#organizations-multi-tenancy); ערך לא חוקי מתעלם (הארגון שומר `default`). מאפשר התקנה יחיד-דיירנית לייצג כ-`/acme` במקום `/default` ללא שום שלב post-deploy CLI. |
-| `RUST_LOG` | לא | `info` | קיבוץ יומן (`debug`, `warn`, `error`, `agenteye_server=trace`) |
-| `EVALUATOR_ENDPOINT` | לא | בלא | כתובת URL בסיסית של שירות ה-evaluator שלך (למשל `http://evaluator:9000`). כאשר לא מוגדר כל צינור הערכה הוא no-op; שום שורות תור לא כתובות, אין עובדים מריצים. ראה [חדר הערכה](/he/agenteye/evaluation-suite). |
-| `EVALUATOR_TOKEN` | לא | בלא | נשלח בתור `Authorization: Bearer <token>` ל-evaluator. **חייב להיות שווה לאותו ערך שהערכה משוערך מוגדרת עם.** אופציונלי רק אם הערכה מוגדרת ללא token. |
-| `EVALUATOR_WORKERS` | לא | `2` | קונקור: מספר משימות עובד לכל מופע שרת המשדרות הערכות. בטוח לרוץ על שרתים בקנה-מידה אופקי מרובים. |
-| `EVALUATOR_CLAIM_BATCH` | לא | `4` | מספר הערכות מרבי שעובד יחיד תובע לכל תופעה. אצווות משודרות **בו-זמנית**, כך שקונקור כללי על endpoint evaluator שלך הוא `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | לא | `2` | כמה זמן עובד ישן בין ניסיונות שיגור כאשר כלום אינו בא. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | לא | `10` | קדנס choke-back סופי (שניות) לעדכונים `GET /evaluate/{id}` כאשר המעריך אינו חוזר `next_poll_secs` לכל התגובה ואינו מפרסם `default_poll_interval_secs` מ `GET /config`. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | לא | `30000` | עדכון לכל בקשת HTTP כנגד המעריך (אלפית השניה). |
-| `EVALUATOR_MAX_ATTEMPTS` | לא | `5` | לאחר הרבה ניסיונות כושלים כל כך הערכה מוקלטת כטרמינל `error` (או `timeout` אם הכשלות היו בקשה timeout). |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | לא | `300` (5 דק') | כמה פעמים השרת re-fetches `GET /config` מ-evaluator. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | לא | `3600` (1 h) | זמן wallclock מרבי סשן עשוי להישאר בתור סקר לפני AgentEye מסיים אותו כ-`timeout`. משמרות נגד evaluator שחוזר `pending` לעד. |
-| `ALERT_WORKERS` | לא | `1` | קונקור: מספר משימות עובד לכל מופע שרת המעריכות כללי התראה. ראה [התראות](/he/agenteye/alerts). |
-| `ALERT_CLAIM_BATCH` | לא | `16` | מספר התראות מרבי עובד יחיד תובע לכל תופעה. |
-| `ALERT_POLL_IDLE_SECS` | לא | `5` | כמה זמן עובד התראות ישן כאשר התור ריק. |
-| `ALERT_REQUEST_TIMEOUT_MS` | לא | `15000` | עדכון הערכה להדלקת (ClickHouse queries + HTTP ערוץ יוצא). |
-| `ALERT_MAX_ATTEMPTS` | לא | `5` | כשלים חולפים עוקבים לפני התראה משדרים בקדנס רגיל במקום backoff אקספוננציאלי. |
-| `AUDIT_WORKERS` | לא | `1` | קונקור: מספר משימות עובד לכל מופע שרת המבצעות ביקורות. ראה [ביקורות](/he/agenteye/audits). |
-| `AUDIT_CLAIM_BATCH` | לא | `1` | מספר מקסימום ביקורות בעבודה עובד יחיד תובע לכל תופעה. חקירה agentic היא לולאה ארוכה אחת, כך שברירת המחדל היא 1. |
-| `AUDIT_POLL_IDLE_SECS` | לא | `30` | כמה זמן עובד ביקורות ישן כאשר אין ביקורת בעבודה. |
-| `AUDIT_REQUEST_TIMEOUT_MS` | לא | `30000` | עדכון ממנו-query לכל-מדיניות נגד ClickHouse (אלפית השניה). |
-| `AUDIT_LLM_TIMEOUT_MS` | לא | `1440000` | timeout לשיחה חקירה agentic עם שירות AI assistant. לולאת agent שלמה פועלת לדקות; שמור זאת למעלה מ-`AGENTEYE_AUDIT_TIMEOUT_MS` שלו agent כך ש-agent חוזר ממצאים חלקיים לפני השרת מתוך זמן. |
-| `AUDIT_MAX_ATTEMPTS` | לא | `5` | כשלים חולפים עוקבים לפני ביקורת משדרות בקדנס רגיל במקום backoff אקספוננציאלי. |
-| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | לא | — | חקירה agentic של ביקורת קורא שירות AI-assistant `agent`, **למעשה הקשר זהה כ-assistant** — כך הגדר את שני אלה גם על ה-**server** (המשכפלות המרוכזות/רכיבי לבוש עושים). שתי קבוצות ⇒ ביקורות פעולות חקירה AI; אחד לא מוגדר ⇒ ביקורות פעולות **policy-only** (מעבר מדיניות דטרמיניסטי SQL עדיין פועל), ללא קשר לדגל לכל ביקורת `llm_enabled`. ה-agent חייב גם LLM מוגדר — ראה [assistant.md](/he/agenteye/assistant). |
+| `SMTP_USERNAME` | לא | ללא | שם משתמש אימות SMTP |
+| `SMTP_PASSWORD` | לא | ללא | סיסמת אימות SMTP |
+| `SMTP_FROM` | לא | ללא | כתובת דוא"ל של השולח לדוא"לי OTP |
+| `SMTP_TLS` | לא | STARTTLS | STARTTLS משמש אלא אם אתה כבה אותו במפורש: `false` או `0` שולח טקסט רגול (ללא TLS); כל ערך אחר — כולל אינו מוגדר — מאפשר STARTTLS. |
+| `DASHBOARD_URL` | לא | ברירת מחדל מובנית | מקור לוח בקרה המשמש לבניית קישור קסום בדוא"ל OTP וקישורים קסומים בהודעות התריעות. אם אינו מוגדר זה חוזר לברירת מחדל מובנית (ובעבור OTP בלבד, למקור הנגזר מלוח הבקרה תחילה). הגדר זאת לעיצובי תחום-מפוצל כך שקישורי דוא"ל ו-Slack/התרעה מצביעים על לוח הבקרה שלך. ראה **URL קישור קסום דוא"ל** למטה; רוב המפעילים לא צריכים להגדיר את זה. |
+| `SESSION_TTL_SECS` | לא | `86400` (24 ש"א) | משך הפעלת לוח בקרה בשניות. **זריעה בהפעלה ראשונה בלבד**: ערוך לכל ארגון דרך [`/<org>/settings`](#operational-settings) אחרי ההפעלה הראשונה. |
+| `OTP_TTL_SECS` | לא | `600` (10 דק') | תקופת תוקף קוד OTP בשניות. **זריעה בהפעלה ראשונה בלבד**: ערוך לכל ארגון דרך [`/<org>/settings`](#operational-settings) אחרי ההפעלה הראשונה. |
+| `REDIS_URL` | לא | ללא | אחסן זיכרון משותף אופציונלי + בקצה שיעור הגבלה, למשל `redis://redis:6379/0`. כשנקבע, השרת שומר מחשבים התייקדויות API-key, הצבירה `/models` של לוח הבקרה, רשימת הפעילויות וקצה תחום env; זה גם מעביר שיעור הגבלת בקשות OTP מ-Postgres COUNT ל-Redis INCR. אם לא מוגדר או לא מושג, השרת פועל ללא אחסן זיכרון (הגבלת OTP חוזרת ל-Postgres, כל קריאת אחסן זיכרון נופלת דרך למקור האמת). ראה **Redis (אחסן זיכרון אופציונלי)** למטה. |
+| `CLICKHOUSE_URL` | **כן** | ללא | URL בסיס של מכונת ClickHouse, למשל `http://clickhouse:8123`. השרת מיישם את סכימת האירועים שלו למסד נתונים זה בכל הפעלה ומסרב לטעון אם הוא לא יכול להגיע ל-ClickHouse. ראה **ClickHouse (אחסן אנליטיקה נדרש)** למטה. |
+| `CLICKHOUSE_DATABASE` | לא | `agenteye` | שם מסד נתונים (סכימה) של ClickHouse. השרת יוצר אותו בהפעלה אם הוא לא קיים. |
+| `ORG_CH_SECRET` | לא (דיירים-יחיד) / **כן (מרובה-ארגון)** | ברירת מחדל dev | מפתח HMAC שממנו נגזר סיסמת ClickHouse לכל דיירים של כל ארגון. עורך SQL וביעילות agent של `run_query` מבצעים כמשתמש ClickHouse לקריאה בלבד של הארגון, שמנהל השורות שלו אוכף בידוד דיירים במנוע. פריסות דיירים-יחיד אתחול בסדר על ברירת המחדל dev מובנית; **לפני הפקת ארגון שני אתה חייב להגדיר ערך חזק יציב**, מכיוון ש-CLI `agenteye-orgctl org create` מסרב להיות ברירת המחדל dev מובנית. סיבוב זה משריד כל משתמש ClickHouse של הארגון עד להפעלה הבאה שסידרה מחדש אותו (סידור boot-time מרפא זה באופן אוטומטי). שמור את זה בסוד וללא שינוי על כל השכפלים. הפקת ארגון עצמה היא-פעיל-בלבד; ראה **ארגונים (רב-דיירים)** למטה. |
+| `DEFAULT_ORG_NAME` | לא | `Default` | שם תצוגה שנזרע לארגון ברירת המחדל המובנה. **זריעה בהפעלה ראשונה בלבד**, ורק בזמן שהארגון עדיין נושא את זהותו הגנרית טרי-מהוגרה, מיושמת בהפעלה, ואז התעלמות. ברגע שתשנה את שם הארגון (`agenteye-orgctl org rename`) השינוי הוא סמכותי והמשתנה env זה אין עוד השפעה. |
+| `DEFAULT_ORG_SLUG` | לא | `default` | תעד URL לארגון ברירת המחדל המובנה, נתיב לוח הבקרה שהוא חי בו (`/<slug>/…`). אותם סמנטיקה זריעה-בהפעלה-ראשונה / טהורה-בלבד כמו `DEFAULT_ORG_NAME`. חייב להיות 1-40 alphanumerics קטנים עם מקפים פנימיים יחידים ולא מילה [שמורה](#organizations-multi-tenancy); ערך לא חוקי התעלם (הארגון שומר `default`). מאפשר התקנה דיירים-יחיד להציג כמו `/acme` במקום `/default` ללא שום שלב CLI פוסט-קומפוזיציה. |
+| `RUST_LOG` | לא | `info` | רמת עלבון יומן (`debug`, `warn`, `error`, `agenteye_server=trace`) |
+| `EVALUATOR_ENDPOINT` | לא | ללא | URL בסיס של שירות ההערכה שלך (למשל `http://evaluator:9000`). כשלא מוגדר כל קו האורך הערכה הוא no-op; שום שורות תור אינן כתובות, אין עובדים. ראה [Evaluation Suite](/he/agenteye/evaluation-suite). |
+| `EVALUATOR_TOKEN` | לא | ללא | נשלח כ-`Authorization: Bearer <token>` להערכה. **חייב להיות שווה לערך זהה בו שירות ההערכה מוגדר.** אופציונלי רק אם ההערכה שלך מוגדרת ללא אסימון. |
+| `EVALUATOR_WORKERS` | לא | `2` | בקצה: מספר משימות עובד לכל מכונת שרת שמשגרת הערכות. בטוח להיות מקבוצות מרובות אופקיות שרתים. |
+| `EVALUATOR_CLAIM_BATCH` | לא | `4` | מספר הערכות מרבי שעובד יחיד תוביע לכל טיק. אצוות משגרות **במקביל**, אז סך הקצה על נקודת הקצה שלך ההערכה הוא `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | לא | `2` | כמה זמן עובד ישן בין ניסיונות שליחה כשכלום הוא בעתיד. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | לא | `10` | קצב נופל סופי (שניות) לסקר `GET /evaluate/{id}` כשההערכה לא מחזירה `next_poll_secs` לכל תגובה ולא מפרסמת `default_poll_interval_secs` מ-`GET /config`. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | לא | `30000` | timeout לכל בקשה HTTP כנגד ההערכה (אלפיות שנייה). |
+| `EVALUATOR_MAX_ATTEMPTS` | לא | `5` | אחרי כל כך הרבה ניסיונות שנכשלו הערכה מתועדת כטרמינל `error` (או `timeout` אם הכישלונות היו timeouts בקשה). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | לא | `300` (5 דק') | כמה בתדירות השרת מחזיר `GET /config` מההערכה. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | לא | `3600` (1 שעה) | זמן קיר מרבי שפעילות ניסיון יכולה להישאר בתור הסקר לפני AgentEye מסיימת אותו כ-`timeout`. מגנים נגד הערכה שמחזירה `pending` לנצח. |
+| `ALERT_WORKERS` | לא | `1` | בקצה: מספר משימות עובד לכל מכונת שרת שמערכות כללי התריעה. ראה [התריעות](/he/agenteye/alerts). |
+| `ALERT_CLAIM_BATCH` | לא | `16` | מספר התריעות מרבי שעובד יחיד תוביע לכל טיק. |
+| `ALERT_POLL_IDLE_SECS` | לא | `5` | כמה זמן עובד התריעות ישן כשהתור ריק. |
+| `ALERT_REQUEST_TIMEOUT_MS` | לא | `15000` | timeout הערכה התריעה לכל טריגר (ClickHouse שאילתות + HTTP ערוץ יוצא). |
+| `ALERT_MAX_ATTEMPTS` | לא | `5` | כישלונות חולפים עוקבים לפני התריעה מתוזמנת מחדש בקצבה הרגילה שלה במקום backoff מעריכי. |
+| `AUDIT_WORKERS` | לא | `1` | בקצה: מספר משימות עובד לכל מכונת שרת שמבצעות ביקורות. ראה [ביקורות](/he/agenteye/audits). |
+| `AUDIT_CLAIM_BATCH` | לא | `1` | מספר ביקורות בעתיד מרבי שעובד יחיד תוביע לכל טיק. חקירה סוכנית היא לולאה ארוכה אחת, אז ברירת המחדל היא 1. |
+| `AUDIT_POLL_IDLE_SECS` | לא | `30` | כמה זמן עובד ביקורות ישן כשאף ביקורת אינה בעתיד. |
+| `AUDIT_REQUEST_TIMEOUT_MS` | לא | `30000` | timeout לכל שאילתה-מדיניות כנגד ClickHouse (אלפיות שנייה). |
+| `AUDIT_LLM_TIMEOUT_MS` | לא | `1440000` | timeout לשיחת חקירה סוכנית לשירות עוזר AI. לולאת סוכן מלאה פועלת לדקות; שמור את זה מעל שלך הסוכן שלו `AGENTEYE_AUDIT_TIMEOUT_MS` אז הסוכן מחזיר ממצאים חלקיים לפני השרת מוותר. |
+| `AUDIT_MAX_ATTEMPTS` | לא | `5` | כישלונות חולפים עוקבים לפני ביקורת מתוזמנת מחדש בקצבה הרגילה שלה במקום backoff מעריכי. |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | לא | — | השיחה החקירה הסוכנית של ביקורת קוראת שירות עוזר AI `agent`, **משימוש בחיבור זהה כמו העוזר** — אז הגדר את אלה שתיים גם **בשרת** (פריסות משודרות/compose עושה). שניהם להגדיר ⇒ ביקורות הפעלת חקירת AI; או לא מוגדר ⇒ ביקורות הפעלת **מדיניות-רק** (עבור SQL דטרמיניסטי מדיניות עדיין פועל), בעלות דגל `llm_enabled` לכל ביקורת. הסוכן חייב גם LLM מוגדר — ראה [assistant.md](/he/agenteye/assistant). |
 
-**שירות AI assistant — הגדרות ביקורת + sandbox.** החקירה agentic וה-Python sandbox שלה בתוך-pod עדכון על ה-**agent service** (לא השרת), הכל על `AGENTEYE_AUDIT_*` prefix וכל אופציונלי:
+**עוזר AI שירות — ביקורת + הגדרות חממה.** החקירה הסוכנית והחממה Python בתוך-פוד שלה מכוונות **שירות סוכן** (לא השרת), הכל בתחילית `AGENTEYE_AUDIT_*` והכל אופציונלי:
 
 | משתנה | ברירת מחדל | משמעות |
 |---|---|---|
-| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | מקס סיבוב agent לכל חקירה. |
-| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | wallclock לחקירה אחת (20 דק'). חייב להישאר **למעלה** מ-`AUDIT_LLM_TIMEOUT_MS` שלו שרת. |
-| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | חקירות בו-זמניות לכל pod agent (בנפרד מהתקציב של chat assistant). |
-| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | גבולות לכל-סקריפט לכל bubblewrap sandbox. |
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | טיפול סוכן מרבי לחקירה. |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | קיר-שעון לחקירה אחת (20 דק'). חייב להישאר **תחת** השרת שלך `AUDIT_LLM_TIMEOUT_MS`. |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | חקירות במקביל לכל פוד סוכן (נפרד מתקציב העוזר הצ'אט). |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | לתסריט גבולות אחד לחממה bubblewrap. |
 
-**דרישת פלטפורמת Sandbox.** קוד ביקורת sandbox פעולה בתוך Python של דוגמן בתוך כלא bubblewrap, אשר זקוק **משתמש לא חיזוק user namespaces**. pod ה-agent חייב לאפשר את `clone()` flags — הגדר `seccompProfile: Unconfined` (k8s) או `security_opt: [seccomp:unconfined]` (compose) על agent. כאשר kernel של צומת משבית user namespaces לא-חיזוק (למשל כמה GKE COS images), ה-sandbox **preflight נכשל ו-auditor משדרות SQL-בלבד באופן אוטומטי** — אין שגיאה, פשוט `sandbox_available: false` על `/health` של agent. |
+**דרישת פלטפורמה חממה.** חממה קוד ביקורת פעלנית Python של המודל בתוך כלא bubblewrap, הזקוק **מרחבי משתמש ללא הרשאות**. פוד הסוכן חייב להרשות דגלי `clone()` — הגדר `seccompProfile: Unconfined` (k8s) או `security_opt: [seccomp:unconfined]` (compose) בסוכן. איפה קרנל הצומת מנטרל מרחבי משתמש ללא הרשאות (למשל כמה GKE COS תמונות), חממה **preflight כשל וביקורת שפלה SQL-רק באופן אוטומטי** — אף טעות, רק `sandbox_available: false` בסוכן שלך `/health`.
 
-### הפעל
+### הרץ
 
-הגדר `DATABASE_URL` ו-`CLICKHOUSE_URL` בסביבתך (השרת מסרב להתחיל ללא ClickHouse), ואז תמסור אותם דרך לכלי:
+הגדר `DATABASE_URL` בסביבה שלך, ואז העבר את זה דרך למכל:
 
 ```bash
 docker run -d --restart unless-stopped \
   --name agenteye-server \
   -e DATABASE_URL="$DATABASE_URL" \
-  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
   -e ADMIN_KEY="$ADMIN_KEY" \
   -p 8080:8080 \
   ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-השרת משמיע הגדרות בסיס נתונים באופן אוטומטי בהתחלה; שום שלב הגדרה נפרד נחוץ.
+השרת מריץ הנדסות מסד נתונים באופן אוטומטי בהפעלה; אין שלב הנדסה נפרד נדרש.
 
 ### בדיקת בריאות
 
 ```
-GET /health    # liveness  - תמיד {"status":"ok"} לאחר שהתהליך פועל
-GET /ready     # readiness - 200 כאשר Postgres + ClickHouse הם זמינים, אחרת 503
+GET /health    # liveness  - always {"status":"ok"} once the process is up
+GET /ready     # readiness - 200 when Postgres + ClickHouse are reachable, else 503
 ```
 
-אין דרישה לאימות. השתמש ב-`/health` לסיקור **liveness** ו-`/ready` לסיקורי **readiness** / load-balancer. `/ready` בדיקות התלויות הקשות שהשרת לא יכול לשרת ללא (Postgres + ClickHouse), כך שכלי שפועל אך אינו יכול להגיע לבסיס הנתונים שלו מוצא מתוך סיבוב ומציג כ-`NotReady`; Redis דיווח אך לעולם נכשל readiness. על המניפסטים המרוכזים של Kubernetes הסיקור readiness כבר מוצבע ב-`/ready` ו-liveness נשאר ב-`/health`. ראה [enterprise-docs/health-monitoring.md](/he/agenteye/health-monitoring) לתמונה המוקדמת, כולל opt-in Kubernetes-native pod-failure התראה ל-Slack.
+אין אימות נדרש. השתמש ב-`/health` ל-**liveness** בחדשות ו-`/ready` ל-**readiness** / עומס מאזן בחדשות. `/ready` בודקות התלויות הקשות שהשרת לא יכול להשרת ללא (Postgres + ClickHouse), אז שרת שפעיל אך לא יכול להגיע למסד הנתונים שלו מוצא מהסיבוב ומוצג כ-`NotReady`; Redis מדווח אך לעולם לא נכשל readiness. על פריסות Kubernetes משודרות פגם readiness כבר מצביע על `/ready` ו-liveness נשאר ב-`/health`. ראה [enterprise-docs/health-monitoring.md](/he/agenteye/health-monitoring) לתמונה המלאה, כולל opt-in ניטור כשל פוד Kubernetes-ילידי ל-Slack.
 
-### כתובת קישור קסום של דוא"ל
+### URL קישור קסום דוא"ל
 
-דוא"לי התחברות OTP מכילים כפתור **פתח דשבורד** חד-הקשה. לחיצה עליו מנחתת את המשתמש על `/login?token=<code>&email=<address>`; הדשבורד מחליף צמד זה לסשן וחוזר אל האפליקציה, ללא הזנת קוד ידנית חוזרת. השרת פותר מקור הדשבורד המשמש לבנייה הקישור בשלוש רמות:
+דוא"לי כניסה OTP כוללים כפתור **לפתוח את לוח הבקרה** בעלויות לכל דבר. לחיצה בו נוחתת המשתמש על `/login?token=<code>&email=<address>`; לוח הבקרה מחליף זוג זה לפעילות וניתוב ל-אפליקציה, ללא re-entry קוד ידני. השרת פותר את מקור לוח הבקרה שמשמש לבניית הקישור בשלוש רמות:
 
-1. **`X-AgentEye-Dashboard-Url` header**: הגדר באופן אוטומטי על ידי proxy `/api/auth/otp/request` של הדשבורד מהמקור הציבורי שלו. בפריסה same-origin (שרת ודשבורד שיתוף בעל אחד מאחורי ערסל אחד המעביר headers proxy), **אין תצורה נדרשת**.
-2. **`DASHBOARD_URL` env var**: הגדר זאת אם הדשבורד שלך זמין על מקור שונה מה-origin שנקודת בקשת OTP של השרת רואה (split `api.example.com` / `app.example.com`), או אם ערסל שלך אינו הפוץ את host הציבורי לתוך pod הדשבורד (כך `request.nextUrl.origin` אחרת יפתור עדכון כגון `0.0.0.0:3000`). דוגמה: `DASHBOARD_URL=https://app.example.com`.
-3. **ברירת מחדל**: `https://app.befailproof.ai`, בשימוש רק אם לא אחד משנייהם לעיל קיים.
+1. **כותר `X-AgentEye-Dashboard-Url`**: הגדר באופן אוטומטי על ידי פרוקסי `/api/auth/otp/request` של לוח הבקרה מהמקור הציבורי שלו. בפריסה same-origin (שרת ולוח בקרה חלוקים מארח מאחורי ingress אחד שהכותרות פרוקסי מעבר), **אין תצורה נדרשת**.
+2. **`DASHBOARD_URL` env var**: הגדר זאת אם לוח הבקרה שלך מושג ב-origin אחר מזה שנקודת הקשה OTP של השרת רואה (split `api.example.com` / `app.example.com`), או אם ingress שלך לא מתפשר את המארח הציבורי לתוך פוד לוח הבקרה (אז `request.nextUrl.origin` יפתור אחרת כמו `0.0.0.0:3000`). דוגמה: `DASHBOARD_URL=https://app.example.com`.
+3. **ברירת מחדל**: `https://app.befailproof.ai`, משומש רק אם לא אחד משני הלעיל קיים.
 
-ערך header מאומת: רק `https://*` ו-loopback (`http://localhost*`, `http://127.0.0.1*`) מקורות מקובלים, וכתובות bind wildcard (`0.0.0.0`, `[::]`) נדחות אפילו עם ה-`https://` סכמה. כל דבר אחר חוזר אל רמה 2.
+ערך הכותר מאומת: רק `https://*` ו-loopback (`http://localhost*`, `http://127.0.0.1*`) origins מקובלים, וכתובות wildcard bind (`0.0.0.0`, `[::]`) דחויים גם עם התוכנית `https://`. כל דבר אחר נופל דרך לרמה 2.
 
-הגדר זאת על אשכול פועל עם one-liner; לא קובץ, לא rebuild kustomize:
+הגדר אותו על אשכול רץ עם בר תיל; אין קובץ, אין kustomize שיבוא מחדש:
 
 ```bash
 kubectl set env deployment/server -n agenteye \
   DASHBOARD_URL=https://app.example.com
 ```
 
-זה מעלה rollout; pod החדש בוחר את הערך בבקשה ראשונה. שימו לב כי override חי רק על Deployment; `kustomize build | kubectl apply` לאחר כך כנגד overlay ימחק אותו אלא אם כן הוספת משתנה env זהה לתיקייה patch `server-env.yaml` של overlay שלך.
+זה מפעיל rollout; הפודים החדשים תופסים את הערך בבקשה הראשונה. שים לב שה-override חי רק על ה-Deployment; `kustomize build | kubectl apply` עוקב נגד ה-overlay ימחוק את זה אלא אם אתה מוסיף את משתנה env זהה ל-patch `server-env.yaml` של ה-overlay שלך.
 
 ---
 
-## דשבורד
+## לוח בקרה
 
-### שלוף את התמונה
+### משוך את התמונה
 
 ```bash
 docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
 ```
 
-### משתנים סביבה
+### משתני סביבה
 
 | משתנה | נדרש | ברירת מחדל | תיאור |
 |---|---|---|---|
-| `AGENTEYE_SERVER_URL` | כן | בלא | כתובת URL בסיסית של השרת, למשל `http://localhost:8080` |
-| `AGENTEYE_API_KEY` | כן | בלא | מפתח API דשבורד משתמש לאימות לשרת. צרכים כל הרשאות (מפתח admin מומלץ). |
-| `AE_LOG_LEVEL` | לא | `info` | קיבוץ יומן צד-שרת: `debug`, `info`, `warn`, `error`. הגדר ל-`debug` לראות בקשה מעלה/תשובה שורות וסשן-validation עקבות כאשר אבחון ממצאים. |
-| `AE_LOG_JSON` | לא | אוטומטי | `1` כופה JSON-per-line פלט; `0` כופה פלט קריא לאדם. כאשר לא מוגדר, JSON מופעל באופן אוטומטי אם `NODE_ENV=production`. JSON מומלץ בייצור כך יומנים parse בצורה נקייה עם `jq` או מערכת לוגים. |
-| `AE_ANALYTICS_DISABLED` | לא | בלא | הגדר ל-`1`/`true` כדי להשבית את telemetry שימוש בשימוש דשבורד אנונימי. ראה [Telemetry & privacy](#telemetry--privacy) להלן. |
-| `REDIS_URL` | לא | בלא | אופציונלי חסומה משותפת backend, למשל `redis://redis:6379/0`. כאשר מוגדר, דשבורד משימור `validateSession()` תוצאות על משכפלות ויתרות הבא.js fetch חסומה לנתבי proxy latency-aggregate / env-list. קצב OTP בקשה ו-verify גם השתמש Redis כאשר קיים (נפילה פתוח אם Redis לא זמין; קצב צד-שרת הוא backstop ביטחון). ראה **Redis (אופציונלי חסומה)** להלן. |
-| `AGENTEYE_AGENT_URL` | לא | בלא | כתובת URL בסיסית של שירות `agent` AI-assistant אופציונלי, למשל `http://agent:9100`. **השאר אותו לא מוגדר להסתיר את ה-assistant לחלוטין**: בועת assistant אינה מופיעה בדשבורד. ראה [enterprise-docs/assistant.md](/he/agenteye/assistant). |
-| `AGENTEYE_AGENT_TOKEN` | לא | בלא | סוד משותף דשבורד מופיע לשירות `agent`. חייב להתאים את `AGENTEYE_AGENT_TOKEN` מוגדר על ה-agent. ראה [enterprise-docs/assistant.md](/he/agenteye/assistant). |
+| `AGENTEYE_SERVER_URL` | כן | ללא | URL בסיס של השרת, למשל `http://localhost:8080` |
+| `AGENTEYE_API_KEY` | כן | ללא | מפתח API בו לוח הבקרה משתמש כדי להצטייד לשרת. צריך כל הרשאות (מפתח admin מומלץ). |
+| `AE_LOG_LEVEL` | לא | `info` | רמת עלבון יומן בצד שרת: `debug`, `info`, `warn`, `error`. הגדר ל-`debug` לראות שורות בקשה/תגובה עלות זרם וטרייסות אימות פעילות כשאתה אבחון בעיות. |
+| `AE_LOG_JSON` | לא | אוטו | `1` כופה פלט JSON-לכל-שורה; `0` כופה פלט קריא לאדם. כשלא מוגדר, JSON מופעל באופן אוטומטי אם `NODE_ENV=production`. JSON מומלץ בייצור כך יומנים נתחתו בנקיוות עם `jq` או מפתח לוג. |
+| `AE_ANALYTICS_DISABLED` | לא | ללא | הגדר ל-`1`/`true` להשבית טלמטריה שימוש מוצר אנונימיות של לוח הבקרה. ראה [טלמטריה & פרטיות](#telemetry--privacy) למטה. |
+| `REDIS_URL` | לא | ללא | אחסן זיכרון משותף אופציונלי, למשל `redis://redis:6379/0`. כשנקבע, לוח הבקרה משמור `validateSession()` תוצאות על כל השכפלים וחלוקה ה-Next.js השלך שומר אחסן לנתיבי צבירה זמן-חזון / env-רשימה. גם קצבה תור ומאמת OTP בצד גופן משתמשים Redis כשקיים (נופל פתוח אם Redis לא מושג; ניטור בצד שרת הוא backstop בטיחות). ראה **Redis (אחסן זיכרון אופציונלי)** למטה. |
+| `AGENTEYE_AGENT_URL` | לא | ללא | URL בסיס של שירות עוזר AI אופציונלי `agent`, למשל `http://agent:9100`. **השאר את זה לא מוגדר להסתיר את העוזר לחלוטין**: אף בועת עוזר מופיעה בלוח הבקרה. ראה [enterprise-docs/assistant.md](/he/agenteye/assistant). |
+| `AGENTEYE_AGENT_TOKEN` | לא | ללא | סוד משותף ב-לוח הבקרה מציג לשירות `agent`. חייב להתאים `AGENTEYE_AGENT_TOKEN` מוגדר בסוכן. ראה [enterprise-docs/assistant.md](/he/agenteye/assistant). |
 
-### הפעל
+### הרץ
 
 ```bash
 docker run -d --restart unless-stopped \
@@ -189,91 +187,91 @@ docker run -d --restart unless-stopped \
   ghcr.io/agenteye-enterprise/dashboard:beta-latest
 ```
 
-### Telemetry & privacy
+### טלמטריה & פרטיות
 
-הדשבורד שולח **analytics שימוש בשימוש אנונימי** לשירות analytics של Exosphere (PostHog): דפי דשבורד נצפו וקומץ פעולות UI כמו יצירת מפתח API או re-evaluating סשן. אות שימוש זה מודיע אילו תכונות עדיפות.
+לוח הבקרה שולח **ניתוח שימוש מוצר אנונימי** לשירות ניתוח של Exosphere (PostHog): איזה עמודי לוח בקרה יוצגו וקבוצה של פעולות UI כמו יצירת מפתח API או הערכה מחדש של פעילות. אות שימוש זה מהמידע איזה תכונות יעדיפו.
 
-- **אין agent, סשן, או נתוני אירוע עוזבת את התשתית שלך.** רק שימוש UI דשבורד דיווח. כתובות עמוד מעוטות מזהים לפני שליחה, ותפעילים מזוהים רק על ידי opaque פנימי id, לעולם לא כמו דוא"ל.
-- Telemetry הוא **מופעל כברירת מחדל**. כדי לכבות אותו לחלוטין, הגדר `AE_ANALYTICS_DISABLED=1` על כלי דשבורד ו-restart.
-- Analytics משלוח ל-`/ingest` דרך של דשבורד, אשר דשבורד reverse-proxies PostHog (`https://us.i.posthog.com`). שימור requests first-party פירושו browser ad-blockers לא משנה אותם. ה-**dashboard container** צרכים יוצא גישה ל-PostHog; אם זה חסום, telemetry בשקט לא עושה כלום והדשבורד לא מושפע.
-
----
-
-## AI Assistant (אופציונלי)
-
-in-dashboard AI assistant מאפשר לצוות שלך לשאול שאלות של agent נתוני בשפה רגילה (summarising סשנים, drafting SQL עבור עורך `/queries`, והפיכה של שאלות שמורות כדי דשבורד רעפים) ללא עזיבת דשבורד. זה פעולה כ-pod container `agent` פנימי נפרד (ב-Claude Agent SDK) שרק דשבורד יכול להגיע, ו-stays **השבת עד שתחפש LLM endpoint**.
-
-כדי לאפשר זאת אתה הגדרת, על שירות `agent`, חיבור LLM (**Portkey** דרך `PORTKEY_API_KEY` + דגם-catalog slug `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, Anthropic ישיר דרך `ANTHROPIC_API_KEY`, gateway אחר דרך `ANTHROPIC_BASE_URL`, או Bedrock/Vertex), **מפתח נתוני דתי**, ו-`AGENTEYE_AGENT_TOKEN` משותף תאם דשבורד. משתמשי דשבורד בנוסף צרכים `agent:use` הרשאות.
-
-עבור מפתח נתוני דתי של assistant אתה לא לעטוף כלום ביד: בחרו secret אקראי, הגדר אותו בתור `AGENTEYE_API_KEY` על `agent` **ו** כמו `AGENT_API_KEY` ב `server`, ו-server זורעת אותו בעת התחלה עם set הרשאות קבוע. גישת נתוני שלה היא read-only (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), ובנוסף מחזקה authoring scopes אישור-gated (`dashboards:write`, `queries:write`, `queries:run`) כך שהוא יכול draft ו-validate שאלות שמורות בנים דשבורד רעפים על המשתמש של behalf; כל SQL עדיין פעולה דרך ארגון read-only ClickHouse תפקיד, כך ש-widening פירוש מה-assistant יכול author, לא אשר נתונים זה יכול להגיע. ה-scopes הם קבוע בקוד ו-cannot להרחיב על ידי תצורה. מפתח זה מוגן; זה לא יכול להיות השבת או תחדול דרך API, רק סיבוב על ידי עדכון הערך ו-restart. לעולם לא reuse admin/dashboard מפתח לזה.
-
-הגדרה מלאה, reference משתנה סביבה מלאה, אפשרויות telemetry, ו-security דגם נמצאים ב-**[enterprise-docs/assistant.md](/he/agenteye/assistant)**.
+- **אף אחד סוכן, פעילות, או נתונים אירוע לעולם עוזב את התשתית שלך.** רק שימוש UI לוח בקרה מדווח. כתובות דף מעלות זיהוי לפני שליחה, ומפעילים מזוהים רק על ידי id פנימי אטום, לעולם לא על ידי דוא"ל.
+- טלמטריה **מופעלת כברירת מחדל**. כדי להכבות זאת לחלוטין, הגדר `AE_ANALYTICS_DISABLED=1` בתא לוח הבקרה והפעל מחדש.
+- אנליטיקה נשלחה ללוח הבקרה שלה בעצמו `/ingest` נתיב, בו לוח הבקרה reverse-proxies ל-PostHog (`https://us.i.posthog.com`). שמירת בקשות first-party אומר חוסמי פרסומות בדפדפן לא טרופים אותם. **תא לוח הבקרה** צריך גישה יוצאת ל-PostHog; אם זה חסום, טלמטריה שמחרישת ולוח הבקרה לא מושפע.
 
 ---
 
-## ClickHouse (חנות ניתוחים נדרשת)
+## עוזר AI (אופציונלי)
 
-ClickHouse שומר דשבורד שלך מגיב בנתח גבוה אירוע ותן `/queries` עורך SQL לצטרף על פני אירועים, הערכות, וסשנים בחנות יחיד. זה חנות הקנוני הנדרשת עבור כל אירוע ingested, כל תוצאת הערכה סופית, ו-derived לכל-סשן aggregates. PostgreSQL מאחסן יחסי / mutable-state טבלאות (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); ה-analytical משטח חיים ב-ClickHouse כדי דשבורד הרולאפים ו-SQL queries שלך יכול כוח וצטרף זה באופן native, ללא בין-בסיס-נתונים round-trips. השרת מסרב להתחיל ללא `CLICKHOUSE_URL`.
+עוזר AI בתוך-לוח בקרה מאפשר לצוות שלך לשאול שאלות של נתוני agent שלהם בשפת טבע (סיכום פעילויות, טיוטה SQL לעורך `/queries`, וטיוטה שמורה שאילתות ללוח בקרה מרות) ללא עזוב את לוח הבקרה. זה פועל כתא פנימי נפרד `agent` (ב-Claude Agent SDK) שרק לוח הבקרה יכול להגיע, ונשאר **מושבת עד שתורכל סוף LLM**.
 
-### סכמה
+כדי להפעיל את זה אתה הגדרת, ב-שירות `agent`, חיבור LLM (**Portkey** דרך `PORTKEY_API_KEY` + קטלוג-מודל slug `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, Anthropic ישיר דרך `ANTHROPIC_API_KEY`, שער אחר דרך `ANTHROPIC_BASE_URL`, או Bedrock/Vertex), **ייעודי** מפתח נתונים, וMiDARK `AGENTEYE_AGENT_TOKEN` התאמה לוח הבקרה. משתמשי לוח הבקרה בנוסף צריכים הרשאה `agent:use`.
 
-שלוש עצמים ClickHouse נוצרים בהתחלת שרת, הכל idempotent (`CREATE IF NOT EXISTS`):
+לנתוני מפתח של העוזר אתה לא מטבע כלום ביד: בחר סוד אקראי, הגדר את זה כמו `AGENTEYE_API_KEY` בסוכן **ו** כמו `AGENT_API_KEY` בשרת, והשרת זורע אותו בהפעלה עם כמה הרשאות קבועות. גישת נתונים שלו היא read-only (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), ובנוסף מחזיק אישור-gated כתיבה scopes (`dashboards:write`, `queries:write`, `queries:run`) כך זה יכול לטיוטה ותמונות שאילתות שמורות ובניה מרות לוח בקרה בעבור המשתמש; כל SQL עדיין הפעלה דרך תפקיד ClickHouse read-only של הארגון, אז זה מרחיב מה העוזר יכול יוצר, לא נתונים אותו יכול הגיע. Scopes קבועים בקוד ולא יכול להיות מורחב בתצורה. מפתח זה מוגן; זה לא יכול מושבת או regenerated דרך ה-API, רק rotated על ידי שינוי הערך והפעלה מחדש. לעולם לא השתמש מחדש admin/dashboard מפתח לכך.
 
-- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, מחולק על ידי `toYYYYMM(ts)`, מסודר על ידי `(session_id, ts, dedup_key)`. כפול מכניס (collector retries) שיתוף שורה יחיד בעת merge זמן; השרת מחשבות deterministic SHA-256 `dedup_key` עבור כל אירוע כדי retries בטוחות.
-- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, מחולק על ידי `toYYYYMM(finished_at)`, מסודר על ידי `(session_id, finished_at, dedup_key)`. כתוב פעם לתוצאת הערכה סופית על ידי צינור evaluator. אותה dedup-key דגם כמו `events`.
-- **`agenteye.agent_sessions`**: a **VIEW** על `agenteye.events`, לא טבלה פיזית. כל עמודה היא נגזרת (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, וכו'). שום לכל-אירוע upsert ו-no separate backfill; view auto-reflects מה הוא בתוך `events`.
+הגדרה מלאה, ה-משתנה סביבה כללו התייחסות, טלמטריה אפשרויות, וביטחון הדגם הם ב-**[enterprise-docs/assistant.md](/he/agenteye/assistant)**.
 
-עבור backwards-compat עם שאלות שמורות שהפניות `analytics.evaluations` / `analytics.sessions`, השרת גם יוצר `analytics` ClickHouse בסיס נתונים עם עיקולים על `agenteye.*` טבלאות; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` כל החל שלוח.
+---
+
+## ClickHouse (אחסן אנליטיקה נדרש)
+
+ClickHouse שומר לוחי בקרה שלך הגיוני בכרכים אירוע גבוה ומאפשר SQL של עורך `/queries` צירוף על אירועים, הערכות, ופעילויות בחנות יחידה. זה את החנות קנוני נדרש לכל אירוע שנספג, כל פעילות מסוף תוצאה, והנגזר לכל-פעילות צבירות. PostgreSQL מחזיק את יחסית / mutable-מצב טבלאות (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); ה-משטח אנליטי חי ב-ClickHouse כך לוח הבקרה's rollups וה-SQL שלך שאילתות יכול סריקה וצירוף זה בעצמו, ללא cross-database סיבובים. השרת מסרב טעון ללא `CLICKHOUSE_URL`.
+
+### סכימה
+
+שלוש ClickHouse עצמים נוצרים בהפעלת שרת, כל idempotent (`CREATE IF NOT EXISTS`):
+
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, חולק לפי `toYYYYMM(ts)`, סדור לפי `(session_id, ts, dedup_key)`. כפול insert (collector ניסיונות) קוטע שורה יחידה בהתמזגות זמן; השרת מחשב קובע SHA-256 `dedup_key` לכל אירוע אז ניסיונות בטוחים.
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, חולק לפי `toYYYYMM(finished_at)`, סדור לפי `(session_id, finished_at, dedup_key)`. כתובה פעם אחת לכל טרמינל הערכה תוצאה על ידי קו האורך evaluator. אותם dedup-key דגם כמו `events`.
+- **`agenteye.agent_sessions`**: **VIEW** על `agenteye.events`, לא טבלה פיזית. כל עמודה נגזרת (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, וכו'). אף לא לכל-אירוע upsert ולא ממלא נפרד; ה-view auto-מחזיר איך הוא בתוך `events`.
+
+לעבור-compat עם שמורה שאילתות שהגיע `analytics.evaluations` / `analytics.sessions`, השרת גם יוצר `analytics` ClickHouse מסד נתונים עם נבטים על `agenteye.*` טבלאות; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` כל התמיד בנקיוות.
 
 ### תצורה
 
-docker-compose המרוכז ו `deploy/base/clickhouse/` חנות ClickHouse שירות tuned עבור workload של AgentEye:
+ה-משודר docker-compose וגם `deploy/base/clickhouse/` משדר שירות ClickHouse כיוונון לעומס עבודה של AgentEye:
 
-- 2 GiB בקשה / 4 GiB restrict זיכרון בתיקייה משלחת base overlay (sized להתאים קטן POC/staging צמתים); ייצור לקוחות צריך overlay למעלה — הרצפה מומלצת היא 2c / 4Gi בקשה, 6c / 8Gi restrict. `max_server_memory_usage_to_ram_ratio=0.9`
-- 5 GiB סימן חסומה + 8 GiB uncompressed חסומה
+- 2 GiB בקשה / 4 GiB כחוג זיכרון בבסיס משודר overlay (בגודל לעמוד קטן POC/staging צמתים); ייצור לקוחות צריכים overlay עד — הרצפה מומלצת היא 2c / 4Gi בקשה, 6c / 8Gi כחוג. `max_server_memory_usage_to_ram_ratio=0.9`
+- 5 GiB סימן אחסן + 8 GiB דחוסu אחסן
 - `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
 - MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
-- `local_io_method=auto` (io_uring על supported kernels)
-- `fsync_metadata=0`: קביל כי של לפחות-פעם-אחת ingest + ReplacingMergeTree dedup
+- `local_io_method=auto` (io_uring בתמיכת צמתים)
+- `fsync_metadata=0`: קביל כי לפחות-פעם ingest + ReplacingMergeTree dedup
 - `query_log` מופעל עם 30-יום TTL; `query_thread_log` הוסר (יקר בגבוה QPS)
-- `max_execution_time=30` עבור בצד-משתמש queries
-- 100 GiB PVC בתבנית StatefulSet (משתמש overlays צריך override ל-fast SSD storage class עבור ייצור)
+- `max_execution_time=30` לשאילתות בצד משתמש
+- 100 GiB PVC בתבנית StatefulSet (לקוח overlays צריך לעלות מהיר SSD סוג אחסן לייצור)
 
-### Backups
+### גיבויים
 
-ערכת הנתונים המוקדמת שלך מתקבלת nightly בחוקי יחיד restoreable, כל צומת או אחסן הפסד recoverable. ClickHouse מגובה באופן אוטומטי על ידי יומי `agenteye-backup` CronJob, אשר חנויות PostgreSQL וClickHouse ב-pass אחד. ClickHouse קרוא על פני HTTP API שלו: `agenteye.events` ו `agenteye.evaluations` dumped ב-ClickHouse-native עיצוב (ה-views וקו מדיניות recreated על ידי שרת בעת התחלה, כדי טבלה נתונים היא התמונה מלאה) וצרור עם Postgres dump כדי archive דחוס יחיד upload ל-object אחסן שלך.
+הנתונים המלאים שלך נתפסים כל לילה בארכיון תערוקה יחיד, אז אשכול או אובדן אחסן ניתן להחזיר. ClickHouse נתמך באופן אוטומטי על ידי ה`agenteye-backup` CronJob יומי, דפדפן אחוות PostgreSQL וClickHouse בעבור. ClickHouse קרא על ה-HTTP API שלה: `agenteye.events` וגם `agenteye.evaluations` דפדפן ב-ClickHouse-ילידי פורמט (ה-נבטים וקצבה מדיניות יוצרו מחדש על ידי השרת בהפעלה, אז נתונים טבלה הוא תמונה מלאה) וקיבוץ עם מצע Postgres לארכיון דחוסu יחיד מוספות לאחסן עצמים שלך.
 
-יעד bucket וודת credentials עננים configured לכל overlay. ראה את **Backups** סעיף של [enterprise-docs/kubernetes-deployment.md](/he/agenteye/kubernetes-deployment) עבור upload תצורה ו-restore שלבים.
+ה-bucket היעד וערבון מהוד מוגדרים לכל overlay. ראה סעיף **גיבויים** של [enterprise-docs/kubernetes-deployment.md](/he/agenteye/kubernetes-deployment) לעלות תצורה וחזור שלבים.
 
 ---
 
-## Redis (אופציונלי חסומה)
+## Redis (אחסן זיכרון אופציונלי)
 
-Redis היא **אופציונלי** משותפת חסומה + קצב-הגבלה backend בשימוש על ידי שרת ודשבורד. עם Redis deployed ו `REDIS_URL` הגדר על שניהם שירותים:
+Redis היא **אופציונלי** אחסן זיכרון משותף + בקצה שיעור הגבלה בשימוש על ידי השרת ולוח הבקרה. עם Redis פרוסה ו-`REDIS_URL` קבוע על שני שירותים:
 
-- **Server** משימור מאומת API-key lookups, `/events/environments` + `/evaluations/environments` רשימות, `/events/latency_aggregate` rollup (הכבדה ביותר query דשבורד סקרים), `/sessions` רשימות, וmoves קצב OTP בקשה מ-Postgres `COUNT(*)` ל-Redis `INCR + EXPIRE`.
-- **Dashboard** משימור `validateSession()` תוצאות כדי 10-20 authed API קוראות typicalpage load ממנו כל שיתוף בעלות סשן בודד. זה גם קצב-גבולות OTP בקשה וOTP-verify בדשבורד edge.
+- **Server** משמור התייקדויות API-key, ה-`/events/environments` + `/evaluations/environments` רשימות, ה-`/events/latency_aggregate` rollup (הכבד ביותר שאילתה לוח הבקרה סקרים), ה-`/sessions` רשימה, וסוויץ' שיעור הגבלה בקשה OTP מ-Postgres `COUNT(*)` ל-Redis `INCR + EXPIRE`.
+- **Dashboard** משמור `validateSession()` תוצאות אז ה-10-20 authed API מטלות עלות דף טיפול שכל חלוקה משותף אחד בדיקה זרם שרת. זה גם משעות מקצב OTP-בקשה וOTP-עד זה קצה לוח הבקרה.
 
-**שניים שירותים degrade gracefully אם Redis להגיע.** כל חסומה קריאה מחזירה `Err` בתוך bounded timeout וקורא חוזר למקור האמת (Postgres על שרת, ה-Rust שרת upstream על דשבורד). קצב OTP חוזר ל-Postgres `COUNT(*)` דרך על שרת (ביטחון רכוש היא preserved); דשבורד edge OTP הגבול נכשל פתוח בזמן שרת-צד הגבול עדיין מחזיק. Redis להיות למטה degrades latency, לא correctness.
+**שני שירותים יורדים בחן אם Redis לא מושג.** כל קריאת אחסן זיכרון מחזירה `Err` בתוך timeout קשור וקורא חוזר ל-מקור האמת (Postgres בשרת, הנחמד Rust שרת בלוח הבקרה). OTP שיעור הגבלה חוזר ל-Postgres `COUNT(*)` נתיב בשרת (הביטחון רכוש שמור); לוח הבקרה's קצה OTP הגבלה נופל פתוח בזמן השרת בצד הגבלה עדיין ממשיכה. Redis הווה למטה פוגע זמן-חזון, לא תקינות.
 
 ### תצורה
 
-docker-compose חבילה כבר כולל Redis שירות וhardwares `REDIS_URL=redis://redis:6379/0` לתוך שרת ודשבורד. לשימוש בחיצוני Redis, הגדר `REDIS_URL` ל-endpoint ושלך הסר `redis` שירות מ-compose קובץ.
+ה-docker-compose צרור כבר כולל שירות Redis וקווי `REDIS_URL=redis://redis:6379/0` לשרת ולוח הבקרה. כדי להשתמש ב-Redis חיצוני, הגדר `REDIS_URL` לנקודה הקצה שלך והסר את `redis` שירות מקובץ הרכבה.
 
-### זיכרון + persistence
+### זיכרון + התמשכות
 
-bundled Redis תמונה פעולה עם `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. AOF persistence פירוש החסומה survives כלי restarts; `everysec` הוא האמצע נכון durability/perf כי losing את אחרוני secondes של החסומה כתיבות בטל. LRU eviction caps זיכרון גדילה.
+ה-משודר Redis תמונה פועלת עם `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. AOF התמשכות מקבל אחסן זיכרון מן שרת תא; `everysec` הוא הנכון קביעות/ביצועים איזון מכיוון שאבד אחרון שנייה של אחסן זיכרון כתיבה harmless. LRU eviction תקווה זיכרון גדילה.
 
-### כאשר לא ל-deploy Redis
+### מתי לא פרוס Redis
 
-- יחיד-מופע פיתוח/QA. ה-in-process caches על שרת לבדו deliver רוב of per-replica הטבה; Redis מוסיף את הצלב-replica חלוקה שהיחיד-מופע setups לא צורך.
-- אוויר-gapped מתקנים כאשר על פעולתי עלות של ריצה אחד יותר שירות outweighs את latency לצד חלוקה.
+- יחיד-instance dev/QA. ה-in-process אחסנים בשרת לבד לספק כמו כל לכל-חזרה טובה; Redis מוסיף את כל-חזרה שיתוף עומס שיחיד-instance להגדרות לא צורך.
+- אויר-מנותק התקנות איפה שהם תפעול עלות של הפעלה אחד יותר שירות משקל הזמן-חזון.
 
 ---
 
 ## Docker Compose (מומלץ)
 
-A `docker-compose.yml` זמין ב `agenteye-enterprise/releases` repo. זה מעלה Postgres, ClickHouse, Redis, שרת, ודשבורד עם פקודה יחיד.
+ה-`docker-compose.yml` זמין בריפו `agenteye-enterprise/releases`. זה עלויות Postgres, השרת, ולוח הבקרה עם פקודה יחידה.
 
 ```bash
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
@@ -283,19 +281,19 @@ GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
 cd agenteye
 ```
 
-**דרוג ברירות מחדל דרך `.env`:**
+**עלויות ברירות מחדל דרך `.env`:**
 
 ```
-# שימוש URL-safe סיסמאות (לא /, +, או = תווים).
-# ייצור עם: openssl rand -hex 24
+# Use URL-safe passwords (no /, +, or = characters).
+# Generate with: openssl rand -hex 24
 POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
 
-# דשבורד אימות
+# Dashboard authentication
 ADMIN_EMAIL=admin@yourcompany.com
 ALLOWED_EMAILS=*@yourcompany.com
 
-# SMTP עבור דוא"ל OTP (השמט ל-log קודי OTP ל-stdout)
+# SMTP for OTP emails (omit to log OTP codes to stdout)
 # SMTP_HOST=smtp.yourprovider.com
 # SMTP_PORT=587
 # SMTP_USERNAME=your-smtp-user
@@ -309,13 +307,13 @@ RUST_LOG=info
 docker compose up -d
 ```
 
-**עצור (שומר נתוני כרך):**
+**עצור (שומר נתונים כרך):**
 
 ```bash
 docker compose down
 ```
 
-**עצור וwipe כל נתונים:**
+**עצור וחזל כל הנתונים:**
 
 ```bash
 docker compose down -v
@@ -323,78 +321,65 @@ docker compose down -v
 
 ---
 
-## הגדרות תפעוליות
+## הגדרות תפעול
 
-קבוצה קטנה של תפעול קנבסים שבשימוש להיות נעוצה על ידי env vars הם כעת editable לכל ארגון מ-**`/<org>/settings`** דשבורד עמוד; כל ארגון מוגדר שלה שלה. שינויים לא עובר בתוך שניות, עם לא restart ואין redeploy.
+כמה קבוצה של קבוצת תפעול הצמד להיות משודר על ידי env vars הם כעת editable לכל ארגון מ-**`/<org>/settings`** דף לוח הבקרה; כל ארגון מורכב משלה. שינויים ייכנסו ליום שניות, עם אף restart ו-אף redeploy.
 
-| הגדרה | Bootstrap env var | מה שזה שולטים |
+| הגדרה | Bootstrap env var | מה זה בקרה |
 |---|---|---|
-| חתימה מורשית-ins | `ALLOWED_EMAILS` | דוא"לים (או `*@domain.com` wildcards) מורשים לקבל OTP ויהיו משתמשים |
-| ברירת מחדל הרשאות משתמש | `DEFAULT_USER_PERMISSIONS` | פסיק-בתור רשימה רשאות tokens pre-selected כאשר admin פתוחים **+ משתמש חדש**. כל token חייב להיות אחד מה-strings רשום תחת [הרשאות מפתח API](/he/agenteye/api-keys). defaults ל-`standard` preset: read-only גישה בתוספת כל יום אודון-התיחות (תעסוקה re-evaluations, פעולה queries, ack incidents, שימוש assistant). |
-| סשן lifetime | `SESSION_TTL_SECS` | אנגשת ארוך dash לוגין נשאר תוקף לפני re-auth. דשבורד re-checks upstream סשן כל 5 שניות, כדי הרשאה עדכון על `/<org>/users` לוקח השפעה על השפעו משתמש של בקשה הבאה, עם לא relogin. |
-| חד-זמן-קוד lifetime | `OTP_TTL_SECS` | אנגשת ארוך OTP / קסום-link נשאר usable |
-| התראה notification ערוצים | `ALERTS_ENABLED_CHANNELS` | פסיק-בתור רשימה ערוץ סוגים dispatcher התראה מורשה להשתמש: `email`, `slack`, `webhook`. לכל-alert תצורה עדיין authored על `/<org>/alerts/<id>`, אך dispatcher מסננים כל יוצא-dispatch דרך set זה; ערוץ השבת כאן short-circuits עם `skipped_disabled` ביקורת שורה. `dashboard` ערוץ (local ביקורת הוסף) תמיד מורשה. Defaults להכל שלוש על. |
+| מורשה sign-ins | `ALLOWED_EMAILS` | דוא"לים (או `*@domain.com` תעדול) בהיתר OTP לקבל וליהיות יצור כמו משתמשים |
+| המשתמש הרשאות ברירת מחדל | `DEFAULT_USER_PERMISSIONS` | פסיק-מופרדים הרשאה אסימונים preselected מתי admin פועל **+ חדש משתמש**. כל אסימון חייב להיות אחד מ-מחרוזות תחת [API key הרשאות](/he/agenteye/api-keys). ברירות ל-`standard` preset: read-only גישה בתוספת בכל-יום on-call פעולות (טריגר re-הערכות, הפעלה שאילתות, ack התרעות, השתמש העוזר). |
+| פעילות lifetime | `SESSION_TTL_SECS` | כמה זמן לוח בקרה כניסה נשאר תקף לפני re-auth. לוח הבקרה re-בדיקות זרם שרת פעילות כל 5 שניות, אז הרשאה update על `/<org>/users` בעלויות השפעו משתמש הבא בקשה, ללא relogin. |
+| חד-פעמי-קוד lifetime | `OTP_TTL_SECS` | כמה זמן OTP / קסום-קישור נשאר usable |
+| התריעה הודעות ערוצים | `ALERTS_ENABLED_CHANNELS` | פסיק-מופרדים רשימה ערוץ סוגים מפזר התריעה היא בהיתר להשתמש: `email`, `slack`, `webhook`. לכל-התריעה תצורה עדיין יוצר על `/<org>/alerts/<id>`, אך מפזר משפעות כל משלוח יוצא דרך סט זה; ערוץ מנוטרל כאן קצר-מעגלים עם `skipped_disabled` ביקורת שורה. ה-`dashboard` ערוץ (המקום ביקורת הדחק) תמיד בהיתר. ברירות ל-כל שלוש בעל.
 
-### איך bootstrap פעולה
+### כיצד bootstrap עבודות
 
-הגדרות מאוחסן לכל ארגון בתוך `org_settings`. בעת boot ראשונה, שרת זורעות ברירת מחדל ארגון של שורות חסרות מ-matching env var (או default sensible אם env var הוא unset). אחרי כן, **הערך מאוחסן היא המקור של אמת ו-env var הוא התעלם**; עדכון env var בעת restart לאחר מכן לא ישפיע על לחיות ארגון של ערך, ו-additional ארגונים התחיל מברירות מחדל וconfigure שלהם שלהם.
+הגדרות מאוחסנות לכל ארגון ב-`org_settings`. בהפעלה ראשונה, השרת זורעות בברירת המחדל ארגון דפופים שורות מ-התאמה env var (או קוונטי ברירת מחדל אם env var הוא unset). אחרי כך, **מאוחסן ערך הוא מקור האמת ו-env var התעלם**; שינוי env var עם מאוחר restart לא ישפיעו ב-אורך ארגון חי ערך, וקבוצות בנוסף התחלה מ-ברירות ותורכל משלהם.
 
-פירושו זה:
+זה אומר:
 
-- עבור fresh deploy, הגדר env vars כמו לעיל ו-default ארגון משמיע אותם בעת boot ראשונה.
-- כדי לשנות ערך מאוחר, חתום לתוך דשבורד וedit זה תחת `/<org>/settings`. שינוי חל בתוך שניות על כל server משכפלות; לא restart נדרש.
-- A startup יומן שורה רשומות מה קיבל seeded לעומת מה היה כבר מתנו, כדי אתה יכול לאשר bootstrap took השפעה:
+- ל-טרי redeploy, קבוע env vars כמו לעיל ו-ברירת המחדל ארגון קוראים אותם בהפעלה ראשונה.
+- כדי שנה ערך מאוחר, היכנס לוח הבקרה ו-עריכה זה תחת `/<org>/settings`. השינוי מיושם בתוך שניות על כל שרת חזרות; אף restart נדרש.
+- הפעלה יומן ישר רשמות מה זרע לעומת מה היה כבר קיים, אז אתה יכול לבטח bootstrap לקח אפקט:
 
   ```text
   INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
   ```
 
-#### חתימה-in semantics על פני ארגונים
+#### Sign-in סמנטיקה על פני ארגונים
 
-סשן ו-OTP הם גלובלי ל-user, לא ל-single ארגון, כדי שני כללים מסכם לכל-ארגון הגדרות בעת sign-in:
+פעילות ו-OTP היא גלובלי ל-משתמש, לא ל-יחיד ארגון, אז שניים כללים התמיר לכל-ארגון הגדרות ב-sign-in זמן:
 
-- **Seshon / OTP lifetime**: את strictest (קצר) lifetime בין ארגונים משתמש שייך ל-wins.
-- **Allowed sign-ins**: ה-gate ORs כל ארגון allowlist ביחד עם ארגון חברות: משתמש אולי בקשה OTP אם כלום ארגון allowlist admits דוא"ל שלהם **או** הם כבר חברה של כלום ארגון.
+- **פעילות / OTP lifetime**: הקפיד (הקצרה) lifetime בין ארגונים משתמש שייכות לחמש.
+- **מורשה sign-ins**: ה-קרית OR כל-ארגון allowlist יחד עם ארגון חברות: משתמש יכול בקשה OTP אם כל-ארגון allowlist יחמנים דוא"ל **או** הם כבר חברות של כל-ארגון.
 
 ### הרשאות
 
-גישה ל-`/<org>/settings` עמוד היא gated על ידי שתי הרשאות:
+גישה ל-`/<org>/settings` עמוד gated על ידי שניים הרשאות:
 
-- `settings:read`: ראה עמוד וערכים הנוכחיים.
+- `settings:read`: ראה העמוד וערכים נוכחיים.
 - `settings:write`: שמור שינויים.
 
-bootstrap admin משתמש (seeded מ `ADMIN_EMAIL`) קבל שניהם באופן אוטומטי יחד עם כל הרשאה אחרת. מתן אותם ל-users אחרים מ `/<org>/users` כמו נדרש.
+ה-bootstrap admin משתמש (זורע מ-`ADMIN_EMAIL`) מקבל שניהם באופן אוטומטי יחד עם כל הרשאה אחרת. תן אותם משתמשים אחרים מ-`/<org>/users` כמו יש צורך.
 
 ---
 
-## ארגונים (מולטי-דיירנות)
+## ארגונים (רב-דיירים)
 
-פריסה יחיד יכול לשרת מרובים מבודדים **ארגונים** (דיירנים); כל שורה נתוני שייך ל-org בדיוק אחד וגידול הוא כפוי-engine בבסיס הנתונים. יחיד-דיירני התקנה צרכים כלום כאן; כל נתוני חיים ב-built-in `default` ארגון. (אתה יכול תן את ארגון friendly שם ו-URL slug, כדי זה חיים ב-e.g. `/acme` במקום `/default`, על ידי הגדרת `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` לפני ראשון boot, או על ידי הפיכת שם זה כלום זמן עם `agenteye-orgctl org rename`.)
+פריסה יחידה יכול להשרת מרובה מבודדות **ארגונים** (דיירים); כל שורה נתונים שייכות בדיוק אחד ארגון ובידוד אוכף בצד מסד הנתונים. דיירים-יחיד התקנה צורך כלום כאן; כל נתונים חי בבנוי `default` ארגון. (אתה יכול לתן ארגון זה chatty שם וURL תעד, אז זה חי ב-, `/acme` במקום `/default`, על ידי הגדרה `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` לפני הראשון boot, או על ידי שינוי שם זה בכל זמן עם `agenteye-orgctl org rename`.)
 
-**דיירן provisioning הוא אופרטור-בלבד.** ארגונים וחברויות שלהם נוצרים וניהול עם **`agenteye-orgctl`** CLI, אשר חנויות **בתוך שרת תמונה** (יחד עם `agenteye-server`) וריצה **בתוך קיים שרת pod**; יש **אין pod/Job נפרד, אין HTTP API, ואין dשbורד כפתור**. זה reuses שרת של `DATABASE_URL`, `CLICKHOUSE_URL`, ו `ORG_CH_SECRET`.
+**Tenant הפקה הוא תפעול-רק.** ארגונים וחברות שלהם יוצרות וניהול עם **`agenteye-orgctl`** CLI, זה משודר **בתוך שרת תמונה** (יחד עם `agenteye-server`) והפעלות **בתוך שרת קיים פוד**; יש **אף נפרד פוד/עבודה, אף HTTP API, וא לוח בקרה כפתור**. זה השתמש מחדש בשרת `DATABASE_URL`, `CLICKHOUSE_URL`, וגם `ORG_CH_SECRET`.
 
 ```bash
-# Docker Compose - exec לתוך בפעולה שרת שירות:
+# Docker Compose - exec into the running server service:
 docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
 docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
 
-# Kubernetes - exec לתוך פעולה שרת Deployment:
+# Kubernetes - exec into the running server Deployment:
 kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
 ```
 
-זמין verbs: `org create | list | rename | delete | purge` ו `member add | list | update | remove`, עם builtin הרשאה מוגדרות `admin`, `standard`, ו `read-only`. נוסף חברים קבל OTP בעת dash בעליל לראשונה.
+זמין פעלים: `org create | list | rename | delete | purge` וגם `member add | list | update | remove`, עם הגדרות הרשאות מובנות `admin`, `standard`, וגם `read-only`. יצור חברות ממש OTP בהפעלה לוח הבקרה ראשון.
 
-**לפני יצירה שנייה ארגון:** הגדר חזק, יציב `ORG_CH_SECRET` (ה `org create` פקודה מסרב לרוץ על ה-built-in פיתוח ברירת מחדל) ו-ensure Postgres הוא **15+**. **Unchanged:** לכל-ארגון API מפתחות עדיין minted בדשבורד/API על ידי ארגון חברים; רק ארגון + חברות lifecycle התמורה לCLI. מלא פקודה reference ועבד דוגמה: **[enterprise-docs/tenant-management.md](/he/agenteye/tenant-management)**.
-
----
-
-## Context-window fill
-
-כל `model_response` אירוע מציג **context-fill כדור** — input בתוספת output תוקן כמו אחוז של אותו דוגמן של context חלון. ה-bands הם `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%), ו `reset context` (75–100%). AgentEye פתר דוגמן ids נפוץ באופן אוטומטי, כדי לא ראשוני תצורה נדרש.
-
-כל דוגמן ארגון חנויות מופיע תחת **הגדרות → דוגמן context חלונות**. משתמשים עם `settings:write` יכול דרוג חלון שלו או הוסף פרטי/proxy דוגמן (0–1,000,000 תוקנים); `0` פירוש "לא ידוע" וsuppresses הכדור. שינויים חל ל-newly ingested אירועים. משתמשים עם `settings:read` יכול צפה הרשימה.
-
-חדש אירועים קבל fill מן הרגע הוא upgrade. כדי גם למלא **היסטורי** אירועים (ו-per-model רשימה) עבור קיים deployment, הפעיל את one-off backfill — זה חנויות בתוך שרת תמונה (כמו `agenteye-orgctl`) וריצה בקיים שרת pod:
-
-# preview (הדפסות per-org השינוי, שינויים כלום):
-kubectl -n agenteye exec deploy/server --
+**לפני יצירת שניה ארגון:** הגדר חזק, יציב `ORG_CH_SECRET` (ה-`org create` פקודה מסרב להפעלה בברירת המחדל dev מובנית) ותמונה בטוח Postgres

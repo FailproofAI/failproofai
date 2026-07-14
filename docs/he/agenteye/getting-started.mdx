@@ -5,32 +5,32 @@ description: "תיעוד התחלה עם AgentEye."
 ---
 
 
-מדריך זה מוביל אתכם דרך התקנה מלאה של AgentEye: פריסת השרת והלוח מחוונים, התקנת הקולטן על מכונת סוכן, והוספת instrumention לקוד הסוכן Python שלכם.
+מדריך זה מלמד אתכם על הגדרת AgentEye מלאה: פריסת השרת והלוח הבקרה, התקנת המאסף על מכונת סוכן, ואינסטרומנטציה של קוד סוכן Python.
 
 ---
 
 ## מה זה AgentEye?
 
-AgentEye הוא **פלטפורמת observability והערכה בעצמי לסוכנים בבינה מלאכותית**. הוא רושם מה הסוכנים שלכם עושים — כל שלב בריצה — והוא מעניק ניקוד אוטומטי לאיכות כל ריצה שהושלמה, כך שתוכלו לראות כיצד הסוכנים שלכם מתנהגים בייצור ולתפוס regression לפני שהמשתמשים שלכם יעשו זאת.
+AgentEye היא **פלטפורמה לצפייה והערכה של סוכנים AI, המתפעלת בעצמאות**. היא מתעדת מה הסוכנים שלכם עושים — כל שלב של ריצה — וציוני באופן אוטומטי את איכות כל ריצה שהושלמה, כדי שתוכלו לראות כיצד הסוכנים שלכם מתנהגים בייצור וללכוד רגרסיות לפני שהמשתמשים שלכם עושים זאת.
 
-הנתונים זורמים בכיוון אחד בלבד: קוד הסוכן שלכם פולט **events** דרך **ה-SDK של Python** → daemon קולטן קל משקל אוגדתים ושולח אותם לשרת → events וניתוח מאוחסנים ב-**ClickHouse** (מצב תפעולי כגון ארגונים, משתמשים, מפתחות API, לוחות מחוונים ושאילתות שמורות חיות ב-**Postgres**) → אתם חוקרים הכל בלוח **המחוונים**.
+הנתונים זורמים בכיוון אחד: קוד הסוכן שלכם פולט **אירועים** דרך **ה-SDK של Python** → דמון **מאסף** קל משקל מקבצ וקרוא שהם לשרת → אירועים וניתוחים מאוחסנים ב-**ClickHouse** (מצב תפעולי כמו ארגונים, משתמשים, מפתחות API, לוחות בקרה וחיפושים שמורים גרים ב-**Postgres**) → אתה חוקר הכל ב-**לוח הבקרה**.
 
-מה אתם מקבלים:
+מה אתה מקבל:
 
-- **Events** — שביל גולמי לכל צעד בכל ריצת סוכן (קריאות כלי, קריאות מודל, hooks, שגיאות).
-- **Sessions** — אירועים אלה מגורגרים לשורה אחת לכל ריצה, כל אחת **מוערכת ומדורגת באופן אוטומטי**.
-- **Evaluations** — ניקודי איכות המיוצרים על ידי שירותי ה-evaluator שלכם, כך שירידות באיכות יופיעו ללא סקירה ידנית.
-- **Queries & dashboards** — SQL ClickHouse שמור על הנתונים שלכם, מעוצב לתוך לוחות מחוונים משותפים בהיקף ארגוני.
-- **Alerts & incidents** — כללי סף המעניקים לכם דף (דוא"ל, Slack, webhook, בתוך הלוח) בנוסף לזרימת עבודה של incident כדי לבחור אותם.
-- **CLI & AI assistant** — לקוח טרמינל (`agenteye`) וסוכן בתוך הלוח לשאילת שאלות בשפה אנגלית רגילה.
+- **אירועים** — שביל גולמי, לכל שלב של כל ריצת סוכן (קריאות כלים, קריאות מודל, hooks, שגיאות).
+- **סשנים** — אירועים אלה מגולגלים לשורה אחת לכל ריצה, כל אחת **מוערכת באופן אוטומטי** וציונים.
+- **הערכות** — ציוני איכות המיוצרים על ידי שירותי ההערכה שלך, כך שירידות בציון איכות מופיעות ללא בדיקה ידנית.
+- **חיפושים ולוחות בקרה** — SQL ClickHouse שמור על הנתונים שלך, מעוצב לתוך לוחות בקרה משותפים בהיקף ארגוני.
+- **התראות ותקריות** — כללי סף שמתריעים אותך (דוא"ל, Slack, webhook, בלוח בקרה) בתוספת זרימת עבודה של תקריות לטיפול בהן.
+- **CLI ועוזר AI** — לקוח טרמינל (`agenteye`) ועוזר בלוח בקרה לשאלות בשפה טבעית.
 
-אתם מריצים הכל בתשתית שלכם, כ-stack יחיד של Docker Compose (מדריך זה), התקנת Kubernetes בייצור, או pod יחיד שנמצא במקום. שאר המדריך מגדיר את stack ה-Compose מלא וקצה.
+אתה מריץ את כל זה בתשתית שלך, כערימת Docker Compose אחת (מדריך זה), התקנת Kubernetes בייצור, או תרמיל אחד שיתופי. שאר המדריך הזה מגדיר את ערימת ה-Compose מקצה לקצה.
 
 ---
 
-## שלב 1: הזדהות
+## שלב 1: אימות
 
-כל הנכסים של AgentEye מופצים מארגון `agenteye-enterprise` GitHub. כמפתח enterprise אתם יכולים ליצור את ה-GitHub PAT שלכם. עקבו אחר [enterprise-docs/github-token.md](/he/agenteye/github-token) לשלבים מדויקים והרשאות נדרשות.
+כל עדויות AgentEye מופצות מהארגון ב-GitHub `agenteye-enterprise`. כמפתח ארגון, אתה יכול ליצור את ה-GitHub PAT שלך. עקוב אחר [enterprise-docs/github-token.md](/he/agenteye/github-token) לדרכים מדויקים והרשאות נדרשות.
 
 ```bash
 export AGENTEYE_TOKEN=<your-github-pat>
@@ -41,11 +41,11 @@ echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 
 ---
 
-## שלב 2: פרוס את השרת והלוח
+## שלב 2: פרסם את השרת ולוח הבקרה
 
-השרת מקבל events מקולטנים ועושה אותם ניתנים לשאילתה; הלוח הוא המקום שבו אתם חוקרים אותם. Events וניתוח שנצרכו חיים ב-ClickHouse (חנות הניתוח הנדרשת), בעוד Postgres מחזיק מצב תפעולי כגון ארגונים, משתמשים, מפתחות API, לוחות מחוונים ושאילתות שמורות.
+השרת מקבל אירועים ממאספים וגורם להם להיות שאילתים; לוח הבקרה הוא המקום שבו אתה חוקר אותם. אירועים מודעים וניתוחים חיים ב-ClickHouse (חנות הניתוחים הנדרשת), בעוד Postgres מחזיק מצב תפעולי כמו ארגונים, משתמשים, מפתחות API, לוחות בקרה וחיפושים שמורים.
 
-**הורידו את קובץ ה-compose המפורסם:**
+**הורד את קובץ ה-compose שפורסם:**
 
 ```bash
 mkdir -p ./agenteye
@@ -56,38 +56,32 @@ curl -fsSL \
 cd agenteye
 ```
 
-**הגדרו את הסודות שלכם:**
+**קבע את הסודות שלך:**
 
-צרו קובץ `.env` כך שההפריסה לא תרוץ עם הרשאות ה-`admin` בברירת המחדל. לפחות הגדרו `ADMIN_KEY` ו-`POSTGRES_PASSWORD`:
+צור קובץ `.env` כך שההפריסה לא תפעל על ה-`admin` שקבוע כברירת מחדל. לפחות קבע `ADMIN_KEY` ו-`POSTGRES_PASSWORD`:
 
 ```bash
 POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
 ```
 
-כמו כן ייצאו `ADMIN_KEY` בשל שלכם הנוכחי כך ששלבים מאוחרים (למשל ה-`curl` בשלב 3) יוכלו להתייחס אליו ישירות:
-
-```bash
-export ADMIN_KEY=your-admin-secret
-```
-
-**הפעילו את ה-stack:**
+**הפעל את הערימה:**
 
 ```bash
 docker compose up -d
 ```
 
-זה מביא את ה-stack המלא, כולל ClickHouse analytics store הנדרש ומטמון Redis אופציונלי, בצד השרת והלוח. ClickHouse צריך להיות בריא כדי שהשרת יתחיל.
+זה מעלה את כל הערימה, כולל חנות הניתוחים ClickHouse הנדרשת ומטמון Redis אופציונלי, לצד השרת ולוח הבקרה. ClickHouse חייב להיות בריא כדי שהשרת יתחיל.
 
-השרת מקשיב עכשיו ב-`http://localhost:8080` והלוח ב-`http://localhost:3000`.
+השרת כעת מקשיב ב-`http://localhost:8080` ולוח הבקרה ב-`http://localhost:3000`.
 
-לפריסות בייצור (Postgres מותאם, TLS, reverse proxy), ראו [enterprise-docs/deployment.md](/he/agenteye/deployment).
+לפריסות ייצור (Postgres מותאם, TLS, reverse proxy), ראה [enterprise-docs/deployment.md](/he/agenteye/deployment).
 
 ---
 
-## שלב 3: צרו מפתח API עבור הקולטן
+## שלב 3: צור מפתח API עבור המאסף
 
-כל קולטן מאומת עם מפתח API בהיקף. השתמשו ב-`ADMIN_KEY` שהגדרתם בשלב 2 ליצירה של אחד:
+כל מאסף מתחייב עם מפתח API בהיקף. השתמש ב-`ADMIN_KEY` שקבעת בשלב 2 ליצירת אחד:
 
 ```bash
 curl -s -X POST http://localhost:8080/keys \
@@ -96,15 +90,15 @@ curl -s -X POST http://localhost:8080/keys \
   -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
 ```
 
-אתם מספקים את ערך `key` בעצמכם; השתמשו בו בתצורת הקולטן בשלב 4. ראו [enterprise-docs/api-keys.md](/he/agenteye/api-keys) לניהול מפתחות מלא.
+אתה מספק את ערך `key` בעצמך; השתמש בו בתצורת המאסף בשלב 4. ראה [enterprise-docs/api-keys.md](/he/agenteye/api-keys) לניהול מפתח מלא.
 
 ---
 
-## שלב 4: התקנת הקולטן
+## שלב 4: התקן את המאסף
 
-על כל מכונה המריצה את הסוכנים בתחום הבינה המלאכותית שלכם, התקינו את daemon הקולטן.
+על כל מכונה שמריצה את סוכני ה-AI שלך, התקן את דמון המאסף.
 
-**הורידו את הקובץ הבינארי (Linux x86_64):**
+**הורד את הבינארי (Linux x86_64):**
 
 ```bash
 VERSION=0.0.1-beta.13
@@ -115,9 +109,9 @@ chmod +x agenteye-collector-linux-x86_64
 sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
 ```
 
-> זה מוריד את הבנייה של **Linux x86_64**. עבור macOS (Apple Silicon או Intel), Linux arm64, או Docker / systemd / launchd setup, ראו [collector-installation.md](/he/agenteye/collector-installation), המוצגת ההורדה עבור כל פלטפורמה — הפקודה לעיל מתקינה קובץ בינארי של Linux שלא יפעל במקום אחר.
+> זה מוריד את הבנייה של **Linux x86_64**. עבור macOS (Apple Silicon או Intel), Linux arm64, או Docker / systemd / launchd setup, ראה [collector-installation.md](/he/agenteye/collector-installation), המפרטת את ההורדה לכל פלטפורמה — הפקודה לעיל מתקינה בינארי Linux שלא יעבוד במקומות אחרים.
 
-**הגדירו:**
+**קבע תצורה:**
 
 ```bash
 mkdir -p ~/.agenteye
@@ -129,25 +123,25 @@ cat > ~/.agenteye/config.json <<EOF
 EOF
 ```
 
-**הפעילו את ה-daemon:**
+**הפעל את הדמון:**
 
 ```bash
 agenteye-collector start
 ```
 
-אמתו את החיבור עם flush חד-פעמי (יוצא לאחר ניקוז כל events שמתוחזק):
+אמת חיבור עם שטיפה חד-פעמית (יוצא לאחר ניקוז כל אירועים שמחכים):
 
 ```bash
 agenteye-collector flush
 ```
 
-עבור Docker, systemd, ו-launchd setup ראו [enterprise-docs/collector-installation.md](/he/agenteye/collector-installation).
+עבור Docker, systemd, ו-launchd setup ראה [enterprise-docs/collector-installation.md](/he/agenteye/collector-installation).
 
 ---
 
-## שלב 5: התקנת ה-SDK של Python
+## שלב 5: התקן את ה-SDK של Python
 
-על כל מכונה שבה אתם רוצים להוסיף instrumention לקוד סוכן, התקינו את ה-wheel מ-GitHub Releases.
+על כל מכונה שבה אתה רוצה להטביע קוד סוכן, התקן את ה-wheel מ-GitHub Releases.
 
 ```bash
 VERSION=0.0.1b9
@@ -159,9 +153,9 @@ pip install agenteye-${VERSION}-py3-none-any.whl
 
 ---
 
-## שלב 6: הוסיפו Instrumention לסוכן שלכם
+## שלב 6: הטמע את הסוכן שלך
 
-הוסיפו events לקוד הסוכן שלכם. לפחות, פלטו `agent_start` ו-`agent_end`:
+הוסף אירועים לקוד הסוכן שלך. לפחות, פלט `agent_start` ו-`agent_end`:
 
 ```python
 import agenteye
@@ -181,56 +175,56 @@ agenteye.event.agent_end(
 )
 ```
 
-Events מועברים לחסימה ומשטפו ל-`$AGENTEYE_HOME/events/` (או `~/.agenteye/events/` אם `AGENTEYE_HOME` לא מוגדר) כל 500 ms. הקולטן אוגרים אותם באופן אוטומטי.
+אירועים מעוספים וניקוז ל-`$AGENTEYE_HOME/events/` (או `~/.agenteye/events/` אם `AGENTEYE_HOME` לא מוגדר) כל 500 ms. המאסף בוקט אותם באופן אוטומטי.
 
-ראו [enterprise-docs/python-sdk.md](/he/agenteye/python-sdk) עבור ה-event API המלא.
-
----
-
-## שלב 7: צפו ב-Events בלוח
-
-פתחו `http://your-dashboard-host:3000` והיכנסו. AgentEye שולח לכם דוא"ל עם קוד חד-פעמי (או קישור קסום בלחיצה אחת), ולכן אין סיסמה לניהול.
-
-![מסך הכניסה של AgentEye, ששולח קוד חד-פעמי לדוא"ל שלכם](/agenteye/images/login.png)
-
-לאחר שאתם פנימה, עמוד ה-**Events** מציג שביל חי של כל ה-events שנצרכו. סננו לפי `session_id` או `agent_id` כדי להעמיק בריצה ספציפית.
-
-![הזרם החי של Events, מקודד בצבע לפי סוג event וניתן לסינון לפי סביבה, סוכן וsession](/agenteye/images/events-stream.png)
-
-עמוד ה-**Sessions** מגרגר את אלה events לשורה אחת לכל ריצה. AgentEye מעריך באופן אוטומטי sessions שהושלמו, כך שכל ריצה מדורגת ורגרסיות באיכות מופיעות ללא סקירה ידנית; ניקוד ההערכה העדכני ביותר מופיע בכל שורה בהצצה ראשונה:
-
-![רשימת ה-Sessions, שורה אחת לכל ריצה, עם pills של סטטוס ובאדג'ים של ניקוד הערכה](/agenteye/images/sessions-list.png)
-
-כדי להגדיר כיצד sessions מדורגים, ראו [enterprise-docs/evaluation-suite.md](/he/agenteye/evaluation-suite).
-
-לחצו על כל session כדי לפתוח את **execution graph** שלה, תצוגה בסגנון git של איך סוכנים, כלים, hooks וקריאות מודל התגלגלו לאורך הזמן, עם תת-סוכנים מקבילים בנתיבים משלהם וחלוקה לכל ריצה בנתיב הימני:
-
-![execution graph של session בסגנון git לצד ציר הזמן של events שלה, עם פאנל ההתפרקות של tool/model/hook](/agenteye/images/session-detail.png)
+ראה [enterprise-docs/python-sdk.md](/he/agenteye/python-sdk) ל-API של אירועים מלא.
 
 ---
 
-## שלב 8: חקרו, תרשים ותריגר
+## שלב 7: צפה באירועים בלוח הבקרה
 
-עם events זורמים, עמודי ה-**analyze** הופכים פעילות גולמית לתשובות, כך שתוכלו למדוד התנהגות סוכן, לשתף ממצאים בכל הצוות, ולקבל דף ברגע שמשהו נסוג. עמודי לוח מחוונים הם בהיקף ארגוני, ולכן ה-URLs שאתם רואים בסרגל הכתובות מקודמו עם slug הארגון שלכם (`/<org>/…`).
+פתח `http://your-dashboard-host:3000` והכנס. AgentEye שולח לך קוד כלילי (או קישור קסום למשימה אחת), ולכן אין סיסמה לניהול.
 
-- **Queries** (`/<org>/queries`): התחלו מספריית שאילתות שמורות וניתנות לשימוש חוזר על ה-events והערכות שלכם (presets מובנים בתוספת שלכם)…
+![מסך ההכנסה של AgentEye, הקולל קוד חד-פעמי לדוא"ל שלך](/agenteye/images/login.png)
 
-![ספריית השאילתות השמורות: רשת של שאילתות שניתן לשימוש חוזר, גם presets מובנים וגם שאילתות מותאמות אישית](/agenteye/images/queries.png)
+ברגע שאתה בפנים, דף **Events** מציג ריסה חיה של כל האירועים המודעות. סנן לפי `session_id` או `agent_id` כדי להעמיק לריצה ספציפית.
 
-  …לאחר מכן פתחו אחת ב-SQL composer כדי לכוונן אותה והריצו אותה עם תוצאות חיות:
+![זרם אירועים חי, צבעוני לפי סוג אירוע וניתן לסנון לפי סביבה, סוכן וסשן](/agenteye/images/events-stream.png)
 
-![מחברת שאילתות SQL המריצה שאילתה שמורה, עם סרגל צדדי של סכימה וגריד תוצאות חי](/agenteye/images/query-lab.png)
+דף **Sessions** מגלגל אירועים אלה לשורה אחת לכל ריצה. AgentEye מעריך אוטומטי סשנים שהושלמו, כך שכל ריצה מעוצבת וירידות איכות משטח ללא בדיקה ידנית; ציון ההערכה האחרון מופיע בכל שורה במבט ראשון:
 
-- **Dashboards** (`/<org>/dashboards`): קבעו שאילתות כ-line, bar, area, או pie tiles לתוך לוחות מחוונים משותפים בהיקף כל הארגון.
+![רשימת הסשנים, שורה אחת לכל ריצה, עם טביעות מצב וביטוחי ציון הערכה](/agenteye/images/sessions-list.png)
 
-![לוח מחוונים שנבנה משאילתות שמורות: line של events-per-hour, bar של errors-by-type, area chart של latency ו-tokens-by-model](/agenteye/images/dashboard-fleet.png)
+כדי להגדיר כיצד סשנים מעוצבים, ראה [enterprise-docs/evaluation-suite.md](/he/agenteye/evaluation-suite).
 
-- **Alerts** (`/<org>/alerts`): קדמו כל סף לתוך כלל עמוד המודיע לפי דוא"ל, Slack, webhook, או בתוך הלוח. ראו [enterprise-docs/alerts.md](/he/agenteye/alerts).
+לחץ על כל סשן כדי לפתוח את **גרף הביצוע** שלו, תצוגה בסגנון git של כיצד סוכנים, כלים, hooks וקריאות מודל התפתחו לאורך זמן, עם תת-סוכנים מקבילים בנתיבים משלהם וחלוקת לכל ריצה בפס הימין:
+
+![גרף ביצוע של סשן בסגנון git לצד ציר הזמן של האירועים שלו, עם לוח הפירוק של הכלים/מודל/hook](/agenteye/images/session-detail.png)
 
 ---
 
-## שלבים הבאים
+## שלב 8: חקור, תרשם והתריע
 
-- [Deployment](/he/agenteye/deployment): חסנו עבור בייצור
-- [API Keys](/he/agenteye/api-keys): נהלו גישה
-- [Troubleshooting](/he/agenteye/troubleshooting): אבחנו בעיות
+עם אירועים זורמים, דפי **ניתוח** הופכים פעילות גולמית לתשובות, כך שתוכל למדוד התנהגות סוכן, לשתף ממצאים עם הצוות, ולקבל עמוד כל פעם שמשהו רוגרס. דפי לוח בקרה הם בהיקף ארגוני, כך שכתובות ה-URL שאתה רואה בסרגל הכתובות מקדימות בקיצור הארגון שלך (`/<org>/…`).
+
+- **חיפושים** (`/<org>/queries`): התחל מספרייה של חיפושים שמורים וישימה מחדש על פני האירועים וההערכות שלך (ערכות מובנות בתוספת שלך בעצמך)…
+
+![ספרית החיפושים השמורים: רשת של חיפושים ישימה מחדש, גם עם ערכות מובנות וגם מותאמות](/agenteye/images/queries.png)
+
+  …לאחר מכן פתח אחד בקומפוזר SQL כדי לתקוף אותו והשב עם תוצאות חיות:
+
+![קומפוזר שאילתה SQL המריץ שאילתה שמורה, עם סרגל צד ערכה וגריד תוצאות חי](/agenteye/images/query-lab.png)
+
+- **לוחות בקרה** (`/<org>/dashboards`): סימן חיפושים כרעולים, בר, אזור או עוגה לתוך לוחות בקרה משותפים בהיקף ארגוני.
+
+![לוח בקרה שנבנה מחיפושים שמורים: אירועים לשעה קו, שגיאות לפי סוג בר, תרשימי אזור זמן עיכוב וטוקנים לפי מודל](/agenteye/images/dashboard-fleet.png)
+
+- **התראות** (`/<org>/alerts`): קדם כל סף לתוך כלל עמוד המודיע בדוא"ל, Slack, webhook או בלוח בקרה. ראה [enterprise-docs/alerts.md](/he/agenteye/alerts).
+
+---
+
+## השלבים הבאים
+
+- [פריסה](/he/agenteye/deployment): התקשה לייצור
+- [מפתחות API](/he/agenteye/api-keys): נהל גישה
+- [פתרון בעיות](/he/agenteye/troubleshooting): אבחן בעיות

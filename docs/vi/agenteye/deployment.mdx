@@ -3,8 +3,7 @@ title: "Triển khai"
 description: "Tài liệu triển khai AgentEye."
 ---
 
-
-Hướng dẫn này bao gồm triển khai server AgentEye và dashboard trong môi trường production.
+Hướng dẫn này đề cập đến việc triển khai máy chủ AgentEye và bảng điều khiển trong sản xuất.
 
 ---
 
@@ -30,135 +29,134 @@ Hướng dẫn này bao gồm triển khai server AgentEye và dashboard trong m
                       +-----------+
 ```
 
-- **Server**: Dịch vụ HTTP viết bằng Rust; nhận các batch sự kiện, ghi chúng vào ClickHouse, và duy trì trạng thái quan hệ trong PostgreSQL.
-- **Dashboard**: Ứng dụng web Next.js; đọc và ghi độc quyền thông qua API của server.
-- **agenteye-collector**: được triển khai trên các máy agent, không phải trên host server.
-- **Postgres 15+**: YÊU CẦU. (Được nâng lên từ 14 trong bản phát hành multi-tenant; schema thành viên tổ chức sử dụng `ON DELETE SET NULL` foreign key danh sách cột, yêu cầu Postgres 15+. Nâng cấp Postgres trước khi triển khai phiên bản này.) Lưu trữ trạng thái OLTP: `api_keys`, `users`, `sessions`, `evaluation_jobs` (hàng đợi), `dashboards`, `saved_queries`, `otp_codes`, cộng với các bảng multi-tenant `orgs`, `org_memberships`, `org_settings`.
-- **ClickHouse 24+**: YÊU CẦU. Kho lưu trữ phân tích cho mọi sự kiện được nhập. Engine: `ReplacingMergeTree`, được phân vùng theo tháng, sắp xếp theo `(session_id, ts, dedup_key)`. Server kết nối qua `CLICKHOUSE_URL`; bản triển khai đi kèm `deploy/base/clickhouse/` cung cấp cấu hình nút đơn được điều chỉnh hiệu suất. **Yêu cầu multi-tenant:** cấu hình đi kèm cho phép quản lý quyền truy cập SQL + `users_without_row_policies_can_read_rows=false` để server có thể tạo một người dùng ClickHouse chỉ đọc + chính sách hàng cho mỗi tổ chức (ranh giới cách ly được engine thực thi cho trình soạn thảo SQL và agent AI). Nếu bạn cung cấp cấu hình ClickHouse của riêng mình, hãy chuyển những cài đặt này (xem `deploy/base/clickhouse/configmap.yaml`).
-- **Redis 7+**: *tùy chọn* bộ nhớ cache được chia sẻ + backend giới hạn tốc độ. Server và dashboard đều kết nối qua `REDIS_URL`. Nếu không có, cả hai đều suy giảm một cách duyên dáng thành các đường dẫn chỉ Postgres. Xem **Redis (cache tùy chọn)** dưới đây.
+- **Server**: Dịch vụ HTTP Rust; nhận các lô sự kiện, ghi chúng vào ClickHouse và duy trì trạng thái quan hệ trong PostgreSQL.
+- **Dashboard**: Ứng dụng web Next.js; đọc và ghi độc quyền thông qua API máy chủ.
+- **agenteye-collector**: triển khai trên các máy agent, không phải trên máy chủ.
+- **Postgres 15+**: REQUIRED. (Được nâng cấp từ 14 trong bản phát hành đa thuê; lược đồ thành viên tổ chức sử dụng khóa ngoại `ON DELETE SET NULL` danh sách cột, chỉ có trong Postgres 15+. Nâng cấp Postgres trước khi triển khai phiên bản này.) Lưu trữ trạng thái OLTP: `api_keys`, `users`, `sessions`, `evaluation_jobs` (hàng đợi), `dashboards`, `saved_queries`, `otp_codes`, cộng với các bảng đa thuê `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: REQUIRED. Kho lưu trữ phân tích cho mỗi sự kiện nhập. Công cụ: `ReplacingMergeTree`, được phân vùng theo tháng, sắp xếp theo `(session_id, ts, dedup_key)`. Máy chủ kết nối qua `CLICKHOUSE_URL`; `deploy/base/clickhouse/` được đóng gói với một cấu hình nút đơn được điều chỉnh hiệu suất. **Yêu cầu đa thuê:** cấu hình được đóng gói cho phép quản lý quyền truy cập SQL + `users_without_row_policies_can_read_rows=false` để máy chủ có thể tạo một người dùng ClickHouse chỉ đọc + chính sách hàng cho mỗi tổ chức (ranh giới cô lập do công cụ thực thi cho trình chỉnh sửa SQL và agent AI). Nếu bạn cung cấp cấu hình ClickHouse của riêng mình, hãy chuyển các cài đặt này (xem `deploy/base/clickhouse/configmap.yaml`).
+- **Redis 7+**: *tùy chọn* bộ đệm chung + phía sau giới hạn tốc độ. Máy chủ và bảng điều khiển đều kết nối qua `REDIS_URL`. Nếu không có, cả hai sẽ giảm thành graceful thành các đường Postgres. Xem **Redis (bộ đệm tùy chọn)** dưới đây.
 
 ---
 
 ## Server
 
-### Tải image
+### Lấy hình ảnh
 
 ```bash
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-> Bản dựng hiện tại được phát hành dưới `beta-latest`; `latest` chỉ được gán cho các bản phát hành ổn định. Để production, hãy chọn một tag phiên bản cụ thể `:v<version>`; xem [Available Image Tags](#available-image-tags).
+> Các bản dựng hiện tại xuất bản dưới `beta-latest`; `latest` chỉ được gán cho các bản phát hành ổn định. Đối với sản xuất, hãy ghim một thẻ phiên bản cụ thể `:v<version>`; xem [Available Image Tags](#available-image-tags).
 
 ### Biến môi trường
 
-| Variable | Required | Default | Description |
+| Biến | Bắt buộc | Mặc định | Mô tả |
 |---|---|---|---|
-| `DATABASE_URL` | Yes | none | Postgres DSN. Chuỗi kết nối tiêu chuẩn libpq với scheme `postgres://`. Hỗ trợ `?sslmode=require` và các tham số libpq khác. Mật khẩu không được chứa `/`, `+`, hoặc `=`; sử dụng `openssl rand -hex` để tạo mật khẩu an toàn URL. |
-| `ADMIN_KEY` | No | none | Khóa API admin bootstrap. Được upsert với tất cả các quyền trên mỗi lần khởi động. Xoay bằng cách thay đổi giá trị và khởi động lại. |
-| `LISTEN_ADDR` | No | `0.0.0.0:8080` | Địa chỉ TCP để bind |
-| `MAX_BODY_BYTES` | No | `134217728` (128 MB) | Kích thước phần thân yêu cầu tối đa |
-| `ADMIN_EMAIL` | No | none | Email người dùng admin bootstrap. Được upsert với tất cả các quyền trên mỗi lần khởi động và đánh dấu bảo vệ: không thể bị vô hiệu hóa hoặc có quyền sửa đổi qua dashboard/API. Để xoay admin bootstrap, hãy thay đổi `ADMIN_EMAIL` và khởi động lại; email mới được upsert dưới dạng bảo vệ, và email trước đó giữ sự bảo vệ của nó cho đến khi được xóa thủ công trong cơ sở dữ liệu. |
-| `ALLOWED_EMAILS` | No | none (all blocked) | Danh sách email được phép tách bằng dấu phẩy để tạo người dùng và đăng nhập. Hỗ trợ các địa chỉ chính xác (`user@example.com`) và ký tự đại diện miền (`*@example.com`). Nếu không được đặt, không có người dùng nào có thể được tạo hoặc đăng nhập. **Chỉ seed khởi động đầu tiên**: seed danh sách cho phép tổ chức mặc định trên khởi động đầu tiên; sau đó trang [`/<org>/settings`](#operational-settings) của từng tổ chức là nguồn quy chuẩn và thay đổi biến env này không có tác dụng. |
-| `SMTP_HOST` | No | none | Tên máy chủ SMTP để gửi email OTP. Nếu không được đặt, mã OTP được ghi nhật ký vào stdout thay thế. |
-| `SMTP_PORT` | No | `587` | Cổng máy chủ SMTP |
-| `SMTP_USERNAME` | No | none | Tên người dùng xác thực SMTP |
-| `SMTP_PASSWORD` | No | none | Mật khẩu xác thực SMTP |
-| `SMTP_FROM` | No | none | Địa chỉ email người gửi cho email OTP |
-| `SMTP_TLS` | No | STARTTLS | STARTTLS được sử dụng trừ khi bạn tắt nó một cách rõ ràng: `false` hoặc `0` gửi plaintext (không TLS); bất kỳ giá trị nào khác — bao gồm không được đặt — cho phép STARTTLS. |
-| `DASHBOARD_URL` | No | built-in default | Nguồn gốc dashboard được sử dụng để xây dựng cả liên kết phép thuật OTP-email và các liên kết phép thuật sự cố trong thông báo cảnh báo. Nếu không được đặt, nó sẽ quay về mặc định tích hợp (và, chỉ dành cho OTP, quay về nguyên gốc request phát sinh từ dashboard trước tiên). Đặt điều này cho các thiết lập miền phân chia để cả email và liên kết Slack/sự cố chỉ tới dashboard của bạn. Xem **Email magic-link URL** dưới đây; hầu hết các operator không cần đặt điều này. |
-| `SESSION_TTL_SECS` | No | `86400` (24 h) | Thời lượng phiên dashboard tính bằng giây. **Chỉ seed khởi động đầu tiên**: chỉnh sửa cho mỗi tổ chức qua [`/<org>/settings`](#operational-settings) sau khi triển khai đầu tiên. |
-| `OTP_TTL_SECS` | No | `600` (10 min) | Thời gian hiệu lực mã OTP tính bằng giây. **Chỉ seed khởi động đầu tiên**: chỉnh sửa cho mỗi tổ chức qua [`/<org>/settings`](#operational-settings) sau khi triển khai đầu tiên. |
-| `REDIS_URL` | No | none | Backend bộ nhớ cache + giới hạn tốc độ được chia sẻ tùy chọn, ví dụ `redis://redis:6379/0`. Khi được đặt, server cache các tìm kiếm khóa API được xác thực, `/models` aggregate của dashboard, danh sách phiên, và facet danh sách env; nó cũng chuyển giới hạn tốc độ OTP-request từ Postgres COUNT sang Redis INCR. Nếu không được đặt hoặc không thể truy cập, server chạy mà không cache (giới hạn OTP quay về Postgres, mọi lệnh gọi cache khác đi xuống nguồn quy chuẩn). Xem **Redis (cache tùy chọn)** dưới đây. |
-| `CLICKHOUSE_URL` | **Yes** | none | URL cơ sở của phiên bản ClickHouse, ví dụ `http://clickhouse:8123`. Server áp dụng schema sự kiện của nó cho cơ sở dữ liệu này trên mỗi lần khởi động và từ chối khởi động nếu không thể tiếp cận ClickHouse. Xem **ClickHouse (kho lưu trữ phân tích bắt buộc)** dưới đây. |
-| `CLICKHOUSE_DATABASE` | No | `agenteye` | Tên cơ sở dữ liệu (schema) ClickHouse. Server tạo nó trên khởi động nếu nó không tồn tại. |
-| `ORG_CH_SECRET` | No (single-tenant) / **Yes (multi-org)** | dev default | Khóa HMAC từ đó mật khẩu ClickHouse của mỗi tổ chức được lấy. Trình soạn thảo SQL và `run_query` của agent AI thực thi như người dùng ClickHouse chỉ đọc của tổ chức, người dùng có chính sách hàng thực thi cách ly tenant trong engine. Các triển khai single-tenant khởi động tốt trên mặc định dev tích hợp; **trước khi cung cấp tổ chức thứ hai, bạn PHẢI đặt giá trị mạnh, ổn định**, vì CLI `agenteye-orgctl org create` từ chối chạy trên mặc định dev tích hợp. Xoay nó gây mồ côi mọi người dùng ClickHouse của tổ chức cho đến khi khởi động tiếp theo cung cấp lại chúng (hòa giải thời gian khởi động tự động chữa bệnh này). Giữ nó bí mật và không thay đổi trên các bản sao. Cung cấp tổ chức chính nó là chỉ operator; xem **Organizations (multi-tenancy)** dưới đây. |
-| `DEFAULT_ORG_NAME` | No | `Default` | Tên hiển thị được seed cho tổ chức mặc định tích hợp. **Chỉ seed khởi động đầu tiên**, và chỉ khi tổ chức vẫn mang danh tính chung vừa di chuyển của nó, được áp dụng trên khởi động, sau đó bị bỏ qua. Khi bạn đổi tên tổ chức (`agenteye-orgctl org rename`), tên đổi là quyền lực và biến env này không còn có tác dụng. |
-| `DEFAULT_ORG_SLUG` | No | `default` | Slug URL cho tổ chức mặc định tích hợp, đường dẫn dashboard nó sống (`/<slug>/…`). Cùng ngữ nghĩa khởi động đầu tiên / nguyên bản như `DEFAULT_ORG_NAME`. Phải là 1-40 chữ số nhỏ với dấu gạch ngang bên trong đơn và không phải [từ dành riêng](#organizations-multi-tenancy); một giá trị không hợp lệ bị bỏ qua (tổ chức giữ `default`). Cho phép cài đặt single-tenant trình bày dưới dạng ví dụ `/acme` thay vì `/default` mà không có bất kỳ bước CLI sau khi triển khai nào. |
-| `RUST_LOG` | No | `info` | Mức độ chi tiết nhật ký (`debug`, `warn`, `error`, `agenteye_server=trace`) |
-| `EVALUATOR_ENDPOINT` | No | none | URL cơ sở của dịch vụ evaluator của bạn (ví dụ `http://evaluator:9000`). Khi không được đặt, toàn bộ pipeline đánh giá là no-op; không có hàng hàng đợi được ghi, không có worker chạy. Xem [Evaluation Suite](/vi/agenteye/evaluation-suite). |
-| `EVALUATOR_TOKEN` | No | none | Được gửi dưới dạng `Authorization: Bearer <token>` tới evaluator. **Phải bằng cùng giá trị mà dịch vụ evaluator được cấu hình.** Tùy chọn chỉ khi evaluator của bạn được cấu hình mà không có token. |
-| `EVALUATOR_WORKERS` | No | `2` | Đồng thời: số tác vụ worker trên mỗi phiên bản server gửi đi các đánh giá. An toàn để chạy trên nhiều server được mở rộng theo chiều ngang. |
-| `EVALUATOR_CLAIM_BATCH` | No | `4` | Số đánh giá tối đa một worker yêu cầu trên mỗi tick. Batch được gửi **đồng thời**, vì vậy đồng thời tổng cộng trên endpoint evaluator của bạn là `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | No | `2` | Một worker ngủ bao lâu giữa các nỗ lực gửi đi khi không có gì đúng hạn. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | No | `10` | Fallback cuối cùng (giây) cho `GET /evaluate/{id}` polls khi evaluator không trả về `next_poll_secs` trên mỗi phản hồi và không quảng cáo `default_poll_interval_secs` từ `GET /config`. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | No | `30000` | Timeout per-HTTP-request chống lại evaluator (milliseconds). |
-| `EVALUATOR_MAX_ATTEMPTS` | No | `5` | Sau nhiều nỗ lực thất bại này, một đánh giá được ghi nhận là terminal `error` (hoặc `timeout` nếu các lỗi là timeout yêu cầu). |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | No | `300` (5 min) | Thường xuyên server tái tìm nạp `GET /config` từ evaluator. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | No | `3600` (1 h) | Thời gian tường tối đa một phiên có thể ở lại trong hàng đợi polling trước khi AgentEye chấm dứt nó dưới dạng `timeout`. Đảm bảo chống lại một evaluator trả về `pending` mãi mãi. |
-| `ALERT_WORKERS` | No | `1` | Đồng thời: số tác vụ worker trên mỗi phiên bản server đánh giá các quy tắc cảnh báo. Xem [Alerts](/vi/agenteye/alerts). |
-| `ALERT_CLAIM_BATCH` | No | `16` | Số cảnh báo tối đa một worker yêu cầu trên mỗi tick. |
-| `ALERT_POLL_IDLE_SECS` | No | `5` | Một worker cảnh báo ngủ bao lâu khi hàng đợi trống. |
-| `ALERT_REQUEST_TIMEOUT_MS` | No | `15000` | Timeout đánh giá kích hoạt per-trigger (ClickHouse queries + outbound channel HTTP). |
-| `ALERT_MAX_ATTEMPTS` | No | `5` | Lỗi tạm thời liên tiếp trước khi cảnh báo lên lịch ở tần suất bình thường thay vì backoff theo cấp số nhân. |
-| `AUDIT_WORKERS` | No | `1` | Đồng thời: số tác vụ worker trên mỗi phiên bản server thực thi kiểm toán. Xem [Audits](/vi/agenteye/audits). |
-| `AUDIT_CLAIM_BATCH` | No | `1` | Số kiểm toán đúng hạn tối đa một worker yêu cầu trên mỗi tick. Một cuộc điều tra agentic là một vòng lặp dài, vì vậy mặc định là 1. |
-| `AUDIT_POLL_IDLE_SECS` | No | `30` | Một worker kiểm toán ngủ bao lâu khi không có kiểm toán nào đúng hạn. |
-| `AUDIT_REQUEST_TIMEOUT_MS` | No | `30000` | Timeout per-policy-query chống lại ClickHouse (milliseconds). |
-| `AUDIT_LLM_TIMEOUT_MS` | No | `1440000` | Timeout cho cuộc gọi cuộc điều tra agentic tới dịch vụ trợ lý AI. Một vòng agent đầy đủ chạy trong nhiều phút; giữ điều này TRÊN `AGENTEYE_AUDIT_TIMEOUT_MS` của agent để agent trả về các phát hiện một phần của nó trước khi server từ bỏ. |
-| `AUDIT_MAX_ATTEMPTS` | No | `5` | Lỗi tạm thời liên tiếp trước khi kiểm toán lên lịch ở tần suất bình thường thay vì backoff theo cấp số nhân. |
-| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | No | — | Cuộc điều tra agentic của kiểm toán gọi dịch vụ trợ lý AI `agent`, **sử dụng lại kết nối tương tự như trợ lý** — vì vậy hãy đặt hai cái này trên **server** cũng (các bản rõ ràng/compose do làm việc). Cả hai đặt ⇒ kiểm toán chạy cuộc điều tra AI; hoặc có thể không được đặt ⇒ kiểm toán chạy **policy-only** (lôi SQL xác định chính sách vẫn chạy), bất kể cờ `llm_enabled` của mỗi kiểm toán. Agent cũng phải có LLM được cấu hình — xem [assistant.md](/vi/agenteye/assistant). |
+| `DATABASE_URL` | Có | không | DSN Postgres. Chuỗi kết nối libpq tiêu chuẩn với lược đồ `postgres://`. Hỗ trợ `?sslmode=require` và các tham số libpq khác. Mật khẩu không được chứa `/`, `+`, hoặc `=`; hãy sử dụng `openssl rand -hex` để tạo mật khẩu an toàn URL. |
+| `ADMIN_KEY` | Không | không | Khóa API quản trị viên bootstrap. Được upsert với tất cả các quyền trên mỗi lần khởi động. Xoay bằng cách thay đổi giá trị và khởi động lại. |
+| `LISTEN_ADDR` | Không | `0.0.0.0:8080` | Địa chỉ TCP để ràng buộc |
+| `MAX_BODY_BYTES` | Không | `134217728` (128 MB) | Kích thước yêu cầu tối đa của nội dung |
+| `ADMIN_EMAIL` | Không | không | Email người dùng quản trị viên bootstrap. Được upsert với tất cả các quyền trên mỗi lần khởi động và được đánh dấu được bảo vệ: không thể bị tắt hoặc có quyền được sửa đổi qua bảng điều khiển/API. Để xoay quản trị viên bootstrap, hãy thay đổi `ADMIN_EMAIL` và khởi động lại; email mới được upsert được bảo vệ, và email trước đó giữ lại bảo vệ cho đến khi xóa thủ công trong cơ sở dữ liệu. |
+| `ALLOWED_EMAILS` | Không | không (tất cả bị chặn) | Danh sách được phân tách bằng dấu phẩy của các email được phép để tạo và đăng nhập người dùng. Hỗ trợ các địa chỉ chính xác (`user@example.com`) và ký tự đại diện miền (`*@example.com`). Nếu không được đặt, không có người dùng nào có thể được tạo hoặc đăng nhập. **Chỉ hạt giống khởi động đầu tiên**: hạt giống danh sách cho phép org mặc định trên khởi động đầu tiên; sau đó trang [`/<org>/settings`](#operational-settings) của mỗi org là nguồn sự thật và việc thay đổi biến env này không có hiệu lực. |
+| `SMTP_HOST` | Không | không | Tên máy chủ SMTP để gửi email OTP. Nếu không được đặt, mã OTP được ghi vào stdout thay thế. |
+| `SMTP_PORT` | Không | `587` | Cổng máy chủ SMTP |
+| `SMTP_USERNAME` | Không | không | Tên người dùng xác thực SMTP |
+| `SMTP_PASSWORD` | Không | không | Mật khẩu xác thực SMTP |
+| `SMTP_FROM` | Không | không | Địa chỉ email người gửi cho email OTP |
+| `SMTP_TLS` | Không | STARTTLS | STARTTLS được sử dụng trừ khi bạn tắt nó rõ ràng: `false` hoặc `0` gửi plaintext (không TLS); bất kỳ giá trị nào khác — bao gồm không được đặt — cho phép STARTTLS. |
+| `DASHBOARD_URL` | Không | mặc định được xây dựng trong | Gốc bảng điều khiển được sử dụng để xây dựng cả liên kết phép thuật email OTP và liên kết phép thuật sự cố trong thông báo cảnh báo. Nếu không được đặt, nó quay trở lại mặc định được xây dựng sẵn (và chỉ dành cho OTP, quay trở lại gốc nguồn được bảng điều khiển lấy trước tiên). Đặt điều này cho các cài đặt miền tách để cả email và liên kết Slack/sự cố đều trỏ tới bảng điều khiển của bạn. Xem **Email magic-link URL** dưới đây; hầu hết các nhà khai thác không cần đặt điều này. |
+| `SESSION_TTL_SECS` | Không | `86400` (24 h) | Thời lượng phiên bảng điều khiển tính bằng giây. **Chỉ hạt giống khởi động đầu tiên**: chỉnh sửa theo org qua [`/<org>/settings`](#operational-settings) sau bản triển khai đầu tiên. |
+| `OTP_TTL_SECS` | Không | `600` (10 min) | Khoảng thời gian hiệu lực mã OTP tính bằng giây. **Chỉ hạt giống khởi động đầu tiên**: chỉnh sửa theo org qua [`/<org>/settings`](#operational-settings) sau bản triển khai đầu tiên. |
+| `REDIS_URL` | Không | không | Bộ đệm chung tùy chọn + phía sau giới hạn tốc độ, ví dụ `redis://redis:6379/0`. Khi được đặt, máy chủ lưu vào bộ đệm các lần tra cứu khóa API được xác thực, tổng hợp `/models` của bảng điều khiển, danh sách phiên và khía cạnh danh sách env; nó cũng chuyển giới hạn tốc độ yêu cầu OTP từ COUNT Postgres sang INCR Redis. Nếu không được đặt hoặc không thể truy cập được, máy chủ chạy mà không có bộ đệm (giới hạn OTP quay trở lại Postgres, mọi cuộc gọi bộ đệm khác quay trở lại nguồn sự thật). Xem **Redis (bộ đệm tùy chọn)** dưới đây. |
+| `CLICKHOUSE_URL` | **Có** | không | URL cơ sở của instance ClickHouse, ví dụ `http://clickhouse:8123`. Máy chủ áp dụng lược đồ sự kiện của nó vào cơ sở dữ liệu này trên mỗi lần khởi động và từ chối khởi động nếu nó không thể truy cập ClickHouse. Xem **ClickHouse (kho lưu trữ phân tích bắt buộc)** dưới đây. |
+| `CLICKHOUSE_DATABASE` | Không | `agenteye` | Tên cơ sở dữ liệu ClickHouse (lược đồ). Máy chủ tạo nó trên khởi động nếu nó không tồn tại. |
+| `ORG_CH_SECRET` | Không (đơn thuê) / **Có (đa org)** | mặc định dev | Khóa HMAC từ đó mật khẩu ClickHouse mỗi tổ chức được dẫn xuất. Trình chỉnh sửa SQL và agent `run_query` chạy như người dùng ClickHouse chỉ đọc của tổ chức, có chính sách hàng của tổ chức thực thi cô lập tenancy trong công cụ. Các bản triển khai đơn thuê khởi động tốt trên mặc định dev được xây dựng sẵn; **trước khi cung cấp một tổ chức thứ hai, bạn PHẢI đặt một giá trị mạnh, ổn định**, vì CLI `agenteye-orgctl org create` từ chối chạy trên mặc định dev được xây dựng sẵn. Xoay nó làm cho mỗi người dùng ClickHouse của tổ chức trở nên mồ côi cho đến khi khởi động tiếp theo cung cấp lại chúng (đối sánh thời gian khởi động chữa lành điều này tự động). Giữ nó bí mật và không thay đổi trên các bản sao. Cung cấp tổ chức chỉ dành cho toán tử; xem **Organizations (multi-tenancy)** dưới đây. |
+| `DEFAULT_ORG_NAME` | Không | `Default` | Tên hiển thị được hạt giống cho org mặc định được xây dựng sẵn. **Chỉ hạt giống khởi động đầu tiên**, và chỉ khi tổ chức vẫn mang danh tính chung được di chuyển mới của nó, áp dụng trên khởi động, sau đó bị bỏ qua. Khi bạn đổi tên tổ chức (`agenteye-orgctl org rename`), việc đổi tên là quyền chính thức và biến env này không còn hiệu lực. |
+| `DEFAULT_ORG_SLUG` | Không | `default` | Slug URL cho org mặc định được xây dựng sẵn, đường dẫn bảng điều khiển nó nằm tại (`/<slug>/…`). Ngữ nghĩa khởi động đầu tiên / nguyên bản giống như `DEFAULT_ORG_NAME`. Phải là 1-40 chữ cái thường alphanumeric với dấu gạch nối bên trong duy nhất và không phải là [từ được dự trữ](#organizations-multi-tenancy); một giá trị không hợp lệ bị bỏ qua (tổ chức giữ `default`). Cho phép một lần cài đặt đơn thuê hiển thị như ví dụ `/acme` thay vì `/default` mà không có bước CLI sau bản triển khai. |
+| `RUST_LOG` | Không | `info` | Mức độ chi tiết nhật ký (`debug`, `warn`, `error`, `agenteye_server=trace`) |
+| `EVALUATOR_ENDPOINT` | Không | không | URL cơ sở của dịch vụ evaluator của bạn (ví dụ `http://evaluator:9000`). Khi không được đặt, toàn bộ đường dẫn đánh giá là không hoạt động; không có hàng hàng đợi được viết, không có công nhân chạy. Xem [Evaluation Suite](/vi/agenteye/evaluation-suite). |
+| `EVALUATOR_TOKEN` | Không | không | Được gửi dưới dạng `Authorization: Bearer <token>` cho evaluator. **Phải bằng giá trị tương tự mà dịch vụ evaluator được cấu hình.** Tùy chọn chỉ nếu evaluator của bạn được cấu hình không có token. |
+| `EVALUATOR_WORKERS` | Không | `2` | Đồng thời: số tác vụ công nhân cho mỗi instance máy chủ điều phối các đánh giá. An toàn để chạy trên nhiều máy chủ được mở rộng theo chiều ngang. |
+| `EVALUATOR_CLAIM_BATCH` | Không | `4` | Số lượng tối đa đánh giá mà một công nhân duy nhất yêu cầu trên mỗi tick. Các lô được điều phối **đồng thời**, do đó tổng đồng thời trên điểm cuối evaluator của bạn là `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | Không | `2` | Một công nhân ngủ bao lâu giữa các nỗ lực điều phối khi không có gì đến hạn. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Không | `10` | Fallback cadence cuối cùng (giây) cho các cuộc thăm dò `GET /evaluate/{id}` khi evaluator không trả về `next_poll_secs` mỗi phản hồi và không quảng cáo `default_poll_interval_secs` từ `GET /config`. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Không | `30000` | Hết thời gian chờ mỗi yêu cầu HTTP chống lại evaluator (mili giây). |
+| `EVALUATOR_MAX_ATTEMPTS` | Không | `5` | Sau nhiều nỗ lực thất bại này, một đánh giá được ghi lại là kết thúc `error` (hoặc `timeout` nếu các lỗi là hết thời gian chờ yêu cầu). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | Không | `300` (5 min) | Tần suất máy chủ tìm nạp lại `GET /config` từ evaluator. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Không | `3600` (1 h) | Thời gian đồng hồ treo tối đa một phiên có thể ở trong hàng đợi thăm dò trước khi AgentEye kết thúc nó dưới dạng `timeout`. Bảo vệ chống lại một evaluator trả về `pending` mãi mãi. |
+| `ALERT_WORKERS` | Không | `1` | Đồng thời: số tác vụ công nhân cho mỗi instance máy chủ đánh giá quy tắc cảnh báo. Xem [Alerts](/vi/agenteye/alerts). |
+| `ALERT_CLAIM_BATCH` | Không | `16` | Số lượng cảnh báo tối đa mà một công nhân duy nhất yêu cầu trên mỗi tick. |
+| `ALERT_POLL_IDLE_SECS` | Không | `5` | Một công nhân cảnh báo ngủ bao lâu khi hàng đợi trống. |
+| `ALERT_REQUEST_TIMEOUT_MS` | Không | `15000` | Hết thời gian chờ đánh giá kích hoạt mỗi lần (truy vấn ClickHouse + HTTP kênh gửi đi). |
+| `ALERT_MAX_ATTEMPTS` | Không | `5` | Các lỗi tạm thời liên tiếp trước khi một cảnh báo lập lịch ở cadence bình thường thay vì backoff lũy thừa. |
+| `AUDIT_WORKERS` | Không | `1` | Đồng thời: số tác vụ công nhân cho mỗi instance máy chủ thực thi kiểm toán. Xem [Audits](/vi/agenteye/audits). |
+| `AUDIT_CLAIM_BATCH` | Không | `1` | Số lượng kiểm toán đến hạn tối đa mà một công nhân duy nhất yêu cầu trên mỗi tick. Một cuộc điều tra agentic là một vòng lặp dài, vì vậy mặc định là 1. |
+| `AUDIT_POLL_IDLE_SECS` | Không | `30` | Một công nhân kiểm toán ngủ bao lâu khi không có kiểm toán nào đến hạn. |
+| `AUDIT_REQUEST_TIMEOUT_MS` | Không | `30000` | Hết thời gian chờ truy vấn chính sách mỗi lần chống lại ClickHouse (mili giây). |
+| `AUDIT_LLM_TIMEOUT_MS` | Không | `1440000` | Hết thời gian chờ cho cuộc gọi điều tra agentic tới dịch vụ trợ lý AI. Một vòng agent đầy đủ chạy trong nhiều phút; giữ điều này PHÍA TRÊN `AGENTEYE_AUDIT_TIMEOUT_MS` của agent để agent trả về các phát hiện một phần của nó trước khi máy chủ từ bỏ. |
+| `AUDIT_MAX_ATTEMPTS` | Không | `5` | Các lỗi tạm thời liên tiếp trước khi một kiểm toán lập lịch ở cadence bình thường thay vì backoff lũy thừa. |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | Không | — | Cuộc điều tra agentic của kiểm toán gọi dịch vụ `agent` trợ lý AI, **tái sử dụng kết nối tương tự như trợ lý** — vì vậy hãy đặt cả hai trên **máy chủ** cũng vậy (các kê khai được đóng gói/soạn thảo). Cả hai bộ ⇒ kiểm toán chạy điều tra AI; bộ không được đặt ⇒ kiểm toán chạy **chỉ chính sách** (vượt qua chính sách SQL xác định vẫn chạy), bất kể cờ `llm_enabled` mỗi kiểm toán. Agent cũng phải có LLM được cấu hình — xem [assistant.md](/vi/agenteye/assistant). |
 
-**Dịch vụ trợ lý AI — cài đặt kiểm toán + sandbox.** Cuộc điều tra agentic và hộp cát Python trong pod của nó được điều chỉnh trên **dịch vụ agent** (không phải server), tất cả trên `AGENTEYE_AUDIT_*` tiền tố và tất cả tùy chọn:
+**Dịch vụ trợ lý AI — cài đặt kiểm toán + hộp cát.** Cuộc điều tra agentic và hộp cát Python trong pod của nó được điều chỉnh trên **dịch vụ agent** (không phải máy chủ), tất cả trên tiền tố `AGENTEYE_AUDIT_*` và tất cả tùy chọn:
 
-| Variable | Default | Meaning |
+| Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Số bước agent tối đa cho mỗi cuộc điều tra. |
-| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Tường tối đa cho một cuộc điều tra (20 phút). Phải ở **dưới** `AUDIT_LLM_TIMEOUT_MS` của server. |
-| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Các cuộc điều tra đồng thời trên mỗi pod agent (tách biệt khỏi ngân sách của trợ lý trò chuyện). |
-| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Giới hạn per-script cho hộp cát bubblewrap. |
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Tối đa agent quay trên mỗi điều tra. |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Đồng hồ treo cho một cuộc điều tra (20 phút). Phải ở **dưới** `AUDIT_LLM_TIMEOUT_MS` của máy chủ. |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Các cuộc điều tra đồng thời cho mỗi pod agent (riêng biệt với ngân sách của trợ lý trò chuyện). |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Giới hạn mỗi tập lệnh cho hộp cát bubblewrap. |
 
-**Yêu cầu nền tảng Sandbox.** Hộp cát mã kiểm toán chạy Python của mô hình bên trong nhà tù bubblewrap, yêu cầu **không gian người dùng không được phép**. Pod agent phải cho phép các cờ `clone()` — đặt `seccompProfile: Unconfined` (k8s) hoặc `security_opt: [seccomp:unconfined]` (compose) trên agent. Khi hạt nhân nút vô hiệu hóa không gian người dùng không được phép (ví dụ như một số hình ảnh GKE COS), hộp cát **bỏ qua trước và độc lập tự động giảm xuống chỉ SQL** — không lỗi, chỉ là `sandbox_available: false` trên `/health` của agent.
+**Yêu cầu nền tảng hộp cát.** Hộp cát mã kiểm toán chạy Python của mô hình bên trong một牢房 bubblewrap, cần **không gian tên người dùng không đặc quyền**. Pod agent phải cho phép cờ `clone()` — đặt `seccompProfile: Unconfined` (k8s) hoặc `security_opt: [seccomp:unconfined]` (soạn thảo) trên agent. Khi nhân nút tắt không gian tên người dùng không đặc quyền (ví dụ: một số hình ảnh GKE COS), hộp cát **kiểm tra trước không thành công và kiểm toán giảm xuống chỉ SQL tự động** — không có lỗi, chỉ là `sandbox_available: false` trên `/health` của agent.
 
 ### Chạy
 
-Đặt `DATABASE_URL` và `CLICKHOUSE_URL` trong môi trường của bạn (server từ chối khởi động mà không có ClickHouse), sau đó chuyển chúng vào container:
+Đặt `DATABASE_URL` trong môi trường của bạn, sau đó chuyển nó vào container:
 
 ```bash
 docker run -d --restart unless-stopped \
   --name agenteye-server \
   -e DATABASE_URL="$DATABASE_URL" \
-  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
   -e ADMIN_KEY="$ADMIN_KEY" \
   -p 8080:8080 \
   ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-Server chạy các di chuyển cơ sở dữ liệu tự động trên khởi động; không cần bước di chuyển riêng biệt.
+Máy chủ chạy các di chuyển cơ sở dữ liệu tự động khi khởi động; không cần bước di chuyển riêng.
 
 ### Kiểm tra sức khỏe
 
 ```
-GET /health    # liveness  - luôn {"status":"ok"} khi quy trình khởi động xong
+GET /health    # liveness  - luôn {"status":"ok"} khi quy trình lên
 GET /ready     # readiness - 200 khi Postgres + ClickHouse có thể truy cập được, nếu không 503
 ```
 
-Không cần xác thực. Sử dụng `/health` cho **liveness** probes và `/ready` cho **readiness** / load-balancer probes. `/ready` kiểm tra các phụ thuộc cứng mà server không thể phục vụ mà không có (Postgres + ClickHouse), vì vậy một server đang chạy nhưng không thể tiếp cận cơ sở dữ liệu của nó bị loại khỏi vòng quay và hiển thị là `NotReady`; Redis được báo cáo nhưng không bao giờ thất bại readiness. Trên các bản kê khai Kubernetes đi kèm, probe readiness đã chỉ tới `/ready` và liveness ở `/health`. Xem [enterprise-docs/health-monitoring.md](/vi/agenteye/health-monitoring) để có hình ảnh đầy đủ, bao gồm cảnh báo sự cố pod hỗ trợ Kubernetes-native để Slack.
+Không cần xác thực. Sử dụng `/health` cho **liveness** probes và `/ready` cho **readiness** / load-balancer probes. `/ready` kiểm tra các phụ thuộc cứng mà máy chủ không thể phục vụ mà không có (Postgres + ClickHouse), vì vậy một máy chủ đang chạy nhưng không thể truy cập cơ sở dữ liệu của nó bị đưa ra khỏi vòng quay và hiển thị là `NotReady`; Redis được báo cáo nhưng không bao giờ không thể sẵn sàng. Trên các kê khai Kubernetes được đóng gói, probe sẵn sàng đã trỏ tại `/ready` và liveness ở `/health`. Xem [enterprise-docs/health-monitoring.md](/vi/agenteye/health-monitoring) để có hình ảnh đầy đủ, bao gồm cảnh báo pod-failure hỗ trợ Kubernetes gốc opt-in tới Slack.
 
 ### Email magic-link URL
 
-Email đăng nhập OTP chứa nút **mở dashboard** một lần nhấn. Nhấp vào nó đưa người dùng tới `/login?token=<code>&email=<address>`; dashboard trao đổi cặp đó cho một phiên và chuyển hướng tới ứng dụng, không cần nhập lại mã thủ công. Server giải quyết dashboard origin được sử dụng để xây dựng liên kết trong ba tầng:
+Email đăng nhập OTP chứa một nút **mở bảng điều khiển** một lần chạm. Nhấp vào nó hạ cánh người dùng trên `/login?token=<code>&email=<address>`; bảng điều khiển trao đổi cặp đó cho một phiên và chuyển hướng tới ứng dụng, không cần nhập lại mã thủ công. Máy chủ giải quyết gốc bảng điều khiển được sử dụng để xây dựng liên kết trong ba tiers:
 
-1. **`X-AgentEye-Dashboard-Url` header**: được đặt tự động bởi dashboard `/api/auth/otp/request` proxy từ gốc công khai của nó. Trong triển khai cùng gốc (server và dashboard chia sẻ một host đằng sau một ingress chuyển tiếp proxy headers), **không cần cấu hình**.
-2. **`DASHBOARD_URL` env var**: đặt điều này nếu dashboard của bạn có thể truy cập trên một gốc khác so với gốc mà endpoint yêu cầu OTP của server nhìn thấy (chia `api.example.com` / `app.example.com`), hoặc nếu ingress của bạn không truyền host công khai vào pod dashboard (vì vậy `request.nextUrl.origin` sẽ giải quyết thành một bind ký tự đại diện như `0.0.0.0:3000`). Ví dụ: `DASHBOARD_URL=https://app.example.com`.
-3. **Default**: `https://app.befailproof.ai`, chỉ được sử dụng nếu không có cái nào ở trên.
+1. **Tiêu đề `X-AgentEye-Dashboard-Url`**: đặt tự động bằng proxy `/api/auth/otp/request` của bảng điều khiển từ gốc công khai của riêng nó. Trong một bản triển khai cùng gốc (máy chủ và bảng điều khiển chia sẻ một máy chủ đằng sau một ingress chuyển tiếp tiêu đề proxy), **không cần cấu hình**.
+2. **Biến `DASHBOARD_URL` env**: đặt điều này nếu bảng điều khiển của bạn có thể truy cập được trên một gốc khác so với gốc mà điểm cuối yêu cầu OTP của máy chủ nhìn thấy (chia `api.example.com` / `app.example.com`), hoặc nếu ingress của bạn không truyền máy chủ công khai vào pod bảng điều khiển (vì vậy `request.nextUrl.origin` sẽ khác cách giải quyết một ràng buộc ký tự đại diện như `0.0.0.0:3000`). Ví dụ: `DASHBOARD_URL=https://app.example.com`.
+3. **Mặc định**: `https://app.befailproof.ai`, được sử dụng chỉ nếu không có cái nào ở trên.
 
-Giá trị header được xác thực: chỉ `https://*` và loopback (`http://localhost*`, `http://127.0.0.1*`) origins được chấp nhận, và địa chỉ bind ký tự đại diện (`0.0.0.0`, `[::]`) bị từ chối ngay cả với scheme `https://`. Bất cứ điều gì khác sẽ rơi vào tầng 2.
+Giá trị tiêu đề được xác thực: chỉ `https://*` và loopback (`http://localhost*`, `http://127.0.0.1*`) origins được chấp nhận, và địa chỉ ràng buộc ký tự đại diện (`0.0.0.0`, `[::]`) bị từ chối ngay cả với lược đồ `https://`. Bất cứ điều gì khác sẽ rơi qua tier 2.
 
-Đặt nó trên một cụm đang chạy bằng một lệnh một dòng; không có tệp, không xây dựng lại kustomize:
+Đặt nó trên một cụm đang chạy với một lệnh một dòng; không có tệp, không xây dựng lại kustomize:
 
 ```bash
 kubectl set env deployment/server -n agenteye \
   DASHBOARD_URL=https://app.example.com
 ```
 
-Điều này kích hoạt một rollout; các pod mới nhận giá trị này trên yêu cầu đầu tiên. Lưu ý rằng ghi đè chỉ sống trên Deployment; một `kustomize build | kubectl apply` tiếp theo chống lại overlay sẽ xóa nó trừ khi bạn thêm cùng env var vào `server-env.yaml` patch của overlay.
+Điều này kích hoạt một bản khởi động lại; các pod mới nhận giá trị khi yêu cầu đầu tiên. Lưu ý rằng ghi đè chỉ nằm trên Triển khai; một `kustomize build | kubectl apply` tiếp theo chống lại lớp phủ sẽ xóa nó trừ khi bạn thêm cùng biến env vào bản vá `server-env.yaml` của lớp phủ.
 
 ---
 
-## Dashboard
+## Bảng điều khiển
 
-### Tải image
+### Lấy hình ảnh
 
 ```bash
 docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
@@ -166,16 +164,16 @@ docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
 
 ### Biến môi trường
 
-| Variable | Required | Default | Description |
+| Biến | Bắt buộc | Mặc định | Mô tả |
 |---|---|---|---|
-| `AGENTEYE_SERVER_URL` | Yes | none | URL cơ sở của server, ví dụ `http://localhost:8080` |
-| `AGENTEYE_API_KEY` | Yes | none | Khóa API mà dashboard sử dụng để xác thực với server. Cần tất cả các quyền (khóa admin được khuyến cáo). |
-| `AE_LOG_LEVEL` | No | `info` | Mức độ chi tiết nhật ký phía máy chủ: `debug`, `info`, `warn`, `error`. Đặt thành `debug` để xem dòng yêu cầu/phản hồi thượng nguồn và theo dõi xác thực phiên khi chẩn đoán vấn đề. |
-| `AE_LOG_JSON` | No | auto | `1` bắt buộc JSON-per-line output; `0` bắt buộc human-readable output. Khi không được đặt, JSON được bật tự động nếu `NODE_ENV=production`. JSON được khuyến cáo trong production để logs phân tích sạch với `jq` hoặc một aggregator nhật ký. |
-| `AE_ANALYTICS_DISABLED` | No | none | Đặt thành `1`/`true` để vô hiệu hóa telemetry sử dụng sản phẩm ẩn danh của dashboard. Xem [Telemetry & privacy](#telemetry--privacy) dưới đây. |
-| `REDIS_URL` | No | none | Backend bộ nhớ cache được chia sẻ tùy chọn, ví dụ `redis://redis:6379/0`. Khi được đặt, dashboard cache `validateSession()` kết quả trên các bản sao và chia sẻ bộ nhớ cache Next.js tìm nạp cho các bản lộ trình proxy aggregate tiên phong / env-list. Giới hạn tốc độ OTP yêu cầu edge-side và xác minh cũng sử dụng Redis khi có (thất bại mở nếu Redis không thể truy cập được; giới hạn phía máy chủ là bảo mật backstop). Xem **Redis (cache tùy chọn)** dưới đây. |
-| `AGENTEYE_AGENT_URL` | No | none | URL cơ sở của dịch vụ trợ lý AI `agent` tùy chọn, ví dụ `http://agent:9100`. **Để lại không được đặt để ẩn trợ lý hoàn toàn**: không có bong bóng trợ lý xuất hiện trong dashboard. Xem [enterprise-docs/assistant.md](/vi/agenteye/assistant). |
-| `AGENTEYE_AGENT_TOKEN` | No | none | Bí mật được chia sẻ mà dashboard trình bày cho dịch vụ `agent`. Phải khớp với `AGENTEYE_AGENT_TOKEN` được cấu hình trên agent. Xem [enterprise-docs/assistant.md](/vi/agenteye/assistant). |
+| `AGENTEYE_SERVER_URL` | Có | không | URL cơ sở của máy chủ, ví dụ `http://localhost:8080` |
+| `AGENTEYE_API_KEY` | Có | không | Khóa API mà bảng điều khiển sử dụng để xác thực với máy chủ. Cần tất cả các quyền (khóa quản trị viên được khuyến nghị). |
+| `AE_LOG_LEVEL` | Không | `info` | Mức độ chi tiết nhật ký phía máy chủ: `debug`, `info`, `warn`, `error`. Đặt thành `debug` để xem các yêu cầu/phản hồi hạ lưu và dấu vết xác thực phiên khi chẩn đoán vấn đề. |
+| `AE_LOG_JSON` | Không | tự động | `1` buộc đầu ra JSON mỗi dòng; `0` buộc đầu ra có thể đọc được bởi con người. Khi không được đặt, JSON được bật tự động nếu `NODE_ENV=production`. JSON được khuyến nghị trong sản xuất để nhật ký phân tích sạch sẽ với `jq` hoặc một bộ lưu trữ nhật ký. |
+| `AE_ANALYTICS_DISABLED` | Không | không | Đặt thành `1`/`true` để tắt telemetry sử dụng sản phẩm ẩn danh của bảng điều khiển. Xem [Telemetry & privacy](#telemetry--privacy) dưới đây. |
+| `REDIS_URL` | Không | không | Phía sau bộ đệm chung tùy chọn, ví dụ `redis://redis:6379/0`. Khi được đặt, bảng điều khiển lưu vào bộ đệm kết quả `validateSession()` trên các bản sao và chia sẻ bộ đệm tìm nạp Next.js cho các tuyến proxy tổng hợp độ trễ / danh sách env. Giới hạn tốc độ yêu cầu OTP và xác minh cạnh cũng sử dụng Redis khi có (mở không thành công nếu Redis không thể truy cập được; giới hạn phía máy chủ là backstop bảo mật). Xem **Redis (bộ đệm tùy chọn)** dưới đây. |
+| `AGENTEYE_AGENT_URL` | Không | không | URL cơ sở của dịch vụ `agent` trợ lý AI tùy chọn, ví dụ `http://agent:9100`. **Để nó không được đặt để ẩn trợ lý hoàn toàn**: không có bong bóng trợ lý hiển thị trong bảng điều khiển. Xem [enterprise-docs/assistant.md](/vi/agenteye/assistant). |
+| `AGENTEYE_AGENT_TOKEN` | Không | không | Bí mật chung mà bảng điều khiển trình bày cho dịch vụ `agent`. Phải khớp với `AGENTEYE_AGENT_TOKEN` được cấu hình trên agent. Xem [enterprise-docs/assistant.md](/vi/agenteye/assistant). |
 
 ### Chạy
 
@@ -190,89 +188,89 @@ docker run -d --restart unless-stopped \
 
 ### Telemetry & privacy
 
-Dashboard gửi **phân tích sử dụng sản phẩm ẩn danh** tới dịch vụ phân tích Exosphere (PostHog): những trang dashboard nào được xem và một số hành động UI như tạo khóa API hoặc tái đánh giá phiên. Tín hiệu sử dụng này thông báo cho những tính năng nào được ưu tiên.
+Bảng điều khiển gửi **phân tích sử dụng sản phẩm ẩn danh** tới dịch vụ phân tích Exosphere (PostHog): những trang bảng điều khiển nào được xem và một số hành động UI như tạo khóa API hoặc đánh giá lại phiên. Tín hiệu sử dụng này thông báo cho các tính năng nào được ưu tiên.
 
-- **Không có dữ liệu agent, phiên hoặc sự kiện nào bao giờ rời khỏi cơ sở hạ tầng của bạn.** Chỉ sử dụng UI dashboard được báo cáo. URL trang được loại bỏ các định danh trước khi gửi, và các operator được xác định chỉ bằng id nội bộ opaque, không bao giờ bằng email.
-- Telemetry **được bật theo mặc định**. Để tắt nó hoàn toàn, hãy đặt `AE_ANALYTICS_DISABLED=1` trên container dashboard và khởi động lại.
-- Analytics được gửi tới đường dẫn `/ingest` của dashboard riêng, mà dashboard reverse-proxy tới PostHog (`https://us.i.posthog.com`). Giữ các yêu cầu first-party có nghĩa là trình chặn quảng cáo trình duyệt không thả chúng. **Container dashboard** cần truy cập outbound tới PostHog; nếu bị chặn, telemetry im lặng không làm gì và dashboard không bị ảnh hưởng.
+- **Dữ liệu agent, phiên hoặc sự kiện không bao giờ rời khỏi cơ sở hạ tầng của bạn.** Chỉ sử dụng UI bảng điều khiển được báo cáo. URL trang được loại bỏ các định danh trước khi gửi, và các toán tử được xác định chỉ bằng một id nội bộ opaque, không bao giờ bằng email.
+- Telemetry **được bật theo mặc định**. Để tắt nó hoàn toàn, hãy đặt `AE_ANALYTICS_DISABLED=1` trên container bảng điều khiển và khởi động lại.
+- Phân tích được gửi tới đường dẫn `/ingest` của bảng điều khiển, mà bảng điều khiển reverse-proxy tới PostHog (`https://us.i.posthog.com`). Giữ yêu cầu bên thứ nhất có nghĩa là trình chặn quảng cáo trình duyệt không thả chúng. **Container bảng điều khiển** cần quyền truy cập gửi đi tới PostHog; nếu nó bị chặn, telemetry im lặng không làm gì và bảng điều khiển không bị ảnh hưởng.
 
 ---
 
-## AI Assistant (tùy chọn)
+## Trợ lý AI (tùy chọn)
 
-Một trợ lý AI trong dashboard cho phép nhóm của bạn đặt câu hỏi về dữ liệu agent của họ bằng ngôn ngữ thường (tóm tắt phiên, soạn thảo SQL cho trình soạn thảo `/queries`, và biến các truy vấn lưu thành các tile dashboard) mà không cần rời dashboard. Nó chạy dưới dạng container `agent` nội bộ riêng (trên Claude Agent SDK) mà chỉ dashboard có thể tiếp cận, và ở **bị vô hiệu cho đến khi bạn cấu hình endpoint LLM**.
+Một trợ lý AI trong bảng điều khiển cho phép nhóm của bạn đặt câu hỏi về dữ liệu agent của họ bằng ngôn ngữ tự nhiên (tóm tắt phiên, dự thảo SQL cho trình chỉnh sửa `/queries` và chuyển các truy vấn lưu thành các ô bảng điều khiển) mà không cần rời khỏi bảng điều khiển. Nó chạy như một container `agent` nội bộ riêng biệt (trên Agents SDK) mà chỉ bảng điều khiển có thể truy cập, và ở **bị tắt cho đến khi bạn cấu hình điểm cuối LLM**.
 
-Để bật nó, bạn đặt trên dịch vụ `agent`, kết nối LLM (**Portkey** via `PORTKEY_API_KEY` + slug danh mục mô hình `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, Anthropic trực tiếp qua `ANTHROPIC_API_KEY`, gateway khác qua `ANTHROPIC_BASE_URL`, hoặc Bedrock/Vertex), khóa dữ liệu **chuyên dụng**, và `AGENTEYE_AGENT_TOKEN` được chia sẻ khớp dashboard. Người dùng dashboard cũng cần quyền `agent:use`.
+Để bật nó, bạn đặt, trên dịch vụ `agent`, kết nối LLM (**Portkey** qua `PORTKEY_API_KEY` + slug danh mục mô hình `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, Anthropic trực tiếp qua `ANTHROPIC_API_KEY`, cổng khác qua `ANTHROPIC_BASE_URL`, hoặc Bedrock/Vertex), khóa dữ liệu **chuyên dụng**, và `AGENTEYE_AGENT_TOKEN` chung khớp với bảng điều khiển. Người dùng bảng điều khiển cần thêm quyền `agent:use`.
 
-Đối với khóa dữ liệu của trợ lý, bạn không tạo bất cứ thứ gì bằng tay: chọn một bí mật ngẫu nhiên, đặt nó là `AGENTEYE_API_KEY` trên `agent` **và** là `AGENT_API_KEY` trên `server`, và server seed nó trên khởi động với một tập quyền cố định. Truy cập dữ liệu của nó là chỉ đọc (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), và nó còn giữ phạm vi tác giả được phê duyệt cổng (`dashboards:write`, `queries:write`, `queries:run`) để nó có thể soạn thảo và xác thực các truy vấn lưu và xây dựng các tile dashboard thay mặt người dùng; tất cả SQL vẫn chạy qua vai trò chỉ đọc ClickHouse của tổ chức, vì vậy điều này mở rộng những gì trợ lý có thể tác giả, không phải dữ liệu nào nó có thể truy cập. Các phạm vi được sửa chữa trong mã và không thể mở rộng bằng cấu hình. Khóa đó được bảo vệ; không thể bị vô hiệu hóa hoặc tái tạo qua API, chỉ xoay bằng cách thay đổi giá trị và khởi động lại. Không bao giờ sử dụng lại khóa admin/dashboard cho điều này.
+Đối với khóa dữ liệu của trợ lý, bạn không mint bất cứ điều gì bằng tay: chọn một bí mật ngẫu nhiên, đặt nó là `AGENTEYE_API_KEY` trên `agent` **và** là `AGENT_API_KEY` trên `server`, và máy chủ hạt giống nó khi khởi động với một bộ quyền cố định. Truy cập dữ liệu của nó chỉ đọc (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), và nó còn giữ các phạm vi tác giả phê duyệt (`dashboards:write`, `queries:write`, `queries:run`) để nó có thể dự thảo và xác thực các truy vấn lưu và xây dựng các ô bảng điều khiển thay mặt người dùng; tất cả SQL vẫn chạy qua vai trò ClickHouse chỉ đọc của tổ chức, vì vậy điều này mở rộng những gì trợ lý có thể tác giả, không phải dữ liệu nó có thể truy cập. Các phạm vi được cố định trong mã và không thể mở rộng bằng cấu hình. Khóa đó được bảo vệ; nó không thể bị tắt hoặc tái tạo qua API, chỉ được xoay bằng cách thay đổi giá trị và khởi động lại. Không bao giờ sử dụng lại khóa quản trị viên/bảng điều khiển cho điều này.
 
-Thiết lập đầy đủ, tham khảo biến môi trường hoàn chỉnh, tùy chọn telemetry, và mô hình bảo mật nằm trong **[enterprise-docs/assistant.md](/vi/agenteye/assistant)**.
+Thiết lập đầy đủ, tham chiếu biến môi trường hoàn chỉnh, các tùy chọn telemetry và mô hình bảo mật nằm trong **[enterprise-docs/assistant.md](/vi/agenteye/assistant)**.
 
 ---
 
 ## ClickHouse (kho lưu trữ phân tích bắt buộc)
 
-ClickHouse giữ dashboard của bạn đáp ứng ở khối lượng sự kiện cao và cho phép trình soạn thảo SQL `/queries` tham gia trên các sự kiện, đánh giá, và phiên trong một kho lưu trữ duy nhất. Nó là kho lưu trữ quy chuẩn bắt buộc cho mọi sự kiện được nhập, mọi kết quả đánh giá terminal, và các tổng hợp per-session dẫn xuất. PostgreSQL giữ các bảng trạng thái quan hệ / có thể thay đổi (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); bề mặt phân tích sống trong ClickHouse để rollups của dashboard và các truy vấn SQL của riêng bạn có thể quét và tham gia nó một cách bản địa, mà không có các vòng lặp cross-database. Server từ chối khởi động mà không có `CLICKHOUSE_URL`.
+ClickHouse giữ cho bảng điều khiển của bạn phản hồi nhanh ở thể tích sự kiện cao và cho phép trình chỉnh sửa SQL `/queries` tham gia trên các sự kiện, đánh giá và phiên trong một cửa hàng duy nhất. Đó là kho lưu trữ quy chuẩn bắt buộc cho mỗi sự kiện nhập, mỗi kết quả đánh giá thiết bị đầu cuối và các tổng hợp mỗi phiên được dẫn xuất. PostgreSQL giữ các bảng trạng thái quan hệ / có thể thay đổi (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); bề mặt phân tích nằm trong ClickHouse vì vậy bảng điều khiển của bạn cuộn lên và các truy vấn SQL riêng của bạn có thể quét và tham gia nó một cách bản địa, không có các cuộc đi học liên cơ sở dữ liệu. Máy chủ từ chối khởi động mà không có `CLICKHOUSE_URL`.
 
-### Schema
+### Lược đồ
 
-Ba đối tượng ClickHouse được tạo trên khởi động server, tất cả idempotent (`CREATE IF NOT EXISTS`):
+Ba đối tượng ClickHouse được tạo khi khởi động máy chủ, tất cả idempotent (`CREATE IF NOT EXISTS`):
 
-- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, được phân vùng theo `toYYYYMM(ts)`, được sắp xếp theo `(session_id, ts, dedup_key)`. Các chèn trùng lặp (collector thử lại) sụp đổ thành một hàng duy nhất tại thời gian hợp nhất; server tính toán `dedup_key` SHA-256 xác định cho mỗi sự kiện để thử lại an toàn.
-- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, được phân vùng theo `toYYYYMM(finished_at)`, được sắp xếp theo `(session_id, finished_at, dedup_key)`. Được viết một lần mỗi kết quả đánh giá terminal bởi pipeline evaluator. Mô hình dedup-key giống như `events`.
-- **`agenteye.agent_sessions`**: một **VIEW** trên `agenteye.events`, không phải một bảng vật lý. Mỗi cột được dẫn xuất (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, v.v.). Không có per-event upsert và không có backfill riêng biệt; chế độ xem tự động phản ánh bất cứ cái gì nằm trong `events`.
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, được phân vùng theo `toYYYYMM(ts)`, sắp xếp theo `(session_id, ts, dedup_key)`. Các bản chèn trùng (bộ sưu tập thử lại) sụp đổ thành một hàng tại thời gian hợp nhất; máy chủ tính toán `dedup_key` SHA-256 xác định cho mỗi sự kiện để các lần thử lại an toàn.
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, được phân vùng theo `toYYYYMM(finished_at)`, sắp xếp theo `(session_id, finished_at, dedup_key)`. Được viết một lần cho mỗi kết quả đánh giá thiết bị đầu cuối bởi đường dẫn đánh giá. Cùng mô hình dedup-key như `events`.
+- **`agenteye.agent_sessions`**: một **VIEW** trên `agenteye.events`, không phải bảng vật lý. Mỗi cột được dẫn xuất (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, v.v.). Không upsert mỗi sự kiện và không backfill riêng; chế độ xem tự phản ánh bất cứ điều gì nằm trong `events`.
 
-Để tương thích ngược với các truy vấn lưu tham khảo `analytics.evaluations` / `analytics.sessions`, server cũng tạo cơ sở dữ liệu ClickHouse `analytics` với các chế độ xem trên các bảng `agenteye.*`; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` tất cả giải quyết chính xác.
+Để tương thích ngược với các truy vấn lưu tham chiếu `analytics.evaluations` / `analytics.sessions`, máy chủ cũng tạo cơ sở dữ liệu ClickHouse `analytics` với các chế độ xem trên các bảng `agenteye.*`; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` tất cả được giải quyết chính xác.
 
-### Configuration
+### Cấu hình
 
-Bộ docker-compose đi kèm và `deploy/base/clickhouse/` cung cấp dịch vụ ClickHouse được điều chỉnh cho khối lượng công việc của AgentEye:
+Docker-compose được đóng gói và `deploy/base/clickhouse/` cung cấp dịch vụ ClickHouse được điều chỉnh cho khối lượng công việc của AgentEye:
 
-- 2 GiB yêu cầu / 4 GiB giới hạn bộ nhớ trong overlay cơ sở được vận chuyển (được định kích để phù hợp với các nút nhỏ POC/staging); khách hàng production nên overlay lên — sàn được khuyến cáo là 2c / 4Gi yêu cầu, 6c / 8Gi giới hạn. `max_server_memory_usage_to_ram_ratio=0.9`
-- 5 GiB đánh dấu bộ nhớ cache + 8 GiB bộ nhớ cache không nén
+- Bộ nhớ 2 GiB được yêu cầu / giới hạn 4 GiB trong lớp phủ cơ sở được gửi (kích thước phù hợp với các nút POC/staging nhỏ); khách hàng sản xuất nên lớp phủ lên — tầng được đề xuất là yêu cầu 2c / 4Gi, giới hạn 6c / 8Gi. `max_server_memory_usage_to_ram_ratio=0.9`
+- Bộ nhớ cache 5 GiB + bộ đệm không nén 8 GiB
 - `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
 - MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
-- `local_io_method=auto` (io_uring trên hạt nhân được hỗ trợ)
+- `local_io_method=auto` (io_uring trên các nhân được hỗ trợ)
 - `fsync_metadata=0`: chấp nhận được vì nhập ít nhất một lần + dedup ReplacingMergeTree
-- `query_log` được bật với TTL 30 ngày; `query_thread_log` bị loại bỏ (đắt ở QPS cao)
+- `query_log` được bật với TTL 30 ngày; `query_thread_log` bị xóa (đắt tiền ở QPS cao)
 - `max_execution_time=30` cho các truy vấn phía người dùng
-- 100 GiB PVC tại mẫu StatefulSet (overlay khách hàng NÊN ghi đè thành lớp lưu trữ SSD nhanh cho production)
+- 100 GiB PVC ở mẫu StatefulSet (lớp phủ khách hàng NÊN ghi đè thành lớp lưu trữ SSD nhanh cho sản xuất)
 
-### Backups
+### Sao lưu
 
-Tập dữ liệu đầy đủ của bạn được chụp nightly trong một kho lưu trữ có thể khôi phục duy nhất, vì vậy mất cụm hoặc lưu trữ có thể khôi phục. ClickHouse được sao lưu tự động bởi `agenteye-backup` CronJob hàng ngày, đó sao lưu cả PostgreSQL và ClickHouse trong một lần vượt. ClickHouse được đọc trên API HTTP của nó: `agenteye.events` và `agenteye.evaluations` được dump ở định dạng ClickHouse-native (các chế độ xem và chính sách hàng được server tái tạo trên khởi động, vì vậy dữ liệu bảng là bức tranh hoàn chỉnh) và đóng gói với dump Postgres vào một kho lưu trữ được nén duy nhất được tải lên kho lưu trữ đối tượng của bạn.
+Tập dữ liệu đầy đủ của bạn được chụp mỗi đêm trong một kho lưu trữ có thể khôi phục duy nhất, vì vậy mất cụm hoặc lưu trữ có thể phục hồi được. ClickHouse được sao lưu tự động bởi CronJob `agenteye-backup` hàng ngày, sao lưu cả PostgreSQL và ClickHouse trong một lần vượt qua. ClickHouse được đọc qua API HTTP của nó: `agenteye.events` và `agenteye.evaluations` được kết xuất ở định dạng gốc ClickHouse (các chế độ xem và chính sách hàng được tái tạo bởi máy chủ khi khởi động, vì vậy dữ liệu bảng là hình ảnh hoàn chỉnh) và được đóng gói với bản kết xuất Postgres vào một kho lưu trữ nén duy nhất được tải lên lưu trữ đối tượng của bạn.
 
-Bộ nhớ đích và thông tin xác thực cloud được cấu hình cho mỗi overlay. Xem phần **Backups** của [enterprise-docs/kubernetes-deployment.md](/vi/agenteye/kubernetes-deployment) để cấu hình tải lên và các bước khôi phục.
-
----
-
-## Redis (cache tùy chọn)
-
-Redis là một **optional** bộ nhớ cache được chia sẻ + backend giới hạn tốc độ được sử dụng bởi server và dashboard. Với Redis được triển khai và `REDIS_URL` được đặt trên cả hai dịch vụ:
-
-- **Server** cache các tìm kiếm khóa API được xác thực, danh sách `/events/environments` + `/evaluations/environments`, rollup `/events/latency_aggregate` (truy vấn nặng nhất mà dashboard polls), danh sách `/sessions`, và chuyển đổi giới hạn tốc độ yêu cầu OTP từ Postgres `COUNT(*)` sang Redis `INCR + EXPIRE`.
-- **Dashboard** cache `validateSession()` kết quả để 10-20 API gọi được xác thực một tải trang điển hình chia sẻ một kiểm tra phiên thượng nguồn duy nhất. Nó cũng giới hạn tốc độ yêu cầu OTP và xác minh OTP tại dashboard edge.
-
-**Cả hai dịch vụ đều suy giảm duyên dáng nếu Redis không thể truy cập được.** Mỗi lệnh gọi bộ nhớ cache trả về `Err` trong khoảng thời gian bị giới hạn và người gọi quay về nguồn quy chuẩn (Postgres trên server, Rust server thượng nguồn trên dashboard). Giới hạn tốc độ OTP quay về đường dẫn `COUNT(*)` Postgres trên server (thuộc tính bảo mật được bảo tồn); giới hạn OTP edge của dashboard thất bại mở trong khi giới hạn phía máy chủ vẫn giữ. Redis bị hỏng hóc giảm độ trễ, không phải tính đúng.
-
-### Configuration
-
-Gói docker-compose đi kèm đã bao gồm dịch vụ Redis và dây `REDIS_URL=redis://redis:6379/0` vào server và dashboard. Để sử dụng Redis bên ngoài, hãy đặt `REDIS_URL` thành điểm cuối của bạn và loại bỏ dịch vụ `redis` khỏi tệp compose.
-
-### Memory + persistence
-
-Hình ảnh Redis đi kèm chạy với `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. Tính bền vững AOF có nghĩa là bộ nhớ cache sống sót sau khi khởi động lại container; `everysec` là cân bằng độ bền/hiệu suất phù hợp vì mất giây cuối cùng của ghi bộ nhớ cache là vô hại. Loại bỏ LRU giới hạn mức tăng bộ nhớ.
-
-### When NOT to deploy Redis
-
-- Single-instance dev/QA. Các bộ nhớ cache trong quy trình trên server một mình cung cấp hầu hết lợi ích per-replica; Redis thêm chia sẻ cross-replica mà các thiết lập single-instance không cần.
-- Cài đặt được cách ly không khí nơi chi phí hoạt động của việc chạy một dịch vụ hơn nữa vượt quá chiến thắng độ trễ.
+Nhóm đích và thông tin xác thực đám mây được cấu hình cho mỗi lớp phủ. Xem phần **Sao lưu** của [enterprise-docs/kubernetes-deployment.md](/vi/agenteye/kubernetes-deployment) để có cấu hình tải lên và các bước khôi phục.
 
 ---
 
-## Docker Compose (được khuyến cáo)
+## Redis (bộ đệm tùy chọn)
 
-Một `docker-compose.yml` có sẵn trong kho lưu trữ `agenteye-enterprise/releases`. Nó đưa lên Postgres, ClickHouse, Redis, server, và dashboard bằng một lệnh duy nhất.
+Redis là một **tùy chọn** bộ đệm chung + phía sau giới hạn tốc độ được sử dụng bởi máy chủ và bảng điều khiển. Với Redis được triển khai và `REDIS_URL` được đặt trên cả hai dịch vụ:
+
+- **Server** lưu vào bộ đệm tra cứu khóa API được xác thực, danh sách `/events/environments` + `/evaluations/environments`, kết tập `/events/latency_aggregate` (truy vấn nặng nhất mà bảng điều khiển thăm dò), danh sách `/sessions` và chuyển đổi giới hạn tốc độ yêu cầu OTP từ `COUNT(*)` Postgres thành `INCR + EXPIRE` Redis.
+- **Dashboard** lưu vào bộ đệm kết quả `validateSession()` để 10-20 lệnh gọi API được xác thực một tải trang điển hình tất cả chia sẻ một kiểm tra phiên thượng lưu. Nó cũng giới hạn tốc độ yêu cầu OTP và xác minh OTP tại cạnh bảng điều khiển.
+
+**Cả hai dịch vụ giảm xuống gracefully nếu Redis không thể truy cập được.** Mỗi cuộc gọi bộ đệm trả về `Err` trong hết thời gian chờ ràng buộc và người gọi quay trở lại nguồn sự thật (Postgres trên máy chủ, máy chủ Rust thượng lưu trên bảng điều khiển). Giới hạn tốc độ OTP quay trở lại đường dẫn `COUNT(*)` Postgres trên máy chủ (thuộc tính bảo mật được bảo tồn); giới hạn cạnh OTP của bảng điều khiển không thành công mở trong khi giới hạn phía máy chủ vẫn giữ. Redis bị dừng làm giảm độ trễ, không phải tính đúng.
+
+### Cấu hình
+
+Gói docker-compose đã bao gồm dịch vụ Redis và dây `REDIS_URL=redis://redis:6379/0` vào máy chủ và bảng điều khiển. Để sử dụng Redis bên ngoài, hãy đặt `REDIS_URL` thành điểm cuối của bạn và xóa dịch vụ `redis` khỏi tệp soạn thảo.
+
+### Bộ nhớ + tính bền vững
+
+Hình ảnh Redis được đóng gói chạy với `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. Tính bền vững AOF có nghĩa là bộ đệm tồn tại khởi động lại container; `everysec` là cân bằng độ bền/hiệu suất đúng vì mất giây cuối cùng của ghi bộ đệm là vô hại. Trục xuất LRU giới hạn tăng trưởng bộ nhớ.
+
+### Khi KHÔNG triển khai Redis
+
+- Dev/QA instance đơn lẻ. Bộ đệm trong quy trình trên máy chủ một mình cung cấp hầu hết lợi ích mỗi bản sao; Redis thêm chia sẻ xuyên bản sao mà thiết lập đơn instance không cần.
+- Cài đặt không kết nối trong đó chi phí hoạt động chạy một dịch vụ khác vượt quá lợi thế độ trễ.
+
+---
+
+## Docker Compose (được khuyến nghị)
+
+Một `docker-compose.yml` có sẵn trong repo `agenteye-enterprise/releases`. Nó nâng Postgres, máy chủ và bảng điều khiển với một lệnh duy nhất.
 
 ```bash
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
@@ -290,7 +288,7 @@ cd agenteye
 POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
 
-# Xác thực dashboard
+# Xác thực bảng điều khiển
 ADMIN_EMAIL=admin@yourcompany.com
 ALLOWED_EMAILS=*@yourcompany.com
 
@@ -308,7 +306,7 @@ RUST_LOG=info
 docker compose up -d
 ```
 
-**Dừng (giữ khối lượng dữ liệu):**
+**Dừng (giữ âm lượng dữ liệu):**
 
 ```bash
 docker compose down
@@ -322,75 +320,44 @@ docker compose down -v
 
 ---
 
-## Operational settings
+## Cài đặt hoạt động
 
-Một tập nhỏ các khóp hoạt động từng được ghim bằng biến env hiện có thể chỉnh sửa cho mỗi tổ chức từ trang **`/<org>/settings`** của dashboard; mỗi tổ chức cấu hình của chính nó. Các thay đổi có hiệu lực trong vài giây, không cần khởi động lại và không cần triển khai lại.
+Một bộ nhỏ các nút hoạt động từng được ghim bởi biến env hiện có thể được chỉnh sửa cho mỗi tổ chức từ trang **`/<org>/settings`** của bảng điều khiển; mỗi tổ chức cấu hình của riêng nó. Các thay đổi có hiệu lực trong vòng vài giây, không cần khởi động lại và không cần triển khai lại.
 
-| Setting | Bootstrap env var | What it controls |
+| Cài đặt | Khởi động env var | Nó điều khiển gì |
 |---|---|---|
-| Allowed sign-ins | `ALLOWED_EMAILS` | Email (hoặc ký tự đại diện `*@domain.com`) được phép nhận OTP và được thêm dưới dạng người dùng |
-| Default user permissions | `DEFAULT_USER_PERMISSIONS` | Mã quyền tách bằng dấu phẩy được chọn trước khi admin mở **+ người dùng mới**. Mỗi mã thông báo phải là một trong các chuỗi được liệt kê dưới [API key permissions](/vi/agenteye/api-keys). Mặc định cho preset `standard`: truy cập chỉ đọc cộng với các hành động on-call hàng ngày (kích hoạt lại đánh giá, chạy truy vấn, thừa nhận sự cố, sử dụng trợ lý). |
-| Session lifetime | `SESSION_TTL_SECS` | Đăng nhập dashboard kéo dài bao lâu trước khi re-auth. Dashboard kiểm tra lại phiên thượng nguồn mỗi 5 giây, vì vậy cập nhật quyền trên `/<org>/users` có hiệu lực trên yêu cầu tiếp theo của người dùng bị ảnh hưởng, không có relogin. |
-| One-time-code lifetime | `OTP_TTL_SECS` | OTP / magic-link kéo dài bao lâu trước khi có thể sử dụng |
-| Alert notification channels | `ALERTS_ENABLED_CHANNELS` | Danh sách tách bằng dấu phẩy của các loại kênh mà bộ phân phối cảnh báo được phép sử dụng: `email`, `slack`, `webhook`. Cấu hình per-alert vẫn được tác giả trên `/<org>/alerts/<id>`, nhưng bộ phân phối lọc mọi gửi outbound qua tập hợp này; kênh được vô hiệu hóa ở đây ngắn mạch với hàng tính toán `skipped_disabled`. Kênh `dashboard` (chèn kiểm toán cục bộ) luôn được phép. Mặc định cho cả ba. |
+| Cho phép đăng nhập | `ALLOWED_EMAILS` | Email (hoặc ký tự đại diện `*@domain.com`) được phép nhận OTP và được thêm dưới dạng người dùng |
+| Quyền người dùng mặc định | `DEFAULT_USER_PERMISSIONS` | Mã thông báo quyền được phân tách bằng dấu phẩy được chọn trước khi quản trị viên mở **+ người dùng mới**. Mỗi mã thông báo phải là một trong các chuỗi được liệt kê dưới [API key permissions](/vi/agenteye/api-keys). Mặc định là cài đặt `standard`: truy cập chỉ đọc cộng với các hành động hàng ngày (kích hoạt lại đánh giá, chạy truy vấn, ack sự cố, sử dụng trợ lý). |
+| Thời lượng phiên | `SESSION_TTL_SECS` | Bảng điều khiển đăng nhập ở mức độ hợp lệ bao lâu trước khi xác thực lại. Bảng điều khiển tái kiểm tra phiên thượng lưu cứ 5 giây một lần, vì vậy cập nhật quyền trên `/<org>/users` có hiệu lực trên yêu cầu tiếp theo của người dùng bị ảnh hưởng, không cần đăng nhập lại. |
+| Thời lượng mã thời gian | `OTP_TTL_SECS` | OTP / magic-link có thể sử dụng được bao lâu |
+| Kênh thông báo cảnh báo | `ALERTS_ENABLED_CHANNELS` | Danh sách các loại kênh được phân tách bằng dấu phẩy mà trình điều phối cảnh báo được phép sử dụng: `email`, `slack`, `webhook`. Cấu hình mỗi cảnh báo vẫn được tác giả trên `/<org>/alerts/<id>`, nhưng trình điều phối lọc mọi lần gửi đi thông qua bộ này; một kênh bị tắt tại đây các lệnh lắp tắt ngắn với hàng kiểm toán `skipped_disabled`. Kênh `dashboard` (chèn kiểm toán cục bộ) luôn được phép. Mặc định thành cả ba. |
 
-### How the bootstrap works
+### Quá trình khởi động hoạt động
 
-Các cài đặt được lưu trữ cho mỗi tổ chức trong `org_settings`. Trên khởi động đầu tiên, server seed các hàng còn thiếu của tổ chức mặc định từ biến env phù hợp (hoặc mặc định hợp lý nếu biến env không được đặt). Sau đó, **giá trị được lưu trữ là nguồn quy chuẩn và biến env bị bỏ qua**; thay đổi biến env trên lần khởi động sau này sẽ không ảnh hưởng đến giá trị tổ chức trực tiếp, và các tổ chức bổ sung bắt đầu từ mặc định và cấu hình của riêng chúng.
+Cài đặt được lưu trữ cho mỗi tổ chức trong `org_settings`. Trên khởi động đầu tiên, máy chủ hạt giống các hàng bị thiếu của tổ chức mặc định từ biến env phù hợp (hoặc mặc định hợp lý nếu biến env không được đặt). Sau đó, **giá trị được lưu trữ là nguồn sự thật và biến env bị bỏ qua**; thay đổi biến env trên lần khởi động sau sẽ không ảnh hưởng đến giá trị của tổ chức trực tiếp, và các tổ chức bổ sung bắt đầu từ các mặc định và cấu hình của chính chúng.
 
 Điều này có nghĩa:
 
-- Đối với triển khai mới, hãy đặt biến env như được hiển thị ở trên và tổ chức mặc định đọc chúng trên khởi động đầu tiên.
-- Để thay đổi một giá trị sau này, hãy đăng nhập vào dashboard và chỉnh sửa nó dưới `/<org>/settings`. Thay đổi áp dụng trong vài giây trên tất cả các bản sao server; không cần khởi động lại.
-- Dòng nhật ký khởi động ghi những gì được seed so với những gì đã có, vì vậy bạn có thể xác nhận bootstrap đã có tác dụng:
+- Đối với triển khai mới, hãy đặt biến env như hiển thị ở trên và tổ chức mặc định đọc chúng trên khởi động đầu tiên.
+- Để thay đổi giá trị sau đó, hãy đăng nhập vào bảng điều khiển và chỉnh sửa nó dưới `/<org>/settings`. Thay đổi áp dụng trong vòng vài giây trên tất cả các bản sao máy chủ; không cần khởi động lại.
+- Dòng nhật ký khởi động ghi lại những gì đã được hạt giống so với những gì đã có, vì vậy bạn có thể xác nhận rằng khởi động có hiệu lực:
 
   ```text
   INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
   ```
 
-#### Sign-in semantics across organizations
+#### Ngữ nghĩa đăng nhập trên các tổ chức
 
-Phiên và OTP là toàn cục cho người dùng, không phải cho một tổ chức duy nhất, vì vậy hai quy tắc hòa giải các cài đặt per-org tại thời điểm đăng nhập:
+Một phiên và OTP là toàn cầu cho người dùng, không chỉ một tổ chức duy nhất, vì vậy hai quy tắc điều hòa cài đặt mỗi tổ chức tại thời gian đăng nhập:
 
-- **Session / OTP lifetime**: thời gian tồn tại nghiêm ngặt nhất (ngắn nhất) giữa các tổ chức người dùng thuộc về chiến thắng.
-- **Allowed sign-ins**: cổng HOẶC danh sách cho phép của mỗi tổ chức với thành viên tổ chức: người dùng có thể yêu cầu OTP nếu danh sách cho phép của bất kỳ tổ chức nào thừa nhận email của họ **hoặc** họ đã là thành viên của bất kỳ tổ chức nào.
+- **Thời lượng phiên / OTP**: thời lượng (ngắn nhất) nghiêm ngặt nhất trong những tổ chức mà người dùng thuộc về win.
+- **Cho phép đăng nhập**: cổng ORs mỗi danh sách cho phép của tổ chức với thành viên tổ chức: người dùng có thể yêu cầu OTP nếu bất kỳ danh sách cho phép của tổ chức nào thừa nhận email của họ **hoặc** họ đã là thành viên của bất kỳ tổ chức nào.
 
-### Permissions
+### Quyền
 
-Truy cập trang `/<org>/settings` được kiểm soát bởi hai quyền:
+Truy cập vào trang `/<org>/settings` được bảo vệ bằng hai quyền:
 
-- `settings:read`: xem trang và giá trị hiện tại.
+- `settings:read`: xem trang và các giá trị hiện tại.
 - `settings:write`: lưu các thay đổi.
 
-Người dùng admin bootstrap (được seed từ `ADMIN_EMAIL`) nhận cả hai tự động cùng với mọi quyền khác. Cấp chúng cho người dùng khác từ `/<org>/users` khi cần.
-
----
-
-## Organizations (multi-tenancy)
-
-Một triển khai duy nhất có thể phục vụ nhiều **tổ chức** bị cô lập (tenant); mỗi hàng dữ liệu thuộc về chính xác một tổ chức và cách ly được thực thi trong engine cơ sở dữ liệu. Cài đặt single-tenant không cần gì ở đây; tất cả dữ liệu sống trong tổ chức `default` tích hợp. (Bạn có thể cho tổ chức đó một tên thân thiện hơn và slug URL, vì vậy nó sống ở ví dụ `/acme` thay vì `/default`, bằng cách đặt `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` trước khởi động đầu tiên, hoặc bằng cách đổi tên nó bất kỳ lúc nào với `agenteye-orgctl org rename`.)
-
-**Cung cấp tenant chỉ operator.** Các tổ chức và thành viên của chúng được tạo và quản lý bằng CLI **`agenteye-orgctl`**, được cung cấp **bên trong hình ảnh server** (cùng với `agenteye-server`) và chạy **bên trong pod server hiện có**; không có pod/Job riêng biệt, không có API HTTP, và không có nút dashboard. Nó sử dụng lại `DATABASE_URL`, `CLICKHOUSE_URL`, và `ORG_CH_SECRET` của server.
-
-```bash
-# Docker Compose - exec vào dịch vụ server chạy:
-docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
-docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
-
-# Kubernetes - exec vào Deployment server chạy:
-kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
-```
-
-Động từ có sẵn: `org create | list | rename | delete | purge` và `member add | list | update | remove`, với tập quyền tích hợp `admin`, `standard`, và `read-only`. Các thành viên được thêm nhận OTP trên lần đăng nhập dashboard đầu tiên.
-
-**Trước khi tạo một tổ chức thứ hai:** đặt một `ORG_CH_SECRET` mạnh, ổn định (lệnh `org create` từ chối chạy trên mặc định dev tích hợp) và đảm bảo Postgres là **15+**. **Không thay đổi:** các khóa API per-org vẫn được tạo trong dashboard/API bởi các thành viên tổ chức; chỉ vòng đời tổ chức + thành viên chuyển đến CLI. Tham khảo lệnh đầy đủ và ví dụ đã làm: **[enterprise-docs/tenant-management.md](/vi/agenteye/tenant-management)**.
-
----
-
-## Context-window fill
-
-Mỗi sự kiện `model_response` hiển thị một **context-fill pill** — mã thông báo đầu vào cộng với đầu ra dưới dạng phần trăm của cửa sổ bối cảnh của mô hình đó. Các ban nhạc là `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%), và `reset context` (75–100%). AgentEye giải quyết các ID mô hình phổ biến tự động, vì vậy không cần cấu hình ban đầu.
-
-Mỗi mô hình một tổ chức gửi xuất hiện dưới **Settings → model context windows**. Người dùng có `settings:write` có thể ghi đè cửa sổ của nó hoặc thêm mô hình riêng/proxy (0–1.000.000 token); `0` có nghĩa là "unknown" và làm im lặng viên ngọc. Các thay đổi áp dụng cho các sự kiện được nhập mới. Người dùng có `settings:read` có thể xem danh sách.
-
-Các sự kiện mới nhận được lượng đầy từ lúc bạn nâng cấp. Để cũng điền **lịch sử** sự kiện (và danh sách per-model) cho triển khai hiện có, hãy chạy backfill một lần — nó được cung cấp bên trong hình ảnh server (giống như `agen
+Người dùng admin bootstrap (hạt giống từ `ADMIN_EMAIL`) tự động nhận được cả hai cùng với mọi quyền khác. Cấp chúng cho người dùng khác từ `/<org>/users` khi cần thiết

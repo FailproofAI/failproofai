@@ -4,47 +4,47 @@ description: "AgentEye 入门指南文档。"
 ---
 
 
-本指南将带您完成 AgentEye 的完整配置流程：部署服务端与控制台、在智能体机器上安装收集器，以及为您的 Python 智能体代码添加埋点。
+本指南将带您完成 AgentEye 的全套配置：部署服务器与控制台、在 Agent 机器上安装采集器，以及在 Python Agent 代码中接入埋点。
 
 ---
 
-## 什么是 AgentEye？
+## AgentEye 是什么？
 
-AgentEye 是一款**面向 AI 智能体的自托管可观测性与评估平台**。它记录智能体的每一个动作——运行过程中的每一步——并自动对每次已完成的运行质量进行评分，帮助您掌握智能体在生产环境中的行为，在用户发现问题之前提前捕获性能退化。
+AgentEye 是一个**自托管的 AI Agent 可观测性与评估平台**。它会记录 Agent 的每一个动作——运行过程中的每一步——并自动对每次已完成的运行进行质量评分，让您清晰掌握 Agent 在生产环境中的行为表现，在用户发现问题之前率先捕获回归。
 
-数据按单一方向流动：您的智能体代码通过 **Python SDK** 发送**事件** → 轻量级**收集器**守护进程批量将其上报至**服务端** → 事件与分析数据存储在 **ClickHouse** 中（组织、用户、API 密钥、控制台、保存的查询等运营状态存储在 **Postgres** 中）→ 您在**控制台**中浏览所有数据。
+数据单向流转：您的 Agent 代码通过 **Python SDK** 发出**事件** → 轻量级**采集器**守护进程批量上报至**服务器** → 事件与分析数据存储于 **ClickHouse**（组织、用户、API 密钥、控制台、保存的查询等操作状态存储于 **Postgres**）→ 您在**控制台**中查阅一切。
 
 您将获得：
 
-- **事件** — 每次智能体运行的原始逐步记录（工具调用、模型调用、钩子、错误）。
-- **会话** — 将事件聚合为每次运行一行，每行均经过**自动评估与评分**。
-- **评估** — 由您自己的评估服务生成的质量分数，无需人工审查即可发现质量下滑。
-- **查询与控制台** — 基于 ClickHouse SQL 对数据进行保存查询，并绘制为组织范围内的共享控制台。
-- **告警与事件** — 当指标超过阈值时通知您（邮件、Slack、Webhook、控制台内通知），并提供事件处理工作流。
-- **CLI 与 AI 助手** — 终端客户端（`agenteye`）以及控制台内的助手，支持用自然语言提问。
+- **事件** —— 每次 Agent 运行的原始逐步记录（工具调用、模型调用、钩子、错误）。
+- **会话** —— 将事件汇总为每次运行一行，每行均**自动评估**并打分。
+- **评估** —— 由您自己的评估服务产出的质量评分，无需人工审查即可发现质量下降。
+- **查询与控制台** —— 基于您的数据保存 ClickHouse SQL 查询，并以图表形式呈现在组织级共享控制台中。
+- **告警与事故** —— 阈值规则触发通知（邮件、Slack、Webhook、控制台内），并配有事故处理工作流。
+- **CLI 与 AI 助手** —— 终端客户端（`agenteye`）以及控制台内置助手，支持用自然语言提问。
 
-所有组件均运行在您自己的基础设施上，可以作为单个 Docker Compose 栈（本指南）、生产级 Kubernetes 安装，或单个同地部署的 Pod。本指南将从头到尾搭建 Compose 栈。
+所有组件均运行在您自己的基础设施中，可以是单个 Docker Compose 栈（本指南）、生产级 Kubernetes 部署，或单一的同置 Pod。本指南将端到端地完成 Compose 栈的搭建。
 
 ---
 
-## 第一步：认证
+## 第一步：身份认证
 
-所有 AgentEye 制品均通过 `agenteye-enterprise` GitHub 组织分发。作为企业开发者，您可以生成自己的 GitHub PAT。请参阅 [enterprise-docs/github-token.md](/zh/agenteye/github-token) 了解详细步骤和所需权限。
+所有 AgentEye 制品均从 `agenteye-enterprise` GitHub 组织分发。作为企业开发者，您可以生成自己的 GitHub PAT。请按照 [enterprise-docs/github-token.md](/zh/agenteye/github-token) 中的步骤和所需权限进行操作。
 
 ```bash
 export AGENTEYE_TOKEN=<your-github-pat>
 
-# Authenticate Docker against GHCR
+# 向 GHCR 进行 Docker 身份认证
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 ```
 
 ---
 
-## 第二步：部署服务端与控制台
+## 第二步：部署服务器与控制台
 
-服务端接收来自收集器的事件并使其可查询；控制台是您浏览数据的界面。摄入的事件与分析数据存储在 ClickHouse（必需的分析存储）中，Postgres 则保存运营状态，如组织、用户、API 密钥、控制台和保存的查询。
+服务器负责接收来自采集器的事件并使其可查询；控制台是您探索数据的地方。采集的事件与分析数据存储于 ClickHouse（必需的分析存储），而 Postgres 保存组织、用户、API 密钥、控制台和已保存查询等操作状态。
 
-**下载发布的 Compose 文件：**
+**下载已发布的 Compose 文件：**
 
 ```bash
 mkdir -p ./agenteye
@@ -55,19 +55,13 @@ curl -fsSL \
 cd agenteye
 ```
 
-**设置密钥：**
+**配置密钥：**
 
-创建 `.env` 文件，确保部署不使用默认的 `admin` 凭据。至少需要设置 `ADMIN_KEY` 和 `POSTGRES_PASSWORD`：
+创建一个 `.env` 文件，避免使用默认的 `admin` 凭据运行。至少需要设置 `ADMIN_KEY` 和 `POSTGRES_PASSWORD`：
 
 ```bash
 POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
-```
-
-同时在当前 Shell 中导出 `ADMIN_KEY`，以便后续步骤（如第三步的 `curl`）可以直接引用：
-
-```bash
-export ADMIN_KEY=your-admin-secret
 ```
 
 **启动服务栈：**
@@ -76,17 +70,17 @@ export ADMIN_KEY=your-admin-secret
 docker compose up -d
 ```
 
-这将启动完整的服务栈，包括必需的 ClickHouse 分析存储、可选的 Redis 缓存，以及服务端和控制台。服务端启动前 ClickHouse 必须处于健康状态。
+这将启动完整的服务栈，包括必需的 ClickHouse 分析存储、可选的 Redis 缓存，以及服务器和控制台。服务器启动前 ClickHouse 必须处于健康状态。
 
-服务端现在监听 `http://localhost:8080`，控制台监听 `http://localhost:3000`。
+服务器现在监听 `http://localhost:8080`，控制台监听 `http://localhost:3000`。
 
 如需生产部署（自定义 Postgres、TLS、反向代理），请参阅 [enterprise-docs/deployment.md](/zh/agenteye/deployment)。
 
 ---
 
-## 第三步：为收集器创建 API 密钥
+## 第三步：为采集器创建 API 密钥
 
-每个收集器使用有范围限制的 API 密钥进行认证。使用第二步中设置的 `ADMIN_KEY` 创建一个：
+每个采集器使用一个具有特定权限的 API 密钥进行身份认证。使用第二步中设置的 `ADMIN_KEY` 来创建：
 
 ```bash
 curl -s -X POST http://localhost:8080/keys \
@@ -95,13 +89,13 @@ curl -s -X POST http://localhost:8080/keys \
   -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
 ```
 
-`key` 值由您自行提供，在第四步的收集器配置中使用。完整的密钥管理说明请参阅 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)。
+`key` 的值由您自行提供，在第四步的采集器配置中使用它。完整的密钥管理请参阅 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)。
 
 ---
 
-## 第四步：安装收集器
+## 第四步：安装采集器
 
-在运行 AI 智能体的每台机器上安装收集器守护进程。
+在每台运行 AI Agent 的机器上安装采集器守护进程。
 
 **下载二进制文件（Linux x86_64）：**
 
@@ -114,7 +108,7 @@ chmod +x agenteye-collector-linux-x86_64
 sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
 ```
 
-> 上述命令下载的是 **Linux x86_64** 构建版本。如需 macOS（Apple Silicon 或 Intel）、Linux arm64，或 Docker / systemd / launchd 安装方式，请参阅 [collector-installation.md](/zh/agenteye/collector-installation)，其中列出了各平台的下载链接——以上命令安装的是 Linux 二进制文件，无法在其他平台上运行。
+> 此命令下载的是 **Linux x86_64** 构建版本。如需 macOS（Apple Silicon 或 Intel）、Linux arm64，或 Docker / systemd / launchd 安装方式，请参阅 [collector-installation.md](/zh/agenteye/collector-installation)，其中列出了各平台的下载方式——上述命令安装的是 Linux 二进制文件，无法在其他平台运行。
 
 **配置：**
 
@@ -134,19 +128,19 @@ EOF
 agenteye-collector start
 ```
 
-通过一次性刷新验证连通性（排空所有待处理事件后退出）：
+使用单次刷新验证连通性（刷新完所有待处理事件后退出）：
 
 ```bash
 agenteye-collector flush
 ```
 
-Docker、systemd 和 launchd 的安装说明请参阅 [enterprise-docs/collector-installation.md](/zh/agenteye/collector-installation)。
+Docker、systemd 和 launchd 的安装方式请参阅 [enterprise-docs/collector-installation.md](/zh/agenteye/collector-installation)。
 
 ---
 
 ## 第五步：安装 Python SDK
 
-在需要对智能体代码进行埋点的每台机器上，从 GitHub Releases 安装 wheel 包。
+在每台需要对 Agent 代码进行埋点的机器上，从 GitHub Releases 安装 wheel 包。
 
 ```bash
 VERSION=0.0.1b9
@@ -158,9 +152,9 @@ pip install agenteye-${VERSION}-py3-none-any.whl
 
 ---
 
-## 第六步：为您的智能体添加埋点
+## 第六步：为您的 Agent 添加埋点
 
-在智能体代码中添加事件。最低要求是发送 `agent_start` 和 `agent_end`：
+在 Agent 代码中添加事件。至少需要发出 `agent_start` 和 `agent_end`：
 
 ```python
 import agenteye
@@ -171,7 +165,7 @@ agenteye.event.agent_start(
     goal="answer the user query",
 )
 
-# your agent logic here
+# 您的 Agent 逻辑
 
 agenteye.event.agent_end(
     session_id="run-001",
@@ -180,7 +174,7 @@ agenteye.event.agent_end(
 )
 ```
 
-事件会被缓冲并每 500 毫秒刷新到 `$AGENTEYE_HOME/events/`（若未设置 `AGENTEYE_HOME`，则写入 `~/.agenteye/events/`）。收集器会自动拉取这些文件。
+事件会被缓冲，并每 500 毫秒刷新到 `$AGENTEYE_HOME/events/`（如果未设置 `AGENTEYE_HOME`，则写入 `~/.agenteye/events/`）。采集器会自动采集这些事件。
 
 完整的事件 API 请参阅 [enterprise-docs/python-sdk.md](/zh/agenteye/python-sdk)。
 
@@ -192,44 +186,44 @@ agenteye.event.agent_end(
 
 ![AgentEye 登录界面，向您的邮箱发送一次性验证码](/agenteye/images/login.png)
 
-登录后，**事件**页面会显示所有已摄入事件的实时流。按 `session_id` 或 `agent_id` 筛选，即可深入查看特定运行。
+登录后，**Events** 页面会实时显示所有已采集事件的流水记录。通过 `session_id` 或 `agent_id` 进行筛选，可深入查看特定的运行详情。
 
-![实时事件流，按事件类型标色，可按环境、智能体和会话筛选](/agenteye/images/events-stream.png)
+![按事件类型着色的实时事件流，支持按环境、Agent 和会话筛选](/agenteye/images/events-stream.png)
 
-**会话**页面将这些事件聚合为每次运行一行。AgentEye 会自动评估已完成的会话，因此每次运行都会被评分，质量退化无需人工审查即可浮现；每行一目了然地显示最新评估分数：
+**Sessions** 页面将事件汇总为每次运行一行。AgentEye 会自动评估已完成的会话，每次运行都会被评分，质量回归无需人工审查即可浮现；每行一目了然地显示最新的评估分数：
 
-![会话列表，每次运行一行，带有状态标签和评估分数徽章](/agenteye/images/sessions-list.png)
+![会话列表，每次运行一行，附有状态标签和评估分数徽章](/agenteye/images/sessions-list.png)
 
-如需配置会话评分方式，请参阅 [enterprise-docs/evaluation-suite.md](/zh/agenteye/evaluation-suite)。
+如需配置会话的评分方式，请参阅 [enterprise-docs/evaluation-suite.md](/zh/agenteye/evaluation-suite)。
 
-点击任意会话可查看其**执行图**，这是一个类似 git 的视图，展示智能体、工具、钩子和模型调用随时间的展开过程，并行子智能体各占独立泳道，右侧面板提供单次运行的详细分解：
+点击任意会话可打开其**执行图谱**——一个类似 Git 的视图，呈现 Agent、工具、钩子和模型调用随时间展开的全过程，并行子 Agent 拥有独立泳道，右侧面板提供每次运行的详细分解：
 
-![会话的类 git 执行图及其事件时间线，旁边是工具/模型/钩子分解面板](/agenteye/images/session-detail.png)
+![会话的 Git 风格执行图谱与事件时间轴并排显示，附工具/模型/钩子分解面板](/agenteye/images/session-detail.png)
 
 ---
 
-## 第八步：探索、可视化与告警
+## 第八步：探索、图表与告警
 
-在事件持续流入后，**分析**页面可将原始活动转化为洞察，帮助您衡量智能体行为、在团队间共享发现，并在出现退化时第一时间收到通知。控制台页面以组织为作用域，因此地址栏中的 URL 均以您的组织 slug 为前缀（`/<org>/…`）。
+事件数据流入后，**分析**页面将原始活动转化为洞察，帮助您衡量 Agent 行为、在团队间共享发现，并在出现回归时立即收到通知。控制台页面以组织为范围，地址栏中的 URL 带有您的组织标识前缀（`/<org>/…`）。
 
-- **查询**（`/<org>/queries`）：从针对事件和评估数据的可复用查询库中出发（包含内置预设和您自定义的查询）……
+- **查询**（`/<org>/queries`）：从已保存的可复用查询库（内置预设及您自定义的查询）开始，涵盖您的事件和评估数据……
 
-![保存的查询库：可复用查询的网格视图，包含内置预设和自定义查询](/agenteye/images/queries.png)
+![已保存查询库：一个可复用查询的网格视图，包含内置预设和自定义查询](/agenteye/images/queries.png)
 
-  ……然后在 SQL 编辑器中打开某个查询，进行调整并实时查看运行结果：
+  ……然后在 SQL 编辑器中打开某个查询进行调整，并即时查看运行结果：
 
-![SQL 查询编辑器正在运行一条保存的查询，左侧为 Schema 侧边栏，右侧为实时结果表格](/agenteye/images/query-lab.png)
+![SQL 查询编辑器正在运行已保存的查询，左侧为 Schema 面板，右侧为实时结果表格](/agenteye/images/query-lab.png)
 
-- **控制台**（`/<org>/dashboards`）：将查询以折线图、柱状图、面积图或饼图的形式固定为图块，组成在整个组织范围内共享的控制台。
+- **控制台**（`/<org>/dashboards`）：将查询以折线图、柱状图、面积图或饼图的形式固定到组织级共享控制台中。
 
-![由保存的查询构建的控制台：每小时事件数折线图、按类型分类的错误柱状图、延迟面积图和按模型统计的 Token 数](/agenteye/images/dashboard-fleet.png)
+![由已保存查询构建的控制台：每小时事件数折线图、按类型分类的错误柱状图、延迟面积图和按模型统计的 Token 用量](/agenteye/images/dashboard-fleet.png)
 
-- **告警**（`/<org>/alerts`）：将任何阈值提升为告警规则，通过邮件、Slack、Webhook 或控制台内通知进行提醒。请参阅 [enterprise-docs/alerts.md](/zh/agenteye/alerts)。
+- **告警**（`/<org>/alerts`）：将任意阈值条件提升为通知规则，通过邮件、Slack、Webhook 或控制台内推送。请参阅 [enterprise-docs/alerts.md](/zh/agenteye/alerts)。
 
 ---
 
 ## 后续步骤
 
-- [部署](/zh/agenteye/deployment)：为生产环境加固
+- [部署](/zh/agenteye/deployment)：加固生产环境
 - [API 密钥](/zh/agenteye/api-keys)：管理访问权限
 - [故障排查](/zh/agenteye/troubleshooting)：诊断问题

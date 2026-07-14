@@ -3,105 +3,104 @@ title: "Despliegue Administrado en tu Clúster de Kubernetes"
 description: "Documentación del despliegue administrado de AgentEye en tu clúster de Kubernetes."
 ---
 
+AgentEye es una plataforma de observabilidad y evaluación autoalojada para agentes de IA y LLM. Captura sesiones de agentes, llamadas a herramientas, solicitudes al modelo y errores; los convierte en analíticas y evaluaciones con capacidad de búsqueda, y presenta los resultados en un panel con un asistente de IA opcional de solo lectura.
 
-AgentEye es una plataforma de observabilidad y evaluación autoalojada para agentes de IA y LLM. Captura sesiones de agentes, llamadas a herramientas, solicitudes a modelos y errores; los convierte en analíticas y evaluaciones con capacidad de búsqueda, y muestra los resultados en un panel con un asistente de IA opcional de solo lectura.
-
-En el modelo de despliegue administrado, tú proporcionas un clúster de Kubernetes dedicado y Exosphere ejecuta la plataforma completa dentro de él: despliega, configura, opera, respalda y actualiza cada componente en tu nombre. Tu equipo obtiene el valor de la plataforma (visibilidad de agentes, analíticas, evaluación y el asistente opcional) sin necesidad de operar bases de datos, certificados ni actualizaciones. Todos los datos permanecen dentro de tu cuenta de nube.
+En el modelo de despliegue administrado, tú provees un clúster de Kubernetes dedicado y Exosphere ejecuta toda la plataforma dentro de él: despliega, configura, opera, hace copias de seguridad y actualiza cada componente en tu nombre. Tu equipo obtiene el valor de la plataforma (visibilidad de agentes, analíticas, evaluación y el asistente opcional) sin necesidad de gestionar bases de datos, certificados ni actualizaciones. Todos los datos permanecen dentro de tu cuenta en la nube.
 
 ---
 
 ## Requisitos previos
 
-- Un **PAT de GitHub** para extraer imágenes de contenedor y descargar artefactos (consulta [Configuración del token de GitHub](/es/agenteye/github-token))
+- Un **PAT de GitHub** para descargar imágenes de contenedores y artefactos (consulta [enterprise-docs/github-token.md](/es/agenteye/github-token))
 - Un **clúster de Kubernetes dedicado** (consulta los requisitos a continuación)
 - Un **bucket de almacenamiento** para copias de seguridad de bases de datos
 - **Conectividad de red**: puerto 443 de entrada al balanceador de carga del clúster
 
 ---
 
-## Paso 1: Aprovisiona un Clúster de Kubernetes Dedicado
+## Paso 1: Aprovisionar un Clúster de Kubernetes Dedicado
 
-Crea un clúster de Kubernetes dedicado exclusivamente a AgentEye. No debe compartirse con otras cargas de trabajo, de modo que la plataforma completa (servicios de aplicación, bases de datos, analíticas y caché) se ejecute de forma aislada sin afectar tu infraestructura existente.
+Crea un clúster de Kubernetes dedicado exclusivamente a AgentEye. No debe compartirse con otras cargas de trabajo, de modo que la plataforma completa (servicios de aplicación, bases de datos, analíticas y caché) se ejecute en aislamiento sin afectar tu infraestructura existente.
 
 | Requisito | Detalles |
 |---|---|
-| **Distribución** | Cualquier Kubernetes conforme: EKS, GKE, AKS o autogestionado |
-| **Versión** | 1.27 o superior |
-| **Pool de nodos** | Mínimo: **3 nodos, 4 vCPU / 8 GB RAM cada uno** (instancias estándar de propósito general) |
-| **Almacenamiento** | Una StorageClass predeterminada que aprovisione volúmenes de bloque (p. ej., `gp3` en AWS, `pd-ssd` en GCP) |
+| **Distribución** | Cualquier Kubernetes conforme: EKS, GKE, AKS o autoalojado |
+| **Versión** | 1.27 o posterior |
+| **Pool de nodos** | Mínimo: **3 nodos, 4 vCPU / 8 GB RAM cada uno** (instancias de propósito general estándar) |
+| **Almacenamiento** | Una StorageClass predeterminada que aprovisione volúmenes en bloque (p. ej. `gp3` en AWS, `pd-ssd` en GCP) |
 | **Balanceador de carga** | El clúster debe poder aprovisionar servicios LoadBalancer en la nube (predeterminado en EKS, GKE, AKS) |
 
 > Exosphere instala y gestiona todo lo demás dentro del clúster: controladores de ingress, certificados TLS, bases de datos, caché, monitoreo y todos los despliegues de aplicaciones.
 
 ---
 
-## Paso 2: Otorga Acceso al Equipo de AgentEye
+## Paso 2: Otorgar Acceso al Equipo de AgentEye
 
 Exosphere necesita acceso cluster-admin (o RBAC amplio equivalente) para gestionar namespaces, definiciones de recursos personalizados, controladores de ingress y aprovisionadores de almacenamiento.
 
 | Requisito | Detalles |
 |---|---|
-| **Método de acceso** | Rol de IAM (preferido para EKS/GKE), kubeconfig o acceso basado en SSO |
-| **VPN / bastión** | Si el servidor de API de Kubernetes es privado, proporciona credenciales de VPN o acceso a bastión para el equipo de operaciones de Exosphere |
+| **Método de acceso** | Rol IAM (preferido para EKS/GKE), kubeconfig o acceso basado en SSO |
+| **VPN / bastion** | Si el servidor de API de Kubernetes es privado, proporciona credenciales de VPN o acceso bastion para el equipo de operaciones de Exosphere |
 
 ---
 
-## Paso 3: Configura la Conectividad de Red
+## Paso 3: Configurar la Conectividad de Red
 
-Tu equipo de red debe permitir el tráfico de entrada en el **puerto 443** hacia los balanceadores de carga del clúster. El despliegue utiliza dos balanceadores de carga separados: uno para la ingesta de eventos (protegido con mTLS) y otro para el panel:
+Tu equipo de red debe permitir tráfico de entrada en el **puerto 443** hacia los balanceadores de carga del clúster. El despliegue utiliza dos balanceadores de carga separados: uno para la ingesta de eventos (protegido con mTLS) y otro para el panel:
 
 | Tráfico | Origen | Destino | Seguridad |
 |---|---|---|---|
-| **Ingesta de eventos** | Pods del colector en tus clústeres | LoadBalancer de ingesta, puerto 443 | mTLS (certificado de cliente) + clave de API |
-| **Panel** | Navegadores de desarrolladores | LoadBalancer del panel, puerto 443 | HTTPS en tu dominio, inicio de sesión sin contraseña por OTP de correo electrónico |
+| **Ingesta de eventos** | Pods del colector en tus clústeres | Ingest LoadBalancer, puerto 443 | mTLS (certificado de cliente) + clave de API |
+| **Panel** | Navegadores de desarrolladores | Dashboard LoadBalancer, puerto 443 | HTTPS en tu dominio, inicio de sesión OTP por correo electrónico sin contraseña |
 
-El endpoint de ingesta está protegido por TLS mutuo; los colectores deben presentar un certificado de cliente válido **y** una clave de API válida en cada solicitud. El panel se ejecuta en su propio balanceador de carga y hostname, con el inicio de sesión restringido a las direcciones de correo electrónico/dominios que hayas permitido.
+El endpoint de ingesta está protegido por TLS mutuo; los colectores deben presentar un certificado de cliente válido **y** una clave de API válida en cada solicitud. El panel se ejecuta en su propio balanceador de carga y hostname, con el inicio de sesión restringido a las direcciones de correo electrónico o dominios que incluyas en tu lista de permitidos.
 
-**Registros DNS (una sola vez):** creas dos registros CNAME bajo un dominio que controlas — uno para el endpoint de ingesta y otro para el panel (p. ej., `agenteye.tu-empresa.ejemplo`) — apuntando a los hostnames del balanceador de carga que proporciona Exosphere. Exosphere aprovisiona entonces certificados TLS de confianza pública para ambos hostnames de forma automática, incluidas las renovaciones.
+**Registros DNS (única vez):** creas dos registros CNAME bajo un dominio que controlas — uno para el endpoint de ingesta y otro para el panel (p. ej. `agenteye.tu-empresa.ejemplo`) — apuntando a los hostnames del balanceador de carga que Exosphere proporciona. Exosphere luego aprovisiona certificados TLS de confianza pública para ambos hostnames de forma automática, incluyendo las renovaciones.
 
-> **Nota sobre el puerto 80:** la emisión y renovación automática de certificados se valida mediante HTTP en el puerto 80 de cada balanceador de carga. Si tu postura de seguridad requiere restringir el balanceador de carga del panel a rangos de IP corporativos, infórmalo a Exosphere primero — cambiamos la validación de certificados a un método basado en DNS (un registro DNS adicional de tu parte) para que las renovaciones sigan funcionando detrás de la restricción.
+> **Nota sobre el puerto 80:** la emisión y renovación automática de certificados valida mediante HTTP en el puerto 80 de cada balanceador de carga. Si tu postura de seguridad requiere restringir el balanceador de carga del panel a rangos de IP corporativos, comunícaselo a Exosphere primero — cambiamos la validación de certificados a un método basado en DNS (un registro DNS adicional de tu parte) para que las renovaciones sigan funcionando detrás de la restricción.
 
-> **Saliente:** los nodos del clúster necesitan acceso a internet para extraer imágenes de contenedor de `ghcr.io`. Si tu red restringe el tráfico saliente, incluye `ghcr.io` en la lista de permitidos o replica las imágenes en tu registro interno.
+> **Saliente:** los nodos del clúster necesitan acceso a Internet para descargar imágenes de contenedores desde `ghcr.io`. Si tu red restringe el tráfico saliente, agrega `ghcr.io` a la lista de permitidos o replica las imágenes en tu registro interno.
 
 ---
 
-## Paso 4: Proporciona un Bucket de Almacenamiento para Copias de Seguridad
+## Paso 4: Proporcionar un Bucket de Almacenamiento para Copias de Seguridad
 
-Las copias de seguridad de bases de datos se almacenan en un bucket de almacenamiento en la nube que te pertenece.
+Las copias de seguridad de las bases de datos se almacenan en un bucket de almacenamiento en la nube de tu propiedad.
 
 | Requisito | Detalles |
 |---|---|
 | **Servicio** | S3 (AWS), GCS (GCP) o Azure Blob Storage |
-| **Acceso** | Concede acceso de escritura a los nodos del clúster mediante rol de IAM para cuentas de servicio (IRSA en EKS, Workload Identity en GKE) o proporciona credenciales |
-| **Retención** | Tú controlas la política de ciclo de vida del bucket (período de retención, reglas de archivo). Exosphere escribe las copias de seguridad; tú decides cuánto tiempo conservarlas |
+| **Acceso** | Otorga acceso de escritura a los nodos del clúster mediante rol IAM para cuentas de servicio (IRSA en EKS, Workload Identity en GKE) o proporciona credenciales |
+| **Retención** | Tú controlas la política de ciclo de vida del bucket (período de retención, reglas de archivado). Exosphere escribe las copias de seguridad; tú decides cuánto tiempo conservarlas |
 
 Una copia de seguridad diaria vuelca tanto PostgreSQL (estado relacional) como ClickHouse (eventos y evaluaciones) en un único archivo comprimido y lo sube a tu bucket. Las copias de seguridad también se ejecutan antes de cada actualización.
 
 ---
 
-## Paso 5: Designa un Punto de Contacto
+## Paso 5: Designar un Punto de Contacto
 
-Proporciona una persona o un canal de Slack/Teams de tu parte para problemas a nivel de clúster: estado de los nodos, límites de cuenta en la nube, cambios de red. Las operaciones cotidianas no involucran este contacto.
+Proporciona una persona o canal de Slack/Teams de tu lado para problemas a nivel de clúster: salud de nodos, límites de cuenta en la nube, cambios de red. Las operaciones del día a día no requieren involucrar a este contacto.
 
 ---
 
 ## Qué Desplegamos
 
-Una vez que Exosphere tiene acceso al clúster, los siguientes componentes se despliegan y gestionan por ti:
+Una vez que Exosphere tiene acceso al clúster, los siguientes componentes se despliegan y gestionan en tu nombre:
 
 | Componente | Función |
 |---|---|
-| **Servidor AgentEye** | API HTTP que recibe eventos de los colectores, ejecuta analíticas y sirve datos al panel |
-| **Panel** | Interfaz web para ver sesiones de agentes, llamadas a herramientas, solicitudes a modelos y errores; aloja el asistente de IA opcional de solo lectura |
+| **AgentEye Server** | API HTTP que recibe eventos de los colectores, ejecuta analíticas y sirve datos al panel |
+| **Dashboard** | Interfaz web para visualizar sesiones de agentes, llamadas a herramientas, solicitudes al modelo y errores; aloja el asistente de IA opcional de solo lectura |
 | **ClickHouse** | Almacén canónico requerido para eventos ingestados, analíticas y evaluaciones |
 | **PostgreSQL** | Almacén relacional para organizaciones, claves de API, usuarios, paneles y consultas guardadas |
-| **Redis** | Caché compartida opcional y backend de límite de velocidad; la plataforma se degrada de forma controlada si no está disponible |
-| **Asistente de IA (opcional)** | Contenedor de asistente interno de solo lectura; permanece deshabilitado hasta que se configure un endpoint de LLM |
-| **Controladores de ingress** | Dos balanceadores de carga (uno para ingesta protegida con mTLS, otro para el panel) que terminan TLS con certificados de confianza pública y renovación automática, y aplican mTLS en el endpoint de ingesta |
+| **Redis** | Caché compartida opcional y backend de límite de tasa; la plataforma degrada de forma elegante si no está disponible |
+| **Asistente de IA (opcional)** | Contenedor de asistente interno de solo lectura; permanece deshabilitado hasta que se configure un endpoint LLM |
+| **Controladores de ingress** | Dos balanceadores de carga (uno para ingesta protegida con mTLS, otro para el panel) que terminan TLS con certificados de confianza pública y renovación automática, e imponen mTLS en el endpoint de ingesta |
 | **cert-manager** | Automatiza el aprovisionamiento de certificados TLS y la emisión de certificados de cliente mTLS |
-| **Monitoreo de certificados** | Un trabajo programado verifica la expiración de certificados y envía alertas (p. ej., a Slack) cuando los certificados se acercan a la renovación |
+| **Monitoreo de certificados** | Un job programado verifica el vencimiento de certificados y envía alertas (p. ej. a Slack) cuando los certificados se aproximan a la renovación |
 
-La oferta administrada también opera el pipeline de evaluación de la plataforma, que puntúa la actividad de los agentes según tus criterios de evaluación. Consulta [Asistente](/es/agenteye/assistant) y [Suite de Evaluación](/es/agenteye/evaluation-suite) para conocer qué ofrecen estas capacidades.
+La oferta administrada también opera el pipeline de evaluación de la plataforma, que puntúa la actividad de los agentes según tus criterios de evaluación. Consulta [enterprise-docs/assistant.md](/es/agenteye/assistant) y [enterprise-docs/evaluation-suite.md](/es/agenteye/evaluation-suite) para conocer lo que estas capacidades ofrecen.
 
 ---
 
@@ -111,9 +110,9 @@ Una vez completado el despliegue, recibes:
 
 | Elemento | Detalles |
 |---|---|
-| **URL del panel** | Un hostname bajo tu dominio (p. ej., `https://agenteye.tu-empresa.ejemplo`), servido con un certificado TLS de confianza pública y renovación automática. Creas un CNAME hacia el hostname del balanceador de carga que proporcionamos; el inicio de sesión es sin contraseña por OTP de correo electrónico |
-| **Endpoint del colector** | La ruta `/events` del hostname de ingesta (p. ej., `https://ingest.tu-empresa.ejemplo/events`), protegido con mTLS |
-| **Bundle de certificado de cliente** | Por clúster: certificado de cliente, clave privada y certificado de CA entregados como un manifiesto de Secret de Kubernetes. Aplícalo una vez por clúster |
+| **URL del panel** | Un hostname bajo tu dominio (p. ej. `https://agenteye.tu-empresa.ejemplo`), servido con un certificado TLS de confianza pública y renovación automática. Creas un CNAME al hostname del balanceador de carga que proporcionamos; el inicio de sesión es OTP por correo electrónico sin contraseña |
+| **Endpoint del colector** | La ruta `/events` del hostname de ingesta (p. ej. `https://ingest.tu-empresa.ejemplo/events`), protegida con mTLS |
+| **Bundle de certificado de cliente** | Por clúster: certificado de cliente, clave privada y certificado CA entregados como un manifiesto de Kubernetes Secret. Se aplica una vez por clúster |
 | **PAT de GitHub** | Para descargar binarios del colector y paquetes del SDK de Python |
 | **Claves de API del colector** | Claves con alcance y permiso `events:add`, una por despliegue de colector |
 | **Guías de instalación** | Documentación paso a paso para el colector y el SDK de Python |
@@ -124,8 +123,8 @@ Una vez completado el despliegue, recibes:
 
 Tu único trabajo continuo es en tus propias máquinas de agentes, no en el clúster de AgentEye:
 
-1. **Instala el colector** en cada clúster de Kubernetes que ejecute agentes de IA: monta el certificado de cliente y configura la URL del endpoint y la clave de API. Consulta [Instalación del Colector](/es/agenteye/collector-installation).
-2. **Integra el SDK de Python** en el código de tu agente. Consulta [SDK de Python](/es/agenteye/python-sdk).
+1. **Instala el colector** en cada clúster de Kubernetes que ejecute agentes de IA: monta el certificado de cliente y configura la URL del endpoint y la clave de API. Consulta [enterprise-docs/collector-installation.md](/es/agenteye/collector-installation).
+2. **Integra el SDK de Python** en el código de tu agente. Consulta [enterprise-docs/python-sdk.md](/es/agenteye/python-sdk).
 3. **Abre el panel** en tu navegador para ver la actividad de los agentes.
 
 Sin operaciones de clúster, sin gestión de bases de datos, sin renovaciones de certificados, sin actualizaciones.
@@ -134,10 +133,10 @@ Sin operaciones de clúster, sin gestión de bases de datos, sin renovaciones de
 
 ## Seguridad
 
-- **Los datos permanecen en tu cuenta de nube.** El clúster, el almacenamiento y las bases de datos se ejecutan en tu entorno. Ningún dato sale de tu perímetro.
-- **Tú controlas el acceso.** El clúster está en tu cuenta. Puedes auditar, monitorear o revocar el acceso de Exosphere en cualquier momento. Todas las operaciones pasan por el registro de auditoría de tu nube (CloudTrail, GCP Audit Logs, etc.).
+- **Los datos permanecen en tu cuenta en la nube.** El clúster, el almacenamiento y las bases de datos se ejecutan en tu entorno. Ningún dato sale de tu perímetro.
+- **Tú controlas el acceso.** El clúster está en tu cuenta. Puedes auditar, monitorear o revocar el acceso de Exosphere en cualquier momento. Todas las operaciones quedan registradas en el log de auditoría de tu nube (CloudTrail, GCP Audit Logs, etc.).
 - **mTLS en la ingesta de eventos.** Cada solicitud del colector requiere tanto un certificado de cliente válido como una clave de API. Una clave filtrada es inútil sin el certificado; un certificado robado es inútil sin una clave válida.
-- **Control de acceso al panel.** El panel se ejecuta en su propio balanceador de carga, separado de la ingesta de eventos, y el inicio de sesión es sin contraseña por OTP de correo electrónico, restringido a las direcciones de correo electrónico/dominios que hayas permitido. Una lista de rangos de IP de origen permitidos en el balanceador de carga está disponible bajo solicitud; dado que la renovación automática de certificados debe alcanzar el balanceador de carga, Exosphere combina la restricción con la validación de certificados basada en DNS para que las renovaciones sigan funcionando.
+- **Control de acceso al panel.** El panel se ejecuta en su propio balanceador de carga, separado de la ingesta de eventos, y el inicio de sesión es OTP por correo electrónico sin contraseña, restringido a las direcciones de correo electrónico o dominios que incluyas en tu lista de permitidos. Una lista de rangos de IP de origen permitidos en el balanceador de carga está disponible bajo solicitud; dado que la renovación automática de certificados debe llegar al balanceador de carga, Exosphere combina la restricción con validación de certificados basada en DNS para que las renovaciones sigan funcionando.
 - **Certificados por clúster.** Cada uno de tus clústeres recibe su propio certificado de cliente. Si un clúster se ve comprometido, ese certificado se revoca de forma independiente sin afectar a los demás.
 
 ---
@@ -146,10 +145,10 @@ Sin operaciones de clúster, sin gestión de bases de datos, sin renovaciones de
 
 | Fase | Duración | Tu participación |
 |---|---|---|
-| **Aprovisionamiento del clúster** | 1-2 días | Aprovisionar el clúster y conceder acceso a Exosphere |
+| **Aprovisionamiento del clúster** | 1-2 días | Aprovisionar el clúster y otorgar acceso a Exosphere |
 | **Configuración de la plataforma** | 1 día | Ninguna; Exosphere instala todos los componentes de infraestructura |
 | **Despliegue de la aplicación** | 1 día | Ninguna; Exosphere despliega el servidor, el panel y crea las claves de API |
-| **Despliegue del colector** | 1-3 días | Instalar colectores en tus clústeres (con orientación de Exosphere) |
+| **Instalación del colector** | 1-3 días | Instalar los colectores en tus clústeres (con orientación de Exosphere) |
 | **Rodaje en producción** | 1 semana | Ninguna; Exosphere monitorea y ajusta |
 
 Total típico: **~2 semanas** desde el inicio hasta producción lista.
@@ -164,8 +163,8 @@ Para preguntas o problemas, contacta a Exosphere en `support@exosphere.host`.
 
 ## Próximos Pasos
 
-- [Primeros Pasos](/es/agenteye/getting-started): recorrido completo de extremo a extremo
-- [Instalación del Colector](/es/agenteye/collector-installation): instalar y configurar el colector
+- [Primeros pasos](/es/agenteye/getting-started): recorrido completo de extremo a extremo
+- [Instalación del colector](/es/agenteye/collector-installation): instalar y configurar el colector
 - [SDK de Python](/es/agenteye/python-sdk): instrumentar el código de tu agente
-- [Claves de API](/es/agenteye/api-keys): gestionar acceso y permisos
-- [Solución de Problemas](/es/agenteye/troubleshooting): problemas comunes y soluciones
+- [Claves de API](/es/agenteye/api-keys): gestionar accesos y permisos
+- [Solución de problemas](/es/agenteye/troubleshooting): problemas comunes y soluciones

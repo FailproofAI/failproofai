@@ -1,163 +1,163 @@
 ---
-title: "Развертывание"
-description: "Документация по развертыванию AgentEye."
+title: "Развёртывание"
+description: "Документация по развёртыванию AgentEye."
 ---
 
-Это руководство охватывает развертывание сервера AgentEye и панели управления в production.
+
+Это руководство охватывает развёртывание сервера AgentEye и приборной панели в продакшене.
 
 ---
 
 ## Обзор архитектуры
 
 ```
-  [ Машины с ИИ-агентами ]              [ Ваша инфраструктура ]
+  [ AI agent machines ]                  [ Your infrastructure ]
 
     Python SDK
-       |  записывает JSONL                   +----------------------+
+       |  writes JSONL                       +----------------------+
        v                                +--->| PostgreSQL 15+       |
- agenteye-collector --HTTP--+           |    | (реляционное        |
-                            |           |    |  хранилище)          |
-                            v           |    +----------------------+
-                       +--------+       |
+ agenteye-collector --HTTP--+           |    | (relational store)   |
+                            |           |    +----------------------+
+                            v           |
+                       +--------+       |    +----------------------+
                        | Server |<------+--->| ClickHouse 24+       |
-                       +--------+       |    | (события / аналитика)|
+                       +--------+       |    | (events / analytics) |
                             ^           |    +----------------------+
                         API |           |
                             |           |    +----------------------+
-                      +-----------+     +- - >| Redis 7+ (опционально)|
+                      +-----------+     +- - >| Redis 7+ (optional) |
                       | Dashboard |           +----------------------+
                       +-----------+
 ```
 
-- **Server**: HTTP-сервис на Rust; получает пакеты событий, записывает их в ClickHouse и поддерживает relational-состояние в PostgreSQL.
-- **Dashboard**: веб-приложение Next.js; читает и записывает исключительно через API сервера.
-- **agenteye-collector**: развертывается на машинах агентов, а не на хосте сервера.
-- **Postgres 15+**: ТРЕБУЕТСЯ. (Повышено с 14 в релизе multi-tenant; схема org-membership использует foreign key с `ON DELETE SET NULL` для списка колонок, что требует Postgres 15+. Обновите Postgres перед развертыванием этой версии.) Хранит OLTP-состояние: `api_keys`, `users`, `sessions`, `evaluation_jobs` (очередь), `dashboards`, `saved_queries`, `otp_codes`, плюс multi-tenant таблицы `orgs`, `org_memberships`, `org_settings`.
-- **ClickHouse 24+**: ТРЕБУЕТСЯ. Аналитическое хранилище для каждого ingested события. Engine: `ReplacingMergeTree`, разделенное по месяцам, отсортированное по `(session_id, ts, dedup_key)`. Сервер подключается через `CLICKHOUSE_URL`; встроенная конфигурация `deploy/base/clickhouse/` содержит оптимизированную конфигурацию для single-node. **Требование для multi-tenant:** встроенная конфигурация включает управление доступом SQL + `users_without_row_policies_can_read_rows=false`, чтобы сервер мог создать одного read-only пользователя ClickHouse + row policy на организацию (boundary изоляции, обеспечиваемое engine, для SQL-редактора и ИИ-агента). Если вы используете собственную конфигурацию ClickHouse, перенесите эти параметры (см. `deploy/base/clickhouse/configmap.yaml`).
-- **Redis 7+**: *опционально* shared cache + rate-limit backend. Сервер и панель управления подключаются через `REDIS_URL`. Если отсутствует, оба gracefully деградируют до Postgres-only путей. См. **Redis (опциональный кеш)** ниже.
+- **Server**: HTTP-сервис на Rust; получает пакеты событий, записывает их в ClickHouse и поддерживает состояние в PostgreSQL.
+- **Dashboard**: веб-приложение на Next.js; читает и пишет исключительно через API сервера.
+- **agenteye-collector**: развёртывается на машинах агентов, а не на хосте сервера.
+- **Postgres 15+**: ТРЕБУЕТСЯ. (Повышено с 14 в версии с поддержкой нескольких арендаторов; схема членства в организации использует иностранный ключ `ON DELETE SET NULL` со списком столбцов, что поддерживается только в Postgres 15+. Обновите Postgres перед развёртыванием этой версии.) Хранит состояние OLTP: `api_keys`, `users`, `sessions`, `evaluation_jobs` (очередь), `dashboards`, `saved_queries`, `otp_codes`, а также таблицы для нескольких арендаторов `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: ТРЕБУЕТСЯ. Хранилище аналитики для каждого полученного события. Engine: `ReplacingMergeTree`, разбиение по месяцам, упорядочение по `(session_id, ts, dedup_key)`. Сервер подключается через `CLICKHOUSE_URL`; поставляемая конфигурация `deploy/base/clickhouse/` содержит оптимизированную конфигурацию для одного узла. **Требование для нескольких арендаторов:** поставляемая конфигурация включает управление доступом SQL + `users_without_row_policies_can_read_rows=false`, позволяя серверу создавать по одному пользователю ClickHouse только для чтения + политику строк для каждой организации (граница изоляции, поддерживаемая engine). Если вы используете собственную конфигурацию ClickHouse, перенесите эти параметры (см. `deploy/base/clickhouse/configmap.yaml`).
+- **Redis 7+**: *опциональный* общий кеш + бэкенд ограничения частоты запросов. И сервер, и приборная панель подключаются через `REDIS_URL`. При отсутствии оба корректно переходят на использование только Postgres. См. **Redis (опциональный кеш)** ниже.
 
 ---
 
-## Server
+## Сервер
 
-### Получение образа
+### Получить образ
 
 ```bash
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-> Текущие сборки публикуются под `beta-latest`; `latest` присваивается только stable релизам. Для production используйте конкретный тег `:v<version>`; см. [Доступные теги образов](#доступные-теги-образов).
+> Текущие сборки публикуются под `beta-latest`; `latest` присваивается только стабильным релизам. Для продакшена зафиксируйте конкретный тег `:v<version>`; см. [Доступные теги образов](#доступные-теги-образов).
 
 ### Переменные окружения
 
 | Переменная | Требуется | По умолчанию | Описание |
 |---|---|---|---|
-| `DATABASE_URL` | Да | нет | Postgres DSN. Стандартная строка подключения libpq с схемой `postgres://`. Поддерживает `?sslmode=require` и другие параметры libpq. Пароль не должен содержать `/`, `+` или `=`; используйте `openssl rand -hex` для генерации URL-безопасных паролей. |
-| `ADMIN_KEY` | Нет | нет | Bootstrap admin API key. Upserted со всеми разрешениями при каждом запуске. Ротируйте, изменив значение и перезагрузив. |
+| `DATABASE_URL` | Да | нет | Postgres DSN. Строка подключения в стандартном формате libpq со схемой `postgres://`. Поддерживает `?sslmode=require` и другие параметры libpq. Пароль не должен содержать `/`, `+` или `=`; используйте `openssl rand -hex` для генерации безопасных для URL паролей. |
+| `ADMIN_KEY` | Нет | нет | Начальный ключ API администратора. Обновляется со всеми разрешениями при каждом запуске. Для ротации измените значение и перезагрузитесь. |
 | `LISTEN_ADDR` | Нет | `0.0.0.0:8080` | TCP-адрес для привязки |
-| `MAX_BODY_BYTES` | Нет | `134217728` (128 MB) | Максимальный размер тела запроса |
-| `ADMIN_EMAIL` | Нет | нет | Email bootstrap admin пользователя. Upserted со всеми разрешениями при каждом запуске и отмечен как protected: не может быть отключен или иметь измененные разрешения через dashboard/API. Чтобы ротировать bootstrap admin, измените `ADMIN_EMAIL` и перезагрузитесь; новый email upserted как protected, а предыдущий сохраняет protection до ручной очистки в БД. |
-| `ALLOWED_EMAILS` | Нет | нет (все заблокированы) | Список разделенных запятыми разрешенных адресов электронной почты для создания пользователя и входа. Поддерживает точные адреса (`user@example.com`) и wildcards домена (`*@example.com`). Если не установлено, никакие пользователи не могут быть созданы или войти. **Только первая загрузка**: заполняет allowlist org по умолчанию при первой загрузке; после этого страница [`/<org>/settings`](#operational-settings) каждой org является источником истины и изменение этой переменной окружения не имеет эффекта. |
-| `SMTP_HOST` | Нет | нет | Имя хоста SMTP-сервера для отправки OTP-писем. Если не установлено, OTP-коды логируются в stdout вместо этого. |
+| `MAX_BODY_BYTES` | Нет | `134217728` (128 МБ) | Максимальный размер тела запроса |
+| `ADMIN_EMAIL` | Нет | нет | Email начального пользователя администратора. Обновляется со всеми разрешениями при каждом запуске и помечается защищённым: не может быть отключен или иметь изменены разрешения через приборную панель/API. Для ротации начального администратора измените `ADMIN_EMAIL` и перезагрузитесь; новый email обновляется как защищённый, а предыдущий сохраняет защиту до ручной очистки в БД. |
+| `ALLOWED_EMAILS` | Нет | нет (все заблокированы) | Список допускаемых адресов email через запятую для создания и входа пользователей. Поддерживает точные адреса (`user@example.com`) и подстановочные знаки домена (`*@example.com`). Если не задано, никакие пользователи не могут быть созданы или войти. **Только при первой загрузке**: заполняет список разрешений организации по умолчанию при первой загрузке; затем страница `/<org>/settings` каждой организации является источником истины и изменение этой переменной окружения не имеет эффекта. |
+| `SMTP_HOST` | Нет | нет | Имя хоста SMTP-сервера для отправки email с OTP. При отсутствии коды OTP логируются в stdout. |
 | `SMTP_PORT` | Нет | `587` | Порт SMTP-сервера |
-| `SMTP_USERNAME` | Нет | нет | Имя пользователя SMTP-аутентификации |
-| `SMTP_PASSWORD` | Нет | нет | Пароль SMTP-аутентификации |
-| `SMTP_FROM` | Нет | нет | Адрес отправителя для OTP-писем |
-| `SMTP_TLS` | Нет | STARTTLS | STARTTLS используется, если вы явно не отключите: `false` или `0` отправляет plaintext (без TLS); любое другое значение — включая не установленное — включает STARTTLS. |
-| `DASHBOARD_URL` | Нет | встроенное значение по умолчанию | Источник Dashboard, используемый для построения как magic link в OTP-письме, так и incident magic-links в уведомлениях оповещений. Если не установлено, он возвращается к встроенному значению по умолчанию (и, только для OTP, к origin, полученному из dashboard первым). Установите это для split-domain конфигураций, чтобы как email, так и Slack/incident ссылки указывали на вашу dashboard. См. **Email magic-link URL** ниже; большинство операторов это устанавливать не должны. |
-| `SESSION_TTL_SECS` | Нет | `86400` (24 ч) | Продолжительность dashboard сессии в секундах. **Только первая загрузка**: редактируйте по org через [`/<org>/settings`](#operational-settings) после первого развертывания. |
-| `OTP_TTL_SECS` | Нет | `600` (10 мин) | Период действия OTP-кода в секундах. **Только первая загрузка**: редактируйте по org через [`/<org>/settings`](#operational-settings) после первого развертывания. |
-| `REDIS_URL` | Нет | нет | Опциональный shared cache + rate-limit backend, например `redis://redis:6379/0`. При установке сервер кеширует аутентифицированные поиски API-ключей, aggregate `/models` dashboard, список сессий и env-list facet; он также перемещает OTP-request rate limiting с Postgres COUNT на Redis INCR. Если не установлено или недостижимо, сервер работает без кеша (OTP limit возвращается к Postgres, каждый другой вызов кеша возвращается к источнику истины). См. **Redis (опциональный кеш)** ниже. |
-| `CLICKHOUSE_URL` | **Да** | нет | Базовый URL ClickHouse экземпляра, например `http://clickhouse:8123`. Сервер применяет свою схему событий к этой БД при каждом запуске и отказывается загружаться, если не может достичь ClickHouse. См. **ClickHouse (требуемое аналитическое хранилище)** ниже. |
-| `CLICKHOUSE_DATABASE` | Нет | `agenteye` | Имя ClickHouse database (schema). Сервер создает его при запуске, если он не существует. |
-| `ORG_CH_SECRET` | Нет (single-tenant) / **Да (multi-org)** | dev default | HMAC key, из которого получается пароль per-tenant ClickHouse каждой организации. SQL-редактор и `run_query` ИИ-агента выполняются как read-only ClickHouse пользователь org, чей row policy обеспечивает tenant isolation в engine. Single-tenant развертывания хорошо загружаются на встроенный dev default; **перед provisioning второй org вы ДОЛЖНЫ установить сильное, стабильное значение**, потому что CLI `agenteye-orgctl org create` отказывает на встроенном dev default. Ротация orphans каждого org's ClickHouse пользователя до следующей загрузки re-provisions их (boot-time reconcile лечит это автоматически). Держите это в секрете и неизменяемым на replicas. Org provisioning сам по себе только для operator; см. **Organizations (multi-tenancy)** ниже. |
-| `DEFAULT_ORG_NAME` | Нет | `Default` | Отображаемое имя, заполненное для встроенной org по умолчанию. **Только первая загрузка**, и только пока org все еще имеет свежее migrated generic identity, применяется при запуске, затем игнорируется. После переименования org (`agenteye-orgctl org rename`) переименование является authoritative и эта переменная окружения не имеет дальнейшего эффекта. |
-| `DEFAULT_ORG_SLUG` | Нет | `default` | URL slug для встроенной org по умолчанию, dashboard path, где она живет (`/<slug>/…`). Той же first-boot-only / pristine-only семантики как `DEFAULT_ORG_NAME`. Должен быть 1-40 lowercase буквы и цифры с одними internal hyphens и не [зарезервированное слово](#organizations-multi-tenancy); неправильное значение игнорируется (org сохраняет `default`). Позволяет single-tenant install представляться как например `/acme` вместо `/default` без post-deploy CLI step. |
+| `SMTP_USERNAME` | Нет | нет | Имя пользователя для аутентификации SMTP |
+| `SMTP_PASSWORD` | Нет | нет | Пароль для аутентификации SMTP |
+| `SMTP_FROM` | Нет | нет | Адрес отправителя для email с OTP |
+| `SMTP_TLS` | Нет | STARTTLS | STARTTLS используется, если вы явно не отключите это: `false` или `0` отправляют в открытом виде (без TLS); любое другое значение — включая отсутствие — включает STARTTLS. |
+| `DASHBOARD_URL` | Нет | встроенное значение по умолчанию | Источник приборной панели, используемый для построения как волшебной ссылки OTP, так и волшебных ссылок инцидентов в уведомлениях об оповещениях. При отсутствии возвращается к встроенному значению по умолчанию (и только для OTP — сначала к источнику, производному от приборной панели). Установите это для конфигураций с разделением доменов, чтобы как email, так и ссылки Slack/инцидентов указывали на вашу приборную панель. См. **Email волшебная ссылка URL** ниже; большинству операторов это не требуется. |
+| `SESSION_TTL_SECS` | Нет | `86400` (24 ч) | Продолжительность сеанса приборной панели в секундах. **Только при первой загрузке**: редактируйте для каждой организации через [`/<org>/settings`](#операционные-настройки) после первого развёртывания. |
+| `OTP_TTL_SECS` | Нет | `600` (10 мин) | Период действительности кода OTP в секундах. **Только при первой загрузке**: редактируйте для каждой организации через [`/<org>/settings`](#операционные-настройки) после первого развёртывания. |
+| `REDIS_URL` | Нет | нет | Опциональный общий кеш + бэкенд ограничения частоты запросов, например `redis://redis:6379/0`. При установке сервер кеширует поиски аутентифицированных ключей API, агрегат `/models` приборной панели, список сеансов и фасет списка окружений; также переводит ограничение частоты запросов OTP с Postgres COUNT на Redis INCR. При отсутствии или недоступности сервер работает без кеша (лимит OTP возвращается на Postgres, каждый другой кеш переходит к источнику истины). См. **Redis (опциональный кеш)** ниже. |
+| `CLICKHOUSE_URL` | **Да** | нет | Базовый URL экземпляра ClickHouse, например `http://clickhouse:8123`. Сервер применяет свою схему событий к этой БД при каждом запуске и отказывается загружаться, если не может достичь ClickHouse. См. **ClickHouse (требуемое хранилище аналитики)** ниже. |
+| `CLICKHOUSE_DATABASE` | Нет | `agenteye` | Имя БД (схемы) ClickHouse. Сервер создаёт её при запуске, если она не существует. |
+| `ORG_CH_SECRET` | Нет (один арендатор) / **Да (несколько организаций)** | значение по умолчанию для разработки | Ключ HMAC, из которого происходит пароль ClickHouse каждой организации для работы с конкретным арендатором. SQL-редактор и `run_query` агента выполняются от имени пользователя ClickHouse, доступного только для чтения организации, чья политика строк обеспечивает изоляцию арендатора в engine. Развёртывания с одним арендатором хорошо загружаются со встроенным значением по умолчанию для разработки; **перед подготовкой второй организации вы ДОЛЖНЫ установить сильное, стабильное значение**, потому что CLI `agenteye-orgctl org create` отказывается работать со встроенным значением по умолчанию для разработки. Его ротация сирот каждого пользователя ClickHouse организации до следующей перезагрузки (при загрузке система автоматически заживляет это). Держите его в тайне и не изменяйте между репликами. Сама подготовка организации доступна только оператору; см. **Организации (мультитенантность)** ниже. |
+| `DEFAULT_ORG_NAME` | Нет | `Default` | Отображаемое имя, заполняемое встроенной организацией по умолчанию. **Только при первой загрузке** и только пока организация сохраняет своё свежемигрированное универсальное имя, применяется при запуске, затем игнорируется. После переименования организации (`agenteye-orgctl org rename`) переименование авторитетно и эта переменная окружения больше не влияет. |
+| `DEFAULT_ORG_SLUG` | Нет | `default` | URL-слаг встроенной организации по умолчанию, путь приборной панели, где она находится (`/<slug>/…`). Та же семантика первой загрузки / только для неиспорченных, что и `DEFAULT_ORG_NAME`. Должен быть 1-40 строчных буквенно-цифровых символов с одиночными внутренними дефисами и не быть [зарезервированным словом](#организации-мультитенантность); недействительное значение игнорируется (организация остаётся `default`). Позволяет установке с одним арендатором представляться как `/acme` вместо `/default` без шага CLI после развёртывания. |
 | `RUST_LOG` | Нет | `info` | Уровень логирования (`debug`, `warn`, `error`, `agenteye_server=trace`) |
-| `EVALUATOR_ENDPOINT` | Нет | нет | Базовый URL вашего evaluator service (например `http://evaluator:9000`). Если не установлено, весь evaluation pipeline - это no-op; никакие queue rows не записываются, никакие workers не работают. См. [Evaluation Suite](/ru/agenteye/evaluation-suite). |
-| `EVALUATOR_TOKEN` | Нет | нет | Отправляется как `Authorization: Bearer <token>` к evaluator. **Должен равняться тому же значению, с которым скonfigurирован evaluator service.** Опционально только если ваш evaluator скonfigurирован без токена. |
-| `EVALUATOR_WORKERS` | Нет | `2` | Concurrency: количество worker задач на экземпляр сервера, которые dispatch evaluations. Безопасно работать на multiple horizontally-scaled servers. |
-| `EVALUATOR_CLAIM_BATCH` | Нет | `4` | Максимальное количество evaluations, которое один worker claims за tick. Batch dispatched **concurrently**, таким образом total concurrency на вашем evaluator endpoint - это `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | Нет | `2` | Как долго worker спит между dispatch попытками, когда ничего не в очереди. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | Нет | `10` | Final fallback cadence (секунды) для `GET /evaluate/{id}` polls, когда evaluator не возвращает per-response `next_poll_secs` и не advertises `default_poll_interval_secs` от `GET /config`. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | Нет | `30000` | Per-HTTP-request timeout против evaluator (миллисекунды). |
-| `EVALUATOR_MAX_ATTEMPTS` | Нет | `5` | После этого количества failed попыток evaluation записывается как terminal `error` (или `timeout`, если failures были request timeouts). |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | Нет | `300` (5 мин) | Как часто сервер повторно fetches `GET /config` от evaluator. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | Нет | `3600` (1 ч) | Максимальное wallclock время, в течение которого сессия может оставаться в polling queue перед тем, как AgentEye прерывает ее как `timeout`. Guards против evaluator, который возвращает `pending` навсегда. |
-| `ALERT_WORKERS` | Нет | `1` | Concurrency: количество worker задач на экземпляр сервера, которые evaluate alert rules. См. [Alerts](/ru/agenteye/alerts). |
-| `ALERT_CLAIM_BATCH` | Нет | `16` | Максимальное количество alerts, которое один worker claims за tick. |
-| `ALERT_POLL_IDLE_SECS` | Нет | `5` | Как долго alerts worker спит, когда очередь пуста. |
-| `ALERT_REQUEST_TIMEOUT_MS` | Нет | `15000` | Per-trigger evaluation timeout (ClickHouse queries + outbound channel HTTP). |
-| `ALERT_MAX_ATTEMPTS` | Нет | `5` | Consecutive transient failures перед тем, как alert reschedules на его normal cadence вместо exponential backoff. |
-| `AUDIT_WORKERS` | Нет | `1` | Concurrency: количество worker задач на экземпляр сервера, которые execute audits. См. [Audits](/ru/agenteye/audits). |
-| `AUDIT_CLAIM_BATCH` | Нет | `1` | Максимальное количество due audits, которое один worker claims за tick. Agentic investigation - это один долгий loop, таким образом default - 1. |
-| `AUDIT_POLL_IDLE_SECS` | Нет | `30` | Как долго audits worker спит, когда no audit is due. |
-| `AUDIT_REQUEST_TIMEOUT_MS` | Нет | `30000` | Per-policy-query timeout против ClickHouse (миллисекунды). |
-| `AUDIT_LLM_TIMEOUT_MS` | Нет | `1440000` | Timeout для agentic investigation call к AI assistant service. Full agent loop работает в течение минут; держите это ABOVE agent's own `AGENTEYE_AUDIT_TIMEOUT_MS` таким образом agent возвращает свои partial findings перед тем, как сервер give up. |
-| `AUDIT_MAX_ATTEMPTS` | Нет | `5` | Consecutive transient failures перед тем, как audit reschedules на его normal cadence вместо exponential backoff. |
-| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | Нет | — | Audit's agentic investigation вызывает AI-assistant `agent` service, **reusing the same connection как assistant** — таким образом установите эти два также на **сервер** (встроенные manifests/compose делают). Оба установлены ⇒ audits run the AI investigation; либо unset ⇒ audits run **policy-only** (deterministic SQL policy pass все еще runs), независимо от per-audit `llm_enabled` flag. Agent также должен иметь LLM, скonfigurирован — см. [assistant.md](/ru/agenteye/assistant). |
+| `EVALUATOR_ENDPOINT` | Нет | нет | Базовый URL вашего сервиса evaluator (например `http://evaluator:9000`). При отсутствии весь конвейер оценки является no-op; никакие строки очереди не пишутся, никакие рабочие не работают. См. [Evaluation Suite](/ru/agenteye/evaluation-suite). |
+| `EVALUATOR_TOKEN` | Нет | нет | Отправляется как `Authorization: Bearer <token>` к evaluator. **Должно быть равно тому же значению, с которым настроен сервис evaluator.** Опционально только если ваш evaluator настроен без токена. |
+| `EVALUATOR_WORKERS` | Нет | `2` | Параллелизм: количество рабочих задач на экземпляр сервера, который отправляет оценки. Безопасно работать на нескольких горизонтально масштабируемых серверах. |
+| `EVALUATOR_CLAIM_BATCH` | Нет | `4` | Максимальное количество оценок, которые один рабочий требует за один цикл. Пакеты отправляются **параллельно**, поэтому общий параллелизм на вашей конечной точке evaluator составляет `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | Нет | `2` | Как долго рабочий спит между попытками отправки, когда нечего делать. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Нет | `10` | Окончательный запасной каданс (секунды) для опросов `GET /evaluate/{id}`, когда evaluator не возвращает `next_poll_secs` для каждого ответа и не объявляет `default_poll_interval_secs` из `GET /config`. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Нет | `30000` | Тайм-аут за запрос HTTP к evaluator (миллисекунды). |
+| `EVALUATOR_MAX_ATTEMPTS` | Нет | `5` | После стольких неудачных попыток оценка записывается как терминальная `error` (или `timeout`, если ошибки были тайм-аутами запросов). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | Нет | `300` (5 мин) | Как часто сервер переполучает `GET /config` от evaluator. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Нет | `3600` (1 ч) | Максимальное время существования сеанса в очереди опроса перед тем, как AgentEye завершит его как `timeout`. Защищает от evaluator, который возвращает `pending` бесконечно. |
+| `ALERT_WORKERS` | Нет | `1` | Параллелизм: количество рабочих задач на экземпляр сервера, который оценивает правила оповещений. См. [Alerts](/ru/agenteye/alerts). |
+| `ALERT_CLAIM_BATCH` | Нет | `16` | Максимальное количество оповещений, которые один рабочий требует за один цикл. |
+| `ALERT_POLL_IDLE_SECS` | Нет | `5` | Как долго рабочий оповещений спит, когда очередь пуста. |
+| `ALERT_REQUEST_TIMEOUT_MS` | Нет | `15000` | Тайм-аут оценки за срабатывание (запросы ClickHouse + исходящий HTTP канала). |
+| `ALERT_MAX_ATTEMPTS` | Нет | `5` | Последовательные переходящие ошибки перед тем, как оповещение перепланируется с его нормальным каданс вместо экспоненциального отката. |
+| `AUDIT_WORKERS` | Нет | `1` | Параллелизм: количество рабочих задач на экземпляр сервера, который выполняет аудиты. См. [Audits](/ru/agenteye/audits). |
+| `AUDIT_CLAIM_BATCH` | Нет | `1` | Максимальное количество просроченных аудитов, которые один рабочий требует за один цикл. Агентское расследование — это один длинный цикл, поэтому значение по умолчанию — 1. |
+| `AUDIT_POLL_IDLE_SECS` | Нет | `30` | Как долго рабочий аудитов спит, когда нет просроченного аудита. |
+| `AUDIT_REQUEST_TIMEOUT_MS` | Нет | `30000` | Тайм-аут за запрос политики к ClickHouse (миллисекунды). |
+| `AUDIT_LLM_TIMEOUT_MS` | Нет | `1440000` | Тайм-аут для вызова агентского расследования к сервису ИИ-ассистента. Полный цикл агента работает минуты; держите это ВЫШЕ `AGENTEYE_AUDIT_TIMEOUT_MS` агента, чтобы агент вернул свои частичные находки перед тем, как сервер сдаст. |
+| `AUDIT_MAX_ATTEMPTS` | Нет | `5` | Последовательные переходящие ошибки перед тем, как аудит перепланируется с его нормальным каданс вместо экспоненциального отката. |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | Нет | — | Агентское расследование аудита вызывает сервис ИИ-ассистента `agent`, **повторно используя то же соединение, что и ассистент** — поэтому установите эти два на **сервере** также (поставляемые манифесты/compose делают это). Оба установлены ⇒ аудиты запускают расследование ИИ; либо один не установлен ⇒ аудиты запускают **только политику** (детерминированный SQL проход политики всё ещё работает), независимо от флага `llm_enabled` для каждого аудита. Агент должен также иметь настроенную LLM — см. [assistant.md](/ru/agenteye/assistant). |
 
-**AI assistant service — audit + sandbox settings.** Agentic investigation и его in-pod Python sandbox tuned на **agent service** (не на сервер), все на префиксе `AGENTEYE_AUDIT_*` и все опционально:
+**Сервис ИИ-ассистента — параметры аудита + песочницы.** Агентское расследование и его Python-песочница в pod настраиваются на **сервисе агента** (не на сервере), все с префиксом `AGENTEYE_AUDIT_*` и все опциональные:
 
 | Переменная | По умолчанию | Значение |
 |---|---|---|
-| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Max agent turns на investigation. |
-| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Wall-clock для одного investigation (20 мин). Должно оставаться **below** server's `AUDIT_LLM_TIMEOUT_MS`. |
-| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Concurrent investigations на agent pod (отдельно от chat assistant's budget). |
-| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Per-script limits для bubblewrap sandbox. |
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Макс ходов агента за расследование. |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Настенные часы для одного расследования (20 мин). Должны оставаться **ниже** `AUDIT_LLM_TIMEOUT_MS` сервера. |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Одновременные расследования на pod агента (отдельно от бюджета ассистента чата). |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Пределы за скрипт для песочницы bubblewrap. |
 
-**Sandbox platform requirement.** Audit code sandbox запускает model's Python в bubblewrap jail, который needs **unprivileged user namespaces**. Agent pod должен allow `clone()` flags — установите `seccompProfile: Unconfined` (k8s) или `security_opt: [seccomp:unconfined]` (compose) на agent. Где node kernel отключает unprivileged user namespaces (например некоторые GKE COS images), sandbox **preflight fails и auditor degrades к SQL-only автоматически** — никакой ошибки, просто `sandbox_available: false` на agent's `/health`.
+**Требование платформы песочницы.** Песочница кода аудита запускает Python модели внутри клетки bubblewrap, которая нуждается в **пространствах имён пользователей без привилегий**. Pod агента должен позволять флаги `clone()` — установите `seccompProfile: Unconfined` (k8s) или `security_opt: [seccomp:unconfined]` (compose) на агенте. Где ядро узла отключает пространства имён пользователей без привилегий (например, некоторые образы GKE COS), песочница **проверка перед полётом завершается неудачей и аудитор автоматически понижается только до SQL** — нет ошибки, просто `sandbox_available: false` на `/health` агента.
 
 ### Запуск
 
-Установите `DATABASE_URL` и `CLICKHOUSE_URL` в вашу окружение (сервер отказывается загружаться без ClickHouse), затем передайте их в контейнер:
+Установите `DATABASE_URL` в вашу окружение, затем передайте её в контейнер:
 
 ```bash
 docker run -d --restart unless-stopped \
   --name agenteye-server \
   -e DATABASE_URL="$DATABASE_URL" \
-  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
   -e ADMIN_KEY="$ADMIN_KEY" \
   -p 8080:8080 \
   ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-Сервер запускает миграции базы данных автоматически при запуске; никакого отдельного шага миграции не требуется.
+Сервер автоматически запускает миграции БД при запуске; отдельный шаг миграции не требуется.
 
 ### Проверка здоровья
 
 ```
-GET /health    # liveness  - всегда {"status":"ok"} когда процесс запущен
+GET /health    # liveness  - всегда {"status":"ok"} после запуска процесса
 GET /ready     # readiness - 200 когда Postgres + ClickHouse достижимы, иначе 503
 ```
 
-Аутентификация не требуется. Используйте `/health` для **liveness** проб и `/ready` для **readiness** / load-balancer проб. `/ready` проверяет hard dependencies, без которых сервер не может служить (Postgres + ClickHouse), поэтому сервер, который работает, но не может достичь свою базу данных, исключается из ротации и показывается как `NotReady`; Redis передается но никогда не falls readiness. На встроенных Kubernetes manifests readiness probe уже указывает на `/ready` и liveness остается на `/health`. См. [enterprise-docs/health-monitoring.md](/ru/agenteye/health-monitoring) для полной картины, включая opt-in Kubernetes-native pod-failure alerting к Slack.
+Аутентификация не требуется. Используйте `/health` для проб **liveness** и `/ready` для проб **readiness** / балансировщика нагрузки. `/ready` проверяет жёсткие зависимости, без которых сервер не может работать (Postgres + ClickHouse), поэтому сервер, который работает, но не может достичь своей БД, выводится из ротации и отображается как `NotReady`; Redis сообщается, но никогда не вызывает ошибку готовности. На поставляемых манифестах Kubernetes проба готовности уже указывает на `/ready`, а liveness остаётся на `/health`. См. [enterprise-docs/health-monitoring.md](/ru/agenteye/health-monitoring) для полной картины, включая opt-in оповещение об ошибке pod на Slack, собственное для Kubernetes.
 
-### Email magic-link URL
+### Email волшебная ссылка URL
 
-OTP login emails содержат one-tap **open the dashboard** кнопку. Клик на нее приводит пользователя на `/login?token=<code>&email=<address>`; dashboard обменивает эту пару на сессию и перенаправляет в приложение, без ручного повторного ввода кода. Сервер разрешает origin dashboard, используемый для построения ссылки, в три уровня:
+Email логина OTP содержит кнопку одного касания **откройте приборную панель**. Клик по ней приводит пользователя на `/login?token=<code>&email=<address>`; приборная панель обменивает эту пару на сеанс и перенаправляет в приложение без ручного повторного ввода кода. Сервер разрешает источник приборной панели, используемый для построения ссылки в три уровня:
 
-1. **`X-AgentEye-Dashboard-Url` header**: автоматически установлено dashboard's `/api/auth/otp/request` proxy из его собственного public origin. В same-origin deployment (сервер и dashboard share host за одним ingress, который forwards proxy headers), **никакая конфигурация не требуется**.
-2. **`DASHBOARD_URL` env var**: установите это, если ваша dashboard достижима на другом origin, чем тот, который видит server's OTP request endpoint (split `api.example.com` / `app.example.com`), или если ваш ingress не propagates public host в dashboard pod (таким образом `request.nextUrl.origin` иначе разрешится на wildcard bind как `0.0.0.0:3000`). Пример: `DASHBOARD_URL=https://app.example.com`.
-3. **Default**: `https://app.befailproof.ai`, используется только если ни один из выше не присутствует.
+1. **Заголовок `X-AgentEye-Dashboard-Url`**: установлено автоматически прокси приборной панели `/api/auth/otp/request` из её собственного публичного источника. В развёртывании в одном источнике (сервер и приборная панель используют один хост позади одного ingress, который передаёт заголовки прокси), **никакая конфигурация не требуется**.
+2. **Переменная окружения `DASHBOARD_URL`**: установите это, если ваша приборная панель достижима на другом источнике, чем тот, который видит конечная точка OTP сервера (разделённые `api.example.com` / `app.example.com`), или если ваш ingress не распространяет публичный хост в pod приборной панели (поэтому `request.nextUrl.origin` иначе разрешит привязку подстановочного знака как `0.0.0.0:3000`). Пример: `DASHBOARD_URL=https://app.example.com`.
+3. **По умолчанию**: `https://app.befailproof.ai`, используется только если ни один из вышеперечисленных не присутствует.
 
-Значение header валидируется: только `https://*` и loopback (`http://localhost*`, `http://127.0.0.1*`) origins принимаются, и wildcard bind addresses (`0.0.0.0`, `[::]`) отклоняются даже с `https://` схемой. Что-либо еще падает через tier 2.
+Значение заголовка проверяется: принимаются только источники `https://*` и loopback (`http://localhost*`, `http://127.0.0.1*`), а адреса привязки подстановочного знака (`0.0.0.0`, `[::]`) отвергаются даже с схемой `https://`. Всё остальное переходит на уровень 2.
 
-Установите это на running cluster с one-liner; no file, no kustomize rebuild:
+Установите его на работающем кластере с одной строчкой; без файла, без перестроения kustomize:
 
 ```bash
 kubectl set env deployment/server -n agenteye \
   DASHBOARD_URL=https://app.example.com
 ```
 
-Это запускает rollout; новые pods берут значение при первом запросе. Отметим, что override живет только на Deployment; последующий `kustomize build | kubectl apply` против overlay сотрет его, если вы не добавите тот же env var в вашу overlay's `server-env.yaml` patch.
+Это запускает rollout; новые pod-ы подбирают значение при первом запросе. Обратите внимание, что переопределение живёт только на Deployment; последующее `kustomize build | kubectl apply` для оверлея сотрёт его, если вы не добавите ту же переменную окружения в патч `server-env.yaml` вашего оверлея.
 
 ---
 
-## Dashboard
+## Приборная панель
 
-### Получение образа
+### Получить образ
 
 ```bash
 docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
@@ -168,13 +168,13 @@ docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
 | Переменная | Требуется | По умолчанию | Описание |
 |---|---|---|---|
 | `AGENTEYE_SERVER_URL` | Да | нет | Базовый URL сервера, например `http://localhost:8080` |
-| `AGENTEYE_API_KEY` | Да | нет | API key, который dashboard использует для аутентификации на сервере. Нуждается во всех разрешениях (рекомендуется admin key). |
-| `AE_LOG_LEVEL` | Нет | `info` | Server-side log verbosity: `debug`, `info`, `warn`, `error`. Установите на `debug` для просмотра upstream-request/response lines и session-validation traces при диагностике проблем. |
-| `AE_LOG_JSON` | Нет | auto | `1` forces JSON-per-line output; `0` forces human-readable output. Если не установлено, JSON включен автоматически, если `NODE_ENV=production`. JSON рекомендуется в production, таким образом logs parse cleanly с `jq` или log aggregator. |
-| `AE_ANALYTICS_DISABLED` | Нет | нет | Установите на `1`/`true` для отключения dashboard's anonymous product-usage telemetry. См. [Telemetry & privacy](#telemetry--privacy) ниже. |
-| `REDIS_URL` | Нет | нет | Опциональный shared cache backend, например `redis://redis:6379/0`. При установке, dashboard кеширует `validateSession()` результаты на replicas и shares Next.js fetch cache для latency-aggregate / env-list proxy routes. Edge-side OTP request и verify rate limits также используют Redis, если present (falling open если Redis unreachable; server-side limit - это security backstop). См. **Redis (опциональный кеш)** ниже. |
-| `AGENTEYE_AGENT_URL` | Нет | нет | Базовый URL опционального AI-assistant `agent` service, например `http://agent:9100`. **Оставьте это не установленным, чтобы скрыть assistant полностью**: no assistant bubble появляется в dashboard. См. [enterprise-docs/assistant.md](/ru/agenteye/assistant). |
-| `AGENTEYE_AGENT_TOKEN` | Нет | нет | Shared secret, который dashboard представляет `agent` service. Должен соответствовать `AGENTEYE_AGENT_TOKEN`, скonfigurирован на agent. См. [enterprise-docs/assistant.md](/ru/agenteye/assistant). |
+| `AGENTEYE_API_KEY` | Да | нет | Ключ API, который приборная панель использует для аутентификации на сервере. Нужны все разрешения (рекомендуется ключ администратора). |
+| `AE_LOG_LEVEL` | Нет | `info` | Серверная буквальность логирования: `debug`, `info`, `warn`, `error`. Установите на `debug`, чтобы видеть строки запроса/ответа к вышестоящему и трассировки проверки сеанса при диагностике проблем. |
+| `AE_LOG_JSON` | Нет | авто | `1` заставляет вывод JSON-per-line; `0` заставляет удобочитаемый вывод. При отсутствии JSON включается автоматически если `NODE_ENV=production`. JSON рекомендуется в продакшене, чтобы логи чистили с `jq` или агрегатором логов. |
+| `AE_ANALYTICS_DISABLED` | Нет | нет | Установите на `1`/`true`, чтобы отключить анонимную телеметрию использования продукта приборной панели. См. [Телеметрия & конфиденциальность](#телеметрия--конфиденциальность) ниже. |
+| `REDIS_URL` | Нет | нет | Опциональный общий бэкенд кеша, например `redis://redis:6379/0`. При установке приборная панель кеширует результаты `validateSession()` между репликами и делится fetch кешем Next.js для маршрутов латентности-агрегата / env-list прокси. Ограничения частоты запросов OTP на граничной стороне также используют Redis при наличии (открываются при недоступности Redis; серверная граница это отступление по безопасности). См. **Redis (опциональный кеш)** ниже. |
+| `AGENTEYE_AGENT_URL` | Нет | нет | Базовый URL опционального сервиса ИИ-ассистента `agent`, например `http://agent:9100`. **Оставьте не установленным, чтобы полностью скрыть ассистента**: никакой пузырь ассистента не появляется на приборной панели. См. [enterprise-docs/assistant.md](/ru/agenteye/assistant). |
+| `AGENTEYE_AGENT_TOKEN` | Нет | нет | Общий секрет, который приборная панель представляет сервису `agent`. Должен совпадать с `AGENTEYE_AGENT_TOKEN`, настроенным на агенте. См. [enterprise-docs/assistant.md](/ru/agenteye/assistant). |
 
 ### Запуск
 
@@ -187,91 +187,91 @@ docker run -d --restart unless-stopped \
   ghcr.io/agenteye-enterprise/dashboard:beta-latest
 ```
 
-### Telemetry & privacy
+### Телеметрия & конфиденциальность
 
-Dashboard отправляет **anonymous product-usage analytics** в analytics service Exosphere (PostHog): какие dashboard pages просмотрены и handful UI actions, такие как creating API key или re-evaluating session. Этот usage signal информирует о приоритизации features.
+Приборная панель отправляет **анонимную телеметрию использования продукта** в сервис аналитики Exosphere (PostHog): какие страницы приборной панели просматриваются и ряд действий UI, таких как создание ключа API или переоценка сеанса. Этот сигнал использования информирует о том, какие функции получают приоритет.
 
-- **Никакие agent, session, или event data никогда не покидают вашу инфраструктуру.** Только dashboard UI usage сообщается. Page URLs stripped идентификаторов перед отправкой, и operators идентифицированы только opaque internal id, никогда по email.
-- Telemetry **включен по умолчанию**. Чтобы отключить его полностью, установите `AE_ANALYTICS_DISABLED=1` на dashboard контейнере и перезагрузитесь.
-- Analytics отправляются на dashboard's собственный `/ingest` path, который dashboard reverse-proxies к PostHog (`https://us.i.posthog.com`). Keeping requests first-party означает, что browser ad-blockers не drops их. Dashboard контейнер needs outbound access к PostHog; если это заблокировано, telemetry silently делает ничего и dashboard unaffected.
-
----
-
-## AI Assistant (опционально)
-
-In-dashboard AI assistant позволяет вашей team задавать вопросы о их agent data на plain language (summarising sessions, drafting SQL для `/queries` редактора, и turning saved queries в dashboard tiles) не покидая dashboard. Он запускается как отдельный internal `agent` контейнер (на Claude Agent SDK), который может достигать только dashboard, и остается **отключенным, пока вы не сконфигурируете LLM endpoint**.
-
-Чтобы включить его, вы устанавливаете на `agent` service LLM connection (**Portkey** через `PORTKEY_API_KEY` + model-catalog slug `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, direct Anthropic через `ANTHROPIC_API_KEY`, другой gateway через `ANTHROPIC_BASE_URL`, или Bedrock/Vertex), **dedicate** data key, и shared `AGENTEYE_AGENT_TOKEN`, совпадающий с dashboard. Dashboard users дополнительно нуждаются в разрешении `agent:use`.
-
-Для assistant's data key вы не mint ничего вручную: выберите random secret, установите его как `AGENTEYE_API_KEY` на `agent` **и** как `AGENT_API_KEY` на `server`, и server seeds его при startup с fixed permission set. Его data access - это read-only (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), и он дополнительно держит approval-gated authoring scopes (`dashboards:write`, `queries:write`, `queries:run`), таким образом он может draft и validate saved queries и build dashboard tiles от user's имени; весь SQL все еще runs через org's read-only ClickHouse role, таким образом это widens что assistant может author, не какие data он может reach. Scopes fixed в коде и не могут быть widened конфигурацией. Тот key protected; он не может быть disabled или regenerated через API, только ротирован путем изменения значения и перезагрузки. Никогда не переиспользуйте admin/dashboard key для этого.
-
-Полная setup, полная переменная окружения reference, telemetry options, и security model в **[enterprise-docs/assistant.md](/ru/agenteye/assistant)**.
+- **Никакие данные агента, сеанса или события никогда не покидают вашу инфраструктуру.** Сообщается только использование UI приборной панели. URL страниц удаляют идентификаторы перед отправкой, и операторы идентифицируются только по непрозрачному внутреннему id, никогда по email.
+- Телеметрия **включена по умолчанию**. Чтобы полностью отключить, установите `AE_ANALYTICS_DISABLED=1` на контейнере приборной панели и перезагрузитесь.
+- Аналитика отправляются на путь приборной панели `/ingest`, который приборная панель обратный прокси к PostHog (`https://us.i.posthog.com`). Сохранение запросов от первого лица означает, что блокировщики рекламы браузера их не отбрасывают. **Контейнер приборной панели** нуждается в исходящем доступе к PostHog; если он заблокирован, телеметрия молча ничего не делает и приборная панель не затронута.
 
 ---
 
-## ClickHouse (требуемое аналитическое хранилище)
+## ИИ-ассистент (опционально)
 
-ClickHouse держит ваши dashboards responsive при high event volumes и позволяет `/queries` SQL редактору join across events, evaluations, и sessions в одном store. Это требуемый canonical store для каждого ingested события, каждого terminal evaluation outcome, и derived per-session aggregates. PostgreSQL holds relational / mutable-state tables (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); analytical surface lives в ClickHouse, таким образом dashboard's rollups и ваши собственные SQL queries могут scan и join его natively, без cross-database round-trips. Сервер отказывается загружаться без `CLICKHOUSE_URL`.
+ИИ-ассистент в приборной панели позволяет вашей команде задавать вопросы о данных своего агента на обычном языке (резюмировать сеансы, черновик SQL для редактора `/queries` и превращать сохранённые запросы в плитки приборной панели) без покидания приборной панели. Он работает как отдельный внутренний контейнер `agent` (на Agents SDK) к которому может достичь только приборная панель, и остаётся **отключённым до тех пор, пока вы не настроите конечную точку LLM**.
 
-### Schema
+Чтобы включить, вы установите на сервис `agent` подключение LLM (**Portkey** через `PORTKEY_API_KEY` + слаг каталога моделей `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, прямой Anthropic через `ANTHROPIC_API_KEY`, другой шлюз через `ANTHROPIC_BASE_URL` или Bedrock/Vertex), **выделенный** ключ данных и общий `AGENTEYE_AGENT_TOKEN`, совпадающий с приборной панелью. Пользователи приборной панели дополнительно нуждаются в разрешении `agent:use`.
 
-Три ClickHouse объекта создаются при startup сервера, все idempotent (`CREATE IF NOT EXISTS`):
+Для ключа данных ассистента вы не чеканьте что-нибудь вручную: выберите случайный секрет, установите его как `AGENTEYE_API_KEY` на `agent` **и** как `AGENT_API_KEY` на `server`, и сервер заполняет его при запуске с фиксированным набором разрешений. Его доступ к данным только для чтения (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), и он дополнительно держит области авторства, прошедшие шлюз одобрения (`dashboards:write`, `queries:write`, `queries:run`), поэтому он может черновик и проверить сохранённые запросы и построить плитки приборной панели от имени пользователя; весь SQL всё ещё работает через роль ClickHouse только для чтения организации, поэтому это расширяет то, что ассистент может создать, а не то, какие данные он может достичь. Области фиксированы в коде и не могут быть расширены конфигурацией. Этот ключ защищён; он не может быть отключен или перегенерирован через API, только ротирован путём изменения значения и перезагрузки. Никогда не повторно используйте ключ администратора/приборной панели для этого.
 
-- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, разделено по `toYYYYMM(ts)`, отсортировано по `(session_id, ts, dedup_key)`. Duplicate inserts (collector retries) collapse в одну row при merge time; сервер вычисляет deterministic SHA-256 `dedup_key` для каждого события, таким образом retries безопасны.
-- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, разделено по `toYYYYMM(finished_at)`, отсортировано по `(session_id, finished_at, dedup_key)`. Написано один раз на terminal evaluation outcome от evaluator pipeline. Same dedup-key model как `events`.
-- **`agenteye.agent_sessions`**: a **VIEW** над `agenteye.events`, не физическая table. Каждая колонка derived (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, и т.д.). No per-event upsert и никакой отдельный backfill; view auto-reflects что бы ни было в `events`.
+Полная настройка, полная ссылка на переменные окружения, опции телеметрии и модель безопасности находятся в **[enterprise-docs/assistant.md](/ru/agenteye/assistant)**.
 
-Для backwards-compat с saved queries, которые reference `analytics.evaluations` / `analytics.sessions`, сервер также создает ClickHouse database `analytics` с views над `agenteye.*` таблицами; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` все resolve правильно.
+---
 
-### Configuration
+## ClickHouse (требуемое хранилище аналитики)
 
-Встроенный docker-compose и `deploy/base/clickhouse/` поставляют ClickHouse service, tuned для AgentEye's workload:
+ClickHouse держит приборные панели отзывчивыми при высоких объёмах событий и позволяет редактору SQL `/queries` присоединять события, оценки и сеансы в одном хранилище. Это требуемое канонические хранилище для каждого полученного события, каждого терминального результата оценки и производных агрегатов за сеанс. PostgreSQL держит реляционные / изменяемые таблицы состояния (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); аналитическая поверхность живёт в ClickHouse, так что rollup приборной панели и ваши собственные SQL запросы могут сканировать и присоединять её нативно, без кросс-БД круговых путей. Сервер отказывается загружаться без `CLICKHOUSE_URL`.
 
-- 2 GiB requested / 4 GiB limit memory в shipped base overlay (sized для fit small POC/staging nodes); production customers должны overlay up — recommended floor - 2c / 4Gi request, 6c / 8Gi limit. `max_server_memory_usage_to_ram_ratio=0.9`
-- 5 GiB mark cache + 8 GiB uncompressed cache
+### Схема
+
+Три объекта ClickHouse создаются при запуске сервера, все идемпотентные (`CREATE IF NOT EXISTS`):
+
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, разбиение по `toYYYYMM(ts)`, упорядочение по `(session_id, ts, dedup_key)`. Дублирующиеся вставки (повторы сборщика) сворачиваются в одну строку во время слияния; сервер вычисляет детерминированный SHA-256 `dedup_key` для каждого события, поэтому повторы безопасны.
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, разбиение по `toYYYYMM(finished_at)`, упорядочение по `(session_id, finished_at, dedup_key)`. Написано один раз за терминальный результат оценки конвейером evaluator. Та же модель dedup-key, что и `events`.
+- **`agenteye.agent_sessions`**: **ПРЕДСТАВЛЕНИЕ** над `agenteye.events`, а не физическая таблица. Каждый столбец является производным (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()` и т.д.). Нет upsert за событие и нет отдельной заливки; представление автоматически отражает всё, что находится в `events`.
+
+Для обратной совместимости с сохранёнными запросами, которые ссылаются на `analytics.evaluations` / `analytics.sessions`, сервер также создаёт БД ClickHouse `analytics` с представлениями над таблицами `agenteye.*`; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` все разрешаются корректно.
+
+### Конфигурация
+
+Поставляемые docker-compose и `deploy/base/clickhouse/` содержат сервис ClickHouse, настроенный для рабочей нагрузки AgentEye:
+
+- 2 ГиБ запрошено / 4 ГиБ лимит памяти в поставляемом базовом оверлее (размер для маленьких узлов POC/staging); клиенты продакшена должны наложить up — рекомендуемый минимум 2c / 4Gi запрос, 6c / 8Gi лимит. `max_server_memory_usage_to_ram_ratio=0.9`
+- 5 ГиБ mark cache + 8 ГиБ uncompressed cache
 - `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
 - MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
-- `local_io_method=auto` (io_uring на supported kernels)
-- `fsync_metadata=0`: приемлемо благодаря at-least-once ingest + ReplacingMergeTree dedup
-- `query_log` включен с 30-day TTL; `query_thread_log` удален (expensive при high QPS)
-- `max_execution_time=30` для user-side queries
-- 100 GiB PVC в StatefulSet template (customer overlays SHOULD override к fast SSD storage class для production)
+- `local_io_method=auto` (io_uring на поддерживаемых ядрах)
+- `fsync_metadata=0`: допустимо из-за at-least-once inggest + ReplacingMergeTree dedup
+- `query_log` включен с TTL 30 дней; `query_thread_log` удалён (дорого при высоком QPS)
+- `max_execution_time=30` для запросов пользователей
+- 100 ГиБ PVC в шаблоне StatefulSet (оверлеи клиентов ДОЛЖНЫ переопределить на быстрый класс хранилища SSD для продакшена)
 
-### Backups
+### Резервные копии
 
-Ваш full dataset captured nightly в одном restorable archive, таким образом cluster или storage loss recoverable. ClickHouse backed up автоматически daily `agenteye-backup` CronJob, который dumps обе PostgreSQL и ClickHouse в одном pass. ClickHouse - read over его HTTP API: `agenteye.events` и `agenteye.evaluations` dumped в ClickHouse-native format (views и row policies recreated сервером при startup, таким образом table data - это complete picture) и bundled с Postgres dump в одном compressed archive uploaded к вашему object storage.
+Ваш полный набор данных захватывается каждую ночь в один восстанавливаемый архив, поэтому потеря кластера или хранилища восстанавливается. ClickHouse автоматически резервируется ежедневным CronJob `agenteye-backup`, который сбрасывает PostgreSQL и ClickHouse в одном пасс. ClickHouse читается по его HTTP API: `agenteye.events` и `agenteye.evaluations` сбрасываются в родном формате ClickHouse (представления и политики строк переоздаются сервером при запуске, поэтому данные таблицы полная картина) и объединяются с дампом Postgres в один сжатый архив, загруженный в ваше хранилище объектов.
 
-Destination bucket и cloud credentials скonfigured per overlay. См. **Backups** section of [enterprise-docs/kubernetes-deployment.md](/ru/agenteye/kubernetes-deployment) для upload configuration и restore steps.
+Корзина назначения и учётные данные облака настраиваются для каждого оверлея. См. раздел **Backups** в [enterprise-docs/kubernetes-deployment.md](/ru/agenteye/kubernetes-deployment) для конфигурации загрузки и шагов восстановления.
 
 ---
 
 ## Redis (опциональный кеш)
 
-Redis - это **опциональный** shared cache + rate-limit backend, используемый сервером и dashboard. С Redis deployed и `REDIS_URL` установленным на обе services:
+Redis является **опциональным** общим кешем + бэкендом ограничения частоты запросов, используемым сервером и приборной панелью. При развёртывании Redis и установке `REDIS_URL` на обоих сервисах:
 
-- **Server** кеширует authenticated API-key lookups, `/events/environments` + `/evaluations/environments` списки, `/events/latency_aggregate` rollup (heaviest query, который dashboard polls), `/sessions` list, и переключает OTP-request rate limiting с Postgres `COUNT(*)` на Redis `INCR + EXPIRE`.
-- **Dashboard** кеширует `validateSession()` результаты, таким образом 10-20 authed API calls типичный page load issues все share одну upstream session check. Он также rate-limits OTP-request и OTP-verify в dashboard edge.
+- **Сервер** кеширует поиски аутентифицированных ключей API, списки `/events/environments` + `/evaluations/environments`, rollup `/events/latency_aggregate` (самый тяжёлый запрос, который приборная панель опрашивает), список `/sessions` и переключает ограничение частоты запросов OTP с Postgres `COUNT(*)` на Redis `INCR + EXPIRE`.
+- **Приборная панель** кеширует результаты `validateSession()`, поэтому 10-20 аутентифицированных вызовов API, которые типичная загрузка страницы выдаёт, все делят один восходящий проверку сеанса. Она также ограничивает частоту запросов OTP-request и OTP-verify на граница приборной панели.
 
-**Обе services gracefully degrade, если Redis unreachable.** Каждый cache call возвращает `Err` в bounded timeout и caller falls back к source of truth (Postgres на сервере, upstream Rust server на dashboard). OTP rate limiting falls back к Postgres `COUNT(*)` path на сервере (security property сохраняется); dashboard's edge OTP limit fails open пока server-side limit все еще holds. Redis being down degrades latency, не correctness.
+**Оба сервиса корректно деградируют, если Redis недоступен.** Каждый вызов кеша возвращает `Err` в течение ограниченного тайм-аута и вызывающий возвращается к источнику истины (Postgres на сервере, восходящий Rust сервер на приборной панели). Ограничение частоты запросов OTP возвращается на путь Postgres `COUNT(*)` на сервере (свойство безопасности сохраняется); граница OTP приборной панели открывается при сбое, пока серверная граница всё ещё удерживается. Redis выключение деградирует задержку, а не правильность.
 
-### Configuration
+### Конфигурация
 
-Docker-compose bundle уже includes Redis service и wires `REDIS_URL=redis://redis:6379/0` в сервер и dashboard. Чтобы использовать external Redis, установите `REDIS_URL` на вашу endpoint и удалите `redis` service из compose файла.
+Поставляемый пакет docker-compose уже включает сервис Redis и подключает `REDIS_URL=redis://redis:6379/0` в сервер и приборную панель. Чтобы использовать внешний Redis, установите `REDIS_URL` на вашу конечную точку и удалите сервис `redis` из файла compose.
 
-### Memory + persistence
+### Память + персистентность
 
-Встроенный Redis image запускается с `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. AOF persistence означает, что cache survives container restarts; `everysec` - это правильный durability/perf баланс, потому что потеря последней секунды cache writes безвредна. LRU eviction caps memory growth.
+Поставляемый образ Redis работает с `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`. AOF персистентность означает, что кеш выживает перезагрузки контейнера; `everysec` это правильный баланс долговечности/производительности, потому что потеря последней секунды кеш-записей безвредна. LRU вытеснение ограничивает рост памяти.
 
-### When NOT to deploy Redis
+### Когда НЕ развёртывать Redis
 
-- Single-instance dev/QA. In-process caches на сервере alone deliver большую часть per-replica benefit; Redis adds cross-replica sharing, которую single-instance setups не нуждаются.
-- Air-gapped installs, где operational cost запуска один более service outweighs latency win.
+- Одноэкземплярная разработка/QA. Внутренние кеши на сервере одного доставляют большую часть преимущества за реплику; Redis добавляет кросс-реплику, совместное использование которых одноэкземплярные настройки не нуждаются.
+- Air-gapped установки, где эксплуатационная стоимость запуска ещё одного сервиса перевешивает выигрыш задержки.
 
 ---
 
 ## Docker Compose (рекомендуется)
 
-`docker-compose.yml` доступен в `agenteye-enterprise/releases` repo. Он brings up Postgres, ClickHouse, Redis, сервер, и dashboard с одной командой.
+`docker-compose.yml` доступен в репозитории `agenteye-enterprise/releases`. Он поднимает Postgres, сервер и приборную панель одной командой.
 
 ```bash
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
@@ -281,24 +281,24 @@ GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
 cd agenteye
 ```
 
-**Override defaults via `.env`:**
+**Переопределить значения по умолчанию через `.env`:**
 
 ```
-# Use URL-safe passwords (no /, +, or = characters).
-# Generate with: openssl rand -hex 24
-POSTGRES_PASSWORD=your-db-password
-ADMIN_KEY=your-admin-secret
+# Используйте пароли, безопасные для URL (без /, +, или = символов).
+# Генерируйте с: openssl rand -hex 24
+POSTGRES_PASSWORD=ваш-пароль-бд
+ADMIN_KEY=ваш-секрет-администратора
 
-# Dashboard authentication
-ADMIN_EMAIL=admin@yourcompany.com
-ALLOWED_EMAILS=*@yourcompany.com
+# Аутентификация приборной панели
+ADMIN_EMAIL=admin@вашакомпания.com
+ALLOWED_EMAILS=*@вашакомпания.com
 
-# SMTP for OTP emails (omit to log OTP codes to stdout)
-# SMTP_HOST=smtp.yourprovider.com
+# SMTP для email OTP (опустите для логирования кодов OTP в stdout)
+# SMTP_HOST=smtp.вашпровайдер.com
 # SMTP_PORT=587
-# SMTP_USERNAME=your-smtp-user
-# SMTP_PASSWORD=your-smtp-password
-# SMTP_FROM=noreply@yourcompany.com
+# SMTP_USERNAME=ваш-smtp-юзер
+# SMTP_PASSWORD=ваш-smtp-пароль
+# SMTP_FROM=noreply@вашакомпания.com
 
 RUST_LOG=info
 ```
@@ -307,13 +307,13 @@ RUST_LOG=info
 docker compose up -d
 ```
 
-**Stop (keeps data volume):**
+**Остановить (сохраняет объём данных):**
 
 ```bash
 docker compose down
 ```
 
-**Stop and wipe all data:**
+**Остановить и удалить все данные:**
 
 ```bash
 docker compose down -v
@@ -321,107 +321,107 @@ docker compose down -v
 
 ---
 
-## Operational settings
+## Операционные настройки
 
-Небольшой набор operational knobs, которые когда-то были pinned env vars, теперь editable per organization из dashboard's **`/<org>/settings`** страницы; каждая org скonfigурирует свой собственный. Changes take effect в течение секунд, без restart и без redeploy.
+Маленький набор эксплуатационных рычагов, которые раньше были зафиксированы переменными окружения, теперь редактируется для каждой организации со страницы **`/<org>/settings`** приборной панели; каждая организация настраивает свою. Изменения вступают в силу в течение секунд, без перезагрузки и без переразвёртывания.
 
-| Setting | Bootstrap env var | Что он контролирует |
+| Настройка | Bootstrap переменная окружения | Что это контролирует |
 |---|---|---|
-| Allowed sign-ins | `ALLOWED_EMAILS` | Emails (или `*@domain.com` wildcards) permitted для receive OTP и be added как users |
-| Default user permissions | `DEFAULT_USER_PERMISSIONS` | Comma-separated permission tokens preselected когда admin opens **+ new user**. Каждый token должен быть один из strings listed under [API key permissions](/ru/agenteye/api-keys). Defaults к `standard` preset: read-only access плюс everyday on-call actions (trigger re-evaluations, run queries, ack incidents, use the assistant). |
-| Session lifetime | `SESSION_TTL_SECS` | Как долго dashboard login остается valid перед re-auth. Dashboard re-checks upstream session каждые 5 секунд, таким образом permission update на `/<org>/users` takes effect на affected user's next request, без relogin. |
-| One-time-code lifetime | `OTP_TTL_SECS` | Как долго OTP / magic-link остается usable |
-| Alert notification channels | `ALERTS_ENABLED_CHANNELS` | Comma-separated list channel kinds, которые alert dispatcher allowed использовать: `email`, `slack`, `webhook`. Per-alert configuration все еще authored на `/<org>/alerts/<id>`, но dispatcher filters каждый outbound delivery через этот set; channel disabled здесь short-circuits с `skipped_disabled` audit row. `dashboard` channel (local audit insert) всегда allowed. Defaults ко всем трем on. |
+| Допускаемые входы | `ALLOWED_EMAILS` | Email (или подстановочные знаки `*@domain.com`) разрешены получать OTP и добавляться как пользователи |
+| Разрешения пользователя по умолчанию | `DEFAULT_USER_PERMISSIONS` | Токены разрешений через запятую, предварительно выбранные, когда администратор открывает **+ новый пользователь**. Каждый токен должен быть одной из строк, перечисленных под [API key permissions](/ru/agenteye/api-keys). По умолчанию преустановка `standard`: доступ только для чтения плюс повседневные on-call действия (переоценить срабатывание, запустить запросы, подтвердить инциденты, использовать ассистента). |
+| Время жизни сеанса | `SESSION_TTL_SECS` | Как долго вход на приборную панель остаётся действительным перед повторной аутентификацией. Приборная панель переоценивает вышестоящий сеанс каждые 5 секунд, поэтому обновление разрешения на `/<org>/users` вступает в силу при следующем запросе затронутого пользователя без повторного входа. |
+| Время жизни одноразового кода | `OTP_TTL_SECS` | Как долго OTP / волшебная ссылка остаётся пригодной для использования |
+| Каналы уведомления оповещений | `ALERTS_ENABLED_CHANNELS` | Список видов каналов через запятую, которые диспетчер оповещений разрешено использовать: `email`, `slack`, `webhook`. Конфигурация для каждого оповещения всё ещё создана на `/<org>/alerts/<id>`, но диспетчер фильтрует каждую исходящую доставку через этот набор; отключённый здесь канал сокращает с `skipped_disabled` строкой аудита. Канал `dashboard` (локальная вставка аудита) всегда разрешен. По умолчанию все три. |
 
-### How the bootstrap works
+### Как работает bootstrap
 
-Settings хранятся per organization в `org_settings`. На первый boot, сервер seeds default org's missing rows из matching env var (или sensible default, если env var не установлен). После этого, **stored value - это source of truth и env var игнорируется**; изменение env var при позднем restart не будет affect live org's value, и additional orgs start из defaults и скonfigурируют их собственный.
+Настройки хранятся для каждой организации в `org_settings`. При первой загрузке сервер заполняет отсутствующие строки организации по умолчанию от соответствующей переменной окружения (или разумное по умолчанию, если переменная окружения не установлена). После этого, **сохранённое значение является источником истины и переменная окружения игнорируется**; изменение переменной окружения при более позднем перезапуске не повлияет на значение живой организации, и дополнительные организации начинают с значений по умолчанию и настраивают свои.
 
 Это означает:
 
-- Для fresh deploy, установите env vars как shown выше и default org читает их на first boot.
-- Чтобы изменить value позже, log в dashboard и edit его under `/<org>/settings`. Change применяется в течение секунд на all server replicas; restart не нужен.
-- Startup log line записывает что got seeded vs. что было уже present, таким образом вы можете confirm bootstrap took effect:
+- Для свежего развёртывания установите переменные окружения, как показано выше, и организация по умолчанию читает их при первой загрузке.
+- Чтобы изменить значение позже, войдите на приборную панель и отредактируйте её под `/<org>/settings`. Изменение применяется в течение секунд на всех репликах сервера; перезагрузка не нужна.
+- Строка журнала запуска записывает, что получило заполнение против того, что уже присутствовало, поэтому вы можете подтвердить, что bootstrap сработал:
 
   ```text
   INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
   ```
 
-#### Sign-in semantics across organizations
+#### Семантика входа между организациями
 
-Session и OTP глобальны пользователю, не к одной org, таким образом два rules reconcile per-org settings в sign-in time:
+Сеанс и OTP глобальны пользователю, а не одной организации, поэтому два правила примирения параметров для каждой организации во время входа:
 
-- **Session / OTP lifetime**: strictest (shortest) lifetime среди orgs пользователь belongs к wins.
-- **Allowed sign-ins**: gate ORs каждую org's allowlist вместе с org membership: пользователь может request OTP если любая org's allowlist admits их email **или** они уже member любой org.
+- **Время жизни сеанса / OTP**: самое строгое (кратчайшее) время жизни среди организаций, которым принадлежит пользователь, выигрывает.
+- **Допускаемые входы**: шлюз ИЛИ каждый список разрешений организации вместе с членством в организации: пользователь может запросить OTP, если список разрешений любой организации допускает их email **или** они уже являются членом любой организации.
 
-### Permissions
+### Разрешения
 
-Access к `/<org>/settings` странице gated двумя permissions:
+Доступ к странице `/<org>/settings` контролируется двумя разрешениями:
 
-- `settings:read`: see page и current values.
-- `settings:write`: save changes.
+- `settings:read`: видеть страницу и текущие значения.
+- `settings:write`: сохранить изменения.
 
-Bootstrap admin user (seeded из `ADMIN_EMAIL`) gets оба автоматически вместе с каждым другим permission. Grant их другим users из `/<org>/users` как needed.
+Начальный пользователь администратора (заполняется из `ADMIN_EMAIL`) получает оба автоматически вместе со всеми остальными разрешениями. Предоставьте их другим пользователям из `/<org>/users` по мере необходимости.
 
 ---
 
-## Organizations (multi-tenancy)
+## Организации (мультитенантность)
 
-Single deployment может serve multiple isolated **organizations** (tenants); каждый row данных belongs к ровно одной org и isolation enforced в database engine. Single-tenant install нуждается ничего здесь; все данные lives в built-in `default` org. (Вы можете дать той org friendlier name и URL slug, таким образом это lives в например `/acme` вместо `/default`, путем установки `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` перед first boot, или путем переименования его anytime с `agenteye-orgctl org rename`.)
+Одно развёртывание может обслуживать несколько изолированных **организаций** (арендаторы); каждая строка данных принадлежит ровно одной организации и изоляция обеспечивается в engine БД. Одноарендаторная установка не нуждается ни в чём здесь; все данные живут во встроенной организации `default`. (Вы можете дать этой организации более дружественное имя и URL-слаг, поэтому она живёт например в `/acme` вместо `/default`, установив `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` перед первой загрузкой или переименовав её в любое время с `agenteye-orgctl org rename`.)
 
-**Tenant provisioning - это operator-only.** Organizations и их memberships created и managed с **`agenteye-orgctl`** CLI, который ships **inside сервер image** (alongside `agenteye-server`) и runs **inside существующий server pod**; there is **no separate pod/Job, no HTTP API, и no dashboard button**. Это reuses server's `DATABASE_URL`, `CLICKHOUSE_URL`, и `ORG_CH_SECRET`.
+**Подготовка арендатора доступна только оператору.** Организации и их членства создаются и управляются CLI **`agenteye-orgctl`**, который поставляется **внутри образа сервера** (рядом с `agenteye-server`) и работает **внутри существующего pod сервера**; там нет **отдельного pod/Job, нет HTTP API и нет кнопки приборной панели**. Он повторно использует `DATABASE_URL` сервера, `CLICKHOUSE_URL` и `ORG_CH_SECRET`.
 
 ```bash
-# Docker Compose - exec в running server service:
+# Docker Compose - exec в работающий сервис сервера:
 docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
 docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
 
-# Kubernetes - exec в running server Deployment:
+# Kubernetes - exec в работающее развёртывание сервера:
 kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
 ```
 
-Available verbs: `org create | list | rename | delete | purge` и `member add | list | update | remove`, с builtin permission sets `admin`, `standard`, и `read-only`. Added members get OTP на first dashboard login.
+Доступные команды: `org create | list | rename | delete | purge` и `member add | list | update | remove`, со встроенными наборами разрешений `admin`, `standard` и `read-only`. Добавленные члены получат OTP при первом входе на приборную панель.
 
-**Перед созданием second org:** установите strong, stable `ORG_CH_SECRET` (`org create` command отказывает на built-in dev default) и ensure Postgres - **15+**. **Unchanged:** per-org API keys все еще minted в dashboard/API по org members; только org + member lifecycle moved к CLI. Full command reference и worked example: **[enterprise-docs/tenant-management.md](/ru/agenteye/tenant-management)**.
+**Перед созданием второй организации:** установите сильный, стабильный `ORG_CH_SECRET` (команда `org create` отказывается работать со встроенным значением по умолчанию для разработки) и убедитесь, что Postgres **15+**. **Без изменений:** ключи API для каждой организации всё ещё чеканятся в приборной панели/API членами организации; только цикл жизни организации + член перешёл на CLI. Полная справка команд и отработанный пример: **[enterprise-docs/tenant-management.md](/ru/agenteye/tenant-management)**.
 
 ---
 
-## Context-window fill
+## Заполнение окна контекста
 
-Каждый `model_response` event показывает **context-fill pill** — input плюс output tokens как процент той model's context window. Bands - `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%), и `reset context` (75–100%). AgentEye разрешает common model IDs автоматически, таким образом никакая initial configuration не требуется.
+Каждое событие `model_response` показывает **таблетку заполнения контекста** — входные плюс выходные токены в процентах от окна контекста этой модели. Диапазоны: `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%) и `reset context` (75–100%). AgentEye автоматически разрешает распространённые ID моделей, поэтому начальная конфигурация не требуется.
 
-Каждый model, который organization отправляет, появляется under **Settings → model context windows**. Users с `settings:write` могут override его window или add private/proxy model (0–1,000,000 tokens); `0` означает уnknown и suppresses pill. Changes apply к newly ingested events. Users с `settings:read` могут view list.
+Каждая модель, которую отправляет организация, появляется под **Settings → model context windows**. Пользователи с `settings:write` могут переопределить его окно или добавить приватную/proxy модель (0–1 000 000 токен); `0` означает неизвестно и подавляет таблетку. Изменения применяются к недавно полученным событиям. Пользователи с `settings:read` могут просмотреть список.
 
-New events get fill из момента вы upgrade. Чтобы также populate **historical** events (и per-model list) для existing deployment, run one-off backfill — он ships inside сервер image (как `agenteye-orgctl`) и runs в existing server pod:
+Новые события получают заполнение с момента обновления. Чтобы также заполнить **исторические** события (и список для каждой модели) для существующего развёртывания, запустите одноразовую заливку — она поставляется внутри образа сервера (как `agenteye-orgctl`) и работает в существующем pod сервера:
 
 ```bash
-# preview (prints per-org mutation, changes nothing):
+# предпросмотр (печатает мутацию для каждой организации, ничего не меняет):
 kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window --dry-run
-# apply:
+# применить:
 kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window
 # docker compose:
 docker compose exec server agenteye-backfill-context-window
 ```
 
-Это idempotent (safe к re-run) и re-uses `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL` из pod. Re-run это после editing model windows если вы want existing events recomputed.
+Это идемпотентно (безопасно для повторного запуска) и повторно использует `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL` из pod. Повторно запустите его после редактирования окон модели, если вы хотите переосчитать существующие события.
 
 ---
 
-## Production Considerations
+## Соображения по продакшену
 
-- **Postgres**: Используйте managed Postgres service или dedicated instance с regular backups. `DATABASE_URL` поддерживает все standard libpq parameters, включая `sslmode=require` для encrypted connections.
-- **TLS**: Put сервер и dashboard за reverse proxy (nginx, Caddy, Traefik), который terminates TLS.
-- **Firewall**: Server port (default 8080) должен быть reachable только из collector machines и dashboard host, не public internet.
-- **Admin key**: Установите `ADMIN_KEY` на strong random secret. После bootstrapping, create dedicated scoped keys для collectors и dashboard вместо использования admin key везде.
-- **Image tags**: Pin к version в вашу release manifests (например `server:v0.0.1-beta.48`) в production вместо floating tag избежать unintended upgrades. Current beta builds publish под `beta-latest`; `latest` assigned только к stable releases.
-- **Health monitoring**: На Kubernetes readiness probe использует `/ready` (Postgres + ClickHouse reachability), пока liveness остается на `/health`. Для fleet-wide "is AgentEye itself up?" alerting к Slack, enable opt-in Robusta add-on; см. [enterprise-docs/health-monitoring.md](/ru/agenteye/health-monitoring).
+- **Postgres**: используйте управляемый сервис Postgres или выделённый экземпляр с регулярными резервными копиями. `DATABASE_URL` поддерживает все стандартные параметры libpq, включая `sslmode=require` для зашифрованных соединений.
+- **TLS**: поместите сервер и приборную панель позади обратного прокси (nginx, Caddy, Traefik), который завершает TLS.
+- **Брандмауэр**: порт сервера (по умолчанию 8080) должен быть достижим только с машин сборщика и хоста приборной панели, а не из публичного интернета.
+- **Ключ администратора**: установите `ADMIN_KEY` на сильный случайный секрет. После bootstrap создавайте выделённые ключи с областью действия для сборщиков и приборной панели, а не используйте ключ администратора везде.
+- **Теги образов**: закрепите версию в ваших манифестах релиза (например, `server:v0.0.1-beta.48`) в продакшене, а не плавающий тег, чтобы избежать непредусмотренных обновлений. Текущие бета-сборки публикуются под `beta-latest`; `latest` присваивается только стабильным релизам.
+- **Мониторинг здоровья**: на Kubernetes проба готовности использует `/ready` (достижимость Postgres + ClickHouse), пока liveness остаётся на `/health`. Для fleet-широкого оповещения AgentEye себя на Slack включите opt-in дополнение Robusta; см. [enterprise-docs/health-monitoring.md](/ru/agenteye/health-monitoring).
 
 ---
 
 ## Доступные теги образов
 
-| Tag | Описание |
+| Тег | Описание |
 |-----|-------------|
-| `latest` | Последний stable release |
-| `beta-latest` | Последний pre-release (beta) |
-| `v<version>` | Pinned version, например `v0.0.1-beta.48` (рекомендуется для production) |
+| `latest` | Последний стабильный релиз |
+| `beta-latest` | Последний пред-релиз (бета) |
+| `v<version>` | Фиксированная версия, например `v0.0.1-beta.48` (рекомендуется для продакшена) |

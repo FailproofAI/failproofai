@@ -1,164 +1,163 @@
 ---
 title: "Dağıtım"
-description: "AgentEye Dağıtım belgelendirmesi."
+description: "AgentEye Dağıtım belgeleri."
 ---
 
 
-Bu rehber, AgentEye sunucusunun ve panosu'nun üretim ortamında dağıtılmasını kapsar.
+Bu kılavuz, AgentEye sunucusu ve panosunun üretim ortamına dağıtılmasını kapsamaktadır.
 
 ---
 
-## Mimari Genel Bakış
+## Mimari Özeti
 
 ```
-  [ AI agent makineleri ]                [ Sizin altyapınız ]
+  [ AI agent makineleri ]                [ Kendi altyapınız ]
 
     Python SDK
-       |  JSONL yazıyor                       +----------------------+
+       |  JSONL yazar                       +----------------------+
        v                                +--->| PostgreSQL 15+       |
  agenteye-collector --HTTP--+           |    | (ilişkisel depo)     |
                             |           |    +----------------------+
                             v           |
                        +--------+       |    +----------------------+
                        | Server |<------+--->| ClickHouse 24+       |
-                       +--------+       |    | (etkinlikler / analiz)|
+                       +--------+       |    | (etkinlikler / analitikler)|
                             ^           |    +----------------------+
                         API |           |
                             |           |    +----------------------+
-                      +-----------+     +- - >| Redis 7+ (isteğe bağlı) |
+                      +-----------+     +- - >| Redis 7+ (isteğe bağlı)|
                       | Pano      |           +----------------------+
                       +-----------+
 ```
 
-- **Server**: Rust HTTP servisi; etkinlik gruplarını alır, bunları ClickHouse'a yazar ve ilişkisel durumu PostgreSQL'de tutar.
-- **Pano**: Next.js web uygulaması; yalnızca sunucu API'si aracılığıyla okur ve yazar.
-- **agenteye-collector**: sunucu ana bilgisayarında değil, agent makinelerine dağıtılır.
-- **Postgres 15+**: GEREKLI. (Multi-tenant sürümünde 14'ten yükseltildi; org-membership şeması bir sütun listesi `ON DELETE SET NULL` yabancı anahtarı kullanır; bu Postgres 15+ tarafından gereklidir. Bu sürümü dağıtmadan önce Postgres'i yükseltin.) OLTP durumunu depolar: `api_keys`, `users`, `sessions`, `evaluation_jobs` (kuyruk), `dashboards`, `saved_queries`, `otp_codes` ve multi-tenant tabloları `orgs`, `org_memberships`, `org_settings`.
-- **ClickHouse 24+**: GEREKLI. Alınan her etkinlik için analitik deposu. Motor: `ReplacingMergeTree`, ay cinsinden bölümlenmiş, `(session_id, ts, dedup_key)` tarafından sıralanmış. Sunucu `CLICKHOUSE_URL` aracılığıyla bağlanır; paket içi `deploy/base/clickhouse/` performans-ayarlı tek-node yapılandırması ile gelir. **Multi-tenant gereksinimi:** paket içi yapılandırma SQL erişim yönetimini ve `users_without_row_policies_can_read_rows=false` etkinleştirir, böylece sunucu kuruluş başına bir salt okunur ClickHouse kullanıcısı + satır politikası oluşturabilir (SQL editörü ve AI ajanı için motor-zorlanan yalıtım sınırı). Kendi ClickHouse yapılandırmanızı sağlarsanız, bu ayarları taşıyın (bkz. `deploy/base/clickhouse/configmap.yaml`).
-- **Redis 7+**: *isteğe bağlı* paylaşılan önbellek + oran-sınırlama arka ucu. Sunucu ve pano her ikisi de `REDIS_URL` aracılığıyla bağlanır. Yoksa, her ikisi de Postgres-only yollarına incelikle düşer. Aşağıda **Redis (isteğe bağlı önbellek)** bölümüne bakın.
+- **Sunucu**: Rust HTTP hizmeti; etkinlik toplamalarını alır, ClickHouse'a yazar ve ilişkisel durumu PostgreSQL'de tutar.
+- **Pano**: Next.js web uygulaması; sunucu API'si aracılığıyla okur ve yazar.
+- **agenteye-collector**: sunucu ana bilgisayarında değil, agent makinelerinde dağıtılır.
+- **Postgres 15+**: GEREKLI. (14'ten çok kiracılı sürümde yükseltildi; org-üyelik şeması `ON DELETE SET NULL` yabancı anahtarını kullanan bir sütun listesi kullanır ve bu Postgres 15+ gerektirir. Bu sürümü dağıtmadan önce Postgres'i yükseltin.) OLTP durumunu saklar: `api_keys`, `users`, `sessions`, `evaluation_jobs` (sıra), `dashboards`, `saved_queries`, `otp_codes` ve çok kiracılı tablolar `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: GEREKLI. Her alınan etkinlik için analitik deposu. Motor: `ReplacingMergeTree`, aya göre bölümlendirilmiş, `(session_id, ts, dedup_key)` ile sıralanmış. Sunucu `CLICKHOUSE_URL` aracılığıyla bağlanır; paketlenmiş `deploy/base/clickhouse/` performans ayarlı tek düğüm yapılandırması içerir. **Çok kiracılı gereksinim:** paketlenmiş yapılandırma SQL erişim yönetimini etkinleştirir ve `users_without_row_policies_can_read_rows=false` ayarını yapar, böylece sunucu kuruluş başına bir salt okunur ClickHouse kullanıcısı ve satır ilkesi oluşturabilir (SQL editörü ve AI ajanı için motor tarafından zorlanmış izolasyon sınırı). Kendi ClickHouse yapılandırmanızı sağlarsanız bu ayarları aktarın (bkz. `deploy/base/clickhouse/configmap.yaml`).
+- **Redis 7+**: *isteğe bağlı* paylaşılan önbellek + hız sınırı arka ucu. Sunucu ve pano her ikisi de `REDIS_URL` aracılığıyla bağlanır. Mevcut değilse, her ikisi de Postgres'e yapılan yollarla incelikle düşer. Aşağıda **Redis (isteğe bağlı önbellek)** bölümüne bakın.
 
 ---
 
 ## Sunucu
 
-### Görüntüyü çek
+### Görüntüyü çekin
 
 ```bash
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-> Mevcut yapılar `beta-latest` altında yayımlanır; `latest` yalnızca kararlı sürümlere atanır. Üretim için spesifik bir `:v<version>` etiketine sabitleyin; bkz. [Mevcut Görüntü Etiketleri](#mevcut-görüntü-etiketleri).
+> Mevcut yapılar `beta-latest` altında yayımlanır; `latest` yalnızca kararlı sürümlere atanır. Üretim için belirli bir `:v<version>` etiketine sabitle; bkz. [Kullanılabilir Resim Etiketleri](#available-image-tags).
 
 ### Ortam değişkenleri
 
 | Değişken | Gerekli | Varsayılan | Açıklama |
 |---|---|---|---|
-| `DATABASE_URL` | Evet | yok | Postgres DSN. `postgres://` şemasına sahip standart libpq bağlantı dizesi biçimi. `?sslmode=require` ve diğer libpq parametrelerini destekler. Şifre `/`, `+` veya `=` içermemelidir; URL-safe şifreler oluşturmak için `openssl rand -hex` kullanın. |
-| `ADMIN_KEY` | Hayır | yok | Bootstrap admin API anahtarı. Her başlamada tüm izinlerle yükseltilir. Değeri değiştirerek ve yeniden başlatarak döndürün. |
+| `DATABASE_URL` | Evet | yok | Postgres DSN. Şema `postgres://` ile standart libpq bağlantı dizesi biçimi. `?sslmode=require` ve diğer libpq parametrelerini destekler. Parola `/`, `+` veya `=` içeremez; URL-safe parolalar oluşturmak için `openssl rand -hex` kullanın. |
+| `ADMIN_KEY` | Hayır | yok | Önyükleme yöneticisi API anahtarı. Her başlangıçta tüm izinlerle güncelleştirilir. Değeri değiştirerek ve yeniden başlatarak döndürün. |
 | `LISTEN_ADDR` | Hayır | `0.0.0.0:8080` | Bağlanacak TCP adresi |
-| `MAX_BODY_BYTES` | Hayır | `134217728` (128 MB) | Maksimum istek gövdesi boyutu |
-| `ADMIN_EMAIL` | Hayır | yok | Bootstrap admin kullanıcı e-postası. Her başlamada tüm izinlerle yükseltilir ve korunan olarak işaretlenir: pano/API aracılığıyla devre dışı bırakılamaz veya izinleri değiştirilemez. Bootstrap admin'i döndürmek için `ADMIN_EMAIL` değiştirin ve yeniden başlatın; yeni e-posta korunan olarak yükseltilir ve öncekisi veritabanında el ile temizlenene kadar korumasını tutar. |
-| `ALLOWED_EMAILS` | Hayır | yok (hepsi engellenir) | Kullanıcı oluşturma ve oturum açma için izin verilen e-postaların virgülle ayrılmış listesi. Tam adresler (`user@example.com`) ve alan adı joker karakterleri (`*@example.com`) destekler. Ayarlanmazsa, hiçbir kullanıcı oluşturulamaz veya oturum açamaz. **İlk başlangıç seed'i yalnızca**: ilk önyüklemede varsayılan org'un izin listesini seed'ler; bundan sonra her org'un [`/<org>/settings`](#operational-settings) sayfası gerçek kaynaktır ve bu env var'ı değiştirmek hiçbir etkiye sahip değildir. |
-| `SMTP_HOST` | Hayır | yok | OTP e-postaları göndermek için SMTP sunucusu ana bilgisayar adı. Ayarlanmazsa, OTP kodları stdout'a günlüğe kaydedilir. |
+| `MAX_BODY_BYTES` | Hayır | `134217728` (128 MB) | Maksimum istek gövde boyutu |
+| `ADMIN_EMAIL` | Hayır | yok | Önyükleme yöneticisi kullanıcı e-postası. Her başlangıçta tüm izinlerle güncelleştirilir ve korumalı olarak işaretlenir: pano/API aracılığıyla devre dışı bırakılamaz veya izinleri değiştirilemez. Önyükleme yöneticisini döndürmek için `ADMIN_EMAIL` değiştirin ve yeniden başlatın; yeni e-posta korumalı olarak güncelleştirilir ve önceki e-posta el ile veritabanından temizleninceye kadar korumayı tutar. |
+| `ALLOWED_EMAILS` | Hayır | yok (hepsi engellenir) | Kullanıcı oluşturma ve oturum açma için izin verilen e-postaların virgülle ayrılmış listesi. Tam adresler (`user@example.com`) ve alan adı joker karakterleri (`*@example.com`) destekler. Ayarlanmamışsa, hiçbir kullanıcı oluşturulamaz veya oturum açamaz. **İlk önyükleme tohumlandırması**: varsayılan org'un izin listesini ilk önyüklemede tohurnlanır; bundan sonra her org'un [`/<org>/settings`](#operational-settings) sayfası gerçeği kaynağıdır ve bu ortam değişkenini değiştirmek etkisi olmaz. |
+| `SMTP_HOST` | Hayır | yok | OTP e-postaları göndermek için SMTP sunucusu ana bilgisayar adı. Ayarlanmamışsa, OTP kodları bunun yerine stdout'a kaydedilir. |
 | `SMTP_PORT` | Hayır | `587` | SMTP sunucusu portu |
-| `SMTP_USERNAME` | Hayır | yok | SMTP kimlik doğrulama kullanıcı adı |
-| `SMTP_PASSWORD` | Hayır | yok | SMTP kimlik doğrulama şifresi |
-| `SMTP_FROM` | Hayır | yok | OTP e-postaları için gönderici e-posta adresi |
-| `SMTP_TLS` | Hayır | STARTTLS | Açıkça kapatmadığınız sürece STARTTLS kullanılır: `false` veya `0` düz metin gönderir (TLS yok); başka herhangi bir değer — ayarlanmamış dahil — STARTTLS'ı etkinleştirir. |
-| `DASHBOARD_URL` | Hayır | yerleşik varsayılan | OTP-e-posta magic linkini ve uyarı bildirimlerindeki olay magic-linklerini oluşturmak için kullanılan pano kaynağı. Ayarlanmazsa yerleşik bir varsayılana geri döner (ve yalnızca OTP için, pano tarafından türetilen istek kaynağına). Bölünmüş etki alanı kurulumları için bunu ayarlayın, böylece hem e-posta hem de Slack/olay linkler pano'nuza işaret eder. Aşağıda **E-posta magic-link URL'i** bölümüne bakın; çoğu operatör bunu ayarlamak zorunda değildir. |
-| `SESSION_TTL_SECS` | Hayır | `86400` (24 h) | Pano oturumu süresi (saniye cinsinden). **İlk başlangıç seed'i yalnızca**: ilk dağıtımdan sonra [`/<org>/settings`](#operational-settings) aracılığıyla org başına düzenleyin. |
-| `OTP_TTL_SECS` | Hayır | `600` (10 min) | OTP kodu geçerlilik süresi (saniye cinsinden). **İlk başlangıç seed'i yalnızca**: ilk dağıtımdan sonra [`/<org>/settings`](#operational-settings) aracılığıyla org başına düzenleyin. |
-| `REDIS_URL` | Hayır | yok | İsteğe bağlı paylaşılan önbellek + oran-sınırlama arka ucu, örn. `redis://redis:6379/0`. Ayarlandığında, sunucu kimlik doğrulaması yapılmış API-key araştırmasını, pano'nun `/models` toplamını, oturumlar listesini ve env-list fasetini önbelleğe alır; ayrıca OTP-istek oran sınırlamasını Postgres COUNT'tan Redis INCR'ye taşır. Ayarlanmazsa veya erişilemezse, sunucu önbellek olmadan çalışır (OTP sınırı Postgres'e geri döner, diğer her önbellek araması gerçek kaynağa düşer). **Redis (isteğe bağlı önbellek)** bölümüne bakın. |
-| `CLICKHOUSE_URL` | **Evet** | yok | ClickHouse örneğinin temel URL'i, örn. `http://clickhouse:8123`. Sunucu her başlamada kendi etkinlik şemasını bu veritabanına uygular ve ClickHouse'a erişemezse önyüklemeyi reddeder. **ClickHouse (gerekli analitik depo)** bölümüne bakın. |
-| `CLICKHOUSE_DATABASE` | Hayır | `agenteye` | ClickHouse veritabanı (şema) adı. Sunucu başlangıçta mevcut değilse oluşturur. |
-| `ORG_CH_SECRET` | Hayır (tek-tenant) / **Evet (multi-org)** | dev varsayılanı | Her kuruluşun kiracı-başına ClickHouse şifresi türetildiği HMAC anahtarı. SQL editörü ve AI ajanının `run_query` org'un kendi salt-okunur ClickHouse kullanıcısı olarak yürütülür; satır politikası motorda kiracı yalıtımını uygular. Tek-tenant dağıtımları yerleşik dev varsayılanında iyiyse önyüklenir; **ikinci bir org sağlamadan önce güçlü, sabit bir değer AYARLAMALISINIZ**, çünkü `agenteye-orgctl org create` CLI yerleşik dev varsayılanında çalışmayı reddeder. Bunu döndürmek, her org'un ClickHouse kullanıcısını yetim bırakır; sonraki başlangıçta yeniden sağlayacaklar (önyükleme-zaman uzlaştırması bunu otomatik olarak iyileştirir). Gizli tutun ve çoğaltmalar arasında değişmeden kalın. Org sağlaması operatör tarafındandır; **Kuruluşlar (multi-tenancy)** bölümüne bakın. |
-| `DEFAULT_ORG_NAME` | Hayır | `Default` | Yerleşik varsayılan org için seed'lenmiş görüntülü ad. **İlk başlangıç seed'i yalnızca** ve org hâlâ yeni-geçişlenmiş jenerik kimliğini taşırken, başlangıçta uygulanır, sonra yoksayılır. Org'u yeniden adlandırdığınızda (`agenteye-orgctl org rename`) yeniden ad, yetkili olur ve bu env var'ın başka etkisi yoktur. |
-| `DEFAULT_ORG_SLUG` | Hayır | `default` | Yerleşik varsayılan org için URL slug'ı, pano yolu (`/<slug>/…`). `DEFAULT_ORG_NAME` ile aynı ilk-başlangıç-yalnızca / temiz-yalnızca semantiği. 1-40 küçük alfanumerik, tekil iç tire ve [ayrılmış kelime](#organizations-multi-tenancy) olmayan olmalıdır; geçersiz bir değer yoksayılır (org `default`'u tutar). Tek-tenant kurulumun `/default` yerine örn. `/acme` olarak sunmasına izin verir, herhangi bir sonrası-dağıtım CLI adımı olmadan. |
-| `RUST_LOG` | Hayır | `info` | Günlük ayrıntıları (`debug`, `warn`, `error`, `agenteye_server=trace`) |
-| `EVALUATOR_ENDPOINT` | Hayır | yok | Evaluator hizmetinizin temel URL'i (örn. `http://evaluator:9000`). Ayarlanmazsa tüm değerlendirme boru hattı no-op olur; hiçbir kuyruk satırı yazılmaz, hiçbir işçi çalışmaz. Bkz. [Evaluation Suite](/tr/agenteye/evaluation-suite). |
-| `EVALUATOR_TOKEN` | Hayır | yok | Evaluator olarak `Authorization: Bearer <token>` gönderilir. **Evaluator hizmetinin yapılandırıldığı aynı değere eşit OLMALIDIR.** İsteğe bağlı, yalnızca evaluator'unuz token olmayan şekilde yapılandırılmışsa. |
-| `EVALUATOR_WORKERS` | Hayır | `2` | Eşzamanlılık: her sunucu örneği başına değerlendirmeleri görevlendirenişçi görevlerinin sayısı. Yatay olarak ölçeklenmiş birden fazla sunucu arasında çalışmak için güvenlidir. |
-| `EVALUATOR_CLAIM_BATCH` | Hayır | `4` | Tek bir işçinin her tıkta talep ettiği maksimum değerlendirme sayısı. Gruplar **eşzamanlı** olarak gönderilir, bu nedenle evaluator uç noktanız üzerindeki toplam eşzamanlılık `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` dir. |
-| `EVALUATOR_POLL_IDLE_SECS` | Hayır | `2` | Hiçbir şey vadesi gelmediğinde bir işçinin gönderim denemeleri arasında uyuduğu süre. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | Hayır | `10` | Evaluator bir `next_poll_secs` başına yanıt döndürmediğinde ve `GET /config` işleminden bir `default_poll_interval_secs` bildirmediğinde `GET /evaluate/{id}` yoklamalar için son yedek kadansı (saniye). |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | Hayır | `30000` | Evaluator'a karşı HTTP isteği başına zaman aşımı (milisaniye). |
-| `EVALUATOR_MAX_ATTEMPTS` | Hayır | `5` | Bu kadar başarısız deneyimden sonra bir değerlendirme terminal `error` (veya başarısızlıklar istek zaman aşımı ise `timeout`) olarak kaydedilir. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | Hayır | `300` (5 min) | Sunucunun evaluator'dan `GET /config` işlemini ne sıklıkta yeniden getirdiği. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | Hayır | `3600` (1 h) | Bir oturumun yoklama kuyruğunda kalmadan önce maksimum duvar saati zamanı; bundan sonra AgentEye bunu `timeout` olarak sonlandırır. Evaluator'ın `pending`'i sonsuza kadar döndürmesine karşı korunma. |
-| `ALERT_WORKERS` | Hayır | `1` | Eşzamanlılık: her sunucu örneği başına uyarı kurallarını değerlendirenişçi görevlerinin sayısı. Bkz. [Alerts](/tr/agenteye/alerts). |
-| `ALERT_CLAIM_BATCH` | Hayır | `16` | Tek bir işçinin her tıkta talep ettiği maksimum uyarı sayısı. |
-| `ALERT_POLL_IDLE_SECS` | Hayır | `5` | Kuyruk boş olduğunda bir uyarılar işçisinin uyuduğu süre. |
-| `ALERT_REQUEST_TIMEOUT_MS` | Hayır | `15000` | Tetikleme değerlendirmesi başına zaman aşımı (ClickHouse sorguları + giden kanal HTTP). |
-| `ALERT_MAX_ATTEMPTS` | Hayır | `5` | Ardışık geçici başarısızlıklar; bundan sonra uyarı üstel geri tepme yerine normal kadansında yeniden zamanlanır. |
-| `AUDIT_WORKERS` | Hayır | `1` | Eşzamanlılık: her sunucu örneği başına denetimi gerçekleştirenişçi görevlerinin sayısı. Bkz. [Audits](/tr/agenteye/audits). |
-| `AUDIT_CLAIM_BATCH` | Hayır | `1` | Tek bir işçinin her tıkta talep ettiği vadesi gelen maksimum denetim sayısı. Bir ajantik araştırma tek bir uzun döngüdür, bu nedenle varsayılan 1'dir. |
-| `AUDIT_POLL_IDLE_SECS` | Hayır | `30` | Denetim vadesi gelmediğinde bir denetimler işçisinin uyuduğu süre. |
-| `AUDIT_REQUEST_TIMEOUT_MS` | Hayır | `30000` | ClickHouse'a karşı ilke-sorgusu başına zaman aşımı (milisaniye). |
-| `AUDIT_LLM_TIMEOUT_MS` | Hayır | `1440000` | AI yardımcı hizmetine ajantik araştırma çağrısı için zaman aşımı. Tam bir ajan döngüsü dakika boyunca çalışır; bu SUNUCU zaman aşımdan sonra YUKARIDA tut; böylece ajan sunucu vazgeçmeden kısmi bulgularını döndürür. |
-| `AUDIT_MAX_ATTEMPTS` | Hayır | `5` | Ardışık geçici başarısızlıklar; bundan sonra denetim üstel geri tepme yerine normal kadansında yeniden zamanlanır. |
-| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | Hayır | — | Denetimin ajantik araştırması AI-yardımcısı `agent` hizmetine çağrı yapar, **yardımcı ile aynı bağlantıyı yeniden kullanarak** — bu nedenle bunları **sunucuda** da ayarlayın (paket içi manifests/compose yapar). Her ikisi de ayarlanmışsa ⇒ denetimler AI araştırmasını çalıştırır; ya ayarlanmamışsa ⇒ denetimler **politika-yalnızca** çalıştırır (belirleyici SQL politikası geçişi hâlâ çalışır), denetim başına `llm_enabled` bayrağından bağımsız olarak. Ajan ayrıca bir LLM yapılandırılmış olmalıdır — bkz. [assistant.md](/tr/agenteye/assistant). |
+| `SMTP_USERNAME` | Hayır | yok | SMTP kimlik doğrulaması kullanıcı adı |
+| `SMTP_PASSWORD` | Hayır | yok | SMTP kimlik doğrulaması parolası |
+| `SMTP_FROM` | Hayır | yok | OTP e-postaları için gönderen e-posta adresi |
+| `SMTP_TLS` | Hayır | STARTTLS | STARTTLS açıkça kapatmadığınız sürece kullanılır: `false` veya `0` düz metin gönderir (TLS yok); diğer herhangi bir değer — ayarlanmamış da dahil olmak üzere — STARTTLS'i etkinleştirir. |
+| `DASHBOARD_URL` | Hayır | yerleşik varsayılan | OTP-e-posta sihirli bağlantısı ve uyarı bildirimlerindeki olay sihirli bağlantıları oluşturmak için kullanılan pano kaynağı. Ayarlanmamışsa yerleşik varsayılana geri düşer (ve yalnızca OTP için panosundan türetilen istek kökenine ilk olarak geri düşer). Bölünmüş alan kurulumları için ayarlayın, böylece hem e-posta hem de Slack/olay bağlantıları panonuza işaret eder. **E-posta sihirli bağlantı URL'si** bölümüne bakın; çoğu operatör bunu ayarlamaya gerek duymaz. |
+| `SESSION_TTL_SECS` | Hayır | `86400` (24 s) | Pano oturumu süresi saniye cinsinden. **İlk önyükleme tohumlandırması**: ilk dağıtımdan sonra [`/<org>/settings`](#operational-settings) aracılığıyla org başına düzenleyin. |
+| `OTP_TTL_SECS` | Hayır | `600` (10 dak) | OTP kodu geçerlilik süresi saniye cinsinden. **İlk önyükleme tohumlandırması**: ilk dağıtımdan sonra [`/<org>/settings`](#operational-settings) aracılığıyla org başına düzenleyin. |
+| `REDIS_URL` | Hayır | yok | İsteğe bağlı paylaşılan önbellek + hız sınırı arka ucu, örn. `redis://redis:6379/0`. Ayarlandığında sunucu kimliği doğrulanmış API anahtarı aramaları, panonun `/models` toplamsı, oturumlar listesi ve ortam listesi grubunu önbelleğe alır; ayrıca OTP istek hız sınırlamasını Postgres COUNT'tan Redis INCR'ye taşır. Ayarlanmamışsa veya ulaşılamıyorsa, sunucu önbellek olmadan çalışır (OTP sınırı Postgres'e geri düşer, her diğer önbellek çağrısı gerçeği kaynağından düşer). Aşağıda **Redis (isteğe bağlı önbellek)** bölümüne bakın. |
+| `CLICKHOUSE_URL` | **Evet** | yok | ClickHouse örneğinin temel URL'si, örn. `http://clickhouse:8123`. Sunucu bu veritabanına etkinlik şemasını her başlangıçta uygular ve ClickHouse'a ulaşamıyorsa önyüklemeden kaçınır. Aşağıda **ClickHouse (gerekli analitik deposu)** bölümüne bakın. |
+| `CLICKHOUSE_DATABASE` | Hayır | `agenteye` | ClickHouse veritabanı (şema) adı. Sunucu mevcut değilse başlangıçta oluşturur. |
+| `ORG_CH_SECRET` | Hayır (tek kiracılı) / **Evet (çok org)** | geliştirme varsayılanı | Her kuruluşun kiracı başına ClickHouse parolasının türetildiği HMAC anahtarı. SQL editörü ve AI ajanın `run_query` kuruluşun kendi salt okunur ClickHouse kullanıcısı olarak çalışır ve satır ilkesi motorun içinde kiracı izolasyonunu zorlar. Tek kiracılı dağıtımlar yerleşik geliştirme varsayılanı iyi önyüklenir; **ikinci bir org sağlamadan önce güçlü, kararlı bir değer ayarlaMALISINIZ** çünkü `agenteye-orgctl org create` CLI yerleşik geliştirme varsayılanında çalışmayı reddeder. Döndürmek her org'un ClickHouse kullanıcısını yetime bırakır ta ki sonraki başlangıç bunları yeniden sağlayıncaya kadar (önyükleme süresi uzlaştırması bunu otomatik olarak iyileştirir). Gizli tutun ve çoğaltmalar arasında değiştirilmeyecek olarak saklayın. Org sağlaması kendisinin operatörü; aşağıda **Kuruluşlar (çok kiracılılık)** bölümüne bakın. |
+| `DEFAULT_ORG_NAME` | Hayır | `Default` | Yerleşik varsayılan org için tohumlandırılan görünen ad. **İlk önyükleme tohumlandırması**, ve yalnızca org hala yeni geçiş genel kimliğini taşırken, başlangıçta uygulanır, sonra yok sayılır. Org'u yeniden adlandırdığınızda (`agenteye-orgctl org rename`) yeniden adlandırma yetkilidir ve bu ortam değişkeninin başka etkisi yoktur. |
+| `DEFAULT_ORG_SLUG` | Hayır | `default` | Yerleşik varsayılan org için URL slugu, pano yolunda yaşadığı (`/<slug>/…`). `DEFAULT_ORG_NAME` ile aynı ilk önyükleme yalnızca / ilkel anlamıdır. `default` tuttuğu sürece geçersiz bir değer yok sayılır. Tek kiracılı kurulumun `/default` yerine örn. `/acme` olarak sunulmasını sağlar, post-dağıtım CLI adımı olmadan. |
+| `RUST_LOG` | Hayır | `info` | Günlük ayrıntı düzeyi (`debug`, `warn`, `error`, `agenteye_server=trace`) |
+| `EVALUATOR_ENDPOINT` | Hayır | yok | Değerlendirici hizmetinizin temel URL'si (örn. `http://evaluator:9000`). Ayarlanmadığında tüm değerlendirme işlem hattı no-op'dir; hiçbir kuyruk satırı yazılmaz, işçi çalışmaz. Bkz. [Değerlendirme Paketi](/tr/agenteye/evaluation-suite). |
+| `EVALUATOR_TOKEN` | Hayır | yok | Değerlendirici olarak `Authorization: Bearer <token>` gönderilir. **Değerlendirici hizmetinin yapılandırıldığı aynı değere eşit OLMALIDIR.** İsteğe bağlı yalnızca değerlendiriciniz belirteç olmadan yapılandırılmışsa. |
+| `EVALUATOR_WORKERS` | Hayır | `2` | Eşzamanlılık: sunucu örneği başına değerlendirmeler gönderen işçi görevlerinin sayısı. Yatay olarak ölçeklendirilmiş birden fazla sunucu arasında çalıştırmak güvenlidir. |
+| `EVALUATOR_CLAIM_BATCH` | Hayır | `4` | Tek işçinin bir tik başına talep ettiği maksimum değerlendirme sayısı. Toplu işler **eşzamanlı olarak** gönderilir, bu nedenle değerlendirici uç noktası üzerinde toplam eşzamanlılık `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` olur. |
+| `EVALUATOR_POLL_IDLE_SECS` | Hayır | `2` | İşçi hiçbir şey gelmiş olduğunda gönderim denemeleri arasında uyuyacağı süre. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Hayır | `10` | `GET /evaluate/{id}` yoklaması için son yedek kadansı (saniye), değerlendirici yanı başına `next_poll_secs` döndürmediğinde ve `GET /config` adresinden `default_poll_interval_secs` bildirmediğinde. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Hayır | `30000` | Değerlendirici karşısında HTTP istek başına zaman aşımı (milisaniye). |
+| `EVALUATOR_MAX_ATTEMPTS` | Hayır | `5` | Bu kadar başarısız denemeden sonra, bir değerlendirme terminal `error` (veya başarısızlıklar istek zaman aşımlarıysa `timeout`) olarak kaydedilir. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | Hayır | `300` (5 dak) | Sunucu değerlendirici'den `GET /config` öğesini yeniden getirir. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Hayır | `3600` (1 saat) | Bir oturumun yoklama sırasında kalabileceği maksimum duvar saati süresi, AgentEye bunu `timeout` olarak sonlandırmadan önce. Sonsuza kadar `pending` döndüren bir değerlendiriciyi korur. |
+| `ALERT_WORKERS` | Hayır | `1` | Eşzamanlılık: sunucu örneği başına uyarı kurallarını değerlendiren işçi görevlerinin sayısı. Bkz. [Uyarılar](/tr/agenteye/alerts). |
+| `ALERT_CLAIM_BATCH` | Hayır | `16` | Tek işçinin bir tik başına talep ettiği maksimum uyarı sayısı. |
+| `ALERT_POLL_IDLE_SECS` | Hayır | `5` | Kuyruk boşken uyarılar işçisinin uyuması gereken süre. |
+| `ALERT_REQUEST_TIMEOUT_MS` | Hayır | `15000` | Tetikleyici değerlendirmesi başına zaman aşımı (ClickHouse sorguları + giden kanal HTTP). |
+| `ALERT_MAX_ATTEMPTS` | Hayır | `5` | Ardışık geçici başarısızlıklar, bir uyarı üstel geri alma yerine normal kadansında yeniden zamanlanıncaya kadar. |
+| `AUDIT_WORKERS` | Hayır | `1` | Eşzamanlılık: sunucu örneği başına denetimleri yürüten işçi görevlerinin sayısı. Bkz. [Denetimler](/tr/agenteye/audits). |
+| `AUDIT_CLAIM_BATCH` | Hayır | `1` | Tek işçinin bir tik başına talep ettiği maksimum yürürlükte denetim sayısı. Ajansal bir araştırma tek uzun bir döngüdür, bu nedenle varsayılan 1'dir. |
+| `AUDIT_POLL_IDLE_SECS` | Hayır | `30` | Hiçbir denetim yürürlükte olmadığında denetim işçisinin uyuması gereken süre. |
+| `AUDIT_REQUEST_TIMEOUT_MS` | Hayır | `30000` | ClickHouse karşısında ilke sorgusu başına zaman aşımı (milisaniye). |
+| `AUDIT_LLM_TIMEOUT_MS` | Hayır | `1440000` | AI asistan hizmetine ajansal araştırma çağrısının zaman aşımı. Tam bir ajan döngüsü dakikalar çalışır; bunu sunucunun bırakılmadan önce ajan kısmi bulgularını döndürmesi için ajanın kendi `AGENTEYE_AUDIT_TIMEOUT_MS` değerinin ÜZERİNDE tutun. |
+| `AUDIT_MAX_ATTEMPTS` | Hayır | `5` | Ardışık geçici başarısızlıklar, bir denetim üstel geri alma yerine normal kadansında yeniden zamanlanıncaya kadar. |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | Hayır | — | Denetimin ajansal araştırması AI asistan `agent` hizmetini çağırır, **asistan ile aynı bağlantıyı yeniden kullanarak** — bu nedenle bunları ikisini **sunucuda** da ayarlayın (paketlenmiş manifestler/compose yapar). Her ikisi ayarlanmış ⇒ denetimler AI araştırmasını çalıştırır; her ikisi ayarlanmamış ⇒ denetimler **yalnızca ilke** çalıştırır (belirlenimci SQL ilkesi geçişi yine de çalışır), per-denetim `llm_enabled` bayrağından bağımsız olarak. Ajanın da bir LLM yapılandırması olmalıdır — bkz. [assistant.md](/tr/agenteye/assistant). |
 
-**AI yardımcı hizmeti — denetim + sandbox ayarları.** Ajantik araştırma ve pod'daki Python sandbox'u **ajan hizmetinde** ayarlanır (sunucu değil), tümü `AGENTEYE_AUDIT_*` ön eki altında ve tümü isteğe bağlı:
+**AI asistan hizmeti — denetim + sanal alan ayarları.** Ajansal araştırma ve pod içi Python sanal alanı **ajan hizmetinde** ayarlanır (sunucu değil), hepsi `AGENTEYE_AUDIT_*` önekinde ve hepsi isteğe bağlı:
 
-| Değişken | Varsayılan | Anlam |
+| Değişken | Varsayılan | Anlamı |
 |---|---|---|
-| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Araştırma başına maksimum ajan adımları. |
-| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Bir araştırma için duvar saati (20 min). Sunucunun `AUDIT_LLM_TIMEOUT_MS`'nin **altında** kalması gerekir. |
-| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Ajan pod'u başına eşzamanlı araştırmalar (sohbet yardımcısının bütçesinden ayrı). |
-| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Bubblewrap sandbox'u için betik başına sınırlar. |
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | Araştırma başına maksimum ajan dönüşleri. |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | Bir araştırma için duvar saati (20 dak). Sunucunun `AUDIT_LLM_TIMEOUT_MS` değerinin **altında** kalmalıdır. |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Ajan başına pod başına eşzamanlı araştırmalar (sohbet asistan bütçesinden ayrı). |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Bubblewrap sanal alanı için komut başına sınırlar. |
 
-**Sandbox platform gereksinimi.** Denetim kodu sandbox'u ajanın Python'unu bir bubblewrap hapishanesinde çalıştırır; bu **ayrıcalıklı olmayan kullanıcı ad alanlarına** ihtiyaç duyar. Ajan pod'u `clone()` bayraklarına izin vermelidir — `seccompProfile: Unconfined` (k8s) veya `security_opt: [seccomp:unconfined]` (compose) ayarlayın ajan'da. Düğüm kerneli ayrıcalıklı olmayan kullanıcı ad alanlarını devre dışı bırakan yerde (örn. bazı GKE COS görüntüleri), sandbox **preflight başarısız olur ve denetçi otomatik olarak SQL-only'ye düşer** — hata yok, ajan'ın `/health` üzerinde `sandbox_available: false`.
+**Sanal alan platform gereksinimiş.** Denetim kodu sanal alanı modelin Python'u bir bubblewrap hapishanesinde çalıştırır, bu **ayrıcalıklı olmayan kullanıcı ad alanları** gerektirir. Ajan pod'u `clone()` bayraklarına izin vermelidir — `seccompProfile: Unconfined` ayarlayın (k8s) veya `security_opt: [seccomp:unconfined]` (compose) ajan'da. Düğüm çekirdeğinin ayrıcalıklı olmayan kullanıcı ad alanlarını devre dışı bıraktığı durumlarda (örn. bazı GKE COS görüntüleri), sanal alan **önyükleme başarısız olur ve denetim otomatik olarak yalnızca SQL'e düşer** — hata yok, ajan'ın `/health` üzerinde yalnızca `sandbox_available: false`. |
 
-### Çalıştır
+### Çalıştırma
 
-`DATABASE_URL` ve `CLICKHOUSE_URL`'i ortamınızda ayarlayın (sunucu ClickHouse olmadan önyüklemeyi reddeder), sonra bunları kapsayıcıya geçirin:
+Ortamda `DATABASE_URL` ayarlayın, ardından konteynera geçirin:
 
 ```bash
 docker run -d --restart unless-stopped \
   --name agenteye-server \
   -e DATABASE_URL="$DATABASE_URL" \
-  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
   -e ADMIN_KEY="$ADMIN_KEY" \
   -p 8080:8080 \
   ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-Sunucu, başlamada otomatik olarak veritabanı geçişlerini çalıştırır; ayrı geçiş adımı gerekli değildir.
+Sunucu, başlangıçta veritabanı geçişlerini otomatik olarak çalıştırır; ayrı geçiş adımı gerekmez.
 
-### Sistem durumu kontrolü
+### Sağlık kontrolü
 
 ```
-GET /health    # canlılık  - işlem açıktan sonra her zaman {"status":"ok"}
-GET /ready     # hazırlık - Postgres + ClickHouse erişilebilir olduğunda 200, aksi durumda 503
+GET /health    # canlılık  - işlem başladıktan sonra her zaman {"status":"ok"}
+GET /ready     # hazırlık - Postgres + ClickHouse ulaşıldığında 200, aksi takdirde 503
 ```
 
-Kimlik doğrulama gerekli değildir. **Canlılık** yoklamaları için `/health` ve **hazırlık** / yük dengeleyici yoklamaları için `/ready` kullanın. `/ready`, sunucu olmadan sunucu'nun hizmet veremediği sabit bağımlılıkları kontrol eder (Postgres + ClickHouse), bu nedenle çalışan ama veritabanına ulaşamayan sunucu döndürülürü alır ve `NotReady` olarak gösterilir; Redis raporlanır ama hiçbir zaman hazırlığı başarısız kılmaz. Paket içi Kubernetes manifests'inde hazırlık yoklaması `/ready` konumunda ve canlılık `/health` konumunda kalır. Tam resim için [enterprise-docs/health-monitoring.md](/tr/agenteye/health-monitoring) dosyasına bakın; Slack'a Kubernetes-native pod-başarısızlığı uyarısı dahil.
+Kimlik doğrulama gerekmez. **Canlılık** yoklamalar için `/health` ve **hazırlık** / yük dengeleyici yoklamaları için `/ready` kullanın. `/ready` sunucunun olmadan hizmet veremeyeceği sert bağımlılıkları kontrol eder (Postgres + ClickHouse), bu nedenle çalışan ancak veritabanına ulaşamayan bir sunucu döndürülmesinin dışında tutulur ve `NotReady` olarak gösterilir; Redis raporlanır ancak asla hazırlığı başarısız yapmaz. Paketlenmiş Kubernetes manifestlerinde hazırlık yoklaması zaten `/ready` adresini işaret eder ve canlılık `/health` üzerinde kalır. Tam resim, Kubernetes-native pod-başarısızlık uyarılarını Slack'e dahil etmek için bkz. [enterprise-docs/health-monitoring.md](/tr/agenteye/health-monitoring).
 
-### E-posta magic-link URL'i
+### E-posta sihirli bağlantı URL'si
 
-OTP oturum açma e-postaları tek-dokunuş **pano'yu aç** düğmesi içerir. Tıklamak kullanıcıyı `/login?token=<code>&email=<address>` konumuna indirir; pano bu çifti bir oturum için değiştirir ve uygulamaya yeniden yönlendirir, el ile kod yeniden girişi olmadan. Sunucu, linki oluşturmak için kullanılan pano kaynağını üç katmanda çözer:
+OTP oturum açma e-postaları tek dokunuşla **panoyu aç** düğmesi içerir. Tıklamak kullanıcıyı `/login?token=<code>&email=<address>` adresine indirir; pano bu çifti bir oturumla değiştirir ve hiçbir manuel kod yeniden girişi olmadan uygulamaya yönlendirir. Sunucu, bağlantı oluşturmak için kullanılan pano kökenini üç katmanda çözer:
 
-1. **`X-AgentEye-Dashboard-Url` başlığı**: pano'nun `/api/auth/otp/request` proxy'si tarafından otomatik olarak kendi genel kaynağından ayarlanır. Aynı-kaynaklı dağıtımda (sunucu ve pano host'u paylaş tek bir girişin arkasında proxy başlıklarını iletebilir), **yapılandırma gerekli değildir**.
-2. **`DASHBOARD_URL` env var'ı**: pano'nuz, sunucu'nun OTP istek uç noktasının gördüğü kaynaktan farklı bir kaynakta erişilebiliyorsa (bölünmüş `api.example.com` / `app.example.com`) veya girişiniz genel host'u pano pod'una yayılamıyorsa (bu nedenle `request.nextUrl.origin` `0.0.0.0:3000` gibi bir joker karakteri bind'e çözümlenir), bunu ayarlayın. Örnek: `DASHBOARD_URL=https://app.example.com`.
-3. **Varsayılan**: `https://app.befailproof.ai`, yalnızca yukarıdakilerden hiçbiri mevcut değilse kullanılır.
+1. **`X-AgentEye-Dashboard-Url` başlığı**: panonun kendi genel kaynağından `/api/auth/otp/request` proxy tarafından otomatik olarak ayarlayır. Aynı kaynak dağıtımında (sunucu ve pano bir ön uç ardında bir ana bilgisayarı paylaşır, proxy başlıklarını iletir), **hiçbir yapılandırma gerekmez**.
+2. **`DASHBOARD_URL` ortam değişkeni**: panonuz sunucunun OTP istek uç noktasının gördüğü orijinin farklı bir kaynağında erişilebilirse (bölünmüş `api.example.com` / `app.example.com`), veya ön ucunuz genel ana bilgisayarı pano pod'una yaymıyorsa (bu nedenle `request.nextUrl.origin` aksi takdirde `0.0.0.0:3000` gibi joker bir bağlamaya çözecektir) ayarlayın. Örnek: `DASHBOARD_URL=https://app.example.com`.
+3. **Varsayılan**: `https://app.befailproof.ai`, yalnızca yukarıdaki her ikisi yoksa kullanılır.
 
-Başlık değeri doğrulanır: yalnızca `https://*` ve loopback (`http://localhost*`, `http://127.0.0.1*`) kaynakları kabul edilir ve joker karakteri bind adresleri (`0.0.0.0`, `[::]`) `https://` şemasıyla bile reddedilir. Başka herhangi bir şey katman 2'ye düşer.
+Başlık değeri doğrulanır: yalnızca `https://*` ve geri döngü (`http://localhost*`, `http://127.0.0.1*`) kaynakları kabul edilir ve joker bağlama adresleri (`0.0.0.0`, `[::]`) `https://` şemasıyla bile reddedilir. Başka bir şey katman 2'ye düşer.
 
-Çalışan küme üzerinde tek satırlı olarak ayarlayın; dosya yok, kustomize yeniden derleme yok:
+Çalışan bir kümede tek satırlı olarak ayarlayın; dosya yok, kustomize yeniden derlemesi yok:
 
 ```bash
 kubectl set env deployment/server -n agenteye \
   DASHBOARD_URL=https://app.example.com
 ```
 
-Bu bir dağıtımı tetikler; yeni pod'lar değeri ilk istekte alır. Override'ın yalnızca Dağıtımda yaşadığını unutmayın; sonraki `kustomize build | kubectl apply` overlay'a karşı, aynı env var'ı overlay'ın `server-env.yaml` yamalamasına eklemediğiniz sürece bunu silecektir.
+Bu bir dağıtımı tetikler; yeni pod'lar ilk istekte değeri alır. Geçersiz kılmanın yalnızca Dağıtımda yaşadığını unutmayın; sonraki `kustomize build | kubectl apply` ön ek aşılıya karşı, ön ekinizdeki `server-env.yaml` yama aynı ortam değişkenini eklemediniz sürece bunu silecektir.
 
 ---
 
 ## Pano
 
-### Görüntüyü çek
+### Görüntüyü çekin
 
 ```bash
 docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
@@ -168,16 +167,16 @@ docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
 
 | Değişken | Gerekli | Varsayılan | Açıklama |
 |---|---|---|---|
-| `AGENTEYE_SERVER_URL` | Evet | yok | Sunucunun temel URL'i, örn. `http://localhost:8080` |
-| `AGENTEYE_API_KEY` | Evet | yok | Pano'nun sunucu'ya kimlik doğrulamak için kullandığı API anahtarı. Tüm izinleri gerektirir (admin anahtarı önerilir). |
-| `AE_LOG_LEVEL` | Hayır | `info` | Sunucu tarafı günlük ayrıntıları: `debug`, `info`, `warn`, `error`. Sorunları tanılarken yukarı yönlü istek/yanıt satırlarını ve oturum-doğrulama izlerini görmek için `debug` olarak ayarlayın. |
-| `AE_LOG_JSON` | Hayır | otomatik | `1` JSON-satır başına çıktıyı zorlar; `0` okunabilir çıktıyı zorlar. Ayarlanmazsa, `NODE_ENV=production` ise JSON otomatik olarak etkinleştirilir. JSON üretimde önerilir, böylece günlükler `jq` veya günlük toplayıcı ile düzgün ayrıştırılır. |
-| `AE_ANALYTICS_DISABLED` | Hayır | yok | Pano'nun anonim ürün-kullanımı telemetrisini devre dışı bırakmak için `1`/`true` olarak ayarlayın. Aşağıda [Telemetri & gizlilik](#telemetri--gizlilik) bölümüne bakın. |
-| `REDIS_URL` | Hayır | yok | İsteğe bağlı paylaşılan önbellek arka ucu, örn. `redis://redis:6379/0`. Ayarlandığında, pano `validateSession()` sonuçlarını çoğaltmalar arasında önbelleğe alır ve gecikme-toplama / env-list proxy rotaları için Next.js getirme önbelleğini paylaşır. Kenar tarafı OTP istek ve doğrulama oran sınırları mevcut olduğunda Redis kullanır (Redis erişilemezse açık kalır; sunucu tarafı sınırı güvenlik yedek saklayıcısıdır). **Redis (isteğe bağlı önbellek)** bölümüne bakın. |
-| `AGENTEYE_AGENT_URL` | Hayır | yok | İsteğe bağlı AI-yardımcısı `agent` hizmetinin temel URL'i, örn. `http://agent:9100`. **Ayarlanmamış bırakın ve yardımcıyı tamamen gizleyin**: pano'da yardımcı balonu görünmez. Bkz. [enterprise-docs/assistant.md](/tr/agenteye/assistant). |
-| `AGENTEYE_AGENT_TOKEN` | Hayır | yok | Pano'nun `agent` hizmetine sunduğu paylaşılan gizli. Ajan'da yapılandırılan `AGENTEYE_AGENT_TOKEN` ile eşleşmesi gerekir. Bkz. [enterprise-docs/assistant.md](/tr/agenteye/assistant). |
+| `AGENTEYE_SERVER_URL` | Evet | yok | Sunucunun temel URL'si, örn. `http://localhost:8080` |
+| `AGENTEYE_API_KEY` | Evet | yok | Panonun sunucuda kimlik doğrulaması yapmak için kullandığı API anahtarı. Tüm izinleri gerektirir (yönetici anahtarı önerilir). |
+| `AE_LOG_LEVEL` | Hayır | `info` | Sunucu tarafı günlük ayrıntı düzeyi: `debug`, `info`, `warn`, `error`. Sorunları tanılarken yukarı akış istek/yanıt satırlarını ve oturum doğrulaması izlerini görmek için `debug` ayarlayın. |
+| `AE_LOG_JSON` | Hayır | otomatik | `1` JSON-per-satır çıktısını zorlar; `0` insan tarafından okunabilir çıktıyı zorlar. Ayarlanmadığında, `NODE_ENV=production` ise JSON otomatik olarak etkinleştirilir. Üretimde JSON önerilir, böylece günlükler `jq` veya bir günlük toplayıcı ile temiz biçimde ayrıştırılır. |
+| `AE_ANALYTICS_DISABLED` | Hayır | yok | Panonun anonim ürün kullanımı telemetrisini devre dışı bırakmak için `1`/`true` ayarlayın. Aşağıda [Telemetri & Gizlilik](#telemetry--privacy) bölümüne bakın. |
+| `REDIS_URL` | Hayır | yok | İsteğe bağlı paylaşılan önbellek arka ucu, örn. `redis://redis:6379/0`. Ayarlandığında pano çoğaltmalar arasında `validateSession()` sonuçlarını önbelleğe alır ve gecikme toplama / ortam listesi proxy rotaları için Next.js getirme önbelleğini paylaşır. Edge-side OTP istek ve doğrulama hız sınırları mevcut olduğunda Redis'i kullanır (Redis ulaşılamıyorsa açılır; sunucu tarafı sınırı güvenlik yedeklenidir). Aşağıda **Redis (isteğe bağlı önbellek)** bölümüne bakın. |
+| `AGENTEYE_AGENT_URL` | Hayır | yok | İsteğe bağlı AI-asistan `agent` hizmetinin temel URL'si, örn. `http://agent:9100`. **Asistanı tamamen gizlemek için ayarlanmış halde bırakın**: pano asistan balonu görünmez. Bkz. [enterprise-docs/assistant.md](/tr/agenteye/assistant). |
+| `AGENTEYE_AGENT_TOKEN` | Hayır | yok | Panonun `agent` hizmetine sunduğu paylaşılan gizli. Ajan'da yapılandırılan `AGENTEYE_AGENT_TOKEN` ile eşleşmeli. Bkz. [enterprise-docs/assistant.md](/tr/agenteye/assistant). |
 
-### Çalıştır
+### Çalıştırma
 
 ```bash
 docker run -d --restart unless-stopped \
@@ -188,91 +187,91 @@ docker run -d --restart unless-stopped \
   ghcr.io/agenteye-enterprise/dashboard:beta-latest
 ```
 
-### Telemetri & gizlilik
+### Telemetri & Gizlilik
 
-Pano, **anonim ürün-kullanımı analitiğini** Exosphere'ın analitik hizmetine (PostHog) gönderir: hangi pano sayfalarının görüntülendiği ve API anahtarı oluşturma veya oturumun yeniden değerlendirilmesi gibi bir avuç UI eylemi. Bu kullanım sinyali hangi özelliklerin önceliklendirildiğini bilgilendirir.
+Pano, **anonim ürün kullanımı analitikleri** Exosphere'in analitik hizmetine (PostHog) gönderir: hangi pano sayfalarının görüntülendiği ve API anahtarı oluşturma veya oturumu yeniden değerlendirme gibi bir avuç UI eylemi. Bu kullanım sinyali hangi özelliklerin önceliklendirildiğini bildiridir.
 
-- **Hiçbir ajan, oturum veya etkinlik verisi altyapınızı asla terk etmez.** Yalnızca pano UI kullanımı raporlanır. Sayfa URL'leri gönderilmeden önce tanımlayıcılardan temizlenir ve operatörler yalnızca opak iç kimliğe göre, asla e-postaya göre tanımlanır.
-- Telemetri **varsayılan olarak etkindir**. Tamamen kapatmak için pano konteynerine `AE_ANALYTICS_DISABLED=1` ayarlayın ve yeniden başlatın.
-- Analitikler pano'nun kendi `/ingest` yoluna gönderilir, pano bunu PostHog'a (`https://us.i.posthog.com`) ters proxy'ler. İstekleri birinci tarafa almak, tarayıcı ad-bloklayıcılarının bunları bırakmaması anlamına gelir. **Pano konteyner'ı** PostHog'a giden erişime ihtiyaç duyar; engellenmişse, telemetri sessizce hiçbir şey yapmaz ve pano etkilenmez.
-
----
-
-## AI Yardımcısı (isteğe bağlı)
-
-Pano içi AI yardımcısı, ekibinizin agent verilerini düz dilinde sormalarını sağlar (oturumları özetlemek, `/queries` editörü için SQL taslağı hazırlamak ve kaydedilen sorguları pano kutucuklarına dönüştürmek) pano'yu terk etmeden. Ayrı bir dahili `agent` konteyner'inde (Claude Agent SDK'da) çalışır, yalnızca pano'ya erişebilir ve **bir LLM uç noktası yapılandırıncaya kadar devre dışı kalır**.
-
-Etkinleştirmek için, `agent` hizmetine bir LLM bağlantısı (**Portkey** via `PORTKEY_API_KEY` + model-katalog slug `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, doğrudan Anthropic via `ANTHROPIC_API_KEY`, başka bir ağ geçidi via `ANTHROPIC_BASE_URL` veya Bedrock/Vertex), **adanmış** veri anahtarı ve pano ile eşleşen paylaşılan `AGENTEYE_AGENT_TOKEN` ayarlarsınız. Pano kullanıcıları ek olarak `agent:use` iznine ihtiyaç duyar.
-
-Yardımcının veri anahtarı için el ile hiçbir şey basmazsınız: rastgele gizli seçin, `agent` üzerinde `AGENTEYE_API_KEY` ve `server` üzerinde `AGENT_API_KEY` olarak ayarlayın ve sunucu başlangıçta sabit bir izin setiyle seed'ler. Veri erişimi salt-okunur (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`) ve ek olarak onay geçitli yazma kapsamlarını tutar (`dashboards:write`, `queries:write`, `queries:run`) böylece kaydedilen sorguları ve pano kutucuklarını kullanıcı adına tasarını doğrulayabilir; tüm SQL yine de org'un salt-okunur ClickHouse rolü aracılığıyla çalışır, bu yüzden bu yardımcının yazabileceğini genişletir, ulaşabileceği veri değil. Kapsamlar koddaki fixed'dir ve yapılandırma tarafından genişletilemez. Bu anahtar korunur; API aracılığıyla devre dışı bırakılamaz veya yeniden oluşturulamaz, yalnızca değeri değiştirerek ve yeniden başlatarak döndürülür. Asla admin/pano anahtarını bunu için yeniden kullanmayın.
-
-Tam kurulum, tam ortam-değişkeni referansı, telemetri seçenekleri ve güvenlik modeli **[enterprise-docs/assistant.md](/tr/agenteye/assistant)** sayfasındadır.
+- **Agent, oturum veya etkinlik verileri hiçbir zaman altyapınızdan ayrılmaz.** Yalnızca pano UI kullanımı raporlanır. Sayfa URL'leri göndermeden önce tanımlayıcılardan çıkarılır ve operatörler asla e-posta tarafından değil, yalnızca opak bir iç kimliği tarafından tanımlanır.
+- Telemetri **varsayılan olarak etkindir**. Tamamen kapatmak için panonun konteynerinde `AE_ANALYTICS_DISABLED=1` ayarlayın ve yeniden başlatın.
+- Analitikler panonun kendi `/ingest` yoluna gönderilir, pano PostHog'a ters proxy yapar (`https://us.i.posthog.com`). İstekleri birinci taraf olarak tutmak, tarayıcı reklam engelleyicilerin bunları bırakmaması anlamına gelir. **Pano konteyneri** PostHog'a giden erişime ihtiyaç duyar; engellenmişse telemetri sessizce hiçbir şey yapmaz ve pano etkilenmez.
 
 ---
 
-## ClickHouse (gerekli analitik depo)
+## AI Asistanı (isteğe bağlı)
 
-ClickHouse, panolarınızı yüksek etkinlik hacimlerinde duyarlı tutar ve `/queries` SQL editörünün etkinlikler, değerlendirmeler ve oturumlar arasında tek bir depoda birleştirilmesine izin verir. Alınan her etkinlik, her terminal değerlendirme sonucu ve türetilmiş oturum başına toplamlar için gerekli kurallı depo olur. PostgreSQL ilişkisel / değiştirilebilir-durum tablolarını tutar (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); analitik yüzey ClickHouse'da yaşar, bu yüzden pano'nuzun toplamları ve kendi SQL sorgularınız veri tabanları arasında tur yapılmadan onu veya katılması yapılmayan tüm deponuzda taraması yapılabilir. Sunucu `CLICKHOUSE_URL` olmadan önyüklemeyi reddeder.
+Pano içi AI asistanı, ekibinizin Agent veri hakkında düz dilde soru sormasına (oturumları özetleme, `/queries` editörü için SQL taslakları ve kaydedilmiş sorguları pano kutucuklarına dönüştürme) panodan ayrılmadan izin verir. Bağımsız bir dahili `agent` konteynerinde (Claude Agent SDK'da) çalışır, yalnızca pano ulaşabilir ve **bir LLM uç noktası yapılandırana kadar devre dışı kalır**.
+
+Etkinleştirmek için `agent` hizmetinde bir LLM bağlantısı (**Portkey** aracılığıyla `PORTKEY_API_KEY` + model-katalog sonu `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, doğrudan Anthropic aracılığıyla `ANTHROPIC_API_KEY`, başka bir ağ geçidi aracılığıyla `ANTHROPIC_BASE_URL` veya Bedrock/Vertex), **ayrılmış** bir veri anahtarı ve panola eşleşen paylaşılan `AGENTEYE_AGENT_TOKEN` ayarlayın. Pano kullanıcıları ek olarak `agent:use` izni gerektirir.
+
+Asistanın veri anahtarı için elle hiçbir şey basılmaz: rastgele bir gizli seçin, `agent` üzerinde `AGENTEYE_API_KEY` olarak ve `server` üzerinde `AGENT_API_KEY` olarak ayarlayın ve sunucu başlangıçta bunu sabit bir izin kümesi ile tohurnlanır. Veri erişimi salt okunur (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`) ve ek olarak onay geçidi yazarlık kapsamları tutar (`dashboards:write`, `queries:write`, `queries:run`) böylece kullanıcının adına kaydedilmiş sorguları ve pano kutucuklarını taslaklandırabilir ve doğrulayabilir; tüm SQL yine de org'un salt okunur ClickHouse rolü aracılığıyla çalışır, bu nedenle bu asistanın hangi veri yazabileceğini yığar, ulaşabileceği verileri değil. Kapsamlar kodda sabitlenmiş ve yapılandırma tarafından genişletilemez. Bu anahtar korunur; API aracılığıyla devre dışı bırakılamaz veya yeniden oluşturulamaz, yalnızca değeri değiştirerek ve yeniden başlatarak döndürülebilir. Yönetici/pano anahtarını hiçbir zaman bu amaç için yeniden kullanmayın.
+
+Tam kurulum, tam ortam değişkeni referansı, telemetri seçenekleri ve güvenlik modeli **[enterprise-docs/assistant.md](/tr/agenteye/assistant)** içindedir.
+
+---
+
+## ClickHouse (gerekli analitik deposu)
+
+ClickHouse yüksek etkinlik birimlerinde panonuları duyarlı tutar ve `/queries` SQL editörü etkinlikleri, değerlendirmeleri ve oturumları tek mağazada birleştirmeyi sağlar. Bu, her alınan etkinlik, her terminal değerlendirme sonucu ve türetilmiş oturum başına toplamaların gerekli kanonik deposudur. PostgreSQL ilişkisel / değişebilir durum tablolarını tutar (api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries); analitik yüzey ClickHouse'ta yaşar, böylece panonun açılmış işlemleri ve kendi SQL sorgularınız bunu yerel olarak tarayabilir ve birleştirebilir, veritabanları arası gidiş dönüş olmadan. Sunucu `CLICKHOUSE_URL` olmadan önyüklemeden kaçınır.
 
 ### Şema
 
-Üç ClickHouse nesnesi sunucu başlangıcında oluşturulur, tümü idempotent (`CREATE IF NOT EXISTS`):
+Üç ClickHouse nesnesi sunucu başlangıcında oluşturulur, tüm idempotenttir (`CREATE IF NOT EXISTS`):
 
-- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(ts)` tarafından bölümlenmiş, `(session_id, ts, dedup_key)` tarafından sıralanmış. Yinelenen eklemeler (collector yeniden denemeleri) birleştirme saatinde tek satıra çöker; sunucu her etkinlik için belirleyici SHA-256 `dedup_key` hesaplar, böylece yeniden denemeler güvenlidir.
-- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(finished_at)` tarafından bölümlenmiş, `(session_id, finished_at, dedup_key)` tarafından sıralanmış. Terminal değerlendirme sonucu başına evaluator boru hattı tarafından bir kez yazılır. `events` ile aynı dedup-key modeli.
-- **`agenteye.agent_sessions`**: fiziksel bir tablo değil, `agenteye.events` üzerinde bir **VIEW**. Her sütun türetilir (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()` vb.). Olay başına yükseltme ve ayrı geri doldurma yok; görünüm `events` içinde ne varsa otomatik olarak yansıtır.
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(ts)` ile bölümlendirilmiş, `(session_id, ts, dedup_key)` ile sıralanmış. Yinelenen eklenmeler (toplayıcı yeniden denemeleri) birleştirme zamanında tek satıra çöker; sunucu her etkinlik için belirlenimci bir SHA-256 `dedup_key` hesaplar, böylece yeniden denenmeler güvenlidir.
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(finished_at)` ile bölümlendirilmiş, `(session_id, finished_at, dedup_key)` ile sıralanmış. Her terminal değerlendirme sonucu için değerlendirici ardışık düzen tarafından bir kez yazılır. `events` ile aynı dedup-anahtar modeli.
+- **`agenteye.agent_sessions`**: fiziksel bir tablo değil, `agenteye.events` üzerindeki bir **VIEW**. Her sütun türetilmiş (`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()`, vb.). Etkinlik başına upsert yok ve ayrı backfill yok; görünüm otomatik olarak `events` içinde ne varsa yansıtır.
 
-Kaydedilmiş sorguların `analytics.evaluations` / `analytics.sessions` başvurusunda ileriye yönelik uyumluluğu için, sunucu ayrıca `agenteye.*` tabloları üzerinde görünümlerle `analytics` ClickHouse veritabanı oluşturur; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` doğru şekilde çözümlenebilir.
+Öncek uyumluluk için `analytics.evaluations` / `analytics.sessions` başvuran kaydedilmiş sorgularla, sunucu ayrıca `agenteye.*` tablolarında görünümler içeren `analytics` ClickHouse veritabanını oluşturur; `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions` hepsi doğru şekilde çözülür.
 
 ### Yapılandırma
 
-Paket içi docker-compose ve `deploy/base/clickhouse/` AgentEye'ın iş yüküne göre ayarlanan ClickHouse hizmeti ile gelir:
+Paketlenmiş docker-compose ve `deploy/base/clickhouse/` AgentEye iş yükü için ayarlanmış bir ClickHouse hizmeti içerir:
 
-- 2 GiB isteme / 4 GiB sınırı hafıza paket içi temel overlay'da (küçük POC/staging düğümlere sığmak için boyutlandırılır); üretim müşterileri yükseltme overlay yapmalıdır — önerilen taban katı 2c / 4Gi istek, 6c / 8Gi sınırıdır. `max_server_memory_usage_to_ram_ratio=0.9`
-- 5 GiB işaret önbelleği + 8 GiB sıkıştırılmamış önbellek
+- 2 GiB istenen / 4 GiB limit bellek paketlenmiş temel ön ek (küçük POC/hazırlık düğümlerine sığmak için boyutlandırılmış); üretim müşterileri ön ek tekrar olmalıdır — önerilen alt sınır 2c / 4Gi istek, 6c / 8Gi sınırıdır. `max_server_memory_usage_to_ram_ratio=0.9`
+- 5 GiB mark önbellek + 8 GiB sıkıştırılmamış önbellek
 - `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
 - MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
 - `local_io_method=auto` (desteklenen çekirdeklerde io_uring)
-- `fsync_metadata=0`: en az bir kez alım + ReplacingMergeTree dedup nedeniyle kabul edilebilir
-- `query_log` etkin, 30 günlük TTL ile; `query_thread_log` kaldırıldı (yüksek QPS'de pahalı)
+- `fsync_metadata=0`: at-least-once alım + ReplacingMergeTree dedup nedeniyle kabul edilebilir
+- `query_log` 30 günlük TTL etkinleştirilmiş; `query_thread_log` kaldırılmış (yüksek QPS'de pahalı)
 - `max_execution_time=30` kullanıcı tarafı sorguları için
-- 100 GiB PVC StatefulSet şablonunda (müşteri overlay'ları üretim için hızlı SSD depolama sınıfına geçersiz kılmalıdır)
+- StatefulSet şablonunda 100 GiB PVC (müşteri ön ekleri üretim için hızlı SSD depolama sınıfına geçersiz kılmalıdır)
 
 ### Yedeklemeler
 
-Tam veri setiniz her gece tek bir geri yüklenebilir arşivde yakalanır, böylece bir küme veya depolama kaybı kurtarılabilir. ClickHouse otomatik olarak `agenteye-backup` CronJob'u tarafından yedeklenir; günlük PostgreSQL ve ClickHouse'u tek bir geçişte dökümü yapar. ClickHouse HTTP API'si aracılığıyla okunur: `agenteye.events` ve `agenteye.evaluations` ClickHouse-native biçiminde boşaltılır (görünümler ve satır politikaları başlangıçta sunucu tarafından yeniden oluşturulur, böylece tablo verisi tam resim olur) ve Postgres dökümü ile tek bir sıkıştırılmış arşive birleştirilir ve nesne depolamasına yüklenir.
+Tam veri setin tek bir geri yüklenebilir arşivde her gece yakalanır, bu nedenle küme veya depolama kaybı kurtarılabilir. ClickHouse günlük `agenteye-backup` CronJob'u tarafından otomatik olarak yedeklenir, bu da bir geçişte hem PostgreSQL hem de ClickHouse'u döker. ClickHouse HTTP API'si üzerinden okunur: `agenteye.events` ve `agenteye.evaluations` ClickHouse-native biçiminde dökerlenmiştir (görünümler ve satır ilkeleri sunucu başlangıcında yeniden oluşturulur, böylece tablo verileri tam resimdir) ve Postgres dökümü ile nesne depolamaya yüklenen tek bir sıkıştırılmış arşive birleştirilmiş.
 
-Hedef tuş kutusu ve bulut kimlik bilgileri overlay'a göre yapılandırılır. Yükleme yapılandırması ve geri yükleme adımları için [enterprise-docs/kubernetes-deployment.md](/tr/agenteye/kubernetes-deployment) **Yedeklemeler** bölümüne bakın.
+Hedef bucket ve bulut kimlik bilgileri ön ek başına yapılandırılır. Yükleme yapılandırması ve geri yükleme adımları için [enterprise-docs/kubernetes-deployment.md](/tr/agenteye/kubernetes-deployment) **Yedeklemeler** bölümüne bakın.
 
 ---
 
 ## Redis (isteğe bağlı önbellek)
 
-Redis, sunucu ve pano tarafından kullanılan **isteğe bağlı** paylaşılan önbellek + oran-sınırlama arka ucudur. Redis dağıtılmış ve `REDIS_URL` her iki hizmette ayarlandığında:
+Redis, sunucu ve pano tarafından kullanılan **isteğe bağlı** bir paylaşılan önbellek + hız sınırı arka ucu. Redis dağıtılırken ve `REDIS_URL` her iki hizmette ayarlandığında:
 
-- **Sunucu** kimlik doğrulaması yapılmış API-key araştırmalarını, `/events/environments` + `/evaluations/environments` listelerini, `/events/latency_aggregate` toplamını (pano'nun yokladığı en ağır sorgu), `/sessions` listesini önbelleğe alır ve OTP-istek oran sınırlamasını Postgres `COUNT(*)` konumundan Redis `INCR + EXPIRE` konumuna geçirir.
-- **Pano** `validateSession()` sonuçlarını çoğaltmalar arasında önbelleğe alır, böylece tipik sayfa yüklemesi 10-20 kimlik doğrulaması yapılmış API çağrısının tümü bir yukarı yönlü oturum kontrolünü paylaşır. Ek olarak pano kenarında OTP-istek ve OTP-verify'ı oran sınırlaması yapar.
+- **Sunucu** kimliği doğrulanmış API anahtarı aramaları, `/events/environments` + `/evaluations/environments` listeleri, `/events/latency_aggregate` açılmış (panonun yokladığı en ağır sorgu), `/sessions` listesi önbelleğe alır ve OTP istek hız sınırlamasını Postgres `COUNT(*)` adresinden Redis `INCR + EXPIRE` adresine değiştirir.
+- **Pano** `validateSession()` sonuçlarını çoğaltmalar arasında önbelleğe alır, böylece tipik sayfa yükü sorunları olan 10-20 authed API çağrısı tüm bir yukarı akış oturumu kontrolü paylaşır. Ayrıca panonun kenarında OTP istek ve OTP doğrulama hız sınırı tutar.
 
-**Her iki hizmet de Redis erişilemezse incelikle düşer.** Her önbellek çağrısı sınırlandırılmış bir zaman aşımı içinde `Err` döndürür ve arayan gerçek kaynağa geri döner (sunucu üzerinde Postgres, pano'da yukarı yönlü Rust sunucu). OTP oran sınırlaması sunucu üzerinde Postgres `COUNT(*)` yoluna geri döner (güvenlik özelliği korunur); pano'nun kenar OTP sınırı açık kalırken sunucu tarafı sınırı hâlâ tutulur. Redis'in aşağı olması gecikmeyi, doğruluğu değil. Sunucu ve pano her iki tarafında gradual cache misses yönlendirmek için `REDIS_URL` set'ini kullanan her mekanizmanın yedeği açık tutmalı, ne Redis ne de kaynak erişilemezse her zaman orijinal veri tarafına dönmelidir.
+**Her iki hizmet de Redis ulaşılamıyorsa incelikle düşer.** Her önbellek çağrısı sınırlı bir zaman aşımı içinde `Err` döndürür ve çağıran gerçeği kaynağına geri düşer (sunucuda Postgres, panonun yukarı akış Rust sunucusu). OTP hız sınırı sunucuda Postgres `COUNT(*)` yoluna geri düşer (güvenlik özelliği korunur); panonun kenar OTP sınırı Redis ulaşılamıyorsa açılır, sunucu tarafı sınırı hala tutar. Redis kapalı olduğunda gecikmeyi düşürür, doğruluk değil.
 
 ### Yapılandırma
 
-docker-compose paketi zaten bir Redis hizmeti içerir ve `REDIS_URL=redis://redis:6379/0` öğesini sunucu ve pano'ya bağlar. Harici Redis kullanmak için `REDIS_URL`'yi uç noktanıza ayarlayın ve compose dosyasından `redis` hizmetini kaldırın.
+docker-compose paket zaten Redis hizmetini ve `REDIS_URL=redis://redis:6379/0` sunucu ve panoyu içerir. Harici Redis kullanmak için `REDIS_URL` uç noktanız olarak ayarlayın ve compose dosyasından `redis` hizmetini kaldırın.
 
-### Hafıza + kalıcılık
+### Bellek + kalıcılık
 
-Paket içi Redis görüntüsü `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru` öğesiyle çalışır. AOF kalıcılığı, önbelleğin konteyner yeniden başlamalarından sağ kalması anlamına gelir; `everysec` dayanıklılık/perf dengesi doğrusudr, çünkü son saniye önbellek yazış kaybetme zararsızdır. LRU çıkarma hafıza büyümesini tutar.
+Paketlenmiş Redis görüntüsü `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru` ile çalışır. AOF kalıcılığı, önbelleğin kapsayıcı yeniden başlatmalarından kurtulması anlamına gelir; `everysec` doğru dayanıklılık/perf dengesidir çünkü son saniyelik önbellek yazmaları kaybı zararsızdır. LRU tahliye bellek büyümesini sınırlar.
 
-### Redis dağıtılmaması gereken durumlar
+### Redis dağıtmamak için
 
-- Tek örnek dev/QA. Sunucu'daki in-process önbellekler tek başına çoğu çoğaltma başına yararı sağlar; Redis tek örnek kurulumların ihtiyaç duymadığı çoğaltmalar arası paylaşım ekler.
-- Hava boşluğu konfigürasyonları; bir hizmetin operasyonel maliyeti gecikme kazancından daha ağır görülmektedir.
+- Tek örnek geliştirme/QA. Sunucuda işlem içi önbellekler tek başına çoğu per-çoğaltma avantajını teslim eder; Redis, tek örnek kurulumları gereken çapraz çoğaltma paylaşımını ekler.
+- Bir hizmeti daha çalıştırmanın operasyonel maliyeti gecikme kazancından daha ağır olan hava geçitli kurulumlar.
 
 ---
 
-## Docker Compose (önerilir)
+## Docker Compose (önerilen)
 
-`agenteye-enterprise/releases` deposunda bir `docker-compose.yml` mevcuttur. Postgres, ClickHouse, Redis, sunucu ve pano'yu tek bir komutla açar.
+`agenteye-enterprise/releases` deposunda bir `docker-compose.yml` mevcuttur. Postgres, sunucusu ve panosu tek komutla getirtir.
 
 ```bash
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
@@ -282,19 +281,19 @@ GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
 cd agenteye
 ```
 
-**Varsayılan değerleri `.env` aracılığıyla geçersiz kılın:**
+**`.env` aracılığıyla varsayılanları geçersiz kılın:**
 
 ```
-# URL-safe şifreler kullanın (/, +, veya = karakteri yok).
-# Şu komutu kullanarak oluşturun: openssl rand -hex 24
+# URL-safe parolalar kullanın (/, +, veya = karakterleri yok).
+# Oluştur: openssl rand -hex 24
 POSTGRES_PASSWORD=your-db-password
 ADMIN_KEY=your-admin-secret
 
-# Pano kimlik doğrulaması
+# Pano kimlik doğrulması
 ADMIN_EMAIL=admin@yourcompany.com
 ALLOWED_EMAILS=*@yourcompany.com
 
-# OTP e-postaları için SMTP (OTP kodlarını stdout'a günlüğe kaydetmek için atla)
+# OTP e-postaları için SMTP (OTP kodlarını stdout'a kaydetmek için atla)
 # SMTP_HOST=smtp.yourprovider.com
 # SMTP_PORT=587
 # SMTP_USERNAME=your-smtp-user
@@ -308,13 +307,13 @@ RUST_LOG=info
 docker compose up -d
 ```
 
-**Durdur (veri hacmini tutar):**
+**Dur (veri birimini tutar):**
 
 ```bash
 docker compose down
 ```
 
-**Durdur ve tüm veriyi sil:**
+**Dur ve tüm verileri sil:**
 
 ```bash
 docker compose down -v
@@ -322,94 +321,95 @@ docker compose down -v
 
 ---
 
-## İşletme ayarları
+## İşletimsel ayarlar
 
-Daha önce env var'ları tarafından sabitlenen bir dizi işletme kolu şimdi pano'nun **`/<org>/settings`** sayfasından kuruluş başına düzenlenebilir; her org kendi öğesini yapılandırır. Değişiklikler saniyeler içinde etkinleşir, yeniden başlatma veya yeniden dağıtım olmadan.
+Ortam değişkenleri tarafından sabitlenmiş küçük bir operasyonel düğme seti artık panonun **`/<org>/settings`** sayfasından kuruluş başına düzenlenebilir; her org kendi yapılandırır. Değişiklikler saniyeler içinde etkili hale gelir, yeniden başlatma yok ve yeniden dağıtma yok.
 
-| Ayar | Bootstrap env var | Ne kontrolü yapıyor |
+| Ayar | Önyükleme ortam değişkeni | Ne denetler |
 |---|---|---|
-| İzin verilen sign-inler | `ALLOWED_EMAILS` | OTP almaya ve kullanıcı olarak eklenmesine izin verilen e-postalar (veya `*@domain.com` joker karakterleri) |
-| Varsayılan kullanıcı izinleri | `DEFAULT_USER_PERMISSIONS` | Yönetici **+ yeni kullanıcı** açtığında önceden seçilen virgülle ayrılmış izin belirteçleri. Her belirteç [API anahtarı izinleri](/tr/agenteye/api-keys) altında listelenen dizelerden biri olmalıdır. Varsayılan olarak `standard` ön ayarına gider: salt-okunur erişim ve günlük on-call eylemleri (yeniden değerlendirmeleri tetikle, sorguları çalıştır, olayları kabul et, yardımcıyı kullan). |
-| Oturum ömrü | `SESSION_TTL_SECS` | Pano oturum açması yeniden auth'a kadar ne kadar geçerli kalır? Pano yukarı yönlü oturumu her 5 saniyede yeniden kontrol eder, bu yüzden `/<org>/users` işlemindeki izin güncellemesi sonraki istek'te etkilenen kullanıcıya etkinleşir; relogin yok. |
-| Tek seferlik kod ömrü | `OTP_TTL_SECS` | OTP / magic-link ne kadar kullanılabilir kalır? |
-| Uyarı bildirim kanalları | `ALERTS_ENABLED_CHANNELS` | Uyarı sevkiyatçısının kullanmasına izin verilen kanal türlerinin virgülle ayrılmış listesi: `email`, `slack`, `webhook`. Kanal başına yapılandırma yine de `/<org>/alerts/<id>` işleminde yazılır ama sevkiyatçı her giden teslimatı bu set aracılığıyla filtreler; burada devre dışı bırakılan kanal `skipped_disabled` denetim satırıyla kısa devre yapar. `dashboard` kanalı (yerel denetim ekleme) her zaman izinlidir. Varsayılan olarak üçü de açık. |
+| İzin verilen oturum açmalar | `ALLOWED_EMAILS` | OTP almalarına izin verilen e-postalar (veya `*@domain.com` joker karakterleri) ve kullanıcı olarak eklenir |
+| Varsayılan kullanıcı izinleri | `DEFAULT_USER_PERMISSIONS` | Bir yönetici **+ yeni kullanıcı** açtığında önceden seçilen virgülle ayrılmış izin jetonları. Her jeton [API anahtarı izinleri](/tr/agenteye/api-keys) altında listelenen dizelerden biri olmalıdır. `standard` ön ayarına varsayılan: salt okunur erişim ve günlük gündüz eylem (değerlendirmeleri yeniden tetikleme, sorgular çalıştırma, olayları onaylama, asistanı kullanma). |
+| Oturum yaşam süresi | `SESSION_TTL_SECS` | Pano oturum açması yeniden kimlik doğrulamadan önce ne kadar geçerli kalır. Pano yukarı akış oturumunu her 5 saniyede yeniden kontrol eder, bu nedenle `/<org>/users` üzerindeki izin güncellemesi etkilenen kullanıcının sonraki isteğinde, yeniden oturum açılmadan etkili olur. |
+| Tek kullanımlık kod yaşam süresi | `OTP_TTL_SECS` | OTP / sihirli bağlantı ne kadar süreyle kullanılabilir kalır |
+| Uyarı bildirim kanalları | `ALERTS_ENABLED_CHANNELS` | Uyarı göndericisinin kullanmasına izin verilen kanal türlerinin virgülle ayrılmış listesi: `email`, `slack`, `webhook`. Per-uyarı yapılandırması hala `/<org>/alerts/<id>` üzerinde yazılır, ancak göndericisi bu küme aracılığıyla her giden teslimi filtreler; burada devre dışı bırakılan bir kanal `skipped_disabled` denetim satırı ile kısa devreye girer. `dashboard` kanalı (yerel denetim ekleme) her zaman izin verilir. Üçünün tümü açılmış olarak varsayılan ayarlar. |
 
-### Bootstrap'ın işleyişi
+### Önyükleme nasıl çalışır
 
-Ayarlar kuruluş başına `org_settings`'te saklanır. İlk önyüklemede, sunucu varsayılan org'un eksik satırlarını eşleşen env var'dan (veya env var'ı ayarlanmazsa makul bir varsayılandan) seed'ler. Bundan sonra, **saklanan değer gerçek kaynaktır ve env var'ı yoksayılır**; daha sonraki yeniden başlatmada env var'ı değiştirmek canlı org'un değerini etkilemez ve ek org'lar varsayılan yerlerde başlar ve kendi değerlerini yapılandırır.
+Ayarlar kuruluş başına `org_settings` içinde depolanır. İlk önyüklemede, sunucu varsayılan org'un eksik satırlarını eşleşen ortam değişkeninden (veya ortam değişkeni ayarlanmadığında akla yatkın bir varsayılandan) tohurnlanır. Bundan sonra, **depolanmış değer gerçeği kaynağı ve ortam değişkeni yok sayılır**; ortam değişkenini daha sonraki yeniden başlatmada değiştirmek canlı org'un değerini etkilemez ve ek org'lar varsayılanlardan başlayıp kendi yapılandırır.
 
-Bu şu anlama gelir:
+Bu anlamına gelir:
 
-- Yeni bir dağıtım için, yukarıdaki env var'ları ayarlayın; varsayılan org ilk başlamada bunları okur.
-- Daha sonra bir değer değiştirmek için pano'ya giriş yapın ve `/<org>/settings` altında düzenleyin. Değişiklik saniyeler içinde tüm sunucu çoğaltmalarında uygulanır; yeniden başlatma gerekmez.
-- Başlangıç günlüğü satırı, seed'lenmiş vs. zaten mevcut olan şeyler kaydedilir, böylece bootstrap'ın etkinleştiğini doğrulayabilirsiniz:
+- Yeni bir dağıtım için, ortam değişkenlerini yukarıda gösterildiği gibi ayarlayın ve varsayılan org ilk önyüklemede onları okur.
+- Bir değeri daha sonra değiştirmek için panonuya giriş yapın ve `/<org>/settings` altında düzenleyin. Değişiklik saniyeler içinde tüm sunucu çoğaltmaları arasında etkili olur; yeniden başlatma gerekmez.
+- Bir başlangıç günlük satırı ne tohurnlandığını ve ne zaten var olduğunu kaydeder, böylece önyüklemenin etkili olduğunu doğrulayabilirsiniz:
 
   ```text
   INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
   ```
 
-#### Kuruluşlar arasında sign-in semantiği
+#### Kuruluşlar arasında oturum açma anlambilimi
 
-Oturum ve OTP, tek org'a değil, kullanıcıya genel olarak geçerlidir, bu yüzden sign-in zamanında iki kural org başına ayarlarla uzlaştırır:
+Oturum ve OTP, tek org'a değil küreseldir, bu nedenle iki kural oturum açma zamanında per-org ayarlarını uzlaştırır:
 
-- **Oturum / OTP ömrü**: kuruluşlar arasında en kesin (en kısa) ömür kazanır.
-- **İzin verilen sign-inler**: kapı her org'un izin listesini org üyeliğiyle birleştirir: bir kullanıcı, herhangi bir org'un izin listesi e-postalarını kabul EDER veya zaten herhangi bir org'un üyesi EDER ise OTP talep edebilir.
+- **Oturum / OTP yaşam süresi**: en katı (en kısa) yaşam süresi kullanıcının ait olduğu org'lar arasında kazanır.
+- **İzin verilen oturum açmalar**: kapı VEYA'lar her org'un izin listesi kuruluş üyeliğiyle: bir kullanıcı herhangi bir org'un izin listesi e-postalarını kabul ederse OTP isteyebilir **veya** zaten herhangi bir org'un üyeleri.
 
 ### İzinler
 
-Bir `/<org>/settings` sayfasına erişim iki izin tarafından geçitlenedbilir:
+`/<org>/settings` sayfasına erişim iki izin tarafından kapılır:
 
-- `settings:read`: sayfayı ve geçerli değerleri görün.
-- `settings:write`: değişiklikleri kaydedin.
+- `settings:read`: sayfayı görmek ve geçerli değerleri.
+- `settings:write`: değişiklikleri kaydet.
 
-Bootstrap admin kullanıcısı (`ADMIN_EMAIL`'den seed'lenen) diğer her izin ile birlikte her ikisini otomatik olarak alır. Gerektiğinde `/<org>/users`'ten başka kullanıcılara verin.
+Önyükleme yöneticisi kullanıcısı (önyükleme `ADMIN_EMAIL` adresinde) otomatik olarak her diğer izinle birlikte her ikisini alır. Gerektiğinde diğer kullanıcılara `/<org>/users` adresinden verin.
 
 ---
 
-## Kuruluşlar (multi-tenancy)
+## Kuruluşlar (çok kiracılılık)
 
-Tek bir dağıtım, birden çok yalıtılmış **kuruluşları** (kiracıları) hizmet verebilir; veri satırının her biri tam olarak bir org'a aittir ve yalıtım veritabanı motorunda uygulanır. Tek-tenant kurulumun burada hiçbir şeye ihtiyacı yoktur; tüm veri yerleşik `default` org'unda yaşar. (Org'a daha uygun bir ad ve URL slug verebilirsiniz, böylece `/default` yerine örn. `/acme` konumunda yaşar; ilk önyüklemeden önce `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` ayarlayarak veya `agenteye-orgctl org rename` öğesiyle istediğiniz zaman yeniden adlandırarak yapabilirsiniz.)
+Tek bir dağıtım birden fazla izole **kuruluş** (kiracı) sunabilir; her veri satırı tam olarak bir org'a aittir ve izolasyon veritabanı motorunda uygulanır. Tek kiracılı kurulum buna gerek duymaz; tüm veriler yerleşik `default` org'da yaşar. (Bu org'a daha uygun bir ad ve URL sunu verebilirsiniz, böylece `default` yerine örn. `/acme` adresinde yaşar, ilk önyüklemeden önce `DEFAULT_ORG_NAME` / `DEFAULT_ORG_SLUG` ayarlayarak veya herhangi bir zamanda `agenteye-orgctl org rename` ile yeniden adlandırarak.)
 
-**Kiracı sağlaması operatör tarafındandır.** Kuruluşlar ve üyelikleri **`agenteye-orgctl`** CLI'ı ile oluşturulur ve yönetilir; sunucu görüntüsünün içinde (`agenteye-server` ile birlikte) gemi gelir ve **mevcut sunucu pod'u içinde** çalışır; **ayrı pod/Job, HTTP API yok ve pano düğmesi yok**. Sunucu'nun `DATABASE_URL`, `CLICKHOUSE_URL` ve `ORG_CH_SECRET` öğelerini yeniden kullanır.
+**Kiracı sağlaması yalnızca operatördür.** Kuruluşlar ve üyelikleri **`agenteye-orgctl`** CLI ile oluşturulur ve yönetilir, bu **sunucu görüntüsünün içinde gemi** (`agenteye-server` yanında) ve **mevcut sunucu pod içinde** çalışır; **ayrı pod/Job, HTTP API ve pano düğmesi yok**. Sunucunun `DATABASE_URL`, `CLICKHOUSE_URL` ve `ORG_CH_SECRET` yeniden kullanır.
 
 ```bash
-# Docker Compose - çalışan sunucu hizmetine exec girin:
+# Docker Compose - çalışan sunucu hizmetine exec:
 docker compose exec server agenteye-orgctl org create --slug acme --name "Acme Corp"
 docker compose exec server agenteye-orgctl member add --org acme --email alice@acme.example --set admin
 
-# Kubernetes - çalışan sunucu Dağıtımına exec girin:
+# Kubernetes - çalışan sunucu Dağıtımı içine exec:
 kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
 ```
 
-Mevcut fiiller: `org create | list | rename | delete | purge` ve `member add | list | update | remove`, yerleşik izin setiyle `admin`, `standard` ve `read-only`. Eklenen üyeler, ilk pano oturum açmada OTP alırlar.
+Kullanılabilir fiiller: `org create | list | rename | delete | purge` ve `member add | list | update | remove`, yerleşik izin kümesi `admin`, `standard` ve `read-only` ile. Eklenen üyeler ilk pano girişinde OTP alır.
 
-**İkinci org oluşturmadan önce:** güçlü, sabit bir `ORG_CH_SECRET` ayarlayın (org oluşturma komutu yerleşik dev varsayılanında çalışmayı reddeder) ve Postgres'in **15+** olduğundan emin olun. **Değişmez:** org başına API anahtarları yine de pano/API tarafından org üyeleri tarafından basılır; yalnızca org + üye yaşam döngüsü CLI'ye taşındı. Tam komut referansı ve işlenmiş örnek: **[enterprise-docs/tenant-management.md](/tr/agenteye/tenant-management)**.
+**İkinci bir org oluşturmadan önce:** güçlü, kararlı `ORG_CH_SECRET` ayarlayın (`org create` komutu yerleşik geliştirme varsayılanında çalışmayı reddeder) ve Postgres'in **15+** olmasını sağlayın. **Değiştirilmemiş:** per-org API anahtarları hala pano/API tarafından org üyeleri tarafından basılır; yalnızca org + üyesi yaşam döngüsü CLI'ye taşındı. Tam komut referansı ve çalışılan örnek: **[enterprise-docs/tenant-management.md](/tr/agenteye/tenant-management)**.
 
 ---
 
-## Bağlam penceresini doldur
+## Bağlam penceresi doldurma
 
-Her `model_response` etkinliği bir **bağlam dolum hapı** gösterir — bu modelin bağlam penceresinin yüzdesi olarak giriş artı çıktı belirteçleri. Bantlar `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%) ve `reset context` (75–100%) öğeleridir. AgentEye yaygın model kimliklerini otomatik olarak çözer, böylece ilk yapılandırma gerekmez.
+Her `model_response` etkinliği bir **bağlam dolgu hapı** gösterir — o modelin bağlam penceresinin yüzdesi olarak giriş artı çıkış jetonları. Bantlar `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%) ve `reset context` (75–100%) olur. AgentEye yaygın model kimliklerini otomatik olarak çözer, bu nedenle hiçbir ilk yapılandırma gerekmez.
 
-Kuruluş'un gönderdiği her model **Settings → model context windows** altında görünür. `settings:write` sahip kullanıcıları penceresi geçersiz kılabilir veya özel/proxy model ekleyebilir (0–1,000,000 belirteç); `0` "bilinmiyor" anlamına gelir ve hapı bastırır. Değişiklikler yeni alınan etkinliklere uygulanır. `settings:read` kullanan kullanıcılar listeyi görüntüleyebilir.
+Bir kuruluşun gönderdiği her model Ayarlar → model bağlam pencereleri altında görünür. `settings:write` izni olan kullanıcılar pencereyi geçersiz kılabilir veya özel/proxy model ekleyebilir (0–1.000.000 jeton); `0` "bilinmiyor" anlamına gelir ve hapı bastırır. Değişiklikler yeni alınan etkinliklere uygulanır. `settings:read` izni olan kullanıcılar listeyi görüntüleyebilir.
 
-Yeni etkinlikler yükseltme anından itibaren dolum alır. Mevcut dağıtım için **geçmiş** etkinlikleri (ve model başına listeyi) doldururmak için, tek seferlik geri doldurmayı çalıştırın — sunucu görüntüsünün içinde gemi gelir (`agenteye-orgctl` gibi) ve mevcut sunucu pod'u içinde çalışır:
+Yeni etkinlikler yükseltmede anı alır. Ayrıca mevcut dağıtım için **tarihsel** etkinlikleri doldurmak için (ve per-model listeyi), bir kez çalıştırılan backfill çalıştırın — sunucu görüntüsünün içinde gemi (`agenteye-orgctl` gibi) ve mevcut sunucu pod'unda çalışır:
 
 ```bash
-# ön izleme (org başına mutasyonu yazdırır, hiçbir şey değiştirmez):
+# ön izleme (per-org mutasyonu yazdırır, hiçbir şey değişmez):
 kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window --dry-run
-# uygulamak:
+# uygula:
 kubectl -n agenteye exec deploy/server -- agenteye-backfill-context-window
 # docker compose:
 docker compose exec server agenteye-backfill-context-window
 ```
 
-Idempotent'tir (yeniden çalıştırılması güvenlidir) ve pod'dan `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL` öğelerini yeniden kullanır. Model pencereleri düzenledikten sonra mevcut etkinliklerin yeniden hesaplanmasını isterse yeniden çalıştırın.
+Eğersiz (yeniden çalıştırmak güvenlidir) ve pod'dan `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_URL` yeniden kullanır. Model pencereleri düzenledikten sonra varolan etkinlikleri yeniden hesaplamak istiyorsanız yeniden çalıştırın.
 
 ---
 
 ## Üretim Hususları
 
-- **Postgres**: Yönetilen Postgres hizmeti veya düzenli yedeklemeler ile adanmış örnek kullanın. `DATABASE_URL`, `sslmode=require` dahil tüm standart libpq parametrelerini destekler, şifrelenmiş bağlantılar için.
-- **TLS**: Sunucu ve pano'yu TLS'yi sonlandıran ters proxy'nin (nginx, Caddy, Traefik) arkasına yerleştirin.
-- **Güvenlik duvarı**: Sunucu portu (varsayılan 8080) yalnızca collector makinelerine ve pano ana bilgisayarından erişilebilir olmalıdır; genel internet'ten değ
+- **Postgres**: Yönetilen Postgres hizmetini veya düzenli yedeklemeleri olan ayrılmış bir örneği kullanın. `DATABASE_URL` `sslmode=require` dahil olmak üzere tüm standart libpq parametrelerini destekler, şifreli bağlantılar için.
+- **TLS**: Sunucu ve panoyu TLS'yi sonlandıran ters proxy'nin (nginx, Caddy, Traefik) ardına koyun.
+- **Güvenlik duvarı**: Sunucu portu (varsayılan 8080) yalnızca toplayıcı makinelerinden ve pano ana bilgisayarından erişilebilir olmalıdır, genel İnternet'ten değil.
+- **Yönetici anahtarı**: `ADMIN_KEY` güçlü rastgele gizli ayarlayın. Önyüklemeden sonra, yönetici anahtarını her yerde kullanmak yerine toplayıcılar ve pano için ayrılmış kapsamlı anahtarlar oluştu

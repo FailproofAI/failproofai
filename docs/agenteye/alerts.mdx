@@ -286,18 +286,15 @@ Channel settings (managed from `/settings`, not env):
 
 ---
 
-## Test plan
+## Verify a new alert
 
-Before relying on a new alert, verify the full path end-to-end:
+Before relying on a new alert:
 
-1. **Save the alert** with `enabled = true` and at least one channel.
-2. **Press the *test* button** on the alert detail page. The server fans a synthetic firing notification through every configured channel and records each delivery in `alert_notifications` with `event = test`. Check the destination (Slack room, mailbox, webhook log).
-3. **Induce a real breach** (e.g. write `error` events into ClickHouse for a `metric_threshold` alert) and wait one `eval_interval_secs`. Confirm:
-   - the incident appears on `/incidents`,
-   - the firing notification arrives,
-   - the *value* in the notification matches what the dashboard's `/queries/run` returns for the same window.
-4. **Resolve the incident** — press *resolve* on `/incidents/:id`. Confirm it transitions to `resolved`. (Automatic resolution when the condition clears is planned but not currently enabled — an open incident stays open until an operator resolves it.)
-5. **Acknowledge** an open incident from `/incidents/:id` and confirm the action appears on the *activity* timeline attributed to your operator account.
+1. Save it as enabled with at least one notification channel.
+2. Select **test** on the alert detail page and confirm each configured destination receives the synthetic notification.
+3. After the first real breach, confirm the incident appears under **Incidents** and its measured value matches the corresponding dashboard query.
+
+Incidents do not resolve automatically when a condition clears. An operator must resolve them from the incident detail page.
 
 ---
 

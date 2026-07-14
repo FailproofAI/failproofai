@@ -78,8 +78,8 @@ These permissions back the dashboard's **Users** page, where each member's grant
 
 | Permission | HTTP routes | What it allows |
 |---|---|---|
-| `settings:read` | `GET /settings`, `GET /settings/schema` | View dashboard-managed operational settings (allowed sign-ins, session and OTP TTLs) plus the metadata that describes each setting. |
-| `settings:write` | `PUT /settings/:key` | Edit operational settings. Changes take effect on the next request without restarting the server. |
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | View dashboard-managed operational settings and their metadata; list per-model context-window overrides; and resolve the effective window for a model. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Edit operational settings and add, change, or remove per-model context-window overrides. Changes affect new events without restarting the server. |
 
 ![The Settings page: dashboard-managed operational settings such as allowed sign-ins and session/OTP lifetimes, editable without a restart](/agenteye/images/settings.png)
 

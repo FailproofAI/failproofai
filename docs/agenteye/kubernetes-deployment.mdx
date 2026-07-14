@@ -313,11 +313,11 @@ Expected: `kubernetes.io/dockerconfigjson`.
 
 **Test it (deep)** -- verify the token can actually pull images:
 
-Use the `server` image tag pinned in your overlay's `kustomization.yaml` (the acme overlay pins `v0.0.1-beta.41`; the base `server/deployment.yaml` ships `v0.0.1-beta.43`). Substitute the tag below for the one you are deploying so this check does not drift across releases:
+Use the `server` image tag pinned in your overlay's `kustomization.yaml` (currently `v0.0.1-beta.48` in both the bundled `acme` overlay and base deployment). Substitute the tag below for the one you are deploying so this check does not drift across releases:
 
 ```bash
 kubectl run test-pull \
-  --image=ghcr.io/agenteye-enterprise/server:v0.0.1-beta.41 \
+  --image=ghcr.io/agenteye-enterprise/server:v0.0.1-beta.48 \
   --overrides='{"spec":{"imagePullSecrets":[{"name":"agenteye-image-pull"}]}}' \
   --restart=Never -n agenteye --command -- echo ok
 

@@ -388,7 +388,9 @@ Available verbs: `org create | list | rename | delete | purge` and `member add |
 
 ## Context-window fill
 
-Each `model_response` event shows a **context-fill pill** — how full the model's context window got that turn (`healthy` → `watch` → `compacting` → `reset context`). It's computed automatically at ingest against each model's window size; no configuration is required. On the dashboard's **Settings → model context windows** page, an org edits per-model window sizes (0–1,000,000 tokens; a size of `0` means "unknown", so no pill is shown). Every model an org sends is listed there automatically.
+Each `model_response` event shows a **context-fill pill** — input plus output tokens as a percentage of that model's context window. The bands are `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%), and `reset context` (75–100%). AgentEye resolves common model IDs automatically, so no initial configuration is required.
+
+Every model an organization sends appears under **Settings → model context windows**. Users with `settings:write` can override its window or add a private/proxy model (0–1,000,000 tokens); `0` means “unknown” and suppresses the pill. Changes apply to newly ingested events. Users with `settings:read` can view the list.
 
 New events get the fill from the moment you upgrade. To also populate **historical** events (and the per-model list) for an existing deployment, run the one-off backfill — it ships inside the server image (like `agenteye-orgctl`) and runs in the existing server pod:
 
@@ -411,7 +413,7 @@ It is idempotent (safe to re-run) and re-uses `DATABASE_URL` / `CLICKHOUSE_URL` 
 - **TLS**: Put the server and dashboard behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS.
 - **Firewall**: The server port (default 8080) should only be reachable from collector machines and the dashboard host, not the public internet.
 - **Admin key**: Set `ADMIN_KEY` to a strong random secret. After bootstrapping, create dedicated scoped keys for collectors and the dashboard rather than using the admin key everywhere.
-- **Image tags**: Pin to a specific version tag (e.g. `server:v0.0.1-beta.41`) in production rather than a floating tag to avoid unintended upgrades. Current beta builds publish under `beta-latest`; `latest` is assigned only to stable releases.
+- **Image tags**: Pin to the version in your release manifests (for example, `server:v0.0.1-beta.48`) in production rather than a floating tag to avoid unintended upgrades. Current beta builds publish under `beta-latest`; `latest` is assigned only to stable releases.
 - **Health monitoring**: On Kubernetes the readiness probe uses `/ready` (Postgres + ClickHouse reachability) while liveness stays on `/health`. For fleet-wide "is AgentEye itself up?" alerting to Slack, enable the opt-in Robusta add-on; see [enterprise-docs/health-monitoring.md](/agenteye/health-monitoring).
 
 ---
@@ -422,4 +424,4 @@ It is idempotent (safe to re-run) and re-uses `DATABASE_URL` / `CLICKHOUSE_URL` 
 |-----|-------------|
 | `latest` | Latest stable release |
 | `beta-latest` | Latest pre-release (beta) |
-| `v<version>` | Pinned version, e.g. `v0.0.1-beta.41` (recommended for production) |
+| `v<version>` | Pinned version, e.g. `v0.0.1-beta.48` (recommended for production) |

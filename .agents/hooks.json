@@ -1,0 +1,46 @@
+{
+  "failproofai": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli antigravity",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli antigravity",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "bun bin/failproofai.mjs --hook PreInvocation --cli antigravity",
+        "timeout": 30,
+        "__failproofai_hook__": true
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bun bin/failproofai.mjs --hook Stop --cli antigravity",
+        "timeout": 30,
+        "__failproofai_hook__": true
+      }
+    ]
+  }
+}

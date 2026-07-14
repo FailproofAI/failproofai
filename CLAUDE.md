@@ -728,6 +728,27 @@ For production users the recommended Goose install is:
 failproofai policies --install --cli goose --scope project
 ```
 
+### Dogfood configs for Factory / Devin / Antigravity / Goose
+
+Like the Codex / Cursor / OpenCode / Pi setups above, this repo ships
+**project-scope dogfood configs** for the four newest CLIs so failproofai
+enforces on itself when you drive this repo with them. Each uses the dev
+`bun bin/failproofai.mjs --hook <event> --cli <cli>` command (never the `npx`
+production form — same self-reference caveat as the others):
+
+| CLI | Dogfood path | Schema |
+|-----|--------------|--------|
+| Factory (`droid`) | `.factory/hooks.json` | top-level event keys, `matcher:"*"` on tool events (no `"hooks"` wrapper) |
+| Devin | `.devin/config.json` | Claude `"hooks"` wrapper |
+| Antigravity (`agy`) | `.agents/hooks.json` | named-hook schema under the `failproofai` key |
+| Goose | `.agents/plugins/failproofai/hooks/hooks.json` | Open Plugins (auto-discovered; matcher omitted — a bare `*` matches nothing) |
+
+These were generated from each integration's own `writeHookEntries`, so they
+track the live schema. See each CLI's architecture section above for the full
+contract. As with the other CLIs, do **not** run
+`failproofai policies --install --cli <cli>` from inside this repo — it would
+overwrite the dev `bun bin/failproofai.mjs` path with the production `npx` form.
+
 ## Workflow rules
 
 ### One PR per branch

@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook SessionStart --cli goose"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli goose"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli goose"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli goose"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook SessionEnd --cli goose"
+          }
+        ]
+      }
+    ]
+  }
+}

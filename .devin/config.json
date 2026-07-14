@@ -1,0 +1,88 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook SessionStart --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook PermissionRequest --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook Stop --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun bin/failproofai.mjs --hook SessionEnd --cli devin",
+            "timeout": 60,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ]
+  }
+}

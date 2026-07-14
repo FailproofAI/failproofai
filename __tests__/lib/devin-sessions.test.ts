@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { devinRowsToLogEntries } from "@/lib/devin-sessions";
+import { devinRowsToLogEntries, devinActiveConversationPath } from "@/lib/devin-sessions";
 import { logEntriesToEvents } from "@/src/audit/cli-adapters/shared";
 
 /** Parsed `chat_message` objects as they come off `message_nodes.chat_message`
@@ -65,5 +65,54 @@ describe("lib/devin-sessions: devinRowsToLogEntries", () => {
 
   it("returns [] for no rows", () => {
     expect(devinRowsToLogEntries([])).toHaveLength(0);
+  });
+});
+
+describe("lib/devin-sessions: devinActiveConversationPath (forest de-dup)", () => {
+  const node = (id: number, parent: number | null, text: string) => ({
+    node_id: id,
+    parent_node_id: parent,
+    chat_message: JSON.stringify({ role: "user", content: text, message_id: `m${text}` }),
+    created_at: id,
+  });
+
+  it("returns only the newest leaf's root→leaf path, dropping replayed branches", () => {
+    // Mirrors the real Devin shape: an early branch (0→1→2) is replayed under a
+    // later root (3→4→5) that ends at the newest leaf. Reading all nodes would
+    // duplicate A/B; the active path is just the newest chain.
+    const rows = [
+      node(0, null, "A"),
+      node(1, 0, "B"),
+      node(2, 1, "C"), // dead branch leaf
+      node(3, null, "A"), // replay root
+      node(4, 3, "B"), // replay
+      node(5, 4, "D"), // newest leaf
+    ];
+    const path = devinActiveConversationPath(rows).map((r) =>
+      JSON.parse(r.chat_message!).content,
+    );
+    expect(path).toEqual(["A", "B", "D"]); // 5→4→3 reversed; branch 0-2 dropped
+  });
+
+  it("picks the branch to the max node_id when a parent has sibling children", () => {
+    // node 5 and 6 both child of 4; the newest leaf (7, under 6) wins.
+    const rows = [
+      node(0, null, "root"),
+      node(4, 0, "shared"),
+      node(5, 4, "deadSibling"),
+      node(6, 4, "liveSibling"),
+      node(7, 6, "leaf"),
+    ];
+    const path = devinActiveConversationPath(rows).map((r) =>
+      JSON.parse(r.chat_message!).content,
+    );
+    expect(path).toEqual(["root", "shared", "liveSibling", "leaf"]);
+    expect(path).not.toContain("deadSibling");
+  });
+
+  it("handles a single linear chain unchanged and [] for no rows", () => {
+    const rows = [node(0, null, "x"), node(1, 0, "y")];
+    expect(devinActiveConversationPath(rows).map((r) => JSON.parse(r.chat_message!).content)).toEqual(["x", "y"]);
+    expect(devinActiveConversationPath([])).toEqual([]);
   });
 });

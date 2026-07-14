@@ -249,8 +249,38 @@ export interface DevinSessionLogData {
 
 interface DevinMessageNodeRow {
   node_id: number | null;
+  parent_node_id: number | null;
   chat_message: string | null;
   created_at: number | null;
+}
+
+/**
+ * Devin stores a session's messages as a FOREST, not a flat list: each turn is a
+ * node (`node_id`) linked to its `parent_node_id`, and Devin replays earlier
+ * context under fresh roots on later turns — so the table holds many branches
+ * that repeat the same messages (verified live: 29 nodes / 11 distinct messages
+ * for a 10-message conversation). Reading every node duplicates each message
+ * 2-4×. The real conversation is the single path from the NEWEST leaf back to its
+ * root. Because Devin appends nodes in order (a child's `node_id` always exceeds
+ * its parent's), the newest leaf is simply the max `node_id`; walk its
+ * `parent_node_id` chain to the root and reverse to get root→leaf order.
+ */
+export function devinActiveConversationPath(rows: DevinMessageNodeRow[]): DevinMessageNodeRow[] {
+  if (rows.length === 0) return rows;
+  const byId = new Map<number, DevinMessageNodeRow>();
+  for (const r of rows) if (typeof r.node_id === "number") byId.set(r.node_id, r);
+  // Newest leaf = highest node_id (a leaf, since children always have a higher id).
+  let cur: DevinMessageNodeRow | undefined = rows.reduce((a, b) =>
+    (a.node_id ?? -1) > (b.node_id ?? -1) ? a : b,
+  );
+  const path: DevinMessageNodeRow[] = [];
+  const seen = new Set<number>();
+  while (cur && typeof cur.node_id === "number" && !seen.has(cur.node_id)) {
+    seen.add(cur.node_id);
+    path.push(cur);
+    cur = cur.parent_node_id != null ? byId.get(cur.parent_node_id) : undefined;
+  }
+  return path.reverse(); // root → leaf = conversation order
 }
 
 /** Parse a session's `message_nodes` rows into the message objects the pure
@@ -285,11 +315,12 @@ export async function getDevinSessionLog(
     const realCwd = sessionRows[0].working_directory;
 
     const nodeRows = db.query<DevinMessageNodeRow>(
-      "SELECT node_id, chat_message, created_at FROM message_nodes " +
+      "SELECT node_id, parent_node_id, chat_message, created_at FROM message_nodes " +
         "WHERE session_id = ? ORDER BY node_id ASC",
       [sessionId],
     );
-    const rawLines = parseNodeRows(nodeRows);
+    // Reconstruct the active conversation path (drop replayed branch duplicates).
+    const rawLines = parseNodeRows(devinActiveConversationPath(nodeRows));
     const entries = devinRowsToLogEntries(rawLines, "session");
     const cwd = realCwd && realCwd.length > 0 ? realCwd : undefined;
     return {

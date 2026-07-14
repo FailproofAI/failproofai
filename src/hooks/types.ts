@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -824,6 +824,110 @@ export const ANTIGRAVITY_TOOL_INPUT_MAP: Record<string, Record<string, string>> 
   Bash: { CommandLine: "command", Cwd: "cwd" },
 };
 
+// ── Goose (codename goose, Block) ────────────────────────────────────────────
+//
+// Goose is Block's open-source Rust MCP agent — a LOCAL dev-agent CLI (like
+// Claude/Factory/Devin, NOT a gateway). Dual-pillar: external shell-hook
+// enforcement + SQLite audit. The entire contract below was verified LIVE
+// against goose v1.43.0.
+//
+// Enforcement is via Goose's "hooks" system (the cross-agent Open Plugins spec):
+// a plugin directory whose `hooks/hooks.json` `command` runs
+// `failproofai --hook <event> --cli goose`. Goose AUTO-DISCOVERS the dir at
+// startup (no config edit needed) and self-registers it into config.yaml.
+//
+//   1. **Deny contract = `PreToolUse` ONLY** (shipped in goose ≥ v1.37.0,
+//      PR block/goose#9304). A hook blocks a tool via `{"decision":"block",
+//      "reason"}` on stdout at exit 0 (exit 2 + stderr also works); ANY other
+//      error/timeout → fail-open (allow). Verified live: the reason reaches the
+//      model and "do not retry" is appended. Goose has NO `Stop` event, so the 5
+//      `require-*-before-stop` builtins never fire (inapplicable, like Hermes).
+//      `UserPromptSubmit` deny is NOT honored (observation only). `PreToolUse`
+//      fires for the shell tool AND inside delegated subagents, so it is the
+//      single sufficient deny point.
+//
+//   2. **Event names are already PascalCase** (matching Claude's canonical set),
+//      so there is NO `GOOSE_EVENT_MAP` and NO handler.ts event-canonicalization
+//      branch. The stdin payload, however, uses `event` (not `hook_event_name`)
+//      and `working_dir` (not `cwd`) — handler.ts normalizes `working_dir`→`cwd`
+//      for goose so `block-read-outside-cwd` keeps its cwd. `tool_name` /
+//      `tool_input` are already the canonical field names.
+//
+//   3. Tool names arrive BOTH bare (`shell`, `write`, `edit`, `view`,
+//      `read_image`, `tree`, `delegate`) AND `<ext>__<tool>` namespaced
+//      (`todo__todo_write`); GOOSE_TOOL_MAP covers both forms, unknown tools
+//      pass through via the `?? raw` fallback. Path-bearing tools deliver the
+//      path as `path` (or `source` for read_image), so GOOSE_TOOL_INPUT_MAP maps
+//      it to `file_path`. Shell's `command` is already canonical.
+//
+//   4. **Instruct has no channel** — a non-block PreToolUse decision injects
+//      nothing (verified live), so instruct() degrades to allow + stderr note
+//      (like Factory/Hermes on non-Stop events). policy-evaluator.ts's
+//      `cli === "goose"` branch: PreToolUse deny → `{"decision":"block",reason}`
+//      JSON at exit 0; no Stop branch.
+//
+// Settings paths (verified against goose v1.43.0):
+//   user    → ~/.agents/plugins/failproofai/hooks/hooks.json
+//   project → <cwd>/.agents/plugins/failproofai/hooks/hooks.json
+//
+// Audit pillar: sessions in SQLite at
+// ~/.local/share/goose/sessions/sessions.db (schema v15). `sessions` rows carry
+// a real `working_dir`, so `audit --project <cwd>` filters like Devin (NOT
+// grouped-by-source like Hermes); `messages` rows hold Claude-style typed-block
+// `content_json`. See lib/goose-sessions.ts. `GOOSE_HOME` overrides the data
+// dir for tests.
+
+export const GOOSE_HOOK_SCOPES = ["user", "project"] as const;
+export type GooseHookScope = (typeof GOOSE_HOOK_SCOPES)[number];
+
+export const GOOSE_HOOK_EVENT_TYPES = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "SessionEnd",
+] as const;
+export type GooseHookEventType = (typeof GOOSE_HOOK_EVENT_TYPES)[number];
+
+/**
+ * Goose's tool names → Claude PascalCase canonical names so existing builtin
+ * policies (which match `toolName === "Bash"`, etc.) fire unchanged. Verified
+ * live against goose v1.43.0: the developer extension exposes `shell` (Bash),
+ * `write`/`edit`/`view` (file ops), `read_image`, `glob`/`grep`, plus
+ * `tree`/`delegate`; other extensions namespace their tools (`todo__todo_write`).
+ * Unknown tools (MCP, other extensions) pass through unchanged via the `?? raw`
+ * fallback in handler.ts:canonicalizeToolName.
+ */
+export const GOOSE_TOOL_MAP: Record<string, string> = {
+  shell: "Bash",
+  write: "Write",
+  edit: "Edit",
+  view: "Read",
+  read_image: "Read",
+  glob: "Glob",
+  grep: "Grep",
+  tree: "LS",
+  delegate: "Task",
+  todo__todo_write: "TodoWrite",
+};
+
+/**
+ * Per-tool input-key translation, keyed by the *canonical* tool name (the
+ * handler canonicalizes the name before calling canonicalizeToolInput).
+ * Verified live: goose's file tools deliver the path as `path` (`read_image`
+ * uses `source`), but Claude builtins read `file_path` (block-env-files,
+ * block-secrets-write, block-read-outside-cwd) — so map it. `shell` already
+ * delivers `command` (canonical), so Bash needs no entry. `edit` delivers
+ * `before`/`after` (not `old_string`/`new_string`); only the top-level `path`
+ * is mapped (no builtin inspects the edit body), mirroring PI_TOOL_INPUT_MAP.
+ */
+export const GOOSE_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path", source: "file_path" },
+  Write: { path: "file_path" },
+  Edit: { path: "file_path" },
+  LS: { path: "file_path" },
+};
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -896,7 +1000,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

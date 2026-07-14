@@ -22,6 +22,7 @@ import { listOpenClawTranscriptMetadata, streamOpenClawEvents } from "./openclaw
 import { listFactoryTranscriptMetadata, streamFactoryEvents } from "./factory";
 import { listAntigravityTranscriptMetadata, streamAntigravityEvents } from "./antigravity";
 import { listDevinTranscriptMetadata, streamDevinEvents } from "./devin";
+import { listGooseTranscriptMetadata, streamGooseEvents } from "./goose";
 
 export type { ListOpts };
 
@@ -86,6 +87,11 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "antigravity",
     listTranscripts: listAntigravityTranscriptMetadata,
     streamEvents: streamAntigravityEvents,
+  },
+  goose: {
+    cli: "goose",
+    listTranscripts: listGooseTranscriptMetadata,
+    streamEvents: streamGooseEvents,
   },
 };
 

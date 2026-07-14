@@ -28,6 +28,10 @@ export const OPENCLAW_SESSION_RE = /^[0-9a-fA-F-]{36}$/;
  *  sync with DEVIN_SESSION_ID_RE in lib/devin-sessions.ts. */
 export const DEVIN_SESSION_RE = /^[A-Za-z0-9_-]+$/;
 
+/** Goose session IDs are date-prefixed counters (e.g. `20260714_3`). Kept in
+ *  sync with GOOSE_SESSION_ID_RE in lib/goose-sessions.ts. */
+export const GOOSE_SESSION_RE = /^\d{8}_\d+$/;
+
 export type DownloadSource =
   | { kind: "file"; path: string }
   | { kind: "synthesized"; body: string; contentType: string; extension: string };
@@ -39,6 +43,7 @@ export function isValidSessionId(cli: CliId, sessionId: string): boolean {
   if (cli === "hermes") return HERMES_SESSION_RE.test(sessionId);
   if (cli === "openclaw") return OPENCLAW_SESSION_RE.test(sessionId);
   if (cli === "devin") return DEVIN_SESSION_RE.test(sessionId);
+  if (cli === "goose") return GOOSE_SESSION_RE.test(sessionId);
   return UUID_RE.test(sessionId);
 }
 
@@ -135,6 +140,16 @@ export async function resolveDownloadSource(
     const { findAntigravityTranscript } = await import("./antigravity-sessions");
     const path = findAntigravityTranscript(sessionId);
     return path ? { kind: "file", path } : null;
+  }
+
+  if (cli === "goose") {
+    // Goose keeps sessions in SQLite (~/.local/share/goose/sessions/sessions.db).
+    // Synthesize a JSONL export of the session's raw `messages` rows.
+    const { getGooseSessionLog } = await import("./goose-sessions");
+    const result = await getGooseSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

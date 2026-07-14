@@ -72,9 +72,36 @@ before they become incidents. Zero latency. Runs locally.
       <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="OpenClaw (openclaw gateway)">
+    <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
+  </a>
+</p>
+<p align="center">
+  <a href="https://docs.factory.ai" title="Factory Droid (droid)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+      <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://devin.ai" title="Devin CLI (Cognition)">
+    <img src="assets/logos/devin.svg" alt="Devin CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://antigravity.google" title="Antigravity CLI (agy)">
+    <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://block.github.io/goose" title="Goose (codename goose)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+      <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity`). Omit `--cli` to auto-detect installed CLIs and prompt.
+> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Omit `--cli` to auto-detect installed CLIs and prompt.
 >
 > **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
 >
@@ -85,6 +112,8 @@ before they become incidents. Zero latency. Runs locally.
 > **Devin CLI** (`devin`, Cognition) is supported for both **live-hook enforcement** (`--cli devin`, user + project scope) and offline **audit** replay of its SQLite sessions (`~/.local/share/devin/cli/sessions.db`). Devin is a **pure Claude-clone** — same event names, same snake_case payload, same `"hooks"`-wrapper config (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — blocking via `{decision:"block"}` JSON on every event.
 >
 > **Antigravity CLI** (`agy`) is supported for both **live-hook enforcement** (`--cli antigravity`, user + project scope) and offline **audit** replay of its plain-JSONL sessions (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity has its **own** contract (not a Claude-clone): a **named-hook** `hooks.json` schema (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), a camelCase stdin payload that failproofai normalizes, and its own response shapes — `{decision:"deny"}` to block a tool, `{decision:"continue"}` to force another turn at `Stop`, `{injectSteps}` to inject a reminder before the model runs.
+>
+> **Goose** (codename goose, Block) is supported for both **live-hook enforcement** (`--cli goose`, user + project scope) and offline **audit** replay of its SQLite sessions (`~/.local/share/goose/sessions/sessions.db`). Enforcement uses Goose's **hooks** system (the cross-agent **Open Plugins** spec) — the installer just drops a plugin dir at `~/.agents/plugins/failproofai/` and Goose auto-discovers it. Blocking is `{"decision":"block"}` JSON on the `PreToolUse` event (which fires for the shell tool and inside delegated subagents), verified live against goose v1.43.0; Goose has no turn-end `Stop` event, so the `require-*-before-stop` builtins don't apply (as with Hermes).
 
 ---
 

@@ -383,6 +383,27 @@ export async function evaluatePolicies(
         };
       }
 
+      // Goose: the deny contract is `{"decision":"block","reason"}` on stdout at
+      // exit 0, honored on PreToolUse ONLY (shipped goose ≥ v1.37.0, PR
+      // block/goose#9304; exit 2 also blocks but JSON carries the reason
+      // cleanly). Goose has NO Stop event (the 5 require-*-before-stop builtins
+      // never fire for it — see CLAUDE.md) and does NOT honor deny on
+      // UserPromptSubmit/PostToolUse (observation) — a block emitted on those
+      // events is ignored (fail-open), a documented limitation. PreToolUse fires
+      // for the shell tool AND inside delegated subagents, so this one branch
+      // covers the entire enforceable surface. Mirrors the Hermes branch (no
+      // turn-end event to special-case). Verified live against goose v1.43.0.
+      if (session?.cli === "goose") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -754,6 +775,24 @@ export async function evaluatePolicies(
           decision: "instruct",
         };
       }
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Goose: a non-block PreToolUse decision injects nothing (verified live — no
+    // additional-context channel), and Goose has no Stop event, so instruct
+    // degrades to allow + stderr note, like Hermes / Factory non-Stop events.
+    if (session?.cli === "goose") {
       const stderrMsg = instructEntries
         .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
         .join("\n");

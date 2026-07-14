@@ -13,6 +13,7 @@ import { getCachedOpenClawSessionLog } from "@/lib/openclaw-sessions";
 import { getCachedFactorySessionLog } from "@/lib/factory-sessions";
 import { getCachedDevinSessionLog } from "@/lib/devin-sessions";
 import { getCachedAntigravitySessionLog } from "@/lib/antigravity-sessions";
+import { getCachedGooseSessionLog } from "@/lib/goose-sessions";
 import { decodeFolderName } from "@/lib/paths";
 import { baseSessionId } from "@/lib/utils/session-id";
 import { resolveProjectPath, UUID_RE } from "@/lib/projects";
@@ -56,7 +57,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" = "claude";
+  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose" = "claude";
   let externalCwd: string | undefined;
 
   try {
@@ -140,7 +141,15 @@ export default async function SessionPage({ params }: SessionPageProps) {
                           externalCwd = antigravity.cwd;
                           cli = "antigravity";
                         } else {
-                          error = "Session log file not found.";
+                          const goose = await getCachedGooseSessionLog(decodedSessionId);
+                          if (goose) {
+                            entries = goose.entries;
+                            rawLines = goose.rawLines;
+                            externalCwd = goose.cwd;
+                            cli = "goose";
+                          } else {
+                            error = "Session log file not found.";
+                          }
                         }
                       }
                     }
@@ -179,7 +188,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
                       ? `Devin CLI${externalCwd ? ` · ${externalCwd}` : ""}`
                       : cli === "antigravity"
                         ? `Antigravity CLI${externalCwd ? ` · ${externalCwd}` : ""}`
-                        : decodedName;
+                        : cli === "goose"
+                          ? `Goose${externalCwd ? ` · ${externalCwd}` : ""}`
+                          : decodedName;
 
   return (
     <main className="min-h-screen bg-background">

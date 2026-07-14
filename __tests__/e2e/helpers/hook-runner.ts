@@ -40,7 +40,7 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" },
+  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose" },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -252,6 +252,16 @@ export function assertAntigravityInjectSteps(result: HookRunResult): void {
   const steps = result.parsed?.injectSteps as Array<Record<string, unknown>> | undefined;
   expect(Array.isArray(steps)).toBe(true);
   expect(steps?.[0]?.ephemeralMessage).toMatch(/^Instruction from failproofai:/);
+}
+
+// ── Goose (codename goose, Block) assertions ───────────────────────────────
+// Goose honors `{decision:"block", reason}` on stdout at exit 0, on PreToolUse
+// ONLY (verified live against goose v1.43.0). It has no Stop event, and does not
+// honor deny on UserPromptSubmit/PostToolUse.
+export function assertGooseDeny(result: HookRunResult): void {
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(typeof result.parsed?.reason).toBe("string");
 }
 
 export function assertCopilotStopBlock(result: HookRunResult): void {

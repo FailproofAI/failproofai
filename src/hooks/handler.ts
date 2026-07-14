@@ -166,6 +166,18 @@ export async function handleHookEvent(
     if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
   }
 
+  // Goose pipes `event` / `working_dir` instead of Claude's `hook_event_name` /
+  // `cwd` (its `tool_name` / `tool_input` are already canonical field names).
+  // Normalize both so resolveCwd keeps its cwd (block-read-outside-cwd) and the
+  // round-tripped event name is available. The --hook arg is already PascalCase,
+  // so canonicalizeEventType needs no goose branch. Verified goose v1.43.0.
+  if (cli === "goose") {
+    if (typeof parsed.working_dir === "string") parsed.cwd = parsed.working_dir;
+    if (typeof parsed.event === "string" && parsed.hook_event_name === undefined) {
+      parsed.hook_event_name = parsed.event;
+    }
+  }
+
   // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
   const canonicalEventType = canonicalizeEventType(eventType, cli);
 

@@ -36,6 +36,8 @@ import {
   DEVIN_HOOK_SCOPES,
   ANTIGRAVITY_HOOK_EVENT_TYPES,
   ANTIGRAVITY_HOOK_SCOPES,
+  GOOSE_HOOK_EVENT_TYPES,
+  GOOSE_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -2017,6 +2019,159 @@ export const antigravity: Integration = {
   },
 };
 
+// ── Goose (codename goose, Block) integration ────────────────────────────────
+//
+// Goose's "hooks" system follows the cross-agent Open Plugins spec: a plugin
+// directory whose hooks/hooks.json wires shell commands into agent events.
+// failproofai owns the entire `failproofai` plugin dir and writes an Open
+// Plugins hooks.json — `{"hooks": {<Event>: [{"hooks": [{type, command}]}]}}`.
+// Two differences from Factory (verified live against goose v1.43.0):
+//   1. the schema DOES carry the top-level "hooks" wrapper (like Claude), and
+//   2. the matcher is OMITTED on every event — a bare "*" is an invalid regex
+//      that matches NOTHING (omitted = match all tools).
+// Entries are the clean `{type, command}` shape with NO marker field — Goose
+// parses this file, so we identify our hooks by the `--cli goose` command
+// substring instead of injecting `__failproofai_hook__`. Goose auto-discovers
+// the dir at startup (no config edit) and self-registers it into
+// ~/.config/goose/config.yaml; uninstall clears our entries (the emptied
+// hooks.json and the auto-added config `plugins:` entry are left for Goose to
+// reconcile on next start — it logs the empty plugin and continues, harmless).
+// Deny is PreToolUse-only JSON (see policy-evaluator.ts). Settings paths:
+// ~/.agents/plugins/failproofai/hooks/hooks.json (user) and
+// <cwd>/.agents/plugins/failproofai/hooks/hooks.json (project); no "local" scope.
+
+interface GooseHookMatcher {
+  matcher?: string;
+  hooks: Array<Record<string, unknown>>;
+}
+/** The Open Plugins hooks file: { "hooks": { <Event>: GooseHookMatcher[] } }. */
+interface GooseHooksFile {
+  hooks?: Record<string, GooseHookMatcher[]>;
+  [key: string]: unknown;
+}
+
+/** failproofai owns the `failproofai` Goose plugin dir; identify our hook
+ *  entries by the `--cli goose` command substring (the file is Goose-parsed, so
+ *  entries stay the clean {type, command} shape with no marker field). */
+function isGooseFailproofaiHook(hook: unknown): boolean {
+  if (!hook || typeof hook !== "object") return false;
+  const cmd = (hook as { command?: unknown }).command;
+  return typeof cmd === "string" && cmd.includes("failproofai") && cmd.includes("--cli goose");
+}
+
+export const goose: Integration = {
+  id: "goose",
+  displayName: "Goose",
+  scopes: GOOSE_HOOK_SCOPES,
+  eventTypes: GOOSE_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".agents", "plugins", "failproofai", "hooks", "hooks.json");
+      case "project":
+        return resolve(base, ".agents", "plugins", "failproofai", "hooks", "hooks.json");
+      case "local":
+        // Goose has no "local" scope; the CLI rejects --scope local before
+        // reaching here, but fall back to project so callers don't crash.
+        return resolve(base, ".agents", "plugins", "failproofai", "hooks", "hooks.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli goose`
+        : `"${binaryPath}" --hook ${eventType} --cli goose`;
+    // Open Plugins command entry: { type, command } only (Goose applies its own
+    // timeout; no marker field — see isGooseFailproofaiHook).
+    return { type: "command", command };
+  },
+
+  isFailproofaiHook: isGooseFailproofaiHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as GooseHooksFile;
+    if (!s.hooks) s.hooks = {};
+
+    for (const eventType of GOOSE_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope);
+      if (!Array.isArray(s.hooks[eventType])) s.hooks[eventType] = [];
+      const matchers: GooseHookMatcher[] = s.hooks[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isGooseFailproofaiHook(h));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      // matcher OMITTED on every event (a bare "*" matches nothing; omitted =
+      // match all tools — verified live against goose v1.43.0).
+      if (!found) matchers.push({ hooks: [hookEntry] });
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as GooseHooksFile;
+    if (!settings.hooks) return 0;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings.hooks)) {
+      const matchers = settings.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i];
+        if (!matcher || !matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isGooseFailproofaiHook(h));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings.hooks[eventType];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as GooseHooksFile;
+      if (!settings.hooks) return false;
+      for (const matchers of Object.values(settings.hooks)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers) {
+          if (!matcher || !matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isGooseFailproofaiHook(h))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("goose");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -2036,6 +2191,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   factory,
   devin,
   antigravity,
+  goose,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

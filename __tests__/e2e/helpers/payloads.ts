@@ -797,3 +797,78 @@ export const AntigravityPayloads = {
     };
   },
 };
+
+/**
+ * Goose (codename goose, Block) payload factories. Goose pipes a hook stdin that
+ * uses `event` (not `hook_event_name`), `working_dir` (not `cwd`), and
+ * `matcher_context` (the string the matcher regex tests). tool_name is BARE
+ * (`shell`, `write`, `view`) — mapped to Claude builtins via GOOSE_TOOL_MAP —
+ * and path-bearing tools deliver the path as `path`/`source` (→ `file_path` via
+ * GOOSE_TOOL_INPUT_MAP). There is NO transcript_path (audit reads sessions.db).
+ * Verified live against goose v1.43.0.
+ */
+const GOOSE_SESSION_ID = "20260714_1";
+
+export const GoosePayloads = {
+  preToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        event: "PreToolUse",
+        session_id: GOOSE_SESSION_ID,
+        matcher_context: "shell",
+        tool_name: "shell",
+        tool_input: { command },
+        working_dir: cwd,
+      };
+    },
+    write(filePath: string, content: string, cwd: string): Record<string, unknown> {
+      return {
+        event: "PreToolUse",
+        session_id: GOOSE_SESSION_ID,
+        matcher_context: "write",
+        tool_name: "write",
+        tool_input: { path: filePath, content },
+        working_dir: cwd,
+      };
+    },
+    read(filePath: string, cwd: string): Record<string, unknown> {
+      return {
+        event: "PreToolUse",
+        session_id: GOOSE_SESSION_ID,
+        matcher_context: "view",
+        tool_name: "view",
+        tool_input: { path: filePath },
+        working_dir: cwd,
+      };
+    },
+  },
+  postToolUse: {
+    bash(command: string, cwd: string): Record<string, unknown> {
+      return {
+        event: "PostToolUse",
+        session_id: GOOSE_SESSION_ID,
+        matcher_context: "shell",
+        tool_name: "shell",
+        tool_input: { command },
+        working_dir: cwd,
+      };
+    },
+  },
+  userPromptSubmit(prompt: string, cwd: string): Record<string, unknown> {
+    return {
+      event: "UserPromptSubmit",
+      session_id: GOOSE_SESSION_ID,
+      matcher_context: prompt,
+      message: prompt,
+      working_dir: cwd,
+    };
+  },
+  sessionStart(cwd: string): Record<string, unknown> {
+    return {
+      event: "SessionStart",
+      session_id: GOOSE_SESSION_ID,
+      matcher_context: null,
+      working_dir: cwd,
+    };
+  },
+};

@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose";
 
 export interface ProjectFolder {
   name: string;
@@ -148,6 +148,7 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getFactoryProjects },
     { getDevinProjects },
     { getAntigravityProjects },
+    { getGooseProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -159,8 +160,9 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./factory-projects"),
     import("./devin-projects"),
     import("./antigravity-projects"),
+    import("./goose-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -202,8 +204,12 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Antigravity projects:", error);
       return [] as ProjectFolder[];
     }),
+    getGooseProjects().catch((error) => {
+      logError("Error reading Goose projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose);
 }
 
 /**

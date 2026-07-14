@@ -25,6 +25,7 @@ import {
   factory,
   devin,
   antigravity,
+  goose,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -43,6 +44,7 @@ import {
   FACTORY_HOOK_EVENT_TYPES,
   DEVIN_HOOK_EVENT_TYPES,
   ANTIGRAVITY_HOOK_EVENT_TYPES,
+  GOOSE_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
@@ -77,7 +79,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -118,6 +120,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('antigravity') returns antigravity", () => {
     expect(getIntegration("antigravity")).toBe(antigravity);
+  });
+
+  it("getIntegration('goose') returns goose", () => {
+    expect(getIntegration("goose")).toBe(goose);
   });
 
   it("getIntegration('devin') returns devin", () => {
@@ -1522,5 +1528,113 @@ describe("Antigravity CLI integration", () => {
     antigravity.writeSettings(settingsPath, settings);
 
     expect(antigravity.hooksInstalledInSettings("project", tempDir)).toBe(true);
+  });
+});
+
+describe("Goose integration", () => {
+  it("getSettingsPath maps user/project to the Open Plugins hooks.json in the plugin dir", () => {
+    expect(goose.getSettingsPath("project", tempDir)).toBe(
+      resolve(tempDir, ".agents", "plugins", "failproofai", "hooks", "hooks.json"),
+    );
+    expect(goose.getSettingsPath("user")).toMatch(
+      /\.agents\/plugins\/failproofai\/hooks\/hooks\.json$/,
+    );
+  });
+
+  it("scopes are user|project (no local)", () => {
+    expect(goose.scopes).toEqual(["user", "project"]);
+  });
+
+  it("subscribes to the 5 verified events and NOT Stop (goose has none)", () => {
+    expect(GOOSE_HOOK_EVENT_TYPES).toEqual([
+      "SessionStart",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "SessionEnd",
+    ]);
+    expect(GOOSE_HOOK_EVENT_TYPES).not.toContain("Stop");
+  });
+
+  it("buildHookEntry emits a clean {type, command} with --cli goose and NO marker field", () => {
+    const entry = goose.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
+    expect(entry.type).toBe("command");
+    expect(entry.command).toContain("--cli goose");
+    expect(entry.command).toContain("--hook PreToolUse");
+    // Goose parses this file, so we add NO __failproofai_hook__ marker.
+    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBeUndefined();
+    expect(entry.timeout).toBeUndefined();
+  });
+
+  it("project scope uses npx -y failproofai", () => {
+    const entry = goose.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli goose");
+  });
+
+  it("writeHookEntries writes the Open Plugins schema (top-level 'hooks' wrapper, matcher OMITTED)", () => {
+    const settings: Record<string, unknown> = {};
+    goose.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, any[]>;
+    expect(hooks).toBeDefined();
+    for (const eventType of GOOSE_HOOK_EVENT_TYPES) {
+      expect(Array.isArray(hooks[eventType])).toBe(true);
+      const matcherObj = hooks[eventType][0];
+      // matcher must be OMITTED — a bare "*" is an invalid regex that matches nothing.
+      expect(matcherObj.matcher).toBeUndefined();
+      expect(Array.isArray(matcherObj.hooks)).toBe(true);
+      expect(matcherObj.hooks[0].command).toContain("--cli goose");
+    }
+  });
+
+  it("re-running writeHookEntries is idempotent (updates in place, no dup)", () => {
+    const settings: Record<string, unknown> = {};
+    goose.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    goose.writeHookEntries(settings, "/different/path/failproofai", "user");
+    const hooks = settings.hooks as Record<string, any[]>;
+    expect(hooks.PreToolUse).toHaveLength(1);
+    expect(hooks.PreToolUse[0].hooks).toHaveLength(1);
+    // Updated to the new binary path.
+    expect(hooks.PreToolUse[0].hooks[0].command).toContain("/different/path/failproofai");
+  });
+
+  it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
+    const settingsPath = goose.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    goose.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    goose.writeSettings(settingsPath, settings);
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const removed = goose.removeHooksFromFile(settingsPath);
+    expect(removed).toBe(GOOSE_HOOK_EVENT_TYPES.length);
+
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    expect(after.hooks).toBeUndefined();
+  });
+
+  it("removeHooksFromFile preserves a user's own non-failproofai plugin hooks", () => {
+    const settingsPath = goose.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [{ hooks: [{ type: "command", command: "${PLUGIN_ROOT}/scripts/log.sh" }] }],
+      },
+    };
+    goose.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    goose.writeSettings(settingsPath, settings);
+
+    goose.removeHooksFromFile(settingsPath);
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, any>;
+    // The user's own log hook survives; failproofai's is gone.
+    const postHooks = after.hooks.PostToolUse.flatMap((m: any) => m.hooks);
+    expect(postHooks.some((h: any) => h.command.includes("log.sh"))).toBe(true);
+    expect(postHooks.some((h: any) => h.command.includes("--cli goose"))).toBe(false);
+  });
+
+  it("hooksInstalledInSettings detects installed hooks", () => {
+    const settingsPath = goose.getSettingsPath("project", tempDir);
+    const settings: Record<string, unknown> = {};
+    goose.writeHookEntries(settings, "/usr/bin/failproofai", "project");
+    goose.writeSettings(settingsPath, settings);
+
+    expect(goose.hooksInstalledInSettings("project", tempDir)).toBe(true);
   });
 });

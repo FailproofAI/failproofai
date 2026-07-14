@@ -69,6 +69,11 @@ export function resolveTranscriptPath(
       // there is no on-disk transcript file, so hand back a virtual path (like
       // opencode) — audit/download read the DB directly.
       return `devin-db://${sessionId}`;
+    case "goose":
+      // Goose keeps sessions in SQLite (~/.local/share/goose/sessions/sessions.db);
+      // its live-hook payload carries no transcript file, so hand back a virtual
+      // path (like devin) — audit/download read the DB directly.
+      return `goose-db://${sessionId}`;
     case "opencode":
       return `opencode-db://${sessionId}`;
     case "hermes":

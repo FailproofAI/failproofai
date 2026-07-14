@@ -257,6 +257,7 @@ describe("ProjectList", () => {
       "Factory Droid",
       "Devin CLI",
       "Antigravity CLI",
+      "Goose",
     ]);
   });
 

@@ -12,7 +12,7 @@ import {
 
 describe("lib/cli-registry", () => {
   it("KNOWN_CLI_IDS lists all supported CLIs in stable order", () => {
-    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"]);
+    expect(KNOWN_CLI_IDS).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
   });
 
   it("getCliEntry returns the entry for known ids and undefined for unknown", () => {
@@ -23,6 +23,7 @@ describe("lib/cli-registry", () => {
     expect(getCliEntry("opencode")?.label).toBe("OpenCode");
     expect(getCliEntry("pi")?.label).toBe("Pi");
     expect(getCliEntry("hermes")?.label).toBe("Hermes");
+    expect(getCliEntry("goose")?.label).toBe("Goose");
     expect(getCliEntry("unknown")).toBeUndefined();
   });
 
@@ -40,6 +41,7 @@ describe("lib/cli-registry", () => {
     expect(getCliBadgeClasses("opencode")).toContain("amber");
     expect(getCliBadgeClasses("pi")).toContain("pink");
     expect(getCliBadgeClasses("hermes")).toContain("indigo");
+    expect(getCliBadgeClasses("goose")).toContain("lime");
     expect(getCliBadgeClasses("unknown")).toContain("orange"); // falls back to claude
   });
 
@@ -50,6 +52,7 @@ describe("lib/cli-registry", () => {
     expect(isKnownCli("opencode")).toBe(true);
     expect(isKnownCli("pi")).toBe(true);
     expect(isKnownCli("hermes")).toBe(true);
+    expect(isKnownCli("goose")).toBe(true);
     expect(isKnownCli("nope")).toBe(false);
     expect(isKnownCli(null)).toBe(false);
     expect(isKnownCli(undefined)).toBe(false);
@@ -70,7 +73,7 @@ describe("lib/cli-registry", () => {
 
   it("listExternalCliEntries excludes claude", () => {
     const ids = listExternalCliEntries().map((c) => c.id);
-    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity"]);
+    expect(ids).toEqual(["codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
   });
 
   it("each CLI has a unique badgeClasses string", () => {

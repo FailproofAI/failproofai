@@ -22,6 +22,8 @@ import {
   DEVIN_TOOL_MAP,
   ANTIGRAVITY_TOOL_MAP,
   ANTIGRAVITY_TOOL_INPUT_MAP,
+  GOOSE_TOOL_MAP,
+  GOOSE_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -50,6 +52,9 @@ export function canonicalizeToolName(
   // Antigravity CLI: run_command→Bash (verified agy v1.1.2), view_file→Read, …
   // (best-effort). tool_input keys are PascalCase → ANTIGRAVITY_TOOL_INPUT_MAP.
   if (cli === "antigravity") return ANTIGRAVITY_TOOL_MAP[raw] ?? raw;
+  // Goose: shell→Bash, write/edit/view→file ops, todo__todo_write→TodoWrite, …
+  // (verified live against goose v1.43.0). Handles bare + `<ext>__<tool>` names.
+  if (cli === "goose") return GOOSE_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -82,6 +87,9 @@ export function canonicalizeToolInput(
   // Antigravity's run_command args are PascalCase (`CommandLine`, `Cwd`); map
   // to `command`/`cwd` so Bash builtins fire (verified agy v1.1.2).
   else if (cli === "antigravity") perToolMap = ANTIGRAVITY_TOOL_INPUT_MAP[toolName];
+  // Goose file tools (write/edit/view) deliver the path as `path`, read_image as
+  // `source`; map to `file_path` so path builtins fire (verified goose v1.43.0).
+  else if (cli === "goose") perToolMap = GOOSE_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

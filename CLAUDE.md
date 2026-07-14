@@ -653,6 +653,81 @@ Copilot subscription + agent mode; the OpenAI ChatGPT / Claude Code VS Code
 extensions are separate runtimes (the Claude Code extension routes through
 failproofai's `claude` hooks in `~/.claude/settings.json` — also already covered).
 
+### Goose hooks (`~/.agents/plugins/failproofai/hooks/hooks.json`)
+
+Goose (codename goose, Block) is a **local, MCP-based** dev-agent — a
+**dual-pillar** integration (live hooks + audit) supporting **user + project**
+scope. The entire contract below was **verified live against goose v1.43.0**.
+
+**Enforcement uses Goose's "hooks" system — the cross-agent Open Plugins spec.**
+A plugin is a directory whose `hooks/hooks.json` wires shell commands into agent
+events; Goose **auto-discovers** any dir under `~/.agents/plugins/<name>/` (user)
+or `<cwd>/.agents/plugins/<name>/` (project) at startup and **self-registers** it
+into `~/.config/goose/config.yaml`. So the installer just **drops the plugin dir**
+(no config edit — simpler than OpenCode). The installed command is
+`bun bin/failproofai.mjs --hook <event> --cli goose` (dev) /
+`npx -y failproofai --hook <event> --cli goose` (production).
+
+**Schema: an Open Plugins `hooks.json` WITH a top-level `"hooks"` wrapper** (unlike
+Factory, which has none), and **the matcher is OMITTED on every event** — a bare
+`"*"` is an **invalid regex that matches nothing** (verified live; omitted = match
+all). failproofai owns the entire `failproofai` plugin dir, so entries stay the
+clean `{type, command}` shape (**no `__failproofai_hook__` marker** — Goose parses
+this file); our hooks are identified by the `--cli goose` command substring.
+
+```json
+{ "hooks": {
+    "PreToolUse":  [ { "hooks": [ { "type": "command", "command": "…" } ] } ],
+    "PostToolUse": [ { "hooks": [ … ] } ],
+    "SessionStart":[ { "hooks": [ … ] } ] } }
+```
+
+**Events** (`GOOSE_HOOK_EVENT_TYPES`, all PascalCase → **no `GOOSE_EVENT_MAP`, no
+handler event branch**): `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
+`PostToolUse`, `SessionEnd`. The stdin payload uses `event` (not
+`hook_event_name`) and `working_dir` (not `cwd`), so `handler.ts` normalizes
+`working_dir`→`cwd` for goose (a small block, like Antigravity); `tool_name` /
+`tool_input` are already canonical field names.
+
+**Deny contract = `{"decision":"block","reason"}` JSON on stdout at exit 0**, honored
+on **`PreToolUse` ONLY** (shipped goose ≥ **v1.37.0**, PR block/goose#9304; exit 2
+also blocks). Any other error/timeout → **fail-open** (allow). `PreToolUse` fires
+for the shell tool **and inside delegated subagents**, so it is the single
+sufficient deny point. Goose has **NO `Stop` event** (the 5
+`require-*-before-stop` builtins never fire for it — inapplicable, like Hermes) and
+does **not** honor deny on `UserPromptSubmit`/`PostToolUse` (observation only). So
+`policy-evaluator.ts`'s `cli === "goose"` deny branch emits the block JSON for
+every event (Goose honors it on PreToolUse, ignores it elsewhere — no Stop
+special-case). `instruct()` degrades to **allow + stderr note** (no
+additional-context channel — a non-block decision injects nothing).
+
+**Tool-name canonicalization** (`GOOSE_TOOL_MAP`): tool names arrive **both** bare
+(`shell→Bash`, `write→Write`, `edit→Edit`, `view→Read`, `read_image→Read`,
+`glob→Glob`, `grep→Grep`, `tree→LS`, `delegate→Task`) **and** `<ext>__<tool>`
+namespaced (`todo__todo_write→TodoWrite`); the map covers both, unknown tools pass
+through. **`GOOSE_TOOL_INPUT_MAP`** maps path-bearing tools' `path` (and
+read_image's `source`) → `file_path` so path builtins fire; shell's `command` is
+already canonical.
+
+**Audit pillar.** Sessions are SQLite at
+`~/.local/share/goose/sessions/sessions.db` (schema_version 15). `sessions` rows
+carry a real `working_dir`, so audit groups by project cwd like **Devin** (not
+grouped-by-source like Hermes); `messages.content_json` is a **Claude-style
+typed-block array** (`toolRequest`/`toolResponse`) parsed by `lib/goose-sessions.ts`
+(pure, unit-tested) + `lib/goose-projects.ts`. `session_type='hidden'`
+(`--no-session`) scratch runs are filtered. `GOOSE_HOME` / `GOOSE_DB_PATH` override
+the data dir for tests. Transcript downloads synthesize JSONL from the rows.
+
+**Provider gotcha** (not failproofai's concern, but hit during live verification):
+with the OS keyring disabled, goose reads the provider API key from the
+**environment** (`OPENAI_API_KEY`), **not** from `config.yaml` — the YAML key is
+ignored (`401 No api key passed in`).
+
+For production users the recommended Goose install is:
+```bash
+failproofai policies --install --cli goose --scope project
+```
+
 ## Workflow rules
 
 ### One PR per branch

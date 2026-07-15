@@ -18,6 +18,7 @@ import { INTEGRATION_TYPES, type IntegrationType } from "@/src/hooks/types";
 import type { RunAuditOptions } from "@/src/audit/types";
 import { finishRun, tryAcquireRun } from "../_state";
 import { initTelemetry, trackEvent } from "@/lib/telemetry";
+import { sanitizeErrorMessage } from "@/lib/telemetry-sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         source: "dashboard",
         duration_ms: Date.now() - startedAt,
         error_type: err instanceof Error ? err.name : "unknown",
+        error_message: sanitizeErrorMessage(err),
       });
       finishRun(err instanceof Error ? err.message : String(err));
     }

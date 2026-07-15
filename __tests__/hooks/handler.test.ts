@@ -36,6 +36,7 @@ vi.mock("../../src/hooks/hook-activity-store", () => ({
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({
   trackHookEvent: vi.fn(() => Promise.resolve()),
+  flushHookTelemetry: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../lib/telemetry-id", () => ({
@@ -145,6 +146,17 @@ describe("hooks/handler", () => {
         policyName: null,
       }),
     );
+  });
+
+  it("flushes pending telemetry before returning, even on the allow path", async () => {
+    // The allow path fires no awaited event, so without an explicit flush the
+    // caller's process.exit() would drop un-awaited (`void`) load/error events.
+    mockStdin();
+    const { flushHookTelemetry } = await import("../../src/hooks/hook-telemetry");
+
+    await handleHookEvent("PreToolUse");
+
+    expect(flushHookTelemetry).toHaveBeenCalled();
   });
 
   it("persists deny decision when evaluator returns deny", async () => {

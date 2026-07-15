@@ -122,6 +122,7 @@ describe("failproofai audit telemetry", () => {
     expect(h.trackHookEvent).toHaveBeenCalledWith("test-instance", "cli_audit_failed", {
       source: "cli",
       error_type: "TypeError",
+      error_message: "disk exploded",
     });
     expect(exitInfo?.code).toBe(1);
     // The fix: failed must have RESOLVED before the exit fired.

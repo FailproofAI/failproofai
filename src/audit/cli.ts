@@ -20,6 +20,7 @@ import { writeDashboardCache } from "./dashboard-cache";
 import type { AuditResult, RunAuditOptions } from "./types";
 import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
+import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -316,6 +317,7 @@ export async function runAuditCli(args: string[]): Promise<void> {
     await trackHookEvent(instanceId, "cli_audit_failed", {
       source: "cli",
       error_type: err instanceof Error ? err.name : "unknown",
+      error_message: sanitizeErrorMessage(err),
     });
     die(`Audit failed: ${err instanceof Error ? err.message : String(err)}`);
   }

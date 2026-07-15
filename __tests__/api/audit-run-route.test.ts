@@ -95,6 +95,10 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
     expect(s.error).toBe("scan blew up");
     expect(writeCacheMock).not.toHaveBeenCalled();
     expect(trackedNames()).toContain("audit_run_failed");
+    expect(trackEventMock).toHaveBeenCalledWith(
+      "audit_run_failed",
+      expect.objectContaining({ error_type: "Error", error_message: "scan blew up" }),
+    );
   });
 
   it("writes the cache, tracks audit_run_completed with metrics, and clears the lock on success", async () => {

@@ -89,7 +89,7 @@ jobs:
             docs/${{ matrix.lang }}/
             docs/i18n/README.${{ matrix.lang }}.md
           retention-days: 1
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload cache fragment
         uses: actions/upload-artifact@v7
@@ -97,7 +97,7 @@ jobs:
           name: cache-${{ matrix.lang }}
           path: scripts/translate-docs/.translation-cache.json
           retention-days: 1
-          if-no-files-found: warn
+          if-no-files-found: error
           include-hidden-files: true
 
   consolidate:
@@ -137,7 +137,7 @@ jobs:
           node-version: 22
 
       - name: Install Mintlify CLI
-        run: npm install -g mintlify
+        run: npm install -g mintlify@4.2.680
 
       - name: Validate generated docs config
         working-directory: docs
@@ -242,6 +242,11 @@ jobs:
             BRANCH="auto/translate-docs-$(date +%Y%m%d-%H%M)"
             git checkout -b "$BRANCH"
           fi
+
+          # Validate again after overlaying an existing translation branch so
+          # every file that will be committed is covered by both validators.
+          (cd docs && mintlify validate)
+          bun run validate:mdx
 
           git add -A
           if git diff --cached --quiet; then

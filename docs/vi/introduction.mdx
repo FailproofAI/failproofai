@@ -1,41 +1,41 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI cung cấp 39 chính sách xử lý lỗi tích hợp sẵn giúp phát hiện vòng lặp, rò rỉ bí mật, lệnh gọi công cụ tàn phá, và nhiều hơn nữa chỉ với một lần cài đặt."
+description: "FailproofAI cung cấp 39 chính sách xử lý lỗi tích hợp sẵn giúp phát hiện vòng lặp, rò rỉ bí mật, lệnh gọi công cụ tàn phá, và nhiều vấn đề khác chỉ với một lần cài đặt."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks và chính sách cho **xử lý lỗi AI**, **phục hồi lỗi**, và **độ tin cậy LLM**. Giữ cho các AI agents của bạn luôn đáng tin cậy và hoạt động tự trị trên **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, và **Agents SDK**.
+Hooks và chính sách cho **xử lý lỗi AI**, **khôi phục lỗi**, và **độ tin cậy của LLM**. Giữ cho các agent AI của bạn đáng tin cậy và chạy tự động trên **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, và **Agents SDK**.
 
-Các AI agents thất bại theo những cách có thể dự đoán được. Chúng chạy các lệnh tàn phá, rò rỉ bí mật, lạc khỏi nhiệm vụ, mắc kẹt trong các vòng lặp, hoặc push trực tiếp lên main. Nếu không được giám sát, những lỗi nhỏ sẽ dẫn đến sự cố toàn hệ thống, rò rỉ thông tin xác thực, và mất công việc.
+Các agent AI gặp sự cố theo những cách dự đoán được. Chúng chạy các lệnh tàn phá, rò rỉ bí mật, lệch khỏi nhiệm vụ, mắc kẹt trong vòng lặp, hoặc push trực tiếp lên nhánh main. Nếu không được giám sát, những lỗi nhỏ có thể dẫn đến sự cố lớn, rò rỉ thông tin xác thực, và mất mát công việc.
 
-FailproofAI giải quyết vấn đề này bằng **policies** (chính sách). Những quy tắc này kết nối vào mọi lệnh gọi công cụ của agent để **phát hiện lỗi**, **giảm nhẹ chúng** (chặn, hướng dẫn, làm sạch), và **cảnh báo cho bạn** khi có điều gì cần chú ý. Một bảng điều khiển cục bộ cho phép bạn xem lại mọi lệnh gọi công cụ, lỗi agent, và hành động phục hồi sau này.
+FailproofAI giải quyết vấn đề này bằng **chính sách**. Những quy tắc này kết nối vào mọi lệnh gọi công cụ của agent để **phát hiện lỗi**, **giảm thiểu chúng** (chặn, hướng dẫn, vệ sinh dữ liệu), và **cảnh báo bạn** khi có vấn đề cần chú ý. Bảng điều khiển cục bộ cho phép bạn xem lại mọi lệnh gọi công cụ, lỗi của agent, và hành động khôi phục sau đó.
 
-Không có dữ liệu nào rời khỏi máy của bạn.
+Bảng điểm và đánh giá chính sách được lưu trữ trên máy của bạn. Dữ liệu chỉ được gửi khi bạn sử dụng tính năng trực tuyến, chẳng hạn như nhắc nhở kiểm toán xác thực hoặc lời mời.
 
 ## Bắt đầu
 
 <CardGroup cols={2}>
 
 <Card title="39 chính sách tích hợp sẵn" icon="shield" href="/vi/built-in-policies">
-  Chặn các lệnh tàn phá, ngăn chặn rò rỉ bí mật, giữ agents trong ranh giới dự án, và nhiều hơn nữa. Tất cả đã sẵn sàng.
+  Chặn các lệnh tàn phá, ngăn chặn rò rỉ bí mật, giữ các agent trong ranh giới dự án, và nhiều hơn nữa. Tất cả đã sẵn sàng.
 </Card>
 
 <Card title="Chính sách tùy chỉnh" icon="code" href="/vi/custom-policies">
   Viết các quy tắc của riêng bạn bằng JavaScript với API allow / deny / instruct đơn giản.
 </Card>
 
-<Card title="Agent monitor" icon="chart-line" href="/vi/dashboard">
-  Xem những gì các agents của bạn đã làm trong khi bạn vắng mặt. Duyệt qua các phiên, kiểm tra các lệnh gọi công cụ, xem xét nơi các chính sách được kích hoạt.
+<Card title="Màn hình giám sát Agent" icon="chart-line" href="/vi/dashboard">
+  Xem những gì các agent của bạn đã làm khi bạn vắng mặt. Duyệt các phiên, kiểm tra lệnh gọi công cụ, xem xét chính sách được kích hoạt ở đâu.
 </Card>
 
 <Card title="Cấu hình dễ dàng" icon="gear" href="/vi/configuration">
-  Điều chỉnh bất kỳ chính sách nào mà không cần code. Đặt danh sách cho phép, nhánh được bảo vệ, hoặc ngưỡng cho từng dự án hoặc toàn cục.
+  Điều chỉnh bất kỳ chính sách nào mà không cần code. Đặt danh sách cho phép, nhánh được bảo vệ, hoặc ngưỡng cho mỗi dự án hoặc toàn cục.
 </Card>
 
 </CardGroup>
 
-## Khởi động nhanh
+## Bắt đầu nhanh
 
 <CodeGroup>
 
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # bật chính sách (hoặc bỏ qua — `failproofai` sẽ đề xuất thiết lập chúng khi chạy lần đầu tiên)
-failproofai                      # khởi động bảng điều khiển
+failproofai policies --install   # enable policies (or skip — `failproofai` will offer to set them up on first run)
+failproofai                      # launch the dashboard
 ```
 
-Xem hướng dẫn [Bắt đầu](/vi/getting-started) để tìm hiểu chi tiết đầy đủ.
+Xem hướng dẫn [Bắt đầu](/vi/getting-started) để có hướng dẫn đầy đủ.

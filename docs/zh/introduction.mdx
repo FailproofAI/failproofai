@@ -1,41 +1,41 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI 为 AI 智能体提供 39 条内置故障策略，一次安装即可捕获循环、密钥泄露、破坏性工具调用等问题。"
+description: "FailproofAI 为 AI 智能体提供 39 条内置失败策略，一次安装即可捕获循环、密钥泄露、破坏性工具调用等问题。"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-专为 **AI 故障处理**、**错误恢复**和 **LLM 可靠性**设计的 Hooks 与策略系统。让你的 AI 智能体在 **Claude Code**、**OpenAI Codex**、**GitHub Copilot**、**Cursor Agent**、**OpenCode**、**Pi**、**Hermes** 以及 **Agents SDK** 上稳定运行、持续自主工作。
+专为 **AI 故障处理**、**错误恢复**和 **LLM 可靠性**设计的 Hooks 与策略。让你的 AI 智能体在 **Claude Code**、**OpenAI Codex**、**GitHub Copilot**、**Cursor Agent**、**OpenCode**、**Pi**、**Hermes**、**OpenClaw**、**Factory Droid**、**Devin CLI**、**Antigravity CLI** 以及 **Agents SDK** 上保持稳定、自主运行。
 
-AI 智能体的失败往往有迹可循：执行破坏性命令、泄露密钥、偏离任务、陷入死循环，或直接推送到主分支。一旦无人看管，小故障就会滚雪球般演变成服务中断、凭据泄露和数据丢失。
+AI 智能体的失败方式往往有规律可循：执行破坏性命令、泄露密钥、偏离任务、陷入循环，或直接推送到主分支。若无人干预，小问题会逐步演变为服务中断、凭据泄露和数据丢失。
 
-FailproofAI 通过**策略**来解决这些问题。这些规则挂载到每一次智能体工具调用中，负责**检测故障**、**采取应对措施**（阻止、指示、脱敏）并在需要人工介入时**及时告警**。本地仪表板让你事后可以回顾每一次工具调用、智能体故障及恢复操作的完整记录。
+FailproofAI 通过**策略**来解决这一问题。这些规则会介入每次智能体工具调用，**检测故障**、**进行缓解**（拦截、指引、清理），并在需要关注时**向你发出提醒**。本地仪表盘让你事后可以回顾每一次工具调用、智能体故障和恢复操作。
 
-所有数据均不离开你的本地机器。
+会话记录与策略评估均保留在本地。只有当你明确使用在线功能（如经认证的审计提醒或邀请）时，才会发送数据。
 
-## 快速开始
+## 快速入门
 
 <CardGroup cols={2}>
 
 <Card title="39 条内置策略" icon="shield" href="/zh/built-in-policies">
-  开箱即用：拦截破坏性命令、防止密钥泄露、将智能体限制在项目边界内，以及更多功能。
+  开箱即用：拦截破坏性命令、防止密钥泄露、将智能体限制在项目范围内，以及更多功能。
 </Card>
 
 <Card title="自定义策略" icon="code" href="/zh/custom-policies">
-  使用 JavaScript 编写你自己的规则，配合简洁的 allow / deny / instruct API 轻松实现。
+  使用 JavaScript 编写你自己的规则，配合简洁的 allow / deny / instruct API 即可上手。
 </Card>
 
 <Card title="智能体监控" icon="chart-line" href="/zh/dashboard">
-  查看智能体在你离开期间的所有操作。浏览会话记录、检查工具调用、回顾策略触发详情。
+  查看智能体在你离开时的操作记录。浏览会话、检查工具调用、回顾策略触发情况。
 </Card>
 
-<Card title="简便配置" icon="gear" href="/zh/configuration">
-  无需编写代码即可调整任意策略。可按项目或全局设置允许列表、受保护分支或触发阈值。
+<Card title="轻松配置" icon="gear" href="/zh/configuration">
+  无需编写代码即可调整任意策略。按项目或全局设置白名单、受保护分支或阈值。
 </Card>
 
 </CardGroup>
 
-## 快速安装
+## 快速开始
 
 <CodeGroup>
 
@@ -54,4 +54,4 @@ failproofai policies --install   # enable policies (or skip — `failproofai` wi
 failproofai                      # launch the dashboard
 ```
 
-完整操作流程请参阅[入门指南](/zh/getting-started)。
+完整使用流程请参阅[快速入门](/zh/getting-started)指南。

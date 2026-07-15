@@ -1,28 +1,28 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI ofrece a los agentes de IA 39 políticas de fallo integradas que detectan bucles, filtraciones de secretos, llamadas destructivas a herramientas y más, con una sola instalación."
+description: "FailproofAI ofrece a los agentes de IA 39 políticas de fallo integradas que detectan bucles, filtraciones de secretos, llamadas destructivas a herramientas y más, en una sola instalación."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks y políticas para **manejo de fallos de IA**, **recuperación de errores** y **fiabilidad de LLM**. Mantén tus agentes de IA fiables y funcionando de forma autónoma en **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes** y el **Agents SDK**.
+Hooks y políticas para **gestión de fallos en IA**, **recuperación de errores** y **fiabilidad de LLM**. Mantén tus agentes de IA estables y funcionando de forma autónoma en **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** y el **Agents SDK**.
 
-Los agentes de IA fallan de maneras predecibles. Ejecutan comandos destructivos, filtran secretos, se desvían de sus tareas, quedan atrapados en bucles o hacen push directamente a main. Sin supervisión, los pequeños fallos se convierten en interrupciones del servicio, credenciales expuestas y trabajo perdido.
+Los agentes de IA fallan de maneras predecibles: ejecutan comandos destructivos, filtran secretos, se desvían de la tarea, se quedan atrapados en bucles o hacen push directamente a main. Si no se supervisan, los fallos pequeños se convierten en interrupciones del servicio, credenciales expuestas y trabajo perdido.
 
-FailproofAI resuelve esto mediante **políticas**. Estas reglas se enganchan en cada llamada a herramientas del agente para **detectar fallos**, **mitigarlos** (bloquear, instruir, sanitizar) y **alertarte** cuando algo requiere tu atención. Un panel de control local te permite revisar después cada llamada a herramientas, cada fallo del agente y cada acción de recuperación.
+FailproofAI resuelve esto con **políticas**. Estas reglas se enganchan en cada llamada a herramientas del agente para **detectar fallos**, **mitigarlos** (bloquear, instruir, sanitizar) y **alertarte** cuando algo requiere atención. Un panel de control local te permite revisar cada llamada a herramientas, fallo del agente y acción de recuperación.
 
-Ningún dato sale de tu máquina.
+Las transcripciones y la evaluación de políticas permanecen en tu máquina. Los datos solo se envían cuando usas explícitamente una función en línea, como recordatorios de auditoría autenticados o invitaciones.
 
 ## Primeros pasos
 
 <CardGroup cols={2}>
 
 <Card title="39 políticas integradas" icon="shield" href="/es/built-in-policies">
-  Bloquea comandos destructivos, evita filtraciones de secretos, mantén a los agentes dentro de los límites del proyecto y mucho más. Todo listo para usar desde el primer momento.
+  Bloquea comandos destructivos, previene la filtración de secretos, mantiene a los agentes dentro de los límites del proyecto y más. Todo listo desde el primer momento.
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/es/custom-policies">
-  Escribe tus propias reglas en JavaScript con una sencilla API de allow / deny / instruct.
+  Escribe tus propias reglas en JavaScript con una API sencilla de allow / deny / instruct.
 </Card>
 
 <Card title="Monitor de agentes" icon="chart-line" href="/es/dashboard">
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # enable policies (or skip — `failproofai` will offer to set them up on first run)
-failproofai                      # launch the dashboard
+failproofai policies --install   # habilitar políticas (o saltarlo — `failproofai` ofrecerá configurarlas en el primer uso)
+failproofai                      # abrir el panel de control
 ```
 
 Consulta la guía de [Primeros pasos](/es/getting-started) para ver el recorrido completo.

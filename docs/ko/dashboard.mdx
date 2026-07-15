@@ -1,6 +1,6 @@
 ---
 title: 대시보드
-description: "에이전트 세션 모니터링, 툴 호출 검토 및 정책 관리"
+description: "에이전트 세션 모니터링, 도구 호출 검토 및 정책 관리"
 icon: chart-line
 ---
 
@@ -16,7 +16,7 @@ failproofai
 
 `http://localhost:8020`에서 열립니다.
 
-대시보드는 파일 시스템에서 직접 데이터를 읽습니다 — Claude Code 프로젝트 폴더와 failproofai 설정 파일에서 읽어오며, 원격 서비스에는 아무것도 기록되지 않습니다.
+대시보드는 로컬 프로젝트, 세션 및 failproofai 구성 데이터를 파일 시스템에서 직접 읽어옵니다. 감사 알림이나 초대 등 인증이 필요한 선택적 기능은 해당 요청에 필요한 정보(이메일 주소 포함)를 원격 API로 전송합니다.
 
 ---
 
@@ -24,22 +24,22 @@ failproofai
 
 ### 프로젝트
 
-머신에서 발견된 모든 Claude Code, OpenAI Codex, GitHub Copilot CLI _(베타)_, Cursor Agent _(베타)_, OpenCode _(베타)_, Pi _(베타)_, Hermes 프로젝트를 나열합니다. Claude 프로젝트는 `~/.claude/projects/`(또는 `CLAUDE_PROJECTS_PATH`로 설정된 경로)에서 검색됩니다. Codex 프로젝트는 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` 아래의 모든 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에 기록된 `cwd`로 그룹화하여 검색됩니다. Copilot CLI 프로젝트는 각 `~/.copilot/session-state/<sessionId>/workspace.yaml`(`COPILOT_HOME`으로 구성 가능)을 스캔하고 `cwd` 필드로 그룹화하여 검색됩니다. Cursor Agent 프로젝트는 `~/.cursor/agent-sessions/<sessionId>/`(`CURSOR_HOME`으로 구성 가능, `conversations/` 및 `sessions/`가 폴백으로 검색됨) 아래의 세션별 메타데이터를 스캔하여 `meta.json` / `session.json` / `workspace.yaml`의 `cwd` 스칼라로 검색됩니다. OpenCode 프로젝트는 `opencode db --format json`을 통해 `~/.local/share/opencode/opencode.db`의 SQLite DB를 쿼리하여 검색되며(`session` 및 `project` 테이블을 읽고 `project_id`로 그룹화), Pi 프로젝트는 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`(`PI_SESSIONS_DIR`으로 구성 가능) 아래의 세션별 JSONL 트랜스크립트를 스캔하고 각 세션의 첫 번째 레코드에서 `cwd`를 가져와 검색됩니다. Hermes 게이트웨이 세션은 `~/.hermes/state.db`(`HERMES_DB_PATH`으로 구성 가능)의 SQLite 저장소에서 직접 읽어오며 `source`(Slack/Telegram/cli/cron — 게이트웨이 세션에는 cwd가 없음)로 `hermes-<source>` 프로젝트로 그룹화됩니다. 여러 CLI에서 사용된 프로젝트는 일치하는 모든 배지가 있는 단일 행으로 표시됩니다. 테이블 위의 **CLI** 드롭다운을 사용하여 특정 에이전트 CLI로 필터링하세요. URL은 선택 내용을 `?cli=claude|codex|copilot|cursor|opencode|pi|hermes`로 보존합니다.
+머신에서 발견된 모든 Claude Code, OpenAI Codex, GitHub Copilot CLI _(베타)_, Cursor Agent _(베타)_, OpenCode _(베타)_, Pi _(베타)_, Hermes, OpenClaw, Factory Droid, Devin, Antigravity, Goose 프로젝트를 나열합니다. Claude 프로젝트는 `~/.claude/projects/`(또는 `CLAUDE_PROJECTS_PATH`에 설정된 경로)에서 탐색되며, Codex 프로젝트는 `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl`의 모든 트랜스크립트를 스캔하여 각 세션의 첫 번째 레코드에 기록된 `cwd`로 그룹화해 탐색됩니다. Copilot CLI 프로젝트는 각 `~/.copilot/session-state/<sessionId>/workspace.yaml`((`COPILOT_HOME`으로 설정 가능))을 스캔하여 `cwd` 필드로 그룹화해 탐색됩니다. Cursor Agent 프로젝트는 `~/.cursor/agent-sessions/<sessionId>/`(`CURSOR_HOME`으로 설정 가능, `conversations/` 및 `sessions/`를 폴백으로 탐색) 아래의 세션별 메타데이터를 스캔하여 `meta.json` / `session.json` / `workspace.yaml`의 `cwd` 스칼라를 찾아 탐색됩니다. OpenCode 프로젝트는 `opencode db --format json`을 통해 `~/.local/share/opencode/opencode.db`의 SQLite DB를 쿼리하여(`session` 및 `project` 테이블을 읽어 `project_id`로 그룹화) 탐색됩니다. Pi 프로젝트는 `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`(`PI_SESSIONS_DIR`로 설정 가능) 아래의 세션별 JSONL 트랜스크립트를 스캔하여 각 세션의 첫 번째 레코드에서 `cwd`를 가져와 탐색됩니다. Hermes 게이트웨이 세션은 `~/.hermes/state.db`(`HERMES_DB_PATH`로 설정 가능)의 SQLite 스토어에서 직접 읽어 `source`(Slack/Telegram/cli/cron — 게이트웨이 세션에는 cwd 없음)로 `hermes-<source>` 프로젝트로 그룹화됩니다. OpenClaw 게이트웨이 세션은 `~/.openclaw/agents/<agentId>/sessions/*.jsonl`에서 읽어 `openclaw-<agentId>` 프로젝트로 그룹화됩니다(마찬가지로 cwd 없음). Factory Droid 프로젝트는 `~/.factory/sessions/<encoded-cwd>/*.jsonl`의 JSONL 트랜스크립트에서 탐색되어 cwd로 그룹화됩니다. Devin 프로젝트는 `~/.local/share/devin/cli/sessions.db`의 SQLite DB에서(`working_directory`로 그룹화), Antigravity 프로젝트는 `~/.gemini/antigravity-cli/brain/<conversationId>/…/transcript_full.jsonl`의 JSONL 트랜스크립트에서 cwd로 그룹화되어 탐색됩니다. Goose 프로젝트는 `~/.local/share/goose/sessions/sessions.db`의 SQLite DB에서 각 세션의 `working_dir`로 그룹화되어 탐색됩니다. 여러 CLI에서 사용된 프로젝트는 일치하는 모든 배지를 포함한 단일 행으로 표시됩니다. 표 위의 **CLI** 드롭다운을 사용하여 특정 에이전트 CLI로 필터링할 수 있으며, URL은 선택 항목을 `?cli=claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`로 보존합니다.
 
 각 프로젝트에는 다음이 표시됩니다:
 - 프로젝트 이름 (폴더 경로에서 파생)
-- CLI 배지 — `Claude Code` (주황색), `OpenAI Codex` (보라색), `GitHub Copilot` (파란색), `Cursor Agent` (에메랄드), `OpenCode` (호박색), `Pi` (분홍색), 및/또는 `Hermes` (남색)
+- CLI 배지 — `Claude Code`(주황), `OpenAI Codex`(보라), `GitHub Copilot`(파랑), `Cursor Agent`(에메랄드), `OpenCode`(호박색), `Pi`(분홍), `Hermes`(인디고) 중 하나 이상
 - 가장 최근 세션 활동 날짜
 
-프로젝트를 클릭하면 해당 세션이 표시됩니다.
+프로젝트를 클릭하면 해당 세션을 확인할 수 있습니다.
 
 ### 세션
 
 프로젝트 내 모든 세션을 나열합니다. 각 세션에는 다음이 표시됩니다:
 - 세션 ID
 - 시작 및 종료 타임스탬프
-- 툴 호출 수
-- 훅 활동 수 (실행된 정책)
+- 도구 호출 수
+- 훅 활동 횟수 (실행된 정책 수)
 
 날짜 범위 필터와 세션 ID 검색을 사용하여 목록을 좁힐 수 있습니다. 세션은 페이지로 나뉩니다.
 
@@ -47,27 +47,27 @@ failproofai
 
 ### 세션 뷰어
 
-세션 뷰어는 자율 에이전트에 대한 핵심 질문에 답합니다: 에이전트가 무엇을 했으며, 제대로 작동했는가? 헤더 옆의 CLI 배지는 세션이 Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi 또는 Hermes 트랜스크립트인지 나타냅니다. 세션에서 발생한 모든 일의 타임라인을 보여줍니다:
+세션 뷰어는 자율 에이전트의 핵심 질문에 답합니다: 에이전트가 무엇을 했으며, 올바른 방향을 유지했는가? 헤더 옆의 CLI 배지는 해당 세션이 Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin, Antigravity, Goose 트랜스크립트 중 무엇인지 나타냅니다. 세션에서 발생한 모든 일의 타임라인을 표시합니다:
 
-- **메시지** - Claude의 텍스트 응답과 사용자 프롬프트
-- **툴 호출** - Claude가 호출한 모든 툴, 입력 및 출력 포함
-- **정책 활동** - 각 툴 호출에 대해 어떤 정책이 실행되었고 어떤 결정을 내렸는지
+- **메시지** - Claude의 텍스트 응답 및 사용자 프롬프트
+- **도구 호출** - Claude가 호출한 모든 도구와 입력 및 출력
+- **정책 활동** - 각 도구 호출에 대해 어떤 정책이 실행되었고 어떤 결정을 반환했는지
 
-상단의 통계 바에는 세션 지속 시간, 총 툴 호출 수, 훅 결정 요약(allow / deny / instruct 수)이 표시됩니다.
+상단의 통계 바에는 세션 지속 시간, 총 도구 호출 수, 훅 결정 요약(allow / deny / instruct 횟수)이 표시됩니다.
 
-**로그 다운로드** 버튼을 클릭하여 세션을 내보냅니다. Claude Code, Codex, Copilot, Cursor, Pi 세션의 경우 디스크의 원본 JSONL 트랜스크립트를 바이트 단위로 그대로 받을 수 있으며, OpenCode(세션이 디스크가 아닌 SQLite에 저장됨)의 경우 기본 `session` / `messages` / `parts` 테이블을 미러링하는 JSON 문서를 받습니다.
+**Download Logs** 버튼을 클릭하면 세션을 내보낼 수 있습니다. Claude Code, Codex, Copilot, Cursor, Pi 세션의 경우 원본 디스크 상의 JSONL 트랜스크립트를 바이트 단위로 그대로 가져오며, OpenCode(세션이 디스크가 아닌 SQLite에 저장됨)의 경우 기본 `session` / `messages` / `parts` 테이블을 미러링한 JSON 문서를 가져옵니다.
 
 ### 감사
 
-과거 세션에서 에이전트가 실제로 어떻게 동작했는지에 대한 개성 있는 보고서입니다. `failproofai audit` CLI와 동일한 스캔을 실행하지만 단일 화면 공유 가능 포스터 + 아래 4개 섹션으로 렌더링됩니다:
+과거 세션에서 에이전트가 실제로 어떻게 행동했는지를 개성 있게 보고합니다. `failproofai audit` CLI와 동일한 스캔을 실행하지만, 전체 화면 공유 가능한 포스터 + 접힌 부분 아래의 네 가지 섹션으로 렌더링합니다:
 
-1. **포스터** — 첫 번째 뷰포트를 채웁니다. failproof_ai 워드마크 + 감사 레이블 · 아키타입 인덱스(`№ NN of 08`) + 감사 날짜 · 수치 점수(0–100) + 백분위 순위 pill(`top 15%`) · 아키타입 이름(다음 중 하나: `the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + 3개 키워드 스트립 · `// only N% of agents are this archetype` 희귀도 문구 · 8×8 픽셀 시길 타일 · `audit yours → failproof.ai` 푸터가 포함된 독립적인 PNG 캡처 영역. 캡처 박스 바로 바깥에 공유 버튼 3개가 있습니다: `post your archetype` (X 인텐트), `share on linkedin`, `download poster`. 캡처는 `html-to-image`를 통해 실행되므로 PNG가 화면 렌더링과 픽셀 단위로 일치합니다(점선 테두리, SVG 로고 마스크, 그라디언트, 폰트 메트릭 — 모두 보존).
-2. **강점** — 에이전트가 이미 올바르게 수행하는 동작의 ✓ 행 목록으로, 라이브 감사 데이터(깔끔한 툴 호출 비율, main으로의 직접 푸시 없음, 자격 증명 누출 없음, 재시도 폭풍 없음)에서 도출됩니다 — 관련 정책이 감사 기간 동안 깨끗한 기록을 가진 경우에만 표시됩니다.
-3. **문제점** — 심각도 순으로 정렬된 문제 테이블: `발생 시점 · 발생한 문제 + 이를 감지했을 정책 · 심각도 pill · 발생 횟수`, 재발 횟수는 `new` (1회), `N× seen` (2–9회), `recurring` (10회 이상)으로 표시됩니다.
-4. **개선 방법** — 권장 정책별 행 목록: 흰색으로 표시된 정책 이름, 한 줄 설명, 오른쪽에 설치 명령 + 복사 버튼. 섹션 헤더는 `enable all N → projected <score> · <tier>`(모든 수정 사항 적용 시 도달할 점수)로 표시되며, `[install all]` 버튼은 모든 권장 정책에 대한 `failproofai policy add a b c …` 명령을 복사합니다.
-5. **더 나아지기** — 두 개의 나란히 배치된 카드. 왼쪽: 리마인더 설정(`3d` / `7d` / `14d` / `30d` 주기 선택기; 인증 후 `/api/auth/reminder`를 통해 유지). 오른쪽: failproof 혜택 잠금 해제 — `invite a friend`는 쉼표/공백/줄바꿈으로 구분된 친구 이메일 목록(발송당 최대 10개)을 입력하는 모달을 열고, `/api/audit/invite`에 POST하여 api-server의 `POST /v0/invite`로 전달합니다. api-server는 `invite@failproof.ai`에서 수신자별로 이메일을 발송하며, 발신자가 참조(Cc)로 포함되고 `Reply-To`가 설정되어 수신자는 초대한 사람이 누구인지 알 수 있고 발신자는 받은 편지함에서 복사본을 받습니다. 익명 사용자는 초대가 발송되기 전에 발신자의 이메일이 확인될 수 있도록 먼저 `AuthDialog`로 라우팅됩니다. 자격 / 혜택 이행은 후속 작업입니다.
+1. **포스터** — 첫 번째 뷰포트를 채웁니다. failproof_ai 워드마크 + 감사 레이블 · 아키타입 인덱스(`№ NN of 08`) + 감사 날짜 · 수치 점수(0–100) + 백분위 순위 필(`top 15%`) · 아키타입 이름(`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost` 중 하나) + 3개 키워드 스트립 · `// only N% of agents are this archetype` 희귀도 라인 · 8×8 픽셀 시길 타일 · `audit yours → failproof.ai` 푸터를 포함하는 독립형 PNG 캡처 영역. 세 개의 공유 버튼이 캡처 상자 바로 바깥에 위치합니다: `post your archetype`(X 인텐트), `share on linkedin`, `download poster`. 캡처는 `html-to-image`를 통해 실행되므로 PNG가 화면 렌더링과 픽셀 단위로 일치합니다(대시 테두리, SVG 로고 마스크, 그라디언트, 글꼴 메트릭 모두 보존).
+2. **강점** — 에이전트가 이미 잘 하고 있는 행동의 차분한 ✓ 행 목록으로, 라이브 감사 데이터(깨끗한 도구 호출 비율, main에 직접 푸시 없음, 자격 증명 유출 없음, 재시도 폭풍 없음)에서 도출됩니다. 관련 정책이 감사 기간 동안 깨끗한 기록을 가진 경우에만 표시됩니다.
+3. **특이점** — 심각도 순으로 순위가 매겨진 누락된 항목 표: `when · what slipped + the policy that would've caught it · severity pill · seen`, 재발 횟수는 `new`(1회), `N× seen`(2–9회), `recurring`(10회 이상)으로 표시됩니다.
+4. **개선 방법** — 처방된 정책별 한 행씩의 차분한 행 목록: 흰색으로 정책 이름, 한 줄 설명, 오른쪽에 설치 명령 + 복사 버튼. 섹션 헤더에는 `enable all N → projected <score> · <tier>`(모든 수정 사항 적용 시 도달할 점수)가 표시되며, `[install all]` 버튼은 모든 처방된 정책에 대한 `failproofai policy add a b c …` 명령을 복사합니다.
+5. **더 나은 상태로 돌아오기** — 나란히 배치된 두 개의 카드. 왼쪽: 알림 설정(`3d` / `7d` / `14d` / `30d` 주기 선택기; 인증 후 `/api/auth/reminder`를 통해 유지). 오른쪽: failproof 혜택 잠금 해제 — `invite a friend`는 쉼표/공백/줄바꿈으로 구분된 친구 이메일 목록(전송당 최대 10개)을 받는 모달을 열고, `/api/audit/invite`에 POST하여 api-server의 `POST /v0/invite`로 전달합니다. api-server는 `invite@failproof.ai`에서 수신자마다 한 통의 이메일을 보내며 발신자를 참조하고 `Reply-To`를 설정하므로, 수신자는 누가 초대했는지 알 수 있고 발신자는 받은 편지함에 사본을 받습니다. 익명 사용자는 초대가 발송되기 전에 발신자 이메일을 확인하기 위해 먼저 `AuthDialog`로 이동됩니다. 권한/혜택 이행은 추후 예정입니다.
 
-`failproofai audit` 런타임으로 구동됩니다 — 기본 스캔 엔진, 지원되는 플래그, 트랜스크립트별 캐시 불변성은 [감사 CLI](/ko/cli/audit)를 참조하세요. 대시보드는 최신 결과를 `~/.failproofai/audit-dashboard.json`(모드 `0600`, 단일 슬롯, 새 실행 시 덮어쓰기)에 캐시하여 재방문이 즉각적으로 이루어지도록 합니다. **트랜스크립트별 캐시와 전체 결과 캐시 모두 7일이 지나면 읽기 시 거부됩니다** — 따라서 대시보드는 일주일 된 결과를 자동으로 제공하지 않으며, TTL이 지나면 `/audit`은 빈 상태로 전환되고 새로운 실행을 요청합니다. 보고서 하단의 `[ re-audit now ]`를 클릭하면 `noCache: true`로 `/api/audit/run`에 POST됩니다 — 재감사는 트랜스크립트별 캐시를 우회하고 캐시된 결과를 자동으로 반환하지 않고 모든 트랜스크립트를 처음부터 다시 스캔합니다 — 대시보드는 실행이 완료될 때까지 1Hz로 `/api/audit/status`를 폴링합니다. 실행 중에는 뷰포트 상단에 경과 타이머가 있는 고정 분홍색 진행 표시줄이 고정되며, 완료 시 새로운 결과가 즉시 교체됩니다(전체 페이지 새로고침 없음; 재감사 실패 시 이전 보고서는 그대로 유지). 실패 시 표시줄은 `RerunError.kind`(`timeout` / `network` / `post_failed`)에 따른 메시지와 함께 빨간색으로 전환됩니다. 빈 상태(캐시 없음 또는 만료)와 세션 없음 상태(캐시는 있지만 스캔에서 트랜스크립트를 찾지 못함)는 별도로 표시됩니다.
+`failproofai audit` 런타임에 의해 구동됩니다 — 기본 스캔 엔진, 지원 플래그, 트랜스크립트별 캐시 불변성에 대한 자세한 내용은 [감사 CLI](/ko/cli/audit)를 참조하세요. 대시보드는 최신 결과를 `~/.failproofai/audit-dashboard.json`(모드 `0600`, 단일 슬롯, 새 실행 시 덮어쓰기)에 캐시하므로 재방문 시 즉시 표시됩니다. **트랜스크립트별 캐시와 전체 결과 캐시 모두 7일보다 오래된 경우 읽기 시 거부됩니다.** 따라서 대시보드가 일주일 된 결과를 자동으로 제공하지 않습니다 — TTL이 지나면 `/audit`는 빈 상태로 폴백하여 새 실행을 요청합니다. 보고서 하단의 `[ re-audit now ]`를 클릭하면 `noCache: true`로 `/api/audit/run`에 POST합니다 — 재감사는 트랜스크립트별 캐시를 우회하고 캐시된 결과를 자동으로 반환하는 대신 처음부터 모든 트랜스크립트를 다시 스캔합니다 — 대시보드는 실행이 완료될 때까지 1Hz로 `/api/audit/status`를 폴링합니다. 실행 중에는 경과 타이머가 포함된 분홍색 진행 표시줄이 뷰포트 상단에 고정되며, 성공 시 새 결과가 제자리에 교체됩니다(전체 페이지 재로드 없음; 재감사 실패 시 이전 보고서가 유지됨). 실패 시 표시줄이 빨간색으로 변하며 `RerunError.kind`(`timeout` / `network` / `post_failed`)에 따른 복사 메시지가 표시됩니다. 빈 상태(캐시 없음 또는 만료됨)와 세션 없음 상태(캐시는 있지만 스캔에서 트랜스크립트를 찾지 못함)는 별도로 표시됩니다.
 
 ### 정책
 
@@ -75,16 +75,16 @@ failproofai
 
 <Tabs>
   <Tab title="정책 탭">
-  - 단일 패널에서 failproofai가 보호할 에이전트 CLI를 다중 선택 — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Hermes 각각에 설치 상태(`Active` / `Detected` / `Inactive`), 사용자 범위 설정 경로, 브랜드 색상 강조가 있는 행이 있습니다. 원하는 CLI를 체크 또는 체크 해제하고 `Apply changes`를 클릭하면 한 번에 차이를 설치/제거합니다. PATH에서 바이너리가 감지된 CLI는 미리 체크됩니다.
-  - 단일 클릭으로 개별 정책을 켜거나 끕니다(`~/.failproofai/policies-config.json`에 기록 — 모든 설치된 CLI에서 공유됨)
-  - 정책을 펼쳐 매개변수를 구성합니다(`policyParams`를 지원하는 정책의 경우)
-  - 사용자 지정 정책 파일 경로 설정
+  - 단일 패널에서 failproofai가 보호할 에이전트 CLI를 다중 선택 — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, Hermes 각각에 설치 상태(`Active` / `Detected` / `Inactive`), 사용자 범위 설정 경로, 브랜드 색상 강조가 있는 행. 원하는 CLI를 체크 또는 체크 해제하고 `Apply changes`를 클릭하면 차이점만 한 번에 설치/제거됩니다. PATH에서 바이너리가 감지된 CLI는 미리 체크됩니다.
+  - 클릭 한 번으로 개별 정책 켜기/끄기 (`~/.failproofai/policies-config.json`에 기록됨 — 설치된 모든 CLI에서 공유됨)
+  - 정책을 펼쳐서 매개변수 구성 (`policyParams`를 지원하는 정책의 경우)
+  - 사용자 정의 정책 파일 경로 설정
   </Tab>
   <Tab title="활동 탭">
-  - 모든 세션에서 실행된 모든 훅 이벤트의 전체 페이지네이션 기록
-  - 결정, 이벤트 유형, CLI(Claude Code / OpenAI Codex / GitHub Copilot _(베타)_ / Cursor Agent _(베타)_ / OpenCode _(베타)_ / Pi _(베타)_ / Hermes), 정책 이름 또는 세션 ID로 필터링
-  - 각 행에는 타임스탬프, 정책 이름, 결정, CLI 배지(주황색 = Claude Code, 보라색 = OpenAI Codex, 파란색 = GitHub Copilot, 에메랄드 = Cursor Agent, 호박색 = OpenCode, 분홍색 = Pi, 남색 = Hermes), 툴 이름, 세션 ID, deny/instruct 결정 이유가 표시됩니다
-  - 세션 ID를 클릭하면 트랜스크립트가 열립니다 — 뷰어는 어떤 CLI가 훅을 실행했는지(Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`)를 자동으로 감지하고 헤더에 일치하는 CLI 배지를 렌더링합니다
+  - 모든 세션에서 발생한 모든 훅 이벤트의 전체 페이지 히스토리
+  - 결정, 이벤트 유형, CLI(Claude Code / OpenAI Codex / GitHub Copilot _(베타)_ / Cursor Agent _(베타)_ / OpenCode _(베타)_ / Pi _(베타)_ / Hermes / OpenClaw / Factory Droid / Devin / Antigravity / Goose), 정책 이름 또는 세션 ID로 필터링
+  - 각 행에는 타임스탬프, 정책 이름, 결정, CLI 배지(주황 = Claude Code, 보라 = OpenAI Codex, 파랑 = GitHub Copilot, 에메랄드 = Cursor Agent, 호박색 = OpenCode, 분홍 = Pi, 인디고 = Hermes, 청록 = OpenClaw, 로즈 = Factory Droid, 바이올렛 = Devin, 시안 = Antigravity, 라임 = Goose), 도구 이름, 세션 ID, deny/instruct 결정의 이유가 표시됩니다
+  - 세션 ID를 클릭하면 해당 트랜스크립트가 열립니다 — 뷰어는 훅을 실행한 CLI를 자동으로 감지하고(Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`, OpenClaw `~/.openclaw/agents/<id>/sessions/*.jsonl`, Factory Droid `~/.factory/sessions/<encoded-cwd>/<id>.jsonl`, Devin `~/.local/share/devin/cli/sessions.db`, Antigravity `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`, Goose `~/.local/share/goose/sessions/sessions.db`) 헤더에 일치하는 CLI 배지를 렌더링합니다
   </Tab>
 </Tabs>
 
@@ -92,7 +92,7 @@ failproofai
 
 ## 자동 새로고침
 
-대시보드 상단 탐색에는 자동 새로고침 토글이 있습니다. 활성화하면 현재 페이지가 주기적으로 새로고침되어 새로운 세션과 정책 활동이 나타날 때 표시됩니다. 장시간 실행되는 자율 에이전트 세션을 모니터링하는 데 필수적입니다.
+대시보드 상단 내비게이션에는 자동 새로고침 토글이 있습니다. 활성화하면 현재 페이지가 주기적으로 새로고침되어 새 세션과 정책 활동이 나타나는 즉시 표시됩니다. 장시간 실행되는 자율 에이전트 세션을 모니터링할 때 필수적인 기능입니다.
 
 ---
 
@@ -110,7 +110,7 @@ FAILPROOFAI_DISABLE_PAGES=policies failproofai
 
 ## 프로젝트 경로 구성
 
-기본적으로 대시보드는 표준 Claude Code 프로젝트 디렉토리에서 읽습니다. 사용자 정의 설정의 경우 재정의하세요:
+기본적으로 대시보드는 표준 Claude Code 프로젝트 디렉토리에서 읽습니다. 사용자 정의 설정을 위해 재정의하세요:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -120,13 +120,13 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ## localhost가 아닌 호스트에서 접근하기
 
-**개발 모드**(`npm run dev`)에서 대시보드를 실행하고 localhost가 아닌 호스트 이름(예: 사용자 지정 도메인, 원격 IP, 터널링된 URL)에서 접근할 때 다음과 같은 경고가 표시될 수 있습니다:
+**개발 모드**(`npm run dev`)로 대시보드를 실행하고 `localhost` 이외의 호스트명(예: 사용자 정의 도메인, 원격 IP, 터널 URL)에서 접근하는 경우 다음과 같은 경고가 표시될 수 있습니다:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-이는 Next.js가 개발 전용 기능인 HMR(핫 모듈 리로드) 웹소켓에 대한 크로스 오리진 접근을 차단하는 것입니다. 호스트를 허용하려면 `--allowed-origins` 플래그를 사용하세요:
+이는 Next.js가 개발 전용 기능인 HMR(핫 모듈 리로드) 웹소켓에 대한 교차 출처 접근을 차단하는 것입니다. 호스트를 허용하려면 `--allowed-origins` 플래그를 사용하세요:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
@@ -145,5 +145,5 @@ FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-이는 개발 모드에만 적용됩니다. `failproofai`(프로덕션 모드)를 실행할 때는 HMR 웹소켓과 크로스 오리진 개발 리소스 문제가 없습니다.
+이 설정은 개발 모드에만 적용됩니다. `failproofai`(프로덕션 모드)를 실행할 때는 HMR 웹소켓이 없고 교차 출처 개발 리소스 문제도 발생하지 않습니다.
 </Note>

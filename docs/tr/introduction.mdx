@@ -1,36 +1,36 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI, AI ajanlarına döngüleri, gizli dizi sızıntılarını, yıkıcı araç çağrılarını ve daha fazlasını tek bir kurulumda yakalaması için 39 yerleşik başarısızlık politikası sağlar."
+description: "FailproofAI, AI aracılarına 39 yerleşik başarısızlık politikası sağlayarak döngüler, gizli sızıntıları, yıkıcı araç çağrılarını ve daha fazlasını tek bir kurulumda yakalar."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-**AI başarısızlık işleme**, **hata kurtarma** ve **LLM güvenilirliği** için hook'lar ve politikalar. AI ajanlarınızı **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes** ve **Agents SDK** arasında güvenilir ve otonom halde tutun.
+**AI başarısızlık yönetimi**, **hata kurtarması** ve **LLM güvenilirliği** için hook'lar ve politikalar. AI aracılarınızı güvenilir tutun ve **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** ve **Agents SDK** arasında otonom olarak çalışır durumda tutun.
 
-AI ajanları tahmin edilebilir şekillerde başarısız olur. Yıkıcı komutlar çalıştırırlar, sırları sızıntıya uğratırlar, görevlerinden saparlar, döngülere takılırlar ya da doğrudan ana dala push yaparlar. Gözetimsiz bırakıldığında, küçük başarısızlıklar kesintilere, sızıntıya uğramış kimlik bilgilerine ve kayıp işlere dönüşür.
+AI aracıları öngörülebilir şekillerde başarısız olur. Yıkıcı komutlar çalıştırırlar, gizli bilgileri sızıtırlar, görevlerinden sapıp kalırlar, döngüde takılırlar veya doğrudan ana branch'e push yaparlar. Denetimsiz bırakıldığında, küçük başarısızlıklar kesintilere, sızan kimlik bilgilerine ve kayıp çalışmaya dönüşebilir.
 
-FailproofAI bunu **politikalar** ile çözer. Bu kurallar, her ajan araç çağrısına hook olarak **başarısızlıkları algılamak**, **onları hafifletmek** (engelle, talimat ver, temizle) ve **dikkat gereken bir şey olduğunda sizi uyarmak** için bağlanır. Yerel bir pano, daha sonra her araç çağrısını, ajan başarısızlığını ve kurtarma eylemini incelemenizi sağlar.
+FailproofAI bunu **politikalarla** çözer. Bu kurallar her araç çağrısına hook olarak girerek **başarısızlıkları tespit eder**, **bunları azaltır** (engelle, yönlendir, sterilize et) ve **dikkat gerektiğinde sizi uyarır**. Yerel bir pano, sonrasında her araç çağrısını, araç başarısızlığını ve kurtarma işlemini gözden geçirmenize olanak tanır.
 
-Hiçbir veri makinenizi terk etmez.
+Transkriptler ve politika değerlendirmesi makinenizde kalır. Veri, yalnızca doğrulanan denetim hatırlatıcıları veya davetiyeler gibi çevrimiçi bir özelliği açıkça kullandığınızda gönderilir.
 
-## Başlayın
+## Başlarken
 
 <CardGroup cols={2}>
 
 <Card title="39 yerleşik politika" icon="shield" href="/tr/built-in-policies">
-  Yıkıcı komutları engelle, gizli dizi sızıntılarını önle, ajanları proje sınırları içinde tut ve daha fazlasını yap. Hepsi hazır olarak.
+  Yıkıcı komutları engelle, gizli sızıntılarını önle, aracıları proje sınırları içinde tut ve daha fazlasını yap. Hepsi hazır olarak.
 </Card>
 
 <Card title="Özel politikalar" icon="code" href="/tr/custom-policies">
   Basit allow / deny / instruct API'si ile JavaScript'te kendi kurallarını yaz.
 </Card>
 
-<Card title="Ajan monitörü" icon="chart-line" href="/tr/dashboard">
-  Ajanlarınız yokken neler yaptığını gör. Oturumları gözat, araç çağrılarını incele, politikaların nereden tetiklendiğini incele.
+<Card title="Araç izleyicisi" icon="chart-line" href="/tr/dashboard">
+  Aracılarınız yokken ne yaptığını gör. Oturumları gözden geçir, araç çağrılarını incele, politikaların nerede tetiklendiğini kontrol et.
 </Card>
 
 <Card title="Kolay yapılandırma" icon="gear" href="/tr/configuration">
-  Herhangi bir politikayı kod yazmadan ayarla. İzin listelerini, korunan dalları ya da eşikleri proje başına veya genel olarak ayarla.
+  Herhangi bir politikayı kod olmadan ayarla. İzin listeleri, korumalı branch'ler veya eşikleri proje başına veya global olarak belirle.
 </Card>
 
 </CardGroup>
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # politikaları etkinleştir (ya da atla — failproofai ilk çalıştırmada kurulumu teklif edecektir)
+failproofai policies --install   # politikaları etkinleştir (veya atla — `failproofai` ilk çalıştırmada kurulum yapmanı teklif edecektir)
 failproofai                      # panoyu başlat
 ```
 
-Tüm kılavuz için [Başlarken](/tr/getting-started) rehberine bakın.
+Tam anlatım için [Başlarken](/tr/getting-started) rehberine bakın.

@@ -1,36 +1,36 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI는 단 한 번의 설치로 루프, 시크릿 유출, 파괴적인 도구 호출 등을 감지하는 39가지 내장 실패 정책을 AI 에이전트에 제공합니다."
+description: "FailproofAI는 AI 에이전트에 39가지 내장 실패 정책을 제공하여 단일 설치만으로 루프, 비밀 유출, 파괴적인 도구 호출 등을 방지합니다."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-**AI 실패 처리**, **오류 복구**, **LLM 안정성**을 위한 훅과 정책 모음입니다. **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **Agents SDK** 전반에 걸쳐 AI 에이전트를 안정적으로 자율 실행할 수 있도록 지원합니다.
+**AI 장애 처리**, **오류 복구**, **LLM 안정성**을 위한 훅 및 정책 모음입니다. **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, 그리고 **Agents SDK** 전반에 걸쳐 AI 에이전트를 안정적으로 자율 운영하세요.
 
-AI 에이전트는 예측 가능한 방식으로 실패합니다. 파괴적인 명령을 실행하거나, 시크릿을 유출하거나, 작업 범위를 벗어나거나, 루프에 빠지거나, main 브랜치에 직접 푸시하기도 합니다. 방치하면 사소한 실패가 서비스 장애, 자격 증명 유출, 작업 손실로 이어질 수 있습니다.
+AI 에이전트는 예측 가능한 방식으로 실패합니다. 파괴적인 명령을 실행하거나, 비밀 정보를 유출하거나, 작업에서 벗어나거나, 루프에 빠지거나, main 브랜치에 직접 푸시하기도 합니다. 방치하면 사소한 실패가 서비스 장애, 자격 증명 유출, 작업 손실로 이어질 수 있습니다.
 
-FailproofAI는 **정책**으로 이 문제를 해결합니다. 정책은 모든 에이전트 도구 호출에 연결되어 **실패를 감지**하고, **완화 조치**(차단, 지시, 정제)를 취하며, 주의가 필요할 때 **알림을 보냅니다**. 로컬 대시보드에서는 이후에 모든 도구 호출, 에이전트 실패, 복구 조치를 확인할 수 있습니다.
+FailproofAI는 **정책**으로 이 문제를 해결합니다. 이 규칙들은 모든 에이전트 도구 호출에 연결되어 **장애를 감지**하고, **완화 조치**(차단, 지시, 정제)를 취하며, 주의가 필요한 상황이 발생하면 **알림을 보냅니다**. 로컬 대시보드를 통해 모든 도구 호출, 에이전트 장애, 복구 조치를 사후에 검토할 수 있습니다.
 
-데이터는 사용자의 머신 밖으로 나가지 않습니다.
+트랜스크립트와 정책 평가 결과는 사용자의 머신에만 저장됩니다. 인증된 감사 알림이나 초대와 같이 온라인 기능을 명시적으로 사용할 때만 데이터가 전송됩니다.
 
 ## 시작하기
 
 <CardGroup cols={2}>
 
 <Card title="39가지 내장 정책" icon="shield" href="/ko/built-in-policies">
-  파괴적인 명령 차단, 시크릿 유출 방지, 에이전트를 프로젝트 범위 내로 제한하는 기능 등을 기본 제공합니다.
+  파괴적인 명령 차단, 비밀 유출 방지, 에이전트의 프로젝트 경계 내 제한 등을 기본 제공합니다.
 </Card>
 
 <Card title="커스텀 정책" icon="code" href="/ko/custom-policies">
-  간단한 allow / deny / instruct API로 JavaScript 기반의 자체 규칙을 작성하세요.
+  간단한 allow / deny / instruct API로 JavaScript 기반의 맞춤 규칙을 직접 작성하세요.
 </Card>
 
 <Card title="에이전트 모니터" icon="chart-line" href="/ko/dashboard">
-  자리를 비운 동안 에이전트가 무엇을 했는지 확인하세요. 세션을 탐색하고, 도구 호출을 검사하며, 정책이 발동된 지점을 검토할 수 있습니다.
+  자리를 비운 사이 에이전트가 무엇을 했는지 확인하세요. 세션을 탐색하고, 도구 호출을 검사하며, 정책이 실행된 지점을 검토합니다.
 </Card>
 
 <Card title="간편한 설정" icon="gear" href="/ko/configuration">
-  코드 없이 모든 정책을 조정하세요. 프로젝트별 또는 전역으로 허용 목록, 보호 브랜치, 임계값을 설정할 수 있습니다.
+  코드 없이 모든 정책을 조정할 수 있습니다. 프로젝트별 또는 전역으로 허용 목록, 보호 브랜치, 임계값을 설정하세요.
 </Card>
 
 </CardGroup>

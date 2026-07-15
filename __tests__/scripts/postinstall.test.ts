@@ -118,10 +118,10 @@ describe("postinstall script", () => {
   });
 
   describe("brand-new user (no config, no settings)", () => {
-    it("prints the Next steps block", async () => {
+    it("prints the configure setup prompt", async () => {
       await runPostinstall({ hooksConfigExists: false });
-      expect(allLogs()).toContain("Next steps");
-      expect(allLogs()).toContain("failproofai policies --install");
+      expect(allLogs()).toContain("Installed");
+      expect(allLogs()).toContain("failproofai config");
       expect(allLogs()).toContain("FAILPROOFAI_NO_FIRST_RUN=1");
     });
 

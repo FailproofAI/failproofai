@@ -86,6 +86,14 @@ export function hooksInstalledInSettings(scope: HookScope, cwd?: string): boolea
   return claudeCode.hooksInstalledInSettings(scope, cwd);
 }
 
+export interface InstallHooksOptions {
+  /** Replace the enabled set at this scope instead of unioning (default: additive). */
+  replace?: boolean;
+  /** Suppress this module's installation logging (for callers that render their
+   * own UI, like the configure wizard). Errors still surface via console.error. */
+  quiet?: boolean;
+}
+
 /**
  * Install hooks into Claude Code settings.
  *
@@ -104,6 +112,38 @@ export async function installHooks(
   customPoliciesPath?: string,
   removeCustomHooks = false,
   cli?: IntegrationType[],
+  options: InstallHooksOptions = {},
+): Promise<void> {
+  const { replace = false, quiet = false } = options;
+  if (!quiet) {
+    return installHooksImpl(
+      policyNames, scope, cwd, includeBeta, source, customPoliciesPath, removeCustomHooks, cli, replace,
+    );
+  }
+  // Quiet mode: this module logs exclusively via console.log, so muting it for
+  // the duration of the call silences installation output at its owner rather
+  // than at every call site. console.error (real failures) still flows.
+  const origLog = console.log;
+  console.log = () => {};
+  try {
+    return await installHooksImpl(
+      policyNames, scope, cwd, includeBeta, source, customPoliciesPath, removeCustomHooks, cli, replace,
+    );
+  } finally {
+    console.log = origLog;
+  }
+}
+
+async function installHooksImpl(
+  policyNames?: string[],
+  scope: HookScope = "user",
+  cwd?: string,
+  includeBeta = false,
+  source?: string,
+  customPoliciesPath?: string,
+  removeCustomHooks = false,
+  cli?: IntegrationType[],
+  replace = false,
 ): Promise<void> {
   // Validate user input first before any system checks
   if (policyNames !== undefined && policyNames.length > 0) {
@@ -159,8 +199,12 @@ export async function installHooks(
     } else {
       incoming = policyNames;
     }
-    // Additive: union with whatever was already enabled, deduplicated.
-    selectedPolicies = [...new Set([...previousConfig.enabledPolicies, ...incoming])];
+    // Default is additive (union with whatever was already enabled). The
+    // configure wizard passes replace=true so the chosen set becomes the full
+    // enabled set at this scope (unticking a policy actually removes it).
+    selectedPolicies = replace
+      ? [...new Set(incoming)]
+      : [...new Set([...previousConfig.enabledPolicies, ...incoming])];
   } else {
     // Interactive — pre-load current config if it exists
     const preSelected = previousConfig.enabledPolicies.length > 0 ? previousConfig.enabledPolicies : undefined;

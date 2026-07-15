@@ -243,7 +243,31 @@ input[type="date"] { color-scheme: dark; }
   text-transform: uppercase;
   color: var(--accent-green);
 }
-.h-actions { display: flex; align-items: center; gap: 8px; }
+.h-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* header meta cluster (version + section label) — never wrap mid-token */
+.h-meta { display: flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+.h-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* Header responsiveness: progressively shed informational chrome instead of
+   crushing it. The version/section cluster duplicates the active tab, so it
+   goes first; below that the actions row wraps under the nav cleanly. */
+@media (max-width: 900px) {
+  .app-header { padding: 12px 16px; gap: 12px; }
+  .h-meta { display: none; }
+  .app-header .tab { padding: 12px 10px; }
+}
+@media (max-width: 620px) {
+  .app-header { flex-wrap: wrap; row-gap: 8px; }
+  .h-actions { margin-left: auto; }
+}
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;

@@ -36,6 +36,9 @@ const args = process.argv.slice(2);
 
 // Normalize 'p' → 'policies' (shorthand alias)
 if (args[0] === "p") args[0] = "policies";
+// Normalize 'configure' / 'setup' → 'config' (aliases), so every later check
+// (SUBCOMMANDS, dispatch) mentions only the canonical name.
+if (args[0] === "configure" || args[0] === "setup") args[0] = "config";
 
 // Lightweight telemetry helper for CLI lifecycle events. Lazy-loads to avoid
 // pulling in the hook-telemetry / telemetry-id modules on the fast --hook path.
@@ -113,7 +116,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "auth", "audit"];
+  const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "config"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -127,6 +130,7 @@ USAGE
 
 COMMANDS
   (no args)                      Launch the policy dashboard
+  config                         Interactive setup — pick scope, agents & policies
 
   policy add <name>              Enable a single policy (see \`policy --help\`)
   policy remove <name>           Disable a single policy
@@ -657,6 +661,42 @@ EXAMPLES
     process.exit(0);
   }
 
+  // config — the interactive setup launcher (scope, agents, policies).
+  // `configure` and `setup` are canonicalized to "config" up top. Running it
+  // explicitly does NOT run the post-setup audit (that only fires on first-run
+  // onboarding via bare `failproofai`).
+  if (args[0] === "config") {
+    if (args.includes("--help") || args.includes("-h")) {
+      console.log(`
+failproofai config — interactive setup
+
+USAGE
+  failproofai config             Guided setup: choose scope, agents, and policies
+  failproofai configure          Alias for config
+  failproofai setup              Alias for config
+
+WHAT IT DOES
+  Walks you through 4 quick steps and writes everything for you:
+    1. Where      — global (all projects) or just this project
+    2. Assistants — which agent CLIs to protect (Claude, Codex, ...)
+    3. Policies   — presets (combine any), Everything, or a custom pick
+    4. Review     — confirms the exact files it will change, then applies
+
+  Prefer flags? See \`failproofai policies --help\`.
+`.trimStart());
+      process.exit(0);
+    }
+    lastSubcommand = "config";
+    const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
+    const result = await runConfigureWizard();
+    await track("cli_configure_invoked", {
+      applied: result.applied,
+      scope: result.scope ?? null,
+      cli_count: result.clis?.length ?? 0,
+    });
+    process.exit(0);
+  }
+
   // Unknown flag guard — must appear after all known-flag branches
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
@@ -698,18 +738,22 @@ EXAMPLES
     );
   }
 
-  // First-run nudge — only on truly bare `failproofai` invocations. Best-effort:
-  // any thrown error must not block the dashboard from launching.
+  // First-run onboarding — on the first bare `failproofai` invocation, run the
+  // configure wizard (which also fires the post-setup audit) BEFORE the
+  // dashboard. Unlike before, we then fall through to launch the dashboard, so a
+  // fresh user gets: setup → audit → dashboard, and every later `failproofai`
+  // goes straight to the dashboard. Best-effort: any error must not block launch.
   if (args.length === 0) {
     try {
-      const { maybeRunFirstRunNudge } = await import("../src/hooks/first-run-nudge");
-      await maybeRunFirstRunNudge();
+      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
+      await maybeFirstRunConfigure();
     } catch {
-      // Nudge is non-critical; fall through to dashboard.
+      // First-run onboarding is non-critical; fall through to the dashboard.
     }
   }
 
-  // Dashboard launch — always production mode
+  // Dashboard launch — always production mode. Runs on every bare `failproofai`
+  // (after first-run onboarding, if any).
   const { launch } = await import("../scripts/launch");
   launch("start");
 }

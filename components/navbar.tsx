@@ -109,19 +109,13 @@ export const Navbar: React.FC<{
       {/* Spacer pushes version/section + actions to the right */}
       <div style={{ flex: 1 }} />
 
-      {/* Version + section label — swapped to right of nav */}
+      {/* Version + section label — swapped to right of nav. `.h-meta` never
+          wraps mid-token and is hidden entirely on narrow viewports (it
+          duplicates the active tab highlight). */}
       {(process.env.NEXT_PUBLIC_APP_VERSION || sectionLabel) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div className="h-meta">
           {process.env.NEXT_PUBLIC_APP_VERSION && (
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "var(--dim)",
-              }}
-            >
+            <span className="h-version">
               v{process.env.NEXT_PUBLIC_APP_VERSION}
             </span>
           )}

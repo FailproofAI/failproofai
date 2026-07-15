@@ -9,19 +9,15 @@ import { createInterface } from "node:readline";
 import { parseScriptArgs } from "./parse-script-args";
 import { diagnoseShadow } from "./install-diagnosis.mjs";
 import { makeSkewLogFilter } from "./skew-log-filter";
+import { renderLaunchBanner } from "../src/hooks/tui";
 import { version } from "../package.json";
 
 export function launch(mode: "dev" | "start"): void {
   const { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
 
-  // Plain-text title + a labeled `Version` line that lines up with the
-  // `Star us` / `Docs` / `Discord` lines below (all four labels pad to the
-  // same column so the values form a clean right-hand column).
-  console.log(`\n  failproof ai\n`);
-  console.log(`  📦 Version:      ${version}`);
-  console.log(`  ⭐ Star us:      https://github.com/failproofai/failproofai`);
-  console.log(`  📖 Docs:         https://docs.befailproof.ai/introduction`);
-  console.log(`  💬 Discord:      https://discord.gg/2zjBZP7yQJ\n`);
+  // Branded splash — the same logomark + palette as the `configure` wizard, then
+  // a tidy version/links column. Falls back to plain text off a TTY.
+  for (const line of renderLaunchBanner(version)) console.log(line);
 
   let cmd: string;
   let cmdArgs: string[];

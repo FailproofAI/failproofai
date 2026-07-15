@@ -144,10 +144,9 @@ try {
 
 if (!hooksResult.configured && !hooksResult.registered) {
   console.log(
-    `\n[failproofai] Installed. Next steps:\n` +
-    `  1. Run \`failproofai policies --install\` to enable safety policies.\n` +
-    `  2. Run \`failproofai\` to open the dashboard (or just \`failproofai\` to start now — it'll offer to set up policies for you).\n` +
-    `  Disable first-run prompt: FAILPROOFAI_NO_FIRST_RUN=1\n`
+    `\n[failproofai] Installed ✓\n` +
+    `  👋 Hi! Run \`failproofai config\` to set it up.\n` +
+    `  (Disable this prompt: FAILPROOFAI_NO_FIRST_RUN=1)\n`
   );
 }
 

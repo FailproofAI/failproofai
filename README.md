@@ -25,80 +25,99 @@ before they become incidents. Zero latency. Runs locally.
 
 ## Supported agent CLIs
 
-<p align="center">
-  <a href="https://claude.com/claude-code" title="Claude Code">
-    <img src="assets/logos/claude.svg" alt="Claude Code" width="64" height="64" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://learn.chatgpt.com" title="OpenAI Codex">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
-      <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
-      <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://cursor.com" title="Cursor Agent CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
-      <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://opencode.ai/" title="OpenCode">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
-      <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
-      <img src="assets/logos/pi-light.svg" alt="Pi" width="64" height="64" />
-    </picture>
-  </a>
-</p>
-<p align="center">
-  <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
-      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
-    <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://factory.ai/" title="Factory Droid (droid)">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
-      <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://devin.ai" title="Devin CLI (Cognition)">
-    <img src="assets/logos/devin.svg" alt="Devin CLI" width="64" height="64" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://antigravity.google" title="Antigravity CLI (agy)">
-    <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://goose-docs.ai/" title="Goose (codename goose)">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
-      <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />
-    </picture>
-  </a>
-</p>
+<!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
+     so the grid stays 2×6 at any window width (scrolling on very narrow screens
+     instead of collapsing into ragged orphan rows). -->
+<table align="center">
+  <tr>
+    <td align="center" width="96">
+      <a href="https://claude.com/claude-code" title="Claude Code">
+        <img src="assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://learn.chatgpt.com" title="OpenAI Codex">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
+          <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
+          <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://cursor.com" title="Cursor Agent CLI">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
+          <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://opencode.ai/" title="OpenCode">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
+          <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
+          <img src="assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="96">
+      <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+          <img src="assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
+        <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://factory.ai/" title="Factory Droid (droid)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+          <img src="assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://devin.ai" title="Devin CLI (Cognition)">
+        <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://antigravity.google" title="Antigravity CLI (agy)">
+        <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://goose-docs.ai/" title="Goose (codename goose)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+          <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+  </tr>
+</table>
 
 > Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Omit `--cli` to auto-detect installed CLIs and prompt.
 >

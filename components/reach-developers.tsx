@@ -66,7 +66,7 @@ export const ReachDevelopers: React.FC = () => {
         className="relative z-50 flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
       >
         <GitBranch className="h-4 w-4" />
-        <span className="hidden sm:inline text-xs">Reach Us</span>
+        <span className="hidden sm:inline text-xs whitespace-nowrap">Reach Us</span>
         <ChevronDown
           className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
         />

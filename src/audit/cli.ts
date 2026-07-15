@@ -236,6 +236,47 @@ function printSummary(result: AuditResult): void {
   for (const line of buildSummary(result)) process.stdout.write(`  ${line}\n`);
 }
 
+// ── Post-setup background audit ────────────────────────────────────────────────
+
+/**
+ * Run the audit *pipeline* (scan + cache write + summary) once the setup flow
+ * completes, right before the dashboard boots. Pre-warms
+ * `~/.failproofai/audit-dashboard.json` so the dashboard renders instantly, and
+ * immediately shows the user what's slipping through.
+ *
+ * Shows the same animated stages as `failproofai audit`. The scan runs to
+ * completion; Ctrl+C interrupts it the usual way (default SIGINT). Best-effort:
+ * never throws, never exits the process; the caller boots the dashboard
+ * afterward. Opt out with `FAILPROOFAI_NO_AUTO_AUDIT=1`.
+ */
+export async function runPostSetupAudit(): Promise<void> {
+  if (process.env.FAILPROOFAI_NO_AUTO_AUDIT === "1") return;
+  
+  process.stdout.write(
+    `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
+  );
+
+  let result: AuditResult;
+  try {
+    result = await runWithProgress({});
+  } catch {
+    process.stdout.write(
+      `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
+    );
+    return;
+  }
+
+  if (result.eventsScanned === 0) {
+    process.stdout.write(
+      `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
+    );
+    return;
+  }
+  writeDashboardCache({}, result);
+  printSummary(result);
+  process.stdout.write("\n");
+}
+
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export async function runAuditCli(args: string[]): Promise<void> {

@@ -4,19 +4,19 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/*.mdx'
-      - 'docs/**/*.mdx'
-      - 'README.md'
+      - "docs/*.mdx"
+      - "docs/**/*.mdx"
+      - "README.md"
   workflow_dispatch:
     inputs:
       force:
-        description: 'Ignore cache and re-translate everything'
+        description: "Ignore cache and re-translate everything"
         type: boolean
         default: false
       languages:
-        description: 'Comma-separated language codes (leave empty for all)'
+        description: "Comma-separated language codes (leave empty for all)"
         type: string
-        default: ''
+        default: ""
 
 concurrency:
   group: translate-docs
@@ -128,6 +128,20 @@ jobs:
         run: >-
           bun scripts/translate-docs/cli.ts --update-nav
           --languages zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install Mintlify CLI
+        run: npm install -g mintlify
+
+      - name: Validate generated docs config
+        working-directory: docs
+        run: mintlify validate
+
+      - name: Validate translated MDX pages
+        run: bun run validate:mdx
 
       - name: Download cache fragments
         continue-on-error: true

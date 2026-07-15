@@ -15,6 +15,12 @@ describe("LANGUAGES", () => {
     expect(LANGUAGES).toHaveLength(14);
   });
 
+  it("uses Mintlify's canonical locale without changing the folder code", () => {
+    const portuguese = LANGUAGES.find((language) => language.code === "pt-br");
+
+    expect(portuguese?.mintlifyCode).toBe("pt-BR");
+  });
+
   it("has unique codes", () => {
     const codes = LANGUAGES.map((l) => l.code);
     expect(new Set(codes).size).toBe(codes.length);

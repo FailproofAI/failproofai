@@ -1,5 +1,8 @@
 export interface LanguageConfig {
+  /** Internal code used for folders, cache keys, and translation routing. */
   code: string;
+  /** Mintlify locale when its canonical casing differs from `code`. */
+  mintlifyCode?: string;
   name: string;
   nativeName: string;
   tier: 1 | 2 | 3;

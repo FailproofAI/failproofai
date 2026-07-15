@@ -17,14 +17,14 @@
 
 **Переводы:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Разрешение ошибок во время выполнения для кодирующих агентов.**
-Подключается к Claude Code и Codex. Перехватывает циклы, опасные действия и утечки секретов
+**Разрешение ошибок времени выполнения для кодирующих агентов.**
+Интеграция с Claude Code и Codex. Перехватывает циклы, опасные действия и утечки секретов
 до того, как они станут инцидентами. Нулевая задержка. Работает локально.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="failproofai в действии" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
 </p>
 
 ---
@@ -35,61 +35,90 @@
   <a href="https://claude.com/claude-code" title="Claude Code">
     <img src="assets/logos/claude.svg" alt="Claude Code" width="64" height="64" />
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://developers.openai.com/codex" title="OpenAI Codex">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://learn.chatgpt.com" title="OpenAI Codex">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
       <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks" title="GitHub Copilot CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
       <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://cursor.com/docs/hooks" title="Cursor Agent CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://cursor.com" title="Cursor Agent CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
       <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="64" height="64" />
     </picture>
   </a>
-</p>
-<p align="center">
-  <a href="https://opencode.ai/docs/plugins/" title="OpenCode">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://opencode.ai/" title="OpenCode">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
       <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://pi.dev" title="Pi (pi-coding-agent)">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
       <img src="assets/logos/pi-light.svg" alt="Pi" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+</p>
+<p align="center">
+  <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
       <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
+    <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://factory.ai/" title="Factory Droid (droid)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+      <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://devin.ai" title="Devin CLI (Cognition)">
+    <img src="assets/logos/devin.svg" alt="Devin CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://antigravity.google" title="Antigravity CLI (agy)">
+    <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://goose-docs.ai/" title="Goose (codename goose)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+      <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Установите hooks для одного или любой комбинации: `failproofai policies --install --cli opencode pi gemini` (или `--cli claude codex copilot cursor opencode pi gemini hermes`). Опустите `--cli` для автоматического обнаружения установленных CLI и подсказок.
+> Установите хуки для одного или любой комбинации: `failproofai policies --install --cli opencode pi` (или `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Опустите `--cli` для автоматического обнаружения установленных CLI и подтверждения.
 >
-> **Hermes** (hermes-agent, шлюз Slack/Telegram) поддерживается как для **live-hook принудительного исполнения** (`--cli hermes` — одна установка перехватывает вызовы инструментов с каждой платформы и субагента), так и для автономного **аудита** воспроизведения сессий шлюза из отдельного `~/.hermes/state.db`.
+> **Hermes** (hermes-agent, шлюз Slack/Telegram) поддерживается как для **живого принудительного выполнения хуков** (`--cli hermes` — одна установка перехватывает вызовы инструментов со всех платформ и подагентов), так и для автономного **аудита** повторного воспроизведения его сеансов шлюза из одного `~/.hermes/state.db`.
+>
+> **OpenClaw** (шлюз openclaw, многоканальный помощник с самостоятельным размещением) поддерживается как для **живого принудительного выполнения хуков** (`--cli openclaw`, пользовательская область), так и для автономного **аудита** повторного воспроизведения его сеансов JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Принудительное выполнение использует **встроенные хуки плагинов** OpenClaw (поставляемый `openclaw-plugin/`, который асинхронно запускает failproofai — его встроенные хуки на основе файлов только для наблюдения и не могут блокировать): `before_tool_call` блокирует инструмент, а `before_agent_finalize` — это реальный вентиль конца хода, поэтому встроенные функции `require-*-before-stop` применяются.
+>
+> **Factory Droid** (`droid`) поддерживается как для **живого принудительного выполнения хуков** (`--cli factory`, область пользователя и проекта), так и для автономного **аудита** повторного воспроизведения его сеансов JSONL на диске. droid блокирует вызовы инструментов по коду выхода хука **2** (не решение JSON) и соблюдает `{decision:"block"}` только при событии конца хода `Stop` — failproofai автоматически выдает правильную форму по событиям.
+>
+> **Devin CLI** (`devin`, Cognition) поддерживается как для **живого принудительного выполнения хуков** (`--cli devin`, область пользователя и проекта), так и для автономного **аудита** повторного воспроизведения его сеансов SQLite (`~/.local/share/devin/cli/sessions.db`). Devin — это **чистый клон Claude** — те же имена событий, тот же snake_case полезной нагрузки, та же конфигурация оболочки `hooks` (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — блокировка через JSON `{decision:"block"}` при каждом событии.
+>
+> **Antigravity CLI** (`agy`) поддерживается как для **живого принудительного выполнения хуков** (`--cli antigravity`, область пользователя и проекта), так и для автономного **аудита** повторного воспроизведения его обычных сеансов JSONL (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity имеет **свой собственный** контракт (не клон Claude): схема **именованного хука** `hooks.json` (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), полезная нагрузка stdin в camelCase, которую failproofai нормализует, и его собственные формы ответов — `{decision:"deny"}` для блокировки инструмента, `{decision:"continue"}` для принудительного другого хода в `Stop`, `{injectSteps}` для внедрения напоминания перед запуском модели.
+>
+> **Goose** (кодовое имя goose, Block) поддерживается как для **живого принудительного выполнения хуков** (`--cli goose`, область пользователя и проекта), так и для автономного **аудита** повторного воспроизведения его сеансов SQLite (`~/.local/share/goose/sessions/sessions.db`). Принудительное выполнение использует систему **хуков** Goose (межагентная спецификация **Open Plugins**) — установщик просто выкладывает каталог плагинов в `~/.agents/plugins/failproofai/` и Goose автоматически его обнаруживает. Блокировка — это JSON `{"decision":"block"}` при событии `PreToolUse` (которое срабатывает для инструмента shell и внутри делегированных подагентов), проверено живо для goose v1.43.0; Goose не имеет события конца хода `Stop`, поэтому встроенные функции `require-*-before-stop` не применяются (как с Hermes).
 
 ---
 
@@ -97,23 +126,23 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто запустите `failproofai` и примите первую подсказку
+failproofai policies --install   # или просто запустите `failproofai` и примите первый запрос
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель управления на `localhost:8020`. Отключите первую подсказку с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 встроенных политик активируются немедленно. Панель управления на `localhost:8020`. Отключите первый запрос с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Что это блокирует
+## Что он блокирует
 
 | Политика | Что она блокирует |
 |---|---|
 | `block-push-master` | Прямые push в `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Коммиты, merges, rebases в `main` / `master` |
+| `block-work-on-main` | Коммиты, слияния, перебазирование на `main` / `master` |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки API ключей в контекст агента |
+| `sanitize-api-keys` | API ключи, попадающие в контекст агента |
 
 → [Все 30 встроенных политик](https://docs.befailproof.ai/built-in-policies)
 
@@ -121,7 +150,7 @@ failproofai
 
 ## Ваши собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически, флаги не требуются.
+Поместите файл в `.failproofai/policies/` — он загружается автоматически без флагов.
 Закоммитьте его, и вся команда получит его при следующем pull.
 
 ```js
@@ -132,7 +161,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Записи в production пути заблокированы.");
+      return deny("Writes to production paths are blocked.");
     return allow();
   },
 });
@@ -144,16 +173,16 @@ customPolicies.add({
 |---|---|
 | `allow()` | Разрешить операцию |
 | `deny(message)` | Заблокировать её — сообщение возвращается агенту |
-| `instruct(message)` | Пропустить её, но добавить контекст в следующую подсказку агента |
+| `instruct(message)` | Пропустить, но добавить контекст в следующий запрос агента |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Видимость сессии
+## Видимость сеанса
 
-Каждый вызов инструмента, который делает ваш агент, записывается локально. Панель управления показывает, что запустилось,
-что было заблокировано, и что политика сообщила агенту — поэтому вы не гадаете,
+Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что выполнялось,
+что было заблокировано и что политика сообщила агенту — так что вы не гадаете,
 когда что-то идёт не так. → [Руководство панели управления](https://docs.befailproof.ai/dashboard)
 
 ---
@@ -166,22 +195,23 @@ customPolicies.add({
 | [Встроенные политики](https://docs.befailproof.ai/built-in-policies) | Все 30 политик с параметрами |
 | [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои |
 | [Конфигурация](https://docs.befailproof.ai/configuration) | Области конфигурации и правила слияния |
-| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сессии и активность политик |
-| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система hooks |
+| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сеанса и активность политик |
+| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система хуков |
 
 ---
 
 ## Лицензия
 
-MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческая перепродажа самого failproofai требует отдельного соглашения. Полный текст см. в [LICENSE](./LICENSE).
+MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческое перепродажа самого failproofai требует отдельного соглашения. Полный текст см. в [LICENSE](./LICENSE).
 
 ---
 
-## Участие в разработке
+## Разработка
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Новые политики, граничные случаи и переводы всегда приветствуются.
+См. [CONTRIBUTING.md](./CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Соберите проект перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные hooks failproofai на себе, и они разрешают импорт `failproofai` относительно скомпилированного пакета `dist/` — без build вы получите ошибки hooks `Cannot find package 'failproofai'`. Пересоберите после изменения `src/`. See [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Соберите перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себе, и они разрешают импорт `failproofai` для скомпилированного пакета `dist/` — без сборки вы получите ошибки хуков `Cannot find package 'failproofai'`. Пересоберите после изменения `src/`. См.
+> [Соберите перед тем, как встроенные хуки dev будут работать](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

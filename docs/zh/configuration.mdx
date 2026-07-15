@@ -1,24 +1,24 @@
 ---
 title: 配置
-description: "配置文件格式、三级作用域系统与合并规则"
+description: "配置文件格式、三级作用域系统及合并规则"
 icon: gear
 ---
 
-failproofai 使用 JSON 配置文件来控制哪些策略处于启用状态、策略的行为方式，以及自定义策略的加载路径。配置设计上便于团队共享——将其提交到仓库，每位开发者都能获得相同的 AI 代理安全防护。
+failproofai 使用 JSON 配置文件来控制哪些策略处于激活状态、策略的行为方式以及自定义策略的加载路径。配置文件设计为易于与团队共享——提交到代码仓库后，所有开发者都能获得相同的 Agent 安全保障。
 
 ---
 
 ## 配置作用域
 
-共有三个配置作用域，按优先级顺序评估：
+共有三个配置作用域，按优先级顺序进行评估：
 
 | 作用域 | 文件路径 | 用途 |
 |-------|-----------|---------|
-| **project** | `.failproofai/policies-config.json` | 每个仓库的配置，提交到版本控制 |
-| **local** | `.failproofai/policies-config.local.json` | 个人的仓库级覆盖配置，已加入 gitignore |
+| **project** | `.failproofai/policies-config.json` | 按仓库配置，提交至版本控制 |
+| **local** | `.failproofai/policies-config.local.json` | 个人的按仓库覆盖配置，已加入 gitignore |
 | **global** | `~/.failproofai/policies-config.json` | 适用于所有项目的用户级默认配置 |
 
-当 failproofai 收到 hook 事件时，会加载并合并当前工作目录下所有已存在的三个文件。
+当 failproofai 接收到 hook 事件时，会加载并合并当前工作目录下所有已存在的三个文件。
 
 ### 合并规则
 
@@ -32,26 +32,26 @@ global:   ["block-sudo", "sanitize-api-keys"]
 resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← 去重后的并集
 ```
 
-**`policyParams`** — 对某个策略最先定义其参数的作用域完全胜出，不会对策略参数内的值进行深度合并。
+**`policyParams`** — 对于某个策略的参数，第一个定义该策略参数的作用域完全优先。策略参数内部不进行深度合并。
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project 胜出，global 被忽略
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← project 优先，global 被忽略
 ```
 
 ```text
-project:  （无 block-sudo 条目）
-local:    （无 block-sudo 条目）
+project:  (无 block-sudo 配置)
+local:    (无 block-sudo 配置)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退到 global
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← 向下穿透至 global
 ```
 
-**`customPoliciesPath`** — 最先定义该字段的作用域胜出。
+**`customPoliciesPath`** — 第一个定义该字段的作用域优先。
 
-**`llm`** — 最先定义该字段的作用域胜出。
+**`llm`** — 第一个定义该字段的作用域优先。
 
 ---
 
@@ -102,27 +102,27 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退到 global
 
 类型：`string[]`
 
-需要启用的策略名称列表。名称必须与 `failproofai policies` 显示的策略标识符完全匹配。完整列表请参见[内置策略](/zh/built-in-policies)。
+需要启用的策略名称列表。名称必须与 `failproofai policies` 命令所显示的策略标识符完全匹配。完整列表请参阅[内置策略](/zh/built-in-policies)。
 
-不在 `enabledPolicies` 中的策略将处于非活跃状态，即便在 `policyParams` 中为其配置了条目也不例外。
+不在 `enabledPolicies` 中的策略均为非激活状态，即使它们在 `policyParams` 中存在配置条目。
 
 ### `policyParams`
 
 类型：`Record<string, Record<string, unknown>>`
 
-各策略的参数覆盖配置。外层键为策略名称，内层键为各策略专属的配置项。每个策略的可用参数请参见[内置策略](/zh/built-in-policies)。
+按策略的参数覆盖配置。外层键为策略名称，内层键为各策略专属配置项。每个策略的可用参数详见[内置策略](/zh/built-in-policies)。
 
-如果策略有参数但未指定，则使用策略的内置默认值。未配置 `policyParams` 的用户其行为与之前版本完全一致。
+若策略有参数但未指定，则使用该策略的内置默认值。未配置 `policyParams` 的用户与之前版本行为完全一致。
 
-策略参数块中未知的键在 hook 触发时会被静默忽略，但在运行 `failproofai policies` 时会作为警告标记出来。
+策略参数块中未知的键在 hook 触发时会被静默忽略，但执行 `failproofai policies` 时会以警告形式提示。
 
-#### `hint`（通用配置项）
+#### `hint`（通用参数）
 
 类型：`string`（可选）
 
-当策略返回 `deny` 或 `instruct` 时，附加到原因后面的消息。可用于在不修改策略本身的情况下，向 Claude 提供可操作的指引。
+当策略返回 `deny` 或 `instruct` 时，追加到原因信息后面的提示文本。使用此字段可以在不修改策略本身的情况下，为 Claude 提供可操作的指导建议。
 
-适用于任何类型的策略——内置策略、自定义策略（`custom/`）、项目约定策略（`.failproofai-project/`）或用户约定策略（`.failproofai-user/`）。
+适用于所有策略类型——内置策略、自定义策略（`custom/`）、项目约定策略（`.failproofai-project/`）以及用户约定策略（`.failproofai-user/`）。
 
 ```json
 {
@@ -141,7 +141,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退到 global
 }
 ```
 
-当 block-force-push 拒绝操作时，Claude 会看到：*"Force-pushing is blocked. Try creating a fresh branch instead."*
+当 `block-force-push` 拒绝操作时，Claude 会看到：*"Force-pushing is blocked. Try creating a fresh branch instead."*
 
 非字符串值和空字符串会被静默忽略。若未设置 `hint`，行为保持不变（向后兼容）。
 
@@ -149,32 +149,32 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退到 global
 
 类型：`string`（绝对路径）
 
-包含自定义 hook 策略的 JavaScript 文件路径。该值由 `failproofai policies --install --custom <path>` 自动设置（路径在存储前会被解析为绝对路径）。
+包含自定义 hook 策略的 JavaScript 文件路径。此字段由 `failproofai policies --install --custom <path>` 自动设置（路径在存储前会被解析为绝对路径）。
 
-每次 hook 事件触发时都会重新加载该文件，不进行缓存。有关编写自定义策略的详情，请参见[自定义策略](/zh/custom-policies)。
+每次 hook 事件触发时都会重新加载该文件，不进行缓存。自定义策略的编写详情请参阅[自定义策略](/zh/custom-policies)。
 
 ### 基于约定的策略
 
-除了显式的 `customPoliciesPath` 外，failproofai 还会自动发现并加载 `.failproofai/policies/` 目录中的策略文件：
+除了显式的 `customPoliciesPath` 之外，failproofai 还会自动发现并加载 `.failproofai/policies/` 目录中的策略文件：
 
 | 级别 | 目录 | 作用域 |
 |-------|-----------|-------|
 | 项目级 | `.failproofai/policies/` | 通过版本控制与团队共享 |
-| 用户级 | `~/.failproofai/policies/` | 个人使用，适用于所有项目 |
+| 用户级 | `~/.failproofai/policies/` | 个人配置，适用于所有项目 |
 
-**文件匹配：** 仅加载匹配 `*policies.{js,mjs,ts}` 的文件（例如 `security-policies.mjs`、`workflow-policies.js`），目录中的其他文件会被忽略。
+**文件匹配规则：** 仅加载匹配 `*policies.{js,mjs,ts}` 的文件（例如 `security-policies.mjs`、`workflow-policies.js`），目录中的其他文件会被忽略。
 
-**无需配置：** 约定策略无需在 `policies-config.json` 中添加任何条目，只需将文件放入对应目录，下次 hook 事件触发时即可自动生效。
+**无需配置：** 约定策略无需在 `policies-config.json` 中添加任何条目。只需将文件放入对应目录，下次 hook 事件触发时即可自动识别。
 
-**联合加载：** 项目和用户约定目录都会被扫描，两个级别中所有匹配的文件都会被加载（与 `customPoliciesPath` 采用首个作用域胜出的方式不同）。
+**合并加载：** 项目级和用户级约定目录都会被扫描，两个级别中所有匹配的文件都会被加载（与使用首个作用域优先规则的 `customPoliciesPath` 不同）。
 
-更多详情和示例请参见[自定义策略](/zh/custom-policies)。
+更多详情和示例请参阅[自定义策略](/zh/custom-policies)。
 
 ### `llm`
 
 类型：`object`（可选）
 
-供策略进行 AI 调用的 LLM 客户端配置，大多数场景下无需配置。
+用于进行 AI 调用的策略所需的 LLM 客户端配置。大多数场景下无需配置。
 
 ```json
 {
@@ -189,20 +189,24 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退到 global
 
 ## 通过 CLI 管理配置
 
-`policies --install` 和 `policies --uninstall` 命令会写入代理 CLI 的 hook 设置文件（hook 入口点），而 `policies-config.json` 是由你直接管理的文件，两者相互独立：
+`policies --install` 和 `policies --uninstall` 命令负责写入 Agent CLI 的 hook 设置文件（hook 入口点），而 `policies-config.json` 则是由您直接管理的文件。两者相互独立：
 
-- **代理 CLI 设置** — 告知代理在每次工具调用时执行 `failproofai --hook <event>`：
+- **Agent CLI 设置** — 指示 Agent 在每次工具调用时执行 `failproofai --hook <event>`：
   - **Claude Code**：`~/.claude/settings.json`（用户级）、`<cwd>/.claude/settings.json`（项目级）、`<cwd>/.claude/settings.local.json`（本地级）
-  - **OpenAI Codex**：`~/.codex/hooks.json`（用户级）、`<cwd>/.codex/hooks.json`（项目级）——Codex 没有 `local` 作用域
-  - **GitHub Copilot CLI _(beta)_**：`~/.copilot/hooks/failproofai.json`（用户级）、`<cwd>/.github/hooks/failproofai.json`（项目级）——Copilot 没有 `local` 作用域。Hook 条目使用 Copilot 基于操作系统的 `bash`/`powershell` 命令字段，并带有 `timeoutSec`；文件顶层包含 `version: 1` 标记。Copilot CLI 支持目前为 **beta** 版本，我们正在针对更多实际会话验证 `events.jsonl` 记录模式（公开文档中未作说明）。
-  - **Cursor Agent _(beta)_**：`~/.cursor/hooks.json`（用户级）、`<cwd>/.cursor/hooks.json`（项目级）——Cursor 没有 `local` 作用域。Hook 条目使用 Claude 风格的 `{type, command, timeout}` 格式（无 `bash`/`powershell` 拆分），但按照 Cursor 的 [hooks schema](https://cursor.com/docs/hooks) 以驼峰式事件键（`preToolUse`、`beforeSubmitPrompt` 等）存储在扁平数组中；文件顶层包含 `version: 1` 标记。处理器通过 `CURSOR_EVENT_MAP` 将驼峰式键规范化为帕斯卡式，使现有内置策略能够正常触发。Cursor Agent 支持目前为 **beta** 版本，我们正在针对更多实际安装验证 Cursor 的磁盘上转录格式（公开文档未作说明）。
-  - **OpenCode _(beta)_**：`~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs`（用户级）、`<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs`（项目级）——OpenCode 没有 `local` 作用域。与其他六种 CLI 不同，OpenCode **没有外部命令 hook 系统**：它通过 `opencode.json` 的 `plugin: []` 数组显式注册来加载进程内 JS/TS 插件（自动发现 `.opencode/plugins/` 目录**不是** opencode v1.14.33 插件的加载方式）。安装时会生成一个小型插件 shim，以子进程方式调用 failproofai 二进制文件，并将二进制文件的 Claude 风格 JSON 响应转换回插件语义：工具事件拒绝时 `throw new Error()`（取消工具调用）；instruct 以及 `Stop` / `SubagentStop` 拒绝时调用 `client.session.prompt(...)`（将拒绝原因作为下一条用户消息提交——这是唯一的强制重试通道，因为 `session.idle` 仅用于通知，从中抛出异常无效）；allow 时不执行任何操作。该 shim 在转发给二进制文件前会规范化工具名称（小写 → 帕斯卡式，通过 `OPENCODE_TOOL_MAP`）和工具输入参数键（驼峰式 → 下划线式，通过 `OPENCODE_TOOL_INPUT_MAP` 适用于 `Read` / `Write` / `Edit`，例如 `filePath` → `file_path`、`oldString` → `old_string`），从而使 `block-read-outside-cwd`、`block-env-files` 和 `block-secrets-write` 等路径检查内置策略在 OpenCode 工具调用中正常触发。会话存储在 `~/.local/share/opencode/opencode.db` 的 SQLite 数据库中；仪表盘的会话查看器通过 `opencode db --format json` 和 `opencode export <id>` 读取它们。OpenCode 支持目前为 **beta** 版本，我们正在跨版本和更多实际会话中验证其行为。详见 [OpenCode plugins 文档](https://opencode.ai/docs/plugins/)。
-  - **Pi _(beta)_**：`~/.pi/agent/settings.json`（用户级）、`<cwd>/.pi/settings.json`（项目级）——Pi 没有 `local` 作用域。Pi 在启动时加载 TypeScript 扩展包；设置文件是一个扁平字符串数组 `{"packages": ["./relative/path", …]}`。failproofai 在 packages 数组中写入一个指向其捆绑的 `pi-extension/` 目录的条目。该扩展内部订阅 Pi 的 `tool_call` / `user_bash` / `input` / `session_start` 事件，并调用 `failproofai --hook <Event> --cli pi`；处理器通过 `PI_EVENT_MAP` 将下划线小写蛇形命名规范化为帕斯卡式，使现有内置策略正常触发。工具输入参数也通过 `PI_TOOL_INPUT_MAP` 规范化（Pi 的 Read / Write / Edit 使用 `path` 而非 `file_path`；映射顶层键后 `block-env-files` 和 `block-secrets-write` 可正常触发——`block-read-outside-cwd` 本身已有 `path` 的回退逻辑）。Pi 支持目前为 **beta** 版本，有待 Pi 的扩展 API 和会话日志格式稳定。
-  - **Gemini CLI _(beta)_**：`~/.gemini/settings.json`（用户级）、`<cwd>/.gemini/settings.json`（项目级）——Gemini 没有 `local` 作用域（其文档记录了 `/etc/gemini-cli/settings.json` 的 `system` 作用域，failproofai 未对外暴露该作用域）。Hook 条目使用 Claude 的 `{type, command, timeout}` 格式，包裹在 Gemini 的 `{matcher, hooks: [...]}` 匹配器模式中，默认 `matcher: "*"`。事件采用帕斯卡式（`SessionStart`、`BeforeAgent`、`AfterAgent`、`BeforeModel`、`AfterModel`、`BeforeToolSelection`、`BeforeTool`、`AfterTool`、`PreCompress`、`Notification`、`SessionEnd`）；处理器通过 `GEMINI_EVENT_MAP` 映射到 Claude 规范名称。工具名称采用蛇形命名（`run_shell_command`、`read_file`、`write_file`、`replace` 等）——处理器通过 `GEMINI_TOOL_MAP` 规范化，使现有内置策略正常触发。策略评估器输出 Gemini 的扁平 `{decision: "deny", reason}` 格式（符合 Gemini 的"黄金规则"exit-0 约定），在 BeforeAgent / AfterTool / SessionStart 时输出 `{hookSpecificOutput: {hookEventName, additionalContext}}` 进行上下文注入，在 AfterAgent 时输出 `{decision: "block", reason}` 实现强制重试语义。Gemini CLI 支持目前为 **beta** 版本，我们正在扩大实际场景覆盖范围。详见 [Gemini CLI hooks 文档](https://geminicli.com/docs/hooks/)。
-  - **Hermes (hermes-agent)**：`~/.hermes/config.yaml`（**仅用户作用域**——Hermes 没有项目/本地配置）。Hermes 是一个 Slack/Telegram **网关**，因此一次安装即可拦截来自所有平台（Slack/Telegram/cli/cron）**以及**内部子代理的工具调用。Hook 条目是 `hooks:` 映射下的 `{command, timeout}` 对（timeout 单位为**秒**），以 Hermes 的蛇形命名事件为键（`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`）；处理器通过 `HERMES_EVENT_MAP` 规范化事件，通过 `HERMES_TOOL_MAP` 规范化工具名称，使内置策略正常触发。配置通过保留注释的 YAML `Document` 往返编辑，以确保操作者的其他设置不受影响；安装时将 `hooks_auto_accept: true` 设置为 true，以便无头网关（无 TTY）在无需确认提示的情况下运行 hook。评估器输出 Hermes 的 `{"decision":"block","reason"}` stdout 约定（Hermes 忽略退出码）。**限制：** Hermes 没有会话结束 `Stop` 事件，因此 `require-*-before-stop` 内置策略永远不会为其触发（不适用，并非故障）；`instruct` 降级为允许并记录日志（无额外上下文通道）；输出密钥清理（`sanitize-*`）无法通过 shell hook 约定重写工具输出。Hermes **同时**也是一个离线**审计**数据源——仪表盘直接从 `~/.hermes/state.db` 读取其网关会话。
-- **`policies-config.json`** — 告知 failproofai 评估哪些策略及其参数（在所有代理 CLI 之间共享）
+  - **OpenAI Codex**：`~/.codex/hooks.json`（用户级）、`<cwd>/.codex/hooks.json`（项目级）—— Codex 没有 `local` 作用域
+  - **GitHub Copilot CLI _(beta)_**：`~/.copilot/hooks/failproofai.json`（用户级）、`<cwd>/.github/hooks/failproofai.json`（项目级）—— Copilot 没有 `local` 作用域。Hook 条目使用 Copilot 的操作系统键控 `bash`/`powershell` 命令字段（含 `timeoutSec`）；文件顶层携带 `version: 1` 标记。Copilot CLI 支持处于 **beta** 阶段，我们正在针对更多真实会话验证 `events.jsonl` 记录 schema（公开文档中未作说明）。**VS Code Copilot Chat Agent 模式（预览版）** 从 `.github/hooks/*.json`、`~/.copilot/hooks/*.json` 和 `~/.claude/settings.json`（受 `chat.hookFilesLocations` 设置管理）读取 hook 配置，使用与 Claude 相同的 `{hookSpecificOutput:{permissionDecision:"deny",…}}` 协议——这正是 `copilot` 集成和 `claude` 集成（`~/.claude/settings.json`）已写入的路径，因此 `failproofai policies --install --cli copilot`（或 `--cli claude`）**已在 VS Code Agent 模式下强制执行**，无需单独的 `vscode` 集成（已通过 VS Code 发现日志实时确认）。
+  - **Cursor Agent _(beta)_**：`~/.cursor/hooks.json`（用户级）、`<cwd>/.cursor/hooks.json`（项目级）—— Cursor 没有 `local` 作用域。Hook 条目使用 Claude 风格的 `{type, command, timeout}` 形式（无 `bash`/`powershell` 区分），但按照 Cursor 的 [hooks schema](https://cursor.com/docs/hooks) 以 camelCase 事件键（`preToolUse`、`beforeSubmitPrompt` 等）存储在平铺数组中；文件顶层携带 `version: 1` 标记。处理程序通过 `CURSOR_EVENT_MAP` 将 camelCase 规范化为 PascalCase，因此现有内置策略无需修改即可正常触发。Cursor Agent 支持处于 **beta** 阶段，我们正在针对更多真实安装验证 Cursor 的磁盘上 transcript 格式（公开文档中未作说明）。
+  - **OpenCode _(beta)_**：`~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs`（用户级）、`<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs`（项目级）—— OpenCode 没有 `local` 作用域。与其他五个 CLI 不同，OpenCode **没有外部命令 hook 系统**：它通过 `opencode.json` 中 `plugin: []` 数组显式注册的进程内 JS/TS 插件加载（从 `.opencode/plugins/` 自动发现**不是** opencode v1.14.33 上插件的加载方式）。安装时会生成一个轻量插件 shim，以子进程方式调用 failproofai 二进制文件，并将二进制的 Claude 风格 JSON 响应转换回插件语义：工具事件拒绝时 `throw new Error()`（取消工具调用），instruct 以及 `Stop`/`SubagentStop` 拒绝时调用 `client.session.prompt(...)`（将拒绝原因作为下一条用户消息提交——这是唯一的强制重试通道，因为 `session.idle` 仅用于通知，从中抛出异常无效），allow 时为空操作。Shim 在转发给二进制之前，会规范化工具名称（小写 → PascalCase，通过 `OPENCODE_TOOL_MAP`）和工具输入参数键（camelCase → snake_case，通过 `OPENCODE_TOOL_INPUT_MAP`，适用于 `Read`/`Write`/`Edit`，例如 `filePath` → `file_path`、`oldString` → `old_string`），因此 `block-read-outside-cwd`、`block-env-files`、`block-secrets-write` 等路径检查内置策略在 OpenCode 工具调用时可正常触发。会话存储在 OpenCode 的 SQLite 数据库 `~/.local/share/opencode/opencode.db` 中；控制台的会话查看器通过 `opencode db --format json` 和 `opencode export <id>` 读取。OpenCode 支持处于 **beta** 阶段，我们正在跨版本和更多真实会话中验证其行为。详见 [OpenCode 插件文档](https://opencode.ai/docs/plugins/)。
+  - **Pi _(beta)_**：`~/.pi/agent/settings.json`（用户级）、`<cwd>/.pi/settings.json`（项目级）—— Pi 没有 `local` 作用域。Pi 在启动时加载 TypeScript 扩展包；settings 文件是一个平铺的字符串数组 `{"packages": ["./relative/path", …]}`。failproofai 写入单条 packages 数组条目，指向其捆绑的 `pi-extension/` 目录。该扩展内部订阅 Pi 的 `tool_call`/`user_bash`/`input`/`session_start` 事件，并调用 `failproofai --hook <Event> --cli pi`；处理程序通过 `PI_EVENT_MAP` 将 underscore_lower_snake_case 规范化为 PascalCase，因此现有内置策略无需修改即可正常触发。工具输入参数也通过 `PI_TOOL_INPUT_MAP` 进行规范化（Pi 的 Read/Write/Edit 使用 `path` 而非 `file_path`；映射顶层键后 `block-env-files` 和 `block-secrets-write` 可正常触发——`block-read-outside-cwd` 已有 `path` 回退逻辑）。Pi 支持处于 **beta** 阶段，等待 Pi 的扩展 API 和会话日志格式稳定。
+  - **Hermes (hermes-agent)**：`~/.hermes/config.yaml`（**仅用户作用域** —— Hermes 没有项目/本地配置）。Hermes 是一个 Slack/Telegram **网关**，因此一次安装即可拦截来自所有平台（Slack/Telegram/cli/cron）**及**内部子 Agent 的工具调用。Hook 条目是 `{command, timeout}` 对（timeout 单位为**秒**），位于 `hooks:` 映射下，以 Hermes 的 snake_case 事件为键（`pre_tool_call`/`post_tool_call`/`on_session_start`/`on_session_end`/`subagent_stop`）；处理程序通过 `HERMES_EVENT_MAP` 规范化事件，通过 `HERMES_TOOL_MAP` 规范化工具名称，因此内置策略无需修改即可正常触发。配置通过保留注释的 YAML `Document` 往返方式编辑，确保操作员的其他设置得以保留；安装时设置 `hooks_auto_accept: true`，使无头网关（无 TTY）无需确认提示即可运行 hook。评估器输出 Hermes 的 `{"decision":"block","reason"}` stdout 协议（Hermes 忽略退出码）。**限制：** Hermes 没有轮次结束的 `Stop` 事件，因此 `require-*-before-stop` 内置策略永远不会为其触发（不适用，并非故障）；`instruct` 降级为允许并记录日志（无额外上下文通道）；输出密钥脱敏（`sanitize-*`）无法通过 shell-hook 协议重写工具输出。Hermes **同时也是**一个离线**审计**数据源——控制台直接从 `~/.hermes/state.db` 读取其网关会话。
+  - **OpenClaw (openclaw gateway)**：`~/.openclaw/openclaw.json`（**仅用户作用域** —— OpenClaw 没有项目/本地配置）。与 Hermes 类似，OpenClaw 是一个自托管的多通道**网关**，因此一次安装即可拦截所有通道及其内部子 Agent 的工具调用。强制执行通过 OpenClaw 的**进程内插件 hook**运行（其基于文件的内部 hook 仅供观察，无法阻止），因此——与 OpenCode/Pi 类似——failproofai 提供一个静态 `openclaw-plugin/` 包，以异步方式生成 failproofai 二进制文件并转换裁决结果。安装时在 `openclaw.json` 的 `plugins.load.paths[]` 中注册所提供的插件目录，并在 `plugins.entries.failproofai` 下启用（带有 `hooks.allowConversationAccess: true`，原始对话 hook 所必需）。评估器输出平铺的 `{permission, reason}` 裁决，shim 将其映射到每个 hook 的原生返回形式：`before_tool_call → {block:true, blockReason}`（**PreToolUse**）、`before_agent_run → {outcome:"block", reason}`（**UserPromptSubmit**）、`before_agent_finalize → {action:"revise", reason}`（**Stop** —— 这是真正的轮次结束关卡，因此 `require-*-before-stop` 内置策略**在 OpenClaw 上会强制执行**，与 Hermes 不同）。事件和工具名称在二进制侧通过 `OPENCLAW_EVENT_MAP`/`OPENCLAW_TOOL_MAP`（`exec→Bash`、`read→Read` 等）进行规范化，因此内置策略无需修改即可正常触发；shim 在任何生成/解析/超时错误时失败开放。OpenClaw **同时也是**一个离线**审计**数据源——控制台从 `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl` 读取其 JSONL 会话。
+  - **Factory Droid (`droid`)**：`~/.factory/hooks.json`（用户级）、`<cwd>/.factory/hooks.json`（项目级）—— Factory 没有 `local` 作用域。droid 提供类 Claude 风格的外部命令 hook 系统，但经 droid v0.171.0 实际验证存在两个特殊之处：(1) 事件名称位于 `hooks.json` 的**顶层**——**没有 `"hooks"` 包装层**（droid 会拒绝包装层）；工具事件（`PreToolUse`/`PostToolUse`）携带 `"matcher": "*"`，非工具事件则省略。(2) 拒绝由 hook **退出码 2 + stderr** 驱动，而非 JSON 决策——评估器的 `factory` 分支对工具/提示事件返回退出码 2，仅在轮次结束的 `Stop` 事件（droid 的唯一强制重试通道）上返回 `{decision:"block", reason}`。事件已为 PascalCase（无事件映射），载荷为 Claude snake_case；仅通过 `FACTORY_TOOL_MAP` 规范化工具名称（`Execute→Bash`、`Create→Write`、`FetchUrl→WebFetch` 等）。Factory **同时也是**一个离线**审计**数据源——控制台从 `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` 读取其磁盘 JSONL 会话。
+  - **Devin CLI (`devin`，Cognition)**：`~/.config/devin/config.json`（用户级）、`<cwd>/.devin/config.json`（项目级）—— Devin 没有 `local` 作用域。经 devin v3000.1.27 实际验证，Devin 是**纯 Claude 克隆**：使用标准 Claude `"hooks"` 包装 schema（写入采用合并保留方式，配置文件中的其他键——`org_id`、`theme_mode` 等——得以保留），已为 PascalCase 的事件名称（无事件映射，无处理程序分支），以及 Claude snake_case stdin 载荷（无需规范化）。评估器的 `devin` 分支对**所有**事件均以退出码 0 在 stdout 上输出 `{"decision":"block","reason"}` JSON 进行拒绝（已验证——该阻断覆盖了 `--permission-mode dangerous`）；在轮次结束的 `Stop` 事件上，原因携带 MANDATORY-ACTION 强制重试措辞，因此 `require-*-before-stop` 内置策略会强制执行。仅通过 `DEVIN_TOOL_MAP` 规范化工具名称（`exec→Bash`；`tool_input.command` 已为规范形式）。Devin **同时也是**一个离线**审计**数据源——控制台从 `~/.local/share/devin/cli/sessions.db` 读取其 SQLite 会话（每个 `sessions` 行携带真实的 `working_directory`，因此会话像 Claude 一样按项目 cwd 分组）。
+  - **Antigravity CLI (`agy`)**：`~/.gemini/config/hooks.json`（用户级）、`<cwd>/.agents/hooks.json`（项目级）—— Antigravity 没有 `local` 作用域。与 Factory/Devin 不同，Antigravity 有其**自有**协议（非 Claude 克隆），经 agy v1.1.2 实际验证。`hooks.json` 使用**命名 hook** schema：顶层键是 hook *名称*（`"failproofai"`），其值是事件→处理程序映射——工具事件（`PreToolUse`/`PostToolUse`）将处理程序包装在 `{matcher:"*", hooks:[…]}` 中，而 `PreInvocation`/`Stop` 是**平铺**的处理程序数组（其他命名 hook 得以保留）。stdin 载荷为 **camelCase protojson**（`toolCall:{name,args}`、`conversationId`、`workspacePaths`、`transcriptPath`）——failproofai 在策略运行前将其规范化为 snake_case，并通过 `ANTIGRAVITY_TOOL_INPUT_MAP` 映射 `run_command` 的 PascalCase 参数（`CommandLine`/`Cwd`）。评估器的 `antigravity` 分支使用 Antigravity **自有**的响应形式：`{decision:"deny", reason}` 阻断工具/提示（退出码 0），`{decision:"continue", reason}` 在轮次结束的 `Stop` 时重新进入循环（因此 `require-*-before-stop` 内置策略会强制执行），`{injectSteps:[{ephemeralMessage}]}` 在 `PreInvocation`（→ `UserPromptSubmit`）时注入指令。工具名称通过 `ANTIGRAVITY_TOOL_MAP` 规范化（`run_command→Bash`、`view_file→Read` 等）。Antigravity **同时也是**一个离线**审计**数据源——控制台从 `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` 读取其纯 JSONL transcript（对话索引位于 `conversation_summaries.db`）。
+  - **Goose (代号 goose，Block)**：`~/.agents/plugins/failproofai/hooks/hooks.json`（用户级）、`<cwd>/.agents/plugins/failproofai/hooks/hooks.json`（项目级）—— Goose 没有 `local` 作用域。强制执行使用 Goose 的 **hooks** 系统，即跨 Agent 的 **Open Plugins** 规范：安装程序只需放入 `failproofai` 插件目录，Goose 在启动时自动发现并将其自注册到 `~/.config/goose/config.yaml`。`hooks.json` 使用带有顶层 `"hooks"` 包装层的 Open Plugins schema，且每个事件均**省略** matcher——裸 `"*"` 是一个无效正则表达式，不匹配任何内容（经 goose v1.43.0 实际验证）。事件名称已为 PascalCase（无事件映射）；stdin 载荷使用 `event`/`working_dir`，处理程序将其规范化为 `hook_event_name`/`cwd`。评估器的 `goose` 分支以退出码 0 在 stdout 上输出 `{"decision":"block","reason"}` JSON 进行拒绝，仅在 **`PreToolUse`** 事件上生效（goose ≥ v1.37.0 中提供）——该事件对 shell 工具**以及委托的子 Agent 内部**均会触发，因此是唯一充分的拒绝点；任何其他 hook 错误均**失败开放**。Goose **没有 `Stop` 事件**，因此 `require-*-before-stop` 内置策略不适用（与 Hermes 相同）。工具名称通过 `GOOSE_TOOL_MAP` 规范化（`shell→Bash`、`write→Write`、`todo__todo_write→TodoWrite` 等），路径键通过 `GOOSE_TOOL_INPUT_MAP` 规范化（`path`/`source` → `file_path`）。Goose **同时也是**一个离线**审计**数据源——控制台从 `~/.local/share/goose/sessions/sessions.db` 读取其 SQLite 会话（每个 `sessions` 行携带真实的 `working_dir`，因此会话像 Devin 一样按项目 cwd 分组；`--no-session` 临时运行会被过滤）。
+- **`policies-config.json`** — 告知 failproofai 需要评估哪些策略及其参数配置（在所有 Agent CLI 之间共享）
 
-通过 `--cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes` 指定目标代理（可用空格分隔或重复指定多个）：
+通过 `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` 指定目标 Agent（多个值以空格分隔或重复传入）：
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -210,25 +214,29 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli cursor --scope project
 failproofai policies --install --cli opencode --scope project
 failproofai policies --install --cli pi --scope project
-failproofai policies --install --cli gemini --scope project
 failproofai policies --install --cli hermes --scope user
-failproofai policies --install --cli claude codex copilot cursor opencode pi gemini
+failproofai policies --install --cli openclaw --scope user
+failproofai policies --install --cli factory --scope project
+failproofai policies --install --cli devin --scope project
+failproofai policies --install --cli antigravity --scope project
+failproofai policies --install --cli goose --scope project
+failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-省略 `--cli` 时，`failproofai` 会自动检测已安装的代理 CLI（`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which gemini` / `which hermes`）：
+省略 `--cli` 时，`failproofai` 会自动检测已安装的 Agent CLI（`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`）：
 
 - **检测到一个 CLI** — 自动选择该 CLI，无需提示。
-- **在交互式终端中检测到多个 CLI** — 显示方向键单选菜单，分为 `Detected (N)` 区域（包含一个"为所有 N 个已检测到的 CLI 安装"的聚合行及各个已检测 CLI）和 `Not installed (M) · install hooks ahead of time` 区域（列出所有未检测到的受支持 CLI 作为提前安装选项）（↑↓ 移动，回车选择，^C 退出）。卸载流程仅显示 Detected 区域。
-- **在非交互式运行中检测到多个 CLI**（CI、无 TTY）— 无需提示，为所有检测到的 CLI 安装。
-- **未检测到任何 CLI** — 回退到 `claude`，并显示在 PATH 中未找到代理二进制文件的警告；hook 命令仍会被写入，一旦安装代理即可生效。
+- **检测到多个 CLI**，且在交互式终端中 — 显示方向键单选提示，分为 `Detected (N)` 分组（含 `Install for all N detected` 聚合行和每个已检测 CLI 的独立选项）以及 `Not installed (M) · install hooks ahead of time` 分组（列出所有未检测到的支持 CLI 作为预安装选项；↑↓ 移动，Enter 确认，^C 退出）。卸载流程仅显示 Detected 分组。
+- **检测到多个 CLI**，且在非交互式环境（CI、无 TTY）中 — 直接为所有已检测 CLI 安装，无需提示。
+- **未检测到任何 CLI** — 回退至 `claude`，并提示 PATH 中未找到 Agent 二进制文件；hook 命令仍会被写入，待安装 Agent 后即可生效。
 
-你可以随时直接编辑 `policies-config.json`，修改将在下一次 hook 事件触发时立即生效，无需重启。
+您可以随时直接编辑 `policies-config.json`，更改会在下次 hook 事件触发时立即生效，无需重启。
 
 ---
 
-## 示例：带团队默认配置的项目级配置
+## 示例：包含团队默认配置的项目级配置
 
-将 `.failproofai/policies-config.json` 提交到你的仓库：
+将 `.failproofai/policies-config.json` 提交到您的代码仓库：
 
 ```json
 {
@@ -247,4 +255,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi gem
 }
 ```
 
-每位开发者可以创建 `.failproofai/policies-config.local.json`（已加入 gitignore）进行个人覆盖配置，而不影响其他团队成员。
+每位开发者可以在此基础上创建 `.failproofai/policies-config.local.json`（已加入 gitignore）进行个人覆盖配置，而不会影响到其他团队成员。

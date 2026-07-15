@@ -19,12 +19,12 @@
 
 **Resolución de fallos en tiempo de ejecución para agentes de código.**
 Se integra con Claude Code y Codex. Detecta bucles, acciones peligrosas y filtraciones de secretos
-antes de que se conviertan en incidentes. Cero latencia. Se ejecuta localmente.
+antes de que se conviertan en incidentes. Latencia cero. Se ejecuta localmente.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI en acción" width="800" />
 </p>
 
 ---
@@ -35,61 +35,90 @@ antes de que se conviertan en incidentes. Cero latencia. Se ejecuta localmente.
   <a href="https://claude.com/claude-code" title="Claude Code">
     <img src="assets/logos/claude.svg" alt="Claude Code" width="64" height="64" />
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://developers.openai.com/codex" title="OpenAI Codex">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://learn.chatgpt.com" title="OpenAI Codex">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
       <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks" title="GitHub Copilot CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
       <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://cursor.com/docs/hooks" title="Cursor Agent CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://cursor.com" title="Cursor Agent CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
       <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="64" height="64" />
     </picture>
   </a>
-</p>
-<p align="center">
-  <a href="https://opencode.ai/docs/plugins/" title="OpenCode">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://opencode.ai/" title="OpenCode">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
       <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://pi.dev" title="Pi (pi-coding-agent)">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
       <img src="assets/logos/pi-light.svg" alt="Pi" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+</p>
+<p align="center">
+  <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
       <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
+    <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://factory.ai/" title="Factory Droid (droid)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+      <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://devin.ai" title="Devin CLI (Cognition)">
+    <img src="assets/logos/devin.svg" alt="Devin CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://antigravity.google" title="Antigravity CLI (agy)">
+    <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://goose-docs.ai/" title="Goose (codename goose)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+      <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Instala hooks para uno o cualquier combinación: `failproofai policies --install --cli opencode pi gemini` (o `--cli claude codex copilot cursor opencode pi gemini hermes`). Omite `--cli` para detectar automáticamente los CLIs instalados y recibir una solicitud de confirmación.
+> Instala hooks para uno o cualquier combinación: `failproofai policies --install --cli opencode pi` (o `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Omite `--cli` para detectar automáticamente los CLIs instalados y recibir un aviso.
 >
-> **Hermes** (hermes-agent, una pasarela de Slack/Telegram) es compatible tanto con la **aplicación de hooks en vivo** (`--cli hermes` — una sola instalación intercepta las llamadas a herramientas desde cada plataforma y subagente) como con la **auditoría** offline de sus sesiones de pasarela desde el único `~/.hermes/state.db`.
+> **Hermes** (hermes-agent, una pasarela de Slack/Telegram) es compatible tanto con la **aplicación de hooks en vivo** (`--cli hermes` — una sola instalación intercepta las llamadas de herramientas de cada plataforma y subagente) como con la **auditoría** offline mediante la reproducción de sus sesiones de pasarela desde el único `~/.hermes/state.db`.
+>
+> **OpenClaw** (openclaw gateway, un asistente multicanal autohospedado) es compatible tanto con la **aplicación de hooks en vivo** (`--cli openclaw`, ámbito de usuario) como con la **auditoría** offline mediante la reproducción de sus sesiones JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). La aplicación utiliza los **hooks de plugin en proceso** de OpenClaw (un `openclaw-plugin/` incluido que lanza failproofai de forma asíncrona — sus hooks internos basados en archivos son solo de observación y no pueden bloquear): `before_tool_call` bloquea una herramienta, y `before_agent_finalize` es una barrera real de fin de turno, por lo que los builtins `require-*-before-stop` se aplican.
+>
+> **Factory Droid** (`droid`) es compatible tanto con la **aplicación de hooks en vivo** (`--cli factory`, ámbito de usuario y proyecto) como con la **auditoría** offline mediante la reproducción de sus sesiones JSONL en disco. droid bloquea llamadas de herramientas a través del **código de salida 2** del hook (no mediante una decisión JSON) y solo respeta `{decision:"block"}` en el evento de fin de turno `Stop` — failproofai emite la forma correcta por evento de manera automática.
+>
+> **Devin CLI** (`devin`, Cognition) es compatible tanto con la **aplicación de hooks en vivo** (`--cli devin`, ámbito de usuario y proyecto) como con la **auditoría** offline mediante la reproducción de sus sesiones SQLite (`~/.local/share/devin/cli/sessions.db`). Devin es un **clon puro de Claude** — mismos nombres de eventos, mismo payload en snake_case, misma configuración con wrapper `"hooks"` (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — bloqueo mediante JSON `{decision:"block"}` en cada evento.
+>
+> **Antigravity CLI** (`agy`) es compatible tanto con la **aplicación de hooks en vivo** (`--cli antigravity`, ámbito de usuario y proyecto) como con la **auditoría** offline mediante la reproducción de sus sesiones JSONL simples (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity tiene su **propio** contrato (no es un clon de Claude): un esquema `hooks.json` con **hooks nombrados** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), un payload stdin en camelCase que failproofai normaliza, y sus propias formas de respuesta — `{decision:"deny"}` para bloquear una herramienta, `{decision:"continue"}` para forzar otro turno en `Stop`, `{injectSteps}` para inyectar un recordatorio antes de que el modelo se ejecute.
+>
+> **Goose** (nombre en clave goose, Block) es compatible tanto con la **aplicación de hooks en vivo** (`--cli goose`, ámbito de usuario y proyecto) como con la **auditoría** offline mediante la reproducción de sus sesiones SQLite (`~/.local/share/goose/sessions/sessions.db`). La aplicación utiliza el sistema de **hooks** de Goose (la especificación **Open Plugins** multi-agente) — el instalador simplemente coloca un directorio de plugin en `~/.agents/plugins/failproofai/` y Goose lo detecta automáticamente. El bloqueo se realiza con JSON `{"decision":"block"}` en el evento `PreToolUse` (que se activa para la herramienta shell y dentro de subagentes delegados), verificado en vivo contra goose v1.43.0; Goose no tiene un evento `Stop` de fin de turno, por lo que los builtins `require-*-before-stop` no se aplican (igual que con Hermes).
 
 ---
 
@@ -109,7 +138,7 @@ failproofai
 
 | Política | Qué bloquea |
 |---|---|
-| `block-push-master` | Pushes directos a `main` / `master` |
+| `block-push-master` | Envíos directos a `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commits, merges y rebases en `main` / `master` |
 | `block-rm-rf` | Eliminación recursiva de archivos |
@@ -121,8 +150,8 @@ failproofai
 
 ## Tus propias políticas
 
-Añade un archivo en `.failproofai/policies/` — se carga automáticamente, sin necesidad de flags.
-Haz commit y todo el equipo lo obtendrá en el próximo pull.
+Coloca un archivo en `.failproofai/policies/` — se carga automáticamente, sin necesidad de flags.
+Súbelo al repositorio y todo el equipo lo tendrá en el próximo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -143,18 +172,18 @@ Tres decisiones disponibles para cada política:
 | Decisión | Efecto |
 |---|---|
 | `allow()` | Permite la operación |
-| `deny(message)` | La bloquea — el mensaje se envía de vuelta al agente |
+| `deny(message)` | La bloquea — el mensaje se devuelve al agente |
 | `instruct(message)` | La deja pasar, pero añade contexto al siguiente prompt del agente |
 
 → [Guía de políticas personalizadas](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Visibilidad de la sesión
+## Visibilidad de sesiones
 
-Cada llamada a herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
-qué fue bloqueado y qué le indicó la política al agente — para que no tengas que adivinar
-cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.ai/dashboard)
+Cada llamada de herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
+qué fue bloqueado y qué le indicó la política al agente — así no tendrás que adivinar
+qué salió mal. → [Guía del panel de control](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -163,9 +192,9 @@ cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.
 | | |
 |---|---|
 | [Primeros pasos](https://docs.befailproof.ai/getting-started) | Instalación y primeros pasos |
-| [Políticas integradas](https://docs.befailproof.ai/built-in-policies) | Las 30 políticas con sus parámetros |
+| [Políticas integradas](https://docs.befailproof.ai/built-in-policies) | Las 30 políticas con parámetros |
 | [Políticas personalizadas](https://docs.befailproof.ai/custom-policies) | Escribe las tuyas propias |
-| [Configuración](https://docs.befailproof.ai/configuration) | Ámbitos de configuración y reglas de combinación |
+| [Configuración](https://docs.befailproof.ai/configuration) | Ámbitos de configuración y reglas de fusión |
 | [Panel de control](https://docs.befailproof.ai/dashboard) | Monitor de sesiones y actividad de políticas |
 | [Arquitectura](https://docs.befailproof.ai/architecture) | Cómo funciona el sistema de hooks |
 
@@ -173,19 +202,16 @@ cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.
 
 ## Licencia
 
-MIT con [Commons Clause](https://commonsclause.com/) — gratuito para uso interno y personal; la reventa comercial de failproofai en sí requiere un acuerdo separado. Consulta [LICENSE](./LICENSE) para el texto completo.
+MIT con [Commons Clause](https://commonsclause.com/) — de uso gratuito para uso interno y personal; la reventa comercial de failproofai en sí requiere un acuerdo aparte. Consulta [LICENSE](./LICENSE) para el texto completo.
 
 ---
 
-## Contribuciones
+## Contribuir
 
-Consulta [CONTRIBUTING.md](./CONTRIBUTING.md). Son bienvenidas nuevas políticas, casos límite y traducciones.
+Consulta [CONTRIBUTING.md](./CONTRIBUTING.md). Se aceptan nuevas políticas, casos límite y traducciones.
 
-> **Compila antes de empezar.** Ejecuta primero `bun install && bun run build`. Este repositorio ejecuta
-> sus propios hooks de failproofai sobre sí mismo, y resuelven la importación de `failproofai` contra el
-> bundle compilado en `dist/` — sin una compilación previa obtendrás errores de hook `Cannot find package 'failproofai'`.
-> Recompila después de modificar `src/`. Consulta
-> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Compila antes de empezar.** Ejecuta primero `bun install && bun run build`. Este repositorio ejecuta sus propios hooks de failproofai sobre sí mismo, y resuelven la importación de `failproofai` contra el bundle compilado en `dist/` — sin una compilación obtendrás errores de hook `Cannot find package 'failproofai'`. Vuelve a compilar después de modificar `src/`. Consulta
+> [Compila antes de que funcionen los hooks de desarrollo internos del repositorio](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

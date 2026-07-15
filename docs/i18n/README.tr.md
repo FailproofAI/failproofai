@@ -17,112 +17,141 @@
 
 **Çeviriler:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Kodlama ajanları için çalışma zamanı hatası çözümü.**
-Claude Code ve Codex'e bağlanır. Döngüleri, tehlikeli işlemleri ve gizli diliş sızıntılarını
-olaylar haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
+**Kodlama ajanları için çalışma zamanı hata çözümü.**
+Claude Code ve Codex'e bağlanır. Döngüleri, tehlikeli işlemleri ve gizli bilgi sızıntılarını
+sorun haline gelmeden önce yakalar. Sıfır gecikme. Yerel olarak çalışır.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI çalışmada" width="800" />
+  <img src="readme-arch-hq.gif" alt="Failproof AI aksiyonda" width="800" />
 </p>
 
 ---
 
-## Desteklenen ajan CLI'ları
+## Desteklenen ajan CLIsı
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
     <img src="assets/logos/claude.svg" alt="Claude Code" width="64" height="64" />
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://developers.openai.com/codex" title="OpenAI Codex">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://learn.chatgpt.com" title="OpenAI Codex">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
       <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks" title="GitHub Copilot CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
       <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://cursor.com/docs/hooks" title="Cursor Agent CLI">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://cursor.com" title="Cursor Agent CLI">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
       <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="64" height="64" />
     </picture>
   </a>
-</p>
-<p align="center">
-  <a href="https://opencode.ai/docs/plugins/" title="OpenCode">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://opencode.ai/" title="OpenCode">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
       <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://pi.dev" title="Pi (pi-coding-agent)">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
       <img src="assets/logos/pi-light.svg" alt="Pi" width="64" height="64" />
     </picture>
   </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://geminicli.com/" title="Gemini CLI">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/gemini-dark.svg" />
-      <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+</p>
+<p align="center">
+  <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
       <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
+    <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://factory.ai/" title="Factory Droid (droid)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+      <img src="assets/logos/factory-light.png" alt="Factory Droid" width="64" height="64" />
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://devin.ai" title="Devin CLI (Cognition)">
+    <img src="assets/logos/devin.svg" alt="Devin CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://antigravity.google" title="Antigravity CLI (agy)">
+    <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="64" height="64" />
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://goose-docs.ai/" title="Goose (codename goose)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+      <img src="assets/logos/goose-light.svg" alt="Goose" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Bir veya herhangi bir kombinasyon için kanca yükleyin: `failproofai policies --install --cli opencode pi gemini` (veya `--cli claude codex copilot cursor opencode pi gemini hermes`). Yüklü CLI'ları otomatik olarak algılamak ve istemek için `--cli` öğesini atlayın.
+> Bir veya daha fazla kombinasyon için hook yükleyin: `failproofai policies --install --cli opencode pi` (veya `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Kurulu CLIsları otomatik olarak algılamak ve sorulmak için `--cli` seçeneğini atla.
 >
-> **Hermes** (hermes-agent, bir Slack/Telegram ağ geçidi) hem **canlı kanca uygulaması** (`--cli hermes` — bir kurulum her platformdan ve alt ajantan araç çağrılarını keser) hem de çevrimdışı **denetim** için desteklenir. tek `~/.hermes/state.db` dosyasından ağ geçidi oturumlarının tekrar oynatılması.
+> **Hermes** (hermes-agent, bir Slack/Telegram ağ geçidi) hem **canlı-hook zorlama** (`--cli hermes` — tek bir yükleme her platform ve alt ajantan gelen araç çağrılarını engeller) hem de çevrimdışı **denetim** yürütmesi için desteklenir `~/.hermes/state.db` adresinden.
+>
+> **OpenClaw** (openclaw ağ geçidi, kendi kendine barındırılan çok kanallı asistan) hem **canlı-hook zorlama** (`--cli openclaw`, kullanıcı kapsamı) hem de çevrimdışı **denetim** yürütmesi için desteklenir `~/.openclaw/agents/<id>/sessions/*.jsonl` adresinden. Zorlama, OpenClaw'ın **süreç içi eklenti hook'larını** kullanır (failproofai'yi eşzamansız olarak oluşturan sevk edilmiş bir `openclaw-plugin/` — dosya tabanlı iç hook'ları yalnızca gözlem amaçlıdır ve engelle kabiliyetine sahip değildir): `before_tool_call` bir aracı engeller ve `before_agent_finalize` gerçek bir dönem sonu kapısıdır, bu nedenle `require-*-before-stop` yerleşik özellikleri uygular.
+>
+> **Factory Droid** (`droid`) hem **canlı-hook zorlama** (`--cli factory`, kullanıcı + proje kapsamı) hem de çevrimdışı **denetim** yürütmesi için desteklenir. droid araç çağrılarını hook çıkış kodu 2'de engeller (JSON kararı değil) ve `{decision:"block"}` yalnızca dönem sonu `Stop` olayında onurlandırır — failproofai olayın her biri için otomatik olarak doğru şekli yayar.
+>
+> **Devin CLI** (`devin`, Cognition) hem **canlı-hook zorlama** (`--cli devin`, kullanıcı + proje kapsamı) hem de çevrimdışı **denetim** yürütmesi için desteklenir `~/.local/share/devin/cli/sessions.db` adresinden. Devin bir **saf Claude klonu**dur — aynı olay adları, aynı snake_case yükü, aynı `"hooks"`-sarmalayıcı yapılandırması (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — her olay üzerinde `{decision:"block"}` JSON ile engelleme yapılır.
+>
+> **Antigravity CLI** (`agy`) hem **canlı-hook zorlama** (`--cli antigravity`, kullanıcı + proje kapsamı) hem de çevrimdışı **denetim** yürütmesi için desteklenir `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl` adresinden. Antigravity'nin **kendi** sözleşmesi vardır (Claude klonu değil): bir **adlandırılmış-hook** `hooks.json` şeması (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), failproofai'nin normalleştirdiği bir camelCase stdin yükü ve kendi yanıt şekilleri — bir aracı engelleme için `{decision:"deny"}`, `Stop` adresinde başka bir dönem zorlamak için `{decision:"continue"}`, model çalışmadan önce hatırlatıcı enjekte etmek için `{injectSteps}`.
+>
+> **Goose** (codename goose, Block) hem **canlı-hook zorlama** (`--cli goose`, kullanıcı + proje kapsamı) hem de çevrimdışı **denetim** yürütmesi için desteklenir `~/.local/share/goose/sessions/sessions.db` adresinden. Zorlama, Goose'un **hook'lar** sistemini kullanır (çok ajantan **Open Plugins** spesifikasyonu) — yükleyici sadece bir eklenti dizini `~/.agents/plugins/failproofai/` adresine düşürür ve Goose otomatik olarak keşfeder. Engelleme, `PreToolUse` olayında `{"decision":"block"}` JSON'dur (shell aracı ve temsilci edilen alt ajanlar için çalışır), goose v1.43.0'a karşı canlı olarak doğrulanır; Goose'un `Stop` olay adında bir dönem sonu yok, bu nedenle `require-*-before-stop` yerleşik özellikleri uygulanmaz (Hermes'te olduğu gibi).
 
 ---
 
-## Kurulum
+## Yükle
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalıştırma istemini kabul edin
+failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalıştırma isteğini kabul edin
 failproofai
 ```
 
-30 yerleşik ilke hemen etkinleşir. Pano `localhost:8020` adresinde. İlk çalıştırma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
+30 yerleşik politika hemen etkinleşir. Pano `localhost:8020` adresindedir. İlk çalıştırma isteğini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
 
 ---
 
-## Neleri durdurur
+## Neyi engeller?
 
-| İlke | Neyi engeller |
+| Politika | Engellediği şey |
 |---|---|
-| `block-push-master` | `main` / `master` öğesine doğrudan itme işlemleri |
+| `block-push-master` | `main` / `master` adresine doğrudan itme |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` üzerine işlemeler, birleştirmeler, yeniden temeller |
+| `block-work-on-main` | `main` / `master` adresinde değişiklikler, birleştirmeler, rebase işlemleri |
 | `block-rm-rf` | Özyinelemeli dosya silme |
 | `sanitize-api-keys` | API anahtarlarının ajan bağlamına sızması |
 
-→ [Tüm 30 yerleşik ilke](https://docs.befailproof.ai/built-in-policies)
+→ [Tüm 30 yerleşik politika](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## Kendi ilkeleriniz
+## Kendi politikalarınız
 
-`.failproofai/policies/` içine bir dosya bırakın — otomatik olarak yüklenir, bayrak gerekmez.
-Taahhüt edin ve tüm takım bir sonraki çekişte alacaktır.
+`.failproofai/policies/` adresine bir dosya bırakın — otomatik olarak yüklenir, bayrak gerekmez.
+Bunu işleyin ve tüm ekip bir sonraki çekişte bunu alacaktır.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -132,29 +161,29 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Üretim yollarına yazma işlemleri engellendi.");
+      return deny("Writes to production paths are blocked.");
     return allow();
   },
 });
 ```
 
-Her ilkeye sunulan üç karar:
+Her politika için üç karar seçeneği mevcuttur:
 
 | Karar | Etki |
 |---|---|
 | `allow()` | İşleme izin ver |
-| `deny(message)` | Engelle — ileti ajana geri gider |
-| `instruct(message)` | İzin ver, ama ajana sonraki tavsiyeye bağlam ekle |
+| `deny(message)` | Engelle — ileti ajanın yanında görünür |
+| `instruct(message)` | Geçmesine izin ver, ancak ajanın bir sonraki istemesine bağlam ekle |
 
-→ [Özel ilkeler rehberi](https://docs.befailproof.ai/custom-policies)
+→ [Özel politikalar rehberi](https://docs.befailproof.ai/custom-policies)
 
 ---
 
 ## Oturum görünürlüğü
 
-Ajanınızın yaptığı her araç çağrısı yerel olarak günlüğe kaydedilir. Pano neyin çalıştığını,
-neyin engellediğini ve ilkenin ajana ne söylediğini gösterir — böylece bir şey
-yanlış gittiğinde tahmin etmezsiniz. → [Pano rehberi](https://docs.befailproof.ai/dashboard)
+Ajanınız yaptığı her araç çağrısı yerel olarak kaydedilir. Pano, ne çalıştığını,
+ne engellediğini ve politikanın ajanına ne söylediğini gösterir — bu nedenle
+bir şey yanlış gittiğinde tahmin ediyorsunuz. → [Pano rehberi](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -162,26 +191,26 @@ yanlış gittiğinde tahmin etmezsiniz. → [Pano rehberi](https://docs.befailpr
 
 | | |
 |---|---|
-| [Başlangıç](https://docs.befailproof.ai/getting-started) | Kurulum ve ilk adımlar |
-| [Yerleşik İlkeler](https://docs.befailproof.ai/built-in-policies) | Tüm 30 ilke ve parametreleri |
-| [Özel İlkeler](https://docs.befailproof.ai/custom-policies) | Kendi ilkelerinizi yazın |
+| [Başlangıç](https://docs.befailproof.ai/getting-started) | Yükleme ve ilk adımlar |
+| [Yerleşik Politikalar](https://docs.befailproof.ai/built-in-policies) | Tüm 30 politika parametreleriyle |
+| [Özel Politikalar](https://docs.befailproof.ai/custom-policies) | Kendi politikanızı yazın |
 | [Yapılandırma](https://docs.befailproof.ai/configuration) | Yapılandırma kapsamları ve birleştirme kuralları |
-| [Pano](https://docs.befailproof.ai/dashboard) | Oturum monitörü ve ilke etkinliği |
-| [Mimari](https://docs.befailproof.ai/architecture) | Kanca sistemi nasıl çalışır |
+| [Pano](https://docs.befailproof.ai/dashboard) | Oturum monitörü ve politika etkinliği |
+| [Mimari](https://docs.befailproof.ai/architecture) | Hook sistemi nasıl çalışır |
 
 ---
 
 ## Lisans
 
-MIT ve [Commons Clause](https://commonsclause.com/) — dahili ve kişisel kullanım için ücretsiz; failproofai'nin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) bölümüne bakın.
+MIT ile [Commons Clause](https://commonsclause.com/) — dahili ve kişisel kullanım için ücretsiz; failproofai'nin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](./LICENSE) dosyasına bakın.
 
 ---
 
-## Katkıda bulunmak
+## Katkı
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) bölümüne bakın. Yeni ilkeler, sınır durumları ve çeviriler hepsi hoş geldiniz.
+[CONTRIBUTING.md](./CONTRIBUTING.md) dosyasına bakın. Yeni politikalar, uç durumlar ve çeviriler hoş geldiniz.
 
-> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi kancalarını kendisinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketi karşı çözer — bir derleme olmadan `Cannot find package 'failproofai'` kanca hatalarına çarparsınız. `src/` değişikliğinden sonra yeniden derleyin. [Depo içi geliştirme kanalarının çalışması için önce derleme](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) bölümüne bakın.
+> **Başlamadan önce derle.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo failproofai'nin kendi hook'larını kendisinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketi karşısında çözer — bir yapı olmadan `Cannot find package 'failproofai'` hook hataları oluşur. `src/` değiştirdikten sonra yeniden derleyin. [In-repo dev hook'ları çalışması için önce derle](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) bölümüne bakın.
 
 ---
 

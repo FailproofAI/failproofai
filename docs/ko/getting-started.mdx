@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="정책 활성화">
-    정책은 에이전트의 모든 도구 호출 전후에 실행되는 규칙입니다. 파괴적인 명령, 시크릿 유출, 그 외 여러 장애 상황을 피해가 발생하기 전에 차단합니다.
+    정책은 에이전트의 모든 도구 호출 전후에 실행되는 규칙입니다. 파괴적인 명령, 시크릿 유출, 그 밖의 장애 유형을 피해가 발생하기 전에 차단합니다.
 
     ```bash
     failproofai policies --install
     ```
 
-    이 명령은 설치된 에이전트 CLI에 훅 항목을 기록합니다 (Claude Code의 `~/.claude/settings.json`, OpenAI Codex의 `~/.codex/hooks.json`, GitHub Copilot CLI의 `~/.copilot/hooks/failproofai.json`, Cursor Agent의 `~/.cursor/hooks.json`, OpenCode의 `~/.config/opencode/plugins/failproofai.mjs` 생성 플러그인 심 및 `~/.config/opencode/opencode.json`의 `plugin` 배열 등록 항목, Pi의 `~/.pi/agent/settings.json`, Gemini CLI의 `~/.gemini/settings.json`, Hermes의 `~/.hermes/config.yaml`). 둘 이상의 CLI가 설치되어 있으면 선택 프롬프트가 표시됩니다. `--cli claude codex copilot cursor opencode pi gemini hermes` (원하는 조합)를 전달하면 프롬프트를 건너뜁니다.
+    이 명령은 설치된 에이전트 CLI의 훅 항목을 기록합니다 (Claude Code의 `~/.claude/settings.json`, OpenAI Codex의 `~/.codex/hooks.json`, GitHub Copilot CLI의 `~/.copilot/hooks/failproofai.json`, Cursor Agent의 `~/.cursor/hooks.json`, OpenCode의 `~/.config/opencode/plugins/failproofai.mjs` 생성 플러그인 심 및 `~/.config/opencode/opencode.json`의 `plugin` 배열 등록 항목, Pi의 `~/.pi/agent/settings.json`, Hermes의 `~/.hermes/config.yaml`, OpenClaw의 `~/.openclaw/openclaw.json`, Factory Droid의 `~/.factory/hooks.json`, Devin CLI의 `~/.config/devin/config.json`, Antigravity CLI의 `~/.gemini/config/hooks.json`, 또는 Goose의 `~/.agents/plugins/failproofai/hooks/hooks.json` 자동 검색 플러그인 디렉터리). 여러 CLI가 설치되어 있으면 선택 프롬프트가 표시됩니다. `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (원하는 조합)를 전달하면 프롬프트를 건너뛸 수 있습니다.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Gemini CLI 지원은 **베타** 단계입니다 — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi`, 또는 `--cli gemini`로 설치하세요. Hermes (hermes-agent, Slack/Telegram 게이트웨이)는 `--cli hermes`로 사용자 범위에 설치되며 오프라인 감사 소스이기도 합니다.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi 지원은 **베타** 상태입니다 — `--cli copilot`, `--cli cursor`, `--cli opencode`, 또는 `--cli pi`로 설치하세요. Hermes(hermes-agent, Slack/Telegram 게이트웨이)는 `--cli hermes`로 사용자 범위에 설치되며 **오프라인 감사 소스**이기도 합니다. OpenClaw(openclaw 게이트웨이, 자체 호스팅 멀티채널 어시스턴트)는 `--cli openclaw`로 사용자 범위에 설치되며 — 인프로세스 플러그인 훅(`before_agent_finalize`는 실제 턴 종료 게이트이므로 `require-*-before-stop` 내장 정책이 적용됨)을 통해 강제 실행됩니다 — **오프라인 감사 소스**이기도 합니다. Factory Droid(`droid`)는 `--cli factory`(사용자 + 프로젝트 범위)로 설치되며 **오프라인 감사 소스**이기도 합니다. Devin CLI(`devin`, Cognition)는 `--cli devin`(사용자 + 프로젝트 범위)으로 설치되며 **오프라인 감사 소스**이기도 합니다. Antigravity CLI(`agy`)는 `--cli antigravity`(사용자 + 프로젝트 범위)로 설치되며 **오프라인 감사 소스**이기도 합니다. Goose(코드명 goose, Block)는 `--cli goose`(사용자 + 프로젝트 범위)로 설치됩니다 — 인스톨러가 `~/.agents/plugins/failproofai/`에 플러그인 디렉터리를 생성하면 Goose가 자동으로 검색하며, **오프라인 감사 소스**이기도 합니다.
 
     ```bash
     failproofai policies --install --scope project
@@ -48,8 +48,12 @@ bun add -g failproofai
     failproofai policies --install --cli cursor --scope project
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
-    failproofai policies --install --cli gemini --scope project
     failproofai policies --install --cli hermes --scope user
+    failproofai policies --install --cli openclaw --scope user
+    failproofai policies --install --cli factory --scope project
+    failproofai policies --install --cli devin --scope project
+    failproofai policies --install --cli antigravity --scope project
+    failproofai policies --install --cli goose --scope project
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -58,17 +62,17 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    모든 정책과 활성화 여부, 설정된 파라미터를 표시합니다.
+    모든 정책, 활성화 여부, 설정된 파라미터를 표시합니다.
   </Step>
   <Step title="대시보드 실행">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020`에 로컬 대시보드를 열어 세션을 탐색하고, 도구 호출을 검사하며, 정책을 관리할 수 있습니다.
+    `http://localhost:8020`에서 로컬 대시보드를 열어 세션 탐색, 도구 호출 검사, 정책 관리를 할 수 있습니다.
   </Step>
   <Step title="에이전트 실행">
-    평소처럼 Claude Code를 시작하세요. 에이전트가 위험한 작업을 시도하면 failproofai가 자동으로 차단합니다. 에이전트를 무인으로 실행한 후 대시보드에서 결과를 확인하세요.
+    평소처럼 Claude Code를 시작하세요. 에이전트가 위험한 작업을 시도하면 failproofai가 자동으로 차단합니다. 무인 상태로 실행해 두고 대시보드에서 결과를 확인하세요.
   </Step>
 </Steps>
 
@@ -76,7 +80,7 @@ bun add -g failproofai
 
 ## 정책 작동 방식
 
-에이전트가 도구를 실행할 때마다 Claude Code는 failproofai를 서브프로세스로 호출합니다.
+에이전트가 도구를 실행할 때마다 Claude Code는 failproofai를 서브프로세스로 호출합니다:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -84,21 +88,21 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-각 정책은 다음 세 가지 결정 중 하나를 반환합니다.
+각 정책은 세 가지 결정 중 하나를 반환합니다:
 
-- **allow** - 에이전트가 정상적으로 진행됩니다
-- **deny** - 작업이 차단되고 에이전트에게 이유가 전달됩니다
-- **instruct** - 에이전트의 프롬프트에 추가 컨텍스트가 삽입됩니다
+- **allow** - 에이전트가 정상적으로 진행
+- **deny** - 작업이 차단되고 에이전트에게 이유가 전달됨
+- **instruct** - 에이전트의 프롬프트에 추가 컨텍스트가 삽입됨
 
 <Note>
-정책은 로컬 프로세스에서 실행됩니다. 원격 서비스로는 아무것도 전송되지 않습니다.
+정책은 로컬 프로세스에서 실행됩니다. 원격 서비스로 전송되는 데이터는 없습니다.
 </Note>
 
 ---
 
 ## 컨벤션 기반 정책으로 팀 정책 설정하기
 
-팀 전체에 품질 기준을 빠르게 적용하는 방법은 `.failproofai/policies/` 컨벤션을 활용하는 것입니다. 이 디렉터리에 정책 파일을 넣으면 자동으로 로드됩니다 — 별도의 플래그, 설정 변경, 설치 명령이 필요 없습니다.
+팀 전체에 품질 기준을 가장 빠르게 정립하는 방법은 `.failproofai/policies/` 컨벤션을 활용하는 것입니다. 이 디렉터리에 정책 파일을 넣으면 자동으로 로드됩니다 — 플래그, 설정 변경, 설치 명령이 전혀 필요 없습니다.
 
 <Steps>
   <Step title="정책 디렉터리 생성">
@@ -107,13 +111,13 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     ```
   </Step>
   <Step title="정책 파일 추가">
-    스타터 예제를 복사하거나 직접 작성하세요.
+    스타터 예제를 복사하거나 직접 작성하세요:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    또는 새로 작성하세요.
+    또는 새 파일을 만드세요:
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -138,19 +142,19 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     git commit -m "Add team quality policies"
     ```
 
-    failproofai를 설치한 모든 팀원이 이 정책을 자동으로 적용받습니다. 개발자별 별도 설정이 필요 없습니다.
+    failproofai가 설치된 모든 팀원이 이 정책을 자동으로 적용받습니다. 개발자별 별도 설정이 필요 없습니다.
   </Step>
 </Steps>
 
 <Tip>
-`.failproofai/policies/`를 저장소에 커밋하면 팀 전체가 동일한 기준을 공유할 수 있습니다. 팀이 새로운 장애 유형을 발견할 때마다 정책을 추가하고 푸시하세요 — 모든 팀원이 다음 `git pull` 시 업데이트를 받습니다. 시간이 지남에 따라 이 정책들은 지속적으로 발전하는 살아있는 품질 기준이 됩니다.
+`.failproofai/policies/`를 저장소에 커밋하면 팀 전체가 동일한 기준을 공유합니다. 새로운 장애 유형을 발견할 때마다 정책을 추가하고 푸시하면 모든 팀원이 다음 `git pull` 시 업데이트를 받습니다. 시간이 지날수록 이 정책들은 지속적으로 개선되는 살아있는 품질 기준이 됩니다.
 </Tip>
 
 ---
 
 ## 데이터 저장
 
-모든 설정과 로그는 로컬 머신에 저장됩니다.
+모든 설정과 로그는 로컬 머신에 저장됩니다:
 
 | 경로 | 저장 내용 |
 |------|----------------|
@@ -177,11 +181,11 @@ failproofai policies --uninstall
 <CardGroup cols={2}>
 
 <Card title="설정" icon="gear" href="/ko/configuration">
-  범위 및 설정 파일 형식
+  범위와 설정 파일 형식
 </Card>
 
-<Card title="기본 제공 정책" icon="shield" href="/ko/built-in-policies">
-  파라미터가 있는 26가지 정책 전체 목록
+<Card title="내장 정책" icon="shield" href="/ko/built-in-policies">
+  파라미터를 포함한 26개의 전체 정책
 </Card>
 
 <Card title="커스텀 정책" icon="code" href="/ko/custom-policies">

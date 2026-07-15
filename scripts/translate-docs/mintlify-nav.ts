@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV_TRANSLATIONS, LANGUAGES } from "./config";
+import { getLanguageByCode, NAV_TRANSLATIONS, LANGUAGES } from "./config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOCS_JSON_PATH = join(__dirname, "..", "..", "docs", "docs.json");
@@ -105,7 +105,10 @@ export function buildLanguageNav(
     })),
   }));
 
-  return { language: lang, tabs };
+  return {
+    language: getLanguageByCode(lang)?.mintlifyCode ?? lang,
+    tabs,
+  };
 }
 
 /**

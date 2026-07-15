@@ -212,4 +212,11 @@ describe("localizeProductsNavigation", () => {
       "es/agenteye/overview",
     ]);
   });
+
+  it("uses Mintlify's canonical Portuguese locale with existing paths", () => {
+    const portuguese = buildLanguageNav(sampleEnglishTabs, "pt-br");
+
+    expect(portuguese.language).toBe("pt-BR");
+    expect(portuguese.tabs[0].groups[0].pages[0]).toBe("pt-br/introduction");
+  });
 });

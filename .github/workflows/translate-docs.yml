@@ -67,7 +67,9 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        # Translation only runs TypeScript tooling. Avoid the package prepare
+        # hook, which builds the full Next.js application once per language.
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Restore translation cache
         uses: actions/cache/restore@v6
@@ -100,7 +102,9 @@ jobs:
 
   consolidate:
     needs: [prepare, translate]
-    if: always() && needs.translate.result != 'cancelled'
+    # Never publish a partial translation set. A failed language produces no
+    # artifact and would otherwise leave that locale silently stale.
+    if: needs.translate.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -114,10 +118,9 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Download all translations
-        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: translations-*
@@ -130,7 +133,6 @@ jobs:
           --languages zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he
 
       - name: Download cache fragments
-        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: cache-*

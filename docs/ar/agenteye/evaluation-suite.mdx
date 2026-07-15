@@ -1,0 +1,465 @@
+---
+---
+title: "مجموعة التقييم"
+description: "توثيق مجموعة التقييم في AgentEye."
+---
+
+
+تقيّم AgentEye جلسات الوكيل المكتملة بإرسال نسخ حدث المعاملة الكاملة عبر POST إلى
+**خدمة تقييم واحدة مملوكة للعميل**. تُرجع خدمة التقييم النتائج إما
+بصيغة مضمنة أو بإرجاع `job_id` لتستطلعها AgentEye. يتم تخزين النتائج
+وعرضها في لوحة التحكم.
+
+يغطي هذا الدليل:
+
+1. كيفية الكشف عن إكمال الجلسة.
+2. عقد HTTP الذي يجب أن تطبقه خدمة التقييم.
+3. تكوين خادم AgentEye.
+4. عرض النتائج.
+5. استكشاف الأخطاء.
+
+للحصول على مساعد Python الذي يطبق العقد لك، اطّلع على
+[حزمة `agenteye-evaluator` على PyPI](https://pypi.org/project/agenteye-evaluator/).
+
+---
+
+## كيفية العمل
+
+```text
+ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Evaluator service
+   (agent_end)        server   ◀──── done | pending ────
+                          │
+                          │     GET /evaluate/{job_id} ─────▶
+                          │     ◀──── done ──────────────
+                          ▼
+                     evaluations  (terminal results)
+```
+
+عند إصدار SDK في AgentEye لحدث `agent_end` الخاص بجلسة ما، يجدول الخادم تقييمًا.
+ثم يرسل نسخة حدث المعاملة الكاملة إلى خدمة التقييم الخاصة بك، والتي يمكنها:
+
+- **إرجاع النتيجة بصيغة مضمنة** مع `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. يتم إلحاق
+  النتيجة بخط زمني التقييم للجلسة. `reasoning` و
+  `summary` اختيارية.
+- **تأجيل** مع `{"status":"pending", "job_id":"abc-123"}`. ثم تستدعي AgentEye
+  `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` حتى تُرجع خدمة التقييم الخاصة بك
+  `{"status":"done", ...}` أو `{"status":"error", "error":"..."}`.
+
+  دورة الاستطلاع لكل وظيفة: قد تتضمن استجابة `pending` 
+  `next_poll_secs` لتجاوز ذلك؛ وإلا تستخدم AgentEye قيمة
+  `default_poll_interval_secs` من `GET /config`؛ وإلا يعود الخادم إلى
+  `EVALUATOR_POLLING_INTERVAL_SECS` (الافتراضي 10s). يتم تقييد جميع القيم
+  إلى [1s, 1h].
+
+الجلسات التي لا تصدر أبدًا `agent_end` (على سبيل المثال، عملية وكيل متعطلة)
+يمكن أيضًا التقاطها: قد يُرجع `GET /config` الخاص بخدمة التقييم
+`{"inactivity_timeout_secs": 1800}`، وستقيّم AgentEye أي جلسة
+ظلت خاملة لتلك المدة. اضبط الحقل على `null` أو احذفه لتعطيل
+هذا البديل.
+
+خط الأنابيب هو عدم تشغيل كامل عند عدم تعيين `EVALUATOR_ENDPOINT`.
+
+يمكن للجلسة أن تتراكم فيها **تقييمات نهائية متعددة بمرور الوقت**: كل
+حدث `agent_end` (وكل إعادة تقييم يدوية من لوحة التحكم) يُلحق صف تقييم
+جديد. هذه هي الطريقة المدعومة لتقييم محادثة استُؤنفت: ينهي المستخدم وكيلاً،
+يعود لاحقًا، يرسل المزيد من الأحداث،
+ينهي الوكيل مرة أخرى، وينفذ التقييم الثاني مقابل نسخة المعاملة المحدثة الكاملة.
+تُظهر لوحة التحكم أحدث تقييم كعنوان أساسي والتقييمات السابقة
+كخط زمني قابل للطي. أثناء تشغيل تقييم واحد لجلسة ما، يتم تجاهل
+أحداث `agent_end` الإضافية لتلك الجلسة؛ الحدث التالي بعد انتهاء
+التقييم قيد التشغيل سيضع تقييمًا جديدًا في قائمة الانتظار كالمعتاد.
+
+يعاود البديل الخامل الاشتباك على الجلسات المستأنفة أيضًا: إذا وصلت أحداث جديدة
+بعد تقييم نهائي سابق وظلت الجلسة خاملة بعد ذلك
+`inactivity_timeout_secs`، يتم وضع تقييم جديد في قائمة الانتظار.
+
+يتم إعادة محاولة الأخطاء العابرة (5xx, 429, timeouts, أخطاء الشبكة)
+مع تراجع أسي حتى `EVALUATOR_MAX_ATTEMPTS`؛ استجابات 4xx نهائية.
+من الآمن تشغيل AgentEye مع عدة نسخ خادم موزعة أفقيًا؛
+يتم تقسيم العمل بحيث لا يتم أبدًا إرسال نفس الجلسة مرتين في نفس الوقت.
+
+---
+
+## عقد HTTP
+
+كل مسار مصرح يستخدم **مصادقة رمز المتحمل**. يجب تكوين نفس القيمة على
+كلا الجانبين:
+
+- خادم AgentEye: متغير بيئي `EVALUATOR_TOKEN`
+- خدمة التقييم: مكونة بنفس الطريقة (يقرأ SDK `agenteye-evaluator`
+  `EVALUATOR_TOKEN` بموجب الاتفاقية)
+
+إذا لم يتم تعيين `EVALUATOR_TOKEN`، لا يرسل الخادم رأس `Authorization`؛ قد
+تقبل خدمة التقييم طلبات مجهولة الهوية بعد ذلك، وهذا حسن لشبكة
+داخلية فقط لكن غير موصى به على الإنترنت العام.
+
+### المسارات التي يجب أن تخدمها خدمة التقييم
+
+| المسار | الجسد / المعاملات | الاستجابة |
+|---|---|---|
+| `GET /health` | بدون | `{"status":"ok"}` (مفتوح، بدون مصادقة) |
+| `GET /config` | بدون | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` أو `{"status":"pending", "job_id":"..."}` |
+| `GET /evaluate/{id}` | بدون | نفس شكل الاستجابة مثل `/evaluate` |
+
+### جسم `EvalRequest` الذي يرسله الخادم
+
+```json
+{
+  "schema_version": "1",
+  "session_id":     "session-abc123",
+  "agent_id":       "planner",
+  "environment":    "production",
+  "started_at":     "2026-05-10T12:00:00Z",
+  "ended_at":       "2026-05-10T12:05:00Z",
+  "events": [
+    { "id": 1234, "ts": "...", "event_type": "agent_start", "payload": { ... } },
+    ...
+  ]
+}
+```
+
+### أشكال الاستجابة
+
+**متزامن (منتهي):**
+
+```json
+{
+  "status": "done",
+  "scores": { "helpfulness": 0.85, "tool_efficiency": 0.6 },
+  "reasoning": {
+    "helpfulness": "answered the question directly with citations",
+    "tool_efficiency": "called list_files three times when one would have done"
+  },
+  "summary": "strong answer quality, weak tool selection"
+}
+```
+
+`reasoning` (خريطة تبرير لكل نتيجة) و `summary` (سرد واحد شامل
+فقرة واحدة) كلاهما اختياري. يجب أن تعكس المفاتيح في `reasoning` المفاتيح في `scores`؛
+تُظهر لوحة التحكم كل مدخل مضمنًا تحت
+شريط النتيجة الخاص به. تابع خدمات التقييم الأقدم التي تُرجع فقط `scores` تعمل
+بدون تغيير؛ `reasoning` و `summary` ببساطة تُقرأ على أنها null و
+لا يتم حذف تسهيلات الواجهة المستخدمة المقابلة.
+
+**غير متزامن (مؤجل):**
+
+```json
+{ "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
+```
+
+`next_poll_secs` اختياري؛ إذا تم حذفه، يعود الخادم إلى
+`default_poll_interval_secs` لخدمة التقييم من `/config`، ثم إلى
+متغير البيئة الخاص به `EVALUATOR_POLLING_INTERVAL_SECS`.
+
+**خطأ نهائي من جانب خدمة التقييم:**
+
+```json
+{ "status": "error", "error": "model service unavailable" }
+```
+
+يعامل الخادم أي جسم 2xx آخر كخطأ بروتوكول وينسجل
+`error` نهائي للجلسة.
+
+---
+
+## كتابة خدمة تقييم مع SDK
+
+تمنحك حزمة Python `agenteye-evaluator` غلافًا FastAPI
+مكتوبًا بشكل ثابت يطبق عقد HTTP أعلاه. ثبتها من PyPI:
+
+```bash
+pip install agenteye-evaluator
+```
+
+خدمة تقييم بحد أدنى من القابلية:
+
+```python
+import os
+from agenteye_evaluator import Evaluator, EvalRequest, EvalResponse
+
+app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
+
+@app.evaluator
+def run(req: EvalRequest) -> EvalResponse:
+    # Inspect req.events (the full session transcript) and return scores.
+    tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
+    return EvalResponse(
+        scores={"tool_calls": float(tool_calls)},
+        reasoning={"tool_calls": f"{tool_calls} tool invocations in the transcript"},
+        summary="tight tool loop" if tool_calls < 5 else "agent looped on tools",
+    )
+```
+
+نسخة `app` قابلة للاستدعاء ASGI، لذا يقوم `uvicorn module:app` بتشغيلها.
+
+لخدمات التقييم التي تحتاج إلى تأجيل عمل مكلف، أرجع `JobPending`
+بدلاً من ذلك وسجل معالج `@app.job_lookup`؛ الخادم AgentEye
+يستطلع `GET /evaluate/{job_id}` حتى تُرجع حالة نهائية أو يمر
+حد `EVALUATOR_MAX_POLL_DURATION_SECS` (الافتراضي 1 ساعة).
+
+مرجع API الكامل، النمط غير المتزامن، ومخطط الحدث: ملف README الخاص بـ
+`agenteye-evaluator` يُشحن داخل كل نسخة من
+[صفحة إصدارات agenteye-enterprise](https://github.com/agenteye-enterprise/releases)،
+أو يمكنك قراءته على صفحة PyPI للحزمة.
+
+---
+
+## تشغيل خدمة تقييم على Kubernetes
+
+خدمة التقييم هي **خدمتك**: لا تشحن AgentEye خدمة تقييم افتراضية
+في حاوية. تتضمن النسخة مظاهر Kubernetes مرجعية تحت `deploy/examples/evaluator/`
+التي يمكنك تطبيقها كما هي بعد استبدال صورتك ورمز متحمل مشترك.
+
+### 1. تجميع خدمة التقييم الخاصة بك
+
+ملف Dockerfile الحد الأدنى لخدمة التقييم الخاصة بك:
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir agenteye-evaluator uvicorn
+COPY my_evaluator.py .
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
+    && chown -R evaluator:evaluator /app
+USER evaluator
+EXPOSE 9000
+CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
+```
+
+`runAsNonRoot` (UID 10001) يحافظ على توافق الحاوية مع ملفات تعريف
+أمان Pod المقيدة.
+
+### 2. إنشاء رمز المتحمل المشترك
+
+```bash
+kubectl -n agenteye create secret generic evaluator-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+استخدم نفس القيمة مثل `EVALUATOR_TOKEN` على خادم AgentEye. يرسل
+الخادم `Authorization: Bearer <token>` على كل طلب؛ يستخدم SDK
+`hmac.compare_digest` للفحص الثابت الوقت ويرفض عدم التطابق
+مع HTTP 401.
+
+### 3. تطبيق مظاهر الأمثلة
+
+```bash
+# Edit deploy/examples/evaluator/deployment.yaml first to point
+# `image:` at your registry, then:
+kubectl apply -k deploy/examples/evaluator/
+```
+
+يتضمن المثال:
+
+- نشر بـ 2 نسخة مع `runAsNonRoot` ونظام ملفات الجذر للقراءة فقط،
+  جميع القدرات محذوفة، liveness + readiness على `/health`
+- خدمة ClusterIP على المنفذ 9000
+- نموذج `secret.example.yaml` (مستبعد بقصد من
+  Kustomization؛ أنشئ الرمز الحقيقي خارج النطاق حتى لا يوجد رمز
+  في git)
+
+### 4. ربط AgentEye به
+
+على خادم AgentEye، اضبط:
+
+```bash
+EVALUATOR_ENDPOINT=http://evaluator:9000
+EVALUATOR_TOKEN=<the value generated above>
+```
+
+يُوزع الخادم `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`
+طلبات متزامنة عبر جميع حبات خدمة التقييم (الافتراضيات: `2 × 4 = 8`).
+مقياس `replicas` وحدود الموارد لكل حبة بالتزامن مع هذه
+عناصر التحكم من جانب الخادم.
+
+### التحقق
+
+```bash
+kubectl -n agenteye port-forward svc/evaluator 9000:9000
+curl -s http://localhost:9000/health   # → {"status":"ok"}
+```
+
+بعد تشغيل وكيل من البداية إلى النهاية، يجب أن يُرجع `GET /evaluations`
+على خادم AgentEye صف بـ `status: "done"` والنتائج التي
+أنتجتها خدمة التقييم الخاصة بك.
+
+---
+
+## تكوين خادم AgentEye
+
+اضبط على عملية الخادم:
+
+| متغير البيئة | المعنى |
+|---|---|
+| `EVALUATOR_ENDPOINT` | عنوان URL الأساسي لخدمة التقييم الخاصة بك (`http://evaluator:9000`). لم يتم التعيين = خط الأنابيب معطل. |
+| `EVALUATOR_TOKEN` | رمز متحمل. يجب أن تساوي القيمة التي تم تكوين خدمة التقييم بها. |
+| `EVALUATOR_WORKERS` | مهام عامل لكل نسخة خادم (الافتراضي 2). |
+| `EVALUATOR_CLAIM_BATCH` | صفوف مطالب بة لكل دورة عاملة (الافتراضي 4). تتم معالجة الدفعات **بشكل متزامن**؛ التزامن الفعلي على نقطة نهاية خدمة التقييم الخاصة بك هو `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | المدة التي تنام بها العامل بين محاولات الإرسال عندما لا يكون التقييم مستحقًا (الافتراضي 2s). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | البديل النهائي لإيقاع `GET /evaluate/{id}` عندما لا يكون كل من `next_poll_secs` لكل استجابة ولا `default_poll_interval_secs` لخدمة التقييم مضبوطًا (الافتراضي 10s). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | مهلة زمنية لكل طلب (الافتراضي 30000). |
+| `EVALUATOR_MAX_ATTEMPTS` | بعد هذا العدد من الأخطاء العابرة يتم تسجيل النتيجة كـ `error` نهائي (الافتراضي 5). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | دورة `GET /config` (الافتراضي 300). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | أقصى وقت جدار زمني قد تبقى فيه جلسة في قائمة انتظار الاستطلاع قبل إنهاؤها كـ `timeout` (الافتراضي 3600s). يحمي من خدمة تقييم تستمر في إرجاع `pending` للأبد. |
+
+لتشغيل النقاط التلقائية عبر النسخة الكاملة، جهز سر `agenteye-evaluator` مع كلا المفاتيح المضبوطة.
+على مظاهر Kubernetes المجمعة، يقرأ الخادم `EVALUATOR_ENDPOINT` و `EVALUATOR_TOKEN` من
+هذا السر الاختياري. أنشئه عبر عملية إدارة الأسرار القياسية في مؤسستك،
+ثم أعد تشغيل نشر الخادم لالتقاط التغيير.
+
+عناصر التحكم في الضبط أعلاه لم تُربط بشكل افتراضي؛ اكشف متغيرات البيئة المقابلة
+على حاوية الخادم في مظهر النشر الخاص بك إذا كنت بحاجة إلى تجاوز
+الافتراضيات.
+
+اطّلع على [deployment.md](/ar/agenteye/deployment) لجدول متغيرات البيئة الكامل.
+
+---
+
+## مرجع API
+
+| الطريقة | المسار | الإذن المطلوب | الغرض |
+|---|---|---|---|
+| `GET` | `/evaluations` | `evaluations:read` | نتائج نهائية للاستعلام. يدعم `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` افتراضي إلى 50 وقبعة عند 200 (لاحظ أن هذا يختلف عن `/events`، والذي يقبع عند 1000). `environment` يقبل قائمة مفصولة بفواصل (على سبيل المثال `environment=prod,staging`؛ تعمل القيم الفردية أيضًا. مع `latest_per_session=true` تحتوي الاستجابة على صف واحد على الأكثر لكل `session_id` (الأحدث حسب `completed_at`) يستخدمه صفحة قائمة الجلسات لطي خط زمني التقييم الخاص بالجلسة إلى عنوانها الحالي. الافتراضي كاذب (يُرجع السجل الكامل). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | صحة تقييم مجتمعة لشريحة مفلترة: عد إجمالي، تفصيل done/error/timeout، إحصائيات لكل مفتاح نتيجة (العد/المتوسط/الحد الأدنى/الحد الأقصى/p50 عبر مفاتيح `scores` التعسفية)، وخط زمني محدد بوقت. يقبل **نفس معاملات الفلتر مثل `/evaluations`** بالإضافة إلى `featured_keys` (CSV لمفاتيح النتيجة للاتجاه) و `latest_per_session`. يدعم ميزة لوحات التحكم؛ المقاييس دقيقة على جميع المجموعة المطابقة، لا مأخوذة العينات. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | قيم بيئة مميزة من جدول `evaluations`. يستخدم لملء منسدلات الفلتر المحصورة في بيانات التقييم القابلة للقراءة. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | رؤية إلى التقييمات قيد الطيران. الفلتر حسب `status` (`pending`/`polling`). |
+| `GET` | `/events` | `events:read` | دفق الأحداث الخام للجلسة. يدعم `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit`, و `order`. `order` يكون `desc` (الأحدث أولاً، الافتراضي) أو `asc` (الأقدم أولاً)؛ قيمة غير معروفة تعود إلى `desc`. استطلع الصفحات عبر `next_cursor` (معرف حدث) في الاستجابة: أرجعها كـ `cursor` للحصول على الصفحة التالية؛ مع `asc` الصفحة التالية هي الأحداث بعد معرف الهوية، مع `desc` الأحداث قبلها. `limit` افتراضي إلى 50 وقبعة عند 1000. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | يُرجع جسم JSON الدقيق الذي ستتلقاه خدمة التقييم لهذه الجلسة، يتم تقديمه كمرفق قابل للتنزيل باسم `session-<id>.json`. مفيد لإعادة تشغيل جلسات الإنتاج عبر `agenteye-evaluator` للاختبار غير المتصل. البايتات متطابقة بايت إلى ما يرسله خط أنابيب خدمة التقييم. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | اضطر لتقييم طازج لجلسة؛ يعمل سواء كان هناك تقييم سابق أم لا. يتم **إلحاق** النتيجة الجديدة بخط زمني تقييم الجلسة بدلاً من الكتابة فوق الجلسة السابقة، لذا تبقى النتائج السابقة مرئية كسجل. يُرجع `202` عند الطلب، `404` لجلسة غير معروفة، `409` إذا كان تقييم قيد الطيران بالفعل. استخدم هذا بعد نشر خدمة تقييم جديدة، أو للجلسات التي لم تصدر أبدًا `agent_end`. |
+
+### الفلترة حسب نطاق النتيجة: `score_filters`
+
+يقبل `GET /evaluations` معامل `score_filters` اختياري يضيق
+النتائج حسب القيم الرقمية داخل كائن `scores`. المعامل
+عبارة عن قائمة مفصولة بفواصل من إدخالات `key:min..max`؛ قد يكون كلا الحدين
+محذوفًا. تتحد إدخالات متعددة بـ AND منطقي. الصفوف
+حيث يكون المفتاح المسمى غائبًا أو غير رقمي يتم استبعاده. قد يحمل الطلب ما يصل إلى 20
+إدخال فلتر؛ يعود تجاوز ذلك HTTP 400.
+
+أمثلة:
+```text
+# helpfulness in [0.5, 0.8]
+GET /evaluations?score_filters=helpfulness:0.5..0.8
+
+# tool_efficiency at most 0.3 (no lower bound)
+GET /evaluations?score_filters=tool_efficiency:..0.3
+
+# helpfulness >= 0.5 AND factuality >= 0.9
+GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
+```
+
+لكل كائن استجابة `/evaluations` هذه الحقول:
+
+| الحقل | النوع | الملاحظات |
+|---|---|---|
+| `evaluation_id` | سلسلة (UUID) | المعرف الكنسي لهذا التقييم النهائي. يحصل كل تقييم نهائي على UUID جديد؛ يمكن للجلسة الواحدة أن تحتفظ بعدة. |
+| `id` | سلسلة (UUID) | اسم مستعار للتوافق العكسي يحمل نفس القيمة مثل `evaluation_id`. |
+| `session_id` | سلسلة | الجلسة التي انطلقت هذا التقييم عليها. يمكن للجلسة أن تحتوي على تقييمات متعددة في الخط الزمني. |
+| `agent_id` | سلسلة | يحدد الوكيل الذي أنتج الجلسة. |
+| `environment` | سلسلة | تسمية البيئة المنسوخة من الجلسة. |
+| `status` | التعداد | واحد من `"done"`, `"error"`, `"timeout"`. |
+| `scores` | كائن \| null | النتائج التي أرجعتها خدمة التقييم الخاصة بك. |
+| `reasoning` | كائن \| null | خريطة تبرير اختيارية لكل نتيجة أرجعتها خدمة التقييم الخاصة بك. عادة ما تعكس المفاتيح تلك الموجودة في `scores`. تُظهر لوحة التحكم كل مدخل تحت شريط النتيجة الخاص به. |
+| `summary` | سلسلة \| null | سرد اختياري لفقرة واحدة يُرجع من قبل خدمة التقييم الخاصة بك. تُظهر لوحة التحكم هذا فوق تفصيل لكل نتيجة كعنوان التقييم. |
+| `error` | سلسلة \| null | معبأ على `"error"` / `"timeout"` فقط. |
+| `attempt_count` | عدد صحيح | عدد محاولات الإرسال (≥ 1). |
+| `duration_ms` | عدد صحيح \| null | مدة المحاولة الأخيرة. |
+| `completed_at` | سلسلة (ISO 8601 UTC) | عندما تم تسجيل النتيجة النهائية. يتم ترتيب النتائج حسب `completed_at` (الأحدث أولاً). |
+| `created_at` | سلسلة (ISO 8601 UTC) | يحمل نفس الطابع الزمني مثل `completed_at` (دلالات الكتابة مرة واحدة). |
+
+---
+
+## الأذونات
+
+| الإذن | الأذونات |
+|---|---|
+| `evaluations:read` | نتائج التقييم قائمة، عرض النتائج في لوحة التحكم، وتحميل مقاييس صحة لوحة التحكم. |
+| `evaluations:trigger` | ضع تقييمًا يدويًا في قائمة الانتظار لجلسة عبر `POST /sessions/:session_id/re-evaluate` أو زر لوحة التحكم لإعادة التقييم. |
+| `dashboards:read` | عرض لوحات التحكم المحفوظة (تحتاج أيضًا إلى `evaluations:read` لتحميل مقاييسها). |
+| `dashboards:write` | إنشاء وتعديل لوحات التحكم. |
+| `dashboards:delete` | حذف لوحات التحكم. |
+
+المسؤول التمهيدي (`ADMIN_KEY`, `ADMIN_EMAIL`) يتلقى هذه تلقائيًا.
+
+---
+
+## عرض النتائج
+
+- **`/sessions/<id>`**: خط زمني للأحداث + عمود يميني يعرض
+  النتائج والأخطاء من محاولة الإرسال. إذا كان مفتاحك يحتوي على
+  `evaluations:trigger`، يظهر زر **re-evaluate** بجانب زر التصدير،
+  مفيد للجلسات التي لم تصدر أبدًا `agent_end`، أو لتحديث
+  النتائج بعد نشر خدمة تقييم جديدة. تستطلع لوحة التحكم النتيجة الجديدة وتحدث العمود الأيمن عند وصوله.
+- **`/sessions`**: شبكة جلسة قابلة للفلترة؛ يعرض عمود النتيجة حالة التقييم والنتائج
+  لكل جلسة على الفور.
+- **`/dashboards`**: طرق صحة التقييم المحفوظة (اطّلع على [لوحات التحكم](#dashboards) أدناه).
+
+![شبكة الجلسات مع حبوب حالة التقييم لكل جلسة وشارات النتيجة المشفرة بالألوان (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
+
+*تعرض شبكة الجلسات حالة التقييم والنتائج لكل عملية تشغيل على الفور؛ تجعل شارات أحمر/كهرمان/أخضر النتائج المنخفضة بارزة.*
+
+![عرض تفصيل الجلسة مع درجات التقييم وحالة الإرسال في العمود الأيمن](/agenteye/images/session-detail.png)
+
+*يعرض فتح جلسة الخط الزمني الكامل بجانب درجات التقييم وأي خطأ في المرسل في العمود الأيمن.*
+
+---
+
+## لوحات التحكم
+
+تسمح صفحة **لوحات التحكم** (`/dashboards`) بحفظ مزيج من فلاتر التقييم
+كعرض مسمى وقابل لإعادة الاستخدام ومشاهدة أداء تلك الشريحة من التقييمات
+بضربة واحدة. **يتم مشاركة لوحات التحكم عبر مؤسستك بأكملها**؛
+كل شخص لديه `dashboards:read` يرى نفس المجموعة.
+
+تثبت كل لوحة تحكم:
+
+- **الفلاتر**: نفس الضوابط الموجودة على صفحة الجلسات: البيئة، الحالة،
+  الوكيل، نافذة زمنية متدحرجة، وفلاتر نطاق النتيجة (`key:min..max`).
+- **تكوين العرض**: مفاتيح النتيجة المراد عرضها، حدود صحة أخضر/كهرمان/أحمر،
+  اللوحات المراد عرضها، وما إذا كان يجب طي أحدث تقييم لكل جلسة.
+
+تعرض كل بطاقة عدد الجلسات المطابقة، تفصيل done/error/timeout،
+متوسط كل نتيجة متميزة، وخط زمني صغير في الاتجاه. يعرض فتح
+لوحة تحكم اللوحات بالحجم الكامل؛ **استخدم الجلسات** تنقلك إلى صفحة الجلسات
+مع التصفية المسبقة إلى تلك الشريحة بالضبط. يتم حساب المقاييس
+من جانب الخادم على جميع المجموعات المطابقة (عبر `GET /evaluations/aggregate`)،
+لذا تكون الأرقام دقيقة بدلاً من المعاينة.
+
+![لوحة تحكم صحة التقييم مع أشرطة متوسط النتيجة لكل بعد مقيّم، وتفصيل أداة ok مقابل خطأ، وأفضل الأدوات، واتجاه الأحداث في الساعة](/agenteye/images/dashboard-quality.png)
+
+**الأذونات:** يتطلب العرض كل من `dashboards:read` و `evaluations:read`؛
+ينشئ ويعدل يتطلب `dashboards:write`؛ حذف يتطلب `dashboards:delete`.
+يتلقى المسؤول التمهيدي كل هذه تلقائيًا.
+
+---
+
+## استكشاف الأخطاء
+
+**توجد جلسات لكن لم يتم إنشاء تقييمات.** أكد أن `EVALUATOR_ENDPOINT`
+معيّن على عملية الخادم، أن الخادم وخدمة التقييم يشتركان في نفس
+قيمة `EVALUATOR_TOKEN`، وأن نقطة نهاية `/health` الخاصة بخدمة التقييم
+يمكن الوصول إليها من الخادم. مع عدم تعيين `EVALUATOR_ENDPOINT` خط الأنابيب هو
+عدم تشغيل.
+
+**التقييمات قيد الطيران تتراكم.** استعلم `GET /evaluation-jobs` لعرض
+قائمة الانتظار قيد الطيران. فحص `attempt_count`, `next_attempt_at`, و `last_error`
+على كل صف. الأسباب الشائعة: خدمة المقيّم غير قابلة للوصول أو تُرجع 5xx
+(أعيدت المحاولة مع التراجع)، خطأ في `EVALUATOR_TOKEN` (401 نهائي)، أو
+مقيّم غير متزامن يُرجع `pending` إلى الأبد (انظر أدناه).
+
+**انتهت الجلسات لكن لم يتم تقييم نهائي.** استعلم
+`GET /evaluation-jobs?status=polling`؛ قد تبقى النتيجة قيد الطيران.
+إذا كانت وظيفة عالقة في `pending`، يواجه الخادم مشكلة في الوصول إلى
+خدمة التقييم؛ تحقق من أن خدمة التقييم قيد التشغيل وأن `EVALUATOR_TOKEN` تطابق.
+
+**`HTTP 401 من خدمة التقييم: رمز متحمل غير صالح`.** `EVALUATOR_TOKEN`
+على الخادم لا يتطابق مع القيمة التي تم تكوين خدمة التقييم بها.
+يجب أن تكون متطابقة.
+
+**مقيّم غير متزامن يُرجع `pending` إلى الأبد.** يستطلع الخادم
+`GET /evaluate/{job_id}` حتى تُرجع خدمة التقييم `done` أو `error`، أو
+حتى `EVALUATOR_MAX_POLL_DURATION_SECS` (الافتراضي 1 ساعة) ينقضي. بعد الحد الأقصى
+يتم تسجيل التقييم كـ `timeout` وإزالته من قائمة الانتظار قيد الطيران.
+ارفع `EVALUATOR_MAX_POLL_DURATION_SECS` إذا كانت خدمة التقييم الخاصة بك تحتاج بشرعية
+إلى وقت أطول من الافتراضي.

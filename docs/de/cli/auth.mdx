@@ -1,27 +1,27 @@
 ---
 title: Anmelden
-description: "Bei FailproofAI über die CLI anmelden, um Erinnerungen und personalisierte Funktionen zu aktivieren"
+description: "Melden Sie sich von der CLI bei Failproof AI an, um Erinnerungen und personalisierte Funktionen zu aktivieren"
 ---
 
 ```bash
 failproofai auth login    # E-Mail + Einmalcode
-failproofai auth logout   # diese Sitzung widerrufen
-failproofai auth whoami   # angemeldete Identität ausgeben
+failproofai auth logout   # Diese Sitzung widerrufen
+failproofai auth whoami   # Angemeldete Identität ausgeben
 ```
 
-Die veraltete Flag-Schreibweise `--login` / `--logout` / `--whoami` wird zur Rückwärtskompatibilität weiterhin als Alias akzeptiert.
+Die ältere Form `--login` / `--logout` / `--whoami` als Flag wird aus Rückwärtskompatibilitätsgründen weiterhin als Alias akzeptiert.
 
-Die Authentifizierung ist optional. Richtlinien, das Dashboard, die `/audit`-Seite und alle anderen lokalen Funktionen verhalten sich identisch, egal ob Sie angemeldet sind oder nicht. Die Anmeldefunktion existiert, damit Features, die eine **stabile Identität benötigen** (heute: Wiederholen von Audit-Erinnerungen, in Zukunft mehr), einen Ankerpunkt haben.
+Die Authentifizierung ist optional. Richtlinien, das Dashboard, die `/audit`-Seite und alle anderen lokalen Funktionen arbeiten unabhängig davon, ob Sie angemeldet sind oder nicht, auf genau dieselbe Weise. Die Anmeldefunktion existiert, damit Funktionen, die eine **stabile Identität benötigen** (heute erneute Audit-Erinnerungen, in Zukunft mehr), einen Ankerpunkt haben.
 
-## Anmeldeablauf
+## Anmeldevorgang
 
 ```bash
 failproofai auth login
 ```
 
-Fordert Ihre E-Mail-Adresse an, sendet einen 6-stelligen Einmalcode an diese Adresse, fragt den Code ab und schreibt bei Erfolg `~/.failproofai/auth.json` (Modus `0600`). Die gleiche Sitzung ist dann im In-App-Dashboard sichtbar — ein Klick auf `[ set a reminder ]` unter `/audit` erkennt Sie als angemeldet.
+Fordert zur Eingabe Ihrer E-Mail-Adresse auf, sendet einen 6-stelligen Einmalcode an diese Adresse, fragt nach dem Code und schreibt bei Erfolg `~/.failproofai/auth.json` (Modus `0600`). Die gleiche Sitzung ist dann im In-App-Dashboard sichtbar — ein Klick auf `[ set a reminder ]` in `/audit` erkennt Sie als angemeldet.
 
-Das Dashboard stellt den gleichen Ablauf als modalen Dialog auf `/audit` für Nutzer bereit, die die CLI nie verwenden.
+Das Dashboard bietet denselben Ablauf als modalen Dialog auf `/audit` für Nutzer, die die CLI nie verwenden.
 
 ## Abmelden
 
@@ -29,7 +29,7 @@ Das Dashboard stellt den gleichen Ablauf als modalen Dialog auf `/audit` für Nu
 failproofai auth logout
 ```
 
-Widerruft die aktuelle Sitzung auf dem Server und löscht `~/.failproofai/auth.json`. Ist der API-Server nicht erreichbar, wird die lokale Datei trotzdem entfernt — der lokale Abmeldewunsch hat immer Vorrang.
+Widerruft die aktuelle Sitzung auf dem Server und löscht `~/.failproofai/auth.json`. Wenn der API-Server nicht erreichbar ist, wird die lokale Datei trotzdem entfernt — die lokale Absicht zum Abmelden hat immer Vorrang.
 
 ## Identitätsprüfung
 
@@ -37,11 +37,11 @@ Widerruft die aktuelle Sitzung auf dem Server und löscht `~/.failproofai/auth.j
 failproofai auth whoami
 ```
 
-Gibt `<E-Mail> (<Benutzer-UUID>)` aus und beendet sich mit Exitcode 0, wenn eine gültige Sitzung besteht, oder gibt `not signed in` aus und beendet sich mit Exitcode 1 andernfalls. Erneuert das Zugriffstoken im Hintergrund automatisch, wenn es innerhalb einer Minute abläuft.
+Gibt `<email> (<user uuid>)` aus und beendet sich mit Code 0, wenn eine gültige Sitzung vorhanden ist, oder gibt `not signed in` aus und beendet sich mit Code 1. Erneuert das Zugriffstoken im Hintergrund automatisch, wenn es weniger als eine Minute bis zum Ablauf hat.
 
 ## Wiederkehrende Audit-Erinnerung
 
-Wenn Sie auf der `/audit`-Seite auf **`[ set a reminder ]`** klicken (oder sich über den Modal anmelden, den die Schaltfläche voraussetzt), schreibt das Dashboard eine kleine Begleitdatei unter `~/.failproofai/next-audit.json`:
+Wenn Sie auf der `/audit`-Seite auf **`[ set a reminder ]`** klicken (oder sich über den modalen Dialog anmelden, den die Schaltfläche einblendet), schreibt das Dashboard eine kleine Begleitdatei unter `~/.failproofai/next-audit.json`:
 
 ```json
 {
@@ -51,9 +51,9 @@ Wenn Sie auf der `/audit`-Seite auf **`[ set a reminder ]`** klicken (oder sich 
 }
 ```
 
-Diese Datei ist an die E-Mail-Adresse gebunden, für die sie erstellt wurde — wird die CLI-Sitzung auf ein anderes Konto umgestellt, werden Erinnerungen des vorherigen Nutzers ausgeblendet. Der Standardabstand beträgt **7 Tage** und ist später konfigurierbar, sobald der Scheduler verfügbar ist. Wird wie `auth.json` mit `0600`-Berechtigungen erstellt.
+Diese Datei ist auf die E-Mail-Adresse beschränkt, für die sie erstellt wurde — wenn die CLI-Sitzung auf ein anderes Konto umgestellt wird, werden alle Erinnerungen des vorherigen Nutzers ausgeblendet. Der Standardabstand beträgt **7 Tage** und kann später konfiguriert werden, sobald der Scheduler verfügbar ist. Erstellt mit `0600`-Berechtigungen wie `auth.json`.
 
-Der `/api/auth/reminder`-Endpunkt des Dashboards bietet `GET` (lesen), `POST` (setzen / neu planen) und `DELETE` (löschen) und erfordert eine aktive Sitzung.
+Der `/api/auth/reminder`-Endpunkt des Dashboards stellt `GET` (lesen), `POST` (setzen / neu planen) und `DELETE` (löschen) bereit und erfordert eine aktive Sitzung.
 
 ## Inhalt von `~/.failproofai/auth.json`
 
@@ -67,21 +67,21 @@ Der `/api/auth/reminder`-Endpunkt des Dashboards bietet `GET` (lesen), `POST` (s
 }
 ```
 
-Wird mit `0600`-Berechtigungen erstellt (nur Eigentümer kann lesen/schreiben). Das Zugriffstoken ist ein 1-stündiges HS256-JWT; das Refresh-Token ist eine undurchsichtige 256-Bit-Zufallszeichenfolge, die der Server als `SHA-256(token)` speichert. Mehrfache Verwendung eines Refresh-Tokens wird serverseitig erkannt und widerruft alle Sitzungen des Nutzers.
+Erstellt mit `0600`-Berechtigungen (nur Eigentümer kann lesen/schreiben). Das Zugriffstoken ist ein 1-stündiges HS256-JWT; das Refresh-Token ist ein opaker 256-Bit-Zufallsstring, den der Server als `SHA-256(token)` speichert. Missbrauch von Refresh-Tokens wird serverseitig erkannt und widerruft alle Sitzungen des Nutzers.
 
 ## Umgebungsvariablen
 
 | Variable | Standard | Zweck |
 |---|---|---|
-| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Überschreibt die Basis-URL des API-Servers. Nützlich für die lokale Entwicklung gegen einen selbst gehosteten API-Server. |
-| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Überschreibt den Speicherort von `auth.json`. Hauptsächlich für Tests. |
+| `FAILPROOF_API_URL` | `https://api.befailproof.ai` | Basis-URL des API-Servers überschreiben. Nützlich für die lokale Entwicklung gegen einen selbst gehosteten API-Server. |
+| `FAILPROOFAI_AUTH_DIR` | `~/.failproofai` | Speicherort von `auth.json` überschreiben. Hauptsächlich für Tests. |
 
-Unter [Umgebungsvariablen](/de/cli/environment-variables) finden Sie die vollständige Liste.
+Die vollständige Liste finden Sie unter [Umgebungsvariablen](/de/cli/environment-variables).
 
 ## Fehlerbehebung
 
-**„Could not reach the api-server"** — die CLI kann keine TCP-Verbindung zu `FAILPROOF_API_URL` herstellen. Überprüfen Sie Ihre Netzwerkverbindung oder setzen Sie `FAILPROOF_API_URL`, wenn Sie einen selbst gehosteten API-Server betreiben.
+**„Could not reach the api-server"** — die CLI kann keine TCP-Verbindung zu `FAILPROOF_API_URL` herstellen. Überprüfen Sie Ihr Netzwerk oder setzen Sie `FAILPROOF_API_URL`, wenn Sie einen selbst gehosteten API-Server betreiben.
 
-**„Rate limited"** — zu viele Anmeldeversuche in einem 15-Minuten-Fenster für diese E-Mail-Adresse (5/E-Mail) oder IP-Adresse (20/IP), oder eine 30-sekündige Wiederholungssperre nach der letzten Anfrage für dieselbe E-Mail. Die Fehlermeldung enthält das Wiederholen-nach-Intervall in Sekunden.
+**„Rate limited"** — zu viele Anmeldeversuche innerhalb eines 15-Minuten-Fensters für diese E-Mail-Adresse (5/E-Mail) oder IP (20/IP), oder eine 30-Sekunden-Wartezeit nach der vorherigen Anfrage für dieselbe E-Mail-Adresse. Die Fehlermeldung enthält die Wiederholungswartezeit in Sekunden.
 
-**Code abgelehnt** — der OTP war falsch, abgelaufen oder der Eintrag hat die Sperrgrenze von 5 Fehlversuchen erreicht. Führen Sie `failproofai auth login` erneut aus, um einen neuen Code anzufordern.
+**Code abgelehnt** — das Einmalpasswort war falsch, abgelaufen oder der Eintrag hat seine Sperrgrenze von 5 Fehlversuchen erreicht. Führen Sie `failproofai auth login` erneut aus, um einen neuen Code anzufordern.

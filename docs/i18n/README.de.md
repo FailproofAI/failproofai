@@ -17,9 +17,9 @@
 
 **Übersetzungen:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Laufzeit-Fehlerbehebung für Coding-Agenten.**
-Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und geheime Datenlecks,
-bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
+**Laufzeit-Fehlerbehebung für Coding-Agents.**
+Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und Secret-Leaks,
+bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 </div>
 
@@ -29,7 +29,7 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
 
 ---
 
-## Unterstützte Agenten-CLIs
+## Unterstützte Agent-CLIs
 
 <p align="center">
   <a href="https://claude.com/claude-code" title="Claude Code">
@@ -78,9 +78,18 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Hooks für eine oder mehrere CLIs installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl zu erhalten.
+> Hooks für eine oder eine beliebige Kombination installieren: `failproofai policies --install --cli opencode pi gemini` (oder `--cli claude codex copilot cursor opencode pi gemini hermes`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und zur Auswahl aufzufordern.
+>
+> **Hermes** (hermes-agent, ein Slack/Telegram-Gateway) wird sowohl für **Live-Hook-Durchsetzung** (`--cli hermes` — eine Installation fängt Tool-Aufrufe von jeder Plattform und jedem Subagenten ab) als auch für das Offline-**Audit**-Replay seiner Gateway-Sitzungen aus der einzelnen `~/.hermes/state.db` unterstützt.
 
 ---
 
@@ -88,23 +97,23 @@ bevor sie zu Vorfällen werden. Keine zusätzliche Latenz. Läuft lokal.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oder einfach `failproofai` ausführen und beim ersten Start bestätigen
+failproofai policies --install   # oder einfach `failproofai` ausführen und den Erststart-Prompt bestätigen
 failproofai
 ```
 
-30 integrierte Richtlinien werden sofort aktiv. Dashboard unter `localhost:8020`. Den Erststart-Dialog mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
+30 integrierte Richtlinien werden sofort aktiviert. Dashboard unter `localhost:8020`. Den Erststart-Prompt mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
 
 ---
 
 ## Was blockiert wird
 
-| Richtlinie | Was sie blockiert |
+| Richtlinie | Was wird blockiert |
 |---|---|
 | `block-push-master` | Direkte Pushes auf `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, Merges und Rebases auf `main` / `master` |
+| `block-work-on-main` | Commits, Merges, Rebases auf `main` / `master` |
 | `block-rm-rf` | Rekursives Löschen von Dateien |
-| `sanitize-api-keys` | API-Keys, die in den Agenten-Kontext gelangen |
+| `sanitize-api-keys` | API-Keys, die in den Agent-Kontext gelangen |
 
 → [Alle 30 integrierten Richtlinien](https://docs.befailproof.ai/built-in-policies)
 
@@ -112,8 +121,8 @@ failproofai
 
 ## Eigene Richtlinien
 
-Eine Datei in `.failproofai/policies/` ablegen – sie wird automatisch geladen, ohne weitere Optionen.
-Ins Repository committen, und das gesamte Team erhält sie beim nächsten Pull.
+Eine Datei in `.failproofai/policies/` ablegen — sie wird automatisch geladen, ohne weitere Flags.
+Ins Repository committen und das gesamte Team erhält sie beim nächsten Pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -129,23 +138,23 @@ customPolicies.add({
 });
 ```
 
-Drei Entscheidungstypen stehen jeder Richtlinie zur Verfügung:
+Jede Richtlinie kann eine von drei Entscheidungen treffen:
 
 | Entscheidung | Wirkung |
 |---|---|
-| `allow()` | Operation zulassen |
-| `deny(message)` | Blockieren – die Nachricht wird an den Agenten zurückgegeben |
-| `instruct(message)` | Durchlassen, aber dem nächsten Agenten-Prompt zusätzlichen Kontext hinzufügen |
+| `allow()` | Operation erlauben |
+| `deny(message)` | Blockieren — die Nachricht wird an den Agent zurückgegeben |
+| `instruct(message)` | Durchlassen, aber Kontext zum nächsten Prompt des Agents hinzufügen |
 
-→ [Leitfaden für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
+→ [Anleitung für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
 
 ---
 
 ## Sitzungsübersicht
 
-Jeder Tool-Aufruf des Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
-was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat – damit man bei Problemen
-nicht im Dunkeln tappt. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
+Jeder Tool-Aufruf des Agents wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
+was blockiert wurde und was die Richtlinie dem Agent mitgeteilt hat — damit kein Rätseln entsteht,
+wenn etwas schiefläuft. → [Dashboard-Anleitung](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -164,18 +173,18 @@ nicht im Dunkeln tappt. → [Dashboard-Leitfaden](https://docs.befailproof.ai/da
 
 ## Lizenz
 
-MIT mit [Commons Clause](https://commonsclause.com/) – kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine separate Vereinbarung. Den vollständigen Text findet man in der [LICENSE](./LICENSE)-Datei.
+MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine separate Vereinbarung. Den vollständigen Text in [LICENSE](./LICENSE) nachlesen.
 
 ---
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Grenzfälle und Übersetzungen sind stets willkommen.
+Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Randfälle und Übersetzungen sind herzlich willkommen.
 
-> **Vor dem Start bauen.** Zuerst `bun install && bun run build` ausführen. Dieses Repository verwendet
-> failproofai's eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import anhand des
-> kompilierten `dist/`-Bundles auf – ohne Build tritt der Hook-Fehler `Cannot find package 'failproofai'` auf.
-> Nach Änderungen an `src/` neu bauen. Siehe
+> **Vor dem Start bauen.** Zuerst `bun install && bun run build` ausführen. Dieses Repository führt
+> die eigenen Hooks von failproofai auf sich selbst aus, und sie lösen den `failproofai`-Import gegen das
+> kompilierte `dist/`-Bundle auf — ohne einen Build tritt der Hook-Fehler `Cannot find package 'failproofai'`
+> auf. Nach Änderungen an `src/` neu bauen. Siehe
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

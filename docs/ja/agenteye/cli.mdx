@@ -1,0 +1,291 @@
+---
+title: "CLI"
+description: "AgentEye CLIのドキュメント。"
+---
+
+AgentEye CLI（`agenteye`）は、AgentEyeデプロイメント向けのターミナルクライアントです。データ（セッション、イベントログ、評価）の照会と、組織の管理（APIキー、ユーザー、設定、アラート、インシデント、保存済みクエリ）を行います。ダッシュボードで実行できることはすべて、スクリプトやコーディングエージェントからも実行できます。すべてのコマンドは `--json` フラグに対応しており、ターミナルで作業する人間にも、結果をパースするコーディングエージェント（Claude Code、Cursor）にも同様に使用できます。
+
+> これは **`agenteye` CLI** であり、**コレクター**デーモン（`agenteye-collector`）とは異なるツールです。CLIはお使いの**ダッシュボード**と通信し、コレクターはサーバーにイベントを送信します。コレクターについては [コレクターのインストール](/ja/agenteye/collector-installation) を参照してください。
+
+---
+
+## インストール
+
+CLIはパブリックのPyPIに **`agenteye`** として公開されています。AgentEyeのPython SDKも `agenteye` というディストリビューション名を使用しているため、CLIは**独立した**環境（`pipx` または `uv tool`）にインストールして、同一の仮想環境で両者が競合しないようにしてください。
+
+```bash
+pipx install agenteye
+# または
+uv tool install agenteye
+```
+
+Python SDKを同じ環境にインストールしない場合は、通常の `pip install agenteye` でも動作します。CLIにはPython 3.10以上が必要で、GitHubトークンは不要です。パブリックパッケージです。
+
+インストールされるコマンドは **`agenteye`** です。
+
+```bash
+agenteye --version
+agenteye --help
+```
+
+---
+
+## 認証
+
+CLIは、メールで送信されるワンタイムコードを使用して**ダッシュボード**に認証します。
+
+```bash
+agenteye login --email you@example.com
+# 6桁のコードがメールで届きます。プロンプトに貼り付けてください。
+```
+
+セッショントークンは `~/.agenteye/cli.json`（本人のみ読み取り可能、モード `0600`）に保存され、デフォルトで24時間有効です。期限が切れたら、`agenteye login` を再度実行してください。
+
+```bash
+agenteye whoami     # 現在のユーザー、アクティブな組織、権限を表示
+agenteye logout     # セッションを無効化し、保存されたトークンを削除
+```
+
+`whoami` はセッションが存在しない場合や期限切れの場合にエラーを返しません。代わりに `logged_in: false` を報告するため、スクリプトやエージェントが認証状態を安全に確認できます（ベースURLが設定されていない場合やダッシュボードに到達できない場合は、ゼロ以外の終了コードを返すことがあります）。
+
+**前提条件:** あなたのメールアドレスがダッシュボードへのサインインを許可されている必要があります（AgentEye管理者に確認してください）。また、ダッシュボードはそのベースURLで到達可能である必要があります（[設定](#configuration)を参照）。コードをリクエストしても届かない場合、そのメールアドレスはまだダッシュボードアクセスが有効化されていない可能性があります。
+
+---
+
+## 組織の選択（マルチテナント）
+
+アカウントが複数の組織に所属している場合、**ログイン時に**アクティブな組織を選択してください。選択内容が保存され、以降のすべてのコマンドに使用されます。
+
+```bash
+agenteye login --org acme           # 認証とアクティブテナントの設定を一度に行う
+agenteye orgs list                  # アクセス可能な組織の一覧（アクティブな組織にマーク付き）
+agenteye orgs switch globex         # 保存されたデフォルトを変更
+agenteye --org globex sessions      # 単一コマンドのみ上書き
+```
+
+1つの組織にのみ所属している場合は自動的に選択されるため、`--org` は不要です。複数の組織に所属していて選択しない場合、CLIが一覧を表示して `--org <slug>` で再実行するよう求めます。アクティブな組織はすべてのリクエストでダッシュボードに送信され、権限は**組織ごと**に解決されます。`agenteye whoami` はアクティブな組織、その中での権限、およびすべてのメンバーシップを表示します。
+
+---
+
+## 設定
+
+| 設定 | フラグ | 環境変数 | デフォルト |
+|---|---|---|---|
+| ダッシュボードのベースURL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **必須**（デフォルトなし） |
+| アクティブな組織/テナント | `--org` | `AGENTEYE_ORG` | ログイン時に選択、`~/.agenteye/cli.json` に保存 |
+| セッショントークン | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json` から読み込み |
+| JSON出力 | `--json` | `AGENTEYE_CLI_JSON` | オフ |
+| TLS検証のスキップ | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | オフ（ログイン時に保存） |
+| リクエストタイムアウト（秒） | `--timeout` | — | 30 |
+| 利用状況テレメトリーの無効化 | _（なし）_ | `AGENTEYE_ANALYTICS_DISABLED`（または `DO_NOT_TRACK`） | オフ（テレメトリー有効） |
+
+解決順序は **フラグ → 環境変数 → 設定ファイル** です。デフォルト値はありません。CLIをダッシュボードに向ける必要があります。コマンドごとに指定する（`--base-url https://agenteye.example.com`）か、環境変数で一度設定してください（最初の `login` 後にも保存されます）。
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
+```
+
+設定ディレクトリは `AGENTEYE_HOME` を優先します（SDKおよびコレクターと同じ規約）。設定されている場合、`cli.json` は `$AGENTEYE_HOME/cli.json` に配置されます。
+
+### 自己署名または内部TLS
+
+ダッシュボードが自己署名または内部証明書（例：ロードバランサーの生のホスト名）を使用したHTTPSで提供されている場合、TLS検証は `CERTIFICATE_VERIFY_FAILED` エラーで拒否されます。証明書検証をスキップするには `--insecure` を使用してください。
+
+```bash
+agenteye --base-url https://agenteye.internal --insecure login
+```
+
+**`--insecure` はログイン時に `cli.json` に保存される**ため、以降のコマンドは自動的に検証をスキップします。フラグを繰り返す必要はありません。検証付きで一度だけ呼び出すには `--secure` を使用するか、次回ログイン時に検証を有効に戻すために使用してください。検証が無効になっている状態でダッシュボードに接続するコマンドを実行する前に、CLIはstderrに警告を表示します。検証をスキップすると中間者攻撃からの保護が失われます。ダッシュボードへのネットワークパス（VPN、プライベートサブネットなど）を信頼できる場合のみ使用してください。
+
+---
+
+## テレメトリーとプライバシー
+
+CLIはExosphereの分析サービス（PostHog）に**匿名の利用状況分析**を送信します。実行されたコマンド（例：`sessions`、`keys create`）、成否、所要時間が含まれます。この利用状況シグナルは、どの機能を優先するかを決定するために使用されます。
+
+- **エージェント、セッション、イベントデータはお客様のインフラストラクチャの外に出ることはありません。** 送信されるのはCLIの利用状況のみです。コマンドとサブコマンド名（例：`keys create`）、使用したフラグの**名前**（値は含まれません）、成功/終了ステータス、所要時間、およびミューテーション操作のイベント（例：`api_key_created`、`query_run`）。このイベントには静的な名前/列挙値と大まかなカウントのみが含まれます。ダッシュボードのURL、セッショントークン、メールアドレス、組織スラッグ、リソースID、SQL、キーシークレット、クエリフィルターは**一切送信されません**。オペレーターは不透明な内部IDによってのみ識別され、メールアドレスは使用されません。
+- テレメトリーは**デフォルトで有効**です。無効にするには、CLIの環境変数に `AGENTEYE_ANALYTICS_DISABLED=1` を設定してください（ツール共通の `DO_NOT_TRACK=1` 規約も有効です）。
+- CLIはPostHog（`https://us.i.posthog.com`）に直接送信します。**CLIを実行するマシン**はそのホストへのアウトバウンドアクセスが必要です。ブロックされている場合、テレメトリーは無音で何もしません（送信には時間制限があるため、コマンドの遅延や障害は発生しません）。CLIの動作には影響しません。
+
+---
+
+## グローバルオプションと規約
+
+一度お読みください。すべてのコマンドに適用されます。
+
+- **グローバルオプションはコマンドの前に指定します。** `agenteye --json sessions` が正しい形式です。`agenteye sessions --json` は使用エラーです。グローバルオプションは `--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet`、`--no-color` です。
+- **`--json` は純粋なJSONのみをstdoutに出力します。** 人間向けのステータス行、警告、エラーはすべて**stderr**に出力されるため、ステータス行が表示されていても `--json` のstdoutキャプチャは `jq` にパイプできる状態を保ちます。`--json` なしの場合は、人間が読みやすいボックス形式でカラー表示されます。
+- **`--help` で詳細を確認できます。** すべてのコマンドとサブコマンドには `--help`（および `-h` エイリアス）があります：`agenteye -h`、`agenteye sessions -h`、`agenteye keys create -h`。トップレベルのヘルプには終了コードとグローバルオプションも記載されています。グローバルなマシン可読サーフェスダンプはありません。コマンドごとの `--help` と、2つのレジストリ専用の `agenteye query schema`、`agenteye settings schema` を使用してください。
+- **スクリプトとエージェントでは確認プロンプトが自動スキップされます。** 作成/更新/削除コマンドはインタラクティブなターミナルで確認を求めますが、**`--json` フラグが指定されている場合やstdinがTTYでない場合は自動スキップ**されるため、スクリプトやエージェントがハングすることはありません。明示的にスキップするには `--yes`/`-y` を使用してください。エージェントでプロンプトは表示されないため、エージェントは破壊的な操作を行う前に人間に確認を取るべきです。
+- **ページネーション：** 結果は新しい順にカーソルページネーションされます。`--limit N`（エイリアス `-n`）は行数を制限し、**デフォルトは50**です。`--all` は自動ページネーション（200行ずつ）を行いますが、**`--limit` まで**で停止します。つまり、`--all` 単独でも50件で止まります。完全な取得には高い上限を明示的に指定してください：`--all --limit 1000`。`--page-size N` はリクエストごとのチャンクを制御します（最大200）。`--cursor <id>` は前のページの `next_cursor` から再開します。
+- **時間フィルター：** `--since` は相対的なウィンドウを受け取ります — `15m`、`1h`、`6h`、`24h`、`7d`、`30d`、または `all`（ダッシュボードのプリセット）。`--from`/`--to` はカスタム範囲用に明示的なISO-8601 UTCタイムスタンプ（`T` とタイムゾーン付き、例：`2026-06-01T00:00:00Z`）を受け取り、`--since` を上書きします。スペース区切りやタイムゾーンなしの値は使用エラーになります。
+- **`--fields a,b,c`**（`events`、`sessions`、`evals`、`errors` で使用可能）は出力をそれらのキーに制限します。テーブルと `--json` の両方に適用されます。不明なフィールド名は有効なリストとともにエラーとして拒否されます。フィールド名を調べる簡単な方法として活用できます。
+- **`--file payload.json`**（または `--file -` でstdinから読み込み）は、リソースが複雑な形状を持つ場合にJSON形式のリクエストボディ全体を提供します。`alerts create/update`、`settings set`、`users create/update` で使用できます。保存済みクエリのSQLには `--sql @file.sql` を使用します。
+- **複数値フィルター**はカンマ区切りで、集合として照合されます（同一フィルター内ではOR、フィルター間ではAND）：`--event-type tool_use,tool_result`。Clickオプションは可変長ではないため、`--add a b` は機能しません。`--add a,b`、フラグの繰り返し（`--add a --add b`）、またはクォート（`--add "a b"`）を使用してください。
+
+---
+
+## コマンドリファレンス
+
+CLIには**18のトップレベルコマンド**があります。すべての読み取りコマンドは `--json` とグローバルオプションに対応しています。詳細なフラグリストや任意のコマンドのJSON形式については `agenteye <command> -h`（または `<command> <subcommand> -h`）を実行してください。
+
+### Identity — `login` · `logout` · `whoami` · `orgs` · `version` · `help`
+
+```bash
+agenteye login --email you@example.com [--org acme]   # メールのワンタイムコード；セッションを保存
+agenteye logout                                       # このマシンの保存されたセッションをクリア
+agenteye whoami                                       # 現在のユーザー、アクティブな組織、権限
+agenteye version                                      # CLIバージョンを表示（--version と同じ）
+agenteye help                                         # トップレベルのヘルプ（--help と同じ）
+```
+
+`orgs` はアクティブなテナントの確認と切り替えを行います。
+
+```bash
+agenteye orgs list        # 所属する組織 + 各組織のロール（アクティブな組織にマーク付き）
+agenteye orgs switch acme # 保存されたアクティブ組織を変更（スラッグ省略でTTY上のリストから選択）
+agenteye orgs current     # アクティブな組織の情報カード
+agenteye orgs perms       # アクティブな組織でのあなたの権限（リソース別にグループ化）
+```
+
+### 観察（読み取り専用） — `events` · `sessions` · `evals` · `errors` · `list`
+
+これらはいずれも確認を必要としません。共有フィルター：`--session-id`、`--agent-id`、`--env`（**`--environment` ではありません**）、および時間範囲（`--since` / `--from` / `--to`）。
+
+```bash
+# events（エイリアス：ステップごとの生のトレイル）— 新しい順
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all --limit 1000
+agenteye --json events --since 1h --search timeout --all | jq '.events[].payload'
+
+# sessions — エージェント実行ごとの1行（時刻/env/エージェント/セッション/ステータス；スコアフィルターなし）
+agenteye --json sessions --since 24h --status error
+agenteye --json sessions --agent-id checkout-bot --env prod --all --limit 1000
+
+# evals — 評価結果 + スコア；--score はメトリクスでフィルター、--aggregate は集計
+agenteye --json evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3
+agenteye --json evals --aggregate --since 7d --env prod        # ステータス内訳 + キーごとのスコア統計
+
+# errors — エラーが発生したイベント；--aggregate はカウント/セッション/エージェント/最終確認時刻を表示
+agenteye --json errors --since 24h --aggregate
+agenteye --json errors --since 24h --error-type timeout --all --limit 1000
+
+# list — フィルタリングの前に有効なフィルター値を確認
+agenteye list envs        # 他にも：agents event_types score_filters models hooks triggers tools error_types
+```
+
+`--score KEY:MIN..MAX`（**`evals`** のみ、`sessions` では使用不可）は繰り返し指定可能でAND結合されます。どちらの境界も省略可能（`..0.5` は ≤ 0.5、`0.9..` は ≥ 0.9）。リクエストあたり最大20のスコアフィルター。`evals --scores-full` はサマリーではなく完全なスコアオブジェクトを返します。**1つのセッション全体を読む**には、イベントトレイルと評価を組み合わせます。
+
+```bash
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+agenteye --json evals  --session-id run-001                       # スコア + ステータス
+```
+
+### 管理（権限が必要） — `keys` · `users` · `settings` · `alerts` · `incidents`
+
+**`keys`** — APIキー。シークレットはローカルで生成されてサーバーに送信され（サーバーはハッシュのみを保存）、作成/再生成時に**一度だけ**表示されます。その場でキャプチャしてください。`--json` の場合は `key` フィールドにのみ表示されます。**名前**で参照します。
+
+```bash
+agenteye keys list                                   # アクティブなキーを先頭に、無効化済みキーを後に表示
+agenteye keys show ci-bot
+agenteye keys create ci-bot --add events:read.add    # 必要なスコープに限定；シークレットは1度だけ表示
+agenteye keys create ops --permission-set standard --remove queries:run   # プリセットをベースに調整
+agenteye keys update ci-bot --add evaluations:read --yes
+agenteye keys regenerate ci-bot --yes                # シークレットをローテーション（古いものは無効化）
+agenteye keys disable ci-bot --yes                   # 無効化
+```
+
+権限は `(permission-set ∪ --add) − --remove` として機能します。トークンは `slug:action`（例：`events:read`）または `slug:action.action`（1つのリソースで複数のアクションを展開、例：`events:read.add` → `events:read`、`events:add`）の形式です。プリセット：`read-only`、`standard`、`admin`。人間のみの権限（`keys:update`）はキーに付与できません。
+
+**`users`** — 組織メンバー。**メールアドレス**（UUIDのidも使用可能）で参照します。
+
+```bash
+agenteye users list [--active-only]
+agenteye users show dev@corp.com
+agenteye users create dev@corp.com --permission-set standard
+agenteye users update dev@corp.com --add alerts:write --remove queries:delete   # 変更内容を確認して実行
+agenteye users disable dev@corp.com --yes            # 保護/自己制約ガードあり
+agenteye users enable dev@corp.com
+```
+
+**`settings`** — 固定レジストリです（既存のキーの読み取りと変更のみ可能、新規作成は不可）。
+
+```bash
+agenteye settings list                               # キー・値・型・更新日時（シークレットはマスク）
+agenteye settings schema                             # 各キーが受け付ける値（型・範囲・説明）
+agenteye settings set session_ttl_secs --value 86400 --yes
+```
+
+**`alerts`** — アラート定義。**名前**で参照します。`create` は位置引数のNAMEとフラグ、または `--file` でJSON形式のボディを受け取ります。
+
+```bash
+agenteye alerts list
+agenteye alerts show high-errors
+agenteye alerts create high-errors --file alert.json          # NAME は必須（位置引数）
+agenteye alerts update high-errors --severity critical --yes
+agenteye alerts test high-errors --yes                        # テスト通知を送信
+agenteye alerts delete high-errors --yes
+```
+
+**`incidents`** — アラートインシデント。idで参照します（短いidも使用可能）。`show` は完全なアクティビティログを表示します。操作前に必ず確認してください。
+
+```bash
+agenteye incidents list --state firing                # 他にも：acknowledged、resolved
+agenteye incidents count
+agenteye incidents show <id>
+agenteye incidents ack <id>
+agenteye incidents assign <id> you@corp.com           # 担当者はオペレーターである必要があります
+agenteye incidents resolve <id> --yes
+agenteye incidents open --alert-id <id> --severity critical    # アラートに対して手動で作成
+agenteye incidents comment-add <id> "root cause: upstream 5xx"
+agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <comment-id>
+agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
+```
+
+### 分析とアシスタント — `query` · `agent`
+
+**`query`** — 保存済みClickHouse SQLとアドホック実行ツール。保存済みクエリは**名前**で参照します。SQLはサーバー側で検証されます（SELECT/WITHのみ、ステートメントタイムアウト、行数上限あり）。
+
+```bash
+agenteye query schema [TABLE]                         # アナリティクスビューのカラム構造
+agenteye query run --sql "select count(*) from analytics.events"
+agenteye query run errs --arg prod --limit 100        # 保存済みクエリを実行 + 位置引数 $1
+agenteye query list ; agenteye query show errs
+agenteye query create errs --sql @errs.sql --description "errored events (24h)"
+agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
+```
+
+**`agent`** — ダッシュボード組み込みのアシスタント（ダッシュボードでチャットできる読み取り専用のアナリストと同じ）。チャットは短いchat-id（プレフィックス解決あり）で参照します。
+
+```bash
+agenteye agent health                                 # アシスタントの設定/到達可否を確認
+agenteye agent models                                 # --model に渡せるモデル一覧（デフォルトにマーク付き）
+agenteye agent ask "which agents errored most in the last day?"    # チャットを開始；短いidを表示
+agenteye agent ask --chat <short-id> "and which tools did they call?"   # チャットを継続
+agenteye agent chats ; agenteye agent show <short-id>
+agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete <short-id>
+```
+
+---
+
+## 終了コード
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 予期しないエラー（例：ダッシュボードが5xxを返した） |
+| 2 | 使用エラー（無効な引数、不明なコマンド/フラグ、名前の競合） |
+| 3 | ダッシュボードに到達できない |
+| 4 | ログインしていないかセッションが期限切れ；`agenteye login` を実行してください |
+| 5 | 認証済みだが、アカウントに必要な権限がない（メッセージに権限名が表示されます） |
+| 6 | 指定されたリソースが見つからない（例：不明なセッションIDまたはインシデントID） |
+
+これらの終了コードによりCLIはスクリプト内で安全に使用できます。コーディングエージェントは `4` を受け取って再認証を促したり、`5` で不足している権限を通知したりできます。終了コードの処理パターンとJSON出力の形式については、[エージェント向けCLIレシピ](/ja/agenteye/cli-recipes) を参照してください。
+
+---
+
+## 参考情報
+
+- **[エージェント向けCLIレシピ](/ja/agenteye/cli-recipes)** — コピーして使えるクエリパターン、`jq` ワンライナー、`--fields` プロジェクション、終了コード処理、JSON出力形式。CLIを操作するコーディングエージェント向けに書かれています。
+- **[AgentEye CLI skill](/ja/agenteye/cli-skill)** — このCLIをインストール可能な Claude Code / Codex *スキル*としてパッケージ化し、コーディングエージェントが平易な英語のリクエストでAgentEyeを操作できるようにします。
+- **[APIキー](/ja/agenteye/api-keys)** — `keys create --add …` の背後にある権限モデル。
+- **[AIアシスタント](/ja/agenteye/assistant)** — `agent ask` が使用するアシスタントの有効化方法。

@@ -1,0 +1,386 @@
+---
+title: "Python SDK"
+description: "AgentEye Python SDK dokümantasyonu."
+---
+
+
+AgentEye Python SDK, aracılarınızın davranışına (her aracı çalıştırması, araç çağrısı, model isteği, kanca ve insan müdahalesi) tam görünürlük sağlayarak hata ayıklama, denetim ve değerlendirme yapmanıza olanak tanır. Yapılandırılmış olayları yerel JSONL dosyalarına yazarak aracı kodunuzu instrumantalleştirir; toplayıcı daemon bu dosyaları alır ve otomatik olarak platforma gönderir.
+
+---
+
+## Kurulum
+
+`AGENTEYE_TOKEN` kullanarak GitHub Releases'ten wheel'i indirin. Henüz bir token'ınız yoksa, kurulum adımları ve gerekli izinler için [GitHub Token Kurulumu](/tr/agenteye/github-token) bölümüne bakın.
+
+**`gh` CLI + pip kullanarak:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**`gh` CLI + uv kullanarak:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**curl kullanarak (`gh` CLI olmadan):**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## Hızlı Başlangıç
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+    flush_interval=0.5,      # float, seconds between flush cycles
+    environment=None,        # str | None. Deployment environment label
+)
+```
+
+Herhangi bir `event.*` çağrısından önce bir kez çağırın. Atlanması güvenlidir; varsayılanlar kutudan çıktığı gibi çalışır. Tüm argümanlar yalnızca anahtar kelime argümanlarıdır; yukarıda gösterildiği gibi adlarına göre geçin.
+
+`base_dir` `None` (varsayılan) olduğunda, SDK `$AGENTEYE_HOME` okur (ayarlanmış ise),
+aksi takdirde `~/.agenteye` olarak geri döner. Bu toplayıcının kendi çözünürlüğü ile eşleşir,
+bu nedenle tek bir `AGENTEYE_HOME` ortam değişkeni SDK ve toplayıcı için paylaşılan olay kuyruğunu yapılandırır,
+her iki işlemin de spool yolunda anlaşması gereken yan araç / tek-pod dağıtımları için gereklidir.
+
+---
+
+## Ortam
+
+Her olayı bir dağıtım ortamı (`production`, `staging`, `qa`, `canary`, vb.) ile etiketleyin. Bir kez ayarlayın; SDK bunu otomatik olarak her olaya ekler.
+
+**Seçenek 1: `configure()` aracılığıyla:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**Seçenek 2: ortam değişkeni aracılığıyla:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**Öncelik:** `configure(environment=...)` ortam değişkenini geçersiz kılar. İkisi de ayarlanmamışsa, varsayılan değer `"dev"` olur.
+
+Ortam değeri panodaki birinci sınıf bir filtre olarak görünür ve hızlı sorgular için sunucuda dizinlenmiş bir sütun olarak depolanır.
+
+**Kısıtlama:** ortam değerleri **gerçek bir `,` virgül içermemeli**. Pano filtreleri kablodaki virgülden ayrılmış çoklu seçimi kullanır (`?environment=prod,staging`), bu nedenle `prod,blue` adlı bir ortam iki değere bölünür. Virgül içeren ortamlarla olaylar alındığında reddedilir.
+
+---
+
+## Olay Başvurusu
+
+Tüm olay yöntemleri şu iki alanı gerektirir:
+
+| Alan | Tür | Açıklama |
+|---|---|---|
+| `session_id` | `str` | Üst düzey aracı çalıştırmasını tanımlar |
+| `agent_id` | `str` | Oturum içindeki hangi aracının olayı yayınladığını tanımlar |
+
+Tüm yöntemler ayrıca özel meta veriler için rasgele `**kwargs` kabul eder (bkz. [Özel Alanlar](#custom-fields)).
+
+---
+
+### `event.agent_start()`
+
+Bir aracı çalışmaya başladığında yayınlanır.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - nested agents için üst agent_id
+)
+```
+
+---
+
+### `event.agent_end()`
+
+Bir aracı işi bitirdiğinde yayınlanır.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+Bir aracı bir araç çağırdığında yayınlanır. `tool_result` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, required
+    tool_call_id="toolu_01",    # str, required - matching tool_result için korelasyon anahtarı
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+Bir araç döndüğünde yayınlanır. `tool_call_id` aracılığıyla `tool_use` ile ilişkilidir.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # prior tool_use ile eşleşmeli
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - araç hata fırlatırsa ayarlayın
+    # duration_ms otomatik olarak hesaplanır - geçmeyin
+)
+```
+
+---
+
+### `event.model_request()`
+
+Bir istem bir LLM'ye gönderilmeden hemen önce yayınlanır.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - konuşma dönüşleri
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - str veya içerik blokları listesi
+    tools=[                      # list[dict] | None - modele sunulan araç şemaları
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+`messages` girişleri düz bir dize `content` veya Anthropic tarzı blok listesi `content` kabul eder. Örnekleme parametreleri (`temperature`, `max_tokens`, vb.) ek kwargs olarak geçilebilir.
+
+---
+
+### `event.model_response()`
+
+LLM bir yanıt döndüğünde yayınlanır.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - str, veya içerik blokları listesi
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` düz bir dize (genel sağlayıcılar) veya Anthropic tarzı içerik blokları listesi kabul eder. Araç çağrıları `content` içinde `{"type": "tool_use", ...}` blokları olarak bulunur, ayrı bir `tool_calls` alanı olmadan.
+
+---
+
+### `event.hook_triggered()`
+
+Bir kanca ateşlendiğinde yayınlanır. `hook_completed` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, required
+    hook_id="hook-abc",         # str, required - korelasyon anahtarı
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+Bir kanca bittiğinde yayınlanır. `hook_id` aracılığıyla `hook_triggered` ile ilişkilidir.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # prior hook_triggered ile eşleşmeli
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms otomatik olarak hesaplanır - geçmeyin
+)
+```
+
+---
+
+### `event.error()`
+
+İşlenmeyen bir hata oluştuğunda yayınlanır.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, required
+    message="timed out",        # str, required
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## İnsan-Döngüde-Olay Olayları
+
+İnsan-döngüde-olay olayları, bir kişinin aracının yürütülmesine girdiği anlar (onay beklemek, girdi sağlamak, duraklatmak veya aracıyı durdurmak) hakkında gözetim sağlar. İnsanların yanıt vermesinin ne kadar sürdüğünü (SDK eşleştirilmiş olaylarda `duration_ms` otomatik olarak hesaplar), kimin aracıyı duraklatıp durdurduğunu denetleyin ve panoda görünen onay ve gözetim iş akışları oluşturun.
+
+### `event.human_wait()`
+
+Aracı bir insanın girdi sağlaması için beklemek üzere yürütmeyi duraklattığında yayınlanır. `human_input` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar (insanın yanıt vermesi ne kadar sürdü).
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, required - matching human_input için korelasyon anahtarı
+    prompt="Do you approve this action?",        # str | None - insana gösterilen soru
+    options=["approve", "reject", "defer"],      # list[str] | None - insana sunulan seçenekler
+    reason="approval_required",                  # str | None - aracının neden beklediğinin nedeni
+)
+```
+
+### `event.human_input()`
+
+Bir insan girdi sağladığında ve aracı devam ettiğinde yayınlanır. `input_id` aracılığıyla `human_wait` ile ilişkilidir. `duration_ms` otomatik olarak hesaplanır ve arayanlar tarafından geçmemesi gerekir.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, required - prior human_wait ile eşleşmeli
+    response="approve",    # str | None - insanın cevabı (serbest metin veya seçili seçenek)
+    # duration_ms otomatik olarak hesaplanır - geçmeyin
+)
+```
+
+### `event.human_pause()`
+
+Bir insan aracıyı etkin olarak duraklattığında yayınlanır (örneğin pano kontrol aracılığıyla). Aracı askıya alınır ancak sonlandırılmaz.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - aracıyı kim duraklatmış
+)
+```
+
+### `event.human_interrupt()`
+
+Bir insan aracıyı yürütmenin ortasında etkin olarak durduğunca yayınlanır. `human_pause` aksine, aracının işi askıya alınmak yerine sonlandırılır.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - aracıyı kim durdurdu
+    at_step="tool_use:web_search",   # str | None - aracı durdurulduğunda ne yapıyordu
+)
+```
+
+---
+
+## Özel Alanlar
+
+Tüm ek anahtar kelime argümanları standart alanlardan sonra olaya eklenir:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # custom field
+    region="us-east-1",         # custom field
+)
+```
+
+`timestamp`, `type` ve `environment` ayrılmıştır ve özel alanlar olarak geçilirse `ValueError` fırlatır (`Reserved field names cannot be used as custom fields: [...]`). `session_id` ve `agent_id` her olay yönteminde gerekli parametrelerdir ve ikinci kez sağlanamazlar; bunu yaparsanız Python `TypeError` fırlatır. Bunun yerine `configure(environment=...)` (veya `AGENTEYE_ENVIRONMENT` değişkeni) ile ortamı ayarlayın.
+
+---
+
+## Olaylar Nasıl Yazılır
+
+Olaylar işlem içinde tamponlanır ve her `flush_interval` saniyede (varsayılan 500 ms) diske yazılır. Her flush bir JSONL dosyası yazar:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+Toplayıcı bu dizini izler ve dosyaları otomatik olarak yükler. Bu dosyaları doğrudan yönetmeniz gerekmez.

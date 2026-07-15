@@ -1,0 +1,95 @@
+---
+title: "Habilidade de Agente CLI do AgentEye"
+description: "Documentação da Habilidade de Agente CLI do AgentEye."
+---
+
+
+A **habilidade CLI do AgentEye** (`agenteye-cli`) é uma *Habilidade de Agente* instalável que ensina um agente de codificação — Claude Code, Codex e ferramentas compatíveis — a operar sua implantação do AgentEye por meio da [`agenteye` CLI](/pt-br/agenteye/cli) a partir de solicitações em linguagem natural: *"tem algo quebrado hoje?"*, *"gera uma chave para o CI que só pode enviar eventos"*, *"reconhece o incidente ativo e me atribui"*.
+
+Ela **não** é um serviço nem um binário separado. É um pequeno pacote de instruções que funciona sobre a CLI que você já instalou: o agente chama `agenteye --json …`, analisa o JSON limpo e responde em texto corrido. Tudo o que ela pode fazer, você poderia fazer digitando os mesmos comandos.
+
+---
+
+## Como ela se relaciona com as outras interfaces do AgentEye
+
+O AgentEye oferece quatro formas de acessar os mesmos dados e controles. Elas se complementam:
+
+| Interface | O que é | Onde roda | Use quando |
+|---|---|---|---|
+| **[CLI](/pt-br/agenteye/cli)** | Referência de comandos e flags do `agenteye` | Seu terminal | Você quer executar ou automatizar um comando específico |
+| **[Receitas CLI](/pt-br/agenteye/cli-recipes)** | Padrões `jq`/pipeline prontos para copiar | Seu terminal / scripts | Você está integrando a CLI em automações |
+| **Habilidade CLI** (este doc) | Uma porta de entrada em linguagem natural para a CLI | Seu agente de codificação, na sua estação de trabalho | Você quer *só perguntar* e deixar o agente escolher o comando |
+| **[Assistente de IA no painel](/pt-br/agenteye/assistant)** | Um chat embutido no painel | Um container `agent` interno no seu cluster | Você quer Q&A no painel sobre seus dados |
+
+### vs. o Assistente de IA no painel — uma distinção importante
+
+Estas são duas ferramentas diferentes com impactos potenciais muito distintos:
+
+- O **Assistente de IA no painel** ([assistant.md](/pt-br/agenteye/assistant)) é um chat embutido no painel, sustentado por um container `agent` interno. É **somente leitura mais criação com aprovação**: ele pode rascunhar queries e dashboards salvos, mas toda escrita pausa aguardando seu clique de aprovação explícita, e nunca exclui nada. É protegido pela permissão `agent:use` e só vê dados da org que você está visualizando.
+- A **habilidade CLI** roda *na sua* estação de trabalho dentro do *seu* agente de codificação e aciona a CLI `agenteye` como **você**. Ela pode executar a **superfície completa da CLI, incluindo mutações** — criar/rotacionar/desabilitar chaves de API, alterar configurações da org, resolver incidentes, excluir queries salvas — limitada apenas pelas permissões do seu login na CLI. Trate-a com exatamente o mesmo cuidado com que trataria a execução desses comandos manualmente.
+
+---
+
+## Pré-requisitos
+
+1. A **CLI `agenteye` instalada** e no `PATH` (veja [cli.md](/pt-br/agenteye/cli) — `pipx install agenteye`).
+2. Sua **URL do painel** configurada (`AGENTEYE_DASHBOARD_URL`, ou o agente passa `--base-url`).
+3. Uma **sessão autenticada**: execute `agenteye login` você mesmo primeiro. A habilidade **não consegue** concluir o login por código único enviado por e-mail por você — ela pedirá para você executar `agenteye login` se a sessão estiver ausente ou expirada (código de saída da CLI `4`).
+
+---
+
+## Instalando a habilidade
+
+Habilidades de Agente são pastas que contêm um `SKILL.md` (mais referências opcionais). Você instala a habilidade `agenteye-cli` colocando sua pasta onde seu agente procura por habilidades:
+
+- **Claude Code** — copie a pasta `agenteye-cli/` em `~/.claude/skills/` (disponível em todos os projetos) ou em `<seu-repo>/.claude/skills/` (com escopo para aquele repositório). Claude Code a descobre automaticamente; verifique com a lista `/skills`, ou simplesmente faça uma pergunta que corresponda à sua descrição.
+- **Codex (OpenAI)** — O Codex lê o mesmo `SKILL.md`. O arquivo `agents/openai.yaml` incluído define `allow_implicit_invocation: true`, então o Codex seleciona a habilidade automaticamente quando uma tarefa corresponde; caso contrário, invoque-a explicitamente como `$agenteye-cli`.
+
+A habilidade é mantida junto com a CLI `agenteye` e distribuída como parte do seu pacote AgentEye — se você não tiver a pasta `agenteye-cli`, entre em contato com seu contato AgentEye. Nada nela é restrito: não precisa de imagem Docker nem de credencial, pois aciona apenas a CLI **pública** `agenteye` contra seu próprio painel.
+
+---
+
+## Segurança — mutações NÃO pedem confirmação quando um agente executa a CLI
+
+**Leia isto antes de deixar um agente fazer alterações.**
+
+A CLI `agenteye` normalmente pergunta *"tem certeza?"* antes de uma ação destrutiva. Ela **pula automaticamente essa confirmação sempre que não está conectada a um terminal — que é exatamente como um agente de codificação a executa — e `--json` também a pula.** Portanto, o prompt de segurança **não** disparará para o agente.
+
+A habilidade foi escrita para compensar isso: ela é instruída a declarar o comando exato que executará e obter seu **OK explícito antes de qualquer alteração de estado**. Mantenha essa disciplina — quando você aciona o AgentEye por meio de um agente, *você* é a etapa de confirmação. Os comandos que alteram estado a observar:
+
+- `keys create` / `update` / `disable` / `regenerate`
+- `users create` / `update` / `disable` / `enable`
+- `settings set`
+- `alerts create` / `update` / `delete` / `test`
+- os subcomandos de escrita de `incidents`: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- `query create` / `update` / `delete`
+- `agent rename` / `delete`
+- `orgs switch`
+
+Tudo em **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) é somente leitura e não altera nada.
+
+Como o agente age como **você**, ele só pode fazer o que seu login tem permissão — as permissões são resolvidas **por org** (veja [api-keys.md](/pt-br/agenteye/api-keys)). Um comando para o qual você não tem permissão retorna código de saída `5` com o nome exato da permissão, para que o agente possa dizer exatamente o que pedir a um administrador em vez de falhar de forma obscura.
+
+---
+
+## O que você pode perguntar
+
+A habilidade mapeia intenções em linguagem natural para o comando `agenteye` correto, descobrindo valores válidos primeiro (`list <kind>`, `whoami`) para não adivinhar:
+
+- *"Tem algo quebrado / falhando nas últimas 24 horas?"* → `errors --since 24h --aggregate`, seguido de um detalhamento.
+- *"Por que a sessão `run-001` falhou?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *"Como a qualidade está evoluindo esta semana?"* → `evals --aggregate --since 7d`, então detalha as execuções com baixa pontuação.
+- *"Gera uma chave para o CI que só pode enviar eventos."* → `keys create ci --add events:add` (ele declara o comando, cria e captura o segredo de uso único).
+- *"Quem tem acesso? Deixa a Dana somente leitura."* → `users list` → `users update dana@… --permission-set read-only` (após confirmar com você).
+- *"Reconhece o incidente ativo e me atribui."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> você@…`.
+
+Para os comandos exatos, flags e formatos JSON por trás dessas ações, veja [cli.md](/pt-br/agenteye/cli) e [cli-recipes.md](/pt-br/agenteye/cli-recipes).
+
+---
+
+## Veja também
+
+- **[CLI](/pt-br/agenteye/cli)** — referência completa de comandos e flags do `agenteye`.
+- **[Receitas CLI para agentes](/pt-br/agenteye/cli-recipes)** — padrões `jq` prontos para copiar e tratamento de códigos de saída.
+- **[Assistente de IA](/pt-br/agenteye/assistant)** — o assistente no painel (não confundir com esta habilidade de terminal).
+- **[Chaves de API](/pt-br/agenteye/api-keys)** — o modelo de permissões por org que limita o que a habilidade pode fazer.

@@ -15,6 +15,8 @@ import {
   PI_TOOL_MAP,
   PI_TOOL_INPUT_MAP,
   GEMINI_TOOL_MAP,
+  HERMES_TOOL_MAP,
+  HERMES_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -33,6 +35,7 @@ export function canonicalizeToolName(
   if (cli === "gemini") return GEMINI_TOOL_MAP[raw] ?? raw;
   if (cli === "opencode") return OPENCODE_TOOL_MAP[raw] ?? raw;
   if (cli === "pi") return PI_TOOL_MAP[raw] ?? raw;
+  if (cli === "hermes") return HERMES_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -56,6 +59,9 @@ export function canonicalizeToolInput(
   let perToolMap: Record<string, string> | undefined;
   if (cli === "opencode") perToolMap = OPENCODE_TOOL_INPUT_MAP[toolName];
   else if (cli === "pi") perToolMap = PI_TOOL_INPUT_MAP[toolName];
+  // Hermes read_file/write_file/patch deliver the file path as `path`; map it to
+  // `file_path` so path/content builtins fire (verified against a live state.db).
+  else if (cli === "hermes") perToolMap = HERMES_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

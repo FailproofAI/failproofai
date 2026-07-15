@@ -7,6 +7,7 @@ import { getCachedCursorSessionsByEncodedName } from "@/lib/cursor-projects";
 import { getCachedOpenCodeSessionsByEncodedName } from "@/lib/opencode-projects";
 import { getCachedPiSessionsByEncodedName } from "@/lib/pi-projects";
 import { getCachedGeminiSessionsByEncodedName } from "@/lib/gemini-projects";
+import { getCachedHermesSessionsByEncodedName } from "@/lib/hermes-projects";
 import { logWarn } from "@/lib/logger";
 import { decodeFolderName } from "@/lib/paths";
 import { notFound } from "next/navigation";
@@ -45,13 +46,14 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   }
   // Note: decodeFolderName is lossy when cwds contain `-` (every `-` becomes `/`),
   // so each external CLI looks up sessions by re-encoding cwd and matching the slug.
-  const [codex, copilot, cursor, opencode, pi, gemini] = await Promise.all([
+  const [codex, copilot, cursor, opencode, pi, gemini, hermes] = await Promise.all([
     getCachedCodexSessionsByEncodedName(name),
     getCachedCopilotSessionsByEncodedName(name),
     getCachedCursorSessionsByEncodedName(name),
     getCachedOpenCodeSessionsByEncodedName(name),
     getCachedPiSessionsByEncodedName(name),
     getCachedGeminiSessionsByEncodedName(name),
+    getCachedHermesSessionsByEncodedName(name),
   ]);
   const codexSessions = codex.sessions;
   const copilotSessions = copilot.sessions;
@@ -59,6 +61,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const opencodeSessions = opencode.sessions;
   const piSessions = pi.sessions;
   const geminiSessions = gemini.sessions;
+  const hermesSessions = hermes.sessions;
 
   if (
     !claudeExists &&
@@ -67,7 +70,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     cursorSessions.length === 0 &&
     opencodeSessions.length === 0 &&
     piSessions.length === 0 &&
-    geminiSessions.length === 0
+    geminiSessions.length === 0 &&
+    hermesSessions.length === 0
   ) {
     notFound();
   }
@@ -76,7 +80,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   // `decodeFolderName(name)` is ambiguous for cwds containing `-` (every `-`
   // becomes `/`). Each external transcript records the literal cwd, so they
   // round-trip correctly. First non-null wins (Codex → Copilot → Cursor → OpenCode → Pi → Gemini).
-  const canonicalRoot = codex.cwd ?? copilot.cwd ?? cursor.cwd ?? opencode.cwd ?? pi.cwd ?? gemini.cwd ?? decodedName;
+  const canonicalRoot = codex.cwd ?? copilot.cwd ?? cursor.cwd ?? opencode.cwd ?? pi.cwd ?? gemini.cwd ?? hermes.cwd ?? decodedName;
 
   // Project header metadata
   let lastModified: Date | null = null;
@@ -90,7 +94,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       logWarn(`Failed to get stats for project ${decodedName}:`, error);
     }
   }
-  const newestExternal = [codexSessions[0], copilotSessions[0], cursorSessions[0], opencodeSessions[0], piSessions[0], geminiSessions[0]]
+  const newestExternal = [codexSessions[0], copilotSessions[0], cursorSessions[0], opencodeSessions[0], piSessions[0], geminiSessions[0], hermesSessions[0]]
     .filter((s): s is SessionFile => !!s)
     .map((s) => s.lastModified)
     .reduce<Date | null>((acc, d) => (!acc || d.getTime() > acc.getTime() ? d : acc), null);
@@ -107,6 +111,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     ...opencodeSessions,
     ...piSessions,
     ...geminiSessions,
+    ...hermesSessions,
   ].sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
 
   // Path line: prefer the Claude storage dir if present (matches existing UX);

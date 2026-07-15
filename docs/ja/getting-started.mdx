@@ -1,10 +1,10 @@
 ---
 title: はじめに
-description: "failproofai をインストールし、ポリシーを有効にして、エージェントを安定稼働させる"
+description: "failproofai をインストールし、ポリシーを有効化して、エージェントを安定稼働させましょう"
 icon: rocket
 ---
 
-## 必要な環境
+## 動作要件
 
 - **Node.js** >= 20.9.0
 - **Bun** >= 1.3.0（任意 — ソースからビルドする場合のみ必要）
@@ -30,16 +30,16 @@ bun add -g failproofai
 ## クイックスタート
 
 <Steps>
-  <Step title="ポリシーを有効にする">
-    ポリシーとは、エージェントのツール呼び出しの前後に実行されるルールです。破壊的なコマンド、シークレットの漏洩、その他の障害モードを、実際に被害が出る前に検出します。
+  <Step title="ポリシーを有効化する">
+    ポリシーは、エージェントのツール呼び出しの前後に実行されるルールです。破壊的なコマンド、シークレットの漏洩、その他の障害モードを、実害が出る前に検出します。
 
     ```bash
     failproofai policies --install
     ```
 
-    これにより、インストール済みのエージェント CLI にフックエントリが書き込まれます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` に生成されるプラグインシムおよび `~/.config/opencode/opencode.json` の `plugin` 配列への登録エントリ、Pi の `~/.pi/agent/settings.json`、Gemini CLI の `~/.gemini/settings.json`）。複数が存在する場合はプロンプトが表示されます。`--cli claude codex copilot cursor opencode pi gemini`（任意のサブセット）を渡すとプロンプトをスキップできます。
+    このコマンドは、インストール済みのエージェント CLI にフックエントリを書き込みます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` と `~/.config/opencode/opencode.json` の `plugin` 配列へのエントリ、Pi の `~/.pi/agent/settings.json`、Gemini CLI の `~/.gemini/settings.json`、または Hermes の `~/.hermes/config.yaml`）。複数が存在する場合はプロンプトで選択を求められます。`--cli claude codex copilot cursor opencode pi gemini hermes`（任意のサブセット）を渡すとプロンプトをスキップできます。
 
-    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI のサポートは**ベータ版**です — それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi`、または `--cli gemini` でインストールしてください。
+    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi、Gemini CLI のサポートは**ベータ版**です — それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi`、`--cli gemini` でインストールしてください。Hermes（hermes-agent、Slack/Telegram ゲートウェイ）は `--cli hermes` でユーザースコープにインストールでき、オフライン監査ソースとしても機能します。
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +49,7 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli gemini --scope project
+    failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -57,17 +58,17 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    すべてのポリシー、有効かどうか、設定済みのパラメータが表示されます。
+    すべてのポリシー、その有効・無効の状態、および設定済みパラメータが表示されます。
   </Step>
   <Step title="ダッシュボードを起動する">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020` にローカルダッシュボードが開き、セッションの閲覧、ツール呼び出しの確認、ポリシーの管理ができます。
+    `http://localhost:8020` にローカルダッシュボードが開きます。セッションの閲覧、ツール呼び出しの確認、ポリシーの管理が行えます。
   </Step>
   <Step title="エージェントを実行する">
-    Claude Code をいつも通り起動します。エージェントが危険な操作を試みると、failproofai が自動的に介入します。そのまま無人で実行し、後からダッシュボードで何が起きたかを確認できます。
+    Claude Code を通常通り起動してください。エージェントがリスクのある操作を試みた場合、failproofai が自動的にインターセプトします。放置したまま実行し、あとでダッシュボードで何が起きたかを確認できます。
   </Step>
 </Steps>
 
@@ -83,21 +84,21 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-各ポリシーは次の 3 つのいずれかを返します。
+各ポリシーは次の 3 つの判定のいずれかを返します。
 
-- **allow** — エージェントは通常どおり処理を続行する
+- **allow** — エージェントは通常通り処理を続行する
 - **deny** — アクションがブロックされ、エージェントにその理由が通知される
-- **instruct** — エージェントのプロンプトに追加のコンテキストが付加される
+- **instruct** — エージェントのプロンプトに追加コンテキストが付加される
 
 <Note>
-ポリシーはローカルプロセス内で実行されます。リモートサービスには何も送信されません。
+ポリシーはローカルプロセス内で実行されます。リモートサービスへのデータ送信は一切行われません。
 </Note>
 
 ---
 
 ## 規約ベースのポリシーでチームポリシーを設定する
 
-チーム全体で品質基準を素早く確立するには、`.failproofai/policies/` 規約を使う方法が最も手軽です。このディレクトリにポリシーファイルを置くだけで自動的に読み込まれます — フラグも設定変更もインストールコマンドも不要です。
+チーム全体に品質基準を確立する最も手軽な方法は、`.failproofai/policies/` の規約です。このディレクトリにポリシーファイルを置くだけで自動的に読み込まれます — フラグも、設定変更も、インストールコマンドも不要です。
 
 <Steps>
   <Step title="ポリシーディレクトリを作成する">
@@ -106,13 +107,13 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     ```
   </Step>
   <Step title="ポリシーファイルを追加する">
-    サンプルをコピーするか、独自のものを作成します。
+    サンプルをコピーするか、独自のポリシーを作成してください。
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    または新しく作成します。
+    または新しいファイルを作成します。
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -131,32 +132,32 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     });
     ```
   </Step>
-  <Step title="Git にコミットする">
+  <Step title="git にコミットする">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    failproofai をインストール済みのチームメンバー全員が、これらのポリシーを自動的に取得できます。開発者ごとのセットアップは不要です。
+    failproofai をインストールしているすべてのチームメンバーが、これらのポリシーを自動的に取得します。開発者ごとの個別設定は不要です。
   </Step>
 </Steps>
 
 <Tip>
-`.failproofai/policies/` をリポジトリにコミットして、チーム全体で同じ基準を共有しましょう。新たな障害モードを発見したらポリシーを追加してプッシュするだけで、全員が次回の `git pull` 時にアップデートを受け取ります。時間をかけてこれらのポリシーを育てることで、継続的に改善される生きた品質基準になります。
+`.failproofai/policies/` をリポジトリにコミットすることで、チーム全員が同じ基準を共有できます。新たな障害モードが見つかったらポリシーを追加してプッシュするだけで、次の `git pull` 時に全員へ反映されます。こうして蓄積されたポリシーは、継続的に改善される生きた品質基準となります。
 </Tip>
 
 ---
 
 ## データの保存場所
 
-すべての設定とログはマシン上にのみ保存されます。
+すべての設定とログはお使いのマシン上に保存されます。
 
-| パス | 保存される内容 |
-|------|----------------|
+| パス | 保存内容 |
+|------|----------|
 | `~/.failproofai/policies-config.json` | グローバルポリシー設定 |
 | `~/.failproofai/hook-activity.jsonl` | フック実行履歴 |
 | `~/.failproofai/hook.log` | カスタムフックエラーのデバッグログ |
-| `.failproofai/policies-config.json` | プロジェクト単位の設定（コミット対象） |
+| `.failproofai/policies-config.json` | プロジェクト別設定（コミット対象） |
 | `.failproofai/policies-config.local.json` | 個人用オーバーライド（gitignore 対象） |
 
 ---
@@ -167,7 +168,7 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
 failproofai policies --uninstall
 ```
 
-`~/.claude/settings.json` からフックエントリを削除します。`~/.failproofai/` 内の設定ファイルは保持されます。
+`~/.claude/settings.json` からフックエントリを削除します。`~/.failproofai/` 内の設定ファイルはそのまま保持されます。
 
 ---
 
@@ -180,7 +181,7 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="組み込みポリシー" icon="shield" href="/ja/built-in-policies">
-  パラメータ付きの全 26 ポリシー
+  パラメータを含む全 26 ポリシー
 </Card>
 
 <Card title="カスタムポリシー" icon="code" href="/ja/custom-policies">

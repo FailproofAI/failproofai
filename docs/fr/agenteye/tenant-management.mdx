@@ -1,0 +1,166 @@
+---
+title: "Gestion des tenants (organisations et membres)"
+description: "Documentation AgentEye sur la gestion des tenants (organisations et membres)."
+---
+
+Un seul déploiement AgentEye sert plusieurs **organisations** (tenants) totalement isolées, ce qui permet à une seule instance d'héberger des équipes, des unités métier ou des clients distincts sans exposer les données d'un tenant à un autre. Chaque ligne de données (événements, évaluations, sessions, tableaux de bord, requêtes sauvegardées, alertes, clés API et membres) appartient à exactement une organisation. L'isolation principale est appliquée dans le code applicatif : chaque requête est limitée à son organisation via des prédicats `org_id` explicites. Sur ClickHouse — où vivent les événements et évaluations à fort volume — cela est renforcé par une isolation au niveau du moteur : chaque organisation reçoit un utilisateur ClickHouse dédié en lecture seule avec une politique de lignes par organisation, de sorte que même du SQL analytique non fiable ne peut jamais lire les lignes d'un autre tenant. Sur PostgreSQL, la sécurité au niveau des lignes (row-level security) ajoute une défense en profondeur sur le chemin de requête en lecture seule (`/queries/run`), limitant ce que ce chemin peut voir même si un filtre au niveau applicatif venait à manquer ; la connexion d'écriture du serveur s'exécute en tant que propriétaire de la table et opère donc via le même filtrage `org_id` au niveau applicatif.
+
+Le cycle de vie des tenants est contrôlé par les opérateurs, tandis que tout ce que font les membres au quotidien reste en libre-service dans le tableau de bord. Les organisations et leurs adhésions sont créées et gérées avec le CLI **`agenteye-orgctl`**, qui est fourni dans l'image du serveur et s'exécute **à l'intérieur du pod serveur existant**. La création et la suppression de tenants sont délibérément exclues du tableau de bord et de l'API HTTP : il n'existe **ni API HTTP ni bouton dans le tableau de bord** pour le cycle de vie des tenants, de sorte que cela est protégé par un accès shell au cluster/pod plutôt que par la surface applicative.
+
+Au sein d'une organisation, les membres travaillent entièrement dans le tableau de bord et l'API : ils se connectent, basculent entre les organisations auxquelles ils appartiennent, gèrent leurs propres clés API, créent des tableaux de bord et des requêtes sauvegardées, et configurent des alertes pour leur organisation. La séparation est nette : les opérateurs provisionnent et décommissionnent les tenants et leurs membres via le CLI ; les membres gèrent tout à l'intérieur d'un tenant via l'interface utilisateur.
+
+> **Les déploiements mono-tenant n'ont besoin de rien de tout cela.** Une installation mono-tenant fonctionne sans aucune action de l'opérateur. Toutes les données, utilisateurs et clés résident dans une organisation `default` intégrée qui est provisionnée automatiquement. Ce guide n'est nécessaire que si vous décidez d'ajouter une deuxième organisation.
+
+---
+
+## Prérequis
+
+Avant de créer votre **deuxième** organisation (l'organisation `default` intégrée n'a besoin de rien) :
+
+- **PostgreSQL 15+.** Le schéma d'adhésion aux organisations utilise une clé étrangère `ON DELETE SET NULL` avec liste de colonnes qui requiert PostgreSQL 15+. Mettez à jour PostgreSQL avant de provisionner une deuxième organisation.
+- **Un `ORG_CH_SECRET` robuste et stable.** Le mot de passe ClickHouse de chaque organisation est dérivé sous la forme `HMAC(ORG_CH_SECRET, org_id)`. Utiliser la valeur par défaut de développement intégrée — connue publiquement — produirait des identifiants par organisation dérivables publiquement. `agenteye-orgctl org create` **refuse de s'exécuter si `ORG_CH_SECRET` n'est pas défini ou s'il est laissé à la valeur par défaut de développement intégrée**. Définissez d'abord votre propre valeur (voir [Déploiement → variables d'environnement](/fr/agenteye/deployment) et, sur Kubernetes, [§2.6 du guide Kubernetes](/fr/agenteye/kubernetes-deployment#26-multi-tenant-org-isolation-key-optional)). Gardez-la identique sur tous les réplicas du serveur et ne la changez pas à la légère ; la changer orphelise l'utilisateur ClickHouse de chaque organisation jusqu'au prochain démarrage qui les re-provisionne.
+
+---
+
+## Exécution du CLI
+
+`agenteye-orgctl` est fourni dans la **même image que le serveur** (aux côtés de `agenteye-server`). Vous ne déployez **pas** de pod, Job ou Deployment séparé pour lui ; vous l'exécutez à l'intérieur du pod serveur déjà en cours d'exécution, de sorte qu'il lit les mêmes `DATABASE_URL`, `CLICKHOUSE_URL` et `ORG_CH_SECRET` que le serveur utilise.
+
+**Kubernetes :**
+
+```bash
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl <args>
+```
+
+**Docker Compose :**
+
+```bash
+docker compose exec server agenteye-orgctl <args>
+```
+
+Les exemples ci-dessous montrent le `agenteye-orgctl <args>` brut par souci de concision ; faites précéder chacun de l'une des deux lignes ci-dessus correspondant à votre déploiement.
+
+---
+
+## Référence des commandes
+
+### Organisations
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `org create --slug <slug> --name <name>` | Crée une nouvelle organisation. Refuse de s'exécuter si `ORG_CH_SECRET` n'est pas défini ou est laissé à la valeur par défaut de développement intégrée (définissez d'abord la vôtre, voir Prérequis). Provisionne l'utilisateur ClickHouse en lecture seule et la politique de lignes de l'organisation. |
+| `org list` | Liste toutes les organisations (slug, nom et état du cycle de vie). |
+| `org rename --slug <slug> --name <new name>` | Modifie le nom d'affichage d'une organisation. Le slug (utilisé dans les URLs et les clés) reste inchangé. |
+| `org delete --slug <slug>` | **Suppression logique** de l'organisation et suppression de son utilisateur ClickHouse. Les données sont **conservées**. Cela révoque l'accès et libère le justificatif ClickHouse par organisation, mais n'efface pas les événements. Réversible par les opérateurs ; première étape sûre avant une purge. |
+| `org purge --slug <slug>` | **Effacement irréversible des données.** L'organisation doit déjà avoir été `delete`ée. Jamais autorisé sur l'organisation `default` intégrée. À utiliser uniquement lorsque vous êtes certain que les données du tenant doivent être détruites. |
+
+### Membres
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `member add --org <slug> --email <email> [--set <permission-set>] [--add perm1,perm2] [--remove perm3] [--protected]` | Ajoute un membre à une organisation. Optionnellement, part d'un ensemble de permissions intégré, puis ajoute/supprime des permissions individuelles. `--protected` épingle le membre pour que le tableau de bord ne puisse pas le supprimer ou le rétrograder (voir ci-dessous). Le nouveau membre reçoit un OTP lors de sa première connexion au tableau de bord. |
+| `member list --org <slug>` | Liste les membres de l'organisation. Les colonnes de sortie sont `EMAIL`, `SET` (l'ensemble intégré depuis lequel le membre a démarré, ou `-`), `PROT` (si le membre est protégé) et `PERMISSIONS` (ses permissions effectives). Un email affiché avec un `*` en fin de chaîne est un administrateur d'instance ; il a accès à toutes les organisations. |
+| `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...] [--protected \| --unprotect]` | Modifie les permissions d'un membre et/ou son indicateur de protection. `--set` remplace à partir d'un ensemble intégré ; `--add` / `--remove` ajustent les permissions individuelles ; `--protected` / `--unprotect` basculent la protection. Passer uniquement `--protected`/`--unprotect` (sans indicateurs d'octroi) modifie uniquement la protection et laisse les permissions existantes inchangées. |
+| `member remove --org <slug> --email <email>` | Retire un membre de l'organisation. Refuse si le membre est protégé ; utilisez d'abord `--unprotect`. (Une personne peut être membre de plusieurs organisations ; cela n'affecte que l'organisation nommée.) |
+
+Une personne peut être membre de plus d'une organisation avec des permissions **différentes** dans chacune, par exemple administrateur dans une organisation et en lecture seule dans une autre. Chaque adhésion est administrée indépendamment par organisation : accorder ou modifier les permissions d'une personne dans une organisation n'a aucun effet sur son appartenance à d'autres organisations.
+
+### Membres protégés (un administrateur d'organisation inamovible)
+
+La protection garantit qu'une organisation ne peut jamais accidentellement se bloquer hors de son auto-gestion. Par défaut, les administrateurs d'une organisation peuvent s'ajouter et se supprimer mutuellement via la page des utilisateurs en libre-service du tableau de bord, ce qui leur permettrait de supprimer le dernier administrateur et de laisser l'organisation sans personne pour la gérer.
+
+![La page Utilisateurs : une carte par utilisateur du tableau de bord avec son email, les permissions accordées et les contrôles d'édition/désactivation](/agenteye/images/users.png)
+
+Pour éviter cela, marquez un membre comme **protégé** :
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email owner@acme.example --set admin --protected
+```
+
+Un membre protégé **ne peut pas être supprimé ou rétrogradé via le tableau de bord** ; ces actions renvoient une erreur. Seul un opérateur peut le modifier, et uniquement via ce CLI : exécutez d'abord `member update --org acme --email owner@acme.example --unprotect`, puis supprimez ou rétrogradez. Cela garantit que chaque organisation conserve au moins un administrateur que ses propres membres ne peuvent pas exclure, tout en maintenant le contrôle du tenant uniquement chez les opérateurs. La protection est **par organisation** ; protéger quelqu'un dans une organisation n'a aucun effet sur son adhésion dans une autre.
+
+### Ensembles de permissions intégrés
+
+`--set` accepte l'un des trois ensembles intégrés, appliqués par organisation :
+
+| Ensemble | Destiné à |
+|---|---|
+| `admin` | Accès complet au sein de l'organisation, y compris la gestion des clés API et des utilisateurs de l'organisation. |
+| `standard` | Usage quotidien : lecture et exécution de requêtes, création de tableaux de bord, acquittement d'incidents. |
+| `read-only` | Accès en lecture seule aux données et tableaux de bord de l'organisation. |
+
+Commencez par un ensemble avec `--set`, puis affinez avec `--add` / `--remove` en utilisant les jetons de permission individuels listés dans [Clés API](/fr/agenteye/api-keys). Les jetons de permission sont identiques à ceux utilisés pour les clés API.
+
+---
+
+## Exemple pratique
+
+Provisionnez un nouveau tenant `acme`, ajoutez son premier administrateur, laissez-le créer une clé, puis décommissionnez l'organisation.
+
+**1. Créer l'organisation** (`ORG_CH_SECRET` doit déjà être défini avec une valeur robuste et stable, et non non-défini ou à la valeur par défaut de développement intégrée) :
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+```
+
+**2. Ajouter le premier membre en tant qu'administrateur de l'organisation :**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+```
+
+Alice reçoit un OTP la première fois qu'elle se connecte au tableau de bord. À partir de là, elle travaille entièrement dans l'interface sous le préfixe URL de son organisation (ex. `/acme/sessions`).
+
+**3. Créer une clé API par organisation (dans le tableau de bord) :**
+
+L'opérateur ne crée **pas** de clés de données par organisation depuis le CLI. Alice (ou tout membre de l'organisation disposant de `keys:create`) crée des clés de collecteur/tableau de bord pour l'organisation `acme` depuis la page **Clés** du tableau de bord. Chaque clé qu'elle crée est automatiquement estampillée avec son organisation et ne peut lire ou écrire que les données d'`acme`. Voir [Clés API](/fr/agenteye/api-keys).
+
+**4. Modifier un membre ultérieurement :**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member update --org acme --email alice@acme.example --add alerts:write
+
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member list --org acme
+```
+
+**5. Suppression logique de l'organisation** (révoque l'accès et supprime son utilisateur ClickHouse ; données conservées) :
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org delete --slug acme
+```
+
+**6. Purger l'organisation** (irréversible ; uniquement après une suppression logique ; jamais l'organisation `default`) :
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org purge --slug acme
+```
+
+Sur Docker Compose, remplacez chaque préfixe `kubectl -n agenteye exec deploy/server --` par `docker compose exec server`.
+
+---
+
+## Répartition des responsabilités
+
+Tout ce dont un membre de l'organisation a besoin au quotidien est en libre-service dans le tableau de bord et l'API, limité automatiquement à son organisation actuelle :
+
+- **Les clés API par organisation** sont créées et gérées par les membres de l'organisation dans le tableau de bord (ou via l'API des clés avec une clé portant `keys:create`). Le CLI ne crée **pas** de clés de données. Voir [Clés API](/fr/agenteye/api-keys).
+- **Le changement d'organisation** est intégré au tableau de bord ; les membres basculent entre les organisations auxquelles ils appartiennent depuis le sélecteur d'organisation, et les pages limitées à une organisation se trouvent sous `/<org-slug>/…`.
+- **Les tableaux de bord, les requêtes sauvegardées, les alertes et toute utilisation des données** se font entièrement dans l'interface et l'API, limités à l'organisation actuelle du membre.
+
+L'opérateur, via `agenteye-orgctl`, est responsable uniquement du **cycle de vie** des organisations et des membres : créer / renommer / supprimer / purger une organisation, et ajouter / lister / mettre à jour / supprimer un membre.
+
+---
+
+## Voir aussi
+
+- [Déploiement](/fr/agenteye/deployment) : `ORG_CH_SECRET` et le reste de l'environnement du serveur.
+- [Déploiement Kubernetes](/fr/agenteye/kubernetes-deployment) : le §2.6 crée le Secret `agenteye-org-ch-secret` avant votre première organisation multi-tenant.
+- [Clés API](/fr/agenteye/api-keys) : le modèle de clés par organisation et les jetons de permission utilisés par `--add` / `--remove`.
+- [Dépannage](/fr/agenteye/troubleshooting) : provisionnement multi-tenant et problèmes d'isolation ClickHouse.

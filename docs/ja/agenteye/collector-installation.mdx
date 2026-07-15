@@ -1,0 +1,401 @@
+---
+title: "コレクターのインストール"
+description: "AgentEye コレクターのインストールに関するドキュメントです。"
+---
+
+
+`agenteye-collector` デーモンは、エージェントのテレメトリーをアプリケーションをブロックすることなく AgentEye へ確実に届けます。コードはローカルディレクトリにイベントを書き込んで次の処理へ進むだけで、あとはコレクターが引き受けます。各ファイルはミリ秒単位でアップロードされ、再起動・ネットワーク障害・一時的なサーバーエラーにも対応できます。アップロードに失敗した場合はエクスポネンシャルバックオフで再試行され、定期的なリカバリースイープによってクラッシュやデプロイで取り残されたファイルも再キューに追加されます。その結果、耐久性の高い「送りっぱなし」配信が実現します。エージェントはフルスピードで動き続け、コレクターがイベントの取りこぼしをなくします。
+
+仕組みとしては、コレクターは `$AGENTEYE_HOME/events/`（デフォルト: `~/.agenteye/events/`）を監視する軽量デーモンで、Python SDK が書き込んだ `.jsonl` ファイルを AgentEye サーバーへアップロードします。
+
+> **名称変更:** コレクターコマンドは **`agenteye-collector`** に変更されました（旧名称は `agenteye`）。短縮形の `agenteye` は AgentEye CLI に割り当てられました。既存のインストールからアップグレードする場合は [enterprise-docs/collector-migration.md](/ja/agenteye/collector-migration) を参照してください。
+
+---
+
+## 前提条件
+
+- `AGENTEYE_TOKEN`: 自分で生成する GitHub PAT（[enterprise-docs/github-token.md](/ja/agenteye/github-token) 参照）
+- サーバー URL およびコレクター API キー（[enterprise-docs/api-keys.md](/ja/agenteye/api-keys) 参照）
+
+---
+
+## オプション A: バイナリ（推奨）
+
+Linux・macOS・Windows（x86_64 および arm64）向けのビルド済み静的バイナリが利用できます。最新の `collector/v<version>` リリースタグ配下の `agenteye-enterprise/releases` リポジトリから、お使いのプラットフォームに対応するバイナリを直接ダウンロードしてください。
+
+利用可能なアーティファクト名:
+
+| プラットフォーム | アーティファクト |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**`gh` CLI でダウンロード**（バージョンを置き換え、プラットフォームに合わせてアーティファクトを選択）:
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**`curl` を使う場合:**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## オプション B: Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> 現在のベータビルドはフローティングタグ `:beta-latest` で公開されています。`:latest` は安定版リリースにのみ付与されます。再現性のあるデプロイには `:v0.0.1-beta.13` のようなピン留めされたバージョンタグを推奨します。
+
+**実行:**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+公式イメージは非 root ユーザーで動作するため、`AGENTEYE_HOME` を明示的に設定し、ホストのスプールをマウントしてください。ボリュームマウントにより、ホスト上の Python SDK が書き込む `~/.agenteye/` ディレクトリを共有します。ホスト上で `AGENTEYE_HOME` を別の場所に設定済みの場合は、`$HOME/.agenteye` の代わりにそのディレクトリをマウントしてください。
+
+---
+
+## 設定
+
+すべてのオプションは次の 3 通りの方法で設定できます（優先度の高い順）:
+
+1. CLI フラグ: `agenteye-collector start --url https://...`
+2. 環境変数: `AGENTEYE_URL=https://...`
+3. 設定ファイル: `~/.agenteye/config.json`
+
+### 必須オプション
+
+| オプション | CLI フラグ | 環境変数 | config.json キー |
+|---|---|---|---|
+| バックエンド URL | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| API キー | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### 任意オプション（デフォルト値あり）
+
+| オプション | CLI フラグ | 環境変数 | config.json キー | デフォルト |
+|---|---|---|---|---|
+| 最大同時アップロード数 | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| スイーパー間隔（秒） | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| スイーパー最小ファイル経過時間（秒） | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| スイープあたりの最大ファイル数 | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| 最大アップロード試行回数 | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| リトライ基本遅延（ミリ秒） | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### mTLS オプション（任意）
+
+相互 TLS（mTLS）が必要なデプロイ環境では、TLS ハンドシェイク時にクライアント証明書を提示するようコレクターを設定できます。これらのオプションが設定されていない場合、コレクターは標準的な HTTPS を使用します。
+
+| オプション | CLI フラグ | 環境変数 | config.json キー |
+|---|---|---|---|
+| クライアント証明書（PEM） | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| クライアント秘密鍵（PEM） | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| カスタム CA 証明書（PEM） | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+`--tls-cert` と `--tls-key` はセットで設定する必要があります。ファイルは PEM エンコード形式である必要があります。
+
+`--tls-ca` は独立したオプションで、AgentEye サーバーが公的に信頼された CA から発行されていない TLS 証明書（例: 正規の DNS ドメインを持たない場合にクラスター内の `cert-manager` 発行者が自己署名した証明書）を提示する場合にのみ必要です。コレクターは指定された CA を追加の信頼アンカーとして加えます。標準の公的ルートは引き続き信頼されるため、既存のデプロイには影響しません。ファイルは単一の PEM 証明書でも、フルチェーン（複数の PEM ブロックを連結したもの）でも構いません。
+
+**アプリケーション Pod 内でコレクターをサイドカーとして動かす場合は**、エンドツーエンドの EKS パターン（AWS Secrets Manager + Secrets Store CSI Driver + IRSA で配信される mTLS バンドルと自動ローテーション）について [enterprise-docs/single-pod-deployment.md](/ja/agenteye/single-pod-deployment) を参照してください。
+
+Secret ハンドオフパターンで Kubernetes 上で動かす場合は、証明書の Secret をボリュームとしてマウントし、これらのパスをマウントされたファイルへ向けてください:
+
+```yaml
+# 例: コレクター Deployment のスニペット
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # サーバー証明書が公的に信頼されていない場合のみ（例: クラスター内の
+      # 自己署名 CA）。同じ Secret に tls.crt/tls.key と並んで
+      # ca.crt が含まれている場合が多い。
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### `~/.agenteye/config.json` の設定例
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+mTLS を使用する場合:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+mTLS にカスタム CA（自己署名の AgentEye サーバー）を加える場合:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+`AGENTEYE_HOME` が設定されている場合は、`~/.agenteye` の代わりにそのディレクトリが使用されます。
+
+---
+
+## 初回セットアップ
+
+インストール後、サーバー URL と API キーでコレクターを設定します:
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> 信頼できないネットワークをまたぐデプロイでは必ず `https` を使用し、イベントが平文で送信されないようにしてください。`http://your-server-host:8080/events` のような平文形式は、同一ホスト上のサーバーに対するローカルテストのみに適しています。
+
+**接続テスト**（ワンショットフラッシュ: 保留中のイベントを排出して終了）:
+
+```bash
+agenteye-collector flush
+```
+
+`flush` は進捗を stdout に出力します。スプールが空の場合は `No pending files.` と表示して終了コード `0` で終了します。それ以外の場合はファイルごとに 1 行（`[UPLOADED] <file>` または `[FAILED] <file> (<reason>)`）出力し、最後に `Done: <uploaded>/<total> uploaded, <failed> failed.` というサマリーを表示します。これにより `flush` は、デーモンを起動する前に URL・キー・TLS 設定が正しいかを確認するための便利なワンショットチェックとして使用できます。
+
+---
+
+## デーモンとして実行する
+
+### 直接実行
+
+```bash
+agenteye-collector start
+```
+
+### コンテナ / Docker
+
+コレクターとアプリケーションが同じコンテナを共有する場合は、プロセススーパーバイザー配下で実行してください。最もシンプルな選択肢は `supervisord` です。主要なディストリビューションにはすべて同梱されており、クラッシュしたプロセスの再起動・シグナルの転送・グレースフルシャットダウン待機に対応しています。
+
+**`Dockerfile`:**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# 公式イメージから agenteye-collector バイナリを取得する。
+# 特定のタグをピン留めすること（現在のベータは :beta-latest、または :v<version> タグ）。
+# :latest は安定版リリース時のみ公開される。
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf`:**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+各設定の意図:
+
+- agenteye-collector の `autorestart=true`: クラッシュ・パニック・OOM など、いかなる終了でも再起動する。
+- アプリの `autorestart=unexpected`: ゼロ以外の終了コードのときのみ再起動する。これにより、終了コード 0 で終了するワンショットエージェントがループしない。
+- `stopwaitsecs=30`: supervisord が SIGKILL にエスカレートする前に、コレクターが保留中のアップロードを排出する時間を確保する。
+- `stdout_logfile=/dev/stdout`、`*_maxbytes=0`: 両プログラムの出力をコンテナの stdout にストリーミングし、コンテナ内にログファイルを作成しない。
+
+`AGENTEYE_URL` / `AGENTEYE_KEY`（および TLS 関連の環境変数）は従来どおり `docker run -e` で渡してください。supervisord は環境変数を継承します。
+
+> **コンテナを分けて実行する場合**、コレクターを独自のコンテナ（Docker Compose サービス・Kubernetes サイドカーなど）として動かす場合は supervisord は不要です。コンテナランタイムの再起動ポリシーがその役割を担います。EKS サイドカーパターンについては [enterprise-docs/single-pod-deployment.md](/ja/agenteye/single-pod-deployment) を参照してください。
+
+**Kubernetes liveness probe**（コレクターが単独で動いているか supervisord 配下かを問わず適用）:
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+実行中のデーモンは 30 秒ごとに `$AGENTEYE_HOME/health.json` にハートビートを書き込みます。`agenteye-collector health` はそのファイルを読み取り、ハートビートが新鮮でアップロードタスクが正常に動作している場合のみ終了コード `0`（正常）で終了します。ハートビートが 90 秒より古い場合（デーモンが停止している場合など）や、予期しない終了後にウォッチャーとスイーパーが再起動中の場合は終了コード `1`（異常）で終了します。ハートビートは `start` によってのみ書き込まれるため、ワンショットの `flush` コマンドではなく、長期稼働デーモンに対してプローブを実行してください。
+
+### systemd（Linux、本番環境推奨）
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/agenteye/env` を作成:
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd（macOS）
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## コレクターのアップグレード
+
+コレクターは自動更新されません。アップグレードするには:
+
+- **バイナリ:** 最新の `collector/v<version>` リリースから新しい `agenteye-collector-<os>-<arch>` アーティファクトをダウンロードし（[オプション A](#option-a-binary-recommended) 参照）、`/usr/local/bin/agenteye-collector` を置き換えてからサービスを再起動してください（`sudo systemctl restart agenteye-collector`、`launchctl load` の再実行、またはスーパーバイザーの再起動）。
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest`（またはピン留めされた `:v<version>` タグ。`:latest` は安定版リリースにのみ存在します）を実行し、コンテナを再作成してください。
+
+`AGENTEYE_TOKEN` はプライベートリリースリポジトリから新しいバイナリやイメージをダウンロードするために必要ですが、実行中のデーモンには**不要**です。
+
+---
+
+## サブコマンド
+
+| コマンド | 説明 |
+|---|---|
+| `agenteye-collector start` | 長期稼働デーモンを起動する。起動時に前回の実行で残ったイベントをフラッシュし、その後新しいファイルを監視してアップロードする。ウォッチャーとスイーパーは予期しない終了後に自動再起動し、30 秒ごとに `health.json` にハートビートが書き込まれる。 |
+| `agenteye-collector flush` | ワンショット: 保留中のすべてのファイルをアップロードして終了する。スプールが空の場合は `No pending files.` を表示し、それ以外はファイルごとに `[UPLOADED]`/`[FAILED]` ログと `Done: <uploaded>/<total> uploaded, <failed> failed.` サマリーを表示する。 |
+| `agenteye-collector health` | デーモンの `health.json` ハートビートを読み取る。新鮮で正常な場合は終了コード `0`、ハートビートが古い（90 秒超）またはタスクが再起動中の場合は終了コード `1` で終了する。 |
+
+---
+
+## ディレクトリ構成
+
+```
+~/.agenteye/
+├── config.json       <- 任意の設定ファイル
+├── events/           <- SDK が書き込む .jsonl ファイル。コレクターが取得する
+└── failed/           <- すべてのアップロード試行が失敗したファイル
+```
+
+`failed/` 内のファイルは自動的に再試行されません。手動で再キューに追加するには、`events/` に移動して `agenteye-collector flush` を実行してください。

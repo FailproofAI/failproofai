@@ -195,6 +195,17 @@ v0.72.1):
 Note: `~/.pi/settings.json` does NOT exist on a fresh install; user-scope
 settings live one level deeper under `~/.pi/agent/`.
 
+**Project-local trust (pi ≥0.80).** Newer Pi (verified against pi-coding-agent
+v0.80.3) no longer trusts a **project-local** `.pi/settings.json` by default:
+`pi list` gained a `--approve`/`-a` flag ("Trust project-local files for this
+command"), and without it project packages are silently ignored (`pi list`
+prints `No packages installed.`). User-scope packages
+(`~/.pi/agent/settings.json`) are always trusted. The live `pi list` roundtrip
+tests in `__tests__/e2e/hooks/pi-integration.e2e.test.ts` detect the installed
+Pi version and pass `--approve` only on ≥0.80 (older Pi trusts project files
+unconditionally and rejects the unknown flag), so they see the project-scope
+package failproofai's installer writes on either side of the cutoff.
+
 **Schema** is a flat string array — `{"packages": ["./relative/path", ...]}`.
 Each entry is a path Pi resolves relative to the directory containing
 `settings.json` (so `<cwd>/.pi/` for project scope). For dogfood we write
@@ -300,6 +311,86 @@ of 2026-04-13):
 | `BeforeModel`          | (Gemini-only, no canonical) | observation   | Binary still records activity but no policies match. |
 | `AfterModel`           | (Gemini-only, no canonical) | observation   | Same. |
 | `BeforeToolSelection`  | (Gemini-only, no canonical) | observation   | Same. |
+
+### Hermes hooks (`~/.hermes/config.yaml`)
+
+Unlike the seven CLIs above, this repo does **not** ship a dogfood Hermes config —
+Hermes (hermes-agent) is a downstream client's Slack/Telegram gateway, not something
+we run in-repo. Hermes is a **dual-pillar** integration: an **audit** adapter
+(`src/audit/cli-adapters/hermes.ts`, reads `~/.hermes/state.db` directly) **and** a
+**live-hook** integration (`hermes` in `INTEGRATIONS`).
+
+Hermes uses a **Claude/Codex-style external shell-hook system**, but its config is
+**YAML** (`~/.hermes/config.yaml`) under a `hooks:` map — the only integration whose
+settings file is YAML, so `integrations.ts` has a comment-preserving `readYamlDoc`/
+`writeYamlDoc` layer (the `yaml` package's `Document` API) that rewrites only the
+`hooks:` key, preserving the operator's other settings and any comments **outside**
+that block. (Comments *inside* the `hooks:` map are not preserved — we rebuild the
+key from `doc.toJS()` — but failproofai owns that block, so there's nothing to keep.)
+
+Settings file paths:
+
+| Scope   | Path                        |
+|---------|-----------------------------|
+| user    | `~/.hermes/config.yaml`     |
+
+Hermes is **user-scope only** — there is no project config, so `getSettingsPath`
+ignores scope/cwd. Hermes exposes no `$HERMES_PROJECT_DIR`; the installed command uses
+the resolved binary path (`"${binaryPath}" --hook <event> --cli hermes`) — since
+Hermes is user-scope only, no `npx` project form applies. `timeout` is in **seconds** (30).
+
+**Consent (headless gateway).** Hermes prompts once per unique `(event, command)` hook
+before running it. The gateway has no TTY, so install also writes
+`hooks_auto_accept: true` into config.yaml (uninstall removes it). Tradeoff: this
+auto-accepts *any* hook the operator adds — a deliberate choice for headless operation.
+A more targeted alternative is to pre-seed `~/.hermes/shell-hooks-allowlist.json` with
+just our `(event, command)` pairs; deferred as a future refinement.
+
+**Block contract** (verified live): Hermes reads a `{"decision":"block","reason"}` JSON
+object on **stdout** and **ignores exit codes**. So `policy-evaluator.ts` has a
+`cli === "hermes"` deny branch (ahead of the Stop block) that emits that shape
+unconditionally for every event — one branch covers PreToolUse/PostToolUse/SubagentStop.
+
+**Platform independence & subagents.** The gateway is one Hermes process and
+`pre_tool_call` fires on the *tool event*, not the source — so a single install
+intercepts tool calls from **every platform (Slack/Telegram/cli/cron)** and Hermes's
+**internal subagents** uniformly, with no per-platform config. The payload's
+`source`/`chat_type`/`user_id` remain available for per-platform *rules*. Blind spot:
+processes Hermes spawns via the `terminal` tool run in a separate process, so their
+internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_call`.
+
+**Per-event capability matrix:**
+
+| Hermes event       | Canonical (`HERMES_EVENT_MAP`) | Veto / mutate? | Notes |
+|--------------------|--------------------------------|----------------|-------|
+| `pre_tool_call`    | `PreToolUse`                   | ✅ block       | The core deny point — stops the tool before it runs. |
+| `post_tool_call`   | `PostToolUse`                  | observation    | Observe / sanitize. |
+| `on_session_start` | `SessionStart`                 | observation    | — |
+| `on_session_end`   | `SessionEnd`                   | observation    | — |
+| `subagent_stop`    | `SubagentStop`                 | ✅ block       | Subagent-return gate. |
+
+**Limitations vs. Claude semantics.** Hermes has **no turn-end `Stop` event** — its
+lifecycle is session-oriented and it can't force another turn into a session that's
+ending — so `HERMES_EVENT_MAP` never emits `Stop` and the 5 `require-*-before-stop`
+builtins never fire for it (inapplicable, not broken). It also lacks `UserPromptSubmit`
+(only per-LLM-call `pre_llm_call`), `PreCompact`/`Notification`, etc. `instruct()`
+degrades to **allow + logged note** — Hermes has no additional-context channel, so the
+evaluator emits a non-blocking `{"decision":"allow", reason}` and surfaces the note on
+stderr. In exchange Hermes has capabilities others lack (`transform_tool_result`,
+`pre_gateway_dispatch`, `pre_llm_call`) — out of scope for now.
+
+**Tool-input canonicalization.** `HERMES_TOOL_MAP` canonicalizes tool *names* and
+`HERMES_TOOL_INPUT_MAP` the *argument keys*. Verified against a live `~/.hermes/state.db`:
+`read_file`/`write_file`/`patch` deliver the file path as `path`, which we map to
+`file_path` so path/content builtins (`block-env-files`, `block-secrets-write`,
+`block-read-outside-cwd`) fire; `write_file`'s `content`, `patch`'s `old_string`/`new_string`,
+and `search_files`' `pattern`/`path` are already canonical (so Grep needs no entry), and
+`terminal`'s `command` is canonical too (Bash policies like `block-sudo` are live-verified).
+
+For production users the recommended Hermes install is:
+```bash
+failproofai policies --install --cli hermes --scope user
+```
 
 ## Workflow rules
 

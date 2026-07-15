@@ -21,6 +21,57 @@ interface LanguageNav {
   tabs: NavTab[];
 }
 
+export interface NavigationPageReference {
+  page: string;
+  language?: string;
+}
+
+/** Collect page references from flat, localized, or multi-product navigation. */
+export function getNavigationPageReferences(
+  navigation: unknown,
+): NavigationPageReference[] {
+  const references: NavigationPageReference[] = [];
+  const childKeys = [
+    "products",
+    "languages",
+    "tabs",
+    "groups",
+    "anchors",
+    "dropdowns",
+    "versions",
+    "menu",
+  ];
+
+  function walk(value: unknown, inheritedLanguage?: string): void {
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, inheritedLanguage);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+
+    const entry = value as Record<string, unknown>;
+    const language =
+      typeof entry.language === "string" ? entry.language : inheritedLanguage;
+
+    if (Array.isArray(entry.pages)) {
+      for (const page of entry.pages) {
+        if (typeof page === "string") {
+          references.push({ page, language });
+        } else {
+          walk(page, language);
+        }
+      }
+    }
+
+    for (const key of childKeys) {
+      if (key !== "pages" && entry[key]) walk(entry[key], language);
+    }
+  }
+
+  walk(navigation);
+  return references;
+}
+
 /**
  * Build a navigation entry for a specific language by transforming the
  * English navigation structure.
@@ -78,6 +129,28 @@ export function generateLanguagesArray(
   return [english, ...others];
 }
 
+/** Localize every product that has English tabs or an English language entry. */
+export function localizeProductsNavigation(
+  products: unknown[],
+  langCodes: string[],
+): Record<string, unknown>[] {
+  return products.map((value) => {
+    const product = value as Record<string, unknown>;
+    const existingLanguages = product.languages as LanguageNav[] | undefined;
+    const englishTabs = existingLanguages
+      ? existingLanguages.find((entry) => entry.language === "en")?.tabs
+      : (product.tabs as NavTab[] | undefined);
+
+    if (!englishTabs) return product;
+
+    const { tabs: _tabs, ...rest } = product;
+    return {
+      ...rest,
+      languages: generateLanguagesArray(englishTabs, langCodes),
+    };
+  });
+}
+
 /**
  * Update docs.json to use the languages array structure.
  */
@@ -85,18 +158,23 @@ export function updateDocsJson(langCodes: string[]): void {
   const config = readDocsConfig();
   const nav = config.navigation as Record<string, unknown>;
 
-  // Extract existing English tabs
-  const englishTabs = nav.tabs as NavTab[];
-  if (!englishTabs) {
-    throw new Error("docs.json navigation.tabs not found — is this already using the languages format?");
+  if (Array.isArray(nav.products)) {
+    nav.products = localizeProductsNavigation(nav.products, langCodes);
+    config.navigation = nav;
+    writeFileSync(DOCS_JSON_PATH, JSON.stringify(config, null, 2) + "\n");
+    return;
   }
 
-  // Build languages array
-  const languages = generateLanguagesArray(englishTabs, langCodes);
+  const existingLanguages = nav.languages as LanguageNav[] | undefined;
+  const englishTabs = existingLanguages
+    ? existingLanguages.find((entry) => entry.language === "en")?.tabs
+    : (nav.tabs as NavTab[] | undefined);
+  if (!englishTabs) {
+    throw new Error("No English navigation tabs found in docs.json");
+  }
 
-  // Replace tabs with languages, preserve global
   const newNav: Record<string, unknown> = {
-    languages,
+    languages: generateLanguagesArray(englishTabs, langCodes),
   };
   if (nav.global) {
     newNav.global = nav.global;

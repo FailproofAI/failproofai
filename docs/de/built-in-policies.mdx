@@ -1,10 +1,10 @@
 ---
 title: Integrierte Richtlinien
-description: "Alle 39 integrierten Richtlinien, die häufige Fehlerquellen von Agenten abfangen"
+description: "Alle 39 integrierten Richtlinien, die häufige Fehlerszenarien von Agenten abfangen"
 icon: shield
 ---
 
-failproofai enthält 39 integrierte Richtlinien, die häufige Fehlerquellen von Agenten abfangen. Jede Richtlinie wird bei einem bestimmten Hook-Ereignistyp und Tool-Namen ausgelöst. Neunzehn Richtlinien akzeptieren Parameter, mit denen Sie ihr Verhalten anpassen können, ohne Code zu schreiben. Fünf Workflow-Richtlinien erzwingen eine Commit → Push → PR → CI-Pipeline, bevor Claude anhält.
+failproofai enthält 39 integrierte Richtlinien, die häufige Fehlerszenarien von Agenten abfangen. Jede Richtlinie wird für einen bestimmten Hook-Ereignistyp und Toolnamen ausgelöst. Neunzehn Richtlinien akzeptieren Parameter, mit denen Sie ihr Verhalten anpassen können, ohne Code zu schreiben. Fünf Workflow-Richtlinien erzwingen eine Commit → Push → PR → CI-Pipeline, bevor Claude anhält.
 
 ---
 
@@ -15,8 +15,8 @@ Richtlinien sind in Kategorien gruppiert:
 | Kategorie | Richtlinien | Hook-Typ |
 |----------|----------|-----------|
 | [Gefährliche Befehle](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands | PreToolUse |
-| [Infrastrukturbefehle](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [Geheimnisse (Sanitizer)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [Infra-Befehle](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [Secrets (Sanitizer)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
 | [Umgebung](#environment) | block-env-files, protect-env-vars | PreToolUse |
 | [Dateizugriff](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
@@ -27,13 +27,13 @@ Richtlinien sind in Kategorien gruppiert:
 
 - **`block-`** — verhindert, dass der Agent fortfährt.
 - **`warn-`** — gibt dem Agenten zusätzlichen Kontext, damit er sich selbst korrigieren kann.
-- **`sanitize-`** — bereinigt sensible Daten aus der Tool-Ausgabe, bevor der Agent sie sieht.
+- **`sanitize-`** — entfernt vertrauliche Daten aus der Tool-Ausgabe, bevor der Agent sie sieht.
 
 ### Namespaces
 
-Jede Richtlinie befindet sich in einem `<namespace>/<name>`-Slot. Integrierte Richtlinien gehören zum **`failproofai/`**-Namespace — zum Beispiel `failproofai/sanitize-jwt`. Der Namespace verhindert Kollisionen, wenn Sie auch benutzerdefinierte oder Drittanbieter-Richtlinien mit ähnlichen Kurznamen laden.
+Jede Richtlinie befindet sich in einem `<namespace>/<name>`-Slot. Integrierte Richtlinien gehören zum **`failproofai/`**-Namespace — zum Beispiel `failproofai/sanitize-jwt`. Der Namespace verhindert Konflikte, wenn Sie auch benutzerdefinierte oder Drittanbieter-Richtlinien mit ähnlichen Kurznamen laden.
 
-In Ihrer Konfiguration können Sie auf eine integrierte Richtlinie entweder mit ihrem Kurznamen oder ihrem qualifizierten Namen verweisen; beide Formen lösen sich zur selben Richtlinie auf:
+In Ihrer Konfiguration können Sie eine integrierte Richtlinie entweder über ihren Kurznamen oder ihren qualifizierten Namen referenzieren; beide Formen lösen sich zur gleichen Richtlinie auf:
 
 ```json
 {
@@ -44,13 +44,13 @@ In Ihrer Konfiguration können Sie auf eine integrierte Richtlinie entweder mit 
 }
 ```
 
-Enthält ein Name kein `/`, behandelt failproofai ihn als zum Standard-Namespace `failproofai` gehörend. Namen, die bereits ein `/` enthalten (z. B. `myorg/foo`, `custom/my-hook`), werden unverändert übernommen.
+Wenn ein Name kein `/` enthält, behandelt failproofai ihn als zum Standard-Namespace `failproofai` gehörend. Namen, die bereits ein `/` enthalten (z.B. `myorg/foo`, `custom/my-hook`), werden unverändert übernommen.
 - **`require-`** — blockiert das Stop-Ereignis, bis die Bedingungen erfüllt sind.
 
 ---
 
 <Tip>
-Jede Richtlinie unterstützt ein optionales `hint`-Feld in `policyParams`. Der Hinweis wird an die deny- oder instruct-Nachricht angehängt, die Claude sieht, und gibt handlungsorientierte Hinweise, ohne den Richtliniencode zu ändern. Funktioniert mit integrierten, benutzerdefinierten und konventionsbasierten Richtlinien. Siehe [Konfiguration → hint](/de/configuration#hint-cross-cutting) für Details.
+Jede Richtlinie unterstützt ein optionales `hint`-Feld in `policyParams`. Der Hinweis wird an die deny- oder instruct-Nachricht angehängt, die Claude sieht, und gibt umsetzbare Anweisungen, ohne den Richtliniencode zu ändern. Funktioniert mit integrierten, benutzerdefinierten und konventionsbasierten Richtlinien. Weitere Informationen finden Sie unter [Konfiguration → hint](/de/configuration#hint-cross-cutting).
 </Tip>
 
 ---
@@ -64,7 +64,7 @@ Verhindert, dass Agenten Operationen ausführen, die schwer rückgängig zu mach
 **Ereignis:** PreToolUse (Bash)  
 **Standard:** Verweigert jeden `sudo`-Befehl.
 
-Blockiert Aufrufe, die das `sudo`-Schlüsselwort enthalten. Der Musterabgleich erfolgt auf geparsten Befehls-Tokens, nicht auf dem Rohstring, um Umgehungsversuche durch Shell-Operator-Injection zu verhindern.
+Blockiert Aufrufe, die das Schlüsselwort `sudo` enthalten. Der Musterabgleich erfolgt auf geparsten Befehls-Tokens, nicht auf dem rohen String, um Umgehungsversuche über Shell-Operator-Injektion zu verhindern.
 
 **Parameter:**
 
@@ -87,7 +87,7 @@ Blockiert Aufrufe, die das `sudo`-Schlüsselwort enthalten. Der Musterabgleich e
 Mit dieser Konfiguration ist `sudo systemctl status nginx` erlaubt, aber `sudo rm /etc/hosts` wird verweigert.
 
 <Note>
-Muster werden gegen geparste Tokens abgeglichen, nicht gegen den Rohbefehlsstring. Dies verhindert Umgehungsversuche durch angehängte Shell-Operatoren (z. B. `sudo systemctl status x; rm -rf /` entspricht nicht `sudo systemctl status *`).
+Muster werden gegen geparste Tokens abgeglichen, nicht gegen den rohen Befehlsstring. Dies verhindert Umgehungsversuche über angehängte Shell-Operatoren (z.B. führt `sudo systemctl status x; rm -rf /` nicht zu einer Übereinstimmung mit `sudo systemctl status *`).
 </Note>
 
 ---
@@ -101,7 +101,7 @@ Muster werden gegen geparste Tokens abgeglichen, nicht gegen den Rohbefehlsstrin
 
 | Parameter | Typ | Standard | Beschreibung |
 |-------|------|---------|-------------|
-| `allowPaths` | `string[]` | `[]` | Pfade, die sicher rekursiv gelöscht werden dürfen (z. B. `/tmp`). |
+| `allowPaths` | `string[]` | `[]` | Pfade, die sicher rekursiv gelöscht werden dürfen (z.B. `/tmp`). |
 
 **Beispiel:**
 
@@ -129,17 +129,17 @@ Keine Parameter.
 ### `block-failproofai-commands`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert Befehle, die failproofai selbst deinstallieren oder deaktivieren würden (z. B. `npm uninstall failproofai`, `failproofai policies --uninstall`).
+**Standard:** Verweigert Befehle, die failproofai selbst deinstallieren oder deaktivieren würden (z.B. `npm uninstall failproofai`, `failproofai policies --uninstall`).
 
 Keine Parameter.
 
 ---
 
-## Infrastrukturbefehle
+## Infra-Befehle
 
-Verhindert, dass Coding-Agenten Infrastruktur-CLIs ausführen oder CI/CD-Pipelines auslösen. Alle Richtlinien in dieser Kategorie sind **opt-in** (`defaultEnabled: false`) — Agenten, die legitim `kubectl`, `terraform` usw. aufrufen müssen, werden nicht beeinträchtigt, es sei denn, Sie aktivieren die Richtlinie. Wenn aktiviert, wird jeder Aufruf der entsprechenden CLI verweigert, es sei denn, der Befehl entspricht einem Eintrag in `allowPatterns`.
+Verhindert, dass Coding-Agenten Infrastruktur-CLIs ausführen oder CI/CD-Pipelines auslösen. Alle Richtlinien in dieser Kategorie sind **opt-in** (`defaultEnabled: false`) — Agenten, die legitimerweise `kubectl`, `terraform` usw. aufrufen müssen, werden nicht beeinträchtigt, es sei denn, Sie aktivieren die Richtlinie. Wenn aktiviert, wird jeder Aufruf der entsprechenden CLI verweigert, sofern der Befehl nicht einem Eintrag in `allowPatterns` entspricht.
 
-Die Mustergrammatik ist dieselbe wie bei [`block-sudo`](#block-sudo): Tokens werden gegen geparste argv abgeglichen, `*` ist ein Platzhalter für ein Token, und jeder Befehl, der einen eigenständigen Shell-Operator (`&&`, `||`, `|`, `;`) oder ein Token mit eingebetteten Shell-Metazeichen enthält, wird vor dem Allowlist-Abgleich abgelehnt, um Injection-Umgehungsversuche zu verhindern.
+Die Muster-Grammatik ist dieselbe wie bei [`block-sudo`](#block-sudo): Tokens werden gegen geparste argv abgeglichen, `*` ist ein Platzhalter für ein Token, und jeder Befehl, der einen eigenständigen Shell-Operator (`&&`, `||`, `|`, `;`) oder ein Token mit eingebetteten Shell-Metazeichen enthält, wird vor dem Allowlist-Abgleich abgelehnt, um Injektionsumgehungen zu verhindern.
 
 ### `block-kubectl`
 
@@ -171,7 +171,7 @@ Mit dieser Konfiguration ist `kubectl get pods` erlaubt, aber `kubectl apply -f 
 ### `block-terraform`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert jeden `terraform`- oder `tofu`-Aufruf (OpenTofu).
+**Standard:** Verweigert jeden `terraform`- oder `tofu`-(OpenTofu-)Aufruf.
 
 **Parameter:**
 
@@ -221,7 +221,7 @@ Mit dieser Konfiguration ist `kubectl get pods` erlaubt, aber `kubectl apply -f 
 ### `block-gcloud`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert jeden `gcloud`-CLI-Aufruf (Google Cloud).
+**Standard:** Verweigert jeden `gcloud`-(Google Cloud-)CLI-Aufruf.
 
 **Parameter:**
 
@@ -246,7 +246,7 @@ Mit dieser Konfiguration ist `kubectl get pods` erlaubt, aber `kubectl apply -f 
 ### `block-az-cli`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert jeden `az`-CLI-Aufruf (Azure).
+**Standard:** Verweigert jeden `az`-(Azure-)CLI-Aufruf.
 
 **Parameter:**
 
@@ -296,7 +296,7 @@ Mit dieser Konfiguration ist `kubectl get pods` erlaubt, aber `kubectl apply -f 
 ### `block-gh-pipeline`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert die folgenden `gh`-CLI-Unterbefehle, die den Zustand ändern oder Pipelines auslösen:
+**Standard:** Verweigert die folgenden `gh`-CLI-Unterbefehle, die den Zustand verändern oder Pipelines auslösen:
 
 - `gh workflow run`, `gh workflow enable`, `gh workflow disable`
 - `gh run rerun`, `gh run cancel`
@@ -305,13 +305,13 @@ Mit dieser Konfiguration ist `kubectl get pods` erlaubt, aber `kubectl apply -f 
 - `gh cache delete`
 - `gh secret set`, `gh secret delete`
 
-Schreibgeschützte `gh`-Unterbefehle wie `gh pr view`, `gh pr list`, `gh run list`, `gh release view` und `gh api repos/.../...` werden von dieser Richtlinie **nicht** erfasst — sie werden routinemäßig für Workflow-Prüfungen benötigt (einschließlich failproofais eigenem `require-ci-green-before-stop`).
+Schreibgeschützte `gh`-Unterbefehle wie `gh pr view`, `gh pr list`, `gh run list`, `gh release view` und `gh api repos/.../...` werden von dieser Richtlinie **nicht** erfasst — sie werden routinemäßig für Workflow-Prüfungen benötigt (einschließlich failproofai's eigenem `require-ci-green-before-stop`).
 
 **Parameter:**
 
 | Parameter | Typ | Standard | Beschreibung |
 |-------|------|---------|-------------|
-| `allowPatterns` | `string[]` | `[]` | Bestimmte skriptierte Aufrufe, die erlaubt werden sollen, auch wenn sie andernfalls verweigert würden. |
+| `allowPatterns` | `string[]` | `[]` | Bestimmte skriptgesteuerte Aufrufe, die erlaubt werden sollen, obwohl sie sonst verweigert würden. |
 
 **Beispiel:**
 
@@ -327,9 +327,9 @@ Schreibgeschützte `gh`-Unterbefehle wie `gh pr view`, `gh pr list`, `gh run lis
 
 ---
 
-## Geheimnisse (Sanitizer)
+## Secrets (Sanitizer)
 
-Verhindert, dass Agenten Anmeldeinformationen in ihren Kontext oder ihre Ausgabe weitergeben. Sanitizer-Richtlinien werden bei **PostToolUse**-Ereignissen ausgelöst. Wenn Claude einen Bash-Befehl ausführt, eine Datei liest oder ein Tool aufruft, prüfen diese Richtlinien die Ausgabe, bevor sie an Claude zurückgegeben wird. Wenn ein Geheimnis-Muster erkannt wird, gibt die Richtlinie eine Verweigerungsentscheidung zurück, die verhindert, dass die Ausgabe weitergeleitet wird.
+Verhindert, dass Agenten Zugangsdaten in ihren Kontext oder ihre Ausgabe einschleusen. Sanitizer-Richtlinien werden bei **PostToolUse**-Ereignissen ausgelöst. Wenn Claude einen Bash-Befehl ausführt, eine Datei liest oder ein Tool aufruft, prüfen diese Richtlinien die Ausgabe, bevor sie an Claude zurückgegeben wird. Wenn ein Secret-Muster erkannt wird, gibt die Richtlinie eine Verweigerungsentscheidung zurück, die verhindert, dass die Ausgabe weitergeleitet wird.
 
 ### `sanitize-jwt`
 
@@ -343,13 +343,13 @@ Keine Parameter.
 ### `sanitize-api-keys`
 
 **Ereignis:** PostToolUse (alle Tools)  
-**Standard:** Schwärzt gängige API-Schlüsselformate: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS-Zugriffsschlüssel (`AKIA`), Stripe-Schlüssel (`sk_live_`, `sk_test_`) und Google-API-Schlüssel (`AIza`).
+**Standard:** Schwärzt gängige API-Key-Formate: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS-Zugriffsschlüssel (`AKIA`), Stripe-Schlüssel (`sk_live_`, `sk_test_`) und Google API-Schlüssel (`AIza`).
 
 **Parameter:**
 
 | Parameter | Typ | Standard | Beschreibung |
 |-------|------|---------|-------------|
-| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Zusätzliche Regex-Muster, die als Geheimnisse behandelt werden sollen. |
+| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Zusätzliche Regex-Muster, die als Secrets behandelt werden sollen. |
 
 **Beispiel:**
 
@@ -371,7 +371,7 @@ Keine Parameter.
 ### `sanitize-connection-strings`
 
 **Ereignis:** PostToolUse (alle Tools)  
-**Standard:** Schwärzt Datenbankverbindungsstrings, die eingebettete Anmeldeinformationen enthalten (z. B. `postgresql://user:password@host/db`).
+**Standard:** Schwärzt Datenbankverbindungszeichenfolgen, die eingebettete Zugangsdaten enthalten (z.B. `postgresql://user:password@host/db`).
 
 Keine Parameter.
 
@@ -397,12 +397,12 @@ Keine Parameter.
 
 ## Umgebung
 
-Schützt sensible Umgebungskonfigurationen davor, von Agenten gelesen oder offengelegt zu werden.
+Schützt vertrauliche Umgebungskonfigurationen davor, von Agenten gelesen oder offengelegt zu werden.
 
 ### `block-env-files`
 
 **Ereignis:** PreToolUse (Bash, Read)  
-**Standard:** Verweigert das Lesen von `.env`-Dateien über `cat .env`, Read-Tool-Aufrufe mit `.env` als Dateipfad usw.
+**Standard:** Verweigert das Lesen von `.env`-Dateien über `cat .env`, `Read`-Tool-Aufrufe mit `.env` als Dateipfad usw.
 
 Blockiert nicht `.envrc` oder andere umgebungsnahe Dateien — nur Dateien, die exakt `.env` heißen.
 
@@ -421,12 +421,12 @@ Keine Parameter.
 
 ## Dateizugriff
 
-Hält Agenten innerhalb der Projektgrenzen und fernab von sensiblen Dateien.
+Hält Agenten innerhalb der Projektgrenzen und fernab von vertraulichen Dateien.
 
 ### `block-read-outside-cwd`
 
 **Ereignis:** PreToolUse (Read, Bash)  
-**Standard:** Verweigert das Lesen von Dateien außerhalb des Projektstamms. Die Grenze ist `CLAUDE_PROJECT_DIR` (einmal pro Sitzung von Claude Code gesetzt), mit einem Fallback auf das aktuelle Arbeitsverzeichnis der Sitzung, wenn diese Variable nicht gesetzt ist. Die Verwendung des Projektstamms anstelle des Live-`cwd` bedeutet, dass die Grenze auch dann stabil bleibt, wenn Claude in ein Unterverzeichnis wechselt.
+**Standard:** Verweigert das Lesen von Dateien außerhalb des Projektstamms. Die Grenze ist `CLAUDE_PROJECT_DIR` (einmalig pro Sitzung von Claude Code gesetzt), mit einem Fallback auf das aktuelle Arbeitsverzeichnis der Sitzung, wenn diese Variable nicht gesetzt ist. Die Verwendung des Projektstamms anstelle des Live-`cwd` bedeutet, dass die Grenze stabil bleibt, auch nachdem Claude in ein Unterverzeichnis gewechselt hat.
 
 **Parameter:**
 
@@ -451,7 +451,7 @@ Hält Agenten innerhalb der Projektgrenzen und fernab von sensiblen Dateien.
 ### `block-secrets-write`
 
 **Ereignis:** PreToolUse (Write, Edit)  
-**Standard:** Verweigert Schreibvorgänge in Dateien, die häufig für private Schlüssel und Zertifikate verwendet werden: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
+**Standard:** Verweigert Schreibvorgänge in Dateien, die üblicherweise für private Schlüssel und Zertifikate verwendet werden: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
 
 **Parameter:**
 
@@ -501,7 +501,7 @@ Verhindert versehentliche Pushes, Force-Pushes und Branch-Fehler, die schwer rü
 ```
 
 <Tip>
-Um das Pushen auf alle Branches zu erlauben (was diese Richtlinie effektiv deaktiviert, ohne sie aus `enabledPolicies` zu entfernen), setzen Sie `protectedBranches: []`.
+Um das Pushen auf alle Branches zu erlauben (wodurch diese Richtlinie effektiv deaktiviert wird, ohne sie aus `enabledPolicies` zu entfernen), setzen Sie `protectedBranches: []`.
 </Tip>
 
 ---
@@ -509,7 +509,7 @@ Um das Pushen auf alle Branches zu erlauben (was diese Richtlinie effektiv deakt
 ### `block-work-on-main`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Verweigert `git commit`, `git merge`, `git rebase` und `git cherry-pick`, während sich der Working Tree auf `main` oder `master` befindet. Branch-Erstellung und -Wechsel (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) sind nicht betroffen.
+**Standard:** Verweigert `git commit`, `git merge`, `git rebase` und `git cherry-pick`, wenn sich der Working Tree auf `main` oder `master` befindet. Branch-Erstellung und -Wechsel (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) sind nicht betroffen.
 
 **Parameter:**
 
@@ -524,7 +524,7 @@ Um das Pushen auf alle Branches zu erlauben (was diese Richtlinie effektiv deakt
 **Ereignis:** PreToolUse (Bash)  
 **Standard:** Verweigert `git push --force` und `git push -f`.
 
-Keine richtlinienspezifischen Parameter. Verwenden Sie das übergreifende [`hint`](/de/configuration#hint-cross-cutting), um Alternativen vorzuschlagen:
+Keine richtlinienspezifischen Parameter. Verwenden Sie den übergreifenden [`hint`](/de/configuration#hint-cross-cutting), um Alternativen vorzuschlagen:
 
 ```json
 {
@@ -550,7 +550,7 @@ Keine Parameter.
 ### `warn-git-stash-drop`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Weist Claude an, vor dem Ausführen von `git stash drop` zu bestätigen. Blockiert den Befehl nicht.
+**Standard:** Weist Claude an, vor der Ausführung von `git stash drop` zu bestätigen. Blockiert den Befehl nicht.
 
 Keine Parameter.
 
@@ -567,12 +567,12 @@ Keine Parameter.
 
 ## Datenbank
 
-Erkennt destruktive SQL-Operationen, bevor sie gegen Ihre Datenbank ausgeführt werden.
+Fängt destruktive SQL-Operationen ab, bevor sie gegen Ihre Datenbank ausgeführt werden.
 
 ### `warn-destructive-sql`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Weist Claude an, zu bestätigen, bevor SQL ausgeführt wird, das `DROP TABLE`, `DROP DATABASE` oder `DELETE` ohne `WHERE`-Klausel enthält.
+**Standard:** Weist Claude an, vor der Ausführung von SQL mit `DROP TABLE`, `DROP DATABASE` oder `DELETE` ohne `WHERE`-Klausel zu bestätigen.
 
 Keine Parameter.
 
@@ -581,7 +581,7 @@ Keine Parameter.
 ### `warn-schema-alteration`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Weist Claude an, zu bestätigen, bevor `ALTER TABLE`-Anweisungen ausgeführt werden.
+**Standard:** Weist Claude an, vor der Ausführung von `ALTER TABLE`-Anweisungen zu bestätigen.
 
 Keine Parameter.
 
@@ -594,13 +594,13 @@ Gibt Agenten zusätzlichen Kontext vor potenziell riskanten, aber nicht destrukt
 ### `warn-large-file-write`
 
 **Ereignis:** PreToolUse (Write)  
-**Standard:** Weist Claude an, zu bestätigen, bevor Dateien größer als 1024 KB geschrieben werden.
+**Standard:** Weist Claude an, vor dem Schreiben von Dateien größer als 1024 KB zu bestätigen.
 
 **Parameter:**
 
 | Parameter | Typ | Standard | Beschreibung |
 |-------|------|---------|-------------|
-| `thresholdKb` | `number` | `1024` | Dateigrößenschwellenwert in Kilobyte, ab dem eine Warnung ausgegeben wird. |
+| `thresholdKb` | `number` | `1024` | Dateigröße in Kilobyte, ab der eine Warnung ausgegeben wird. |
 
 **Beispiel:**
 
@@ -615,7 +615,7 @@ Gibt Agenten zusätzlichen Kontext vor potenziell riskanten, aber nicht destrukt
 ```
 
 <Note>
-Der Hook-Handler erzwingt ein stdin-Limit von 1 MB für Payloads. Um diese Richtlinie mit kleinem Inhalt zu testen, setzen Sie `thresholdKb` auf einen Wert deutlich unterhalb von 1024.
+Der Hook-Handler erzwingt ein stdin-Limit von 1 MB für Payloads. Um diese Richtlinie mit kleinen Inhalten zu testen, setzen Sie `thresholdKb` auf einen Wert deutlich unter 1024.
 </Note>
 
 ---
@@ -623,7 +623,7 @@ Der Hook-Handler erzwingt ein stdin-Limit von 1 MB für Payloads. Um diese Richt
 ### `warn-package-publish`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Weist Claude an, zu bestätigen, bevor `npm publish` ausgeführt wird.
+**Standard:** Weist Claude an, vor der Ausführung von `npm publish` zu bestätigen.
 
 Keine Parameter.
 
@@ -641,7 +641,7 @@ Keine Parameter.
 ### `warn-global-package-install`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Weist Claude an, zu bestätigen, bevor `npm install -g`, `yarn global add` oder `pip install` ohne virtuelle Umgebung ausgeführt wird.
+**Standard:** Weist Claude an, vor der Ausführung von `npm install -g`, `yarn global add` oder `pip install` ohne virtuelle Umgebung zu bestätigen.
 
 Keine Parameter.
 
@@ -654,16 +654,16 @@ Legt fest, welche Paketmanager der Agent verwenden darf.
 ### `prefer-package-manager`
 
 **Ereignis:** PreToolUse (Bash)  
-**Standard:** Deaktiviert. Wenn aktiviert, blockiert es jeden Paketmanager-Befehl, der nicht in der `allowed`-Liste steht, und weist Claude an, den Befehl mit einem erlaubten Manager umzuschreiben.
+**Standard:** Deaktiviert. Wenn aktiviert, blockiert alle Paketmanager-Befehle, die nicht in der `allowed`-Liste stehen, und teilt Claude mit, den Befehl mit einem erlaubten Manager umzuschreiben.
 
 Erkennt: pip, pip3, python -m pip, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo.
 
 | Parameter | Typ | Standard | Beschreibung |
 |-----------|------|---------|-------------|
 | `allowed` | string[] | `[]` | Erlaubte Paketmanager-Namen. Jeder erkannte Manager, der nicht in dieser Liste steht, wird blockiert. Wenn leer, ist die Richtlinie wirkungslos. |
-| `blocked` | string[] | `[]` | Zusätzliche Manager-Namen, die über die integrierte Liste hinaus blockiert werden sollen (z. B. `['pdm', 'pipx']`). |
+| `blocked` | string[] | `[]` | Zusätzliche Manager-Namen, die über die integrierte Liste hinaus blockiert werden sollen (z.B. `['pdm', 'pipx']`). |
 
-Die integrierte Blockliste umfasst: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Verwenden Sie `blocked`, um Manager hinzuzufügen, die nicht in dieser Liste enthalten sind.
+Die integrierte Blockliste umfasst: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Verwenden Sie `blocked`, um Manager hinzuzufügen, die nicht in dieser Liste sind.
 
 **Beispielkonfiguration:**
 
@@ -679,18 +679,18 @@ Die integrierte Blockliste umfasst: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, 
 }
 ```
 
-Mit dieser Konfiguration werden `pip install flask` und `pdm install flask` beide verweigert, mit einer Meldung, die Claude auffordert, stattdessen `uv` oder `bun` zu verwenden. Befehle wie `uv pip install flask` sind erlaubt, da `uv` in der Allowlist steht und zuerst geprüft wird.
+Mit dieser Konfiguration werden `pip install flask` und `pdm install flask` beide verweigert, mit einer Nachricht, die Claude auffordert, stattdessen `uv` oder `bun` zu verwenden. Befehle wie `uv pip install flask` sind erlaubt, da `uv` in der Allowlist steht und zuerst geprüft wird.
 
 ---
 
 ## KI-Verhalten
 
-Erkennt, wenn Agenten feststecken oder sich unerwartet verhalten.
+Erkennt, wenn Agenten stecken bleiben oder sich unerwartet verhalten.
 
 ### `warn-repeated-tool-calls`
 
 **Ereignis:** PreToolUse (alle Tools)  
-**Standard:** Weist Claude an, neu zu überlegen, wenn dasselbe Tool 3+ Mal mit identischen Parametern aufgerufen wird — ein häufiges Zeichen dafür, dass der Agent in einer Schleife feststeckt.
+**Standard:** Weist Claude an, seine Vorgehensweise zu überdenken, wenn dasselbe Tool drei oder mehr Mal mit identischen Parametern aufgerufen wird — ein häufiges Zeichen dafür, dass der Agent in einer Schleife steckt.
 
 Keine Parameter.
 
@@ -698,40 +698,40 @@ Keine Parameter.
 
 ## Workflow
 
-Erzwingt einen disziplinierten Workflow am Sitzungsende. Diese Richtlinien werden beim **Stop**-Ereignis ausgelöst und verhindern, dass der Agent anhält, bis jede Bedingung erfüllt ist. Sie folgen einer natürlichen Abhängigkeitskette: Commit → Push → PR → CI. Wenn eine Richtlinie verweigert, werden spätere Richtlinien in der Kette übersprungen (Kurzschluss bei Verweigerung).
+Erzwingt einen disziplinierten Workflow am Sitzungsende. Diese Richtlinien werden beim **Stop**-Ereignis ausgelöst und verhindern, dass der Agent anhält, bis jede Bedingung erfüllt ist. Sie folgen einer natürlichen Abhängigkeitskette: Commit → Push → PR → CI. Wenn eine Richtlinie verweigert, werden spätere Richtlinien in der Kette übersprungen (Deny bricht ab).
 
-Alle Workflow-Richtlinien sind **fail-open**: Wenn das erforderliche Tool nicht verfügbar ist (z. B. `gh` nicht installiert, kein Git-Remote), erlaubt die Richtlinie den Vorgang mit einer informativen Meldung, die erklärt, warum die Prüfung übersprungen wurde.
+Alle Workflow-Richtlinien sind **fail-open**: Wenn das erforderliche Tool nicht verfügbar ist (z.B. `gh` nicht installiert, kein git-Remote), erlaubt die Richtlinie mit einer informativen Nachricht, die erklärt, warum die Prüfung übersprungen wurde.
 
 ### Stop-Semantik je CLI
 
-Die Stop-Durchsetzung sieht bei den sieben unterstützten CLIs etwas unterschiedlich aus, da jede eine andere Vertragsform für den Hook "Agent fertig" bereitstellt. Das **Ergebnis** ist dasselbe — der Agent kommt nicht damit durch, anzuhalten, während ein Workflow-Gate fehlschlägt — aber die **Mechanik** unterscheidet sich. Die folgende Tabelle fasst dies zusammen; nur Pi hat eine für den Benutzer sichtbare Besonderheit, die es wert ist, sie zu verstehen, bevor Sie eine `require-*-before-stop`-Richtlinie aktivieren.
+Die Stop-Durchsetzung sieht bei den sieben unterstützten CLIs etwas unterschiedlich aus, da jede eine andere Vertragsgestaltung für den Hook „Agent fertig" bietet. Das **Ergebnis** ist dasselbe — der Agent kommt nicht damit durch, anzuhalten, während ein Workflow-Gate fehlschlägt — aber die **Mechanik** unterscheidet sich. Die folgende Tabelle fasst dies zusammen; nur Pi hat eine für Benutzer sichtbare Besonderheit, die Sie verstehen sollten, bevor Sie eine `require-*-before-stop`-Richtlinie aktivieren.
 
-| CLI | Wann das Gate ausgelöst wird | Was Sie sehen |
+| CLI | Wann das Gate auslöst | Was Sie sehen |
 |---|---|---|
-| Claude Code | Dieselbe Agentenschleife, sofort | Claude arbeitet weiter — behebt das Problem und versucht dann erneut zu beenden. Für Sie keine sichtbare Unterbrechung. |
-| Codex | Dieselbe Agentenschleife, sofort | Wie bei Claude. |
-| GitHub Copilot CLI | Dieselbe Agentenschleife, sofort | Wie bei Claude (verwendet Copilots `{decision:"block", reason}`-Retry-Kanal — empirisch gegen Copilot CLI 1.0.41 verifiziert). |
-| Cursor Agent | Dieselbe Agentenschleife, sofort | Wie bei Claude (verwendet Cursors `{followup_message}`-Kanal — begrenzt durch `loop_limit`, Standard 5 Wiederholungen). |
-| Gemini CLI | Dieselbe Agentenschleife, sofort | Wie bei Claude (verwendet Geminis `{decision:"block", reason}`-Kanal bei `AfterAgent`). |
-| OpenCode | Dieselbe Agentenschleife, sofort | Wie bei Claude (verwendet OpenCodes `client.session.prompt(...)`-SDK-Aufruf, weitergeleitet über `hookSpecificOutput.additionalContext`). |
-| **Pi (pi-coding-agent)** | **Nächste Benutzerrunde** | **Pi hält sichtbar an**, wenn das Gate ausgelöst wird — seine Agentenschleife wird beendet und Sie kehren zur Eingabeaufforderung zurück. Das Gate wird dann beim nächsten Mal ausgelöst, wenn Sie eine Eingabeaufforderung senden: failproofai stellt eine `MANDATORY ACTION REQUIRED`-Direktive an den Beginn des System-Prompts dieser Runde und weist das LLM an, den Workflow-Schritt (Commit, Push usw.) abzuschließen, bevor es das Angeforderte tut. |
+| Claude Code | Gleiche Agentenschleife, sofort | Claude arbeitet weiter — behebt das Problem, versucht dann erneut zu beenden. Für Sie keine sichtbare Unterbrechung. |
+| Codex | Gleiche Agentenschleife, sofort | Wie Claude. |
+| GitHub Copilot CLI | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Copilots `{decision:"block", reason}`-Wiederholungskanal — empirisch verifiziert gegen Copilot CLI 1.0.41). |
+| Cursor Agent | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Cursors `{followup_message}`-Kanal — begrenzt auf `loop_limit`, standardmäßig 5 Wiederholungen). |
+| Gemini CLI | Gleiche Agentenschleife, sofort | Wie Claude (verwendet Geminis `{decision:"block", reason}`-Kanal auf `AfterAgent`). |
+| OpenCode | Gleiche Agentenschleife, sofort | Wie Claude (verwendet OpenCodes `client.session.prompt(...)`-SDK-Aufruf, der über `hookSpecificOutput.additionalContext` geleitet wird). |
+| **Pi (pi-coding-agent)** | **Nächster Benutzerturn** | **Pi hält sichtbar an**, wenn das Gate auslöst — seine Agentenschleife beendet sich und Sie gelangen zurück zur Eingabeaufforderung. Das Gate löst dann beim nächsten Absenden einer Eingabe aus: failproofai stellt eine `MANDATORY ACTION REQUIRED`-Direktive an den Systempromt dieses Turns voran und weist das LLM an, den Workflow-Schritt (Commit, Push usw.) abzuschließen, bevor es das Gewünschte tut. |
 
 <Note>
-**Pi-Einschränkung.** Pis `AgentEndEvent` (das Upstream-Äquivalent von Claudes `Stop`-Hook) hat keinen Result-Typ — wenn er ausgelöst wird, ist Pis Agentenschleife bereits beendet. Pi kann nicht gezwungen werden, dieselbe Schleife zu wiederholen, wie es Claude / Copilot / Cursor / Gemini / OpenCode können. failproofai verschiebt das Gate auf Pis `before_agent_start`-Ereignis (das nach der nächsten Benutzereingabe ausgelöst wird), damit die Workflow-Prüfung weiterhin erzwungen wird, allerdings erst in der nächsten Runde statt in der aktuellen.
+**Pi-Einschränkung.** Pis `AgentEndEvent` (das Upstream-Äquivalent zu Claudes `Stop`-Hook) hat keinen Result-Typ — wenn er auslöst, hat Pis Agentenschleife bereits beendet. Pi kann nicht dazu gezwungen werden, dieselbe Schleife zu wiederholen, wie es Claude / Copilot / Cursor / Gemini / OpenCode können. failproofai verlagert das Gate auf Pis `before_agent_start`-Ereignis (das nach der nächsten Benutzereingabe auslöst), sodass die Workflow-Prüfung trotzdem greift, nur beim nächsten Turn statt beim aktuellen.
 
 **Was das in der Praxis bedeutet:**
 
-- Nachdem Pi anhält, wird der Verweigerungsgrund im Arbeitsspeicher gespeichert, indexiert nach der Pi-Sitzungs-ID. Die nächste Eingabeaufforderung, die Sie in demselben Pi-Prozess senden, leert diesen Speicher: Das LLM sieht die `MANDATORY ACTION REQUIRED`-Direktive am Anfang seines System-Prompts, führt einen Commit durch (oder Push / öffnet den PR / wartet auf CI) und fährt dann erst mit Ihrer Anfrage fort. Der gespeicherte Verweigerungsgrund ist einmalig — sobald er geleert wurde, ist das Gate frei.
-- Das Gate ist an die Lebensdauer des Pi-Prozesses gebunden. Wenn Sie Pi zwischen den Runden mit `Ctrl+C` beenden oder schließen, wird der Speichereintrag zusammen mit dem Prozess verworfen und das Gate wird verpasst. Claude, Copilot, Cursor, Gemini und OpenCode haben dieselbe Einschränkung (Agent beenden und das Gate wird verpasst) — Pi macht es nur sichtbarer, weil der Agent sichtbar beendet wird, bevor das Gate ausgelöst wird.
-- Ein ausstehender Verweigerungsgrund wird auch bei `session_shutdown` aus beliebigem Grund (`new` / `resume` / `fork` / `quit`) gelöscht, sodass ein veraltetes Gate aus einer früheren Sitzung nicht in eine neue Sitzung im selben Pi-Prozess übertragen werden kann.
+- Nachdem Pi anhält, wird der Ablehnungsgrund im Speicher gespeichert, indexiert nach Pi-Sitzungs-ID. Die nächste Eingabe, die Sie im selben Pi-Prozess absenden, entleert ihn: Das LLM sieht die `MANDATORY ACTION REQUIRED`-Direktive am Anfang seines Systemprompts, führt einen Commit durch (oder Push / öffnet den PR / wartet auf CI) und fährt erst dann mit Ihrer Anfrage fort. Der gespeicherte Ablehnungsgrund ist einmalig — sobald entleert, ist das Gate frei.
+- Das Gate ist durch die Prozesslebensdauer von Pi begrenzt. Wenn Sie Pi zwischen den Turns mit `Ctrl+C` beenden oder schließen, wird der In-Memory-Eintrag zusammen mit dem Prozess gelöscht und das Gate wird verfehlt. Claude, Copilot, Cursor, Gemini und OpenCode haben dieselbe Einschränkung (Agent beenden und das Gate wird verfehlt) — bei Pi ist es nur sichtbarer, weil der Agent sichtbar beendet wird, bevor das Gate auslöst.
+- Ein ausstehender Deny wird auch bei `session_shutdown` aus beliebigem Grund (`new` / `resume` / `fork` / `quit`) gelöscht, sodass ein veraltetes Gate einer vorherigen Sitzung nicht in eine neue Sitzung überlaufen kann, die im selben Pi-Prozess gestartet wurde.
 
-Wenn Sie Claude-ähnliche Wiederholungen in derselben Schleife benötigen, führen Sie Ihre `Stop`-Richtlinien unter einer der anderen sechs unterstützten CLIs aus. Wir verfolgen Pi Upstream auf einen zukünftigen Result-Typ bei `AgentEndEvent`, der es uns ermöglichen würde, diese Lücke zu schließen.
+Wenn Sie das Claude-ähnliche Wiederholen in derselben Schleife benötigen, führen Sie Ihre `Stop`-Richtlinien unter einer der anderen sechs unterstützten CLIs aus. Wir verfolgen Pi upstream auf einen zukünftigen Result-Typ bei `AgentEndEvent`, der es uns ermöglichen würde, diese Lücke zu schließen.
 </Note>
 
 ### `require-commit-before-stop`
 
 **Ereignis:** Stop  
-**Standard:** Verweigert das Anhalten, wenn uncommittete Änderungen vorhanden sind (geänderte, gestagete oder nicht verfolgte Dateien). Gibt eine informative Meldung zurück, wenn das Arbeitsverzeichnis sauber ist.
+**Standard:** Verweigert das Anhalten, wenn nicht committete Änderungen vorhanden sind (geänderte, gestagete oder nicht verfolgte Dateien). Gibt eine informative Nachricht zurück, wenn das Arbeitsverzeichnis sauber ist.
 
 Keine Parameter.
 
@@ -740,13 +740,13 @@ Keine Parameter.
 ### `require-push-before-stop`
 
 **Ereignis:** Stop  
-**Standard:** Verweigert das Anhalten, wenn es unpushed Commits gibt oder wenn der aktuelle Branch keinen Remote-Tracking-Branch hat. Schlägt `git push -u` vor, um bei Bedarf einen Tracking-Branch zu erstellen. Fails open, wenn kein Remote konfiguriert ist.
+**Standard:** Verweigert das Anhalten, wenn nicht gepushte Commits vorhanden sind oder wenn der aktuelle Branch keinen Remote-Tracking-Branch hat. Schlägt bei Bedarf `git push -u` vor, um einen Tracking-Branch zu erstellen. Fail-open, wenn kein Remote konfiguriert ist.
 
 **Parameter:**
 
 | Parameter | Typ | Standard | Beschreibung |
 |-------|------|---------|-------------|
-| `remote` | `string` | `"origin"` | Remote-Name, auf den gepusht werden soll. |
+| `remote` | `string` | `"origin"` | Remote-Name, zu dem gepusht wird. |
 
 **Beispiel:**
 
@@ -765,14 +765,14 @@ Keine Parameter.
 ### `require-pr-before-stop`
 
 **Ereignis:** Stop  
-**Standard:** Verweigert das Anhalten, wenn kein Pull Request für den aktuellen Branch existiert oder wenn der vorhandene PR ohne Merge geschlossen wurde. Weist Claude an, einen PR mit `gh pr create` zu erstellen. Wenn der PR **gemergt** ist, erlaubt die Richtlinie den Vorgang (die Arbeit ist ausgeliefert) und der Hinweis empfiehlt, den Branch zu wechseln (`git checkout main && git pull`).
+**Standard:** Verweigert das Anhalten, wenn kein Pull Request für den aktuellen Branch existiert oder wenn der vorhandene PR ohne Merge geschlossen wurde. Weist Claude an, einen PR mit `gh pr create` zu erstellen. Wenn der PR **gemergt** wurde, erlaubt die Richtlinie (die Arbeit ist ausgeliefert) und die Nachricht gibt den Hinweis, den Branch zu wechseln (`git checkout main && git pull`).
 
 Keine Parameter.
 
 <Note>
-Diese Richtlinie erfordert, dass [GitHub CLI](https://cli.github.com/) (`gh`) installiert und authentifiziert ist.
+Diese Richtlinie erfordert die Installation und Authentifizierung von [GitHub CLI](https://cli.github.com/) (`gh`).
 Führen Sie `gh auth login` mit einem persönlichen Zugriffstoken aus, das den `repo`-Scope für Lesezugriff auf
-Pull Requests hat. Wenn `gh` nicht installiert oder nicht authentifiziert ist, schlägt die Richtlinie offen fehl und meldet den Grund an Claude.
+Pull Requests hat. Wenn `gh` nicht installiert oder nicht authentifiziert ist, ist die Richtlinie fail-open und meldet den Grund an Claude.
 </Note>
 
 ---
@@ -780,12 +780,12 @@ Pull Requests hat. Wenn `gh` nicht installiert oder nicht authentifiziert ist, s
 ### `require-no-conflicts-before-stop`
 
 **Ereignis:** Stop  
-**Standard:** Verweigert das Anhalten, wenn der aktuelle Branch nicht sauber in den Basis-Branch gemergt werden kann. Die Richtlinie prüft zunächst, ob auf GitHub ein `OPEN`-PR für den Branch existiert — ohne einen solchen gibt es kein Merge-Ziel, das erzwungen werden müsste, sodass die gesamte Richtlinie mit allow kurzgeschlossen wird. Sobald ein `OPEN`-PR bestätigt ist, werden zwei unabhängige Prüfungen durchgeführt:
+**Standard:** Verweigert das Anhalten, wenn der aktuelle Branch nicht konfliktfrei in den Basis-Branch gemergt werden kann. Die Richtlinie bestätigt zunächst, dass für den Branch ein `OPEN`-PR auf GitHub vorhanden ist — ohne einen solchen gibt es kein Merge-Ziel zum Erzwingen, sodass die gesamte Richtlinie allow zurückgibt. Sobald ein `OPEN`-PR bestätigt wurde, laufen zwei unabhängige Prüfungen:
 
-1. **Lokal** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Bei einem Konflikt nennt die Verweigerungsmeldung die betroffenen Dateien, damit Claude genau weiß, was aufgelöst werden muss.
-2. **GitHub** — verwendet das bereits für die Vorprüfung abgerufene Ergebnis von `gh pr view --json mergeable,state`. Erkennt Konflikte, die ein veraltetes lokales `origin/<baseBranch>` verpasst hätte (z. B. wenn jemand einen konfliktierenden PR auf `main` gemergt hat, seit dem letzten Fetch). Ein `CONFLICTING`-Ergebnis verweigert. Ein `UNKNOWN`-Ergebnis verweigert ebenfalls und weist Claude an, etwa 10 Sekunden zu warten und erneut zu prüfen, bevor ein weiterer Stoppversuch unternommen wird — dies verhindert falsch-negative Ergebnisse, während GitHub neu berechnet.
+1. **Lokal** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Bei einem Konflikt nennt die Deny-Nachricht die konfliktbehafteten Dateien, damit Claude genau weiß, was zu lösen ist.
+2. **GitHub** — verwendet das bereits beim Vorcheck abgerufene `gh pr view --json mergeable,state`-Ergebnis erneut. Fängt Konflikte ab, die ein veraltetes lokales `origin/<baseBranch>` übersehen würde (z.B. wenn jemand einen konfliktbehafteten PR auf `main` seit dem letzten Fetch gemergt hat). Ein `CONFLICTING`-Ergebnis verweigert. Ein `UNKNOWN`-Ergebnis verweigert ebenfalls und weist Claude an, etwa 10 Sekunden zu warten und erneut zu prüfen, bevor ein erneuter Stoppversuch unternommen wird — dies verhindert falsche Negative, während GitHub neu berechnet.
 
-Wird vollständig übersprungen (erlaubt), wenn: `gh` nicht installiert ist, kein PR für den Branch existiert, der PR-Status nicht `OPEN` ist (z. B. `MERGED`, `CLOSED`), oder `gh pr view` nicht parsierbare Ausgabe liefert. Schlägt auch offen fehl, wenn `origin/<baseBranch>` lokal fehlt oder wenn keine Commits vor der Basis vorhanden sind — diese Layer-1-Fallbacks konsultieren trotzdem die gecachte PR-Merge-Fähigkeit, bevor sie erlauben.
+Überspringt vollständig (erlaubt), wenn: `gh` nicht installiert ist, kein PR für den Branch vorhanden ist, der PR-Status nicht `OPEN` ist (z.B. `MERGED`, `CLOSED`), oder `gh pr view` nicht parsbare Ausgabe liefert. Fail-open auch wenn `origin/<baseBranch>` lokal fehlt oder wenn keine Commits vor dem Basis-Branch vorhanden sind — diese Layer-1-Durchfälle konsultieren trotzdem die zwischengespeicherte PR-Zusammenführbarkeit, bevor sie erlauben.
 
 **Parameter:**
 
@@ -794,7 +794,9 @@ Wird vollständig übersprungen (erlaubt), wenn: `gh` nicht installiert ist, kei
 | `baseBranch` | `string` | `"main"` | Basis-Branch, gegen den auf Konflikte geprüft wird. |
 
 <Note>
-GitHub CLI (`gh`) ist für diese Richtlinie erforderlich. Die Richtlinie verwendet `gh pr view`, um zu bestätigen, dass ein `OPEN`-PR existiert, bevor eine Konfliktprüfung durchgeführt wird — ohne `gh` schließt die Richtlinie mit allow kurz. Führen Sie `gh auth login` mit einem persönlichen Zugriffstoken aus, das den `repo`-Scope für Lesezugriff auf Pull Requests hat.
+GitHub CLI (`gh`) ist für diese Richtlinie erforderlich. Die Richtlinie verwendet `gh pr view`, um zu bestätigen,
+dass ein `OPEN`-PR vorhanden ist, bevor eine Konfliktprüfung durchgeführt wird — ohne `gh` gibt die Richtlinie
+allow zurück. Führen Sie `gh auth login` mit einem persönlichen Zugriffstoken aus, das den `repo`-Scope für Lesezugriff auf Pull Requests hat.
 </Note>
 
 ---
@@ -802,14 +804,14 @@ GitHub CLI (`gh`) ist für diese Richtlinie erforderlich. Die Richtlinie verwend
 ### `require-ci-green-before-stop`
 
 **Ereignis:** Stop  
-**Standard:** Verweigert das Anhalten, wenn CI-Prüfungen fehlschlagen oder auf dem aktuellen Branch noch laufen. Prüft sowohl GitHub Actions-Workflow-Runs als auch Drittanbieter-Bot-Prüfungen (z. B. CodeRabbit, SonarCloud, Codecov). Behandelt `skipped`, `cancelled` und `neutral` als nicht fehlgeschlagen (letzteres deckt z. B. Socket Security-Warnungen bei PRs externer Mitwirkender ab, bei denen die App absichtlich neutral statt Erfolg/Fehler meldet). Gibt eine informative Meldung zurück, wenn alle Prüfungen bestanden sind.
+**Standard:** Verweigert das Anhalten, wenn CI-Prüfungen fehlschlagen oder auf dem aktuellen Branch noch ausgeführt werden. Prüft sowohl GitHub Actions-Workflow-Runs als auch Drittanbieter-Bot-Prüfungen (z.B. CodeRabbit, SonarCloud, Codecov). Behandelt `skipped`-, `cancelled`- und `neutral`-Abschlüsse als nicht fehlerhaft (letzteres deckt z.B. Socket Security-Meldungen bei PRs externer Mitwirkender ab, bei denen die App absichtlich neutral statt success/failure meldet). Gibt eine informative Nachricht zurück, wenn alle Prüfungen bestanden sind.
 
 Keine Parameter.
 
 <Note>
-Diese Richtlinie erfordert, dass [GitHub CLI](https://cli.github.com/) (`gh`) installiert und authentifiziert ist.
+Diese Richtlinie erfordert die Installation und Authentifizierung von [GitHub CLI](https://cli.github.com/) (`gh`).
 Führen Sie `gh auth login` mit einem persönlichen Zugriffstoken aus, das den `repo`-Scope für Lesezugriff auf
-Actions-Workflow-Runs und die Checks-API hat. Wenn `gh` nicht installiert oder nicht authentifiziert ist, schlägt die Richtlinie offen fehl und meldet den Grund an Claude.
+Actions-Workflow-Runs und die Checks API hat. Wenn `gh` nicht installiert oder nicht authentifiziert ist, ist die Richtlinie fail-open und meldet den Grund an Claude.
 </Note>
 
 ---
@@ -818,7 +820,7 @@ Actions-Workflow-Runs und die Checks-API hat. Wenn `gh` nicht installiert oder n
 
 ## Einzelne Richtlinien deaktivieren
 
-Entfernen Sie eine bestimmte Richtlinie aus `enabledPolicies` in Ihrer Konfiguration oder deaktivieren Sie sie im Dashboard-Tab Richtlinien.
+Entfernen Sie eine bestimmte Richtlinie aus `enabledPolicies` in Ihrer Konfiguration, oder deaktivieren Sie sie im Dashboard-Tab „Policies".
 
 ```json
 {

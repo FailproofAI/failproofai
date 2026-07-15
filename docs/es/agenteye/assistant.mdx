@@ -1,0 +1,203 @@
+---
+title: "Asistente de IA"
+description: "Documentación del asistente de IA de AgentEye."
+---
+
+
+El panel de control incluye un **asistente de IA** opcional: un panel de chat anclado al borde derecho del dashboard que responde preguntas en lenguaje natural sobre tus agentes ("¿cómo evoluciona la calidad en producción esta semana?", "¿qué sesiones dieron error hoy?", "resume esta sesión") y, cuando el usuario autoriza cada acción, redacta y guarda consultas SQL y dashboards en su nombre. Cita enlaces clicables directamente a las sesiones, consultas y dashboards relevantes, y es **consciente del contexto de página**: pregunta sobre "esta sesión" mientras la estás viendo y sabrá a qué te refieres.
+
+El dock se muestra por defecto como un delgado **rail vertical de 44px**: un glifo de prompt `›_` más un punto de salud con color. Haz clic en el rail (o pulsa `⌘J` / `Ctrl+J`) para expandirlo al panel de chat completo. El panel expandido es **redimensionable** entre 320 y 640 píxeles arrastrando su borde izquierdo; tu anchura preferida se recuerda entre recargas.
+
+Se ejecuta como un pequeño contenedor interno **`agent`** (sobre el Claude Agent SDK) al que solo el dashboard puede acceder. Está **desactivado por defecto** y permanece oculto hasta que configures un endpoint de LLM.
+
+---
+
+## Qué puede y qué no puede hacer
+
+- **Lee los datos operacionales que el usuario solicitante puede ver.** Eventos, evaluaciones, sesiones, la cola de trabajos de evaluación, consultas guardadas y dashboards guardados, todos acotados por solicitud a los permisos de lectura del usuario. Las herramientas de lectura se ejecutan de inmediato.
+- **Las escrituras están sujetas a aprobación por acción.** Puede crear consultas guardadas (`create_saved_query`, `update_saved_query`), ejecutar SQL borrador contra el rol de solo lectura para validarlo (`run_query`), y ensamblar dashboards a partir de esas consultas (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`). Cada escritura pausa con un prompt **Aprobar / Rechazar / hacer una pregunta** en el chat; el SDK no llama a la herramienta hasta que el operador hace clic en Aprobar. **El borrado nunca está disponible para el asistente**; las operaciones destructivas quedan en manos de los operadores.
+- **El SQL generado pasa por la misma validación `sql_guard` y los mismos roles de solo lectura que el SQL escrito por usuarios** (solo SELECT/WITH, sin multisentencia). La ejecución se enruta según las tablas que toca la consulta: las que referencian las tablas de analítica (eventos, evaluaciones, sesiones) se ejecutan como el usuario ClickHouse de solo lectura de la organización (acotado a esa org mediante una política de filas, con un límite de ejecución de 10s y un límite de 100k filas), mientras que las que solo tocan tablas relacionales se ejecutan en un rol Postgres de solo lectura (10s, 10k filas). El asistente no puede ampliar la superficie de datos; solo puede actuar sobre la superficie de consultas que el operador ya tiene.
+- Utiliza una **clave de asistente dedicada** (ver más abajo) inicializada con un conjunto fijo de permisos; aunque el modelo se comporte de forma inesperada, no puede exceder esos alcances.
+- Cada usuario del dashboard necesita el permiso **`agent:use`** para ver y usar el asistente. Las herramientas se filtran por solicitud para coincidir con los permisos de datos del propio usuario, de modo que un usuario con `events:read` obtiene herramientas de eventos pero no herramientas `dashboards:write`.
+
+---
+
+## Dock de IA consciente del contexto: compositor en `/queries`, chat en el resto
+
+El dock de asistente del lado derecho es **consciente del contexto de página**. El selector de modelo, el historial de conversación, el punto de salud del modelo y el campo de entrada del chat no cambian, pero las **chips de plantilla del estado vacío, el texto de marcador de posición y el endpoint backend al que llega el mensaje del usuario** cambian automáticamente según la ruta actual. El dock se convierte en "el ayudante de IA para la página en la que estás".
+
+**Dos backends, elegidos por página (con sobreescrituras por chip).**
+
+| Ruta | Backend por defecto de página | Por qué |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/queries`, `/queries/new` | `POST /api/agent/compose-sql` (sin bucle de herramientas) | El usuario empieza desde cero; SQL con primer token en ≤1s transmitido directamente al editor |
+| `/queries/<id>` (existente) | `POST /api/agent/chat` (asistente con bucle completo de herramientas), predeterminado de página | Los mensajes escritos libremente deben permitir al usuario preguntar cualquier cosa ("explica esto", "¿qué hace esto?"); los chips de refactorización vuelven a compose-sql mediante el atributo kind por chip |
+| cualquier otra página | `POST /api/agent/chat` (asistente con bucle completo de herramientas) | Herramientas de lectura + herramientas de escritura con aprobación |
+
+Los chips en `/queries/<id>` llevan un `kind` explícito para que una sola página pueda mezclar ambos flujos sin problemas. El conjunto de chips predeterminado es dos chips de **chat** (`explica la consulta en pantalla`, `¿qué hace esta consulta?`) más cinco chips de **compose-sql** (`parametrizar por rango de fechas`, `añadir filtro status='error'`, etc.). Los mensajes escritos libremente caen al predeterminado de página (chat), por lo que una pregunta como "¿por qué es tan lento?" obtiene una respuesta en prosa, mientras que hacer clic en el chip `parametrizar por rango de fechas` enruta por el endpoint de composición y edita el SQL.
+
+Cuando el compositor se ejecuta en **modo de edición** (detecta un `currentSql` no vacío porque el usuario está en `/queries/<id>` o `/queries/new` con SQL propuesto ya cargado), su prompt de sistema cambia de "componer una nueva consulta" a "modificar el SQL proporcionado de forma mínima: preservar la elección de tabla, nombres de columnas, estructura de joins, alias, sangría". El modelo recibe un conjunto separado de ejemplos antes/después trabajados (parametrizar, añadir filtro, convertir a cubos por hora), por lo que una refactorización activada por chip produce un diff mínimo sobre el SQL del editor, no una reescritura desde cero.
+
+Haz clic en un chip de composición (o escribe libremente en `/queries/new`) → el SQL se transmite al mensaje del asistente como un bloque ` ```sql ` delimitado. **En el momento en que la transmisión finaliza, si Monaco está montado en la ruta actual, el editor se activa automáticamente en vista diff** (original a la izquierda, propuesta a la derecha, una indicación `▾ AI proposed an edit` en la parte superior y píldoras **Accept / Reject** debajo). El usuario no necesita buscar ni hacer clic en un botón `Insert into editor` para ver el diff. El botón de inserción se sigue mostrando debajo del bloque SQL como un disparador manual (útil tras un Rechazo o cuando el usuario ha navegado y ha vuelto), y sigue siendo el único camino cuando el usuario está en una página sin editor (por ejemplo, la lista de consultas guardadas); ahí guarda el SQL en `sessionStorage` y navega a `/queries/new`, donde el editor recién montado lee el almacén al montar y abre la misma vista diff.
+
+Si el SQL propuesto es byte a byte idéntico a lo que ya hay en el editor (una edición sin cambios), la apertura automática se omite; no mostramos un diff vacío. El botón `Insert into editor` también es un no-op en ese caso.
+
+Cuando el usuario acepta una sugerencia en `/queries/new`, la acción principal de la barra de herramientas muestra **`save`** en lugar de `create`; el SQL les fue entregado por el asistente; el modelo mental es "finalizar esto", no "escribir desde cero". La etiqueta cambia una vez que el dock inserta SQL y se mantiene como `save` hasta que se navega fuera de la página. En `/queries/<id>` el botón siempre ha mostrado `save`; nada cambia ahí.
+
+Fuera de `/queries`, el dock funciona exactamente como antes: chat completo con tarjetas de aprobación de herramientas, conciencia de contexto de página, citas.
+
+**Permisos / control de acceso.** El endpoint de composición requiere el permiso `queries:run` por usuario (equivalente a lectura; el usuario aún debe hacer clic en Aceptar y en Ejecutar, y Ejecutar pasa por el `sql_guard` + enrutamiento `references_ch_tables` existente en el servidor Rust). El endpoint de chat requiere `agent:use`. Ambos siguen requiriendo una conexión LLM configurada en el contenedor `agent`; si no hay ninguna configurada, el dock muestra un banner "el asistente no está configurado en este despliegue" en cualquiera de las rutas.
+
+**Rechazos.** El compositor rechaza cualquier solicitud que no pueda satisfacer con una consulta de analítica de solo lectura y emite `-- REFUSE: <motivo en una oración>` en lugar de SQL. Rechaza solicitudes que escribirían datos o accederían a tablas fuera de las vistas de analítica (`api_keys`, `users`, `dashboards`, `saved_queries`, `evaluation_jobs`), y rechaza solicitudes de prosa pura ("explica esto", "¿qué hace esto?") en la ruta de composición; esas pertenecen a la ruta de chat y producen una respuesta en prosa allí. El dock muestra la cadena de rechazo como un chip de error rojo en línea en el mensaje del asistente; nada se inserta.
+
+**Selección de modelo.** Compartida con la ruta de chat. El selector de modelo en la cabecera del dock aplica a ambos endpoints (la llamada de composición pasa el modelo elegido a `resolveModel()` en el servicio del agente). Cuando `AGENTEYE_AGENT_MODELS` lista varios modelos, los operadores pueden combinar una opción tipo Haiku para el compositor con una opción tipo Sonnet para el chat; el usuario elige por conversación.
+
+**Plantillas por página.** Cada página tiene su propia plantilla (título, cuerpo, texto de marcador de posición y chips de sugerencia) para que el dock se adapte a la página en la que estás. Los chips que se ofrecen en una ruta determinada mapean a los mismos intents para los que el compositor está ajustado, por lo que hacer clic en una sugerencia produce la edición esperada.
+
+**Desactivarlo.** Igual que la ruta de chat: el dock y el compositor están ambos controlados por el contenedor `agent` y su conexión LLM. Si quieres comportamiento solo de chat para un usuario en particular, elimina el permiso `queries:run` (que también desactiva el botón **Run** del editor); si quieres comportamiento solo de compositor, elimina `agent:use` de los roles de ese usuario y luego vuelve a añadir `queries:run` por separado para que puedan seguir ejecutando SQL escrito por autores.
+
+---
+
+## Activarlo
+
+El servicio `agent` viene incluido en el archivo Docker Compose y los manifiestos de Kubernetes. Para activar el asistente, proporciona **(1)** un endpoint de LLM y **(2)** la clave de datos dedicada del asistente.
+
+### 1. Elegir una conexión LLM
+
+Elige una de estas opciones y configura las variables correspondientes en el servicio `agent`:
+
+**a) Anthropic directamente**
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**b) A través de Portkey (recomendado; slug del catálogo de modelos, solo clave)**
+
+```
+PORTKEY_API_KEY=<tu-portkey-key>
+AGENTEYE_AGENT_MODEL=@<tu-slug-de-integracion-anthropic>/claude-sonnet-4-6
+```
+
+Este es el camino más sencillo: en Portkey, configura una **integración Anthropic** (Model
+Catalog); obtendrá un **slug**. Nombra el modelo como `@<slug>/<modelo>` y el slug
+lleva el enrutamiento de proveedor y credenciales, por lo que **no se necesita clave virtual**,
+solo tu clave API de Portkey. El agente envía solo `x-portkey-api-key` y apunta al
+gateway de Portkey; Portkey resuelve el resto. (Un nombre de modelo *sin prefijo* falla con
+"x-portkey-config or x-portkey-provider header is required"; el prefijo `@slug/`
+es lo que hace funcionar el modo solo-clave.) Para un gateway autohospedado configura `PORTKEY_BASE_URL`.
+
+¿Prefieres enrutamiento por solicitud en lugar de un slug? Configura `PORTKEY_VIRTUAL_KEY=<vk>` (o
+`PORTKEY_CONFIG=<id>`) con un `AGENTEYE_AGENT_MODEL` simple.
+
+**c) Cualquier otro gateway compatible con Anthropic (LiteLLM, autohospedado, …)**
+
+```
+ANTHROPIC_BASE_URL=https://tu-gateway
+# Líneas "Nombre: Valor" delimitadas por salto de línea (NO JSON):
+ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
+```
+
+**d) Amazon Bedrock / Google Vertex**
+
+```
+CLAUDE_CODE_USE_BEDROCK=1   # + credenciales AWS estándar en el entorno
+# o
+CLAUDE_CODE_USE_VERTEX=1    # + credenciales GCP estándar en el entorno
+```
+
+Opcionalmente fija el modelo predeterminado con `AGENTEYE_AGENT_MODEL` (predeterminado `claude-sonnet-4-6`). Para permitir que los usuarios **elijan** entre varios modelos, configura `AGENTEYE_AGENT_MODELS` con una lista de permitidos separada por comas (por ejemplo, `@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); aparecerá un selector de modelo en la cabecera del chat y la elección de cada usuario se recordará. El agente solo llama a un modelo de esta lista de permitidos.
+
+### 2. Proporcionar la clave del asistente
+
+Elige cualquier secreto aleatorio y dáselo al **agent** como `AGENTEYE_API_KEY` y al **server** como `AGENT_API_KEY` (el mismo valor). Al arrancar, el servidor lo inicializa como una clave dedicada llamada `dashboard-assistant` con este conjunto fijo de permisos: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`. Los permisos de escritura solo se ejercen a través de herramientas con aprobación (ver "Qué puede y qué no puede hacer" más arriba). **No hay paso manual de creación de clave ni se involucra ninguna clave de administrador**. El conjunto de permisos está fijo en el servidor, y la clave inicializada está **protegida**: no puede desactivarse ni regenerarse mediante la API de claves; rótala cambiando el valor y reiniciando el servidor. **No** reutilices la clave de administrador/dashboard.
+
+```bash
+SECRET="$(openssl rand -base64 32)"
+# en el servicio agent:
+AGENTEYE_API_KEY="$SECRET"
+# en el servicio server:
+AGENT_API_KEY="$SECRET"
+```
+
+En Kubernetes esto está cableado para ti: coloca `AGENTEYE_API_KEY` en el secreto `agenteye-agent` y el Deployment del servidor ya lee ese mismo valor como `AGENT_API_KEY`.
+
+### 3. Configurar el token compartido dashboard↔agent
+
+Configura el mismo `AGENTEYE_AGENT_TOKEN` en **ambos** servicios: `dashboard` y `agent`. El dashboard lo presenta al llamar al servicio interno del agente; el agente rechaza las llamadas sin él.
+
+### 4. Conceder acceso a los usuarios
+
+Da a los operadores del dashboard relevantes el permiso `agent:use` (ver [enterprise-docs/api-keys.md](/es/agenteye/api-keys)). Los usuarios sin él nunca verán el asistente.
+
+Una vez configurados el endpoint LLM y la clave de solo lectura, reinicia el servicio **server** (para inicializar la clave de solo lectura) y el servicio **agent**. El dock del asistente aparece en el borde derecho para cualquier usuario con `agent:use`, colapsado por defecto; haz clic en el rail o pulsa `⌘J` / `Ctrl+J` para expandirlo.
+
+---
+
+## Referencia de variables de entorno
+
+Configurar en el servicio **`agent`**:
+
+| Variable | Propósito |
+|---|---|
+| `PORTKEY_API_KEY` | Enrutar a través de Portkey (el agente construye la conexión al gateway a partir de esto) |
+| `PORTKEY_VIRTUAL_KEY` | Clave virtual de Portkey para tus credenciales Anthropic (opcional si la clave tiene una configuración predeterminada) |
+| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Configuración Portkey con nombre / URL de gateway Portkey autohospedado (opcional) |
+| `PORTKEY_PROVIDER` | Slug de proveedor Portkey — una tercera opción de enrutamiento junto a `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` (solo se usa cuando ninguno de estos está configurado) |
+| `ANTHROPIC_API_KEY` | Acceso directo a Anthropic (alternativa a un gateway / Bedrock / Vertex) |
+| `ANTHROPIC_AUTH_TOKEN` | Token Bearer para un gateway que autentica mediante `Authorization: Bearer` en lugar de `x-api-key` (opcional) |
+| `ANTHROPIC_BASE_URL` | Endpoint para un gateway que no sea Portkey |
+| `ANTHROPIC_CUSTOM_HEADERS` | Cabeceras adicionales para un gateway que no sea Portkey: líneas `Nombre: Valor` delimitadas por salto de línea (no JSON) |
+| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Enrutar a través de Bedrock / Vertex |
+| `AGENTEYE_AGENT_MODEL` | ID de modelo predeterminado (predeterminado `claude-sonnet-4-6`) |
+| `AGENTEYE_AGENT_MODELS` | Lista de modelos permitidos separada por comas entre los que el usuario puede elegir en la cabecera del chat. Déjalo sin configurar para un modelo único fijo. El predeterminado anterior debe estar en esta lista (si no, se añade). |
+| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Máximo de chats concurrentes por pod (predeterminado 4); las solicitudes en exceso reciben 429 |
+| `AGENTEYE_API_KEY` | Clave de datos del asistente. Configura el **mismo** valor que el `AGENT_API_KEY` del servidor, que lo inicializa con un conjunto fijo de permisos con alcance limitado al arrancar (ver paso 2). |
+| `AGENTEYE_AGENT_TOKEN` | Secreto compartido con el dashboard |
+| `AGENTEYE_SERVER_URL` | URL del servidor AgentEye (predeterminado `http://server:8080`) |
+| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Multi-tenancy.** Desactivado por defecto (fallo cerrado): el asistente rechaza una solicitud `/chat` que no lleva contexto de organización con `400`, porque todas las herramientas que ejecuta están acotadas a una org. El dashboard siempre envía ese contexto una vez que es org-consciente, por lo que normalmente se deja sin configurar. Configúralo en `1` **solo** durante una implementación transitional donde un dashboard aún no org-consciente está hablando con un agente org-consciente, para que el asistente recurra a la org `default` en lugar de rechazar. Elimínalo una vez que la actualización del dashboard esté desplegada. |
+| `AGENTEYE_AGENT_MAX_STEPS` | Máximo de pasos de uso de herramientas por respuesta (predeterminado 8) |
+| `AGENTEYE_AGENT_TIMEOUT_MS` | Tiempo de espera total de la solicitud `/chat` (todos los turnos del modelo + pasos de herramientas), en milisegundos (predeterminado 90000); la herramienta SQL tiene su propio límite de 10s |
+| `AGENTEYE_AGENT_SELF_TELEMETRY` | `1` para registrar las propias ejecuciones del asistente en AgentEye |
+| `AGENTEYE_TELEMETRY_API_KEY` | Clave separada solo `events:add` para autoinstrumentación |
+| `AGENTEYE_AGENT_ENV` | Etiqueta de entorno aplicada a la propia autotelemetría del asistente (predeterminado `prod`) |
+
+Configurar en el servicio **`dashboard`**:
+
+| Variable | Propósito |
+|---|---|
+| `AGENTEYE_AGENT_URL` | Dónde el dashboard accede al servicio agent. Los manifiestos de Kubernetes incluidos y el archivo Compose lo configuran como `http://agent:9100`. Déjalo sin configurar para ocultar el asistente por completo. |
+| `AGENTEYE_AGENT_TOKEN` | Debe coincidir con el token del agente |
+
+---
+
+## Telemetría y ver qué preguntan los usuarios
+
+El **contenido de los prompts permanece dentro de tus propios sistemas** por defecto. Tres capas:
+
+1. **Almacén de conversaciones**: cada prompt y respuesta se guarda en tu base de datos de AgentEye (por usuario, privado), y se puede recargar desde el selector de historial del asistente. Este es el registro duradero de lo que preguntan los usuarios.
+2. **Analítica de producto**: el dashboard registra **solo metadatos** (con qué frecuencia se usa el asistente, conteos de herramientas, latencia) en tu analítica. El **texto** de los prompts nunca se incluye en esta ruta.
+3. **Autoinstrumentación (opcional)**: configura `AGENTEYE_AGENT_SELF_TELEMETRY=1` (más un `AGENTEYE_TELEMETRY_API_KEY` solo `events:add`) y el asistente registra sus propias ejecuciones en AgentEye como un agente `dashboard-assistant`. Luego puedes ver los prompts de los usuarios y el razonamiento del asistente en las mismas vistas de sesiones/eventos que usas para todo lo demás. Nota: esos eventos son visibles para cualquiera con `events:read`; si eso es demasiado amplio, déjalo desactivado.
+
+---
+
+## Desactivarlo
+
+Cualquiera de estas opciones desactiva el asistente (el rail del dock desaparece):
+
+- Elimina `AGENTEYE_AGENT_URL` en el dashboard, **o**
+- Deja el endpoint LLM sin configurar en el agente (sin `ANTHROPIC_API_KEY` / gateway / Bedrock / Vertex), **o**
+- No despliegues el servicio `agent` en absoluto.
+
+---
+
+## Resumen de seguridad
+
+- **Sin escrituras silenciosas**: las herramientas de escritura del asistente (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) no pueden ejecutarse sin un clic explícito del operador en el botón Aprobar del chat; la puerta previa a la llamada del SDK bloquea la herramienta hasta que una aprobación llega al agente por un canal secundario. No existe ningún ajuste que desactive esta puerta.
+- **Alcance de datos fijo y reducido**: el asistente se autentica en el servidor con una clave dedicada cuyo conjunto de permisos está fijo en el servidor (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`). Las únicas escrituras que puede realizar son consultas guardadas y dashboards; el servidor rechaza cualquier cosa fuera de ese alcance independientemente de lo que intente el modelo.
+- **Sin superficie de borrado**: la clave no lleva permiso de borrado y no se expone ninguna herramienta de borrado. Los operadores borran a través de la interfaz del dashboard, nunca mediante el asistente.
+- **Solo interno**: el agente no tiene ruta pública; solo el dashboard puede llamarlo, y solo con el token compartido. (En Kubernetes, una NetworkPolicy restringe al agente a alcanzar solo el servidor AgentEye y el endpoint LLM.)
+- **Acotado por usuario**: solo los usuarios con `agent:use` obtienen el asistente, y solo recibe las herramientas que coincidan con los permisos de lectura de cada usuario.
+- **Sin HTML sin procesar / sin exfiltración de enlaces**: las respuestas se renderizan como markdown saneado; los enlaces externos son neutralizados.
+
+Consulta [enterprise-docs/troubleshooting.md](/es/agenteye/troubleshooting) para problemas comunes.

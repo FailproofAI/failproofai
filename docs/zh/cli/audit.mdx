@@ -1,19 +1,19 @@
 ---
 title: 审计历史会话（测试版）
-description: "统计代理在历史记录中执行浪费性或高风险操作的频率"
+description: "统计智能体在历史记录中执行浪费性或高风险操作的频率"
 ---
 
 <Note>
-  **测试版功能。** 审计功能作为测试版发布，目的是收集早期反馈。
-  探测器目录和报告格式可能在下一个稳定版本发布前有所变化。
+  **测试版功能。** 审计功能目前以测试版形式发布，我们正在收集早期反馈。
+  检测器目录和报告格式可能在下一个稳定版本发布前有所变动。
   如发现任何异常，请提交 issue。
 </Note>
 
-审计功能将过去的代理 CLI 记录重新通过 failproofai 的策略引擎进行回放，并在 **`/audit` 仪表板页面**上生成一份可共享的可视化报告——包括代理的原型分类、0 至 100 的评分，以及哪些策略能够捕获哪些问题的详细说明。
+审计功能会将您过去的智能体 CLI 记录通过 failproofai 的策略引擎进行回放，并在 **`/audit` 仪表板页面**生成一份可分享的可视化报告——包括您的智能体原型、0 到 100 的评分，以及哪些策略会捕获哪些问题。
 
 ## 运行方式
 
-有三种入口——均指向同一份 `/audit` 报告。
+有三种入口，最终都会进入同一份 `/audit` 报告。
 
 <CodeGroup>
 
@@ -33,56 +33,57 @@ failproofai
 
 <CardGroup cols={3}>
   <Card title="无需安装" icon="bolt">
-    `npx -y failproofai audit` 会自动获取 failproofai、执行扫描，并为你打开仪表板——无需提前安装任何内容。
+    `npx -y failproofai audit` 会自动获取 failproofai、执行扫描并为您打开仪表板——无需提前安装任何东西。
   </Card>
-  <Card title="通过 CLI 运行" icon="terminal">
-    `failproofai audit` 在终端中执行扫描，完成后自动打开 `localhost:8020/audit`。
+  <Card title="通过 CLI" icon="terminal">
+    `failproofai audit` 在终端中运行扫描，完成后自动打开
+    `localhost:8020/audit`。
   </Card>
-  <Card title="通过仪表板运行" icon="gauge">
-    运行 `failproofai` 后点击导航栏中的 **Audit**（位于 Policies 和 Projects 之间），或直接访问 `/audit`。
+  <Card title="通过仪表板" icon="gauge">
+    运行 `failproofai`，点击导航栏中的 **Audit**（位于 Policies 和 Projects 之间），或直接打开 `/audit`。
   </Card>
 </CardGroup>
 
 <Tip>
-  运行 `failproofai audit -h`（或 `--help`）可查看用法说明。审计**完全离线**运行——无需账户或网络——仪表板会持续提供服务，直到你按下 `Ctrl+C` 停止。
+  运行 `failproofai audit -h`（或 `--help`）查看使用说明。审计**完全离线**运行——无需账号或网络——仪表板会持续运行，直到您按 `Ctrl+C` 停止。
 </Tip>
 
-仪表板会扫描本机上过去的代理 CLI 记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Gemini），并报告代理执行 failproofai 旨在阻止的操作的频率——包括环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、轮询睡眠循环、重复读取刚编辑过的文件等。
+仪表板会扫描本机上过去的智能体 CLI 记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Gemini），并报告智能体执行了哪些 failproofai 旨在阻止的操作——环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、轮询 sleep 循环、重复读取刚编辑的文件等。
 
-针对每条记录，所有工具使用事件都会通过 39 个内置策略以及 8 个仅用于审计的探测器进行重放，后者可捕获运行时策略尚未覆盖的模式。计数会按策略/探测器维度跨所有会话进行聚合。
+对于每条记录，每个工具调用事件都会通过 39 条内置策略以及 8 个仅限审计的检测器进行回放——这些检测器可识别运行时策略尚未覆盖的模式。计数按策略/检测器维度在所有会话中汇总。
 
 ## 报告内容
 
-`/audit` 页面是一个单屏可共享的**海报**，下方附有四个区块：
+`/audit` 页面是一张单屏可分享的**海报**，后跟四个折叠下方的区块：
 
-1. **海报** — 代理身份一览：其**原型**（共 8 种：`optimist`、`cowboy`、`explorer`、`goldfish`、`paranoid architect`、`precision builder`、`hammer`、`ghost`）、角色关键词、该原型的稀有程度，以及带有等级区间（`S` 至 `bottom tier`）的 **0–100 评分**。专为分享设计——可发布到 X 或 LinkedIn，或下载为 PNG。
-2. **`// strengths`** — 代理已做得很好的方面，以扫描得出的真实数据呈现（如 clean-tool-call 百分比、`0` 次推送主干尝试），仅在相关策略记录清白时显示。
-3. **`// quirks`** — 漏网之鱼：一份按优先级排序的行为表格，列出 failproofai 本可捕获的行为——*最后发生时间*、*漏过的内容*（以及应对的内置策略）、*严重程度*，以及出现频率（`new` / `recurring` / `N× seen`）。
-4. **`// how to improve`** — 建议修复清单：每条策略对应一行可直接复制粘贴的 `failproofai policy add <slug>` 命令，另有一个**全部安装**按钮，可一次性启用所有建议，并显示执行后的**预计评分**。
-5. **`// come back better`** — 养成习惯：设置重新审计的邮件**提醒**（`3d` / `7d` / `14d` / `30d`）或立即重新审计，并**邀请朋友**进行他们自己的审计（由 failproof.ai 发送，抄送给你）。提醒和邀请功能需要登录——请参阅 [`failproofai auth`](/zh/cli/auth)。
+1. **海报** — 一目了然地展示您的智能体身份：其**原型**（共 8 种——`optimist`、`cowboy`、`explorer`、`goldfish`、`paranoid architect`、`precision builder`、`hammer`、`ghost`）、人物关键词、该原型的稀有程度，以及带有层级标识的 **0 到 100 评分**（从 `S` 到 `bottom tier`）。专为分享而设计——可发布到 X 或 LinkedIn，也可下载为 PNG。
+2. **`// strengths`** — 您的智能体已经表现良好的方面，来自扫描的真实数据（例如干净工具调用率、`0` 次推送到主分支的尝试），仅在相关策略记录完全干净时显示。
+3. **`// quirks`** — 漏掉了什么：按优先级排列的行为表格，列出 failproofai 本可捕获的操作——*最近发生时间*、*泄漏内容*（以及会阻止它的内置规则）、*严重程度*，以及出现频率（`new` / `recurring` / `N× seen`）。
+4. **`// how to improve`** — 建议修复列表：每条策略对应一行可复制粘贴的 `failproofai policy add <slug>` 命令，以及一个**一键安装全部**按钮，可同时启用所有建议，并显示执行后的**预期评分**。
+5. **`// come back better`** — 培养习惯：设置重新审计的邮件**提醒**（`3d` / `7d` / `14d` / `30d`）或立即重新审计，并**邀请好友**进行自己的审计（由 failproof.ai 发送，抄送给您）。提醒和邀请需要登录——请参阅 [`failproofai auth`](/zh/cli/auth)。
 
-## 仅用于审计的探测器
+## 仅限审计的检测器
 
-这些探测器用于检测尚未（在运行时）强制执行的"低效行为"模式。它们仅在审计期间运行，不会阻止实时工具调用。
+这些检测器用于识别尚未在实时环境中强制执行的"低效行为"模式。它们仅在审计期间运行，不会阻止实时工具调用。
 
-| 探测器 | 统计内容 |
+| 检测器 | 统计内容 |
 |---|---|
 | `redundant-cd-cwd` | 以 `cd <cwd> && …` 开头的 Bash 命令，尽管命令已在 `cwd` 中运行。 |
 | `prefer-edit-over-read-cat` | 对单个源文件使用 `cat`/`head`/`tail`/`less`/`more`——应使用 `Read` 工具。 |
 | `prefer-edit-over-sed-awk` | 使用 `sed -i` / `awk … > file` 进行原地编辑——应使用 `Edit` 工具。 |
-| `prefer-write-over-heredoc` | 使用 heredoc / 多行 `echo > file` 写入文件——应使用 `Write` 工具。 |
+| `prefer-write-over-heredoc` | 使用 Heredoc / 多行 `echo > file` 写入文件——应使用 `Write` 工具。 |
 | `sleep-polling-loop` | 长时间 `sleep N`（≥ 30 秒）或 `while …; sleep …; done` 轮询循环。 |
-| `find-from-root` | `find /`、`find /home`、`find /usr` 等——应限定在 `cwd` 范围内。 |
-| `git-commit-no-verify` | `git commit … --no-verify` / `-n`，跳过 hooks。 |
-| `reread-after-edit` | 在同一会话中对刚刚 `Edit`/`Write` 过的文件执行 `Read`。 |
+| `find-from-root` | `find /`、`find /home`、`find /usr` 等——应将范围限定在 `cwd`。 |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`，跳过钩子。 |
+| `reread-after-edit` | 在同一会话中对刚刚 `Edit`/`Write` 的文件执行 `Read`。 |
 
 ## 缓存机制
 
-- **按记录缓存**，路径为 `~/.failproofai/cache/audit/<sha1>.json`，以 `(mtime, size, engineVersion, detectorVersion)` 为键——当记录或策略/探测器代码发生变化时自动失效。每条缓存项还存储 `cachedAt` 时间戳作为 **TTL 元数据**（不作为缓存键的一部分）；超过 **7 天**的条目在读取时会被拒绝，避免长期缓存的结果与不断演进的探测器意图脱节。
-- **整体结果缓存**，路径为 `~/.failproofai/audit-dashboard.json`（权限 0600）。允许仪表板在导航时即时渲染，无需重新运行。同样在超过 **7 天 TTL** 后读取时被拒绝——`/audit` 随后会回退至空状态并提示重新运行。点击报告底部附近的 `[ re-audit now ]` 可刷新——重新审计会发送 `noCache: true`，从而绕过按记录缓存，重新扫描所有记录而非返回缓存结果；运行过程通过顶部固定条带流式显示进度，成功后原地替换结果（无需刷新页面；重新审计失败时保留上次报告）。
+- **逐记录缓存**位于 `~/.failproofai/cache/audit/<sha1>.json`，以 `(mtime, size, engineVersion, detectorVersion)` 为键——当记录或策略/检测器代码发生变化时自动失效。每个条目还存储 `cachedAt` 时间戳作为 **TTL 元数据**（不作为缓存键的一部分）；超过 **7 天**的条目在读取时会被拒绝，以防止长期存在的结果与不断演进的检测器意图产生偏差。
+- **整体结果缓存**位于 `~/.failproofai/audit-dashboard.json`（权限 0600）。允许仪表板在导航时即时渲染，无需重新运行。同样超过 **7 天 TTL** 后在读取时被拒绝——`/audit` 随后进入空状态并提示重新运行。点击报告底部的 `[ re-audit now ]` 刷新——重新审计会发送 `noCache: true`，绕过逐记录缓存并重新扫描所有记录，而非返回缓存结果；运行进度通过顶部固定条目流式显示，成功后在原位替换结果（无需重载页面；若重新审计失败，则保留上一份报告）。
 
 ## 注意事项
 
-- **不修改任何数据。** 审计以只读模式回放。`warn-repeated-tool-calls` 会被跳过，因为其按会话存储的附属文件否则会被修改。
-- **工作流策略被跳过。** `require-*-before-stop` 策略仅在 `Stop` 事件时触发，并通过 `execSync` 对实时 git 状态进行检查——它们对"2025 年的历史会话中会发生什么"没有实质性的解读意义，因此不会出现在审计计数中。
-- **自定义策略被跳过。** 用户提供的自定义 hooks 不会被重放（它们可能在原始会话之后已发生变化）。
+- **不做任何修改。** 审计以只读模式回放。`warn-repeated-tool-calls` 会被跳过，因为其每个会话的附属文件否则会被修改。
+- **跳过工作流策略。** `require-*-before-stop` 策略仅在 `Stop` 事件时触发，并对实时 git 状态执行 `execSync`——它们在审计场景中没有有意义的"2025 年会发生什么"解读，因此不出现在审计计数中。
+- **跳过自定义策略。** 用户提供的自定义钩子不会被回放（它们可能在原始会话之后发生了变化）。

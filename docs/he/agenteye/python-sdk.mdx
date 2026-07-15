@@ -1,0 +1,386 @@
+---
+title: "Python SDK"
+description: "תיעוד AgentEye Python SDK."
+---
+
+AgentEye Python SDK נותן לך נראות מלאה להתנהגות הסוכנים שלך (כל הרצת סוכן, קריאת כלי, בקשת מודל, hook, והתערבות אדם) כדי שתוכל לבצע ניפוי שגיאות, ביקורת והערכה. הוא מחבר את קוד הסוכן שלך על ידי כתיבת אירועים מובנים לקבצי JSONL מקומיים; דימון האספן קוטף אלה ומשדר אותם לפלטפורמה באופן אוטומטי.
+
+---
+
+## התקנה
+
+הורד את wheel מ-GitHub Releases באמצעות `AGENTEYE_TOKEN` שלך. אם עדיין אין לך token, ראה [GitHub Token Setup](/he/agenteye/github-token) לשלבי הגדרה ולהרשאות נדרשות.
+
+**שימוש ב-`gh` CLI + pip:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**שימוש ב-`gh` CLI + uv:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**שימוש ב-curl (ללא `gh` CLI):**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## התחלה מהירה
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+    flush_interval=0.5,      # float, seconds between flush cycles
+    environment=None,        # str | None. Deployment environment label
+)
+```
+
+קרא פעם אחת לפני כל קריאה `event.*`. בטוח להשמיט; ברירות המחדל עובדות מחוץ לתיבה. כל הארגומנטים הם keyword-only; העבר אותם לפי שם כפי שמוצג למעלה.
+
+כאשר `base_dir` הוא `None` (ברירת המחדל), ה-SDK קורא `$AGENTEYE_HOME` אם הוגדר,
+אחרת חוזר ל-`~/.agenteye`. זה תואם את ההחלטה שלעצמו של האספן,
+כך שמשתנה `AGENTEYE_HOME` אחד מסביבה מגדיר את ה-spool המשותף של האירועים עבור
+ה-SDK והאספן, נדרש עבור פריסות sidecar / single-pod כאשר שתי התהליכים חייבים
+להסכים על נתיב ה-spool.
+
+---
+
+## Environment
+
+תייג כל אירוע עם environment פריסה (`production`, `staging`, `qa`, `canary`, וכו'). הגדר פעם אחת; ה-SDK מצרף אותה לכל אירוע באופן אוטומטי.
+
+**אפשרות 1: דרך `configure()`:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**אפשרות 2: דרך משתנה סביבה:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**עדיפות:** `configure(environment=...)` מנצח על משתנה הסביבה. אם שום דבר לא הוגדר, ברירת המחדל היא `"dev"`.
+
+ערך ה-environment מופיע כמסנן מדרגה ראשונה בלוח המחוונים ומאוחסן כעמודה מודדת על השרת לשאילתות מהירות.
+
+**הגבלה:** ערכי environment **לא חייבים להכיל פסיק `,` ממשי**. מסנני לוח המחוונים משתמשים בבחירה מרובה מופרדת בפסיקים על החוט (`?environment=prod,staging`), כך שenv בשם `prod,blue` היה מחולק לשני ערכים. אירועים עם environments המכילים פסיקים מדחים בזמן הספיגה.
+
+---
+
+## הפניה לאירועים
+
+כל שיטות אירוע דורשות שני שדות אלה:
+
+| שדה | סוג | תיאור |
+|---|---|---|
+| `session_id` | `str` | מזהה את הרצת הסוכן ברמה העליונה |
+| `agent_id` | `str` | מזהה איזה סוכן בתוך ה-session פרסם את האירוע |
+
+כל השיטות מקבלות גם `**kwargs` שרירותיות עבור מטא-נתונים מותאמים אישית (ראה [Custom Fields](#custom-fields)).
+
+---
+
+### `event.agent_start()`
+
+פולט כאשר סוכן מתחיל לעבוד.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - parent agent_id for nested agents
+)
+```
+
+---
+
+### `event.agent_end()`
+
+פולט כאשר סוכן סיים עבודה.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+פולט כאשר סוכן מעוררת כלי. זוגי עם `tool_result`; ה-SDK מחשב אוטומטית `duration_ms`.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, required
+    tool_call_id="toolu_01",    # str, required - correlation key for the matching tool_result
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+פולט כאשר כלי חוזר. מתואם עם `tool_use` דרך `tool_call_id`.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # must match the prior tool_use
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - set if the tool raised
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+---
+
+### `event.model_request()`
+
+פולט ממש לפני שליחת prompt ל-LLM.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - conversation turns
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - str or list of content blocks
+    tools=[                      # list[dict] | None - tool schemas offered to the model
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+ערכי `messages` מקבלים או `content` מחרוזת פשוטה או Anthropic-style list-of-blocks `content`. פרמטרי דגימה (`temperature`, `max_tokens`, וכו') יכולים להיות מועברים כ-kwargs נוסף.
+
+---
+
+### `event.model_response()`
+
+פולט כאשר LLM חוזר עם תגובה.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - str, or list of content blocks
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` מקבל או מחרוזת פשוטה (ספקים גנריים) או רשימה של Anthropic-style content blocks. קריאות כלי חיות בתוך `content` כ-`{"type": "tool_use", ...}` blocks, ללא שדה `tool_calls` נפרד.
+
+---
+
+### `event.hook_triggered()`
+
+פולט כאשר hook שורה. זוגי עם `hook_completed`; ה-SDK מחשב אוטומטית `duration_ms`.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, required
+    hook_id="hook-abc",         # str, required - correlation key
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+פולט כאשר hook מסתיים. מתואם עם `hook_triggered` דרך `hook_id`.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # must match the prior hook_triggered
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+---
+
+### `event.error()`
+
+פולט כאשר שגיאה לא מטופלת מתרחשת.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, required
+    message="timed out",        # str, required
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## אירועי Human-in-the-Loop
+
+אירועי human-in-the-loop נותנים לך פיקוח על הרגעים שבהם אדם נכנס להוצאה לפועל של הסוכן (המתנה לאישור, הנמקת קלט, השהייה, או עצירת הסוכן). הם מאפשרים לך למדוד כמה זמן אדם לוקח כדי להגיב (ה-SDK מחשב אוטומטית `duration_ms` על אירועים מזווגים), ביקורת מי השהה או הפריע לסוכן, ובנייה של זרימות עבודה של אישור ופיקוח שמופיעות בלוח המחוונים.
+
+### `event.human_wait()`
+
+פולט כאשר הסוכן מעצור את ההוצאה לפועל כדי להמתין לאדם לספק קלט. זוגי עם `human_input`; ה-SDK מחשב אוטומטית `duration_ms` (כמה זמן לקח לאדם להגיב).
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, required - correlation key for the matching human_input
+    prompt="Do you approve this action?",        # str | None - the question shown to the human
+    options=["approve", "reject", "defer"],      # list[str] | None - choices presented to the human
+    reason="approval_required",                  # str | None - why the agent is waiting
+)
+```
+
+### `event.human_input()`
+
+פולט כאשר אדם מספק קלט והסוכן חוזר. מתואם עם `human_wait` דרך `input_id`. `duration_ms` מחושב אוטומטית ולא חייב להיות מועבר על ידי הקורא.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, required - must match the prior human_wait
+    response="approve",    # str | None - the human's answer (free text or selected option)
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+### `event.human_pause()`
+
+פולט כאשר אדם בפעיל מעצור את הסוכן (למשל דרך בקרת לוח מחוונים). הסוכן מושעה אך לא מסתיים.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - who paused the agent
+)
+```
+
+### `event.human_interrupt()`
+
+פולט כאשר אדם בפעיל עוצר את הסוכן באמצע ביצוע. בניגוד ל-`human_pause`, עבודת הסוכן מסתיימת ולא משעה.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - who interrupted the agent
+    at_step="tool_use:web_search",   # str | None - what the agent was doing when stopped
+)
+```
+
+---
+
+## שדות מותאמים אישית
+
+כל kwargs נוסף מצורף לאירוע לאחר השדות הסטנדרטיים:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # custom field
+    region="us-east-1",         # custom field
+)
+```
+
+`timestamp`, `type`, ו-`environment` שמורים והעלו `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) אם מועברים כשדות מותאמים אישית. `session_id` ו-`agent_id` הם פרמטרים נדרשים בכל שיטת אירוע ולא ניתן לספק אותם בפעם שנייה; Python מעלה `TypeError` אם אתה עושה זאת. הגדר את ה-environment עם `configure(environment=...)` (או משתנה `AGENTEYE_ENVIRONMENT`) במקום זאת.
+
+---
+
+## כיצד אירועים נכתבים
+
+אירועים מאוגרים בתהליך ומשטפים לדיסק כל `flush_interval` שניות (ברירת מחדל 500 ms). כל flush כותב קובץ JSONL אחד:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+האספן צפה בתיקייה זו ועלויים קבצים באופן אוטומטי. אתה לא צריך לנהל קבצים אלה ישירות.

@@ -253,6 +253,7 @@ describe("ProjectList", () => {
       "OpenCode",
       "Pi",
       "Gemini CLI",
+      "Hermes",
     ]);
   });
 

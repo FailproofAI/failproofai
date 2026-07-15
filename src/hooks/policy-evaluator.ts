@@ -256,6 +256,25 @@ export async function evaluatePolicies(
         };
       }
 
+      // Hermes: the block contract is `{"decision":"block","reason"}` on stdout;
+      // Hermes IGNORES exit codes, so the JSON is the only channel. This one
+      // return covers every Hermes event we install (PreToolUse / PostToolUse /
+      // SubagentStop) — there is no Stop/turn-end event to special-case (Hermes
+      // has no turn boundary; the 5 require-*-before-stop builtins never fire for
+      // it — see CLAUDE.md / the audit plan). A block on PreToolUse stops the
+      // tool before it runs, regardless of the originating platform
+      // (slack/telegram/cli/cron) or subagent.
+      if (session?.cli === "hermes") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       // OpenCode: `session.idle` is a notification-only bus event — by the
       // time the plugin handler fires, OpenCode has already gone idle and
       // throwing from the handler does not force-retry. The only working
@@ -544,6 +563,29 @@ export async function evaluatePolicies(
       return {
         exitCode: 0,
         stdout: "",
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Hermes: no additional-context channel on any event (the only actionable
+    // response is `{"decision":"block"}`). So instruct degrades to allow +
+    // log — we emit a non-blocking `{decision:"allow", reason}` (Hermes lets
+    // the tool run) and surface the note on stderr for the operator's logs.
+    // Documented limitation; there is no Stop event to force-retry into.
+    if (session?.cli === "hermes") {
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          decision: "allow",
+          reason: `Instruction from failproofai: ${combined}`,
+        }),
         stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,

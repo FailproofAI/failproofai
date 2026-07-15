@@ -1,0 +1,668 @@
+---
+title: "מדריך פריסה ל-Kubernetes"
+description: "תיעוד מדריך פריסה ל-Kubernetes של AgentEye."
+---
+
+מדריך זה מפרוס את ערימת AgentEye המלאה על אשכול Kubernetes ייעודי:
+
+- **ClickHouse 24.8** -- אחסן הנתונים הקנוני לאנליטיקה של אירועים והערכות (StatefulSet עם נפח קבוע של 100Gi). נדרש: השרת מסרב להתחיל בלעדיו.
+- **PostgreSQL 16** -- אחסן מטא-נתונים ויחסי למארגנויות, מפתחות API, משתמשים, לוחות בקרה, שאילתות שמורות והרשאות (StatefulSet עם נפח קבוע של 50Gi)
+- **Redis 7.2** -- מטמון משותף אופציונלי ותשתית הגבלת קצב; השרת ולוח הבקרה מתכלים בחן אם הוא אינו זמין
+- **שרת AgentEye** -- Rust API לספיגת אירועים, אנליטיקה וניהול מפתחות (2 העתקים)
+- **לוח בקרה AgentEye** -- ממשק משתמש Next.js (2 העתקים)
+- **עוזר AI (שירות סוכן)** -- עוזר אופציונלי קריאה-בלבד בתוך לוח הבקרה בפורט 9100; לא פעיל עד שנקודת קצה LLM תעבור תצורה
+- **Traefik (ציבורי)** -- בקר ingress לתעבורת כללים, מוגן ב-mTLS
+- **Traefik (לוח בקרה)** -- בקר ingress ללוח הבקרה, VPN/רשימת IP-בלבד
+- **cert-manager** -- תעודות TLS ו-CA של mTLS
+- **CronJob גיבוי** -- יומי של PostgreSQL + ClickHouse משולב ב-03:00 UTC
+- **צג חידוש תעודות** -- התראות כאשר תעודות לקוח קרובות לתפוגה
+
+**זמן משוער:** 60-90 דקות לפריסה ראשונה.
+
+עבור מודל הפריסה המנוהל בו Exosphere מטפלת בכל זה בשמך, ראה [enterprise-docs/managed-deployment.md](/he/agenteye/managed-deployment).
+
+---
+
+## דרישות מוקדמות
+
+הרץ כל פקודת אימות לפני התחלה. כל בדיקה חייבת להיות מוצלחת.
+
+| דרישה | מינימום | פקודת אימות | צפוי |
+|---|---|---|---|
+| אשכול Kubernetes | 1.27+ | `kubectl version` | Server Version >= v1.27 |
+| Kustomize (מלאי עם kubectl) | Kustomize v1.14+ (משלוח בתוך kubectl 1.27+) | `kubectl kustomize --help` | הדפסת טקסט שימוש |
+| Helm | v3 | `helm version` | `Version:"v3.x.x"` |
+| cluster-admin RBAC | -- | `kubectl auth can-i create namespaces` | `yes` |
+| StorageClass ברירת המחדל | -- | `kubectl get storageclass` | לפחות שורה אחת מסומנת `(default)` |
+| תמיכת LoadBalancer | -- | תלוי בעננן (EKS, GKE, AKS כולם תומכים בברירת מחדל) | -- |
+| GitHub PAT | -- | `echo $AGENTEYE_TOKEN` | לא ריק (ראה [enterprise-docs/github-token.md](/he/agenteye/github-token)) |
+| openssl | -- | `openssl version` | OpenSSL 1.x או 3.x |
+| דלי אחסון בעננן | -- | ל-PostgreSQL + ClickHouse גיבויים (S3, GCS, או Azure Blob) | -- |
+
+**גודל אשכול:** מינימום 3 צמתים, 4 vCPU / 8 GB RAM כל אחד. ראה [enterprise-docs/managed-deployment.md](/he/agenteye/managed-deployment) לדרישות מלאות.
+
+### הרץ את כל הבדיקות בבת אחת
+
+```bash
+echo "--- Prerequisites Check ---"
+kubectl version --client -o yaml 2>/dev/null | grep -q gitVersion && echo "PASS: kubectl" || echo "FAIL: kubectl not found"
+helm version --short 2>/dev/null | grep -q v3 && echo "PASS: helm v3" || echo "FAIL: helm v3 not found"
+kubectl auth can-i create namespaces 2>/dev/null | grep -q yes && echo "PASS: cluster-admin" || echo "FAIL: no cluster-admin"
+kubectl get storageclass 2>/dev/null | grep -q default && echo "PASS: default StorageClass" || echo "FAIL: no default StorageClass"
+[ -n "$AGENTEYE_TOKEN" ] && echo "PASS: AGENTEYE_TOKEN set" || echo "FAIL: AGENTEYE_TOKEN not set"
+openssl version >/dev/null 2>&1 && echo "PASS: openssl" || echo "FAIL: openssl not found"
+echo "---"
+```
+
+### צורת הפריסה
+
+**נקודת הסיום של ספיגה** מוגשת על כתובת שאתה שולט בה (למשל `ingest.your-company.example`). cert-manager מבקש תעודת TLS המהימנה בציבור מ-Let's Encrypt דרך HTTP-01, כך שמכללים מאומתים את תעודת השרת כנגד חנות ההאמנה של המערכת, ללא PIN CA לכל לקוח.
+
+**נקודת הסיום של לוח הבקרה** עובדת בדרך זהה: היא מוגשת על כתובת שנייה שאתה שולט בה (למשל `agenteye.your-company.example`) המצביעה על LoadBalancer של Traefik של לוח הבקרה, ו-cert-manager מנפיק את תעודת Let's Encrypt שלה דרך LoadBalancer זה. דפדפנים מקבלים תעודה מהימנה ללא אזהרה.
+
+> **הנפקת תעודות וחידוש אימות דרך HTTP-01**, כך שגם LoadBalancers חייבים להיות ניתנים להשגה מהאינטרנט הציבורי בפורט 80. אם אתה צריך הגבלת IP ללוח הבקרה LoadBalancer, תאם עם תמיכה תחילה על פותר DNS-01 -- אחרת חידושים נכשלים בשקט ותעודות מתפוגות.
+
+---
+
+## קבל את המניפסטים
+
+```bash
+git clone https://x:${AGENTEYE_TOKEN}@github.com/agenteye-enterprise/releases.git
+cd releases/deploy
+```
+
+**בדוק את זה:**
+
+```bash
+ls base/kustomization.yaml
+```
+
+צפוי: הקובץ קיים. אם לא, ההעתקה נכשלה -- בדוק את `AGENTEYE_TOKEN` שלך.
+
+**מבנה ספריה:**
+
+```
+deploy/
+  base/           Kustomize בסיס משותף (כל משאבי K8s)
+  overlays/       עקיפות ספציפיות לאשכול (תגי תמונה, כתובות, משאבים)
+  third-party/    ערכי Helm עבור Traefik, cert-manager, ו-(opt-in) Robusta monitoring
+```
+
+**הבסיס** מכיל כל משאב הנדרש לפריסה מלאה, כולל תעודות Let's Encrypt לשני שמות המשתמשים הציבוריים שתעבור תצורה בשלב 3.1. **עקיפה** תיקע את הבסיס לסביבה ספציפית (למשל תגי תמונה מותאמים, מגבלות משאבים, חיווט env). ספריית **third-party** מכילה קובצי ערכי Helm עבור תשתיות חיצוניות.
+
+> **ניטור בריאות (אופציונלי):** הבדיקה הערות של השרת כבר משקפת בריאות Postgres + ClickHouse, ו-`third-party/robusta/` מוסיף התראות כשל pod מובנות-Kubernetes opt-in ל-Slack. ראה [enterprise-docs/health-monitoring.md](/he/agenteye/health-monitoring).
+
+---
+
+## שלב 1 -- תשתיות צד שלישי (~30 דקות)
+
+### 1.1 התקן את cert-manager
+
+cert-manager מנהל תעודות TLS עבור HTTPS וה-CA הפרטי המשמש ללקוחות mTLS.
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set crds.install=true
+```
+
+**בדוק את זה:**
+
+```bash
+kubectl get pods -n cert-manager
+```
+
+צפוי: 3 פודים הכל `Running` -- `cert-manager`, `cert-manager-cainjector`, `cert-manager-webhook`.
+
+```bash
+kubectl get crds | grep cert-manager
+```
+
+צפוי: לפחות `certificates.cert-manager.io`, `clusterissuers.cert-manager.io`, `issuers.cert-manager.io`.
+
+**אם נכשל:** פודים ב-`CrashLoopBackOff` בדרך כלל פירושו ש-CRDs לא התקנו. הרץ מחדש עם `--set crds.install=true`. אם פודי webhook נכשלים readiness, חכה 30 שניות ובדוק שוב -- זה יכול לקחת רגע להתחיל.
+
+---
+
+### 1.2 התקן את Traefik -- בקר Ingest ציבורי
+
+מופע Traefik זה טוען את תעבורת מכללים על LoadBalancer **חיצוני**. זה מסיים TLS וכופה mTLS (אימות תעודת לקוח) בנקודת הסיום של ספיגה.
+
+```bash
+helm repo add traefik https://traefik.github.io/charts
+helm repo update
+
+helm install traefik-public traefik/traefik \
+  --namespace traefik-public --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-public.yaml
+```
+
+**בדוק את זה:**
+
+```bash
+kubectl get pods -n traefik-public
+```
+
+צפוי: 1 פוד `Running`.
+
+```bash
+kubectl get ingressclass traefik-public
+```
+
+צפוי: ה-IngressClass קיים (זה לא מחלקת ברירת המחדל).
+
+**אם נכשל:** בדוק `kubectl describe pod -n traefik-public <pod-name>` לשגיאות pull תמונה או אילוצי משאבים.
+
+---
+
+### 1.3 התקן את Traefik -- בקר לוח בקרה
+
+מופע Traefik זה מגדיש את לוח הבקרה ב-LoadBalancer ייעודי, מוגבל על ידי רשימת IP.
+
+> **שני מנגנוני רשימה הלבנה משלחים עבור מופע זה.** מדריך זה משתמש ב-`values-dashboard.yaml`, המגביל גישה עם שדה `service.loadBalancerSourceRanges` הניידים. מקביל `values-internal.yaml` גם מסופק לסביבות AWS המעדיפות את הביאור `service.beta.kubernetes.io/aws-load-balancer-source-ranges` במקום. בחר אחד והשתמש בו בעקביות; השלבים להלן מניחים `values-dashboard.yaml`.
+
+**לפני ההתקנה**, ערוך את `third-party/traefik/values-dashboard.yaml` כדי להגדיר את כתובות ה-IP המותרות. השדה `loadBalancerSourceRanges` שולט על אילו IP יכולים להגיע ללוח הבקרה. כברירת מחדל הוא מוגדר ל-`0.0.0.0/0` (כל ה-IP); הגבל אותו ל-VPN, משרד או ה-IPs של יציאה ידועות שלך.
+
+#### הוסף IP יחיד לרשימה הלבנה
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "<YOUR_VPN_IP>/32"
+```
+
+#### הוסף כמה IP לרשימה הלבנה
+
+הוסף ערך אחד ל-IP או בלוק CIDR. סיומת `/32` תואמת כתובת IPv4 יחידה; בלוק CIDR (למשל `/24`) תואמת טווח. אתה יכול לערבב IP בודדים וטווחים בחופשיות:
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "203.0.113.10/32"       # office gateway
+    - "203.0.113.11/32"       # backup office gateway
+    - "198.51.100.0/24"       # VPN pool
+    - "192.0.2.50/32"         # on-call engineer home IP
+```
+
+טיפים כאשר מתחזקים את הרשימה:
+
+- שמור ערך אחד לכל שורה והוסף הערה קצרה `#` המזהה כל בעל IP או תכלית; זה מה שמפעילים עתידיים משתמשים בו כדי להחליט אם ערך עדיין דרוש.
+- השתמש תמיד בסימן CIDR. IP חשוף כמו `203.0.113.10` נדחה על ידי ספק הענן; השתמש ב-`203.0.113.10/32`.
+- עבור טווחי IPv6, השתמש בערך שקול `/128` (כתובת יחידה) או CIDR גדול יותר, למשל `2001:db8::1/128`. לא כל ספקי עננן תומכים בטווחי מקור IPv6; בדוק את תיעוד LoadBalancer של ספק שלך.
+- הרשימה היא **OR**: התעבורה מותרת אם המקור תואם כל ערך.
+
+לאחר עריכת הקובץ, המשך ל-`helm install` להלן. אם הבקר כבר התקנו, הרץ `helm upgrade` עם אותות הדגלים, או patch את ה-Service בזמן ריצה (קטע הבא).
+
+#### עדכן את רשימת ההלבנה בזמן ריצה
+
+אתה יכול לשנות את ה-IPs המותרים ללא שדרוג Helm על ידי patching Service ישירות. **ה-patch מחליף את כל הרשימה**; הכלול תמיד כל IP שברצונך לשמור, לא רק את החדש.
+
+כדי להחליף את הרשימה בסט IP חדש:
+
+```bash
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["203.0.113.10/32","198.51.100.0/24","192.0.2.50/32"]}}'
+```
+
+כדי **להוסיף** בבטחה IP מבלי לאבד ערכים קיימים, קרא תחילה את הרשימה הנוכחית, ואז תיקע עם הסט המשולב:
+
+```bash
+# 1. הצג את רשימת ההלבנה הנוכחית
+kubectl get svc traefik-dashboard -n traefik-dashboard \
+  -o jsonpath='{.spec.loadBalancerSourceRanges}'
+
+# 2. Patch עם הרשימה המלאה כולל ה-IP החדש
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["<EXISTING_IP_1>/32","<EXISTING_IP_2>/32","<NEW_IP>/32"]}}'
+```
+
+> Patches בזמן ריצה אינם מתמשכים חזרה ל-`values-dashboard.yaml`. כדי לשמור את השינוי על פני שדרוגי Helm עתידיים, עדכן גם את קובץ הערכים ותחייב אותו.
+
+ואז התקן:
+
+```bash
+helm install traefik-dashboard traefik/traefik \
+  --namespace traefik-dashboard --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-dashboard.yaml
+```
+
+**בדוק את זה:**
+
+```bash
+kubectl get pods -n traefik-dashboard
+```
+
+צפוי: 1 פוד `Running`.
+
+```bash
+kubectl get ingressclass traefik-dashboard
+```
+
+צפוי: ה-IngressClass קיים.
+
+---
+
+### 1.4 חכה ל-LoadBalancers
+
+שני מופעי Traefik צריכים IP חיצוניים לפני המשך.
+
+```bash
+kubectl get svc -n traefik-public
+kubectl get svc -n traefik-dashboard
+```
+
+**בדוק את זה:** שתי השירותים מציגים `EXTERNAL-IP` (לא `<pending>`).
+
+אם עדיין ממתין, צפה להקצאה:
+
+```bash
+kubectl get svc -n traefik-public -w
+```
+
+לחץ על `Ctrl+C` ברגע שה-IP מופיע. הקצאת IP בדרך כלל לוקחת 2-5 דקות.
+
+**אם נכשל:** `<pending>` אחרי 10 דקות בדרך כלל פירושו שספק הענן לא יכול להתקין LoadBalancer. בדוק: תגי תת-רשת (EKS דורש `kubernetes.io/role/elb`), תצורת VPC, מכסות שירות, וכי ההערה הנכונה של LB פנימי מוגדרת לדוגמה הפנימית.
+
+---
+
+## שלב 2 -- יצירת סודות (~10 דקות)
+
+כל הסודות נוצרים באופן ידני לפני פריסת היישום. זה מבטיח שערכים רגישים אינם מופיעים בקבצי מניפסט.
+
+### 2.1 יצור את ה-namespace
+
+```bash
+kubectl create namespace agenteye
+```
+
+**בדוק את זה:**
+
+```bash
+kubectl get namespace agenteye
+```
+
+צפוי: סטטוס `Active`.
+
+---
+
+### 2.2 סוד pull תמונה
+
+סוד זה מאומת עם `ghcr.io` כדי לשלוף את תמונות המיכל של AgentEye. ראה [enterprise-docs/github-token.md](/he/agenteye/github-token) כיצד לייצר את ה-PAT שלך.
+
+```bash
+kubectl create secret docker-registry agenteye-image-pull \
+  --namespace agenteye \
+  --docker-server=ghcr.io \
+  --docker-username=agenteye-enterprise \
+  --docker-password="${AGENTEYE_TOKEN}"
+```
+
+**בדוק את זה:**
+
+```bash
+kubectl get secret agenteye-image-pull -n agenteye -o jsonpath='{.type}'
+```
+
+צפוי: `kubernetes.io/dockerconfigjson`.
+
+**בדוק את זה (עמוק)** -- אימות שהטוקן יכול בעצם לשלוף תמונות:
+
+השתמש בתג תמונת `server` המעוגן בקובץ `kustomization.yaml` של overlay שלך (כרגע `v0.0.1-beta.48` גם בשכבה `acme` המלאה וגם בפריסה בסיס). החלף את התג למטה לזה שאתה פורס כך בדיקה זו לא תסחוף על פני הוצאות.
+
+```bash
+kubectl run test-pull \
+  --image=ghcr.io/agenteye-enterprise/server:v0.0.1-beta.48 \
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"agenteye-image-pull"}]}}' \
+  --restart=Never -n agenteye --command -- echo ok
+
+# חכה כמה שניות לה-pull, ואז:
+kubectl logs test-pull -n agenteye
+kubectl delete pod test-pull -n agenteye
+```
+
+צפוי: `ok` מודפס ברישומים.
+
+**אם נכשל:** `ErrImagePull` או `401 Unauthorized` פירושו ש-PAT אינו תקף או חסר `read:packages` היקף. בדוק מחדש [enterprise-docs/github-token.md](/he/agenteye/github-token).
+
+---
+
+### 2.3 אישורי PostgreSQL
+
+```bash
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+
+kubectl create secret generic agenteye-postgres \
+  --namespace agenteye \
+  --from-literal=POSTGRES_USER=postgres \
+  --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  --from-literal=POSTGRES_DB=agenteye
+```
+
+> **חשוב:** אנחנו משתמשים ב-`-hex` (לא `-base64`) כדי ליצור את הסיסמה. פלט Base64 יכול להכיל `+`, `/` ו-`=` אשר שוברים את מחרוזת חיבור `DATABASE_URL`. ראה [enterprise-docs/troubleshooting.md](/he/agenteye/troubleshooting) לפרטים.
+
+> **שמור `POSTGRES_PASSWORD` במנהל הסודות שלך מיד.** תצטרך אותו אם אי פעם תשחזר מגיבוי או תתחבר ישירות למסד הנתונים.
+
+**בדוק את זה:**
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye
+```
+
+צפוי: הסוד קיים.
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye \
+  -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | wc -c
+```
+
+צפוי: `48` (24 בתים hex = 48 תווים).
+
+---
+
+### 2.4 מפתח API מנהל
+
+```bash
+ADMIN_KEY=$(openssl rand -hex 32)
+
+kubectl create secret generic agenteye-admin-key \
+  --namespace agenteye \
+  --from-literal=ADMIN_KEY="${ADMIN_KEY}"
+```
+
+המפתח של המנהל הוא אישור ההתחלה. השרת upserts אותו עם הרשאות מלאות בכל הפעלה. השתמש בו כדי ליצור מפתחות מכללים בעלי היקף בשלב 7. ראה [enterprise-docs/api-keys.md](/he/agenteye/api-keys) עבור מודל ההרשאות המלא.
+
+> **שמור `ADMIN_KEY` במנהל הסודות שלך מיד.**
+
+**בדוק את זה:**
+
+```bash
+kubectl get secret agenteye-admin-key -n agenteye
+```
+
+צפוי: הסוד קיים.
+
+---
+
+### 2.5 תצורת אימות (כניסת לוח בקרה)
+
+לוח הבקרה משתמש ב-OTP של דוא"ל + ל-כניסת משתמש. ללא סוד זה השרת עדיין מתחיל ונתיב `ADMIN_KEY` API שמור עובד, אך **לא משתמש יכול להיכנס דרך ממשק ה-משתמש**.
+
+כל המפתחות מיוחס כ-`optional: true` במניפסט הבסיס, כך סודות חלקיים (או ללא סוד בכלל) בסדר; השרת חוזר לערכי ברירת המחדל המתועדים. פריסת הכל לסוד `agenteye-auth` אחד משמרת את פני המשטח של auth ניתנת להחלפה במקום אחד.
+
+```bash
+kubectl create secret generic agenteye-auth \
+  --namespace agenteye \
+  --from-literal=ADMIN_EMAIL="admin@yourcompany.com" \
+  --from-literal=ALLOWED_EMAILS="*@yourcompany.com" \
+  --from-literal=SMTP_HOST="smtp.yourprovider.com" \
+  --from-literal=SMTP_PORT="587" \
+  --from-literal=SMTP_USERNAME="your-smtp-user" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password" \
+  --from-literal=SMTP_FROM="noreply@yourcompany.com" \
+  --from-literal=SMTP_TLS="starttls" \
+  --from-literal=DEFAULT_ORG_NAME="Acme Corp" \
+  --from-literal=DEFAULT_ORG_SLUG="acme"
+```
+
+| מפתח | תכלית |
+|---|---|
+| `ADMIN_EMAIL` | משתמש מנהל בתחום. Upserted בכל הפעלה עם הרשאות מלאות והוגן מחיקה/עריכת הרשאות דרך לוח הבקרה. ללא זה, לא מנהל זורע וכניסה ראשונה בלתי אפשרית. |
+| `ALLOWED_EMAILS` | רשימת הלבנה מופרדת בפסיקים. תומך כתובות מדויקות (`user@example.com`) וכללי תחום (`*@example.com`). ללא זה, **לא משתמש יכול להיכנס או להיווצר**. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | ממסר SMTP לשליחת קודי OTP. אם `SMTP_HOST` אינו מוגדר, קודי OTP מוגדלים ל-stdout של השרת במקום שליחה בדוא"ל (שימושי לבדיקות smoke ראשונות-בוט). ספק את כל המפתחות של SMTP ביחד להפקת דוא"ל אמיתית. |
+| `SMTP_TLS` | אחד מ-`starttls` (ברירת מחדל), `tls`, או `none`. |
+| `DEFAULT_ORG_NAME`, `DEFAULT_ORG_SLUG` | אופציונלי. תן למארגנות `default` המובנות שם תצוגה ידידותי וחלקאי URL כך זה חי בדוגמה `/acme` במקום `/default`. הוחל **בבוט ראשון בלבד**; ברגע שתשנה את שם המארגנות עם `agenteye-orgctl org rename` (ראה §7.6) אלה יתעלמו. ה-slug חייב להיות 1-40 alphanumerics קטנים עם מקצועות פנימיים יחידים. השאר שניהם לא מוגדרים כדי לשמור על `default` גנרי. |
+
+> **שמור את אישורי SMTP במנהל הסודות שלך.**
+
+**בדוק את זה:**
+
+```bash
+kubectl get secret agenteye-auth -n agenteye \
+  -o jsonpath='{.data}' | grep -o '"[A-Z_]*"' | sort -u
+```
+
+צפוי: המפתחות שהגדרת מופיעים בפלט.
+
+---
+
+### 2.6 מפתח בידוד מארגנות מרובות דיירות (אופציונלי)
+
+דלג זה לפריסה בעלת דיירת אחת; השרת רץ על בסיס dev בנוי שכן ומגדיש את המארגנות `default` בסדר. **לפני שתיצור מארגנות שנייה**, קבע חזק, ערך `ORG_CH_SECRET` יציב: סיסמת ClickHouse של כל מארגנות נגזרת כ-`HMAC(ORG_CH_SECRET, org_id)`, אז ה-dev בנוי בציבור ידוע ייתן אישורים מובנעים הנגזרים לפי מארגנות. פקודת `agenteye-orgctl org create` (ראה [§7.6 מארגנויות Provision](#76-provision-organizations-multi-tenant)) מסרב לרוץ בזמן שהשרת עדיין ב-dev בנוי ברירת מחדל.
+
+```bash
+kubectl create secret generic agenteye-org-ch-secret \
+  --namespace agenteye \
+  --from-literal=ORG_CH_SECRET="$(openssl rand -base64 48)"
+
+# הזז את השרת כך זה בוחר את הערך החדש.
+kubectl -n agenteye rollout restart deployment/server
+```
+
+השרת קורא זה דרך `secretKeyRef` **אופציונלי**, אז אשכול בעל דיירת אחד שלעולם לא יוצר זה עדיין בוטס בדרך כלל. שמור את הערך **יציב וזהה על פני כל העתקים**; סיבוב זה מבטל סיסמת ClickHouse הנגזרת של כל מארגנות עד פעם הבוטה ההבאה תשלים מחדש (יציאה מחדש גלגלת עם הערך עקבי במקום כל מקום מרפא זה). ראה `deploy/base/server/secret.example.yaml`.
+
+> **שמור `ORG_CH_SECRET` במנהל הסודות שלך וא"ל לסובב אותו בזלזול.**
+
+---
+
+### 2.7 אימות כל הסודות
+
+```bash
+kubectl get secrets -n agenteye -o custom-columns='NAME:.metadata.name,TYPE:.type'
+```
+
+פלט צפוי (בין כל סודות ברירת המחדל):
+
+```
+NAME                    TYPE
+agenteye-admin-key      Opaque
+agenteye-auth           Opaque
+agenteye-image-pull     kubernetes.io/dockerconfigjson
+agenteye-postgres       Opaque
+agenteye-org-ch-secret  Opaque   # רק אם השלמת §2.6 (מרובה דיירות)
+```
+
+ארבעת הסודות הליבה (`agenteye-admin-key`, `agenteye-auth`, `agenteye-image-pull`, `agenteye-postgres`) חייבים להיות נוכחים לפני המשך. `agenteye-org-ch-secret` נדרש רק לפריסות מרובות דיירות (ראה §2.6).
+
+---
+
+## שלב 3 -- פרוס את היישום (~5 דקות)
+
+### 3.1 הגדר את שמות המשתמשים הציבוריים
+
+cert-manager צריך את שמות המשתמשים של ספיגה ולוח בקרה לפני שזה יכול לבקש תעודות Let's Encrypt שלהם. העתק את התבנית והגדר שניהם:
+
+```bash
+cp base/certificates/domain.env.example base/certificates/domain.env
+# ערוך base/certificates/domain.env והגדר:
+#   INGEST_DOMAIN=ingest.your-company.example      (resolves to the public Traefik LB)
+#   DASHBOARD_DOMAIN=agenteye.your-company.example (resolves to the dashboard Traefik LB)
+```
+
+`domain.env` הוא gitignored; זה נשאר מקומי לכל פריסה. כישור kustomize נכשל בקול אם כל מפתח חסר.
+
+> **DNS חייב להיפתר תחילה.** אתה לא צריך להצביע DNS בעדיין בעת LBs (הם לא קיימים עד שלב 1.2 שלם), אך הנפקת ACME בשלב 3.2 יישנה עד כל כתובת המשתמש מיפוי ל-LoadBalancer שלה. אתה יכול להגדיר DNS עכשיו (באמצעות שם המשתמשים של הלוח המחזיקים בשלב 1.4) או להמשיך והוסף את הרשומות בשלב 4.
+
+---
+
+### 3.2 החל מניפסטים
+
+החל את הבסיס ישירות לדוגמה רטובה, או overlay אם חיתכת אחד לסביבה זו (overlays פשוט תגי תמונה pin, משתנים env, ומגבלות משאבים; הם יורשים מינויי תעודות של הבסיס ותיתור):
+
+```bash
+kubectl apply -k base/
+# או
+kubectl apply -k overlays/<your-env>/
+```
+
+overlay כולל את הבסיס באופן אוטומטי; החל אחד, לא שניהם.
+
+---
+
+### 3.3 חכה לפודים
+
+```bash
+kubectl wait --for=condition=Ready pod -l 'app in (server,dashboard,postgres,clickhouse)' \
+  -n agenteye --timeout=180s
+```
+
+ההמתנה מוגבלת לפודי מישור נתונים ליבה. הפודים אופציוניים `agent` (עוזר AI) ו-`redis` באים בצדם; העוזר נשאר לא פעיל עד שתספק את נקודת הקצה שלו של LLM (ראה [enterprise-docs/assistant.md](/he/agenteye/assistant)), Redis היא מטמון best-effort, אז לא צריך שניים להיות Ready עבור הפלטפורמה לגדיש תעבורה.
+
+**בדוק את זה:**
+
+```bash
+kubectl get pods -n agenteye
+```
+
+צפוי (הפודים אופציוניים `agent` ו-`redis` גם מופיעים והשגות `Running`):
+
+```
+NAME                         READY   STATUS    RESTARTS   AGE
+agent-xxxxxxxxxx-xxxxx       1/1     Running   0          ...
+clickhouse-0                 1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+postgres-0                   1/1     Running   0          ...
+redis-0                      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+```
+
+**אם נכשל:**
+
+| סטטוס פוד | סיבה סבירה | פקודת Debug |
+|---|---|---|
+| `ImagePullBackOff` | סוד pull תמונה גרוע או PAT | `kubectl describe pod <name> -n agenteye` |
+| `CrashLoopBackOff` | משתנים env גרועים (למשל DATABASE_URL) | `kubectl logs <name> -n agenteye` |
+| `Pending` | CPU/זיכרון בלתי מספיק או אין צמתים | `kubectl describe pod <name> -n agenteye` (בדוק אירועים) |
+
+---
+
+### 3.4 אימות אחסון
+
+```bash
+kubectl get pvc -n agenteye
+```
+
+צפוי, שניהם עם סטטוס `Bound`:
+
+| PVC | קיבולת | גב |
+|---|---|---|
+| `postgres-data-postgres-0` | `50Gi` | אחסן PostgreSQL יחסי/metadata |
+| `clickhouse-data-clickhouse-0` | `100Gi` | אחסן ClickHouse אירועים + הערכות אנליטיקה |
+
+PVC `redis-data-redis-0` (1Gi) גם מופיע עבור המטמון אופציונלי.
+
+**אם נכשל:** `Pending` פירושו שום StorageClass יכול להתקין את הנפח. בדוק `kubectl get storageclass` וודא ברירת מחדל קיימת. לייצור, חפץ את נפח ClickHouse ל-StorageClass SSD מהיר (למשל gp3 ב-AWS, pd-ssd ב-GCP); תפוקת תופעה סובלת על דיסקים איטיים.
+
+---
+
+### 3.5 תעודות אימות
+
+```bash
+kubectl get certificates -n agenteye
+```
+
+צפוי: 3 תעודות, הכל `Ready: True`:
+
+| שם | מנפיק | תכלית |
+|---|---|---|
+| `mtls-ca` | `selfsigned` | CA פרטי לנפיקת תעודות לקוח mTLS (תוקף 10 שנים) |
+| `ingest-tls` | `letsencrypt-prod` | תעודת TLS ציבורית עבור נקודת הסיום של ספיגה (90 יום, חידוש אוטומטי) |
+| `dashboard-tls` | `letsencrypt-prod` | תעודת TLS ציבורית עבור לוח הבקרה (90 יום, חידוש אוטומטי) |
+
+**אם `ingest-tls` או `dashboard-tls` אינו Ready:**
+
+`kubectl describe certificate <name> -n agenteye` וקרא את האירועים. הסיבות הנפוצות:
+
+- **DNS עדיין לא מצביע בעדיין בלוח הבקרה.** Let's Encrypt מיפוי כתובת המשתמש והכה בפורט 80 כדי לאמת -- `INGEST_DOMAIN` חייב מיפוי ל-LB ציבורי, `DASHBOARD_DOMAIN` ל-LB לוח הבקרה. עד CNAME/Alias מתפשט, ההזמנה נשאר `pending`. ברגע DNS נכון, cert-manager משנה באופן אוטומטי (אין צורך למחוק את Certificate).
+- **כתובת משתמש לא החלפה.** אם `dnsNames` עדיין קורא `INGEST_DOMAIN_PLACEHOLDER` / `DASHBOARD_DOMAIN_PLACEHOLDER`, דילגת על שלב 3.1 -- יצור `base/certificates/domain.env` וההחל מחדש.
+- **לוח הבקרה Traefik לא יכול לגדיש את אתגר** (`dashboard-tls` בלבד). מופע לוח בקרה Traefik חייב להתקנו עם קובץ ערכים משלוח (שלב 1.2), המאפשר ספק Ingress כעמית אשר גדיש אתגר HTTP-01 של cert-manager. דוגמה התקנו ללא זה משאיר אתגר ללא מסלול וההזמנה `pending` לעולם.
+
+**אם `mtls-ca` אינו Ready:** cert-manager עצמו לא בריא. בדוק מחדש פודי cert-manager משלב 1.1.
+
+---
+
+### 3.6 אימות CronJobs
+
+```bash
+kubectl get cronjobs -n agenteye
+```
+
+צפוי:
+
+| שם | לוח זמנים | תכלית |
+|---|---|---|
+| `agenteye-backup` | `0 3 * * *` | יומי Postgres + ClickHouse גיבוי ב-03:00 UTC |
+| `cert-renewal-check` | `0 3,15 * * *` | התראות תפוגת תעודות ב-03:00 ו-15:00 UTC |
+
+---
+
+### 3.7 אימות השרת הופעל בהצלחה
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=20
+```
+
+**בדוק את זה:** חפש קו הפעלה המציע השרת מקשיב בפורט 8080. לא צריך להיות שגיאות חיבור בסיס נתונים (השרת דורש גם PostgreSQL וגם ClickHouse להיות ניתנים להשגה לפני זה דו"ח Ready).
+
+**אם נכשל:** הסיבה הנפוצה ביותר היא `POSTGRES_PASSWORD` מכיל תווים בעלי URL לא בטוחים שוברים את `DATABASE_URL`. ראה [enterprise-docs/troubleshooting.md](/he/agenteye/troubleshooting).
+
+---
+
+### 3.8 אימות לוח בקרה מחובר לשרת
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=20
+```
+
+**בדוק את זה:** חפש `Ready` בפלט ללא `ECONNREFUSED` או שגיאות דומות.
+
+**אם נכשל:** בדוק ש-`server` Service קיים (`kubectl get svc server -n agenteye`) וכי `AGENTEYE_SERVER_URL` מוגדר ל-`http://server:8080` בפריסת לוח הבקרה.
+
+---
+
+## שלב 4 -- גישה ברשת (~5 דקות)
+
+### 4.1 קחו כתובות LoadBalancer
+
+```bash
+PUBLIC_IP=$(kubectl get svc -n traefik-public \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+INTERNAL_IP=$(kubectl get svc -n traefik-dashboard \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+```
+
+> ב-AWS EKS, LoadBalancers חוזרים שם משתמש במקום IP. החלף `.ip` עם `.hostname` בפקודות למעלה.
+
+**בדוק את זה:**
+
+```bash
+echo "Public  (ingest):    $PUBLIC_IP"
+echo "Internal (dashboard): $INTERNAL_IP"
+```
+
+שניהם חייבים להיות לא ריקים.
+
+---
+
+### 4.2 הצב DNS בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיין בעדיים LoadBalancers בנקודות הסיום שלהם -- `INGEST_DOMAIN` לבקר Traefik **ציבורי** LB, `DASHBOARD_DOMAIN` לבקר Traefik **לוח בקרה** LB:
+
+- **AWS Route 53:** רשומת `A` עם `Alias = Yes`, קביעת mục tiêu = LB שם משתמש. אל תשתמש ב-A פשוט → IP; ELB IPs מסתובבות.
+- **ספק אחר:** `CNAME` מכתובת המשתמש ל-LB שם משתמש.
+
+אימות:
+
+```bash
+dig +short ingest.your-company.example
+dig +short agenteye.your-company.example
+```
+
+צריך החזיר את אותן כתובות כמו `$PUBLIC_IP` ו-`$INTERNAL_IP` בהתאמה (או, ב-EKS, לפתור ל-`*.elb.amazonaws.com` אותו בעצם אם).
+
+ברגע DNS מיפוי, cert-manager מסיים ההזמנות ACME המנוהלות מ-3.5 בדקה אחת. הרץ מחדש `kubectl get

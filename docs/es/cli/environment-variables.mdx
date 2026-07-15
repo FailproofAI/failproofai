@@ -1,6 +1,6 @@
 ---
 title: Variables de entorno
-description: "Configura el comportamiento de failproofai mediante variables de entorno"
+description: "Configura el comportamiento de failproofai con variables de entorno"
 ---
 
 ## Dashboard
@@ -8,16 +8,16 @@ description: "Configura el comportamiento de failproofai mediante variables de e
 | Variable | Descripción |
 |----------|-------------|
 | `PORT` | Puerto del dashboard (por defecto: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Reemplaza la ubicación donde se buscan las carpetas de proyectos de Claude Code |
+| `CLAUDE_PROJECTS_PATH` | Sobreescribe la ubicación donde se buscan las carpetas de proyectos de Claude Code |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Páginas del dashboard a ocultar, separadas por comas |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs con acceso a recursos de desarrollo. Equivalente a `--allowed-origins`. |
 
-## Registro (Logging)
+## Registro
 
 | Variable | Descripción |
 |----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Nivel de registro del servidor (por defecto: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Ruta personalizada para el archivo de log de hooks, o `true` para usar el predeterminado (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Nivel de log del servidor (por defecto: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Ruta personalizada del archivo de log de hooks, o `true` para usar el predeterminado (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetría
 
@@ -29,19 +29,19 @@ description: "Configura el comportamiento de failproofai mediante variables de e
 
 | Variable | Descripción |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Reemplaza la URL base del servidor de API usada por `failproofai auth` y el diálogo de autenticación del dashboard. Por defecto es `https://api.befailproof.ai`; establécela como `http://localhost:8080` (o la dirección correspondiente) cuando se ejecute un servidor de API local. |
-| `FAILPROOFAI_AUTH_DIR` | Reemplaza la ubicación donde se almacena `auth.json` (por defecto: `~/.failproofai`). Principalmente útil para pruebas aisladas. |
+| `FAILPROOF_API_URL` | Sobreescribe la URL base del servidor de API utilizada por `failproofai auth` y el diálogo de autenticación del dashboard. Por defecto es `https://api.befailproof.ai`; establece `http://localhost:8080` (o la dirección que corresponda) cuando ejecutes un servidor de API local. |
+| `FAILPROOFAI_AUTH_DIR` | Sobreescribe dónde se almacena `auth.json` (por defecto: `~/.failproofai`). Principalmente útil para pruebas aisladas. |
 
-## Mensaje de primera ejecución
+## Prompt de primer uso
 
 | Variable | Descripción |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Omite el mensaje que ofrece instalar las políticas en la primera invocación básica de `failproofai` |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Omite el prompt que ofrece instalar políticas en la primera invocación de `failproofai` sin argumentos |
 
 ## LLM (para evaluación de políticas)
 
 | Variable | Descripción |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | Endpoint de la API del LLM (por defecto: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Clave de API para las políticas basadas en LLM |
+| `FAILPROOFAI_LLM_API_KEY` | Clave de API para políticas basadas en LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nombre del modelo (por defecto: `gpt-4o-mini`) |

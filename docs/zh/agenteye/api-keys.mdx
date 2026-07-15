@@ -1,0 +1,255 @@
+---
+title: "API Keys"
+description: "AgentEye API Keys 文档。"
+---
+
+
+AgentEye 使用细粒度 API 密钥来控制对服务器的访问。每个密钥携带一个或多个权限，决定其可以执行的操作。
+
+---
+
+## 权限
+
+服务器强制执行固定的权限目录；每个权限对应特定的 HTTP 路由。**管理员密钥**拥有全部权限；受限密钥仅拥有创建时授予的权限子集。创建密钥时，未知的权限字符串将被拒绝。
+
+> **不可分配给密钥。** 有两个有效权限仅限于人工/仪表板使用，不能授予 API 密钥：`orgs:admin`（实例管理，仅限操作员）和 `keys:update`。向 `POST /keys` 或 `PATCH /keys/:id` 请求中尝试授予这两者之一时，将收到 HTTP 422 错误。关于为何持有者密钥可以创建密钥但不能编辑密钥，请参见下方 `keys:update` 行的说明。
+
+### 事件写入与查询
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `events:add` | `POST /events` | 从采集器批量写入事件。这是采集器唯一需要的权限。 |
+| `events:read` | `GET /events`、`GET /events/latency_aggregate`、`GET /events/environments`、`GET /events/models`、`GET /sessions/:session_id/export` | 查询事件、列出已知环境、列出数据中出现的模型标识符（供模型视图和模型筛选器使用）、计算延迟聚合以驱动热图/百分位带，以及将会话导出为 JSONL。共享筛选栏的维度端点 `GET /events/environments` 和 `GET /events/models` 可通过 **`events:read`** 或 **`evaluations:read`** 访问，因此会话页面（受 `evaluations:read` 限制）可复用相同的每组织维度。 |
+
+### 会话与评估
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `evaluations:read` | `GET /sessions`、`GET /evaluations`、`GET /evaluations/aggregate`、`GET /evaluations/environments`、`GET /evaluation-jobs` | 列出会话、读取评估结果、仪表板使用的汇总评估健康状态，以及评估任务工作队列状态。 |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | 手动将已完成的会话加入重新评估队列。 |
+
+### 仪表板
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `dashboards:read` | `GET /dashboards`、`GET /dashboards/:id`、`GET /dashboards/:id/tiles` | 列出仪表板、加载某个仪表板以及读取其磁贴。 |
+| `dashboards:write` | `POST /dashboards`、`PUT /dashboards/:id`、`POST /dashboards/:id/tiles`、`PUT /dashboards/:id/tiles/:tile_id`、`DELETE /dashboards/:id/tiles/:tile_id`、`PUT /dashboards/:id/tiles/layout` | 创建和编辑仪表板、添加/编辑/删除磁贴，以及重新排列磁贴网格。 |
+| `dashboards:delete` | `DELETE /dashboards/:id` | 删除整个仪表板（磁贴级别的删除属于 `dashboards:write`）。 |
+
+### 保存的查询（SQL 编辑器）
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `queries:read` | `GET /queries`、`GET /queries/:id`、`GET /queries/schema` | 列出已保存的查询、加载某个查询，以及查看编辑器所针对的只读 ClickHouse 模式。 |
+| `queries:write` | `POST /queries`、`PUT /queries/:id` | 创建和编辑已保存的查询。SQL 仍通过与 `queries:run` 调用相同的只读角色和 `sql_guard` 检查进行路由。 |
+| `queries:delete` | `DELETE /queries/:id` | 删除已保存的查询。 |
+| `queries:run` | `POST /queries/run` | 通过编辑器使用的只读角色执行已保存或临时 SQL。 |
+
+### AI 助手
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `agent:use` | `GET /agent/conversations`、`POST /agent/conversations`、`GET /agent/conversations/:id`、`PATCH /agent/conversations/:id`、`DELETE /agent/conversations/:id`、`PUT /agent/conversations/:id/messages` | 与仪表板 AI 助手对话并管理自己的（私有）会话。**用户**必须拥有此权限才能看到助手面板；助手自身的密钥为 `dashboard-assistant`，单独预置（见下文）。 |
+
+### API 密钥
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `keys:create` | `POST /keys` | 创建新的受限 API 密钥。**不**授予编辑现有密钥权限的能力（那是 `keys:update`）。 |
+| `keys:read` | `GET /keys` | 列出现有密钥。此端点不返回密钥的密文。 |
+| `keys:update` | `PATCH /keys/:id` | 编辑现有密钥的权限。这是**仅限人工/仪表板**的权限；不能分配给 API 密钥（持有者密钥可以创建密钥，但不能编辑密钥）。 |
+| `keys:disable` | `POST /keys/:id/disable` | 吊销某个密钥。受保护的密钥（`admin`、`dashboard-assistant`）不能被禁用；请通过修改环境变量并重启来轮换它们。 |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | 轮换某个密钥的密文。受保护的密钥不能通过此路由重新生成。 |
+
+### 仪表板用户
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `users:create` | `POST /users`、`GET /users/defaults` | 邀请新的仪表板用户（发送邮件 + OTP 登录），并读取仪表板配置的默认权限集以预填邀请表单。 |
+| `users:read` | `GET /users`、`GET /users/:id` | 列出用户并加载单个用户记录。 |
+| `users:update` | `PUT /users/:id` | 编辑用户的权限。更新操作会向受影响的用户发送权限变更邮件，并在其下次请求时生效；无需重新登录。 |
+| `users:delete` | `DELETE /users/:id`、`POST /users/:id/enable` | 禁用用户（立即吊销其会话）并重新启用之前被禁用的用户。 |
+
+这些权限支撑仪表板的**用户**页面，每位成员被授予的权限范围以标签形式展示：
+
+![用户页面：每位仪表板用户一张卡片，显示其邮箱、已授予权限以及编辑/禁用控件](/agenteye/images/users.png)
+
+### 运营设置
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `settings:read` | `GET /settings`、`GET /settings/schema`、`GET /settings/model-context-windows`、`GET /settings/model-context-windows/resolve` | 查看仪表板管理的运营设置及其元数据；列出每个模型的上下文窗口覆盖配置；以及解析某个模型的有效窗口。 |
+| `settings:write` | `PUT /settings/:key`、`PUT /settings/model-context-windows`、`DELETE /settings/model-context-windows` | 编辑运营设置，添加、修改或删除每个模型的上下文窗口覆盖配置。更改对新事件立即生效，无需重启服务器。 |
+
+![设置页面：仪表板管理的运营设置，例如允许的登录方式以及会话/OTP 有效期，无需重启即可编辑](/agenteye/images/settings.png)
+
+### 告警与事故
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `alerts:read` | `GET /alerts`、`GET /alerts/:id` | 查看已配置的告警定义。 |
+| `alerts:write` | `POST /alerts`、`PUT /alerts/:id`、`DELETE /alerts/:id`、`POST /alerts/:id/test` | 创建、编辑、删除和测试触发告警定义。 |
+| `incidents:read` | `GET /alerts/incidents`、`GET /alerts/incidents/:iid`、`GET /alerts/incidents/:iid/comments`、`GET /alerts/incidents/:iid/subscribers` | 查看事故及其分类处理记录。 |
+| `incidents:write` | `POST /alerts/:id/incidents` | 针对现有告警手动创建事故。 |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`、`POST /alerts/incidents/:iid/assign`、`POST /alerts/incidents/:iid/resolve`、`POST /alerts/incidents/:iid/comments`、`POST /alerts/incidents/:iid/subscribe`、`POST /alerts/incidents/:iid/unsubscribe` | 确认、分配、解决和评论事故。 |
+
+### 审计
+
+| 权限 | HTTP 路由 | 允许的操作 |
+|---|---|---|
+| `audits:read` | `GET /audits`、`GET /audits/:id`、`GET /audits/:id/runs`、`GET /audits/findings`、`GET /audits/findings/:fid` | 查看审计定义、运行历史记录和发现项。 |
+| `audits:write` | `POST /audits`、`PUT /audits/:id`、`DELETE /audits/:id`、`POST /audits/:id/run`、`POST /audits/findings/:fid/status` | 创建、编辑、删除和运行审计；对发现项进行分类处理（确认/静默/忽略/解决/重新开启/分配）。 |
+
+> 审计功能上线时，现有被授权者按照与告警相同的角色形态进行了扩展：每位持有 `alerts:read` 的用户和权限集均获得了 `audits:read`，每位持有 `alerts:write` 的用户均获得了 `audits:write`。现有 API 密钥**未被自动扩展**——如需访问审计功能，请为密钥显式授予 `audits:*`。
+
+> 旧版 `alerts:ack` 令牌的存量授权会被解析为 `incidents:ack`，因此值班人员无需重新申请密钥即可保留访问权限。该令牌不再可从仪表板用户编辑器中分配；权限矩阵改为提供 `incidents:ack`。
+
+> 收件人选择端点 `GET /alerts/recipients`（列出告警编辑器可通知的成员邮箱）可由持有 **`alerts:read`** 或 **`alerts:write`** 的用户访问，因此告警编辑器无需被授予 `users:read` 即可填充选择列表。
+
+> 仪表板查看者需要同时拥有 **`dashboards:read`**（加载已保存的视图）和 **`evaluations:read`**（健康指标由评估数据计算得出）。授予 `dashboards:write` 可让用户创建或编辑仪表板，授予 `dashboards:delete` 可让其删除仪表板。
+
+> `/health` 和 `/auth/*`（OTP 请求、OTP 验证、会话检查、退出登录）按设计不需要身份验证；它们是登录流程和存活探针。`GET /access-granters` 需要有效密钥但不需要特定权限，因此任何已登录用户均可查看应联系哪些管理员进行访问变更。
+
+---
+
+## 权限集
+
+权限集允许你应用一个命名角色，而无需每次手动逐一选择权限令牌。无需为每位新仪表板用户或 API 密钥一一选择十几个权限，只需选择一个权限集，所有分配到该集合的用户都将获得一致且可审查的授权。编辑自定义权限集后，新的授权将自动重新应用于所有已分配该集合的用户，因此角色变更只需一次编辑，无需逐一修改每位成员。
+
+每个组织预置三个内置权限集：
+
+| 权限集 | 权限内容 | 适用对象 |
+|---|---|---|
+| `read-only` | `events:read`、`keys:read`、`users:read`、`evaluations:read`、`dashboards:read`、`queries:read`、`settings:read`、`alerts:read`、`audits:read`、`incidents:read` | 对所有运营界面的只读访问。 |
+| `standard` | `read-only` 中的所有权限，加上 `evaluations:trigger`、`queries:run`、`incidents:ack`、`agent:use` | 只读权限加上日常值班操作：运行查询、重新评估会话、确认事故以及使用 AI 助手。 |
+| `admin` | 所有可分配权限 | 对组织的完全控制。 |
+
+三个内置权限集是**不可变的**；其名称含义始终固定，因此 `read-only`、`standard` 和 `admin` 可安全地在策略和入职流程中引用。操作员可以创建额外的**自定义权限集**，以满足组织特有的角色需求（例如"仪表板作者"角色或"仅限采集器"角色）。
+
+权限集在仪表板中展示，并通过以下 API 进行管理：`GET /permission-sets`（列出，受 `users:read` 限制）、`POST /permission-sets`、`PUT /permission-sets/:name`、`DELETE /permission-sets/:name`（创建、编辑、删除自定义权限集，受 `settings:write` 限制）。删除或编辑内置权限集的操作将被拒绝。
+
+权限集成员关系为另外两项功能提供支撑：
+
+- **`DEFAULT_USER_PERMISSIONS`**（管理员打开**+ 新建用户**时预选的授权）默认为 `standard` 权限集。请参阅[部署](/zh/agenteye/deployment)。
+- **`agenteye-orgctl` 上的 `--set` 标志**（操作员成员管理）以命名权限集为成员设置起始权限，然后可通过 `--add` / `--remove` 进行微调。请参阅[租户管理](/zh/agenteye/tenant-management)。
+
+> 当权限集包含不可分配给密钥的权限（例如包含 `keys:update` 的自定义权限集）时，从该集合创建密钥将自动剔除不可分配的令牌；否则服务器将以 HTTP 422 拒绝该密钥。仪表板用户不受此限制。
+
+---
+
+## 引导管理员密钥
+
+管理员密钥是操作员从零开始配置访问权限的唯一根凭证：通过它可以创建所有其他受限密钥、邀请第一批仪表板用户，以及在其他密钥存在之前配置实例。它是唯一不通过密钥 API 创建的密钥；它通过环境变量预置，以确保服务器在首次启动时即可访问。
+
+在服务器上设置 `ADMIN_KEY` 环境变量。每次启动时，服务器将以该值为管理员密钥（拥有所有权限）执行 upsert 操作。
+
+轮换方式：将 `ADMIN_KEY` 更改为新密文并重启服务器。
+
+---
+
+## 组织范围
+
+**组织本身由操作员通过带外方式创建和管理，不通过此密钥 API。** 组织和成员的生命周期管理（创建/重命名/删除/清除组织；添加/更新/移除成员）通过在服务器 Pod 内运行的 **`agenteye-orgctl`** CLI 完成；没有对应的 HTTP API 或仪表板按钮。请参阅[租户管理](/zh/agenteye/tenant-management)。**不变的是：每个组织的 API 密钥仍由组织成员在仪表板（或通过此密钥 API）中创建。**
+
+在多组织部署中，组织成员创建的每个密钥（通过此密钥 API 或仪表板**密钥**页面）都**归属于一个组织**，并且只能读写该组织的数据；组织信息在密钥创建时被写入，并在每次请求时强制验证。两个引导密钥是唯一例外：`admin` 密钥（从 `ADMIN_KEY` 预置）和 `dashboard-assistant` 密钥（从 `AGENT_API_KEY` 预置）是**实例级别**的（不携带组织信息）。仪表板容器使用 `admin` 密钥进行身份验证，以便代表已登录成员代理每个组织的请求。单租户部署无需考虑这一点；所有密钥均归属于内置的 `default` 组织。
+
+---
+
+## 创建密钥
+
+使用管理员密钥（或任何拥有 `keys:create` 权限的密钥）来创建额外的受限密钥。
+
+### 采集器密钥（仅写入）
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "your-collector-secret",
+    "permissions": ["events:add"]
+  }'
+```
+
+### 仪表板密钥（只读）
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dashboard",
+    "key": "your-dashboard-secret",
+    "permissions": ["events:read", "keys:read"]
+  }'
+```
+
+通过 HTTP API 创建密钥时，需要自行提供 `key` 值；请选择一个强密文并妥善保存。（仪表板的方式则相反：它会为你生成一个强密文，并在创建时展示一次；请参阅[仪表板中的密钥管理](#key-management-in-the-dashboard)。）响应将确认密钥已创建：
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "prod-collector",
+  "permissions": ["events:add"],
+  "created_at": "2026-04-01T12:00:00Z"
+}
+```
+
+---
+
+## 列出密钥
+
+```bash
+curl -s http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+列表响应不返回密钥密文，仅返回 ID、名称和权限。
+
+---
+
+## 禁用密钥
+
+禁用操作将立即吊销访问权限，但不删除密钥记录。
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/disable \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+---
+
+## 重新生成密钥
+
+为现有密钥生成新的密文。旧密文立即失效。
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/regenerate \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+响应中包含新的明文密文，**仅展示一次**。
+
+---
+
+## 仪表板中的密钥管理
+
+仪表板中的**密钥**页面提供了执行上述所有操作的 UI 界面。查看列表需要拥有 `keys:read` 权限，创建/编辑/禁用/重新生成操作分别需要 `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` 权限。编辑密钥权限（`keys:update`）与创建密钥（`keys:create`）是分开的，因此你可以授予操作员创建密钥的能力，而不赋予其重新调整现有密钥权限范围的能力，反之亦然。管理员密钥涵盖所有这些操作。
+
+从仪表板创建密钥时无需提供密文；仪表板会为你生成一个强密文，并在创建时**展示一次**。请立即复制并妥善保存；与重新生成操作一样，密文不会再次显示。你仍然可以直接选择密钥的权限，或从权限集中导入（见下文）。
+
+![API 密钥页面：每个密钥一张卡片，显示其名称、已授予权限和创建时间，并提供重新生成和禁用操作；受保护的密钥（如 `admin`）有特殊标记](/agenteye/images/api-keys.png)
+
+---
+
+## 推荐的密钥布局
+
+| 密钥 | 权限 | 使用方 |
+|---|---|---|
+| `admin`（通过 `ADMIN_KEY` 环境变量引导） | 全部 | 运营/配置，以及仪表板容器（使用 `ADMIN_KEY` 进行身份验证，并通过权限检查代理用户请求） |
+| 每台主机的采集器密钥 | `events:add` | 每台 Agent 机器上的采集器 |
+| `dashboard-assistant`（通过 `AGENT_API_KEY` 环境变量引导） | `events:read`、`evaluations:read`、`dashboards:read`、`dashboards:write`、`queries:read`、`queries:write`、`queries:run` | AI 助手容器，自动预置，**受保护**；不能通过 API 编辑 |
+| 助手遥测密钥（可选） | `events:add` | AI 助手自我埋点（如已启用） |
+
+> **助手密钥。** 助手的密钥由服务器从 `AGENT_API_KEY` 环境变量**自动预置**（与 Agent 以 `AGENTEYE_API_KEY` 提交的密文相同）；无需手动创建密钥，也不涉及管理员密钥。其权限在源代码中固定，因此无法通过错误配置扩大权限范围：对事件/评估/仪表板的读取权限，以及用于"让 AI 编写查询"创作流程的仪表板写入和查询读取/写入/运行权限。所有 SQL 仍通过与用户自编写查询相同的只读角色和 `sql_guard` 检查，因此这扩展了*创作界面*，而非数据界面；破坏性操作（`queries:delete`、`dashboards:delete`）被刻意排除在助手密钥之外。与 `admin` 密钥一样，它是**受保护的**：不能通过密钥 API 禁用或重新生成，只能通过更改 `AGENT_API_KEY` 并重启来轮换。仪表板**用户**还需要拥有 `agent:use` 权限才能看到并使用助手。如果启用自我埋点，请为助手提供一个单独的仅含 `events:add` 的密钥。

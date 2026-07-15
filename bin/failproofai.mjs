@@ -65,7 +65,7 @@ const hookIdx = args.indexOf("--hook");
 if (hookIdx >= 0) {
   if (!args[hookIdx + 1]) {
     console.error("Error: Missing event type after --hook");
-    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|gemini>]");
+    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|gemini|hermes>]");
     process.exit(1);
   }
   const eventType = args[hookIdx + 1];
@@ -82,6 +82,7 @@ if (hookIdx >= 0) {
       || cliArg === "opencode"
       || cliArg === "pi"
       || cliArg === "gemini"
+      || cliArg === "hermes"
     )
       ? cliArg
       : "claude";
@@ -108,7 +109,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "auth", "audit"];
+  const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "configure", "setup"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -122,6 +123,7 @@ USAGE
 
 COMMANDS
   (no args)                      Launch the policy dashboard
+  configure, setup               Interactive setup — pick scope, agents & policies
 
   policy add <name>              Enable a single policy (see \`policy --help\`)
   policy remove <name>           Disable a single policy
@@ -129,9 +131,9 @@ COMMANDS
   policies, p                    List all available policies and their status
   policies --install, -i         Enable policies in agent CLI settings
     [names...]                     Specific policy names to enable
-    --cli claude|codex|copilot|cursor|opencode|pi|gemini
+    --cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes
                                    Agent CLI(s) to install for; space-separated
-                                   (e.g. --cli claude codex copilot cursor opencode pi gemini) or repeated.
+                                   (e.g. --cli claude codex copilot cursor opencode pi gemini hermes) or repeated.
                                    Default: detect installed CLIs and prompt.
     --scope user|project|local     Config scope to write to (default: user)
                                    (Codex / Copilot / Cursor / OpenCode / Pi / Gemini support user|project only)
@@ -140,7 +142,7 @@ COMMANDS
 
   policies --uninstall, -u       Disable policies or remove hooks
     [names...]                     Specific policy names to disable
-    --cli claude|codex|copilot|cursor|opencode|pi|gemini
+    --cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes
                                    Agent CLI(s) to uninstall from
     --scope user|project|local|all Config scope to remove from (default: user)
     --beta                         Remove only beta policies
@@ -176,7 +178,7 @@ EXAMPLES
   failproofai policies --install --cli opencode --scope project
   failproofai policies --install --cli pi --scope project
   failproofai policies --install --cli gemini --scope project
-  failproofai policies --install --cli claude codex copilot cursor opencode pi gemini
+  failproofai policies --install --cli claude codex copilot cursor opencode pi gemini hermes
   failproofai policies --install --custom ./my-policies.js
   failproofai policies -i -c ./my-policies.js
   failproofai policies --uninstall block-sudo
@@ -225,9 +227,9 @@ USAGE
 
 OPTIONS (install)
   [names...]                     Specific policy names to enable (omit for interactive)
-  --cli claude|codex|copilot|cursor|opencode|pi|gemini
+  --cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes
                                  Agent CLI(s) to install for; space-separated
-                                 (e.g. --cli claude codex copilot cursor opencode pi gemini) or repeated.
+                                 (e.g. --cli claude codex copilot cursor opencode pi gemini hermes) or repeated.
                                  Omit to detect installed CLIs and prompt (or
                                  auto-pick if only one is found).
   --scope user|project|local     Config scope to write to (default: user)
@@ -238,7 +240,7 @@ OPTIONS (install)
 
 OPTIONS (uninstall)
   [names...]                     Specific policy names to disable (omit to remove hooks)
-  --cli claude|codex|copilot|cursor|opencode|pi|gemini
+  --cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes
                                  Agent CLI(s) to uninstall from
   --scope user|project|local|all Config scope to remove from (default: user)
   --beta                         Remove only beta policies
@@ -254,7 +256,7 @@ EXAMPLES
   failproofai policies --install --cli opencode --scope project
   failproofai policies --install --cli pi --scope project
   failproofai policies --install --cli gemini --scope project
-  failproofai policies --install --cli claude codex copilot cursor opencode pi gemini
+  failproofai policies --install --cli claude codex copilot cursor opencode pi gemini hermes
   failproofai policies --install --custom ./my-policies.js
   failproofai policies -i -c ./my-policies.js
   failproofai policies --uninstall block-sudo
@@ -295,7 +297,7 @@ EXAMPLES
       //   --cli claude codex copilot
       //   --cli claude --cli codex
       // Values are consumed greedily until the next flag or end of argv.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"]);
+      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -312,7 +314,7 @@ EXAMPLES
           consumed++;
         }
         if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini (or any subset)");
+          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini hermes (or any subset)");
         }
       }
 
@@ -384,7 +386,7 @@ EXAMPLES
       }
 
       // --cli accepts one or more space-separated values; same parser as install.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"]);
+      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -401,7 +403,7 @@ EXAMPLES
           consumed++;
         }
         if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini (or any subset)");
+          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini hermes (or any subset)");
         }
       }
 
@@ -510,7 +512,7 @@ USAGE
   failproofai policy remove <name>   Disable one policy
 
 OPTIONS
-  --cli claude|codex|copilot|cursor|opencode|pi|gemini
+  --cli claude|codex|copilot|cursor|opencode|pi|gemini|hermes
                                      Agent CLI(s) to apply to; space-separated or repeated.
                                      Omit to detect installed CLIs and prompt.
   --scope user|project|local         Config scope (default: user)
@@ -548,7 +550,7 @@ EXAMPLES
     }
 
     // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"]);
+    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
     const cliFlagValues = [];
     const cliConsumedIdxs = new Set();
     const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -563,7 +565,7 @@ EXAMPLES
         consumed++;
       }
       if (consumed === 0) {
-        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini (or any subset)");
+        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi gemini hermes (or any subset)");
       }
     }
 
@@ -651,6 +653,38 @@ EXAMPLES
     process.exit(0);
   }
 
+  // configure / setup — the interactive setup launcher (scope, agents, policies).
+  if (args[0] === "configure" || args[0] === "setup") {
+    if (args.includes("--help") || args.includes("-h")) {
+      console.log(`
+failproofai configure — interactive setup
+
+USAGE
+  failproofai configure          Guided setup: choose scope, agents, and policies
+  failproofai setup              Alias for configure
+
+WHAT IT DOES
+  Walks you through 4 quick steps and writes everything for you:
+    1. Where      — global (all projects) or just this project
+    2. Assistants — which agent CLIs to protect (Claude, Codex, ...)
+    3. Policies   — a preset, Everything, or a custom pick
+    4. Review     — confirms the exact files it will change, then applies
+
+  Prefer flags? See \`failproofai policies --help\`.
+`.trimStart());
+      process.exit(0);
+    }
+    lastSubcommand = "configure";
+    const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
+    const result = await runConfigureWizard();
+    await track("cli_configure_invoked", {
+      applied: result.applied,
+      scope: result.scope ?? null,
+      cli_count: result.clis?.length ?? 0,
+    });
+    process.exit(0);
+  }
+
   // Unknown flag guard — must appear after all known-flag branches
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
@@ -692,14 +726,16 @@ EXAMPLES
     );
   }
 
-  // First-run nudge — only on truly bare `failproofai` invocations. Best-effort:
-  // any thrown error must not block the dashboard from launching.
+  // First-run redirect — on the first bare `failproofai` invocation, send the
+  // user into the configure wizard instead of the dashboard. Best-effort: any
+  // thrown error must not block the dashboard from launching.
   if (args.length === 0) {
     try {
-      const { maybeRunFirstRunNudge } = await import("../src/hooks/first-run-nudge");
-      await maybeRunFirstRunNudge();
+      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
+      const redirected = await maybeFirstRunConfigure();
+      if (redirected) process.exit(0);
     } catch {
-      // Nudge is non-critical; fall through to dashboard.
+      // First-run redirect is non-critical; fall through to dashboard.
     }
   }
 

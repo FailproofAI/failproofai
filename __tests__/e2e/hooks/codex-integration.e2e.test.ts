@@ -177,7 +177,7 @@ describe("E2E: Codex integration — install/uninstall", () => {
       const hooksPath = resolve(env.cwd, ".codex", "hooks.json");
       expect(existsSync(hooksPath)).toBe(true);
       const settings = JSON.parse(readFileSync(hooksPath, "utf-8")) as Record<string, unknown>;
-      expect(settings.version).toBe(1);
+      expect(settings.version).toBeUndefined();
       const hooks = settings.hooks as Record<string, unknown[]>;
       // Codex stores under PascalCase keys
       expect(hooks.PreToolUse).toBeDefined();

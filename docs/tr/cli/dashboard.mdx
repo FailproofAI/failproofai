@@ -1,6 +1,6 @@
 ---
 title: Oturumları görüntüle
-description: "Aracı oturumlarını taramak ve politikaları yönetmek için panoyu başlatın"
+description: "Aracı oturumlarına göz atmak ve politikaları yönetmek için panoyu başlatın"
 ---
 
 ```bash
@@ -14,16 +14,16 @@ Web panosunu `http://localhost:8020` adresinde başlatır.
 | Bayrak | Açıklama |
 |------|-------------|
 | `--port <number>` | Dinlenecek port (varsayılan: `8020`) |
-| `--allowed-origins <origins>` | Dev kaynaklarına erişim izni verilen virgülle ayrılmış hostlar/IP'ler |
+| `--allowed-origins <origins>` | Dev kaynaklarına erişime izin verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
 
 Panoyu varsayılan olmayan bir Claude proje klasörüne yönlendirmek için başlatırken `CLAUDE_PROJECTS_PATH` ortam değişkenini ayarlayın.
 
 ## Örnekler
 
 ```bash
-# Farklı bir portta başlatın
+# Farklı bir portta başlat
 failproofai --port 9000
 
-# Ortam değişkeni aracılığıyla özel bir Claude projeleri yolunu kullanın
+# Ortam değişkeni aracılığıyla özel bir Claude projeleri yolunu kullan
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

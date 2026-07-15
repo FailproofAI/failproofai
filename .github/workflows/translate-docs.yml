@@ -54,7 +54,7 @@ jobs:
       FAILPROOFAI_TELEMETRY_DISABLED: "1"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -107,7 +107,14 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Download all translations
         continue-on-error: true
@@ -116,6 +123,11 @@ jobs:
           pattern: translations-*
           merge-multiple: true
           path: docs
+
+      - name: Update localized product navigation
+        run: >-
+          bun scripts/translate-docs/cli.ts --update-nav
+          --languages zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he
 
       - name: Download cache fragments
         continue-on-error: true

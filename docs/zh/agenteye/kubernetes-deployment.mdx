@@ -1,0 +1,1031 @@
+---
+title: "Kubernetes 部署指南"
+description: "AgentEye Kubernetes 部署指南文档。"
+---
+
+
+本指南将 AgentEye 完整技术栈部署到专用 Kubernetes 集群：
+
+- **ClickHouse 24.8** —— 事件与评估分析的核心存储（StatefulSet，配备 100Gi 持久卷）。必须组件：缺少此组件服务器将拒绝启动。
+- **PostgreSQL 16** —— 组织、API 密钥、用户、仪表盘、保存的查询及身份验证的关系型/元数据存储（StatefulSet，配备 50Gi 持久卷）
+- **Redis 7.2** —— 可选的共享缓存与限速后端；服务器和仪表盘在其不可用时仍可降级运行
+- **AgentEye Server** —— 用于事件摄入、分析和密钥管理的 Rust API（2 个副本）
+- **AgentEye Dashboard** —— Next.js Web 界面（2 个副本）
+- **AI 助手（agent 服务）** —— 可选的仪表盘内只读助手，监听端口 9100；在配置 LLM 端点之前保持静默
+- **Traefik（公网）** —— 用于收集器流量的入口控制器，启用 mTLS 保护
+- **Traefik（仪表盘）** —— 用于仪表盘的入口控制器，仅限 VPN/IP 白名单访问
+- **cert-manager** —— TLS 证书及 mTLS CA 管理
+- **备份 CronJob** —— 每日 UTC 03:00 同时备份 PostgreSQL 和 ClickHouse
+- **证书续期监控** —— 在客户端证书临近过期时发出告警
+
+**预计耗时：** 首次部署约 60--90 分钟。
+
+如需了解由 Exosphere 代为处理所有事项的托管部署模式，请参阅 [enterprise-docs/managed-deployment.md](/zh/agenteye/managed-deployment)。
+
+---
+
+## 前置条件
+
+在开始之前，请逐一执行以下验证命令，所有检查必须全部通过。
+
+| 要求 | 最低版本 | 验证命令 | 预期结果 |
+|---|---|---|---|
+| Kubernetes 集群 | 1.27+ | `kubectl version` | Server Version >= v1.27 |
+| Kustomize（随 kubectl 内置） | Kustomize v1.14+（随 kubectl 1.27+ 内置） | `kubectl kustomize --help` | 打印使用说明 |
+| Helm | v3 | `helm version` | `Version:"v3.x.x"` |
+| cluster-admin RBAC | -- | `kubectl auth can-i create namespaces` | `yes` |
+| 默认 StorageClass | -- | `kubectl get storageclass` | 至少一行标记为 `(default)` |
+| LoadBalancer 支持 | -- | 依赖云平台（EKS、GKE、AKS 均默认支持） | -- |
+| GitHub PAT | -- | `echo $AGENTEYE_TOKEN` | 非空值（参见 [enterprise-docs/github-token.md](/zh/agenteye/github-token)） |
+| openssl | -- | `openssl version` | OpenSSL 1.x 或 3.x |
+| 云存储桶 | -- | 用于 PostgreSQL 和 ClickHouse 备份（S3、GCS 或 Azure Blob） | -- |
+
+**集群规格：** 最少 3 个节点，每个节点 4 vCPU / 8 GB 内存。完整要求请参阅 [enterprise-docs/managed-deployment.md](/zh/agenteye/managed-deployment)。
+
+### 一次性执行所有检查
+
+```bash
+echo "--- Prerequisites Check ---"
+kubectl version --client -o yaml 2>/dev/null | grep -q gitVersion && echo "PASS: kubectl" || echo "FAIL: kubectl not found"
+helm version --short 2>/dev/null | grep -q v3 && echo "PASS: helm v3" || echo "FAIL: helm v3 not found"
+kubectl auth can-i create namespaces 2>/dev/null | grep -q yes && echo "PASS: cluster-admin" || echo "FAIL: no cluster-admin"
+kubectl get storageclass 2>/dev/null | grep -q default && echo "PASS: default StorageClass" || echo "FAIL: no default StorageClass"
+[ -n "$AGENTEYE_TOKEN" ] && echo "PASS: AGENTEYE_TOKEN set" || echo "FAIL: AGENTEYE_TOKEN not set"
+openssl version >/dev/null 2>&1 && echo "PASS: openssl" || echo "FAIL: openssl not found"
+echo "---"
+```
+
+### 部署架构说明
+
+**采集端点** 由您控制的域名提供服务（例如 `ingest.your-company.example`）。cert-manager 通过 HTTP-01 方式向 Let's Encrypt 申请公开受信任的 TLS 证书，因此收集器会使用系统信任库验证服务器证书，无需每个客户端单独固定 CA。
+
+**仪表盘端点** 工作方式相同：由您控制的另一个域名提供服务（例如 `agenteye.your-company.example`），指向仪表盘 Traefik LoadBalancer，cert-manager 通过该 LoadBalancer 颁发 Let's Encrypt 证书。浏览器访问时将获得受信任的证书，不会出现警告。
+
+> **证书颁发和续期通过 HTTP-01 验证**，因此两个 LoadBalancer 必须能从公网访问 80 端口。如需对仪表盘 LoadBalancer 进行 IP 限制，请先与支持团队协调配置 DNS-01 解析器，否则续期将静默失败并导致证书过期。
+
+---
+
+## 获取清单文件
+
+```bash
+git clone https://x:${AGENTEYE_TOKEN}@github.com/agenteye-enterprise/releases.git
+cd releases/deploy
+```
+
+**验证：**
+
+```bash
+ls base/kustomization.yaml
+```
+
+预期：文件存在。若不存在，说明克隆失败——请检查您的 `AGENTEYE_TOKEN`。
+
+**目录结构：**
+
+```
+deploy/
+  base/           共享 Kustomize base（所有 K8s 资源）
+  overlays/       特定集群的覆盖配置（镜像标签、主机名、资源限制）
+  third-party/    Traefik、cert-manager 及（可选）Robusta 健康监控的 Helm values 文件
+```
+
+**base** 包含完整部署所需的所有资源，包括您在第 3.1 阶段配置的两个公开域名所需的 Let's Encrypt 证书。**overlay** 针对特定环境（如自定义镜像标签、资源限制、环境变量配置）对 base 进行补丁。**third-party** 目录包含外部基础设施的 Helm values 文件。
+
+> **健康监控（可选）：** 服务器的就绪探针已反映 Postgres 和 ClickHouse 的健康状态，`third-party/robusta/` 提供可选的 Kubernetes 原生 Pod 故障告警（发送到 Slack）。参见 [enterprise-docs/health-monitoring.md](/zh/agenteye/health-monitoring)。
+
+---
+
+## 第一阶段 —— 部署第三方基础设施（约 30 分钟）
+
+### 1.1 安装 cert-manager
+
+cert-manager 管理 HTTPS 所需的 TLS 证书，以及用于签发 mTLS 客户端证书的私有 CA。
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set crds.install=true
+```
+
+**验证：**
+
+```bash
+kubectl get pods -n cert-manager
+```
+
+预期：3 个 Pod 均处于 `Running` 状态——`cert-manager`、`cert-manager-cainjector`、`cert-manager-webhook`。
+
+```bash
+kubectl get crds | grep cert-manager
+```
+
+预期：至少包含 `certificates.cert-manager.io`、`clusterissuers.cert-manager.io`、`issuers.cert-manager.io`。
+
+**排障：** Pod 处于 `CrashLoopBackOff` 通常意味着 CRD 未安装。请重新执行并添加 `--set crds.install=true`。若 webhook Pod 未通过就绪检查，请等待 30 秒后重试——它们启动可能需要一点时间。
+
+---
+
+### 1.2 安装 Traefik —— 公网采集入口控制器
+
+此 Traefik 实例通过**外部** LoadBalancer 处理收集器流量。它负责 TLS 终止，并在采集端点上强制执行 mTLS（客户端证书验证）。
+
+```bash
+helm repo add traefik https://traefik.github.io/charts
+helm repo update
+
+helm install traefik-public traefik/traefik \
+  --namespace traefik-public --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-public.yaml
+```
+
+**验证：**
+
+```bash
+kubectl get pods -n traefik-public
+```
+
+预期：1 个 Pod 处于 `Running` 状态。
+
+```bash
+kubectl get ingressclass traefik-public
+```
+
+预期：IngressClass 存在（非默认 class）。
+
+**排障：** 执行 `kubectl describe pod -n traefik-public <pod-name>` 检查镜像拉取错误或资源限制问题。
+
+---
+
+### 1.3 安装 Traefik —— 仪表盘入口控制器
+
+此 Traefik 实例通过专用 LoadBalancer 提供仪表盘服务，并通过 IP 白名单进行访问限制。
+
+> **该实例提供两种白名单机制。** 本指南使用 `values-dashboard.yaml`，通过可移植的 `service.loadBalancerSourceRanges` 字段限制访问。同时提供了 `values-internal.yaml`，适用于偏好使用 `service.beta.kubernetes.io/aws-load-balancer-source-ranges` 注解的 AWS 环境。两者选其一并保持一致；以下步骤基于 `values-dashboard.yaml`。
+
+**安装前**，请编辑 `third-party/traefik/values-dashboard.yaml` 以设置允许的源 IP。`loadBalancerSourceRanges` 字段控制哪些 IP 可以访问仪表盘。默认值为 `0.0.0.0/0`（所有 IP）；请将其限制为您的 VPN、办公室或已知出口 IP。
+
+#### 白名单单个 IP
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "<YOUR_VPN_IP>/32"
+```
+
+#### 白名单多个 IP
+
+每行添加一个 IP 或 CIDR 块。`/32` 后缀匹配单个 IPv4 地址；CIDR 块（如 `/24`）匹配一个地址范围。可以自由混合单个 IP 和范围：
+
+```yaml
+service:
+  loadBalancerSourceRanges:
+    - "203.0.113.10/32"       # 办公室网关
+    - "203.0.113.11/32"       # 备用办公室网关
+    - "198.51.100.0/24"       # VPN 地址池
+    - "192.0.2.50/32"         # 值班工程师家庭 IP
+```
+
+维护列表时的建议：
+
+- 每行一条记录，并添加简短的 `#` 注释说明每个 IP 的归属或用途；这有助于未来的运维人员判断某条记录是否仍然需要。
+- 始终使用 CIDR 表示法。裸 IP（如 `203.0.113.10`）会被云提供商拒绝，请使用 `203.0.113.10/32`。
+- 对于 IPv6 范围，使用等效的 `/128`（单个地址）或更大的 CIDR，例如 `2001:db8::1/128`。并非所有云提供商都支持 IPv6 源地址范围，请查阅您所用提供商的 LoadBalancer 文档。
+- 该列表是**OR**关系：只要来源匹配任意一条记录，流量就会被放行。
+
+编辑完文件后，继续执行下方的 `helm install`。若控制器已安装，使用相同参数执行 `helm upgrade`，或通过补丁方式在运行时更新 Service（见下一节）。
+
+#### 运行时更新白名单
+
+您可以直接 patch Service 来更改允许的 IP，无需执行 Helm 升级。**该 patch 会替换整个列表**；请务必包含所有希望保留的 IP，而不仅仅是新增的 IP。
+
+将列表替换为新的 IP 集合：
+
+```bash
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["203.0.113.10/32","198.51.100.0/24","192.0.2.50/32"]}}'
+```
+
+若要**追加** IP 而不丢失现有记录，请先读取当前列表，再使用合并后的集合执行 patch：
+
+```bash
+# 1. 查看当前白名单
+kubectl get svc traefik-dashboard -n traefik-dashboard \
+  -o jsonpath='{.spec.loadBalancerSourceRanges}'
+
+# 2. 将新 IP 加入完整列表后执行 patch
+kubectl patch svc traefik-dashboard -n traefik-dashboard \
+  -p '{"spec":{"loadBalancerSourceRanges":["<EXISTING_IP_1>/32","<EXISTING_IP_2>/32","<NEW_IP>/32"]}}'
+```
+
+> 运行时的 patch 不会自动同步回 `values-dashboard.yaml`。若希望在未来的 Helm 升级中保留该变更，请同时更新 values 文件并提交。
+
+然后执行安装：
+
+```bash
+helm install traefik-dashboard traefik/traefik \
+  --namespace traefik-dashboard --create-namespace \
+  --version 39.0.8 \
+  -f third-party/traefik/values-dashboard.yaml
+```
+
+**验证：**
+
+```bash
+kubectl get pods -n traefik-dashboard
+```
+
+预期：1 个 Pod 处于 `Running` 状态。
+
+```bash
+kubectl get ingressclass traefik-dashboard
+```
+
+预期：IngressClass 存在。
+
+---
+
+### 1.4 等待 LoadBalancer 分配
+
+继续之前，两个 Traefik 实例均需获得外部 IP。
+
+```bash
+kubectl get svc -n traefik-public
+kubectl get svc -n traefik-dashboard
+```
+
+**验证：** 两个 Service 均显示 `EXTERNAL-IP`（而非 `<pending>`）。
+
+若仍处于 pending 状态，可监视分配过程：
+
+```bash
+kubectl get svc -n traefik-public -w
+```
+
+IP 出现后按 `Ctrl+C`。IP 分配通常需要 2--5 分钟。
+
+**排障：** 10 分钟后仍显示 `<pending>` 通常意味着云提供商无法创建 LoadBalancer。请检查：子网标签（EKS 需要 `kubernetes.io/role/elb`）、VPC 配置、服务配额，以及内部实例是否设置了正确的内部 LB 注解。
+
+---
+
+## 第二阶段 —— 创建 Secret（约 10 分钟）
+
+所有 Secret 均在部署应用前手动创建。这样可确保敏感信息永远不会出现在清单文件中。
+
+### 2.1 创建命名空间
+
+```bash
+kubectl create namespace agenteye
+```
+
+**验证：**
+
+```bash
+kubectl get namespace agenteye
+```
+
+预期：状态为 `Active`。
+
+---
+
+### 2.2 镜像拉取 Secret
+
+此 Secret 用于向 `ghcr.io` 进行身份验证，以拉取 AgentEye 容器镜像。关于如何生成 PAT，请参阅 [enterprise-docs/github-token.md](/zh/agenteye/github-token)。
+
+```bash
+kubectl create secret docker-registry agenteye-image-pull \
+  --namespace agenteye \
+  --docker-server=ghcr.io \
+  --docker-username=agenteye-enterprise \
+  --docker-password="${AGENTEYE_TOKEN}"
+```
+
+**验证：**
+
+```bash
+kubectl get secret agenteye-image-pull -n agenteye -o jsonpath='{.type}'
+```
+
+预期：`kubernetes.io/dockerconfigjson`。
+
+**深度验证** —— 确认 Token 实际可以拉取镜像：
+
+使用您 overlay 的 `kustomization.yaml` 中固定的 `server` 镜像标签（当前在内置 `acme` overlay 和 base 部署中均为 `v0.0.1-beta.48`）。请将下方标签替换为您实际部署的版本，以避免跨版本检查出现偏差：
+
+```bash
+kubectl run test-pull \
+  --image=ghcr.io/agenteye-enterprise/server:v0.0.1-beta.48 \
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"agenteye-image-pull"}]}}' \
+  --restart=Never -n agenteye --command -- echo ok
+
+# 等待几秒拉取完成，然后：
+kubectl logs test-pull -n agenteye
+kubectl delete pod test-pull -n agenteye
+```
+
+预期：日志中打印 `ok`。
+
+**排障：** `ErrImagePull` 或 `401 Unauthorized` 表示 PAT 无效或缺少 `read:packages` 权限范围。请重新检查 [enterprise-docs/github-token.md](/zh/agenteye/github-token)。
+
+---
+
+### 2.3 PostgreSQL 凭据
+
+```bash
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+
+kubectl create secret generic agenteye-postgres \
+  --namespace agenteye \
+  --from-literal=POSTGRES_USER=postgres \
+  --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  --from-literal=POSTGRES_DB=agenteye
+```
+
+> **重要：** 我们使用 `-hex`（而非 `-base64`）生成密码。Base64 输出可能包含 `+`、`/` 和 `=`，这些字符会导致 `DATABASE_URL` 连接字符串解析失败。详情请参阅 [enterprise-docs/troubleshooting.md](/zh/agenteye/troubleshooting)。
+
+> **请立即将 `POSTGRES_PASSWORD` 存入您的密钥管理器。** 在从备份恢复或直接连接数据库时，您将需要用到它。
+
+**验证：**
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye
+```
+
+预期：Secret 存在。
+
+```bash
+kubectl get secret agenteye-postgres -n agenteye \
+  -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | wc -c
+```
+
+预期：`48`（24 个十六进制字节 = 48 个字符）。
+
+---
+
+### 2.4 管理员 API 密钥
+
+```bash
+ADMIN_KEY=$(openssl rand -hex 32)
+
+kubectl create secret generic agenteye-admin-key \
+  --namespace agenteye \
+  --from-literal=ADMIN_KEY="${ADMIN_KEY}"
+```
+
+管理员密钥是引导凭据。服务器每次启动时会以全部权限对其进行 upsert 操作。在第 7 阶段使用它创建有范围限制的收集器密钥。完整权限模型请参阅 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)。
+
+> **请立即将 `ADMIN_KEY` 存入您的密钥管理器。**
+
+**验证：**
+
+```bash
+kubectl get secret agenteye-admin-key -n agenteye
+```
+
+预期：Secret 存在。
+
+---
+
+### 2.5 身份验证配置（仪表盘登录）
+
+仪表盘使用邮箱 + OTP 方式登录。若没有此 Secret，服务器仍可正常启动，且 `ADMIN_KEY` API 路径继续工作，但**任何用户都无法通过界面登录**。
+
+所有密钥在 base 清单中均标记为 `optional: true`，因此部分 Secret（或完全不设置）也没有问题；服务器会回退到文档说明的默认值。将所有内容统一放入 `agenteye-auth` Secret，便于在单一位置轮换整个认证配置。
+
+```bash
+kubectl create secret generic agenteye-auth \
+  --namespace agenteye \
+  --from-literal=ADMIN_EMAIL="admin@yourcompany.com" \
+  --from-literal=ALLOWED_EMAILS="*@yourcompany.com" \
+  --from-literal=SMTP_HOST="smtp.yourprovider.com" \
+  --from-literal=SMTP_PORT="587" \
+  --from-literal=SMTP_USERNAME="your-smtp-user" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password" \
+  --from-literal=SMTP_FROM="noreply@yourcompany.com" \
+  --from-literal=SMTP_TLS="starttls" \
+  --from-literal=DEFAULT_ORG_NAME="Acme Corp" \
+  --from-literal=DEFAULT_ORG_SLUG="acme"
+```
+
+| 键名 | 用途 |
+|---|---|
+| `ADMIN_EMAIL` | 引导管理员用户。每次启动时以全部权限进行 upsert，并受保护不可通过仪表盘删除或编辑权限。若未设置，则不会预置管理员，首次登录将无法完成。 |
+| `ALLOWED_EMAILS` | 逗号分隔的白名单。支持精确地址（`user@example.com`）和域名通配符（`*@example.com`）。若未设置，**任何用户均无法登录或被创建**。 |
+| `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM` | 用于发送 OTP 验证码的 SMTP 中继。若 `SMTP_HOST` 未设置，OTP 验证码将记录到服务器的 stdout 而非发送邮件（适合首次启动冒烟测试）。如需真实邮件投递，请同时提供所有 SMTP 配置项。 |
+| `SMTP_TLS` | 可选值：`starttls`（默认）、`tls` 或 `none`。 |
+| `DEFAULT_ORG_NAME`、`DEFAULT_ORG_SLUG` | 可选。为内置 `default` 组织设置友好的显示名称和 URL slug，使其路径变为例如 `/acme` 而非 `/default`。**仅在首次启动时生效**；通过 `agenteye-orgctl org rename` 重命名组织后（见 §7.6），这些配置将被忽略。slug 必须为 1--40 个小写字母数字，内部可使用单个连字符。保持两者不设置则使用通用名称 `default`。 |
+
+> **请将 SMTP 凭据存入您的密钥管理器。**
+
+**验证：**
+
+```bash
+kubectl get secret agenteye-auth -n agenteye \
+  -o jsonpath='{.data}' | grep -o '"[A-Z_]*"' | sort -u
+```
+
+预期：您填入的密钥名称出现在输出中。
+
+---
+
+### 2.6 多租户组织隔离密钥（可选）
+
+单租户部署可跳过此步骤；服务器将使用内置的开发默认值，并可正常服务唯一的 `default` 组织。**在创建第二个组织之前**，请设置一个强壮且稳定的 `ORG_CH_SECRET`：每个组织的 ClickHouse 密码派生自 `HMAC(ORG_CH_SECRET, org_id)`，因此公开已知的开发默认值会产生可被公开推导的每组织凭据。`agenteye-orgctl org create` 命令（见 [§7.6 创建组织](#76-provision-organizations-multi-tenant)）在服务器仍使用内置开发默认值时会拒绝执行。
+
+```bash
+kubectl create secret generic agenteye-org-ch-secret \
+  --namespace agenteye \
+  --from-literal=ORG_CH_SECRET="$(openssl rand -base64 48)"
+
+# 重启服务器以使其读取新值。
+kubectl -n agenteye rollout restart deployment/server
+```
+
+服务器通过**可选的** `secretKeyRef` 读取此配置，因此从未创建该 Secret 的单租户集群仍可正常启动。请确保该值**稳定且在所有副本中保持一致**；轮换该值会导致所有组织的派生 ClickHouse 密码失效，直到启动时的协调过程重新创建用户（在所有实例使用一致值的情况下进行滚动重启可自动修复）。详见 `deploy/base/server/secret.example.yaml`。
+
+> **请将 `ORG_CH_SECRET` 存入密钥管理器，不要随意轮换。**
+
+---
+
+### 2.7 验证所有 Secret
+
+```bash
+kubectl get secrets -n agenteye -o custom-columns='NAME:.metadata.name,TYPE:.type'
+```
+
+预期输出（除任何默认 Secret 外）：
+
+```
+NAME                    TYPE
+agenteye-admin-key      Opaque
+agenteye-auth           Opaque
+agenteye-image-pull     kubernetes.io/dockerconfigjson
+agenteye-postgres       Opaque
+agenteye-org-ch-secret  Opaque   # 仅在完成 §2.6（多租户）后出现
+```
+
+四个核心 Secret（`agenteye-admin-key`、`agenteye-auth`、`agenteye-image-pull`、`agenteye-postgres`）必须在继续操作前全部存在。`agenteye-org-ch-secret` 仅在多租户部署时需要（见 §2.6）。
+
+---
+
+## 第三阶段 —— 部署应用（约 5 分钟）
+
+### 3.1 配置公开域名
+
+cert-manager 在请求 Let's Encrypt 证书之前需要知道采集端点和仪表盘的域名。复制模板文件并设置两个域名：
+
+```bash
+cp base/certificates/domain.env.example base/certificates/domain.env
+# 编辑 base/certificates/domain.env 并设置：
+#   INGEST_DOMAIN=ingest.your-company.example      （解析到公网 Traefik LB）
+#   DASHBOARD_DOMAIN=agenteye.your-company.example （解析到仪表盘 Traefik LB）
+```
+
+`domain.env` 已被 gitignore，仅保留在各部署环境本地。若任意键缺失，kustomize 构建将明确报错。
+
+> **DNS 必须先解析。** 您无需立即将 DNS 指向 LB（在第 1.2 阶段完成之前 LB 尚不存在），但第 3.2 步中的 ACME 颁发会持续重试，直到每个域名解析到其对应的 LoadBalancer。您可以现在设置 DNS（使用第 1.4 阶段记录的 LB 地址），或继续操作并在第 4 阶段添加 DNS 记录。
+
+---
+
+### 3.2 应用清单
+
+对于全新安装，直接应用 base；如果您已为当前环境创建了 overlay，则应用该 overlay（overlay 仅固定镜像标签、环境变量和资源限制，并继承 base 的证书和路由配置）：
+
+```bash
+kubectl apply -k base/
+# 或
+kubectl apply -k overlays/<your-env>/
+```
+
+overlay 会自动包含 base，请只应用其中一个。
+
+---
+
+### 3.3 等待 Pod 就绪
+
+```bash
+kubectl wait --for=condition=Ready pod -l 'app in (server,dashboard,postgres,clickhouse)' \
+  -n agenteye --timeout=180s
+```
+
+等待范围限定在核心数据平面 Pod。可选的 `agent`（AI 助手）和 `redis` Pod 会同步启动；助手在您配置 LLM 端点之前保持静默（见 [enterprise-docs/assistant.md](/zh/agenteye/assistant)），Redis 是尽力而为的缓存，因此两者无需就绪即可让平台正常提供服务。
+
+**验证：**
+
+```bash
+kubectl get pods -n agenteye
+```
+
+预期（可选的 `agent` 和 `redis` Pod 也会出现并达到 `Running` 状态）：
+
+```
+NAME                         READY   STATUS    RESTARTS   AGE
+agent-xxxxxxxxxx-xxxxx       1/1     Running   0          ...
+clickhouse-0                 1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+dashboard-xxxxxxxxxx-xxxxx   1/1     Running   0          ...
+postgres-0                   1/1     Running   0          ...
+redis-0                      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+server-xxxxxxxxxx-xxxxx      1/1     Running   0          ...
+```
+
+**排障：**
+
+| Pod 状态 | 可能原因 | 调试命令 |
+|---|---|---|
+| `ImagePullBackOff` | 镜像拉取 Secret 或 PAT 有误 | `kubectl describe pod <name> -n agenteye` |
+| `CrashLoopBackOff` | 环境变量配置有误（如 DATABASE_URL） | `kubectl logs <name> -n agenteye` |
+| `Pending` | CPU/内存不足或无可用节点 | `kubectl describe pod <name> -n agenteye`（查看 Events） |
+
+---
+
+### 3.4 验证存储
+
+```bash
+kubectl get pvc -n agenteye
+```
+
+预期，两者均处于 `Bound` 状态：
+
+| PVC | 容量 | 用途 |
+|---|---|---|
+| `postgres-data-postgres-0` | `50Gi` | PostgreSQL 关系型/元数据存储 |
+| `clickhouse-data-clickhouse-0` | `100Gi` | ClickHouse 事件和评估分析存储 |
+
+可选缓存的 `redis-data-redis-0` PVC（1Gi）也会出现。
+
+**排障：** `Pending` 状态表示没有 StorageClass 能够创建该卷。请检查 `kubectl get storageclass` 并确保存在默认 StorageClass。生产环境建议在 overlay 中将 ClickHouse 卷配置为高速 SSD StorageClass（如 AWS 上的 gp3、GCP 上的 pd-ssd）；磁盘性能差会严重影响压缩吞吐量。
+
+---
+
+### 3.5 验证证书
+
+```bash
+kubectl get certificates -n agenteye
+```
+
+预期：3 个证书，全部 `Ready: True`：
+
+| 名称 | 签发方 | 用途 |
+|---|---|---|
+| `mtls-ca` | `selfsigned` | 用于签发 mTLS 客户端证书的私有 CA（有效期 10 年） |
+| `ingest-tls` | `letsencrypt-prod` | 采集端点的公开 TLS 证书（90 天，自动续期） |
+| `dashboard-tls` | `letsencrypt-prod` | 仪表盘的公开 TLS 证书（90 天，自动续期） |
+
+**若 `ingest-tls` 或 `dashboard-tls` 未就绪：**
+
+执行 `kubectl describe certificate <name> -n agenteye` 并查看 Events。常见原因：
+
+- **DNS 尚未指向 LB。** Let's Encrypt 会解析域名并访问 80 端口进行验证——`INGEST_DOMAIN` 必须解析到公网 LB，`DASHBOARD_DOMAIN` 必须解析到仪表盘 LB。在 CNAME/Alias 传播完成之前，证书颁发请求将保持 `pending` 状态。DNS 正确配置后，cert-manager 会自动重试（无需删除 Certificate 资源）。
+- **域名未替换。** 若 `dnsNames` 仍显示 `INGEST_DOMAIN_PLACEHOLDER` / `DASHBOARD_DOMAIN_PLACEHOLDER`，说明您跳过了步骤 3.1——请创建 `base/certificates/domain.env` 并重新应用。
+- **仪表盘 Traefik 无法处理验证请求**（仅影响 `dashboard-tls`）。仪表盘 Traefik 实例必须使用内置 values 文件安装（第 1.2 阶段），该文件启用了服务 cert-manager HTTP-01 解析器的 Ingress 提供者。若未使用该文件安装，验证请求将无法路由，颁发请求将永远处于 `pending` 状态。
+
+**若 `mtls-ca` 未就绪：** cert-manager 本身不健康。请重新检查步骤 1.1 中的 cert-manager Pod。
+
+---
+
+### 3.6 验证 CronJob
+
+```bash
+kubectl get cronjobs -n agenteye
+```
+
+预期：
+
+| 名称 | 调度 | 用途 |
+|---|---|---|
+| `agenteye-backup` | `0 3 * * *` | 每日 UTC 03:00 备份 Postgres 和 ClickHouse |
+| `cert-renewal-check` | `0 3,15 * * *` | UTC 03:00 和 15:00 检查证书过期 |
+
+---
+
+### 3.7 验证服务器正常启动
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=20
+```
+
+**验证：** 查找表明服务器正在监听 8080 端口的启动日志行。不应有数据库连接错误（服务器要求 PostgreSQL 和 ClickHouse 均可访问后才会报告就绪状态）。
+
+**排障：** 最常见的原因是 `POSTGRES_PASSWORD` 包含 URL 不安全字符，导致 `DATABASE_URL` 解析失败。详见 [enterprise-docs/troubleshooting.md](/zh/agenteye/troubleshooting)。
+
+---
+
+### 3.8 验证仪表盘已连接到服务器
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=20
+```
+
+**验证：** 在输出中查找 `Ready` 字样，且没有 `ECONNREFUSED` 或类似错误。
+
+**排障：** 检查 `server` Service 是否存在（`kubectl get svc server -n agenteye`），以及仪表盘 Deployment 中 `AGENTEYE_SERVER_URL` 是否设置为 `http://server:8080`。
+
+---
+
+## 第四阶段 —— 配置网络访问（约 5 分钟）
+
+### 4.1 获取 LoadBalancer 地址
+
+```bash
+PUBLIC_IP=$(kubectl get svc -n traefik-public \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+INTERNAL_IP=$(kubectl get svc -n traefik-dashboard \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+```
+
+> 在 AWS EKS 上，LoadBalancer 返回的是域名而非 IP。请将上方命令中的 `.ip` 替换为 `.hostname`。
+
+**验证：**
+
+```bash
+echo "Public  (ingest):    $PUBLIC_IP"
+echo "Internal (dashboard): $INTERNAL_IP"
+```
+
+两者均不能为空。
+
+---
+
+### 4.2 将 DNS 指向 LoadBalancer
+
+创建 DNS 记录，使 `base/certificates/domain.env` 中的域名解析到对应的 LoadBalancer——`INGEST_DOMAIN` 指向**公网** Traefik LB，`DASHBOARD_DOMAIN` 指向**仪表盘** Traefik LB：
+
+- **AWS Route 53：** 使用 `Alias = Yes` 的 `A` 记录，目标为 LB 域名。不要使用普通 A 记录直接指向 IP；ELB 的 IP 会轮换。
+- **其他 DNS 提供商：** 将域名 CNAME 指向 LB 域名。
+
+验证：
+
+```bash
+dig +short ingest.your-company.example
+dig +short agenteye.your-company.example
+```
+
+结果应与 `$PUBLIC_IP` 和 `$INTERNAL_IP` 相同（在 EKS 上则解析到相同的 `*.elb.amazonaws.com` 域名）。
+
+DNS 解析正常后，cert-manager 将在一分钟内完成第 3.5 阶段中待处理的 ACME 颁发请求。重复执行 `kubectl get certificates -n agenteye`，直到 `ingest-tls` 和 `dashboard-tls` 均显示 `Ready: True`。
+
+---
+
+### 4.3 访问采集端点
+
+公网采集端点强制要求双向 TLS，因此每个请求（包括 `/health`）都必须携带客户端证书。您将在第 5 阶段颁发首个客户端证书；如果已有证书，现在可以验证可达性：
+
+```bash
+curl -s --cert issued/<cluster-name>/client.crt \
+        --key issued/<cluster-name>/client.key \
+        https://ingest.your-company.example/health
+```
+
+预期：`{"status":"ok"}`。无需 `-k`——服务器证书链接到 `INGEST_DOMAIN` 的公开 CA，可通过系统信任库验证。请通过 `INGEST_DOMAIN` 域名访问采集端点（与颁发的证书匹配），而非直接使用 LoadBalancer IP/域名。
+
+仪表盘端点通过 `DASHBOARD_DOMAIN` 提供服务，证书为公开受信任证书，且不在 mTLS 之后，因此无需 `-k` 和客户端证书：
+
+```bash
+curl -s https://agenteye.your-company.example/ -o /dev/null -w '%{http_code}\n'
+```
+
+请通过域名而非原始 LB 地址访问仪表盘——证书绑定到 `DASHBOARD_DOMAIN`，直接访问原始地址会导致证书名称不匹配。
+
+**排障：** 若 `curl` 挂起，检查您的机器是否可以访问 LB（VPN、安全组、防火墙规则）。采集域名出现 `certificate required` 握手错误表示未提交客户端证书；请先完成第 5 阶段。采集域名出现 TLS 验证错误表示服务器证书尚未颁发完成；请返回第 3.5 阶段解决问题。
+
+---
+
+## 第五阶段 —— 颁发 mTLS 客户端证书（每个集群约 10 分钟）
+
+收集器通过**双重因素**进行身份验证：客户端证书（传输层，证明请求来自授权集群）和 API 密钥（应用层，证明请求来自具有 `events:add` 权限的收集器）。泄露的密钥在没有证书的情况下无法使用；被盗的证书在没有有效密钥的情况下同样无法使用。
+
+### 5.1 颁发证书
+
+每个运行收集器的集群都需要自己的客户端证书。在清单目录中执行：
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+将 `<cluster-name>` 替换为有意义的标识符（如 `us-east-1-prod`、`staging`）。
+
+**验证：** 脚本打印 `==> Done!` 并列出输出文件。
+
+```bash
+kubectl get certificate mtls-client-<cluster-name> -n agenteye
+```
+
+预期：`Ready: True`。
+
+输出文件位于 `issued/<cluster-name>/`：
+
+| 文件 | 用途 |
+|---|---|
+| `client.crt` | 客户端证书（有效期 90 天） |
+| `client.key` | 客户端私钥 |
+| `ca.crt` | 用于服务器验证的 CA 证书 |
+| `collector-mtls-secret.yaml` | 可直接应用到收集器集群的 Kubernetes Secret |
+
+---
+
+### 5.1b 替代投递方式：AWS Secrets Manager
+
+如果证书的使用方是需要在磁盘上挂载 `client.crt` 和 `client.key` 的 Kubernetes Pod（以 agenteye-collector 作为应用 Pod 中的 Sidecar 时的典型场景），可以将证书包推送到 AWS Secrets Manager。应用 Pod 通过 [Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) 结合 IRSA 方式挂载证书，证书轮换完全免人工干预。
+
+```bash
+cd base/certificates/client-certs
+export AWS_REGION=us-east-1     # 您的工作负载所在区域
+./issue-client-cert.sh <cluster-name> --save-to aws-secrets-manager
+```
+
+重新运行（续期）时，脚本会对同一个 Secret 调用 `PutSecretValue`，因此 ARN 和名称保持稳定。CSI Driver 在下次轮换轮询时获取新版本，并更新 Pod 内的文件。
+
+**前置条件：**
+
+- 已通过 `aws` CLI v2 完成 AWS 账户身份验证。
+- 已安装 `jq`。
+- 已设置 `AWS_REGION` 环境变量。
+- 调用方身份具有以下 IAM 权限（将 `Resource` 范围限制到 `arn:aws:secretsmanager:<region>:<account>:secret:agenteye/mtls-client/*`）：
+  - `secretsmanager:CreateSecret`
+  - `secretsmanager:DescribeSecret`
+  - `secretsmanager:PutSecretValue`
+  - `secretsmanager:TagResource`
+
+**此模式下脚本的执行步骤：**
+
+| 步骤 | 操作 |
+|---|---|
+| 1 | 通过 cert-manager 颁发/重新提取证书（与默认模式相同）。 |
+| 2 | 对 `agenteye/mtls-client/<cluster-name>` 调用 `DescribeSecret`，判断是创建还是更新。 |
+| 3 | 首次运行：调用 `CreateSecret`，写入包含三个键（`client.crt`、`client.key`、`ca.crt`）的 JSON 负载，并打标签 `AgentEyeCluster=<cluster-name>`。后续运行：调用 `PutSecretValue` 发布新版本，并通过 `TagResource` 刷新标签。 |
+| 4 | 仅在上传成功后删除 `issued/<cluster-name>/` 目录。如有任何失败，该目录将被保留以便重试。 |
+
+**若 Secret 已被计划删除**，脚本将报错并提示您先执行 `aws secretsmanager restore-secret --secret-id agenteye/mtls-client/<cluster-name>` 再重试。
+
+完整的 Pod 配置（SecretProviderClass、IRSA 设置、轮换行为、故障排除）请参阅 [enterprise-docs/single-pod-deployment.md](/zh/agenteye/single-pod-deployment)。
+
+---
+
+### 5.2 验证证书可用
+
+对 mTLS 入口测试已颁发的证书：
+
+```bash
+curl -sk --cert issued/<cluster-name>/client.crt \
+     --key issued/<cluster-name>/client.key \
+     https://${PUBLIC_IP}/health
+```
+
+预期：`{"status":"ok"}`
+
+**排障：**
+
+| 错误 | 原因 | 解决方法 |
+|---|---|---|
+| `certificate required` | 未提交证书 | 检查 `curl` 命令中的文件路径 |
+| `bad certificate` | CA 不匹配 | 验证证书由 `mtls-ca-issuer` 签发：`kubectl describe certificate mtls-client-<name> -n agenteye` |
+| `connection refused` | 域名或 LB 无法访问 | 检查 `/etc/hosts` 或 DNS 配置 |
+
+---
+
+### 5.3 发送到收集器集群
+
+将 `collector-mtls-secret.yaml` 发送给负责运维收集器集群的团队。他们执行以下操作应用：
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+然后配置收集器挂载该 Secret 并使用证书路径：
+
+```json
+{
+  "tls_cert": "/etc/agenteye/tls/client.crt",
+  "tls_key": "/etc/agenteye/tls/client.key"
+}
+```
+
+完整的收集器安装说明（包括 Kubernetes 卷挂载）请参阅 [enterprise-docs/collector-installation.md](/zh/agenteye/collector-installation)。
+
+**验证（在收集器集群中执行）：**
+
+```bash
+kubectl get secret agenteye-collector-mtls -n <collector-namespace>
+```
+
+预期：Secret 存在，包含 3 个数据键（`client.crt`、`client.key`、`ca.crt`）。
+
+---
+
+### 5.4 证书生命周期
+
+| 属性 | 值 |
+|---|---|
+| 客户端证书有效期 | 90 天 |
+| 自动续期 | cert-manager 在过期前 15 天自动续期 |
+| CA 有效期 | 10 年 |
+| 过期告警 | CronJob 在过期前 30 天发出告警（第 6 阶段） |
+
+cert-manager 会在 **AgentEye 集群**上自动续期证书，但续期后的证书必须重新分发到收集器集群。请在旧证书过期前重新执行 `issue-client-cert.sh` 并重新应用 `collector-mtls-secret.yaml`。
+
+如果您使用 `--save-to aws-secrets-manager`（见 §5.1b），重新执行相同命令即可。脚本会对同一 Secret 调用 `PutSecretValue`；通过 Secrets Store CSI Driver 挂载 Secret 的 Pod 将在下次轮换轮询时获取新版本（默认每小时一次），无需重启 Pod。
+
+---
+
+### 5.5 吊销证书
+
+若要立即阻止某集群的收集器访问：
+
+```bash
+kubectl delete certificate mtls-client-<cluster-name> -n agenteye
+```
+
+**验证：** 步骤 5.2 中的 `curl` 命令现在将返回 TLS 握手错误。
+
+---
+
+## 第六阶段 —— 证书续期监控（约 2 分钟）
+
+内置 CronJob 每 12 小时运行一次（UTC 03:00 和 15:00），检查所有带有 `agenteye.io/cert-type=mtls-client` 标签的客户端证书。当任意证书距离过期不足 30 天时发出告警。
+
+### 6.1 启用 Slack 通知（可选）
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+若未设置此 Secret，CronJob 仍会正常运行，并将证书状态记录到 stdout。
+
+**验证：**
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+预期：Secret 存在。
+
+---
+
+### 6.2 测试 CronJob
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check test-cert-check -n agenteye
+
+kubectl wait --for=condition=Complete job/test-cert-check -n agenteye --timeout=60s
+
+kubectl logs -n agenteye -l job-name=test-cert-check
+```
+
+预期：输出包含所有证书及其过期状态的列表。若已配置 Slack webhook，请检查对应频道是否收到告警消息。
+
+**排障：** 检查 RBAC——CronJob 的 ServiceAccount 需要对 cert-manager Certificate 资源有 `get, list` 权限。执行以下命令验证：`kubectl describe role cert-renewal-check -n agenteye`。
+
+清理测试 Job：
+
+```bash
+kubectl delete job test-cert-check -n agenteye
+```
+
+---
+
+## 第七阶段 —— 端到端验证
+
+本阶段确认整个流水线正常工作：健康检查、密钥创建、事件摄入和仪表盘展示。
+
+> **注意：** 以下示例为方便起见，通过 LoadBalancer 原始地址（`${PUBLIC_IP}`）访问采集端点，因此需要传入 `-k`；服务器证书绑定到 `INGEST_DOMAIN` 而非 LB IP，跳过域名检查。采集端点在**所有**路径上都强制执行双向 TLS，因此每次调用也必须携带客户端证书（`--cert`/`--key`）。若要同时验证公开证书，请使用 `https://ingest.your-company.example/...` 替换 `${PUBLIC_IP}` 并去掉 `-k`。
+
+### 7.1 健康检查
+
+```bash
+curl -sk --cert issued/<cluster-name>/client.crt \
+        --key issued/<cluster-name>/client.key \
+        https://${PUBLIC_IP}/health
+```
+
+预期：`{"status":"ok"}`，HTTP 200。
+
+---
+
+### 7.2 创建有范围限制的收集器密钥
+
+管理员密钥用于引导和管理。请为收集器创建专用的 `events:add` 密钥：
+
+```bash
+COLLECTOR_KEY=$(openssl rand -hex 32)
+
+curl -sk -X POST https://${PUBLIC_IP}/keys \
+  --cert issued/<cluster-name>/client.crt \
+  --key issued/<cluster-name>/client.key \
+  -H "Authorization: Bearer ${ADMIN_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "'"${COLLECTOR_KEY}"'",
+    "permissions": ["events:add"]
+  }'
+```
+
+**验证：** 响应包含 `"id"`、`"name": "prod-collector"`、`"permissions": ["events:add"]`、`"created_at"`。
+
+**验证：** 确认密钥出现在密钥列表中：
+
+```bash
+curl -sk https://${PUBLIC_IP}/keys \
+  --cert issued/<cluster-name>/client.crt \
+  --key issued/<cluster-name>/client.key \
+  -H "Authorization: Bearer ${ADMIN_KEY}"
+```
+
+预期：响应中包含 `prod-collector`。
+
+完整的密钥管理参考请参阅 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)。
+
+---
+
+### 7.3 摄入测试事件
+
+```bash
+echo '{"session_id":"test","agent_id":"smoke-test","type":"test","timestamp":"2026-04-20T00:00:00Z"}' \
+  | curl -sk --cert issued/<cluster-name>/client.crt \
+         --key issued/<cluster-name>/client.key \
+         -H "Authorization: Bearer ${COLLECTOR_KEY}" \
+         -H "Content-Type: application/x-ndjson" \
+         --data-binary @- \
+         https://${PUBLIC_IP}/events
+```
+
+预期：`{"accepted":1,"skipped":0}`，HTTP 200。
+
+**排障：**
+
+| HTTP 状态码 | 原因 |
+|---|---|
+| 401 | API 密钥无效或缺失 |
+| 403 | 密钥缺少 `events:add` 权限 |
+| TLS 握手错误 | 客户端证书问题——参见第 5 阶段排障 |
+
+---
+
+### 7.4 在仪表盘中确认事件可见
+
+在浏览器中打开 `https://agenteye.your-company.example`（您的 `DASHBOARD_DOMAIN`）。证书为公开受信任证书，不会出现警告。
+
+> 如果仪表盘 LoadBalancer 受 IP 白名单限制且您无法连接，请验证您的 IP 是否已被允许：
+> ```bash
+> kubectl get svc traefik-dashboard -n traefik-dashboard -o jsonpath='{.spec.loadBalancerSourceRanges}'
+> ```
+> 请注意，Let's Encrypt 通过 80 端口的 HTTP-01 方式续期仪表盘证书，而源地址范围限制适用于整个 LoadBalancer——在将其限制为企业网段之前，请先与支持团队协调配置 DNS-01 解析器，否则续期将静默失败。
+
+**验证：** 冒烟测试事件应出现在事件列表中，session 为 `test`，agent 为 `smoke-test`。
+
+**排障：** 检查仪表盘日志（`kubectl logs -n agenteye -l app=dashboard --tail=50`）。验证 `AGENTEYE_SERVER_URL` 和 `AGENTEYE_API_KEY` 是否正确设置。
+
+---
+
+### 7.5 测试备份 CronJob
+
+```bash
+kubectl create job --from=cronjob/agenteye-backup test-backup -n agenteye
+
+kubectl wait --for=condition=Complete job/test-backup -n agenteye --timeout=300s
+
+kubectl logs -n agenteye -l job-name=test-backup
+```
+
+预期：日志中包含 `Backup created: agenteye-YYYYMMDD-HHMMSS.tar.gz (NNN)`；归档文件包含 Postgres 备份和 ClickHouse 表。
+
+> S3 上传步骤已内置在 CronJob 中，每当 `BACKUP_BUCKET` 有值时运行（base 默认设置了一个默认桶值）。仅当 `BACKUP_BUCKET` 为空或字面值 `PLACEHOLDER` 时跳过。在正式依赖此功能之前，请将其指向您自己的存储桶，并为 `agenteye-backup` ServiceAccount 授予写入权限（见下方备份章节）。
+
+清理：
+
+```bash
+kubectl delete job test-backup -n agenteye
+```
+
+---
+
+### 7.6 创建组织（多租户）
+
+单租户部署可跳过此步骤；所有数据存储在内置 `default` 组织中，无需任何额外操作。
+
+如果您运行多个相互隔离的租户，组织及其成员通过 **`agenteye-orgctl`** CLI 进行管理。该工具**内置在服务器镜像中**（与 `agenteye-server` 并列），通过 `kubectl exec` **在现有 `server` Deployment 内运行；无需单独的 Pod、Job 或 Deployment，也没有 HTTP API 或仪表盘按钮用于租户生命周期管理。** 在服务器 Pod 中运行意味着它复用 Pod 的 `DATABASE_URL`、`CLICKHOUSE_URL` 以及 §2.6 中的 `ORG_CH_SECRET`。
+
+> **前置条件：** 请先完成 §2.6。`org create` 在服务器仍使用内置开发 `ORG_CH_SECRET` 时会拒绝执行，且其创建的每组织 ClickHouse 用户依赖该 Secret 足够强壮且稳定。
+
+**创建组织并添加首位管理员：**
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email alice@acme.example --set admin
+```
+
+新成员首次通过仪表盘登录时会收到 OTP，之后完全在组织的 URL 前缀下（如 `/acme/...`）通过界面操作。
+
+**其他命令**（同样通过 `kubectl -n agenteye exec deploy/

@@ -1,13 +1,13 @@
 ---
 title: 卸载策略
-description: "从 Claude Code 的设置中移除钩子条目"
+description: "从 Claude Code 的设置中移除 hook 条目"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-从 Claude Code 的 `settings.json` 中移除 failproofai 钩子条目。
+从 Claude Code 的 `settings.json` 中移除 failproofai hook 条目。
 
 别名：`failproofai p -u`
 
@@ -23,19 +23,19 @@ failproofai policies --uninstall [policy-names...] [options]
 
 ## 行为说明
 
-- **不指定策略名称** — 从设置文件中移除所有 failproofai 钩子条目
-- **指定名称** — 禁用对应策略，但保留已安装的钩子
+- **未指定策略名称** - 从设置文件中移除所有 failproofai hook 条目
+- **指定具体名称** - 禁用相应策略，但保留已安装的 hook
 
 ## 示例
 
 ```bash
-# 全局移除所有钩子
+# 全局移除所有 hook
 failproofai policies --uninstall
 
-# 禁用特定策略（保留已安装的钩子）
+# 禁用特定策略（保留已安装的 hook）
 failproofai policies --uninstall block-sudo
 
-# 从所有作用域中移除钩子
+# 从所有作用域中移除 hook
 failproofai policies --uninstall --scope all
 
 # 清除自定义策略路径

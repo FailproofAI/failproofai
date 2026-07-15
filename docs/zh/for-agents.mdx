@@ -1,36 +1,36 @@
 ---
-title: "适用于 AI 助手"
-description: "一条命令即可将 Failproof AI 知识添加到你的编程 AI 助手中。支持 Claude Code、Cursor、Windsurf 等。"
+title: "适用于 Agent"
+description: "一条命令即可将 Failproof AI 知识添加到你的编程 Agent 中。支持 Claude Code、Cursor、Windsurf 等。"
 ---
 
-一条命令即可将完整的 Failproof AI 参考文档添加到你的编程 AI 助手中。支持 Claude Code、Cursor、Windsurf 以及任何其他支持技能（skills）的 AI 助手。
+一条命令即可将完整的 Failproof AI 参考文档添加到你的编程 Agent 中。支持 Claude Code、Cursor、Windsurf 以及任何支持 skills 的 Agent。
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` 会自动检测你已安装的 AI 助手，并以适合各自的格式添加该技能。
+`npx skills` 会自动检测你已安装的 Agent，并以适合各 Agent 的格式添加该 skill。
 
-## 技能涵盖的内容
+## Skill 涵盖的内容
 
 | 领域 | 包含内容 |
 |------|----------------|
-| 策略 | 内置策略名称、事件类型、参数、启用/禁用 |
-| 自定义策略 | `customPolicies.add()`、匹配过滤器、`allow`/`deny`/`instruct` API |
-| 上下文对象 | `ctx.eventType`、`ctx.toolName`、`ctx.toolInput`、`ctx.session` |
-| 配置 | `policies-config.json` 结构、作用域合并、`policyParams` |
+| Policies | 内置策略名称、事件类型、参数、启用/禁用 |
+| Custom policies | `customPolicies.add()`、匹配过滤器、`allow`/`deny`/`instruct` API |
+| Context object | `ctx.eventType`、`ctx.toolName`、`ctx.toolInput`、`ctx.session` |
+| Configuration | `policies-config.json` 结构、作用域合并、`policyParams` |
 | CLI | `failproofai policies --install`、`--uninstall`、`--custom`、作用域 |
-| 控制台 | 会话查看器、策略活动、环境变量 |
-| 架构 | Hook 处理程序流程、退出码、stdin/stdout 协议 |
+| Dashboard | 会话查看器、策略活动、环境变量 |
+| Architecture | Hook 处理流程、退出码、stdin/stdout 协议 |
 
-## 技能内容完整吗？
+## Skill 是否完整？
 
-Mintlify 会从导航中的所有页面生成 `llms.txt`。Failproof AI 文档覆盖了完整的 API——每条策略、每个选项和每个示例都包含在内。如果你发现有遗漏，原始内容请访问 `https://docs.befailproof.ai/llms-full.txt`。
+Mintlify 会从导航中的所有页面生成 `llms.txt`。Failproof AI 文档覆盖了完整的 API——每个策略、选项和示例都包含在内。如果你发现有遗漏，源文件位于 `https://docs.befailproof.ai/llms-full.txt`。
 
-如需针对性的上下文，可直接链接到特定页面：
+如需定向获取特定内容，可直接链接到具体页面：
 
 ```bash
-# 仅获取自定义策略 API
+# 仅获取 custom policies API
 npx skills add https://docs.befailproof.ai/custom-policies
 
 # 仅获取内置策略

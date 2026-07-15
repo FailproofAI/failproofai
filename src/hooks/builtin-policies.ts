@@ -1088,7 +1088,19 @@ function warnBackgroundProcess(ctx: PolicyContext): PolicyResult {
 
 // -- Workflow (Stop event) policies --
 
+/**
+ * Claude Code plan mode (permission_mode: "plan") is research-and-plan-only — the
+ * agent makes no commits, pushes, or PRs by design. The Stop-workflow gates below
+ * all assume the agent produced code changes, so in plan mode they demand actions
+ * plan mode forbids (e.g. a push with nothing to push). Skip them there. Only Claude
+ * reports "plan" today; every other CLI resolves to "default".
+ */
+function isPlanMode(ctx: PolicyContext): boolean {
+  return ctx.session?.permissionMode === "plan";
+}
+
 function requireCommitBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping commit check.");
   const cwd = ctx.session?.cwd;
   if (!cwd) return allow("No working directory available, skipping commit check.");
 
@@ -1111,6 +1123,7 @@ function requireCommitBeforeStop(ctx: PolicyContext): PolicyResult {
 }
 
 function requirePushBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping push check.");
   const cwd = ctx.session?.cwd;
   if (!cwd) return allow("No working directory available, skipping push check.");
 
@@ -1205,6 +1218,7 @@ function requirePushBeforeStop(ctx: PolicyContext): PolicyResult {
 }
 
 function requirePrBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping PR check.");
   const cwd = ctx.session?.cwd;
   if (!cwd) return allow("No working directory available, skipping PR check.");
 
@@ -1298,6 +1312,7 @@ function requirePrBeforeStop(ctx: PolicyContext): PolicyResult {
 }
 
 function requireNoConflictsBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping conflict check.");
   const cwd = ctx.session?.cwd;
   if (!cwd) return allow("No working directory available, skipping conflict check.");
 
@@ -1396,6 +1411,7 @@ function requireNoConflictsBeforeStop(ctx: PolicyContext): PolicyResult {
 }
 
 function requireCiGreenBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping CI check.");
   const cwd = ctx.session?.cwd;
   if (!cwd) return allow("No working directory available, skipping CI check.");
 

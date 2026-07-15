@@ -1,0 +1,693 @@
+---
+title: "Troubleshooting"
+description: "AgentEye Troubleshooting documentation."
+---
+
+
+This guide maps the symptoms you are most likely to hit in production to a concrete diagnosis and fix, so you can resolve incidents from the tools you already have, without standing up extra observability infrastructure. It covers the server, collector, dashboard, AI assistant, Python SDK, health and certificate monitoring, backups, ClickHouse-backed analytics, and multi-tenancy.
+
+Dashboard pages are org-scoped under `/<org-slug>/…`, and the events stream is the org home (`/<org-slug>/`). Page names in this guide (for example `/sessions`, `/queries`) refer to those org-scoped routes.
+
+---
+
+## Viewing Logs
+
+AgentEye does not bundle a logging or monitoring stack. Both the server and dashboard write structured logs to **stdout**, so you can read them directly with `kubectl` or `docker`; no aggregator required.
+
+### Kubernetes
+
+Follow live logs for the server and dashboard:
+
+```bash
+kubectl logs -n agenteye -l app=server    -f --timestamps
+kubectl logs -n agenteye -l app=dashboard -f --timestamps
+```
+
+Useful variants:
+
+| Goal | Command |
+|---|---|
+| Last 200 lines (no follow) | `kubectl logs -n agenteye -l app=server --tail=200 --timestamps` |
+| Logs from the previous crash | `kubectl logs -n agenteye <pod-name> --previous` |
+| Tail all replicas at once | `kubectl logs -n agenteye -l app=server --max-log-requests=10 -f` |
+| Postgres (StatefulSet) | `kubectl logs -n agenteye postgres-0 -f` |
+
+### Docker Compose
+
+```bash
+docker logs -f agenteye-server
+docker logs -f agenteye-dashboard
+```
+
+### Correlating a single request across dashboard and server
+
+Every dashboard request is tagged with a `request_id` and propagated to the server via the `x-request-id` header. The server echoes it in its response headers and in every log line it emits for that request. To trace one request end-to-end:
+
+1. Capture the id from the response header, e.g.:
+   ```bash
+   curl -i https://dashboard.example.com/api/events | grep -i x-request-id
+   # x-request-id: 9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   ```
+2. Grep both pods' logs for that id:
+   ```bash
+   REQ=9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   kubectl logs -n agenteye -l app=dashboard --tail=5000 | grep "$REQ"
+   kubectl logs -n agenteye -l app=server    --tail=5000 | grep "$REQ"
+   ```
+
+You will see the dashboard's `proxy passthrough`, `withAuth: authorized`, and `upstream response` lines alongside the server's `http request received` / `http request completed` pair, all sharing the same `request_id`.
+
+### JSON logs and `jq`
+
+Set `AE_LOG_JSON=1` on the dashboard (it is on by default when `NODE_ENV=production`) to emit one JSON object per line. Then filter structurally:
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.level == "warn" or .level == "error")'
+
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.route == "POST /api/keys")'
+```
+
+The Rust server emits tracing `key=value` pairs that grep well without `jq`:
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'status=5'   # 5xx
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'actor_key_id='
+```
+
+### Turning up verbosity
+
+| Component | Env var | Example |
+|---|---|---|
+| Server | `RUST_LOG` | `RUST_LOG=debug` or `RUST_LOG=agenteye_server=debug,info` |
+| Dashboard | `AE_LOG_LEVEL` | `AE_LOG_LEVEL=debug` |
+
+`debug` on the server adds a per-auth `api key authenticated` line. `debug` on the dashboard adds `upstream request`, `session validated`, and `proxy passthrough` lines.
+
+### Log retention
+
+Container stdout is ephemeral; kubelet rotates log files (default ~10 MiB per container) and keeps a small number on disk. Once a pod is deleted the logs are gone. If you need longer retention or cross-pod search, point your cluster at a log collector (Loki, CloudWatch, Cloud Logging, Datadog, etc.) that tails `/var/log/containers/`. AgentEye does not require or prescribe any specific choice.
+
+---
+
+## Authentication Issues
+
+### `docker pull` fails with "unauthorized"
+
+Ensure you have authenticated Docker against GHCR with your `AGENTEYE_TOKEN`:
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+The token must have `read:packages` permission on the `agenteye-enterprise` org. Contact `support@exosphere.host` if your token does not work.
+
+### `gh release download` returns 404 or 401
+
+- Confirm `AGENTEYE_TOKEN` is exported in your shell: `echo $AGENTEYE_TOKEN`
+- Confirm you are using `GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download ...` (the `gh` CLI reads `GITHUB_TOKEN`)
+- The token needs `contents:read` on `agenteye-enterprise/releases`
+
+---
+
+## Server Issues
+
+### Server fails with "invalid port number"
+
+The `POSTGRES_PASSWORD` (or another credential) contains URL-special characters (`/`, `+`, `=`) that break `DATABASE_URL` parsing. Regenerate the password using hex encoding:
+
+```bash
+NEW_PASS=$(openssl rand -hex 24)
+```
+
+Then update the Kubernetes secret and the password inside Postgres (or recreate the `.env` for Docker Compose), and restart the server. See the full steps in [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment) § "PostgreSQL credentials".
+
+### Server exits immediately on startup
+
+Check the container logs:
+
+```bash
+docker logs agenteye-server
+```
+
+Common causes:
+- `DATABASE_URL` not set or malformed: the server will log the error and exit.
+- Postgres is not reachable: confirm the Postgres container or managed DB is running and the host/port are correct.
+- Migrations failed: check logs for SQL errors.
+
+### `GET /health` returns non-200 or times out
+
+The server may still be running migrations on first start. Wait a few seconds and retry:
+
+```bash
+curl http://localhost:8080/health
+```
+
+If the issue persists, check `docker logs agenteye-server` for errors.
+
+### `GET /ready` returns 503
+
+`/ready` is the readiness probe: it returns `503` when the server cannot reach **Postgres or ClickHouse**. The body names the failing dependency:
+
+```bash
+curl -s http://localhost:8080/ready
+# {"status":"not_ready","checks":{"postgres":"ok","clickhouse":"down","redis":"ok"}}
+```
+
+Fix whichever dependency it reports as `down`: is the ClickHouse/Postgres pod `Running`? Is `CLICKHOUSE_URL` / `DATABASE_URL` correct and reachable? On Kubernetes the pod reads `NotReady` until `/ready` recovers; that is expected and is exactly the signal health monitoring alerts on. Redis is never a cause: it is reported but does not fail readiness.
+
+### Collector returns 401 Unauthorized
+
+The collector's API key does not have `events:add` permission, or the key has been disabled. Create a new key with the correct permission:
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-collector","permissions":["events:add"]}'
+```
+
+### Authed requests suddenly got slow (~200ms instead of ~5ms)
+
+This is the symptom of Redis being down while `REDIS_URL` is set. Every cache call times out after 100ms then falls through to Postgres; on auth and OTP paths the request makes two such fall-throughs.
+
+Confirm in the server logs:
+
+```
+auth cache: L2 get failed error=redis call timed out
+```
+
+Resolution:
+
+1. `redis-cli -h <your-redis> ping` to confirm Redis is reachable on the cluster network.
+2. If Redis was briefly down and is now back, **restart the server pods**. The `redis::aio::ConnectionManager` does not reliably re-establish after the underlying connection drops; a pod restart picks up the new connection cleanly. The same applies to the dashboard.
+3. If you don't want to run Redis right now, unset `REDIS_URL` in the deployment and restart. Both services run without the cache (correctness is preserved; latency reverts to pre-Redis baseline).
+
+### Server reports `OTP request rate-limited` in logs but the user says they only tried once
+
+Check whether Redis was unreachable. The fallback path uses `SELECT COUNT(*) FROM otp_codes WHERE created_at > now() - interval '15 minutes'`, which sees previously-generated OTP rows. If the user has been click-spamming "Resend" for an hour, the 15-minute window may still contain ≥5 codes. Resolve by either waiting for the window to roll over or `DELETE FROM otp_codes WHERE user_id = $1 AND created_at > now() - interval '15 minutes'` (operator console).
+
+### I changed `ALLOWED_EMAILS` / `SESSION_TTL_SECS` / `OTP_TTL_SECS` and restarted; nothing happened
+
+These env vars are **first-boot seeds only**. Once the `settings` table has a row for the matching key, that row is the source of truth; the env var is read once at first boot and then ignored on every subsequent restart.
+
+To change them after first boot, log into the dashboard and edit them under `/settings`. The change applies within seconds across all replicas; no restart required.
+
+If you need to force a re-seed from env (rare, typically only useful in development), `DELETE FROM settings WHERE key = '<key>'` and restart the server. The bootstrap will pick up the current env-var value on the next boot. Editing via `/settings` is the supported path in production.
+
+---
+
+## Collector Issues
+
+### Collector starts but events are not appearing in the dashboard
+
+1. Confirm the collector is running: `systemctl status agenteye-collector` (Linux) or check the process.
+2. Confirm `AGENTEYE_URL` points to `http(s)://your-server-host:8080/events` (note: `/events` path).
+3. Run a one-shot flush to see immediate output:
+   ```bash
+   agenteye-collector flush
+   ```
+4. Check that the Python SDK is actually writing files: `ls ${AGENTEYE_HOME:-~/.agenteye}/events/`
+5. If files exist in `${AGENTEYE_HOME:-~/.agenteye}/failed/`, the uploads are failing. Check the collector logs for the error, likely a 4xx (bad key or URL) or network issue.
+
+### Files are accumulating in `$AGENTEYE_HOME/events/` and not being uploaded
+
+- The collector may not be running. Start it: `agenteye-collector start`; it automatically flushes pre-existing events on startup.
+- Check collector health: `agenteye-collector health`
+- The collector may be running but unable to reach the server. Check firewall rules between collector and server hosts.
+
+### Files in `$AGENTEYE_HOME/failed/`
+
+Files move to `failed/` after all retry attempts are exhausted (default: 5 attempts with exponential backoff). This means either:
+- The server returned a 4xx error (bad key, wrong URL, or payload issue)
+- The server was unreachable for the entire retry window
+
+Fix the underlying issue, then manually re-queue:
+
+```bash
+mv ${AGENTEYE_HOME:-~/.agenteye}/failed/*.jsonl ${AGENTEYE_HOME:-~/.agenteye}/events/
+agenteye-collector flush
+```
+
+### Collector reports `network error` on every upload (TLS handshake fails)
+
+If `curl -k` against `AGENTEYE_URL` succeeds but the collector binary fails every upload with `error sending request for url (...)`, the AgentEye server is presenting a TLS certificate that isn't signed by a publicly-trusted CA.
+
+The **production path** is the ACME ingest hostname configured in `deploy/base/certificates/domain.env` (see [`kubernetes-deployment.md`](/agenteye/kubernetes-deployment) Phase 3.1 / 4.2). Once `INGEST_DOMAIN` resolves to the public Traefik LB and cert-manager has issued the Let's Encrypt cert, collectors verify the server cert against the system trust store with **no `AGENTEYE_TLS_CA` needed**; clear it from your collector config if it was set against an older self-signed deployment.
+
+**Symptom: collector worked yesterday, fails today after a ~90-day gap.** This means the deployment is still on the legacy `selfsigned` issuer for `ingest-tls`. The 90-day cert rotated and the pinned CA file is stale. Fix permanently by switching the cluster to the ACME issuer (Phase 3.1 of the deployment guide). Short-term unblock: re-extract the current server cert and update `AGENTEYE_TLS_CA`:
+
+```bash
+kubectl get secret ingest-tls-cert -n agenteye \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /etc/agenteye/server-ca.crt
+```
+
+```bash
+export AGENTEYE_TLS_CA=/etc/agenteye/server-ca.crt
+agenteye-collector flush
+```
+
+`AGENTEYE_TLS_CA` adds an additional trust anchor; the standard public roots are still trusted.
+
+### `ingest-tls` Certificate is stuck `Ready: False` after deploy
+
+```bash
+kubectl describe certificate ingest-tls -n agenteye
+```
+
+Look at the `Events` and the referenced `Order` / `Challenge`. Common causes:
+
+- **DNS not resolving to the public LB.** The HTTP-01 validator can't reach `INGEST_DOMAIN`. Verify with `dig +short INGEST_DOMAIN`; it should resolve to the same address as the `traefik-public` LoadBalancer's `EXTERNAL-IP`. cert-manager retries automatically once DNS propagates; no need to delete the Certificate.
+- **Port 80 blocked at the load balancer / security group.** HTTP-01 requires port 80 to be reachable from Let's Encrypt's public validators. If you have an upstream WAF or SG restricting `:80`, open it (the Traefik config redirects to HTTPS, but Boulder follows the redirect and accepts the response).
+- **`dnsNames` not substituted.** If `kubectl get certificate ingest-tls -n agenteye -o jsonpath='{.spec.dnsNames}'` shows `INGEST_DOMAIN_PLACEHOLDER`, you skipped the `domain.env` step; create it from `domain.env.example` and re-apply.
+- **Rate limited by Let's Encrypt.** Repeated failed orders for the same hostname trip the duplicate-certificate or failed-validation limits. Wait at least an hour before retrying; check the Order status for the exact rate-limit message.
+
+### `dashboard-tls` Certificate is stuck `Ready: False` / browser still shows a warning
+
+Same diagnosis flow as `ingest-tls` above (`kubectl describe certificate dashboard-tls -n agenteye`); the DNS, port-80, placeholder, and rate-limit causes all apply, plus two dashboard-specific ones:
+
+- **`DASHBOARD_DOMAIN` resolves to the wrong LoadBalancer.** It must point at the *dashboard* Traefik LB, not the public ingest one. `dig +short` the hostname and compare against the dashboard LB address.
+- **The dashboard Traefik instance can't serve the challenge.** It must be installed with the bundled dashboard values file, which enables a scoped Ingress provider for cert-manager's HTTP-01 solver. Without it the solver is unroutable and the Order stays `pending` forever. Upgrade the instance with the provided values; the pending challenge then completes on its own.
+- **The LoadBalancer was IP-restricted.** Source ranges apply to port 80 too, which blocks Let's Encrypt's validators — both first issuance and every ~75-day renewal. Re-open the LB, or coordinate a DNS-01 solver with support before locking it down.
+
+While issuance is failing, the dashboard keeps serving its previous certificate (or the ingress default on a fresh install) — access is degraded by a browser warning, never down.
+
+### CLI still skips TLS verification after the dashboard got a trusted certificate
+
+`--insecure` is persisted to `cli.json` at login. Once the dashboard serves a publicly-trusted certificate, log in again with `agenteye --base-url https://<your-dashboard-domain> --secure login`; verification is saved back on and the startup warning disappears.
+
+---
+
+## Dashboard Issues
+
+### Can't disable or edit the `ADMIN_EMAIL` user
+
+By design. The user matching `ADMIN_EMAIL` is marked protected on every server startup: the dashboard hides the Disable button for that row, and the API rejects `DELETE /users/:id` and `PUT /users/:id` against it with `403 Forbidden`. A database trigger also rejects direct `UPDATE` statements that would disable the protected row.
+
+To rotate the bootstrap admin, change `ADMIN_EMAIL` in your environment and restart the server. The new email is upserted as protected. The previous admin retains the protected flag until cleared in the database (typically fine, since the previous email is still a valid admin until you explicitly remove them).
+
+### Dashboard shows no events
+
+1. Confirm the server URL and API key are correct in the dashboard's environment variables (`AGENTEYE_SERVER_URL`, `AGENTEYE_API_KEY`).
+2. The dashboard API key needs `events:read` permission.
+3. Confirm events have actually been ingested: `curl http://your-server:8080/events -H "Authorization: Bearer $ADMIN_KEY"`
+
+### `/errors` is empty but `/events` shows red rows
+
+Newer SDK versions emit failures as `agent_end` / `tool_result` / `hook_completed` events with `outcome: "error"` in the payload, rather than as a dedicated `event_type: "error"` row. The `/errors` page now matches both: any row the `/events` stream paints red (explicit `event_type='error'`, payload `outcome`/`status` in the failure set, `is_error: true`, or a truthy `error` field) appears on `/errors`. If you previously saw "no errors in this window" while red rows were visible on `/events`, upgrade the dashboard + server together (the broadened filter is `errored=true` on `GET /events`) and the two views will agree.
+
+### `/models`, `/tools`, or `/hooks` is slow or fails to load on wide time ranges
+
+**Symptom:** on a large events table (millions of rows), opening `/models`, `/tools`, or `/hooks` — or widening the time range to `7d`, `30d`, or `all` — the charts spin and then show a load error. The server logs a ClickHouse `MEMORY_LIMIT_EXCEEDED` (Code 241) or a query timeout for the `latency_aggregate` request.
+
+**Cause:** older builds computed these pages' latency and distribution rollups with a query that read the full raw event `payload` and paired request/response events with an in-memory sort-and-join. Peak query memory therefore grew with the size of the window, so on a busy tenant a wide range could exceed ClickHouse's per-query memory ceiling.
+
+**Fix:** upgrade to a build that includes this fix. The rollup now reads only the compact promoted columns and pairs events with a streaming aggregation, so peak memory no longer scales with the raw payload — wide windows stay well within the memory ceiling and return in a fraction of the time. The improvement is entirely query-side: it applies to all existing data on the next page load, with no re-ingest or backfill.
+
+### Dashboard fails to load / blank page
+
+Check the dashboard container logs:
+
+```bash
+docker logs agenteye-dashboard
+```
+
+The most common cause is `AGENTEYE_SERVER_URL` or `AGENTEYE_API_KEY` being missing or pointing to an unreachable server.
+
+### Dashboard analytics / telemetry
+
+The dashboard sends anonymous product-usage analytics to PostHog by default, routed through the dashboard's own `/ingest` path (a reverse proxy to `https://us.i.posthog.com`). Sending them first-party means browser ad-blockers don't drop them. This is independent of the dashboard's core functionality:
+
+- The **dashboard container** (not the browser) is what reaches PostHog. If its outbound access to `https://us.i.posthog.com` is blocked, telemetry silently no-ops; the dashboard works normally and no errors are surfaced to users.
+- No agent, session, or event data is ever included, only dashboard UI usage.
+- To disable telemetry entirely, set `AE_ANALYTICS_DISABLED=1` on the dashboard container and restart. See [Telemetry & privacy](/agenteye/deployment#telemetry--privacy) in the deployment guide.
+
+### CLI analytics / telemetry
+
+The `agenteye` CLI sends anonymous usage analytics to PostHog by default: which commands run, success/exit status, and duration. This is independent of the CLI's functionality:
+
+- The **machine running the CLI** reaches `https://us.i.posthog.com` directly. If its outbound access is blocked, telemetry silently no-ops (sending is time-bounded, so it never delays a command) and the CLI works normally.
+- No agent, session, or event data is ever included: command **arguments and flag values** (dashboard URL, token, email, session ids, query filters) are never sent.
+- To disable it, set `AGENTEYE_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`) in the CLI's environment. See [Telemetry & privacy](/agenteye/cli#telemetry--privacy) in the CLI guide.
+
+---
+
+## AI Assistant Issues
+
+See [enterprise-docs/assistant.md](/agenteye/assistant) for full setup.
+
+### The assistant bubble doesn't appear
+
+The bubble is hidden unless **all** of these hold:
+
+- The signed-in user has the `agent:use` permission.
+- `AGENTEYE_AGENT_URL` is set on the dashboard and the `agent` service is reachable.
+- An LLM endpoint is configured on the `agent` service (`ANTHROPIC_API_KEY`, a gateway via `ANTHROPIC_BASE_URL`, or Bedrock/Vertex). With none set, the agent reports "not configured" and the bubble stays hidden.
+
+Check the agent's health from the dashboard host: `curl http://agent:9100/health` should return `{"status":"ok","llm_configured":true,...}`.
+
+### The assistant says it can't read something
+
+Tools are gated per user. If a user lacks `evaluations:read` (or `events:read`, `dashboards:read`), the matching tools aren't offered and the assistant will say it can't read that data. Grant the relevant read permission.
+
+### "assistant not configured" (HTTP 503) when sending
+
+The `agent` container has no LLM endpoint configured, or the dashboard's `AGENTEYE_AGENT_TOKEN` doesn't match the agent's. Set both and restart.
+
+### The `agent` container restarts / OOMs under load
+
+Each conversation spawns a short-lived child process. Ensure the container runs with an init process (the image uses `tini`; in Compose set `init: true`) and give it adequate memory limits. Reduce `AGENTEYE_AGENT_MAX_STEPS` if needed.
+
+---
+
+## CLI Issues
+
+### `agenteye` fails to start with `ModuleNotFoundError: No module named 'click'`
+
+A fresh install of the `agenteye` CLI at version **0.1.6** can crash on startup with:
+
+```
+ModuleNotFoundError: No module named 'click'
+```
+
+0.1.6 relied on `click` being installed indirectly by `typer`; current `typer` releases no longer
+pull it in, so a clean environment ends up missing the package. **Upgrade to 0.1.7 or newer**,
+which depends on `click` directly:
+
+```bash
+pipx upgrade agenteye      # if installed with pipx (or: pipx install --force agenteye)
+uv tool upgrade agenteye   # if installed with uv
+pip install --upgrade agenteye
+```
+
+See [enterprise-docs/cli.md](/agenteye/cli) for installation guidance.
+
+---
+
+## Python SDK Issues
+
+### No files appearing in `$AGENTEYE_HOME/events/`
+
+The SDK buffers events and flushes every 500 ms by default. If your process exits before the flush, events may be lost. Call `agenteye.configure(flush_interval=0.1)` for faster flushing in short-lived scripts, or ensure your process runs long enough for a flush cycle.
+
+If `AGENTEYE_HOME` is set, verify the SDK is writing to `$AGENTEYE_HOME/events/` and not `~/.agenteye/events/` (requires SDK ≥ 0.0.1b5).
+
+### `ValueError: Reserved field names cannot be used as custom fields`
+
+The names `timestamp`, `type`, and `environment` are reserved and cannot be used as custom fields. Passing any of them raises:
+
+```
+ValueError: Reserved field names cannot be used as custom fields: [...]
+```
+
+Rename the offending custom field. Note that `session_id` and `agent_id` are explicit parameters of the event call, not custom fields; passing either again as a custom field raises `TypeError`.
+
+---
+
+## Health Monitoring Issues
+
+### No alerts arriving in Slack (Robusta)
+
+Robusta health alerting is **opt-in**; it sends nothing until installed and pointed at a Slack channel. Verify the release and its sink:
+
+```bash
+kubectl get pods -n robusta          # robusta-runner + robusta-forwarder should be Running
+kubectl logs -n robusta -l app=robusta-runner --tail=50
+```
+
+Common causes: the Slack `api_key` / `slack_channel` were not set (or the token was revoked); the `api_key` is a Robusta cloud-relay token (`robusta integrations slack`) but the bundled `disableCloudRouting: true` needs a self-hosted Slack **bot token** (`xoxb-…`), or set `disableCloudRouting: false`; the sink `scope` excludes the namespace your pods run in (the bundled values scope to `agenteye`); or no failure has occurred yet. Force a test alert by taking a pod down:
+
+```bash
+kubectl -n agenteye delete pod -l app=clickhouse   # it will be recreated
+```
+
+See [enterprise-docs/health-monitoring.md](/agenteye/health-monitoring#2-pod-failure-alerting-with-robusta-opt-in) for install and configuration.
+
+### Server keeps flapping `NotReady`
+
+The readiness probe hits `/ready`, which fails when Postgres or ClickHouse is unreachable. If the server cycles in and out of `NotReady`, a dependency is intermittently unavailable; check the ClickHouse and Postgres pods and the server's `CLICKHOUSE_URL` / `DATABASE_URL`. Confirm what `/ready` reports:
+
+```bash
+kubectl -n agenteye exec deploy/server -- sh -c 'curl -s localhost:8080/ready'
+```
+
+This probe is deliberately tolerant (a generous failure threshold), so sustained flapping indicates a real dependency problem rather than an over-aggressive probe. Liveness stays on `/health`, so flapping readiness will **not** restart the pod.
+
+## Certificate Monitoring Issues
+
+### CronJob is not sending Slack notifications
+
+The `cert-renewal-check` CronJob requires a Slack webhook URL stored in a Secret. Verify it exists:
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+If missing, create it:
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+Without the secret, the CronJob still runs and logs results to stdout. Check logs with:
+
+```bash
+kubectl logs -n agenteye -l job-name --tail=50
+```
+
+### Client certificate expired before a notification was received
+
+The CronJob runs every 12 hours. If it has not been running, check its status:
+
+```bash
+kubectl get cronjob cert-renewal-check -n agenteye
+```
+
+Trigger a manual check:
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check manual-cert-check -n agenteye
+kubectl logs -n agenteye -l job-name=manual-cert-check
+```
+
+To re-issue the expired certificate immediately:
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+Then apply the regenerated `collector-mtls-secret.yaml` in the cluster(s) running your collectors and restart them:
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+---
+
+## Backup Issues
+
+### `agenteye-backup` fails with "No space left on device"
+
+The `agenteye-backup` CronJob dumps Postgres + ClickHouse into a `backup-tmp` `emptyDir` scratch volume (default `30Gi`), then **streams** the `tar` archive straight to S3 — the compressed archive is never written back to scratch, so scratch only has to hold the *raw dumps*, not dumps + a second on-disk archive copy. A pod evicted / `No space left on device` therefore means the **raw dumps** exceed the scratch size (the ClickHouse `events` dump dominates and grows over time). Check the failed job's logs:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job>
+```
+
+Fix: in your overlay, raise the CronJob's `backup-tmp` `emptyDir` `sizeLimit` above your raw dump total, and make sure the node's ephemeral storage can actually hold it (`sizeLimit` is a cap, not a reservation). If the dumps outgrow a single node's disk, replace the `emptyDir` with a PVC (EBS/PD) for `backup-tmp`, or compress the dumps at the source.
+
+> Older releases wrote the `.tar.gz` into the *same* `20Gi` scratch as the dumps, so `dumps + archive` overflowed it and the pod was evicted **before** the upload ran — which looks like an S3 failure but is really disk. Streaming the upload removes that doubling.
+
+### `agenteye-backup` fails installing `curl`
+
+The job runs on the `postgres:16` image and installs `curl` at startup for the ClickHouse HTTP dump. On a cluster with no egress to the Debian package mirrors, the `apt-get` step fails. Either allow that egress from the backup pod, or bake `curl` into a mirrored/custom backup image and reference it in your overlay.
+
+### `agenteye-backup` runs but nothing lands in object storage
+
+The base ships a real `BACKUP_BUCKET` (`ts-prod-agenteye/backups`) and the `agenteye-backup` ServiceAccount. The job **streams** the archive to S3 (`tar cz … | aws s3 cp - s3://…`). If the backup pod has no write access to the bucket, the upload errors — and because the script runs under `set -euo pipefail`, a failure anywhere in that pipe **fails** the whole job at the `upload` step rather than silently no-op'ing (the pod's EXIT trap logs `backup FAILED during step: upload`). This is also the step you reach *after* fixing a scratch-space eviction, so if backups were previously evicted at the archive step, verify the upload now lands. Grep the failed job's logs for the S3 access error:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job> | grep -iE 's3|upload|denied'
+```
+
+Fix: in your overlay set `BACKUP_BUCKET` to a bucket you own and annotate the existing `agenteye-backup` ServiceAccount with write access (IRSA / Workload Identity / Pod Identity). See the **Backups** section of [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment).
+
+---
+
+## ClickHouse-backed evaluations / sessions / queries
+
+### The `/queries` page sidebar is empty after upgrading
+
+Three tables (`events`, `evaluations`, `agent_sessions`) are expected. If the SchemaBrowser sidebar is empty after upgrade, the server failed to apply the ClickHouse DDL at startup. Check the server logs for `failed to apply CH DDL statement`:
+
+```bash
+kubectl logs -n agenteye deploy/server | grep -E 'clickhouse|CH DDL'
+```
+
+The most common cause is ClickHouse being unreachable while migrations run. The server refuses to start if it can't reach CH, so a stuck pod usually has a `CrashLoopBackOff` rather than a silently broken queries page, but a partial DDL apply (one statement OK, the next 5xx) leaves the schema half-baked. Restart the server pod after CH is verified reachable:
+
+```bash
+kubectl rollout restart deploy/server -n agenteye
+```
+
+### New evaluations are not appearing in `/sessions` or `/queries`
+
+After the upgrade, new evaluations are written to ClickHouse, not Postgres, and surface under `/sessions` (gated on `evaluations:read`) and in `/queries`. If they don't appear:
+
+1. Confirm the evaluator pipeline is enabled (`EVALUATOR_ENDPOINT` set on the server) and producing terminal outcomes; check for `evaluation_finalized` log lines.
+2. Confirm CH is reachable from the server: `kubectl exec -n agenteye deploy/server -- curl -fsS http://clickhouse:8123/ping`.
+3. Spot-check the CH table: `kubectl exec -n agenteye clickhouse-0 -- clickhouse-client -q 'SELECT count() FROM agenteye.evaluations'`.
+
+### Queries fail under load with "Memory limit exceeded", or ClickHouse is `OOMKilled`
+
+**Symptom:** under heavy dashboard/query load, analytical pages (the events stream, `/sessions`, the models/latency view, the SQL editor) start failing or timing out; the server briefly flaps `NotReady`; and the ClickHouse pod shows a rising restart count. This is almost always **memory**, not CPU or disk.
+
+**Confirm it's memory** (not a throughput problem that replication would fix):
+
+1. Check the pod for out-of-memory kills:
+   ```bash
+   kubectl -n agenteye describe pod clickhouse-0 | grep -iE 'Restart Count|Last State|Reason|OOMKilled'
+   ```
+   `Reason: OOMKilled` / `Exit Code: 137` with a climbing restart count is the tell.
+
+2. Ask ClickHouse what it's rejecting:
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT name, value FROM system.errors WHERE value>0 ORDER BY value DESC"
+   ```
+   A large `MEMORY_LIMIT_EXCEEDED` count is the signature. The message reads *"maximum: N GiB"* — that **N is `0.9 × the pod's memory limit`** (the `max_server_memory_usage_to_ram_ratio` in `deploy/base/clickhouse/configmap.yaml`). If your heavy reads need more than N, they're rejected.
+
+3. Rule out the things that *aren't* the problem — if CPU, part count, and disk are all low, adding replicas/sharding would be wasted cost:
+   ```bash
+   kubectl -n agenteye top pod clickhouse-0
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT table, count() parts FROM system.parts WHERE active AND database='agenteye' GROUP BY table"
+   ```
+
+**Cause:** the ClickHouse pod's memory limit is too small for the analytical working set. The heaviest reads pull the raw JSON `payload` column, run `JSONExtract*` over it, and use `FINAL` — each can need several GiB. If the configured caches (`mark_cache_size` + `uncompressed_cache_size`) are larger than the pod, they compound it: caches are charged against the same budget and crowd out query memory.
+
+**Fix — scale ClickHouse's memory:**
+
+1. Raise the ClickHouse memory limit in your overlay by patching the `clickhouse` StatefulSet's container `resources` (the same overlay mechanism used for the other components' `resources`). The usable server budget is `0.9 × limit`, so a `6Gi` limit gives ~5.4 GiB, `16Gi` gives ~14 GiB. Set `requests.memory` to a real floor too, so the scheduler reserves it. Applying this **recreates the CH pod** (single replica → ~30–60s of analytics downtime); do it in a low-traffic window.
+2. Keep the caches in `deploy/base/clickhouse/configmap.yaml` proportionate to the limit — small caches (a few hundred MiB) are safe on a small pod; only raise them alongside a matching memory-limit increase. Per-query `max_memory_usage` is set explicitly in the `users.xml` profile (see the fixed-node section below) and is kept below the server-level cap (`0.9 × limit`) so no single query is *allowed* more RAM than the container has.
+3. If the node itself is the ceiling, check the host memory ClickHouse can see:
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT formatReadableSize(value) FROM system.asynchronous_metrics WHERE metric='OSMemoryTotal'"
+   ```
+   If that's only a little above the pod limit, move ClickHouse to a larger (memory-optimized) node — via a node selector/affinity in your overlay — before raising the limit further.
+
+**When you can't add memory: run queries in RAM and fail fast — don't spill on a slow disk.** If the node is fixed and the pod can't grow, cap what any single query may use (so one query can't take the whole node) and, on a **slow (non-SSD) data disk**, do **not** let large aggregations/sorts spill to disk. Spilling to a slow disk is slower than the server's client read timeout, so a spilling query returns a dashboard `500` mid-flight while ClickHouse keeps grinding — keeping queries in RAM and rejecting the rare over-budget one *fast* (`MEMORY_LIMIT_EXCEEDED`, sub-second) is what restores loading. Note a ClickHouse gotcha for applying these:
+
+- **These are *profile* settings, and ClickHouse reads `<profiles>` only from `users_config` (`users.xml` / `users.d/*.xml`) — never from `config.d`.** A `<profiles>` block placed in `config.d/agenteye.xml` is **silently ignored** (`max_execution_time`, `max_memory_usage`, etc. simply don't apply). The bundled config therefore ships them as a `users.xml` key on the `clickhouse-config` ConfigMap, mounted at `/etc/clickhouse-server/users.d/agenteye.xml`.
+- The shipped defaults: `max_memory_usage` (per-query ceiling — one query can't consume the whole server budget), `max_bytes_before_external_group_by` / `max_bytes_before_external_sort` = **`0` (spill disabled)** so queries stay in RAM instead of crawling on the slow disk, and `max_execution_time` (runaway guard, aligned with the server's client read timeout).
+- **Verify they're live** (this is also how you detect the config.d gotcha):
+  ```bash
+  kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+    "SELECT name, value FROM system.settings
+     WHERE name IN ('max_memory_usage','max_bytes_before_external_group_by','max_execution_time')"
+  ```
+  Expect a non-zero `max_memory_usage` and `max_bytes_before_external_group_by = 0`. If `max_memory_usage` reads `0`/default, the profile isn't being applied — check the settings live in a `users.d` mount, not `config.d`.
+
+Trade-off: with spill disabled, a query whose working set exceeds `max_memory_usage` is **rejected** (`MEMORY_LIMIT_EXCEEDED`) rather than completing slowly — on a slow disk that fast rejection is preferable, because a spilling query would exceed the client timeout and fail anyway. If your data disk is **fast (SSD)**, you can instead raise the `max_bytes_before_external_*` thresholds to let big queries spill to disk and complete.
+
+---
+
+## Multi-tenancy (organizations)
+
+### Errors during the upgrade that enables organizations (mixed old/new server pods)
+
+**Symptom:** during a rolling deploy of the org-enabling release, some requests fail: server logs show `there is no unique or exclusion constraint matching the ON CONFLICT specification` on the `api_keys` path, and/or alert/Slack/webhook channels stop firing while the rollout is in flight.
+
+**Cause:** the upgrade replaces the old instance-wide unique index on `api_keys(name)` with per-org partial indexes, and moves the alert-channel settings (and `default_user_permissions`) out of the global `settings` table into per-org `org_settings`. An **old** server pod still issues `ON CONFLICT (name)` (now no matching constraint) and still reads channel config from the old `settings` rows (now empty). Old and new pods cannot safely coexist for these two paths.
+
+**Fix:** do not slow-roll this particular upgrade across mixed versions. Cut over cleanly: scale the old server to zero (or use a brief maintenance window) and bring the new version up together with its migrations, rather than running old and new replicas side by side. Normal traffic and ingest resume immediately after cutover; this only affects the version-transition window.
+
+### Provisioning an organization fails on `CREATE USER` / `CREATE ROW POLICY`, or one org can read another org's data
+
+**Symptom:** creating an org returns an error mentioning `CREATE USER`, `CREATE ROW POLICY`, or "access management is disabled"; or, worse, members of one org see another org's events/evaluations in the SQL editor or assistant.
+
+**Cause:** per-org isolation is enforced by a dedicated ClickHouse user + row policy per org. That requires SQL **access management** to be enabled and `users_without_row_policies_can_read_rows=false` on ClickHouse. With access management off, provisioning can't create the user/policy; with the row-policy default left at its permissive value, a user that has SELECT but no policy reads **all** rows (fail-open).
+
+**Fix:** use the bundled `deploy/base/clickhouse/` config, which sets both. If you run your own ClickHouse config, enable SQL access management on the server-internal user and set `users_without_row_policies_can_read_rows=false` (see `deploy/base/clickhouse/configmap.yaml`), then restart ClickHouse and re-create the org with the `agenteye-orgctl` CLI (see [enterprise-docs/tenant-management.md](/agenteye/tenant-management)).
+
+### Org users lose ClickHouse access after changing `ORG_CH_SECRET`
+
+**Symptom:** the SQL editor and AI assistant suddenly return ClickHouse authentication failures for every organization, immediately after `ORG_CH_SECRET` was changed or set inconsistently across replicas.
+
+**Cause:** each org's ClickHouse password is derived as an HMAC of `ORG_CH_SECRET`. Rotating it (or running replicas with different values) invalidates every org's stored ClickHouse credential; the derived password no longer matches the provisioned user.
+
+**Fix:** set `ORG_CH_SECRET` to a single strong value **before** provisioning a second org and keep it stable and identical on every server replica. The server's boot-time reconcile re-provisions each org's ClickHouse user from the current secret on startup, so a server restart across all replicas (with the secret consistent) heals the orphaned users. Treat the value as a long-lived secret; don't rotate it casually. As a safety net, if `ORG_CH_SECRET` is left at the built-in dev default (i.e. unset), the boot-time reconcile **skips** non-default organizations and logs an error rather than rewriting their ClickHouse credentials to the publicly-known dev value, so a single replica that restarts without the secret can't break the other replicas. Set the secret consistently and restart to provision those orgs.
+
+### The AI assistant returns 400 / refuses to chat after enabling organizations
+
+**Symptom:** the assistant dock loads but every message comes back as an error (HTTP `400`), and the agent logs a rejected org-less `/chat` request.
+
+**Cause:** the agent is org-aware and fails closed; it rejects a `/chat` that carries no organization context. This happens during a transitional rollout where the agent has been upgraded but the dashboard sending the request is not yet org-aware.
+
+**Fix:** finish the rollout so the dashboard sends org context (the normal end state, no flag needed). To bridge the gap while a not-yet-org-aware dashboard talks to an org-aware agent, set `AGENTEYE_AGENT_ALLOW_NO_ORG=1` on the `agent` service so it falls back to the `default` org instead of refusing, and clear it once the dashboard upgrade lands. See the env reference in [enterprise-docs/assistant.md](/agenteye/assistant#environment-variable-reference).
+
+---
+
+## Audits
+
+### An audit never runs (next run keeps slipping, no run history)
+
+**Symptom:** the audit page shows *last run: never*, or `next run` keeps moving into the future without a row appearing in run history.
+
+**Cause:** the audit is disabled (disabled audits have no queue entry), or the server's audit workers are failing to claim work.
+
+**Fix:** confirm the audit is **enabled** (the run-now button requires it). Then check the server logs for `audits pipeline started` at boot and for `audits:` errors — a `claim_due failed` line points at Postgres connectivity. `AUDIT_WORKERS` defaults to `1`; it must be ≥ 1 for any audit to run.
+
+### Audit runs succeed but find nothing
+
+**Symptom:** run history shows `succeeded` with `findings: 0` even though `/errors` clearly shows failures.
+
+**Cause:** the scan window doesn't cover the failures, or the scope filters them out.
+
+**Fix:** check the run row's window (`window_from → window_to`) against when the failures happened — in `since_last` mode each run only scans since the previous successful run, so older failures are only seen by the *first* run or a `fixed`-window audit. Widen `scope` (environments / agent ids). The run stats show `policy_hits` (how many deterministic policies fired) and `improvements` (how many the AI investigation recorded) — if both are 0, the window/scope genuinely saw nothing.
+
+### The run says `analysis_unavailable` and produces only policy findings
+
+**Symptom:** run stats include `analysis_unavailable` and the only findings are `kind: policy`; no AI improvements appear.
+
+**Cause:** the agentic investigation couldn't run: the server can't reach the agent service (`AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` unset on the **server** — the audit reuses the assistant's connection), the assistant service has no LLM configured, or the call errored/timed out (the `analysis_unavailable` string has the detail). The deterministic policy pass is the floor — it always runs — so the audit still succeeds with its security findings.
+
+**Fix:** set `AGENTEYE_AGENT_URL` (e.g. `http://agent:9100`) and `AGENTEYE_AGENT_TOKEN` on the **server** — the same values the dashboard assistant already uses (the bundled manifests/compose now wire them) — and configure an LLM on the assistant service (see [assistant.md](/agenteye/assistant)), then re-run. A large investigation may need a bigger `AUDIT_LLM_TIMEOUT_MS` (server) — keep it above the agent's `AGENTEYE_AUDIT_TIMEOUT_MS`.
+
+### The audit code sandbox is disabled (`sandbox_available: false`)
+
+**Symptom:** the agent's `/health` shows `sandbox_available: false`, and audit runs note the sandbox is unavailable; the AI investigates with SQL only.
+
+**Cause:** the in-pod bubblewrap sandbox needs **unprivileged user namespaces**, which the pod's seccomp profile or the node kernel is blocking.
+
+**Fix:** set `seccompProfile: Unconfined` (k8s) or `security_opt: [seccomp:unconfined]` (compose) on the agent, and confirm the node kernel allows unprivileged user namespaces (some managed images, e.g. GKE COS, disable them). Where you can't enable it, this is expected and safe — the auditor degrades to SQL-only automatically. See [deployment.md](/agenteye/deployment).
+
+### Audit email report not delivered
+
+**Symptom:** an audit surfaced new findings but no email arrived.
+
+**Cause:** the audit has no **email** channel attached, email is disabled org-wide in `alerts.enabled_channels`, there are no recipients, or SMTP is unconfigured.
+
+**Fix:** attach an email channel to the audit, ensure `email` is in `alerts.enabled_channels`, set recipients (on the channel or via `alerts.email_default_recipients`), and configure SMTP (the same transport the alerts + OTP emails use). Email is sent only when a run produces **at least one new** finding.
+
+### A muted or dismissed pattern keeps its old finding page but never re-ranks
+
+**Symptom:** after muting a finding, later runs never surface that pattern again — even though it still occurs.
+
+**Cause:** that is the designed behaviour: mute/dismiss are durable suppressions keyed on the pattern's fingerprint.
+
+**Fix:** open the finding and use **reopen** to clear the suppression; the next run will rank the pattern again. Use **resolve** (not mute) for "fixed" patterns you'd want to hear about if they regress.
+
+---
+
+## Getting Help
+
+Contact `support@exosphere.host` with:
+- Your AgentEye version (from the release tag)
+- Relevant container logs (`docker logs <container>`)
+- A description of the issue and what you have already tried

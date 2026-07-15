@@ -1,13 +1,13 @@
 ---
-title: Başlangıç
-description: "failproofai'yi yükleyin, politikaları etkinleştirin ve ajanlarınızı güvenilir şekilde çalıştırın"
+title: Başlarken
+description: "failproofai'ı kurun, politikaları etkinleştirin ve ajanlarınızın güvenilir şekilde çalışmasını sağlayın"
 icon: rocket
 ---
 
 ## Gereksinimler
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0 (isteğe bağlı - yalnızca kaynaktan derleme için gerekli)
+- **Bun** >= 1.3.0 (isteğe bağlı - yalnızca kaynaktan derlemek için gerekli)
 
 ---
 
@@ -31,15 +31,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="Politikaları etkinleştirin">
-    Politikalar, her ajan araç çağrısından önce ve sonra çalışan kurallardır. Yıkıcı komutları, gizli bilgi sızıntılarını ve hasar vermeden önce diğer hata modlarını yakalarlar.
+    Politikalar, ajanın her araç çağrısından önce ve sonra çalışan kurallardır. Yıkıcı komutları, gizli bilgi sızıntılarını ve hasara neden olmadan diğer başarısızlık modlarını yakalar.
 
     ```bash
     failproofai policies --install
     ```
 
-    Bu, yüklü ajan CLI'lerinize kanca girdileri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'ın `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs` konumundaki oluşturulan eklenti shim'i ve `~/.config/opencode/opencode.json` dosyasının `plugin` dizisinde bir kayıt girdisi, Pi'nin `~/.pi/agent/settings.json` veya Gemini CLI'nin `~/.gemini/settings.json`). Birden fazlası mevcut olduğunda size sorulacaktır; istem atlamak için `--cli claude codex copilot cursor opencode pi gemini` (herhangi bir alt küme) parametresini geçin.
+    Bu, yüklü ajan CLI'lerinize hook girişleri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'ın `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs` konumundaki oluşturulmuş plugin shim'i ve `~/.config/opencode/opencode.json` dosyasındaki `plugin` dizisinde bir kayıt girişi, Pi'nin `~/.pi/agent/settings.json`, Gemini CLI'nin `~/.gemini/settings.json` veya Hermes'in `~/.hermes/config.yaml` dosyası). Birden fazla varsa size sorulacak; `--cli claude codex copilot cursor opencode pi gemini hermes` (herhangi bir alt küme) geçerek sorguyu atlayabilirsiniz.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ve Gemini CLI desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` veya `--cli gemini` ile yükleyin.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, Pi ve Gemini CLI desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode`, `--cli pi` veya `--cli gemini` ile kurun. Hermes (hermes-agent, bir Slack/Telegram ağ geçidi) `--cli hermes` ile kullanıcı kapsamında yüklenir ve **ayrıca** çevrimdışı bir denetim kaynağıdır.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +49,7 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli gemini --scope project
+    failproofai policies --install --cli hermes --scope user
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -57,47 +58,47 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Her politikayı, etkin olup olmadığını ve yapılandırılmış parametreleri gösterir.
+    Her politikayı, etkinleştirilip etkinleştirilmediğini ve yapılandırılmış parametreleri gösterir.
   </Step>
   <Step title="Panoyu başlatın">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020` konumunda oturumları tarayabileceğiniz, araç çağrılarını inceleyebileceğiniz ve politikaları yönetebileceğiniz yerel bir panoyu açar.
+    Oturumları göz atabilir, araç çağrılarını inceleyebilir ve politikaları yönetebileceğiniz `http://localhost:8020` konumundaki yerel bir panoyu açar.
   </Step>
   <Step title="Ajanınızı çalıştırın">
-    Claude Code'u her zamanki gibi başlatın. Ajan riskli bir şey denerse, failproofai otomatik olarak bunu engeller. Bunu arka planda çalışır bırakın ve panoda ne olduğunu gözden geçirin.
+    Claude Code'u her zamanki gibi başlatın. Ajan riskli bir şey denerse, failproofai bunu otomatik olarak durdurur. Bunu çalıştırılır durumda bırakın ve panoda ne olduğunu gözden geçirin.
   </Step>
 </Steps>
 
 ---
 
-## Politikalar nasıl çalışır?
+## Politikalar nasıl çalışır
 
-Bir ajan bir araç çalıştırdığında, Claude Code failproofai'yi bir alt işlem olarak çağırır:
+Ajan bir araç her çalıştırdığında, Claude Code failproofai'ı bir alt işlem olarak çağırır:
 
 ```text
-Claude Code  →  failproofai --hook PreToolUse  →  stdin JSON'u okur
+Claude Code  →  failproofai --hook PreToolUse  →  stdin JSON'ı okur
                                                  politikaları değerlendirir
                                                  kararı stdout'a yazar
 ```
 
 Her politika üç karardan birini döndürür:
 
-- **allow** - ajan normal şekilde ilerlenir
-- **deny** - işlem engellenir, ajana neden olduğu söylenir
-- **instruct** - ajanın istemesine ekstra bağlam eklenir
+- **allow** - ajan normal şekilde devam eder
+- **deny** - eylem engellenir, ajanına neden engelleneceği söylenir
+- **instruct** - ajanın isteminine ek bağlam eklenir
 
 <Note>
-Politikalar yerel işleminizde çalışır. Uzak bir hizmete hiçbir şey gönderilmez.
+Politikalar yerel işleminizde çalışır. Hiçbir şey uzak bir hizmete gönderilmez.
 </Note>
 
 ---
 
-## Kural tabanlı politikalarla takım politikaları kurun
+## Kural tabanlı politikalarla ekip politikaları ayarlayın
 
-Takım genelinde kalite standartları oluşturmanın en hızlı yolu `.failproofai/policies/` kuralıdır. Bu dizine politika dosyalarını bırakın ve otomatik olarak yüklenir — hiçbir bayrak, yapılandırma değişikliği veya kurulum komutu gerekmez.
+Ekibiniz genelinde kalite standartları oluşturmanın en hızlı yolu `.failproofai/policies/` kuralıdır. Bu dizine politika dosyalarını bırakın ve otomatik olarak yüklenir — bayrak yok, yapılandırma değişikliği yok, kurulum komutu yok.
 
 <Steps>
   <Step title="Politikalar dizinini oluşturun">
@@ -106,7 +107,7 @@ Takım genelinde kalite standartları oluşturmanın en hızlı yolu `.failproof
     ```
   </Step>
   <Step title="Politika dosyaları ekleyin">
-    Başlangıç örneklerini kopyalayın veya kendi örneklerinizi yazın:
+    Başlangıç örneklerini kopyalayın veya kendi dosyalarınızı yazın:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
@@ -124,7 +125,7 @@ Takım genelinde kalite standartları oluşturmanın en hızlı yolu `.failproof
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
-          return instruct("Commit yapmadan önce testleri çalıştırın.");
+          return instruct("Run tests before committing.");
         }
         return allow();
       },
@@ -134,15 +135,15 @@ Takım genelinde kalite standartları oluşturmanın en hızlı yolu `.failproof
   <Step title="Git'e işleyin">
     ```bash
     git add .failproofai/policies/
-    git commit -m "Takım kalite politikaları ekle"
+    git commit -m "Add team quality policies"
     ```
 
-    failproofai yüklü olan her takım üyesi bu politikaları otomatik olarak alır. Geliştirici başına kurulum gerekmez.
+    failproofai yüklü olan her ekip üyesi bu politikaları otomatik olarak alır. Geliştirici başına kurulum gerekmez.
   </Step>
 </Steps>
 
 <Tip>
-`.failproofai/policies/` dosyasını deponuza işleyin, böylece tüm takım aynı standartları paylaşır. Takımınız yeni hata modları keşfettikçe, politikalar ekleyin ve gönderin — herkes bir sonraki `git pull` konusunda güncelleme alır. Zaman içinde bu politikalar, gelişmeye devam eden yaşayan bir kalite standardı haline gelir.
+Tüm ekibin aynı standartları paylaşması için `.failproofai/policies/` dizinini deponuza işleyin. Ekibiniz yeni başarısızlık modları keşfettikçe politika ekleyin ve gönderin — herkes bir sonraki `git pull` işleminde güncellemeyi alır. Zamanla bu politikalar, sürekli iyileşen ve ekibi güvende tutan canlı bir kalite standardı haline gelir.
 </Tip>
 
 ---
@@ -151,13 +152,13 @@ Takım genelinde kalite standartları oluşturmanın en hızlı yolu `.failproof
 
 Tüm yapılandırma ve günlükler makinenizde kalır:
 
-| Yol | Depoladığı şey |
-|------|----------------|
+| Yol | Ne depolar |
+|------|------------|
 | `~/.failproofai/policies-config.json` | Genel politika yapılandırması |
-| `~/.failproofai/hook-activity.jsonl` | Kanca yürütme geçmişi |
-| `~/.failproofai/hook.log` | Özel kanca hatalarına ilişkin hata ayıklama günlüğü |
+| `~/.failproofai/hook-activity.jsonl` | Hook yürütme geçmişi |
+| `~/.failproofai/hook.log` | Özel hook hataları için hata ayıklama günlüğü |
 | `.failproofai/policies-config.json` | Proje başına yapılandırma (işlenmiş) |
-| `.failproofai/policies-config.local.json` | Kişisel geçersiz kılmalar (gitignored) |
+| `.failproofai/policies-config.local.json` | Kişisel geçersiz kılmalar (gitignore) |
 
 ---
 
@@ -167,7 +168,7 @@ Tüm yapılandırma ve günlükler makinenizde kalır:
 failproofai policies --uninstall
 ```
 
-`~/.claude/settings.json` dosyasından kanca girdilerini kaldırır. `~/.failproofai/` konumundaki yapılandırma dosyaları tutulur.
+`~/.claude/settings.json` dosyasından hook girişlerini kaldırır. `~/.failproofai/` içindeki yapılandırma dosyaları korunur.
 
 ---
 
@@ -180,15 +181,15 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="Yerleşik politikalar" icon="shield" href="/tr/built-in-policies">
-  Parametreleri olan 26 politikanın tümü
+  Parameterlerle 26 politikanın tümü
 </Card>
 
 <Card title="Özel politikalar" icon="code" href="/tr/custom-policies">
   JavaScript'te kendi politikalarınızı yazın
 </Card>
 
-<Card title="Ajan monitörü" icon="chart-line" href="/tr/dashboard">
-  Oturumları izleyin ve politika faaliyetini gözden geçirin
+<Card title="Ajan izleyici" icon="chart-line" href="/tr/dashboard">
+  Oturumları izleyin ve politika etkinliğini gözden geçirin
 </Card>
 
 </CardGroup>

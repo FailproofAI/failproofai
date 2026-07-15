@@ -1,13 +1,13 @@
 ---
 title: Désinstaller les politiques
-description: "Supprimer les entrées de hooks des paramètres de Claude Code"
+description: "Supprimer les entrées de hook des paramètres de Claude Code"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Supprime les entrées de hooks failproofai du `settings.json` de Claude Code.
+Supprime les entrées de hook failproofai du `settings.json` de Claude Code.
 
 Alias : `failproofai p -u`
 
@@ -18,24 +18,24 @@ Alias : `failproofai p -u`
 | `--scope user` | Supprimer des paramètres globaux (par défaut) |
 | `--scope project` | Supprimer des paramètres du projet |
 | `--scope local` | Supprimer des paramètres locaux |
-| `--scope all` | Supprimer de tous les niveaux en une seule fois |
+| `--scope all` | Supprimer de toutes les portées à la fois |
 | `--custom` / `-c` | Effacer le `customPoliciesPath` de la configuration |
 
 ## Comportement
 
-- **Aucun nom de politique** — supprime toutes les entrées de hooks failproofai du fichier de paramètres
-- **Noms spécifiques** — désactive ces politiques mais conserve les hooks installés
+- **Sans nom de politique** — supprime toutes les entrées de hook failproofai du fichier de paramètres
+- **Avec des noms spécifiques** — désactive ces politiques mais conserve les hooks installés
 
 ## Exemples
 
 ```bash
-# Supprimer tous les hooks de façon globale
+# Supprimer tous les hooks globalement
 failproofai policies --uninstall
 
 # Désactiver une politique spécifique (conserve les hooks installés)
 failproofai policies --uninstall block-sudo
 
-# Supprimer les hooks de tous les niveaux
+# Supprimer les hooks de toutes les portées
 failproofai policies --uninstall --scope all
 
 # Effacer le chemin des politiques personnalisées

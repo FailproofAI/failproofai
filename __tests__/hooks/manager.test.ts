@@ -65,7 +65,7 @@ describe("hooks/manager", () => {
   });
 
   describe("installHooks", () => {
-    it("installs hooks for all 28 event types into empty settings", async () => {
+    it("installs hooks for all 29 event types into empty settings", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");
 
@@ -77,14 +77,14 @@ describe("hooks/manager", () => {
       expect(path).toBe(USER_SETTINGS_PATH);
 
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(28);
+      expect(Object.keys(written.hooks)).toHaveLength(29);
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         expect(matchers).toHaveLength(1);
         const hook = (matchers as Array<{ hooks: Array<Record<string, unknown>> }>)[0].hooks[0];
         expect(hook.__failproofai_hook__).toBe(true);
         expect(hook.type).toBe("command");
-        expect(hook.timeout).toBe(60_000);
+        expect(hook.timeout).toBe(60);
         expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType}`);
       }
     });
@@ -231,7 +231,7 @@ describe("hooks/manager", () => {
       expect(writeFileSync).toHaveBeenCalledOnce();
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(28);
+      expect(Object.keys(written.hooks)).toHaveLength(29);
     });
 
     it("uses 'where' on Windows and handles multi-line output", async () => {

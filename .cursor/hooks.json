@@ -5,42 +5,42 @@
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook sessionStart --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ],
     "sessionEnd": [
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook sessionEnd --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ],
     "beforeSubmitPrompt": [
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook beforeSubmitPrompt --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ],
     "preToolUse": [
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook preToolUse --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ],
     "postToolUse": [
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook postToolUse --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ],
     "stop": [
       {
         "type": "command",
         "command": "bun bin/failproofai.mjs --hook stop --cli cursor",
-        "timeout": 60000
+        "timeout": 60
       }
     ]
   }

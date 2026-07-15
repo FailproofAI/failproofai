@@ -1,0 +1,195 @@
+---
+title: "AI 助手"
+description: "AgentEye AI 助手文档。"
+---
+
+仪表盘包含一个可选的 **AI 助手**——一个停靠在仪表盘右侧的聊天面板，能以自然语言回答关于你的 Agent 的问题（如"本周生产环境的质量趋势如何？"、"今天哪些会话报错了？"、"总结一下这个会话"），并在用户授权后代为起草和保存 SQL 查询及仪表盘。助手会引用可点击的链接，直接跳转到相关会话、查询和仪表盘，同时具备**页面感知能力**：当你正在查看某个会话时询问"这个会话"，助手会自动理解你的意图。
+
+停靠栏默认显示为一条细 **44px 的垂直轨道**：包含一个 `›_` 提示字形和一个彩色的健康状态点。点击轨道（或按 `⌘J` / `Ctrl+J`）可展开为完整的聊天面板。展开后的面板可通过拖动左边缘在 320 到 640 像素之间**自由调整宽度**，且你的偏好宽度会在刷新后保留。
+
+助手作为一个小型内部 **`agent`** 容器运行（基于 Claude Agent SDK），仅供仪表盘访问。**默认情况下处于禁用状态**，需配置 LLM 端点后才会显示。
+
+---
+
+## 能力范围
+
+- **读取发起请求的用户有权访问的运营数据。** 包括事件、评估、会话、评估任务队列、已保存的查询和仪表盘，所有数据均根据用户的读取权限按请求进行范围限定。读取工具立即执行。
+- **写操作需逐项审批。** 助手可以创建已保存查询（`create_saved_query`、`update_saved_query`）、在只读角色下执行草稿 SQL 以进行验证（`run_query`），并将这些查询组合成仪表盘（`create_dashboard`、`update_dashboard`、`add_query_to_dashboard`）。每次写操作都会在聊天中暂停，显示**批准 / 拒绝 / 提问**提示；SDK 在操作员点击"批准"之前不会调用该工具。**助手永远不具备删除能力**；破坏性操作仅限操作员执行。
+- **起草的 SQL 会经过与用户编写的 SQL 相同的 `sql_guard` 验证和只读角色**（仅限 SELECT/WITH，不支持多语句）。执行路由取决于查询涉及的表：引用分析表（事件、评估、会话）的查询以组织的只读 ClickHouse 用户身份运行（通过行策略限定到该组织，执行上限为 10 秒，行数上限为 10 万）；仅涉及关系表的查询则在只读 Postgres 角色下运行（10 秒，1 万行）。助手无法扩大数据访问范围，只能在操作员已有的查询权限范围内进行操作。
+- 助手使用**专用助手密钥**（见下文），该密钥预设了固定的权限集；即使模型出现异常行为，也无法超出这些权限范围。
+- 每个仪表盘用户需要拥有 **`agent:use`** 权限才能看到并使用助手。工具会按请求过滤以匹配用户自身的数据权限，例如拥有 `events:read` 的用户可获得事件工具，但不会获得 `dashboards:write` 工具。
+
+---
+
+## 页面感知的 AI 停靠栏：在 `/queries` 页面作为编辑器，其他页面作为聊天助手
+
+右侧的助手停靠栏具有**页面感知能力**。模型选择器、对话历史、模型健康状态点和聊天输入框保持不变，但**空状态模板卡片、占位符文本以及用户消息实际调用的后端端点**都会根据当前路由自动切换。停靠栏会变成"你当前所在页面的 AI 助手"。
+
+**两个后端，按页面自动选择（支持按卡片覆盖）。**
+
+| 路由 | 页面默认后端 | 原因 |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/queries`、`/queries/new` | `POST /api/agent/compose-sql`（无工具循环） | 用户正在从头开始；首个 token 延迟 ≤1 秒的 SQL 直接流式输出到编辑器 |
+| `/queries/<id>`（已有查询） | `POST /api/agent/chat`（完整工具循环助手），页面默认 | 自由输入的消息应允许用户提任何问题（"解释一下"、"这是做什么的？"）；重构卡片通过 per-chip kind 切换回 compose-sql |
+| 其他所有页面 | `POST /api/agent/chat`（完整工具循环助手） | 读取工具 + 审批门控的写入工具 |
+
+`/queries/<id>` 上的卡片带有明确的 `kind` 字段，使单个页面可以无缝混用两种流程。默认卡片集包含两个**聊天**卡片（`解释当前查询`、`这个查询做什么？`）和五个 **compose-sql** 卡片（`按日期范围参数化`、`添加 status='error' 过滤条件` 等）。自由输入的消息回落到页面默认（聊天），因此"为什么这么慢？"这类问题会获得散文式回答，而点击`按日期范围参数化`卡片则会路由到 compose 端点并修改 SQL。
+
+当编辑器处于**编辑模式**时（因为用户在 `/queries/<id>` 上，或者 `/queries/new` 已加载了待处理的 SQL，导致 `currentSql` 不为空），系统提示词会从"编写一个新查询"切换为"对所提供的 SQL 进行最小化修改：保留表的选择、列名、连接结构、别名和缩进"。模型会接收到一组独立的修改前后示例（参数化、添加过滤条件、转换为按小时分桶），因此通过卡片触发的重构会生成针对编辑器中 SQL 的最小差异，而不是从头重写。
+
+点击 compose 卡片（或在 `/queries/new` 上自由输入）→ SQL 以 ` ```sql ` 代码块的形式流式输出到助手消息中。**当流输出完成后，若当前路由挂载了 Monaco 编辑器，编辑器会自动进入差异视图**（左侧为原始内容，右侧为建议内容，顶部有`▾ AI 提出了修改`提示，下方有**接受 / 拒绝**按钮）。用户无需查找或点击"插入编辑器"按钮即可看到差异。"插入"按钮仍会显示在 SQL 块下方，作为手动重新触发的入口（在拒绝后或用户离开又返回时很有用）；当用户在非编辑器页面（例如已保存查询列表）时，它是唯一的操作路径——此时会将 SQL 暂存到 `sessionStorage` 并跳转到 `/queries/new`，新挂载的编辑器在初始化时读取暂存内容并打开相同的差异视图。
+
+如果建议的 SQL 与编辑器中已有的内容完全相同（无实质性修改），则跳过自动打开差异视图，避免弹出空差异。此时"插入编辑器"按钮同样不执行任何操作。
+
+当用户在 `/queries/new` 上接受建议时，工具栏的主操作按钮显示为**`保存`**而非`创建`；SQL 由助手生成，操作的心智模型是"最终确认"而非"从头编写"。停靠栏插入 SQL 后标签立即切换为`保存`，直到页面导航才恢复。在 `/queries/<id>` 上按钮始终为`保存`，不受影响。
+
+在 `/queries` 以外的页面，停靠栏的行为与之前完全一致：带有工具审批卡片的完整聊天、页面上下文感知和引用链接。
+
+**权限 / 访问控制。** compose 端点按用户的 `queries:run` 权限进行门控（等同于读取权限；用户仍需点击"接受"和"运行"，而"运行"会经过 Rust 服务器上现有的 `sql_guard` + `references_ch_tables` 路由）。chat 端点按 `agent:use` 门控。两者都要求在 `agent` 容器上配置了 LLM 连接；若未配置，停靠栏会在两种路径上均显示"此部署未配置助手"的横幅。
+
+**拒绝策略。** compose 模式会拒绝任何无法通过只读分析查询满足的请求，并输出 `-- REFUSE: <一句话原因>` 代替 SQL。它会拒绝会写入数据或访问分析视图以外的表（`api_keys`、`users`、`dashboards`、`saved_queries`、`evaluation_jobs`）的请求，也会拒绝在 compose 路径上的纯文本请求（如"解释一下"、"这是做什么的？"）——这类请求应走 chat 路径并在那里获得散文式回答。停靠栏会将拒绝原因以内联红色错误卡片的形式显示在助手消息中，不插入任何内容。
+
+**模型选择。** 与聊天路径共享。停靠栏标题中的模型选择器适用于两个端点（compose 调用会将选中的模型传递给 agent 服务上的 `resolveModel()`）。当 `AGENTEYE_AGENT_MODELS` 列出多个模型时，操作员可以为 compose 选择 Haiku 级别的模型，为聊天选择 Sonnet 级别的模型；用户按对话进行选择。
+
+**按页面定制模板。** 每个页面都有自己的模板（标题、正文、占位符文本和建议卡片），使停靠栏能够适应你所在的页面。特定路由上提供的卡片与 compose 模型调优的意图一致，因此点击建议会产生预期的修改效果。
+
+**禁用方式。** 与聊天路径相同：停靠栏和 compose 功能都通过 `agent` 容器及其 LLM 连接进行门控。如果你希望特定用户只使用聊天功能，移除 `queries:run` 权限（这也会禁用编辑器的**运行**按钮）；如果你希望只使用 compose 功能，从该用户的角色中移除 `agent:use`，然后单独重新添加 `queries:run`，这样他们仍然可以执行自己编写的 SQL。
+
+---
+
+## 启用方式
+
+`agent` 服务已包含在 Docker Compose 文件和 Kubernetes 清单中。要启用助手，需要提供 **(1)** LLM 端点 和 **(2)** 助手专用数据密钥。
+
+### 1. 选择 LLM 连接方式
+
+从以下选项中选择一种，并在 `agent` 服务上设置对应的变量：
+
+**a) 直接使用 Anthropic**
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**b) 通过 Portkey（推荐；使用模型目录 slug，仅需密钥）**
+
+```
+PORTKEY_API_KEY=<your-portkey-key>
+AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
+```
+
+这是最简单的方式：在 Portkey 中设置一个 **Anthropic 集成**（模型目录），系统会生成一个 **slug**。将模型命名为 `@<slug>/<model>`，slug 中包含了 provider 和凭证路由，因此**不需要虚拟密钥**，只需你的 Portkey API 密钥即可。Agent 只发送 `x-portkey-api-key` 并指向 Portkey 网关，Portkey 负责解析其余内容。（使用*普通*模型名称会报错"x-portkey-config or x-portkey-provider header is required"；`@slug/` 前缀是实现纯密钥访问的关键。）如需使用自托管网关，请设置 `PORTKEY_BASE_URL`。
+
+如果你偏好按请求路由而非使用 slug，可以设置 `PORTKEY_VIRTUAL_KEY=<vk>`（或 `PORTKEY_CONFIG=<id>`）配合普通的 `AGENTEYE_AGENT_MODEL`。
+
+**c) 其他兼容 Anthropic 的网关（LiteLLM、自托管等）**
+
+```
+ANTHROPIC_BASE_URL=https://your-gateway
+# 换行分隔的"Name: Value"格式请求头（非 JSON）：
+ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
+```
+
+**d) Amazon Bedrock / Google Vertex**
+
+```
+CLAUDE_CODE_USE_BEDROCK=1   # + 环境中的标准 AWS 凭证
+# 或
+CLAUDE_CODE_USE_VERTEX=1    # + 环境中的标准 GCP 凭证
+```
+
+可选地使用 `AGENTEYE_AGENT_MODEL` 固定默认模型（默认值为 `claude-sonnet-4-6`）。若需允许用户**从多个模型中选择**，将 `AGENTEYE_AGENT_MODELS` 设置为逗号分隔的允许列表（例如 `@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`）；聊天标题中会出现模型选择器，每个用户的选择会被记住。Agent 只会调用此允许列表中的模型。
+
+### 2. 提供助手密钥
+
+选择任意随机密钥，将其作为 `AGENTEYE_API_KEY` 提供给 **agent** 服务，同时作为 `AGENT_API_KEY` 提供给 **server** 服务（值相同）。服务器启动时会将其注册为名为 `dashboard-assistant` 的专用密钥，并赋予以下固定权限集：`events:read`、`evaluations:read`、`dashboards:read`、`dashboards:write`、`queries:read`、`queries:write`、`queries:run`。写入权限只通过审批门控的工具执行（见上文"能力范围"部分）。**无需手动创建密钥，也不涉及管理员密钥**。权限集在服务器中固定，且注册的密钥**受保护**：无法通过 keys API 禁用或重新生成；如需轮换，只需更改值并重启服务器。**请勿复用管理员/仪表盘密钥。**
+
+```bash
+SECRET="$(openssl rand -base64 32)"
+# 在 agent 服务上：
+AGENTEYE_API_KEY="$SECRET"
+# 在 server 服务上：
+AGENT_API_KEY="$SECRET"
+```
+
+在 Kubernetes 上已为你完成配置：将 `AGENTEYE_API_KEY` 放入 `agenteye-agent` secret 中，服务器 Deployment 已自动将相同的值作为 `AGENT_API_KEY` 读取。
+
+### 3. 设置仪表盘与 Agent 之间的共享令牌
+
+在 **`dashboard`** 和 **`agent`** 服务上设置相同的 `AGENTEYE_AGENT_TOKEN`。仪表盘在调用内部 agent 服务时出示该令牌；Agent 会拒绝不携带此令牌的请求。
+
+### 4. 授予用户访问权限
+
+为相关的仪表盘操作员授予 `agent:use` 权限（参见 [enterprise-docs/api-keys.md](/zh/agenteye/api-keys)）。没有该权限的用户将看不到助手。
+
+配置好 LLM 端点和只读密钥后，重启 **server**（以注册只读密钥）和 **agent** 服务。任何拥有 `agent:use` 权限的用户的仪表盘右侧都会出现助手停靠栏，默认收起；点击轨道或按 `⌘J` / `Ctrl+J` 展开。
+
+---
+
+## 环境变量参考
+
+在 **`agent`** 服务上设置：
+
+| 变量 | 用途 |
+|---|---|
+| `PORTKEY_API_KEY` | 通过 Portkey 路由（agent 据此构建网关连接） |
+| `PORTKEY_VIRTUAL_KEY` | 你的 Anthropic 凭证的 Portkey 虚拟密钥（如果该密钥有默认配置则可选） |
+| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | 命名的 Portkey 配置 / 自托管 Portkey 网关 URL（可选） |
+| `PORTKEY_PROVIDER` | Portkey provider slug——除 `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` 之外的第三种路由选项（仅在两者均未设置时使用） |
+| `ANTHROPIC_API_KEY` | 直接访问 Anthropic（网关 / Bedrock / Vertex 的替代方案） |
+| `ANTHROPIC_AUTH_TOKEN` | 用于通过 `Authorization: Bearer` 而非 `x-api-key` 进行身份验证的网关的 Bearer 令牌（可选） |
+| `ANTHROPIC_BASE_URL` | 非 Portkey 网关的端点 |
+| `ANTHROPIC_CUSTOM_HEADERS` | 非 Portkey 网关的额外请求头：换行分隔的 `Name: Value` 格式（非 JSON） |
+| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | 通过 Bedrock / Vertex 路由 |
+| `AGENTEYE_AGENT_MODEL` | 默认模型 ID（默认值 `claude-sonnet-4-6`） |
+| `AGENTEYE_AGENT_MODELS` | 用户可在聊天标题中选择的模型允许列表（逗号分隔）。不设置则使用单一固定模型。上述默认值必须包含在列表中（否则会自动添加）。 |
+| `AGENTEYE_AGENT_MAX_CONCURRENCY` | 每个 Pod 的最大并发聊天数（默认 4）；超出的请求返回 429 |
+| `AGENTEYE_API_KEY` | 助手的数据密钥。与服务器的 `AGENT_API_KEY` 设置**相同**的值，服务器启动时会将其注册为具有固定范围权限集的密钥（见步骤 2）。 |
+| `AGENTEYE_AGENT_TOKEN` | 与仪表盘共享的密钥 |
+| `AGENTEYE_SERVER_URL` | AgentEye 服务器 URL（默认值 `http://server:8080`） |
+| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **多租户支持。** 默认关闭（安全失败）：若 `/chat` 请求不携带组织上下文，助手会返回 `400` 拒绝请求，因为其所有工具都限定在单个组织范围内。仪表盘一旦具有组织感知能力，就会始终发送该上下文，因此通常无需设置此变量。仅在过渡期内使用，即尚未具备组织感知能力的仪表盘与已具备组织感知能力的 agent 通信时，设置为 `1` 使助手回退到 `default` 组织而非拒绝请求。仪表盘升级完成后请清除此设置。 |
+| `AGENTEYE_AGENT_MAX_STEPS` | 每次回答的最大工具调用步数（默认 8） |
+| `AGENTEYE_AGENT_TIMEOUT_MS` | `/chat` 请求的整体超时时间（包括所有模型轮次和工具步骤），单位毫秒（默认 90000）；SQL 工具有独立的 10 秒上限 |
+| `AGENTEYE_AGENT_SELF_TELEMETRY` | 设为 `1` 以将助手自身的运行记录到 AgentEye 中 |
+| `AGENTEYE_TELEMETRY_API_KEY` | 用于自监控的独立 `events:add` 专用密钥 |
+| `AGENTEYE_AGENT_ENV` | 应用于助手自监控数据的环境标签（默认值 `prod`） |
+
+在 **`dashboard`** 服务上设置：
+
+| 变量 | 用途 |
+|---|---|
+| `AGENTEYE_AGENT_URL` | 仪表盘访问 agent 服务的地址。随附的 Kubernetes 清单和 Compose 文件将此设置为 `http://agent:9100`。不设置则完全隐藏助手。 |
+| `AGENTEYE_AGENT_TOKEN` | 必须与 agent 的令牌一致 |
+
+---
+
+## 遥测与查看用户提问内容
+
+提示词**内容默认保留在你自己的系统内**。共有三个层次：
+
+1. **对话存储**：每个提示词和回答都保存在你的 AgentEye 数据库中（按用户，私密），可从助手的历史记录切换器中重新加载。这是用户提问内容的持久记录。
+2. **产品分析**：仪表盘仅记录**元数据**（助手的使用频率、工具调用次数、延迟）到你的分析系统。此路径**不包含**提示词**文本**。
+3. **自监控（可选）**：设置 `AGENTEYE_AGENT_SELF_TELEMETRY=1`（以及仅具有 `events:add` 权限的 `AGENTEYE_TELEMETRY_API_KEY`），助手会将自身的运行记录到 AgentEye 中，以 `dashboard-assistant` agent 的身份存储。然后你可以在用于其他所有内容的同一会话/事件视图中查看用户提示词和助手的推理过程。注意：这些事件对任何拥有 `events:read` 权限的人可见；如果范围过广，请不要启用此功能。
+
+---
+
+## 禁用方式
+
+以下任意一种方式均可禁用助手（停靠轨道消失）：
+
+- 在仪表盘上取消设置 `AGENTEYE_AGENT_URL`，**或**
+- 在 agent 上不配置 LLM 端点（不设置 `ANTHROPIC_API_KEY` / 网关 / Bedrock / Vertex），**或**
+- 完全不部署 `agent` 服务。
+
+---
+
+## 安全摘要
+
+- **无静默写入**：助手的写入工具（`create_saved_query`、`update_saved_query`、`create_dashboard`、`update_dashboard`、`add_query_to_dashboard`）在操作员明确点击聊天中的"批准"按钮之前无法执行；SDK 的调用前拦截会阻止工具执行，直到审批信号通过后台通道到达 agent。此拦截机制没有任何禁用设置。
+- **固定且受限的数据范围**：助手通过专用密钥向服务器进行身份验证，该密钥的权限集在服务器中固定（`events:read`、`evaluations:read`、`dashboards:read`、`dashboards:write`、`queries:read`、`queries:write`、`queries:run`）。它能够创建的写入内容仅限于已保存的查询和仪表盘；无论模型尝试什么操作，服务器都会拒绝超出该范围的请求。
+- **无删除权限**：密钥不包含删除权限，也不暴露任何删除工具。删除操作通过仪表盘 UI 由操作员执行，不经过助手。
+- **仅限内部访问**：agent 没有公开路由；只有仪表盘可以调用它，且必须携带共享令牌。（在 Kubernetes 中，NetworkPolicy 限制 agent 只能访问 AgentEye 服务器和 LLM 端点。）
+- **按用户范围限定**：只有拥有 `agent:use` 权限的用户才能使用助手，且只提供与每个用户读取权限匹配的工具。
+- **无原始 HTML / 无链接外泄**：回答以经过净化处理的 Markdown 格式渲染；外部链接已被无害化处理。
+
+常见问题请参见 [enterprise-docs/troubleshooting.md](/zh/agenteye/troubleshooting)。

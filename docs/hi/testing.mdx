@@ -1,26 +1,26 @@
 ---
 title: परीक्षण
-description: "यूनिट परीक्षण, E2E परीक्षण, और परीक्षण सहायक"
+description: "यूनिट टेस्ट, E2E टेस्ट, और टेस्ट हेल्पर्स"
 icon: flask-vial
 ---
 
-failproofai के दो परीक्षण सेट हैं: **यूनिट परीक्षण** (तेज़, मॉक किए गए) और **end-to-end परीक्षण** (असली subprocess आमंत्रण)।
+failproofai के दो टेस्ट सुइट हैं: **यूनिट टेस्ट** (तेज़, मॉक किए गए) और **एंड-टू-एंड टेस्ट** (वास्तविक सबप्रोसेस आह्वान)।
 
 ---
 
-## परीक्षण चलाना
+## टेस्ट चलाना
 
 ```bash
-# सभी यूनिट परीक्षण एक बार चलाएं
+# एक बार सभी यूनिट टेस्ट चलाएँ
 bun run test:run
 
-# यूनिट परीक्षण watch मोड में चलाएं
+# यूनिट टेस्ट को वॉच मोड में चलाएँ
 bun run test
 
-# E2E परीक्षण चलाएं (सेटअप आवश्यक है - नीचे देखें)
+# E2E टेस्ट चलाएँ (सेटअप की आवश्यकता - नीचे देखें)
 bun run test:e2e
 
-# प्रकार की जांच बिना बिल्ड किए
+# बिल्ड किए बिना टाइप-चेक करें
 bunx tsc --noEmit
 
 # लिंट करें
@@ -29,19 +29,19 @@ bun run lint
 
 ---
 
-## यूनिट परीक्षण
+## यूनिट टेस्ट
 
-यूनिट परीक्षण `__tests__/` में रहते हैं और [Vitest](https://vitest.dev) के साथ `jsdom` का उपयोग करते हैं।
+यूनिट टेस्ट `__tests__/` में रहते हैं और [Vitest](https://vitest.dev) को `jsdom` के साथ उपयोग करते हैं।
 
 ```text
 __tests__/
   hooks/
-    builtin-policies.test.ts      # प्रत्येक बिल्ट-इन के लिए नीति तर्क
-    hooks-config.test.ts          # कॉन्फ़िग लोडिंग और स्कोप मर्ज करना
+    builtin-policies.test.ts      # प्रत्येक बिल्टइन के लिए नीति तर्क
+    hooks-config.test.ts          # कॉन्फ़िग लोडिंग और स्कोप मर्जिंग
     policy-evaluator.test.ts      # पैरामीटर इंजेक्शन और मूल्यांकन क्रम
     custom-hooks-registry.test.ts # globalThis रजिस्ट्री add/get/clear
-    custom-hooks-loader.test.ts   # ESM लोडर, transitive आयात, त्रुटि हैंडलिंग
-    manager.test.ts               # install/remove/list संचालन
+    custom-hooks-loader.test.ts   # ESM लोडर, ट्रांज़िटिव इंपोर्ट, त्रुटि हैंडलिंग
+    manager.test.ts               # install/remove/list ऑपरेशन
   components/
     sessions-list.test.tsx        # सत्र सूची घटक
     project-list.test.tsx         # प्रोजेक्ट सूची घटक
@@ -61,7 +61,7 @@ __tests__/
     AutoRefreshContext.test.tsx
 ```
 
-### नीति यूनिट परीक्षण लिखना
+### नीति यूनिट टेस्ट लिखना
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -108,51 +108,51 @@ describe("block-sudo", () => {
 
 ---
 
-## End-to-end परीक्षण
+## एंड-टू-एंड टेस्ट
 
-E2E परीक्षण असली `failproofai` बाइनरी को subprocess के रूप में आमंत्रित करते हैं, JSON पेलोड को stdin में पाइप करते हैं, और stdout आउटपुट और exit कोड पर assertion करते हैं। यह उस संपूर्ण एकीकरण पथ को परीक्षण करता है जो Claude Code उपयोग करता है।
+E2E टेस्ट वास्तविक `failproofai` बाइनरी को सबप्रोसेस के रूप में आह्वान करते हैं, stdin में JSON पेलोड पाइप करते हैं, और stdout आउटपुट और एक्जिट कोड पर दावे करते हैं। यह उस संपूर्ण एकीकरण पथ का परीक्षण करता है जो Claude Code उपयोग करता है।
 
 ### सेटअप
 
-E2E परीक्षण रेपो स्रोत से सीधे बाइनरी चलाते हैं। पहली बार चलाने से पहले, CJS बंडल बनाएं जो कस्टम हुक फाइलें `'failproofai'` से आयात करते समय उपयोग करती हैं:
+E2E टेस्ट रेपो स्रोत से सीधे बाइनरी चलाते हैं। पहली बार चलाने से पहले, CJS बंडल बनाएँ जो कस्टम हुक फ़ाइलें `'failproofai'` से आयात करने के समय उपयोग करती हैं:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
 ```
 
-फिर परीक्षण चलाएं:
+फिर टेस्ट चलाएँ:
 
 ```bash
 bun run test:e2e
 ```
 
-जब भी आप सार्वजनिक हुक API (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, या `src/hooks/policy-types.ts`) को परिवर्तित करें, `dist/` को पुनः बनाएं।
+जब भी आप सार्वजनिक हुक API को बदलें (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, या `src/hooks/policy-types.ts`), तो `dist/` को पुनः बनाएँ।
 
-### E2E परीक्षण संरचना
+### E2E टेस्ट संरचना
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # बाइनरी spawn करें, पेलोड JSON पाइप करें, exit कोड + stdout + stderr कैप्चर करें
-    fixture-env.ts      # प्रति-परीक्षण अलग अस्थायी निर्देशिकाएं कॉन्फ़िग फाइलों के साथ
-    payloads.ts         # प्रत्येक इवेंट प्रकार के लिए Claude-सटीक पेलोड फैक्ट्रीज
+    hook-runner.ts      # बाइनरी को स्पॉन करें, पेलोड JSON पाइप करें, एक्जिट कोड + stdout + stderr कैप्चर करें
+    fixture-env.ts      # कॉन्फ़िग फ़ाइलों के साथ प्रति-टेस्ट अलग-थलग अस्थायी निर्देशिकाएँ
+    payloads.ts         # प्रत्येक ईवेंट प्रकार के लिए Claude-सटीक पेलोड फैक्ट्रीज़
   hooks/
-    builtin-policies.e2e.test.ts   # असली subprocess के साथ प्रत्येक बिल्ट-इन नीति
+    builtin-policies.e2e.test.ts   # वास्तविक सबप्रोसेस के साथ प्रत्येक बिल्टइन नीति
     custom-hooks.e2e.test.ts       # कस्टम हुक लोडिंग और मूल्यांकन
-    config-scopes.e2e.test.ts      # project/local/global में कॉन्फ़िग मर्ज करना
-    policy-params.e2e.test.ts      # प्रत्येक पैरामीटरयुक्त नीति के लिए पैरामीटर इंजेक्शन
+    config-scopes.e2e.test.ts      # प्रोजेक्ट/लोकल/ग्लोबल में कॉन्फ़िग मर्जिंग
+    policy-params.e2e.test.ts      # प्रत्येक पैरामीटराइज्ड नीति के लिए पैरामीटर इंजेक्शन
 ```
 
-### E2E सहायकों का उपयोग करना
+### E2E हेल्पर्स का उपयोग करना
 
-**`FixtureEnv`** - प्रति-परीक्षण अलग पर्यावरण:
+**`FixtureEnv`** - प्रति-टेस्ट अलग-थलग वातावरण:
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
 // env.cwd    - अस्थायी निर्देशिका; .failproofai/policies-config.json उठाने के लिए payload.cwd के रूप में पास करें
-// env.home   - अलग होम निर्देशिका; कोई वास्तविक ~/.failproofai लीक नहीं होता
+// env.home   - अलग-थलग होम निर्देशिका; वास्तविक ~/.failproofai लीक नहीं होता है
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -162,9 +162,9 @@ env.writeConfig({
 });
 ```
 
-`createFixtureEnv()` स्वचालित रूप से `afterEach` क्लीनअप पंजीकृत करता है।
+`createFixtureEnv()` स्वचालित रूप से `afterEach` क्लीनअप रजिस्टर करता है।
 
-**`runHook`** - बाइनरी को आमंत्रित करें:
+**`runHook`** - बाइनरी को आह्वान करें:
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -180,7 +180,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - तैयार पेलोड फैक्ट्रीज:
+**`Payloads`** - तैयार पेलोड फैक्ट्रीज़:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -192,7 +192,7 @@ Payloads.notification(message, cwd)
 Payloads.stop(cwd)
 ```
 
-### E2E परीक्षण लिखना
+### E2E टेस्ट लिखना
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -226,35 +226,35 @@ describe("block-rm-rf (E2E)", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("");  // allow → खाली stdout
+    expect(result.stdout).toBe("");  // allow → empty stdout
   });
 });
 ```
 
 ### E2E प्रतिक्रिया आकार
 
-| निर्णय | Exit कोड | stdout |
+| निर्णय | एक्जिट कोड | stdout |
 |----------|-----------|--------|
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
 | Instruct (non-Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop निर्देश | `2` | खाली stdout; stderr में कारण |
+| Stop instruct | `2` | खाली stdout; stderr में कारण |
 | Allow | `0` | खाली स्ट्रिंग |
 
 ### Vitest कॉन्फ़िग
 
-E2E परीक्षण `vitest.config.e2e.mts` का उपयोग करते हैं जिसमें है:
+E2E टेस्ट `vitest.config.e2e.mts` के साथ उपयोग करते हैं:
 
-- `environment: "node"` - कोई ब्राउज़र globals आवश्यक नहीं
-- `pool: "forks"` - सच्चा प्रक्रिया अलगाव (परीक्षण subprocesses spawn करते हैं)
-- `testTimeout: 20_000` - प्रति परीक्षण 20s (बाइनरी स्टार्टअप + हुक eval)
+- `environment: "node"` - कोई ब्राउज़र ग्लोबल्स की आवश्यकता नहीं
+- `pool: "forks"` - वास्तविक प्रक्रिया अलगाव (टेस्ट सबप्रोसेस स्पॉन करते हैं)
+- `testTimeout: 20_000` - प्रति टेस्ट 20s (बाइनरी स्टार्टअप + हुक eval)
 
-`forks` पूल महत्वपूर्ण है: thread-आधारित workers `globalThis` साझा करते हैं, जो subprocess-spawning परीक्षणों में हस्तक्षेप कर सकता है। Process-आधारित forks इससे बचते हैं।
+`forks` पूल महत्वपूर्ण है: थ्रेड-आधारित वर्कर्स `globalThis` साझा करते हैं, जो सबप्रोसेस-स्पॉनिंग टेस्ट में हस्तक्षेप कर सकता है। प्रक्रिया-आधारित फोर्क्स इससे बचते हैं।
 
 ---
 
 ## CI
 
-संपूर्ण CI चलाव (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) को मर्ज करने से पहले पास होना आवश्यक है। E2E सेट एक अलग CI कार्य के रूप में समानांतर में चलता है।
+पूर्ण CI रन (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) को मर्ज करने से पहले पास होना आवश्यक है। E2E सुइट समानांतर में एक अलग CI जॉब के रूप में चलता है।
 
-पूर्ण प्री-मर्ज चेकलिस्ट के लिए [Contributing](../CONTRIBUTING.md) देखें।
+पूर्ण प्री-मर्ज चेकलिस्ट के लिए [योगदान देना](../CONTRIBUTING.md) देखें।

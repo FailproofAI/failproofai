@@ -1,47 +1,48 @@
 ---
-title: משתני סביבה
-description: "הגדר את התנהגות failproofai באמצעות משתני סביבה"
+---
+title: משתנים סביבה
+description: "הגדרת התנהגות failproofai באמצעות משתנים סביבה"
 ---
 
 ## Dashboard
 
 | משתנה | תיאור |
 |----------|-------------|
-| `PORT` | יציאת Dashboard (ברירת מחדל: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | דרוס את המיקום בו נמצאים תיקיות פרויקט Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | דפי Dashboard להסתרה, מופרדים בפסיק |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | שמות מארחים/כתובות IP המורשות לגשת למשאבי פיתוח. זהה ל-`--allowed-origins`. |
+| `PORT` | יציאת ה-Dashboard (ברירת מחדל: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | דריסת המקום בו נמצאים תיקיות פרויקט Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | עמודי Dashboard להסתרה (מופרדים בפסיקים) |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | משרתים/כתובות IP המורשות לגישה למשאבי פיתוח. זהה ל-`--allowed-origins`. |
 
-## רישום (Logging)
-
-| משתנה | תיאור |
-|----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת רישום השרת (ברירת מחדל: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ רישום hook מותאם אישית, או `true` עבור ברירת מחדל (`~/.failproofai/logs/hooks.log`) |
-
-## טלמטריה (Telemetry)
+## רישום
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | בטל טלמטריה שימוש אנונימית |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת יומן השרת (ברירת מחדל: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ יומן hook מותאם אישית, או `true` לברירת מחדל (`~/.failproofai/logs/hooks.log`) |
 
-## אימות (Authentication)
-
-| משתנה | תיאור |
-|----------|-------------|
-| `FAILPROOF_API_URL` | דרוס את כתובת ה-URL הבסיסית של api-server המשמשת את `failproofai auth` ותיבת הדיאלוג לאימות ה-Dashboard. ברירת המחדל היא `https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או כל מקום אחר) בעת הפעלת api-server מקומי. |
-| `FAILPROOFAI_AUTH_DIR` | דרוס את המיקום בו מאוחסן `auth.json` (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
-
-## הנמקה בהרצה ראשונה (First-run prompt)
+## Telemetry
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על ההנמקה המציעה להתקין מדיניות בהפעלת `failproofai` ריק ראשונה |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | ביטול טלמטריית שימוש אנונימית |
+
+## זיהוי הזהות
+
+| משתנה | תיאור |
+|----------|-------------|
+| `FAILPROOF_API_URL` | דריסת כתובת ה-URL הבסיסית של שרת ה-api המשמשת את `failproofai auth` וחלון תיאום הזהות של ה-Dashboard. ברירת מחדל: `https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או בכל מקום אחר) כאשר מריצים שרת api מקומי. |
+| `FAILPROOFAI_AUTH_DIR` | דריסת המקום בו נשמר `auth.json` (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
+
+## הנמקה בהרצה ראשונה
+
+| משתנה | תיאור |
+|----------|-------------|
+| `FAILPROOFAI_NO_FIRST_RUN=1` | דילוג על ההנמקה המציעה להתקין מדיניויות בהפעלה ראשונה של `failproofai` |
 
 ## LLM (להערכת מדיניות)
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה API של LLM (ברירת מחדל: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניות מבוססות LLM |
+| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה של LLM API (ברירת מחדל: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניויות מופעלות LLM |
 | `FAILPROOFAI_LLM_MODEL` | שם המודל (ברירת מחדל: `gpt-4o-mini`) |

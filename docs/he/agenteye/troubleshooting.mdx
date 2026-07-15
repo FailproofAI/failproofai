@@ -1,0 +1,587 @@
+---
+
+---
+title: "פתרון בעיות"
+description: "תיעוד פתרון בעיות AgentEye."
+---
+
+
+מדריך זה ממפה את הסימפטומים שסביר שתיתקלו בהם בפרודקשן לאבחון קונקרטי ותיקייה, כך שתוכלו לפתור תקלות מהכלים שכבר יש לכם, ללא צורך בהצבת תשתית תצפיתיות נוספת. הוא מכסה את השרת, אוסף נתונים, לוח בקרה, עוזר AI, Python SDK, ניטור בריאות ותעודות, גיבויים, ניתוח בתמיכת ClickHouse ותרובות עסקיות.
+
+עמודי לוח הבקרה הם בהיקף ארגוני תחת `/<org-slug>/…`, וזרם האירועים הוא בעמוד הבית של הארגון (`/<org-slug>/`). שמות העמודים במדריך זה (לדוגמה `/sessions`, `/queries`) מתייחסים לנתיבים בהיקף ארגון אלה.
+
+---
+
+## הצגת רישומים
+
+AgentEye אינו מכלול ערימת רישום או ניטור. גם השרת וגם לוח הבקרה כותבים רישומים מובנים ל-**stdout**, כך שתוכלו לקרוא אותם ישירות עם `kubectl` או `docker`; אין צורך בצבירן.
+
+### Kubernetes
+
+עקוב אחרי רישומים חיים של השרת והלוח הבקרה:
+
+```bash
+kubectl logs -n agenteye -l app=server    -f --timestamps
+kubectl logs -n agenteye -l app=dashboard -f --timestamps
+```
+
+וריאנטים שימושיים:
+
+| מטרה | פקודה |
+|---|---|
+| 200 שורות אחרונות (ללא עקוב) | `kubectl logs -n agenteye -l app=server --tail=200 --timestamps` |
+| רישומים מהקריסה הקודמת | `kubectl logs -n agenteye <pod-name> --previous` |
+| עקוב אחרי כל העתקים בו-זמנית | `kubectl logs -n agenteye -l app=server --max-log-requests=10 -f` |
+| Postgres (StatefulSet) | `kubectl logs -n agenteye postgres-0 -f` |
+
+### Docker Compose
+
+```bash
+docker logs -f agenteye-server
+docker logs -f agenteye-dashboard
+```
+
+### קורלציה של בקשה יחידה על פני לוח בקרה והשרת
+
+כל בקשת לוח בקרה מתויגת עם `request_id` ומופצת לשרת דרך כותרת `x-request-id`. השרת חוזר אליה בכותרי התגובה שלו וב-כל שורת רישום שהוא פולט עבור בקשה זו. כדי לעקוב אחרי בקשה אחת מקצה לקצה:
+
+1. תפוס את המזהה מכותרת התגובה, לדוגמה:
+   ```bash
+   curl -i https://dashboard.example.com/api/events | grep -i x-request-id
+   # x-request-id: 9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   ```
+2. חפש את המזהה ברישומי שתי התא:
+   ```bash
+   REQ=9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   kubectl logs -n agenteye -l app=dashboard --tail=5000 | grep "$REQ"
+   kubectl logs -n agenteye -l app=server    --tail=5000 | grep "$REQ"
+   ```
+
+תראה את שורות `proxy passthrough`, `withAuth: authorized` ו-`upstream response` של לוח הבקרה ליד צמד `http request received` / `http request completed` של השרת, כולם חולקים את אותו `request_id`.
+
+### רישומי JSON ו-`jq`
+
+הגדר `AE_LOG_JSON=1` בלוח הבקרה (הוא מופעל כברירת מחדל כאשר `NODE_ENV=production`) כדי לפלוט אובייקט JSON אחד לכל שורה. ואז סנן מבחינה מבנית:
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.level == "warn" or .level == "error")'
+
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.route == "POST /api/keys")'
+```
+
+שרת Rust פולט זוגות `key=value` של עקיבה שעובדים טוב עם grep ללא `jq`:
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'status=5'   # 5xx
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'actor_key_id='
+```
+
+### הגדלת הפירוט
+
+| רכיב | משתנה סביבה | דוגמה |
+|---|---|---|
+| שרת | `RUST_LOG` | `RUST_LOG=debug` או `RUST_LOG=agenteye_server=debug,info` |
+| לוח בקרה | `AE_LOG_LEVEL` | `AE_LOG_LEVEL=debug` |
+
+`debug` בשרת מוסיף שורה `api key authenticated` לכל הזדהות. `debug` בלוח הבקרה מוסיף שורות `upstream request`, `session validated` ו-`proxy passthrough`.
+
+### שמירת רישומים
+
+stdout של מיכל הוא זמני; kubelet מסיר קבצי רישום (ברירת מחדל ~10 MiB לכל מיכל) ושומר מספר קטן בדיסק. לאחר מחיקת תא הרישומים מתחדלים. אם אתה צריך שמירה ארוכה יותר או חיפוש חוצה-תא, הצב את הקלאסטר שלך באוסף רישומים (Loki, CloudWatch, Cloud Logging, Datadog וכו') ש-tails `/var/log/containers/`. AgentEye אינו דורש או מנציח בחירה ספציפית כלשהי.
+
+---
+
+## בעיות הזדהות
+
+### `docker pull` נכשל עם "unauthorized"
+
+ודא שביצעת הזדהות Docker מול GHCR עם ה-`AGENTEYE_TOKEN` שלך:
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+הטוקן חייב להיות בעל הרשאת `read:packages` בארגון `agenteye-enterprise`. צור קשר עם `support@exosphere.host` אם הטוקן שלך אינו פועל.
+
+### `gh release download` מחזיר 404 או 401
+
+- ודא שה-`AGENTEYE_TOKEN` מיוצא בפגז שלך: `echo $AGENTEYE_TOKEN`
+- ודא שאתה משתמש ב-`GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download ...` (ה-CLI `gh` קורא את `GITHUB_TOKEN`)
+- הטוקן צריך `contents:read` על `agenteye-enterprise/releases`
+
+---
+
+## בעיות שרת
+
+### השרת נכשל עם "invalid port number"
+
+ה-`POSTGRES_PASSWORD` (או דברים אחרים) מכילה תווים מיוחדים של URL (`/`, `+`, `=`) שמקלקלים ניתוח `DATABASE_URL`. צור מחדש את הסיסמה באמצעות קידוד hex:
+
+```bash
+NEW_PASS=$(openssl rand -hex 24)
+```
+
+לאחר מכן עדכן את סוד Kubernetes וחסימה בתוך Postgres (או צור מחדש את `.env` ל-Docker Compose), והפעל מחדש את השרת. ראה את השלבים המלאים ב-[enterprise-docs/kubernetes-deployment.md](/he/agenteye/kubernetes-deployment) § "PostgreSQL credentials".
+
+### השרת יוצא מייד בעת הפעלה
+
+בדוק את רישומי המיכל:
+
+```bash
+docker logs agenteye-server
+```
+
+סיבות נפוצות:
+- `DATABASE_URL` לא הוגדר או מעוות: השרת יפלוט את השגיאה ויצא.
+- Postgres אינו ניתן לגישה: ודא שמיכל Postgres או DB מנוהל פועלים וה-host/port נכונים.
+- הגדרות כשלו: בדוק רישומים עבור שגיאות SQL.
+
+### `GET /health` מחזיר לא-200 או timeout
+
+השרת עדיין עשוי להריץ הגדרות בהפעלה הראשונה. המתן כמה שניות ונסה שוב:
+
+```bash
+curl http://localhost:8080/health
+```
+
+אם הבעיה נמשכת, בדוק `docker logs agenteye-server` עבור שגיאות.
+
+### `GET /ready` מחזיר 503
+
+`/ready` הוא בדיקת הכשירות: הוא מחזיר `503` כאשר השרת אינו יכול להגיע ל-**Postgres או ClickHouse**. הגוף קורא לתלות נכשלת:
+
+```bash
+curl -s http://localhost:8080/ready
+# {"status":"not_ready","checks":{"postgres":"ok","clickhouse":"down","redis":"ok"}}
+```
+
+תקן כל תלות שהוא מדווח כ-`down`: האם תא ClickHouse/Postgres הוא `Running`? האם `CLICKHOUSE_URL` / `DATABASE_URL` נכון וניתן לגישה? ב-Kubernetes התא קורא `NotReady` עד ל-`/ready` מתחדש; זה צפוי וזה בדיוק הסיגנל שניטור בריאות מתריע עליו. Redis לעולם אינו גורם: הוא מדווח אך אינו מכשל כשירות.
+
+### Collector מחזיר 401 Unauthorized
+
+מפתח ה-API של ה-collector אין לו הרשאת `events:add`, או המפתח הועסק. צור מפתח חדש עם ההרשאה הנכונה:
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-collector","permissions":["events:add"]}'
+```
+
+### בקשות מאומתות פתאום התאטו (~200ms במקום ~5ms)
+
+זה סימפטום של Redis שנמצא במצב Down בזמן הגדרת `REDIS_URL`. כל קריאה בשמורה timeout לאחר 100ms ואז נופל דרך ל-Postgres; בנתיבי הזדהות ו-OTP הבקשה עושה שתי נפילות כאלה.
+
+ודא ברישומי השרת:
+
+```
+auth cache: L2 get failed error=redis call timed out
+```
+
+פתרון:
+
+1. `redis-cli -h <your-redis> ping` כדי לאשר ש-Redis ניתן לגישה ברשת הקלאסטר.
+2. אם Redis היה למטה לזמן קצר וכעת הוא חזרה, **הפעל מחדש את תא השרת**. ה-`redis::aio::ConnectionManager` אינו מתקים מחדש באופן אמין לאחר שהחיבור הבסיסי מופסק; הפעלה מחדש של תא בוחר את החיבור החדש בצורה נקייה. הדבר ישים גם ללוח הבקרה.
+3. אם אתה לא רוצה להריץ Redis כעת, הסר הגדר את `REDIS_URL` בפריסה והפעל מחדש. שתי השירותים פועלים ללא השמורה (הנכונות נשמרת; הזמן חוזר לקו הבסיס לפני Redis).
+
+### שרת מדווח `OTP request rate-limited` ברישומים אך המשתמש אומר שניסה רק פעם אחת
+
+בדוק האם Redis היה לא ניתן לגישה. נתיב ה-fallback משתמש ב-`SELECT COUNT(*) FROM otp_codes WHERE created_at > now() - interval '15 minutes'`, שרואה שורות OTP שנוצרו בעבר. אם המשתמש לחץ על "Resend" למשך שעה, חלון 15 דקות עשוי עדיין להכיל ≥5 קודים. פתור על ידי המתנה להחלון להסתובב או `DELETE FROM otp_codes WHERE user_id = $1 AND created_at > now() - interval '15 minutes'` (קונסול מפעיל).
+
+### שינויתי את `ALLOWED_EMAILS` / `SESSION_TTL_SECS` / `OTP_TTL_SECS` והפעלתי מחדש; שום דבר לא קרה
+
+משתנה env אלה הם **זרעי הפעלה ראשונה בלבד**. ברגע שלטבלת `settings` יש שורה למפתח תואם, אותה שורה היא מקור האמת; משתנה env נקרא פעם אחת בהפעלה ראשונה ואז מתעלם בכל הפעלה מחדש שלאחר מכן.
+
+כדי לשנות אותם לאחר הפעלה ראשונה, התחבר ללוח הבקרה וערוך אותם תחת `/settings`. השינוי חל תוך שניות על כל העתקים; לא נדרשת הפעלה מחדש.
+
+אם אתה צריך להכריח מחדש זריעה מסביבה (נדיר, בדרך כלל שימושי רק בפיתוח), `DELETE FROM settings WHERE key = '<key>'` והפעל מחדש את השרת. ה-bootstrap יבחר את ערך משתנה env הנוכחי בהפעלה הבאה. עריכה דרך `/settings` היא הנתיב הנתמך בפרודקשן.
+
+---
+
+## בעיות Collector
+
+### Collector מתחיל אך אירועים אינם מופיעים בלוח הבקרה
+
+1. ודא ש-collector פועל: `systemctl status agenteye-collector` (Linux) או בדוק את התהליך.
+2. ודא שה-`AGENTEYE_URL` מצביע על `http(s)://your-server-host:8080/events` (הערה: נתיב `/events`).
+3. הפעל ניקוזי חד-פעמי כדי לראות פלט מיידי:
+   ```bash
+   agenteye-collector flush
+   ```
+4. בדוק ש-Python SDK בעצם כותב קבצים: `ls ${AGENTEYE_HOME:-~/.agenteye}/events/`
+5. אם קבצים קיימים ב-`${AGENTEYE_HOME:-~/.agenteye}/failed/`, ההעלאות נכשלות. בדוק רישומי ה-collector עבור השגיאה, כנראה 4xx (מפתח רע או URL) או בעיית רשת.
+
+### קבצים צבורים ב-`$AGENTEYE_HOME/events/` והם לא מועלים
+
+- ה-collector אולי אינו פועל. התחל אותו: `agenteye-collector start`; הוא מרוקן אירועים קיימים באופן אוטומטי בעת ההפעלה.
+- בדוק בריאות collector: `agenteye-collector health`
+- ה-collector עשוי להיות פועל אך אינו יכול להגיע לשרת. בדוק כללי חומת אש בין מחשבי collector והשרת.
+
+### קבצים ב-`$AGENTEYE_HOME/failed/`
+
+קבצים עוברים ל-`failed/` לאחר ש-כל ניסיונות ה-retry מסתיימים (ברירת מחדל: 5 ניסיונות עם backoff אקספוננציאלי). זה אומר:
+- השרת החזיר שגיאה 4xx (מפתח רע, URL שגוי, או בעיית payload)
+- השרת היה לא ניתן לגישה עבור כל חלון ה-retry
+
+תקן את הבעיה הבסיסית, ואז הצב מחדש ידנית:
+
+```bash
+mv ${AGENTEYE_HOME:-~/.agenteye}/failed/*.jsonl ${AGENTEYE_HOME:-~/.agenteye}/events/
+agenteye-collector flush
+```
+
+### Collector מדווח `network error` על כל העלאה (TLS handshake נכשל)
+
+אם `curl -k` מול `AGENTEYE_URL` מתבצע בהצלחה אך הבינארי collector נכשל בכל העלאה עם `error sending request for url (...)`, שרת AgentEye מציג תעודת TLS שלא חתומה על ידי CA נאמן ברבים.
+
+**ה-path של פרודקשן** הוא שם המארח של ה-ingest של ACME שהוגדר בתוך `deploy/base/certificates/domain.env` (ראה [`kubernetes-deployment.md`](/he/agenteye/kubernetes-deployment) שלב 3.1 / 4.2). ברגע שה-`INGEST_DOMAIN` מתפזרת ל-public Traefik LB ו-cert-manager הוציא את התעודה של Let's Encrypt, collectors אומתים את תעודת השרת מול חנות האמון של המערכת עם **ללא `AGENTEYE_TLS_CA` נדרש**; נקה אותה מתצורת ה-collector שלך אם היא הוגדרה נגד פריסה ישנה של חתימה עצמית.
+
+**סימפטום: collector עבד אתמול, נכשל היום לאחר פער ~90 יום.** זה אומר שהפריסה עדיין ב-legacy `selfsigned` issuer ל-`ingest-tls`. התעודה של 90 יום סובבה וקובץ ה-CA המוצמד ישן. תקן לצמיתות על ידי החלפת הקלאסטר ל-issuer ACME (שלב 3.1 של מדריך הפריסה). unblock לטווח קצר: חלץ מחדש את תעודת השרת הנוכחית ועדכן את `AGENTEYE_TLS_CA`:
+
+```bash
+kubectl get secret ingest-tls-cert -n agenteye \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /etc/agenteye/server-ca.crt
+```
+
+```bash
+export AGENTEYE_TLS_CA=/etc/agenteye/server-ca.crt
+agenteye-collector flush
+```
+
+`AGENTEYE_TLS_CA` מוסיף עוגן אמון נוסף; שורשי הציבור הסטנדרטיים עדיין נאמנים.
+
+### `ingest-tls` התעודה תקועה `Ready: False` לאחר פריסה
+
+```bash
+kubectl describe certificate ingest-tls -n agenteye
+```
+
+חפש באירועים וב-`Order` / `Challenge` המרופה. סיבות נפוצות:
+
+- **DNS לא מתפזר ל-LB הציבורי.** ה-HTTP-01 validator אינו יכול להגיע ל-`INGEST_DOMAIN`. אמת עם `dig +short INGEST_DOMAIN`; זה צריך להתפזר לאותו כתובת כמו ה-`EXTERNAL-IP` של LoadBalancer `traefik-public`. cert-manager חוזר אוטומטית ברגע שתזרים DNS מתפזרות; אין צורך למחוק את ה-Certificate.
+- **יציאה 80 חסומה ב-LB / קבוצת אבטחה.** HTTP-01 דורש שיציאה 80 תהיה ניתנת לגישה מאמחזי הזקוק של Let's Encrypt הציבורים. אם יש לך WAF או SG ממסדר שמגביל `:80`, פתח אותה (תצורת Traefik מחדש כיוונית ל-HTTPS, אך Boulder עוקב אחרי ההפניה ומקבל את התגובה).
+- **`dnsNames` לא מוחלפו.** אם `kubectl get certificate ingest-tls -n agenteye -o jsonpath='{.spec.dnsNames}'` מציג `INGEST_DOMAIN_PLACEHOLDER`, דלגת על שלב `domain.env`; צור אותו מ-`domain.env.example` והחל מחדש.
+- **מוגבל בקצב על ידי Let's Encrypt.** בקשות נכשלות חוזרות ונשנות עבור אותו שם מארח טיוטונים כפילות-תעודה או גבולות validation-failed. המתן לפחות שעה לפני שחידוש; בדוק את Order status לקבלת הודעת rate-limit המדויקת.
+
+### `dashboard-tls` התעודה תקועה `Ready: False` / דפדפן עדיין מציג אזהרה
+
+זה אותו זרימת אבחון כמו `ingest-tls` למעלה (`kubectl describe certificate dashboard-tls -n agenteye`); ה-DNS, port-80, placeholder, ותחומי rate-limit כולם חלים, בתוספת שניים ספציפיים ללוח בקרה:
+
+- **`DASHBOARD_DOMAIN` מתפזר ל-LoadBalancer שגוי.** הוא חייב להצביע על LB Traefik **ללוח בקרה**, לא על הציבור ingest אחד. `dig +short` את השם המארח והשווה מול כתובת dashboard LB.
+- **ה-Dashboard Traefik instance אינו יכול להציע את הטיוטה.** הוא חייב להיות מותקן עם קובץ ערכים מיידי ללוח בקרה, המאפשר ספק Ingress בהיקף עבור ה-HTTP-01 solver של cert-manager. ללא זה ה-solver אינו ניתן לנתוב והסדר נשאר `pending` לנצח. שדרגו את ה-instance עם הערכים שסופקו; הטיוטה הממתינה משלימה מעצמה.
+- **ה-LoadBalancer הוגבל IP.** טווחי מקור חלים גם על יציאה 80, שחוסמת מאימתי Let's Encrypt — הן הנפקה ראשונית והן כל ~75 יום renewal. פתח מחדש את LB, או תאם פתרון DNS-01 עם תמיכה לפני נעילה. בזמן שהנפקה כשלת, לוח הבקרה ממשיך להציע את התעודה הקודמת שלו (או ברירת המחדל של ingress בהתקנה טרייה) — הגישה מושפלת על ידי אזהרת דפדפן, לעולם לא מופעלת.
+
+### CLI עדיין דולג אימות TLS לאחר שלוח הבקרה קיבל תעודה אמינה
+
+`--insecure` נשמר ל-`cli.json` בעת התחברות. ברגע שלוח הבקרה משרת תעודה אמינה ברבים, התחבר שוב עם `agenteye --base-url https://<your-dashboard-domain> --secure login`; אימות נשמר חזרה וההתריע בהפעלה נעלם.
+
+---
+
+## בעיות לוח בקרה
+
+### לא ניתן להשבית או לערוך את ה-`ADMIN_EMAIL` משתמש
+
+בעיצוב. המשתמש המתאים ל-`ADMIN_EMAIL` מסומן כמוגן בכל הפעלה מחדש של שרת: לוח הבקרה מסתיר את לחצן ההשבתה לאותה שורה, וה-API דוחה `DELETE /users/:id` ו-`PUT /users/:id` נגדה עם `403 Forbidden`. טריגר מסד נתונים גם דוחה הצהרות `UPDATE` ישירות שיהיו משבתות את השורה המוגנת.
+
+כדי להסיע את ה-bootstrap admin, שנה את `ADMIN_EMAIL` בסביבה שלך והפעל מחדש את השרת. הדוא"ל החדש יתוקן כמוגן. ה-admin הקודם שומר על הדגל המוגן עד לניקוי במסד הנתונים (בדרך כלל בסדר, מכיוון שהדוא"ל הקודם עדיין admin תקף עד להסרה מפורשת).
+
+### לוח הבקרה אינו מציג אירועים
+
+1. ודא ש-URL של השרת ומפתח API נכונים בעיבור לוח הבקרה של משתנה סביבה (`AGENTEYE_SERVER_URL`, `AGENTEYE_API_KEY`).
+2. מפתח API של לוח הבקרה צריך הרשאת `events:read`.
+3. ודא שאירועים בעצם קלטו: `curl http://your-server:8080/events -H "Authorization: Bearer $ADMIN_KEY"`
+
+### `/errors` ריק אך `/events` מציג שורות אדומות
+
+גרסאות SDK חדשות יותר פולטות כשלים כ-`agent_end` / `tool_result` / `hook_completed` אירועים עם `outcome: "error"` בחומר התאים, ולא כ-שורת `event_type: "error"` ייעודית. עמוד `/errors` כעת תאם את שניהם: כל שורה שזרם `/events` צובע אדום (explicit `event_type='error'`, payload `outcome`/`status` בקבוצת הכשל, `is_error: true`, או שדה `error` truthy) מופיע ב-`/errors`. אם ראית בעבר "לא יש שגיאות בחלון זה" בעודשורות אדומות היו גלויות ב-`/events`, שדרגו את לוח הבקרה + שרת יחד (הסינון המורחב הוא `errored=true` על `GET /events`) ושתי התצוגות יסכימו.
+
+### `/models`, `/tools`, או `/hooks` איטי או נכשל להעלות בטווחי זמן רחבים
+
+**סימפטום:** בטבלת אירועים גדולה (מיליונים שורות), פתיחת `/models`, `/tools`, או `/hooks` — או הרחבת טווח הזמן ל-`7d`, `30d`, או `all` — התרשימים מסתובבים ואז מציגים שגיאת עומס. רישומי השרת תיעוד ClickHouse `MEMORY_LIMIT_EXCEEDED` (קוד 241) או timeout שאילתה עבור בקשת `latency_aggregate`.
+
+**סיבה:** בניות ישנות יותר חישבו rollup של חלקי עמודים אלה עם שאילתה שקראה את `payload` של האירוע הגולמי המלא וזיווגו אירועי בקשה/תגובה עם מיון וצירוף בזיכרון. זיכרון שאילתה שיא גדל עם גודל החלון, כך שבשוכר עסוק טווח רחב יכול לחרוג מתקרת הזיכרון לכל-שאילתה של ClickHouse.
+
+**תיקייה:** שדרגו לבנייה המכילה תיקייה זו. ה-rollup כעת קורא רק את העמודות ה-compact המקודמות וזיווגו אירועים עם aggregation זרימה, אז זיכרון שיא כבר לא משתנה עם payload גולמי — חלונות רחבים נשארים טוב תוך תקרת הזיכרון וחוזרים בשבריר זמן. השיפור הוא לחלוטין צד שאילתה: הוא חל על כל הנתונים הקיימים בטעינת עמוד הבאה, ללא reingest או backfill.
+
+### לוח הבקרה אינו טוען / עמוד ריק
+
+בדוק רישומי מיכל לוח הבקרה:
+
+```bash
+docker logs agenteye-dashboard
+```
+
+הסיבה הנפוצה ביותר היא `AGENTEYE_SERVER_URL` או `AGENTEYE_API_KEY` חסרים או מצביעים לשרת לא ניתן לגישה.
+
+### ניתוח / טלמטריה של לוח בקרה
+
+לוח הבקרה שולח ניתוח שימוש במוצר אנונימי ל-PostHog כברירת מחדל, נתב דרך נתיב `/ingest` שלו (פרוקסי הפוך ל-`https://us.i.posthog.com`). השליחה ראשונה אומר שחוסמי פרסומות של דפדפנים לא מפילים אותם. זה עצמאי מפעילות הליבה של לוח הבקרה:
+
+- **מיכל לוח הבקרה** (לא הדפדפן) הוא מה שמגיע ל-PostHog. אם ההגישה היוצאת שלה ל-`https://us.i.posthog.com` חסומה, טלמטריה שוקטת no-ops; לוח הבקרה פועל בדרך כלל וללא שגיאות עולות למשתמשים.
+- לא נכללים כל agent, session, או אירוע, רק שימוש ב-UI בלוח בקרה.
+- כדי להשבית טלמטריה לחלוטין, הגדר את `AE_ANALYTICS_DISABLED=1` על מיכל לוח הבקרה והפעל מחדש. ראה [Telemetry & privacy](/he/agenteye/deployment#telemetry--privacy) במדריך הפריסה.
+
+### CLI ניתוח / טלמטריה
+
+ה-`agenteye` CLI שולח ניתוח שימוש אנונימי ל-PostHog כברירת מחדל: אילו פקודות פועלות, הצלחה/מצב יציאה, ומשך. זה עצמאי מפעילות ה-CLI:
+
+- **המכונה שמריצה את ה-CLI** מגיעה ישירות ל-`https://us.i.posthog.com`. אם ההגישה היוצאת שלה חסומה, טלמטריה שוקטת no-ops (השליחה כוללת זמן, כך שלעולם לא מעכבת פקודה) וה-CLI פועל בדרך כלל.
+- לא נכללים כל agent, session, או אירוע: פקודה **arguments וערכי דגל** (URL לוח בקרה, token, דוא"ל, session ids, מסננים שאילתה) לעולם לא שולחו.
+- כדי להשבית אותה, הגדר את `AGENTEYE_ANALYTICS_DISABLED=1` (או את `DO_NOT_TRACK=1` החוצה-כלי) בסביבת CLI. ראה [Telemetry & privacy](/he/agenteye/cli#telemetry--privacy) במדריך CLI.
+
+---
+
+## בעיות עוזר AI
+
+ראה [enterprise-docs/assistant.md](/he/agenteye/assistant) להגדרה מלאה.
+
+### בועת העוזר לא מופיעה
+
+הבועה מוסתרת אלא אם **כל** אלה מחזיקים:
+
+- למשתמש המחובר יש הרשאת `agent:use`.
+- `AGENTEYE_AGENT_URL` הוגדר בלוח הבקרה ושירות ה-`agent` ניתן לגישה.
+- נקודת קצה LLM מוגדרת בשירות ה-`agent` (`ANTHROPIC_API_KEY`, שער דרך `ANTHROPIC_BASE_URL`, או Bedrock/Vertex). ללא כל הגדרה, ה-agent מדווח "לא מוגדר" והבועה נשארת מוסתרת.
+
+בדוק בריאות ה-agent מה-dashboard host: `curl http://agent:9100/health` צריך להחזיר `{"status":"ok","llm_configured":true,...}`.
+
+### העוזר אומר שהוא אינו יכול לקרוא משהו
+
+כלים מחוסמים לכל משתמש. אם משתמש חסר `evaluations:read` (או `events:read`, `dashboards:read`), כלים תואמים לא מוצעים והעוזר יאמר שהוא אינו יכול לקרוא נתונים אלה. הענק את הרשאת הקריאה הרלוונטית.
+
+### "assistant not configured" (HTTP 503) בעת שליחה
+
+מיכל ה-`agent` אין לו נקודת קצה LLM מוגדרת, או `AGENTEYE_AGENT_TOKEN` של לוח הבקרה לא תואם את ה-agent's. הגדר את שניהם והפעל מחדש.
+
+### מיכל ה-`agent` מופעל מחדש / OOMs תחת עומס
+
+כל שיחה מטילה תהליך ילד לזמן קצר. וודא שהמיכל פועל עם תהליך init (התמונה משתמשת ב-`tini`; בעיבוד הגדר `init: true`) ותן לו גבולות זיכרון הולמים. הפחת את `AGENTEYE_AGENT_MAX_STEPS` אם נחוץ.
+
+---
+
+## בעיות CLI
+
+### `agenteye` נכשל להתחיל עם `ModuleNotFoundError: No module named 'click'`
+
+התקנה טרייה של ה-`agenteye` CLI בגרסה **0.1.6** יכולה להיקרע בהפעלה עם:
+
+```
+ModuleNotFoundError: No module named 'click'
+```
+
+0.1.6 סמך על `click` מותקן בעקיפין על ידי `typer`; `typer` releases אחרון כבר לא
+משכו זה, אז סביבה נקייה סיימה חסרת החבילה. **שדרגו ל-0.1.7 או חדש יותר**,
+שתלוי ב-`click` ישירות:
+
+```bash
+pipx upgrade agenteye      # אם מותקן עם pipx (או: pipx install --force agenteye)
+uv tool upgrade agenteye   # אם מותקן עם uv
+pip install --upgrade agenteye
+```
+
+ראה [enterprise-docs/cli.md](/he/agenteye/cli) להנחיות התקנה.
+
+---
+
+## בעיות Python SDK
+
+### לא קבצים מופיעים ב-`$AGENTEYE_HOME/events/`
+
+ה-SDK מנקדים אירועים ו-flushes כל 500 ms כברירת מחדל. אם התהליך שלך יוצא לפני ה-flush, אירועים עשויים להיאבד. קרא ל-`agenteye.configure(flush_interval=0.1)` עבור flush מהיר יותר בסקריפטים קצי-חיים, או וודא שהתהליך שלך פועל מזמן מספיק עבור מחזור flush.
+
+אם `AGENTEYE_HOME` הוגדר, אמת שה-SDK כותב ל-`$AGENTEYE_HOME/events/` ולא `~/.agenteye/events/` (דורש SDK ≥ 0.0.1b5).
+
+### `ValueError: Reserved field names cannot be used as custom fields`
+
+השמות `timestamp`, `type`, ו-`environment` שמורים ואינם יכולים לשמש כשדות מותאמים אישית. העברת כל אחד מהם מעלה:
+
+```
+ValueError: Reserved field names cannot be used as custom fields: [...]
+```
+
+שנה את שם השדה המותאם אישית הפוגע. שים לב שה-`session_id` ו-`agent_id` הם פרמטרים מפורשים של קריאת אירוע, לא שדות מותאמים אישית; העברת כל אחד מהם שוב כשדה מותאם אישית מעלה `TypeError`.
+
+---
+
+## בעיות ניטור בריאות
+
+### לא התרעות הגיעו ל-Slack (Robusta)
+
+Robusta health alerting הוא **opt-in**; הוא שולח כלום עד להתקנה וייצוג לערוץ Slack. אמת את ה-release וה-sink שלו:
+
+```bash
+kubectl get pods -n robusta          # robusta-runner + robusta-forwarder אמורים להיות Running
+kubectl logs -n robusta -l app=robusta-runner --tail=50
+```
+
+סיבות נפוצות: ה-Slack `api_key` / `slack_channel` לא הוגדרו (או ה-token בוטל); ה-`api_key` הוא Robusta token relay (`robusta integrations slack`) אך `disableCloudRouting: true` של ערימה צריך token bot Slack ממשי (`xoxb-…`), או הגדר `disableCloudRouting: false`; sink `scope` לא כולל את namespace שתא שלך פועלים בה (הערכים של ערימה scope ל-`agenteye`); או לא כשל קרה עדיין. כוח בדיקה התרעה על ידי נטילת תא למטה:
+
+```bash
+kubectl -n agenteye delete pod -l app=clickhouse   # זה יוקצה מחדש
+```
+
+ראה [enterprise-docs/health-monitoring.md](/he/agenteye/health-monitoring#2-pod-failure-alerting-with-robusta-opt-in) להתקנה ותצורה.
+
+### שרת כל הזמן flapping `NotReady`
+
+בדיקת הכשירות מכה `/ready`, שנכשלת כאשר Postgres או ClickHouse לא ניתן לגישה. אם השרת מחזור מחוץ ל-`NotReady`, תלות זמינה בהתנהגות תנודה; בדוק את תא ClickHouse ו-Postgres ואת השרת's `CLICKHOUSE_URL` / `DATABASE_URL`. ודא מה `/ready` מדווח:
+
+```bash
+kubectl -n agenteye exec deploy/server -- sh -c 'curl -s localhost:8080/ready'
+```
+
+בדיקה זו בעיצוב מעורבת (סף כשל נדיב), כך שתנודה מתמשכת מציינת בעיית תלות אמיתית ולא בדיקה התקפית עם יתר. חיוניות נשארת ב-`/health`, אז flapping כשירות **לא** הפעל מחדש את התא.
+
+## בעיות ניטור תעודה
+
+### CronJob לא שולח התרעות Slack
+
+ה-`cert-renewal-check` CronJob דורש URL ווכן Slack המאוחסן בסוד. אמת שהוא קיים:
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+אם חסר, צור אותו:
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+ללא הסוד, CronJob עדיין מריץ ותיעוד התוצאות ל-stdout. בדוק רישומים עם:
+
+```bash
+kubectl logs -n agenteye -l job-name --tail=50
+```
+
+### תעודת לקוח פגה לפני שהתרעה הוקבלה
+
+ה-CronJob מריץ כל 12 שעות. אם זה לא היה פעיל, בדוק את הסטטוס שלו:
+
+```bash
+kubectl get cronjob cert-renewal-check -n agenteye
+```
+
+תגבור ידני בדיקה:
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check manual-cert-check -n agenteye
+kubectl logs -n agenteye -l job-name=manual-cert-check
+```
+
+כדי להוציא מחדש את התעודה הפגה מיד:
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+ואז החל את `collector-mtls-secret.yaml` שנוצר מחדש בקלאסטר(ים) שמריצים את ה-collectors שלך והפעל אותם מחדש:
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+---
+
+## בעיות גיבוי
+
+### `agenteye-backup` נכשל עם "No space left on device"
+
+ה-`agenteye-backup` CronJob עלס Postgres + ClickHouse לתא `backup-tmp` `emptyDir` scratch (ברירת מחדל `30Gi`), ואז **streams** את ארכיון `tar` ישר ל-S3 — ארכיון compressed לעולם לא כתוב חזרה ל-scratch, אז scratch רק צריך להחזיק את ה-**raw dumps**, לא dumps + עותק ארכיון on-disk שני. תא evicted / `No space left on device` אם כן אומר ש-**raw dumps** חרוגים מגודל scratch (ה-ClickHouse `events` dump שולט וגדל לאורך זמן). בדוק רישומי התא הנכשל:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job>
+```
+
+תיקייה: בחפוץ שלך, הרם את CronJob's `backup-tmp` `emptyDir` `sizeLimit` מעל סכום ה-raw dump שלך, וודא שה-node's ephemeral storage באמת יכול להחזיק אותו (`sizeLimit` הוא cap, לא reservation). אם ה-dumps הגביר יחיד node's disk, החלף את ה-`emptyDir` עם PVC (EBS/PD) עבור `backup-tmp`, או דחוס את ה-dumps במקור.
+
+> רישומים ישנים יותר כתבו את ה-`.tar.gz` לתא ה-*same* `20Gi` scratch כמו ה-dumps, אז `dumps + archive` הציפו אותו והתא הופחת **לפני** ה-upload רץ — שנראה כמו כשל S3 אבל באמת דיסק. streaming ה-upload מסיר את הכפילות.
+
+### `agenteye-backup` נכשל להתקנה `curl`
+
+העבודה מריצה על `postgres:16` image ומתקנה `curl` בהפעלה עבור ה-ClickHouse HTTP dump. בקלאסטר ללא egress ל-Debian package mirrors, שלב `apt-get` נכשל. בחלוקה egress מה-backup pod, או בנה `curl` לתמונת backup mirrored/custom ותייחס אותה בחפוץ שלך.
+
+### `agenteye-backup` מריץ אך כלום נוחת ב-object storage
+
+הערימה הבסיסית מספקת אמיתי `BACKUP_BUCKET` (`ts-prod-agenteye/backups`) ו-`agenteye-backup` ServiceAccount. העבודה **streams** את הארכיון ל-S3 (`tar cz … | aws s3 cp - s3://…`). אם backup pod אין לו גישה כתיבה לדלי, ה-upload שגיאות — ובגלל שהתסריט מריץ תחת `set -euo pipefail`, כשל בכל מקום בצינור זה **כושל** את כל העבודה ב-צעד `upload` ולא בשקט no-op'ing (ה-EXIT trap של התא רושם `backup FAILED during step: upload`). זה גם הצעד שאתה מגיע *אחרי* תיקון חלל scratch eviction, אז אם גיבויים היו בעבר evicted ב-archive צעד, אמת ה-upload כעת נוחת. Grep רישומי התא הנכשל עבור שגיאת גישה S3:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job> | grep -iE 's3|upload|denied'
+```
+
+תיקייה: בחפוץ שלך הגדר את `BACKUP_BUCKET` לדלי שאתה בעלות וה-annotate את `agenteye-backup` ServiceAccount הקיים עם גישת כתיבה (IRSA / Workload Identity / Pod Identity). ראה קטע **Backups** של [enterprise-docs/kubernetes-deployment.md](/he/agenteye/kubernetes-deployment).
+
+---
+
+## ClickHouse-backed evaluations / sessions / queries
+
+### הסרגל הצדדי של עמוד `/queries` ריק לאחר שדרוג
+
+שלוש טבלות (`events`, `evaluations`, `agent_sessions`) צפויות. אם ה-SchemaBrowser sidebar ריק לאחר שדרוג, השרת כשל להחיל את ה-ClickHouse DDL בהפעלה. בדוק רישומי השרת עבור `failed to apply CH DDL statement`:
+
+```bash
+kubectl logs -n agenteye deploy/server | grep -E 'clickhouse|CH DDL'
+```
+
+הסיבה הנפוצה ביותר היא ClickHouse לא ניתן לגישה בזמן הגדרות כלים. השרת מסרב להתחיל אם אינו יכול להגיע ל-CH, אז תא תקוע בדרך כלל יש `CrashLoopBackOff` ולא עמוד queries שבור בשקט, אבל DDL apply חלקי (הצהרה אחת בסדר, 5 הבא 5xx) משמיט חצי של schema. הפעל מחדש את תא השרת לאחר CH מאומת ניתן לגישה:
+
+```bash
+kubectl rollout restart deploy/server -n agenteye
+```
+
+### evaluations חדשות אינם מופיעים ב-`/sessions` או `/queries`
+
+לאחר השדרוג, evaluations חדשות כתובות ל-ClickHouse, לא Postgres, וגל תחת `/sessions` (מחוסם ב-`evaluations:read`) וב-`/queries`. אם הם לא מופיעים:
+
+1. אמת שה-evaluator pipeline מופעל (`EVALUATOR_ENDPOINT` הגדר בשרת) וייצור terminal outcomes; בדוק עבור `evaluation_finalized` שורות רישום.
+2. אמת CH ניתן לגישה מהשרת: `kubectl exec -n agenteye deploy/server -- curl -fsS http://clickhouse:8123/ping`.
+3. spot-check הטבלה CH: `kubectl exec -n agenteye clickhouse-0 -- clickhouse-client -q 'SELECT count() FROM agenteye.evaluations'`.
+
+### שאילתות כשל תחת עומס עם "Memory limit exceeded", או ClickHouse הוא `OOMKilled`
+
+**סימפטום:** תחת כבד dashboard/query עומס, עמודות ניתוח (זרם האירועים, `/sessions`, תצוגה models/latency, עורך SQL) התחיל כשל או timeout; שרת בקצרה flaps `NotReady`; ו-ClickHouse pod מציג ספירת הפעלה מחדש עולה. זה כמעט תמיד **זיכרון**, לא CPU או דיסק.
+
+**אמת זה זיכרון** (לא בעיית תפוקה שrepلication יתקן):
+
+1. בדוק את התא עבור יציאות מחוסר זיכרון:
+   ```bash
+   kubectl -n agenteye describe pod clickhouse-0 | grep -iE 'Restart Count|Last State|Reason|OOMKilled'
+   ```
+   `Reason: OOMKilled` / `Exit Code: 137` עם ספירת הפעלה מחדש טיפוס היא התאים.
+
+2. שאל את ClickHouse מה זה דוחה:
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT name, value FROM system.errors WHERE value>0 ORDER BY value DESC"
+   ```
+   `MEMORY_LIMIT_EXCEEDED` ספירה גדולה היא החתימה. ההודעה קוראת *"maximum: N GiB"* — ש-**N הוא `0.9 × זיכרון התא limit`** (ה-`max_server_memory_usage_to_ram_ratio` ב-`deploy/base/clickhouse/configmap.yaml`). אם קריאות כבדות צריכות יותר מ-N, הם דחויים.
+
+3. שלול הדברים שהם *לא* הבעיה — אם CPU, part count, וכן דיסק כולם נמוכים, הוספת replicas/sharding יהיה בזבוז עלות:
+   ```bash
+   kubectl -n agenteye top pod clickhouse-0
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT table, count() parts FROM system.parts WHERE active AND database='agenteye' GROUP BY table"
+   ```
+
+**סיבה:** זיכרון limit של ClickHouse pod קטן מדי עבור ה-working set ניתוחי. הקריאות הכבדות ביותר משכו את JSON `payload` column, הרץ `JSONExtract*` על זה, ו-use `FINAL` — כל אחד יכול להיות צורך מספר GiB. אם ה-configured caches (`mark_cache_size` + `uncompressed_cache_size`) גדול מה-pod, הם מחברים אותו: caches מחוייבים לאותו תקציב וshadow query זיכרון.
+
+**תיקייה — בקנה מידה ClickHouse's זיכרון:**
+
+1. הרם את ClickHouse memory limit בחפוץ שלך על ידי תיקיה ה-`clickhouse` StatefulSet's container `resources` (אותו מנגנון overlay בשימוש עבור `resources` של רכיבים אחרים). ה-usable server תקציב הוא `0.9 × limit`, אז `6Gi` limit נותן ~5.4 GiB, `16Gi` נותן ~14 GiB. הגדר את `requests.memory` לרצפה אמיתית גם, אז ה-scheduler שומר אותו. החלת זה **משחזר את CH pod** (עותק יחיד → ~30–60s analytics downtime); לעשות זאת בחלון תנועה נמוך.
+2. שמור את ה-caches ב-`deploy/base/clickhouse/configmap.yaml` פרופורציונאלי ל-limit — caches קטנים (כמה מאות MiB) בטוחים בpod קטן; רק להרים אותם לצד limiting memory הגדלת. כל-שאילתה `max_memory_usage` מוגדר במפורש ב-`users.xml` פרופיל (ראה הקטע קבוע-node למטה) ונשמר תחת השרת-level cap (`0.9 × limit`) אז אין שאילתה יחידה *מותר* יותר RAM מה-container יש.
+3. אם ה-node עצמו הוא תקרה, בדוק את host זיכרון ClickHouse יכול לראות:
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT formatReadableSize(value) FROM system.asynchronous_metrics WHERE metric='OSMemoryTotal'"
+   ```
+   אם זה רק קצת מעל זיכרון limit, ענן את ClickHouse ל-node גדול יותר (זיכרון-מופטימי) — דרך node selector/affinity בחפוץ שלך — לפני הגדלת limit עוד יותר.
+
+**כשאתה לא יכול להוסיף זיכרון: הרץ שאילתות בRAM ו-fail fast — אל תפזור על דיסק איטי.** אם ה-node קבוע והpod לא יכול גדל, cap מה כל שאילתה יחידה עשוי להשתמש (כך שאילתה אחת לא יכולה לקחת כל node) ועל **איטי (לא-SSD) data disk**, לעשות **לא** תן לגדול aggregations/sorts לפיזור לדיסק. פיזור לדיסק איטי הוא איטי יותר מserver's client read timeout, כל שאילתה spilling מחזיר dashboard `500` mid-flight בעודClickHouse ממשיך צחוק — שמירה שאילתות בRAM ודחיה של נדיר מעל-תקציב אחד *fast* (`MEMORY_LIMIT_EXCEEDED`, תת-שנייה) הוא מה restores loading. הערה gotcha ClickHouse עבור החלת אלה:
+
+- **אלה הם *פרופיל* הגדרות, וClickHouse קורא `<profiles>` רק מ-`users_config` (`users.xml` / `users.d/*.xml`) — לעולם לא מ-`config.d`.** A `<profiles>` בלוק מקום ב-`config.d/agenteye.xml` הוא **שקט תעלום** (`max_execution_time`, `max_memory_usage`, וכו' פשוט לא להחיל). הערימה בנויה אם כן מספקת אותם כ-`users.xml` מפתח ב-`clickhouse-config` ConfigMap, הר בעלות `/etc/clickhouse-server/users.d/agenteye.xml`.
+- הספקת defaults: `max_memory_usage` (לכל-שאילתה תקרה — שאילתה אחת לא יכולה לצרוך את כל תקציב השרת), `max_bytes_before_external_group_by` / `max_bytes_before

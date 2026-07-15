@@ -1,0 +1,566 @@
+---
+---
+title: "استكشاف الأخطاء"
+description: "توثيق استكشاف أخطاء AgentEye."
+---
+
+
+يوفر هذا الدليل تعيينًا بين الأعراض التي من المحتمل أن تواجهها في الإنتاج والتشخيص الفعلي والإصلاح، بحيث يمكنك حل الحوادث باستخدام الأدوات التي لديك بالفعل، دون الحاجة إلى إعداد بنية مراقبة إضافية. يغطي الخادم والمجمّع والموجة الأمامية والمساعد الذكي وSDK Python والمراقبة الصحية ومراقبة الشهادات والنسخ الاحتياطية والتحليلات المدعومة بـ ClickHouse والاستضافة متعددة المستأجرين.
+
+صفحات الموجة الأمامية محدودة النطاق بالمنظمة تحت `/<org-slug>/…`، وتدفق الأحداث هو منزل المنظمة (`/<org-slug>/`). أسماء الصفحات في هذا الدليل (على سبيل المثال `/sessions`، `/queries`) تشير إلى تلك المسارات المحدودة النطاق بالمنظمة.
+
+---
+
+## عرض السجلات
+
+لا يتضمن AgentEye مجموعة تسجيل أو مراقبة. يكتب كل من الخادم والموجة الأمامية السجلات المنظمة إلى **stdout**، لذا يمكنك قراءتها مباشرة باستخدام `kubectl` أو `docker`؛ لا يلزم محمّع.
+
+### Kubernetes
+
+اتبع السجلات الحية للخادم والموجة الأمامية:
+
+```bash
+kubectl logs -n agenteye -l app=server    -f --timestamps
+kubectl logs -n agenteye -l app=dashboard -f --timestamps
+```
+
+متغيرات مفيدة:
+
+| الهدف | الأمر |
+|---|---|
+| آخر 200 سطر (بدون متابعة) | `kubectl logs -n agenteye -l app=server --tail=200 --timestamps` |
+| السجلات من الانهيار السابق | `kubectl logs -n agenteye <pod-name> --previous` |
+| تتبع جميع النسخ المتماثلة في نفس الوقت | `kubectl logs -n agenteye -l app=server --max-log-requests=10 -f` |
+| Postgres (StatefulSet) | `kubectl logs -n agenteye postgres-0 -f` |
+
+### Docker Compose
+
+```bash
+docker logs -f agenteye-server
+docker logs -f agenteye-dashboard
+```
+
+### ربط طلب واحد عبر الموجة الأمامية والخادم
+
+كل طلب موجة أمامية يُوسّم بـ `request_id` ويُنتشر إلى الخادم عبر رأس `x-request-id`. يرد الخادم على رأس الاستجابة وفي كل سطر سجل يصدره لذلك الطلب. لتتبع طلب واحد من البداية إلى النهاية:
+
+1. التقط المعرّف من رأس الاستجابة، على سبيل المثال:
+   ```bash
+   curl -i https://dashboard.example.com/api/events | grep -i x-request-id
+   # x-request-id: 9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   ```
+2. ابحث في سجلات كلا الأجهزة عن ذلك المعرّف:
+   ```bash
+   REQ=9a7b0d6e-5e9b-4c0a-9f8a-5f1e4b5c0f3a
+   kubectl logs -n agenteye -l app=dashboard --tail=5000 | grep "$REQ"
+   kubectl logs -n agenteye -l app=server    --tail=5000 | grep "$REQ"
+   ```
+
+سترى خطوط `proxy passthrough`، `withAuth: authorized`، و `upstream response` الخاصة بالموجة الأمامية جنبًا إلى جنب مع زوج `http request received` / `http request completed` الخاص بالخادم، وجميعها تشارك نفس `request_id`.
+
+### سجلات JSON و `jq`
+
+عيّن `AE_LOG_JSON=1` على الموجة الأمامية (يكون مُفعّلًا بشكل افتراضي عند `NODE_ENV=production`) لإصدار كائن JSON واحد لكل سطر. ثم صفّي الهيكل:
+
+```bash
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.level == "warn" or .level == "error")'
+
+kubectl logs -n agenteye -l app=dashboard --tail=5000 \
+  | jq 'select(.route == "POST /api/keys")'
+```
+
+يُصدر خادم Rust أزواج تتبع `key=value` التي تُعمل بشكل جيد بدون `jq`:
+
+```bash
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'status=5'   # 5xx
+kubectl logs -n agenteye -l app=server --tail=5000 | grep 'actor_key_id='
+```
+
+### رفع المراجع
+
+| المكوّن | متغير Env | مثال |
+|---|---|---|
+| الخادم | `RUST_LOG` | `RUST_LOG=debug` أو `RUST_LOG=agenteye_server=debug,info` |
+| الموجة الأمامية | `AE_LOG_LEVEL` | `AE_LOG_LEVEL=debug` |
+
+`debug` على الخادم يضيف سطر `api key authenticated` لكل مصادقة. `debug` على الموجة الأمامية يضيف خطوط `upstream request` و `session validated` و `proxy passthrough`.
+
+### احتفاظ السجل
+
+stdout للحاوية مؤقتة؛ يقوم kubelet بتدوير ملفات السجل (افتراضي ~10 MiB لكل حاوية) ويحتفظ بعدد صغير على القرص. بمجرد حذف pod يتم حذف السجلات. إذا كنت بحاجة إلى احتفاظ أطول أو بحث عبر pod، فوجّه مجموعتك إلى محمّع سجل (Loki, CloudWatch, Cloud Logging, Datadog, إلخ) يتابع `/var/log/containers/`. لا يتطلب AgentEye أو يفرض أي اختيار محدد.
+
+---
+
+## مشاكل المصادقة
+
+### فشل `docker pull` مع خطأ "غير مصرح"
+
+تأكد من أنك قمت بمصادقة Docker مقابل GHCR باستخدام `AGENTEYE_TOKEN`:
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+يجب أن يكون للرمز إذن `read:packages` على منظمة `agenteye-enterprise`. اتصل بـ `support@exosphere.host` إذا لم يعمل رمزك.
+
+### `gh release download` يعيد 404 أو 401
+
+- تأكد من أن `AGENTEYE_TOKEN` مُصدَّر في shell: `echo $AGENTEYE_TOKEN`
+- تأكد من أنك تستخدم `GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download ...` (قراءات CLI `gh` من `GITHUB_TOKEN`)
+- يحتاج الرمز إلى `contents:read` على `agenteye-enterprise/releases`
+
+---
+
+## مشاكل الخادم
+
+### فشل الخادم مع خطأ "رقم منفذ غير صحيح"
+
+يحتوي `POSTGRES_PASSWORD` (أو بيانات اعتماد أخرى) على أحرف خاصة لعنوان URL (`/`, `+`, `=`) تكسر تحليل `DATABASE_URL`. أعد إنشاء كلمة المرور باستخدام ترميز سادس عشري:
+
+```bash
+NEW_PASS=$(openssl rand -hex 24)
+```
+
+ثم حدّث secret Kubernetes وكلمة المرور داخل Postgres (أو أعد إنشاء `.env` لـ Docker Compose)، وأعد تشغيل الخادم. انظر الخطوات الكاملة في [enterprise-docs/kubernetes-deployment.md](/ar/agenteye/kubernetes-deployment) § "بيانات اعتماد PostgreSQL".
+
+### يخرج الخادم فورًا عند البدء
+
+تحقق من سجلات الحاوية:
+
+```bash
+docker logs agenteye-server
+```
+
+الأسباب الشائعة:
+- `DATABASE_URL` غير معيّن أو بصيغة خاطئة: سيسجل الخادم الخطأ ويخرج.
+- Postgres غير قابل للوصول: تأكد من أن حاوية Postgres أو قاعدة البيانات المدارة تعمل والمضيف/المنفذ صحيح.
+- فشلت الترحيلات: تحقق من السجلات بحثًا عن أخطاء SQL.
+
+### `GET /health` يعيد غير 200 أو يُنتهي انتظار
+
+قد يكون الخادم لا يزال يعيد الترحيلات عند البدء الأول. انتظر بضع ثوانٍ وأعد المحاولة:
+
+```bash
+curl http://localhost:8080/health
+```
+
+إذا استمرت المشكلة، تحقق من `docker logs agenteye-server` للأخطاء.
+
+### `GET /ready` يعيد 503
+
+`/ready` هو اختبار الجاهزية: يعيد `503` عندما لا يستطيع الخادم الوصول إلى **Postgres أو ClickHouse**. النص يسمي التبعية الفاشلة:
+
+```bash
+curl -s http://localhost:8080/ready
+# {"status":"not_ready","checks":{"postgres":"ok","clickhouse":"down","redis":"ok"}}
+```
+
+أصلح أي تبعية تُبلغ عنها كـ `down`: هل pod ClickHouse/Postgres يعمل `Running`؟ هل `CLICKHOUSE_URL` / `DATABASE_URL` صحيح وقابل للوصول؟ على Kubernetes يُقرأ pod كـ `NotReady` حتى تتعافى `/ready`؛ هذا متوقع وهو بالضبط الإشارة التي تُنبّه المراقبة الصحية. Redis ليس أبدًا سببًا: يُبلغ عنه لكنه لا يفشل الجاهزية.
+
+### المجمّع يعيد 401 غير مصرح
+
+لا يحتوي مفتاح API الخاص بالمجمّع على إذن `events:add`، أو تم تعطيل المفتاح. أنشئ مفتاحًا جديدًا بالإذن الصحيح:
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"new-collector","permissions":["events:add"]}'
+```
+
+### أصبحت الطلبات المصرحة بطيئة فجأة (~200ms بدلاً من ~5ms)
+
+هذا هو عرض Redis أسفل مع تعيين `REDIS_URL`. كل استدعاء ذاكرة تخزين مؤقت ينتهي انتظاره بعد 100 مللي ثانية ثم يسقط إلى Postgres؛ على مسارات المصادقة و OTP الطلب يُحدث اثنين من هذه السقوط.
+
+تأكد من سجلات الخادم:
+
+```
+auth cache: L2 get failed error=redis call timed out
+```
+
+الحل:
+
+1. `redis-cli -h <your-redis> ping` للتأكد من أن Redis قابل للوصول على شبكة المجموعة.
+2. إذا كان Redis معطلاً لفترة وعاد الآن، **أعد تشغيل pod الخادم**. `redis::aio::ConnectionManager` لا يعيد الاتصال بشكل موثوق بعد انقطاع الاتصال الأساسي؛ يختار إعادة تشغيل pod الاتصال الجديد بنظافة. ينطبق نفس الشيء على الموجة الأمامية.
+3. إذا كنت لا تريد تشغيل Redis الآن، ألغِ تعيين `REDIS_URL` في النشر وأعد التشغيل. تعمل كلا الخدمتين بدون الذاكرة المؤقتة (يتم الحفاظ على الصحة؛ يعود الاستجابة إلى خط الأساس السابق قبل Redis).
+
+### يُبلّغ الخادم عن `OTP request rate-limited` في السجلات لكن المستخدم يقول أنه حاول مرة واحدة فقط
+
+تحقق من ما إذا كان Redis غير قابل للوصول. يستخدم مسار الانحدار `SELECT COUNT(*) FROM otp_codes WHERE created_at > now() - interval '15 minutes'`، الذي يرى صفوف OTP المُنتجة سابقًا. إذا كان المستخدم ينقر على "إعادة إرسال" لمدة ساعة، فقد تحتوي النافذة المدتها 15 دقيقة على ≥5 رموز. حل المشكلة إما بانتظار النافذة لتتجاوز أو بتنفيذ `DELETE FROM otp_codes WHERE user_id = $1 AND created_at > now() - interval '15 minutes'` (وحدة التحكم بالمشغل).
+
+### غيّرت `ALLOWED_EMAILS` / `SESSION_TTL_SECS` / `OTP_TTL_SECS` وأعدت التشغيل؛ لم يحدث شيء
+
+متغيرات env هذه **بذور البدء الأول فقط**. بمجرد حصول جدول `settings` على صف لمفتاح المطابقة، يكون هذا الصف هو المصدر الموثوق؛ يُقرأ متغير env مرة واحدة عند البدء الأول ثم يُتجاهل عند كل إعادة تشغيل لاحقة.
+
+لتغييرها بعد البدء الأول، قم بتسجيل الدخول إلى الموجة الأمامية وحررها تحت `/settings`. يُطبّق التغيير خلال ثوانٍ عبر جميع النسخ المتماثلة؛ لا يلزم إعادة تشغيل.
+
+إذا كنت بحاجة إلى فرض إعادة بذر من env (نادرة، عادةً مفيدة فقط في التطوير)، `DELETE FROM settings WHERE key = '<key>'` وأعد تشغيل الخادم. ستلتقط عملية التمهيد قيمة متغير env الحالي عند البدء التالي. التحرير عبر `/settings` هو المسار المدعوم في الإنتاج.
+
+---
+
+## مشاكل المجمّع
+
+### يبدأ المجمّع لكن الأحداث لا تظهر في الموجة الأمامية
+
+1. تأكد من أن المجمّع يعمل: `systemctl status agenteye-collector` (Linux) أو تحقق من العملية.
+2. تأكد من أن `AGENTEYE_URL` يشير إلى `http(s)://your-server-host:8080/events` (ملاحظة: مسار `/events`).
+3. قم بتفريغ لمرة واحدة لرؤية الإخراج الفوري:
+   ```bash
+   agenteye-collector flush
+   ```
+4. تحقق من أن Python SDK يكتب الملفات فعلاً: `ls ${AGENTEYE_HOME:-~/.agenteye}/events/`
+5. إذا كانت هناك ملفات في `${AGENTEYE_HOME:-~/.agenteye}/failed/`، فالرفعات تفشل. تحقق من سجلات المجمّع للخطأ، على الأرجح 4xx (مفتاح سيء أو عنوان URL) أو مشكلة شبكية.
+
+### تتراكم الملفات في `$AGENTEYE_HOME/events/` ولم تُرفع
+
+- قد لا يعمل المجمّع. ابدأه: `agenteye-collector start`؛ يُفرّغ الأحداث الموجودة مسبقًا تلقائيًا عند البدء.
+- تحقق من صحة المجمّع: `agenteye-collector health`
+- قد يعمل المجمّع لكن لا يستطيع الوصول إلى الخادم. تحقق من قواعد الجدار الناري بين المجمّع وأجهزة الخادم.
+
+### الملفات في `$AGENTEYE_HOME/failed/`
+
+تنتقل الملفات إلى `failed/` بعد استنفاد جميع محاولات إعادة المحاولة (افتراضي: 5 محاولات مع تراجع أسي). هذا يعني إما:
+- عاد الخادم بخطأ 4xx (مفتاح سيء أو عنوان URL خاطئ أو مشكلة حمل)
+- كان الخادم غير قابل للوصول طوال نافذة إعادة المحاولة
+
+أصلح المشكلة الأساسية، ثم أعد الطابور يدويًا:
+
+```bash
+mv ${AGENTEYE_HOME:-~/.agenteye}/failed/*.jsonl ${AGENTEYE_HOME:-~/.agenteye}/events/
+agenteye-collector flush
+```
+
+### يُبلّغ المجمّع عن `network error` في كل رفع (فشل مصافحة TLS)
+
+إذا كان `curl -k` مقابل `AGENTEYE_URL` ينجح لكن ثنائي المجمّع يفشل في كل رفع مع `error sending request for url (...)`، فإن خادم AgentEye يقدم شهادة TLS غير موقعة من قبل CA عام موثوق.
+
+**مسار الإنتاج** هو اسم مضيف الاستيعاب ACME المُكوّن في `deploy/base/certificates/domain.env` (انظر [`kubernetes-deployment.md`](/ar/agenteye/kubernetes-deployment) المرحلة 3.1 / 4.2). بمجرد أن يُحل `INGEST_DOMAIN` إلى LB Traefik العام وأصدرت cert-manager شهادة Let's Encrypt، يتحقق المجمعون من شهادة الخادم مقابل مخزن الثقة النظامي **بدون الحاجة إلى `AGENTEYE_TLS_CA`**؛ امسحه من إعدادات المجمّع إذا تم تعيينه ضد نشر موقّع ذاتيًا أقدم.
+
+**العرض: عمل المجمّع أمس، يفشل اليوم بعد فجوة ~90 يوم.** هذا يعني أن النشر لا يزال على جهة الإصدار `selfsigned` القديمة لـ `ingest-tls`. تم تدوير شهادة 90 يوم وملف CA المثبت قديم. أصلح بشكل دائم بتبديل المجموعة إلى جهة إصدار ACME (المرحلة 3.1 من دليل النشر). حل قصير الأجل: أعد استخراج شهادة الخادم الحالية وحدّث `AGENTEYE_TLS_CA`:
+
+```bash
+kubectl get secret ingest-tls-cert -n agenteye \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /etc/agenteye/server-ca.crt
+```
+
+```bash
+export AGENTEYE_TLS_CA=/etc/agenteye/server-ca.crt
+agenteye-collector flush
+```
+
+يضيف `AGENTEYE_TLS_CA` ثقة إضافية؛ لا تزال الجذور العامة الموثوقة موثوقة.
+
+### شهادة `ingest-tls` عالقة في `Ready: False` بعد النشر
+
+```bash
+kubectl describe certificate ingest-tls -n agenteye
+```
+
+انظر إلى `Events` و `Order` / `Challenge` المشار إليهما. الأسباب الشائعة:
+
+- **DNS غير يحل إلى LB العام.** لا يمكن لمدقق HTTP-01 الوصول إلى `INGEST_DOMAIN`. تحقق باستخدام `dig +short INGEST_DOMAIN`؛ يجب أن يحل إلى نفس عنوان `traefik-public` LoadBalancer `EXTERNAL-IP`. يحاول cert-manager تلقائيًا بمجرد انتشار DNS؛ لا حاجة لحذف الشهادة.
+- **منفذ 80 مسدود عند LB / مجموعة الأمان.** يتطلب HTTP-01 أن تكون المنفذ 80 قابلة للوصول من مدققي Let's Encrypt العامين. إذا كان لديك WAF أو SG لأعلى يقيد `:80`، افتحه (تُعيد إعدادات Traefik التوجيه إلى HTTPS، لكن Boulder يتابع إعادة التوجيه ويقبل الاستجابة).
+- **`dnsNames` لم يُستبدل.** إذا كان `kubectl get certificate ingest-tls -n agenteye -o jsonpath='{.spec.dnsNames}'` يُظهر `INGEST_DOMAIN_PLACEHOLDER`، فقد تخطيت خطوة `domain.env`؛ أنشئ من `domain.env.example` وأعد التطبيق.
+- **معدل محدود بواسطة Let's Encrypt.** تؤدي الطلبات الفاشلة المتكررة لنفس اسم المضيف إلى تفعيل حدود الشهادة المكررة أو التحقق الفاشل. انتظر ساعة واحدة على الأقل قبل إعادة المحاولة؛ تحقق من حالة الطلب للحصول على رسالة حد المعدل الدقيقة.
+
+### شهادة `dashboard-tls` عالقة في `Ready: False` / المتصفح يُظهر تحذيرًا
+
+نفس سير التشخيص كما هو الحال مع `ingest-tls` أعلاه (`kubectl describe certificate dashboard-tls -n agenteye`); تنطبق أسباب DNS والمنفذ 80 والعنصر النائب وحد المعدل جميعها، بالإضافة إلى اثنين محددين للموجة الأمامية:
+
+- **`DASHBOARD_DOMAIN` يحل إلى LoadBalancer الخاطئ.** يجب أن يشير إلى LB Traefik *الموجة الأمامية*، وليس الاستيعاب العام. `dig +short` اسم المضيف والمقارنة مع عنوان LB الموجة الأمامية.
+- **لا يستطيع مثيل Traefik الموجة الأمامية خدمة التحدي.** يجب تثبيته باستخدام ملف قيم الموجة الأمامية المُجمّع، الذي يُفعّل موفر Ingress محدود النطاق لحل HTTP-01 الخاص بـ cert-manager. بدونه حل غير قابل للتوجيه والطلب يبقى `pending` إلى الأبد. ارفع مستوى المثيل بالقيم المقدمة؛ ينجز التحدي المعلق بعدها بنفسه.
+- **كان LoadBalancer مقيدًا بنطاقات المصدر.** تنطبق النطاقات على المنفذ 80 أيضًا، مما يحجب مدققي Let's Encrypt — الإصدار الأول وكل تجديد ~75 يوم. أعد فتح LB، أو نسق حل DNS-01 مع الدعم قبل قفله.
+
+بينما يفشل الإصدار، تستمر الموجة الأمامية في خدمة شهادتها السابقة (أو الإصدار الافتراضي للـ ingress في تثبيت جديد) — يتم تدهور الوصول بتحذير متصفح، أبدًا لا يكون معطلاً.
+
+### CLI لا يزال يتخطى التحقق من TLS بعد حصول الموجة الأمامية على شهادة موثوقة
+
+يتم الاحتفاظ بـ `--insecure` في `cli.json` عند تسجيل الدخول. بمجرد أن تخدم الموجة الأمامية شهادة موثوقة علنًا، قم بتسجيل الدخول مرة أخرى باستخدام `agenteye --base-url https://<your-dashboard-domain> --secure login`؛ يتم حفظ التحقق مرة أخرى وتختفي تحذيرات البدء.
+
+---
+
+## مشاكل الموجة الأمامية
+
+### لا يمكن تعطيل أو تحرير مستخدم `ADMIN_EMAIL`
+
+بالتصميم. تُوسّم المستخدم الذي يطابق `ADMIN_EMAIL` كمحمي عند كل بدء خادم: تخفي الموجة الأمامية زر تعطيل هذا الصف، و API يرفض `DELETE /users/:id` و `PUT /users/:id` مقابله مع `403 Forbidden`. يرفض مشغّل قاعدة البيانات أيضًا بيانات `UPDATE` المباشرة التي قد تعطّل الصف المحمي.
+
+لتدوير admin التمهيد، غيّر `ADMIN_EMAIL` في بيئتك وأعد تشغيل الخادم. يتم upsert البريد الإلكتروني الجديد كمحمي. يحتفظ admin السابق بعلم الحماية حتى يتم مسحه في قاعدة البيانات (عادةً بخير، لأن البريد الإلكتروني السابق لا يزال admin صالحًا حتى تحذفهم صراحةً).
+
+### لا تُظهر الموجة الأمامية أحداثًا
+
+1. تأكد من أن عنوان URL الخادم ومفتاح API صحيحان في متغيرات بيئة الموجة الأمامية (`AGENTEYE_SERVER_URL`, `AGENTEYE_API_KEY`).
+2. يحتاج مفتاح API الموجة الأمامية إلى إذن `events:read`.
+3. تأكد من أن الأحداث تم استيعابها فعلاً: `curl http://your-server:8080/events -H "Authorization: Bearer $ADMIN_KEY"`
+
+### `/errors` فارغة لكن `/events` تُظهر صفوفًا حمراء
+
+تُصدر إصدارات SDK الأحدث أعطالاً كأحداث `agent_end` / `tool_result` / `hook_completed` مع `outcome: "error"` في الحمل الثقيل، بدلاً من صف `event_type: "error"` مخصص. تُطابق صفحة `/errors` الآن كليهما: أي صف يرسمه تدفق `/events` باللون الأحمر (صراحةً `event_type='error'`، حمل الثقل `outcome`/`status` في مجموعة الفشل، `is_error: true`، أو حقل `error` صحيح) يظهر على `/errors`. إذا كنت قد شاهدت سابقًا "بدون أخطاء في هذه النافذة" بينما كانت الصفوف الحمراء مرئية على `/events`، فقم بترقية الموجة الأمامية + الخادم معًا (المرشح الموسع هو `errored=true` على `GET /events`) وستتفق العرضتان.
+
+### `/models` أو `/tools` أو `/hooks` بطيئة أو تفشل في التحميل على نطاقات زمنية عريضة
+
+**العرض:** على جدول أحداث كبير (ملايين الصفوف)، فتح `/models`، `/tools`، أو `/hooks` — أو توسيع النطاق الزمني إلى `7d`، `30d`، أو `all` — تدور الخرائط ثم تُظهر خطأ تحميل. يسجل الخادم ClickHouse `MEMORY_LIMIT_EXCEEDED` (الرمز 241) أو انتهاء انتظار استعلام لطلب `latency_aggregate`.
+
+**السبب:** حسبت الإصدارات الأقدم بكثرة صفحات التجميع والتوزيع المرجح مع استعلام قرأ حمل الحدث `payload` الكامل والحالات المقترنة طلب/استجابة مع نوع سريع في الذاكرة. كان ذروة ذاكرة الاستعلام تنمو إذًا مع حجم النافذة، لذا على مستأجر مشغول يمكن نطاق عريض أن يتجاوز سقف الذاكرة لكل استعلام في ClickHouse.
+
+**الإصلاح:** ارقّ إلى إصدار يتضمن هذا الإصلاح. يقرأ التجميع الآن الأعمدة المُروّجة المضغوطة فقط ويقترن الأحداث بـ تجميع دفق، لذا لا تنمو ذروة الذاكرة مع حمل الثقل الكامل — النوافذ العريضة تبقى ضمن سقف الذاكرة بكثير وتعود في جزء من الوقت. التحسين بالكامل جانب الاستعلام: ينطبق على جميع البيانات الموجودة عند تحميل الصفحة التالي، بدون إعادة استيعاب أو ملء رجعي.
+
+### فشل تحميل الموجة الأمامية / صفحة فارغة
+
+تحقق من سجلات حاوية الموجة الأمامية:
+
+```bash
+docker logs agenteye-dashboard
+```
+
+السبب الأكثر شيوعًا هو `AGENTEYE_SERVER_URL` أو `AGENTEYE_API_KEY` غير موجود أو يشير إلى خادم غير قابل للوصول.
+
+### تحليلات / بيانات الموجة الأمامية
+
+ترسل الموجة الأمامية تحليلات الاستخدام المنتج مجهولة إلى PostHog بشكل افتراضي، موجهة عبر مسار `/ingest` الخاص بالموجة الأمامية (عكس بروكسي إلى `https://us.i.posthog.com`). إرسالها من طرف ثالث يعني أن حجب الإعلانات للمتصفح لا يحطمها. هذا مستقل عن الوظيفة الأساسية للموجة الأمامية:
+
+- **حاوية الموجة الأمامية** (وليس المتصفح) هي ما تصل إلى PostHog. إذا كان وصول الخروج الخاص بها إلى `https://us.i.posthog.com` مسدودًا، فإن البيانات الإحصائية لا تعمل بصمت؛ تعمل الموجة الأمامية بشكل طبيعي ولا يتم السطح عليها أخطاء للمستخدمين.
+- لا يتم تضمين بيانات الوكيل أو الجلسة أو الحدث أبدًا، فقط استخدام واجهة المستخدم للموجة الأمامية.
+- لتعطيل البيانات الإحصائية بالكامل، عيّن `AE_ANALYTICS_DISABLED=1` على حاوية الموجة الأمامية وأعد التشغيل. انظر [بيانات شخصية و خصوصية](/ar/agenteye/deployment#telemetry--privacy) في دليل النشر.
+
+### بيانات الأداة الموجة الأمامية / بيانات المستخدم
+
+ترسل أداة CLI `agenteye` بيانات استخدام مجهولة إلى PostHog بشكل افتراضي: الأوامر التي تعمل وحالة النجاح/الخروج والمدة. هذا مستقل عن وظيفة CLI:
+
+- **الجهاز الذي يعمل CLI** يصل إلى `https://us.i.posthog.com` مباشرة. إذا كان وصول الخروج الخاص به مسدودًا، فإن البيانات الإحصائية لا تعمل بصمت (الإرسال محدود بالوقت، لذا لا تؤخر أي أمر) و CLI يعمل بشكل طبيعي.
+- لا يتم تضمين بيانات الوكيل أو الجلسة أو الحدث أبدًا: **الوسيطات** والقيم العلم (عنوان URL الموجة الأمامية، الرمز، البريد الإلكتروني، معرّفات الجلسة، مرشحات الاستعلام) لم تُرسل أبدًا.
+- لتعطيله، عيّن `AGENTEYE_ANALYTICS_DISABLED=1` (أو `DO_NOT_TRACK=1` عبر الأداة) في بيئة CLI. انظر [بيانات شخصية و خصوصية](/ar/agenteye/cli#telemetry--privacy) في دليل CLI.
+
+---
+
+## مشاكل المساعد الذكي
+
+انظر [enterprise-docs/assistant.md](/ar/agenteye/assistant) للإعداد الكامل.
+
+### فقاعة المساعد لا تظهر
+
+تُخفى الفقاعة ما لم **جميع** هذه تحتفظ:
+
+- المستخدم المسجل دخوله لديه إذن `agent:use`.
+- يتم تعيين `AGENTEYE_AGENT_URL` على الموجة الأمامية وخدمة `agent` قابلة للوصول.
+- يتم تكوين نقطة نهاية LLM على خدمة `agent` (`ANTHROPIC_API_KEY`، بوابة عبر `ANTHROPIC_BASE_URL`، أو Bedrock/Vertex). بدون تعيينها، يُبلّغ الوكيل عن "غير مُكوّن" وتبقى الفقاعة مخفية.
+
+تحقق من صحة الوكيل من مضيف الموجة الأمامية: `curl http://agent:9100/health` يجب أن يعيد `{"status":"ok","llm_configured":true,...}`.
+
+### يقول المساعد أنه لا يستطيع قراءة شيء ما
+
+يتم بوابة الأدوات لكل مستخدم. إذا كان المستخدم يفتقد `evaluations:read` (أو `events:read`, `dashboards:read`)، فلن يتم عرض الأدوات المطابقة وسيقول المساعد أنه لا يستطيع قراءة تلك البيانات. امنح إذن القراءة ذي الصلة.
+
+### "مساعد غير مُكوّن" (HTTP 503) عند الإرسال
+
+لا تحتوي حاوية `agent` على نقطة نهاية LLM مُكوّنة، أو لا يتطابق `AGENTEYE_AGENT_TOKEN` الخاص بالموجة الأمامية مع الوكيل. عيّن كليهما وأعد التشغيل.
+
+### تبدأ حاوية `agent` أو OOMs تحت التحميل
+
+تُولّد كل محادثة عملية قصيرة الأجل. تأكد من أن الحاوية تعمل مع عملية init (تستخدم الصورة `tini`؛ في Compose عيّن `init: true`) وأعطها حدود ذاكرة كافية. قلّل `AGENTEYE_AGENT_MAX_STEPS` إذا لزم الأمر.
+
+---
+
+## مشاكل CLI
+
+### فشل `agenteye` في البدء مع `ModuleNotFoundError: No module named 'click'`
+
+يمكن لتثبيت جديد لـ CLI `agenteye` في الإصدار **0.1.6** أن ينهار عند البدء مع:
+
+```
+ModuleNotFoundError: No module named 'click'
+```
+
+اعتمد 0.1.6 على `click` الذي يتم تثبيته بشكل غير مباشر بواسطة `typer`؛ الإصدارات الحالية من `typer` لم تعد تسحبها، لذا تنتهي بيئة نظيفة فاقدة للحزمة. **ارقّ إلى 0.1.7 أو أحدث**، الذي يعتمد على `click` بشكل مباشر:
+
+```bash
+pipx upgrade agenteye      # إذا تم التثبيت باستخدام pipx (أو: pipx install --force agenteye)
+uv tool upgrade agenteye   # إذا تم التثبيت باستخدام uv
+pip install --upgrade agenteye
+```
+
+انظر [enterprise-docs/cli.md](/ar/agenteye/cli) لتوجيه التثبيت.
+
+---
+
+## مشاكل Python SDK
+
+### لا تظهر ملفات في `$AGENTEYE_HOME/events/`
+
+يقوم SDK بتخزين الأحداث مؤقتًا ويُفرّغها كل 500 مللي ثانية بشكل افتراضي. إذا خرجت العملية الخاصة بك قبل التفريغ، قد تُفقد الأحداث. اتصل بـ `agenteye.configure(flush_interval=0.1)` لتفريغ أسرع في البرامج قصيرة الأجل، أو تأكد من أن العملية الخاصة بك تعمل بطول كافٍ لدورة تفريغ.
+
+إذا تم تعيين `AGENTEYE_HOME`، تحقق من أن SDK يكتب إلى `$AGENTEYE_HOME/events/` وليس `~/.agenteye/events/` (يتطلب SDK ≥ 0.0.1b5).
+
+### `ValueError: Reserved field names cannot be used as custom fields`
+
+الأسماء `timestamp`، `type`، و `environment` محجوزة ولا يمكن استخدامها كحقول مخصصة. تمرير أي منها يرفع:
+
+```
+ValueError: Reserved field names cannot be used as custom fields: [...]
+```
+
+أعد تسمية حقل مخصص مخالف. لاحظ أن `session_id` و `agent_id` معاملات صريحة لاستدعاء الحدث، وليست حقولاً مخصصة؛ تمرير إما مرة أخرى كحقل مخصص يرفع `TypeError`.
+
+---
+
+## مشاكل مراقبة الصحة
+
+### لا تصل تنبيهات إلى Slack (Robusta)
+
+تنبيهات صحة Robusta هي **إضافية اختيارية**؛ لا ترسل أي شيء حتى يتم التثبيت والإشارة إلى قناة Slack. تحقق من الإصدار والحوض الخاص به:
+
+```bash
+kubectl get pods -n robusta          # robusta-runner + robusta-forwarder يجب أن تكون Running
+kubectl logs -n robusta -l app=robusta-runner --tail=50
+```
+
+الأسباب الشائعة: لم يتم تعيين `api_key` / `slack_channel` الخاص بـ Slack (أو تم إلغاء الرمز)؛ `api_key` هو رمز فقط Robusta (`robusta integrations slack`) لكن المجموعة المُجمّعة `disableCloudRouting: true` تحتاج إلى رمز Slack **bot** ذاتي الاستضافة (`xoxb-…`)، أو عيّن `disableCloudRouting: false`؛ حوض `scope` يستبعد namespace الأجهزة الخاصة بك (القيم المُجمّعة النطاق إلى `agenteye`); أو لم يحدث أي فشل حتى الآن. فرض تنبيه اختبار بأخذ جهاز لأسفل:
+
+```bash
+kubectl -n agenteye delete pod -l app=clickhouse   # سيتم إعادة إنشاؤه
+```
+
+انظر [enterprise-docs/health-monitoring.md](/ar/agenteye/health-monitoring#2-pod-failure-alerting-with-robusta-opt-in) للتثبيت والتكوين.
+
+### الخادم يستمر في الرفرفة `NotReady`
+
+اختبار الجاهزية يضرب `/ready`، الذي يفشل عندما Postgres أو ClickHouse غير قابل للوصول. إذا دخل الخادم في دورة داخل وخارج `NotReady`، فإن التبعية غير متاحة بشكل متقطع؛ تحقق من أجهزة ClickHouse و Postgres و `CLICKHOUSE_URL` / `DATABASE_URL` الخادم. تأكد ما يقول `/ready`:
+
+```bash
+kubectl -n agenteye exec deploy/server -- sh -c 'curl -s localhost:8080/ready'
+```
+
+هذا الاختبار متسامح عن قصد (عتبة فشل سخية)، لذا تشير الرفرفة المستمرة إلى مشكلة تبعية حقيقية بدلاً من اختبار عدواني بشكل مفرط. البقاء على المدى الطويل يبقى على `/health`، لذا الرفرفة الجاهزية **لن** تعيد تشغيل الجهاز.
+
+## مشاكل مراقبة الشهادات
+
+### CronJob لا يرسل إخطارات Slack
+
+يتطلب `cert-renewal-check` CronJob عنوان webhook Slack مخزن في Secret. تحقق من أنه موجود:
+
+```bash
+kubectl get secret cert-renewal-notify-config -n agenteye
+```
+
+إذا كان مفقودًا، أنشئه:
+
+```bash
+kubectl create secret generic cert-renewal-notify-config \
+  --namespace agenteye \
+  --from-literal=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+بدون secret، CronJob يعمل لكن يسجل النتائج إلى stdout. تحقق من السجلات باستخدام:
+
+```bash
+kubectl logs -n agenteye -l job-name --tail=50
+```
+
+### انتهت صلاحية شهادة العميل قبل استلام إخطار
+
+يعمل CronJob كل 12 ساعة. إذا لم يكن يعمل، تحقق من حالته:
+
+```bash
+kubectl get cronjob cert-renewal-check -n agenteye
+```
+
+قم بفحص يدوي:
+
+```bash
+kubectl create job --from=cronjob/cert-renewal-check manual-cert-check -n agenteye
+kubectl logs -n agenteye -l job-name=manual-cert-check
+```
+
+لإعادة إصدار الشهادة منتهية الصلاحية فورًا:
+
+```bash
+cd base/certificates/client-certs
+./issue-client-cert.sh <cluster-name>
+```
+
+ثم طبّق `collector-mtls-secret.yaml` المُعاد إنشاؤه في المجموعة(s) التي تشغل المجمعات الخاصة بك وأعد تشغيلها:
+
+```bash
+kubectl apply -f collector-mtls-secret.yaml -n <collector-namespace>
+```
+
+---
+
+## مشاكل النسخة الاحتياطية
+
+### فشل `agenteye-backup` مع "No space left on device"
+
+يُفرّغ `agenteye-backup` CronJob Postgres + ClickHouse في خدش `backup-tmp` `emptyDir` (افتراضي `30Gi`)، ثم **يُرسل بـ تدفق** أرشيف `tar` مباشرة إلى S3 — الأرشيف المضغوط لم تُكتب أبدًا مرة أخرى إلى خدش، لذا الخدش يجب أن يحتفظ فقط بـ *الفريغات الخام*، وليس الفريغات + نسخة أرشيف على القرص الثانية. جهاز مُطرد / `No space left on device` يعني إذًا أن **الفريغات الخام** تتجاوز حجم الخدش (فريغ ClickHouse `events` يهيمن وينمو بمرور الوقت). تحقق من سجلات الوظيفة الفاشلة:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job>
+```
+
+إصلاح: في التراكب الخاص بك، رفع `backup-tmp` `emptyDir` `sizeLimit` الخاص بـ CronJob فوق إجمالي فريغك الخام، وتأكد من أن القرص الرسالي الجهاز يمكنه فعلاً الاحتفاظ بها (`sizeLimit` غطاء، وليس حجز). إذا تجاوزت الفريغات قرص جهاز واحد، استبدل `emptyDir` بـ PVC (EBS/PD) لـ `backup-tmp`، أو اضغط الفريغات بالمصدر.
+
+> كتبت الإصدارات الأقدم `.tar.gz` إلى نفس `20Gi` الخدش كالفريغات، لذا `dumps + archive` فاض وتم إطرد الجهاز **قبل** تشغيل الرفع — الذي يبدو أنه فشل S3 لكن هو حقًا قرص. يُزيل الرفع بـ تدفق ذلك التضاعف.
+
+### فشل `agenteye-backup` في تثبيت `curl`
+
+تعمل الوظيفة على صورة `postgres:16` وتثبت `curl` عند البدء لفريغ HTTP ClickHouse. على مجموعة بدون خروج إلى مرايا حزمة Debian، تفشل خطوة `apt-get`. إما اسمح بذلك الخروج من جهاز النسخة الاحتياطية، أو اخبز `curl` في صورة نسخة احتياطية مرآة/مخصصة وأشر إليه في التراكب الخاص بك.
+
+### يعمل `agenteye-backup` لكن لا شيء يصل إلى التخزين
+
+تُرسل القاعدة `BACKUP_BUCKET` حقيقيًا (`ts-prod-agenteye/backups`) و `agenteye-backup` ServiceAccount. تُرسل الوظيفة **بـ تدفق** الأرشيف إلى S3 (`tar cz … | aws s3 cp - s3://…`). إذا كان جهاز النسخة الاحتياطية بدون وصول كتابة إلى الدلو، الرفع خطأ — ولأن البرنامج يعمل تحت `set -euo pipefail`، فشل أي مكان في ذلك الأنبوب **يفشل** الوظيفة كاملة عند خطوة `upload` بدلاً من عدم عمل صامت (جهاز EXIT trap السيناريو يسجل `backup FAILED during step: upload`). هذا أيضًا الخطوة التي تصل إليها *بعد* إصلاح تفريغ خدش، لذا إذا تم إطراد النسخ الاحتياطية سابقًا عند خطوة الأرشيف، تحقق من الرفع الآن يصل. ابحث في سجلات الوظيفة الفاشلة عن خطأ وصول S3:
+
+```bash
+kubectl logs -n agenteye -l job-name=<failed agenteye-backup job> | grep -iE 's3|upload|denied'
+```
+
+إصلاح: عيّن `BACKUP_BUCKET` في التراكب الخاص بك إلى دلو تملكه وأضِف التعليق `agenteye-backup` ServiceAccount الموجود بوصول الكتابة (IRSA / Workload Identity / Pod Identity). انظر قسم **النسخ الاحتياطية** من [enterprise-docs/kubernetes-deployment.md](/ar/agenteye/kubernetes-deployment).
+
+---
+
+## التقييمات / الجلسات / الاستعلامات المدعومة بـ ClickHouse
+
+### شريط جانب صفحة `/queries` فارغ بعد الترقية
+
+هناك ثلاثة جداول متوقعة (`events`, `evaluations`, `agent_sessions`). إذا كان شريط SchemaBrowser فارغًا بعد الترقية، فقد فشل الخادم في تطبيق DDL ClickHouse عند البدء. تحقق من سجلات الخادم للبحث عن `failed to apply CH DDL statement`:
+
+```bash
+kubectl logs -n agenteye deploy/server | grep -E 'clickhouse|CH DDL'
+```
+
+السبب الأكثر شيوعًا هو ClickHouse غير قابل للوصول بينما تعمل الترحيلات. يرفض الخادم البدء إذا لم يتمكن من الوصول إلى CH، لذا عادةً ما يكون لجهاز عالق `CrashLoopBackOff` بدلاً من صفحة استعلامات معطلة بصمت، لكن DDL جزئي تطبيق (أحد البيانات OK، التالية 5xx) يترك المخطط نصف بخير. أعد تشغيل جهاز الخادم بعد تحقق من وصول CH:
+
+```bash
+kubectl rollout restart deploy/server -n agenteye
+```
+
+### لا تظهر تقييمات جديدة في `/sessions` أو `/queries`
+
+بعد الترقية، تُكتب التقييمات الجديدة إلى ClickHouse، وليس Postgres، وتظهر تحت `/sessions` (محدودة النطاق على `evaluations:read`) وفي `/queries`. إذا لم تظهر:
+
+1. تأكد من أن خط أنابيب المقيّم مُفعّل (`EVALUATOR_ENDPOINT` معيّن على الخادم) وينتج نتائج نهائية؛ تحقق من خطوط `evaluation_finalized`.
+2. تأكد من وصول CH من الخادم: `kubectl exec -n agenteye deploy/server -- curl -fsS http://clickhouse:8123/ping`.
+3. اختبر بقعة جدول CH: `kubectl exec -n agenteye clickhouse-0 -- clickhouse-client -q 'SELECT count() FROM agenteye.evaluations'`.
+
+### فشل الاستعلامات تحت التحميل مع "Memory limit exceeded"، أو تم `OOMKilled` ClickHouse
+
+**العرض:** تحت تحميل موجة أمامية/استعلام ثقيل، صفحات تحليلية (تدفق الأحداث، `/sessions`، عرض النماذج/المؤخرة، محرر SQL) تبدأ بـ الفشل أو انتهاء الانتظار؛ يرفرف الخادم بـ اختصار `NotReady`; وجهاز ClickHouse يُظهر عدد إعادة تشغيل متزايد. هذا هو **ذاكرة** شبه دائمة، وليس CPU أو قرص.
+
+**تأكد من أنها ذاكرة** (وليس مشكلة الإنتاجية التي قد تصلح بـ التكرار):
+
+1. تحقق من جهاز بحثًا عن عمليات قتل خارج الذاكرة:
+   ```bash
+   kubectl -n agenteye describe pod clickhouse-0 | grep -iE 'Restart Count|Last State|Reason|OOMKilled'
+   ```
+   `Reason: OOMKilled` / `Exit Code: 137` مع عدد إعادة تشغيل متسلق هو الحكاية.
+
+2. اسأل ClickHouse ما يرفضه:
+   ```bash
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -q \
+     "SELECT name, value FROM system.errors WHERE value>0 ORDER BY value DESC"
+   ```
+   عدد كبير `MEMORY_LIMIT_EXCEEDED` هو التوقيع. الرسالة تقرأ *"أقصى: N GiB"* — أن **N هو `0.9 × حد الذاكرة الخاص بـ pod`** (`max_server_memory_usage_to_ram_ratio` في `deploy/base/clickhouse/configmap.yaml`). إذا كانت الأحمال الثقيلة بحاجة إلى أكثر من N، يتم رفضها.
+
+3. استبعد الأشياء التي *ليست* المشكلة — إذا كانت CPU وعدد الأجزاء والقرص جميعها منخفضة، إضافة نسخ مكررة/تقسيم ستكون تكلفة مهدرة:
+   ```bash
+   kubectl -n agenteye top pod clickhouse-0
+   kubectl -n agenteye exec clickhouse-0 -- clickhouse-client -

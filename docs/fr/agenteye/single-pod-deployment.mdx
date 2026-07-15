@@ -1,0 +1,484 @@
+---
+title: "Déploiement Single-Pod : Collector + Sidecar Application sur EKS"
+description: "Documentation AgentEye — Déploiement Single-Pod : Collector + Sidecar Application sur EKS."
+---
+
+
+Exécutez votre application et le collector AgentEye **dans le même Pod Kubernetes** afin que la télémétrie ne traverse jamais une frontière réseau pour être collectée. Le SDK de votre application et le collector partagent une file d'événements in-pod unique, ce qui garantit un transfert de télémétrie à faible latence, en mémoire partagée — sans port localhost à exposer, sans service mesh à traverser, et avec le cycle de vie du collector directement lié au workload qu'il observe. Le certificat client mTLS que présente le collector est injecté directement dans votre pod depuis AWS Secrets Manager, de sorte que la rotation des credentials ne nécessite aucune manipulation manuelle de fichiers de votre côté.
+
+Le modèle sidecar + file partagée décrit ici est agnostique au cloud ; deux conteneurs partageant un `emptyDir` comme file d'événements fonctionnent sur n'importe quelle distribution Kubernetes. Seul le chemin de livraison des certificats dans ce guide (AWS Secrets Manager + le Secrets Store CSI Driver + IRSA) est spécifique à AWS / EKS. Si vous déployez ailleurs, conservez la disposition du pod et de la file, et substituez le mécanisme de montage de secrets de votre plateforme aux phases 2 et 3.
+
+> **Quand utiliser ce pattern.** Choisissez le single-pod lorsque votre application ne doit pas traverser une frontière réseau pour atteindre le collector (IPC in-pod à faible latence, couplage fort du cycle de vie, isolation par pod et par tenant). Pour les flottes multi-applications partageant un seul collector par nœud ou par cluster, consultez plutôt [enterprise-docs/kubernetes-deployment.md](/fr/agenteye/kubernetes-deployment).
+
+---
+
+## Vue d'ensemble
+
+```
+┌──────────────────────────────── Pod ─────────────────────────────────┐
+│                                                                      │
+│   ┌──────────────────────┐              ┌──────────────────────┐     │
+│   │ your-app             │              │ agenteye-collector   │     │
+│   │ (SDK writes JSONL)   │              │ (sweeps events/,     │     │
+│   │                      │              │  uploads over mTLS)  │     │
+│   └──────────┬───────────┘              └──────────┬───────────┘     │
+│              │ writes                        reads │                 │
+│              ▼                                     ▼                 │
+│     ┌────────────────────────────────────────────────────┐           │
+│     │  emptyDir: /var/lib/agenteye/{events,failed}/      │           │
+│     │  (AGENTEYE_HOME - shared event spool)              │           │
+│     └────────────────────────────────────────────────────┘           │
+│                                                   ▲                  │
+│                                                   │ reads cert       │
+│                                          ┌────────┴─────────┐        │
+│                                          │ CSI (read-only): │        │
+│                                          │ /etc/agenteye/   │        │
+│                                          │ tls/client.{crt, │        │
+│                                          │   key}, ca.crt   │        │
+│                                          └────────┬─────────┘        │
+└───────────────────────────────────────────────────┼──────────────────┘
+                                                    │ mounted by
+                                                    │ Secrets Store CSI
+                                                    │ (AWS provider +
+                                                    │ IRSA)
+                                           ┌────────┴──────────┐
+                                           │ AWS Secrets       │
+                                           │ Manager           │
+                                           │ agenteye/mtls-    │
+                                           │ client/<cluster>  │
+                                           └────────┬──────────┘
+                                                    ▲
+                                                    │ push on issue /
+                                                    │ renewal
+                                           ┌────────┴──────────┐
+                                           │ Exosphere         │
+                                           │ delivers the cert │
+                                           │ bundle into your  │
+                                           │ Secrets Manager   │
+                                           │ on renewal        │
+                                           └───────────────────┘
+
+Outbound: collector → AGENTEYE_URL (mTLS, using the CSI-mounted cert).
+```
+
+Deux flux de données, deux volumes :
+
+- **Événements (in-pod) :** le SDK de votre application écrit des fichiers `.jsonl` dans l'`emptyDir` partagé sous `$AGENTEYE_HOME/events/` ; le sweeper du collector les lit et les envoie. Pas de port localhost, pas de loopback — un transfert purement basé sur le système de fichiers partagé.
+- **Certificat mTLS (pod ← cloud) :** le Secrets Store CSI Driver monte le bundle de certificats depuis Secrets Manager dans un volume en lecture seule sous `/etc/agenteye/tls/`, limité au conteneur collector.
+
+**Deux parties indépendantes :**
+
+| Partie | Responsabilité |
+|---|---|
+| Exosphere | Émet le certificat client mTLS et livre le bundle dans le Secrets Manager de **votre** compte AWS sous un nom stable. Republié le bundle renouvelé dans le même secret avant expiration. |
+| Vous | Installez le Secrets Store CSI Driver, accordez au ServiceAccount du pod un accès en lecture au secret via IRSA, et appliquez le manifeste Pod. C'est tout. |
+
+---
+
+## Prérequis
+
+### Dans votre compte AWS / cluster EKS
+
+- Un cluster EKS avec un **fournisseur OIDC** associé. Vérifiez avec :
+
+  ```bash
+  aws eks describe-cluster --name <your-cluster> \
+    --query "cluster.identity.oidc.issuer" --output text
+  ```
+
+  Si la commande retourne une URL `https://oidc.eks.…`, OIDC est activé. Sinon, associez-en un :
+
+  ```bash
+  eksctl utils associate-iam-oidc-provider \
+    --cluster <your-cluster> --approve
+  ```
+
+- Le [Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) et le [fournisseur AWS](https://github.com/aws/secrets-store-csi-driver-provider-aws) installés dans le cluster (voir § Phase 2).
+
+- AWS CLI v2 et `kubectl` sur votre poste de travail.
+
+### Coordination avec Exosphere
+
+Avant de déployer, Exosphere livre le bundle client mTLS dans le Secrets Manager de votre compte AWS et vous fournit :
+
+- Le **nom du secret** (convention : `agenteye/mtls-client/<your-cluster>`)
+- La **région AWS** dans laquelle réside le secret
+- L'**URL du backend AgentEye** à configurer pour le collector
+- Votre **clé API** du collector (voir [enterprise-docs/api-keys.md](/fr/agenteye/api-keys))
+
+---
+
+## Phase 1 : Ce que livre Exosphere
+
+Vous ne générez pas vous-même le certificat client mTLS. Exosphere l'émet et livre le bundle directement dans le Secrets Manager de votre compte AWS, de sorte que le seul matériel de credentials qui arrive dans votre environnement est le secret terminé, prêt à être monté.
+
+Ce qui arrive dans votre compte :
+
+| Propriété | Valeur |
+|---|---|
+| Nom du secret | `agenteye/mtls-client/<cluster-name>` (stable entre les renouvellements) |
+| Région | La région AWS que vous avez désignée pour votre cluster EKS |
+| Contenu | Un secret JSON unique avec trois clés (`client.crt`, `client.key` et `ca.crt`), chacune contenant le matériel encodé en PEM |
+| Tag | `AgentEyeCluster=<cluster-name>` |
+
+Lors du renouvellement, le même secret est mis à jour sur place avec une nouvelle version, de sorte que l'ARN et le nom ne changent jamais ; votre `SecretProviderClass` et votre politique IAM continuent de fonctionner sans modification. Pour le cycle de vie du certificat (validité, cadence de renouvellement, alertes d'expiration), consultez [enterprise-docs/kubernetes-deployment.md](/fr/agenteye/kubernetes-deployment).
+
+---
+
+## Phase 2 : Installer le Secrets Store CSI Driver + le fournisseur AWS
+
+Ignorez cette étape si vous faites déjà tourner un autre workload qui monte des secrets AWS via CSI.
+
+```bash
+# CSI Driver
+helm repo add secrets-store-csi-driver \
+  https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm install -n kube-system csi-secrets-store \
+  secrets-store-csi-driver/secrets-store-csi-driver \
+  --set syncSecret.enabled=true \
+  --set enableSecretRotation=true \
+  --set rotationPollInterval=1h
+
+# AWS provider
+kubectl apply -f \
+  https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
+```
+
+**Vérification :**
+
+```bash
+kubectl get pods -n kube-system | grep -E 'csi-secrets-store|aws-provider'
+```
+
+Résultat attendu : `Running` pour chaque pod.
+
+> **Pourquoi `rotationPollInterval=1h` ?** Lorsqu'Exosphere publie un certificat renouvelé, Secrets Manager est mis à jour sur place. Le CSI Driver relit le secret à cet intervalle et réécrit les fichiers montés. Le collector lit les fichiers de certificats une seule fois au démarrage, donc il commence à présenter le certificat renouvelé uniquement après un redémarrage du processus ; voir § Rotation des certificats pour savoir comment en déclencher un.
+
+---
+
+## Phase 3 : Accorder au pod l'accès en lecture au secret (IRSA)
+
+### 3.1 Créer la politique IAM
+
+Enregistrez sous `agenteye-mtls-reader-policy.json` :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAgentEyeMtlsBundle",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:agenteye/mtls-client/<cluster-name>-*"
+    }
+  ]
+}
+```
+
+Remplacez `<region>`, `<account-id>` et `<cluster-name>`. Le `-*` final correspond au suffixe aléatoire de six caractères qu'AWS ajoute à chaque ARN de secret.
+
+Créez la politique :
+
+```bash
+aws iam create-policy \
+  --policy-name AgentEyeMtlsReader-<cluster-name> \
+  --policy-document file://agenteye-mtls-reader-policy.json
+```
+
+### 3.2 Créer le rôle IAM et le lier au ServiceAccount du pod
+
+```bash
+eksctl create iamserviceaccount \
+  --name agenteye-pod \
+  --namespace <your-namespace> \
+  --cluster <your-cluster> \
+  --role-name AgentEyePodRole-<cluster-name> \
+  --attach-policy-arn arn:aws:iam::<account-id>:policy/AgentEyeMtlsReader-<cluster-name> \
+  --approve
+```
+
+Cette commande crée un `ServiceAccount` nommé `agenteye-pod` avec l'annotation `eks.amazonaws.com/role-arn` pointant vers le nouveau rôle.
+
+### 3.3 Récapitulatif des permissions IAM requises
+
+| Permission | Périmètre | Pourquoi |
+|---|---|---|
+| `secretsmanager:GetSecretValue` | `arn:aws:secretsmanager:<region>:<acct>:secret:agenteye/mtls-client/<cluster>-*` | Le CSI Driver lit le bundle de certificats à chaque montage et à chaque tick de rotation. |
+| `secretsmanager:DescribeSecret` | identique | Le CSI Driver appelle `DescribeSecret` pour détecter les changements de version entre les sondages. |
+
+**N'accordez PAS** `secretsmanager:PutSecretValue`, `secretsmanager:UpdateSecret` ou `secretsmanager:DeleteSecret` au pod. Le pod ne fait que lire le secret ; l'écriture de nouvelles versions est gérée par Exosphere lors de l'émission ou du renouvellement du certificat.
+
+Si le secret est chiffré avec une clé KMS gérée par le client (et non la clé `aws/secretsmanager` par défaut), accordez également :
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["kms:Decrypt"],
+  "Resource": "arn:aws:kms:<region>:<acct>:key/<key-id>",
+  "Condition": {
+    "StringEquals": {
+      "kms:ViaService": "secretsmanager.<region>.amazonaws.com"
+    }
+  }
+}
+```
+
+---
+
+## Phase 4 : Déployer le Pod
+
+### 4.1 SecretProviderClass
+
+`agenteye-mtls-spc.yaml` :
+
+```yaml
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenteye-mtls
+  namespace: <your-namespace>
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "agenteye/mtls-client/<cluster-name>"
+        objectType: "secretsmanager"
+        jmesPath:
+          - path: '"client.crt"'
+            objectAlias: "client.crt"
+          - path: '"client.key"'
+            objectAlias: "client.key"
+          - path: '"ca.crt"'
+            objectAlias: "ca.crt"
+```
+
+Le bloc `jmesPath` indique au fournisseur AWS de scinder le secret JSON en trois fichiers distincts sur le disque. Les guillemets dans `'"client.crt"'` sont requis parce que JMESPath traite `.` comme un opérateur de sous-expression.
+
+```bash
+kubectl apply -f agenteye-mtls-spc.yaml
+```
+
+### 4.2 Manifeste Pod / Deployment
+
+**Comment les deux conteneurs communiquent.** Le SDK AgentEye et le collector ne communiquent pas via un socket réseau ; il n'y a pas de port HTTP local. Le SDK écrit des lots d'événements sous forme de fichiers `.jsonl` dans `$AGENTEYE_HOME/events/`, et le collector surveille en continu ce répertoire et envoie chaque fichier. Pour un pod sidecar, cela signifie :
+
+- Les deux conteneurs montent le **même** volume `emptyDir` au **même** chemin.
+- Les deux conteneurs définissent `AGENTEYE_HOME` sur ce chemin.
+- L'image de votre application doit avoir le SDK AgentEye installé et configuré (voir [enterprise-docs/python-sdk.md](/fr/agenteye/python-sdk)).
+
+> Lorsque `AGENTEYE_HOME` n'est pas défini, le SDK et le collector utilisent par défaut `~/.agenteye`, et les deux conteneurs ont des répertoires home différents — ils se retrouveraient donc sur deux files séparées et le transfert échouerait silencieusement. Définissez `AGENTEYE_HOME` sur le même chemin explicite sur **les deux** conteneurs. La vérification §4.3 et la ligne correspondante dans le tableau de dépannage permettent de détecter ce cas si vous l'oubliez.
+
+`agenteye-pod.yaml` (Deployment avec un replica, à faire évoluer selon vos besoins) :
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-with-collector
+  namespace: <your-namespace>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app-with-collector
+  template:
+    metadata:
+      labels:
+        app: my-app-with-collector
+    spec:
+      serviceAccountName: agenteye-pod
+      containers:
+        - name: app
+          image: <your-app-image>
+          env:
+            # SDK writes event JSONL files into $AGENTEYE_HOME/events/
+            - name: AGENTEYE_HOME
+              value: /var/lib/agenteye
+          volumeMounts:
+            - name: agenteye-spool
+              mountPath: /var/lib/agenteye
+
+        - name: agenteye-collector
+          # Pin to a versioned :v<version> tag for production; :beta-latest
+          # tracks the current beta build (:latest exists only for stable releases).
+          image: ghcr.io/agenteye-enterprise/collector:beta-latest
+          args: ["start"]
+          env:
+            # Must match the app container's AGENTEYE_HOME so the collector
+            # sweeps the same directory the SDK writes to.
+            - name: AGENTEYE_HOME
+              value: /var/lib/agenteye
+            - name: AGENTEYE_URL
+              value: "https://ingest.example.agenteye.com/events"
+            - name: AGENTEYE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agenteye-collector-api-key
+                  key: key
+            - name: AGENTEYE_TLS_CERT
+              value: /etc/agenteye/tls/client.crt
+            - name: AGENTEYE_TLS_KEY
+              value: /etc/agenteye/tls/client.key
+            # Only when the AgentEye server presents a cert not signed by a
+            # publicly-trusted CA (e.g. self-signed by an in-cluster issuer
+            # because you have no real DNS domain). The CSI mount already
+            # exposes ca.crt alongside the client cert/key.
+            - name: AGENTEYE_TLS_CA
+              value: /etc/agenteye/tls/ca.crt
+          volumeMounts:
+            - name: agenteye-spool
+              mountPath: /var/lib/agenteye
+            - name: agenteye-mtls
+              mountPath: /etc/agenteye/tls
+              readOnly: true
+          livenessProbe:
+            exec:
+              command: ["agenteye-collector", "health"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+
+      volumes:
+        # Shared event spool between app and collector. emptyDir is fine:
+        # events are transient and the collector drains them before pod
+        # termination on graceful shutdown.
+        - name: agenteye-spool
+          emptyDir: {}
+        # mTLS cert bundle, mounted read-only into the collector only.
+        - name: agenteye-mtls
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agenteye-mtls
+```
+
+Le Secret `agenteye-collector-api-key` contient la clé API du collector (voir [enterprise-docs/api-keys.md](/fr/agenteye/api-keys) pour le provisionnement).
+
+**Appliquer :**
+
+```bash
+kubectl apply -f agenteye-pod.yaml
+```
+
+### 4.3 Vérification
+
+```bash
+# Le pod doit être Running avec 2/2 conteneurs prêts
+kubectl get pods -n <your-namespace> -l app=my-app-with-collector
+
+# Confirmer que le bundle de certificats a été monté
+kubectl exec -n <your-namespace> deploy/my-app-with-collector \
+  -c agenteye-collector -- ls -l /etc/agenteye/tls/
+```
+
+Résultat attendu : `client.crt`, `client.key`, `ca.crt` tous présents en lecture seule, appartenant à l'utilisateur du conteneur.
+
+**Confirmer que la file d'événements partagée est visible par les deux conteneurs :**
+
+```bash
+# Dans le collector, doit afficher les sous-répertoires events/ et failed/
+# que le collector crée automatiquement au démarrage :
+kubectl exec -n <your-namespace> deploy/my-app-with-collector \
+  -c agenteye-collector -- ls /var/lib/agenteye/
+
+# Dans l'application, doit afficher le même contenu de répertoire :
+kubectl exec -n <your-namespace> deploy/my-app-with-collector \
+  -c app -- ls /var/lib/agenteye/
+```
+
+Si les deux listings divergent, le volume n'est pas monté dans les deux conteneurs (ou `AGENTEYE_HOME` diffère) ; voir § Dépannage.
+
+**Test de fumée de bout en bout :**
+
+```bash
+kubectl exec -n <your-namespace> deploy/my-app-with-collector \
+  -c agenteye-collector -- agenteye-collector flush
+```
+
+Résultat attendu : le collector envoie tous les événements en attente et affiche un résumé `Done: N/N uploaded, 0 failed.`. Si la file est vide, il affiche `No pending files.` et se termine sans rien valider — exécutez donc cette commande uniquement après que votre application a vidé au moins un événement.
+
+Notez que `flush` se termine avec un code non nul **uniquement** pour des défauts de configuration locale : configuration manquante (aucune URL/clé résolue) ou certificat TLS illisible/non parsable (voir § Dépannage). Une **mauvaise clé API ne modifie pas le code de sortie** — l'envoi reçoit un `401`, le fichier est déplacé vers `failed/`, et la commande affiche tout de même `[FAILED] …` par fichier, puis `Done: 0/N uploaded, N failed.` et se termine avec `0`. Pour détecter une mauvaise clé ou un envoi rejeté, lisez la sortie `Done:`/`[FAILED]` ou vérifiez la présence de fichiers dans `$AGENTEYE_HOME/failed/`, et non le code de sortie.
+
+---
+
+## Rotation des certificats
+
+Le certificat client est valide 90 jours et est renouvelé automatiquement environ 15 jours avant expiration ; Exosphere publie ensuite le bundle renouvelé dans le même secret Secrets Manager. De là, le flux in-pod est le suivant :
+
+1. Le secret Secrets Manager reçoit une nouvelle version `AWSCURRENT`. L'ARN et le nom sont inchangés.
+2. Dans le délai de `rotationPollInterval` (1h par défaut ; voir § Phase 2), le CSI Driver lit la nouvelle version et réécrit les fichiers sous `/etc/agenteye/tls/`.
+3. Le collector charge les fichiers de certificats **une seule fois au démarrage**, donc il continue de présenter l'ancien certificat jusqu'au redémarrage du processus. Pour basculer vers le matériel renouvelé, redémarrez le collector ; un rolling restart suffit :
+
+   ```bash
+   kubectl rollout restart deploy/my-app-with-collector -n <your-namespace>
+   ```
+
+   Pour automatiser cela, ajoutez un sidecar qui surveille `/etc/agenteye/tls/` (par exemple avec `inotifywait`) et déclenche le rollout lorsque les fichiers changent.
+
+Comme l'ancien certificat reste valide environ 15 jours après le renouvellement, vous disposez d'une large fenêtre pour effectuer le redémarrage sans interruption de l'ingestion. Exosphere publie le bundle renouvelé pour vous ; la seule action de routine de votre côté est de vous assurer que le collector redémarre dans cette fenêtre.
+
+---
+
+## Dépannage
+
+| Symptôme | Cause probable | Correction |
+|---|---|---|
+| Pod bloqué en `ContainerCreating`, les événements montrent `MountVolume.SetUp failed for volume "agenteye-mtls"` | Le fournisseur CSI ne peut pas atteindre Secrets Manager | Vérifiez que l'IRSA est correctement lié : `kubectl describe sa agenteye-pod -n <ns>` affiche l'annotation `eks.amazonaws.com/role-arn`. Vérifiez CloudTrail pour l'appel AssumeRole. |
+| Erreur : `AccessDeniedException: not authorized to perform secretsmanager:GetSecretValue` | La politique IAM est limitée au mauvais ARN | Le suffixe d'ARN du secret est aléatoire ; utilisez `agenteye/mtls-client/<cluster>-*` avec le joker, pas l'ARN exact. |
+| Erreur : `ParameterNotFound` du fournisseur AWS | Inadéquation entre le nom du secret dans `SecretProviderClass.objects[].objectName` et le secret livré par Exosphere | Confirmez le nom exact avec `aws secretsmanager list-secrets --filters Key=tag-key,Values=AgentEyeCluster`. |
+| Erreur `jmesPath`, un seul fichier monté | Syntaxe JMESPath incorrecte | Les points dans les clés JSON nécessitent des guillemets doubles : `'"client.crt"'`, pas `client.crt`. |
+| Le collector journalise `tls: bad certificate` après un renouvellement | Le CSI Driver n'a pas encore sondé la nouvelle version, ou le collector tourne encore avec l'ancien certificat chargé au démarrage | Confirmez que les fichiers montés ont été mis à jour (`ls -l /etc/agenteye/tls/`), puis redémarrez le collector pour les charger : `kubectl rollout restart deploy/my-app-with-collector -n <ns>`. Voir § Rotation des certificats. |
+| Le conteneur collector crashloope avec `no such file or directory: /etc/agenteye/tls/client.crt` | Volume pas encore peuplé au premier démarrage ; probe de démarrage trop agressive | Ajoutez un délai initial ou utilisez un init container qui attend que le fichier existe : `until [ -f /etc/agenteye/tls/client.crt ]; do sleep 1; done`. |
+| Pod CSI Driver en `OOMKilled` | Limites mémoire par défaut trop basses pour les clusters avec de nombreuses SecretProviderClasses | Augmentez avec `--set linux.resources.limits.memory=200Mi` dans l'installation Helm. |
+| L'application tourne correctement, `agenteye-collector flush` indique `No pending files.`, mais le tableau de bord AgentEye ne montre aucun événement | L'application et le collector ne partagent pas la file d'événements | Vérifiez que (a) les deux conteneurs montent le même `emptyDir` `agenteye-spool` au même chemin, et (b) les deux définissent `AGENTEYE_HOME` sur ce chemin. Exécutez les deux vérifications `ls /var/lib/agenteye/` du § 4.3 ; les listings doivent correspondre. |
+
+**Logs à récupérer en premier :**
+
+```bash
+kubectl logs -n kube-system -l app=secrets-store-csi-driver --tail=100
+kubectl logs -n kube-system -l app=csi-secrets-store-provider-aws --tail=100
+kubectl describe pod -n <your-namespace> -l app=my-app-with-collector
+```
+
+---
+
+## Référence : fichiers sur le disque dans le pod
+
+Le pod dispose de deux chemins de données sur le disque :
+
+### Bundle de certificats mTLS : `/etc/agenteye/tls/` (CSI, lecture seule, collector uniquement)
+
+Monté par le Secrets Store CSI Driver depuis AWS Secrets Manager.
+
+| Fichier | Contenu | Utilisé par le collector comme |
+|---|---|---|
+| `client.crt` | Certificat client encodé PEM | `AGENTEYE_TLS_CERT` |
+| `client.key` | Clé privée encodée PEM | `AGENTEYE_TLS_KEY` |
+| `ca.crt` | Certificat CA encodé PEM | `AGENTEYE_TLS_CA` (optionnel, uniquement lorsque le certificat serveur AgentEye n'est pas approuvé publiquement) |
+
+Les trois fichiers sont montés en lecture seule et appartiennent à l'utilisateur du conteneur. Ils sont réécrits par le CSI Driver lors de la rotation du secret.
+
+### File d'événements : `$AGENTEYE_HOME/` (emptyDir, partagé en lecture-écriture entre les deux conteneurs)
+
+Partagée via un volume `emptyDir` nommé `agenteye-spool`.
+
+| Chemin | Écrit par | Lu par | Objectif |
+|---|---|---|---|
+| `$AGENTEYE_HOME/events/*.jsonl` | Application (SDK AgentEye) | Sweeper du collector | Lots d'événements que le SDK a vidés, en attente d'envoi. |
+| `$AGENTEYE_HOME/failed/` | Collector (en cas d'échec d'envoi) | Vous (lors du débogage) | Fichiers JSONL que le collector n'a pas pu envoyer après plusieurs tentatives. |
+| `$AGENTEYE_HOME/config.json` | Vous (optionnel) | Collector | Fichier de configuration optionnel du collector (alternative aux variables d'environnement). |
+
+Les sous-répertoires `events/` et `failed/` sont créés automatiquement par le collector au démarrage ; aucun `initContainer` n'est nécessaire.
+
+---
+
+## Documentation associée
+
+- [enterprise-docs/collector-installation.md](/fr/agenteye/collector-installation) : options du binaire collector, référence de configuration mTLS, modes daemon.
+- [enterprise-docs/kubernetes-deployment.md](/fr/agenteye/kubernetes-deployment) : déploiement multi-pod, détails internes de l'émission des certificats, cycle de vie et alertes d'expiration.
+- [enterprise-docs/api-keys.md](/fr/agenteye/api-keys) : provisionnement de la clé API du collector utilisée par le pod.
+- [enterprise-docs/troubleshooting.md](/fr/agenteye/troubleshooting) : index de dépannage à l'échelle du cluster.

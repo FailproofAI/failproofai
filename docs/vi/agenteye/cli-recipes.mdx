@@ -1,0 +1,169 @@
+---
+title: "CLI recipes cho agents"
+description: "AgentEye CLI recipes cho agents documentation."
+---
+
+Trích xuất dữ liệu phiên, sự kiện và đánh giá (và kích hoạt đánh giá lại) trực tiếp từ một script hoặc coding agent, với JSON sạch trên stdout có thể pipe trực tiếp vào `jq`. Những recipes này biến dữ liệu observability của AgentEye thành điều mà một terminal user hoặc AI coding agent (Claude Code, Cursor) có thể truy vấn và tự động hóa, mà không cần click vào dashboard.
+
+Các patterns dưới đây đã sẵn sàng copy-paste cho AgentEye CLI (`agenteye`). Để cài đặt, xác thực và danh sách option đầy đủ xem [CLI](/vi/agenteye/cli); chạy `agenteye -h` hoặc `agenteye <command> -h` để xem trợ giúp tích hợp.
+
+## Golden rules
+
+1. **Global options đứng *trước* lệnh.** `agenteye --json sessions` là đúng; `agenteye sessions --json` là sai. Các globals là `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Luôn truyền `--json` khi bạn phân tích output.** Dữ liệu đi tới **stdout** như JSON; trạng thái cho con người và lỗi đi tới **stderr**, vì vậy stdout luôn sạch để pipe vào `jq`.
+3. **Branch dựa trên exit code**, không phải text stderr: `0` ok · `2` tham số xấu · `3` không thể kết nối tới dashboard · `4` chưa đăng nhập hoặc hết hạn · `5` thiếu quyền.
+4. **Khám phá bằng `-h`.** Mỗi lệnh tài liệu hóa các filters, định dạng giá trị và JSON shape của nó.
+
+## One-time setup
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # so you don't repeat --base-url
+agenteye login --email you@example.com                       # paste the emailed code; valid ~24h
+```
+
+## Confirm auth before doing work
+
+`whoami` không bao giờ lỗi trên phiên missing hoặc hết hạn; nó báo cáo `logged_in:false` thay vào đó, vì vậy một agent có thể probe auth state một cách an toàn. (Nó vẫn có thể exit non-zero nếu không có base URL được đặt hoặc dashboard không thể tiếp cận.)
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "Not authenticated. Run: agenteye login" >&2; exit 1
+fi
+```
+
+## Find failing or low-scoring sessions
+
+```bash
+# sessions in the last 24h whose evaluation errored
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# evaluations scoring <= 0.5 on helpfulness, for one agent
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+Score filtering nằm trên **`evals`**, không phải `sessions`. `--score KEY:MIN..MAX` có thể lặp lại và được kết hợp AND; cả hai ranh giới đều optional (`..0.5` có nghĩa là ≤ 0.5, `0.9..` có nghĩa là ≥ 0.9). Bạn có thể truyền tới 20 score filters trên mỗi yêu cầu; nhiều hơn thế trả về HTTP 400. `sessions` chia sẻ các filter `--env`, `--status`, `--agent-id`, `--session-id` và time-range với `evals`, nhưng không có `--score`.
+
+## Read one session end-to-end
+
+Không có lệnh `session show` duy nhất — kết hợp event trail với evaluation của phiên:
+
+```bash
+# the session's latest evaluation (status + scores)
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# every event in the run (raise --limit for a full sweep)
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# just the tool calls in a session
+agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+## Fetch everything (pagination)
+
+Results là newest-first và cursor-paginated.
+
+```bash
+# one shot: fetch up to 500 rows in 200-row pages
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# manual paging: feed next_cursor back in
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## Slim the output with --fields
+
+Hạn chế các keys (cả trong table và `--json`) để giảm những gì một agent phải đọc.
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+Tên fields không xác định bị từ chối (exit `2`) với danh sách hợp lệ, một cách rẻ để khám phá tên fields.
+
+## Discover valid filter values
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # values for --env
+agenteye --json list tools | jq -r '.values[]'          # tool names; also agents, models, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # valid KEY for --score KEY:MIN..MAX
+```
+
+## Pick your org (multi-tenant)
+
+Nếu bạn thuộc về nhiều hơn một org, chọn active tenant khi đăng nhập (nó được lưu):
+
+```bash
+agenteye login --org acme --email you@corp.com   # set the tenant in the same step as login
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # override for one command
+```
+
+Multi-org login không có `--org` exit non-zero và in các orgs để chọn.
+
+## Provision an API key for the SDK/collector
+
+```bash
+# the secret is printed ONCE — with --json it's the .key field
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # rotate; agenteye keys disable ci-bot --yes to revoke
+```
+
+## Run a saved or ad-hoc query
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a positional $1
+```
+
+## Triage an incident non-interactively
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" --assignee you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> Mutations tự động bỏ qua confirmation prompt của họ dưới `--json` hoặc khi stdin không phải TTY, vì vậy agents không bao giờ hang; pass `--yes`/`-y` để bỏ qua một cách rõ ràng ở nơi khác.
+
+## Exit-code handling in a script
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "Session expired - run 'agenteye login'." >&2 ;;
+  5) echo "Missing permission (ask an admin for evaluations:read)." >&2 ;;
+  3) echo "Dashboard unreachable - check the URL." >&2 ;;
+  *) echo "Unexpected error (exit ${code})." >&2 ;;
+esac
+```
+
+## JSON output shapes
+
+| Command | stdout JSON (with `--json`) |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` hoặc `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` shown once) |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| create/update/delete (any) | the resource object, or `{"deleted": true, "id"}` for deletes |
+| failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` on stdout |
+
+- Mỗi item **event** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment`.
+- Mỗi item **evaluation** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- Mỗi item **session** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+
+`--fields` của mỗi lệnh chấp nhận chính xác tên fields của item của nó — tập hợp khác nhau giữa `sessions` và `evals`, vì vậy một tên hợp lệ cho một cái có thể bị từ chối bởi cái kia.

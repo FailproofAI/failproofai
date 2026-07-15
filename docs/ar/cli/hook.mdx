@@ -1,5 +1,5 @@
 ---
-title: معالج الخطاف (داخلي)
+title: معالج Hook (داخلي)
 description: "العملية الفرعية التي يستدعيها Claude Code عند كل حدث أداة"
 ---
 
@@ -7,24 +7,24 @@ description: "العملية الفرعية التي يستدعيها Claude Cod
 failproofai --hook <EventType>
 ```
 
-هذا هو الأمر المسجل في `settings.json` الخاص بـ Claude Code بواسطة `failproofai policies --install`. لا تستدعيه مباشرة عادةً.
+هذا هو الأمر المسجل في `settings.json` الخاص بـ Claude Code بواسطة `failproofai policies --install`. عادة لا تستدعيه مباشرة.
 
-يقرأ حمولة JSON من stdin، ويقيّم جميع السياسات المفعلة، ويخرج برمز يشير إلى القرار:
+يقرأ حمولة JSON من stdin، ويقيّم جميع السياسات المفعّلة، ويخرج برمز يشير إلى القرار:
 
 | رمز الخروج | القرار | التأثير |
 |-----------|--------|--------|
 | `0` | `allow` | السماح بالإجراء |
 | `1` | `deny` | حظر الإجراء - يرى Claude سبب الرفض |
-| `2` | `instruct` | حقن التوجيهات في سياق Claude |
+| `2` | `instruct` | إدراج الإرشادات في سياق Claude |
 
 ### أنواع الأحداث المدعومة
 
 | الفئة | الأحداث |
-|------|--------|
-| **تنفيذ الأدوات** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+|----------|--------|
+| **تنفيذ الأداة** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **دورة حياة الجلسة** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **تفاعل المستخدم** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **التفاعل مع المستخدم** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **الوكلاء الفرعيون والمهام** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
-| **التكوين** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **الإعدادات** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **نظام الملفات** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **السياق** | `PreCompact`, `PostCompact` |

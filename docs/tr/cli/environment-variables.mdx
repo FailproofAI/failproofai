@@ -6,42 +6,42 @@ description: "failproofai davranışını ortam değişkenleriyle yapılandırı
 ## Dashboard
 
 | Değişken | Açıklama |
-|----------|---------|
+|----------|----------|
 | `PORT` | Dashboard portu (varsayılan: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kılın |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfaları (virgülle ayrılmış) |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Geliştirme kaynaklarına erişim izni verilen hostlar/IP'ler. `--allowed-origins` ile aynı. |
+| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kıl |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfalarının virgülle ayrılmış listesi |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Dev kaynaklara erişim izni verilen hostlar/IP'ler. `--allowed-origins` ile aynı. |
 
 ## Logging
 
 | Değişken | Açıklama |
-|----------|---------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu günlük seviyesi (varsayılan: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook günlük dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
+|----------|----------|
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu log seviyesi (varsayılan: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook log dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
 
-## Telemetri
-
-| Değişken | Açıklama |
-|----------|---------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonim kullanım telemetrisini devre dışı bırakın |
-
-## Kimlik Doğrulama
+## Telemetry
 
 | Değişken | Açıklama |
-|----------|---------|
-| `FAILPROOF_API_URL` | `failproofai auth` ve dashboard kimlik doğrulama iletişim kutusu tarafından kullanılan api-server temel URL'sini geçersiz kılın. Varsayılan olarak `https://api.befailproof.ai` değerine ayarlanır; yerel api-server çalıştırırken `http://localhost:8080` (veya başka bir adres) olarak ayarlayın. |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` dosyasının depolandığı konumu geçersiz kılın (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için kullanışlıdır. |
+|----------|----------|
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonim kullanım telemetrisini devre dışı bırak |
+
+## Authentication
+
+| Değişken | Açıklama |
+|----------|----------|
+| `FAILPROOF_API_URL` | `failproofai auth` ve dashboard auth iletişim kutusu tarafından kullanılan api-server temel URL'sini geçersiz kıl. Varsayılan `https://api.befailproof.ai`; yerel api-server çalıştırırken `http://localhost:8080` (veya başka bir adres) olarak ayarla. |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json` dosyasının depolandığı konumu geçersiz kıl (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için yararlı. |
 
 ## İlk çalıştırma istemi
 
 | Değişken | Açıklama |
-|----------|---------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk bare `failproofai` çağrısında politikaları yüklemeyi teklif eden istemi atlayın |
+|----------|----------|
+| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk bare `failproofai` çağrısında politikaları yüklemeyi teklif eden istemi atla |
 
 ## LLM (politika değerlendirmesi için)
 
 | Değişken | Açıklama |
-|----------|---------|
+|----------|----------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM API uç noktası (varsayılan: `https://api.openai.com/v1`) |
 | `FAILPROOFAI_LLM_API_KEY` | LLM destekli politikalar için API anahtarı |
 | `FAILPROOFAI_LLM_MODEL` | Model adı (varsayılan: `gpt-4o-mini`) |

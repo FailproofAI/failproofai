@@ -1,0 +1,387 @@
+---
+title: "Python SDK"
+description: "Tài liệu AgentEye Python SDK."
+---
+
+
+AgentEye Python SDK cung cấp cho bạn khả năng theo dõi toàn diện hành vi của các agent (mọi lần chạy agent, lệnh gọi tool, yêu cầu mô hình, hook và can thiệp của con người) để bạn có thể gỡ lỗi, kiểm toán và đánh giá chúng. Nó khởi tạo mã agent của bạn bằng cách ghi các sự kiện có cấu trúc vào các tệp JSONL cục bộ; daemon bộ sưu tập sẽ lấy những tệp này và tự động gửi chúng đến nền tảng.
+
+---
+
+## Cài đặt
+
+Tải tệp wheel từ GitHub Releases bằng `AGENTEYE_TOKEN` của bạn. Nếu bạn chưa có token, hãy xem [Cài đặt Token GitHub](/vi/agenteye/github-token) để biết các bước cài đặt và quyền cần thiết.
+
+**Sử dụng `gh` CLI + pip:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**Sử dụng `gh` CLI + uv:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**Sử dụng curl (không có `gh` CLI):**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## Bắt Đầu Nhanh
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. Mặc định: $AGENTEYE_HOME hoặc ~/.agenteye
+    flush_interval=0.5,      # float, giây giữa các chu kỳ flush
+    environment=None,        # str | None. Nhãn môi trường triển khai
+)
+```
+
+Gọi một lần trước bất kỳ lệnh gọi `event.*` nào. An toàn nếu bỏ qua; các giá trị mặc định hoạt động không vấn đề. Tất cả các đối số chỉ dùng từ khóa; hãy truyền chúng theo tên như được hiển thị ở trên.
+
+Khi `base_dir` là `None` (mặc định), SDK đọc `$AGENTEYE_HOME` nếu được đặt,
+nếu không sẽ quay lại `~/.agenteye`. Điều này phù hợp với cách phân giải của bộ sưu tập,
+do đó một biến env `AGENTEYE_HOME` duy nhất sẽ cấu hình bộ spool sự kiện dùng chung cho cả
+SDK và bộ sưu tập, cần thiết cho các triển khai sidecar / single-pod nơi
+cả hai quy trình phải thống nhất về đường dẫn bộ spool.
+
+---
+
+## Môi Trường
+
+Gắn nhãn mọi sự kiện bằng môi trường triển khai (`production`, `staging`, `qa`, `canary`, v.v.). Đặt nó một lần; SDK sẽ tự động gắn nó vào mọi sự kiện.
+
+**Tùy chọn 1: qua `configure()`:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**Tùy chọn 2: qua biến môi trường:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**Ưu tiên:** `configure(environment=...)` sẽ thắng biến môi trường. Nếu không có gì được đặt, mặc định là `"dev"`.
+
+Giá trị môi trường xuất hiện như một bộ lọc hạng nhất trong bảng điều khiển và được lưu trữ dưới dạng cột được lập chỉ mục trên máy chủ để truy vấn nhanh.
+
+**Ràng buộc:** các giá trị môi trường **không được chứa dấu phẩy `,` nghĩa đen**. Các bộ lọc bảng điều khiển sử dụng lựa chọn đa trên dây được phân tách bằng dấu phẩy (`?environment=prod,staging`), do đó một môi trường được đặt tên `prod,blue` sẽ bị chia thành hai giá trị. Các sự kiện có môi trường chứa dấu phẩy bị từ chối trong thời gian nhập.
+
+---
+
+## Tham Chiếu Sự Kiện
+
+Tất cả các phương thức sự kiện yêu cầu hai trường này:
+
+| Trường | Loại | Mô tả |
+|---|---|---|
+| `session_id` | `str` | Xác định lần chạy agent cấp cao nhất |
+| `agent_id` | `str` | Xác định agent nào trong phiên đã phát ra sự kiện |
+
+Tất cả các phương thức cũng chấp nhận `**kwargs` tùy ý cho siêu dữ liệu tùy chỉnh (xem [Trường Tùy Chỉnh](#custom-fields)).
+
+---
+
+### `event.agent_start()`
+
+Được phát ra khi một agent bắt đầu công việc.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - agent_id cha cho các agent lồng nhau
+)
+```
+
+---
+
+### `event.agent_end()`
+
+Được phát ra khi một agent kết thúc công việc.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+Được phát ra khi một agent gọi một tool. Ghép với `tool_result`; SDK tự động tính toán `duration_ms`.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, bắt buộc
+    tool_call_id="toolu_01",    # str, bắt buộc - khóa tương quan cho tool_result khớp
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+Được phát ra khi một tool trả về. Tương quan với `tool_use` qua `tool_call_id`.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # phải khớp với tool_use trước đó
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - đặt nếu tool đã nâng cao lỗi
+    # duration_ms được tính toán tự động - không truyền nó
+)
+```
+
+---
+
+### `event.model_request()`
+
+Được phát ra ngay trước khi gửi một lời nhắc đến LLM.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - các lần hội thoại
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - str hoặc danh sách các khối nội dung
+    tools=[                      # list[dict] | None - các lược đồ tool được cung cấp cho mô hình
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+Các mục `messages` chấp nhận cả nội dung đơn giản `content` hoặc nội dung kiểu Anthropic `content` là danh sách các khối. Các tham số lấy mẫu (`temperature`, `max_tokens`, v.v.) có thể được truyền dưới dạng kwargs bổ sung.
+
+---
+
+### `event.model_response()`
+
+Được phát ra khi LLM trả về một phản hồi.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - str, hoặc danh sách các khối nội dung
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` chấp nhận một chuỗi đơn giản (các nhà cung cấp chung) hoặc một danh sách các khối nội dung kiểu Anthropic. Các lệnh gọi tool nằm bên trong `content` dưới dạng các khối `{"type": "tool_use", ...}`, không có trường `tool_calls` riêng biệt.
+
+---
+
+### `event.hook_triggered()`
+
+Được phát ra khi một hook kích hoạt. Ghép với `hook_completed`; SDK tự động tính toán `duration_ms`.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, bắt buộc
+    hook_id="hook-abc",         # str, bắt buộc - khóa tương quan
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+Được phát ra khi một hook kết thúc. Tương quan với `hook_triggered` qua `hook_id`.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # phải khớp với hook_triggered trước đó
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms được tính toán tự động - không truyền nó
+)
+```
+
+---
+
+### `event.error()`
+
+Được phát ra khi xảy ra lỗi không được xử lý.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, bắt buộc
+    message="timed out",        # str, bắt buộc
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## Sự Kiện Con Người Trong Vòng Lặp
+
+Các sự kiện con người trong vòng lặp cung cấp cho bạn giám sát các thời điểm khi một người bước vào quá trình thực thi của agent (chờ phê duyệt, cung cấp đầu vào, tạm dừng hoặc dừng agent). Chúng cho phép bạn đo lường con người mất bao lâu để phản hồi (SDK tự động tính toán `duration_ms` trên các sự kiện ghép), kiểm toán ai đã tạm dừng hoặc ngắt agent, và xây dựng các quy trình phê duyệt và giám sát xuất hiện trong bảng điều khiển.
+
+### `event.human_wait()`
+
+Được phát ra khi agent tạm dừng thực thi để chờ con người cung cấp đầu vào. Ghép với `human_input`; SDK tự động tính toán `duration_ms` (con người mất bao lâu để phản hồi).
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, bắt buộc - khóa tương quan cho human_input khớp
+    prompt="Do you approve this action?",        # str | None - câu hỏi được hiển thị cho con người
+    options=["approve", "reject", "defer"],      # list[str] | None - lựa chọn được trình bày cho con người
+    reason="approval_required",                  # str | None - lý do agent đang chờ đợi
+)
+```
+
+### `event.human_input()`
+
+Được phát ra khi con người cung cấp đầu vào và agent tiếp tục. Tương quan với `human_wait` qua `input_id`. `duration_ms` được tính toán tự động và không được truyền bởi người gọi.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, bắt buộc - phải khớp với human_wait trước đó
+    response="approve",    # str | None - câu trả lời của con người (văn bản tự do hoặc tùy chọn được chọn)
+    # duration_ms được tính toán tự động - không truyền nó
+)
+```
+
+### `event.human_pause()`
+
+Được phát ra khi con người chủ động tạm dừng agent (ví dụ: qua điều khiển bảng điều khiển). Agent bị tạm dừng nhưng không bị kết thúc.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - ai đã tạm dừng agent
+)
+```
+
+### `event.human_interrupt()`
+
+Được phát ra khi con người chủ động dừng agent giữa chừng. Không giống như `human_pause`, công việc của agent bị kết thúc chứ không bị tạm dừng.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - ai đã ngắt agent
+    at_step="tool_use:web_search",   # str | None - agent đang làm gì khi bị dừng
+)
+```
+
+---
+
+## Trường Tùy Chỉnh
+
+Bất kỳ đối số từ khóa bổ sung nào được nối vào sự kiện sau các trường tiêu chuẩn:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # trường tùy chỉnh
+    region="us-east-1",         # trường tùy chỉnh
+)
+```
+
+`timestamp`, `type` và `environment` được dành riêng và sẽ nâng cao `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) nếu được truyền dưới dạng trường tùy chỉnh. `session_id` và `agent_id` là các tham số bắt buộc trên mọi phương thức sự kiện và không thể được cung cấp lần thứ hai; Python sẽ nâng cao `TypeError` nếu bạn làm như vậy. Thay vào đó, hãy đặt môi trường bằng `configure(environment=...)` (hoặc biến `AGENTEYE_ENVIRONMENT`).
+
+---
+
+## Cách Các Sự Kiện Được Ghi
+
+Các sự kiện được đệm trong quy trình và xóa đến đĩa mỗi `flush_interval` giây (mặc định 500 ms). Mỗi lần xóa ghi một tệp JSONL:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+Bộ sưu tập theo dõi thư mục này và tải các tệp lên tự động. Bạn không cần quản lý các tệp này trực tiếp.

@@ -1,6 +1,6 @@
 {
   "name": "failproofai",
-  "version": "0.0.12-beta.0",
+  "version": "0.0.13",
   "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously — for Claude Code & the Agents SDK",
   "bin": {
     "failproofai": "./dist/cli.mjs"
@@ -22,7 +22,7 @@
   "scripts": {
     "predev": "bun run build:cli && bun link",
     "dev": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
-    "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
+    "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
     "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
     "prestart": "bun run build:cli && bun link",
     "start": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
@@ -72,14 +72,14 @@
     "access": "public"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.107.0",
+    "@anthropic-ai/sdk": "^0.111.0",
     "@mdx-js/mdx": "^3.1.1",
     "@tailwindcss/postcss": "^4.3.1",
     "@tanstack/react-virtual": "^3.14.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "26.0.1",
+    "@types/node": "26.1.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -99,7 +99,9 @@
   "dependencies": {
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
-    "posthog-node": "^5.37.1"
+    "posthog-node": "^5.37.1",
+    "sql.js": "^1.14.1",
+    "yaml": "^2.9.0"
   },
   "overrides": {
     "postcss": "8.5.14",

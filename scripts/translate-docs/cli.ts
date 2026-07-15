@@ -3,10 +3,19 @@ import { parseArgs } from "node:util";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LANGUAGES, getLanguagesByTier, getLanguageByCode, getModelForTier } from "./config";
+import {
+  LANGUAGES,
+  getLanguagesByTier,
+  getLanguageByCode,
+  getModelForTier,
+} from "./config";
 import { getEnglishMdxPages, translateMdxPage } from "./mdx-translator";
 import { translateReadme } from "./readme-translator";
-import { updateDocsJson, readDocsConfig } from "./mintlify-nav";
+import {
+  getNavigationPageReferences,
+  updateDocsJson,
+  readDocsConfig,
+} from "./mintlify-nav";
 import { readCache, writeCache, isCached, setCacheEntry } from "./cache";
 import type { TranslationResult } from "./types";
 
@@ -87,44 +96,14 @@ async function validateNavReferences(): Promise<boolean> {
   let total = 0;
   let missing = 0;
 
-  const languages = (nav.languages || []) as Array<{
-    language: string;
-    tabs: Array<{ groups: Array<{ pages: string[] }> }>;
-  }>;
-
-  if (languages.length === 0) {
-    // Flat tabs structure (not yet migrated to languages)
-    const tabs = (nav.tabs || []) as Array<{
-      groups: Array<{ pages: string[] }>;
-    }>;
-    for (const tab of tabs) {
-      for (const group of tab.groups) {
-        for (const page of group.pages) {
-          total++;
-          const filePath = join(DOCS_DIR, `${page}.mdx`);
-          if (!existsSync(filePath)) {
-            console.error(`  MISSING: ${page} -> ${filePath}`);
-            missing++;
-            valid = false;
-          }
-        }
-      }
-    }
-  } else {
-    for (const langEntry of languages) {
-      for (const tab of langEntry.tabs) {
-        for (const group of tab.groups) {
-          for (const page of group.pages) {
-            total++;
-            const filePath = join(DOCS_DIR, `${page}.mdx`);
-            if (!existsSync(filePath)) {
-              console.error(`  MISSING [${langEntry.language}]: ${page} -> ${filePath}`);
-              missing++;
-              valid = false;
-            }
-          }
-        }
-      }
+  for (const reference of getNavigationPageReferences(nav)) {
+    total++;
+    const filePath = join(DOCS_DIR, `${reference.page}.mdx`);
+    if (!existsSync(filePath)) {
+      const context = reference.language ? ` [${reference.language}]` : "";
+      console.error(`  MISSING${context}: ${reference.page} -> ${filePath}`);
+      missing++;
+      valid = false;
     }
   }
 
@@ -169,7 +148,9 @@ async function main() {
     `${isDryRun ? "[DRY RUN] " : ""}Translating into: ${langCodes.join(", ")}`,
   );
   if (!modelOverride) {
-    console.log(`Models: Tier 1 -> ${getModelForTier(1)}, Tier 2/3 -> ${getModelForTier(2)}`);
+    console.log(
+      `Models: Tier 1 -> ${getModelForTier(1)}, Tier 2/3 -> ${getModelForTier(2)}`,
+    );
   } else {
     console.log(`Model override: ${modelOverride}`);
   }
@@ -186,10 +167,17 @@ async function main() {
   // configured in translator.ts) to absorb per-request transient
   // `Connection error.` from LB-induced replica flapping.
   // Override via TRANSLATE_MAX_CONCURRENT (integer >= 1; otherwise default).
-  const parsedConcurrent = Number.parseInt(process.env.TRANSLATE_MAX_CONCURRENT ?? "", 10);
+  const parsedConcurrent = Number.parseInt(
+    process.env.TRANSLATE_MAX_CONCURRENT ?? "",
+    10,
+  );
   const MAX_CONCURRENT =
-    Number.isInteger(parsedConcurrent) && parsedConcurrent > 0 ? parsedConcurrent : 4;
-  async function runWithConcurrency<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
+    Number.isInteger(parsedConcurrent) && parsedConcurrent > 0
+      ? parsedConcurrent
+      : 4;
+  async function runWithConcurrency<T>(
+    tasks: (() => Promise<T>)[],
+  ): Promise<T[]> {
     const results: T[] = [];
     let i = 0;
     async function next(): Promise<void> {
@@ -198,7 +186,11 @@ async function main() {
         results[idx] = await tasks[idx]();
       }
     }
-    await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT, tasks.length) }, () => next()));
+    await Promise.all(
+      Array.from({ length: Math.min(MAX_CONCURRENT, tasks.length) }, () =>
+        next(),
+      ),
+    );
     return results;
   }
 
@@ -227,7 +219,11 @@ async function main() {
       for (const page of filteredPages) {
         const relPath = relative(DOCS_DIR, page);
         const task = { page, relPath, lang };
-        if (!isForce && !isDryRun && isCached(cache, relPath, lang, pageContents.get(page)!)) {
+        if (
+          !isForce &&
+          !isDryRun &&
+          isCached(cache, relPath, lang, pageContents.get(page)!)
+        ) {
           cachedTasks.push(task);
         } else {
           uncachedTasks.push(task);
@@ -235,7 +231,9 @@ async function main() {
       }
     }
 
-    console.log(`\n${filteredPages.length} MDX pages x ${langCodes.length} languages = ${filteredPages.length * langCodes.length} total`);
+    console.log(
+      `\n${filteredPages.length} MDX pages x ${langCodes.length} languages = ${filteredPages.length * langCodes.length} total`,
+    );
     console.log(`  Cached (unchanged): ${cachedTasks.length}`);
     console.log(`  Need translation: ${uncachedTasks.length}`);
 
@@ -268,7 +266,14 @@ async function main() {
             console.log(`  ${relPath} [${lang}] -> ${status}`);
             results.push(result);
             if (!result.cached && !isDryRun) {
-              setCacheEntry(cache, relPath, lang, pageContents.get(page)!, result.inputTokens, result.outputTokens);
+              setCacheEntry(
+                cache,
+                relPath,
+                lang,
+                pageContents.get(page)!,
+                result.inputTokens,
+                result.outputTokens,
+              );
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -285,10 +290,17 @@ async function main() {
     console.log(`\nTranslating README...`);
 
     // Read README once
-    const readmeSource = readFileSync(join(DOCS_DIR, "..", "README.md"), "utf-8");
+    const readmeSource = readFileSync(
+      join(DOCS_DIR, "..", "README.md"),
+      "utf-8",
+    );
     const uncachedLangs: string[] = [];
     for (const lang of langCodes) {
-      if (!isForce && !isDryRun && isCached(cache, "README.md", lang, readmeSource)) {
+      if (
+        !isForce &&
+        !isDryRun &&
+        isCached(cache, "README.md", lang, readmeSource)
+      ) {
         console.log(`  README.${lang}.md -> cached`);
         results.push({
           lang,
@@ -317,10 +329,19 @@ async function main() {
             const status = isDryRun
               ? "would translate"
               : `translated (${result.inputTokens}+${result.outputTokens} tokens)`;
-            console.log(`  README.${lang}.md -> ${langConfig.nativeName}: ${status}`);
+            console.log(
+              `  README.${lang}.md -> ${langConfig.nativeName}: ${status}`,
+            );
             results.push(result);
             if (!result.cached && !isDryRun) {
-              setCacheEntry(cache, "README.md", lang, readmeSource, result.inputTokens, result.outputTokens);
+              setCacheEntry(
+                cache,
+                "README.md",
+                lang,
+                readmeSource,
+                result.inputTokens,
+                result.outputTokens,
+              );
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

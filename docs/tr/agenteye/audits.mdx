@@ -1,0 +1,106 @@
+---
+title: "Denetimler — agentic improvement detection"
+description: "AgentEye Denetimler — agentic improvement detection belgelendirmesi."
+---
+
+
+Denetimler, agent günlüklerinizi **oturumlar arası** analiz ederek iyileştirmeye değer şeyleri bulacak şekilde tasarlanmış yinelenen işlerdir. Bir uyarı zaten bildiğiniz tek bir metriği gerçek zamana yakın izlerken, bir denetim *araştırır*: belirlediğiniz bir zamanlamaya göre deterministic bir politika geçişi çalıştırır, ardından oturumlarınız üzerinde bir **AI güvenilirlik ajanı** serbest bırakır — ajan verileri kendisi sorgular, şüpheli transkriptleri okur ve (yardımcı olduğunda) küçük analiz betikleri çalıştırır, ardından **iyileştirme önerileri** her biri için kanıtlarla sunukça yazar.
+
+Denetimler "ajanlarımda ne düzeltmeliyim veya iyileştirmeliyim?" sorusunun cevabını bulmak için, uyarılar ise belirli bir eşik aşıldığında sayfa almak için kullanılır. Her iyileştirme tam oturumlar ve sorgularla bağlantılıdır ve bir tıklama, tekrarları yakalamak için önceden doldurulmuş bir uyarı oluşturur.
+
+Pano yüzeyi **`/<org-slug>/audits`** adresindedir (kenar çubuğu → *analiz et* → *denetimler*), `audits:read` / `audits:write` izinleriyle korunur.
+
+---
+
+## Bir çalıştırma nasıl işler
+
+Her çalıştırmanın iki katmanı vardır — deterministic bir taban ve agentic araştırma.
+
+### 1. Politika geçişi (deterministic)
+
+Herhangi bir model çalıştırılmadan önce, denetim pencere üzerinde küçük bir **SQL politika kontrolleri** kataloğunu çalıştırır: bilinen kötü desenler için bayrak koyan ve *kaç* olayı / *hangi* oturumların eşleştiğini raporlayan sınırlandırılmış toplam sorgular — hiçbir zaman eşleşen metni kendisini değil. Katalog şunları içerir:
+
+- Olay yüklerinde **Gizli / kimlik bilgisi sızıntısı** — AWS erişim anahtarları, `sk-…` API anahtarları, PEM özel anahtarları, JWT / bearer tokenleri ve `KEY=…` kimlik bilgisi atamaları.
+- **Prompt-injection işaretçileri** — "önceki talimatları yok say", "sistem isteminizi göster" ve benzerleri.
+- **PII** — SSN şeklindeki numaralar (sezgisel).
+- **Tool-izin reddi** ve **kaçak tool-call döngüleri**.
+
+Politika isabeyleri bulgular (tür `policy`) olarak kalıcılaştırılır ve **her zaman görünür** (çalışma başına sınır tarafından kesilmez), AI ajanına başlangıç ipuçları olarak verilir. Bu katman modele ihtiyaç duymadığından, denetim AI ajanı kullanılamaz olsa bile hala en önemli güvenlik sinyallerini üretir.
+
+### 2. Agentic araştırması (AI)
+
+Denetim daha sonra bir **otonom güvenilirlik ajanı** çalıştırır (pano asistanını güçlendiren aynı Claude Agent SDK hizmeti, denetime özgü bir istemiyle). Denetimin **kapsamı** (seçilen ajanlar × ortamlar) ve **zaman penceresi** göz önüne alınarak, ajan:
+
+- analitik tablolarınıza karşı salt okunur SQL sorguları çalıştırır,
+- temsili bir avuç oturum transkriptini okur,
+- isteğe bağlı olarak SQL'in ifade edemediği analiz için kilitli bir in-pod sandbox'ta kısa **Python betikleri** yazıp çalıştırır (ağ yok, dosya sistemi erişimi yok, gizli diziler temizlenmiş) — hataları kümeleme, dağılımları hesaplama, daha önce getirdiği yükleri süpürme,
+- ve bulduğu her iyi kanıtlanmış **iyileştirmeyi** kaydeder.
+
+Çeşitli araştırma hatları boyunca çalışır — hata kümeleme, baseline'a karşı sapma, transkriptlerde hedef başarısızlığı, araç kötüye kullanımı, kalite/maliyet ödünleşmeleri ve kapsam boşlukları — denetimin **duyarlılığında** (düşük / orta / yüksek). Her iyileştirme **kanıt alıntılayabilmelidir**: ajanın aslında incelediği oturum kimlikleri ve/veya çalıştırdığı SQL. Sunucu alıntılanan oturumların var olduğunu doğrular ve **hiçbir kanıtı olmayan herhangi bir iyileştirmeyi atar**, böylece ajan araştırır ama hiçbir zaman uydurma yapmaz.
+
+Her iyileştirme taşır:
+
+- bir **tavsiye** (yapılacak somut değişiklik — istem ince ayarı, tool-şema düzeltmesi, yeniden deneme politikası, bir koruma, daha fazla eval kapsamı),
+- bir **beklenen etki** ve bir **çaba** tahmini (düşük / orta / yüksek),
+- bir **büyüklük** — `big` (bir operatöre sayfa atılmalı), `medium` (çalıştırma raporuna ait) veya `small` (pano bağlamı),
+- sabit bir **parmak izi** (sorunun kategorisi + kapsamından, *bu* çalıştırmanın oturumlarından değil) böylece aynı sorun kanıt değişse bile çalıştırmadan çalıştırmaya izlenir,
+- ve, basit bir deterministic izleyici tekrarı yakalayabildiğinde, **önerilen uyarı** bir tıklama ile oluşturabileceğiniz.
+
+> **AI katmanı isteğe bağlı ama önerilir.** Denetim işlem hattı için hiçbir AI ajanı yapılandırılmamışsa, çalıştırmalar yine de yürütülür, politika bulgularını kalıcılaştırır ve agentic katman için sessizce geçmek yerine "analiz kullanılamıyor" şeklinde dürüst bir şekilde raporlar.
+
+### Başarısızlık modları
+
+İyileştirmeler kuruluşunuzun dayanıklı **başarısızlık modu kataloğuna** sınıflandırılır (veya yeni bir mod önerir). Modlar desenlere çalıştırmalar arası sabit bir kimlik ve uzun ufuk tekrarı takibi verir.
+
+## Sıralama yaşam döngüsü
+
+Bir bulgu sayfasında (`/audits/<id>/findings/<finding-id>`):
+
+| İşlem | Sonuç |
+|---|---|
+| **acknowledge** | Buluşu görünür tutar ama önceliğini yarıya indirir. |
+| **resolve** | Düzeltilmiş olarak işaretler. Desen daha sonra gerçekten geri gelirse, **yeni** olarak yeniden açılır — böylece regresyon yüksek sesle duyulur, sessizce geçmişe katlanmaz. |
+| **mute** / **dismiss** | Dayanıklı baskılama: desenin parmak izi hatırlanır ve çalıştırmalar arası bile hiçbir zaman yüzeye çıkmaz. Mute "bilinen, kabul edilen" için kullanın; dismiss "faydalı değil" için kullanın. |
+| **reopen** | Baskılamayı / çözümü temizler ve deseni yeniden sıralar. |
+
+Düşük sinyalli gürültü, agentic iyileştirmelerde çalıştırma başına bulguları sınırlayan bir limit (`top_k`) ile denetim başına kontrol edilir. Politika bulguları sınırı atlar (bunlar güvenlikle ilgilidir ve her zaman gösterilir). Sınır tarafından kesilen her şey çalıştırmanın istatistiklerinde sayılır — hiçbir şey sessizce bırakılmaz.
+
+## Zamanlamandırma
+
+- **Kadans** (`schedule_interval_secs`): saatlik ila haftalık; **günlük varsayılandır**. Denetimler uyarılardan kasıtlı olarak daha kaba taneli — agentic araştırma tüm pencereleri tarar ve dakikalar boyunca çalışır.
+- **Pencere**: sabit bir yuvarlanan geri bakış (örn. "her çalıştırma son 7 günü tarar") veya **son çalıştırmadan beri** (varsayılan) — her çalıştırma önceki başarılı olanı aldığı yerden devam eder, küçük bir çakışma ile sınır olayları hiçbir zaman kaçırılmaz.
+- Sonraki çalıştırma önceki olanın **tamamlanmasından** sonra tam bir aralık zamanlanır, böylece yavaş bir çalıştırma hiçbir zaman aynı denetimin ikinci eş zamanlı çalıştırmasını yığmaz.
+- Denetim sayfasında **Şimdi Çalıştır**, hemen son tarih yapar.
+
+## Model seçimi
+
+Bir denetim oluştururken, araştırmanın kullandığı modeli **operatörünüzün ajan hizmeti için yapılandırdığı modeller listesinden** seçebilirsiniz. Tek bir model yapılandırıldığında, seçici onu başlık olarak gösterir; birkaçı varsa, seçersiniz. Ayarlanmamışsa yapılandırılan varsayılanı kullanır.
+
+## Bildirimler
+
+Bir çalıştırma **yeni** bulgular açığa çıkardığında, denetim kuruluşunuzun yapılandırılmış kanallarını bilgilendirir — uyarılar işlem hattının kullandığı aynı `alerts.enabled_channels` kapısı ve ayarları:
+
+- **Slack** — derin bir bağlantıyla anlamlı (`big`) yeni öğelerin özeti.
+- **E-posta** — tasarlanmış bir **denetim raporu** yeni iyileştirmeleri (en yüksek önem, her öğe önerileri, derin bağlantı) listeleyen, denetimin bir **e-posta** kanalı ekli olduğunda ve en az bir yeni bulgu olduğunda gönderilen.
+
+Tekrarlanan ama bilinen bulgular yeniden bildirmez.
+
+## Yapılandırma referansı
+
+Denetim tanımları pano (`/audits/new`) veya API aracılığıyla yönetilir. Denetim başına ayarlar, zamanlama kadansını ve penceresini, kapsamı (`{"environments": [...], "agent_ids": [...]}`), duyarlılığı (`low` / `medium` / `high`), bildirim kanallarını, çalıştırma başına bulgular sınırını (`top_k`) ve modeli (via `llm_budget.model`) içerir. Operatör seviyesi sunucu ayarları (zaman aşımları, sandbox, ajan hizmeti URL'si) [deployment.md](/tr/agenteye/deployment) belgesinde yer almaktadır.
+
+## API
+
+Tüm uç noktalar org kapsamlı ve standart taşıyıcı anahtarı kimlik doğrulamasını takip eder (bkz. [api-keys.md](/tr/agenteye/api-keys)).
+
+| Uç Nokta | İzin | Amaç |
+|---|---|---|
+| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Denetim tanımlarını listele / oluştur. |
+| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Bir denetimi incele, düzenle, sil. |
+| `POST /audits/:id/run` | `audits:write` | Denetimin hemen son tarih yapmış olması. |
+| `GET /audits/:id/runs` | `audits:read` | Çalıştırma geçmişi (pencere, durum, istatistikler, bulgu sayıları). |
+| `GET /audits/findings` | `audits:read` | Org genelinde bulgular, `audit_id`, `status` ile filtrelenebilir; önceliğe göre sıralanmış. |
+| `GET /audits/findings/:fid` | `audits:read` | Tam bulgu detayı (tavsiye, kanıt, öncelik). |
+| `POST /audits/findings/:fid/status` | `audits:write` | Sıralama: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
+
+"Denetim çalıştı ama hiçbir şey bulamadı", "kod sandbox'u devre dışı", ve "denetim e-postası teslim edilmedi" için bkz. [troubleshooting.md](/tr/agenteye/troubleshooting#audits).

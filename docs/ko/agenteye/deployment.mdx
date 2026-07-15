@@ -1,0 +1,364 @@
+---
+title: "배포"
+description: "AgentEye 배포 문서"
+---
+
+이 가이드는 프로덕션 환경에서 AgentEye 서버와 대시보드를 배포하는 방법을 다룹니다.
+
+---
+
+## 아키텍처 개요
+
+```
+  [ AI agent machines ]                  [ Your infrastructure ]
+
+    Python SDK
+       |  writes JSONL                       +----------------------+
+       v                                +--->| PostgreSQL 15+       |
+ agenteye-collector --HTTP--+           |    | (relational store)   |
+                            |           |    +----------------------+
+                            v           |
+                       +--------+       |    +----------------------+
+                       | Server |<------+--->| ClickHouse 24+       |
+                       +--------+       |    | (events / analytics) |
+                            ^           |    +----------------------+
+                        API |           |
+                            |           |    +----------------------+
+                      +-----------+     +- - >| Redis 7+ (optional) |
+                      | Dashboard |           +----------------------+
+                      +-----------+
+```
+
+- **Server**: Rust HTTP 서비스. 이벤트 배치를 수신하여 ClickHouse에 기록하고, PostgreSQL에 관계형 상태를 유지합니다.
+- **Dashboard**: Next.js 웹 앱. 서버 API를 통해서만 읽기/쓰기를 수행합니다.
+- **agenteye-collector**: 서버 호스트가 아닌 에이전트 머신에 배포됩니다.
+- **Postgres 15+**: **필수.** (멀티테넌트 릴리스에서 14에서 15로 상향됨. org-membership 스키마에서 컬럼 목록 `ON DELETE SET NULL` 외래 키를 사용하는데, 이는 Postgres 15+에서만 지원됩니다. 이 버전을 배포하기 전에 Postgres를 업그레이드하세요.) OLTP 상태를 저장합니다: `api_keys`, `users`, `sessions`, `evaluation_jobs` (큐), `dashboards`, `saved_queries`, `otp_codes`, 그리고 멀티테넌트 테이블 `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: **필수.** 수집된 모든 이벤트에 대한 분석 저장소입니다. 엔진: `ReplacingMergeTree`, 월별 파티션, `(session_id, ts, dedup_key)` 순서로 정렬됩니다. 서버는 `CLICKHOUSE_URL`을 통해 연결됩니다. 번들로 제공되는 `deploy/base/clickhouse/`는 성능이 최적화된 단일 노드 구성을 포함합니다. **멀티테넌트 요구사항:** 번들 구성은 SQL 접근 관리와 `users_without_row_policies_can_read_rows=false`를 활성화하여, 서버가 조직별로 읽기 전용 ClickHouse 사용자와 행 정책을 생성할 수 있도록 합니다(SQL 편집기와 AI 에이전트에 대한 엔진 수준의 격리 경계). 직접 ClickHouse 구성을 제공하는 경우 이 설정을 유지하세요(`deploy/base/clickhouse/configmap.yaml` 참조).
+- **Redis 7+**: *선택 사항*인 공유 캐시 + 속도 제한 백엔드입니다. 서버와 대시보드 모두 `REDIS_URL`을 통해 연결합니다. 없는 경우 두 서비스 모두 Postgres 전용 경로로 자연스럽게 폴백합니다. 아래의 **Redis(선택 사항 캐시)** 섹션을 참조하세요.
+
+---
+
+## 서버
+
+### 이미지 가져오기
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+> 현재 빌드는 `beta-latest`로 게시됩니다. `latest`는 안정적인 릴리스에만 할당됩니다. 프로덕션 환경에서는 특정 `:v<version>` 태그를 고정하세요. [사용 가능한 이미지 태그](#available-image-tags)를 참조하세요.
+
+### 환경 변수
+
+| 변수 | 필수 여부 | 기본값 | 설명 |
+|---|---|---|---|
+| `DATABASE_URL` | 예 | 없음 | Postgres DSN. `postgres://` 스키마를 사용하는 표준 libpq 연결 문자열 형식. `?sslmode=require` 및 기타 libpq 파라미터를 지원합니다. 비밀번호에 `/`, `+`, `=` 문자가 포함되면 안 됩니다. URL 안전 비밀번호 생성에는 `openssl rand -hex`를 사용하세요. |
+| `ADMIN_KEY` | 아니오 | 없음 | 부트스트랩 관리자 API 키. 매 시작 시 모든 권한으로 업서트됩니다. 값을 변경하고 재시작하여 순환할 수 있습니다. |
+| `LISTEN_ADDR` | 아니오 | `0.0.0.0:8080` | 바인딩할 TCP 주소 |
+| `MAX_BODY_BYTES` | 아니오 | `134217728` (128 MB) | 최대 요청 본문 크기 |
+| `ADMIN_EMAIL` | 아니오 | 없음 | 부트스트랩 관리자 사용자 이메일. 매 시작 시 모든 권한으로 업서트되며 보호됨으로 표시됩니다. 대시보드/API를 통해 비활성화하거나 권한을 수정할 수 없습니다. 부트스트랩 관리자를 순환하려면 `ADMIN_EMAIL`을 변경하고 재시작하세요. 새 이메일이 보호됨으로 업서트되고, 이전 이메일은 데이터베이스에서 수동으로 초기화할 때까지 보호 상태를 유지합니다. |
+| `ALLOWED_EMAILS` | 아니오 | 없음 (모두 차단됨) | 사용자 생성 및 로그인에 허용된 이메일의 쉼표로 구분된 목록. 정확한 주소(`user@example.com`)와 도메인 와일드카드(`*@example.com`)를 지원합니다. 설정하지 않으면 사용자를 생성하거나 로그인할 수 없습니다. **첫 번째 부트 시드 전용**: 첫 번째 부팅 시 기본 조직의 허용 목록을 시드합니다. 이후에는 각 조직의 [`/<org>/settings`](#operational-settings) 페이지가 진실의 원천이 되며, 이 환경 변수를 변경해도 효력이 없습니다. |
+| `SMTP_HOST` | 아니오 | 없음 | OTP 이메일 발송을 위한 SMTP 서버 호스트명. 설정하지 않으면 OTP 코드가 stdout에 기록됩니다. |
+| `SMTP_PORT` | 아니오 | `587` | SMTP 서버 포트 |
+| `SMTP_USERNAME` | 아니오 | 없음 | SMTP 인증 사용자명 |
+| `SMTP_PASSWORD` | 아니오 | 없음 | SMTP 인증 비밀번호 |
+| `SMTP_FROM` | 아니오 | 없음 | OTP 이메일의 발신자 이메일 주소 |
+| `SMTP_TLS` | 아니오 | STARTTLS | 명시적으로 비활성화하지 않는 한 STARTTLS가 사용됩니다. `false` 또는 `0`은 일반 텍스트(TLS 없음)로 전송하고, 설정하지 않은 경우를 포함한 다른 모든 값은 STARTTLS를 활성화합니다. |
+| `DASHBOARD_URL` | 아니오 | 내장 기본값 | OTP 이메일 매직 링크 및 알림의 인시던트 매직 링크 생성에 사용되는 대시보드 원본 주소. 설정하지 않으면 내장 기본값으로 폴백하고(OTP의 경우에만 대시보드에서 파생된 요청 원본 주소로 먼저 폴백). 이메일과 Slack/인시던트 링크가 모두 대시보드를 가리키도록 도메인이 분리된 설정에서는 이 값을 설정하세요. 아래의 **이메일 매직 링크 URL** 참조. 대부분의 운영자는 설정할 필요가 없습니다. |
+| `SESSION_TTL_SECS` | 아니오 | `86400` (24시간) | 대시보드 세션 지속 시간(초). **첫 번째 부트 시드 전용**: 첫 번째 배포 후 [`/<org>/settings`](#operational-settings)에서 조직별로 수정하세요. |
+| `OTP_TTL_SECS` | 아니오 | `600` (10분) | OTP 코드 유효 기간(초). **첫 번째 부트 시드 전용**: 첫 번째 배포 후 [`/<org>/settings`](#operational-settings)에서 조직별로 수정하세요. |
+| `REDIS_URL` | 아니오 | 없음 | 선택 사항인 공유 캐시 + 속도 제한 백엔드. 예: `redis://redis:6379/0`. 설정하면 서버는 인증된 API 키 조회, 대시보드의 `/models` 집계, 세션 목록, env 목록 패싯을 캐시합니다. 또한 OTP 요청 속도 제한을 Postgres COUNT에서 Redis INCR로 전환합니다. 설정하지 않거나 연결할 수 없으면 캐시 없이 실행됩니다(OTP 제한은 Postgres로 폴백, 나머지 캐시 호출은 진실의 원천으로 폴스루). 아래의 **Redis(선택 사항 캐시)** 참조. |
+| `CLICKHOUSE_URL` | **예** | 없음 | ClickHouse 인스턴스의 기본 URL. 예: `http://clickhouse:8123`. 서버는 매 시작 시 이 데이터베이스에 이벤트 스키마를 적용하며, ClickHouse에 연결할 수 없으면 부팅을 거부합니다. 아래의 **ClickHouse(필수 분석 저장소)** 참조. |
+| `CLICKHOUSE_DATABASE` | 아니오 | `agenteye` | ClickHouse 데이터베이스(스키마) 이름. 존재하지 않으면 서버가 시작 시 생성합니다. |
+| `ORG_CH_SECRET` | 아니오(단일 테넌트) / **예(멀티 조직)** | 개발 기본값 | 각 조직의 테넌트별 ClickHouse 비밀번호를 파생하는 데 사용되는 HMAC 키. SQL 편집기와 AI 에이전트의 `run_query`는 조직 자체의 읽기 전용 ClickHouse 사용자로 실행되며, 해당 사용자의 행 정책이 엔진에서 테넌트 격리를 강제합니다. 단일 테넌트 배포는 내장된 개발 기본값으로 정상 부팅됩니다. **두 번째 조직을 프로비저닝하기 전에 강력하고 안정적인 값을 반드시 설정하세요.** `agenteye-orgctl org create` CLI는 내장된 개발 기본값에서 실행을 거부합니다. 값을 변경하면 다음 시작 시 부트 타임 조정이 자동으로 복구할 때까지 모든 조직의 ClickHouse 사용자가 고아 상태가 됩니다. 복제본 전체에서 비밀로 유지하고 변경하지 마세요. 조직 프로비저닝 자체는 운영자 전용입니다. 아래의 **조직(멀티테넌시)** 참조. |
+| `DEFAULT_ORG_NAME` | 아니오 | `Default` | 내장된 기본 조직에 시드되는 표시 이름. **첫 번째 부트 시드 전용**이며, 조직이 아직 새로 마이그레이션된 일반 ID를 유지하는 동안에만 시작 시 적용된 후 무시됩니다. 조직 이름을 변경(`agenteye-orgctl org rename`)하면 해당 이름이 신뢰할 수 있는 값이 되고 이 환경 변수는 더 이상 효력이 없습니다. |
+| `DEFAULT_ORG_SLUG` | 아니오 | `default` | 내장된 기본 조직의 URL 슬러그. 대시보드에서 조직이 위치하는 경로(`/<slug>/…`). `DEFAULT_ORG_NAME`과 동일한 첫 번째 부트 전용/초기 상태 전용 시맨틱을 갖습니다. 1-40자의 소문자 영숫자로 구성되며 단일 내부 하이픈이 허용되고 [예약어](#organizations-multi-tenancy)는 사용할 수 없습니다. 잘못된 값은 무시됩니다(조직은 `default`를 유지). 단일 테넌트 설치를 배포 후 CLI 단계 없이 `/default` 대신 `/acme`와 같은 경로로 표시할 수 있습니다. |
+| `RUST_LOG` | 아니오 | `info` | 로그 상세도 (`debug`, `warn`, `error`, `agenteye_server=trace`) |
+| `EVALUATOR_ENDPOINT` | 아니오 | 없음 | 평가자 서비스의 기본 URL (예: `http://evaluator:9000`). 설정하지 않으면 전체 평가 파이프라인이 no-op이 됩니다. 큐 행이 기록되지 않고 워커도 실행되지 않습니다. [평가 스위트](/ko/agenteye/evaluation-suite) 참조. |
+| `EVALUATOR_TOKEN` | 아니오 | 없음 | 평가자에게 `Authorization: Bearer <token>`으로 전송됩니다. **평가자 서비스에 구성된 값과 동일해야 합니다.** 평가자가 토큰 없이 구성된 경우에만 선택 사항입니다. |
+| `EVALUATOR_WORKERS` | 아니오 | `2` | 동시성: 평가를 디스패치하는 서버 인스턴스당 워커 태스크 수. 수평 확장된 여러 서버에서 안전하게 실행할 수 있습니다. |
+| `EVALUATOR_CLAIM_BATCH` | 아니오 | `4` | 단일 워커가 틱당 클레임하는 최대 평가 수. 배치는 **동시에** 디스패치되므로 평가자 엔드포인트의 총 동시성은 `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`입니다. |
+| `EVALUATOR_POLL_IDLE_SECS` | 아니오 | `2` | 디스패치할 항목이 없을 때 워커가 디스패치 시도 사이에 대기하는 시간. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | 아니오 | `10` | 평가자가 응답별 `next_poll_secs`를 반환하지 않고 `GET /config`에서 `default_poll_interval_secs`를 광고하지 않는 경우 `GET /evaluate/{id}` 폴링의 최종 폴백 주기(초). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | 아니오 | `30000` | 평가자에 대한 HTTP 요청당 타임아웃(밀리초). |
+| `EVALUATOR_MAX_ATTEMPTS` | 아니오 | `5` | 이 횟수만큼 실패하면 평가가 최종 `error`(실패가 요청 타임아웃이었던 경우 `timeout`)로 기록됩니다. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | 아니오 | `300` (5분) | 서버가 평가자로부터 `GET /config`를 다시 가져오는 주기. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | 아니오 | `3600` (1시간) | AgentEye가 세션을 `timeout`으로 종료하기 전까지 폴링 큐에 남아 있을 수 있는 최대 실시간 시간. 영원히 `pending`을 반환하는 평가자로부터 보호합니다. |
+| `ALERT_WORKERS` | 아니오 | `1` | 동시성: 알림 규칙을 평가하는 서버 인스턴스당 워커 태스크 수. [알림](/ko/agenteye/alerts) 참조. |
+| `ALERT_CLAIM_BATCH` | 아니오 | `16` | 단일 워커가 틱당 클레임하는 최대 알림 수. |
+| `ALERT_POLL_IDLE_SECS` | 아니오 | `5` | 큐가 비었을 때 알림 워커가 대기하는 시간. |
+| `ALERT_REQUEST_TIMEOUT_MS` | 아니오 | `15000` | 트리거 평가당 타임아웃(ClickHouse 쿼리 + 아웃바운드 채널 HTTP). |
+| `ALERT_MAX_ATTEMPTS` | 아니오 | `5` | 지수 백오프 대신 정상 주기로 알림을 재예약하기 전 연속 일시적 실패 횟수. |
+| `AUDIT_WORKERS` | 아니오 | `1` | 동시성: 감사를 실행하는 서버 인스턴스당 워커 태스크 수. [감사](/ko/agenteye/audits) 참조. |
+| `AUDIT_CLAIM_BATCH` | 아니오 | `1` | 단일 워커가 틱당 클레임하는 최대 예정된 감사 수. 에이전트 조사는 긴 루프이므로 기본값은 1입니다. |
+| `AUDIT_POLL_IDLE_SECS` | 아니오 | `30` | 예정된 감사가 없을 때 감사 워커가 대기하는 시간. |
+| `AUDIT_REQUEST_TIMEOUT_MS` | 아니오 | `30000` | ClickHouse에 대한 정책 쿼리당 타임아웃(밀리초). |
+| `AUDIT_LLM_TIMEOUT_MS` | 아니오 | `1440000` | AI 어시스턴트 서비스에 대한 에이전트 조사 호출의 타임아웃. 전체 에이전트 루프는 몇 분간 실행됩니다. 에이전트가 서버가 포기하기 전에 부분 결과를 반환할 수 있도록 에이전트 자체의 `AGENTEYE_AUDIT_TIMEOUT_MS`보다 높게 유지하세요. |
+| `AUDIT_MAX_ATTEMPTS` | 아니오 | `5` | 지수 백오프 대신 정상 주기로 감사를 재예약하기 전 연속 일시적 실패 횟수. |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | 아니오 | — | 감사의 에이전트 조사는 어시스턴트와 동일한 연결을 재사용하여 AI 어시스턴트 `agent` 서비스를 호출합니다. 따라서 이 두 값을 **서버**에도 설정하세요(번들 매니페스트/컴포즈에서 이미 설정됨). 둘 다 설정되면 감사에서 AI 조사가 실행됩니다. 하나라도 설정되지 않으면 감사는 **정책 전용**으로 실행됩니다(결정론적 SQL 정책 패스는 여전히 실행됨). 감사별 `llm_enabled` 플래그와 무관합니다. 에이전트에도 LLM이 구성되어 있어야 합니다. [assistant.md](/ko/agenteye/assistant) 참조. |
+
+**AI 어시스턴트 서비스 — 감사 + 샌드박스 설정.** 에이전트 조사와 인팟 Python 샌드박스는 **에이전트 서비스**(서버가 아님)에서 `AGENTEYE_AUDIT_*` 접두사로 모두 선택 사항으로 조정됩니다:
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `AGENTEYE_AUDIT_MAX_STEPS` | `200` | 조사당 최대 에이전트 턴 수. |
+| `AGENTEYE_AUDIT_TIMEOUT_MS` | `1200000` | 하나의 조사에 대한 실시간 타임아웃(20분). 서버의 `AUDIT_LLM_TIMEOUT_MS`보다 **낮게** 유지해야 합니다. |
+| `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | 에이전트 파드당 동시 조사 수(채팅 어시스턴트 예산과 별개). |
+| `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | bubblewrap 샌드박스에 대한 스크립트당 제한. |
+
+**샌드박스 플랫폼 요구사항.** 감사 코드 샌드박스는 bubblewrap 감옥 내에서 모델의 Python을 실행하며, **비권한 사용자 네임스페이스**가 필요합니다. 에이전트 파드는 `clone()` 플래그를 허용해야 합니다. k8s에서는 `seccompProfile: Unconfined`를, 컴포즈에서는 `security_opt: [seccomp:unconfined]`를 에이전트에 설정하세요. 노드 커널이 비권한 사용자 네임스페이스를 비활성화한 경우(예: 일부 GKE COS 이미지), 샌드박스 **프리플라이트가 실패하고 감사자는 자동으로 SQL 전용으로 저하됩니다.** 오류 없이 에이전트의 `/health`에 `sandbox_available: false`만 표시됩니다.
+
+### 실행
+
+환경에서 `DATABASE_URL`과 `CLICKHOUSE_URL`을 설정하고(서버는 ClickHouse 없이 부팅을 거부합니다), 컨테이너로 전달하세요:
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-server \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e CLICKHOUSE_URL="$CLICKHOUSE_URL" \
+  -e ADMIN_KEY="$ADMIN_KEY" \
+  -p 8080:8080 \
+  ghcr.io/agenteye-enterprise/server:beta-latest
+```
+
+서버는 시작 시 데이터베이스 마이그레이션을 자동으로 실행합니다. 별도의 마이그레이션 단계가 필요하지 않습니다.
+
+### 헬스 체크
+
+```
+GET /health    # liveness  - always {"status":"ok"} once the process is up
+GET /ready     # readiness - 200 when Postgres + ClickHouse are reachable, else 503
+```
+
+인증이 필요하지 않습니다. **활성(liveness)** 프로브에는 `/health`를, **준비(readiness)**/로드 밸런서 프로브에는 `/ready`를 사용하세요. `/ready`는 서버가 서비스를 제공할 수 없는 하드 의존성(Postgres + ClickHouse)을 확인합니다. 따라서 실행 중이지만 데이터베이스에 연결할 수 없는 서버는 로테이션에서 제외되고 `NotReady`로 표시됩니다. Redis는 보고되지만 준비 상태 실패를 유발하지 않습니다. 번들로 제공되는 Kubernetes 매니페스트에서 준비 프로브는 이미 `/ready`를 가리키고 활성 프로브는 `/health`를 유지합니다. Slack으로의 선택적 Kubernetes 네이티브 파드 실패 알림을 포함한 전체 내용은 [enterprise-docs/health-monitoring.md](/ko/agenteye/health-monitoring)를 참조하세요.
+
+### 이메일 매직 링크 URL
+
+OTP 로그인 이메일에는 **대시보드 열기** 원탭 버튼이 포함됩니다. 클릭하면 사용자가 `/login?token=<code>&email=<address>`로 이동하고, 대시보드는 해당 쌍을 세션으로 교환하여 앱으로 리디렉션합니다. 코드를 수동으로 다시 입력할 필요가 없습니다. 서버는 링크 생성에 사용되는 대시보드 원본 주소를 세 단계로 결정합니다:
+
+1. **`X-AgentEye-Dashboard-Url` 헤더**: 대시보드의 `/api/auth/otp/request` 프록시가 자체 공개 원본 주소에서 자동으로 설정합니다. 동일 원본 배포(서버와 대시보드가 프록시 헤더를 전달하는 하나의 인그레스 뒤에 있는 경우)에서는 **구성이 필요하지 않습니다.**
+2. **`DASHBOARD_URL` 환경 변수**: 대시보드가 서버의 OTP 요청 엔드포인트가 보는 원본 주소와 다른 원본 주소(`api.example.com` / `app.example.com` 분리)로 접근 가능한 경우, 또는 인그레스가 공개 호스트를 대시보드 파드로 전파하지 않는 경우(`request.nextUrl.origin`이 `0.0.0.0:3000`과 같은 와일드카드 바인드로 해석될 수 있음) 이 값을 설정하세요. 예: `DASHBOARD_URL=https://app.example.com`.
+3. **기본값**: `https://app.befailproof.ai`. 위의 두 가지가 모두 없는 경우에만 사용됩니다.
+
+헤더 값이 검증됩니다. `https://*` 및 루프백(`http://localhost*`, `http://127.0.0.1*`) 원본만 허용되며, `https://` 스키마가 있더라도 와일드카드 바인드 주소(`0.0.0.0`, `[::]`)는 거부됩니다. 그 외의 경우는 2단계로 폴스루됩니다.
+
+파일이나 kustomize 재빌드 없이 원라이너로 실행 중인 클러스터에 설정하세요:
+
+```bash
+kubectl set env deployment/server -n agenteye \
+  DASHBOARD_URL=https://app.example.com
+```
+
+이렇게 하면 롤아웃이 트리거되고 새 파드가 첫 번째 요청 시 값을 가져옵니다. 재정의는 Deployment에만 존재합니다. 이후에 오버레이에 대해 `kustomize build | kubectl apply`를 실행하면 동일한 환경 변수를 오버레이의 `server-env.yaml` 패치에 추가하지 않는 한 이 값이 지워집니다.
+
+---
+
+## 대시보드
+
+### 이미지 가져오기
+
+```bash
+docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### 환경 변수
+
+| 변수 | 필수 여부 | 기본값 | 설명 |
+|---|---|---|---|
+| `AGENTEYE_SERVER_URL` | 예 | 없음 | 서버의 기본 URL. 예: `http://localhost:8080` |
+| `AGENTEYE_API_KEY` | 예 | 없음 | 대시보드가 서버 인증에 사용하는 API 키. 모든 권한이 필요합니다(관리자 키 권장). |
+| `AE_LOG_LEVEL` | 아니오 | `info` | 서버 측 로그 상세도: `debug`, `info`, `warn`, `error`. 문제 진단 시 업스트림 요청/응답 줄과 세션 검증 추적을 보려면 `debug`로 설정하세요. |
+| `AE_LOG_JSON` | 아니오 | 자동 | `1`은 JSON 한 줄 출력 강제, `0`은 사람이 읽을 수 있는 출력 강제. 설정하지 않으면 `NODE_ENV=production`인 경우 JSON이 자동으로 활성화됩니다. 프로덕션에서는 `jq`나 로그 집계기로 깔끔하게 파싱할 수 있도록 JSON을 권장합니다. |
+| `AE_ANALYTICS_DISABLED` | 아니오 | 없음 | `1`/`true`로 설정하면 대시보드의 익명 제품 사용 텔레메트리가 비활성화됩니다. 아래의 [텔레메트리 및 개인정보 보호](#telemetry--privacy) 참조. |
+| `REDIS_URL` | 아니오 | 없음 | 선택 사항인 공유 캐시 백엔드. 예: `redis://redis:6379/0`. 설정하면 대시보드는 복제본 전체에서 `validateSession()` 결과를 캐시하고 지연 집계/env 목록 프록시 라우트에 대한 Next.js 페치 캐시를 공유합니다. 엣지 OTP 요청 및 검증 속도 제한도 Redis가 있으면 Redis를 사용합니다(Redis에 연결할 수 없으면 열린 상태로 실패하며, 서버 측 제한이 보안 백스톱). 아래의 **Redis(선택 사항 캐시)** 참조. |
+| `AGENTEYE_AGENT_URL` | 아니오 | 없음 | 선택 사항인 AI 어시스턴트 `agent` 서비스의 기본 URL. 예: `http://agent:9100`. **어시스턴트를 완전히 숨기려면 설정하지 마세요.** 대시보드에 어시스턴트 버블이 나타나지 않습니다. [enterprise-docs/assistant.md](/ko/agenteye/assistant) 참조. |
+| `AGENTEYE_AGENT_TOKEN` | 아니오 | 없음 | 대시보드가 `agent` 서비스에 제공하는 공유 비밀. 에이전트에 구성된 `AGENTEYE_AGENT_TOKEN`과 일치해야 합니다. [enterprise-docs/assistant.md](/ko/agenteye/assistant) 참조. |
+
+### 실행
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-dashboard \
+  -e AGENTEYE_SERVER_URL="http://your-server-host:8080" \
+  -e AGENTEYE_API_KEY="$ADMIN_KEY" \
+  -p 3000:3000 \
+  ghcr.io/agenteye-enterprise/dashboard:beta-latest
+```
+
+### 텔레메트리 및 개인정보 보호
+
+대시보드는 **익명 제품 사용 분석**을 Exosphere의 분석 서비스(PostHog)로 전송합니다. 대시보드 페이지 조회 및 API 키 생성이나 세션 재평가 같은 일부 UI 액션이 포함됩니다. 이 사용 신호는 기능 우선순위 결정에 활용됩니다.
+
+- **에이전트, 세션 또는 이벤트 데이터는 인프라 외부로 전혀 전송되지 않습니다.** 오직 대시보드 UI 사용만 보고됩니다. 페이지 URL은 전송 전에 식별자가 제거되며, 운영자는 이메일이 아닌 불투명한 내부 ID로만 식별됩니다.
+- 텔레메트리는 **기본적으로 활성화**되어 있습니다. 완전히 끄려면 대시보드 컨테이너에 `AE_ANALYTICS_DISABLED=1`을 설정하고 재시작하세요.
+- 분석은 대시보드의 `/ingest` 경로로 전송되며, 대시보드는 이를 PostHog(`https://us.i.posthog.com`)로 역방향 프록시합니다. 요청을 퍼스트 파티로 유지하면 브라우저 광고 차단기가 차단하지 않습니다. **대시보드 컨테이너**는 PostHog에 대한 아웃바운드 액세스가 필요합니다. 차단된 경우 텔레메트리는 조용히 아무것도 하지 않고 대시보드는 영향을 받지 않습니다.
+
+---
+
+## AI 어시스턴트 (선택 사항)
+
+인대시보드 AI 어시스턴트를 통해 팀원들이 자연어로 에이전트 데이터에 대한 질문을 할 수 있습니다(세션 요약, `/queries` 편집기를 위한 SQL 초안 작성, 저장된 쿼리를 대시보드 타일로 변환). 대시보드를 떠날 필요가 없으며, 대시보드만 접근할 수 있는 별도의 내부 `agent` 컨테이너(Claude Agents SDK 기반)로 실행됩니다. **LLM 엔드포인트를 구성할 때까지 비활성화 상태입니다.**
+
+활성화하려면 `agent` 서비스에 LLM 연결(**Portkey**: `PORTKEY_API_KEY` + 모델 카탈로그 슬러그 `AGENTEYE_AGENT_MODEL=@<slug>/<model>`, 직접 Anthropic: `ANTHROPIC_API_KEY`, 다른 게이트웨이: `ANTHROPIC_BASE_URL`, 또는 Bedrock/Vertex), **전용** 데이터 키, 그리고 대시보드와 일치하는 공유 `AGENTEYE_AGENT_TOKEN`을 설정합니다. 대시보드 사용자는 추가로 `agent:use` 권한이 필요합니다.
+
+어시스턴트의 데이터 키는 직접 생성하지 않아도 됩니다. 랜덤 비밀을 선택하여 `agent`에 `AGENTEYE_API_KEY`로 설정하고 `server`에 `AGENT_API_KEY`로 설정하면, 서버가 시작 시 고정된 권한 세트로 시드합니다. 데이터 접근은 읽기 전용(`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`)이며, 승인 게이트 작성 범위(`dashboards:write`, `queries:write`, `queries:run`)도 보유하여 사용자를 대신해 저장된 쿼리를 초안 작성/검증하고 대시보드 타일을 빌드할 수 있습니다. 모든 SQL은 여전히 조직의 읽기 전용 ClickHouse 역할을 통해 실행되므로, 어시스턴트가 작성할 수 있는 범위가 넓어지는 것이지 접근할 수 있는 데이터 범위가 넓어지는 것은 아닙니다. 범위는 코드에서 고정되며 구성으로 확장할 수 없습니다. 해당 키는 보호됩니다. API를 통해 비활성화하거나 재생성할 수 없으며, 값을 변경하고 재시작하여 순환할 수 있습니다. 이 용도로 관리자/대시보드 키를 재사용하지 마세요.
+
+전체 설정, 완전한 환경 변수 레퍼런스, 텔레메트리 옵션, 보안 모델은 **[enterprise-docs/assistant.md](/ko/agenteye/assistant)**에 있습니다.
+
+---
+
+## ClickHouse (필수 분석 저장소)
+
+ClickHouse는 높은 이벤트 볼륨에서도 대시보드의 응답성을 유지하고, `/queries` SQL 편집기가 이벤트, 평가, 세션을 단일 저장소에서 조인할 수 있게 합니다. 수집된 모든 이벤트, 모든 최종 평가 결과, 파생된 세션별 집계에 대한 필수 정규 저장소입니다. PostgreSQL은 관계형/가변 상태 테이블(api_keys, users, otp_codes, evaluation_jobs, dashboards, saved_queries)을 보유하고, 분석 표면은 ClickHouse에 있어 대시보드 롤업과 사용자 정의 SQL 쿼리가 크로스 데이터베이스 라운드트립 없이 기본적으로 스캔하고 조인할 수 있습니다. 서버는 `CLICKHOUSE_URL` 없이 부팅을 거부합니다.
+
+### 스키마
+
+서버 시작 시 세 개의 ClickHouse 객체가 생성됩니다. 모두 멱등적입니다(`CREATE IF NOT EXISTS`):
+
+- **`agenteye.events`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(ts)`로 파티션됨, `(session_id, ts, dedup_key)` 순서로 정렬됨. 중복 삽입(콜렉터 재시도)은 병합 시 단일 행으로 합쳐집니다. 서버는 모든 이벤트에 대해 결정론적 SHA-256 `dedup_key`를 계산하므로 재시도가 안전합니다.
+- **`agenteye.evaluations`**: `ReplacingMergeTree(ingested_at)`, `toYYYYMM(finished_at)`로 파티션됨, `(session_id, finished_at, dedup_key)` 순서로 정렬됨. 평가자 파이프라인이 최종 평가 결과마다 한 번 기록합니다. `events`와 동일한 dedup 키 모델.
+- **`agenteye.agent_sessions`**: 물리적 테이블이 아닌 `agenteye.events`에 대한 **뷰**. 모든 컬럼이 파생됩니다(`started_at = min(ts)`, `last_event_at = max(ts)`, `ended_at = max(if event_type='agent_end', ts, NULL)`, `event_count = count()` 등). 이벤트별 업서트나 별도 백필 없이 뷰가 `events`의 내용을 자동으로 반영합니다.
+
+`analytics.evaluations` / `analytics.sessions`를 참조하는 저장된 쿼리와의 하위 호환성을 위해 서버는 `agenteye.*` 테이블 위에 뷰가 있는 `analytics` ClickHouse 데이터베이스도 생성합니다. `analytics.events`, `analytics.evaluations`, `analytics.agent_sessions`, `analytics.sessions`가 모두 올바르게 해석됩니다.
+
+### 구성
+
+번들로 제공되는 docker-compose와 `deploy/base/clickhouse/`는 AgentEye의 워크로드에 최적화된 ClickHouse 서비스를 포함합니다:
+
+- 번들 기본 오버레이에서 2 GiB 요청 / 4 GiB 제한 메모리(작은 POC/스테이징 노드에 맞게 조정됨). 프로덕션 고객은 오버레이를 조정해야 합니다. 권장 최솟값은 2c / 4Gi 요청, 6c / 8Gi 제한입니다. `max_server_memory_usage_to_ram_ratio=0.9`
+- 5 GiB 마크 캐시 + 8 GiB 비압축 캐시
+- `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
+- MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
+- `local_io_method=auto` (지원되는 커널에서 io_uring)
+- `fsync_metadata=0`: 최소 1회 이상 수집 + ReplacingMergeTree dedup으로 인해 허용됨
+- `query_log`은 30일 TTL로 활성화됨. `query_thread_log`는 제거됨(높은 QPS에서 비용이 많이 듦)
+- 사용자 측 쿼리에 대한 `max_execution_time=30`
+- StatefulSet 템플릿에 100 GiB PVC(고객 오버레이는 프로덕션에서 빠른 SSD 스토리지 클래스로 재정의해야 함)
+
+### 백업
+
+전체 데이터셋은 매일 밤 단일 복원 가능한 아카이브로 캡처되므로, 클러스터 또는 스토리지 손실 시 복구할 수 있습니다. ClickHouse는 일일 `agenteye-backup` CronJob에 의해 자동으로 백업됩니다. 이 CronJob은 PostgreSQL과 ClickHouse를 한 번에 덤프합니다. ClickHouse는 HTTP API를 통해 읽힙니다. `agenteye.events`와 `agenteye.evaluations`는 ClickHouse 네이티브 형식으로 덤프되며(뷰와 행 정책은 서버 시작 시 재생성되므로 테이블 데이터가 완전한 그림), Postgres 덤프와 함께 단일 압축 아카이브로 번들되어 객체 스토리지에 업로드됩니다.
+
+대상 버킷과 클라우드 자격 증명은 오버레이별로 구성됩니다. 업로드 구성 및 복원 단계는 [enterprise-docs/kubernetes-deployment.md](/ko/agenteye/kubernetes-deployment)의 **백업** 섹션을 참조하세요.
+
+---
+
+## Redis (선택 사항 캐시)
+
+Redis는 서버와 대시보드가 사용하는 **선택 사항**인 공유 캐시 + 속도 제한 백엔드입니다. Redis를 배포하고 두 서비스 모두에 `REDIS_URL`을 설정하면:
+
+- **서버**는 인증된 API 키 조회, `/events/environments` + `/evaluations/environments` 목록, `/events/latency_aggregate` 롤업(대시보드가 폴링하는 가장 무거운 쿼리), `/sessions` 목록을 캐시하고, OTP 요청 속도 제한을 Postgres `COUNT(*)`에서 Redis `INCR + EXPIRE`로 전환합니다.
+- **대시보드**는 `validateSession()` 결과를 캐시하여 일반적인 페이지 로드에서 발생하는 10-20개의 인증된 API 호출이 하나의 업스트림 세션 확인을 공유합니다. 또한 대시보드 엣지에서 OTP 요청 및 검증 속도를 제한합니다.
+
+**Redis에 연결할 수 없으면 두 서비스 모두 자연스럽게 저하됩니다.** 모든 캐시 호출은 제한된 타임아웃 내에 `Err`를 반환하고, 호출자는 진실의 원천으로 폴백합니다(서버는 Postgres, 대시보드는 업스트림 Rust 서버). OTP 속도 제한은 서버의 Postgres `COUNT(*)` 경로로 폴백합니다(보안 속성 유지). 대시보드의 엣지 OTP 제한은 열린 상태로 실패하지만 서버 측 제한은 여전히 유효합니다. Redis 다운 시 정확성이 아닌 지연 시간이 저하됩니다.
+
+### 구성
+
+docker-compose 번들에는 이미 Redis 서비스가 포함되어 있으며, 서버와 대시보드에 `REDIS_URL=redis://redis:6379/0`이 연결됩니다. 외부 Redis를 사용하려면 `REDIS_URL`을 엔드포인트로 설정하고 컴포즈 파일에서 `redis` 서비스를 제거하세요.
+
+### 메모리 + 지속성
+
+번들 Redis 이미지는 `--appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru`로 실행됩니다. AOF 지속성은 컨테이너 재시작 후에도 캐시가 유지됨을 의미합니다. `everysec`는 마지막 1초의 캐시 쓰기 손실이 무해하기 때문에 올바른 내구성/성능 균형입니다. LRU 제거는 메모리 증가를 제한합니다.
+
+### Redis를 배포하지 않아야 할 때
+
+- 단일 인스턴스 개발/QA 환경. 서버의 인프로세스 캐시만으로도 복제본당 이점의 대부분을 제공합니다. Redis는 단일 인스턴스 설정에서는 필요하지 않은 크로스 복제본 공유를 추가합니다.
+- 서비스 하나를 더 운영하는 비용이 지연 시간 이점보다 큰 에어갭 설치 환경.
+
+---
+
+## Docker Compose (권장)
+
+`docker-compose.yml`은 `agenteye-enterprise/releases` 저장소에서 사용할 수 있습니다. 단일 명령으로 Postgres, ClickHouse, Redis, 서버, 대시보드를 시작합니다.
+
+```bash
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download \
+  --repo agenteye-enterprise/releases \
+  --pattern 'docker-compose.yml' \
+  --dir ./agenteye
+cd agenteye
+```
+
+**`.env`를 통해 기본값 재정의:**
+
+```
+# Use URL-safe passwords (no /, +, or = characters).
+# Generate with: openssl rand -hex 24
+POSTGRES_PASSWORD=your-db-password
+ADMIN_KEY=your-admin-secret
+
+# Dashboard authentication
+ADMIN_EMAIL=admin@yourcompany.com
+ALLOWED_EMAILS=*@yourcompany.com
+
+# SMTP for OTP emails (omit to log OTP codes to stdout)
+# SMTP_HOST=smtp.yourprovider.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your-smtp-user
+# SMTP_PASSWORD=your-smtp-password
+# SMTP_FROM=noreply@yourcompany.com
+
+RUST_LOG=info
+```
+
+```bash
+docker compose up -d
+```
+
+**중지(데이터 볼륨 유지):**
+
+```bash
+docker compose down
+```
+
+**중지 및 모든 데이터 삭제:**
+
+```bash
+docker compose down -v
+```
+
+---
+
+## 운영 설정
+
+환경 변수로 고정되던 일부 운영 설정은 이제 대시보드의 **`/<org>/settings`** 페이지에서 조직별로 편집할 수 있습니다. 각 조직이 독립적으로 구성합니다. 변경 사항은 재시작이나 재배포 없이 수 초 내에 적용됩니다.
+
+| 설정 | 부트스트랩 환경 변수 | 제어 대상 |
+|---|---|---|
+| 허용된 로그인 | `ALLOWED_EMAILS` | OTP를 받고 사용자로 추가될 수 있는 이메일(또는 `*@domain.com` 와일드카드) |
+| 기본 사용자 권한 | `DEFAULT_USER_PERMISSIONS` | 관리자가 **+ new user**를 열 때 미리 선택되는 쉼표로 구분된 권한 토큰. 각 토큰은 [API 키 권한](/ko/agenteye/api-keys)에 나열된 문자열 중 하나여야 합니다. 기본값은 `standard` 프리셋: 읽기 전용 접근 및 일상적인 온콜 액션(재평가 트리거, 쿼리 실행, 인시던트 확인, 어시스턴트 사용). |
+| 세션 수명 | `SESSION_TTL_SECS` | 재인증 전까지 대시보드 로그인 유효 기간. 대시보드는 매 5초마다 업스트림 세션을 재확인하므로, `/<org>/users`에서의 권한 업데이트는 재로그인 없이 다음 요청에서 해당 사용자에게 적용됩니다. |
+| 일회용 코드 수명 | `OTP_TTL_SECS` | OTP/매직 링크 사용 가능 기간 |
+| 알림 채널 | `ALERTS_ENABLED_CHANNELS` | 알림 디스패처가 사용할 수 있는 채널 종류의 쉼표 구분 목록: `email`, `slack`, `webhook`. 알림별 구성은 여전히 `/<org>/alerts/<id>`에서 작성되지만, 디스패처는 이 세트를 통해 모든 아웃바운드 전달을 필터링합니다. 여기서 비활성화된 채널은 `skipped_disabled` 감사 행으로 단락됩니다. `dashboard` 채널(로컬 감사 삽입)은 항상 허용됩니다. 기본값은 세 채널 모두 활성화. |
+
+### 부트스트랩 동작 방식
+
+설정은 `org_settings`에 조직별로 저장됩니다. 첫 번째 부팅 시 서버는 일치하는 환경 변수(또는 환경 변수가 설정되지 않은 경우 적절한 기본값)에서 기본 조직의 누락된 행을 시드합니다. 이후에는 **저장된 값이 진실의 원천이 되며 환경 변수는 무시됩니다.** 이후 재시작 시 환경 변수를 변경해도 라이브 조직의 값에 영향을 주지 않으며, 추가 조직은 기본값에서 시작하여 독립적으로 구성합니다.
+
+이는 다음을 의미합니다:
+
+- 새로운 배포에서는 위에 표시된 대로 환경 변수를 설정하면 기본 조직이 첫 번째 부팅 시 읽습니다.
+- 나중에 값을 변경하려면 대시보드에 로그인하여 `/<org>/settings`에서 편집하세요. 변경 사항은 모든 서버 복제본에 수 초 내에 적용됩니다. 재시작이 필요하지 않습니다.
+- 시작 로그 줄에 시드된 항목과 이미 존재하는 항목이 기록되어 부트스트랩이 적용되었는지 확인할 수 있습니다:
+
+  ```text
+  INFO settings bootstrap: seeded default-org row key=allowed_sign_ins env_var=ALLOWED_EMAILS seeded_from_env=true
+  ```
+
+#### 조직 간 로그인 시맨틱
+
+세션과 OTP는 단일 조직이 아닌 사용자 전체에 적용되므로, 로그인 시 조직별 설정을 조정하는 두 가지 규칙이 있습니다:
+
+- **세션/OTP 수명**: 사용자가 속한 조직 중 가장 엄격한(가장 짧은) 수명이 적용됩니다.
+- **허용된 로그인**: 게이트는 모든 조직의 허용 목록과 조직 멤버십을 OR로 결합합니다. 어떤 조직의 허용 목록이 이메일을 허용하거나 사용자가 이미 어떤 조직의 멤버인 경우 OTP를 요청할 수 있습니다.
+
+### 권한
+
+`/<org>/settings` 페이지 접근은 두 가지 권한으로 제어됩니다:
+
+- `settings:read`: 페이지 및 현재 값 보기.
+- `settings:write`: 변경 사항 저장.
+
+부트스트랩 관리자(`ADMIN_EMAIL`에서 시드됨)는 다른 모든 권한과 함께 두 권한을 자동으로 받습니다. 필요에 따라 `/<org>/users`에서 다른 사

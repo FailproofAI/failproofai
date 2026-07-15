@@ -1,0 +1,308 @@
+---
+title: "Alertes"
+description: "Documentation des alertes AgentEye."
+---
+
+Les alertes évaluent une règle selon un calendrier et vous notifient lorsqu'un seuil est franchi. Elles transforment AgentEye d'un tableau de bord passif en une surface de notification pour les événements importants : pics du taux d'erreur, régressions de latence, baisses de score d'évaluation, ou tout événement personnalisé exprimable sous forme de requête ClickHouse.
+
+Ce guide couvre la définition d'une alerte, les cinq types de déclencheurs, les quatre canaux de notification, le cycle de vie des incidents et les paramètres opérationnels.
+
+![La page Alertes : une grille de cartes de règles d'alerte, chacune affichant son type de déclencheur, la fenêtre d'évaluation, les canaux et un badge de sévérité info/avertissement/critique](/agenteye/images/alerts.png)
+
+---
+
+## Concepts
+
+- **Alerte** — la règle. Elle définit *ce qu'il faut vérifier* (le déclencheur), *à quelle fréquence* (l'intervalle d'évaluation), *quand considérer qu'il y a un problème* (logique composée), *l'urgence* (sévérité), et *qui/où notifier* (les canaux).
+- **Incident** — ce qui se produit lorsqu'une alerte se déclenche. Une alerte ne peut avoir qu'un seul incident ouvert à la fois. Les violations répétées mettent à jour les preuves du même incident. Les incidents sont résolus par un opérateur ; la résolution automatique lorsque la règle cesse de se déclencher est prévue mais pas encore disponible.
+- **Canal** — la destination d'une notification : e-mail, Slack, webhook générique ou dans le tableau de bord. Chaque alerte peut associer n'importe quelle combinaison.
+
+Les alertes et les incidents appartiennent à une organisation et sont partagés entre les opérateurs de cette organisation (dans un déploiement mono-tenant, il s'agit simplement de l'organisation `default` intégrée). Les incidents peuvent être assignés à un opérateur individuel pour le triage.
+
+---
+
+## Types de déclencheurs
+
+Cinq types, chacun avec sa propre spécification JSON. Choisissez celui qui correspond à votre définition de « dysfonctionnement ». Le formulaire **nouvelle alerte** du tableau de bord génère la même spécification, en adaptant l'éditeur de conditions au type de déclencheur sélectionné :
+
+![Le formulaire nouvelle alerte, avec les paramètres de base (nom, description, activé) et le sélecteur de déclencheur affichant les options seuil de métrique, SQL personnalisé, score d'évaluation, échecs d'évaluation et par événement](/agenteye/images/alert-new.png)
+
+### 1. `metric_threshold`
+
+Le plus simple. Choisissez une métrique dans une liste fermée, un opérateur, un seuil et une fenêtre temporelle.
+
+| Métrique | Ce qu'elle mesure |
+|---|---|
+| `event_count` | Total des événements dans la fenêtre |
+| `error_count` | `event_type = 'error'` OU tout événement avec `error_type IS NOT NULL` |
+| `error_rate` | `error_count / event_count` (0..1) |
+| `p95_latency_ms` | `quantile(0.95)(duration_ms)` sur tous les événements ayant un `duration_ms` |
+| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
+| `token_sum` | `SUM(input_tokens + output_tokens)` |
+
+Opérateurs : `>`, `>=`, `<`, `<=`, `==` (également acceptés sous la forme `gt`, `gte`, `lt`, `lte`, `eq`).
+
+Filtres optionnels : `environment`, `event_type`.
+
+Exemple de spécification :
+
+```json
+{
+  "metric": "p95_latency_ms",
+  "filter": { "environment": "production" },
+  "window_secs": 900,
+  "op": ">",
+  "value": 5000
+}
+```
+
+### 2. `custom_sql`
+
+Pour tout ce que les métriques prédéfinies ne couvrent pas. Le SQL fourni par l'opérateur passe par le même garde `/queries/run` (SELECT/WITH uniquement, instruction unique, limite de 10 000 lignes) avant que le dispatcher ne l'exécute. Deux modes :
+
+- **Mode lignes** (sans `op`/`value`) : l'alerte se déclenche dès que la requête retourne au moins une ligne.
+- **Mode valeur** : la requête doit aliaser une colonne `metric_value` ; le dispatcher compare `metric_value` de la première ligne à `value` en utilisant `op`.
+
+```json
+{
+  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
+  "op": ">",
+  "value": 100
+}
+```
+
+### 3. `evaluation_score`
+
+Lit `agenteye.evaluations` et compare la moyenne d'un score nommé sur une fenêtre temporelle.
+
+```json
+{
+  "score_key": "hallucination",
+  "op": ">",
+  "value": 0.6,
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+`min_count` protège contre les valeurs aberrantes d'un seul échantillon ; le dispatcher ne se déclenchera pas tant qu'au moins N évaluations n'existent pas dans la fenêtre.
+
+### 4. `eval_compound`
+
+Détectez une régression qualitative qui n'apparaît qu'à travers *plusieurs* scores d'évaluation simultanément. Là où `evaluation_score` surveille un seul score nommé, `eval_compound` compose plusieurs conditions de score d'évaluation en une seule alerte et combine leurs résultats avec une logique choisie ; une règle peut ainsi exprimer « déclencher si la pertinence baisse **ou** si les hallucinations augmentent », « déclencher uniquement si la pertinence **et** l'efficacité des outils baissent toutes deux », ou « déclencher si **au moins 2 de** ces trois vérifications sont en infraction ».
+
+Chaque condition lit la moyenne d'un score nommé depuis `agenteye.evaluations` sur la fenêtre partagée et la teste avec son propre opérateur et seuil. Les résultats booléens sont ensuite combinés par le `combinator` :
+
+| Combinateur | Logique | Se déclenche quand |
+|---|---|---|
+| `"any"` | OU | au moins une condition est en infraction |
+| `"all"` | ET | toutes les conditions sont en infraction |
+| `{ "at_least": N }` | M parmi N | au moins N conditions sont en infraction |
+
+```json
+{
+  "combinator": { "at_least": 2 },
+  "conditions": [
+    { "score_key": "hallucination", "op": ">", "value": 0.8 },
+    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
+    { "score_key": "tone",          "op": "<", "value": 0.5 }
+  ],
+  "window_secs": 3600,
+  "min_count": 5,
+  "environment": "production"
+}
+```
+
+- `combinator` : `"any"`, `"all"`, ou `{ "at_least": N }`.
+- `conditions[]` : chaque `{ score_key, op, value }`, utilisant les mêmes opérateurs que les autres déclencheurs (`>`, `>=`, `<`, `<=`, `==`).
+- `window_secs` : la période de rétrolecture partagée appliquée à chaque condition (par défaut `3600`).
+- `min_count` : nombre minimum d'évaluations par condition avant que celle-ci puisse être en infraction ; une condition avec trop peu d'échantillons dans la fenêtre est considérée comme « non en infraction » (par défaut `1`).
+- `environment` : optionnel ; restreint chaque condition à un environnement.
+
+Les preuves de la notification enregistrent la moyenne observée de chaque condition, le seuil testé, le nombre d'évaluations vues et si la condition était en infraction ; vous pouvez ainsi voir exactement quelles vérifications ont échoué.
+
+### 5. `per_event`
+
+Pour les alertes de type « tout événement correspondant à X est arrivé ». Pas d'agrégation ; le dispatcher se déclenche dès qu'il trouve une correspondance dans la fenêtre de rétrolecture.
+
+```json
+{
+  "event_type": "error",
+  "lookback_secs": 60,
+  "environment": "production",
+  "tool_name": "bash",
+  "agent_id": "caa",
+  "error_type": "TimeoutError",
+  "message_contains": "vertex-ai timed out"
+}
+```
+
+Tous les filtres sont combinés avec ET ; tout champ omis est sans contrainte.
+
+| Champ | Rôle |
+|---|---|
+| `agent_id` | Restreindre aux erreurs d'un agent spécifique (celui affiché sur la ligne `/errors`). |
+| `error_type` | Restreindre à une classe d'erreur spécifique (ex. `TimeoutError`) plutôt qu'à toutes les erreurs. |
+| `message_contains` | Correspondance de sous-chaîne insensible à la casse dans `payload.message`. Utile pour cibler un mode d'échec spécifique (ex. `prompt is too long`) sans alerter sur toutes les erreurs du même agent. Limité à 200 caractères ; correspondance en tant que chaîne littérale, pas un motif. |
+
+Conseil : définissez `lookback_secs` pour qu'il corresponde approximativement à `eval_interval_secs` de l'alerte, afin d'éviter les doubles notifications pour le même événement.
+
+**Raccourci depuis `/errors` :** le bouton **+ alerte** sur chaque ligne représentative d'un groupe d'erreurs dans la vue des erreurs (et dans le panneau de détail des événements de session pour un événement d'erreur) ouvre `/alerts/new` pré-rempli avec un déclencheur `per_event` basé sur l'`event_type` + l'environnement de cette ligne, avec un nom issu de l'`error_type` du payload lorsque disponible. Vous devez encore choisir les canaux et confirmer la rétrolecture, mais le filtre est déjà renseigné. Les opérateurs ont besoin de `alerts:write` pour que le bouton s'affiche.
+
+---
+
+## Logique composée (M parmi N)
+
+Chaque alerte dispose de deux paramètres entiers en plus du déclencheur :
+
+- `eval_window` : combien d'évaluations récentes examiner (par défaut 1)
+- `min_breaches` : combien d'entre elles doivent être en infraction avant que l'alerte se déclenche (par défaut 1)
+
+`1 sur 1` (par défaut) signifie « déclencher à la première infraction ». `3 sur 5` signifie « déclencher lorsque la règle a été en infraction 3 fois sur les 5 dernières évaluations », utile pour les signaux instables où une seule mesure défavorable est du bruit. Le dispatcher maintient un tampon circulaire par alerte ; vous n'avez pas à gérer l'état.
+
+---
+
+## Intervalle d'évaluation
+
+`eval_interval_secs` contrôle la fréquence à laquelle le dispatcher exécute votre règle. Limité à `[30, 86400]`. Préréglages dans le tableau de bord : 1m / 5m / 15m / 1h. Choisissez un intervalle adapté à la vitesse d'évolution du signal sous-jacent : une alerte sur le taux d'erreur sur 5 minutes évaluée toutes les 15 secondes gaspille du CPU ; une alerte par événement a besoin d'une courte rétrolecture sinon elle manquera silencieusement des événements entre les ticks.
+
+---
+
+## Canaux
+
+Chaque alerte peut associer n'importe quelle combinaison de ces quatre canaux. Les identifiants par canal (URL du webhook Slack, URL du webhook générique + secret de signature, destinataires e-mail par défaut) sont configurés une seule fois dans **`/settings`** et référencés par clé depuis chaque alerte. Ainsi, un seul canal Slack peut servir plusieurs alertes sans que chacune n'ait besoin de stocker sa propre copie de l'URL du webhook.
+
+Les trois types de canaux externes (e-mail, Slack, webhook) sont également contrôlés par un interrupteur global à l'organisation, `alerts.enabled_channels`. Lorsqu'une alerte déclenchée associe un type de canal absent de cet ensemble, le dispatcher l'ignore et enregistre une ligne `alert_notifications` avec le statut `skipped_disabled` et la cible `<channel_disabled>` (vous permettant de mettre en pause globalement, par exemple, toutes les livraisons Slack sans modifier chaque règle). Le canal dans le tableau de bord est toujours autorisé. Voir [Configuration](#configuration).
+
+### E-mail
+
+Réutilise le même transport SMTP qui envoie les e-mails de connexion OTP. Les destinataires sont résolus dans l'ordre suivant :
+
+1. Le remplacement `recipients[]` par canal (lorsque non vide).
+2. Le paramètre `alerts.email_default_recipients` (un tableau de chaînes e-mail).
+
+Si SMTP n'est pas configuré, le canal est inactif ; le dispatcher enregistre tout de même une ligne `alert_notifications` avec la cible `<smtp_unconfigured>` pour que la piste d'audit rende visible la mauvaise configuration.
+
+### Slack
+
+Envoie un message Block Kit à une [URL de webhook entrant](https://api.slack.com/messaging/webhooks).
+
+- URL par défaut : `alerts.slack_default_webhook` (définie dans `/settings`).
+- Remplacement par alerte : définissez `webhook_setting_key` du canal sur n'importe quelle autre clé de paramètre de type URL, ex. `alerts.slack_oncall`, `alerts.slack_costs`.
+
+L'en-tête inclut un emoji de sévérité (`:rotating_light:` / `:warning:` / `:bell:`), et le message contient un bouton qui renvoie directement à la page de l'incident.
+
+### Webhook générique
+
+Une intégration JSON-POST pour PagerDuty, Opsgenie, ou votre propre point d'ingestion. Structure du corps :
+
+```json
+{
+  "schema_version": 1,
+  "event": "alert.firing",
+  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
+  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
+  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
+}
+```
+
+Lorsque `alerts.webhook_signing_secret` est défini, la requête inclut un en-tête `X-AgentEye-Signature: sha256=<hex>`, le HMAC-SHA256 du corps utilisant le secret. Vérifiez-le côté récepteur avant de faire confiance au payload.
+
+L'en-tête `X-AgentEye-Event` contient `alert.firing` / `alert.test`. (`alert.resolved` est réservé pour la future fonctionnalité de résolution automatique et n'est pas actuellement émis.)
+
+### Dans le tableau de bord
+
+Pas de livraison externe : l'alerte écrit simplement une ligne `alert_notifications` que la page des incidents du tableau de bord affiche. Utile pendant la mise au point d'une règle si vous ne voulez pas spammer un système externe, ou pour les alertes de faible urgence que les opérateurs vérifient lors du triage normal.
+
+---
+
+## Cycle de vie des incidents
+
+```
+firing  ──ack──▶  acknowledged
+   │                    │
+   └────────────────────┴───── operator resolve ───▶  resolved
+```
+
+- **firing** — le dispatcher vient d'ouvrir l'incident ou a détecté une nouvelle infraction. La notification de déclenchement est envoyée exactement une fois (conditionnée par l'horodatage `notified_firing_at` sur l'incident).
+- **acknowledged** — un opérateur a appuyé sur *ack* dans `/incidents/:id`. L'incident est toujours considéré comme ouvert ; les infractions suivantes mettront à jour ses preuves sans re-notifier.
+- **resolved** — un opérateur a appuyé sur *resolve*. La résolution automatique lorsque la règle cesse d'être en infraction est prévue mais pas encore disponible, donc un incident ouvert reste ouvert jusqu'à ce qu'un opérateur le résolve.
+
+Un nouvel incident peut se rouvrir sur la même alerte à tout moment après la résolution du précédent.
+
+**Journal d'activité.** Chaque action sur un incident — ouverture, accusé de réception, résolution — est enregistrée dans un journal d'activité en ajout seul et affichée sur la *timeline d'activité* de l'incident, chaque entrée étant attribuée à l'opérateur qui l'a effectuée (par e-mail) ou à **automated** pour les actions que le dispatcher a prises de lui-même (ouverture automatique lors d'une infraction). L'accusé de réception est partagé : plusieurs opérateurs peuvent acquitter le même incident et chacun apparaît comme une entrée distincte et attribuée.
+
+La boîte de réception **Incidents** regroupe les incidents ouverts par état et permet de filtrer par sévérité et assigné :
+
+![La boîte de réception des incidents affichant des cartes d'incidents liés à des alertes et ad hoc avec des badges de sévérité et des assignés](/agenteye/images/incidents.png)
+
+Ouvrir un incident affiche les preuves de l'infraction, les assignés et abonnés, le journal d'activité attribué et un fil de commentaires :
+
+![Vue détaillée d'un incident : l'alerte parente, le résumé de l'infraction, les assignés, les abonnés, le journal d'activité attribué et la conversation](/agenteye/images/incident-detail.png)
+
+---
+
+## Permissions requises
+
+La création de *règles* d'alerte et le triage des *incidents* sont des responsabilités distinctes avec des droits séparés, ce qui vous permet d'accorder à une rotation d'astreinte l'accès aux incidents sans lui donner la capacité de réécrire les règles.
+
+- `alerts:read` : consulter les règles d'alerte.
+- `alerts:write` : créer, modifier, supprimer des règles d'alerte et déclencher une notification de test.
+- `incidents:read` : consulter les incidents.
+- `incidents:write` : ouvrir des incidents manuels (ad hoc) non liés à une alerte.
+- `incidents:ack` : acquitter, assigner, commenter et résoudre des incidents.
+
+> **Ancien `alerts:ack`.** Les clés et opérateurs auxquels l'ancien jeton `alerts:ack` a été accordé continuent de fonctionner : il est traité comme `incidents:ack` (et implique `incidents:read`), donc les personnes d'astreinte existantes conservent leur accès sans avoir besoin de nouvelles informations d'identification. Émettez les nouveaux droits avec la famille `incidents:*`.
+
+Accordez sur les clés API (`POST /keys`) et les opérateurs (`PUT /users/:id`). Le `PermGate` du tableau de bord verrouille les boutons concernés lorsqu'une permission manque ; vous verrez `// 403` à côté de l'action.
+
+> **Sélecteur de destinataires e-mail.** Le sélecteur de destinataires de l'éditeur d'alertes liste les membres de votre organisation pour que vous puissiez les choisir par nom. Il se charge pour tout opérateur disposant de `alerts:read` ou `alerts:write` ; consulter le répertoire de votre équipe à cette fin ne nécessite **pas** `users:read`, et le sélecteur retourne uniquement les adresses e-mail des membres, jamais les enregistrements utilisateur complets.
+
+---
+
+## Configuration
+
+Variables d'environnement utilisées par le dispatcher :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `ALERT_WORKERS` | `1` | Tâches de travail par instance serveur. La plupart des déploiements n'ont besoin que d'une. |
+| `ALERT_CLAIM_BATCH` | `16` | Nombre maximum d'alertes traitées par tick de worker. |
+| `ALERT_POLL_IDLE_SECS` | `5` | Temps de veille du worker lorsque la file est vide. |
+| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Délai d'expiration de l'évaluation par déclencheur. |
+| `DASHBOARD_URL` | `https://app.befailproof.ai` | Origine utilisée pour construire le lien magique vers l'incident dans les notifications. À définir sur votre hôte de tableau de bord. |
+
+Après un échec d'évaluation transitoire (ClickHouse inaccessible, expiration d'une requête), le dispatcher réessaie la règle avec un backoff exponentiel. Une fois qu'une règle a accumulé **5** échecs transitoires consécutifs, elle est replanifiée à sa cadence normale au lieu de continuer à reculer, de sorte qu'une règle continuellement défaillante continue d'être réévaluée. Ce plafond est fixe et n'est pas configurable par l'opérateur.
+
+Paramètres des canaux (gérés depuis `/settings`, pas en variables d'environnement) :
+
+- `alerts.email_default_recipients` (`email_list`) : tableau JSON de chaînes e-mail — les destinataires par défaut pour les canaux e-mail.
+- `alerts.slack_default_webhook` (`url`) : URL du webhook entrant Slack par défaut.
+- `alerts.webhook_default_url` (`url`) : URL du webhook générique par défaut.
+- `alerts.webhook_signing_secret` (`secret`) : clé HMAC-SHA256. Toujours retournée comme `""` dans la réponse GET ; saisissez une nouvelle valeur pour la renouveler.
+- `alerts.enabled_channels` (`channel_set`) : l'ensemble des types de canaux externes dispatchés à l'échelle de l'organisation lorsqu'une alerte se déclenche ; par défaut les trois (`email`, `slack`, `webhook`). Supprimer un type ici supprime globalement ce canal pour toutes les alertes sans modifier chaque règle. Le canal dans le tableau de bord est toujours livré et n'est pas affecté par ce paramètre.
+
+---
+
+## Vérifier une nouvelle alerte
+
+Avant de vous fier à une nouvelle alerte :
+
+1. Enregistrez-la comme activée avec au moins un canal de notification.
+2. Sélectionnez **test** sur la page de détail de l'alerte et confirmez que chaque destination configurée reçoit la notification synthétique.
+3. Après la première vraie infraction, confirmez que l'incident apparaît sous **Incidents** et que sa valeur mesurée correspond à la requête du tableau de bord correspondante.
+
+Les incidents ne se résolvent pas automatiquement lorsqu'une condition s'efface. Un opérateur doit les résoudre depuis la page de détail de l'incident.
+
+---
+
+## Dépannage
+
+| Symptôme | Cause probable |
+|---|---|
+| L'alerte ne se déclenche jamais | `enabled = false`, ou aucun canal attaché, ou la requête CH sous-jacente retourne 0 lignes. Utilisez *test* pour confirmer les canaux ; utilisez `/queries/run` pour confirmer la métrique. |
+| Notification Slack manquante | `alerts.slack_default_webhook` (ou la clé de remplacement par alerte) n'est pas définie : vérifiez `alert_notifications.target` pour des lignes `<unset:…>` ; ou le type `slack` est globalement désactivé dans `alerts.enabled_channels` : recherchez des lignes `alert_notifications` avec le statut `skipped_disabled` et la cible `<channel_disabled>`. |
+| Webhook générique 401 | Le destinataire exige une signature mais `alerts.webhook_signing_secret` n'est pas défini. Vérifiez côté récepteur que le HMAC correspond à `hmac_sha256(secret, body)`. |
+| E-mail contenant tous les envois en échec | Identifiants SMTP incorrects ou l'adresse `from` est rejetée par votre relais. Même surface que celle qui envoie les e-mails OTP : si ceux-ci fonctionnent, le transport SMTP est correct. |
+| L'incident se rouvre à répétition | Les paramètres composés sont trop agressifs : essayez d'augmenter `min_breaches` ou `eval_window` pour que les pics transitoires ne rouvrent pas les incidents que vous avez résolus. |

@@ -1,0 +1,195 @@
+---
+title: "एआई सहायक"
+description: "AgentEye एआई सहायक दस्तावेज़।"
+---
+
+डैशबोर्ड में एक वैकल्पिक **एआई सहायक** शामिल है, जो डैशबोर्ड के दाएं किनारे पर डॉक किया गया एक चैट पैनल है जो आपके एजेंटों के बारे में प्राकृतिक भाषा के प्रश्नों का उत्तर देता है ("इस सप्ताह prod में quality कैसी ट्रेंड कर रही है?", "आज किन सेशन में त्रुटि आई?", "इस सेशन को सारांशित करें") और जब उपयोगकर्ता प्रत्येक क्रिया की अनुमति देता है, तो SQL क्वेरी और डैशबोर्ड तैयार और सहेजता है। यह सीधे प्रासंगिक सेशन, क्वेरी और डैशबोर्ड के लिए क्लिक करने योग्य लिंक प्रदान करता है, और यह **पृष्ठ-जागरूक** है: किसी एक को देखते समय "इस सेशन" के बारे में पूछें और यह समझता है कि आपका क्या मतलब है।
+
+डॉक डिफ़ॉल्ट रूप से एक पतली **44px ऊर्ध्वाधर रेल** के रूप में दिखाई देता है: एक `›_` प्रॉम्प्ट ग्लिफ़ साथ ही एक रंगीन स्वास्थ्य बिंदु। रेल पर क्लिक करें (या `⌘J` / `Ctrl+J` दबाएं) इसे पूर्ण चैट पैनल में विस्तारित करने के लिए। विस्तारित पैनल इसके बाएं किनारे को खींचकर 320 और 640 पिक्सल के बीच **आकार बदलने योग्य** है; आपकी पसंदीदा चौड़ाई रीलोड के दौरान याद रखी जाती है।
+
+यह एक छोटे आंतरिक **`agent`** कंटेनर (Claude Agent SDK पर) के रूप में चलता है जिस तक केवल डैशबोर्ड पहुंच सकता है। यह **डिफ़ॉल्ट रूप से अक्षम** है और जब तक आप कोई LLM एंडपॉइंट कॉन्फ़िगर नहीं करते, तब तक छिपा रहता है।
+
+---
+
+## यह क्या कर सकता है और क्या नहीं कर सकता
+
+- **पूछने वाले उपयोगकर्ता द्वारा देखे जाने वाले परिचालन डेटा को पढ़ता है।** Events, evaluations, sessions, evaluation-job queue, saved queries, और saved dashboards, प्रत्येक अनुरोध के लिए उपयोगकर्ता के read permissions तक सीमित। Read tools तुरंत निष्पादित होते हैं।
+- **लेखन प्रति-क्रिया अनुमोदन द्वारा गेटेड है।** यह saved queries को लेखक बना सकता है (`create_saved_query`, `update_saved_query`), draft SQL को read-only role के विरुद्ध चलाकर validate कर सकता है (`run_query`), और उन क्वेरी से dashboards assemble कर सकता है (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`)। प्रत्येक लेखन एक इन-चैट **Approve / Reject / एक प्रश्न पूछें** प्रॉम्प्ट के लिए रुकता है; SDK जब तक ऑपरेटर Approve पर क्लिक नहीं करता तब तक tool को कॉल नहीं करता। **Deletion सहायक के लिए कभी उपलब्ध नहीं है**; विनाशकारी संचालन ऑपरेटरों के साथ रहते हैं।
+- **Draft SQL उपयोगकर्ता-लिखित SQL के समान ही `sql_guard` validation और read-only roles के माध्यम से जाता है** (केवल SELECT/WITH, कोई multi-statement नहीं)। Execution को उस आधार पर route किया जाता है जो तालिकाएं क्वेरी स्पर्श करती हैं: वे क्वेरी जो analytics tables (events, evaluations, sessions) को reference करती हैं, organization के read-only ClickHouse user के रूप में चलती हैं (एक row policy द्वारा उस org तक सीमित, 10s execution cap और 100k row cap के साथ) जबकि वे क्वेरी जो केवल relational tables को touch करती हैं, एक read-only Postgres role पर चलती हैं (10s, 10k rows)। सहायक डेटा सतह को चौड़ा नहीं कर सकता; यह केवल उस क्वेरी सतह पर लेखक कर सकता है जो ऑपरेटर के पास पहले से है।
+- यह एक **dedicated assistant key** (नीचे देखें) का उपयोग करता है जो एक fixed permission set के साथ seeded है; भले ही model का व्यवहार गलत हो, वह उन scopes को exceed नहीं कर सकता।
+- प्रत्येक डैशबोर्ड उपयोगकर्ता को सहायक को देखने और उपयोग करने के लिए **`agent:use`** permission की आवश्यकता है। Tools को प्रति-अनुरोध उपयोगकर्ता के अपने डेटा permissions से मेल खाने के लिए फ़िल्ट किया जाता है, इसलिए एक `events:read` उपयोगकर्ता को event tools मिलते हैं लेकिन कोई `dashboards:write` tools नहीं।
+
+---
+
+## पृष्ठ-जागरूक एआई डॉक: `/queries` पर composer, अन्यत्र chat
+
+दाहिनी ओर का सहायक डॉक **पृष्ठ-जागरूक** है। model picker, conversation history, model health dot, और chat input अपरिवर्तित हैं, लेकिन **empty-state template chips, placeholder text, और कौन सी backend endpoint एक उपयोगकर्ता का संदेश hits करता है** सभी automatically वर्तमान route के आधार पर switch करते हैं। डॉक "आप जिस भी पृष्ठ पर खड़े हैं उसके लिए एआई helper" बन जाता है।
+
+**दो backends, पृष्ठ प्रति (per-chip overrides के साथ)।**
+
+| Route                          | पृष्ठ-डिफ़ॉल्ट backend                                                | क्यों                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/queries`, `/queries/new`     | `POST /api/agent/compose-sql` (कोई tool loop नहीं)                        | उपयोगकर्ता नए सिरे से शुरुआत कर रहा है; ≤1s first-token SQL सीधे editor में streamed है                                          |
+| `/queries/<id>` (existing)     | `POST /api/agent/chat` (full tool-loop assistant), page default    | Free-typed messages को उपयोगकर्ता को कुछ भी पूछने देना चाहिए ("explain this", "what does this do?"); refactor chips per-chip kind के माध्यम से compose-sql में opt करते हैं |
+| हर दूसरा पृष्ठ               | `POST /api/agent/chat` (full tool-loop assistant)                   | Read tools + approval-gated write tools                                                                                   |
+
+`/queries/<id>` पर Chips में एक explicit `kind` है ताकि एक पृष्ठ दोनों flows को seamlessly मिश्रित कर सके। डिफ़ॉल्ट chip set दो **chat** chips हैं (`explain the query on screen`, `what does this query do?`) साथ ही पांच **compose-sql** chips (`parameterize by date range`, `add a status='error' filter`, आदि)। Free-typed messages page default (chat) में fall through करते हैं, इसलिए "why is this so slow?" जैसा सवाल एक prose answer मिलता है, जबकि `parameterize by date range` chip पर क्लिक compose endpoint के माध्यम से route करता है और SQL को संपादित करता है।
+
+जब composer **edit mode** में चलता है (यह एक non-empty `currentSql` देखता है क्योंकि उपयोगकर्ता `/queries/<id>` या `/queries/new` पर है proposed SQL पहले से लोड के साथ), इसका system prompt "compose a new query" से "modify the provided SQL minimally: preserve table choice, column names, join structure, aliases, indentation" में switch करता है। मॉडल को before/after worked examples (parameterize, add filter, convert to hourly buckets) का एक अलग set दिखाया जाता है, इसलिए एक chip-clicked refactor editor के SQL के विरुद्ध एक minimal diff पैदा करता है, scratch से एक rewrite नहीं।
+
+एक compose chip पर क्लिक करें (या `/queries/new` पर freely type करें) → SQL assistant message में एक fenced ` ```sql ` block के रूप में streams करता है। **जैसे ही stream finalizes, अगर Monaco वर्तमान route पर mounted है, editor automatically diff view में lights up** (बाएं पर original, दाएं पर proposed, शीर्ष पर एक `▾ AI proposed an edit` cue, और नीचे **Accept / Reject** pills)। उपयोगकर्ता को एक `Insert into editor` बटन ढूंढने या क्लिक करने की आवश्यकता नहीं है diff देखने के लिए। Insert button still rendered है SQL block के नीचे एक manual re-trigger के रूप में (Reject के बाद उपयोगी या जब उपयोगकर्ता navigate गया हो और वापस आए), और यह एकमात्र path है जब उपयोगकर्ता एक non-editor page पर है (जैसे saved-queries list); यह `sessionStorage` में SQL को stash करता है और `/queries/new` navigate करता है, जहां freshly-mounted editor mount पर stash को read करता है और same diff view को खोलता है।
+
+अगर proposed SQL byte-identical है जो पहले से editor में है (एक no-op edit), auto-open को skip किया जाता है; हम एक empty diff को pop नहीं करते। `Insert into editor` button भी उस case में एक no-op है।
+
+जब उपयोगकर्ता `/queries/new` पर suggestion स्वीकार करता है, toolbar का primary action **`save`** reads करता है `create` की जगह; SQL उन्हें assistant द्वारा हाथ दिया गया था; mental model "finalize this" है, "write from scratch" नहीं। Label एक बार dock SQL insert करता है तब तक flip होता है जब तक page navigation नहीं होता। `/queries/<id>` पर button हमेशा `save` read करता है; कुछ नहीं बदलता है।
+
+`/queries` के बाहर, डॉक बिल्कुल पहले की तरह काम करता है: full chat with tool-approval cards, page-context awareness, citations।
+
+**Permissions / gating।** Compose endpoint per-user `queries:run` permission पर gates (read-equivalent; उपयोगकर्ता को अभी भी Accept और Run click करना है, और Run existing `sql_guard` + `references_ch_tables` routing के माध्यम से Rust server पर जाता है)। Chat endpoint `agent:use` पर gates करता है। दोनों को अभी भी `agent` container पर configured एक LLM connection की आवश्यकता है; अगर कोई configured नहीं है, डॉक किसी भी path पर एक "the assistant isn't configured on this deployment" banner surface करता है।
+
+**Refusals।** Composer किसी भी request को refuse करता है जो वह read-only analytics query के साथ satisfy नहीं कर सकता और `-- REFUSE: <one-sentence reason>` emit करता है SQL की जगह। यह requests को refuse करता है जो data write करेंगे या analytics views (`api_keys`, `users`, `dashboards`, `saved_queries`, `evaluation_jobs`) के बाहर की tables तक reach करेंगे, और यह pure prose requests ("explain this", "what does this do?") को compose path पर refuse करता है; वे chat path से संबंधित हैं और वहां एक prose answer produce करते हैं। डॉक refusal string को assistant message में एक inline red error chip के रूप में render करता है; कुछ नहीं insert किया जाता है।
+
+**Model selection।** Chat path के साथ shared। डॉक header में model picker दोनों endpoints पर apply होता है (compose call picked model को `resolveModel()` पर agent service के माध्यम से pass करता है)। जब `AGENTEYE_AGENT_MODELS` multiple models को list करता है, operators एक Haiku-class option को composer के साथ एक Sonnet-class option के साथ chat के साथ mix कर सकते हैं; उपयोगकर्ता per-conversation pick करता है।
+
+**Per-page templates।** प्रत्येक page का अपना template (headline, body copy, placeholder text, और suggestion chips) है ताकि डॉक आप जिस page पर खड़े हैं उसे adapt करे। दिए गए route पर offered chips उसी intents के map करते हैं जो composer को tune किया जाता है, इसलिए suggestion पर क्लिक करने से आप जिस edit की expect करते हैं वह produce होता है।
+
+**इसे अक्षम करना।** Chat path के समान: डॉक + composer दोनों को `agent` container और इसके LLM connection द्वारा गेटेड किया जाता है। अगर आप किसी विशेष उपयोगकर्ता के लिए chat-only behavior चाहते हैं, `queries:run` permission को remove करें (जो editor के **Run** button को भी disable करता है); अगर आप composer-only behavior चाहते हैं, उस उपयोगकर्ता की roles से `agent:use` को remove करें, फिर `queries:run` को separately फिर से add करें ताकि वे अभी भी author-written SQL को execute कर सकें।
+
+---
+
+## इसे सक्षम करना
+
+`agent` service Docker Compose file और Kubernetes manifests में ships। सहायक को turn on करने के लिए, **(1)** एक LLM endpoint और **(2)** सहायक की dedicated data key प्रदान करें।
+
+### 1. एक LLM connection चुनें
+
+इनमें से एक को pick करें और `agent` service पर corresponding variables को set करें:
+
+**a) सीधे Anthropic**
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**b) Portkey के माध्यम से (अनुशंसित; model-catalog slug, key only)**
+
+```
+PORTKEY_API_KEY=<your-portkey-key>
+AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
+```
+
+यह सबसे सरल path है: Portkey में, एक **Anthropic integration** (Model Catalog) को set up करें; इसे एक **slug** मिलता है। Model को `@<slug>/<model>` के रूप में name करें और slug provider + credential routing को carry करता है, तो **कोई virtual key की जरूरत नहीं है**, बस आपकी Portkey API key। Agent केवल `x-portkey-api-key` भेजता है और Portkey gateway पर points करता है; Portkey बाकी को resolve करता है। (एक *plain* model name "x-portkey-config or x-portkey-provider header is required" के साथ fail होता है; `@slug/` prefix वह है जो key-only को काम करता है।) एक self-hosted gateway के लिए `PORTKEY_BASE_URL` को set करें।
+
+Per-request routing को prefer करते हैं slug की जगह? `PORTKEY_VIRTUAL_KEY=<vk>` (या `PORTKEY_CONFIG=<id>`) को एक plain `AGENTEYE_AGENT_MODEL` के साथ set करें।
+
+**c) कोई अन्य Anthropic-compatible gateway (LiteLLM, self-hosted, ...)**
+
+```
+ANTHROPIC_BASE_URL=https://your-gateway
+# Newline-delimited "Name: Value" header lines (JSON नहीं):
+ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
+```
+
+**d) Amazon Bedrock / Google Vertex**
+
+```
+CLAUDE_CODE_USE_BEDROCK=1   # + environment में standard AWS credentials
+# या
+CLAUDE_CODE_USE_VERTEX=1    # + environment में standard GCP credentials
+```
+
+Optionally `AGENTEYE_AGENT_MODEL` के साथ default model को pin करें (default `claude-sonnet-4-6`)। उपयोगकर्ताओं को **choose** करने देने के लिए कई models के बीच, `AGENTEYE_AGENT_MODELS` को comma-separated allowlist के लिए set करें (जैसे `@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); एक model picker तब chat header में appear होता है, और प्रत्येक उपयोगकर्ता की choice को याद रखा जाता है। Agent केवल कभी भी इस allowlist पर एक model को call करता है।
+
+### 2. सहायक key प्रदान करें
+
+कोई भी random secret pick करें और इसे **agent** को `AGENTEYE_API_KEY` के रूप में और **server** को `AGENT_API_KEY` के रूप में दें (वही value)। Startup पर server इसे एक dedicated key के रूप में seed करता है जिसका नाम `dashboard-assistant` है जिसमें यह fixed permission set है: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`। Write permissions को केवल कभी approval-gated tools के माध्यम से exercise किया जाता है (ऊपर "यह क्या कर सकता है और क्या नहीं कर सकता" देखें)। **कोई manual key-minting step और कोई admin key involved नहीं है**। Permission set server में fixed है, और seeded key **protected** है: इसे keys API के माध्यम से disable या regenerate नहीं किया जा सकता; value को change करके और server को restart करके इसे rotate करें। **Admin/dashboard key को reuse न करें।**
+
+```bash
+SECRET="$(openssl rand -base64 32)"
+# agent service पर:
+AGENTEYE_API_KEY="$SECRET"
+# server service पर:
+AGENT_API_KEY="$SECRET"
+```
+
+Kubernetes पर यह आपके लिए wired है: `AGENTEYE_API_KEY` को `agenteye-agent` secret में put करें और server Deployment पहले से ही उसी value को `AGENT_API_KEY` के रूप में read करता है।
+
+### 3. साझा dashboard↔agent token को set करें
+
+**दोनों** `dashboard` और `agent` services पर same `AGENTEYE_AGENT_TOKEN` को set करें। Dashboard इसे internal agent service को call करते समय present करता है; agent इसे बिना calls को reject करता है।
+
+### 4. उपयोगकर्ताओं को access grant करें
+
+प्रासंगिक dashboard operators को `agent:use` permission दें (देखें [enterprise-docs/api-keys.md](/hi/agenteye/api-keys))। इसके बिना उपयोगकर्ता कभी भी assistant को नहीं देखते हैं।
+
+एक बार LLM endpoint और read-only key set हो जाने के बाद, **server** (read-only key को seed करने के लिए) और **agent** service को restart करें। सहायक डॉक किसी भी `agent:use` उपयोगकर्ता के लिए दाएं किनारे पर appear होता है, डिफ़ॉल्ट रूप से collapsed; rail पर क्लिक करें या `⌘J` / `Ctrl+J` दबाएं expand करने के लिए।
+
+---
+
+## Environment variable reference
+
+**`agent`** service पर set करें:
+
+| Variable | Purpose |
+|---|---|
+| `PORTKEY_API_KEY` | Portkey के माध्यम से route करें (agent इससे gateway connection build करता है) |
+| `PORTKEY_VIRTUAL_KEY` | आपके Anthropic credentials के लिए Portkey virtual key (optional अगर key के पास एक default config है) |
+| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Named Portkey config / self-hosted Portkey gateway URL (optional) |
+| `PORTKEY_PROVIDER` | Portkey provider slug — `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` के साथ एक तीसरा routing option (केवल जब न तो वह set हो) |
+| `ANTHROPIC_API_KEY` | Direct Anthropic access (gateway / Bedrock / Vertex के लिए alternative) |
+| `ANTHROPIC_AUTH_TOKEN` | Bearer token के लिए एक gateway जो `Authorization: Bearer` के माध्यम से authenticate करता है `x-api-key` की जगह (optional) |
+| `ANTHROPIC_BASE_URL` | एक non-Portkey gateway के लिए endpoint |
+| `ANTHROPIC_CUSTOM_HEADERS` | एक non-Portkey gateway के लिए extra headers: newline-delimited `Name: Value` lines (JSON नहीं) |
+| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Bedrock / Vertex के माध्यम से route करें |
+| `AGENTEYE_AGENT_MODEL` | Default model id (default `claude-sonnet-4-6`) |
+| `AGENTEYE_AGENT_MODELS` | Comma-separated allowlist उन models की जो उपयोगकर्ता chat header में pick कर सकते हैं। एक एकल fixed model के लिए unset छोड़ें। ऊपर दिया गया default इनमें से एक होना चाहिए (अन्यथा यह added है)। |
+| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Max concurrent chats per pod (default 4); अतिरिक्त requests को 429 मिलते हैं |
+| `AGENTEYE_API_KEY` | सहायक की data key। **Same** value को server के `AGENT_API_KEY` के रूप में set करें, जो इसे startup पर एक fixed scoped permission set के साथ seed करता है (step 2 देखें)। |
+| `AGENTEYE_AGENT_TOKEN` | Dashboard के साथ shared secret |
+| `AGENTEYE_SERVER_URL` | AgentEye server URL (default `http://server:8080`) |
+| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Multi-tenancy।** Default off (fail-closed): assistant एक `/chat` request को reject करता है जिसमें कोई organization context नहीं है `400` के साथ, क्योंकि हर tool जो वह चलाता है वह एक org तक scoped है। Dashboard एक बार org-aware होने के बाद हमेशा वह context भेजता है, तो आप normally इसे unset रखते हैं। **केवल** `1` पर set करें एक transitional rollout के दौरान जहां एक not-yet-org-aware dashboard एक org-aware agent से बात कर रहा है, तो assistant `default` org में fallback करता है refusing की जगह। एक बार dashboard upgrade lands तो clear करें। |
+| `AGENTEYE_AGENT_MAX_STEPS` | Max tool-use steps per answer (default 8) |
+| `AGENTEYE_AGENT_TIMEOUT_MS` | Overall `/chat` request timeout (सभी model turns + tool steps), milliseconds में (default 90000); SQL tool का अपना 10s cap है |
+| `AGENTEYE_AGENT_SELF_TELEMETRY` | `1` assistant के अपने runs को AgentEye में record करने के लिए |
+| `AGENTEYE_TELEMETRY_API_KEY` | Self-instrumentation के लिए अलग `events:add`-only key |
+| `AGENTEYE_AGENT_ENV` | Environment tag को assistant के अपने self-telemetry पर apply किया जाता है (default `prod`) |
+
+**`dashboard`** service पर set करें:
+
+| Variable | Purpose |
+|---|---|
+| `AGENTEYE_AGENT_URL` | जहां dashboard agent service तक reach करता है। Bundled Kubernetes manifests और Compose file इसे `http://agent:9100` पर set करते हैं। Assistant को पूरी तरह छिपाने के लिए इसे unset छोड़ें। |
+| `AGENTEYE_AGENT_TOKEN` | Agent के token से match होना चाहिए |
+
+---
+
+## Telemetry & उपयोगकर्ताओं को क्या पूछते हैं यह देखना
+
+Prompt **content डिफ़ॉल्ट रूप से आपके अपने systems के अंदर रहता है**। तीन layers:
+
+1. **Conversation store**: हर prompt और answer आपके AgentEye database में saved है (per user, private), और assistant के history switcher से reloadable है। यह उपयोगकर्ता क्या पूछते हैं का durable record है।
+2. **Product analytics**: डैशबोर्ड **metadata only** record करता है (कितनी बार assistant का उपयोग किया जाता है, tool counts, latency) आपके analytics में। Prompt **text** को इस path पर कभी भी include नहीं किया जाता है।
+3. **Self-instrumentation (optional)**: `AGENTEYE_AGENT_SELF_TELEMETRY=1` को set करें (साथ ही एक `events:add`-only `AGENTEYE_TELEMETRY_API_KEY`) और assistant अपने runs को `dashboard-assistant` agent के रूप में AgentEye में record करता है। आप तब उपयोगकर्ता prompts और assistant का reasoning उसी sessions/events views में देख सकते हैं जो आप सब कुछ के लिए उपयोग करते हैं। Note: वे events किसी के लिए भी visible हैं जिसके पास `events:read` है; अगर वह बहुत broad है, इसे off छोड़ दें।
+
+---
+
+## इसे अक्षम करना
+
+ये कोई भी assistant को disable करते हैं (डॉक rail disappear करता है):
+
+- Dashboard पर `AGENTEYE_AGENT_URL` को unset करें, **या**
+- Agent पर LLM endpoint को unconfigured रखें (कोई `ANTHROPIC_API_KEY` / gateway / Bedrock / Vertex नहीं), **या**
+- `agent` service को बिल्कुल deploy न करें।
+
+---
+
+## Security summary
+
+- **कोई silent writes नहीं**: assistant के write tools (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) बिना एक explicit operator click के in-chat Approve button पर execute नहीं कर सकते हैं; SDK का pre-call gate जब तक एक approval agent तक back-channel के माध्यम से नहीं पहुंचता तब तक tool को block करता है। कोई setting नहीं है जो इस gate को disable करता है।
+- **Fixed, narrow data scope**: assistant एक dedicated key के साथ server के लिए authenticate करता है जिसका permission set server में fixed है (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`)। एकमात्र writes जो यह author कर सकता है वह saved queries और dashboards हैं; server कुछ भी उस scope के बाहर reject करता है चाहे model क्या try करे।
+- **कोई deletion surface नहीं**: key में कोई delete permission नहीं है और कोई delete tool expose नहीं है। Operators dashboard UI के माध्यम से delete करते हैं, कभी नहीं assistant।
+- **Internal-only**: agent के पास कोई public route नहीं है; केवल dashboard ही इसे call कर सकता है, और केवल shared token के साथ। (Kubernetes में, एक NetworkPolicy agent को केवल AgentEye server और LLM endpoint तक reach करने तक restrict करता है।)
+- **Per-user scoping**: केवल `agent:use` उपयोगकर्ताओं को assistant मिलता है, और इसे केवल tools दिए जाते हैं जो प्रत्येक उपयोगकर्ता के read permissions से match करते हैं।
+- **कोई raw HTML / कोई link exfiltration नहीं**: answers को sanitized markdown के रूप में render किया जाता है; external links को defanged किया जाता है।
+
+Common issues के लिए [enterprise-docs/troubleshooting.md](/hi/agenteye/troubleshooting) देखें।

@@ -52,13 +52,22 @@ function writeConfig(cwd: string, enabledPolicies: string[]): void {
   writeFileSync(configPath, JSON.stringify({ enabledPolicies }, null, 2));
 }
 
-function piIsAvailable(): boolean {
+function detectPiVersion(): string | null {
   try {
     const probe = spawnSync("pi", ["--version"], { encoding: "utf8", timeout: 5_000 });
-    return probe.status === 0;
+    if (probe.status !== 0) return null;
+    return probe.stdout.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+// pi ≥0.80 no longer trusts project-local .pi/settings.json by default —
+// `--approve` opts in per command. Older pi trusts it unconditionally and
+// rejects the (unknown) flag, so only pass it where it exists.
+function piListArgs(version: string): string[] {
+  const [major = 0, minor = 0] = version.split(".").map(Number);
+  return major > 0 || minor >= 80 ? ["list", "--approve"] : ["list"];
 }
 
 describe("E2E: Pi integration — hook protocol (handler-only)", () => {
@@ -432,8 +441,9 @@ describe("E2E: Pi integration — install/uninstall", () => {
 // Pi actually parses the settings.json failproofai writes.
 // ──────────────────────────────────────────────────────────────────────────
 
-const piPresent = piIsAvailable();
-const describePi = piPresent ? describe : describe.skip;
+const piVersion = detectPiVersion();
+const describePi = piVersion ? describe : describe.skip;
+const PI_LIST_ARGS = piVersion ? piListArgs(piVersion) : ["list"];
 
 describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () => {
   it("after policies --install, `pi list` shows the failproofai entry", () => {
@@ -444,8 +454,10 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         { cwd: env.cwd, env: { ...process.env, HOME: env.home, FAILPROOFAI_TELEMETRY_DISABLED: "1", FAILPROOFAI_BINARY_OVERRIDE: BINARY_PATH } },
       );
       // Run `pi list` under the fixture HOME so it doesn't pick up the
-      // developer's real ~/.pi/agent/settings.json state.
-      const result = spawnSync("pi", ["list"], {
+      // developer's real ~/.pi/agent/settings.json state. PI_LIST_ARGS adds
+      // `--approve` on pi ≥0.80 so `pi list` includes the project package
+      // we wrote (older pi trusts project settings without it).
+      const result = spawnSync("pi", PI_LIST_ARGS, {
         cwd: env.cwd,
         encoding: "utf8",
         env: { ...process.env, HOME: env.home },
@@ -469,7 +481,11 @@ describePi("E2E: Pi integration — live `pi list` roundtrip (real binary)", () 
         `bun ${BINARY_PATH} policies --uninstall --cli pi --scope project`,
         { cwd: env.cwd, env: baseEnv },
       );
-      const result = spawnSync("pi", ["list"], {
+      // PI_LIST_ARGS: on pi ≥0.80 `pi list` needs `--approve` to read the
+      // project-local .pi/settings.json (see the install roundtrip above).
+      // Without it, it prints "No packages installed." unconditionally,
+      // making this negative assertion pass vacuously.
+      const result = spawnSync("pi", PI_LIST_ARGS, {
         cwd: env.cwd,
         encoding: "utf8",
         env: { ...process.env, HOME: env.home },

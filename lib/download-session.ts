@@ -14,6 +14,11 @@ import { resolveSessionFilePath, UUID_RE } from "./projects";
 import type { CliId } from "./cli-registry";
 
 export const OPENCODE_SESSION_RE = /^ses_[A-Za-z0-9]+$/;
+/** Hermes session IDs (e.g. `YYYYMMDD_HHMMSS_<hash>` / `cron_<hash>_...`). Kept
+ *  in sync with `getHermesSessionLog`'s validator in lib/hermes-sessions.ts —
+ *  a stricter pattern here would let a session list/open in the viewer yet fail
+ *  its download with `RangeError("Invalid session ID")`. */
+export const HERMES_SESSION_RE = /^[A-Za-z0-9_-]+$/;
 
 export type DownloadSource =
   | { kind: "file"; path: string }
@@ -23,6 +28,7 @@ export type DownloadSource =
  *  prefixes; everyone else is a UUID. */
 export function isValidSessionId(cli: CliId, sessionId: string): boolean {
   if (cli === "opencode") return OPENCODE_SESSION_RE.test(sessionId);
+  if (cli === "hermes") return HERMES_SESSION_RE.test(sessionId);
   return UUID_RE.test(sessionId);
 }
 
@@ -83,6 +89,16 @@ export async function resolveDownloadSource(
     if (!result) return null;
     const body = JSON.stringify(result, null, 2) + "\n";
     return { kind: "synthesized", body, contentType: "application/json", extension: "json" };
+  }
+
+  if (cli === "hermes") {
+    // Hermes keeps sessions in SQLite (~/.hermes/state.db). Synthesize a JSONL
+    // export of the session's raw `messages` rows.
+    const { getHermesSessionLog } = await import("./hermes-sessions");
+    const result = await getHermesSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

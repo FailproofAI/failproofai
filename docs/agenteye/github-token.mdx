@@ -1,0 +1,132 @@
+---
+title: "GitHub Token Setup"
+description: "AgentEye GitHub Token Setup documentation."
+---
+
+
+A GitHub Personal Access Token (PAT) is the single credential that unlocks every AgentEye artifact. With one token you can pull the Docker images, download release binaries, and install the Python wheels, with no per-component logins and no shared secrets to circulate. All AgentEye artifacts are distributed from the `agenteye-enterprise` GitHub organization; once your organization is granted access, each developer or operator generates and rotates their own token, so access stays auditable and revocable per person.
+
+Set the token as an environment variable and Docker credential once per machine:
+
+```bash
+export AGENTEYE_TOKEN=<your-github-pat>
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+```
+
+> **Username note:** GHCR ignores the `docker login` username and authenticates entirely from the token, so any non-empty value works. These docs use `-u x` for brevity; deployment manifests that create a Kubernetes image-pull secret may use a more descriptive username such as `agenteye-enterprise`. Either is accepted.
+
+---
+
+## Option A: Classic Token (Recommended)
+
+A classic token is the most reliable choice for AgentEye, because GHCR's `docker login` and image-pull flow has the broadest, most consistent support for classic tokens. Two scopes cover everything you need (pulling images and downloading release assets), so you authenticate once and move on without troubleshooting registry quirks. One of them, `read:packages`, is genuinely read-only; the other, `repo`, is the only classic scope that grants access to private release assets, and it is deliberately broad — GitHub defines it as full control (read and write) of private repositories.
+
+### 1. Create the token
+
+Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
+
+| Field | Value |
+|---|---|
+| **Note** | `agenteye-<machine-or-team-name>` (e.g. `agenteye-prod-server`) |
+| **Expiration** | Set an expiry appropriate for your security policy; 90 days is a reasonable default |
+
+> **Label note:** GitHub labels this field **Note** for classic tokens and **Token name** for fine-grained tokens. They serve the same purpose: a human-readable identifier for later auditing and revocation.
+
+### 2. Select scopes
+
+| Scope | Why it is needed |
+|---|---|
+| `read:packages` | Pull Docker images from `ghcr.io/agenteye-enterprise/` and download package assets |
+| `repo` | Read private repository contents, raw files, and release assets from `agenteye-enterprise/releases`. This is GitHub's broad "Full control of private repositories" scope (read and write), not a read-only scope — it is simply the only classic scope that grants access to private release assets |
+
+No other scopes are required.
+
+### 3. Generate and copy the token
+
+Click **Generate token** and copy the value immediately; it is shown only once. Store it in your secret manager or environment.
+
+---
+
+## Option B: Fine-Grained Token
+
+Fine-grained tokens scope access to specific repositories and permissions, making them the tightest least-privilege option. Choose this path when your organization's security policy mandates fine-grained tokens.
+
+> **Note:** GHCR support for fine-grained tokens is less consistent than for classic tokens. If `docker login` or `docker pull` fails after following these steps, fall back to a classic token (Option A).
+
+### 1. Create the token
+
+Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+
+| Field | Value |
+|---|---|
+| **Token name** | `agenteye-<machine-or-team-name>` (e.g. `agenteye-prod-server`) |
+| **Expiration** | Set an expiry appropriate for your security policy; 90 days is a reasonable default |
+| **Resource owner** | `agenteye-enterprise` |
+| **Repository access** | **Only select repositories** → `agenteye-enterprise/releases` |
+
+### 2. Set repository permissions
+
+Under **Permissions → Repository permissions**, set:
+
+| Permission | Access |
+|---|---|
+| **Contents** | Read-only |
+| **Packages** | Read-only |
+
+All other permissions can remain **No access**.
+
+> **Note:** If the container images (`ghcr.io/agenteye-enterprise/...`) are published as organization-level packages rather than repository-linked packages, Docker login may fail with repository-scoped permissions alone. In that case, add an organization-level permission: **Permissions → Organization permissions → Packages: Read-only**.
+
+### 3. What each permission grants
+
+| Permission | Used for |
+|---|---|
+| Contents: Read-only | Downloading `docker-compose.yml`, release binaries, and Python wheels from `agenteye-enterprise/releases` |
+| Packages: Read-only | Pulling Docker images from `ghcr.io/agenteye-enterprise/` |
+
+### 4. Generate and copy the token
+
+Click **Generate token** and copy the value immediately; it is shown only once. Store it in your secret manager or environment.
+
+---
+
+## Rotating a Token
+
+Rotating tokens on a schedule keeps access auditable and limits the blast radius if a credential ever leaks. Tokens can also expire or be revoked at any time, so rotation is the routine way to stay authenticated. To rotate:
+
+1. Generate a new token using the steps above.
+2. Update `AGENTEYE_TOKEN` in your environment or secret manager.
+3. Re-authenticate Docker: `echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin`
+4. Revoke the old token in GitHub → Settings → Developer settings → Personal access tokens, then open the **Tokens (classic)** or **Fine-grained tokens** sub-page matching the token's type and delete it.
+
+---
+
+## Verify Your Token
+
+Confirm the token works before wiring it into a deployment, so authentication failures surface here rather than mid-rollout. Each command exercises one of the scopes above:
+
+```bash
+# Packages scope - authenticate Docker against GHCR
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+
+# Contents scope - fetch a raw release file
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  https://raw.githubusercontent.com/agenteye-enterprise/releases/main/docker-compose.yml \
+  -o /tmp/agenteye-compose-check.yml
+```
+
+A successful `docker login` confirms the package scope; a downloaded file confirms the contents scope.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `docker login` returns 401 | Token missing `Packages: Read-only` (fine-grained) or `read:packages` (classic) | Add the package scope and regenerate |
+| `curl` returns 404 on raw GitHub URLs | Token missing `Contents: Read-only` or `repo` scope | Add the contents scope and regenerate |
+| `gh release download` returns 403 | Token not authorized for `agenteye-enterprise/releases` | Verify the repo is included in the fine-grained token's repository access, or use a classic token with `repo` scope |
+| Token accepted but images not found | Org-level package permission missing on fine-grained token | Add organization-level `Packages: Read-only` permission |
+
+For access issues, contact `support@exosphere.host`.

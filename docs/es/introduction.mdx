@@ -1,32 +1,32 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI proporciona a los agentes de IA 39 políticas de fallos integradas que detectan bucles, filtraciones de secretos, llamadas destructivas a herramientas y más, con una sola instalación."
+description: "FailproofAI ofrece a los agentes de IA 39 políticas de fallo integradas que detectan bucles, filtraciones de secretos, llamadas destructivas a herramientas y más, con una sola instalación."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks y políticas para la **gestión de fallos de IA**, **recuperación de errores** y **fiabilidad de LLM**. Mantén tus agentes de IA fiables y funcionando de forma autónoma en **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI** y el **Agents SDK**.
+Hooks y políticas para **manejo de fallos de IA**, **recuperación de errores** y **fiabilidad de LLM**. Mantén tus agentes de IA fiables y funcionando de forma autónoma en **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI**, **Hermes** y el **Agents SDK**.
 
-Los agentes de IA fallan de maneras predecibles. Ejecutan comandos destructivos, filtran secretos, se desvían de la tarea, quedan atrapados en bucles o hacen push directamente a main. Sin supervisión, los fallos pequeños se encadenan y desencadenan interrupciones del servicio, credenciales expuestas y trabajo perdido.
+Los agentes de IA fallan de maneras predecibles. Ejecutan comandos destructivos, filtran secretos, se desvían de sus tareas, quedan atrapados en bucles o hacen push directamente a main. Sin supervisión, los pequeños fallos se convierten en interrupciones del servicio, credenciales expuestas y trabajo perdido.
 
-FailproofAI resuelve esto mediante **políticas**. Estas reglas se enganchan a cada llamada de herramienta del agente para **detectar fallos**, **mitigarlos** (bloquear, instruir, sanear) y **alertarte** cuando algo requiere atención. Un panel de control local te permite revisar después cada llamada a herramienta, fallo del agente y acción de recuperación.
+FailproofAI resuelve esto mediante **políticas**. Estas reglas se enganchan en cada llamada a herramientas del agente para **detectar fallos**, **mitigarlos** (bloquear, instruir, sanitizar) y **alertarte** cuando algo requiere tu atención. Un panel de control local te permite revisar después cada llamada a herramientas, cada fallo del agente y cada acción de recuperación.
 
 Ningún dato sale de tu máquina.
 
-## Comenzar
+## Primeros pasos
 
 <CardGroup cols={2}>
 
 <Card title="39 políticas integradas" icon="shield" href="/es/built-in-policies">
-  Bloquea comandos destructivos, evita la filtración de secretos, mantén los agentes dentro de los límites del proyecto y más. Todo listo desde el primer momento.
+  Bloquea comandos destructivos, evita filtraciones de secretos, mantén a los agentes dentro de los límites del proyecto y mucho más. Todo listo para usar desde el primer momento.
 </Card>
 
 <Card title="Políticas personalizadas" icon="code" href="/es/custom-policies">
-  Escribe tus propias reglas en JavaScript con una sencilla API allow / deny / instruct.
+  Escribe tus propias reglas en JavaScript con una sencilla API de allow / deny / instruct.
 </Card>
 
 <Card title="Monitor de agentes" icon="chart-line" href="/es/dashboard">
-  Ve qué hicieron tus agentes mientras no estabas. Navega por sesiones, inspecciona llamadas a herramientas y revisa dónde se activaron las políticas.
+  Descubre qué hicieron tus agentes mientras no estabas. Navega por sesiones, inspecciona llamadas a herramientas y revisa dónde se activaron las políticas.
 </Card>
 
 <Card title="Configuración sencilla" icon="gear" href="/es/configuration">

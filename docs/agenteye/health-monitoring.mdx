@@ -1,0 +1,125 @@
+---
+title: "Health Monitoring"
+description: "AgentEye Health Monitoring documentation."
+---
+
+
+Know when an AgentEye deployment is **itself** down or degraded, not just when
+your agents misbehave. Detection is **Kubernetes-native** and, crucially,
+**independent of AgentEye**: it reads pod state from the Kubernetes control plane
+and checks AgentEye's hard dependencies, so it still fires when the server,
+ClickHouse, or Postgres is the thing that's down.
+
+There are two layers. The first is built in; the second is opt-in.
+
+## 1. Dependency-aware readiness (built in)
+
+The server exposes two probe endpoints with deliberately different jobs:
+
+| Endpoint | Probe | Checks | Auth |
+|---|---|---|---|
+| `GET /health` | liveness | process is alive (always `{"status":"ok"}`) | none |
+| `GET /ready` | readiness | can actually serve: **Postgres + ClickHouse** reachable | none |
+
+`/ready` returns `200` with `"status":"ready"` and every check `"ok"` when both
+hard dependencies are reachable, and `503` with `"status":"not_ready"` when
+either is unreachable. Both responses carry a small body:
+
+```json
+{ "status": "not_ready",
+  "checks": { "postgres": "ok", "clickhouse": "down", "redis": "not_configured" } }
+```
+
+Redis is an optional cache the server degrades past, so it is reported for
+information but **never** fails readiness. It shows `"ok"` when a cache is
+configured and `"not_configured"` otherwise; it is never `"down"`.
+
+On the bundled Kubernetes manifests the **readiness** probe points at `/ready`
+and **liveness** stays on `/health`. The effect: a server that is *running but
+cannot reach its database* is taken out of the Service and shows as `NotReady`,
+a state your cluster monitoring (below) can alert on, while liveness stays cheap
+so a brief dependency blip never triggers a pod restart. The probe uses a
+generous failure threshold so a momentary blip does not flap replicas out of
+rotation.
+
+## 2. Pod-failure alerting with Robusta (opt-in)
+
+[Robusta](https://github.com/robusta-dev/robusta) is a Kubernetes-native monitor
+that watches the API server and posts pod failures (`CrashLoopBackOff`,
+`OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`, `Failed`, evictions) to
+Slack. Because it observes the control plane rather than asking AgentEye, it
+alerts even when AgentEye cannot serve at all.
+
+Robusta ships as an opt-in add-on in the release bundle. Enable it with the
+standard Robusta Helm chart and the small values file shown below:
+
+1. Add the chart repo and get a Slack **bot token** (`xoxb-…`) for the channel:
+
+   ```bash
+   helm repo add robusta https://robusta-charts.storage.googleapis.com
+   helm repo update
+   ```
+
+   Because the configuration below keeps everything in-cluster
+   (`disableCloudRouting: true`), the token comes from a self-hosted Slack app:
+   create an app at `https://api.slack.com/apps`, add the `chat:write` bot scope,
+   install it to your workspace, copy the **Bot User OAuth Token** (`xoxb-…`), and
+   invite the bot to the channel (`/invite @your-app`).
+
+2. Create a `values.yaml` with a per-deployment label (`clusterName`) and your
+   Slack channel, scoped to the `agenteye` namespace:
+
+   ```yaml
+   clusterName: "acme-prod"            # per-deployment label; appears on every alert
+   enablePrometheusStack: false        # pod-crash alerts only; no metric stack
+   disableCloudRouting: true           # deliver to Slack directly, in-cluster
+   sinksConfig:
+     - slack_sink:
+         name: vendor_slack
+         slack_channel: "agenteye-fleet-health"
+         api_key: "REPLACE_WITH_SLACK_BOT_TOKEN"   # xoxb-… (prefer --set or a secret)
+         scope:
+           include:
+             - namespace: [agenteye]   # only AgentEye-namespace alerts; remove to widen
+   ```
+
+3. Install, pinning `--version` to a known-good Robusta chart release
+   ([releases](https://github.com/robusta-dev/robusta/releases)) so you never
+   install an untested chart:
+
+   ```bash
+   helm install robusta robusta/robusta \
+     --namespace robusta --create-namespace \
+     --version <pin-a-known-good-version> \
+     -f values.yaml \
+     --set sinksConfig[0].slack_sink.api_key=$ROBUSTA_SLACK_TOKEN
+   ```
+
+### What it reports
+
+- Kubernetes **pod state** (which AgentEye pod is failing and why) and each pod's
+  **image tag**, i.e. the running component **version**.
+- **No AgentEye event data and no customer data** ever leaves the cluster.
+- The bundled values restrict alerts to the **`agenteye` namespace**, so unrelated
+  workloads in the same cluster are not reported.
+
+### One place for every deployment
+
+Point every deployment's Robusta at **one shared Slack channel**, each with its
+own `clusterName`. Every alert is tagged with that label, so a single channel
+shows the health of your whole fleet, and you can tell which deployment is
+affected at a glance.
+
+### Total-cluster outages
+
+A purely in-cluster watcher cannot report a **whole-cluster or network outage**
+(it goes down with the cluster). If you need that, enable the optional **Robusta
+UI sink**: set `disableCloudRouting: false` and add a `robusta_sink` (with a
+token from `robusta gen-config`) to `sinksConfig`. It adds an aggregated
+multi-cluster dashboard and flags any cluster that stops checking in.
+
+## Troubleshooting
+
+See the **Health Monitoring** section of
+[enterprise-docs/troubleshooting.md](/agenteye/troubleshooting) for "no
+alerts arriving" and "server keeps flapping `NotReady`".

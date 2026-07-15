@@ -104,6 +104,7 @@ export async function installHooks(
   customPoliciesPath?: string,
   removeCustomHooks = false,
   cli?: IntegrationType[],
+  replace = false,
 ): Promise<void> {
   // Validate user input first before any system checks
   if (policyNames !== undefined && policyNames.length > 0) {
@@ -159,8 +160,12 @@ export async function installHooks(
     } else {
       incoming = policyNames;
     }
-    // Additive: union with whatever was already enabled, deduplicated.
-    selectedPolicies = [...new Set([...previousConfig.enabledPolicies, ...incoming])];
+    // Default is additive (union with whatever was already enabled). The
+    // configure wizard passes replace=true so the chosen set becomes the full
+    // enabled set at this scope (unticking a policy actually removes it).
+    selectedPolicies = replace
+      ? [...new Set(incoming)]
+      : [...new Set([...previousConfig.enabledPolicies, ...incoming])];
   } else {
     // Interactive — pre-load current config if it exists
     const preSelected = previousConfig.enabledPolicies.length > 0 ? previousConfig.enabledPolicies : undefined;

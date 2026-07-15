@@ -1,29 +1,29 @@
 ---
-title: セッションの表示
-description: "ダッシュボードを起動してエージェントセッションの閲覧とポリシーの管理を行う"
+title: セッションを表示する
+description: "ダッシュボードを起動してエージェントセッションの確認とポリシーの管理を行う"
 ---
 
 ```bash
 failproofai
 ```
 
-`http://localhost:8020` でウェブダッシュボードを起動します。
+`http://localhost:8020` にウェブダッシュボードを起動します。
 
 ## オプション
 
 | フラグ | 説明 |
-|------|-------------|
+|--------|------|
 | `--port <number>` | リッスンするポート番号（デフォルト: `8020`） |
 | `--allowed-origins <origins>` | 開発リソースへのアクセスを許可するホスト/IPのカンマ区切りリスト |
 
-ダッシュボードをデフォルト以外の Claude プロジェクトフォルダに向けるには、起動時に `CLAUDE_PROJECTS_PATH` 環境変数を設定してください。
+デフォルト以外の Claude プロジェクトフォルダーをダッシュボードに指定するには、起動時に `CLAUDE_PROJECTS_PATH` 環境変数を設定してください。
 
 ## 使用例
 
 ```bash
-# Launch on a different port
+# 別のポートで起動する
 failproofai --port 9000
 
-# Use a custom Claude projects path via environment variable
+# 環境変数でカスタムの Claude プロジェクトパスを指定する
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

@@ -1,0 +1,254 @@
+---
+title: "Claves de API"
+description: "Documentación de claves de API de AgentEye."
+---
+
+AgentEye utiliza claves de API de grano fino para controlar el acceso al servidor. Cada clave lleva uno o más permisos que determinan qué puede hacer.
+
+---
+
+## Permisos
+
+El servidor aplica un catálogo fijo de permisos; cada uno controla rutas HTTP específicas. Una **clave de administrador** posee todos ellos; una clave con alcance limitado posee el subconjunto que se le otorga en el momento de creación. Las cadenas de permisos desconocidas se rechazan al crear una clave.
+
+> **No asignables a claves.** Dos permisos válidos son exclusivos para humanos/panel de control y no se pueden otorgar a una clave de API: `orgs:admin` (administración de instancia, solo para operadores) y `keys:update`. Una solicitud a `POST /keys` o `PATCH /keys/:id` que intente otorgar alguno de ellos es rechazada con HTTP 422. Consulta la fila de `keys:update` a continuación para entender por qué una clave portadora puede crear claves pero nunca editarlas.
+
+### Ingesta y consulta de eventos
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `events:add` | `POST /events` | Ingestar lotes de eventos desde un recolector. Es el único permiso que necesita un recolector. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Consultar eventos, listar los entornos conocidos, listar los identificadores de modelos presentes en los datos (utilizado por la vista de Modelos y los filtros de modelos), calcular el agregado de latencia que alimenta el mapa de calor / banda de percentil, y exportar una sesión como JSONL. Los endpoints de facetas de la barra de filtros compartida `GET /events/environments` y `GET /events/models` son accesibles con **cualquiera** de los permisos `events:read` **o** `evaluations:read`, por lo que la página de sesiones (con acceso restringido a `evaluations:read`) reutiliza la misma faceta por organización. |
+
+### Sesiones y evaluaciones
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Listar sesiones, leer resultados de evaluación, el estado de salud de evaluación consolidado utilizado por los paneles de control, y el estado de la cola de trabajos del trabajador de evaluación. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Encolar manualmente una re-evaluación para una sesión finalizada. |
+
+### Paneles de control
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Listar paneles de control, cargar uno y leer sus mosaicos. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Crear y editar paneles de control, añadir / editar / eliminar mosaicos, y reorganizar la cuadrícula de mosaicos. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | Eliminar un panel de control completo (la eliminación a nivel de mosaico se incluye en `dashboards:write`). |
+
+### Consultas guardadas (compositor SQL)
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Listar consultas guardadas, cargar una e inspeccionar el esquema de ClickHouse de solo lectura al que apunta el compositor. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Crear y editar consultas guardadas. El SQL sigue enrutándose a través del mismo rol de solo lectura y las mismas comprobaciones de `sql_guard` que una llamada a `queries:run`. |
+| `queries:delete` | `DELETE /queries/:id` | Eliminar una consulta guardada. |
+| `queries:run` | `POST /queries/run` | Ejecutar SQL guardado o ad-hoc contra el rol de solo lectura utilizado por el compositor. |
+
+### Asistente de IA
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Interactuar con el asistente de IA del panel de control y gestionar tus propias conversaciones (privadas). Requerido en el **usuario** para ver el panel del asistente; la clave propia del asistente es `dashboard-assistant` y se inicializa por separado (ver más abajo). |
+
+### Claves de API
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `keys:create` | `POST /keys` | Crear una nueva clave de API con alcance limitado. **No** otorga la capacidad de editar los permisos de una clave existente (eso es `keys:update`). |
+| `keys:read` | `GET /keys` | Listar las claves existentes. Los secretos nunca se devuelven en este endpoint. |
+| `keys:update` | `PATCH /keys/:id` | Editar los permisos de una clave existente. Permiso **exclusivo para humanos/panel de control**; no se puede asignar a una clave de API (una clave portadora puede crear claves pero nunca editarlas). |
+| `keys:disable` | `POST /keys/:id/disable` | Revocar una clave. Las claves protegidas (`admin`, `dashboard-assistant`) no se pueden deshabilitar; rótalas mediante variable de entorno + reinicio. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Rotar el secreto de una clave. Las claves protegidas no se pueden regenerar a través de esta ruta. |
+
+### Usuarios del panel de control
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `users:create` | `POST /users`, `GET /users/defaults` | Invitar a un nuevo usuario al panel de control (genera un correo electrónico + inicio de sesión OTP) y leer el conjunto de permisos predeterminado configurado en el panel que se utiliza para rellenar el formulario de invitación. |
+| `users:read` | `GET /users`, `GET /users/:id` | Listar usuarios y cargar el registro de un usuario individual. |
+| `users:update` | `PUT /users/:id` | Editar los permisos de un usuario. Las actualizaciones envían un correo electrónico de cambio de permisos al usuario afectado y surten efecto en su próxima solicitud; no se requiere volver a iniciar sesión. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Deshabilitar un usuario (revoca sus sesiones de inmediato) y volver a habilitar a un usuario previamente deshabilitado. |
+
+Estos permisos respaldan la página **Usuarios** del panel de control, donde los alcances otorgados a cada miembro se muestran como etiquetas:
+
+![La página de Usuarios: una tarjeta por usuario del panel con su correo electrónico, permisos otorgados y controles de edición/deshabilitación](/agenteye/images/users.png)
+
+### Configuración operacional
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Ver la configuración operacional gestionada desde el panel de control y sus metadatos; listar las sobreescrituras de ventana de contexto por modelo; y resolver la ventana efectiva para un modelo. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Editar la configuración operacional y añadir, modificar o eliminar sobreescrituras de ventana de contexto por modelo. Los cambios afectan a los nuevos eventos sin necesidad de reiniciar el servidor. |
+
+![La página de Configuración: ajustes operacionales gestionados desde el panel, como inicios de sesión permitidos y tiempos de vida de sesión/OTP, editables sin reiniciar](/agenteye/images/settings.png)
+
+### Alertas e incidentes
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Ver las definiciones de alertas configuradas. |
+| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Crear, editar, eliminar y disparar alertas de prueba. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Ver incidentes y su historial de clasificación. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Abrir un incidente manualmente contra una alerta existente. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Reconocer, asignar, resolver y comentar incidentes. |
+
+### Auditorías
+
+| Permiso | Rutas HTTP | Qué permite |
+|---|---|---|
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Ver definiciones de auditoría, historial de ejecuciones y hallazgos. |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Crear, editar, eliminar y ejecutar auditorías; clasificar hallazgos (reconocer / silenciar / descartar / resolver / reabrir / asignar). |
+
+> Cuando se lanzaron las Auditorías, los permisos de los titulares existentes se ampliaron con la misma estructura de roles que las alertas: todo usuario y conjunto de permisos que tuviera `alerts:read` obtuvo también `audits:read`, y todo titular de `alerts:write` obtuvo también `audits:write`. Las claves de API existentes **no** se ampliaron — otorga `audits:*` a una clave de forma explícita si necesita acceso a la superficie de auditorías.
+
+> Los permisos almacenados del token heredado `alerts:ack` se interpretan como `incidents:ack`, de modo que los equipos de guardia conservan el acceso sin necesidad de regenerar claves. El token ya no se puede asignar desde el editor de usuarios del panel de control; la matriz ofrece `incidents:ack` en su lugar.
+
+> El endpoint del selector de destinatarios `GET /alerts/recipients` (que lista los correos electrónicos de miembros a los que puede notificar un editor de alertas) es accesible para cualquier titular de **cualquiera** de los permisos `alerts:read` **o** `alerts:write`, de modo que los editores de alertas pueden poblar el selector sin necesitar el permiso `users:read`.
+
+> Un visualizador de paneles necesita **tanto** `dashboards:read` (para cargar las vistas guardadas) como `evaluations:read` (las métricas de salud se calculan a partir de los datos de evaluación). Otorga `dashboards:write` para permitir que un usuario cree o edite paneles, y `dashboards:delete` para eliminarlos.
+
+> `/health` y `/auth/*` (solicitud OTP, verificación OTP, comprobación de sesión, cierre de sesión) no requieren autenticación por diseño; forman parte del flujo de inicio de sesión y la sonda de disponibilidad. `GET /access-granters` requiere una clave válida pero ningún permiso específico, por lo que cualquier usuario autenticado puede ver qué administradores contactar sobre cambios de acceso.
+
+---
+
+## Conjuntos de permisos
+
+Los conjuntos de permisos permiten aplicar un rol con nombre en lugar de seleccionar manualmente tokens individuales cada vez. En lugar de elegir una docena de permisos uno a uno para cada nuevo usuario del panel de control o clave de API, seleccionas un conjunto, y todos los asignados a él llevan un permiso consistente y revisable. Editar un conjunto personalizado reaplicará el nuevo permiso a todos los usuarios que ya están asignados a él, por lo que un cambio de rol es una sola edición en lugar de recorrer todos los miembros.
+
+Cada organización se inicializa con tres conjuntos integrados:
+
+| Conjunto | Permisos | Destinado para |
+|---|---|---|
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Acceso de solo lectura a todas las superficies operacionales. |
+| `standard` | todo lo de `read-only`, más `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Solo lectura más las acciones cotidianas del equipo de guardia: ejecutar consultas, re-evaluar sesiones, reconocer incidentes y usar el asistente de IA. |
+| `admin` | todos los permisos asignables | Control total de la organización. |
+
+Los tres conjuntos integrados son **inmutables**; sus nombres siempre tienen el mismo significado, por lo que `read-only`, `standard` y `admin` son seguros de referenciar en políticas e incorporación de usuarios. Un operador puede crear **conjuntos personalizados** adicionales para modelar roles específicos de su organización (por ejemplo, un rol de "autor de paneles" o un rol de "solo recolector").
+
+Los conjuntos están disponibles en el panel de control y se gestionan a través de la API en `GET /permission-sets` (listar, con acceso restringido a `users:read`) y `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (crear, editar, eliminar un conjunto personalizado, con acceso restringido a `settings:write`). Se rechaza la eliminación o edición de un conjunto integrado.
+
+La pertenencia a conjuntos es lo que respalda otras dos funcionalidades:
+
+- **`DEFAULT_USER_PERMISSIONS`** (el permiso preseleccionado cuando un administrador abre **+ nuevo usuario**) toma como valor predeterminado el conjunto `standard`. Consulta [Implementación](/es/agenteye/deployment).
+- **El indicador `--set`** en `agenteye-orgctl` (gestión de miembros por parte del operador) inicia un miembro desde un conjunto con nombre, que luego puedes ajustar con `--add` / `--remove`. Consulta [Gestión de inquilinos](/es/agenteye/tenant-management).
+
+> Cuando un conjunto incluye un permiso que no se puede asignar a claves (por ejemplo, un conjunto personalizado que lleva `keys:update`), inicializar una clave desde ese conjunto elimina los tokens no asignables; de lo contrario, el servidor rechazaría la clave con HTTP 422. Los usuarios del panel de control no están sujetos a esa restricción.
+
+---
+
+## Clave de administrador de arranque
+
+La clave de administrador es la única credencial raíz que permite a un operador establecer el acceso desde cero: con ella puedes generar todas las demás claves con alcance limitado, invitar a los primeros usuarios del panel de control y configurar la instancia antes de que exista cualquier otra clave. Es la única clave que no se crea a través de la API de claves; se aprovisiona desde el entorno para que el servidor sea accesible en el primer arranque.
+
+Establece la variable de entorno `ADMIN_KEY` en el servidor. En cada inicio, el servidor upserts este valor como una clave de administrador con todos los permisos.
+
+Para rotar: cambia `ADMIN_KEY` a un nuevo secreto y reinicia el servidor.
+
+---
+
+## Alcance por organización
+
+**Las organizaciones en sí se crean y gestionan fuera de banda por un operador, no a través de esta API de claves.** El ciclo de vida de organizaciones y miembros (crear / renombrar / eliminar / purgar una organización; añadir / actualizar / eliminar un miembro) se realiza con la CLI **`agenteye-orgctl`** que se ejecuta dentro del pod del servidor; no existe ninguna API HTTP ni botón en el panel de control para ello. Consulta [Gestión de inquilinos](/es/agenteye/tenant-management). Lo que *sí* permanece sin cambios: **las claves de API por organización siguen generándose en el panel de control (o a través de esta API de claves)** por los miembros de la organización.
+
+En un despliegue multi-organización, cada clave que crea un miembro de la organización (a través de esta API de claves o la página **Claves** del panel de control) pertenece a **una organización** y solo puede leer o escribir los datos de esa organización; la organización queda estampada en la clave en el momento de creación y se aplica en cada solicitud. Las dos claves de arranque son la única excepción: la clave `admin` (inicializada desde `ADMIN_KEY`) y la clave `dashboard-assistant` (inicializada desde `AGENT_API_KEY`) tienen **alcance de instancia** (no llevan ninguna organización). El contenedor del panel de control se autentica con la clave `admin` para poder intermediar solicitudes por organización en nombre de los miembros autenticados. Los despliegues de un solo inquilino no necesitan pensar en esto; todas las claves pertenecen a la organización `default` integrada.
+
+---
+
+## Creación de claves
+
+Utiliza la clave de administrador (o cualquier clave con permiso `keys:create`) para crear claves adicionales con alcance limitado.
+
+### Clave de recolector (solo ingesta)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prod-collector",
+    "key": "your-collector-secret",
+    "permissions": ["events:add"]
+  }'
+```
+
+### Clave de panel de control (solo lectura)
+
+```bash
+curl -s -X POST http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dashboard",
+    "key": "your-dashboard-secret",
+    "permissions": ["events:read", "keys:read"]
+  }'
+```
+
+Cuando creas una clave a través de la API HTTP, tú mismo proporcionas el valor de `key`; elige un secreto robusto y guárdalo de forma segura. (El panel de control funciona al revés: genera un secreto robusto por ti y te lo muestra una sola vez en el momento de creación; consulta [Gestión de claves en el panel de control](#key-management-in-the-dashboard).) La respuesta confirma que la clave fue creada:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "prod-collector",
+  "permissions": ["events:add"],
+  "created_at": "2026-04-01T12:00:00Z"
+}
+```
+
+---
+
+## Listado de claves
+
+```bash
+curl -s http://your-server:8080/keys \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+Los secretos de las claves no se devuelven en las respuestas de listado; solo se devuelven IDs, nombres y permisos.
+
+---
+
+## Deshabilitar una clave
+
+Deshabilitar una clave revoca el acceso de inmediato sin eliminar el registro de la clave.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/disable \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+---
+
+## Regenerar una clave
+
+Genera un nuevo secreto para una clave existente. El secreto anterior se invalida de inmediato.
+
+```bash
+curl -s -X POST http://your-server:8080/keys/<id>/regenerate \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+La respuesta incluye el nuevo secreto en texto plano, **mostrado una sola vez**.
+
+---
+
+## Gestión de claves en el panel de control
+
+La página **Claves** del panel de control ofrece una interfaz para todas las operaciones anteriores. Necesitas una clave con permiso `keys:read` para ver la lista, y `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` para las acciones de crear / editar / deshabilitar / regenerar, respectivamente. Editar los permisos de una clave (`keys:update`) es independiente de crearla (`keys:create`), por lo que puedes otorgar a un operador la capacidad de generar claves sin la capacidad de modificar el alcance de las existentes, o viceversa. La clave de administrador cubre todas estas acciones.
+
+Cuando creas una clave desde el panel de control no proporcionas el secreto; el panel genera un secreto robusto por ti y lo muestra **una sola vez** en el momento de creación. Cópialo de inmediato y guárdalo de forma segura; nunca se vuelve a mostrar, exactamente igual que con una regeneración. También puedes seleccionar los permisos de la clave directamente o inicializarlos desde un conjunto de permisos (ver más abajo).
+
+![La página de Claves de API: una tarjeta por clave con su nombre, permisos otorgados y fecha de creación, con acciones de regenerar y deshabilitar; las claves protegidas como `admin` están marcadas](/agenteye/images/api-keys.png)
+
+---
+
+## Disposición recomendada de claves
+
+| Clave | Permisos | Utilizada por |
+|---|---|---|
+| `admin` (arranque mediante variable de entorno `ADMIN_KEY`) | todos | Operaciones/configuración, y el contenedor del panel de control (se autentica con `ADMIN_KEY`, intermedia solicitudes de usuarios con comprobaciones de permisos) |
+| Clave de recolector por host | `events:add` | Recolector en cada máquina agente |
+| `dashboard-assistant` (arranque mediante variable de entorno `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Contenedor del asistente de IA, inicializado automáticamente, **protegido**; no se puede editar a través de la API |
+| Clave de telemetría del asistente (opcional) | `events:add` | Autoinstrumentación del asistente de IA, si está habilitada |
+
+> **Clave del asistente.** La clave del asistente se **inicializa automáticamente** por el servidor desde la variable de entorno `AGENT_API_KEY` (el mismo secreto que el agente presenta como `AGENTEYE_API_KEY`); no hay ningún paso manual de generación de claves ni ninguna clave de administrador involucrada. Sus permisos están fijados en el código fuente para que el alcance no pueda ampliarse por mala configuración: lectura sobre eventos / evaluaciones / paneles de control, más escritura en paneles y lectura / escritura / ejecución de consultas para el flujo de creación de consultas mediante IA. Todo el SQL sigue pasando por el mismo rol de solo lectura y las mismas comprobaciones de `sql_guard` que una consulta escrita por un usuario, por lo que esto amplía la *superficie de creación*, no la superficie de datos; las operaciones destructivas (`queries:delete`, `dashboards:delete`) se excluyen deliberadamente de la clave del asistente. Al igual que la clave `admin`, está **protegida**: no se puede deshabilitar ni regenerar a través de la API de claves; solo se puede rotar cambiando `AGENT_API_KEY` y reiniciando. Los *usuarios* del panel de control además necesitan el permiso `agent:use` para ver y usar el asistente. Si habilitas la autoinstrumentación, proporciona al asistente una clave separada exclusiva para `events:add`.

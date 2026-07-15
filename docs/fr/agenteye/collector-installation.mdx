@@ -1,0 +1,401 @@
+---
+title: "Installation du Collector"
+description: "Documentation d'installation du AgentEye Collector."
+---
+
+
+Le daemon `agenteye-collector` garantit que la télémétrie de vos agents parvient à AgentEye sans jamais bloquer votre application. Votre code écrit des événements dans un répertoire local et continue son exécution ; le collector prend en charge le reste, en téléversant chaque fichier en quelques millisecondes et en survivant aux redémarrages, aux pannes réseau et aux erreurs serveur transitoires. Les téléversements échoués sont réessayés avec un backoff exponentiel, et un balayage de récupération périodique remet en file d'attente tout ce qui aurait été laissé en suspens lors d'un crash ou d'un déploiement. Le résultat est une livraison durable en mode « fire-and-forget » : vos agents continuent de tourner à pleine vitesse pendant que le collector s'assure qu'aucun événement n'est perdu en transit.
+
+Concrètement, le collector est un daemon léger qui surveille `$AGENTEYE_HOME/events/` (par défaut : `~/.agenteye/events/`) pour y détecter les fichiers `.jsonl` écrits par le SDK Python et les téléverser vers le serveur AgentEye.
+
+> **Renommage :** la commande du collector s'appelle désormais **`agenteye-collector`** (elle s'appelait auparavant `agenteye`). Le nom abrégé `agenteye` appartient maintenant à l'interface en ligne de commande AgentEye. Si vous mettez à jour une installation existante, consultez [enterprise-docs/collector-migration.md](/fr/agenteye/collector-migration).
+
+---
+
+## Prérequis
+
+- Votre `AGENTEYE_TOKEN` : un PAT GitHub que vous générez vous-même (voir [enterprise-docs/github-token.md](/fr/agenteye/github-token))
+- L'URL du serveur et une clé API pour le collector (voir [enterprise-docs/api-keys.md](/fr/agenteye/api-keys))
+
+---
+
+## Option A : Binaire (recommandé)
+
+Des binaires statiques pré-compilés sont disponibles pour Linux, macOS et Windows (x86_64 et arm64). Téléchargez le binaire correspondant à votre plateforme directement depuis le dépôt `agenteye-enterprise/releases`, sous le dernier tag de release `collector/v<version>`.
+
+Noms des artefacts disponibles :
+
+| Plateforme | Artefact |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**Téléchargement avec la CLI `gh`** (remplacez la version et choisissez l'artefact correspondant à votre plateforme) :
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**Ou avec `curl` :**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## Option B : Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> Les builds bêta actuels publient le tag flottant `:beta-latest` ; `:latest` est réservé aux releases stables. Pour des déploiements reproductibles, privilégiez un tag de version fixe tel que `:v0.0.1-beta.13`.
+
+**Démarrage :**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+L'image officielle s'exécute en tant qu'utilisateur non-root ; définissez donc `AGENTEYE_HOME` explicitement et montez le spool de l'hôte sur ce chemin. Le montage de volume partage le même répertoire `~/.agenteye/` dans lequel le SDK Python écrit sur l'hôte. Si vous avez déjà défini `AGENTEYE_HOME` à un autre emplacement sur l'hôte, montez ce répertoire plutôt que `$HOME/.agenteye`.
+
+---
+
+## Configuration
+
+Toutes les options peuvent être définies de trois manières (par ordre de priorité décroissante) :
+
+1. Flag CLI : `agenteye-collector start --url https://...`
+2. Variable d'environnement : `AGENTEYE_URL=https://...`
+3. Fichier de configuration : `~/.agenteye/config.json`
+
+### Options requises
+
+| Option | Flag CLI | Variable d'env | Clé config.json |
+|---|---|---|---|
+| URL du backend | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| Clé API | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### Options facultatives (avec valeurs par défaut)
+
+| Option | Flag CLI | Variable d'env | Clé config.json | Valeur par défaut |
+|---|---|---|---|---|
+| Téléversements simultanés max | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| Intervalle de balayage (s) | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| Âge min. des fichiers pour le balayage (s) | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| Fichiers max. par balayage | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| Tentatives de téléversement max | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| Délai de base entre tentatives (ms) | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### Options mTLS (facultatives)
+
+Pour les déploiements nécessitant un TLS mutuel (mTLS), le collector peut présenter un certificat client lors de la négociation TLS. Si ces options ne sont pas définies, le collector utilise HTTPS standard.
+
+| Option | Flag CLI | Variable d'env | Clé config.json |
+|---|---|---|---|
+| Certificat client (PEM) | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| Clé privée client (PEM) | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| Certificat CA personnalisé (PEM) | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+`--tls-cert` et `--tls-key` doivent être définis ensemble. Les fichiers doivent être encodés en PEM.
+
+`--tls-ca` est indépendant et n'est nécessaire que lorsque le serveur AgentEye présente un certificat TLS qui n'est pas émis par une CA publiquement reconnue (par exemple, auto-signé par un émetteur `cert-manager` dans le cluster lorsque vous ne disposez pas d'un vrai domaine DNS). Le collector ajoute la CA fournie comme ancre de confiance supplémentaire ; les racines publiques standard restent approuvées, de sorte que les déploiements existants ne sont pas affectés. Le fichier peut contenir un seul certificat PEM ou une chaîne complète (plusieurs blocs PEM concaténés).
+
+**Vous exécutez le collector en tant que sidecar dans votre pod applicatif ?** Consultez [enterprise-docs/single-pod-deployment.md](/fr/agenteye/single-pod-deployment) pour le schéma EKS de bout en bout : bundle mTLS livré via AWS Secrets Manager + Secrets Store CSI Driver + IRSA, avec rotation automatique.
+
+Lorsque vous déployez dans Kubernetes avec le pattern de remise de Secret, montez le Secret de certificat en tant que volume et pointez ces chemins vers les fichiers montés :
+
+```yaml
+# Exemple : extrait du Deployment du collector
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # Uniquement lorsque le certificat serveur n'est pas publiquement approuvé
+      # (ex. CA auto-signée dans le cluster). Le même Secret porte généralement
+      # ca.crt aux côtés de tls.crt/tls.key.
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### Exemple de `~/.agenteye/config.json`
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+Avec mTLS :
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+Avec mTLS et une CA personnalisée (serveur AgentEye auto-signé) :
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+Si `AGENTEYE_HOME` est défini, ce répertoire est utilisé à la place de `~/.agenteye`.
+
+---
+
+## Configuration initiale
+
+Après l'installation, configurez le collector avec l'URL de votre serveur et votre clé API :
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> Utilisez `https` pour tout déploiement traversant un réseau non fiable, afin que les événements ne soient pas transmis en clair. La forme en clair `http://your-server-host:8080/events` n'est appropriée que pour des tests purement locaux contre un serveur sur la même machine.
+
+**Tester la connexion** (vidage ponctuel, se termine après avoir traité les événements en attente) :
+
+```bash
+agenteye-collector flush
+```
+
+`flush` rapporte sa progression sur stdout. Lorsque le spool est vide, il affiche `No pending files.` et se termine avec le code `0`. Sinon, il affiche une ligne par fichier (`[UPLOADED] <file>` ou `[FAILED] <file> (<reason>)`), suivie d'un résumé `Done: <uploaded>/<total> uploaded, <failed> failed.`. Cela fait de `flush` un outil pratique pour vérifier en une seule passe que votre URL, votre clé et vos paramètres TLS sont corrects avant de démarrer le daemon.
+
+---
+
+## Exécution en tant que daemon
+
+### Directement
+
+```bash
+agenteye-collector start
+```
+
+### Conteneur / Docker
+
+Lorsque le collector et votre application partagent un conteneur, exécutez-les sous un superviseur de processus. L'option la plus simple est `supervisord` ; il est disponible dans toutes les distributions majeures, redémarre les processus qui ont planté, transmet les signaux et attend un arrêt gracieux.
+
+**`Dockerfile` :**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# Récupère le binaire agenteye-collector depuis l'image officielle.
+# Épinglez un tag spécifique (:beta-latest pour les bêtas actuels, ou un tag :v<version>) ;
+# :latest n'est publié que pour les releases stables.
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf` :**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+Explication de ces paramètres :
+
+- `autorestart=true` sur agenteye-collector : redémarre à chaque arrêt (crash, panique, OOM).
+- `autorestart=unexpected` sur l'app : redémarre uniquement en cas de sortie avec un code non-zéro, afin qu'un agent ponctuel qui se termine avec le code `0` ne boucle pas indéfiniment.
+- `stopwaitsecs=30` : laisse au collector le temps de vider les téléversements en attente lors d'un SIGTERM avant que supervisord n'escalade vers SIGKILL.
+- `stdout_logfile=/dev/stdout`, `*_maxbytes=0` : redirige la sortie des deux programmes vers le stdout du conteneur, sans fichiers de log à l'intérieur du conteneur.
+
+Transmettez `AGENTEYE_URL` / `AGENTEYE_KEY` (et les éventuelles variables d'environnement TLS) via `docker run -e` comme précédemment ; supervisord hérite de l'environnement.
+
+> **Conteneurs séparés ?** Si vous exécutez le collector dans son propre conteneur (service Docker Compose, sidecar Kubernetes, etc.), n'utilisez pas supervisord ; la politique de redémarrage du runtime de conteneurs remplit déjà ce rôle. Consultez [enterprise-docs/single-pod-deployment.md](/fr/agenteye/single-pod-deployment) pour le schéma de sidecar EKS.
+
+**Sonde de vivacité Kubernetes** (applicable que le collector tourne seul ou sous supervisord) :
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+Le daemon en cours d'exécution écrit un heartbeat dans `$AGENTEYE_HOME/health.json` toutes les 30 secondes. `agenteye-collector health` lit ce fichier et se termine avec le code `0` (sain) uniquement lorsque le heartbeat est récent et que les tâches de téléversement fonctionnent normalement ; il se termine avec le code `1` (défaillant) lorsque le heartbeat est antérieur à 90 secondes (par exemple, le daemon s'est arrêté) ou pendant que le watcher et le sweeper redémarrent après un arrêt inattendu. Le heartbeat n'est écrit que par `start`, alors exécutez la sonde contre le daemon long-lived plutôt que contre la commande ponctuelle `flush`.
+
+### systemd (Linux, recommandé pour la production)
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Créez `/etc/agenteye/env` :
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## Mise à jour du Collector
+
+Le collector ne se met pas à jour automatiquement. Pour effectuer une mise à jour :
+
+- **Binaire :** téléchargez le nouvel artefact `agenteye-collector-<os>-<arch>` depuis la dernière release `collector/v<version>` (voir [Option A](#option-a-binary-recommended)), remplacez `/usr/local/bin/agenteye-collector`, puis redémarrez le service (`sudo systemctl restart agenteye-collector`, relancez `launchctl load`, ou redémarrez votre superviseur).
+- **Docker :** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (ou un tag `:v<version>` épinglé ; `:latest` n'existe que pour les releases stables) et recréez le conteneur.
+
+`AGENTEYE_TOKEN` est nécessaire pour télécharger de nouveaux binaires/images depuis le dépôt de releases privé, mais **n'est pas** requis par le daemon en cours d'exécution.
+
+---
+
+## Sous-commandes
+
+| Commande | Description |
+|---|---|
+| `agenteye-collector start` | Démarre le daemon long-lived. Au démarrage, il vide tous les événements restants d'une exécution précédente, puis surveille les nouveaux fichiers et les téléverse. Le watcher et le sweeper redémarrent automatiquement en cas d'arrêt inattendu, et un heartbeat est écrit dans `health.json` toutes les 30 secondes. |
+| `agenteye-collector flush` | Ponctuel : téléverse tous les fichiers en attente et se termine. Affiche `No pending files.` lorsque le spool est vide, sinon un journal `[UPLOADED]`/`[FAILED]` par fichier et un résumé `Done: <uploaded>/<total> uploaded, <failed> failed.`. |
+| `agenteye-collector health` | Lit le heartbeat `health.json` du daemon. Se termine avec le code `0` lorsqu'il est récent et sain ; se termine avec le code `1` lorsque le heartbeat est périmé (antérieur à 90s) ou que les tâches redémarrent. |
+
+---
+
+## Structure des répertoires
+
+```
+~/.agenteye/
+├── config.json       <- fichier de configuration facultatif
+├── events/           <- fichiers .jsonl écrits par le SDK, récupérés par le collector
+└── failed/           <- fichiers ayant échoué toutes les tentatives de téléversement
+```
+
+Les fichiers dans `failed/` ne sont pas automatiquement réessayés. Pour les remettre manuellement en file d'attente, déplacez-les vers `events/` et exécutez `agenteye-collector flush`.

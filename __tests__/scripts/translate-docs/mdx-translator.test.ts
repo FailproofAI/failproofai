@@ -4,7 +4,16 @@ import {
   rewriteInternalLinks,
   sanitizeJsxAttributes,
   stripStrayTrailingFence,
+  getEnglishMdxPages,
 } from "@/scripts/translate-docs/mdx-translator";
+
+describe("getEnglishMdxPages", () => {
+  it("includes AgentEye pages in automatic translation", () => {
+    const pages = getEnglishMdxPages();
+    expect(pages.length).toBeGreaterThan(0);
+    expect(pages.some((page) => page.includes("/agenteye/"))).toBe(true);
+  });
+});
 
 describe("rewriteInternalLinks", () => {
   it("rewrites MDX component href attributes with language prefix", () => {
@@ -71,6 +80,11 @@ See [config](/configuration) and [testing](/testing).
     const input = `[link](/getting-started#install)`;
     const result = rewriteInternalLinks(input, "es");
     expect(result).toBe(`[link](/es/getting-started#install)`);
+  });
+
+  it("preserves shared AgentEye image paths", () => {
+    const input = `![Dashboard](/agenteye/images/dashboard-fleet.png)`;
+    expect(rewriteInternalLinks(input, "es")).toBe(input);
   });
 });
 

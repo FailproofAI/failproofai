@@ -21,6 +21,7 @@ import {
   opencode,
   pi,
   gemini,
+  hermes,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -37,6 +38,8 @@ import {
   GEMINI_HOOK_EVENT_TYPES,
   GEMINI_EVENT_MAP,
   GEMINI_TOOL_MAP,
+  HERMES_HOOK_EVENT_TYPES,
+  HERMES_EVENT_MAP,
   HOOK_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
@@ -44,8 +47,11 @@ import {
   type OpenCodeHookEventType,
   type PiHookEventType,
   type GeminiHookEventType,
+  type HermesHookEventType,
 } from "../../src/hooks/types";
 import { homedir } from "node:os";
+import { parse } from "yaml";
+import { dirname } from "node:path";
 
 let tempDir: string;
 const ORIG_CWD = process.cwd();
@@ -67,9 +73,9 @@ afterEach(() => {
 });
 
 describe("integrations registry", () => {
-  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, and gemini in declared order", () => {
+  it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, gemini, and hermes in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "gemini", "hermes"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -100,6 +106,10 @@ describe("integrations registry", () => {
     expect(getIntegration("gemini")).toBe(gemini);
   });
 
+  it("getIntegration('hermes') returns hermes", () => {
+    expect(getIntegration("hermes")).toBe(hermes);
+  });
+
   it("getIntegration throws for unknown id", () => {
     // @ts-expect-error — testing error path
     expect(() => getIntegration("unknown-cli")).toThrow();
@@ -125,7 +135,7 @@ describe("Claude Code integration", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
     expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse');
     expect(entry.command).not.toContain("--cli");
-    expect(entry.timeout).toBe(60_000);
+    expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
   });
 
@@ -191,7 +201,7 @@ describe("OpenAI Codex integration", () => {
     expect(codex.scopes).toEqual(["user", "project"]);
   });
 
-  it("eventTypes are exactly the 6 documented Codex events (snake_case)", () => {
+  it("eventTypes are exactly the 10 documented Codex events (snake_case)", () => {
     expect(codex.eventTypes).toEqual(CODEX_HOOK_EVENT_TYPES);
     // PR 185 omitted permission_request — make sure we have it.
     expect(codex.eventTypes).toContain("permission_request");
@@ -202,6 +212,12 @@ describe("OpenAI Codex integration", () => {
     expect(entry.command).toContain("--cli codex");
     expect(entry.command).toContain("--hook pre_tool_use");
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("buildHookEntry sets timeout in SECONDS (60), not milliseconds", () => {
+    // Codex reads `timeout` as seconds (its `timeout_sec` field); 60000 would be ~16.7h.
+    const entry = codex.buildHookEntry("/usr/bin/failproofai", "pre_tool_use", "user");
+    expect(entry.timeout).toBe(60);
   });
 
   it("project scope uses npx -y failproofai", () => {
@@ -220,16 +236,23 @@ describe("OpenAI Codex integration", () => {
       // Snake-case keys must NOT be present (Codex stores under Pascal)
       expect(hooks[snake]).toBeUndefined();
     }
-    // Settings file carries version: 1
-    expect(settings.version).toBe(1);
+    // Settings file does NOT carry version (Codex strictly expects only `hooks`)
+    expect(settings.version).toBeUndefined();
   });
 
-  it("readSettings backfills version: 1 on existing files without it", () => {
+  it("writeHookEntries removes version on existing files if present", () => {
+    const settings: Record<string, unknown> = { version: 1, hooks: {} };
+    codex.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    expect(settings.version).toBeUndefined();
+  });
+
+  it("removeHooksFromFile removes version on existing files even if no failproofai hooks are present", () => {
     const settingsPath = resolve(tempDir, ".codex", "hooks.json");
     mkdirSync(resolve(tempDir, ".codex"), { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify({ hooks: {} }));
-    const read = codex.readSettings(settingsPath);
-    expect(read.version).toBe(1);
+    writeFileSync(settingsPath, JSON.stringify({ version: 1, hooks: {} }));
+    codex.removeHooksFromFile(settingsPath);
+    const read = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(read.version).toBeUndefined();
   });
 
   it("re-running writeHookEntries is idempotent", () => {
@@ -401,7 +424,7 @@ describe("Cursor Agent integration", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
     expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor');
-    expect(entry.timeout).toBe(60_000);
+    expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Cursor entries use the Claude-style `command` field, not Copilot's bash/powershell split.
     expect(entry.bash).toBeUndefined();
@@ -496,6 +519,166 @@ describe("CURSOR_EVENT_MAP", () => {
   it("CursorHookEventType is exhaustive", () => {
     const sample: CursorHookEventType = "preToolUse";
     expect(CURSOR_EVENT_MAP[sample]).toBe("PreToolUse");
+  });
+});
+
+describe("Hermes integration", () => {
+  // Hermes config is user-scope only at ~/.hermes/config.yaml. Redirect HOME to
+  // the per-test tempDir so getSettingsPath / hooksInstalledInSettings operate
+  // on a throwaway file instead of the developer's real home.
+  let origHome: string | undefined;
+  beforeEach(() => {
+    origHome = process.env.HOME;
+    process.env.HOME = tempDir;
+  });
+  afterEach(() => {
+    if (origHome === undefined) delete process.env.HOME;
+    else process.env.HOME = origHome;
+  });
+
+  it("getSettingsPath is user-scope ~/.hermes/config.yaml regardless of scope/cwd", () => {
+    expect(hermes.getSettingsPath("user")).toBe(resolve(tempDir, ".hermes", "config.yaml"));
+    // scope/cwd are ignored — Hermes has no project config.
+    expect(hermes.getSettingsPath("project", "/some/other/dir")).toBe(
+      resolve(tempDir, ".hermes", "config.yaml"),
+    );
+  });
+
+  it("scopes are user-only", () => {
+    expect(hermes.scopes).toEqual(["user"]);
+  });
+
+  it("eventTypes are the snake_case Hermes events (no Stop — Hermes has no turn end)", () => {
+    expect(hermes.eventTypes).toEqual(HERMES_HOOK_EVENT_TYPES);
+    expect(hermes.eventTypes).toContain("pre_tool_call");
+    expect(hermes.eventTypes).toContain("post_tool_call");
+    expect(hermes.eventTypes).toContain("on_session_start");
+    expect(hermes.eventTypes).toContain("on_session_end");
+    expect(hermes.eventTypes).toContain("subagent_stop");
+  });
+
+  it("buildHookEntry uses {command,timeout} with --cli hermes, timeout in SECONDS (30)", () => {
+    const entry = hermes.buildHookEntry("/usr/bin/failproofai", "pre_tool_call", "user") as Record<string, unknown>;
+    expect(entry.command).toBe('"/usr/bin/failproofai" --hook pre_tool_call --cli hermes');
+    expect(entry.timeout).toBe(30);
+    expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+  });
+
+  it("project scope uses npx -y failproofai (portable)", () => {
+    const entry = hermes.buildHookEntry("/usr/bin/failproofai", "pre_tool_call", "project") as Record<string, unknown>;
+    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_call --cli hermes");
+  });
+
+  it("writeHookEntries builds a flat hooks: map keyed by snake_case events + hooks_auto_accept", () => {
+    const path = hermes.getSettingsPath("user");
+    const settings = hermes.readSettings(path); // empty Document (file absent)
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(path, settings);
+    const parsed = parse(readFileSync(path, "utf-8")) as {
+      hooks?: Record<string, Array<Record<string, unknown>>>;
+      hooks_auto_accept?: boolean;
+    };
+    for (const eventType of HERMES_HOOK_EVENT_TYPES) {
+      expect(Array.isArray(parsed.hooks?.[eventType])).toBe(true);
+      const first = parsed.hooks![eventType][0];
+      expect(first.command).toContain("--cli hermes");
+      expect(first.timeout).toBe(30);
+      expect(first[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    }
+    // Headless-gateway consent: declared hooks auto-accepted.
+    expect(parsed.hooks_auto_accept).toBe(true);
+  });
+
+  it("readSettings/writeSettings preserve the user's other keys AND comments", () => {
+    const path = hermes.getSettingsPath("user");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "# my hermes config\nmodel: gpt-5  # the good one\nprovider: openai\n");
+    const settings = hermes.readSettings(path);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(path, settings);
+    const raw = readFileSync(path, "utf-8");
+    const parsed = parse(raw) as Record<string, unknown>;
+    // Unrelated keys survive...
+    expect(parsed.model).toBe("gpt-5");
+    expect(parsed.provider).toBe("openai");
+    expect((parsed.hooks as Record<string, unknown>).pre_tool_call).toBeDefined();
+    // ...and so do the user's comments (this is why we use the Document API).
+    expect(raw).toContain("# my hermes config");
+    expect(raw).toContain("# the good one");
+  });
+
+  it("re-running writeHookEntries is idempotent (replaces, doesn't duplicate)", () => {
+    const path = hermes.getSettingsPath("user");
+    const settings = hermes.readSettings(path);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeHookEntries(settings, "/different/failproofai", "user");
+    hermes.writeSettings(path, settings);
+    const parsed = parse(readFileSync(path, "utf-8")) as { hooks: Record<string, unknown[]> };
+    expect(parsed.hooks.pre_tool_call).toHaveLength(1);
+    expect((parsed.hooks.pre_tool_call[0] as Record<string, unknown>).command).toBe(
+      '"/different/failproofai" --hook pre_tool_call --cli hermes',
+    );
+  });
+
+  it("removeHooksFromFile strips only our entries + auto-accept, preserving user keys", () => {
+    const path = hermes.getSettingsPath("user");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "model: gpt-5\n");
+    const settings = hermes.readSettings(path);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(path, settings);
+
+    const removed = hermes.removeHooksFromFile(path);
+    expect(removed).toBe(HERMES_HOOK_EVENT_TYPES.length);
+    const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    expect(parsed.hooks).toBeUndefined();
+    expect(parsed.hooks_auto_accept).toBeUndefined();
+    expect(parsed.model).toBe("gpt-5"); // user key survives
+  });
+
+  it("removeHooksFromFile drops hooks_auto_accept even when the hooks were already removed manually", () => {
+    // Regression (CodeRabbit): the auto-accept flag must not linger and silently
+    // auto-accept future operator hooks after our hooks are gone.
+    const path = hermes.getSettingsPath("user");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "model: gpt-5\nhooks_auto_accept: true\n"); // no `hooks:` block
+    const removed = hermes.removeHooksFromFile(path);
+    expect(removed).toBe(0);
+    const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    expect(parsed.hooks_auto_accept).toBeUndefined(); // dropped despite 0 hooks removed
+    expect(parsed.model).toBe("gpt-5");
+  });
+
+  it("hooksInstalledInSettings detects installed hooks / false when missing", () => {
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    const path = hermes.getSettingsPath("user");
+    const settings = hermes.readSettings(path);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(path, settings);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+  });
+});
+
+describe("HERMES_EVENT_MAP", () => {
+  it("maps every snake_case Hermes event to a PascalCase HookEventType", () => {
+    expect(HERMES_EVENT_MAP.pre_tool_call).toBe("PreToolUse");
+    expect(HERMES_EVENT_MAP.post_tool_call).toBe("PostToolUse");
+    expect(HERMES_EVENT_MAP.on_session_start).toBe("SessionStart");
+    expect(HERMES_EVENT_MAP.on_session_end).toBe("SessionEnd");
+    expect(HERMES_EVENT_MAP.subagent_stop).toBe("SubagentStop");
+  });
+
+  it("has NO Stop mapping — Hermes has no turn-end event", () => {
+    expect(Object.values(HERMES_EVENT_MAP)).not.toContain("Stop");
+  });
+
+  it("HERMES_EVENT_MAP keys exactly match HERMES_HOOK_EVENT_TYPES", () => {
+    expect(Object.keys(HERMES_EVENT_MAP).sort()).toEqual([...HERMES_HOOK_EVENT_TYPES].sort());
+  });
+
+  it("HermesHookEventType is exhaustive", () => {
+    const sample: HermesHookEventType = "pre_tool_call";
+    expect(HERMES_EVENT_MAP[sample]).toBe("PreToolUse");
   });
 });
 

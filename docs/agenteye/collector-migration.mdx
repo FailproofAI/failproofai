@@ -1,0 +1,169 @@
+---
+title: "Migrating to `agenteye-collector`"
+description: "AgentEye Migrating to `agenteye-collector` documentation."
+---
+
+
+Migrating is non-destructive: it incurs no downtime and no data loss, and it frees the short `agenteye` name for the [AgentEye CLI](/agenteye/cli) so the collector daemon and the CLI can coexist on the same machine.
+
+The collector binary has been **renamed from `agenteye` to `agenteye-collector`**. The short `agenteye` name now belongs to the AgentEye CLI, a separate tool for querying sessions, events, and evaluations from your terminal.
+
+This guide walks you through migrating an existing collector install.
+
+---
+
+## What changed
+
+| | Before | After |
+|---|---|---|
+| Command / binary | `agenteye` | `agenteye-collector` |
+| Default install path | `/usr/local/bin/agenteye` | `/usr/local/bin/agenteye-collector` |
+| Subcommands | `start`, `flush`, `health`, `update` | `start`, `flush`, `health` |
+| Self-update (`agenteye update`) | built in | **removed**: download the new binary or pull the new image |
+| Install script (`install.sh`) | provided | **removed**: download the binary directly (see [Collector Installation](/agenteye/collector-installation)) |
+| `AGENTEYE_TOKEN` | needed to download **and** for background update checks | needed only to **download** binaries/images |
+
+Configuration is unchanged: the same `~/.agenteye/config.json`, the same `AGENTEYE_URL` / `AGENTEYE_KEY` / `AGENTEYE_HOME` / TLS environment variables, and the same `~/.agenteye/events/` spool. **No config edits are required.**
+
+> If you run the renamed binary under the old name `agenteye`, it still works but prints a one-line deprecation warning to stderr reminding you to switch to `agenteye-collector`.
+
+---
+
+## Before you start
+
+- Your **existing `agenteye` install keeps running**; nothing breaks the moment you upgrade. Migrate deliberately, then remove the old binary last.
+- Follow this order to avoid downtime:
+  1. Install the new `agenteye-collector` binary (or pull the new image).
+  2. Update your service definition / health probe / scripts to call `agenteye-collector`.
+  3. Reload and restart the service; confirm it is healthy.
+  4. **Only then** remove the old `/usr/local/bin/agenteye` binary.
+
+---
+
+## 1. Install the new binary
+
+Download the artifact for your platform (`agenteye-collector-linux-x86_64`, `agenteye-collector-darwin-arm64`, and so on; see [Collector Installation → Option A](/agenteye/collector-installation#option-a-binary-recommended) for the full list) from the latest `collector/v<version>` release and place it at `/usr/local/bin/agenteye-collector`. Docker users: `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (or a pinned `:v<version>` tag, which is preferred; `:latest` exists only for stable releases).
+
+Verify:
+
+```bash
+agenteye-collector --version
+```
+
+---
+
+## 2. Update your deployment
+
+### systemd (Linux)
+
+Edit `/etc/systemd/system/agenteye-collector.service` so `ExecStart` points at the new binary:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+```
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+> **Brand rename:** If your existing plist is at the older path
+> `~/Library/LaunchAgents/host.exosphere.agenteye-collector.plist`, rename
+> the file to `ai.befailproof.agenteye-collector.plist` and also change the
+> `<key>Label</key>` value inside the file to the new identifier before
+> reloading.
+
+In `~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist`, change the first `ProgramArguments` entry from `/usr/local/bin/agenteye` to `/usr/local/bin/agenteye-collector`, then reload:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+launchctl load   ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+### supervisord
+
+In your `supervisord` program block, set `command` to the new binary:
+
+```ini
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+```
+
+Then `supervisorctl reread && supervisorctl update`.
+
+### Docker / Kubernetes
+
+Pull the new image (`ghcr.io/agenteye-enterprise/collector:beta-latest` or a pinned `:v<version>`, which is preferred; `:latest` exists only for stable releases). The image entrypoint is already `agenteye-collector`, so the same `docker run` command with the `start` subcommand keeps working with no change.
+
+**Important: update health probes.** If you use a Kubernetes liveness/readiness probe (or any `docker exec`) that runs the binary by name, change the command to `agenteye-collector`:
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+```
+
+The new image does **not** ship an `agenteye` alias, so a probe still calling `agenteye` will fail. Update the probe in the same rollout as the new image.
+
+### Cron / manual scripts
+
+Replace any `agenteye start|flush|health` invocations with the matching `agenteye-collector start|flush|health` command. **Delete any `agenteye update` cron jobs**; that subcommand no longer exists (see [Upgrades from now on](#upgrades-from-now-on)).
+
+---
+
+## 3. Remove the old binary (last)
+
+Once the service runs on `agenteye-collector` and reports healthy:
+
+```bash
+sudo rm /usr/local/bin/agenteye
+```
+
+This matters especially if you also use the AgentEye CLI, which installs its own `agenteye` command; leaving the old collector binary at `/usr/local/bin/agenteye` would make the `agenteye` name ambiguous on your `PATH`.
+
+---
+
+## Upgrades from now on
+
+The collector no longer updates itself. To upgrade:
+
+- **Binary:** download the new artifact for your platform (for example `agenteye-collector-linux-x86_64`; see [Collector Installation → Option A](/agenteye/collector-installation#option-a-binary-recommended) for the full list), replace `/usr/local/bin/agenteye-collector`, and restart the service.
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (or a pinned `:v<version>` tag, which is preferred; `:latest` exists only for stable releases) and recreate the container.
+
+`AGENTEYE_TOKEN` is still required to download from the private releases repo, but the running daemon no longer needs it.
+
+---
+
+## Verify
+
+```bash
+agenteye-collector --version    # new binary is on PATH
+agenteye-collector health       # exit 0 = healthy
+agenteye-collector flush        # forwards any queued events and exits cleanly
+```
+
+Then confirm new events appear in your dashboard.
+
+---
+
+## Rollback
+
+The migration is non-destructive. If you need to roll back, point your service definition back at the old `/usr/local/bin/agenteye` binary (as long as you have not removed it yet) and restart. The event spool and config are shared and unaffected.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `warning: the collector binary is now agenteye-collector …` on every run | You are invoking the binary under the old `agenteye` name | Call `agenteye-collector` instead; update service files and scripts. |
+| systemd fails: `.../agenteye: No such file or directory` | You removed the old binary before updating `ExecStart` | Set `ExecStart=/usr/local/bin/agenteye-collector start`, then `sudo systemctl daemon-reload`. |
+| Kubernetes pod crash-loops after the image upgrade | Liveness probe still runs `agenteye` | Change the probe command to `["agenteye-collector", "health"]`. |
+| `agenteye: command not found`, but `agenteye-collector` works | Scripts/aliases still reference the old name | Update them to `agenteye-collector`. |
+| Running `agenteye` starts the CLI, not the collector | You have the AgentEye CLI installed; it owns `agenteye` | Use `agenteye-collector` for the daemon and remove any leftover old collector binary at `/usr/local/bin/agenteye`. |

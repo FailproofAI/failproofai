@@ -1,0 +1,382 @@
+---
+title: "Python SDK"
+description: "Documentação do AgentEye Python SDK."
+---
+
+O AgentEye Python SDK oferece visibilidade completa sobre o comportamento dos seus agentes (cada execução de agente, chamada de ferramenta, requisição de modelo, hook e intervenção humana) para que você possa depurá-los, auditá-los e avaliá-los. Ele instrumenta o código do agente gravando eventos estruturados em arquivos JSONL locais; o daemon coletor os captura e os envia automaticamente para a plataforma.
+
+---
+
+## Instalação
+
+Baixe o wheel a partir das GitHub Releases usando seu `AGENTEYE_TOKEN`. Caso ainda não tenha um token, consulte [Configuração do Token GitHub](/pt-br/agenteye/github-token) para ver os passos de configuração e as permissões necessárias.
+
+**Usando `gh` CLI + pip:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**Usando `gh` CLI + uv:**
+
+```bash
+VERSION=0.0.1b9
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+uv add "./agenteye-${VERSION}-py3-none-any.whl"
+```
+
+**Usando curl (sem `gh` CLI):**
+
+```bash
+VERSION=0.0.1b9
+curl -fsSL \
+  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
+  -L \
+  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
+  -o "agenteye-${VERSION}-py3-none-any.whl"
+pip install "agenteye-${VERSION}-py3-none-any.whl"
+```
+
+---
+
+## Início Rápido
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. Padrão: $AGENTEYE_HOME ou ~/.agenteye
+    flush_interval=0.5,      # float, segundos entre ciclos de flush
+    environment=None,        # str | None. Rótulo do ambiente de implantação
+)
+```
+
+Chame uma vez antes de qualquer chamada `event.*`. É seguro omitir; os padrões funcionam imediatamente. Todos os argumentos são apenas por palavra-chave; passe-os pelo nome conforme mostrado acima.
+
+Quando `base_dir` é `None` (o padrão), o SDK lê `$AGENTEYE_HOME` se definido, caso contrário, usa `~/.agenteye`. Isso corresponde à própria resolução do coletor, de modo que uma única variável de ambiente `AGENTEYE_HOME` configura o spool de eventos compartilhado tanto para o SDK quanto para o coletor — necessário para implantações em sidecar/single-pod onde ambos os processos precisam concordar com o caminho do spool.
+
+---
+
+## Ambiente
+
+Rotule cada evento com um ambiente de implantação (`production`, `staging`, `qa`, `canary`, etc.). Defina uma vez; o SDK o vincula a cada evento automaticamente.
+
+**Opção 1: via `configure()`:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**Opção 2: via variável de ambiente:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**Prioridade:** `configure(environment=...)` tem precedência sobre a variável de ambiente. Se nenhum dos dois for definido, o padrão é `"dev"`.
+
+O valor do ambiente aparece como um filtro de primeira classe no dashboard e é armazenado como uma coluna indexada no servidor para consultas rápidas.
+
+**Restrição:** os valores de ambiente **não devem conter uma vírgula `,` literal**. Os filtros do dashboard usam multi-seleção separada por vírgulas na requisição (`?environment=prod,staging`), portanto, um ambiente chamado `prod,blue` seria dividido em dois valores. Eventos com ambientes contendo vírgulas são rejeitados no momento da ingestão.
+
+---
+
+## Referência de Eventos
+
+Todos os métodos de evento exigem estes dois campos:
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `session_id` | `str` | Identifica a execução de agente de nível superior |
+| `agent_id` | `str` | Identifica qual agente dentro da sessão emitiu o evento |
+
+Todos os métodos também aceitam `**kwargs` arbitrários para metadados personalizados (consulte [Campos Personalizados](#custom-fields)).
+
+---
+
+### `event.agent_start()`
+
+Emitido quando um agente começa a trabalhar.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - agent_id pai para agentes aninhados
+)
+```
+
+---
+
+### `event.agent_end()`
+
+Emitido quando um agente termina de trabalhar.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+Emitido quando um agente invoca uma ferramenta. Combine com `tool_result`; o SDK calcula `duration_ms` automaticamente.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, obrigatório
+    tool_call_id="toolu_01",    # str, obrigatório - chave de correlação para o tool_result correspondente
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+Emitido quando uma ferramenta retorna. Correlaciona-se com `tool_use` via `tool_call_id`.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # deve corresponder ao tool_use anterior
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - definido se a ferramenta lançou uma exceção
+    # duration_ms é calculado automaticamente - não passe este campo
+)
+```
+
+---
+
+### `event.model_request()`
+
+Emitido imediatamente antes de enviar um prompt para um LLM.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    messages=[                   # list[dict] | None - turnos da conversa
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - str ou lista de blocos de conteúdo
+    tools=[                      # list[dict] | None - esquemas de ferramentas oferecidos ao modelo
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+As entradas de `messages` aceitam tanto um `content` em string simples quanto um `content` no estilo Anthropic de lista de blocos. Parâmetros de amostragem (`temperature`, `max_tokens`, etc.) podem ser passados como kwargs extras.
+
+---
+
+### `event.model_response()`
+
+Emitido quando o LLM retorna uma resposta.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - str, ou lista de blocos de conteúdo
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` aceita tanto uma string simples (provedores genéricos) quanto uma lista de blocos de conteúdo no estilo Anthropic. Chamadas de ferramentas ficam dentro de `content` como blocos `{"type": "tool_use", ...}`, sem um campo `tool_calls` separado.
+
+---
+
+### `event.hook_triggered()`
+
+Emitido quando um hook dispara. Combine com `hook_completed`; o SDK calcula `duration_ms` automaticamente.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, obrigatório
+    hook_id="hook-abc",         # str, obrigatório - chave de correlação
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+Emitido quando um hook termina. Correlaciona-se com `hook_triggered` via `hook_id`.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # deve corresponder ao hook_triggered anterior
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms é calculado automaticamente - não passe este campo
+)
+```
+
+---
+
+### `event.error()`
+
+Emitido quando ocorre um erro não tratado.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, obrigatório
+    message="timed out",        # str, obrigatório
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## Eventos de Human-in-the-Loop
+
+Os eventos de human-in-the-loop oferecem supervisão sobre os momentos em que uma pessoa intervém na execução do agente (aguardando aprovação, fornecendo entrada, pausando ou interrompendo o agente). Eles permitem medir quanto tempo os humanos levam para responder (o SDK calcula `duration_ms` automaticamente nos eventos pareados), auditar quem pausou ou interrompeu um agente, e construir fluxos de trabalho de aprovação e supervisão que aparecem no dashboard.
+
+### `event.human_wait()`
+
+Emitido quando o agente pausa a execução para aguardar que um humano forneça entrada. Combine com `human_input`; o SDK calcula `duration_ms` automaticamente (quanto tempo o humano levou para responder).
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, obrigatório - chave de correlação para o human_input correspondente
+    prompt="Do you approve this action?",        # str | None - a pergunta exibida ao humano
+    options=["approve", "reject", "defer"],      # list[str] | None - opções apresentadas ao humano
+    reason="approval_required",                  # str | None - por que o agente está aguardando
+)
+```
+
+### `event.human_input()`
+
+Emitido quando um humano fornece entrada e o agente retoma a execução. Correlaciona-se com `human_wait` via `input_id`. `duration_ms` é calculado automaticamente e não deve ser passado pelo chamador.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, obrigatório - deve corresponder ao human_wait anterior
+    response="approve",    # str | None - a resposta do humano (texto livre ou opção selecionada)
+    # duration_ms é calculado automaticamente - não passe este campo
+)
+```
+
+### `event.human_pause()`
+
+Emitido quando um humano pausa ativamente o agente (por exemplo, via controle no dashboard). O agente é suspenso, mas não encerrado.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - quem pausou o agente
+)
+```
+
+### `event.human_interrupt()`
+
+Emitido quando um humano para ativamente o agente no meio da execução. Diferente de `human_pause`, o trabalho do agente é encerrado em vez de suspenso.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - quem interrompeu o agente
+    at_step="tool_use:web_search",   # str | None - o que o agente estava fazendo quando foi parado
+)
+```
+
+---
+
+## Campos Personalizados
+
+Quaisquer argumentos de palavra-chave extras são acrescentados ao evento após os campos padrão:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # campo personalizado
+    region="us-east-1",         # campo personalizado
+)
+```
+
+`timestamp`, `type` e `environment` são reservados e lançam `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) se passados como campos personalizados. `session_id` e `agent_id` são parâmetros obrigatórios em todos os métodos de evento e não podem ser fornecidos uma segunda vez; o Python lança `TypeError` se isso ocorrer. Defina o ambiente com `configure(environment=...)` (ou a variável `AGENTEYE_ENVIRONMENT`) em vez disso.
+
+---
+
+## Como os Eventos São Gravados
+
+Os eventos são armazenados em buffer no processo e descarregados em disco a cada `flush_interval` segundos (padrão de 500 ms). Cada descarga grava um arquivo JSONL:
+
+```
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+O coletor monitora este diretório e faz o upload dos arquivos automaticamente. Você não precisa gerenciar esses arquivos diretamente.

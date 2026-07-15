@@ -8,9 +8,9 @@ description: "Configurer le comportement de failproofai avec des variables d'env
 | Variable | Description |
 |----------|-------------|
 | `PORT` | Port du tableau de bord (par défaut : `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Remplace l'emplacement où sont recherchés les dossiers de projets Claude Code |
+| `CLAUDE_PROJECTS_PATH` | Remplacer l'emplacement où les dossiers de projets Claude Code sont recherchés |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pages du tableau de bord à masquer, séparées par des virgules |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IPs autorisés à accéder aux ressources de développement. Équivalent à `--allowed-origins`. |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IPs autorisés à accéder aux ressources de développement. Identique à `--allowed-origins`. |
 
 ## Journalisation
 
@@ -23,25 +23,25 @@ description: "Configurer le comportement de failproofai avec des variables d'env
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactive la télémétrie d'utilisation anonyme |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactiver la télémétrie d'utilisation anonyme |
 
 ## Authentification
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Remplace l'URL de base du serveur API utilisée par `failproofai auth` et la boîte de dialogue d'authentification du tableau de bord. Par défaut `https://api.befailproof.ai` ; définir à `http://localhost:8080` (ou autre) lors de l'exécution d'un serveur API local. |
-| `FAILPROOFAI_AUTH_DIR` | Remplace l'emplacement où est stocké `auth.json` (par défaut : `~/.failproofai`). Principalement utile pour les tests isolés. |
+| `FAILPROOF_API_URL` | Remplacer l'URL de base du serveur API utilisée par `failproofai auth` et la boîte de dialogue d'authentification du tableau de bord. Par défaut `https://api.befailproof.ai` ; définir à `http://localhost:8080` (ou autre) lors de l'exécution d'un serveur API local. |
+| `FAILPROOFAI_AUTH_DIR` | Remplacer l'emplacement où `auth.json` est stocké (par défaut : `~/.failproofai`). Principalement utile pour les tests isolés. |
 
-## Invite au premier lancement
+## Invite de premier démarrage
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignore l'invite proposant d'installer les politiques lors du premier appel nu à `failproofai` |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignorer l'invite proposant d'installer les politiques lors de la première invocation simple de `failproofai` |
 
 ## LLM (pour l'évaluation des politiques)
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | Point de terminaison de l'API LLM (par défaut : `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Clé API pour les politiques alimentées par LLM |
+| `FAILPROOFAI_LLM_BASE_URL` | Point d'accès de l'API LLM (par défaut : `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | Clé API pour les politiques basées sur un LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nom du modèle (par défaut : `gpt-4o-mini`) |

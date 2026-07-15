@@ -11,8 +11,8 @@
  */
 import * as readline from "node:readline";
 import { BUILTIN_POLICIES } from "./builtin-policies";
-import { detectInstalledClis, getIntegration } from "./integrations";
-import { INTEGRATION_TYPES, type IntegrationType } from "./types";
+import { detectInstalledClis, getIntegration, listInstallableIds } from "./integrations";
+import { type IntegrationType } from "./types";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 
@@ -139,7 +139,11 @@ export function buildCliMenuOptions(
 ): { options: CliMenuOption[]; undetected: IntegrationType[] } {
   const undetected: IntegrationType[] =
     action === "install"
-      ? INTEGRATION_TYPES.filter((id) => !detected.includes(id))
+      ? // Only CLIs that support live-hook install — a future audit-only CLI
+        // (one with no INTEGRATIONS entry) has no install path and must not
+        // appear as a forward-install option. (hermes IS installable, so it
+        // correctly appears here.)
+        listInstallableIds().filter((id) => !detected.includes(id))
       : [];
 
   const options: CliMenuOption[] = [];
@@ -390,7 +394,24 @@ export async function promptPolicySelection(
     }));
 
   const total = items.length;
-  const WINDOW_SIZE = 8;
+  const WINDOW_SIZE = 10;
+
+  // clack-style glyphs + colors (honor NO_COLOR)
+  const useColor = !process.env.NO_COLOR;
+  const col = (code: string) => (s: string) => (useColor ? `\x1B[${code}m${s}\x1B[0m` : s);
+  const dim = col("2");
+  const cyan = col("36");
+  const cyanBold = col("1;36");
+  const green = col("32");
+  const bold = col("1");
+  const magenta = col("35");
+  const BAR = "│";
+  const STEP = "◆";
+  const DONE = "◇";
+  const BOX_ON = "◼";
+  const BOX_OFF = "◻";
+  // Fixed name column so descriptions align into a clean, scannable second column.
+  const NAME_COL = Math.min(34, Math.max(10, ...items.map((i) => i.name.length)));
 
   let cursor = 0;
   let search = "";
@@ -479,44 +500,36 @@ export async function promptPolicySelection(
   }
 
   function render(): void {
-    const cols = process.stdout.columns || 120;
+    const cols = process.stdout.columns || 100;
     hideCursor();
 
     const filtered = getFiltered();
     const shown = filtered.length;
-
-    // Clamp cursor to filtered list bounds
     if (shown > 0 && cursor >= shown) cursor = shown - 1;
+    const selectedCount = items.filter((i) => i.selected).length;
 
+    const g = dim(BAR);
     const lines: string[] = [];
 
-    // ── Title ────────────────────────────────────────────────────
-    lines.push("  Failproof AI \u2014 Policy Manager");
-    lines.push("");
+    // header
+    lines.push(g);
+    lines.push(
+      `${cyan(STEP)}  ${bold("Choose the policies to enable")}   ${dim("·")}   ` +
+        `${cyan(String(selectedCount))} ${dim("selected")}`,
+    );
 
-    // ── Bordered search box ──────────────────────────────────────
-    const innerWidth = Math.max(20, cols - 6);
-    const topBorder = "  \u250c" + "\u2500".repeat(innerWidth + 2) + "\u2510";
-    const botBorder = "  \u2514" + "\u2500".repeat(innerWidth + 2) + "\u2518";
-    const cursorChar = "\x1B[7m \x1B[0m"; // reverse-video block cursor
-    const countPart = search
-      ? ` \x1B[2m(${shown}/${total})\x1B[0m`
-      : ` \x1B[2m(${total} policies)\x1B[0m`;
-    const searchContent = `\x1B[1mSearch:\x1B[0m ${search}${cursorChar}${countPart}`;
-    lines.push(topBorder);
-    lines.push(`  \u2502 ${searchContent}`);
-    lines.push(botBorder);
-    lines.push("");
+    // search
+    const blockCursor = useColor ? "\x1B[7m \x1B[0m" : "_";
+    const countLabel = search ? dim(`${shown}/${total} shown`) : dim(`${total} policies`);
+    lines.push(`${g}  ${dim("filter ›")} ${search}${blockCursor}   ${countLabel}`);
+    lines.push(g);
 
-    // ── Content area ─────────────────────────────────────────────
     if (shown === 0) {
-      lines.push("  \x1B[2mNo policies match \u201c" + search + "\u201d\x1B[0m");
-      // Pad to stable height: 1 (scroll-up) + WINDOW_SIZE (rows) + 1 (scroll-down)
-      for (let i = 0; i < WINDOW_SIZE + 1; i++) lines.push("");
+      lines.push(`${g}  ${dim(`no policies match “${search}”`)}`);
+      for (let i = 0; i < WINDOW_SIZE + 1; i++) lines.push(g);
     } else {
       const displayRows = buildDisplayRows(filtered);
 
-      // Find the display row index that corresponds to the current cursor
       let cursorDisplayRow = 0;
       for (let i = 0; i < displayRows.length; i++) {
         const row = displayRows[i];
@@ -525,89 +538,42 @@ export async function promptPolicySelection(
           break;
         }
       }
-
-      // Viewport: keep cursor row roughly centred
       let windowStart = cursorDisplayRow - Math.floor(WINDOW_SIZE / 2);
       windowStart = Math.max(0, windowStart);
       windowStart = Math.min(windowStart, Math.max(0, displayRows.length - WINDOW_SIZE));
       const windowEnd = Math.min(displayRows.length, windowStart + WINDOW_SIZE);
 
-      // Scroll-up indicator (always reserve this line for stable height)
-      const aboveItems = displayRows
-        .slice(0, windowStart)
-        .filter((r) => r.kind === "item").length;
-      if (aboveItems > 0) {
-        lines.push(`  \x1B[2m  \u2191 ${aboveItems} more above\x1B[0m`);
-      } else {
-        lines.push("");
-      }
+      const aboveItems = displayRows.slice(0, windowStart).filter((r) => r.kind === "item").length;
+      lines.push(aboveItems > 0 ? `${g}  ${dim(`↑ ${aboveItems} more`)}` : g);
 
-      // Visible display rows
       for (let i = windowStart; i < windowEnd; i++) {
         const row = displayRows[i];
         if (row.kind === "header") {
-          // ── CATEGORY NAME (enabled/total) ─────
-          const label = ` ${row.category.toUpperCase()} (${row.enabledCount}/${row.totalCount}) `;
-          const prefix = "\u2500\u2500 ";
-          const prefixLen = 3 + label.length;
-          const dashLen = Math.max(2, cols - 2 - prefixLen);
-          lines.push(
-            `  \x1B[2m${prefix}${label}${"\u2500".repeat(dashLen)}\x1B[0m`,
-          );
+          lines.push(`${g}  ${dim(row.category.toUpperCase())}  ${dim(`${row.enabledCount}/${row.totalCount}`)}`);
         } else {
           const item = row.item;
-          const isActive = row.filteredIndex === cursor;
-          const pointer = isActive ? "\x1B[36m\u276f\x1B[0m" : " ";
-          const check = item.selected ? "\x1B[32m[\u2713]\x1B[0m" : "[ ]";
-          const namePart = isActive
-            ? `\x1B[1;36m${item.name}\x1B[0m`
-            : item.name;
-          const betaPart = item.beta ? " \x1B[35m[beta]\x1B[0m" : "";
-          const pad = " ".repeat(Math.max(1, 28 - item.name.length));
-          const desc = `\x1B[2m${item.description}\x1B[0m`;
-          lines.push(`  ${pointer} ${check} ${namePart}${betaPart}${pad}${desc}`);
+          const active = row.filteredIndex === cursor;
+          const box = item.selected ? green(BOX_ON) : dim(BOX_OFF);
+          const rawName = item.name.padEnd(NAME_COL);
+          const name = active ? cyanBold(rawName) : item.selected ? rawName : dim(rawName);
+          const beta = item.beta ? ` ${magenta("beta")}` : "";
+          const descWidth = Math.max(8, cols - NAME_COL - 8 - (item.beta ? 5 : 0));
+          const desc = dim(truncateLine(item.description, descWidth));
+          lines.push(`${g}  ${box} ${name}${beta}  ${desc}`);
         }
       }
+      for (let i = windowEnd - windowStart; i < WINDOW_SIZE; i++) lines.push(g);
 
-      // Pad window to fixed WINDOW_SIZE rows for stable height
-      for (let i = windowEnd - windowStart; i < WINDOW_SIZE; i++) {
-        lines.push("");
-      }
-
-      // Scroll-down indicator (always reserve this line for stable height)
-      const belowItems = displayRows
-        .slice(windowEnd)
-        .filter((r) => r.kind === "item").length;
-      if (belowItems > 0) {
-        lines.push(`  \x1B[2m  \u2193 ${belowItems} more below\x1B[0m`);
-      } else {
-        lines.push("");
-      }
+      const belowItems = displayRows.slice(windowEnd).filter((r) => r.kind === "item").length;
+      lines.push(belowItems > 0 ? `${g}  ${dim(`↓ ${belowItems} more`)}` : g);
     }
 
-    // ── Footer ───────────────────────────────────────────────────
-    lines.push("");
-    lines.push("  \x1B[2m" + "\u2500".repeat(cols - 2) + "\x1B[0m");
-    lines.push(
-      "  [\u2191\u2193] Move  [Space] Toggle  [Ctrl+A] All  [Ctrl+S] Save  [Esc] Clear  [^C] Quit",
-    );
-    lines.push("");
-    lines.push(
-      "  \x1B[2mTip: `policies` for a flat list \u00b7 `policies --install <name\u2026>` to skip prompt\x1B[0m",
-    );
-    if (!includeBeta) {
-      lines.push(
-        "  \x1B[2mTip: `policies --install --beta` to include beta policies\x1B[0m",
-      );
-    }
+    // footer
+    lines.push(g);
+    lines.push(`${g}  ${dim("↑/↓ move · space select · ctrl+a all · ↵ save · type to filter · esc clear")}`);
 
-    // ── Repaint: cursor-up by previous line count, clear to end, redraw ──
-    if (lastLineCount > 0) {
-      process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
-    }
-    const output =
-      lines.map((l) => (l === "" ? l : truncateLine(l, cols))).join("\n") + "\n";
-    process.stdout.write(output);
+    if (lastLineCount > 0) process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
+    process.stdout.write(lines.map((l) => truncateLine(l, cols)).join("\n") + "\n");
     lastLineCount = lines.length;
   }
 
@@ -641,10 +607,19 @@ export async function promptPolicySelection(
           cursor = cursor < filtered.length - 1 ? cursor + 1 : 0;
         }
         render();
-      } else if (key.name === "return" || key.name === "space") {
+      } else if (key.name === "space") {
         const item = filtered[cursor];
         if (item) item.selected = !item.selected;
         render();
+      } else if (key.name === "return" || (key.ctrl && key.name === "s")) {
+        // Save — collapse the picker to a one-line summary, then resolve.
+        cleanup();
+        const selected = items.filter((i) => i.selected).map((i) => i.name);
+        if (lastLineCount > 0) process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
+        process.stdout.write(
+          `${dim(BAR)}\n${dim(DONE)}  Policies\n${dim(BAR)}  ${dim(`${selected.length} selected`)}\n`,
+        );
+        resolve(selected);
       } else if (key.name === "escape") {
         // Clear search filter
         search = "";
@@ -655,12 +630,6 @@ export async function promptPolicySelection(
         const allSelected = filtered.length > 0 && filtered.every((i) => i.selected);
         for (const item of filtered) item.selected = !allSelected;
         render();
-      } else if (key.ctrl && key.name === "s") {
-        // Submit
-        cleanup();
-        const selected = items.filter((i) => i.selected).map((i) => i.name);
-        process.stdout.write("\n");
-        resolve(selected);
       } else if (key.name === "backspace" || key.name === "delete") {
         if (search.length > 0) {
           search = search.slice(0, -1);

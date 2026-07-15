@@ -1,4 +1,5 @@
 ---
+---
 title: متغيرات البيئة
 description: "تكوين سلوك failproofai باستخدام متغيرات البيئة"
 ---
@@ -9,39 +10,39 @@ description: "تكوين سلوك failproofai باستخدام متغيرات ا
 |----------|-------------|
 | `PORT` | منفذ لوحة التحكم (الافتراضي: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | تجاوز موقع مجلدات مشاريع Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | صفحات لوحة التحكم المفصولة بفواصل لإخفاؤها |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | المضيفون/عناوين IP المسموح لها بالوصول إلى موارد التطوير. نفس `--allowed-origins`. |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | صفحات لوحة التحكم المراد إخفاؤها مفصولة بفواصل |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | المضيفون/عناوين IP المسموح لهم بالوصول إلى موارد التطوير. نفس `--allowed-origins`. |
 
 ## تسجيل السجلات
 
 | المتغير | الوصف |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | مستوى سجل الخادم (الافتراضي: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | مسار ملف السجل المخصص للخطاف، أو `true` للقيمة الافتراضية (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | مسار ملف سجل hook مخصص، أو `true` للقيمة الافتراضية (`~/.failproofai/logs/hooks.log`) |
 
-## بيانات الاستخدام
+## جمع البيانات
 
 | المتغير | الوصف |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | تعطيل بيانات الاستخدام المجهولة |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | تعطيل جمع بيانات الاستخدام المجهول |
 
 ## المصادقة
 
 | المتغير | الوصف |
 |----------|-------------|
-| `FAILPROOF_API_URL` | تجاوز عنوان URL الأساسي للخادم الذي تستخدمه `failproofai auth` وحوار مصادقة لوحة التحكم. القيمة الافتراضية `https://api.befailproof.ai`؛ اضبطها على `http://localhost:8080` (أو في أي مكان آخر) عند تشغيل خادم api محلي. |
-| `FAILPROOFAI_AUTH_DIR` | تجاوز موقع تخزين `auth.json` (الافتراضي: `~/.failproofai`). مفيد بشكل أساسي للاختبارات المعزولة. |
+| `FAILPROOF_API_URL` | تجاوز عنوان URL الأساسي لخادم API الذي يستخدمه `failproofai auth` ومربع حوار مصادقة لوحة التحكم. القيمة الافتراضية `https://api.befailproof.ai`؛ عيّنها إلى `http://localhost:8080` (أو حيثما يكون) عند تشغيل خادم api محلي. |
+| `FAILPROOFAI_AUTH_DIR` | تجاوز موقع تخزين `auth.json` (الافتراضي: `~/.failproofai`). مفيد في الغالب للاختبارات المعزولة. |
 
-## مطالبة التشغيل الأول
-
-| المتغير | الوصف |
-|----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | تخطي المطالبة التي تعرض تثبيت السياسات عند استدعاء `failproofai` الأول الفارغ |
-
-## نموذج اللغة (لتقييم السياسة)
+## طلب التشغيل الأول
 
 | المتغير | الوصف |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | نقطة نهاية واجهة برمجة التطبيقات للنموذج (الافتراضي: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | مفتاح واجهة برمجة التطبيقات لسياسات مدعومة بنموذج اللغة |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | تخطي الطلب الذي يعرض تثبيت السياسات عند استدعاء `failproofai` الأول الأساسي |
+
+## LLM (لتقييم السياسات)
+
+| المتغير | الوصف |
+|----------|-------------|
+| `FAILPROOFAI_LLM_BASE_URL` | نقطة نهاية LLM API (الافتراضي: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | مفتاح API لسياسات مدعومة بـ LLM |
 | `FAILPROOFAI_LLM_MODEL` | اسم النموذج (الافتراضي: `gpt-4o-mini`) |

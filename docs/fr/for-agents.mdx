@@ -1,9 +1,9 @@
 ---
 title: "Pour les agents"
-description: "Ajoutez les connaissances Failproof AI à votre agent de codage en une seule commande. Compatible avec Claude Code, Cursor, Windsurf et bien d'autres."
+description: "Ajoutez la documentation Failproof AI à votre agent de développement en une seule commande. Compatible avec Claude Code, Cursor, Windsurf et bien d'autres."
 ---
 
-Ajoutez la référence complète de Failproof AI à votre agent de codage en une seule commande. Compatible avec Claude Code, Cursor, Windsurf et tout autre agent prenant en charge les skills.
+Ajoutez la référence complète de Failproof AI à votre agent de développement en une seule commande. Compatible avec Claude Code, Cursor, Windsurf et tout autre agent prenant en charge les skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
@@ -13,8 +13,8 @@ npx skills add https://docs.befailproof.ai
 
 ## Ce que couvre le skill
 
-| Domaine | Contenu inclus |
-|---------|----------------|
+| Domaine | Contenu |
+|---------|---------|
 | Politiques | Noms des politiques intégrées, types d'événements, paramètres, activation/désactivation |
 | Politiques personnalisées | `customPolicies.add()`, filtres de correspondance, API `allow`/`deny`/`instruct` |
 | Objet de contexte | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
@@ -25,9 +25,9 @@ npx skills add https://docs.befailproof.ai
 
 ## Le skill est-il complet ?
 
-Mintlify génère `llms.txt` à partir de toutes les pages de la navigation. La documentation Failproof AI couvre l'API complète — chaque politique, option et exemple est inclus. Si vous constatez qu'il manque quelque chose, la source se trouve à `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify génère `llms.txt` à partir de toutes les pages de la navigation. La documentation Failproof AI couvre l'intégralité de l'API — chaque politique, option et exemple est inclus. Si vous constatez qu'il manque quelque chose, la source se trouve à `https://docs.befailproof.ai/llms-full.txt`.
 
-Pour un contexte ciblé, créez un lien directement vers une page spécifique :
+Pour un contexte ciblé, faites un lien directement vers une page spécifique :
 
 ```bash
 # Uniquement l'API des politiques personnalisées

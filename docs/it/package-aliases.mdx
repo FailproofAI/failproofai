@@ -16,17 +16,17 @@ bun add -g failproofai
 
 ---
 
-## Perché possediamo i nomi degli alias
+## Perché possediamo i nomi alias
 
-Il typosquatting è un attacco comune alla supply chain in cui un attore malevolo registra un nome di pacchetto che dista una pressione di tasto da un pacchetto popolare. Gli utenti ignari che commettono errori di battitura durante l'installazione finiscono per eseguire codice controllato dall'attaccante con accesso completo al sistema - esattamente il tipo di minaccia che Failproof AI è progettato per difendere.
+Il typosquatting è un attacco alla supply chain comune in cui un attore malevolo registra un nome di pacchetto che dista una pressione di tasto da un pacchetto popolare. Gli utenti ignari che commettono errori di battitura nel comando di installazione finiscono per eseguire codice controllato dall'attaccante con accesso completo al sistema - esattamente il tipo di minaccia che Failproof AI è progettato per difendere.
 
-Per eliminare questa superficie di attacco, **possediamo preventivamente tutte le comuni varianti di ortografia e formattazione** di `failproofai` su npm. Nessuno di questi nomi può essere registrato da terze parti. Ognuno di essi è un thin proxy che installa e delega al vero pacchetto `failproofai`.
+Per eliminare questa superficie di attacco, **possediamo preventivamente tutti gli errori di battitura comuni e le varianti di formattazione** di `failproofai` su npm. Nessuno di questi nomi può essere registrato da terze parti. Ognuno di essi è un proxy sottile che installa e delega al vero pacchetto `failproofai`.
 
 ---
 
 ## Alias registrati
 
-**Varianti di formattazione** - diversi modi di scrivere "failproof ai":
+**Varianti di formattazione** - modi diversi di scrivere "failproof ai":
 
 | Pacchetto | Stato |
 |---------|--------|
@@ -47,7 +47,7 @@ Per eliminare questa superficie di attacco, **possediamo preventivamente tutte l
 | `fail-prof-ai` | ⏳ In attesa di supporto npm |
 | `failprof_ai` | ⏳ In attesa di supporto npm |
 
-**Errori di battitura `faliproof*`** - `a` e `i` trasposte:
+**Errori di battitura `faliproof*`** - `a` e `i` scambiate:
 
 | Pacchetto | Stato |
 |---------|--------|
@@ -55,13 +55,13 @@ Per eliminare questa superficie di attacco, **possediamo preventivamente tutte l
 | `faliproof-ai` | ✅ Pubblicato |
 | `faliproofai` | ⏳ In attesa di supporto npm |
 
-> **Perché in sospeso?** La politica anti-spam di npm blocca i nomi che si normalizzano alla stessa stringa di un pacchetto esistente dopo aver rimosso la punteggiatura ed eseguito controlli di somiglianza. Abbiamo contattato il supporto npm per riservare questi nomi a scopo anti-squatting. Verranno attivati una volta approvati.
+> **Perché in attesa?** La politica di prevenzione dello spam di npm blocca i nomi che si normalizzano alla stessa stringa di un pacchetto esistente dopo aver rimosso la punteggiatura ed eseguito controlli di somiglianza. Abbiamo contattato il supporto npm per riservare questi nomi a scopo di protezione dal typosquatting. Verranno attivati una volta approvati.
 
-Puoi verificare che qualsiasi alias pubblicato ci appartiene:
+Puoi verificare che qualsiasi alias pubblicato sia di nostra proprietà:
 
 ```bash
 npm info failproof
-# Cerca: "ExosphereHost Inc." nel campo maintainers
+# Cerca: "ExosphereHost Inc." nel campo dei manutentori
 ```
 
 ---
@@ -70,13 +70,13 @@ npm info failproof
 
 Ogni pacchetto alias:
 
-1. Elenca `failproofai` come dipendenza - così il vero pacchetto (inclusa la sua configurazione hook `postinstall`) viene eseguito durante l'installazione
-2. Espone un binario che corrisponde al suo stesso nome (ad es. `failprof-ai`) che proxy tutti gli argomenti al binario `failproofai`
+1. Elenca `failproofai` come dipendenza - così il vero pacchetto (inclusa la sua configurazione del hook `postinstall`) viene eseguito al momento dell'installazione
+2. Espone un binario che corrisponde al proprio nome (ad es. `failprof-ai`) che proxy tutti gli argomenti al binario `failproofai`
 
-Il proxy è uno script Node di due righe; non c'è logica, nessuna chiamata di rete e nessuna raccolta di dati oltre a quella che `failproofai` stesso esegue.
+Il proxy è uno script Node di due righe; non c'è logica, nessuna chiamata di rete e nessuna raccolta di dati oltre a quella che fa `failproofai` stesso.
 
 ---
 
-## Se trovi un nome che abbiamo tralasciato
+## Se trovi un nome che abbiamo perso
 
-Apri un issue su [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) e lo registreremo.
+Apri una segnalazione su [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) e lo registreremo.

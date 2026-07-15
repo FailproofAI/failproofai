@@ -14,17 +14,17 @@ Claude Code의 `settings.json`에서 failproofai 훅 항목을 제거합니다.
 ## 옵션
 
 | 플래그 | 설명 |
-|--------|------|
+|------|-------------|
 | `--scope user` | 전역 설정에서 제거 (기본값) |
 | `--scope project` | 프로젝트 설정에서 제거 |
 | `--scope local` | 로컬 설정에서 제거 |
 | `--scope all` | 모든 범위에서 한 번에 제거 |
-| `--custom` / `-c` | 설정에서 `customPoliciesPath` 삭제 |
+| `--custom` / `-c` | 설정에서 `customPoliciesPath` 초기화 |
 
 ## 동작 방식
 
-- **정책 이름 미지정** - 설정 파일에서 모든 failproofai 훅 항목을 제거합니다
-- **특정 이름 지정** - 해당 정책을 비활성화하되 훅은 설치된 상태로 유지합니다
+- **정책 이름 미지정** - 설정 파일에서 failproofai 훅 항목을 모두 제거
+- **특정 이름 지정** - 해당 정책을 비활성화하되 훅은 설치된 상태로 유지
 
 ## 예시
 
@@ -38,6 +38,6 @@ failproofai policies --uninstall block-sudo
 # 모든 범위에서 훅 제거
 failproofai policies --uninstall --scope all
 
-# 커스텀 정책 경로 삭제
+# 커스텀 정책 경로 초기화
 failproofai policies --uninstall --custom
 ```

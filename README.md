@@ -72,9 +72,18 @@ before they become incidents. Zero latency. Runs locally.
       <img src="assets/logos/gemini-light.svg" alt="Gemini CLI" width="64" height="64" />
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/FailproofAI/failproofai/blob/main/docs/configuration.mdx" title="Hermes (hermes-agent)">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+      <img src="assets/logos/hermes-light.svg" alt="Hermes" width="64" height="64" />
+    </picture>
+  </a>
 </p>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi gemini` (or `--cli claude codex copilot cursor opencode pi gemini`). Omit `--cli` to auto-detect installed CLIs and prompt.
+> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi gemini` (or `--cli claude codex copilot cursor opencode pi gemini hermes`). Omit `--cli` to auto-detect installed CLIs and prompt.
+>
+> **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
 
 ---
 

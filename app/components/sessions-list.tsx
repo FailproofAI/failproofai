@@ -207,6 +207,25 @@ export default function SessionsList({ files, projectName }: SessionsListProps) 
                       </span>
                     )}
                     {file.cli && <CliBadge cli={file.cli} />}
+                    {(file.userId || file.channelId) && (
+                      <div
+                        style={{
+                          fontSize: "0.7rem",
+                          opacity: 0.6,
+                          marginTop: "0.15rem",
+                          display: "flex",
+                          gap: "0.6rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {file.userId && <span title="Gateway user">user {file.userId}</span>}
+                        {file.channelId && (
+                          <span title="Channel">
+                            {file.channelType ?? "channel"} {file.channelId}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="sessions-td sessions-td-date">
                     {file.lastModifiedFormatted || formatDate(file.lastModified)}

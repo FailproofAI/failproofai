@@ -1,0 +1,95 @@
+---
+title: "AgentEye CLI Agent Skill"
+description: "AgentEye AgentEye CLI Agent Skill Dokumentation."
+---
+
+
+Der **AgentEye CLI Skill** (`agenteye-cli`) ist ein installierbarer *Agent Skill*, der einem Coding-Agenten — Claude Code, Codex und kompatiblen Tools — beibringt, Ihr AgentEye-Deployment über die [`agenteye` CLI](/de/agenteye/cli) per Freitext zu steuern: *„Läuft heute alles?"*, *„Erstell CI einen Key, der nur Events pushen darf"*, *„Bestätige den aktiven Incident und weise ihn mir zu"*.
+
+Es handelt sich **nicht** um einen Dienst oder eine separate Binary. Es ist ein kleines Instruktions-Bundle, das auf der bereits installierten CLI aufsetzt: Der Agent ruft `agenteye --json …` auf, parst das saubere JSON und antwortet in Prosa. Alles, was er kann, könnten Sie selbst durch Eingabe derselben Befehle erledigen.
+
+---
+
+## Verhältnis zu den anderen AgentEye-Schnittstellen
+
+AgentEye bietet vier Wege, auf dieselben Daten und Funktionen zuzugreifen. Sie ergänzen sich gegenseitig:
+
+| Schnittstelle | Was es ist | Wo es läuft | Wann Sie es verwenden |
+|---|---|---|---|
+| **[CLI](/de/agenteye/cli)** | Die Befehls- und Flag-Referenz für `agenteye` | Ihr Terminal | Sie möchten einen konkreten Befehl ausführen oder skripten |
+| **[CLI-Rezepte](/de/agenteye/cli-recipes)** | Fertige `jq`-/Pipeline-Muster zum Kopieren | Ihr Terminal / Skripte | Sie binden die CLI in Automatisierungen ein |
+| **CLI Skill** (dieses Dokument) | Ein natürlichsprachlicher Einstieg in die CLI | Ihr Coding-Agent auf Ihrem Rechner | Sie möchten einfach fragen und den Agenten den passenden Befehl auswählen lassen |
+| **[In-Dashboard-KI-Assistent](/de/agenteye/assistant)** | Ein im Dashboard eingebetteter Chat | Ein interner `agent`-Container in Ihrem Cluster | Sie möchten im Dashboard Fragen zu Ihren Daten stellen |
+
+### vs. dem In-Dashboard-KI-Assistent — ein wichtiger Unterschied
+
+Das sind zwei grundlegend verschiedene Tools mit sehr unterschiedlichem Wirkungsradius:
+
+- Der **In-Dashboard-KI-Assistent** ([assistant.md](/de/agenteye/assistant)) ist ein im Dashboard eingebetteter Chat, der von einem internen `agent`-Container betrieben wird. Er ist **lesend plus genehmigungspflichtig beim Schreiben**: Er kann gespeicherte Abfragen und Dashboards entwerfen, aber jede Schreiboperation erfordert Ihre explizite Bestätigung per Klick — gelöscht wird nie. Er ist durch die Berechtigung `agent:use` abgesichert und sieht ausschließlich Daten der Organisation, die Sie gerade betrachten.
+- Der **CLI Skill** läuft auf *Ihrem* Rechner innerhalb *Ihres* Coding-Agenten und steuert die `agenteye` CLI als **Sie**. Er kann die **gesamte Oberfläche der CLI nutzen, einschließlich schreibender Operationen** — API-Keys erstellen/rotieren/deaktivieren, Org-Einstellungen ändern, Incidents auflösen, gespeicherte Abfragen löschen — begrenzt nur durch die Berechtigungen Ihres CLI-Logins. Gehen Sie damit genauso sorgfältig um, als würden Sie diese Befehle selbst eintippen.
+
+---
+
+## Voraussetzungen
+
+1. Die **`agenteye` CLI ist installiert** und im `PATH` (siehe [cli.md](/de/agenteye/cli) — `pipx install agenteye`).
+2. Ihre **Dashboard-URL** ist gesetzt (`AGENTEYE_DASHBOARD_URL`, oder der Agent übergibt `--base-url`).
+3. Eine **aktive Sitzung**: Führen Sie `agenteye login` selbst aus. Der Skill **kann** den per E-Mail versandten Einmalcode-Login nicht für Sie abschließen — er weist Sie darauf hin, `agenteye login` auszuführen, falls die Sitzung fehlt oder abgelaufen ist (CLI-Exit-Code `4`).
+
+---
+
+## Den Skill installieren
+
+Agent Skills sind Ordner mit einer `SKILL.md` (plus optionalen Referenzen). Den `agenteye-cli` Skill installieren Sie, indem Sie seinen Ordner dort ablegen, wo Ihr Agent nach Skills sucht:
+
+- **Claude Code** — Kopieren Sie den Ordner `agenteye-cli/` nach `~/.claude/skills/` (in allen Projekten verfügbar) oder nach `<ihr-repo>/.claude/skills/` (auf dieses Repository beschränkt). Claude Code erkennt ihn automatisch; prüfen Sie dies mit der `/skills`-Liste oder stellen Sie einfach eine passende Frage.
+- **Codex (OpenAI)** — Codex liest dieselbe `SKILL.md`. Die mitgelieferte `agents/openai.yaml` setzt `allow_implicit_invocation: true`, sodass Codex den Skill automatisch auswählt, wenn eine Aufgabe passt; andernfalls rufen Sie ihn explizit als `$agenteye-cli` auf.
+
+Der Skill wird zusammen mit der `agenteye` CLI gepflegt und als Teil Ihres AgentEye-Pakets ausgeliefert — falls Sie den `agenteye-cli`-Ordner nicht haben, wenden Sie sich an Ihren AgentEye-Kontakt. Er ist vollständig offen zugänglich: Er benötigt kein Docker-Image und keine separaten Anmeldedaten, da er ausschließlich die **öffentliche** `agenteye` CLI gegen Ihr eigenes Dashboard betreibt.
+
+---
+
+## Sicherheit — schreibende Operationen werden NICHT bestätigt, wenn ein Agent die CLI ausführt
+
+**Lesen Sie dies, bevor Sie einen Agenten Änderungen vornehmen lassen.**
+
+Die `agenteye` CLI fragt normalerweise *„Sind Sie sicher?"* vor einer destruktiven Aktion. Sie **überspringt diese Bestätigung automatisch, wenn kein Terminal angehängt ist — was genau der Fall ist, wenn ein Coding-Agent sie ausführt — und `--json` überspringt sie ebenfalls.** Der Sicherheits-Prompt wird für den Agenten also **nicht** ausgelöst.
+
+Der Skill ist so konzipiert, dass er dies ausgleicht: Er ist angewiesen, den genauen Befehl, den er ausführen wird, anzugeben und Ihr explizites **OK vor jeder Zustandsänderung** einzuholen. Halten Sie diese Disziplin ein — wenn Sie AgentEye über einen Agenten steuern, *sind Sie* der Bestätigungsschritt. Die zustandsändernden Befehle, auf die Sie achten sollten:
+
+- `keys create` / `update` / `disable` / `regenerate`
+- `users create` / `update` / `disable` / `enable`
+- `settings set`
+- `alerts create` / `update` / `delete` / `test`
+- die schreibenden `incidents`-Unterbefehle: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- `query create` / `update` / `delete`
+- `agent rename` / `delete`
+- `orgs switch`
+
+Alles unter **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) ist schreibgeschützt und ändert nichts.
+
+Da der Agent als **Sie** handelt, kann er nur das tun, wozu Ihr Login berechtigt ist — Berechtigungen werden **pro Organisation** aufgelöst (siehe [api-keys.md](/de/agenteye/api-keys)). Ein Befehl, für den Sie keine Berechtigung haben, gibt Exit-Code `5` mit dem genauen Namen der fehlenden Berechtigung zurück, sodass der Agent Ihnen präzise sagen kann, was Sie von einem Admin anfordern müssen, anstatt undurchsichtig zu scheitern.
+
+---
+
+## Was Sie fragen können
+
+Der Skill ordnet natürlichsprachliche Absichten dem richtigen `agenteye`-Befehl zu, indem er zunächst gültige Werte ermittelt (`list <kind>`, `whoami`) und nicht rät:
+
+- *„Gibt es aktuell Fehler / Ausfälle in den letzten 24 Stunden?"* → `errors --since 24h --aggregate`, dann eine Aufschlüsselung.
+- *„Warum ist Sitzung `run-001` fehlgeschlagen?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *„Wie entwickelt sich die Qualität diese Woche?"* → `evals --aggregate --since 7d`, dann Drill-down in schwach bewertete Läufe.
+- *„Erstell CI einen Key, der nur Events pushen darf."* → `keys create ci --add events:add` (gibt den Befehl an, erstellt ihn und speichert das einmalige Secret).
+- *„Wer hat Zugriff? Mach Dana zum reinen Lesezugriff."* → `users list` → `users update dana@… --permission-set read-only` (nach Ihrer Bestätigung).
+- *„Bestätige den aktiven Incident und weise ihn mir zu."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
+
+Die genauen Befehle, Flags und JSON-Strukturen dahinter finden Sie in [cli.md](/de/agenteye/cli) und [cli-recipes.md](/de/agenteye/cli-recipes).
+
+---
+
+## Siehe auch
+
+- **[CLI](/de/agenteye/cli)** — vollständige Befehls- und Flag-Referenz für `agenteye`.
+- **[CLI-Rezepte für Agenten](/de/agenteye/cli-recipes)** — fertige `jq`-Muster und Exit-Code-Behandlung.
+- **[KI-Assistent](/de/agenteye/assistant)** — der In-Dashboard-Assistent (nicht mit diesem Terminal-Skill zu verwechseln).
+- **[API-Keys](/de/agenteye/api-keys)** — das organisationsweite Berechtigungsmodell, das den Wirkungsbereich des Skills begrenzt.

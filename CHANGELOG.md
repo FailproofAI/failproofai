@@ -1,5 +1,86 @@
 # Changelog
 
+<<<<<<< Updated upstream
+## 0.0.13 — 2026-07-14
+
+### Release
+- Promote the complete `0.0.12-beta.0` through `0.0.13-beta.3` cycle to stable `0.0.13`; the per-beta sections below preserve the full feature, fix, dependency, and documentation history for this release.
+
+### Docs
+- Add AgentEye enterprise product documentation as a second Mintlify product (top-level product switcher, English-only) and make the docs translation pipeline product-aware — recursive nav-reference validation (`getNavigationPageReferences`) and English-only product exclusion in `getEnglishMdxPages`. (#507)
+
+## 0.0.13-beta.3 — 2026-07-13
+
+### Fixes
+- Fix the Pi live `pi list` roundtrip e2e tests against pi-coding-agent ≥0.80: newer Pi no longer trusts project-local `.pi/settings.json` by default, so the tests now detect the installed Pi version and pass `pi list --approve` on ≥0.80 (older Pi trusts project settings without the flag and would reject it) to include the project-scope package failproofai's installer writes (previously `pi list` printed "No packages installed." — failing the install roundtrip and making the uninstall roundtrip pass vacuously). Gated behind `detectPiVersion()`, so it only runs where `pi` is installed. (#491)
+
+## 0.0.13-beta.2 — 2026-07-10
+
+### Fixes
+- Skip the `require-*-before-stop` workflow gates during Claude Code plan mode (`permission_mode: "plan"`) — plan mode makes no commits/pushes/PRs by design, so the gates were wrongly demanding actions plan mode forbids (e.g. `git push` with nothing to push, blocking the agent from finishing). (#488)
+- Fix translation regressions from the #486 docs sync: strip hallucinated `{#…}` heading-ID syntax that broke MDX parsing (`ja/built-in-policies`), restore dropped YAML frontmatter (`tr/cli/hook`) and the `--cli …|hermes` inline code span (`he/configuration`), and un-translate an inline-code placeholder (`de/cli/auth`). (#487)
+
+## 0.0.13-beta.1 — 2026-07-10
+
+### Features
+- Add Hermes (hermes-agent) **audit** integration (offline replay): `failproofai audit` discovers Hermes gateway sessions from the single `~/.hermes/state.db` and replays every tool call through the existing policy engine + audit detectors. Introduces a **reusable SQLite read layer** (`lib/sqlite-reader.ts`) that reads **live** data via Node's built-in `node:sqlite` (WAL-aware — sees rows still in the write-ahead log) with a pure-JS `sql.js` fallback for Node < 22.5 (no native module — survives `npm install --ignore-scripts`), so this and future SQLite-backed agents read their DB directly; **opencode and every already-shipped CLI keep their existing CLI shell-out unchanged.** Parses the OpenAI-shape `messages` rows into the shared `LogEntry[]` form, groups gateway sessions by `source` (Slack/Telegram/cli/cron — which have no cwd), and uses `message_count` as a per-transcript cache key. Adds `HERMES_TOOL_MAP` (`terminal→Bash`, `read_file→Read`, `write_file→Write`, `patch→Edit`, `web_search→WebSearch`, …) and makes the live-hook install registry (`INTEGRATIONS`) `Partial` so audit-only CLIs are never offered for hook install. (#486)
+- Surface Hermes sessions in the dashboard's **projects / history browser** (not just the audit counts): a `getHermesProjects()` provider groups gateway sessions into `hermes-<source>` projects, the project-detail page lists them, and the session viewer renders the full transcript (badged **Hermes**) with a JSONL download. Wired through `lib/projects.ts`, `lib/cli-registry.ts`, `lib/download-session.ts`, and the `app/project/[name]` routes. (#486)
+- Promote Hermes to a **live-hook** integration (Pillar 1): `failproofai policies --install --cli hermes` wires failproofai into `~/.hermes/config.yaml` under a `hooks:` map so the client's **custom policies intercept and block Hermes tool calls in real time**. A `deny()` emits Hermes's `{"decision":"block","reason"}` stdout contract (Hermes ignores exit codes) and actually stops the tool before it runs. **Platform-independent by design** — the `pre_tool_call` hook fires on the tool event, not the platform, so one install intercepts every source (Slack/Telegram/cli/cron) and internal subagents uniformly. Installs `pre_tool_call`/`post_tool_call`/`on_session_start`/`on_session_end`/`subagent_stop` (via `HERMES_EVENT_MAP`), edits the YAML through a comment-preserving `Document` round-trip so the operator's other settings survive, and sets `hooks_auto_accept: true` so the headless gateway (no TTY) runs the hooks without a consent prompt. **Known limitations:** Hermes has **no turn-end `Stop` event**, so the 5 `require-*-before-stop` builtins never fire for it (inapplicable, not broken); `instruct()` degrades to allow-with-logged-note (Hermes has no additional-context channel); and tool calls inside processes Hermes spawns via `terminal` run in a separate process (gate the spawn at `pre_tool_call`). Every other already-integrated CLI is untouched. (#486)
+
+### Docs
+- Document Hermes across the README (install examples + logo) and the reference docs — `configuration` / `getting-started` / `dashboard` / `introduction`. (#486)
+
+### Dependencies
+- Add `sql.js` (pure-JS/asm SQLite) as the **fallback** SQLite reader in `lib/sqlite-reader.ts` for Node < 22.5 (recent Node uses the built-in `node:sqlite`). No native build — survives `npm install --ignore-scripts`; kept external in the CLI bundle so it resolves from `node_modules` at runtime like `posthog-node`. (#486)
+- Add `yaml` (eemeli/yaml — pure JS, zero deps, no native build; survives `npm install --ignore-scripts`) for the Hermes live-hook integration. Its `parseDocument`/`Document` API round-trips `~/.hermes/config.yaml` **preserving the operator's other keys + comments (outside the `hooks:` block)** when failproofai installs/removes its hooks. (#486)
+
+## 0.0.13-beta.0 — 2026-07-09
+
+### Features
+- Sync agent CLI hook harnesses with upstream docs. Append newly-documented hook events: Codex `subagent_start`/`pre_compact`/`post_compact`/`subagent_stop` (with their `CODEX_EVENT_MAP` canonical mappings to `SubagentStart`/`PreCompact`/`PostCompact`/`SubagentStop`); Copilot `PostToolUseFailure`/`ErrorOccurred`/`PreCompact`/`PermissionRequest`/`Notification`; Claude `Setup`. Claude's `MessageDisplay` is documented but deliberately not installed — it is observe-only and fires on every assistant message, so a per-message hook would add cost with no enforcement value. (#485)
+
+### Fixes
+- Correct the Claude and Cursor hook `timeout` unit from `60000` to `60`. Both CLIs read `timeout` in seconds per their upstream docs (Claude: "Seconds before canceling … 60 for agent"; Cursor: "Execution timeout in seconds"), so the old `60000` meant ~16.7h instead of 60s. Gemini's `timeout` is genuinely milliseconds (default 60000) and is left unchanged. (#485)
+
+## 0.0.12-beta.0 — 2026-07-09
+
+### Features
+- Add the `hook-sync` container (`docker-hook-sync/` + `.github/workflows/build-image.yml`, published to `ghcr.io/failproofai/hook-sync`): a single-shot daily job that clones failproofai and runs Claude Code in `--effort ultracode` mode to detect hook event-name, tool/payload-schema, and settings-file-shape drift across all seven integrated agent CLIs, then opens one auto-sync PR — the agent commits, pushes, and opens the PR itself, gated by failproofai's own `require-*-before-stop` hooks (dogfooding). Replaces the broken `sync-hook-events.yml` GitHub Action (removed, along with `scripts/sync-hook-events-prompt.md`).
+
+### Fixes
+- Codex hooks: drop the invalid top-level `version` field from `.codex/hooks.json` (Codex CLI v0.142+ rejects it with `unknown field 'version'`, refusing to start any session), and strip any leftover `version` on the next install/uninstall so previously-broken configs self-heal. Also correct the Codex `timeout` unit from `60000` to `60` — Codex reads `timeout` in seconds (its `timeout_sec` field), so the old value meant ~16.7h instead of 60s. Copilot and Cursor legitimately carry `version: 1` in their own schemas and are untouched. (#482)
+
+### Dependencies
+- Bump `actions/cache` 5 → 6 (#463)
+- Bump `lucide-react` 1.21.0 → 1.22.0 (#464)
+- Bump `eslint` 10.5.0 → 10.6.0 (#465)
+- Bump `@anthropic-ai/sdk` 0.105.0 → 0.107.0 (#466)
+- Bump `@vitejs/plugin-react` 6.0.2 → 6.0.3 (#467)
+- Bump `posthog-node` 5.38.2 → 5.38.8 (#468)
+- Bump `@tanstack/react-virtual` 3.14.3 → 3.14.4 (#470)
+- Bump `tailwindcss` 4.3.1 → 4.3.2 (#471)
+- Bump `@types/node` 26.0.0 → 26.0.1 (#472)
+- Bump `@types/node` 26.0.1 → 26.1.0 (#474)
+- Bump `eslint-config-next` 16.2.9 → 16.2.10 (#475)
+- Bump `@anthropic-ai/sdk` 0.107.0 → 0.110.0 (#476)
+- Bump `@tanstack/react-virtual` 3.14.4 → 3.14.5 (#477)
+- Bump `vitest` 4.1.9 → 4.1.10 (#478)
+- Bump `next` 16.2.9 → 16.2.10 (#479)
+- Bump `posthog-node` 5.38.8 → 5.40.0 (#480)
+- Bump `lucide-react` 1.22.0 → 1.23.0 (#481)
+
+### Docs
+- Sync translated docs mirrors with the latest English sources (#462)
+=======
+## 0.0.12-beta.0 — 2026-07-06
+
+### Features
+- Add `failproofai configure` (alias `setup`), an interactive setup launcher that replaces flag-juggling with a guided 4-step wizard: **① Where** (global vs this project) → **② Assistants** (multi-select of detected + install-ahead agent CLIs) → **③ Policies** (themed presets — Secrets & data / Git safety / Ship discipline / Cloud & infra — plus Everything or a Custom picker) → **④ Review** (shows the exact files it will change, then applies). One flow writes both the agent hook registration and the enabled-policy config at the chosen scope. Selections **replace** the enabled set at that scope (new opt-in `replace` flag on `installHooks`; existing callers keep their additive behavior). The wizard renders in a clack-style flow — a left gutter threading through step nodes, answered steps collapsing into a persistent log, radio/checkbox prompts with explicit "space to select" hints, and a green outro. The searchable custom-policy picker (`promptPolicySelection`, also used by `policies --install`) was rebuilt to match: aligned name/description columns, dim category dividers, a live selected-count, and Enter-to-save (Space toggles). A bare `failproofai` on first run redirects into the wizard and keeps doing so until setup is completed: the `~/.failproofai/.launcher-configured` marker is written **only on a finished apply** (so exiting mid-way still shows the wizard next time), after which bare `failproofai` opens the dashboard. `postinstall` now prints a clean "run `failproofai configure`" prompt instead of the old multi-step block. New modules `src/hooks/{configure-wizard,policy-presets,tui}.ts` and `__tests__/hooks/{policy-presets,tui,configure-wizard}.test.ts` (27 tests).
+
+### Fixes
+- Isolate `HOME` in the e2e CLI runner so config-mutating commands no longer touch the developer's real config during `bun run test:e2e`. `cli-args.e2e.test.ts` exercises `policies --install/--uninstall` via `runCli`, which spawned the binary with the real `HOME` — so every e2e run wrote to the real `~/.failproofai/policies-config.json` (Bun honors the spawn-env `HOME`, so those user-scope writes landed in the developer's actual home and clobbered their enabled-policy list). `runCli` now points `HOME`/`USERPROFILE` at a throwaway temp dir, matching how `hook-runner` and the integration-test spawns already isolate. Verified: with the real config removed, the full e2e suite now leaves it absent.
+>>>>>>> Stashed changes
+
 ## 0.0.11 — 2026-06-26
 
 ### Breaking

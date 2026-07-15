@@ -1,0 +1,401 @@
+---
+title: "تثبيت Collector"
+description: "توثيق تثبيت AgentEye Collector."
+---
+
+
+يضمن خادم `agenteye-collector` أن تصل بيانات المراقبة (telemetry) لوكلائك إلى AgentEye دون أن يعطل تطبيقك أبداً. يكتب الكود الخاص بك الأحداث إلى دليل محلي ثم ينتقل; يتولى المجمّع المسؤولية من هناك، ويرفع كل ملف خلال ملي ثوان ويبقى صامداً في وجه إعادة التشغيل والانقطاعات الشبكية والأخطاء العابرة في الخادم. تُعاد محاولات الرفع الفاشلة مع تأخير بتراجع أسي (exponential backoff)، وكنس دوري للاسترجاع يعيد قائمة أي شيء تُرك خلفه عند تعطل أو نشر. والنتيجة هي توصيل متين وتجاهل وانطلق (fire-and-forget): يواصل الوكلاء الخاص بك العمل بسرعة كاملة بينما يضمن المجمّع عدم فقدان أي أحداث أثناء النقل.
+
+من الناحية الميكانيكية، المجمّع هو خادم خفيف الوزن يراقب `$AGENTEYE_HOME/events/` (الافتراضي: `~/.agenteye/events/`) بحثاً عن ملفات `.jsonl` مكتوبة بواسطة Python SDK ويرفعها إلى خادم AgentEye.
+
+> **تمت إعادة التسمية:** أصبح أمر المجمّع الآن **`agenteye-collector`** (كان يُسمى سابقاً `agenteye`). اسم `agenteye` الأقصر يعود الآن إلى AgentEye CLI. إذا كنت تقوم بترقية تثبيت موجود، انظر [enterprise-docs/collector-migration.md](/ar/agenteye/collector-migration).
+
+---
+
+## المتطلبات الأساسية
+
+- `AGENTEYE_TOKEN` الخاص بك: رمز الوصول الشخصي لـ GitHub الذي تُنشئه بنفسك (انظر [enterprise-docs/github-token.md](/ar/agenteye/github-token))
+- عنوان URL للخادم ومفتاح API للمجمّع (انظر [enterprise-docs/api-keys.md](/ar/agenteye/api-keys))
+
+---
+
+## الخيار أ: الملف الثنائي (موصى به)
+
+ملفات ثنائية ثابتة مجهزة مسبقاً متاحة لـ Linux و macOS و Windows (x86_64 و arm64). حمّل الملف الثنائي لنظامك مباشرة من مستودع `agenteye-enterprise/releases` تحت أحدث علامة إصدار `collector/v<version>`.
+
+أسماء الأعمال المتاحة:
+
+| المنصة | الأعمال |
+|---|---|
+| Linux x86_64 | `agenteye-collector-linux-x86_64` |
+| Linux arm64 | `agenteye-collector-linux-arm64` |
+| macOS x86_64 | `agenteye-collector-darwin-x86_64` |
+| macOS arm64 | `agenteye-collector-darwin-arm64` |
+| Windows x86_64 | `agenteye-collector-windows-x86_64.exe` |
+| Windows arm64 | `agenteye-collector-windows-arm64.exe` |
+
+**التحميل باستخدام CLI `gh`** (استبدل الإصدار واختر أعمال منصتك):
+
+```bash
+VERSION=0.0.1-beta.13
+GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-collector-linux-x86_64'
+
+chmod +x agenteye-collector-linux-x86_64
+sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+```
+
+**أو باستخدام `curl`:**
+
+```bash
+VERSION=0.0.1-beta.13
+ARTIFACT=agenteye-collector-linux-x86_64
+curl -fsSL \
+  -H "Authorization: token $AGENTEYE_TOKEN" \
+  -L "https://github.com/agenteye-enterprise/releases/releases/download/collector%2Fv${VERSION}/${ARTIFACT}" \
+  -o agenteye-collector
+chmod +x agenteye-collector
+sudo mv agenteye-collector /usr/local/bin/agenteye-collector
+```
+
+---
+
+## الخيار ب: Docker
+
+```bash
+echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
+docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
+```
+
+> تنشر إصدارات بيتا الحالية العلامة العائمة `:beta-latest`؛ يتم تعيين `:latest` فقط للإصدارات المستقرة. للنشرات القابلة للتكرار، فضّل علامة إصدار محددة مثل `:v0.0.1-beta.13`.
+
+**التشغيل:**
+
+```bash
+docker run -d --restart unless-stopped \
+  --name agenteye-collector \
+  -e AGENTEYE_URL=https://ingest.example.com/events \
+  -e AGENTEYE_KEY="$AGENTEYE_KEY" \
+  -e AGENTEYE_HOME=/data \
+  -v "$HOME/.agenteye:/data" \
+  ghcr.io/agenteye-enterprise/collector:beta-latest \
+  start
+```
+
+تعمل الصورة الرسمية كمستخدم غير الجذر، لذا اضبط `AGENTEYE_HOME` بشكل صريح وجهز مجلد الانتظار المضيف له. يشاركك وصل المجلد نفس دليل `~/.agenteye/` الذي يكتب إليه Python SDK على المضيف. إذا كنت قد ضبطت `AGENTEYE_HOME` في مكان آخر على المضيف، جهز ذلك الدليل بدلاً من `$HOME/.agenteye`.
+
+---
+
+## الإعدادات
+
+يمكن تعيين جميع الخيارات بثلاث طرق (من الأعلى أولويةً أولاً):
+
+1. علم سطر الأوامر: `agenteye-collector start --url https://...`
+2. متغير البيئة: `AGENTEYE_URL=https://...`
+3. ملف الإعدادات: `~/.agenteye/config.json`
+
+### الخيارات المطلوبة
+
+| الخيار | علم CLI | متغير البيئة | مفتاح config.json |
+|---|---|---|---|
+| عنوان URL للواجهة الخلفية | `--url <URL>` | `AGENTEYE_URL` | `"url"` |
+| مفتاح API | `--key <KEY>` | `AGENTEYE_KEY` | `"key"` |
+
+### الخيارات الاختيارية (مع الافتراضيات)
+
+| الخيار | علم CLI | متغير البيئة | مفتاح config.json | الافتراضي |
+|---|---|---|---|---|
+| الحد الأقصى للرفع المتزامن | `--max-concurrent-uploads <N>` | `AGENTEYE_MAX_CONCURRENT_UPLOADS` | `"max_concurrent_uploads"` | `64` |
+| فترة الكنس (ث) | `--sweep-interval <S>` | `AGENTEYE_SWEEP_INTERVAL` | `"sweep_interval_secs"` | `60` |
+| الحد الأدنى لعمر الملف في الكنس (ث) | `--sweep-min-age <S>` | `AGENTEYE_SWEEP_MIN_AGE` | `"sweep_min_age_secs"` | `120` |
+| الحد الأقصى للملفات لكل كنس | `--sweep-max-files <N>` | `AGENTEYE_SWEEP_MAX_FILES` | `"sweep_max_files"` | `64` |
+| الحد الأقصى لمحاولات الرفع | `--max-retries <N>` | `AGENTEYE_MAX_RETRIES` | `"max_retries"` | `5` |
+| تأخير أساس إعادة المحاولة (مللي ث) | `--retry-base-delay <MS>` | `AGENTEYE_RETRY_BASE_DELAY` | `"retry_base_delay_ms"` | `1000` |
+
+### خيارات mTLS (اختياري)
+
+بالنسبة للنشرات التي تتطلب TLS المتبادل (mTLS)، يمكن للمجمّع تقديم شهادة عميل أثناء مصافحة TLS. عندما لا يتم تعيين هذه الخيارات، يستخدم المجمّع HTTPS القياسي.
+
+| الخيار | علم CLI | متغير البيئة | مفتاح config.json |
+|---|---|---|---|
+| شهادة العميل (PEM) | `--tls-cert <PATH>` | `AGENTEYE_TLS_CERT` | `"tls_cert"` |
+| المفتاح الخاص للعميل (PEM) | `--tls-key <PATH>` | `AGENTEYE_TLS_KEY` | `"tls_key"` |
+| شهادة CA مخصصة (PEM) | `--tls-ca <PATH>` | `AGENTEYE_TLS_CA` | `"tls_ca"` |
+
+يجب تعيين `--tls-cert` و `--tls-key` معاً. يجب أن تكون الملفات بصيغة PEM.
+
+`--tls-ca` مستقل وضروري فقط عندما يقدم خادم AgentEye شهادة TLS لم تصدرها جهة اعتماد موثوقة علناً (على سبيل المثال، موقّعة ذاتياً بواسطة مُصدر `cert-manager` داخل المجموعة عندما لا يكون لديك نطاق DNS حقيقي). يضيف المجمّع الشهادة المرفوعة كنقطة ثقة إضافية؛ تبقى الجذور العامة الموثوقة موثوقة، لذا لا تتأثر النشرات الموجودة. قد يحتوي الملف على شهادة PEM واحدة أو سلسلة كاملة (كتل PEM متعددة متسلسلة).
+
+**تشغيل المجمّع كـ sidecar في حاوية تطبيقك؟** انظر [enterprise-docs/single-pod-deployment.md](/ar/agenteye/single-pod-deployment) لنمط EKS من النهاية إلى النهاية: حزمة mTLS يتم تسليمها عبر AWS Secrets Manager + Secrets Store CSI Driver + IRSA، مع الدوران التلقائي.
+
+عند التشغيل في Kubernetes مع نمط تسليم الخدمة السرية، جهز الخدمة السرية للشهادة كمجلد وأشر هذه المسارات إلى الملفات المجهزة:
+
+```yaml
+# مثال: مقطع Deployment للمجمّع
+volumes:
+  - name: mtls-certs
+    secret:
+      secretName: agenteye-collector-mtls
+containers:
+  - name: collector
+    env:
+      - name: AGENTEYE_TLS_CERT
+        value: /etc/agenteye/tls/tls.crt
+      - name: AGENTEYE_TLS_KEY
+        value: /etc/agenteye/tls/tls.key
+      # فقط عندما لا تكون شهادة الخادم موثوقة علناً (على سبيل المثال، جهة اعتماد
+      # موقّعة ذاتياً داخل المجموعة). عادة ما تحمل نفس الخدمة السرية ca.crt إلى جانب
+      # tls.crt/tls.key.
+      - name: AGENTEYE_TLS_CA
+        value: /etc/agenteye/tls/ca.crt
+    volumeMounts:
+      - name: mtls-certs
+        mountPath: /etc/agenteye/tls
+        readOnly: true
+```
+
+### مثال `~/.agenteye/config.json`
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "max_concurrent_uploads": 16,
+  "sweep_interval_secs": 30
+}
+```
+
+مع mTLS:
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key"
+}
+```
+
+مع mTLS بالإضافة إلى جهة اعتماد مخصصة (خادم AgentEye موقّع ذاتياً):
+
+```json
+{
+  "url": "https://ingest.example.com/events",
+  "key": "sk-...",
+  "tls_cert": "/etc/agenteye/tls/tls.crt",
+  "tls_key": "/etc/agenteye/tls/tls.key",
+  "tls_ca": "/etc/agenteye/tls/ca.crt"
+}
+```
+
+إذا تم ضبط `AGENTEYE_HOME`، يتم استخدام ذلك الدليل بدلاً من `~/.agenteye`.
+
+---
+
+## الإعداد للمرة الأولى
+
+بعد التثبيت، جهز المجمّع برقم خادم عنوان URL ومفتاح API:
+
+```bash
+mkdir -p ~/.agenteye
+cat > ~/.agenteye/config.json <<'EOF'
+{
+  "url": "https://ingest.example.com/events",
+  "key": "YOUR_COLLECTOR_KEY"
+}
+EOF
+```
+
+> استخدم `https` لأي نشر يعبر شبكة غير موثوقة بحيث لا يتم إرسال الأحداث بنص عادي. نموذج النص العادي `http://your-server-host:8080/events` مناسب فقط للاختبار المحلي تماماً ضد خادم على نفس المضيف.
+
+**اختبر الاتصال** (تطبيق الامتصاص الواحد، الخروج بعد استنزاف الأحداث المعلقة):
+
+```bash
+agenteye-collector flush
+```
+
+يقرّر `flush` تقدمه إلى stdout. عندما يكون مجلد الانتظار فارغاً يطبع `No pending files.` والخروج `0`. خلاف ذلك يطبع سطراً واحداً لكل ملف (`[UPLOADED] <file>` أو `[FAILED] <file> (<reason>)`), متبوعاً بملخص `Done: <uploaded>/<total> uploaded, <failed> failed.`. هذا يجعل `flush` فحصاً مفيداً للاستخدام الواحد بأن عنوان URL ومفتاح API وإعدادات TLS الخاصة بك صحيحة قبل بدء الخادم.
+
+---
+
+## التشغيل كخادم
+
+### مباشر
+
+```bash
+agenteye-collector start
+```
+
+### الحاوية / Docker
+
+عندما يشاركك المجمّع والتطبيق حاوية، شغلهما تحت مراقب العملية. الخيار الأبسط هو `supervisord`؛ يأتي في كل توزيع رئيسي، ويعيد تشغيل العمليات المتعطلة، ويعيد توجيه الإشارات، وينتظر الإغلاق البطيء.
+
+**`Dockerfile`:**
+
+```Dockerfile
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+ && rm -rf /var/lib/apt/lists/*
+
+# اسحب ملف agenteye-collector الثنائي من الصورة الرسمية.
+# ثبّت علامة محددة (:beta-latest للبيتا الحالية، أو علامة :v<version>);
+# :latest يتم نشره فقط للإصدارات المستقرة.
+COPY --from=ghcr.io/agenteye-enterprise/collector:beta-latest \
+     /usr/local/bin/agenteye-collector /usr/local/bin/agenteye-collector
+
+COPY supervisord.conf /etc/supervisor/conf.d/agenteye.conf
+COPY my_agent.py      /app/my_agent.py
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+**`supervisord.conf`:**
+
+```ini
+[supervisord]
+nodaemon=true
+user=root
+
+[program:agenteye-collector]
+command=/usr/local/bin/agenteye-collector start
+autorestart=true
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:app]
+command=python /app/my_agent.py
+autorestart=unexpected
+stopwaitsecs=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+```
+
+لماذا هذه الإعدادات:
+
+- `autorestart=true` على agenteye-collector: أعد التشغيل عند أي خروج (تعطل، ذعر، OOM).
+- `autorestart=unexpected` على التطبيق: أعد التشغيل فقط عند خروج غير صفري، بحيث لا يحلقة وكيل الاستخدام الواحد الذي يخرج 0.
+- `stopwaitsecs=30`: يعطي المجمّع مجالاً لاستنزاف الرفع المعلقة على SIGTERM قبل أن يصعد supervisord إلى SIGKILL.
+- `stdout_logfile=/dev/stdout`, `*_maxbytes=0`: بث إخراج كلا البرنامجين إلى حاوية stdout؛ لا توجد ملفات سجل داخل الحاوية.
+
+مرّر `AGENTEYE_URL` / `AGENTEYE_KEY` (وأي متغيرات بيئة TLS) على `docker run -e` كما هو الحال من قبل؛ يرث supervisord البيئة.
+
+> **حاويات منفصلة؟** إذا قمت بتشغيل المجمّع كحاوية منفصلة (خدمة Docker Compose, Kubernetes sidecar, إلخ.)، لا تستخدم supervisord؛ سياسة إعادة تشغيل الحاوية runtime تقوم بهذه الوظيفة بالفعل. انظر [enterprise-docs/single-pod-deployment.md](/ar/agenteye/single-pod-deployment) لنمط EKS sidecar.
+
+**مسبار حيوية Kubernetes** (ينطبق سواء تم تشغيل المجمّع وحده أو تحت supervisord):
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["agenteye-collector", "health"]
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+يكتب الخادم الجاري نبضة قلب إلى `$AGENTEYE_HOME/health.json` كل 30 ثانية. يقرأ `agenteye-collector health` ذلك الملف والخروج `0` (صحي) فقط عندما تكون نبضة القلب طازجة وتعمل مهام الرفع بشكل طبيعي؛ يخرج `1` (غير صحي) عندما تكون نبضة القلب أقدم من 90 ثانية (على سبيل المثال، توقف الخادم) أو بينما يتم إعادة تشغيل المراقب والكنس بعد خروج غير متوقع. يتم كتابة نبضة القلب فقط بواسطة `start`, لذا قم بتشغيل المسبار ضد الخادم طويل الأمد وليس الأمر `flush` الواحد.
+
+### systemd (Linux، موصى به للإنتاج)
+
+```ini
+# /etc/systemd/system/agenteye-collector.service
+[Unit]
+Description=AgentEye Collector
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/agenteye-collector start
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/etc/agenteye/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+أنشئ `/etc/agenteye/env`:
+
+```
+AGENTEYE_URL=https://ingest.example.com/events
+AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agenteye-collector
+sudo systemctl status agenteye-collector
+```
+
+### launchd (macOS)
+
+```xml
+<!-- ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.befailproof.agenteye-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agenteye-collector</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTEYE_URL</key>
+    <string>https://ingest.example.com/events</string>
+    <key>AGENTEYE_KEY</key>
+    <string>YOUR_COLLECTOR_KEY</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
+```
+
+---
+
+## ترقية المجمّع
+
+لا يحدّث المجمّع نفسه. للترقية:
+
+- **الملف الثنائي:** حمّل أعمال `agenteye-collector-<os>-<arch>` الجديدة من أحدث إصدار `collector/v<version>` (انظر [الخيار أ](#option-a-binary-recommended))، استبدل `/usr/local/bin/agenteye-collector`، ثم أعد تشغيل الخدمة (`sudo systemctl restart agenteye-collector`, إعادة `launchctl load`، أو إعادة تشغيل مراقبك).
+- **Docker:** `docker pull ghcr.io/agenteye-enterprise/collector:beta-latest` (أو علامة `:v<version>` محددة؛ `:latest` موجودة فقط للإصدارات المستقرة) وأعد إنشاء الحاوية.
+
+`AGENTEYE_TOKEN` مطلوب لتحميل الملفات الثنائية/الصور الجديدة من مستودع الإصدارات الخاص، لكنه **ليس** ضروري بواسطة الخادم الجاري.
+
+---
+
+## الأوامر الفرعية
+
+| الأمر | الوصف |
+|---|---|
+| `agenteye-collector start` | ابدأ الخادم طويل الأمد. عند بدء التشغيل، يقوم بتطبيق امتصاص أي أحداث متبقية من التشغيل السابق، ثم يراقب الملفات الجديدة ويرفعها. يتم إعادة تشغيل المراقب والكنس تلقائياً عند خروج غير متوقع، وتتم كتابة نبضة قلب إلى `health.json` كل 30 ثانية. |
+| `agenteye-collector flush` | استخدام واحد: رفع جميع الملفات المعلقة والخروج. يطبع `No pending files.` عندما يكون مجلد الانتظار فارغاً, خلاف ذلك لكل ملف `[UPLOADED]`/`[FAILED]` سجل وملخص `Done: <uploaded>/<total> uploaded, <failed> failed.`. |
+| `agenteye-collector health` | اقرأ نبضة القلب `health.json` للخادم. الخروج `0` عندما يكون طازجاً وصحياً؛ الخروج `1` عندما تكون نبضة القلب قديمة (أقدم من 90 ثانية) أو تعاد تشغيل المهام. |
+
+---
+
+## تخطيط الدليل
+
+```
+~/.agenteye/
+├── config.json       <- ملف الإعدادات الاختياري
+├── events/           <- ملفات .jsonl مكتوبة بواسطة SDK، يتم التقاطها بواسطة المجمّع
+└── failed/           <- ملفات فشلت جميع محاولات الرفع
+```
+
+الملفات في `failed/` لا تُعاد محاولة تلقائياً. لإعادة قائمة متابعتها يدويّاً، انقل الملفات مرة أخرى إلى `events/` وشغّل `agenteye-collector flush`.

@@ -1,36 +1,36 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI fornisce agli agenti AI 39 politiche di fallimento integrate che intercettano loop, perdite di segreti, chiamate di strumenti distruttive e altro ancora in una singola installazione."
+description: "FailproofAI fornisce agli agenti AI 39 politiche di fallimento integrate che rilevano loop, perdite di segreti, chiamate di strumenti distruttive e altro ancora in una singola installazione."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hook e politiche per **la gestione dei fallimenti nell'AI**, **il recupero dagli errori** e **l'affidabilità degli LLM**. Mantieni i tuoi agenti AI affidabili e in esecuzione autonoma su **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI** e **Agents SDK**.
+Hook e politiche per **gestione dei fallimenti dell'AI**, **recupero degli errori** e **affidabilità dell'LLM**. Mantieni i tuoi agenti AI affidabili e in esecuzione autonoma su **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Gemini CLI**, **Hermes** e **Agents SDK**.
 
-Gli agenti AI falliscono in modi prevedibili. Eseguono comandi distruttivi, perdono segreti, si allontanano dal compito assegnato, rimangono bloccati in loop o eseguono push direttamente al ramo principale. Senza supervisione, i piccoli fallimenti si trasformano in interruzioni di servizio, perdita di credenziali e lavoro perso.
+Gli agenti AI falliscono in modi prevedibili. Eseguono comandi distruttivi, perdono segreti, si allontanano dall'obiettivo, rimangono bloccati in loop, o effettuano push direttamente al main. Se non controllati, piccoli fallimenti si trasformano in interruzioni, credenziali compromesse e lavoro perso.
 
-FailproofAI risolve questo problema con le **politiche**. Queste regole si collegano a ogni chiamata di strumento dell'agente per **rilevare i fallimenti**, **mitigarli** (bloccare, istruire, sanitizzare) e **avvertirti** quando qualcosa richiede attenzione. Una dashboard locale ti consente di rivedere ogni chiamata di strumento, fallimento dell'agente e azione di recupero in seguito.
+FailproofAI risolve questo con le **politiche**. Queste regole si intercettano in ogni chiamata di strumento dell'agente per **rilevare i fallimenti**, **mitigarli** (bloccare, istruire, pulire) e **avvisarti** quando qualcosa richiede attenzione. Un dashboard locale ti permette di esaminare ogni chiamata di strumento, fallimento dell'agente e azione di recupero in seguito.
 
-Nessun dato lascia la tua macchina.
+Nessun dato lascia il tuo computer.
 
 ## Inizia subito
 
 <CardGroup cols={2}>
 
 <Card title="39 politiche integrate" icon="shield" href="/it/built-in-policies">
-  Blocca comandi distruttivi, previeni perdite di segreti, mantieni gli agenti entro i confini del progetto e molto altro. Tutto disponibile subito.
+  Blocca comandi distruttivi, previeni perdite di segreti, mantieni gli agenti entro i confini del progetto e altro ancora. Tutto già pronto.
 </Card>
 
 <Card title="Politiche personalizzate" icon="code" href="/it/custom-policies">
   Scrivi le tue regole in JavaScript con un semplice API allow / deny / instruct.
 </Card>
 
-<Card title="Monitor degli agenti" icon="chart-line" href="/it/dashboard">
-  Scopri cosa hanno fatto i tuoi agenti mentre eri assente. Sfoglia le sessioni, ispeziona le chiamate di strumenti, controlla dove le politiche sono state applicate.
+<Card title="Monitor dell'agente" icon="chart-line" href="/it/dashboard">
+  Scopri cosa hanno fatto i tuoi agenti mentre eri assente. Naviga le sessioni, ispeziona le chiamate di strumenti, rivedi dove le politiche hanno agito.
 </Card>
 
 <Card title="Configurazione semplice" icon="gear" href="/it/configuration">
-  Regola qualsiasi politica senza codice. Imposta allowlist, rami protetti o soglie per progetto o globalmente.
+  Regola qualsiasi politica senza codice. Imposta liste di autorizzazione, rami protetti o soglie per progetto o globalmente.
 </Card>
 
 </CardGroup>
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # abilita le politiche (oppure salta — `failproofai` ti offrirà di configurarle al primo avvio)
-failproofai                      # avvia la dashboard
+failproofai policies --install   # abilita le politiche (o salta — `failproofai` ti offrirà di configurarle al primo avvio)
+failproofai                      # avvia il dashboard
 ```
 
-Consulta la guida [Inizia subito](/it/getting-started) per la procedura dettagliata completa.
+Vedi la guida [Inizia subito](/it/getting-started) per la procedura dettagliata completa.

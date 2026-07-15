@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +6,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook SessionStart --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -19,7 +18,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook PreToolUse --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -31,7 +30,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook PermissionRequest --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -43,7 +42,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook PostToolUse --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -55,7 +54,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]
@@ -67,7 +66,7 @@
           {
             "type": "command",
             "command": "bun bin/failproofai.mjs --hook Stop --cli codex",
-            "timeout": 60000,
+            "timeout": 60,
             "__failproofai_hook__": true
           }
         ]

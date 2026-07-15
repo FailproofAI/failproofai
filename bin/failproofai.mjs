@@ -93,6 +93,8 @@ if (hookIdx >= 0) {
   try {
     const { handleHookEvent } = await import("../src/hooks/handler");
     const exitCode = await handleHookEvent(eventType, cli);
+    // handleHookEvent already flushes its own telemetry before returning; this
+    // is the normal, reliable exit.
     process.exit(exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -101,6 +103,13 @@ if (hookIdx >= 0) {
       cli,
       error_type: err instanceof Error ? err.name : "unknown",
     });
+    // handleHookEvent threw before its own flush ran, so any events it fired
+    // with `void trackHookEvent(...)` are still in flight — drain them (plus the
+    // hook_dispatch_error above) before exiting so they aren't dropped.
+    try {
+      const { flushHookTelemetry } = await import("../src/hooks/hook-telemetry");
+      await flushHookTelemetry();
+    } catch {}
     console.error(`Unexpected error: ${msg}`);
     process.exit(2);
   }

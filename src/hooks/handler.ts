@@ -33,7 +33,7 @@ import { clearPolicies, registerPolicy } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
-import { trackHookEvent } from "./hook-telemetry";
+import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
@@ -355,6 +355,12 @@ export async function handleHookEvent(
       // Telemetry is best-effort — never block the hook
     }
   }
+
+  // Await any un-awaited (`void trackHookEvent(...)`) events fired during this
+  // invocation before returning. The caller (bin/failproofai.mjs) calls
+  // process.exit() as soon as we return, which would otherwise drop in-flight
+  // POSTs — notably on the allow path, which has no trailing awaited event.
+  await flushHookTelemetry();
 
   return result.exitCode;
 }

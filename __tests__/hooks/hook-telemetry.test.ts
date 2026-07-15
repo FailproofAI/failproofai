@@ -5,7 +5,7 @@
  * fetch body here guarantees `product: failproofai-oss` is stamped on all of them.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { trackHookEvent } from "../../src/hooks/hook-telemetry";
+import { trackHookEvent, flushHookTelemetry } from "../../src/hooks/hook-telemetry";
 
 describe("hook-telemetry trackHookEvent", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
@@ -46,5 +46,63 @@ describe("hook-telemetry trackHookEvent", () => {
     process.env.FAILPROOFAI_TELEMETRY_DISABLED = "1";
     await trackHookEvent("inst-id", "hooks_installed");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("flushHookTelemetry", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.FAILPROOFAI_TELEMETRY_DISABLED;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env = { ...originalEnv };
+  });
+
+  it("resolves instantly when nothing is pending", async () => {
+    fetchSpy = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(flushHookTelemetry()).resolves.toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("awaits an un-awaited (void) event so the POST completes before exit", async () => {
+    // Control when the fetch settles to prove flush actually waits for it.
+    let resolveFetch!: (r: Response) => void;
+    fetchSpy = vi.fn(
+      () => new Promise<Response>((res) => { resolveFetch = res; }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // Fire WITHOUT awaiting — this is exactly how the handler's load/error
+    // events are sent (`void trackHookEvent(...)`).
+    void trackHookEvent("inst-id", "custom_hooks_loaded", { n: 1 });
+    await Promise.resolve(); // let the pending promise register
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    let flushed = false;
+    const flushP = flushHookTelemetry().then(() => { flushed = true; });
+
+    // Fetch is still in flight → flush must not have resolved yet.
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+
+    // Once the POST settles, flush drains and resolves.
+    resolveFetch(new Response("{}", { status: 200 }));
+    await flushP;
+    expect(flushed).toBe(true);
+  });
+
+  it("does not throw when an in-flight POST rejects", async () => {
+    fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    void trackHookEvent("inst-id", "custom_hooks_loaded");
+    await Promise.resolve();
+
+    await expect(flushHookTelemetry()).resolves.toBeUndefined();
   });
 });

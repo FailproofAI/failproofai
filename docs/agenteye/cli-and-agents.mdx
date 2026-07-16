@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "AgentEye CLI documentation."
+description: "FailproofAI Observability CLI documentation."
 ---
 
 
-Your entire AgentEye deployment, one command away. Check production, cut an API key, or ack an incident without leaving your terminal, then script any of it into CI, or let a coding agent do it for you in plain English.
+Your entire FailproofAI Observability deployment, one command away. Check production, cut an API key, or ack an incident without leaving your terminal, then script any of it into CI, or let a coding agent do it for you in plain English.
 
 ```bash
 pipx install agenteye
@@ -47,7 +47,7 @@ It is built to run unattended. Confirmation prompts auto-skip when no terminal i
 
 Better yet, you should not have to remember any of these flags at all. The **CLI skill** is a small Agent Skill folder named `agenteye-cli` that teaches a coding agent such as Claude Code or Codex to drive the CLI from plain-English requests. Ask "is anything broken today?" and the agent picks the command, runs it as you, and answers in prose.
 
-For Claude Code, drop the `agenteye-cli` folder into `~/.claude/skills/` and it is auto-discovered. AgentEye provides the folder; there is nothing to deploy and no image to pull, because it only drives the CLI you already installed. Log in yourself first: the skill cannot complete the emailed-code login for you.
+For Claude Code, drop the `agenteye-cli` folder into `~/.claude/skills/` and it is auto-discovered. FailproofAI Observability provides the folder; there is nothing extra to install, because it only drives the CLI you already installed. Log in yourself first: the skill cannot complete the emailed-code login for you.
 
 Because the agent runs the CLI as you, it can do everything your login permits, reads and writes alike: create keys, change settings, resolve incidents. The CLI's "are you sure?" prompt does not fire for an agent, so the skill is written to state the exact command and wait for your OK before any change. You are the confirmation step.
 

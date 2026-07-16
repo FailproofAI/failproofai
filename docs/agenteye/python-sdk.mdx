@@ -1,55 +1,27 @@
 ---
 title: "Python SDK"
-description: "AgentEye Python SDK documentation."
+description: "FailproofAI Observability Python SDK documentation."
 ---
 
 
-See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention. The AgentEye Python SDK records that trail from inside your agent code so you can debug, audit, and evaluate what happened. Use it whenever you want AgentEye to observe your agents.
+See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention. The FailproofAI Observability Python SDK records that trail from inside your agent code so you can debug, audit, and evaluate what happened. Use it whenever you want FailproofAI Observability to observe your agents.
 
 Under the hood, the SDK writes structured events to local JSONL files, and the collector daemon picks them up and ships them to the platform automatically. You do not manage those files yourself.
 
-> **Tip:** New to AgentEye? Start with [Getting started](/agenteye/getting-started) for the full picture. This page is the complete SDK event reference.
+> **Tip:** New to FailproofAI Observability? This page is the complete SDK event reference.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
 ## Installation
 
-Download the wheel from GitHub Releases using your `AGENTEYE_TOKEN`. If you do not yet have a token, see [GitHub token setup](/agenteye/github-token) for the setup steps and required permissions.
-
-**Using `gh` CLI + pip:**
+Install the SDK from PyPI:
 
 ```bash
-VERSION=0.0.1b9
-GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
-  --repo agenteye-enterprise/releases \
-  --pattern 'agenteye-*.whl'
-pip install "agenteye-${VERSION}-py3-none-any.whl"
-```
-
-**Using `gh` CLI + uv:**
-
-```bash
-VERSION=0.0.1b9
-GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "python-sdk/v${VERSION}" \
-  --repo agenteye-enterprise/releases \
-  --pattern 'agenteye-*.whl'
-uv add "./agenteye-${VERSION}-py3-none-any.whl"
-```
-
-**Using curl (no `gh` CLI):**
-
-```bash
-VERSION=0.0.1b9
-curl -fsSL \
-  -H "Authorization: Bearer $AGENTEYE_TOKEN" \
-  -L \
-  "https://github.com/agenteye-enterprise/releases/releases/download/python-sdk%2Fv${VERSION}/agenteye-${VERSION}-py3-none-any.whl" \
-  -o "agenteye-${VERSION}-py3-none-any.whl"
-pip install "agenteye-${VERSION}-py3-none-any.whl"
+pip install agenteye
 ```
 
 ---
@@ -84,7 +56,7 @@ agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="succ
 
 ### Instrumenting a real call
 
-In practice you wrap your existing agent code. Bracket a model call with `model_request` before and `model_response` after, so the two events span the real request and AgentEye can pair them:
+In practice you wrap your existing agent code. Bracket a model call with `model_request` before and `model_response` after, so the two events span the real request and FailproofAI Observability can pair them:
 
 ```python
 import anthropic
@@ -142,8 +114,7 @@ Call once before any `event.*` call. Safe to omit; defaults work out of the box.
 When `base_dir` is `None` (the default), the SDK reads `$AGENTEYE_HOME` if set,
 otherwise falls back to `~/.agenteye`. This matches the collector's own resolution,
 so a single `AGENTEYE_HOME` env var configures the shared event spool for both
-the SDK and the collector, required for sidecar / single-pod deployments where
-both processes must agree on the spool path.
+the SDK and the collector.
 
 ---
 
@@ -165,7 +136,7 @@ export AGENTEYE_ENVIRONMENT=production
 
 **Priority:** `configure(environment=...)` wins over the environment variable. If neither is set, defaults to `"dev"`.
 
-The environment value appears as a first-class filter in the dashboard and is stored as an indexed column on the server for fast queries.
+The environment value appears as a first-class filter in the dashboard and is stored on the server for fast queries.
 
 > **Warning:** Environment values must not contain a literal `,` comma. The dashboard filters use comma-separated multi-select on the wire (`?environment=prod,staging`), so an environment named `prod,blue` would be split into two values. Events with comma-containing environments are rejected at ingest time.
 
@@ -181,7 +152,7 @@ That makes redaction your choice and your responsibility. If a prompt or tool pa
 
 ## Event Reference
 
-Most events come in start/end pairs that share a correlation ID: `tool_use` and `tool_result` share a `tool_call_id`, `hook_triggered` and `hook_completed` share a `hook_id`, and `human_wait` and `human_input` share an `input_id`. Emit the start event, do the work, then emit the end event with the same ID. AgentEye matches the pair and computes `duration_ms` for you, so you never pass `duration_ms` yourself.
+Most events come in start/end pairs that share a correlation ID: `tool_use` and `tool_result` share a `tool_call_id`, `hook_triggered` and `hook_completed` share a `hook_id`, and `human_wait` and `human_input` share an `input_id`. Emit the start event, do the work, then emit the end event with the same ID. FailproofAI Observability matches the pair and computes `duration_ms` for you, so you never pass `duration_ms` yourself.
 
 ![A session's git-style execution graph beside its event timeline, reconstructed from the paired events, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
 
@@ -455,6 +426,5 @@ Each file is written atomically: the SDK writes to a temporary file and then ren
 
 ## Next steps
 
-- [Collector installation](/agenteye/collector-installation): install the collector so these events actually ship to AgentEye.
-- [Getting started](/agenteye/getting-started): the full setup, from install to seeing your first traces.
-- [Troubleshooting](/agenteye/troubleshooting): what to check if events do not appear in the dashboard.
+- [Event stream](/agenteye/event-stream): watch these events arrive live, colour-coded and filterable by environment, agent, and session.
+- [Sessions](/agenteye/sessions): see how the paired events reconstruct each agent run as an execution graph and timeline.

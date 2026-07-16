@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "AgentEye CLI documentation."
+description: "FailproofAI Observability CLI documentation."
 ---
 
 
-Drive your whole AgentEye deployment from the terminal or a script: no dashboard round-trips. The `agenteye` CLI queries your data (sessions, event logs, evaluations) and administers your org (API keys, users, settings, alerts, incidents, saved queries), so reach for it when you want to automate a check, wire AgentEye into CI, or let a coding agent inspect production. Every command supports a `--json` flag, so it works equally well for you at a prompt or for a coding agent (Claude Code, Cursor) shelling out and parsing the result.
+Drive all of FailproofAI Observability from the terminal or a script: no dashboard round-trips. The `agenteye` CLI queries your data (sessions, event logs, evaluations) and administers your org (API keys, users, settings, alerts, incidents, saved queries), so reach for it when you want to automate a check, wire Observability into CI, or let a coding agent inspect production. Every command supports a `--json` flag, so it works equally well for you at a prompt or for a coding agent (Claude Code, Cursor) shelling out and parsing the result.
 
 With one binary you can:
 
@@ -13,7 +13,7 @@ With one binary you can:
 - **Run analytics**: saved SQL and an ad-hoc query runner (`query`).
 - **Ask the AI assistant**: the same read-only analyst you chat with in the dashboard (`agent`).
 
-> **Note:** This is the `agenteye` CLI, a different tool from the collector daemon (`agenteye-collector`). The CLI talks to your dashboard; the collector ships events to the server. See [Collector installation](/agenteye/collector-installation) for the collector.
+> **Note:** This is the `agenteye` CLI, a different tool from the collector daemon (`agenteye-collector`). The CLI talks to your dashboard; the collector ships events to the server.
 
 ---
 
@@ -62,14 +62,14 @@ pipx install agenteye
 uv tool install agenteye
 ```
 
-It requires Python 3.10+ and needs no GitHub token. The installed command is **`agenteye`**:
+It requires Python 3.10+. The installed command is **`agenteye`**:
 
 ```bash
 agenteye --version
 agenteye --help
 ```
 
-> **Note:** The AgentEye Python SDK also uses the `agenteye` distribution name. Installing the CLI with `pipx` or `uv tool` (rather than `pip install` into a shared virtualenv) keeps the two from colliding. A plain `pip install agenteye` is fine only if the SDK is not installed in the same environment.
+> **Note:** The FailproofAI Observability Python SDK also uses the `agenteye` distribution name. Installing the CLI with `pipx` or `uv tool` (rather than `pip install` into a shared virtualenv) keeps the two from colliding. A plain `pip install agenteye` is fine only if the SDK is not installed in the same environment.
 
 ---
 
@@ -91,7 +91,7 @@ agenteye logout     # revoke the session and clear the stored token
 
 `whoami` never errors on a missing or expired session; it reports `logged_in: false` instead, so a script or agent can probe auth state safely (it can still exit non-zero if no base URL is set or the dashboard is unreachable).
 
-**Requirements:** your email must be permitted to sign in to the dashboard (ask your AgentEye administrator), and the dashboard must be reachable at its base URL (see [Configuration](#configuration)). If you request a code and none arrives, your email is likely not yet enabled for dashboard access.
+**Requirements:** your email must be permitted to sign in to the dashboard (ask your FailproofAI Observability administrator), and the dashboard must be reachable at its base URL (see [Configuration](#configuration)). If you request a code and none arrives, your email is likely not yet enabled for dashboard access.
 
 ---
 
@@ -302,7 +302,7 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### Analytics & assistant: `query` · `agent`
 
-**`query`**: saved SQL against your analytics store (ClickHouse, the database that holds your events) plus an ad-hoc runner. Saved queries are referenced by **name**; the SQL is validated server-side (SELECT/WITH only, statement timeout, row cap).
+**`query`**: saved SQL against your analytics store plus an ad-hoc runner. Saved queries are referenced by **name**; the SQL is validated server-side (SELECT/WITH only, statement timeout, row cap).
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -345,6 +345,6 @@ These make the CLI safe to script: a coding agent can branch on a `4` to prompt 
 ## Next steps
 
 - **[CLI recipes for agents](/agenteye/cli-recipes)**: copy-paste query patterns, `jq` one-liners, `--fields` projections, exit-code handling, and JSON output shapes, written for coding agents driving the CLI.
-- **[CLI agent skill](/agenteye/cli-skill)**: package this CLI as an installable Claude Code / Codex *skill* so a coding agent drives AgentEye from plain-English requests.
+- **[CLI agent skill](/agenteye/cli-skill)**: package this CLI as an installable Claude Code / Codex *skill* so a coding agent drives FailproofAI Observability from plain-English requests.
 - **[API keys](/agenteye/api-keys)**: the permission model behind `keys create --add …`.
 - **[AI assistant](/agenteye/assistant)**: enabling the assistant that `agent ask` talks to.

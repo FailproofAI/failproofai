@@ -1,25 +1,25 @@
 ---
-title: "AgentEye CLI Agent Skill"
-description: "AgentEye AgentEye CLI Agent Skill documentation."
+title: "FailproofAI Observability CLI Agent Skill"
+description: "FailproofAI Observability FailproofAI Observability CLI Agent Skill documentation."
 ---
 
 
-Ask your coding agent *"is anything broken today?"* and let it answer from your live AgentEye data, with no commands to memorize. The **AgentEye CLI skill** (`agenteye-cli`) is an *Agent Skill*: a small folder of instructions that a coding agent such as Claude Code or Codex loads on demand. It teaches the agent to operate your AgentEye deployment through the [`agenteye` CLI](/agenteye/cli) from plain-English requests like *"give CI a key that can only push events"* or *"ack the firing incident and assign it to me."*
+Ask your coding agent *"is anything broken today?"* and let it answer from your live FailproofAI Observability data, with no commands to memorize. The **FailproofAI Observability CLI skill** (`agenteye-cli`) is an *Agent Skill*: a small folder of instructions that a coding agent such as Claude Code or Codex loads on demand. It teaches the agent to operate your Observability deployment through the [`agenteye` CLI](/agenteye/cli) from plain-English requests like *"give CI a key that can only push events"* or *"ack the firing incident and assign it to me."*
 
 It is **not** a service or a separate binary; there is nothing to deploy. It rides on top of the CLI you have already installed: the agent shells out to `agenteye --json …`, parses the clean JSON, and answers you in prose. Everything it can do, you could do yourself by typing the same commands.
 
 ---
 
-## How it relates to the other AgentEye interfaces
+## How it relates to the other FailproofAI Observability interfaces
 
-AgentEye gives you four ways to reach the same data and controls. They complement each other:
+FailproofAI Observability gives you four ways to reach the same data and controls. They complement each other:
 
 | Interface | What it is | Where it runs | Reach for it when |
 |---|---|---|---|
 | **[CLI](/agenteye/cli)** | The command/flag reference for `agenteye` | Your terminal | You want to run or script a specific command |
 | **[CLI recipes](/agenteye/cli-recipes)** | Copy-paste `jq`/pipeline patterns | Your terminal / scripts | You're wiring the CLI into automation |
 | **CLI skill** (this doc) | A natural-language front door on the CLI | Your coding agent, on your workstation | You want to *just ask* and let the agent pick the command |
-| **[In-dashboard AI assistant](/agenteye/assistant)** | A chat embedded in the dashboard | The agent service (a container in your cluster) | You want in-dashboard Q&A over your data |
+| **[In-dashboard AI assistant](/agenteye/assistant)** | A chat embedded in the dashboard | Server-side (in the dashboard) | You want in-dashboard Q&A over your data |
 
 The skill itself has no privileges of its own; it just turns your words into CLI calls that run as you:
 
@@ -27,7 +27,7 @@ The skill itself has no privileges of its own; it just turns your words into CLI
 flowchart TD
     YOU["you: 'ack the firing incident'"] --> AGENT["coding agent (Claude Code / Codex)<br/>loads the agenteye-cli skill"]
     AGENT --> CLI["agenteye --json incidents ack ..."]
-    CLI -->|your authenticated CLI session| API["AgentEye dashboard API"]
+    CLI -->|your authenticated CLI session| API["Observability dashboard API"]
 ```
 
 ### vs. the in-dashboard AI assistant: an important distinction
@@ -54,7 +54,7 @@ Agent Skills are folders that contain a `SKILL.md` (plus optional references). Y
 - **Claude Code**: copy the `agenteye-cli/` folder into `~/.claude/skills/` (available in every project) or into `<your-repo>/.claude/skills/` (scoped to that repo). Claude Code auto-discovers it; verify with the `/skills` list, or just ask a question that matches its description.
 - **Codex (OpenAI)**: Codex reads the same `SKILL.md`. The bundled `agents/openai.yaml` sets `allow_implicit_invocation: true`, so Codex auto-selects the skill when a task matches; otherwise invoke it explicitly as `$agenteye-cli`.
 
-The skill is maintained alongside the `agenteye` CLI but ships as a **separate folder**, not inside the `pipx install agenteye` package, so don't look for it there. AgentEye delivers the `agenteye-cli/` folder to you on its own; if you don't have it, ask your AgentEye contact. Nothing about it is gated: it needs no Docker image and no credential, because it only drives the **public** `agenteye` CLI against your own dashboard.
+The skill is maintained alongside the `agenteye` CLI but ships as a **separate folder**, not inside the `pipx install agenteye` package, so don't look for it there. FailproofAI Observability delivers the `agenteye-cli/` folder to you on its own; if you don't have it, ask your FailproofAI contact. Nothing about it is gated: it needs no credential at all, because it only drives the **public** `agenteye` CLI against your own dashboard.
 
 ---
 
@@ -64,7 +64,7 @@ The skill is maintained alongside the `agenteye` CLI but ships as a **separate f
 
 The `agenteye` CLI normally asks *"are you sure?"* before a destructive action. It **auto-skips that confirmation whenever it is not attached to a terminal (which is exactly how a coding agent runs it), and `--json` skips it too.** So the safety prompt will **not** fire for the agent.
 
-The skill is written to compensate: it is instructed to state the exact command it will run and get your explicit **OK before any state change**. Keep that discipline. When you drive AgentEye through an agent, *you* are the confirmation step. The state-changing commands to watch for:
+The skill is written to compensate: it is instructed to state the exact command it will run and get your explicit **OK before any state change**. Keep that discipline. When you drive FailproofAI Observability through an agent, *you* are the confirmation step. The state-changing commands to watch for:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`

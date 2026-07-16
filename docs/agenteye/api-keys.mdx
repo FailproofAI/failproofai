@@ -1,18 +1,18 @@
 ---
 title: "API Keys"
-description: "AgentEye API Keys documentation."
+description: "FailproofAI Observability API Keys documentation."
 ---
 
 
-API keys control who and what can reach your AgentEye server, so a collector can send events without ever gaining read or admin powers. Each key carries one or more permissions, and each permission gates specific server routes; you grant only the few a job needs. Most deployments create just three kinds of key.
+API keys control who and what can reach your FailproofAI Observability server, so a collector can send events without ever gaining read or admin powers. Each key carries one or more permissions, and each permission gates specific server routes; you grant only the few a job needs. Most deployments create just three kinds of key.
 
 ## The 3 keys most deployments need
 
 | Key | Permissions | Who uses it |
 |---|---|---|
-| Collector key | `events:add` | The `agenteye-collector` on each agent machine, to send events. See [Collector installation](/agenteye/collector-installation). |
+| Collector key | `events:add` | The `agenteye-collector` on each agent machine, to send events. |
 | Dashboard read key | `events:read`, `keys:read` | A read-only operator or integration that queries data without changing it. |
-| Bootstrap admin key | all permissions | The operator who first brings the instance up (and the dashboard container). Seeded from the `ADMIN_KEY` environment variable. See [Bootstrap admin key](#bootstrap-admin-key). |
+| Bootstrap admin key | all permissions | The operator who first brings the instance up (and the dashboard). Seeded from the `ADMIN_KEY` environment variable. See [Bootstrap admin key](#bootstrap-admin-key). |
 
 Start here. Reach for the full permission catalogue below only when you need a narrower, custom-scoped key. See also [Recommended key layout](#recommended-key-layout) and [Creating keys](#creating-keys).
 
@@ -50,7 +50,7 @@ The server enforces a fixed catalogue of permissions; each one gates specific HT
 
 | Permission | HTTP routes | What it allows |
 |---|---|---|
-| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | List saved queries, load one, and inspect the read-only ClickHouse schema the composer targets. |
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | List saved queries, load one, and inspect the read-only schema the composer targets. |
 | `queries:write` | `POST /queries`, `PUT /queries/:id` | Create and edit saved queries. SQL is still routed through the same read-only role and guarded SQL checks as a `queries:run` call. |
 | `queries:delete` | `DELETE /queries/:id` | Delete a saved query. |
 | `queries:run` | `POST /queries/run` | Execute saved or ad-hoc SQL against the read-only role used by the composer. |
@@ -138,8 +138,8 @@ Sets are surfaced in the dashboard and managed over the API at `GET /permission-
 
 Set membership is what backs two other features:
 
-- **`DEFAULT_USER_PERMISSIONS`** (the grant preselected when an admin opens **+ new user**) defaults to the `standard` set. See [Deployment](/agenteye/deployment).
-- **The `--set` flag** on `agenteye-orgctl` (operator member management) starts a member from a named set, which you then fine-tune with `--add` / `--remove`. See [Tenant Management](/agenteye/tenant-management).
+- **`DEFAULT_USER_PERMISSIONS`** (the grant preselected when an admin opens **+ new user**) defaults to the `standard` set.
+- **The `--set` flag** on `agenteye-orgctl` (operator member management) starts a member from a named set, which you then fine-tune with `--add` / `--remove`.
 
 > **Note:** When a set includes a permission that is not key-assignable (for example a custom set carrying `keys:update`), seeding a key from that set drops the non-assignable tokens; the server would otherwise reject the key with HTTP 422. Dashboard users are not subject to that restriction.
 
@@ -157,9 +157,9 @@ To rotate: change `ADMIN_KEY` to a new secret and restart the server.
 
 ## Organization scoping
 
-**Organizations themselves are created and managed out-of-band by an operator, not through this keys API.** Org and member lifecycle (create / rename / delete / purge an org; add / update / remove a member) is done with the **`agenteye-orgctl`** CLI that runs inside the server pod; there is no HTTP API or dashboard button for it. See [Tenant Management](/agenteye/tenant-management). What *is* unchanged: **per-org API keys are still minted in the dashboard (or via this keys API)** by org members.
+**Organizations themselves are created and managed out-of-band by an operator, not through this keys API.** Org and member lifecycle (create / rename / delete / purge an org; add / update / remove a member) is done with the **`agenteye-orgctl`** CLI; there is no HTTP API or dashboard button for it. What *is* unchanged: **per-org API keys are still minted in the dashboard (or via this keys API)** by org members.
 
-In a multi-org deployment, every key an org member creates (through this keys API or the dashboard **Keys** page) belongs to **one organization** and can only ever read or write that org's data; the org is stamped on the key at creation and enforced on every request. The two bootstrap keys are the only exception: the `admin` key (seeded from `ADMIN_KEY`) and the `dashboard-assistant` key (seeded from `AGENT_API_KEY`) are **instance-scoped** (they carry no org). The dashboard container authenticates with the `admin` key so it can proxy per-org requests on behalf of signed-in members. Single-tenant deployments need not think about this; all keys belong to the built-in `default` org.
+In a multi-org deployment, every key an org member creates (through this keys API or the dashboard **Keys** page) belongs to **one organization** and can only ever read or write that org's data; the org is stamped on the key at creation and enforced on every request. The two bootstrap keys are the only exception: the `admin` key (seeded from `ADMIN_KEY`) and the `dashboard-assistant` key (seeded from `AGENT_API_KEY`) are **instance-scoped** (they carry no org). The dashboard authenticates with the `admin` key so it can proxy per-org requests on behalf of signed-in members. Single-tenant deployments need not think about this; all keys belong to the built-in `default` org.
 
 ---
 
@@ -170,7 +170,7 @@ Use the admin key (or any key with `keys:create` permission) to create additiona
 ### Collector key (ingest only)
 
 ```bash
-curl -s -X POST http://your-server:8080/keys \
+curl -s -X POST http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -183,7 +183,7 @@ curl -s -X POST http://your-server:8080/keys \
 ### Dashboard key (read only)
 
 ```bash
-curl -s -X POST http://your-server:8080/keys \
+curl -s -X POST http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -209,7 +209,7 @@ When you create a key over the HTTP API, you provide the `key` value yourself; c
 ## Listing Keys
 
 ```bash
-curl -s http://your-server:8080/keys \
+curl -s http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
@@ -222,7 +222,7 @@ Key secrets are not returned in list responses, only IDs, names, and permissions
 Disabling revokes access immediately without deleting the key record.
 
 ```bash
-curl -s -X POST http://your-server:8080/keys/<id>/disable \
+curl -s -X POST http://your-server/keys/<id>/disable \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
@@ -233,7 +233,7 @@ curl -s -X POST http://your-server:8080/keys/<id>/disable \
 Generates a new secret for an existing key. The old secret is invalidated immediately.
 
 ```bash
-curl -s -X POST http://your-server:8080/keys/<id>/regenerate \
+curl -s -X POST http://your-server/keys/<id>/regenerate \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
@@ -255,9 +255,9 @@ When you create a key from the dashboard you do not supply the secret; the dashb
 
 | Key | Permissions | Used by |
 |---|---|---|
-| `admin` (bootstrap via `ADMIN_KEY` env var) | all | Ops/setup, and the dashboard container (authenticates with `ADMIN_KEY`, proxies user requests with permission checks) |
+| `admin` (bootstrap via `ADMIN_KEY` env var) | all | Ops/setup, and the dashboard (authenticates with `ADMIN_KEY`, proxies user requests with permission checks) |
 | Per-host collector key | `events:add` | Collector on each agent machine |
-| `dashboard-assistant` (bootstrap via `AGENT_API_KEY` env var) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AI assistant container, seeded automatically, **protected**; can't be edited through the API |
+| `dashboard-assistant` (bootstrap via `AGENT_API_KEY` env var) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AI assistant, seeded automatically, **protected**; can't be edited through the API |
 | Assistant telemetry key (optional) | `events:add` | AI assistant self-instrumentation, if enabled |
 
 > **Note:** The assistant's key is **seeded automatically** by the server from the `AGENT_API_KEY` env var (the same secret the agent presents as `AGENTEYE_API_KEY`); there is no manual key-minting step and no admin key involved. Its permissions are fixed in source code so scope can't be widened by misconfiguration: read across events / evaluations / dashboards, plus dashboards-write and queries-read / write / run for the "Ask AI to write a query" authoring flow. All SQL still goes through the same read-only role and guarded SQL path as a user-written query, so this widens the *authoring surface*, not the data surface; destructive operations (`queries:delete`, `dashboards:delete`) deliberately stay off the assistant key. Like the `admin` key, it is **protected**: it can't be disabled or regenerated through the keys API, only rotated by changing `AGENT_API_KEY` and restarting. Dashboard *users* additionally need the `agent:use` permission to see and use the assistant. If you enable self-instrumentation, give the assistant a separate `events:add`-only key.
@@ -276,7 +276,5 @@ You only need these if you are upgrading an existing instance; new deployments c
 
 ## Next steps
 
-- [Collector installation](/agenteye/collector-installation): where the `events:add` collector key is configured.
 - [Python SDK](/agenteye/python-sdk): how your agent code authenticates when sending events.
-- [Tenant management](/agenteye/tenant-management): create and manage organizations and their members.
-- [Deployment](/agenteye/deployment): set `ADMIN_KEY`, `AGENT_API_KEY`, and the default permission set.
+- [Security](/agenteye/security): how sign-in, access control, and per-organization data isolation work.

@@ -1,10 +1,10 @@
 ---
 title: "Queries"
-description: "AgentEye Queries documentation."
+description: "FailproofAI Observability Queries documentation."
 ---
 
 
-Ask any question of your agent data and get an answer in seconds. AgentEye gives you a library of saved, ready-to-run queries over your events and evaluations, so you start from a working example instead of a blank SQL editor.
+Ask any question of your agent data and get an answer in seconds. FailproofAI Observability gives you a library of saved, ready-to-run queries over your events and evaluations, so you start from a working example instead of a blank SQL editor.
 
 ![The saved-queries library: a grid of reusable queries, both built-in presets and custom ones](/agenteye/images/queries.png)
 
@@ -28,7 +28,7 @@ Open any query and it lands in the SQL composer, where you can adjust it and see
 
 - **A schema sidebar** lays out the analytics tables and their columns, so you can shape a query without hunting for field names.
 - **A live result grid** returns rows the moment you run, so you iterate in seconds rather than guessing and re-guessing.
-- **Read-only by design.** Queries run against your analytics store (ClickHouse) and are validated on the server: only `SELECT` and `WITH` statements are allowed, with a statement timeout and a row cap. An exploratory query can never modify your data, and a runaway one gets stopped for you.
+- **Read-only by design.** Queries run against your event store and are validated on the server: only `SELECT` and `WITH` statements are allowed, with a statement timeout and a row cap. An exploratory query can never modify your data, and a runaway one gets stopped for you.
 
 Happy with the result? Save it back to the library so the whole team inherits it, or pin its output onto a dashboard as a line, bar, area, or pie tile.
 

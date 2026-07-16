@@ -1,35 +1,35 @@
 ---
 title: "Security"
-description: "AgentEye Security documentation."
+description: "FailproofAI Observability Security documentation."
 ---
 
 
-AgentEye is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs. This page explains how it keeps that data isolated, controlled, and in your hands. If you're evaluating AgentEye for a security review, start here.
+FailproofAI Observability is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs. This page explains how it keeps that data isolated, controlled, and in your hands. If you're evaluating FailproofAI Observability for a security review, start here.
 
 ---
 
 ## Your data stays in your environment
 
-AgentEye is self-hosted. Events, prompts, model responses, and analytics are stored in databases you run: ClickHouse for events and analytics, PostgreSQL for operational state. Nothing is sent to a third-party SaaS for storage. In the [Managed](/agenteye/managed-deployment) model, Failproof AI operates the platform on a cluster you designate, and your data still lives in your own cloud account.
+FailproofAI Observability is self-hosted. Events, prompts, model responses, and analytics are stored in your own databases, in your own environment. Nothing is sent to a third-party SaaS for storage, and your data stays in your own cloud account.
 
 ---
 
 ## Tenant isolation
 
-One AgentEye instance can host many organizations, and each is isolated at the database layer, not just in the UI:
+One FailproofAI Observability instance can host many organizations, and each is isolated at the storage layer — enforced by the database, not just the UI:
 
-- **PostgreSQL** uses row-level security so an organization's operational data (users, keys, dashboards, saved queries) is scoped to that org.
-- **ClickHouse** gives each organization a read-only user constrained by a row policy, so cross-org event reads are blocked at the database, and every ingested event is stamped with its owning org.
+- An organization's operational data (users, keys, dashboards, saved queries) is scoped to that org, and cross-org reads are blocked by the database itself.
+- Every ingested event is stamped with its owning org, so one organization's events can never be read by another.
 
-Every dashboard route is scoped under an org slug (`/<org-slug>/…`). See [Tenant management](/agenteye/tenant-management) for the isolation model in detail.
+Every dashboard route is scoped under an org slug (`/<org-slug>/…`).
 
 ---
 
 ## Sign-in
 
-AgentEye uses passwordless, email-based sign-in. There is no password to phish or leak. A user requests a one-time code (or a one-click magic link), which is emailed to them and expires quickly. Sign-in is gated by an **allowlist**: only email addresses (or domains) you permit can authenticate.
+FailproofAI Observability uses passwordless, email-based sign-in. There is no password to phish or leak. A user requests a one-time code (or a one-click magic link), which is emailed to them and expires quickly. Sign-in is gated by an **allowlist**: only email addresses (or domains) you permit can authenticate.
 
-![The AgentEye sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
+![The FailproofAI Observability sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
 
 ---
 
@@ -57,12 +57,12 @@ So a teammate can ask "which agents errored most this week?" and act on the answ
 
 ## In transit
 
-For production installs you terminate TLS at your ingress and run the collector-to-server and browser-to-server traffic over HTTPS. The [Managed](/agenteye/managed-deployment) and [Kubernetes](/agenteye/kubernetes-deployment) guides cover certificates and per-cluster TLS in detail.
+All traffic runs over HTTPS. You terminate TLS with your own certificates, so collector-to-server and browser-to-server traffic is encrypted in transit.
 
 ---
 
 ## Next steps
 
-- [Tenant management](/agenteye/tenant-management): how organizations are isolated.
+- [Overview](/agenteye/overview): how FailproofAI Observability fits together.
 - [API keys](/agenteye/api-keys): scope access for the collector, dashboard, and assistant.
-- [Deployment options](/agenteye/deployment-options): pick a path that fits your security posture.
+- [Observability](/agenteye/observability): what FailproofAI Observability captures from your agents.

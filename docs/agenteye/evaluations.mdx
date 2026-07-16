@@ -1,10 +1,10 @@
 ---
 title: "Evaluations"
-description: "AgentEye Evaluations documentation."
+description: "FailproofAI Observability Evaluations documentation."
 ---
 
 
-Quality problems find you now, instead of you hearing about them in a user complaint. Connect your own scoring service once and AgentEye grades every finished run automatically, so a drop in helpfulness or a spike in hallucinations shows up on its own, before a customer feels it.
+Quality problems find you now, instead of you hearing about them in a user complaint. Connect your own scoring service once and FailproofAI Observability grades every finished run automatically, so a drop in helpfulness or a spike in hallucinations shows up on its own, before a customer feels it.
 
 ![The Sessions grid with a score column: each run carries an evaluation status pill and colour-coded helpfulness, factuality, and tool-efficiency badges](/agenteye/images/sessions-list.png)
 
@@ -12,7 +12,7 @@ Quality problems find you now, instead of you hearing about them in a user compl
 
 ## Stop sampling runs by hand
 
-You used to spot-check a handful of runs and hope the rest were fine. Now every completed session is scored the moment it finishes, on the dimensions you care about: helpfulness, tool efficiency, factuality, safety, whatever your quality bar is. You define the score keys; AgentEye stores, trends, and displays whatever your evaluator sends back. No run slips through unscored, and you stop learning about a regression from a support ticket.
+You used to spot-check a handful of runs and hope the rest were fine. Now every completed session is scored the moment it finishes, on the dimensions you care about: helpfulness, tool efficiency, factuality, safety, whatever your quality bar is. You define the score keys; FailproofAI Observability stores, trends, and displays whatever your evaluator sends back. No run slips through unscored, and you stop learning about a regression from a support ticket.
 
 The scores ride along on the sessions grid at **`/<org-slug>/sessions`** (sidebar → *observe* → *sessions*), one badge cluster per row. Want just the runs that fell short? Filter the grid by score range, say helpfulness below 0.5, and pull up exactly the runs worth reading. Viewing scores needs the `evaluations:read` permission.
 
@@ -38,11 +38,11 @@ Dashboards live at **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dash
 
 ## Connect an evaluator once
 
-Scoring is opt-in and stays completely off until you point AgentEye at a scorer. You stand up one small HTTP service (AgentEye ships a working reference you can copy), set two values on your server, and every run from then on is scored for you. The full walkthrough, the scoring contract, and the SDK live in the deep guide.
+Scoring is opt-in and stays completely off until you point FailproofAI Observability at a scorer. You stand up one small HTTP service (Observability ships a working reference you can copy), set two values on your server, and every run from then on is scored for you. The full walkthrough, the scoring contract, and the SDK live in the deep guide.
 
 ## Related
 
 - [Evaluation suite](/agenteye/evaluation-suite): connect your evaluator, the scoring contract, and the SDK.
 - [Sessions](/agenteye/sessions): the run-by-run grid where scores appear.
 - [Dashboards](/agenteye/dashboards): save and share quality trends across your org.
-- [Audits](/agenteye/audits): AgentEye's other automatic quality feature, for cross-session investigations.
+- [Audits](/agenteye/audits): Observability's other automatic quality feature, for cross-session investigations.

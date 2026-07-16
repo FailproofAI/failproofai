@@ -1,12 +1,12 @@
 ---
 title: "AI Assistant"
-description: "AgentEye AI Assistant documentation."
+description: "FailproofAI Observability AI Assistant documentation."
 ---
 
 
-Ask your agent data a question in plain English and get an answer that links straight to the evidence. No SQL to write, no dashboards to dig through: it is the fastest way for anyone on your team to get answers about your agents.
+Ask your agent data a question in plain English and get an answer that links straight to the evidence. No SQL to write, no dashboards to dig through — the **FailproofAI Observability** assistant is the fastest way for anyone on your team to get answers about your agents.
 
-![The AgentEye AI assistant answering a plain-English question inside the dashboard, showing a live Agent Activity table, a per-agent model-usage breakdown, and written takeaways, with the queries it ran shown inline](/agenteye/images/assistant.png)
+![The FailproofAI Observability assistant answering a plain-English question inside the dashboard, showing a live Agent Activity table, a per-agent model-usage breakdown, and written takeaways, with the queries it ran shown inline](/agenteye/images/assistant.png)
 *Ask in plain English and get an answer built from your own data. Here it breaks down which agents are busiest and which models they use, and shows the queries it ran so you can verify every number.*
 
 There is nothing to learn. Open the chat, type what you want to know, and follow the links it hands back:
@@ -36,7 +36,7 @@ When an answer is worth keeping, ask the assistant to save it. It drafts the SQL
 
 On the **Queries** page it goes a step further and becomes a SQL author: describe the query you want ("show error rate by agent for the last 7 days") and it streams SQL straight into the editor, opening a diff view so you can **Accept** or **Reject** the change before it lands.
 
-![The AgentEye Queries page and its SQL editor](/agenteye/images/query-lab.png)
+![The Observability Queries page and its SQL editor](/agenteye/images/query-lab.png)
 *The Queries page: this editor is where the assistant streams a draft, read-only query for you to accept or reject.*
 
 Authoring SQL by asking here uses the `queries:run` permission, the same one behind the editor's **Run** button. Chat everywhere else needs `agent:use`.
@@ -49,7 +49,7 @@ You can open the assistant up to everyone without worrying about what it might t
 - **Every write waits for you.** Saved queries and dashboards are created only after your explicit Approve click, and there is no setting that turns that gate off.
 - **It can never delete anything.** No delete tool is exposed and the assistant holds no delete permission. Deletions stay in your hands, in the dashboard.
 - **It stays inside your org.** The assistant only ever sees the organization you are currently viewing.
-- **Your questions stay yours.** Prompts and answers live in your own AgentEye database; product analytics records usage metadata only, never your prompt text.
+- **Your questions stay yours.** Prompts and answers live in your own Observability database; product analytics records usage metadata only, never your prompt text.
 
 ## Where to find it
 

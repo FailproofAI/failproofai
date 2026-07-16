@@ -1,10 +1,10 @@
 ---
 title: "Concepts"
-description: "AgentEye Concepts documentation."
+description: "FailproofAI Observability Concepts documentation."
 ---
 
 
-This page defines the vocabulary AgentEye uses. If a term in another guide is unfamiliar, it's defined here. You don't need to read it end to end: skim it, or jump back when you hit a word you want pinned down.
+This page defines the vocabulary FailproofAI Observability uses. If a term in another guide is unfamiliar, it's defined here. You don't need to read it end to end: skim it, or jump back when you hit a word you want pinned down.
 
 ---
 
@@ -17,13 +17,13 @@ The smallest unit of data. One event records a single step your agent took: a `t
 One agent run, identified by a `session_id`. A session is all the events that share that id, rolled up into a single row on the **Sessions** page and drawn as an execution graph on its detail page. A session usually starts with `agent_start` and ends with `agent_end`.
 
 **Agent**
-A named actor inside a run, identified by an `agent_id`. A run can involve several agents: a planner that spawns a summarizer sub-agent, for example. Sub-agents carry a `parent_id`, which is what lets AgentEye draw them on their own lanes in the execution graph.
+A named actor inside a run, identified by an `agent_id`. A run can involve several agents: a planner that spawns a summarizer sub-agent, for example. Sub-agents carry a `parent_id`, which is what lets FailproofAI Observability draw them on their own lanes in the execution graph.
 
 **Environment**
 A label for where the run happened: `production`, `staging`, `dev`. You set it once when you configure the SDK. Almost every dashboard page can filter by environment.
 
 **Context-window fill**
-The percentage of a model's context window a response consumed. AgentEye stamps it on `model_response` events for models it recognizes, so prompt growth and impending compaction are visible right in the event stream.
+The percentage of a model's context window a response consumed. FailproofAI Observability stamps it on `model_response` events for models it recognizes, so prompt growth and impending compaction are visible right in the event stream.
 
 ---
 
@@ -36,7 +36,7 @@ A quality score for a finished session, produced by a scoring service you run. E
 The name of one dimension an evaluator reports, such as `helpfulness`. Alerts and audits can watch a specific score key over time.
 
 **Evaluator**
-Your scoring service. AgentEye POSTs a finished run's transcript to it and stores the scores it returns. AgentEye does not ship a default evaluator; the scoring logic is yours.
+Your scoring service. FailproofAI Observability POSTs a finished run's transcript to it and stores the scores it returns. It does not ship a default evaluator; the scoring logic is yours.
 
 ---
 
@@ -55,7 +55,7 @@ An open issue created when an alert rule fires. Incidents have a lifecycle (ackn
 A recurring investigation (hourly to weekly) that mines your logs *across* sessions for failure patterns you haven't written a rule for: error clusters, low scores, latency outliers, tool-call loops, and runs that never finished. Where an alert watches a metric you already know about, an audit tells you what to look at next. See [Audits](/agenteye/audits).
 
 **Finding**
-One ranked, evidence-backed result from an audit run. A finding names a pattern, links to the exact sessions behind it, and carries a triage lifecycle (acknowledge, resolve, mute, dismiss). AgentEye deduplicates findings run-over-run so a known pattern updates instead of piling up.
+One ranked, evidence-backed result from an audit run. A finding names a pattern, links to the exact sessions behind it, and carries a triage lifecycle (acknowledge, resolve, mute, dismiss). FailproofAI Observability deduplicates findings run-over-run so a known pattern updates instead of piling up.
 
 **The AI assistant**
 The in-dashboard chat that answers questions about your agents in plain English, over your own data. It is read-only by default; anything it creates (a saved query, a dashboard) is approval-gated, and it can never delete. See [AI assistant](/agenteye/assistant).
@@ -65,16 +65,16 @@ The in-dashboard chat that answers questions about your agents in plain English,
 ## Running it
 
 **Organization (tenant)**
-An isolated workspace. One AgentEye instance can host many organizations, each with its own users, keys, and data. Every dashboard URL is scoped under your org slug (`/<org-slug>/…`). See [Tenant management](/agenteye/tenant-management).
+An isolated workspace. One FailproofAI Observability instance can host many organizations, each with its own users, keys, and data. Every dashboard URL is scoped under your org slug (`/<org-slug>/…`).
 
 **Collector**
-`agenteye-collector`, the lightweight daemon that runs on each agent machine, batches the events the SDK writes to disk, and ships them to the server. See [Collector installation](/agenteye/collector-installation).
+`agenteye-collector`, the lightweight daemon that runs on each agent machine, batches the events the SDK writes to disk, and ships them to the server.
 
 **API key**
 A scoped token that authenticates a client against the server. Keys carry granular permissions (for example `events:add` for the collector, read-only scopes for a dashboard key). See [API keys](/agenteye/api-keys).
 
 **Server**
-The ingest and API service. It receives events, writes them to ClickHouse, keeps operational state in PostgreSQL, and serves the dashboard and CLI.
+The ingest and API service. It ingests events, stores operational state in your databases, and serves the dashboard and CLI.
 
 **Dashboard**
 The web UI. Every page is scoped to an organization and reads through the server's API.
@@ -84,5 +84,4 @@ The web UI. Every page is scoped to an organization and reads through the server
 ## Next steps
 
 - [Overview](/agenteye/overview): how these pieces fit together.
-- [Getting started](/agenteye/getting-started): put the concepts to work end to end.
 - [Observability](/agenteye/observability): the observe surfaces (Events, Sessions, Models, Tools, Hooks, Errors).

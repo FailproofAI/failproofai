@@ -110,24 +110,32 @@ export function stripStrayTrailingFence(content: string): string {
  * the generated JS block comment can't be terminated early.
  */
 export function convertHtmlComments(content: string): string {
-  // Record the offset of every fenced-code marker (```… or ~~~…) at line start
-  // so we can tell whether a given comment sits inside a code block. An odd
-  // number of markers before an offset means it is inside an open fence.
-  const fenceOffsets: number[] = [];
-  const fenceRe = /^[ \t]*(?:`{3,}|~{3,})/gm;
+  // Map out fenced-code ranges so comments inside them stay literal. Per
+  // CommonMark, a fence opens with ≥3 backticks or tildes and closes only on a
+  // later line using the SAME character and at least the same length. A naive
+  // "any ``` toggles" counter misfires on a ```` block that embeds ``` or on
+  // mixed ```/~~~ fences — the toggle desyncs and a real top-level comment
+  // after the block would be left unconverted (breaking the deploy we fix here).
+  const fenceRanges: Array<[number, number]> = [];
+  const fenceRe = /^[ \t]*(`{3,}|~{3,})/gm;
   let fenceMatch: RegExpExecArray | null;
+  let open: { char: string; length: number; start: number } | null = null;
   while ((fenceMatch = fenceRe.exec(content)) !== null) {
-    fenceOffsets.push(fenceMatch.index);
-  }
-
-  const isInsideFence = (offset: number): boolean => {
-    let markers = 0;
-    for (const pos of fenceOffsets) {
-      if (pos >= offset) break;
-      markers++;
+    const marker = fenceMatch[1];
+    if (!open) {
+      open = { char: marker[0], length: marker.length, start: fenceMatch.index };
+    } else if (marker[0] === open.char && marker.length >= open.length) {
+      const lineEnd = content.indexOf("\n", fenceRe.lastIndex);
+      fenceRanges.push([open.start, lineEnd === -1 ? content.length : lineEnd]);
+      open = null;
     }
-    return markers % 2 === 1;
-  };
+    // A different char or shorter marker while a fence is open is inner content.
+  }
+  // An unterminated fence runs to the end of the document.
+  if (open) fenceRanges.push([open.start, content.length]);
+
+  const isInsideFence = (offset: number): boolean =>
+    fenceRanges.some(([start, end]) => offset >= start && offset < end);
 
   return content.replace(
     /<!--([\s\S]*?)-->/g,

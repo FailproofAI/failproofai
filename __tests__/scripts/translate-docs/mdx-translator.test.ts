@@ -234,4 +234,27 @@ describe("convertHtmlComments", () => {
     const input = "# Title\n\nJust prose, no comments here.\n";
     expect(convertHtmlComments(input)).toBe(input);
   });
+
+  it("converts a top-level comment after a ```` block that embeds ```", () => {
+    // A generic fence toggle would count the inner ``` as a boundary and leave
+    // this comment mis-flagged as inside a fence, breaking the deploy.
+    const input = "````\ninner ``` fence\n````\n\n<!-- note -->\n";
+    const expected = "````\ninner ``` fence\n````\n\n{/* note */}\n";
+    expect(convertHtmlComments(input)).toBe(expected);
+  });
+
+  it("does not treat a ~~~ line inside a ``` block as a fence boundary", () => {
+    // The tilde line is inner content of the backtick fence, so the comment on
+    // the next line stays literal; only the comment after the fence converts.
+    const input =
+      "```\n~~~ still inside\n<!-- inside -->\n```\n\n<!-- outside -->\n";
+    const expected =
+      "```\n~~~ still inside\n<!-- inside -->\n```\n\n{/* outside */}\n";
+    expect(convertHtmlComments(input)).toBe(expected);
+  });
+
+  it("treats an unterminated fence as running to end of document", () => {
+    const input = "```\n<!-- inside an unclosed fence -->\n";
+    expect(convertHtmlComments(input)).toBe(input);
+  });
 });

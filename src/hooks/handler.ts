@@ -166,6 +166,24 @@ export async function handleHookEvent(
     if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
   }
 
+  // Copilot's snake_case events (PreToolUse/PostToolUse/Stop/…) are already
+  // Claude-shaped, but `permissionRequest` alone pipes a camelCase payload
+  // (`hookName`, `sessionId`, `toolName` in lowercase, `toolInput`) — verified
+  // live against Copilot CLI 1.0.71. Normalize the fields the handler reads so
+  // PermissionRequest-matched policies (e.g. block-sudo's Codex-escalation
+  // guard) fire instead of seeing a null tool name.
+  if (cli === "copilot") {
+    if (typeof parsed.toolName === "string" && parsed.tool_name === undefined) {
+      parsed.tool_name = parsed.toolName;
+    }
+    if (parsed.toolInput !== undefined && parsed.tool_input === undefined) {
+      parsed.tool_input = parsed.toolInput;
+    }
+    if (typeof parsed.sessionId === "string" && parsed.session_id === undefined) {
+      parsed.session_id = parsed.sessionId;
+    }
+  }
+
   // Goose pipes `event` / `working_dir` instead of Claude's `hook_event_name` /
   // `cwd` (its `tool_name` / `tool_input` are already canonical field names).
   // Normalize both so resolveCwd keeps its cwd (block-read-outside-cwd) and the

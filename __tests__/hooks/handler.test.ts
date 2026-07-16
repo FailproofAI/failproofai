@@ -148,6 +148,35 @@ describe("hooks/handler", () => {
     );
   });
 
+  it("normalizes Copilot's camelCase permissionRequest payload (verified 1.0.71 capture)", async () => {
+    // Copilot's snake_case events are Claude-shaped, but permissionRequest
+    // alone pipes camelCase with a lowercase tool name. Without normalization
+    // the handler sees a null tool name and PermissionRequest policies no-op.
+    mockStdin(
+      JSON.stringify({
+        hookName: "permissionRequest",
+        sessionId: "e5740815-966c-4c4e-8c51-153a8f1fa466",
+        timestamp: 1784186747245,
+        cwd: "/home/user/project",
+        toolName: "bash",
+        toolInput: { command: "sudo whoami" },
+        permissionSuggestions: [],
+      }),
+    );
+    const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+    await handleHookEvent("PermissionRequest", "copilot");
+
+    expect(persistHookActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "PermissionRequest",
+        integration: "copilot",
+        toolName: "Bash",
+        sessionId: "e5740815-966c-4c4e-8c51-153a8f1fa466",
+      }),
+    );
+  });
+
   it("flushes pending telemetry before returning, even on the allow path", async () => {
     // The allow path fires no awaited event, so without an explicit flush the
     // caller's process.exit() would drop un-awaited (`void`) load/error events.

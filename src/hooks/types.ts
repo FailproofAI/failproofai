@@ -237,6 +237,24 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
   web_fetch: "WebFetch",
 };
 
+/**
+ * Copilot CLI tool-input key canonicalization, keyed by CANONICAL tool name.
+ *
+ * Verified live against Copilot CLI 1.0.71: the snake_case hook events
+ * (PreToolUse/PostToolUse) deliver `tool_name` already canonical (`Bash`,
+ * `Read`, `Write`, `Edit`, `Grep`) but the file tools' input keys are
+ * Copilot's own — `path` instead of `file_path`, Write's content as
+ * `file_text`, Edit's strings as `old_str`/`new_str`. Without this map,
+ * path/content builtins (block-env-files, block-secrets-write) silently
+ * allowed Copilot file access (a live `.env` read was observed passing).
+ * Bash's `command` and Grep's `pattern` are already canonical.
+ */
+export const COPILOT_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path" },
+  Write: { path: "file_path", file_text: "content" },
+  Edit: { path: "file_path", old_str: "old_string", new_str: "new_string" },
+};
+
 // ── Cursor Agent CLI ───────────────────────────────────────────────────────
 //
 // Cursor delivers events under camelCase keys (`preToolUse`, `postToolUse`,

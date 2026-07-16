@@ -86,6 +86,35 @@ subscribe to it for parity with `agentStop`).
 
 Ref: <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference>
 
+**1.0.71 contract re-verification** (2026-07-16, live recorder-hook captures —
+Copilot's schema drifted since the 1.0.41 verification above):
+
+- **Config**: `hooks` must be an **object** keyed by event. Older installed
+  files were rejected wholesale (`[ERROR] Invalid hook configuration …: hooks
+  must be an object`) and the session ran **unhooked** — silently, no user-visible
+  warning. Reinstalling with the current `writeHookEntries` schema fixes it.
+- **Payloads**: the snake_case events (PreToolUse/PostToolUse/Stop/…) are
+  Claude-shaped and deliver `tool_name` **already canonical** (`Bash`, `Read`,
+  `Write`, `Edit`, `Grep`) — but the file tools use Copilot's own input keys:
+  Read `{path}`, Write `{path, file_text}`, Edit `{path, old_str, new_str}`.
+  `COPILOT_TOOL_INPUT_MAP` (keyed by canonical name) maps them to
+  `file_path`/`content`/`old_string`/`new_string`; without it a live `.env`
+  read passed block-env-files. Bash `{command}` and Grep `{pattern}` are canonical.
+- **`permissionRequest` is the camelCase exception**: `{hookName, sessionId,
+  timestamp:number, cwd, toolName:"bash" (lowercase), toolInput,
+  permissionSuggestions}`. `handler.ts` has a `cli === "copilot"` branch
+  normalizing `toolName`/`toolInput`/`sessionId`; the lowercase names go
+  through `COPILOT_TOOL_MAP` as before.
+- **Deny still works**: the Claude `{hookSpecificOutput:{permissionDecision:
+  "deny"}}` shape is honored on PreToolUse — verified live (`success:false,
+  code:"denied"` in session events; the sudo never ran). Stop gates
+  (`require-*-before-stop`) also verified firing + forcing retries on 1.0.71.
+- **Caveat**: in headless `copilot -p` runs from a fresh directory, the
+  project-scope `.github/hooks/*.json` file was NOT loaded (git repo or not);
+  the user-scope `~/.copilot/hooks/*.json` always loaded. Likely a
+  trusted-folder gate — treat user scope as the reliable enforcement point for
+  headless/CI usage until verified otherwise.
+
 ### Cursor hooks (`.cursor/hooks.json`)
 
 This repo also ships a `.cursor/hooks.json` for Cursor Agent CLI sessions,

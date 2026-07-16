@@ -9,6 +9,7 @@ import type { IntegrationType } from "./types";
 import {
   CODEX_TOOL_MAP,
   COPILOT_TOOL_MAP,
+  COPILOT_TOOL_INPUT_MAP,
   CURSOR_TOOL_MAP,
   OPENCODE_TOOL_MAP,
   OPENCODE_TOOL_INPUT_MAP,
@@ -76,7 +77,11 @@ export function canonicalizeToolInput(
     return rawInput;
   }
   let perToolMap: Record<string, string> | undefined;
-  if (cli === "opencode") perToolMap = OPENCODE_TOOL_INPUT_MAP[toolName];
+  // Copilot file tools deliver `path` (+ Write's `file_text`, Edit's
+  // `old_str`/`new_str`); map to canonical keys so path/content builtins fire
+  // (verified live against Copilot CLI 1.0.71).
+  if (cli === "copilot") perToolMap = COPILOT_TOOL_INPUT_MAP[toolName];
+  else if (cli === "opencode") perToolMap = OPENCODE_TOOL_INPUT_MAP[toolName];
   else if (cli === "pi") perToolMap = PI_TOOL_INPUT_MAP[toolName];
   // Hermes read_file/write_file/patch deliver the file path as `path`; map it to
   // `file_path` so path/content builtins fire (verified against a live state.db).

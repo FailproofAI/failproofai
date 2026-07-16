@@ -17,13 +17,18 @@ export function formatRelativeTime(ts: number): string {
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const totalMinutes = Math.floor(seconds / 60);
+  if (seconds < 60) {
+    const tenths = Math.round(seconds * 10);
+    if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+  }
+
+  const totalSeconds = Math.round(seconds);
+  const totalMinutes = Math.floor(totalSeconds / 60);
   if (totalMinutes >= 60) {
     const hours = Math.floor(totalMinutes / 60);
     const remainingMinutes = totalMinutes % 60;
     return `${hours}h ${remainingMinutes}m`;
   }
-  const remainingSeconds = (seconds % 60).toFixed(0);
+  const remainingSeconds = totalSeconds % 60;
   return `${totalMinutes}m ${remainingSeconds}s`;
 }

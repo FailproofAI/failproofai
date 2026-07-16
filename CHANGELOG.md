@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.0.14-beta.1 — 2026-07-14
+## 0.0.14-beta.1 — 2026-07-16
+
+### Fixes
+- Normalize rounded duration units so formatting never emits invalid `60.0s`, `1m 60s`, or `59m 60s` values. (#521)
 
 ### Docs
 - AgentEye docs: lead the Agent Observability sidebar with a Features group (one page per top-level feature), move Deployment to the last group, and publish the new per-feature pages, autoplaying demo embeds, and an AI assistant screenshot. (#548)

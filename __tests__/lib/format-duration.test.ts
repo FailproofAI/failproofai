@@ -26,12 +26,24 @@ describe("formatDuration", () => {
     expect(formatDuration(3200)).toBe("3.2s");
   });
 
+  it("rounds seconds up to a minute", () => {
+    expect(formatDuration(59999)).toBe("1m 0s");
+  });
+
   it("boundary: exactly 60000ms", () => {
     expect(formatDuration(60000)).toBe("1m 0s");
   });
 
   it("minutes: 312000ms", () => {
     expect(formatDuration(312000)).toBe("5m 12s");
+  });
+
+  it("rounds seconds up without emitting 60s", () => {
+    expect(formatDuration(119600)).toBe("2m 0s");
+  });
+
+  it("rounds minutes up to an hour", () => {
+    expect(formatDuration(3599600)).toBe("1h 0m");
   });
 
   it("boundary: exactly 3600000ms", () => {

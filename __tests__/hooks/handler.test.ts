@@ -49,6 +49,10 @@ vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogError: vi.fn(),
 }));
 
+vi.mock("../../src/hooks/hook-invocation-dedup", () => ({
+  claimHookInvocation: vi.fn(() => Promise.resolve({ role: "independent" })),
+}));
+
 describe("hooks/handler", () => {
   let stderrSpy: ReturnType<typeof vi.spyOn>;
   let stdoutSpy: ReturnType<typeof vi.spyOn>;
@@ -1249,6 +1253,28 @@ describe("hooks/handler", () => {
     expect(stdoutSpy).toHaveBeenCalledWith(
       expect.stringContaining("permissionDecision"),
     );
+  });
+
+  it("replays a duplicate decision without evaluating or persisting again", async () => {
+    const { claimHookInvocation } = await import("../../src/hooks/hook-invocation-dedup");
+    vi.mocked(claimHookInvocation).mockResolvedValueOnce({
+      role: "duplicate",
+      response: { exitCode: 2, stdout: "", stderr: "blocked once" },
+    });
+    mockStdin(JSON.stringify({
+      session_id: "session-1",
+      tool_use_id: "tool-1",
+      tool_name: "Bash",
+    }));
+    const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+    const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+
+    const exitCode = await handleHookEvent("PreToolUse");
+
+    expect(exitCode).toBe(2);
+    expect(stderrSpy).toHaveBeenCalledWith("blocked once");
+    expect(evaluatePolicies).not.toHaveBeenCalled();
+    expect(persistHookActivity).not.toHaveBeenCalled();
   });
 
   it("persists instruct decision as 'instruct' in activity store", async () => {

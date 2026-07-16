@@ -39,6 +39,7 @@ import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
+import { claimHookInvocation } from "./hook-invocation-dedup";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -92,6 +93,7 @@ export async function handleHookEvent(
   cli: IntegrationType = "claude",
 ): Promise<number> {
   const startTime = performance.now();
+  let invocationClaim: Awaited<ReturnType<typeof claimHookInvocation>> | undefined;
   try {
 
     // Read stdin payload (Claude passes JSON)
@@ -195,6 +197,14 @@ export async function handleHookEvent(
       if (typeof parsed.event === "string" && parsed.hook_event_name === undefined) {
         parsed.hook_event_name = parsed.event;
       }
+    }
+
+    invocationClaim = await claimHookInvocation(eventType, cli, parsed);
+    if (invocationClaim.role === "duplicate") {
+      if (invocationClaim.response.stdout) process.stdout.write(invocationClaim.response.stdout);
+      if (invocationClaim.response.stderr) process.stderr.write(invocationClaim.response.stderr);
+      hookLogInfo(`duplicate invocation replayed event=${eventType} cli=${cli}`);
+      return invocationClaim.response.exitCode;
     }
 
     // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
@@ -311,6 +321,13 @@ export async function handleHookEvent(
 
     // Evaluate policies (use canonical PascalCase event type)
     const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
+    if (invocationClaim.role === "owner") {
+      await invocationClaim.complete({
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    }
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
@@ -376,6 +393,7 @@ export async function handleHookEvent(
     }
     return result.exitCode;
   } finally {
+    if (invocationClaim?.role === "owner") await invocationClaim.release();
     // Await any un-awaited (`void trackHookEvent(...)`) events fired during
     // this invocation. bin/failproofai.mjs calls process.exit() the moment we
     // return OR throw, which would otherwise drop in-flight POSTs — notably on

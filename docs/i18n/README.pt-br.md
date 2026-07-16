@@ -31,9 +31,9 @@ antes que se tornem incidentes. Latência zero. Executa localmente.
 
 ## CLIs de agentes suportados
 
-<!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
+{/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
-     instead of collapsing into ragged orphan rows). -->
+     instead of collapsing into ragged orphan rows). */}
 <table align="center">
   <tr>
     <td align="center" width="96">

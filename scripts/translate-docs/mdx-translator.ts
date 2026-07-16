@@ -95,6 +95,52 @@ export function stripStrayTrailingFence(content: string): string {
 }
 
 /**
+ * Convert HTML comments (`<!-- ... -->`) into MDX brace-slash-star comments.
+ *
+ * Mintlify parses every page as MDX, where a top-level HTML comment is a hard
+ * syntax error ("Unexpected character `!` (U+0021) before name …") that fails
+ * the whole deployment — the remedy Mintlify itself suggests is switching to
+ * MDX's own comment form. The root README keeps HTML-comment syntax (GitHub
+ * renders it invisibly), so its translated copies under docs/i18n/ have to be
+ * rewritten to the MDX form or the docs deploy breaks.
+ *
+ * Comments inside fenced code blocks are left untouched — there `<!-- -->` is
+ * literal sample text (e.g. the plist snippet in the AgentEye collector docs),
+ * not a comment to convert. Any `*`+`/` sequence inside a body is broken up so
+ * the generated JS block comment can't be terminated early.
+ */
+export function convertHtmlComments(content: string): string {
+  // Record the offset of every fenced-code marker (```… or ~~~…) at line start
+  // so we can tell whether a given comment sits inside a code block. An odd
+  // number of markers before an offset means it is inside an open fence.
+  const fenceOffsets: number[] = [];
+  const fenceRe = /^[ \t]*(?:`{3,}|~{3,})/gm;
+  let fenceMatch: RegExpExecArray | null;
+  while ((fenceMatch = fenceRe.exec(content)) !== null) {
+    fenceOffsets.push(fenceMatch.index);
+  }
+
+  const isInsideFence = (offset: number): boolean => {
+    let markers = 0;
+    for (const pos of fenceOffsets) {
+      if (pos >= offset) break;
+      markers++;
+    }
+    return markers % 2 === 1;
+  };
+
+  return content.replace(
+    /<!--([\s\S]*?)-->/g,
+    (match: string, body: string, offset: number) => {
+      if (isInsideFence(offset)) return match;
+      // Neutralize any `*/` so it can't close the JS block comment early.
+      const safeBody = body.replace(/\*\//g, "* /");
+      return `{/*${safeBody}*/}`;
+    },
+  );
+}
+
+/**
  * Rewrite internal doc links to include the language prefix.
  * e.g. href="/built-in-policies" -> href="/es/built-in-policies"
  *      [Getting started](/getting-started) -> [Getting started](/es/getting-started)
@@ -175,9 +221,11 @@ export async function translateMdxPage(
   );
 
   // Strip stray quote artifacts from JSX attribute values, drop any
-  // unmatched trailing code fence the model sometimes hallucinates, then
-  // rewrite links.
-  const sanitized = stripStrayTrailingFence(sanitizeJsxAttributes(translated));
+  // unmatched trailing code fence the model sometimes hallucinates, convert
+  // any HTML comments to MDX comments, then rewrite links.
+  const sanitized = convertHtmlComments(
+    stripStrayTrailingFence(sanitizeJsxAttributes(translated)),
+  );
   const withLinks = rewriteInternalLinks(sanitized, lang);
 
   // Write output

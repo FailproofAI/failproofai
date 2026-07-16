@@ -1,0 +1,48 @@
+---
+title: "Evaluations"
+description: "AgentEye Evaluations documentation."
+---
+
+
+Quality problems find you now, instead of you hearing about them in a user complaint. Connect your own scoring service once and AgentEye grades every finished run automatically, so a drop in helpfulness or a spike in hallucinations shows up on its own, before a customer feels it.
+
+![The Sessions grid with a score column: each run carries an evaluation status pill and colour-coded helpfulness, factuality, and tool-efficiency badges](/agenteye/images/sessions-list.png)
+
+*Every run on the sessions grid carries its scores; red, amber, and green badges make the weak runs jump out without you opening a single transcript.*
+
+## Stop sampling runs by hand
+
+You used to spot-check a handful of runs and hope the rest were fine. Now every completed session is scored the moment it finishes, on the dimensions you care about: helpfulness, tool efficiency, factuality, safety, whatever your quality bar is. You define the score keys; AgentEye stores, trends, and displays whatever your evaluator sends back. No run slips through unscored, and you stop learning about a regression from a support ticket.
+
+The scores ride along on the sessions grid at **`/<org-slug>/sessions`** (sidebar → *observe* → *sessions*), one badge cluster per row. Want just the runs that fell short? Filter the grid by score range, say helpfulness below 0.5, and pull up exactly the runs worth reading. Viewing scores needs the `evaluations:read` permission.
+
+## See why a run scored low
+
+A number tells you a run was weak; the session page tells you why. Open any run and the right rail leads with the headline summary, then shows a bar per dimension with your evaluator's own reasoning under each one, so you go from "this scored 0.4 on factuality" to the exact claim it got wrong in seconds.
+
+![A session's right rail: the evaluation summary on top, then per-dimension score bars each with a line of reasoning, beside the full event timeline](/agenteye/images/session-detail.png)
+
+*The session detail view: summary, per-dimension score bars, and the reasoning behind each score, right next to the run's event timeline.*
+
+Shipped a sharper evaluator, or looking at a run that crashed before it could be scored? A **re-evaluate** button (gated by `evaluations:trigger`) re-scores the session in place and appends the fresh result to its timeline, so earlier scores stay visible as history. You will find it at **`/<org-slug>/sessions/<session-id>`**.
+
+## Watch quality trend across the fleet
+
+One run scoring low is noise; a whole cohort sliding is a signal. Saved dashboards turn your scores into a trend you can watch at a glance: average helpfulness this week against last, per agent, per environment.
+
+![A quality dashboard: average-score bars per evaluator dimension alongside a trend over time](/agenteye/images/dashboard-quality.png)
+
+*A saved quality dashboard trends the score keys you feature, so a slow drift is obvious long before it becomes an incident.*
+
+Dashboards live at **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dashboards*), are shared across your whole organization, and each card rolls up the matching sessions: how many, the average of each featured score, and a trend sparkline. "Open in sessions" drops you straight into the pre-filtered runs behind any number. Viewing needs `dashboards:read` plus `evaluations:read`.
+
+## Connect an evaluator once
+
+Scoring is opt-in and stays completely off until you point AgentEye at a scorer. You stand up one small HTTP service (AgentEye ships a working reference you can copy), set two values on your server, and every run from then on is scored for you. The full walkthrough, the scoring contract, and the SDK live in the deep guide.
+
+## Related
+
+- [Evaluation suite](/agenteye/evaluation-suite): connect your evaluator, the scoring contract, and the SDK.
+- [Sessions](/agenteye/sessions): the run-by-run grid where scores appear.
+- [Dashboards](/agenteye/dashboards): save and share quality trends across your org.
+- [Audits](/agenteye/audits): AgentEye's other automatic quality feature, for cross-session investigations.

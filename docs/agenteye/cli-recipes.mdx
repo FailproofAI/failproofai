@@ -111,7 +111,7 @@ A multi-org login without `--org` exits non-zero and prints the orgs to choose f
 ## Provision an API key for the SDK/collector
 
 ```bash
-# the secret is printed ONCE — with --json it's the .key field
+# the secret is printed ONCE, with --json it's the .key field
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
 agenteye keys regenerate ci-bot --yes    # rotate; agenteye keys disable ci-bot --yes to revoke
 ```

@@ -1,0 +1,55 @@
+---
+title: "Sessions & Execution Graph"
+description: "AgentEye Sessions & Execution Graph documentation."
+---
+
+
+Stop guessing why a run failed. AgentEye rolls every event from a run into one readable row, then draws the whole run as a git-style picture you can read in seconds, so you see exactly what your agent did, step by step.
+
+![The Sessions list: one row per run, across environments and agents, with status pills and evaluation score badges](/agenteye/images/sessions-list.png)
+
+*One row per run: the status pill tells you how the run ended at a glance, and a score badge rides along once an evaluator is connected.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent tracing: follow a single run step by step, from goal to tools to final answer.*
+
+---
+
+## See every run at a glance
+
+The raw event trail is the truth of every step, but when you have thousands of steps across dozens of runs, you need the run, not the step. The Sessions page rolls all of a run's events up into one row, so a day of activity becomes a scannable list instead of a firehose.
+
+Each row carries a status pill, so a failed run stands out from a healthy one before you click anything. Filter by date range, environment, agent, or session to go from "everything" to "the run I care about" in a couple of clicks.
+
+Once you connect an evaluator, every completed run is scored automatically and its latest score shows up on the row as a badge. You can filter by any score range, so "show me every low-scoring prod run this week" is a filter, not a manual review. Until you set one up, sessions still capture the full run; they just don't carry a score yet.
+
+---
+
+## Read the whole run as a picture
+
+![A session's git-style execution graph beside its event timeline, with the tool, model, and hook breakdown panel](/agenteye/images/session-detail.png)
+
+*The execution graph (left) sits beside the event timeline; the right rail breaks down the tools, models, hooks, and token spend for the run.*
+
+Click any session to open its execution graph: a git-style view of how agents, tools, hooks, and model calls unfolded over time. Parallel sub-agents each branch onto their own lane, so you can see which work ran side by side, which sub-agent stalled, and where the run went off course, without replaying it in your head from a wall of logs.
+
+The right rail gives you the per-run breakdown: which tools and models ran, which hooks fired, and what the run spent in tokens. That is the answer to "why did this run cost so much?" or "which tool is the slow one?" sitting right next to the graph that caused it.
+
+---
+
+## Where to find it
+
+Every dashboard page is scoped to your org (`/<org-slug>/…`). Sessions lives under **Observe** in the left sidebar, next to Events, with the date range, environment, agent, and session filters across the top of the list. Every row is one click from its full execution graph.
+
+To turn on the score badges and score-range filtering, connect an evaluator: see [Evaluations](/agenteye/evaluations).
+
+---
+
+## Related
+
+- [Event stream](/agenteye/event-stream): the raw, per-step trail every session is rolled up from.
+- [Evaluations](/agenteye/evaluations): connect an evaluator so each run gets a score badge you can filter by.
+- [Telemetry](/agenteye/telemetry): how runs get from your agent into these sessions.

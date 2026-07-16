@@ -1,0 +1,56 @@
+---
+title: "Queries"
+description: "AgentEye Queries documentation."
+---
+
+
+Ask any question of your agent data and get an answer in seconds. AgentEye gives you a library of saved, ready-to-run queries over your events and evaluations, so you start from a working example instead of a blank SQL editor.
+
+![The saved-queries library: a grid of reusable queries, both built-in presets and custom ones](/agenteye/images/queries.png)
+
+*Your saved-queries library at `/<org-slug>/queries`: built-in presets sitting alongside the queries your team has saved.*
+
+## Start from a preset, not a blank page
+
+You do not have to remember table names or write SQL from scratch. The library opens with built-in presets for the questions teams ask most, sitting right next to the queries your own team has saved and named. Pick one that is close to what you want and you are most of the way to an answer.
+
+Every saved query is org-scoped and shared, so the useful ones your teammates write become yours too. Name a query and give it a description once, and anyone in your org can find it, run it, or pin its results onto a dashboard later.
+
+Find it at `/<org-slug>/queries`.
+
+## Tweak it and run it in the SQL composer
+
+Open any query and it lands in the SQL composer, where you can adjust it and see the answer immediately: no export, no round-trip, no waiting on someone else.
+
+![The SQL query composer running a saved query, with a schema sidebar and a live result grid](/agenteye/images/query-lab.png)
+
+*The SQL composer: your query on the left, a schema sidebar so you never guess a column name, and a live result grid below.*
+
+- **A schema sidebar** lays out the analytics tables and their columns, so you can shape a query without hunting for field names.
+- **A live result grid** returns rows the moment you run, so you iterate in seconds rather than guessing and re-guessing.
+- **Read-only by design.** Queries run against your analytics store (ClickHouse) and are validated on the server: only `SELECT` and `WITH` statements are allowed, with a statement timeout and a row cap. An exploratory query can never modify your data, and a runaway one gets stopped for you.
+
+Happy with the result? Save it back to the library so the whole team inherits it, or pin its output onto a dashboard as a line, bar, area, or pie tile.
+
+## Run them from the terminal, or let the assistant write them
+
+The same saved queries follow you wherever you work:
+
+- **From the terminal.** The `agenteye` CLI lists, runs, and saves the very same queries, so you can drop a result into a script, wire it into CI, or hand it to a coding agent.
+
+```bash
+agenteye query list                 # the same saved queries, from your terminal
+agenteye query run errs --arg prod  # run one and print the rows (add --json to pipe it)
+```
+
+  See [CLI and agents](/agenteye/cli-and-agents) for the full command set.
+
+- **From the AI assistant.** Not sure how to phrase the SQL? Ask the in-dashboard [AI assistant](/agenteye/assistant) in plain English and it will draft the query and save it to your library for you.
+
+Running a saved query is gated by the `queries:run` permission, kept separate from the permissions to create or delete queries, so you can grant read access without letting everyone rewrite the library.
+
+## Related
+
+- [Dashboards](/agenteye/dashboards): pin query results into shared, org-wide charts.
+- [AI assistant](/agenteye/assistant): ask questions in plain English and get a query back.
+- [CLI and agents](/agenteye/cli-and-agents): run and save the same queries from your terminal.

@@ -1,0 +1,80 @@
+---
+title: "CLI"
+description: "AgentEye CLI documentation."
+---
+
+
+Your entire AgentEye deployment, one command away. Check production, cut an API key, or ack an incident without leaving your terminal, then script any of it into CI, or let a coding agent do it for you in plain English.
+
+```bash
+pipx install agenteye
+agenteye login --email you@example.com      # a 6-digit code lands in your inbox
+agenteye --json sessions --since 24h         # every agent run from the last day, newest first
+```
+
+*The `agenteye` CLI talks to your dashboard. It is a different tool from the collector, which ships events to the server.*
+
+## Your whole deployment, one command away
+
+Stop tab-hopping to answer a quick question. The `agenteye` CLI reads your data and administers your org from a single binary, so a check that used to mean clicking through the dashboard becomes one line you can rerun, alias, or paste into a runbook. You get four surfaces:
+
+- **Read your data:** `sessions`, `events`, `evals`, and `errors`, filtered by time, agent, and environment.
+- **Manage your org:** `keys`, `users`, `settings`, `alerts`, and `incidents`.
+- **Run analytics:** saved SQL plus an ad-hoc `query` runner over your event data.
+- **Ask the assistant:** `agent ask` reaches the same read-only analyst you chat with in the dashboard.
+
+Install it once with `pipx`, sign in with an emailed 6-digit code, and you are ready. The session lasts about a day; rerun `agenteye login` when it expires. Reach for it to spot-check production, provision a key, or triage a firing incident, all without opening a browser:
+
+```bash
+agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
+agenteye incidents list --state firing       # what is on fire right now
+agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
+```
+
+One habit to know: global options like `--json` go before the command. `agenteye --json sessions` is right; `agenteye sessions --json` is not.
+
+## Script it, wire it into CI
+
+Every command takes `--json`, and that changes everything. Clean JSON goes to stdout while human status and warnings go to stderr, so a `--json` capture pipes straight into `jq` with no stray line to strip. That is what makes the CLI equally good for you at a prompt and for a coding agent parsing output:
+
+```bash
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+```
+
+It is built to run unattended. Confirmation prompts auto-skip when no terminal is attached, so nothing hangs in a pipeline, and every command returns a meaningful exit code: `0` success, `4` not logged in, `5` missing a permission (the message names it, for example `alerts:write`), `3` dashboard unreachable. A script can branch on a `4` to reauthenticate or a `5` to tell you exactly what to ask an admin for, instead of failing blind.
+
+## Let a coding agent drive it in plain English
+
+Better yet, you should not have to remember any of these flags at all. The **CLI skill** is a small Agent Skill folder named `agenteye-cli` that teaches a coding agent such as Claude Code or Codex to drive the CLI from plain-English requests. Ask "is anything broken today?" and the agent picks the command, runs it as you, and answers in prose.
+
+For Claude Code, drop the `agenteye-cli` folder into `~/.claude/skills/` and it is auto-discovered. AgentEye provides the folder; there is nothing to deploy and no image to pull, because it only drives the CLI you already installed. Log in yourself first: the skill cannot complete the emailed-code login for you.
+
+Because the agent runs the CLI as you, it can do everything your login permits, reads and writes alike: create keys, change settings, resolve incidents. The CLI's "are you sure?" prompt does not fire for an agent, so the skill is written to state the exact command and wait for your OK before any change. You are the confirmation step.
+
+```text
+you    Why did session run-001 fail?
+
+agent  Running: agenteye --json events --session-id run-001 --all
+       The checkout-agent hit a TimeoutError on its third tool call.
+```
+
+Reads stay instant, and every write pauses for you:
+
+```text
+you    Give CI a key that can only push events.
+
+agent  This creates an API key. I'll run:
+         agenteye keys create ci --add events:add
+       OK to proceed?
+
+you    yes
+
+agent  Done. Key "ci" created with events:add only. The secret is shown once, so store it now.
+```
+
+## Related
+
+- [CLI reference](/agenteye/cli): every command, flag, and JSON shape.
+- [CLI recipes for agents](/agenteye/cli-recipes): copy-paste `jq` patterns and exit-code handling.
+- [CLI agent skill](/agenteye/cli-skill): install and run the `agenteye-cli` skill.
+- [AI assistant](/agenteye/assistant): the in-dashboard analyst that `agent ask` talks to.

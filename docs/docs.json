@@ -34,48 +34,63 @@
             "tab": "Agent Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "agenteye/getting-started",
-                  "agenteye/github-token"
+                  "agenteye/overview",
+                  "agenteye/concepts",
+                  "agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "agenteye/event-stream",
+                  "agenteye/sessions",
+                  "agenteye/telemetry",
+                  "agenteye/error-tracking",
+                  "agenteye/evaluations",
+                  "agenteye/queries",
+                  "agenteye/dashboards",
+                  "agenteye/audits",
+                  "agenteye/alerts",
+                  "agenteye/incidents",
+                  "agenteye/assistant",
+                  "agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
+                "pages": [
+                  "agenteye/python-sdk",
+                  "agenteye/cli",
+                  "agenteye/cli-skill",
+                  "agenteye/cli-recipes",
+                  "agenteye/evaluation-suite"
+                ]
+              },
+              {
+                "group": "Administration",
+                "pages": [
+                  "agenteye/api-keys",
+                  "agenteye/tenant-management",
+                  "agenteye/security"
                 ]
               },
               {
                 "group": "Deployment",
                 "pages": [
+                  "agenteye/getting-started",
+                  "agenteye/deployment-options",
                   "agenteye/deployment",
                   "agenteye/managed-deployment",
                   "agenteye/kubernetes-deployment",
                   "agenteye/single-pod-deployment",
                   "agenteye/collector-installation",
-                  "agenteye/collector-migration"
-                ]
-              },
-              {
-                "group": "Instrumentation and CLI",
-                "pages": [
-                  "agenteye/python-sdk",
-                  "agenteye/cli",
-                  "agenteye/cli-recipes",
-                  "agenteye/cli-skill"
-                ]
-              },
-              {
-                "group": "Quality",
-                "pages": [
-                  "agenteye/evaluation-suite",
-                  "agenteye/audits",
-                  "agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
-                "pages": [
-                  "agenteye/api-keys",
-                  "agenteye/tenant-management",
+                  "agenteye/collector-migration",
+                  "agenteye/github-token",
                   "agenteye/health-monitoring",
-                  "agenteye/assistant",
-                  "agenteye/troubleshooting"
+                  "agenteye/troubleshooting",
+                  "agenteye/faq"
                 ]
               }
             ]

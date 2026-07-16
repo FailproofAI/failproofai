@@ -4,193 +4,60 @@ description: "AgentEye AI Assistant documentation."
 ---
 
 
-The AI assistant is a chat panel built into the dashboard that answers plain-English questions about your agents ("how is quality trending in prod this week?", "which sessions errored today?", "summarize this session") and, with your approval, saves the SQL queries and dashboards it drafts for you. Every answer links straight to the sessions, queries, and dashboards it references, and it is **page-aware**: ask about "this session" while viewing one and it knows what you mean. It is safe by design: it reads only the data you can already see, every write waits for your explicit approval, and it can never delete anything.
+Ask your agent data a question in plain English and get an answer that links straight to the evidence. No SQL to write, no dashboards to dig through: it is the fastest way for anyone on your team to get answers about your agents.
 
-For example, ask "which sessions errored today?" and you get a short list with each session linked. Follow up with "save that as a query" and the assistant drafts the SQL and shows you an **Approve / Reject** card before anything is written.
+![The AgentEye AI assistant answering a plain-English question inside the dashboard, showing a live Agent Activity table, a per-agent model-usage breakdown, and written takeaways, with the queries it ran shown inline](/agenteye/images/assistant.png)
+*Ask in plain English and get an answer built from your own data. Here it breaks down which agents are busiest and which models they use, and shows the queries it ran so you can verify every number.*
 
-> **Note:** The assistant is off until an operator turns it on. It runs as a separate agent service that only the dashboard can reach, and it needs an LLM endpoint configured (see [Enabling it](#enabling-it)). Until then, users with access see a muted "llm not configured" rail instead of a working assistant.
+There is nothing to learn. Open the chat, type what you want to know, and follow the links it hands back:
 
-### Using the dock
+```
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
 
-The assistant lives in a slim rail on the right edge of every dashboard page. Click the rail (or press `⌘J` / `Ctrl+J`) to expand it into the full chat panel, and drag its left edge to resize it; your preferred width is remembered across reloads. Only users with the **`agent:use`** permission can use it; everyone else sees a greyed-out, disabled rail.
-
----
-
-## What it can and cannot do
-
-- **Reads the operational data the asking user can see.** Events, evaluations, sessions, the evaluation-job queue, saved queries, and saved dashboards, scoped per-request to the user's read permissions. Read tools execute immediately.
-- **Writes are gated by per-action approval.** It can author saved queries (`create_saved_query`, `update_saved_query`), run draft SQL against the read-only role to validate it (`run_query`), and assemble dashboards from those queries (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`). Each write pauses for an in-chat **Approve / Reject / ask a question** prompt; the SDK does not call the tool until the operator clicks Approve. **Deletion is never available to the assistant**; destructive operations stay with operators.
-- **Drafted SQL goes through the same `sql_guard` validation and read-only roles as user-written SQL** (SELECT/WITH only, no multi-statement). Execution is routed by which tables the query touches: queries that reference the analytics tables (events, evaluations, sessions) run as the organization's read-only ClickHouse user (scoped to that org by a row policy, with a 10s execution cap) while queries that touch only relational tables run on a read-only Postgres role (also 10s). Either way the result set is capped at **10,000 rows**; a larger result is truncated and flagged. The assistant cannot widen the data surface; it can only author over the query surface the operator already has.
-- It uses a **dedicated assistant key** (see below) seeded with a fixed permission set; even if the model misbehaves it cannot exceed those scopes.
-- Each dashboard user needs the **`agent:use`** permission to see and use the assistant. Tools are filtered per-request to match the user's own data permissions, so an `events:read` user gets event tools but no `dashboards:write` tools.
-
----
-
-## On the Queries page: write SQL by asking
-
-The assistant adapts to the page you are on. On most pages it is a chat panel: you ask, it answers, and any write waits for your approval. On the **Queries** page it becomes a SQL author instead.
-
-Type what you want in plain English ("show error rate by agent for the last 7 days", "parameterize this by date range") and the assistant streams SQL straight into the query editor. The editor opens a **diff view** (your current SQL on the left, the proposed SQL on the right) with **Accept** and **Reject** buttons. Accept keeps the change; Reject discards it. When you are editing an existing query, the assistant makes the smallest change that satisfies your request rather than rewriting from scratch.
-
-Each Queries page also offers suggestion chips: for example `add a status='error' filter` (edits the SQL) or `explain this query` (answers in prose). Free-typed questions like "why is this slow?" always get a prose answer.
-
-> **Note:** The assistant only ever writes read-only `SELECT` queries. If it cannot answer a request with a read-only analytics query (for example a request to change data, or to read tables outside the analytics views), it declines in the chat and inserts nothing.
-
-**Permissions.** To use the SQL author, a user needs the `queries:run` permission, the same one that enables the editor's **Run** button. Chat on every other page needs `agent:use`. Both require an LLM endpoint configured on the agent service; without one, the dock shows an "assistant isn't configured on this deployment" banner.
-
-**Model selection.** When `AGENTEYE_AGENT_MODELS` lists more than one model, a picker appears in the dock header and each user's choice is remembered. It applies to both chat and the SQL author, so an operator can offer a faster model for quick edits alongside a stronger one for chat.
-
----
-
-## Enabling it
-
-The `agent` service ships in the Docker Compose file and the Kubernetes manifests. To turn the assistant on, provide **(1)** an LLM endpoint and **(2)** the assistant's dedicated data key.
-
-### 1. Choose an LLM connection
-
-Pick one of these and set the corresponding variables on the `agent` service:
-
-**a) Anthropic directly**
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
 ```
 
-**b) Through Portkey (recommended; model-catalog slug, key only)**
+## Just ask, and jump straight to the proof
 
-```bash
-PORTKEY_API_KEY=<your-portkey-key>
-AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
-```
+You stop guessing and you stop writing queries. Ask "how is quality trending in prod this week?", "which sessions errored today?", or "summarize this session," and you get a straight answer in seconds instead of building a query and reading it yourself.
 
-This is the simplest path: in Portkey, set up an **Anthropic integration** (Model
-Catalog); it gets a **slug**. Name the model as `@<slug>/<model>` and the slug
-carries the provider + credential routing, so **no virtual key is needed**,
-just your Portkey API key. The agent sends only `x-portkey-api-key` and points at
-the Portkey gateway; Portkey resolves the rest. (A *plain* model name fails with
-"x-portkey-config or x-portkey-provider header is required"; the `@slug/` prefix
-is what makes key-only work.) For a self-hosted gateway set `PORTKEY_BASE_URL`.
+Every answer comes with its receipts. The assistant links the exact sessions, saved queries, and dashboards it used to reach the answer, so you can click through and confirm rather than take its word for it. It is also **page-aware**: ask about "this session" while you are viewing one and it already knows which run you mean. Reopen any earlier conversation later from the history switcher and pick up where you left off.
 
-Prefer per-request routing instead of a slug? Set `PORTKEY_VIRTUAL_KEY=<vk>` (or
-`PORTKEY_CONFIG=<id>`) with a plain `AGENTEYE_AGENT_MODEL`.
+## Turn a good answer into a saved query or dashboard
 
-**c) Any other Anthropic-compatible gateway (LiteLLM, self-hosted, …)**
+When an answer is worth keeping, ask the assistant to save it. It drafts the SQL for a saved query, or assembles a dashboard from those queries, then shows you an **Approve / Reject** card. Nothing is written until you click Approve, so you get the speed of "just ask" with the last word always yours.
 
-```bash
-ANTHROPIC_BASE_URL=https://your-gateway
-# Newline-delimited "Name: Value" header lines (NOT JSON):
-ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
-```
+On the **Queries** page it goes a step further and becomes a SQL author: describe the query you want ("show error rate by agent for the last 7 days") and it streams SQL straight into the editor, opening a diff view so you can **Accept** or **Reject** the change before it lands.
 
-**d) Amazon Bedrock / Google Vertex**
+![The AgentEye Queries page and its SQL editor](/agenteye/images/query-lab.png)
+*The Queries page: this editor is where the assistant streams a draft, read-only query for you to accept or reject.*
 
-```bash
-CLAUDE_CODE_USE_BEDROCK=1   # + standard AWS credentials in the environment
-# or
-CLAUDE_CODE_USE_VERTEX=1    # + standard GCP credentials in the environment
-```
+Authoring SQL by asking here uses the `queries:run` permission, the same one behind the editor's **Run** button. Chat everywhere else needs `agent:use`.
 
-Optionally pin the default model with `AGENTEYE_AGENT_MODEL` (default `claude-sonnet-4-6`). To let
-users **choose** among several models, set `AGENTEYE_AGENT_MODELS` to a comma-separated allowlist (e.g.
-`@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); a model picker then appears in the
-chat header, and each user's choice is remembered. The assistant only ever calls a model on this allowlist.
+## Safe to hand to the whole team
 
-### 2. Provide the assistant key
+You can open the assistant up to everyone without worrying about what it might touch:
 
-Pick any random secret and give it to the **agent** as `AGENTEYE_API_KEY` and to the **server** as `AGENT_API_KEY` (the same value). On startup the server seeds it as a dedicated key named `dashboard-assistant` with this fixed permission set: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`. The write permissions are only ever exercised through approval-gated tools (see "What it can and cannot do" above). There is **no manual key-minting step and no admin key involved**. The permission set is fixed in the server, and the seeded key is **protected**: it cannot be disabled or regenerated through the keys API; rotate it by changing the value and restarting the server. Do **not** reuse the admin/dashboard key.
+- **It reads only what you can already see.** Answers are scoped to your own read permissions, so it never widens your data surface.
+- **Every write waits for you.** Saved queries and dashboards are created only after your explicit Approve click, and there is no setting that turns that gate off.
+- **It can never delete anything.** No delete tool is exposed and the assistant holds no delete permission. Deletions stay in your hands, in the dashboard.
+- **It stays inside your org.** The assistant only ever sees the organization you are currently viewing.
+- **Your questions stay yours.** Prompts and answers live in your own AgentEye database; product analytics records usage metadata only, never your prompt text.
 
-```bash
-SECRET="$(openssl rand -base64 32)"
-# on the agent service:
-AGENTEYE_API_KEY="$SECRET"
-# on the server service:
-AGENT_API_KEY="$SECRET"
-```
+## Where to find it
 
-On Kubernetes this is wired for you: put `AGENTEYE_API_KEY` in the `agenteye-agent` secret and the server Deployment already reads that same value as `AGENT_API_KEY`.
+The assistant rides along on the right edge of every page under your org (`/<org-slug>/...`). Click the rail, or press `⌘J` / `Ctrl+J`, to expand it into the full chat panel, and drag its edge to resize; your width is remembered across reloads. You need the **`agent:use`** permission to use it, otherwise the rail is greyed out. If it has not been switched on for your deployment yet (it needs an LLM connection), you will see a muted rail in place of a working chat.
 
-### 3. Set the shared dashboard↔agent token
+## Related
 
-Set the same `AGENTEYE_AGENT_TOKEN` on **both** the `dashboard` and `agent` services. The dashboard presents it when calling the internal agent service; the agent service rejects calls without it.
-
-### 4. Grant users access
-
-Give the relevant dashboard operators the `agent:use` permission (see [API keys](/agenteye/api-keys)). Users without it cannot use the assistant; they see a greyed-out, disabled rail.
-
-Once an LLM endpoint and the read-only key are set, restart the **server** (to seed the read-only key) and the **agent** service. The assistant dock appears on the right edge for any `agent:use` user, collapsed by default; click the rail or press `⌘J` / `Ctrl+J` to expand.
-
----
-
-## Environment variable reference
-
-Set on the **`agent`** service:
-
-| Variable | Purpose |
-|---|---|
-| `PORTKEY_API_KEY` | Route through Portkey (the agent builds the gateway connection from this) |
-| `PORTKEY_VIRTUAL_KEY` | Portkey virtual key for your Anthropic credentials (optional if the key has a default config) |
-| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Named Portkey config / self-hosted Portkey gateway URL (optional) |
-| `PORTKEY_PROVIDER` | Portkey provider slug, a third routing option alongside `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` (used only when neither of those is set) |
-| `ANTHROPIC_API_KEY` | Direct Anthropic access (alternative to a gateway / Bedrock / Vertex) |
-| `ANTHROPIC_AUTH_TOKEN` | Bearer token for a gateway that authenticates via `Authorization: Bearer` instead of `x-api-key` (optional) |
-| `ANTHROPIC_BASE_URL` | Endpoint for a non-Portkey gateway |
-| `ANTHROPIC_CUSTOM_HEADERS` | Extra headers for a non-Portkey gateway: newline-delimited `Name: Value` lines (not JSON) |
-| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Route via Bedrock / Vertex |
-| `AGENTEYE_AGENT_MODEL` | Default model id (default `claude-sonnet-4-6`) |
-| `AGENTEYE_AGENT_MODELS` | Comma-separated allowlist of models the user can pick from in the chat header. Leave unset for a single fixed model. The default above must be one of these (else it's added). |
-| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Max concurrent chats per pod (default 4); excess requests get 429 |
-| `AGENTEYE_API_KEY` | Assistant's data key. Set the **same** value as the server's `AGENT_API_KEY`, which seeds it with a fixed scoped permission set on startup (see step 2). |
-| `AGENTEYE_AGENT_TOKEN` | Shared secret with the dashboard |
-| `AGENTEYE_SERVER_URL` | AgentEye server URL (default `http://server:8080`) |
-| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Multi-tenancy.** Off by default (fail-closed): the assistant rejects a `/chat` request that carries no organization context with `400`, because every tool it runs is scoped to one org. The dashboard always sends that context once it is org-aware, so you normally leave this unset. Set to `1` **only** during a transitional rollout where a not-yet-org-aware dashboard is talking to an org-aware agent, so the assistant falls back to the `default` org instead of refusing. Clear it once the dashboard upgrade lands. |
-| `AGENTEYE_AGENT_MAX_STEPS` | Max tool-use steps per answer (default 8) |
-| `AGENTEYE_AGENT_TIMEOUT_MS` | Overall `/chat` request timeout (all model turns + tool steps), in milliseconds (default 90000); the SQL tool has its own 10s cap |
-| `AGENTEYE_AGENT_SELF_TELEMETRY` | `1` to record the assistant's own runs into AgentEye |
-| `AGENTEYE_TELEMETRY_API_KEY` | Separate `events:add`-only key for self-instrumentation |
-| `AGENTEYE_AGENT_ENV` | Environment tag applied to the assistant's own self-telemetry (default `prod`) |
-
-Set on the **`dashboard`** service:
-
-| Variable | Purpose |
-|---|---|
-| `AGENTEYE_AGENT_URL` | Where the dashboard reaches the agent service. The bundled Kubernetes manifests and Compose file set this to `http://agent:9100`. If it is unset, `agent:use` users see a muted "service offline" rail instead of a working assistant. |
-| `AGENTEYE_AGENT_TOKEN` | Must match the agent's token |
-
----
-
-## Telemetry & seeing what users ask
-
-Prompt **content stays inside your own systems** by default. Three layers:
-
-1. **Conversation store**: every prompt and answer is saved in your AgentEye database (per user, private), and reloadable from the assistant's history switcher. This is the durable record of what users ask.
-2. **Product analytics**: the dashboard records **metadata only** (how often the assistant is used, tool counts, latency) to your analytics. Prompt **text** is never included on this path.
-3. **Self-instrumentation (optional)**: set `AGENTEYE_AGENT_SELF_TELEMETRY=1` (plus an `events:add`-only `AGENTEYE_TELEMETRY_API_KEY`) and the assistant records its own runs into AgentEye as a `dashboard-assistant` agent. You then watch user prompts and the assistant's reasoning in the very same sessions/events views you use for everything else. Note: those events are visible to anyone with `events:read`; if that's too broad, leave this off.
-
----
-
-## Disabling it
-
-Any of these makes the assistant non-functional:
-
-- Unset `AGENTEYE_AGENT_URL` on the dashboard, **or**
-- Leave the LLM endpoint unconfigured on the agent (no `ANTHROPIC_API_KEY` / gateway / Bedrock / Vertex), **or**
-- Don't deploy the `agent` service at all.
-
-> **Note:** For an `agent:use` user the rail does not vanish; it switches to a muted, non-working state labelled "service offline" (no agent service reachable) or "llm not configured" (amber). To remove access for a specific user, take away their `agent:use` permission instead; they then see a greyed-out, disabled rail.
-
----
-
-## Security summary
-
-- **No silent writes**: the assistant's write tools (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) cannot execute without an explicit operator click on the in-chat Approve button; the SDK's pre-call gate blocks the tool until an approval reaches the agent over a back-channel. There is no setting that disables this gate.
-- **Fixed, narrow data scope**: the assistant authenticates to the server with a dedicated key whose permission set is fixed in the server (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`). The only writes it can author are saved queries and dashboards; the server rejects anything outside that scope regardless of what the model attempts.
-- **No deletion surface**: the key carries no delete permission and no delete tool is exposed. Operators delete through the dashboard UI, never the assistant.
-- **Internal-only**: the agent has no public route; only the dashboard can call it, and only with the shared token. (In Kubernetes, a NetworkPolicy restricts the agent to reaching just the AgentEye server and the LLM endpoint.)
-- **Per-user scoping**: only `agent:use` users can use the assistant (others see a disabled rail), and it is given only the tools matching each user's read permissions.
-- **No raw HTML, safe links**: answers render as sanitized markdown; unsafe-scheme links (`javascript:`, `data:`) are stripped to plain text, and any external `http(s)` link opens in a new tab with `rel="noopener noreferrer"`.
-
-## Next steps
-
-- [API keys](/agenteye/api-keys): grant users the `agent:use` permission so they can use the assistant.
-- [Deployment](/agenteye/deployment): wire the agent service into your stack.
-- [Troubleshooting](/agenteye/troubleshooting): common assistant issues and fixes.
+- [CLI and agents](/agenteye/cli-and-agents)
+- [Queries](/agenteye/queries)
+- [Dashboards](/agenteye/dashboards)
+- [Evaluation suite](/agenteye/evaluation-suite)

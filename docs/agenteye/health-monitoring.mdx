@@ -65,11 +65,11 @@ pulling a replica out of rotation.
 (swap in your server's address and port, `8080` in the bundled manifests):
 
 ```bash
-# Liveness — always 200 while the process is up
+# Liveness: always 200 while the process is up
 curl -s http://localhost:8080/health
 # {"status":"ok"}
 
-# Readiness — 200 when Postgres + ClickHouse are reachable, 503 otherwise
+# Readiness: 200 when Postgres + ClickHouse are reachable, 503 otherwise
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/ready
 # 200   body: {"status":"ready",     "checks": { ... }}
 # 503   body: {"status":"not_ready", "checks": { ... }}  if a hard dependency is down

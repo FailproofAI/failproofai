@@ -37,6 +37,7 @@
 - Backfill **OpenClaw** into the user-facing supported-CLI docs (README + `configuration` / `getting-started` / `introduction`) — it shipped as a wired integration but was never added to those lists. (#508)
 - Add all 12 supported-CLI logos to the README (added openclaw/factory/devin/antigravity/goose with light+dark variants), link each logo to its official site, and lay them out as 2 rows of 6. (#508)
 - Document that **VS Code Copilot agent mode** (Preview) is already covered by the `copilot` / `claude` integrations: its agent hooks load from `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, and `~/.claude/settings.json` — the exact paths failproofai already writes — so `--cli copilot` (or `--cli claude`) enforces in VS Code agent-mode sessions with no dedicated `vscode` id. (#508)
+- Add a per-page contextual menu to the docs site (`contextual` in `docs.json`): readers can copy the page as Markdown, view the raw Markdown, hand the page off to ChatGPT / Claude / Perplexity, open it in an MCP client / Cursor / VS Code, or ask the AI assistant a question about it. The `assistant` ("Ask a question") option additionally requires enabling the assistant in the Mintlify dashboard. (#540)
 
 ## 0.0.13 — 2026-07-14
 

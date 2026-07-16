@@ -4,13 +4,19 @@ description: "AgentEye Python SDK documentation."
 ---
 
 
-The AgentEye Python SDK gives you complete visibility into your agents' behaviour (every agent run, tool call, model request, hook, and human intervention) so you can debug, audit, and evaluate them. It instruments your agent code by writing structured events to local JSONL files; the collector daemon picks these up and ships them to the platform automatically.
+See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention. The AgentEye Python SDK records that trail from inside your agent code so you can debug, audit, and evaluate what happened. Use it whenever you want AgentEye to observe your agents.
+
+Under the hood, the SDK writes structured events to local JSONL files, and the collector daemon picks them up and ships them to the platform automatically. You do not manage those files yourself.
+
+> **Tip:** New to AgentEye? Start with [Getting started](/agenteye/getting-started) for the full picture. This page is the complete SDK event reference.
+
+[![Watch: Agent Tracing by Failproof AI (2 min)](/agenteye/images/video-tracing.jpg)](https://youtu.be/VWxukZc5k7s)
 
 ---
 
 ## Installation
 
-Download the wheel from GitHub Releases using your `AGENTEYE_TOKEN`. If you do not yet have a token, see [GitHub Token Setup](/agenteye/github-token) for the setup steps and required permissions.
+Download the wheel from GitHub Releases using your `AGENTEYE_TOKEN`. If you do not yet have a token, see [GitHub token setup](/agenteye/github-token) for the setup steps and required permissions.
 
 **Using `gh` CLI + pip:**
 
@@ -74,6 +80,49 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
+### Instrumenting a real call
+
+In practice you wrap your existing agent code. Bracket a model call with `model_request` before and `model_response` after, so the two events span the real request and AgentEye can pair them:
+
+```python
+import anthropic
+import agenteye
+
+agenteye.configure(environment="production")
+client = anthropic.Anthropic()
+
+messages = [{"role": "user", "content": "Summarise today's incidents."}]
+
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6",
+    messages=messages,
+)
+
+reply = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=512,
+    messages=messages,
+)
+
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model=reply.model,
+    stop_reason=reply.stop_reason,
+    input_tokens=reply.usage.input_tokens,
+    output_tokens=reply.usage.output_tokens,
+    content=[block.model_dump() for block in reply.content],
+)
+```
+
+Wrap tool calls the same way with `tool_use` and `tool_result`, reusing one `tool_call_id` across the pair.
+
+Here is what those events look like once they reach the dashboard, colour-coded by type and filterable by environment, agent, and session:
+
+![The live Events stream, colour-coded by event type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
+
 ---
 
 ## configure()
@@ -116,11 +165,23 @@ export AGENTEYE_ENVIRONMENT=production
 
 The environment value appears as a first-class filter in the dashboard and is stored as an indexed column on the server for fast queries.
 
-**Constraint:** environment values **must not contain a literal `,` comma**. The dashboard filters use comma-separated multi-select on the wire (`?environment=prod,staging`), so an environment named `prod,blue` would be split into two values. Events with comma-containing environments are rejected at ingest time.
+> **Warning:** Environment values must not contain a literal `,` comma. The dashboard filters use comma-separated multi-select on the wire (`?environment=prod,staging`), so an environment named `prod,blue` would be split into two values. Events with comma-containing environments are rejected at ingest time.
+
+---
+
+## Data and privacy
+
+The SDK records only the fields you explicitly pass. Prompts, messages, tool inputs and outputs, and model content are captured solely because you hand them to an `event.*` call. Nothing is read from your process or captured implicitly. Any field you leave unset is omitted from the event entirely; it is not written to disk.
+
+That makes redaction your choice and your responsibility. If a prompt or tool payload contains PII or secrets you would rather not store, strip or mask it before you pass it to the event method.
 
 ---
 
 ## Event Reference
+
+Most events come in start/end pairs that share a correlation ID: `tool_use` and `tool_result` share a `tool_call_id`, `hook_triggered` and `hook_completed` share a `hook_id`, and `human_wait` and `human_input` share an `input_id`. Emit the start event, do the work, then emit the end event with the same ID. AgentEye matches the pair and computes `duration_ms` for you, so you never pass `duration_ms` yourself.
+
+![A session's git-style execution graph beside its event timeline, reconstructed from the paired events, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
 
 All event methods require these two fields:
 
@@ -205,7 +266,7 @@ Emitted just before sending a prompt to an LLM.
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
     messages=[                   # list[dict] | None - conversation turns
         {"role": "user", "content": "..."},
     ],
@@ -228,7 +289,7 @@ Emitted when the LLM returns a response.
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
@@ -380,8 +441,18 @@ agenteye.event.tool_use(
 
 Events are buffered in-process and flushed to disk every `flush_interval` seconds (default 500 ms). Each flush writes one JSONL file:
 
-```
+```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
 The collector watches this directory and uploads files automatically. You do not need to manage these files directly.
+
+Each file is written atomically: the SDK writes to a temporary file and then renames it into place, so the collector never sees a half-written file. A final flush also runs when your process exits, so events buffered in the last interval are not lost. If the collector is offline, events simply accumulate as files on disk and ship once it comes back.
+
+---
+
+## Next steps
+
+- [Collector installation](/agenteye/collector-installation): install the collector so these events actually ship to AgentEye.
+- [Getting started](/agenteye/getting-started): the full setup, from install to seeing your first traces.
+- [Troubleshooting](/agenteye/troubleshooting): what to check if events do not appear in the dashboard.

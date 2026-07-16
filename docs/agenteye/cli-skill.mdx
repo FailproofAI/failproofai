@@ -4,9 +4,9 @@ description: "AgentEye AgentEye CLI Agent Skill documentation."
 ---
 
 
-The **AgentEye CLI skill** (`agenteye-cli`) is an installable *Agent Skill* that teaches a coding agent — Claude Code, Codex, and compatible tools — to operate your AgentEye deployment through the [`agenteye` CLI](/agenteye/cli) from plain-English requests: *"is anything broken today?"*, *"give CI a key that can only push events"*, *"ack the firing incident and assign it to me"*.
+Ask your coding agent *"is anything broken today?"* and let it answer from your live AgentEye data, with no commands to memorize. The **AgentEye CLI skill** (`agenteye-cli`) is an *Agent Skill*: a small folder of instructions that a coding agent such as Claude Code or Codex loads on demand. It teaches the agent to operate your AgentEye deployment through the [`agenteye` CLI](/agenteye/cli) from plain-English requests like *"give CI a key that can only push events"* or *"ack the firing incident and assign it to me."*
 
-It is **not** a service or a separate binary. It is a small instruction bundle that rides on top of the CLI you have already installed: the agent shells out to `agenteye --json …`, parses the clean JSON, and answers you in prose. Everything it can do, you could do yourself by typing the same commands.
+It is **not** a service or a separate binary; there is nothing to deploy. It rides on top of the CLI you have already installed: the agent shells out to `agenteye --json …`, parses the clean JSON, and answers you in prose. Everything it can do, you could do yourself by typing the same commands.
 
 ---
 
@@ -19,22 +19,31 @@ AgentEye gives you four ways to reach the same data and controls. They complemen
 | **[CLI](/agenteye/cli)** | The command/flag reference for `agenteye` | Your terminal | You want to run or script a specific command |
 | **[CLI recipes](/agenteye/cli-recipes)** | Copy-paste `jq`/pipeline patterns | Your terminal / scripts | You're wiring the CLI into automation |
 | **CLI skill** (this doc) | A natural-language front door on the CLI | Your coding agent, on your workstation | You want to *just ask* and let the agent pick the command |
-| **[In-dashboard AI Assistant](/agenteye/assistant)** | A chat embedded in the dashboard | An internal `agent` container in your cluster | You want in-dashboard Q&A over your data |
+| **[In-dashboard AI assistant](/agenteye/assistant)** | A chat embedded in the dashboard | The agent service (a container in your cluster) | You want in-dashboard Q&A over your data |
 
-### vs. the in-dashboard AI Assistant — an important distinction
+The skill itself has no privileges of its own; it just turns your words into CLI calls that run as you:
+
+```mermaid
+flowchart TD
+    YOU["you: 'ack the firing incident'"] --> AGENT["coding agent (Claude Code / Codex)<br/>loads the agenteye-cli skill"]
+    AGENT --> CLI["agenteye --json incidents ack ..."]
+    CLI -->|your authenticated CLI session| API["AgentEye dashboard API"]
+```
+
+### vs. the in-dashboard AI assistant: an important distinction
 
 These are two different tools with very different blast radii:
 
-- The **in-dashboard AI Assistant** ([assistant.md](/agenteye/assistant)) is a chat embedded in the dashboard, backed by an internal `agent` container. It is **read-only plus approval-gated authoring**: it can draft saved queries and dashboards, but every write pauses for your explicit click-approval, and it never deletes. It is gated by the `agent:use` permission and only ever sees data for the org you're viewing.
-- The **CLI skill** runs on *your* workstation inside *your* coding agent and drives the `agenteye` CLI as **you**. It can perform the CLI's **full surface, including mutations** — create/rotate/disable API keys, change org settings, resolve incidents, delete saved queries — bounded only by the permissions of your CLI login. Treat it exactly as carefully as you would treat running those commands by hand.
+- The **in-dashboard AI assistant** ([AI assistant](/agenteye/assistant)) is a chat embedded in the dashboard, backed by the agent service. It is **read-only plus approval-gated authoring**: it can draft saved queries and dashboards, but every write pauses for your explicit click-approval, and it never deletes. It is gated by the `agent:use` permission and only ever sees data for the org you're viewing.
+- The **CLI skill** runs on *your* workstation inside *your* coding agent and drives the `agenteye` CLI as **you**. It can perform the CLI's **full surface, including mutations** (create/rotate/disable API keys, change org settings, resolve incidents, delete saved queries), bounded only by the permissions of your CLI login. Treat it exactly as carefully as you would treat running those commands by hand.
 
 ---
 
 ## Prerequisites
 
-1. The **`agenteye` CLI installed** and on `PATH` (see [cli.md](/agenteye/cli) — `pipx install agenteye`).
+1. The **`agenteye` CLI installed** and on `PATH` (see the [CLI](/agenteye/cli) reference: `pipx install agenteye`).
 2. Your **dashboard URL** set (`AGENTEYE_DASHBOARD_URL`, or the agent passes `--base-url`).
-3. A **logged-in session**: run `agenteye login` yourself first. The skill **cannot** complete the emailed one-time-code login for you — it will tell you to run `agenteye login` if the session is missing or expired (CLI exit code `4`).
+3. A **logged-in session**: run `agenteye login` yourself first. The skill **cannot** complete the emailed one-time-code login for you; it will tell you to run `agenteye login` if the session is missing or expired (CLI exit code `4`).
 
 ---
 
@@ -42,20 +51,20 @@ These are two different tools with very different blast radii:
 
 Agent Skills are folders that contain a `SKILL.md` (plus optional references). You install the `agenteye-cli` skill by placing its folder where your agent looks for skills:
 
-- **Claude Code** — copy the `agenteye-cli/` folder into `~/.claude/skills/` (available in every project) or into `<your-repo>/.claude/skills/` (scoped to that repo). Claude Code auto-discovers it; verify with the `/skills` list, or just ask a question that matches its description.
-- **Codex (OpenAI)** — Codex reads the same `SKILL.md`. The bundled `agents/openai.yaml` sets `allow_implicit_invocation: true`, so Codex auto-selects the skill when a task matches; otherwise invoke it explicitly as `$agenteye-cli`.
+- **Claude Code**: copy the `agenteye-cli/` folder into `~/.claude/skills/` (available in every project) or into `<your-repo>/.claude/skills/` (scoped to that repo). Claude Code auto-discovers it; verify with the `/skills` list, or just ask a question that matches its description.
+- **Codex (OpenAI)**: Codex reads the same `SKILL.md`. The bundled `agents/openai.yaml` sets `allow_implicit_invocation: true`, so Codex auto-selects the skill when a task matches; otherwise invoke it explicitly as `$agenteye-cli`.
 
-The skill is maintained alongside the `agenteye` CLI and is distributed as part of your AgentEye package — if you don't have the `agenteye-cli` folder, ask your AgentEye contact. Nothing about it is gated: it needs no Docker image and no credential, because it only drives the **public** `agenteye` CLI against your own dashboard.
+The skill is maintained alongside the `agenteye` CLI but ships as a **separate folder**, not inside the `pipx install agenteye` package, so don't look for it there. AgentEye delivers the `agenteye-cli/` folder to you on its own; if you don't have it, ask your AgentEye contact. Nothing about it is gated: it needs no Docker image and no credential, because it only drives the **public** `agenteye` CLI against your own dashboard.
 
 ---
 
-## Safety — mutations do NOT prompt when an agent runs the CLI
+## Safety: mutations do NOT prompt when an agent runs the CLI
 
-**Read this before letting an agent make changes.**
+> **Warning:** Read this before letting an agent make changes.
 
-The `agenteye` CLI normally asks *"are you sure?"* before a destructive action. It **auto-skips that confirmation whenever it is not attached to a terminal — which is exactly how a coding agent runs it — and `--json` skips it too.** So the safety prompt will **not** fire for the agent.
+The `agenteye` CLI normally asks *"are you sure?"* before a destructive action. It **auto-skips that confirmation whenever it is not attached to a terminal (which is exactly how a coding agent runs it), and `--json` skips it too.** So the safety prompt will **not** fire for the agent.
 
-The skill is written to compensate: it is instructed to state the exact command it will run and get your explicit **OK before any state change**. Keep that discipline — when you drive AgentEye through an agent, *you* are the confirmation step. The state-changing commands to watch for:
+The skill is written to compensate: it is instructed to state the exact command it will run and get your explicit **OK before any state change**. Keep that discipline. When you drive AgentEye through an agent, *you* are the confirmation step. The state-changing commands to watch for:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
@@ -68,13 +77,35 @@ The skill is written to compensate: it is instructed to state the exact command 
 
 Everything under **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) is read-only and changes nothing.
 
-Because the agent acts as **you**, it can only do what your login is permitted to do — permissions are resolved **per org** (see [api-keys.md](/agenteye/api-keys)). A command you lack permission for returns exit code `5` with the exact permission named, so the agent can tell you precisely what to ask an admin for rather than failing opaquely.
+Because the agent acts as **you**, it can only do what your login is permitted to do; permissions are resolved **per org** (see [API keys](/agenteye/api-keys)). A command you lack permission for returns exit code `5` with the exact permission named, so the agent can tell you precisely what to ask an admin for rather than failing opaquely.
 
 ---
 
 ## What you can ask it
 
-The skill maps plain-English intent to the right `agenteye` command, discovering valid values first (`list <kind>`, `whoami`) so it doesn't guess:
+Here's what a real round-trip looks like, a read, then a change that waits for your OK:
+
+```text
+you   ▸ Is anything broken in the last day?
+
+agent ▸ Running: agenteye --json errors --since 24h --aggregate
+        3 error types in the last 24h. The biggest is TimeoutError
+        (18 hits, all on the checkout-agent), then RateLimited (5).
+        Want the failing sessions for TimeoutError?
+
+you   ▸ Give CI a key that can only push events.
+
+agent ▸ This creates an API key. I'll run:
+          agenteye keys create ci --add events:add
+        OK to proceed?
+
+you   ▸ yes
+
+agent ▸ Done. Key "ci" created with events:add only.
+        The secret is shown only once — store it now, I can't reprint it.
+```
+
+The skill maps each plain-English intent to the right `agenteye` command, discovering valid values first (`list <kind>`, `whoami`) so it doesn't guess, and stating the exact command before any change. More examples:
 
 - *"Is anything broken / failing in the last 24 hours?"* → `errors --since 24h --aggregate`, then a breakdown.
 - *"Why did session `run-001` fail?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
@@ -83,13 +114,13 @@ The skill maps plain-English intent to the right `agenteye` command, discovering
 - *"Who has access? Make Dana read-only."* → `users list` → `users update dana@… --permission-set read-only` (after confirming with you).
 - *"Ack the firing incident and assign it to me."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
 
-For the exact commands, flags, and JSON shapes behind these, see [cli.md](/agenteye/cli) and [cli-recipes.md](/agenteye/cli-recipes).
+For the exact commands, flags, and JSON shapes behind these, see the [CLI](/agenteye/cli) reference and [CLI recipes for agents](/agenteye/cli-recipes).
 
 ---
 
-## See also
+## Next steps
 
-- **[CLI](/agenteye/cli)** — full command and flag reference for `agenteye`.
-- **[CLI recipes for agents](/agenteye/cli-recipes)** — copy-paste `jq` patterns and exit-code handling.
-- **[AI Assistant](/agenteye/assistant)** — the in-dashboard assistant (not to be confused with this terminal skill).
-- **[API Keys](/agenteye/api-keys)** — the per-org permission model that bounds what the skill can do.
+- **[CLI](/agenteye/cli)**: full command and flag reference for `agenteye`.
+- **[CLI recipes for agents](/agenteye/cli-recipes)**: copy-paste `jq` patterns and exit-code handling.
+- **[AI assistant](/agenteye/assistant)**: the in-dashboard assistant (not to be confused with this terminal skill).
+- **[API keys](/agenteye/api-keys)**: the per-org permission model that bounds what the skill can do.

@@ -4,7 +4,17 @@ description: "AgentEye API Keys documentation."
 ---
 
 
-AgentEye uses fine-grained API keys to control access to the server. Each key carries one or more permissions that determine what it can do.
+API keys control who and what can reach your AgentEye server, so a collector can send events without ever gaining read or admin powers. Each key carries one or more permissions, and each permission gates specific server routes; you grant only the few a job needs. Most deployments create just three kinds of key.
+
+## The 3 keys most deployments need
+
+| Key | Permissions | Who uses it |
+|---|---|---|
+| Collector key | `events:add` | The `agenteye-collector` on each agent machine, to send events. See [Collector installation](/agenteye/collector-installation). |
+| Dashboard read key | `events:read`, `keys:read` | A read-only operator or integration that queries data without changing it. |
+| Bootstrap admin key | all permissions | The operator who first brings the instance up (and the dashboard container). Seeded from the `ADMIN_KEY` environment variable. See [Bootstrap admin key](#bootstrap-admin-key). |
+
+Start here. Reach for the full permission catalogue below only when you need a narrower, custom-scoped key. See also [Recommended key layout](#recommended-key-layout) and [Creating keys](#creating-keys).
 
 ---
 
@@ -12,14 +22,14 @@ AgentEye uses fine-grained API keys to control access to the server. Each key ca
 
 The server enforces a fixed catalogue of permissions; each one gates specific HTTP routes. An **admin key** holds all of them; a scoped key holds the subset you grant on creation. Unknown permission strings are rejected when a key is created.
 
-> **Not assignable to keys.** Two valid permissions are human/dashboard-only and cannot be granted to an API key: `orgs:admin` (instance administration, which is operator-only) and `keys:update`. A request to `POST /keys` or `PATCH /keys/:id` that tries to grant either one is rejected with HTTP 422. See the `keys:update` row below for why a bearer key may create keys but never edit them.
+> **Note:** Two valid permissions are human/dashboard-only and cannot be granted to an API key: `orgs:admin` (instance administration, which is operator-only) and `keys:update`. A request to `POST /keys` or `PATCH /keys/:id` that tries to grant either one is rejected with HTTP 422. See the `keys:update` row below for why a bearer key may create keys but never edit them.
 
 ### Events ingest & query
 
 | Permission | HTTP routes | What it allows |
 |---|---|---|
 | `events:add` | `POST /events` | Ingest batches of events from a collector. The only permission a collector needs. |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Query events, list the known environments, list the model identifiers seen in the data (used by the Models view and model filters), compute the latency aggregate that powers the heat-map / percentile band, and export a session as JSONL. The shared filter-bar facet endpoints `GET /events/environments` and `GET /events/models` are reachable with **either** `events:read` **or** `evaluations:read`, so the sessions page (gated `evaluations:read`) reuses the same per-org facet. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Query events, list the known environments, list the model identifiers seen in the data (used by the Models view and model filters), compute the latency aggregate that powers the heat-map / percentile band, and export a session as JSONL. The shared filter-bar facet endpoints `GET /events/environments` and `GET /events/agent_ids` are reachable with **either** `events:read` **or** `evaluations:read`, so the sessions page (gated `evaluations:read`) reuses the same per-org facet. `GET /events/models` is not one of them: it requires `events:read`, so a principal holding only `evaluations:read` gets a 403 from it. |
 
 ### Sessions & evaluations
 
@@ -41,7 +51,7 @@ The server enforces a fixed catalogue of permissions; each one gates specific HT
 | Permission | HTTP routes | What it allows |
 |---|---|---|
 | `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | List saved queries, load one, and inspect the read-only ClickHouse schema the composer targets. |
-| `queries:write` | `POST /queries`, `PUT /queries/:id` | Create and edit saved queries. SQL is still routed through the same read-only role and `sql_guard` checks as a `queries:run` call. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Create and edit saved queries. SQL is still routed through the same read-only role and guarded SQL checks as a `queries:run` call. |
 | `queries:delete` | `DELETE /queries/:id` | Delete a saved query. |
 | `queries:run` | `POST /queries/run` | Execute saved or ad-hoc SQL against the read-only role used by the composer. |
 
@@ -49,7 +59,7 @@ The server enforces a fixed catalogue of permissions; each one gates specific HT
 
 | Permission | HTTP routes | What it allows |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Talk to the dashboard AI assistant and manage your own (private) conversations. Required on the **user** to see the assistant dock; the assistant's own key is `dashboard-assistant` and is seeded separately (see below). |
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Talk to the AI assistant and manage your own (private) conversations. Required on the **user** to see the assistant dock; the assistant's own key is `dashboard-assistant` and is seeded separately (see below). |
 
 ### API keys
 
@@ -65,7 +75,7 @@ The server enforces a fixed catalogue of permissions; each one gates specific HT
 
 | Permission | HTTP routes | What it allows |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | Invite a new dashboard user (issues an email + OTP login) and read the dashboard-configured default permission set used to seed the invite form. |
+| `users:create` | `POST /users`, `GET /users/defaults` | Invite a new dashboard user (issues an email + one-time passcode (OTP) login) and read the dashboard-configured default permission set used to seed the invite form. |
 | `users:read` | `GET /users`, `GET /users/:id` | List users and load a single user record. |
 | `users:update` | `PUT /users/:id` | Edit a user's permissions. Updates dispatch a permission-change email to the affected user and take effect on their next request; no relogin required. |
 | `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Disable a user (revokes their sessions immediately) and re-enable a previously disabled user. |
@@ -100,9 +110,7 @@ These permissions back the dashboard's **Users** page, where each member's grant
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | View audit definitions, run history, and findings. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Create, edit, delete, and run audits; triage findings (acknowledge / mute / dismiss / resolve / reopen / assign). |
 
-> When Audits shipped, existing grantees were widened along the same role shapes as alerts: every user and permission set holding `alerts:read` gained `audits:read`, and every holder of `alerts:write` gained `audits:write`. Existing API keys were **not** widened — grant `audits:*` to a key explicitly if it needs the audit surface.
-
-> Stored grants of the legacy `alerts:ack` token are parsed as `incidents:ack` so on-callers retain access without rekeying. The token is no longer assignable from the dashboard's user editor; the matrix offers `incidents:ack` instead.
+> **Note:** To give a key the audit surface, grant `audits:*` to it explicitly. See [Upgrade and backward-compatibility notes](#upgrade-and-backward-compatibility-notes) for how existing grantees were migrated when Audits shipped.
 
 > The recipient-picker endpoint `GET /alerts/recipients` (which lists the member emails an alert editor can notify) is reachable by a holder of **either** `alerts:read` **or** `alerts:write`, so alert editors can populate the picker without being granted `users:read`.
 
@@ -133,7 +141,7 @@ Set membership is what backs two other features:
 - **`DEFAULT_USER_PERMISSIONS`** (the grant preselected when an admin opens **+ new user**) defaults to the `standard` set. See [Deployment](/agenteye/deployment).
 - **The `--set` flag** on `agenteye-orgctl` (operator member management) starts a member from a named set, which you then fine-tune with `--add` / `--remove`. See [Tenant Management](/agenteye/tenant-management).
 
-> When a set includes a permission that is not key-assignable (for example a custom set carrying `keys:update`), seeding a key from that set drops the non-assignable tokens; the server would otherwise reject the key with HTTP 422. Dashboard users are not subject to that restriction.
+> **Note:** When a set includes a permission that is not key-assignable (for example a custom set carrying `keys:update`), seeding a key from that set drops the non-assignable tokens; the server would otherwise reject the key with HTTP 422. Dashboard users are not subject to that restriction.
 
 ---
 
@@ -252,4 +260,23 @@ When you create a key from the dashboard you do not supply the secret; the dashb
 | `dashboard-assistant` (bootstrap via `AGENT_API_KEY` env var) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AI assistant container, seeded automatically, **protected**; can't be edited through the API |
 | Assistant telemetry key (optional) | `events:add` | AI assistant self-instrumentation, if enabled |
 
-> **Assistant key.** The assistant's key is **seeded automatically** by the server from the `AGENT_API_KEY` env var (the same secret the agent presents as `AGENTEYE_API_KEY`); there is no manual key-minting step and no admin key involved. Its permissions are fixed in source code so scope can't be widened by misconfiguration: read across events / evaluations / dashboards, plus dashboards-write and queries-read / write / run for the "Ask AI to write a query" authoring flow. All SQL still goes through the same read-only role and `sql_guard` checks as a user-written query, so this widens the *authoring surface*, not the data surface; destructive operations (`queries:delete`, `dashboards:delete`) deliberately stay off the assistant key. Like the `admin` key, it is **protected**: it can't be disabled or regenerated through the keys API, only rotated by changing `AGENT_API_KEY` and restarting. Dashboard *users* additionally need the `agent:use` permission to see and use the assistant. If you enable self-instrumentation, give the assistant a separate `events:add`-only key.
+> **Note:** The assistant's key is **seeded automatically** by the server from the `AGENT_API_KEY` env var (the same secret the agent presents as `AGENTEYE_API_KEY`); there is no manual key-minting step and no admin key involved. Its permissions are fixed in source code so scope can't be widened by misconfiguration: read across events / evaluations / dashboards, plus dashboards-write and queries-read / write / run for the "Ask AI to write a query" authoring flow. All SQL still goes through the same read-only role and guarded SQL path as a user-written query, so this widens the *authoring surface*, not the data surface; destructive operations (`queries:delete`, `dashboards:delete`) deliberately stay off the assistant key. Like the `admin` key, it is **protected**: it can't be disabled or regenerated through the keys API, only rotated by changing `AGENT_API_KEY` and restarting. Dashboard *users* additionally need the `agent:use` permission to see and use the assistant. If you enable self-instrumentation, give the assistant a separate `events:add`-only key.
+
+---
+
+## Upgrade and backward-compatibility notes
+
+You only need these if you are upgrading an existing instance; new deployments can skip them.
+
+> When Audits shipped, existing grantees were widened along the same role shapes as alerts: every user and permission set holding `alerts:read` gained `audits:read`, and every holder of `alerts:write` gained `audits:write`. Existing API keys were **not** widened. Grant `audits:*` to a key explicitly if it needs the audit surface.
+
+> Stored grants of the legacy `alerts:ack` token are parsed as `incidents:ack` so on-callers retain access without rekeying. The token is no longer assignable from the dashboard's user editor; the matrix offers `incidents:ack` instead.
+
+---
+
+## Next steps
+
+- [Collector installation](/agenteye/collector-installation): where the `events:add` collector key is configured.
+- [Python SDK](/agenteye/python-sdk): how your agent code authenticates when sending events.
+- [Tenant management](/agenteye/tenant-management): create and manage organizations and their members.
+- [Deployment](/agenteye/deployment): set `ADMIN_KEY`, `AGENT_API_KEY`, and the default permission set.

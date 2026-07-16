@@ -1,0 +1,58 @@
+---
+title: "Deployment options"
+description: "AgentEye Deployment options documentation."
+---
+
+
+AgentEye runs entirely in your own environment, and there are four ways to install it. This page helps you pick the right one in about 30 seconds, then points you at the full guide. If you're just trying it out, start with Docker Compose.
+
+---
+
+## Pick your path
+
+| Path | Best for | Who operates it | Effort |
+|---|---|---|---|
+| **Docker Compose** | Trying AgentEye, small deployments, a single host | You | Lowest: one stack, a few minutes |
+| **Managed** | Production, without running the platform yourself | Failproof AI, on your cluster | Low: you integrate, we operate |
+| **Kubernetes** | Production at scale, full control | You | Highest: HA, storage, TLS, upgrades |
+| **Single-pod sidecar** | Co-locating the collector with one app on Kubernetes | You | Medium: one pod, no cluster-wide install |
+
+---
+
+## Docker Compose
+
+The fastest way to see AgentEye. One Compose stack brings up the server, dashboard, ClickHouse, PostgreSQL, and an optional Redis cache on a single host. Ideal for evaluations, demos, and small production deployments.
+
+Start here: [Getting started](/agenteye/getting-started).
+
+## Managed
+
+Failproof AI operates the AgentEye platform on a cluster you designate, so you get production hosting without running the databases and upgrades yourself. You still keep your data in your own cloud account. You install the collector and integrate the SDK; everything else is operated for you.
+
+See [Managed deployment](/agenteye/managed-deployment).
+
+## Kubernetes
+
+A full, self-managed production install with high availability, persistent storage, TLS, and your own upgrade cadence. This is the most involved path and the most flexible.
+
+See [Kubernetes deployment](/agenteye/kubernetes-deployment).
+
+## Single-pod sidecar
+
+Run `agenteye-collector` as a sidecar next to a single application pod, shipping that app's events without a cluster-wide install. A good fit when you want to instrument one workload on Kubernetes without operating the whole platform.
+
+See [Single-pod deployment](/agenteye/single-pod-deployment).
+
+---
+
+> **Tip:** All four paths report into the same dashboard and use the same [Python SDK](/agenteye/python-sdk), [collector](/agenteye/collector-installation), and [API keys](/agenteye/api-keys). Switching paths later does not change how you instrument your agents.
+
+Whichever path you choose, pulling the AgentEye container images and downloading release artifacts requires signed enterprise access. If you don't have access yet, request a demo: email [nivedit@exosphere.host](mailto:nivedit@exosphere.host), [nikita@exosphere.host](mailto:nikita@exosphere.host), [nivedit@befailproof.ai](mailto:nivedit@befailproof.ai), or [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+
+---
+
+## Next steps
+
+- [Getting started](/agenteye/getting-started): the Docker Compose quick path, end to end.
+- [Security](/agenteye/security): how AgentEye isolates and protects your data.
+- [Collector installation](/agenteye/collector-installation): install the collector on any host.

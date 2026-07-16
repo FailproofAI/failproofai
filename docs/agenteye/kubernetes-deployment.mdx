@@ -4,7 +4,11 @@ description: "AgentEye Kubernetes Deployment Guide documentation."
 ---
 
 
-This guide deploys the full AgentEye stack onto a dedicated Kubernetes cluster:
+AgentEye is a self-hosted platform for observing, evaluating, and improving your AI agents in production. This guide is for platform and infrastructure teams who want to run AgentEye at production scale on their own Kubernetes cluster. By the end you'll have a highly available, mutual-TLS-secured deployment: two replicas each of the API server and dashboard, dedicated data stores, and automated daily backups.
+
+Prefer not to operate the cluster yourself? [Managed deployment](/agenteye/managed-deployment) has Exosphere run it for you. Just want a lightweight single-node trial or a collector sidecar? See [Single-pod deployment](/agenteye/single-pod-deployment).
+
+This guide deploys the full AgentEye stack:
 
 - **ClickHouse 24.8** -- the canonical events and evaluations analytics store (StatefulSet with 100Gi persistent volume). Required: the server refuses to start without it.
 - **PostgreSQL 16** -- relational/metadata store for organizations, API keys, users, dashboards, saved queries, and auth (StatefulSet with 50Gi persistent volume)
@@ -20,7 +24,7 @@ This guide deploys the full AgentEye stack onto a dedicated Kubernetes cluster:
 
 **Estimated time:** 60--90 minutes for a first deployment.
 
-For the managed deployment model where Exosphere handles all of this on your behalf, see [enterprise-docs/managed-deployment.md](/agenteye/managed-deployment).
+For the managed deployment model where Exosphere handles all of this on your behalf, see [Managed deployment](/agenteye/managed-deployment).
 
 ---
 
@@ -36,11 +40,11 @@ Run each verification command before starting. Every check must pass.
 | cluster-admin RBAC | -- | `kubectl auth can-i create namespaces` | `yes` |
 | Default StorageClass | -- | `kubectl get storageclass` | At least one row marked `(default)` |
 | LoadBalancer support | -- | Cloud-dependent (EKS, GKE, AKS all support this by default) | -- |
-| GitHub PAT | -- | `echo $AGENTEYE_TOKEN` | Non-empty (see [enterprise-docs/github-token.md](/agenteye/github-token)) |
+| GitHub PAT | -- | `echo $AGENTEYE_TOKEN` | Non-empty (see [GitHub token setup](/agenteye/github-token)) |
 | openssl | -- | `openssl version` | OpenSSL 1.x or 3.x |
 | Cloud storage bucket | -- | For PostgreSQL + ClickHouse backups (S3, GCS, or Azure Blob) | -- |
 
-**Cluster sizing:** Minimum 3 nodes, 4 vCPU / 8 GB RAM each. See [enterprise-docs/managed-deployment.md](/agenteye/managed-deployment) for full requirements.
+**Cluster sizing:** Minimum 3 nodes, 4 vCPU / 8 GB RAM each. See [Managed deployment](/agenteye/managed-deployment) for full requirements.
 
 ### Run all checks at once
 
@@ -61,11 +65,13 @@ The **ingest endpoint** is served on a hostname you control (e.g. `ingest.your-c
 
 The **dashboard endpoint** works the same way: it is served on a second hostname you control (e.g. `agenteye.your-company.example`) pointing at the dashboard Traefik LoadBalancer, and cert-manager issues its Let's Encrypt certificate through that LoadBalancer. Browsers get a trusted certificate with no warning.
 
-> **Certificate issuance and renewal validate over HTTP-01**, so both LoadBalancers must be reachable from the public internet on port 80. If you need to IP-restrict the dashboard LoadBalancer, coordinate a DNS-01 solver with support first — otherwise renewals fail silently and the certificate expires.
+> **Warning:** Certificate issuance and renewal validate over HTTP-01, so both LoadBalancers must be reachable from the public internet on port 80. If you need to IP-restrict the dashboard LoadBalancer, coordinate a DNS-01 solver with support first. Otherwise renewals fail silently and the certificate expires.
 
 ---
 
 ## Get the Manifests
+
+> **Note:** Cloning the releases repo and pulling the `ghcr.io/agenteye-enterprise/*` images both require signed enterprise access. See [GitHub token setup](/agenteye/github-token) to obtain your token.
 
 ```bash
 git clone https://x:${AGENTEYE_TOKEN}@github.com/agenteye-enterprise/releases.git
@@ -82,7 +88,7 @@ Expected: the file exists. If it doesn't, the clone failed -- check your `AGENTE
 
 **Directory structure:**
 
-```
+```text
 deploy/
   base/           Shared Kustomize base (all K8s resources)
   overlays/       Cluster-specific overrides (image tags, hostnames, resources)
@@ -91,7 +97,7 @@ deploy/
 
 The **base** contains every resource needed for a full deployment, including Let's Encrypt certificates for the two public hostnames you configure in Phase 3.1. An **overlay** patches the base for a specific environment (e.g. custom image tags, resource limits, env wiring). The **third-party** directory contains Helm values files for external infrastructure.
 
-> **Health monitoring (optional):** the server's readiness probe already reflects Postgres + ClickHouse health, and `third-party/robusta/` adds opt-in Kubernetes-native pod-failure alerting to Slack. See [enterprise-docs/health-monitoring.md](/agenteye/health-monitoring).
+> **Tip:** The server's readiness probe already reflects Postgres + ClickHouse health, and `third-party/robusta/` adds opt-in Kubernetes-native pod-failure alerting to Slack. See [Health monitoring](/agenteye/health-monitoring).
 
 ---
 
@@ -164,7 +170,7 @@ Expected: the IngressClass exists (it is not the default class).
 
 This Traefik instance serves the dashboard on a dedicated LoadBalancer, restricted by IP allowlist.
 
-> **Two allowlist mechanisms ship for this instance.** This guide uses `values-dashboard.yaml`, which restricts access with the portable `service.loadBalancerSourceRanges` field. A parallel `values-internal.yaml` is also provided for AWS environments that prefer the `service.beta.kubernetes.io/aws-load-balancer-source-ranges` annotation instead. Pick one and use it consistently; the steps below assume `values-dashboard.yaml`.
+> **Note:** Two allowlist mechanisms ship for this instance. This guide uses `values-dashboard.yaml`, which restricts access with the portable `service.loadBalancerSourceRanges` field. A parallel `values-internal.yaml` is also provided for AWS environments that prefer the `service.beta.kubernetes.io/aws-load-balancer-source-ranges` annotation instead. Pick one and use it consistently; the steps below assume `values-dashboard.yaml`.
 
 **Before installing**, edit `third-party/traefik/values-dashboard.yaml` to set the allowed source IPs. The `loadBalancerSourceRanges` field controls which IPs can reach the dashboard. By default it is set to `0.0.0.0/0` (all IPs); restrict it to your VPN, office, or known egress IPs.
 
@@ -267,7 +273,7 @@ kubectl get svc -n traefik-public -w
 
 Press `Ctrl+C` once the IP appears. IP assignment typically takes 2--5 minutes.
 
-**If it fails:** `<pending>` after 10 minutes usually means the cloud provider can't provision a LoadBalancer. Check: subnet tags (EKS requires `kubernetes.io/role/elb`), VPC configuration, service quotas, and that the correct internal LB annotation is set for the internal instance.
+**If it fails:** `<pending>` after 10 minutes usually means the cloud provider can't provision a LoadBalancer. Both `traefik-public` and `traefik-dashboard` are external LoadBalancers, so check the usual provisioning blockers: subnet tags (EKS requires `kubernetes.io/role/elb`), VPC configuration, and LoadBalancer service quotas.
 
 ---
 
@@ -293,7 +299,7 @@ Expected: status `Active`.
 
 ### 2.2 Image pull secret
 
-This secret authenticates with `ghcr.io` to pull the AgentEye container images. See [enterprise-docs/github-token.md](/agenteye/github-token) for how to generate your PAT.
+This secret authenticates with `ghcr.io` to pull the AgentEye container images. See [GitHub token setup](/agenteye/github-token) for how to generate your PAT.
 
 ```bash
 kubectl create secret docker-registry agenteye-image-pull \
@@ -328,7 +334,7 @@ kubectl delete pod test-pull -n agenteye
 
 Expected: `ok` printed in the logs.
 
-**If it fails:** `ErrImagePull` or `401 Unauthorized` means the PAT is invalid or lacks `read:packages` scope. Re-check [enterprise-docs/github-token.md](/agenteye/github-token).
+**If it fails:** `ErrImagePull` or `401 Unauthorized` means the PAT is invalid or lacks `read:packages` scope. Re-check [GitHub token setup](/agenteye/github-token).
 
 ---
 
@@ -344,9 +350,9 @@ kubectl create secret generic agenteye-postgres \
   --from-literal=POSTGRES_DB=agenteye
 ```
 
-> **Important:** We use `-hex` (not `-base64`) to generate the password. Base64 output can contain `+`, `/`, and `=` which break the `DATABASE_URL` connection string. See [enterprise-docs/troubleshooting.md](/agenteye/troubleshooting) for details.
+> **Warning:** We use `-hex` (not `-base64`) to generate the password. Base64 output can contain `+`, `/`, and `=` which break the `DATABASE_URL` connection string. See [Troubleshooting](/agenteye/troubleshooting) for details.
 
-> **Store `POSTGRES_PASSWORD` in your secrets manager immediately.** You will need it if you ever restore from a backup or connect to the database directly.
+> **Note:** Store `POSTGRES_PASSWORD` in your secrets manager immediately. You will need it if you ever restore from a backup or connect to the database directly.
 
 **Test it:**
 
@@ -375,9 +381,9 @@ kubectl create secret generic agenteye-admin-key \
   --from-literal=ADMIN_KEY="${ADMIN_KEY}"
 ```
 
-The admin key is the bootstrap credential. The server upserts it on every startup with all permissions. Use it to create scoped collector keys in Phase 7. See [enterprise-docs/api-keys.md](/agenteye/api-keys) for the full permissions model.
+The admin key is the bootstrap credential. The server upserts it on every startup with all permissions. Use it to create scoped collector keys in Phase 7. See [API keys](/agenteye/api-keys) for the full permissions model.
 
-> **Store `ADMIN_KEY` in your secrets manager immediately.**
+> **Note:** Store `ADMIN_KEY` in your secrets manager immediately.
 
 **Test it:**
 
@@ -418,7 +424,7 @@ kubectl create secret generic agenteye-auth \
 | `SMTP_TLS` | One of `starttls` (default), `tls`, or `none`. |
 | `DEFAULT_ORG_NAME`, `DEFAULT_ORG_SLUG` | Optional. Give the built-in `default` organization a friendly display name and URL slug so it lives at e.g. `/acme` instead of `/default`. Applied on **first boot only**; once you rename the org with `agenteye-orgctl org rename` (see §7.6) these are ignored. The slug must be 1--40 lowercase alphanumerics with single internal hyphens. Leave both unset to keep the generic `default`. |
 
-> **Store the SMTP credentials in your secrets manager.**
+> **Note:** Store the SMTP credentials in your secrets manager.
 
 **Test it:**
 
@@ -446,7 +452,7 @@ kubectl -n agenteye rollout restart deployment/server
 
 The server reads this via an **optional** `secretKeyRef`, so a single-tenant cluster that never creates it still boots normally. Keep the value **stable and identical across all replicas**; rotating it invalidates every org's derived ClickHouse password until the boot-time reconcile re-provisions the users (a rolling restart with the value consistent everywhere heals it). See `deploy/base/server/secret.example.yaml`.
 
-> **Store `ORG_CH_SECRET` in your secrets manager and don't rotate it casually.**
+> **Warning:** Store `ORG_CH_SECRET` in your secrets manager and don't rotate it casually.
 
 ---
 
@@ -458,7 +464,7 @@ kubectl get secrets -n agenteye -o custom-columns='NAME:.metadata.name,TYPE:.typ
 
 Expected output (among any default secrets):
 
-```
+```text
 NAME                    TYPE
 agenteye-admin-key      Opaque
 agenteye-auth           Opaque
@@ -486,7 +492,7 @@ cp base/certificates/domain.env.example base/certificates/domain.env
 
 `domain.env` is gitignored; it stays local to each deployment. The kustomize build fails loudly if either key is missing.
 
-> **DNS must resolve first.** You don't have to point DNS at the LBs yet (they don't exist until Phase 1.2 is complete), but ACME issuance in step 3.2 will retry until each hostname resolves to its LoadBalancer. You can either set DNS now (using the LB hostnames captured in Phase 1.4) or proceed and add the records in Phase 4.
+> **Note:** DNS must resolve first. You don't have to point DNS at the LBs yet (they don't exist until Phase 1.2 is complete), but ACME issuance in step 3.2 will retry until each hostname resolves to its LoadBalancer. You can either set DNS now (using the LB hostnames captured in Phase 1.4) or proceed and add the records in Phase 4.
 
 ---
 
@@ -511,7 +517,7 @@ kubectl wait --for=condition=Ready pod -l 'app in (server,dashboard,postgres,cli
   -n agenteye --timeout=180s
 ```
 
-The wait is scoped to the core data-plane pods. The optional `agent` (AI assistant) and `redis` pods come up alongside them; the assistant stays inert until you supply its LLM endpoint (see [enterprise-docs/assistant.md](/agenteye/assistant)), and Redis is a best-effort cache, so neither needs to be Ready for the platform to serve traffic.
+The wait is scoped to the core data-plane pods. The optional `agent` (AI assistant) and `redis` pods come up alongside them; the assistant stays inert until you supply its LLM endpoint (see [AI assistant](/agenteye/assistant)), and Redis is a best-effort cache, so neither needs to be Ready for the platform to serve traffic.
 
 **Test it:**
 
@@ -521,7 +527,7 @@ kubectl get pods -n agenteye
 
 Expected (the optional `agent` and `redis` pods also appear and reach `Running`):
 
-```
+```text
 NAME                         READY   STATUS    RESTARTS   AGE
 agent-xxxxxxxxxx-xxxxx       1/1     Running   0          ...
 clickhouse-0                 1/1     Running   0          ...
@@ -580,7 +586,7 @@ Expected: 3 certificates, all `Ready: True`:
 
 `kubectl describe certificate <name> -n agenteye` and read the Events. The common causes:
 
-- **DNS not yet pointing at the LB.** Let's Encrypt resolves the hostname and hits port 80 to validate — `INGEST_DOMAIN` must resolve to the public LB, `DASHBOARD_DOMAIN` to the dashboard LB. Until the CNAME/Alias propagates, the order stays `pending`. Once DNS is correct, cert-manager retries automatically (no need to delete the Certificate).
+- **DNS not yet pointing at the LB.** Let's Encrypt resolves the hostname and hits port 80 to validate. `INGEST_DOMAIN` must resolve to the public LB, `DASHBOARD_DOMAIN` to the dashboard LB. Until the CNAME/Alias propagates, the order stays `pending`. Once DNS is correct, cert-manager retries automatically (no need to delete the Certificate).
 - **Hostname not substituted.** If `dnsNames` still reads `INGEST_DOMAIN_PLACEHOLDER` / `DASHBOARD_DOMAIN_PLACEHOLDER`, you skipped step 3.1 -- create `base/certificates/domain.env` and re-apply.
 - **Dashboard Traefik can't serve the challenge** (`dashboard-tls` only). The dashboard Traefik instance must be installed with the bundled values file (Phase 1.2), which enables the scoped Ingress provider that serves cert-manager's HTTP-01 solver. An instance installed without it leaves the challenge unroutable and the order `pending` forever.
 
@@ -611,7 +617,7 @@ kubectl logs -n agenteye -l app=server --tail=20
 
 **Test it:** Look for a startup line indicating the server is listening on port 8080. There should be no database connection errors (the server requires both PostgreSQL and ClickHouse to be reachable before it reports Ready).
 
-**If it fails:** The most common cause is a `POSTGRES_PASSWORD` containing URL-unsafe characters that break the `DATABASE_URL`. See [enterprise-docs/troubleshooting.md](/agenteye/troubleshooting).
+**If it fails:** The most common cause is a `POSTGRES_PASSWORD` containing URL-unsafe characters that break the `DATABASE_URL`. See [Troubleshooting](/agenteye/troubleshooting).
 
 ---
 
@@ -654,7 +660,7 @@ Both must be non-empty.
 
 ### 4.2 Point DNS at the LoadBalancers
 
-Create DNS records so the hostnames from `base/certificates/domain.env` resolve to their LoadBalancers — `INGEST_DOMAIN` to the **public** Traefik LB, `DASHBOARD_DOMAIN` to the **dashboard** Traefik LB:
+Create DNS records so the hostnames from `base/certificates/domain.env` resolve to their LoadBalancers (`INGEST_DOMAIN` to the **public** Traefik LB, `DASHBOARD_DOMAIN` to the **dashboard** Traefik LB):
 
 - **AWS Route 53:** `A` record with `Alias = Yes`, target = the LB hostname. Don't use plain A → IP; ELB IPs rotate.
 - **Any other provider:** `CNAME` from the hostname to the LB hostname.
@@ -690,7 +696,7 @@ The dashboard endpoint is served on `DASHBOARD_DOMAIN` with a publicly-trusted c
 curl -s https://agenteye.your-company.example/ -o /dev/null -w '%{http_code}\n'
 ```
 
-Reach the dashboard by its hostname, not the raw LB address — the certificate is bound to `DASHBOARD_DOMAIN`, so the raw address shows a certificate-name mismatch.
+Reach the dashboard by its hostname, not the raw LB address. The certificate is bound to `DASHBOARD_DOMAIN`, so the raw address shows a certificate-name mismatch.
 
 **If it fails:** If `curl` hangs, check that the LB is reachable from your machine (VPN, security groups, firewall rules). A `certificate required` handshake error on the ingest hostname means no client certificate was presented; complete Phase 5 first. A TLS validation error on the ingest hostname means the server cert hasn't finished issuing; go back to Phase 3.5 and resolve the issue there.
 
@@ -732,7 +738,7 @@ Output files in `issued/<cluster-name>/`:
 
 ### 5.1b Alternative delivery: AWS Secrets Manager
 
-If the consumer of the cert is a Kubernetes Pod that needs `client.crt` and `client.key` on disk -- the typical case when you run the agenteye-collector as a sidecar in your application pod -- push the cert bundle into AWS Secrets Manager. The application pod then mounts it via the [Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) with IRSA, and certificate rotation is fully hands-off.
+If the consumer of the cert is a Kubernetes Pod that needs `client.crt` and `client.key` on disk -- the typical case when you run the agenteye-collector as a sidecar in your application pod -- push the cert bundle into AWS Secrets Manager. The application pod then mounts it via the [Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) with IRSA (IAM Roles for Service Accounts, AWS's mechanism for giving a pod scoped AWS permissions), and certificate rotation is fully hands-off.
 
 ```bash
 cd base/certificates/client-certs
@@ -764,7 +770,7 @@ On re-run (renewal), the script calls `PutSecretValue` on the same secret, so th
 
 **If the secret is scheduled for deletion**, the script fails with a clear error telling you to run `aws secretsmanager restore-secret --secret-id agenteye/mtls-client/<cluster-name>` before retrying.
 
-For full pod wiring (SecretProviderClass, IRSA setup, rotation behavior, troubleshooting) see [enterprise-docs/single-pod-deployment.md](/agenteye/single-pod-deployment).
+For full pod wiring (SecretProviderClass, IRSA setup, rotation behavior, troubleshooting) see [Single-pod deployment](/agenteye/single-pod-deployment).
 
 ---
 
@@ -807,7 +813,7 @@ Then configure the collector to mount the secret and use the cert paths:
 }
 ```
 
-See [enterprise-docs/collector-installation.md](/agenteye/collector-installation) for complete collector setup including Kubernetes volume mounts.
+See [Collector installation](/agenteye/collector-installation) for complete collector setup including Kubernetes volume mounts.
 
 **Test it (in the collector cluster):**
 
@@ -942,7 +948,7 @@ curl -sk https://${PUBLIC_IP}/keys \
 
 Expected: `prod-collector` appears in the response.
 
-See [enterprise-docs/api-keys.md](/agenteye/api-keys) for the full key management reference.
+See [API keys](/agenteye/api-keys) for the full key management reference.
 
 ---
 
@@ -978,7 +984,7 @@ Open `https://agenteye.your-company.example` (your `DASHBOARD_DOMAIN`) in a brow
 > ```bash
 > kubectl get svc traefik-dashboard -n traefik-dashboard -o jsonpath='{.spec.loadBalancerSourceRanges}'
 > ```
-> Keep in mind that Let's Encrypt renews the dashboard certificate over HTTP-01 on port 80, and source ranges apply to the whole LoadBalancer — before restricting it to corporate ranges, coordinate a DNS-01 solver with support or renewals fail silently.
+> Keep in mind that Let's Encrypt renews the dashboard certificate over HTTP-01 on port 80, and source ranges apply to the whole LoadBalancer. Before restricting it to corporate ranges, coordinate a DNS-01 solver with support or renewals fail silently.
 
 **Test it:** The smoke-test event should appear in the event list with session `test` and agent `smoke-test`.
 
@@ -1014,7 +1020,7 @@ Skip this for a single-tenant deployment; all data lives in the built-in `defaul
 
 If you are running multiple isolated tenants, organizations and their memberships are created with the **`agenteye-orgctl`** CLI. It ships **inside the server image** (alongside `agenteye-server`) and you run it **inside the existing `server` Deployment with `kubectl exec`; there is no separate pod, Job, or Deployment, and no HTTP API or dashboard button for tenant lifecycle.** Running it in the server pod means it reuses the pod's `DATABASE_URL`, `CLICKHOUSE_URL`, and the `ORG_CH_SECRET` from §2.6.
 
-> **Prerequisite:** complete §2.6 first. `org create` refuses to run while the server is still on the built-in dev `ORG_CH_SECRET`, and the per-org ClickHouse user it provisions depends on that secret being strong and stable.
+> **Note:** Complete §2.6 first. `org create` refuses to run while the server is still on the built-in dev `ORG_CH_SECRET`, and the per-org ClickHouse user it provisions depends on that secret being strong and stable.
 
 **Create an org and add its first admin:**
 
@@ -1040,7 +1046,7 @@ The new member receives an OTP on first dashboard login and then works entirely 
 | `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...]` | Change a member's permissions. |
 | `member remove --org <slug> --email <email>` | Remove a member from the org. |
 
-Builtin permission sets are `admin`, `standard`, and `read-only`. **Per-org API keys are still minted in the dashboard/API by org members (§7.2 shows the keys API); only the org + member lifecycle is operator-only.** Full reference and a worked example: [enterprise-docs/tenant-management.md](/agenteye/tenant-management).
+Builtin permission sets are `admin`, `standard`, and `read-only`. **Per-org API keys are still minted in the dashboard/API by org members (§7.2 shows the keys API); only the org + member lifecycle is operator-only.** Full reference and a worked example: [Tenant management](/agenteye/tenant-management).
 
 ---
 
@@ -1069,11 +1075,11 @@ Use this checklist to confirm everything is working. Every item should be checke
 
 ## Backups
 
-A single `agenteye-backup` CronJob runs daily at 03:00 UTC. It dumps **both** stores: PostgreSQL (relational state) and ClickHouse (the `events` + `evaluations` analytics tables), into one compressed archive in the pod, then uploads it to the object storage you wire in your overlay.
+A single `agenteye-backup` CronJob runs daily at 03:00 UTC. It dumps **both** stores: PostgreSQL (relational state) and ClickHouse (the `events` + `evaluations` analytics tables), then streams them as one compressed archive straight to the object storage you wire in your overlay. The `.tar.gz` is piped directly to the upload command and is never written to the pod's disk.
 
 Each run produces one object, `agenteye-<timestamp>.tar.gz`, which unpacks to:
 
-```
+```text
 postgres.sql        # pg_dump of the relational database
 events.sql          # ClickHouse events table DDL
 events.native       # ClickHouse events data (Native format)
@@ -1085,23 +1091,28 @@ ClickHouse is read over its HTTP API (the same endpoint the server uses), so the
 
 ### Configure cloud upload
 
-The backup CronJob ships with the S3 upload step (`aws s3 cp`) already wired in, and the base sets a default `BACKUP_BUCKET` you must override with your own bucket.
+The backup CronJob streams the compressed archive straight to object storage, so the shipped pipeline ends in an AWS S3 upload that reads from **stdin**. The base sets a default `BACKUP_BUCKET` you must override with your own bucket. The pipeline runs under `set -euo pipefail`, so a broken pipe aborts the job instead of reporting a false success.
 
-**On AWS:** you only set `BACKUP_BUCKET` to your bucket and grant the `agenteye-backup` ServiceAccount write access via IRSA — no script change needed.
+**On AWS:** set `BACKUP_BUCKET` to your bucket and grant the `agenteye-backup` ServiceAccount write access via IRSA (no script change needed). The shipped upload pipeline is:
 
-**On GCP / Azure:** you must *replace* the shipped `aws s3 cp` line in the CronJob script with the matching command below — do not just add yours, because the leftover `aws s3 cp` runs under `set -eu` and fails the job.
+```bash
+tar c -C "${DIR}" . | pv -f -i 15 -s "${DUMPS_BYTES}" | gzip \
+  | aws s3 cp - "s3://${BACKUP_BUCKET}/${FILENAME}"
+```
 
-| Cloud | Upload Command |
+**On GCP / Azure:** swap only the final stage (`aws s3 cp -`) for the provider equivalent below. Replace it (don't append) because a leftover `aws s3 cp` stage under `set -euo pipefail` fails the job. Each equivalent reads the archive from stdin, matching the streaming pipeline; there is no on-disk `/tmp/${FILENAME}` to point at, because the archive is never written to disk.
+
+| Cloud | Final pipeline stage (reads stdin) |
 |---|---|
-| **AWS S3** | `aws s3 cp /tmp/${FILENAME} s3://${BACKUP_BUCKET}/${FILENAME}` (ships by default) |
-| **GCP Cloud Storage** | `gsutil cp /tmp/${FILENAME} gs://${BACKUP_BUCKET}/${FILENAME}` |
-| **Azure Blob** | `az storage blob upload -f /tmp/${FILENAME} -c backups -n ${FILENAME}` |
+| **AWS S3** | `aws s3 cp - "s3://${BACKUP_BUCKET}/${FILENAME}"` (ships by default) |
+| **GCP Cloud Storage** | `gsutil cp - "gs://${BACKUP_BUCKET}/${FILENAME}"` |
+| **Azure Blob** | `az storage blob upload --file /dev/stdin -c backups -n "${FILENAME}"` |
 
 One object per run means a bucket lifecycle rule (e.g. "delete after 30 days") prunes whole backups cleanly.
 
 The `agenteye-backup` ServiceAccount needs IAM permissions to write to the bucket. On AWS use IRSA; on GKE Workload Identity; on AKS Pod Identity. Annotate the ServiceAccount in your overlay accordingly.
 
-The dump is buffered in a 20 GiB `emptyDir` at `/tmp`; the ClickHouse `events` dump dominates its size. If your data is larger, raise the volume's `sizeLimit` in your overlay.
+The raw dumps are buffered in a 30 GiB `emptyDir` at `/tmp`; the ClickHouse `events` dump dominates its size. If your data is larger, raise the volume's `sizeLimit` in your overlay.
 
 ### Manual backup
 
@@ -1319,14 +1330,14 @@ kubectl exec -n agenteye postgres-0 -- psql -U postgres -d agenteye -c \
 | `CLICKHOUSE_DATABASE` | Deployment manifest | `agenteye` |
 | `REDIS_URL` | Deployment manifest | `redis://redis:6379/0` -- optional cache and rate-limit backend. If Redis is unreachable, auth and OTP fall back to PostgreSQL (graceful degradation). |
 | `ADMIN_KEY` | `agenteye-admin-key` secret | Bootstrap admin credential |
-| `AGENT_API_KEY` | `agenteye-agent` secret (optional) | Seeds the protected `dashboard-assistant` key the AI assistant's agent service uses (the same value the agent reads as `AGENTEYE_API_KEY`). Unset means the key isn't seeded and the assistant stays off. See [enterprise-docs/assistant.md](/agenteye/assistant). |
-| `AGENTEYE_AGENT_URL` | Deployment manifest | `http://agent:9100` -- where the **server** reaches the agent service to run the audit's agentic investigation (the same connection the dashboard uses). Unset ⇒ audits run policy-only. See [enterprise-docs/assistant.md](/agenteye/assistant). |
+| `AGENT_API_KEY` | `agenteye-agent` secret (optional) | Seeds the protected `dashboard-assistant` key the AI assistant's agent service uses (the same value the agent reads as `AGENTEYE_API_KEY`). Unset means the key isn't seeded and the assistant stays off. See [AI assistant](/agenteye/assistant). |
+| `AGENTEYE_AGENT_URL` | Deployment manifest | `http://agent:9100` -- where the **server** reaches the agent service to run the audit's agentic investigation (the same connection the dashboard uses). Unset ⇒ audits run policy-only. See [AI assistant](/agenteye/assistant). |
 | `AGENTEYE_AGENT_TOKEN` | `agenteye-agent` secret (optional) | Shared secret the server presents to the agent for audit investigation calls; must match the agent's `AGENTEYE_AGENT_TOKEN`. Unset ⇒ audits run policy-only. |
 | `ADMIN_EMAIL` | `agenteye-auth` secret (optional) | Bootstrap admin user email, upserted as protected on every startup |
 | `ALLOWED_EMAILS` | `agenteye-auth` secret (optional) | Comma-separated allowlist for user creation/login; supports `*@domain` wildcards |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TLS` | `agenteye-auth` secret (optional) | SMTP relay for OTP delivery; if `SMTP_HOST` is unset, OTPs are logged to stdout |
 | `DEFAULT_ORG_NAME`, `DEFAULT_ORG_SLUG` | `agenteye-auth` secret (optional) | First-boot-only display name and URL slug for the built-in `default` org; ignored after an org rename. Slug must be 1--40 lowercase alphanumerics with single internal hyphens. See §2.5. |
-| `EVALUATOR_ENDPOINT`, `EVALUATOR_TOKEN` | `agenteye-evaluator` secret (optional) | Wire the evaluation pipeline. With the secret absent the pipeline is a no-op. See [enterprise-docs/evaluation-suite.md](/agenteye/evaluation-suite). |
+| `EVALUATOR_ENDPOINT`, `EVALUATOR_TOKEN` | `agenteye-evaluator` secret (optional) | Wire the evaluation pipeline. With the secret absent the pipeline is a no-op. See [Evaluation suite](/agenteye/evaluation-suite). |
 | `SESSION_TTL_SECS` | Default | `86400` (24 h) |
 | `OTP_TTL_SECS` | Default | `600` (10 min) |
 | `ORG_CH_SECRET` | `agenteye-org-ch-secret` secret (optional; **required before a 2nd org**) | HMAC key from which each organization's per-tenant ClickHouse password is derived. Single-tenant clusters run on the built-in dev default; **set a strong, stable value in your own secret before provisioning a second organization** (see §2.6), and keep it identical across all server replicas; rotating it orphans every org's ClickHouse user until the next startup re-provisions them. |
@@ -1343,25 +1354,24 @@ kubectl exec -n agenteye postgres-0 -- psql -U postgres -d agenteye -c \
 | `AGENTEYE_SERVER_URL` | Deployment manifest | `http://server:8080` |
 | `AGENTEYE_API_KEY` | `agenteye-admin-key` secret | Same as `ADMIN_KEY` |
 | `AGENTEYE_AGENT_URL` | Deployment manifest | `http://agent:9100` -- where the dashboard reaches the optional AI assistant |
-| `AGENTEYE_AGENT_TOKEN` | `agenteye-agent` secret (optional) | Shared secret the dashboard presents to the AI assistant; the assistant stays inert until its LLM endpoint is configured. See [enterprise-docs/assistant.md](/agenteye/assistant). |
+| `AGENTEYE_AGENT_TOKEN` | `agenteye-agent` secret (optional) | Shared secret the dashboard presents to the AI assistant; the assistant stays inert until its LLM endpoint is configured. See [AI assistant](/agenteye/assistant). |
 | `REDIS_URL` | Deployment manifest | `redis://redis:6379/0` -- optional; caches `validateSession()` results across replicas and shares the Next.js fetch cache. Unset => every authed request falls through to the server (correct, just slower). |
 | `HOSTNAME` | Deployment manifest | `0.0.0.0` |
 
 ### Traffic flow
 
-```
-Collector Clusters                          AgentEye Cluster
-┌─────────────────┐                    ┌──────────────────────────────────────┐
-│ Collector Pod    │                    │                                      │
-│ + client cert    │──POST /events────►│ Traefik Public (mTLS) ──► Server    │
-│ + API key        │   (port 443)      │                              │       │
-└─────────────────┘                    │                              ▼       │
-                                       │                          PostgreSQL  │
-Browser (VPN)                          │                              ▲       │
-┌─────────────────┐                    │                              │       │
-│ Developer        │──HTTPS──────────►│ Traefik Internal ────► Dashboard     │
-└─────────────────┘   (port 443)      │                                      │
-                                       └──────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph collectors["Collector Clusters"]
+        COL["Collector Pod<br/>+ client cert + API key"]
+    end
+    BR["Browser (VPN)<br/>Developer"]
+    subgraph ae["AgentEye Cluster"]
+        TP["Traefik Public (mTLS)"] --> SRV["Server"] --> PG[("PostgreSQL")]
+        TD["Traefik Dashboard"] --> DASH["Dashboard"]
+    end
+    COL -->|"POST /events, 443"| TP
+    BR -->|"HTTPS, 443"| TD
 ```
 
 ---
@@ -1385,7 +1395,7 @@ kubectl describe certificate -n agenteye <cert-name>
 kubectl get events -n agenteye --sort-by=.lastTimestamp
 ```
 
-For a comprehensive list of common issues and solutions, see [enterprise-docs/troubleshooting.md](/agenteye/troubleshooting).
+For a comprehensive list of common issues and solutions, see [Troubleshooting](/agenteye/troubleshooting).
 
 ---
 
@@ -1408,3 +1418,12 @@ For a comprehensive list of common issues and solutions, see [enterprise-docs/tr
 ## Support
 
 Email `support@exosphere.host` for help with deployment.
+
+---
+
+## Next steps
+
+- [Collector installation](/agenteye/collector-installation): start sending events from your agents into the cluster you just deployed.
+- [API keys](/agenteye/api-keys): mint scoped keys for collectors and dashboard users.
+- [Tenant management](/agenteye/tenant-management): provision isolated organizations if you run multiple teams.
+- [Troubleshooting](/agenteye/troubleshooting): resolve pod, certificate, or backup issues.

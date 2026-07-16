@@ -4,32 +4,62 @@ description: "AgentEye Getting Started with AgentEye documentation."
 ---
 
 
-This guide walks you through a complete AgentEye setup: deploying the server and dashboard, installing the collector on an agent machine, and instrumenting your Python agent code.
+Stand up AgentEye and watch your first agent run appear in the dashboard, end to end, in about 15 minutes. By the end you'll have the server and dashboard running in your own infrastructure, a collector shipping events from an agent machine, and your Python agent instrumented so its runs show up as searchable sessions.
+
+This guide uses the single-node **Docker Compose** path, the fastest way to try AgentEye. Running somewhere else? Pick your path: [Managed deployment](/agenteye/managed-deployment) (we operate it for you), [Kubernetes deployment](/agenteye/kubernetes-deployment) (production, multi-node), or [Single-pod deployment](/agenteye/single-pod-deployment) (one co-located pod).
+
+> **AgentEye is an enterprise product from Failproof AI.** The steps below pull private container images, which needs signed enterprise access. To request a demo or get access, email [nivedit@exosphere.host](mailto:nivedit@exosphere.host), [nikita@exosphere.host](mailto:nikita@exosphere.host), [nivedit@befailproof.ai](mailto:nivedit@befailproof.ai), or [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
 
 ---
 
 ## What is AgentEye?
 
-AgentEye is a **self-hosted observability and evaluation platform for AI agents**. It records what your agents do — every step of a run — and automatically scores the quality of each completed run, so you can see how your agents behave in production and catch regressions before your users do.
+AgentEye is a self-hosted platform for observing, evaluating, and improving your AI agents in production. It records what your agents do (every step of a run) so you can see how they behave in production and catch regressions before your users do. Connect your own evaluator service and it will also score the quality of each completed run automatically.
 
-The data flows in one direction: your agent code emits **events** through the **Python SDK** → a lightweight **collector** daemon batches and ships them to the **server** → events and analytics are stored in **ClickHouse** (operational state such as organizations, users, API keys, dashboards, and saved queries lives in **Postgres**) → you explore everything in the **dashboard**.
+Here's how the data flows, in one direction:
+
+```mermaid
+flowchart LR
+    SDK["Python SDK"] --> COL["agenteye-collector"] --> SRV["server"] --> DASH["dashboard"]
+    SRV --> CH[("ClickHouse<br/>events and analytics")]
+    SRV --> PG[("Postgres<br/>orgs, users, API keys,<br/>dashboards, saved queries")]
+```
+
+Your agent code emits **events** through the **Python SDK**. A lightweight **collector** daemon batches them and ships them to the **server**. The server stores events and analytics in **ClickHouse** and operational state (organizations, users, API keys, dashboards, saved queries) in **Postgres**, and the **dashboard** reads it all back for you to explore.
 
 What you get:
 
-- **Events** — the raw, per-step trail of every agent run (tool calls, model calls, hooks, errors).
-- **Sessions** — those events rolled up into one row per run, each **automatically evaluated** and scored.
-- **Evaluations** — quality scores produced by your own evaluator services, so quality drops surface without manual review.
-- **Queries & dashboards** — saved ClickHouse SQL over your data, charted into shared, org-scoped dashboards.
-- **Alerts & incidents** — threshold rules that page you (email, Slack, webhook, in-dashboard) plus an incident workflow to triage them.
-- **CLI & AI assistant** — a terminal client (`agenteye`) and an in-dashboard assistant for asking questions in plain English.
+- **Events**: the raw, per-step trail of every agent run (tool calls, model calls, hooks, errors).
+- **Sessions**: those events rolled up into one row per run, each ready to be scored automatically once you connect an evaluator.
+- **Evaluations**: quality scores produced by your own evaluator services, so quality drops surface without manual review.
+- **Queries & dashboards**: saved ClickHouse SQL over your data, charted into shared, org-scoped dashboards.
+- **Alerts & incidents**: threshold rules that page you (email, Slack, webhook, in-dashboard) plus an incident workflow to triage them.
+- **CLI & AI assistant**: a terminal client (`agenteye`) and the in-dashboard **AI assistant** for asking questions in plain English.
+
+[![Watch: Agent Tracing by Failproof AI (2 min)](/agenteye/images/video-tracing.jpg)](https://youtu.be/VWxukZc5k7s)
+
+*See a live agent run trace itself in the AgentEye dashboard: every tool call, model request, and hook on one timeline.*
 
 You run all of it in your own infrastructure, as a single Docker Compose stack (this guide), a production Kubernetes install, or a single co-located pod. The rest of this guide sets up the Compose stack end to end.
 
 ---
 
+## Before you begin
+
+The Docker Compose path takes about 15 minutes. On the machine where you'll run AgentEye, and on each agent machine, make sure you have:
+
+- **Docker** and **Docker Compose**: to run the server, dashboard, and datastores (Steps 2-3).
+- **GitHub CLI (`gh`)** and **curl**: to download the compose file, collector binary, and SDK (Steps 2, 4, 5).
+- **Python 3** and **pip**: to install the SDK and instrument your agent (Steps 5-6).
+- Signed enterprise access to pull the private AgentEye packages. See [GitHub token setup](/agenteye/github-token).
+
+> **Note:** The collector download in Step 4 is a Linux x86_64 binary. For macOS, Linux arm64, or container installs, see [Collector installation](/agenteye/collector-installation).
+
+---
+
 ## Step 1: Authenticate
 
-All AgentEye artifacts are distributed from the `agenteye-enterprise` GitHub organization. As an enterprise developer you can generate your own GitHub PAT. Follow [enterprise-docs/github-token.md](/agenteye/github-token) for exact steps and required permissions.
+AgentEye's packages are private, so this step authenticates you as a signed enterprise customer to pull them. All artifacts are distributed from the `agenteye-enterprise` GitHub organization; you generate your own GitHub personal access token (PAT) to fetch them. Follow the [GitHub token setup](/agenteye/github-token) guide for exact steps and required permissions.
 
 ```bash
 export AGENTEYE_TOKEN=<your-github-pat>
@@ -74,7 +104,7 @@ This brings up the full stack, including the required ClickHouse analytics store
 
 The server is now listening at `http://localhost:8080` and the dashboard at `http://localhost:3000`.
 
-For production deployments (custom Postgres, TLS, reverse proxy), see [enterprise-docs/deployment.md](/agenteye/deployment).
+For production deployments (custom Postgres, TLS, reverse proxy), see [Deployment](/agenteye/deployment).
 
 ---
 
@@ -89,7 +119,7 @@ curl -s -X POST http://localhost:8080/keys \
   -d '{"name":"prod-collector","key":"your-collector-secret","permissions":["events:add"]}'
 ```
 
-You provide the `key` value yourself; use it in the collector config in Step 4. See [enterprise-docs/api-keys.md](/agenteye/api-keys) for full key management.
+You provide the `key` value yourself; use it in the collector config in Step 4. See [API keys](/agenteye/api-keys) for full key management.
 
 ---
 
@@ -100,7 +130,8 @@ On every machine that runs your AI agents, install the collector daemon.
 **Download the binary (Linux x86_64):**
 
 ```bash
-VERSION=0.0.1-beta.13
+# Check the agenteye-enterprise/releases page for the latest collector/v* tag.
+VERSION=0.0.1-beta.14
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
   --repo agenteye-enterprise/releases \
   --pattern 'agenteye-collector-linux-x86_64'
@@ -108,7 +139,7 @@ chmod +x agenteye-collector-linux-x86_64
 sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
 ```
 
-> This downloads the **Linux x86_64** build. For macOS (Apple Silicon or Intel), Linux arm64, or Docker / systemd / launchd setup, see [collector-installation.md](/agenteye/collector-installation), which lists the download for each platform — the command above installs a Linux binary that will not run elsewhere.
+> **Note:** This downloads the **Linux x86_64** build. For macOS (Apple Silicon or Intel), Linux arm64, or Docker / systemd / launchd setup, see [Collector installation](/agenteye/collector-installation), which lists the download for each platform. The command above installs a Linux binary that will not run elsewhere.
 
 **Configure:**
 
@@ -134,7 +165,7 @@ Verify connectivity with a one-shot flush (exits after draining any pending even
 agenteye-collector flush
 ```
 
-For Docker, systemd, and launchd setup see [enterprise-docs/collector-installation.md](/agenteye/collector-installation).
+For Docker, systemd, and launchd setup see [Collector installation](/agenteye/collector-installation).
 
 ---
 
@@ -176,7 +207,9 @@ agenteye.event.agent_end(
 
 Events are buffered and flushed to `$AGENTEYE_HOME/events/` (or `~/.agenteye/events/` if `AGENTEYE_HOME` is not set) every 500 ms. The collector picks them up automatically.
 
-See [enterprise-docs/python-sdk.md](/agenteye/python-sdk) for the full event API.
+See the [Python SDK](/agenteye/python-sdk) reference for the full event API.
+
+> **Tip:** To confirm the full path works before opening the dashboard, run your agent, then run `agenteye-collector flush` on the agent machine, and refresh the Events page (Step 7). If nothing appears, that tells you which hop to check: the collector, the server URL, or the API key.
 
 ---
 
@@ -190,11 +223,11 @@ Once you're in, the **Events** page shows a live trail of all ingested events. F
 
 ![The live Events stream, colour-coded by event type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
 
-The **Sessions** page rolls those events up into one row per run. AgentEye automatically evaluates completed sessions, so every run is scored and quality regressions surface without manual review; the latest evaluation score appears on each row at a glance:
+The **Sessions** page rolls those events up into one row per run. Once you connect an evaluator service, AgentEye scores every completed run automatically and the latest score appears on each row, so quality regressions surface without manual review. Until you set one up, sessions still capture the full run; they just don't carry a score yet.
 
-![The Sessions list, one row per run, with status pills and evaluation score badges](/agenteye/images/sessions-list.png)
+![The Sessions list, one row per run, with status pills and evaluation score badges (scores appear once an evaluator is connected)](/agenteye/images/sessions-list.png)
 
-To configure how sessions are scored, see [enterprise-docs/evaluation-suite.md](/agenteye/evaluation-suite).
+To turn on scoring and configure how sessions are evaluated, see the [Evaluation suite](/agenteye/evaluation-suite).
 
 Click any session to open its **execution graph**, a git-style view of how agents, tools, hooks, and model calls unfolded over time, with parallel sub-agents on their own lanes and a per-run breakdown in the right rail:
 
@@ -218,12 +251,15 @@ With events flowing, the **analyze** pages turn raw activity into answers, so yo
 
 ![A dashboard built from saved queries: an events-per-hour line, an errors-by-type bar, a latency area chart, and tokens-by-model](/agenteye/images/dashboard-fleet.png)
 
-- **Alerts** (`/<org>/alerts`): promote any threshold into a paging rule that notifies by email, Slack, webhook, or in-dashboard. See [enterprise-docs/alerts.md](/agenteye/alerts).
+- **Alerts** (`/<org>/alerts`): promote any threshold into a paging rule that notifies by email, Slack, webhook, or in-dashboard. See [Alerts](/agenteye/alerts).
+
+![The Alerts list: threshold rules with their notification channels and current status](/agenteye/images/alerts.png)
 
 ---
 
-## Next Steps
+## Next steps
 
-- [Deployment](/agenteye/deployment): harden for production
-- [API Keys](/agenteye/api-keys): manage access
-- [Troubleshooting](/agenteye/troubleshooting): diagnose issues
+- [Evaluation suite](/agenteye/evaluation-suite): connect an evaluator so sessions get scored.
+- [Deployment](/agenteye/deployment): harden the stack for production.
+- [API keys](/agenteye/api-keys): manage collector and user access.
+- [Troubleshooting](/agenteye/troubleshooting): diagnose events that aren't showing up.

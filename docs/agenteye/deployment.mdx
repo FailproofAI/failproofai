@@ -4,37 +4,53 @@ description: "AgentEye Deployment documentation."
 ---
 
 
-This guide covers deploying the AgentEye server and dashboard in production.
+Run AgentEye on your own infrastructure, so your agent data never leaves it. AgentEye is a self-hosted platform for observing, evaluating, and improving your AI agents in production. Use this page for the full picture (the components, the datastores they need, and every configuration knob) plus a copy-paste Docker Compose quick start.
+
+> **Tip:** In a hurry? Skip to the [Docker Compose quick start](#docker-compose-recommended). It brings up Postgres, the server, and the dashboard with one command.
+
+## Prerequisites
+
+Before you start, make sure you have:
+
+- **PostgreSQL 15+**: the relational store. 15+ is required; see [Architecture overview](#architecture-overview).
+- **ClickHouse 24+**: the analytics store for every ingested event.
+- **A host for the containers**: Docker with Compose, or a Kubernetes cluster.
+- **Object storage** (S3, GCS, or Azure Blob): only if you want automated backups.
+- **Signed enterprise access**: the Docker images live in a private registry (`ghcr.io/agenteye-enterprise/*`); pulling them needs a signed enterprise credential.
+
+Redis 7+ is optional (a shared cache and rate-limit backend); AgentEye runs fine without it.
+
+## Choose your path
+
+This page covers the general Docker and Docker Compose deployment plus the complete configuration reference. For a more opinionated route, start with one of these instead:
+
+- **[Single-pod deployment](/agenteye/single-pod-deployment)**: the whole stack in one pod for a fast evaluation.
+- **[Kubernetes deployment](/agenteye/kubernetes-deployment)**: production-grade manifests with backups and scaling.
+- **[Managed deployment](/agenteye/managed-deployment)**: let Exosphere run it for you.
 
 ---
 
 ## Architecture Overview
 
-```
-  [ AI agent machines ]                  [ Your infrastructure ]
-
-    Python SDK
-       |  writes JSONL                       +----------------------+
-       v                                +--->| PostgreSQL 15+       |
- agenteye-collector --HTTP--+           |    | (relational store)   |
-                            |           |    +----------------------+
-                            v           |
-                       +--------+       |    +----------------------+
-                       | Server |<------+--->| ClickHouse 24+       |
-                       +--------+       |    | (events / analytics) |
-                            ^           |    +----------------------+
-                        API |           |
-                            |           |    +----------------------+
-                      +-----------+     +- - >| Redis 7+ (optional) |
-                      | Dashboard |           +----------------------+
-                      +-----------+
+```mermaid
+flowchart LR
+    subgraph agents["AI agent machines"]
+        SDK["Python SDK<br/>writes JSONL"] --> COL["agenteye-collector"]
+    end
+    subgraph infra["Your infrastructure"]
+        DASH["Dashboard"] -->|API| SRV["Server"]
+        SRV <--> PG[("PostgreSQL 15+<br/>relational store")]
+        SRV <--> CH[("ClickHouse 24+<br/>events / analytics")]
+        SRV -.-> RDS[("Redis 7+<br/>optional")]
+    end
+    COL -->|HTTP| SRV
 ```
 
 - **Server**: Rust HTTP service; receives event batches, writes them to ClickHouse, and maintains relational state in PostgreSQL.
 - **Dashboard**: Next.js web app; reads and writes exclusively through the server API.
 - **agenteye-collector**: deployed on agent machines, not the server host.
-- **Postgres 15+**: REQUIRED. (Raised from 14 in the multi-tenant release; the org-membership schema uses a column-list `ON DELETE SET NULL` foreign key, which is Postgres 15+. Upgrade Postgres before deploying this version.) Stores OLTP state: `api_keys`, `users`, `sessions`, `evaluation_jobs` (queue), `dashboards`, `saved_queries`, `otp_codes`, plus the multi-tenant tables `orgs`, `org_memberships`, `org_settings`.
-- **ClickHouse 24+**: REQUIRED. The analytics store for every ingested event. Engine: `ReplacingMergeTree`, partitioned by month, ordered by `(session_id, ts, dedup_key)`. The server connects via `CLICKHOUSE_URL`; the bundled `deploy/base/clickhouse/` ships a perf-tuned single-node configuration. **Multi-tenant requirement:** the bundled config enables SQL access management + `users_without_row_policies_can_read_rows=false` so the server can create one read-only ClickHouse user + row policy per organization (the engine-enforced isolation boundary for the SQL editor and AI agent). If you supply your own ClickHouse config, carry these settings over (see `deploy/base/clickhouse/configmap.yaml`).
+- **Postgres 15+**: REQUIRED. Upgrade before deploying this version (the multi-tenant schema uses a Postgres 15+ feature and will not run on 14). Stores the transactional (OLTP) tables the app reads and writes constantly: `api_keys`, `users`, `sessions`, `evaluation_jobs` (queue), `dashboards`, `saved_queries`, `otp_codes`, plus the multi-tenant tables `orgs`, `org_memberships`, `org_settings`.
+- **ClickHouse 24+**: REQUIRED. The analytics store for every ingested event. Engine: `ReplacingMergeTree`, partitioned by month, ordered by `(session_id, ts, dedup_key)`. The server connects via `CLICKHOUSE_URL`; the bundled `deploy/base/clickhouse/` ships a perf-tuned single-node configuration. **Multi-tenant requirement:** the bundled config enables SQL access management + `users_without_row_policies_can_read_rows=false` so the server can create one read-only ClickHouse user + row policy per organization (the engine-enforced isolation boundary for the SQL editor and the AI assistant). If you supply your own ClickHouse config, carry these settings over (see `deploy/base/clickhouse/configmap.yaml`).
 - **Redis 7+**: *optional* shared cache + rate-limit backend. Server and dashboard both connect via `REDIS_URL`. If absent, both degrade gracefully to Postgres-only paths. See **Redis (optional cache)** below.
 
 ---
@@ -43,18 +59,22 @@ This guide covers deploying the AgentEye server and dashboard in production.
 
 ### Pull the image
 
+> **Note:** The images live in a private registry. Pulling them needs signed enterprise access: a `AGENTEYE_TOKEN` credential you receive as a signed customer. If you are still evaluating, skip ahead and read on; the configuration reference below applies once you have access.
+
 ```bash
 echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 ```
 
-> Current builds publish under `beta-latest`; `latest` is assigned only to stable releases. For production, pin a specific `:v<version>` tag; see [Available Image Tags](#available-image-tags).
+> **Note:** Current builds publish under `beta-latest`; `latest` is assigned only to stable releases. For production, pin a specific `:v<version>` tag; see [Available Image Tags](#available-image-tags).
 
 ### Environment variables
 
+> **Note:** Minimum required to boot: `DATABASE_URL` + `CLICKHOUSE_URL`. Everything else in the table below is optional and has a sensible default. Set only what you need.
+
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | Yes | none | Postgres DSN. Standard libpq connection string format with scheme `postgres://`. Supports `?sslmode=require` and other libpq parameters. The password must not contain `/`, `+`, or `=`; use `openssl rand -hex` to generate URL-safe passwords. |
+| `DATABASE_URL` | Yes | none | Postgres connection string in standard libpq DSN format (the ordinary `postgres` URL scheme your Postgres client already uses). Supports `?sslmode=require` and other libpq parameters. The secret in it must not contain `/`, `+`, or `=`; use `openssl rand -hex` to generate a URL-safe one. |
 | `ADMIN_KEY` | No | none | Bootstrap admin API key. Upserted with all permissions on every startup. Rotate by changing the value and restarting. |
 | `LISTEN_ADDR` | No | `0.0.0.0:8080` | TCP address to bind |
 | `MAX_BODY_BYTES` | No | `134217728` (128 MB) | Maximum request body size |
@@ -65,14 +85,14 @@ docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 | `SMTP_USERNAME` | No | none | SMTP authentication username |
 | `SMTP_PASSWORD` | No | none | SMTP authentication password |
 | `SMTP_FROM` | No | none | Sender email address for OTP emails |
-| `SMTP_TLS` | No | STARTTLS | STARTTLS is used unless you explicitly turn it off: `false` or `0` sends plaintext (no TLS); any other value — including unset — enables STARTTLS. |
+| `SMTP_TLS` | No | STARTTLS | STARTTLS is used unless you explicitly turn it off: `false` or `0` sends plaintext (no TLS); any other value (including unset) enables STARTTLS. |
 | `DASHBOARD_URL` | No | built-in default | Dashboard origin used to build both the OTP-email magic link and the incident magic-links in alert notifications. If unset it falls back to a built-in default (and, for OTP only, to the dashboard-derived request origin first). Set this for split-domain setups so both email and Slack/incident links point at your dashboard. See **Email magic-link URL** below; most operators do not need to set this. |
 | `SESSION_TTL_SECS` | No | `86400` (24 h) | Dashboard session duration in seconds. **First-boot seed only**: edit per org via [`/<org>/settings`](#operational-settings) after the first deploy. |
 | `OTP_TTL_SECS` | No | `600` (10 min) | OTP code validity period in seconds. **First-boot seed only**: edit per org via [`/<org>/settings`](#operational-settings) after the first deploy. |
 | `REDIS_URL` | No | none | Optional shared cache + rate-limit backend, e.g. `redis://redis:6379/0`. When set, the server caches authenticated API-key lookups, the dashboard's `/models` aggregate, the sessions list, and the env-list facet; it also moves OTP-request rate limiting off Postgres COUNT and onto Redis INCR. If unset or unreachable, the server runs without the cache (the OTP limit falls back to Postgres, every other cache call falls through to the source of truth). See **Redis (optional cache)** below. |
 | `CLICKHOUSE_URL` | **Yes** | none | Base URL of the ClickHouse instance, e.g. `http://clickhouse:8123`. The server applies its events schema to this database on every startup and refuses to boot if it can't reach ClickHouse. See **ClickHouse (required analytics store)** below. |
 | `CLICKHOUSE_DATABASE` | No | `agenteye` | ClickHouse database (schema) name. The server creates it on startup if it doesn't exist. |
-| `ORG_CH_SECRET` | No (single-tenant) / **Yes (multi-org)** | dev default | HMAC key from which each organization's per-tenant ClickHouse password is derived. The SQL editor and AI agent's `run_query` execute as the org's own read-only ClickHouse user, whose row policy enforces tenant isolation in the engine. Single-tenant deployments boot fine on the built-in dev default; **before provisioning a second org you MUST set a strong, stable value**, because the `agenteye-orgctl org create` CLI refuses to run on the built-in dev default. Rotating it orphans every org's ClickHouse user until the next startup re-provisions them (the boot-time reconcile heals this automatically). Keep it secret and unchanged across replicas. Org provisioning itself is operator-only; see **Organizations (multi-tenancy)** below. |
+| `ORG_CH_SECRET` | No (single-tenant) / **Yes (multi-org)** | dev default | HMAC key from which each organization's per-tenant ClickHouse password is derived. The SQL editor and the AI assistant's `run_query` execute as the org's own read-only ClickHouse user, whose row policy enforces tenant isolation in the engine. Single-tenant deployments boot fine on the built-in dev default; **before provisioning a second org you MUST set a strong, stable value**, because the `agenteye-orgctl org create` CLI refuses to run on the built-in dev default. Rotating it orphans every org's ClickHouse user until the next startup re-provisions them (the boot-time reconcile heals this automatically). Keep it secret and unchanged across replicas. Org provisioning itself is operator-only; see **Organizations (multi-tenancy)** below. |
 | `DEFAULT_ORG_NAME` | No | `Default` | Display name seeded for the built-in default org. **First-boot seed only**, and only while the org still carries its freshly-migrated generic identity, applied on startup, then ignored. Once you rename the org (`agenteye-orgctl org rename`) the rename is authoritative and this env var has no further effect. |
 | `DEFAULT_ORG_SLUG` | No | `default` | URL slug for the built-in default org, the dashboard path it lives at (`/<slug>/…`). Same first-boot-only / pristine-only semantics as `DEFAULT_ORG_NAME`. Must be 1-40 lowercase alphanumerics with single internal hyphens and not a [reserved word](#organizations-multi-tenancy); an invalid value is ignored (the org keeps `default`). Lets a single-tenant install present as e.g. `/acme` instead of `/default` without any post-deploy CLI step. |
 | `RUST_LOG` | No | `info` | Log verbosity (`debug`, `warn`, `error`, `agenteye_server=trace`) |
@@ -97,9 +117,9 @@ docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 | `AUDIT_REQUEST_TIMEOUT_MS` | No | `30000` | Per-policy-query timeout against ClickHouse (milliseconds). |
 | `AUDIT_LLM_TIMEOUT_MS` | No | `1440000` | Timeout for the agentic investigation call to the AI assistant service. A full agent loop runs for minutes; keep this ABOVE the agent's own `AGENTEYE_AUDIT_TIMEOUT_MS` so the agent returns its partial findings before the server gives up. |
 | `AUDIT_MAX_ATTEMPTS` | No | `5` | Consecutive transient failures before an audit reschedules at its normal cadence instead of exponential backoff. |
-| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | No | — | The audit's agentic investigation calls the AI-assistant `agent` service, **reusing the same connection as the assistant** — so set these two on the **server** as well (the bundled manifests/compose do). Both set ⇒ audits run the AI investigation; either unset ⇒ audits run **policy-only** (the deterministic SQL policy pass still runs), regardless of the per-audit `llm_enabled` flag. The agent must also have an LLM configured — see [assistant.md](/agenteye/assistant). |
+| `AGENTEYE_AGENT_URL` / `AGENTEYE_AGENT_TOKEN` | No | none | The audit's agentic investigation calls the AI-assistant `agent` service, **reusing the same connection as the assistant**. Set these two on the **server** as well (the bundled manifests/compose do). Both set ⇒ audits run the AI investigation; either unset ⇒ audits run **policy-only** (the deterministic SQL policy pass still runs), regardless of the per-audit `llm_enabled` flag. The agent must also have an LLM configured. See the [AI assistant](/agenteye/assistant) guide. |
 
-**AI assistant service — audit + sandbox settings.** The agentic investigation and its in-pod Python sandbox are tuned on the **agent service** (not the server), all on the `AGENTEYE_AUDIT_*` prefix and all optional:
+**AI assistant service: audit + sandbox settings.** The agentic investigation and its in-pod Python sandbox are tuned on the **agent service** (not the server), all on the `AGENTEYE_AUDIT_*` prefix and all optional:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -108,7 +128,7 @@ docker pull ghcr.io/agenteye-enterprise/server:beta-latest
 | `AGENTEYE_AUDIT_MAX_CONCURRENCY` | `1` | Concurrent investigations per agent pod (separate from the chat assistant's budget). |
 | `AGENTEYE_AUDIT_SANDBOX_TIMEOUT_MS` / `_MEM_MB` / `_CPU_SECS` / `_OUTPUT_MAX_BYTES` / `_SCRIPT_MAX_BYTES` | `20000` / `768` / `10` / `64000` / `64000` | Per-script limits for the bubblewrap sandbox. |
 
-**Sandbox platform requirement.** The audit code sandbox runs the model's Python inside a bubblewrap jail, which needs **unprivileged user namespaces**. The agent pod must allow the `clone()` flags — set `seccompProfile: Unconfined` (k8s) or `security_opt: [seccomp:unconfined]` (compose) on the agent. Where the node kernel disables unprivileged user namespaces (e.g. some GKE COS images), the sandbox **preflight fails and the auditor degrades to SQL-only automatically** — no error, just a `sandbox_available: false` on the agent's `/health`.
+**Sandbox platform requirement.** The audit code sandbox runs the model's Python inside a lightweight isolation jail (bubblewrap), which needs the Linux kernel feature called **unprivileged user namespaces**. The agent pod must permit the syscalls it uses: relax the default syscall filter by setting `seccompProfile: Unconfined` (Kubernetes) or `security_opt: [seccomp:unconfined]` (Compose) on the agent. Where the node kernel disables unprivileged user namespaces (e.g. some GKE COS images), the sandbox **preflight fails and the auditor degrades to SQL-only automatically** (no error, just a `sandbox_available: false` on the agent's `/health`).
 
 ### Run
 
@@ -127,12 +147,12 @@ The server runs database migrations automatically on startup; no separate migrat
 
 ### Health check
 
-```
+```text
 GET /health    # liveness  - always {"status":"ok"} once the process is up
 GET /ready     # readiness - 200 when Postgres + ClickHouse are reachable, else 503
 ```
 
-No authentication required. Use `/health` for **liveness** probes and `/ready` for **readiness** / load-balancer probes. `/ready` checks the hard dependencies the server cannot serve without (Postgres + ClickHouse), so a server that is running but cannot reach its database is taken out of rotation and shows as `NotReady`; Redis is reported but never fails readiness. On the bundled Kubernetes manifests the readiness probe already points at `/ready` and liveness stays on `/health`. See [enterprise-docs/health-monitoring.md](/agenteye/health-monitoring) for the full picture, including opt-in Kubernetes-native pod-failure alerting to Slack.
+No authentication required. Use `/health` for **liveness** probes and `/ready` for **readiness** / load-balancer probes. `/ready` checks the hard dependencies the server cannot serve without (Postgres + ClickHouse), so a server that is running but cannot reach its database is taken out of rotation and shows as `NotReady`; Redis is reported but never fails readiness. On the bundled Kubernetes manifests the readiness probe already points at `/ready` and liveness stays on `/health`. See [Health monitoring](/agenteye/health-monitoring) for the full picture, including opt-in Kubernetes-native pod-failure alerting to Slack.
 
 ### Email magic-link URL
 
@@ -173,8 +193,8 @@ docker pull ghcr.io/agenteye-enterprise/dashboard:beta-latest
 | `AE_LOG_JSON` | No | auto | `1` forces JSON-per-line output; `0` forces human-readable output. When unset, JSON is enabled automatically if `NODE_ENV=production`. JSON is recommended in production so logs parse cleanly with `jq` or a log aggregator. |
 | `AE_ANALYTICS_DISABLED` | No | none | Set to `1`/`true` to disable the dashboard's anonymous product-usage telemetry. See [Telemetry & privacy](#telemetry--privacy) below. |
 | `REDIS_URL` | No | none | Optional shared cache backend, e.g. `redis://redis:6379/0`. When set, the dashboard caches `validateSession()` results across replicas and shares the Next.js fetch cache for the latency-aggregate / env-list proxy routes. Edge-side OTP request and verify rate limits also use Redis when present (falling open if Redis is unreachable; the server-side limit is the security backstop). See **Redis (optional cache)** below. |
-| `AGENTEYE_AGENT_URL` | No | none | Base URL of the optional AI-assistant `agent` service, e.g. `http://agent:9100`. **Leave it unset to hide the assistant entirely**: no assistant bubble appears in the dashboard. See [enterprise-docs/assistant.md](/agenteye/assistant). |
-| `AGENTEYE_AGENT_TOKEN` | No | none | Shared secret the dashboard presents to the `agent` service. Must match the `AGENTEYE_AGENT_TOKEN` configured on the agent. See [enterprise-docs/assistant.md](/agenteye/assistant). |
+| `AGENTEYE_AGENT_URL` | No | none | Base URL of the optional AI-assistant `agent` service, e.g. `http://agent:9100`. **Leave it unset to hide the assistant entirely**: no assistant bubble appears in the dashboard. See the [AI assistant](/agenteye/assistant) guide. |
+| `AGENTEYE_AGENT_TOKEN` | No | none | Shared secret the dashboard presents to the `agent` service. Must match the `AGENTEYE_AGENT_TOKEN` configured on the agent. See the [AI assistant](/agenteye/assistant) guide. |
 
 ### Run
 
@@ -205,7 +225,7 @@ To enable it you set, on the `agent` service, an LLM connection (**Portkey** via
 
 For the assistant's data key you don't mint anything by hand: pick a random secret, set it as `AGENTEYE_API_KEY` on the `agent` **and** as `AGENT_API_KEY` on the `server`, and the server seeds it on startup with a fixed permission set. Its data access is read-only (`events:read`, `evaluations:read`, `dashboards:read`, `queries:read`), and it additionally holds approval-gated authoring scopes (`dashboards:write`, `queries:write`, `queries:run`) so it can draft and validate saved queries and build dashboard tiles on the user's behalf; all SQL still runs through the org's read-only ClickHouse role, so this widens what the assistant can author, not what data it can reach. The scopes are fixed in code and cannot be widened by configuration. That key is protected; it can't be disabled or regenerated via the API, only rotated by changing the value and restarting. Never reuse the admin/dashboard key for this.
 
-Full setup, the complete environment-variable reference, telemetry options, and the security model are in **[enterprise-docs/assistant.md](/agenteye/assistant)**.
+Full setup, the complete environment-variable reference, telemetry options, and the security model are in the **[AI assistant](/agenteye/assistant)** guide.
 
 ---
 
@@ -227,21 +247,21 @@ For backwards-compat with saved queries that reference `analytics.evaluations` /
 
 The bundled docker-compose and `deploy/base/clickhouse/` ship a ClickHouse service tuned for AgentEye's workload:
 
-- 2 GiB requested / 4 GiB limit memory in the shipped base overlay (sized to fit small POC/staging nodes); production customers should overlay up — the recommended floor is 2c / 4Gi request, 6c / 8Gi limit. `max_server_memory_usage_to_ram_ratio=0.9`
-- 5 GiB mark cache + 8 GiB uncompressed cache
+- 2 GiB requested / 4 GiB limit memory in the shipped base overlay (sized to fit small POC/staging nodes); production customers should overlay up. The recommended floor is 2c / 4Gi request, 6c / 8Gi limit. `max_server_memory_usage_to_ram_ratio=0.9`
+- 256 MiB mark cache + 256 MiB uncompressed cache (sized to coexist with the 4 GiB pod limit)
 - `background_pool_size=16`, `background_merges_mutations_concurrency_ratio=2`
 - MergeTree: `parts_to_throw_insert=3000`, `parts_to_delay_insert=1500`, `non_replicated_deduplication_window=1000`
 - `local_io_method=auto` (io_uring on supported kernels)
 - `fsync_metadata=0`: acceptable because of at-least-once ingest + ReplacingMergeTree dedup
 - `query_log` enabled with 30-day TTL; `query_thread_log` removed (expensive at high QPS)
-- `max_execution_time=30` for user-side queries
-- 100 GiB PVC at the StatefulSet template (customer overlays SHOULD override to a fast SSD storage class for production)
+- Query time caps: the default user profile caps at 60s; the read-only profile used for untrusted `/queries/run` caps at 10s
+- 100 GiB persistent volume (PVC) attached to the ClickHouse StatefulSet, the Kubernetes controller that gives ClickHouse stable per-pod storage. Customer overlays SHOULD override it to a fast SSD storage class for production.
 
 ### Backups
 
 Your full dataset is captured nightly in a single restorable archive, so a cluster or storage loss is recoverable. ClickHouse is backed up automatically by the daily `agenteye-backup` CronJob, which dumps both PostgreSQL and ClickHouse in one pass. ClickHouse is read over its HTTP API: `agenteye.events` and `agenteye.evaluations` are dumped in ClickHouse-native format (the views and row policies are recreated by the server on startup, so the table data is the complete picture) and bundled with the Postgres dump into a single compressed archive uploaded to your object storage.
 
-The destination bucket and cloud credentials are configured per overlay. See the **Backups** section of [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment) for upload configuration and restore steps.
+The destination bucket and cloud credentials are configured per overlay. See the **Backups** section of [Kubernetes deployment](/agenteye/kubernetes-deployment) for upload configuration and restore steps.
 
 ---
 
@@ -283,7 +303,7 @@ cd agenteye
 
 **Override defaults via `.env`:**
 
-```
+```ini
 # Use URL-safe passwords (no /, +, or = characters).
 # Generate with: openssl rand -hex 24
 POSTGRES_PASSWORD=your-db-password
@@ -307,6 +327,8 @@ RUST_LOG=info
 docker compose up -d
 ```
 
+**First login.** Once the stack is up, open the dashboard at `http://localhost:3000`, enter an email that matches `ALLOWED_EMAILS`, and request a one-time code. If you didn't configure SMTP, the code is printed to the server logs. Read it with `docker compose logs server`. Enter the code and you land in the app. For a guided first-run walkthrough, see [Getting started](/agenteye/getting-started).
+
 **Stop (keeps data volume):**
 
 ```bash
@@ -325,10 +347,12 @@ docker compose down -v
 
 A small set of operational knobs that used to be pinned by env vars are now editable per organization from the dashboard's **`/<org>/settings`** page; each org configures its own. Changes take effect within seconds, with no restart and no redeploy.
 
+![The per-org settings page, where operational knobs like allowed sign-ins and session lifetime are edited without a restart](/agenteye/images/settings.png)
+
 | Setting | Bootstrap env var | What it controls |
 |---|---|---|
 | Allowed sign-ins | `ALLOWED_EMAILS` | Emails (or `*@domain.com` wildcards) permitted to receive an OTP and be added as users |
-| Default user permissions | `DEFAULT_USER_PERMISSIONS` | Comma-separated permission tokens preselected when an admin opens **+ new user**. Each token must be one of the strings listed under [API key permissions](/agenteye/api-keys). Defaults to the `standard` preset: read-only access plus the everyday on-call actions (trigger re-evaluations, run queries, ack incidents, use the assistant). |
+| Default user permissions | `DEFAULT_USER_PERMISSIONS` | The **name** of the permission set preselected when an admin opens **+ new user** (not a list of individual tokens). Defaults to `standard`: read-only access plus the everyday on-call actions (trigger re-evaluations, run queries, ack incidents, use the assistant). See [API keys](/agenteye/api-keys) for the permission sets available. |
 | Session lifetime | `SESSION_TTL_SECS` | How long a dashboard login stays valid before re-auth. The dashboard re-checks the upstream session every 5 seconds, so a permission update on `/<org>/users` takes effect on the affected user's next request, with no relogin. |
 | One-time-code lifetime | `OTP_TTL_SECS` | How long an OTP / magic-link stays usable |
 | Alert notification channels | `ALERTS_ENABLED_CHANNELS` | Comma-separated list of channel kinds the alert dispatcher is allowed to use: `email`, `slack`, `webhook`. Per-alert configuration is still authored on `/<org>/alerts/<id>`, but the dispatcher filters every outbound delivery through this set; a channel disabled here short-circuits with a `skipped_disabled` audit row. The `dashboard` channel (the local audit insert) is always allowed. Defaults to all three on. |
@@ -382,17 +406,17 @@ kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
 
 Available verbs: `org create | list | rename | delete | purge` and `member add | list | update | remove`, with builtin permission sets `admin`, `standard`, and `read-only`. Added members get an OTP on first dashboard login.
 
-**Before creating a second org:** set a strong, stable `ORG_CH_SECRET` (the `org create` command refuses to run on the built-in dev default) and ensure Postgres is **15+**. **Unchanged:** per-org API keys are still minted in the dashboard/API by org members; only the org + member lifecycle moved to the CLI. Full command reference and a worked example: **[enterprise-docs/tenant-management.md](/agenteye/tenant-management)**.
+**Before creating a second org:** set a strong, stable `ORG_CH_SECRET` (the `org create` command refuses to run on the built-in dev default) and ensure Postgres is **15+**. **Unchanged:** per-org API keys are still minted in the dashboard/API by org members; only the org + member lifecycle moved to the CLI. Full command reference and a worked example: **[Tenant management](/agenteye/tenant-management)**.
 
 ---
 
 ## Context-window fill
 
-Each `model_response` event shows a **context-fill pill** — input plus output tokens as a percentage of that model's context window. The bands are `healthy` (0–24%), `watch` (25–49%), `compacting` (50–74%), and `reset context` (75–100%). AgentEye resolves common model IDs automatically, so no initial configuration is required.
+Each `model_response` event shows a **context-fill pill**: input plus output tokens as a percentage of that model's context window. The bands are `healthy` (0-24%), `watch` (25-49%), `compacting` (50-74%), and `reset context` (75-100%). AgentEye resolves common model IDs automatically, so no initial configuration is required.
 
-Every model an organization sends appears under **Settings → model context windows**. Users with `settings:write` can override its window or add a private/proxy model (0–1,000,000 tokens); `0` means “unknown” and suppresses the pill. Changes apply to newly ingested events. Users with `settings:read` can view the list.
+Every model an organization sends appears under **Settings → model context windows**. Users with `settings:write` can override its window or add a private/proxy model (0-1,000,000 tokens); `0` means “unknown” and suppresses the pill. Changes apply to newly ingested events. Users with `settings:read` can view the list.
 
-New events get the fill from the moment you upgrade. To also populate **historical** events (and the per-model list) for an existing deployment, run the one-off backfill — it ships inside the server image (like `agenteye-orgctl`) and runs in the existing server pod:
+New events get the fill from the moment you upgrade. To also populate **historical** events (and the per-model list) for an existing deployment, run the one-off backfill. It ships inside the server image (like `agenteye-orgctl`) and runs in the existing server pod:
 
 ```bash
 # preview (prints the per-org mutation, changes nothing):
@@ -414,7 +438,7 @@ It is idempotent (safe to re-run) and re-uses `DATABASE_URL` / `CLICKHOUSE_URL` 
 - **Firewall**: The server port (default 8080) should only be reachable from collector machines and the dashboard host, not the public internet.
 - **Admin key**: Set `ADMIN_KEY` to a strong random secret. After bootstrapping, create dedicated scoped keys for collectors and the dashboard rather than using the admin key everywhere.
 - **Image tags**: Pin to the version in your release manifests (for example, `server:v0.0.1-beta.48`) in production rather than a floating tag to avoid unintended upgrades. Current beta builds publish under `beta-latest`; `latest` is assigned only to stable releases.
-- **Health monitoring**: On Kubernetes the readiness probe uses `/ready` (Postgres + ClickHouse reachability) while liveness stays on `/health`. For fleet-wide "is AgentEye itself up?" alerting to Slack, enable the opt-in Robusta add-on; see [enterprise-docs/health-monitoring.md](/agenteye/health-monitoring).
+- **Health monitoring**: On Kubernetes the readiness probe uses `/ready` (Postgres + ClickHouse reachability) while liveness stays on `/health`. For fleet-wide "is AgentEye itself up?" alerting to Slack, enable the opt-in Robusta add-on; see [Health monitoring](/agenteye/health-monitoring).
 
 ---
 
@@ -425,3 +449,12 @@ It is idempotent (safe to re-run) and re-uses `DATABASE_URL` / `CLICKHOUSE_URL` 
 | `latest` | Latest stable release |
 | `beta-latest` | Latest pre-release (beta) |
 | `v<version>` | Pinned version, e.g. `v0.0.1-beta.48` (recommended for production) |
+
+---
+
+## Next steps
+
+- [Getting started](/agenteye/getting-started): send your first events and confirm they land in the dashboard.
+- [Collector installation](/agenteye/collector-installation): install `agenteye-collector` on your agent machines.
+- [Kubernetes deployment](/agenteye/kubernetes-deployment): production manifests, backups, and scaling.
+- [Tenant management](/agenteye/tenant-management): provision additional organizations on one deployment.

@@ -4,11 +4,11 @@ description: "AgentEye Migrating to `agenteye-collector` documentation."
 ---
 
 
-Migrating is non-destructive: it incurs no downtime and no data loss, and it frees the short `agenteye` name for the [AgentEye CLI](/agenteye/cli) so the collector daemon and the CLI can coexist on the same machine.
+The collector binary has been renamed from `agenteye` to `agenteye-collector`. Migrating is non-destructive (no downtime, no data loss) and it frees the short `agenteye` name for the [AgentEye CLI](/agenteye/cli), so the collector daemon and the CLI can coexist on one machine. Do it the next time you update an existing collector install.
 
-The collector binary has been **renamed from `agenteye` to `agenteye-collector`**. The short `agenteye` name now belongs to the AgentEye CLI, a separate tool for querying sessions, events, and evaluations from your terminal.
+> **Note:** You only need this page if you already have an `agenteye` collector daemon running. Installing for the first time? See [Collector installation](/agenteye/collector-installation) instead. None of the migration steps below apply to a fresh install.
 
-This guide walks you through migrating an existing collector install.
+The short `agenteye` name now belongs to the AgentEye CLI, a separate tool for querying sessions, events, and evaluations from your terminal. This guide walks you through migrating an existing collector install.
 
 ---
 
@@ -25,7 +25,7 @@ This guide walks you through migrating an existing collector install.
 
 Configuration is unchanged: the same `~/.agenteye/config.json`, the same `AGENTEYE_URL` / `AGENTEYE_KEY` / `AGENTEYE_HOME` / TLS environment variables, and the same `~/.agenteye/events/` spool. **No config edits are required.**
 
-> If you run the renamed binary under the old name `agenteye`, it still works but prints a one-line deprecation warning to stderr reminding you to switch to `agenteye-collector`.
+> **Note:** If you run the renamed binary under the old name `agenteye`, it still works but prints a one-line deprecation warning to stderr reminding you to switch to `agenteye-collector`.
 
 ---
 
@@ -73,7 +73,7 @@ sudo systemctl status agenteye-collector
 
 ### launchd (macOS)
 
-> **Brand rename:** If your existing plist is at the older path
+> **Note:** If your existing plist is at the older path
 > `~/Library/LaunchAgents/host.exosphere.agenteye-collector.plist`, rename
 > the file to `ai.befailproof.agenteye-collector.plist` and also change the
 > `<key>Label</key>` value inside the file to the new identifier before
@@ -101,7 +101,7 @@ Then `supervisorctl reread && supervisorctl update`.
 
 Pull the new image (`ghcr.io/agenteye-enterprise/collector:beta-latest` or a pinned `:v<version>`, which is preferred; `:latest` exists only for stable releases). The image entrypoint is already `agenteye-collector`, so the same `docker run` command with the `start` subcommand keeps working with no change.
 
-**Important: update health probes.** If you use a Kubernetes liveness/readiness probe (or any `docker exec`) that runs the binary by name, change the command to `agenteye-collector`:
+> **Warning:** Update your health probes. If you use a Kubernetes liveness/readiness probe (or any `docker exec`) that runs the binary by name, change the command to `agenteye-collector`:
 
 ```yaml
 livenessProbe:
@@ -148,7 +148,9 @@ agenteye-collector health       # exit 0 = healthy
 agenteye-collector flush        # forwards any queued events and exits cleanly
 ```
 
-Then confirm new events appear in your dashboard.
+Then open your AgentEye dashboard and confirm events are still flowing. The live events stream (the **Events** page) and the **Sessions** list should both show fresh activity with recent timestamps. When they do, your migration is complete.
+
+![Freshly ingested events in the dashboard live events stream](/agenteye/images/events-stream.png)
 
 ---
 
@@ -167,3 +169,11 @@ The migration is non-destructive. If you need to roll back, point your service d
 | Kubernetes pod crash-loops after the image upgrade | Liveness probe still runs `agenteye` | Change the probe command to `["agenteye-collector", "health"]`. |
 | `agenteye: command not found`, but `agenteye-collector` works | Scripts/aliases still reference the old name | Update them to `agenteye-collector`. |
 | Running `agenteye` starts the CLI, not the collector | You have the AgentEye CLI installed; it owns `agenteye` | Use `agenteye-collector` for the daemon and remove any leftover old collector binary at `/usr/local/bin/agenteye`. |
+
+---
+
+## Next steps
+
+- [Collector installation](/agenteye/collector-installation): the full install and configuration reference for `agenteye-collector`.
+- [CLI](/agenteye/cli): the tool that now owns the short `agenteye` command.
+- [Troubleshooting](/agenteye/troubleshooting): fixes for events that stop appearing after the switch.

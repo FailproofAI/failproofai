@@ -1,0 +1,64 @@
+---
+title: "Observability"
+description: "AgentEye Observability documentation."
+---
+
+
+The **observe** section of the dashboard is where you watch what your agents are doing right now and drill into any single run. This page tours its six surfaces (Events, Sessions, Models, Tools, Hooks, and Errors) so you know where to look when something happens. Every surface is scoped to your organization and filterable by date range, environment, agent, and session.
+
+---
+
+## Events: the live trail
+
+The **Events** page (your org home, `/<org-slug>/`) tails every event across all agents in real time, newest first. Each row is colour-coded by type (`agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, …) and carries a one-line summary, token counts, and a context-window fill badge where it applies.
+
+![The live Events stream: colour-coded event rows filterable by environment, agent, session, and free text](/agenteye/images/events-stream.png)
+
+Filter by `session_id` or `agent_id` to follow one run, or by event type to isolate, say, every error.
+
+---
+
+## Sessions: one row per run
+
+The **Sessions** page rolls events up into one row per run. Once you connect an [evaluator](/agenteye/evaluation-suite), each row also shows the run's quality scores at a glance, and you can filter by any score range.
+
+![The Sessions list: one row per run, across environments and agents, with status pills and evaluation score badges](/agenteye/images/sessions-list.png)
+
+Click any session to open its **execution graph**: a git-style view of how agents, tools, hooks, and model calls unfolded over time, with parallel sub-agents on their own lanes and a per-run breakdown in the right rail.
+
+![A session's git-style execution graph beside its event timeline, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
+
+---
+
+## Models, Tools, Hooks: per-surface latency
+
+Each of **Models**, **Tools**, and **Hooks** is a dedicated page with the same shape: a 24-bin sparkline, a vitals strip with p50/p95/p99 latency, a latency **heat-map** (24 time bins × latency buckets), and a percentile band (p50 line with p25-p75 and p10-p90 shaded ribbons and p99 dots). The heat-map and band share a hover crosshair, so a tail spike stands out instead of being hidden by a single mean line.
+
+![The Models page: a latency heat-map, a percentile band, and per-model token consumption over time](/agenteye/images/models.png)
+
+*Models* adds token consumption and estimated cost per model. *Tools* adds a success/failure breakdown and a tool-distribution bar. *Hooks* breaks activity down by hook name and trigger event.
+
+![The Tools page: latency heat-map, percentile band, and a tool-distribution bar](/agenteye/images/tools.png)
+
+![The Hooks page: latency heat-map, percentile band, and a hook-distribution bar](/agenteye/images/hooks.png)
+
+> **Tip:** Model rows show context-window fill, making prompt growth and impending compaction visible. AgentEye recognizes common model IDs automatically; you can correct a model's window or add a private one under **Settings → model context windows**.
+
+---
+
+## Errors: one triage surface
+
+The **Errors** page collects everything the dashboard would paint red (explicit `error` events plus any `tool_result`, `hook_completed`, or `agent_end` whose payload carries a failure) from the most recent matching events. Repeat failures with the same `(session, error_type)` collapse into a single row so a burst reads as one incident.
+
+![The Errors page: a histogram of errors over time and grouped red error rows, each with a one-click "+ alert" button](/agenteye/images/errors.png)
+
+Click a row to jump into its session at that exact event. If you have `alerts:write`, each row has a **+ alert** button that opens a new alert rule prefilled to catch that failure again.
+
+---
+
+## Next steps
+
+- [Alerts](/agenteye/alerts): turn any threshold into a paging rule.
+- [Audits](/agenteye/audits): let AgentEye find failure patterns across sessions for you.
+- [Evaluation suite](/agenteye/evaluation-suite): score every run for quality.
+- [CLI](/agenteye/cli): the same observability from your terminal.

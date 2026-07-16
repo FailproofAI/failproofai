@@ -12,7 +12,7 @@ The patterns below are copy-paste ready for the AgentEye CLI (`agenteye`). For i
 
 1. **Global options go *before* the command.** `agenteye --json sessions` is correct; `agenteye sessions --json` is not. The globals are `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
 2. **Pass `--json` whenever you parse output.** Data goes to **stdout** as JSON; human status and errors go to **stderr**, so stdout stays clean to pipe into `jq`.
-3. **Branch on the exit code**, not on stderr text: `0` ok · `2` bad arguments · `3` cannot reach the dashboard · `4` not logged in or expired · `5` missing permission.
+3. **Branch on the exit code**, not on stderr text: `0` ok · `1` unexpected error · `2` bad arguments · `3` cannot reach the dashboard · `4` not logged in or expired · `5` missing permission · `6` resource not found.
 4. **Discover with `-h`.** Every command documents its filters, value formats, and JSON shape.
 
 ## One-time setup
@@ -47,7 +47,7 @@ Score filtering lives on **`evals`**, not `sessions`. `--score KEY:MIN..MAX` is 
 
 ## Read one session end-to-end
 
-There is no single `session show` command — combine the event trail with the session's evaluation:
+There is no single `session show` command. Combine the event trail with the session's evaluation:
 
 ```bash
 # the session's latest evaluation (status + scores)
@@ -56,10 +56,12 @@ agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scor
 # every event in the run (raise --limit for a full sweep)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# just the tool calls in a session
-agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all \
+# just the tool calls in a session (--full is required to get the raw payload)
+agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
+
+> **Note:** By default, `events` reads a fast, payload-free feed. Each event carries a server-computed one-line `summary` plus flags like `is_error` and token counts, but `payload` comes back as `{}`. To pull the raw payload, add `--full` (or `--fields payload`). The full feed is slower at scale, so keep it bounded: pair `--full` with a single `--session-id`.
 
 ## Fetch everything (pagination)
 
@@ -130,7 +132,7 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> Mutations auto-skip their confirmation prompt under `--json` or when stdin isn't a TTY, so agents never hang; pass `--yes`/`-y` to skip it explicitly elsewhere.
+> **Note:** Mutations auto-skip their confirmation prompt under `--json` or when stdin isn't a TTY, so agents never hang; pass `--yes`/`-y` to skip it explicitly elsewhere.
 
 ## Exit-code handling in a script
 
@@ -163,8 +165,15 @@ esac
 | create/update/delete (any) | the resource object, or `{"deleted": true, "id"}` for deletes |
 | failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` on stdout |
 
-- Each **event** item (`events`): `id, session_id, agent_id, event_type, ts, payload, environment`.
+- Each **event** item (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Note that `payload` is `{}` unless you request the full feed with `--full` (or `--fields payload`).
 - Each **evaluation** item (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
 - Each **session** item (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
 
-Each command's `--fields` accepts exactly its own item's field names — the set differs between `sessions` and `evals`, so a name valid for one may be rejected by the other.
+Each command's `--fields` accepts exactly its own item's field names. The set differs between `sessions` and `evals`, so a name valid for one may be rejected by the other.
+
+## Next steps
+
+- [CLI](/agenteye/cli): installation, authentication, and the full option reference for every command.
+- [CLI agent skill](/agenteye/cli-skill): package these recipes as a skill your coding agent can load.
+- [API keys](/agenteye/api-keys): create and scope the keys the CLI, SDK, and collector authenticate with.
+- [Python SDK](/agenteye/python-sdk): send events into AgentEye so there is data for these recipes to query.

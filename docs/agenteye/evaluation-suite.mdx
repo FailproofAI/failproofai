@@ -4,34 +4,32 @@ description: "AgentEye Evaluation Suite documentation."
 ---
 
 
-AgentEye scores completed agent sessions by POSTing the full event transcript to a
-**single customer-owned evaluator service**. The evaluator returns scores either
-inline or by handing back a `job_id` for AgentEye to poll. Results are stored and
-surfaced in the dashboard.
+AgentEye can automatically score every finished agent run for quality: you supply a small scoring service, and AgentEye handles the rest. Use it to track the dimensions you care about (helpfulness, tool efficiency, factuality, safety; you choose), catch regressions early, and compare agents or environments at a glance. Scoring is opt-in: the pipeline does nothing until you set `EVALUATOR_ENDPOINT` on the server.
 
-This guide covers:
+> **Note:** You define the score dimensions. Your evaluator can return any numeric keys it likes; AgentEye stores, trends, and displays whatever you send back.
 
-1. How session completion is detected.
-2. The HTTP contract the evaluator must implement.
-3. Configuring the AgentEye server.
-4. Viewing results.
-5. Troubleshooting.
+## At a glance
 
-For the Python helper that implements the contract for you, see the
-[`agenteye-evaluator` package on PyPI](https://pypi.org/project/agenteye-evaluator/).
+1. **Write a scorer.** Stand up a small HTTP service that reads a session transcript and returns scores. AgentEye ships a working reference you can copy. See [Writing an evaluator with the SDK](#writing-an-evaluator-with-the-sdk).
+2. **Point AgentEye at it.** Set `EVALUATOR_ENDPOINT` (and a shared `EVALUATOR_TOKEN`) on the server process.
+3. **Watch the scores land.** Every completed session is scored automatically; results show up on the session detail page, the sessions grid, and saved dashboards.
+
+![A session detail view with the evaluation summary, per-dimension score bars, and reasoning text in the right rail](/agenteye/images/session-detail.png)
+
+*Once an evaluator is configured, each completed run is scored and the results appear in the session's right rail: the summary on top, then per-dimension score bars with reasoning.*
 
 ---
 
 ## How it works
 
-```text
-ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Evaluator service
-   (agent_end)        server   ◀──── done | pending ────
-                          │
-                          │     GET /evaluate/{job_id} ─────▶
-                          │     ◀──── done ──────────────
-                          ▼
-                     evaluations  (terminal results)
+```mermaid
+flowchart LR
+    ING["ingest /events<br/>agent_end"] --> SRV["AgentEye server"]
+    SRV -->|"POST /evaluate"| EV["Evaluator service"]
+    EV -->|"done or pending"| SRV
+    SRV -->|"poll GET /evaluate/{job_id}"| EV
+    EV -->|"done"| SRV
+    SRV --> RES["evaluations<br/>terminal results"]
 ```
 
 When the AgentEye SDK emits an `agent_end` event for a session, the server
@@ -167,12 +165,22 @@ terminal `error` for the session.
 
 ## Writing an evaluator with the SDK
 
-The `agenteye-evaluator` Python package gives you a typed FastAPI
-wrapper that implements the HTTP contract above. Install it from PyPI:
+You don't have to implement the HTTP contract by hand. The `agenteye-evaluator`
+Python package gives you a typed FastAPI wrapper that handles auth, routing, and
+the request/response shapes for you.
 
-```bash
-pip install agenteye-evaluator
-```
+AgentEye also ships a **working reference evaluator**
+(`deploy/examples/evaluator/evaluator.py`) that scores `helpfulness`,
+`tool_efficiency`, and `factuality` from the shape of the transcript. Copy it as
+a starting point and swap in your own logic: an LLM judge, a rule engine,
+whatever fits your quality bar.
+
+> **Note:** The `agenteye-evaluator` SDK is delivered to signed enterprise
+> customers as a wheel/sdist inside each release tarball on the
+> [agenteye-enterprise releases page](https://github.com/agenteye-enterprise/releases).
+> It is not published to public PyPI. Install it from the wheel you download,
+> or from the bundled `evaluator-sdk/` source, as the reference Dockerfile below
+> does.
 
 Minimum viable evaluator:
 
@@ -193,26 +201,30 @@ def run(req: EvalRequest) -> EvalResponse:
     )
 ```
 
-The `app` instance is ASGI-callable, so `uvicorn module:app` runs it.
+The `app` instance runs under any ASGI server, so `uvicorn module:app` starts it.
 
 For evaluators that need to defer expensive work, return `JobPending`
 instead and register a `@app.job_lookup` handler; the AgentEye server
 polls `GET /evaluate/{job_id}` until you return a terminal status or the
 `EVALUATOR_MAX_POLL_DURATION_SECS` cap (default 1 h) elapses.
 
-Full API reference, async pattern, and event schema: the `agenteye-evaluator`
-README ships inside each release tarball on the
-[agenteye-enterprise releases page](https://github.com/agenteye-enterprise/releases),
-or you can read it on the package's PyPI page.
+The full API reference, async pattern, and event schema ship with the SDK: the
+`agenteye-evaluator` README is included in each release tarball on the
+[agenteye-enterprise releases page](https://github.com/agenteye-enterprise/releases).
 
 ---
 
 ## Running an evaluator on Kubernetes
 
 The evaluator is **your service**: AgentEye does not ship a default
-evaluator container. The release includes reference Kubernetes
-manifests under `deploy/examples/evaluator/` that you can apply as-is
-after swapping in your image and a shared bearer token.
+evaluator container. The signed enterprise release includes reference Kubernetes
+manifests under `deploy/examples/evaluator/` that you can apply as-is after
+swapping in your image and a shared bearer token.
+
+> **Note:** The `deploy/` example bundle referenced throughout this section ships
+> with the signed enterprise release. If you're reading from the public docs and
+> don't have it yet, treat the manifests below as a template. The important
+> shapes (Deployment, Service, secret) are shown inline.
 
 ### 1. Containerize your evaluator
 
@@ -221,7 +233,11 @@ A minimal Dockerfile for your evaluator:
 ```dockerfile
 FROM python:3.12-slim
 WORKDIR /app
-RUN pip install --no-cache-dir agenteye-evaluator uvicorn
+# Install the agenteye-evaluator SDK from the bundled source that ships in your
+# release (it is not on public PyPI). Build with the repo root as the context so
+# this COPY can see the evaluator-sdk/ directory.
+COPY evaluator-sdk /app/evaluator-sdk
+RUN pip install --no-cache-dir /app/evaluator-sdk 'uvicorn[standard]>=0.30'
 COPY my_evaluator.py .
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
     && chown -R evaluator:evaluator /app
@@ -310,7 +326,7 @@ To turn on automatic scoring across the whole instance, provision the `agenteye-
 
 The tuning knobs above are not wired by default; expose the corresponding environment variables on the server container in your Deployment manifest if you need to override the defaults.
 
-See [deployment.md](/agenteye/deployment) for the full env var table.
+See [Deployment](/agenteye/deployment) for the full env var table.
 
 ---
 
@@ -398,10 +414,6 @@ The bootstrap admin (`ADMIN_KEY`, `ADMIN_EMAIL`) automatically receives these.
 
 *The sessions grid shows each run's evaluation status and scores at a glance; red/amber/green badges make low scores jump out.*
 
-![A session detail view with the evaluation scores and dispatch status in the right rail](/agenteye/images/session-detail.png)
-
-*Opening a session shows its full timeline alongside the evaluation scores and any dispatcher error in the right rail.*
-
 ---
 
 ## Dashboards
@@ -463,3 +475,12 @@ until `EVALUATOR_MAX_POLL_DURATION_SECS` (default 1 h) elapses. After the cap
 the evaluation is recorded as `timeout` and removed from the in-flight queue.
 Raise `EVALUATOR_MAX_POLL_DURATION_SECS` if your evaluator legitimately needs
 longer than the default.
+
+---
+
+## Next steps
+
+- [Python SDK](/agenteye/python-sdk): emit the `agent_end` events that trigger scoring.
+- [Deployment](/agenteye/deployment): the full server env var reference, including the evaluator knobs.
+- [API keys](/agenteye/api-keys): the `evaluations:read` and `evaluations:trigger` permissions.
+- [Audits](/agenteye/audits): AgentEye's other automated quality feature, for policy-based review.

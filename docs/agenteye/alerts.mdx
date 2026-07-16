@@ -4,19 +4,30 @@ description: "AgentEye Alerts documentation."
 ---
 
 
-Alerts evaluate a rule on a schedule and notify you when something crosses a threshold. They turn AgentEye from a passive dashboard into a paging surface for the things that matter: error rate spikes, latency regressions, evaluator score drops, or any custom event you can express as a ClickHouse query.
-
-This guide covers what an alert is, the five trigger types, the four notification channels, the incident lifecycle, and the operational knobs.
+Alerts watch your agents for you and page you the moment something breaks, so you don't have to sit and refresh a dashboard. You set a rule once (an error-rate spike, a latency regression, an evaluator score drop, or any custom condition), and AgentEye checks it on a schedule and notifies you by email, Slack, webhook, or in the dashboard. Reach for alerts whenever there's a signal you'd want to hear about even when nobody's looking.
 
 ![The Alerts page: a grid of alert-rule cards, each showing its trigger type, evaluation window, channels, and an info/warning/critical severity badge](/agenteye/images/alerts.png)
+
+## Create an alert
+
+You author every alert in the dashboard. The form writes the underlying rule for you, so you never have to hand-write JSON. The happy path is five steps:
+
+1. Open **Alerts → New alert** and give it a name.
+2. Pick a **trigger**: the condition to watch (see [Trigger types](#trigger-types) below).
+3. Set the **threshold and window**: how bad, measured over how long.
+4. Attach at least one **channel**, where the notification goes: email, Slack, webhook, or in-dashboard.
+5. **Save**, then **Test** to send a synthetic notification and confirm each channel is wired up.
+
+That's the whole loop. Everything below is reference: what each trigger stores, how notifications are delivered, and the knobs you can tune. The JSON specs are what the form builds under the hood. They're handy for understanding a rule, but you rarely type them yourself.
 
 ---
 
 ## Concepts
 
-- **Alert** — the rule. It says *what* to check (the trigger), *how often* (the eval interval), *when to consider it broken* (compound logic), *how urgent* (severity), and *who/where to notify* (channels).
-- **Incident** — what happens when an alert fires. One alert has at most one open incident at a time. Repeated breaches update the same incident's evidence. Incidents are resolved by an operator; automatic resolution when the rule stops firing is planned but not currently enabled.
-- **Channel** — where a notification goes: email, Slack, generic webhook, or in-dashboard. Each alert can attach any combination.
+- **Alert**: the rule. It says *what* to check (the trigger), *how often* (the eval interval), *when to consider it broken* (compound logic), *how urgent* (severity), and *who/where to notify* (channels).
+- **Dispatcher**: the background worker that evaluates each alert rule on its schedule and sends the notifications when a rule breaches. When this page says "the dispatcher fires," it means this worker; you never run it by hand.
+- **Incident**: what happens when an alert fires. One alert has at most one open incident at a time. Repeated breaches update the same incident's evidence. Incidents are resolved by an operator; automatic resolution when the rule stops firing is planned but not currently enabled.
+- **Channel**, where a notification goes: email, Slack, generic webhook, or in-dashboard. Each alert can attach any combination.
 
 Alerts and incidents belong to an organization and are shared across that org's operators (in a single-tenant deployment that is simply the built-in `default` org). Incidents can be assigned to an individual operator for triage.
 
@@ -74,7 +85,7 @@ For anything the preset metrics don't cover. The operator-supplied SQL goes thro
 
 ### 3. `evaluation_score`
 
-Reads `agenteye.evaluations` and compares the average of a named score across a window.
+Watches an AgentEye evaluation score: the numeric quality ratings (like `hallucination` or `helpfulness`) that your evaluator writes for each scored session. See the [Evaluation suite](/agenteye/evaluation-suite) for how those scores are produced and named. This trigger reads the stored evaluations and compares the average of one named score across a window.
 
 ```json
 {
@@ -147,7 +158,7 @@ All filters are AND-combined; any field you leave out is unconstrained.
 | `error_type` | Restrict to a specific error class (e.g. `TimeoutError`) rather than every error. |
 | `message_contains` | Case-insensitive substring match against `payload.message`. Useful for catching one specific failure mode (e.g. `prompt is too long`) without alerting on every error from the same agent. Capped at 200 characters; matched as a literal string, not a pattern. |
 
-Tip: set `lookback_secs` to roughly match the alert's `eval_interval_secs` so you don't double-notify on the same event.
+> **Tip:** Set `lookback_secs` to roughly match the alert's `eval_interval_secs` so you don't double-notify on the same event.
 
 **Shortcut from `/errors`:** each error group's representative row on the errors view (and the session event-detail panel for an error event) has a **+ alert** button that opens `/alerts/new` prefilled with a `per_event` trigger keyed to that row's `event_type` + environment, including a name seeded from the payload's `error_type` when present. You still pick channels and confirm the lookback, but the matcher is filled in for you. Operators need `alerts:write` for the button to appear.
 
@@ -155,7 +166,7 @@ Tip: set `lookback_secs` to roughly match the alert's `eval_interval_secs` so yo
 
 ## Compound logic (M of N)
 
-Every alert has two integer knobs in addition to the trigger:
+"M of N" is a noise filter: it controls how many of the last few checks must fail before the alert actually pages you. Every alert has two integer knobs in addition to the trigger:
 
 - `eval_window`: how many recent evaluations to look at (default 1)
 - `min_breaches`: how many of those must breach before the alert fires (default 1)
@@ -172,7 +183,7 @@ Every alert has two integer knobs in addition to the trigger:
 
 ## Channels
 
-Each alert can attach any combination of these four. Per-channel credentials (Slack webhook URL, generic webhook URL + signing secret, default email recipients) are configured once in **`/settings`** and referenced by key from each alert. This way one Slack channel can serve many alerts without each one storing its own copy of the webhook URL.
+Each alert can attach any combination of these four. Per-channel credentials (Slack webhook URL, generic webhook URL + signing secret, default email recipients) are configured once in **`/settings`** and referenced by key from each alert. This way one Slack channel can serve many alerts without each one storing its own copy of the webhook URL. For where SMTP and the Slack/webhook credentials live, see the operational-settings section of [Deployment](/agenteye/deployment#operational-settings).
 
 The three external channel kinds (email, Slack, webhook) are also gated by an org-wide kill switch, `alerts.enabled_channels`. When a fired alert attaches a channel kind that is not in this set, the dispatcher skips it and records an `alert_notifications` row with status `skipped_disabled` and target `<channel_disabled>` (letting you globally pause, say, all Slack delivery without editing every rule). The in-dashboard channel is always allowed. See [Configuration](#configuration).
 
@@ -220,19 +231,22 @@ No external delivery: the alert just writes an `alert_notifications` row that th
 
 ## Incident lifecycle
 
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── operator resolve ───▶  resolved
+```mermaid
+stateDiagram-v2
+    [*] --> firing
+    firing --> acknowledged: ack
+    firing --> resolved: operator resolve
+    acknowledged --> resolved: operator resolve
+    resolved --> [*]
 ```
 
-- **firing** — the dispatcher just opened the incident or detected another breach. The firing notification is fanned out exactly once (gated by the `notified_firing_at` timestamp on the incident).
-- **acknowledged** — an operator pressed *ack* on `/incidents/:id`. The incident is still considered open; subsequent breaches will update its evidence without re-notifying.
-- **resolved** — an operator pressed *resolve*. Automatic resolution when the rule stops breaching is planned but not currently enabled, so an open incident stays open until an operator resolves it.
+- **firing**: the dispatcher just opened the incident or detected another breach. The firing notification is fanned out exactly once (gated by the `notified_firing_at` timestamp on the incident).
+- **acknowledged**: an operator pressed *ack* on `/incidents/:id`. The incident is still considered open; subsequent breaches will update its evidence without re-notifying.
+- **resolved**: an operator pressed *resolve*. Automatic resolution when the rule stops breaching is planned but not currently enabled, so an open incident stays open until an operator resolves it.
 
 A new incident can re-open on the same alert at any point after the previous one resolved.
 
-**Activity timeline.** Every action on an incident — opened, acknowledged, resolved — is recorded in an append-only activity log and shown on the incident's *activity* timeline, each entry attributed to the operator who performed it (by email) or to **automated** for actions the dispatcher took on its own (auto-open on breach). Acknowledgement is shared: several operators can ack the same incident and each appears as a separate, attributed entry.
+**Activity timeline.** Every action on an incident (opened, acknowledged, resolved) is recorded in an append-only activity log and shown on the incident's *activity* timeline, each entry attributed to the operator who performed it (by email) or to **automated** for actions the dispatcher took on its own (auto-open on breach). Acknowledgement is shared: several operators can ack the same incident and each appears as a separate, attributed entry.
 
 The **Incidents** inbox groups open incidents by state and lets you filter by severity and assignee:
 
@@ -251,14 +265,14 @@ Authoring alert *rules* and triaging *incidents* are separate concerns with sepa
 - `alerts:read`: view alert rules.
 - `alerts:write`: create, edit, delete alert rules, and trigger a test notification.
 - `incidents:read`: view incidents.
-- `incidents:write`: open manual (ad-hoc) incidents that are not tied to an alert.
+- `incidents:write`: open manual incidents, both standalone (ad-hoc) incidents and manual incidents attached to a parent alert.
 - `incidents:ack`: acknowledge, assign, comment on, and resolve incidents.
 
-> **Legacy `alerts:ack`.** Keys and operators that were granted the older `alerts:ack` token keep working: it is honored as `incidents:ack` (and implies `incidents:read`), so existing on-callers retain their access without re-issuing credentials. Issue new grants with the `incidents:*` family.
+> **Note:** Keys and operators that were granted the older `alerts:ack` token keep working: it is honored as `incidents:ack` (and implies `incidents:read`), so existing on-callers retain their access without re-issuing credentials. Issue new grants with the `incidents:*` family.
 
-Grant on API keys (`POST /keys`) and operators (`PUT /users/:id`). The dashboard's `PermGate` locks the relevant buttons when a permission is missing; you'll see `// 403` next to the action.
+Grant these on API keys and operator accounts. See [API keys](/agenteye/api-keys) for how permissions map to keys. The dashboard's permission gate locks the relevant buttons when a permission is missing, so the action shows as denied.
 
-> **Email-recipient picker.** The alert editor's recipient picker lists your org's members so you can pick them by name. It loads for any operator holding `alerts:read` or `alerts:write`; viewing your team's directory for this purpose does **not** require `users:read`, and the picker returns only member email addresses, never full user records.
+> **Note:** The alert editor's recipient picker lists your org's members so you can pick them by name. It loads for any operator holding `alerts:read` or `alerts:write`; viewing your team's directory for this purpose does **not** require `users:read`, and the picker returns only member email addresses, never full user records.
 
 ---
 
@@ -278,7 +292,7 @@ After a transient evaluation failure (ClickHouse unreachable, a query timeout), 
 
 Channel settings (managed from `/settings`, not env):
 
-- `alerts.email_default_recipients` (`email_list`): JSON array of email strings — the default recipients for email channels.
+- `alerts.email_default_recipients` (`email_list`): JSON array of email strings, the default recipients for email channels.
 - `alerts.slack_default_webhook` (`url`): default Slack incoming-webhook URL.
 - `alerts.webhook_default_url` (`url`): default generic-webhook URL.
 - `alerts.webhook_signing_secret` (`secret`): HMAC-SHA256 key. Always returned as `""` in the GET response; type a new value to rotate.
@@ -302,8 +316,16 @@ Incidents do not resolve automatically when a condition clears. An operator must
 
 | Symptom | Likely cause |
 |---|---|
-| Alert never fires | `enabled = false`, or no channels attached, or the underlying CH query returns 0 rows. Use *test* to confirm channels; use `/queries/run` to confirm the metric. |
+| Alert never fires | `enabled = false`, or no channels attached, or the underlying ClickHouse query returns 0 rows. Use *test* to confirm channels; use the query runner (`/queries/run`) to confirm the metric. |
 | Slack notification missing | `alerts.slack_default_webhook` (or the per-alert override key) is unset: check `alert_notifications.target` for `<unset:…>` rows; or the `slack` kind is globally disabled in `alerts.enabled_channels`: check for `alert_notifications` rows with status `skipped_disabled` and target `<channel_disabled>`. |
 | Generic webhook 401 | The recipient is requiring a signature but `alerts.webhook_signing_secret` is unset. Verify on the recipient that the HMAC matches `hmac_sha256(secret, body)`. |
 | Email "from all sends failed" | SMTP credentials wrong or the `from` address is rejected by your relay. Same surface that ships OTP emails: if those work, the SMTP transport is fine. |
 | Incident reopens repeatedly | The compound knobs are too aggressive: try raising `min_breaches` or `eval_window` so transient spikes don't reopen incidents you resolved. |
+
+---
+
+## Next steps
+
+- [Evaluation suite](/agenteye/evaluation-suite): set up the evaluator scores that `evaluation_score` and `eval_compound` alerts watch.
+- [API keys](/agenteye/api-keys): grant the `alerts:*` and `incidents:*` permissions an operator or key needs.
+- [Deployment](/agenteye/deployment#operational-settings): configure SMTP and the Slack/webhook channel credentials each alert references.

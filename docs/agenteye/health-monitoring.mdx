@@ -4,13 +4,32 @@ description: "AgentEye Health Monitoring documentation."
 ---
 
 
-Know when an AgentEye deployment is **itself** down or degraded, not just when
-your agents misbehave. Detection is **Kubernetes-native** and, crucially,
-**independent of AgentEye**: it reads pod state from the Kubernetes control plane
-and checks AgentEye's hard dependencies, so it still fires when the server,
-ClickHouse, or Postgres is the thing that's down.
+AgentEye watches your agents. This page is about watching AgentEye *itself*, so
+you get alerted the moment the product is down or degraded, not just when your
+agents misbehave. Detection is **independent of AgentEye**: it reads pod state
+from the Kubernetes control plane and checks AgentEye's hard dependencies, so it
+still fires when the server, ClickHouse, or Postgres is the thing that's down.
+
+> **Note:** This is the Kubernetes story. If you run the single-pod or Docker
+> Compose deployment, the built-in `/health` and `/ready` probes in the next
+> section are all you need, and they behave identically there. Robusta (layer 2)
+> is an opt-in Kubernetes-fleet add-on, not a requirement. See the
+> [single-pod deployment guide](/agenteye/single-pod-deployment).
 
 There are two layers. The first is built in; the second is opt-in.
+
+```mermaid
+flowchart LR
+    subgraph L1["Layer 1 (built in): Kubernetes probes the server"]
+        RP["readinessProbe"] --> READY["GET /ready<br/>checks Postgres + ClickHouse"]
+        LP["livenessProbe"] --> HEALTH["GET /health<br/>is the process alive?"]
+    end
+    subgraph L2["Layer 2 (opt-in): Robusta watches the control plane"]
+        ROB["Robusta"] --> POD["reads pod state directly"] --> SLACK["posts failures to Slack"]
+    end
+```
+
+Because layer 2 reads the control plane instead of asking AgentEye, it still alerts when the server, ClickHouse, or Postgres is the thing that is down.
 
 ## 1. Dependency-aware readiness (built in)
 
@@ -37,10 +56,24 @@ configured and `"not_configured"` otherwise; it is never `"down"`.
 On the bundled Kubernetes manifests the **readiness** probe points at `/ready`
 and **liveness** stays on `/health`. The effect: a server that is *running but
 cannot reach its database* is taken out of the Service and shows as `NotReady`,
-a state your cluster monitoring (below) can alert on, while liveness stays cheap
-so a brief dependency blip never triggers a pod restart. The probe uses a
-generous failure threshold so a momentary blip does not flap replicas out of
-rotation.
+a state your cluster monitoring (below) can alert on. Liveness stays cheap on
+`/health`, so a brief dependency blip never restarts the pod, while the readiness
+probe's generous failure threshold tolerates about 30 seconds of blips before
+pulling a replica out of rotation.
+
+**Verify the built-in probes yourself.** From anywhere that can reach the server
+(swap in your server's address and port, `8080` in the bundled manifests):
+
+```bash
+# Liveness — always 200 while the process is up
+curl -s http://localhost:8080/health
+# {"status":"ok"}
+
+# Readiness — 200 when Postgres + ClickHouse are reachable, 503 otherwise
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/ready
+# 200   body: {"status":"ready",     "checks": { ... }}
+# 503   body: {"status":"not_ready", "checks": { ... }}  if a hard dependency is down
+```
 
 ## 2. Pod-failure alerting with Robusta (opt-in)
 
@@ -49,6 +82,10 @@ that watches the API server and posts pod failures (`CrashLoopBackOff`,
 `OOMKilled`, `ImagePullBackOff`, `Pending`/`NotReady`, `Failed`, evictions) to
 Slack. Because it observes the control plane rather than asking AgentEye, it
 alerts even when AgentEye cannot serve at all.
+
+> **Note:** The rest of this section is operator setup: Helm, a Slack app, and a
+> values file. If you are evaluating AgentEye rather than installing it, skip to
+> [What it reports](#what-it-reports) to see the payoff.
 
 Robusta ships as an opt-in add-on in the release bundle. Enable it with the
 standard Robusta Helm chart and the small values file shown below:
@@ -103,6 +140,23 @@ standard Robusta Helm chart and the small values file shown below:
 - The bundled values restrict alerts to the **`agenteye` namespace**, so unrelated
   workloads in the same cluster are not reported.
 
+Here is what a pod-failure alert looks like when it lands in Slack:
+
+```text
+#agenteye-fleet-health
+
+🔴  Robusta · Pod is crash looping
+    Cluster:    acme-prod                    ← clusterName label (which deployment)
+    Namespace:  agenteye
+    Pod:        agenteye-server-7d9c8b6f5-2xk4t
+    Container:  server  (ghcr.io/agenteye-enterprise/server:0.0.1-beta.18)
+    Reason:     CrashLoopBackOff · last state OOMKilled (exit 137)
+    Restarts:   5 in the last 3m
+```
+
+The `clusterName` tells you *which* deployment is affected at a glance, and the
+image tag (`…/server:0.0.1-beta.18`) tells you exactly which version is running.
+
 ### One place for every deployment
 
 Point every deployment's Robusta at **one shared Slack channel**, each with its
@@ -120,6 +174,13 @@ multi-cluster dashboard and flags any cluster that stops checking in.
 
 ## Troubleshooting
 
-See the **Health Monitoring** section of
-[enterprise-docs/troubleshooting.md](/agenteye/troubleshooting) for "no
+See the Health Monitoring section of the
+[troubleshooting guide](/agenteye/troubleshooting#health-monitoring-issues) for "no
 alerts arriving" and "server keeps flapping `NotReady`".
+
+## Next steps
+
+- [Kubernetes deployment](/agenteye/kubernetes-deployment): where the readiness and liveness probes and the Robusta add-on are wired in.
+- [Single-pod deployment](/agenteye/single-pod-deployment): the `/health` and `/ready` probes for Compose and single-node setups.
+- [Alerts](/agenteye/alerts): alert on your agents' behavior, the complement to this page's infrastructure health.
+- [Troubleshooting](/agenteye/troubleshooting#health-monitoring-issues): fixes for missing alerts and `NotReady` flapping.

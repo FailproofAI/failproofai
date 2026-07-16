@@ -4,13 +4,13 @@ description: "AgentEye Tenant Management (organizations & members) documentation
 ---
 
 
-A single AgentEye deployment serves multiple fully isolated **organizations** (tenants), so one instance can host distinct teams, business units, or customers without exposing any one tenant's data to another. Every row of data (events, evaluations, sessions, dashboards, saved queries, alerts, API keys, and members) belongs to exactly one org. Primary isolation is enforced in application code: every request is scoped to its org with explicit `org_id` predicates. On ClickHouse — where the high-volume events and evaluations live — this is backed by strong engine-level enforcement: each org gets a dedicated read-only ClickHouse user with a per-org row policy, so even untrusted analytics SQL can never read another tenant's rows. On PostgreSQL, row-level security adds defence-in-depth on the read-only query path (`/queries/run`), narrowing what that path can see even if an application-level filter were ever missing; the server's own write connection runs as the table owner and so operates through the same app-level `org_id` scoping.
+One AgentEye instance can host many fully isolated **organizations** (tenants), so a single deployment can serve separate teams, business units, or customers, with no tenant ever able to see another's data. You only need this page when you add a **second** organization. (Curious how the walls between tenants are enforced? See [Isolation model](#isolation-model) below.)
 
 Tenant lifecycle is operator-controlled, while everything members do day-to-day stays self-service in the dashboard. Organizations and their memberships are created and managed with the **`agenteye-orgctl`** CLI, which ships inside the server image and runs **inside the existing server pod**. Tenant creation and deletion are deliberately kept off the dashboard and HTTP API: there is **no HTTP API and no dashboard button** for tenant lifecycle, so it is gated behind cluster/pod shell access rather than the application surface.
 
 Within an org, members work entirely in the dashboard and API: they sign in, switch between the orgs they belong to, manage their own API keys, build dashboards and saved queries, and configure alerts for their org. The division is clean: operators provision and decommission tenants and their members via the CLI; members run everything inside a tenant through the UI.
 
-> **Single-tenant deployments need none of this.** A single-tenant install runs without any operator action. All data, users, and keys live in a built-in `default` organization that is provisioned automatically. You only need this guide when you decide to add a second org.
+> **Note:** Single-tenant deployments need none of this. A single-tenant install runs without any operator action. All data, users, and keys live in a built-in `default` organization that is provisioned automatically. You only need this page when you decide to add a second org.
 
 ---
 
@@ -55,11 +55,13 @@ The examples below show the bare `agenteye-orgctl <args>` for brevity; prefix ea
 | `org delete --slug <slug>` | **Soft-delete** the org and drop its ClickHouse user. Data is **retained**. This revokes access and frees the per-org ClickHouse credential, but does not erase events. Reversible by ops; safe first step before a purge. |
 | `org purge --slug <slug>` | **Irreversible data wipe.** The org must already be `delete`d. Never permitted on the built-in `default` org. Use only when you are certain the tenant's data should be destroyed. |
 
+> **Note:** A slug must be 1-40 characters, using lowercase letters, digits, and single internal hyphens only (no leading, trailing, or doubled hyphens). Reserved top-level route names are rejected. The slug appears in URLs and API keys and can't be changed later (`org rename` only changes the display name), so pick it deliberately.
+
 ### Members
 
 | Command | What it does |
 |---|---|
-| `member add --org <slug> --email <email> [--set <permission-set>] [--add perm1,perm2] [--remove perm3] [--protected]` | Add a member to an org. Optionally start from a builtin permission set, then add/remove individual permissions. `--protected` pins the member so the dashboard can't remove or demote them (see below). The new member gets an OTP on their first dashboard login. |
+| `member add --org <slug> --email <email> [--set <permission-set>] [--add perm1,perm2] [--remove perm3] [--protected]` | Add a member to an org. Optionally start from a builtin permission set, then add/remove individual permissions. `--protected` pins the member so the dashboard can't remove or demote them (see below). The new member gets a one-time passcode (OTP) on their first dashboard login. |
 | `member list --org <slug>` | List the org's members. The output columns are `EMAIL`, `SET` (the builtin set the member started from, or `-`), `PROT` (whether the member is protected), and `PERMISSIONS` (their effective permissions). An email shown with a trailing `*` is an instance admin; they have access to every org. |
 | `member update --org <slug> --email <email> [--set ...] [--add ...] [--remove ...] [--protected \| --unprotect]` | Change a member's permissions and/or protected flag. `--set` replaces from a builtin set; `--add` / `--remove` adjust individual permissions; `--protected` / `--unprotect` toggle protection. Passing only `--protected`/`--unprotect` (no grant flags) changes protection alone and leaves existing permissions untouched. |
 | `member remove --org <slug> --email <email>` | Remove a member from the org. Refuses if the member is protected; `--unprotect` them first. (A person can be a member of several orgs; this only affects the named org.) |
@@ -88,7 +90,7 @@ A protected member **cannot be removed or demoted through the dashboard**; those
 | Set | Intended for |
 |---|---|
 | `admin` | Full access within the org, including managing the org's API keys and users. |
-| `standard` | Day-to-day use: read + run queries, build dashboards, acknowledge incidents. |
+| `standard` | Day-to-day use: read everything, run queries, trigger evaluations, acknowledge incidents, and use the AI assistant. Authoring dashboards and saved queries needs the `admin` set (`dashboards:write` / `queries:write`). |
 | `read-only` | View-only access to the org's data and dashboards. |
 
 Start from a set with `--set`, then fine-tune with `--add` / `--remove` using the individual permission tokens listed in [API Keys](/agenteye/api-keys). The permission tokens themselves are identical to those used for API keys.
@@ -159,9 +161,19 @@ The operator, using `agenteye-orgctl`, owns only the org + member **lifecycle**:
 
 ---
 
-## See also
+## Isolation model
+
+Every row of data (events, evaluations, sessions, dashboards, saved queries, alerts, API keys, and members) belongs to exactly one org. Three layers keep tenants apart:
+
+- **Application-level scoping (primary).** Every request is scoped to its org with explicit `org_id` predicates, so the server only ever reads or writes the caller's own org.
+- **ClickHouse per-org row policy.** The high-volume events and evaluations live in ClickHouse, where each org gets a dedicated read-only ClickHouse user with a per-org row policy. Even untrusted analytics SQL a member runs can never read another tenant's rows.
+- **PostgreSQL row-level security.** On the read-only query path (`/queries/run`), Postgres row-level security adds defence-in-depth, narrowing what that path can see even if an application-level filter were ever missing. The server's own write connection runs as the table owner and relies on the app-level `org_id` scoping above.
+
+---
+
+## Next steps
 
 - [Deployment](/agenteye/deployment): `ORG_CH_SECRET` and the rest of the server environment.
-- [Kubernetes Deployment](/agenteye/kubernetes-deployment): §2.6 creates the `agenteye-org-ch-secret` Secret before your first multi-tenant org.
-- [API Keys](/agenteye/api-keys): the per-org key model and the permission tokens used by `--add` / `--remove`.
+- [Kubernetes deployment](/agenteye/kubernetes-deployment): §2.6 creates the `agenteye-org-ch-secret` Secret before your first multi-tenant org.
+- [API keys](/agenteye/api-keys): the per-org key model and the permission tokens used by `--add` / `--remove`.
 - [Troubleshooting](/agenteye/troubleshooting): multi-tenant provisioning and ClickHouse-isolation issues.

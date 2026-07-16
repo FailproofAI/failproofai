@@ -4,18 +4,58 @@ description: "AgentEye Collector Installation documentation."
 ---
 
 
-The `agenteye-collector` daemon guarantees that your agents' telemetry reaches AgentEye without ever blocking your application. Your code writes events to a local directory and moves on; the collector takes ownership from there, uploading each file within milliseconds and surviving restarts, network outages, and transient server errors. Failed uploads are retried with exponential backoff, and a periodic recovery sweep re-queues anything left behind by a crash or deploy. The result is durable, fire-and-forget delivery: your agents keep running at full speed while the collector ensures no events are lost in transit.
+The `agenteye-collector` daemon makes sure your agents' telemetry reaches AgentEye without ever blocking your application. Your code writes events to a local directory and moves on; the collector takes ownership from there, uploading each file within milliseconds and surviving restarts, network outages, and transient server errors. The result is durable, fire-and-forget delivery: your agents run at full speed while the collector guarantees no events are lost in transit.
 
-Mechanically, the collector is a lightweight daemon that watches `$AGENTEYE_HOME/events/` (default: `~/.agenteye/events/`) for `.jsonl` files written by the Python SDK and uploads them to the AgentEye server.
+Mechanically, the collector is a lightweight daemon that watches `$AGENTEYE_HOME/events/` (default: `~/.agenteye/events/`) for `.jsonl` files written by the Python SDK and uploads them to the AgentEye server. Failed uploads are retried with exponential backoff, and a periodic recovery sweep re-queues anything left behind by a crash or deploy.
 
-> **Renamed:** the collector command is now **`agenteye-collector`** (it used to be `agenteye`). The short `agenteye` name now belongs to the AgentEye CLI. If you are upgrading an existing install, see [enterprise-docs/collector-migration.md](/agenteye/collector-migration).
+> **Note:** The collector command is now **`agenteye-collector`** (it used to be `agenteye`). The short `agenteye` name now belongs to the AgentEye CLI. If you are upgrading an existing install, see [Collector migration](/agenteye/collector-migration).
 
 ---
 
 ## Prerequisites
 
-- Your `AGENTEYE_TOKEN`: a GitHub PAT you generate yourself (see [enterprise-docs/github-token.md](/agenteye/github-token))
-- The server URL and a collector API key (see [enterprise-docs/api-keys.md](/agenteye/api-keys))
+- Your `AGENTEYE_TOKEN`: a GitHub PAT you generate yourself (see [GitHub token setup](/agenteye/github-token))
+- The server URL and a collector API key (see [API keys](/agenteye/api-keys))
+
+---
+
+## Quickstart
+
+The smallest path to a working collector on Linux x86_64. The detailed sections below cover every other platform, config option, and deployment pattern.
+
+1. Install the binary (see [Option A](#option-a-binary-recommended) for other platforms):
+
+   ```bash
+   VERSION=0.0.1-beta.14
+   GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
+     --repo agenteye-enterprise/releases \
+     --pattern 'agenteye-collector-linux-x86_64'
+   chmod +x agenteye-collector-linux-x86_64
+   sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
+   ```
+
+2. Point it at your server with your collector API key:
+
+   ```bash
+   export AGENTEYE_URL=https://ingest.example.com/events
+   export AGENTEYE_KEY=YOUR_COLLECTOR_KEY
+   ```
+
+3. Generate one event by running an agent instrumented with the [Python SDK](/agenteye/python-sdk), so a `.jsonl` file lands in `~/.agenteye/events/`.
+
+4. Confirm it uploads with a one-shot flush and look for an `[UPLOADED]` line:
+
+   ```bash
+   agenteye-collector flush
+   ```
+
+5. Run the daemon so new events keep uploading:
+
+   ```bash
+   agenteye-collector start
+   ```
+
+Then open the AgentEye dashboard and confirm your agent's session appears (see [Getting started](/agenteye/getting-started)).
 
 ---
 
@@ -37,7 +77,7 @@ Available artifact names:
 **Download with the `gh` CLI** (replace the version and pick your platform's artifact):
 
 ```bash
-VERSION=0.0.1-beta.13
+VERSION=0.0.1-beta.14
 GITHUB_TOKEN=$AGENTEYE_TOKEN gh release download "collector/v${VERSION}" \
   --repo agenteye-enterprise/releases \
   --pattern 'agenteye-collector-linux-x86_64'
@@ -49,7 +89,7 @@ sudo mv agenteye-collector-linux-x86_64 /usr/local/bin/agenteye-collector
 **Or with `curl`:**
 
 ```bash
-VERSION=0.0.1-beta.13
+VERSION=0.0.1-beta.14
 ARTIFACT=agenteye-collector-linux-x86_64
 curl -fsSL \
   -H "Authorization: token $AGENTEYE_TOKEN" \
@@ -68,7 +108,9 @@ echo $AGENTEYE_TOKEN | docker login ghcr.io -u x --password-stdin
 docker pull ghcr.io/agenteye-enterprise/collector:beta-latest
 ```
 
-> Current beta builds publish the floating `:beta-latest` tag; `:latest` is assigned only to stable releases. For repeatable deployments, prefer a pinned version tag such as `:v0.0.1-beta.13`.
+> **Note:** Pulling the collector image requires signed enterprise access to `ghcr.io/agenteye-enterprise/*`. Authenticate with your `AGENTEYE_TOKEN` as shown above.
+
+> **Tip:** Current beta builds publish the floating `:beta-latest` tag; `:latest` is assigned only to stable releases. For repeatable deployments, prefer a pinned version tag such as `:v0.0.1-beta.14`.
 
 **Run:**
 
@@ -84,6 +126,8 @@ docker run -d --restart unless-stopped \
 ```
 
 The official image runs as a non-root user, so set `AGENTEYE_HOME` explicitly and mount the host spool to it. The volume mount shares the same `~/.agenteye/` directory that the Python SDK writes to on the host. If you already set `AGENTEYE_HOME` elsewhere on the host, mount that directory instead of `$HOME/.agenteye`.
+
+> **Warning:** The image runs as UID 65532, so the mounted host directory must be writable by that user. If it is not, the collector cannot write `health.json` or manage the spool, and the daemon fails to start.
 
 ---
 
@@ -127,7 +171,7 @@ For deployments that require mutual TLS (mTLS), the collector can present a clie
 
 `--tls-ca` is independent and only needed when the AgentEye server presents a TLS certificate that isn't issued by a publicly-trusted CA (e.g. self-signed by an in-cluster `cert-manager` issuer when you don't have a real DNS domain). The collector adds the supplied CA as an additional trust anchor; the standard public roots remain trusted, so existing deployments are unaffected. The file may contain a single PEM cert or a full chain (multiple concatenated PEM blocks).
 
-**Running the collector as a sidecar in your application pod?** See [enterprise-docs/single-pod-deployment.md](/agenteye/single-pod-deployment) for the end-to-end EKS pattern: mTLS bundle delivered via AWS Secrets Manager + Secrets Store CSI Driver + IRSA, with automatic rotation.
+**Running the collector as a sidecar in your application pod?** See [Single-pod deployment](/agenteye/single-pod-deployment) for the end-to-end EKS pattern: mTLS bundle delivered via AWS Secrets Manager + Secrets Store CSI Driver + IRSA, with automatic rotation.
 
 When running in Kubernetes with the Secret hand-off pattern, mount the certificate Secret as a volume and point these paths to the mounted files:
 
@@ -209,13 +253,15 @@ EOF
 
 > Use `https` for any deployment that crosses an untrusted network so events are not sent in plaintext. The plaintext `http://your-server-host:8080/events` form is appropriate only for purely local testing against a server on the same host.
 
-**Test the connection** (one-shot flush, exits after draining pending events):
+**Confirm uploads are working** (one-shot flush, exits after draining pending events):
 
 ```bash
 agenteye-collector flush
 ```
 
-`flush` reports its progress to stdout. When the spool is empty it prints `No pending files.` and exits `0`. Otherwise it prints one line per file (`[UPLOADED] <file>` or `[FAILED] <file> (<reason>)`), followed by a `Done: <uploaded>/<total> uploaded, <failed> failed.` summary. This makes `flush` a convenient one-shot check that your URL, key, and TLS settings are correct before you start the daemon.
+`flush` reports its progress to stdout. When the spool (your `~/.agenteye/events/` directory) is empty it prints `No pending files.` and exits `0`, but note that an empty spool makes **no network call at all**, so this on its own does not confirm your connection. Otherwise it prints one line per file (`[UPLOADED] <file>` or `[FAILED] <file> (<reason>)`), followed by a `Done: <uploaded>/<total> uploaded, <failed> failed.` summary.
+
+> **Tip:** To actually validate your URL, key, and TLS settings, first run your agent (or the [Python SDK](/agenteye/python-sdk)) so at least one `.jsonl` event lands in `~/.agenteye/events/`, then run `agenteye-collector flush` and look for an `[UPLOADED]` line.
 
 ---
 
@@ -286,7 +332,7 @@ Why these settings:
 
 Pass `AGENTEYE_URL` / `AGENTEYE_KEY` (and any TLS env vars) on `docker run -e` as before; supervisord inherits the environment.
 
-> **Separate containers?** If you run the collector as its own container (Docker Compose service, Kubernetes sidecar, etc.), don't use supervisord; the container runtime's restart policy already does this job. See [enterprise-docs/single-pod-deployment.md](/agenteye/single-pod-deployment) for the EKS sidecar pattern.
+> **Note:** If you run the collector as its own container (Docker Compose service, Kubernetes sidecar, etc.), don't use supervisord; the container runtime's restart policy already does this job. See [Single-pod deployment](/agenteye/single-pod-deployment) for the EKS sidecar pattern.
 
 **Kubernetes liveness probe** (applies whether the collector runs alone or under supervisord):
 
@@ -320,7 +366,7 @@ WantedBy=multi-user.target
 
 Create `/etc/agenteye/env`:
 
-```
+```ini
 AGENTEYE_URL=https://ingest.example.com/events
 AGENTEYE_KEY=YOUR_COLLECTOR_KEY
 ```
@@ -366,6 +412,14 @@ sudo systemctl status agenteye-collector
 launchctl load ~/Library/LaunchAgents/ai.befailproof.agenteye-collector.plist
 ```
 
+### Confirm it's working
+
+With the daemon running, run an agent so it emits events, then open the AgentEye dashboard and check the sessions list. Your agent's session should appear within a few seconds of the events being written.
+
+![AgentEye sessions list showing recently arrived agent sessions](/agenteye/images/sessions-list.png)
+
+If nothing shows up, see [Troubleshooting](/agenteye/troubleshooting) and [Getting started](/agenteye/getting-started) for the full SDK → collector → server path.
+
 ---
 
 ## Upgrading the Collector
@@ -391,7 +445,7 @@ The collector does not update itself. To upgrade:
 
 ## Directory Layout
 
-```
+```text
 ~/.agenteye/
 ├── config.json       <- optional config file
 ├── events/           <- .jsonl files written by the SDK, picked up by the collector
@@ -399,3 +453,12 @@ The collector does not update itself. To upgrade:
 ```
 
 Files in `failed/` are not automatically retried. To manually re-queue them, move them back to `events/` and run `agenteye-collector flush`.
+
+---
+
+## Next steps
+
+- [Python SDK](/agenteye/python-sdk): instrument your agents so they write the events the collector uploads.
+- [API keys](/agenteye/api-keys): create and scope the collector key the daemon authenticates with.
+- [Getting started](/agenteye/getting-started): the full setup, end to end.
+- [Troubleshooting](/agenteye/troubleshooting): fixes for events that aren't reaching AgentEye.

@@ -4,15 +4,30 @@ description: "AgentEye Managed Deployment on Your Kubernetes Cluster documentati
 ---
 
 
-AgentEye is a self-hosted observability and evaluation platform for AI and LLM agents. It captures agent sessions, tool calls, model requests, and errors, turns them into searchable analytics and evaluations, and surfaces the results in a dashboard with an optional read-only AI assistant.
+Get the full AgentEye platform running in your own cloud without operating a single database, certificate, or upgrade yourself. You provide a dedicated Kubernetes cluster, and Exosphere deploys, configures, runs, backs up, and upgrades every component for you, with all data staying inside your cloud account. Choose this path when you want AgentEye's value with none of the day-to-day operational work.
 
-In the managed deployment model, you provide a dedicated Kubernetes cluster and Exosphere runs the full platform inside it, deploying, configuring, operating, backing up, and upgrading every component on your behalf. Your team gets the platform's value (agent visibility, analytics, evaluation, and the optional assistant) without operating databases, certificates, or upgrades. All data stays within your cloud account.
+AgentEye is a self-hosted platform for observing, evaluating, and improving your AI agents in production. It captures agent sessions, tool calls, model requests, and errors, turns them into searchable analytics and evaluations, and surfaces the results in a dashboard with an optional AI assistant.
+
+---
+
+## Which deployment guide should I use?
+
+AgentEye runs several ways. Pick the one that matches who you want operating it:
+
+| Guide | Who operates it | Best when |
+|---|---|---|
+| [Managed deployment](/agenteye/managed-deployment) (this page) | Exosphere, in your cluster | You want the full platform with zero operational work |
+| [Getting started](/agenteye/getting-started) | You (Docker Compose) | You want the fastest way to try AgentEye on one machine |
+| [Single-pod deployment](/agenteye/single-pod-deployment) | You | You run the collector as a sidecar next to each agent for low-latency, in-pod telemetry |
+| [Kubernetes deployment](/agenteye/kubernetes-deployment) | You | You want to deploy and scale every component on your own cluster |
+
+The rest of this page covers the **managed** model, where Exosphere operates everything inside a cluster you own.
 
 ---
 
 ## Prerequisites
 
-- A **GitHub PAT** for pulling container images and downloading artifacts (see [enterprise-docs/github-token.md](/agenteye/github-token))
+- A **GitHub PAT** for pulling container images and downloading artifacts (see [GitHub token setup](/agenteye/github-token))
 - A **dedicated Kubernetes cluster** (see requirements below)
 - A **storage bucket** for database backups
 - **Network connectivity**: port 443 inbound to the cluster's load balancer
@@ -31,7 +46,7 @@ Create a Kubernetes cluster dedicated to AgentEye. It should not be shared with 
 | **Storage** | A default StorageClass that provisions block volumes (e.g. `gp3` on AWS, `pd-ssd` on GCP) |
 | **Load Balancer** | The cluster must be able to provision cloud LoadBalancer services (default on EKS, GKE, AKS) |
 
-> Exosphere installs and manages everything else inside the cluster: ingress controllers, TLS certificates, databases, caching, monitoring, and all application deployments.
+> **Note:** Exosphere installs and manages everything else inside the cluster: ingress controllers, TLS certificates, databases, caching, monitoring, and all application deployments.
 
 ---
 
@@ -57,11 +72,11 @@ Your network team needs to allow inbound traffic on **port 443** to the cluster'
 
 The ingest endpoint is protected by mutual TLS; collectors must present a valid client certificate **and** a valid API key on every request. The dashboard runs on its own load balancer and hostname, with sign-in restricted to your allowlisted email addresses/domains.
 
-**DNS records (one-time):** you create two CNAME records under a domain you control — one for the ingest endpoint and one for the dashboard (e.g. `agenteye.your-company.example`) — pointing at the load balancer hostnames Exosphere provides. Exosphere then provisions publicly-trusted TLS certificates for both hostnames automatically, including renewals.
+**DNS records (one-time):** you create two CNAME records under a domain you control, one for the ingest endpoint and one for the dashboard (e.g. `agenteye.your-company.example`), pointing at the load balancer hostnames Exosphere provides. Exosphere then provisions publicly-trusted TLS certificates for both hostnames automatically, including renewals.
 
-> **Port 80 note:** automated certificate issuance and renewal validate over HTTP on port 80 of each load balancer. If your security posture requires restricting the dashboard load balancer to corporate IP ranges, tell Exosphere first — we switch certificate validation to a DNS-based method (one extra DNS record on your side) so renewals keep working behind the restriction.
+> **Note:** Automated certificate issuance and renewal validate over HTTP on port 80 of each load balancer. If your security posture requires restricting the dashboard load balancer to corporate IP ranges, tell Exosphere first. We switch certificate validation to a DNS-based method (one extra DNS record on your side) so renewals keep working behind the restriction.
 
-> **Outbound:** Cluster nodes need internet access to pull container images from `ghcr.io`. If your network restricts outbound traffic, allowlist `ghcr.io` or mirror images to your internal registry.
+> **Note:** Cluster nodes need internet access to pull container images from `ghcr.io`. Pulling the private platform images needs signed enterprise access. If your network restricts outbound traffic, allowlist `ghcr.io` or mirror images to your internal registry.
 
 ---
 
@@ -87,6 +102,24 @@ Provide one person or Slack/Teams channel on your side for cluster-level issues:
 
 ## What We Deploy
 
+Here is how the managed topology fits together. Everything inside the dashed boundary runs in the cluster you own, so your data never leaves your cloud account:
+
+```mermaid
+flowchart TD
+    AC["Your agent clusters<br/>collectors send events"] -->|"mTLS + API key, 443"| ILB
+    BR["Developer browsers<br/>view the dashboard"] -->|"HTTPS, 443"| DLB
+    subgraph cloud["Your cloud account (data stays here)"]
+        ILB["Ingest LoadBalancer<br/>mTLS ingress"] --> SRV["AgentEye Server"]
+        DLB["Dashboard LoadBalancer<br/>HTTPS ingress"] --> DASH["Dashboard (+ AI assistant)"]
+        SRV <--> DASH
+        SRV --> CH[("ClickHouse")]
+        SRV --> PG[("Postgres")]
+        SRV --> RDS[("Redis cache")]
+        SRV --> BK["Daily backup to<br/>your storage bucket"]
+        CM["cert-manager<br/>TLS + mTLS certs"]
+    end
+```
+
 Once Exosphere has cluster access, the following components are deployed and managed for you:
 
 | Component | Role |
@@ -101,7 +134,7 @@ Once Exosphere has cluster access, the following components are deployed and man
 | **cert-manager** | Automates TLS certificate provisioning and mTLS client-certificate issuance |
 | **Certificate monitoring** | A scheduled job checks certificate expiry and sends alerts (e.g. to Slack) as certificates approach renewal |
 
-The managed offering also operates the platform's evaluation pipeline, which scores agent activity against your evaluation criteria. See [enterprise-docs/assistant.md](/agenteye/assistant) and [enterprise-docs/evaluation-suite.md](/agenteye/evaluation-suite) for what these capabilities deliver.
+The managed offering also operates the platform's evaluation pipeline, which scores agent activity against your evaluation criteria. See [AI assistant](/agenteye/assistant) and [Evaluation suite](/agenteye/evaluation-suite) for what these capabilities deliver.
 
 ---
 
@@ -124,8 +157,8 @@ After deployment is complete, you receive:
 
 Your only ongoing work is on your own agent machines, not the AgentEye cluster:
 
-1. **Install the collector** in each Kubernetes cluster running AI agents: mount the client certificate and configure the endpoint URL and API key. See [enterprise-docs/collector-installation.md](/agenteye/collector-installation).
-2. **Integrate the Python SDK** into your agent code. See [enterprise-docs/python-sdk.md](/agenteye/python-sdk).
+1. **Install the collector** in each Kubernetes cluster running AI agents: mount the client certificate and configure the endpoint URL and API key. See [Collector installation](/agenteye/collector-installation).
+2. **Integrate the Python SDK** into your agent code. See [Python SDK](/agenteye/python-sdk).
 3. **Open the dashboard** in your browser to view agent activity.
 
 No cluster operations, no database management, no certificate renewals, no upgrades.
@@ -162,10 +195,10 @@ For questions or issues, contact Exosphere at `support@exosphere.host`.
 
 ---
 
-## Next Steps
+## Next steps
 
-- [Getting Started](/agenteye/getting-started): end-to-end walkthrough
-- [Collector Installation](/agenteye/collector-installation): install and configure the collector
+- [Getting started](/agenteye/getting-started): end-to-end walkthrough
+- [Collector installation](/agenteye/collector-installation): install and configure the collector
 - [Python SDK](/agenteye/python-sdk): instrument your agent code
-- [API Keys](/agenteye/api-keys): manage access and permissions
+- [API keys](/agenteye/api-keys): manage access and permissions
 - [Troubleshooting](/agenteye/troubleshooting): common issues and fixes

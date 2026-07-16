@@ -1,0 +1,68 @@
+---
+title: "Security"
+description: "AgentEye Security documentation."
+---
+
+
+AgentEye is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs. This page explains how it keeps that data isolated, controlled, and in your hands. If you're evaluating AgentEye for a security review, start here.
+
+---
+
+## Your data stays in your environment
+
+AgentEye is self-hosted. Events, prompts, model responses, and analytics are stored in databases you run: ClickHouse for events and analytics, PostgreSQL for operational state. Nothing is sent to a third-party SaaS for storage. In the [Managed](/agenteye/managed-deployment) model, Failproof AI operates the platform on a cluster you designate, and your data still lives in your own cloud account.
+
+---
+
+## Tenant isolation
+
+One AgentEye instance can host many organizations, and each is isolated at the database layer, not just in the UI:
+
+- **PostgreSQL** uses row-level security so an organization's operational data (users, keys, dashboards, saved queries) is scoped to that org.
+- **ClickHouse** gives each organization a read-only user constrained by a row policy, so cross-org event reads are blocked at the database, and every ingested event is stamped with its owning org.
+
+Every dashboard route is scoped under an org slug (`/<org-slug>/…`). See [Tenant management](/agenteye/tenant-management) for the isolation model in detail.
+
+---
+
+## Sign-in
+
+AgentEye uses passwordless, email-based sign-in. There is no password to phish or leak. A user requests a one-time code (or a one-click magic link), which is emailed to them and expires quickly. Sign-in is gated by an **allowlist**: only email addresses (or domains) you permit can authenticate.
+
+![The AgentEye sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
+
+---
+
+## Scoped access with API keys
+
+Every client authenticates with an API key that carries granular, least-privilege permissions. A collector needs only `events:add`; a dashboard or assistant key can be read-only; destructive actions (delete, regenerate) are separate grants you choose to include.
+
+![The API keys page: each key's permission grants, colour-coded by read, write, and destructive scope](/agenteye/images/api-keys.png)
+
+Keep the admin bootstrap key for setup, and issue narrow keys for everything else. See [API keys](/agenteye/api-keys).
+
+---
+
+## A read-only, approval-gated assistant
+
+The in-dashboard [AI assistant](/agenteye/assistant) answers questions over your data, but it is constrained by design:
+
+- It is **read-only by default**: its SQL runs through a guard that permits only `SELECT`/`WITH` queries, single-statement, with a row cap.
+- Anything it creates (a saved query, a dashboard) is **approval-gated**: you review and approve every write before it happens.
+- It **can never delete**.
+
+So a teammate can ask "which agents errored most this week?" and act on the answer, without the assistant being able to change or remove your data on its own.
+
+---
+
+## In transit
+
+For production installs you terminate TLS at your ingress and run the collector-to-server and browser-to-server traffic over HTTPS. The [Managed](/agenteye/managed-deployment) and [Kubernetes](/agenteye/kubernetes-deployment) guides cover certificates and per-cluster TLS in detail.
+
+---
+
+## Next steps
+
+- [Tenant management](/agenteye/tenant-management): how organizations are isolated.
+- [API keys](/agenteye/api-keys): scope access for the collector, dashboard, and assistant.
+- [Deployment options](/agenteye/deployment-options): pick a path that fits your security posture.

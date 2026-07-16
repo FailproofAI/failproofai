@@ -4,61 +4,28 @@ description: "AgentEye Single-Pod Deployment: Collector + Application Sidecar on
 ---
 
 
-Run your application and the AgentEye collector **in the same Kubernetes Pod** so telemetry never crosses a network boundary to be collected. Your application's SDK and the collector share a single in-pod event spool, which means low-latency, in-process telemetry handoff with no localhost port to expose, no service mesh to traverse, and the collector's lifecycle tied directly to the workload it observes. The mTLS client certificate the collector presents is delivered straight into your pod from AWS Secrets Manager, so credential rotation requires no manual file shuffling on your side.
+Run the AgentEye collector in the same Kubernetes Pod as your application so it can ship your agent's event logs to AgentEye without telemetry ever crossing a network boundary to be collected. Reach for this pattern when your app should hand off telemetry in-process rather than call across the network: you get low latency, tight lifecycle coupling, and per-tenant pod isolation. New to AgentEye? Read [Getting started](/agenteye/getting-started) first, then come back for the EKS sidecar setup.
 
-The sidecar + shared-spool model described here is cloud-agnostic; two containers sharing an `emptyDir` event spool works on any Kubernetes distribution. Only the certificate-delivery path in this guide (AWS Secrets Manager + the Secrets Store CSI Driver + IRSA) is specific to AWS / EKS. If you run elsewhere, keep the pod and spool layout and substitute your platform's secret-mount mechanism for Phases 2 and 3.
+Here, your app and the collector share one in-pod event spool (a shared folder): your SDK writes event files into it, and the collector reads and uploads them. The handoff is a plain file read: no localhost port to expose, no service mesh to traverse. The mTLS (mutual-TLS) client certificate the collector uses to authenticate to your backend is delivered straight into the pod from AWS Secrets Manager, so credential rotation needs no manual file shuffling on your side.
 
-> **When to use this pattern.** Pick single-pod when your application should not call across a network boundary to reach the collector (low-latency in-pod IPC, tight lifecycle coupling, per-tenant pod isolation). For multi-app fleets that share one collector per node or per cluster, see [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment) instead.
+> **Tip:** This sidecar + shared-spool model is cloud-agnostic. Two containers sharing an `emptyDir` spool work on any Kubernetes distribution. Only the certificate-delivery path (AWS Secrets Manager + the Secrets Store CSI Driver + IAM Roles for Service Accounts, or IRSA) is specific to AWS / EKS. If you run elsewhere, keep the pod and spool layout and swap in your platform's secret-mount mechanism for Phases 2 and 3.
+
+> **Note:** Pick single-pod when your application should not call across a network boundary to reach the collector. For multi-app fleets that share one collector per node or per cluster, see the [Kubernetes deployment](/agenteye/kubernetes-deployment) guide instead.
 
 ---
 
 ## At a glance
 
-```
-┌──────────────────────────────── Pod ─────────────────────────────────┐
-│                                                                      │
-│   ┌──────────────────────┐              ┌──────────────────────┐     │
-│   │ your-app             │              │ agenteye-collector   │     │
-│   │ (SDK writes JSONL)   │              │ (sweeps events/,     │     │
-│   │                      │              │  uploads over mTLS)  │     │
-│   └──────────┬───────────┘              └──────────┬───────────┘     │
-│              │ writes                        reads │                 │
-│              ▼                                     ▼                 │
-│     ┌────────────────────────────────────────────────────┐           │
-│     │  emptyDir: /var/lib/agenteye/{events,failed}/      │           │
-│     │  (AGENTEYE_HOME - shared event spool)              │           │
-│     └────────────────────────────────────────────────────┘           │
-│                                                   ▲                  │
-│                                                   │ reads cert       │
-│                                          ┌────────┴─────────┐        │
-│                                          │ CSI (read-only): │        │
-│                                          │ /etc/agenteye/   │        │
-│                                          │ tls/client.{crt, │        │
-│                                          │   key}, ca.crt   │        │
-│                                          └────────┬─────────┘        │
-└───────────────────────────────────────────────────┼──────────────────┘
-                                                    │ mounted by
-                                                    │ Secrets Store CSI
-                                                    │ (AWS provider +
-                                                    │ IRSA)
-                                           ┌────────┴──────────┐
-                                           │ AWS Secrets       │
-                                           │ Manager           │
-                                           │ agenteye/mtls-    │
-                                           │ client/<cluster>  │
-                                           └────────┬──────────┘
-                                                    ▲
-                                                    │ push on issue /
-                                                    │ renewal
-                                           ┌────────┴──────────┐
-                                           │ Exosphere         │
-                                           │ delivers the cert │
-                                           │ bundle into your  │
-                                           │ Secrets Manager   │
-                                           │ on renewal        │
-                                           └───────────────────┘
-
-Outbound: collector → AGENTEYE_URL (mTLS, using the CSI-mounted cert).
+```mermaid
+flowchart TD
+    subgraph pod["Pod"]
+        APP["your-app<br/>SDK writes JSONL"] -->|writes| SPOOL["emptyDir spool<br/>/var/lib/agenteye (events + failed)<br/>AGENTEYE_HOME"]
+        COL["agenteye-collector<br/>sweeps events/, uploads over mTLS"] -->|reads| SPOOL
+        CSI["CSI mount (read-only)<br/>/etc/agenteye/tls: client.crt, client.key, ca.crt"] -->|reads cert| COL
+    end
+    SM["AWS Secrets Manager<br/>agenteye/mtls-client/(cluster)"] -->|"mounted by Secrets Store CSI (AWS + IRSA)"| CSI
+    EXO["Exosphere delivers the cert bundle<br/>on issue / renewal"] --> SM
+    COL -->|"outbound: mTLS to AGENTEYE_URL"| INGEST["AgentEye ingest"]
 ```
 
 Two data flows, two volumes:
@@ -104,7 +71,7 @@ Before you deploy, Exosphere delivers the mTLS client bundle into your AWS accou
 - The **secret name** (convention: `agenteye/mtls-client/<your-cluster>`)
 - The **AWS region** the secret lives in
 - The **AgentEye backend URL** to configure the collector with
-- Your collector **API key** (see [enterprise-docs/api-keys.md](/agenteye/api-keys))
+- Your collector **API key** (see [API keys](/agenteye/api-keys))
 
 ---
 
@@ -121,13 +88,13 @@ What arrives in your account:
 | Payload | A single JSON secret with three keys (`client.crt`, `client.key`, and `ca.crt`), each holding the PEM-encoded material |
 | Tag | `AgentEyeCluster=<cluster-name>` |
 
-On renewal, the same secret is updated in place with a new version, so the ARN and name never change; your `SecretProviderClass` and IAM policy keep working untouched. For the certificate lifecycle (validity, renewal cadence, expiry alerting) see [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment).
+On renewal, the same secret is updated in place with a new version, so the ARN and name never change; your `SecretProviderClass` and IAM policy keep working untouched. For the certificate lifecycle (validity, renewal cadence, expiry alerting) see the [Kubernetes deployment](/agenteye/kubernetes-deployment) guide.
 
 ---
 
 ## Phase 2: Install the Secrets Store CSI Driver + AWS provider
 
-Skip this step if you already run another workload that mounts AWS secrets via CSI.
+The Secrets Store CSI Driver is a Kubernetes add-on that mounts secrets from an external store (here, AWS Secrets Manager) into a pod as read-only files. Skip this step if you already run another workload that mounts AWS secrets via CSI.
 
 ```bash
 # CSI Driver
@@ -152,7 +119,7 @@ kubectl get pods -n kube-system | grep -E 'csi-secrets-store|aws-provider'
 
 Expected: `Running` for every pod.
 
-> **Why `rotationPollInterval=1h`?** When Exosphere publishes a renewed certificate, Secrets Manager is updated in place. The CSI Driver re-reads the secret on this interval and re-writes the mounted files. The collector reads the certificate files once at startup, so it begins presenting the renewed certificate only after a process restart; see § Certificate rotation for how to trigger one.
+> **Note:** `rotationPollInterval=1h` sets how often the CSI Driver re-reads the secret. When Exosphere publishes a renewed certificate, Secrets Manager is updated in place; the CSI Driver picks it up on this interval and re-writes the mounted files. The collector reads the certificate files once at startup, so it begins presenting the renewed certificate only after a process restart; see § Certificate rotation for how to trigger one.
 
 ---
 
@@ -268,9 +235,9 @@ kubectl apply -f agenteye-mtls-spc.yaml
 
 - Both containers mount the **same** `emptyDir` volume at the **same** path.
 - Both containers set `AGENTEYE_HOME` to that path.
-- Your application image must have the AgentEye SDK installed and configured (see [enterprise-docs/python-sdk.md](/agenteye/python-sdk)).
+- Your application image must have the AgentEye SDK installed and configured (see [Python SDK](/agenteye/python-sdk)).
 
-> When `AGENTEYE_HOME` is unset, both the SDK and the collector default to `~/.agenteye`, and the two containers have different home directories, so they would land on two separate spools and the handoff would silently fail. Set `AGENTEYE_HOME` to the same explicit path on **both** containers. The §4.3 verification and the matching Troubleshooting row catch this if it is missed.
+> **Warning:** When `AGENTEYE_HOME` is unset, both the SDK and the collector default to `~/.agenteye`, and the two containers have different home directories, so they would land on two separate spools and the handoff would silently fail. Set `AGENTEYE_HOME` to the same explicit path on **both** containers. The §4.3 verification and the matching Troubleshooting row catch this if it is missed.
 
 `agenteye-pod.yaml` (Deployment with one replica, scale as needed):
 
@@ -356,7 +323,7 @@ spec:
               secretProviderClass: agenteye-mtls
 ```
 
-The `agenteye-collector-api-key` Secret holds the collector's API key (see [enterprise-docs/api-keys.md](/agenteye/api-keys) for provisioning).
+The `agenteye-collector-api-key` Secret holds the collector's API key (see [API keys](/agenteye/api-keys) for provisioning).
 
 **Apply:**
 
@@ -399,9 +366,13 @@ kubectl exec -n <your-namespace> deploy/my-app-with-collector \
   -c agenteye-collector -- agenteye-collector flush
 ```
 
-Expected: the collector uploads any queued events and prints a `Done: N/N uploaded, 0 failed.` summary. If the spool is empty it prints `No pending files.` and exits without validating anything — so run this only after your app has flushed at least one event.
+Expected: the collector uploads any queued events and prints a `Done: N/N uploaded, 0 failed.` summary. On an empty spool it still validates your configuration and reads and parses the TLS certificate first, then prints `No pending files.` and exits without ever exercising the upload/network path. So `flush` is a meaningful end-to-end smoke test only after your app has flushed at least one event.
 
-Note that `flush` exits non-zero **only** for local setup faults: missing configuration (no URL/key resolved) or an unreadable/unparseable TLS cert (check § Troubleshooting). A **wrong API key does not change the exit code** — the upload gets a `401`, the file is moved to `failed/`, and the command still prints `[FAILED] …` per file plus `Done: 0/N uploaded, N failed.` and exits `0`. To detect a bad key or a rejected upload, read the `Done:`/`[FAILED]` output or check for files landing in `$AGENTEYE_HOME/failed/`, not the exit code.
+Note that `flush` exits non-zero **only** for local setup faults: missing configuration (no URL/key resolved) or an unreadable/unparseable TLS cert (check § Troubleshooting). A **wrong API key does not change the exit code**. The upload gets a `401`, the file is moved to `failed/`, and the command still prints `[FAILED] …` per file plus `Done: 0/N uploaded, N failed.` and exits `0`. To detect a bad key or a rejected upload, read the `Done:`/`[FAILED]` output or check for files landing in `$AGENTEYE_HOME/failed/`, not the exit code.
+
+Once events flow through, they show up in your AgentEye dashboard's events stream:
+
+![AgentEye dashboard events stream showing telemetry arriving after the smoke test](/agenteye/images/events-stream.png)
 
 ---
 
@@ -476,9 +447,9 @@ Both the `events/` and `failed/` subdirectories are auto-created by the collecto
 
 ---
 
-## Related docs
+## Next steps
 
-- [enterprise-docs/collector-installation.md](/agenteye/collector-installation): collector binary options, mTLS config reference, daemon modes.
-- [enterprise-docs/kubernetes-deployment.md](/agenteye/kubernetes-deployment): multi-pod deployment, cert issuance internals, lifecycle and expiry alerts.
-- [enterprise-docs/api-keys.md](/agenteye/api-keys): provisioning the collector API key consumed by the pod.
-- [enterprise-docs/troubleshooting.md](/agenteye/troubleshooting): cluster-wide troubleshooting index.
+- [Collector installation](/agenteye/collector-installation): collector binary options, mTLS config reference, daemon modes.
+- [Kubernetes deployment](/agenteye/kubernetes-deployment): multi-pod deployment, cert issuance internals, lifecycle and expiry alerts.
+- [API keys](/agenteye/api-keys): provisioning the collector API key consumed by the pod.
+- [Troubleshooting](/agenteye/troubleshooting): cluster-wide troubleshooting index.

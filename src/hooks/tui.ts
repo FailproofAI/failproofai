@@ -475,8 +475,12 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | null> {
   const stdout: TTYOut = opts.stdout ?? process.stdout;
   const choices = opts.choices;
 
+  // Guard empty choices before the TTY branch too — otherwise the Enter handler
+  // dereferences choices[0].value on a TTY. Matches the non-TTY null behavior.
+  if (!choices.length) return Promise.resolve(null);
+
   if (!stdin.isTTY || !stdout.isTTY) {
-    return Promise.resolve(choices.length ? choices[0].value : null);
+    return Promise.resolve(choices[0].value);
   }
 
   const c = paint(colorsEnabled(stdout));

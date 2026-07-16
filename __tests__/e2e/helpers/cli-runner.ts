@@ -7,9 +7,9 @@
 import { spawnSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { expect } from "vitest";
+import { afterAll, expect } from "vitest";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -20,6 +20,16 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 // config (Bun honors the spawn-env HOME, so overriding it here fully isolates).
 // Created once per test module; the OS reclaims it from tmp.
 const ISOLATED_HOME = mkdtempSync(resolve(tmpdir(), "failproofai-cli-e2e-"));
+
+// Remove the throwaway HOME after the importing suite finishes so repeated e2e
+// runs don't accumulate config artifacts in tmp (mkdtempSync leaves it behind).
+afterAll(() => {
+  try {
+    rmSync(ISOLATED_HOME, { recursive: true, force: true });
+  } catch {
+    // best-effort — the OS reclaims tmp regardless
+  }
+});
 
 function getBinaryPath(): string {
   return resolve(REPO_ROOT, "bin/failproofai.mjs");

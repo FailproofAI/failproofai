@@ -188,6 +188,20 @@ describe("hooks/handler", () => {
     expect(flushHookTelemetry).toHaveBeenCalled();
   });
 
+  it("flushes pending telemetry even when policy evaluation throws (finally path)", async () => {
+    // A throw before the happy-path flush (e.g. policy eval / custom-hook load)
+    // must still drain pending error telemetry — the handler's try/finally
+    // guarantees it, so the caller's process.exit() can't drop in-flight POSTs.
+    mockStdin();
+    const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+    vi.mocked(evaluatePolicies).mockRejectedValueOnce(new Error("policy eval boom"));
+    const { flushHookTelemetry } = await import("../../src/hooks/hook-telemetry");
+
+    await expect(handleHookEvent("PreToolUse")).rejects.toThrow("policy eval boom");
+
+    expect(flushHookTelemetry).toHaveBeenCalled();
+  });
+
   it("persists deny decision when evaluator returns deny", async () => {
     const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
     vi.mocked(evaluatePolicies).mockResolvedValueOnce({

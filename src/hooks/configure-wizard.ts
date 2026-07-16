@@ -14,7 +14,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 
 import { selectOne, multiSelect, intro, outro, summarize, type TTYIn, type TTYOut } from "./tui";
 import {
@@ -51,7 +51,11 @@ async function emit(event: string, props: Record<string, unknown>): Promise<void
 /** Replace ~ prefix with the literal home dir path for readable review output. */
 function homeify(p: string): string {
   const home = homedir();
-  return p.startsWith(home) ? "~" + p.slice(home.length) : p;
+  // Require a path boundary so `/home/alice-work` isn't collapsed to `~-work`
+  // for a home of `/home/alice`.
+  if (p === home) return "~";
+  if (p.startsWith(home + sep)) return "~" + p.slice(home.length);
+  return p;
 }
 
 // ── Pure builders (exported for tests) ───────────────────────────────────────

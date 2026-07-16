@@ -31,7 +31,7 @@ describe("policy-presets", () => {
   });
 
   it("git preset is exactly the Git category", () => {
-    const gitNames = BUILTIN_POLICIES.filter((p) => p.category === "Git").map((p) => p.name);
+    const gitNames = BUILTIN_POLICIES.filter((p) => !p.beta && p.category === "Git").map((p) => p.name);
     expect(new Set(resolvePreset("git"))).toEqual(new Set(gitNames));
   });
 

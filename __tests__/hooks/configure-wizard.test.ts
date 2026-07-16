@@ -37,6 +37,7 @@ import {
 } from "../../src/hooks/configure-wizard";
 import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES } from "../../src/hooks/types";
+import { runPostSetupAudit } from "../../src/audit/cli";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
 const mkTtyStdout = (): TTYOut =>
@@ -67,6 +68,7 @@ beforeEach(() => {
   vi.mocked(selectOne).mockReset();
   vi.mocked(multiSelect).mockReset();
   vi.mocked(installHooks).mockClear();
+  vi.mocked(runPostSetupAudit).mockClear();
 });
 
 describe("configure-wizard pure builders", () => {
@@ -238,6 +240,7 @@ describe("first-run redirect", () => {
     expect(hasSeenLauncher()).toBe(false); // cancelled → not marked → redirects again next time
     expect(existsSync(resolve(tmp, ".failproofai", ".launcher-configured"))).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
+    expect(runPostSetupAudit).not.toHaveBeenCalled(); // no apply → no auto-audit
   });
 
   it("marks the launcher seen only after a completed apply", async () => {
@@ -251,6 +254,7 @@ describe("first-run redirect", () => {
     expect(handled).toBe(true);
     expect(installHooks).toHaveBeenCalledTimes(1);
     expect(hasSeenLauncher()).toBe(true);
+    expect(runPostSetupAudit).toHaveBeenCalledTimes(1); // completed apply → auto-audit handoff
   });
 
   it("does not redirect again once the launcher has been seen", async () => {

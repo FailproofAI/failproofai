@@ -92,293 +92,295 @@ export async function handleHookEvent(
   cli: IntegrationType = "claude",
 ): Promise<number> {
   const startTime = performance.now();
-
-  // Read stdin payload (Claude passes JSON)
-  const MAX_STDIN_BYTES = 1_048_576; // 1 MB
-  let payload = "";
-  let stdinOversized = false;
   try {
-    payload = await new Promise<string>((resolve, reject) => {
-      const chunks: string[] = [];
-      let totalBytes = 0;
-      process.stdin.setEncoding("utf8");
-      process.stdin.on("data", (chunk: string) => {
-        totalBytes += Buffer.byteLength(chunk);
-        if (totalBytes > MAX_STDIN_BYTES) {
-          hookLogWarn(`stdin payload exceeds 1 MB for ${eventType}, discarding`);
-          stdinOversized = true;
-          process.stdin.destroy();
-          resolve("");
-          return;
-        }
-        chunks.push(chunk);
-      });
-      process.stdin.on("end", () => resolve(chunks.join("")));
-      process.stdin.on("error", reject);
-      // If stdin is already closed or not piped, resolve immediately
-      if (process.stdin.readableEnded) resolve("");
-    });
-  } catch (err) {
-    hookLogWarn(`stdin read failed for ${eventType}`);
-    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
-      event_type: eventType,
-      cli,
-      error_type: err instanceof Error ? err.name : "unknown",
-    });
-  }
-  if (stdinOversized) {
-    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
-      event_type: eventType,
-      cli,
-      error_type: "oversized",
-    });
-  }
 
-  let parsed: Record<string, unknown> = {};
-  if (payload) {
+    // Read stdin payload (Claude passes JSON)
+    const MAX_STDIN_BYTES = 1_048_576; // 1 MB
+    let payload = "";
+    let stdinOversized = false;
     try {
-      parsed = JSON.parse(payload) as Record<string, unknown>;
-    } catch {
-      hookLogWarn(`payload parse failed for ${eventType} (${payload.length} bytes)`);
-      void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
+      payload = await new Promise<string>((resolve, reject) => {
+        const chunks: string[] = [];
+        let totalBytes = 0;
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", (chunk: string) => {
+          totalBytes += Buffer.byteLength(chunk);
+          if (totalBytes > MAX_STDIN_BYTES) {
+            hookLogWarn(`stdin payload exceeds 1 MB for ${eventType}, discarding`);
+            stdinOversized = true;
+            process.stdin.destroy();
+            resolve("");
+            return;
+          }
+          chunks.push(chunk);
+        });
+        process.stdin.on("end", () => resolve(chunks.join("")));
+        process.stdin.on("error", reject);
+        // If stdin is already closed or not piped, resolve immediately
+        if (process.stdin.readableEnded) resolve("");
+      });
+    } catch (err) {
+      hookLogWarn(`stdin read failed for ${eventType}`);
+      void trackHookEvent(getInstanceId(), "hook_stdin_error", {
         event_type: eventType,
         cli,
-        payload_size: payload.length,
+        error_type: err instanceof Error ? err.name : "unknown",
       });
     }
-  }
-
-  // Antigravity (agy) pipes a camelCase protojson payload; normalize the fields
-  // the handler downstream reads to canonical snake_case BEFORE any
-  // canonicalization runs. `toolCall.{name,args}` → `tool_name`/`tool_input`,
-  // `conversationId` → `session_id`, `workspacePaths[0]` → `cwd`,
-  // `transcriptPath` → `transcript_path`. Verified against agy v1.1.2.
-  if (cli === "antigravity") {
-    const tc = parsed.toolCall as { name?: string; args?: unknown } | undefined;
-    if (tc && typeof tc === "object") {
-      if (tc.name !== undefined) parsed.tool_name = tc.name;
-      if (tc.args !== undefined) parsed.tool_input = tc.args;
+    if (stdinOversized) {
+      void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+        event_type: eventType,
+        cli,
+        error_type: "oversized",
+      });
     }
-    if (typeof parsed.conversationId === "string") parsed.session_id = parsed.conversationId;
-    if (Array.isArray(parsed.workspacePaths) && typeof parsed.workspacePaths[0] === "string") {
-      parsed.cwd = parsed.workspacePaths[0];
-    }
-    if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
-  }
 
-  // Copilot's snake_case events (PreToolUse/PostToolUse/Stop/…) are already
-  // Claude-shaped, but `permissionRequest` alone pipes a camelCase payload
-  // (`hookName`, `sessionId`, `toolName` in lowercase, `toolInput`) — verified
-  // live against Copilot CLI 1.0.71. Normalize the fields the handler reads so
-  // PermissionRequest-matched policies (e.g. block-sudo's Codex-escalation
-  // guard) fire instead of seeing a null tool name.
-  if (cli === "copilot") {
-    if (typeof parsed.toolName === "string" && parsed.tool_name === undefined) {
-      parsed.tool_name = parsed.toolName;
-    }
-    if (parsed.toolInput !== undefined && parsed.tool_input === undefined) {
-      parsed.tool_input = parsed.toolInput;
-    }
-    if (typeof parsed.sessionId === "string" && parsed.session_id === undefined) {
-      parsed.session_id = parsed.sessionId;
-    }
-  }
-
-  // Goose pipes `event` / `working_dir` instead of Claude's `hook_event_name` /
-  // `cwd` (its `tool_name` / `tool_input` are already canonical field names).
-  // Normalize both so resolveCwd keeps its cwd (block-read-outside-cwd) and the
-  // round-tripped event name is available. The --hook arg is already PascalCase,
-  // so canonicalizeEventType needs no goose branch. Verified goose v1.43.0.
-  if (cli === "goose") {
-    if (typeof parsed.working_dir === "string") parsed.cwd = parsed.working_dir;
-    if (typeof parsed.event === "string" && parsed.hook_event_name === undefined) {
-      parsed.hook_event_name = parsed.event;
-    }
-  }
-
-  // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
-  const canonicalEventType = canonicalizeEventType(eventType, cli);
-
-  // Canonicalize tool name in place so both the policy-registry tool-name
-  // filter and policy bodies (`ctx.toolName === "Bash"`) see the canonical
-  // form. Mutating `parsed.tool_name` keeps the activity store + telemetry
-  // tagging consistent (they read from `parsed.tool_name`).
-  const rawToolName = parsed.tool_name as string | undefined;
-  const canonicalToolName = canonicalizeToolName(rawToolName, cli);
-  if (canonicalToolName !== rawToolName) {
-    parsed.tool_name = canonicalToolName;
-  }
-
-  // Canonicalize tool-input keys for OpenCode + Pi (no-op for other CLIs).
-  // Defense-in-depth against stale shims that still pass camelCase /
-  // Pi-shape keys to the binary. The per-CLI shim ALSO canonicalizes; both
-  // passes are idempotent because the camelCase keys won't match a
-  // snake_case input.
-  const rawInput = parsed.tool_input;
-  const canonicalInput = canonicalizeToolInput(canonicalToolName, rawInput, cli);
-  if (canonicalInput !== rawInput) {
-    parsed.tool_input = canonicalInput;
-  }
-
-  // Extract session metadata from payload
-  const sessionId = parsed.session_id as string | undefined;
-  const session: SessionMetadata = {
-    sessionId,
-    transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
-    cwd: resolveCwd(cli, parsed),
-    permissionMode: resolvePermissionMode(cli, parsed, sessionId),
-    hookEventName: parsed.hook_event_name as string | undefined,
-    // Preserve the raw CLI-side event name (eventType arg) before
-    // canonicalization. Response shapes that round-trip the agent-emitted
-    // event name prefer this over the canonicalized form when stdin omits
-    // hook_event_name.
-    rawHookEventName: eventType,
-    cli,
-  };
-
-  // Load enabled policies (merge across project/local/global scopes)
-  const config = readMergedHooksConfig(session.cwd);
-  clearPolicies();
-  registerBuiltinPolicies(config.enabledPolicies);
-
-  // Load and register custom hooks (layer 2, after builtins)
-  const loadResult = await loadAllCustomHooks(config.customPoliciesPath, { sessionCwd: session.cwd });
-  const customHooksList = loadResult.hooks;
-  const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
-
-  for (const hook of customHooksList) {
-    const hookName = hook.name;
-    const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
-    const isConvention = !!conventionScope;
-    const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
-    const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
+    let parsed: Record<string, unknown> = {};
+    if (payload) {
       try {
-        const result = await Promise.race([
-          hook.fn(ctx),
-          new Promise<PolicyResult>((_, reject) =>
-            setTimeout(() => reject(new Error("timeout")), 10_000),
-          ),
-        ]);
-        return result;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const isTimeout = msg === "timeout";
-        hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
-        void trackHookEvent(getInstanceId(), "custom_hook_error", {
-          hook_name: hookName,
-          error_type: isTimeout ? "timeout" : "exception",
+        parsed = JSON.parse(payload) as Record<string, unknown>;
+      } catch {
+        hookLogWarn(`payload parse failed for ${eventType} (${payload.length} bytes)`);
+        void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
           event_type: eventType,
           cli,
-          is_convention_policy: isConvention,
-          convention_scope: conventionScope ?? null,
+          payload_size: payload.length,
         });
-        return { decision: "allow" };
       }
+    }
+
+    // Antigravity (agy) pipes a camelCase protojson payload; normalize the fields
+    // the handler downstream reads to canonical snake_case BEFORE any
+    // canonicalization runs. `toolCall.{name,args}` → `tool_name`/`tool_input`,
+    // `conversationId` → `session_id`, `workspacePaths[0]` → `cwd`,
+    // `transcriptPath` → `transcript_path`. Verified against agy v1.1.2.
+    if (cli === "antigravity") {
+      const tc = parsed.toolCall as { name?: string; args?: unknown } | undefined;
+      if (tc && typeof tc === "object") {
+        if (tc.name !== undefined) parsed.tool_name = tc.name;
+        if (tc.args !== undefined) parsed.tool_input = tc.args;
+      }
+      if (typeof parsed.conversationId === "string") parsed.session_id = parsed.conversationId;
+      if (Array.isArray(parsed.workspacePaths) && typeof parsed.workspacePaths[0] === "string") {
+        parsed.cwd = parsed.workspacePaths[0];
+      }
+      if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
+    }
+
+    // Copilot's snake_case events (PreToolUse/PostToolUse/Stop/…) are already
+    // Claude-shaped, but `permissionRequest` alone pipes a camelCase payload
+    // (`hookName`, `sessionId`, `toolName` in lowercase, `toolInput`) — verified
+    // live against Copilot CLI 1.0.71. Normalize the fields the handler reads so
+    // PermissionRequest-matched policies (e.g. block-sudo's Codex-escalation
+    // guard) fire instead of seeing a null tool name.
+    if (cli === "copilot") {
+      if (typeof parsed.toolName === "string" && parsed.tool_name === undefined) {
+        parsed.tool_name = parsed.toolName;
+      }
+      if (parsed.toolInput !== undefined && parsed.tool_input === undefined) {
+        parsed.tool_input = parsed.toolInput;
+      }
+      if (typeof parsed.sessionId === "string" && parsed.session_id === undefined) {
+        parsed.session_id = parsed.sessionId;
+      }
+    }
+
+    // Goose pipes `event` / `working_dir` instead of Claude's `hook_event_name` /
+    // `cwd` (its `tool_name` / `tool_input` are already canonical field names).
+    // Normalize both so resolveCwd keeps its cwd (block-read-outside-cwd) and the
+    // round-tripped event name is available. The --hook arg is already PascalCase,
+    // so canonicalizeEventType needs no goose branch. Verified goose v1.43.0.
+    if (cli === "goose") {
+      if (typeof parsed.working_dir === "string") parsed.cwd = parsed.working_dir;
+      if (typeof parsed.event === "string" && parsed.hook_event_name === undefined) {
+        parsed.hook_event_name = parsed.event;
+      }
+    }
+
+    // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
+    const canonicalEventType = canonicalizeEventType(eventType, cli);
+
+    // Canonicalize tool name in place so both the policy-registry tool-name
+    // filter and policy bodies (`ctx.toolName === "Bash"`) see the canonical
+    // form. Mutating `parsed.tool_name` keeps the activity store + telemetry
+    // tagging consistent (they read from `parsed.tool_name`).
+    const rawToolName = parsed.tool_name as string | undefined;
+    const canonicalToolName = canonicalizeToolName(rawToolName, cli);
+    if (canonicalToolName !== rawToolName) {
+      parsed.tool_name = canonicalToolName;
+    }
+
+    // Canonicalize tool-input keys for OpenCode + Pi (no-op for other CLIs).
+    // Defense-in-depth against stale shims that still pass camelCase /
+    // Pi-shape keys to the binary. The per-CLI shim ALSO canonicalizes; both
+    // passes are idempotent because the camelCase keys won't match a
+    // snake_case input.
+    const rawInput = parsed.tool_input;
+    const canonicalInput = canonicalizeToolInput(canonicalToolName, rawInput, cli);
+    if (canonicalInput !== rawInput) {
+      parsed.tool_input = canonicalInput;
+    }
+
+    // Extract session metadata from payload
+    const sessionId = parsed.session_id as string | undefined;
+    const session: SessionMetadata = {
+      sessionId,
+      transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
+      cwd: resolveCwd(cli, parsed),
+      permissionMode: resolvePermissionMode(cli, parsed, sessionId),
+      hookEventName: parsed.hook_event_name as string | undefined,
+      // Preserve the raw CLI-side event name (eventType arg) before
+      // canonicalization. Response shapes that round-trip the agent-emitted
+      // event name prefer this over the canonicalized form when stdin omits
+      // hook_event_name.
+      rawHookEventName: eventType,
+      cli,
     };
-    registerPolicy(
-      `${prefix}/${hookName}`,
-      hook.description ?? "",
-      fn,
-      hook.match ?? {},
-      -1, // Custom hooks run after builtins (priority 0)
-    );
-  }
 
-  // Fire telemetry once per invocation for custom hook loads
-  if (customHooksList.length > 0) {
-    void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
-      cli,
-      custom_hooks_count: customHooksList.length,
-      custom_hook_names: customHooksList.map((h) => h.name),
-      event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
-    });
-  }
+    // Load enabled policies (merge across project/local/global scopes)
+    const config = readMergedHooksConfig(session.cwd);
+    clearPolicies();
+    registerBuiltinPolicies(config.enabledPolicies);
 
-  // Fire telemetry for convention-based policy discovery
-  if (loadResult.conventionSources.length > 0) {
-    void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
-      event_type: canonicalEventType,
-      cli,
-      project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
-      user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
-      convention_hook_count: conventionHookNames.size,
-      convention_hook_names: [...conventionHookNames],
-    });
-  }
+    // Load and register custom hooks (layer 2, after builtins)
+    const loadResult = await loadAllCustomHooks(config.customPoliciesPath, { sessionCwd: session.cwd });
+    const customHooksList = loadResult.hooks;
+    const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 
-  hookLogInfo(`event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`);
+    for (const hook of customHooksList) {
+      const hookName = hook.name;
+      const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
+      const isConvention = !!conventionScope;
+      const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
+      const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
+        try {
+          const result = await Promise.race([
+            hook.fn(ctx),
+            new Promise<PolicyResult>((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), 10_000),
+            ),
+          ]);
+          return result;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isTimeout = msg === "timeout";
+          hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
+          void trackHookEvent(getInstanceId(), "custom_hook_error", {
+            hook_name: hookName,
+            error_type: isTimeout ? "timeout" : "exception",
+            event_type: eventType,
+            cli,
+            is_convention_policy: isConvention,
+            convention_scope: conventionScope ?? null,
+          });
+          return { decision: "allow" };
+        }
+      };
+      registerPolicy(
+        `${prefix}/${hookName}`,
+        hook.description ?? "",
+        fn,
+        hook.match ?? {},
+        -1, // Custom hooks run after builtins (priority 0)
+      );
+    }
 
-  // Evaluate policies (use canonical PascalCase event type)
-  const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
-  const durationMs = Math.round(performance.now() - startTime);
-  hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
+    // Fire telemetry once per invocation for custom hook loads
+    if (customHooksList.length > 0) {
+      void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
+        cli,
+        custom_hooks_count: customHooksList.length,
+        custom_hook_names: customHooksList.map((h) => h.name),
+        event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
+      });
+    }
 
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-
-  // Persist activity to disk (visible in /policies activity tab)
-  const activityEntry = {
-    timestamp: Date.now(),
-    eventType: canonicalEventType,
-    integration: cli,
-    toolName: (parsed.tool_name as string) ?? null,
-    policyName: result.policyName,
-    policyNames: result.policyNames,
-    decision: result.decision,
-    reason: result.reason,
-    durationMs,
-    sessionId: session.sessionId,
-    transcriptPath: session.transcriptPath,
-    cwd: session.cwd,
-    permissionMode: session.permissionMode,
-    hookEventName: session.hookEventName,
-  };
-  try {
-    persistHookActivity(activityEntry);
-  } catch {
-    hookLogWarn("activity persistence failed");
-  }
-
-  // Fire PostHog telemetry for decisions that affect Claude's behavior
-  if (result.decision === "deny" || result.decision === "instruct") {
-    try {
-      const isCustomHook = result.policyName?.startsWith("custom/") ?? false;
-      const isConventionPolicy = result.policyName?.startsWith(".failproofai-") ?? false;
-      const conventionScope = isConventionPolicy
-        ? result.policyName!.match(/^\.failproofai-(project|user)\//)?.[1] ?? null
-        : null;
-      const hasCustomParams =
-        !isCustomHook && !isConventionPolicy && !!(result.policyName && config.policyParams?.[result.policyName]);
-      const paramKeysOverridden = hasCustomParams
-        ? Object.keys(config.policyParams![result.policyName!])
-        : [];
-      const distinctId = getInstanceId();
-      await trackHookEvent(distinctId, "hook_policy_triggered", {
+    // Fire telemetry for convention-based policy discovery
+    if (loadResult.conventionSources.length > 0) {
+      void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
         event_type: canonicalEventType,
         cli,
-        tool_name: (parsed.tool_name as string) ?? null,
-        policy_name: result.policyName,
-        decision: result.decision,
-        is_custom_hook: isCustomHook,
-        is_convention_policy: isConventionPolicy,
-        convention_scope: conventionScope,
-        has_custom_params: hasCustomParams,
-        param_keys_overridden: paramKeysOverridden,
+        project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
+        user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
+        convention_hook_count: conventionHookNames.size,
+        convention_hook_names: [...conventionHookNames],
       });
-    } catch {
-      // Telemetry is best-effort — never block the hook
     }
+
+    hookLogInfo(`event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`);
+
+    // Evaluate policies (use canonical PascalCase event type)
+    const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
+    const durationMs = Math.round(performance.now() - startTime);
+    hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
+
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+
+    // Persist activity to disk (visible in /policies activity tab)
+    const activityEntry = {
+      timestamp: Date.now(),
+      eventType: canonicalEventType,
+      integration: cli,
+      toolName: (parsed.tool_name as string) ?? null,
+      policyName: result.policyName,
+      policyNames: result.policyNames,
+      decision: result.decision,
+      reason: result.reason,
+      durationMs,
+      sessionId: session.sessionId,
+      transcriptPath: session.transcriptPath,
+      cwd: session.cwd,
+      permissionMode: session.permissionMode,
+      hookEventName: session.hookEventName,
+    };
+    try {
+      persistHookActivity(activityEntry);
+    } catch {
+      hookLogWarn("activity persistence failed");
+    }
+
+    // Fire PostHog telemetry for decisions that affect Claude's behavior
+    if (result.decision === "deny" || result.decision === "instruct") {
+      try {
+        const isCustomHook = result.policyName?.startsWith("custom/") ?? false;
+        const isConventionPolicy = result.policyName?.startsWith(".failproofai-") ?? false;
+        const conventionScope = isConventionPolicy
+          ? result.policyName!.match(/^\.failproofai-(project|user)\//)?.[1] ?? null
+          : null;
+        const hasCustomParams =
+          !isCustomHook && !isConventionPolicy && !!(result.policyName && config.policyParams?.[result.policyName]);
+        const paramKeysOverridden = hasCustomParams
+          ? Object.keys(config.policyParams![result.policyName!])
+          : [];
+        const distinctId = getInstanceId();
+        await trackHookEvent(distinctId, "hook_policy_triggered", {
+          event_type: canonicalEventType,
+          cli,
+          tool_name: (parsed.tool_name as string) ?? null,
+          policy_name: result.policyName,
+          decision: result.decision,
+          is_custom_hook: isCustomHook,
+          is_convention_policy: isConventionPolicy,
+          convention_scope: conventionScope,
+          has_custom_params: hasCustomParams,
+          param_keys_overridden: paramKeysOverridden,
+        });
+      } catch {
+        // Telemetry is best-effort — never block the hook
+      }
+    }
+    return result.exitCode;
+  } finally {
+    // Await any un-awaited (`void trackHookEvent(...)`) events fired during
+    // this invocation. bin/failproofai.mjs calls process.exit() the moment we
+    // return OR throw, which would otherwise drop in-flight POSTs — notably on
+    // the allow path (no trailing awaited event) and on any early throw
+    // (custom-hook load / policy eval) before the happy path is reached.
+    await flushHookTelemetry();
   }
-
-  // Await any un-awaited (`void trackHookEvent(...)`) events fired during this
-  // invocation before returning. The caller (bin/failproofai.mjs) calls
-  // process.exit() as soon as we return, which would otherwise drop in-flight
-  // POSTs — notably on the allow path, which has no trailing awaited event.
-  await flushHookTelemetry();
-
-  return result.exitCode;
 }

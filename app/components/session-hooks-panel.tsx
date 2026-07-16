@@ -328,6 +328,10 @@ export default function SessionHooksPanel({ sessionId, initialData }: SessionHoo
                   <React.Fragment key={`${item.timestamp}-${i}`}>
                     <tr
                       onClick={() => toggleRow(i)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleRow(i); } }}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={isExpanded}
                       className={`cursor-pointer transition-colors ${
                         isDeny
                           ? "bg-red-500/[0.03] hover:bg-red-500/[0.07] border-l-2 border-l-red-500/40"
@@ -343,6 +347,7 @@ export default function SessionHooksPanel({ sessionId, initialData }: SessionHoo
                           className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${
                             isExpanded ? "rotate-0" : "-rotate-90"
                           }`}
+                          aria-hidden="true"
                         />
                       </td>
                       <td className="px-3 py-2">

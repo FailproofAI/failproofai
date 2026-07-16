@@ -1,6 +1,6 @@
 /**
- * Validate that every docs MDX page parses with the same MDX engine Mintlify
- * runs at deploy time.
+ * Validate that every docs page (`.mdx` and `.md` — Mintlify parses both as
+ * MDX) parses with the same MDX engine Mintlify runs at deploy time.
  *
  * Why this exists: `mintlify validate` (the existing `docs` CI job) only checks
  * `docs.json` structure and nav-link resolution — it does NOT parse page
@@ -91,12 +91,20 @@ export function encodeAnnotation(value: string): string {
     .replace(/\n/g, "%0A");
 }
 
-function collectMdxFiles(dir: string): string[] {
+/**
+ * Collect every Mintlify content page under `dir`. Mintlify runs BOTH `.mdx`
+ * and `.md` files through the same MDX pipeline at deploy time, so a `.md` page
+ * with an MDX syntax error (e.g. an HTML `<!-- -->` comment, which MDX rejects)
+ * fails the deploy exactly like a broken `.mdx` would. The docs/i18n README
+ * translations are `.md`, so restricting this walk to `.mdx` let their breakage
+ * sail past this safety net and reach the post-merge deploy — collect both.
+ */
+export function collectMdxFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...collectMdxFiles(full));
-    else if (entry.endsWith(".mdx")) out.push(full);
+    else if (entry.endsWith(".mdx") || entry.endsWith(".md")) out.push(full);
   }
   return out;
 }

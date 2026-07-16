@@ -3,7 +3,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LANGUAGES, getLanguageByCode } from "./config";
 import { translateContent } from "./translator";
-import { stripStrayTrailingFence, convertHtmlComments } from "./mdx-translator";
+import {
+  stripStrayTrailingFence,
+  convertHtmlComments,
+  sanitizeJsxAttributes,
+} from "./mdx-translator";
 import { readCache, writeCache, isCached, setCacheEntry } from "./cache";
 import type { TranslationResult, TranslationCache } from "./types";
 
@@ -103,11 +107,14 @@ export async function translateReadme(
   const rtlOpen = langConfig.rtl ? `<div dir="rtl">\n\n` : "";
   const rtlClose = langConfig.rtl ? `\n\n</div>` : "";
 
-  // Drop any stray trailing fence the model hallucinated — would otherwise
-  // open an unclosed code block that swallows the wrapping `</div>` for RTL
-  // pages and break Mintlify's MDX parser — and convert the README's HTML
-  // comments to MDX comments, which Mintlify parses as MDX and would reject.
-  const cleaned = convertHtmlComments(stripStrayTrailingFence(translated));
+  // Run the same MDX sanitizers as translateMdxPage — the README emits JSX
+  // (the logo table), so its output has to satisfy Mintlify's MDX parser too:
+  // strip stray quote artifacts from JSX attributes, drop any unmatched
+  // trailing code fence the model hallucinates (which would swallow the RTL
+  // `</div>` wrapper), and convert HTML comments to MDX comments.
+  const cleaned = convertHtmlComments(
+    stripStrayTrailingFence(sanitizeJsxAttributes(translated)),
+  );
 
   const output = `${disclaimer}\n\n${langSelector}\n\n---\n${rtlOpen}\n${cleaned}\n${rtlClose}`;
 

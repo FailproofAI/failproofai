@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join, relative } from "node:path";
+import { tmpdir } from "node:os";
 import {
+  collectMdxFiles,
   encodeAnnotation,
   findMdxParseError,
   stripFrontmatter,
@@ -83,5 +87,47 @@ describe("findMdxParseError", () => {
     const error = await findMdxParseError(src);
     expect(error).not.toBeNull();
     expect(error?.line).toBe(5);
+  });
+
+  it("flags a top-level HTML comment (the docs/i18n README deploy failure)", async () => {
+    // Mintlify parses .md/.mdx as MDX, where `<!-- -->` is a hard syntax error
+    // ("Unexpected character `!` … use the MDX comment form"). This is exactly
+    // what broke every docs/i18n/README.*.md translation at deploy time.
+    const error = await findMdxParseError("# Title\n\n<!-- a note -->\n");
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/character/i);
+  });
+
+  it("accepts the MDX comment form the translator now emits", async () => {
+    expect(await findMdxParseError("# Title\n\n{/* a note */}\n")).toBeNull();
+  });
+
+  it("leaves an HTML comment inside a code fence alone", async () => {
+    // Fenced content is literal in MDX, so the AgentEye collector plist sample
+    // keeps its `<!-- -->` — which is why convertHtmlComments skips fences.
+    const src = "```xml\n<!-- ~/Library/LaunchAgents/foo.plist -->\n```\n";
+    expect(await findMdxParseError(src)).toBeNull();
+  });
+});
+
+describe("collectMdxFiles", () => {
+  it("collects .md and .mdx pages recursively but ignores other files", () => {
+    // Regression guard: Mintlify parses .md pages (e.g. the docs/i18n READMEs)
+    // as MDX too, so the walk must not be restricted to .mdx.
+    const dir = mkdtempSync(join(tmpdir(), "validate-mdx-collect-"));
+    try {
+      writeFileSync(join(dir, "page.mdx"), "# mdx\n");
+      writeFileSync(join(dir, "readme.md"), "# md\n");
+      writeFileSync(join(dir, "notes.txt"), "ignore me\n");
+      mkdirSync(join(dir, "sub"));
+      writeFileSync(join(dir, "sub", "nested.md"), "# nested\n");
+
+      const found = collectMdxFiles(dir)
+        .map((f) => relative(dir, f))
+        .sort();
+      expect(found).toEqual(["page.mdx", "readme.md", "sub/nested.md"].sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -25,7 +25,7 @@ const options = [
   {
     label: "Join our Discord",
     icon: MessageCircle,
-    href: "https://discord.gg/2zjBZP7yQJ",
+    href: "https://discord.befailproof.ai/",
     color: "#5865f2",
     bg: "rgba(88,101,242,0.08)",
   },

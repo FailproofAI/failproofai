@@ -35,7 +35,7 @@ describe("ReachDevelopers", () => {
     await user.click(btn);
 
     const discordLink = screen.getByText("Join our Discord").closest("a");
-    expect(discordLink).toHaveAttribute("href", "https://discord.gg/2zjBZP7yQJ");
+    expect(discordLink).toHaveAttribute("href", "https://discord.befailproof.ai/");
 
     const feedbackLink = screen.getByText("Feedback & Issues").closest("a");
     expect(feedbackLink).toHaveAttribute(

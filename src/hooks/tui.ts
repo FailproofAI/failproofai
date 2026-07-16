@@ -287,7 +287,7 @@ export function renderLaunchBanner(version: string, stdout: TTYOut = process.std
     row("version", c.pink(version)),
     row("star", c.dim("https://github.com/failproofai/failproofai")),
     row("docs", c.dim("https://docs.befailproof.ai/introduction")),
-    row("discord", c.dim("https://discord.gg/2zjBZP7yQJ")),
+    row("discord", c.dim("https://discord.befailproof.ai/")),
     "",
   ];
 }

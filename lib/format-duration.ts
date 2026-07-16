@@ -16,14 +16,28 @@ export function formatRelativeTime(ts: number): string {
 
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const totalMinutes = Math.floor(seconds / 60);
-  if (totalMinutes >= 60) {
-    const hours = Math.floor(totalMinutes / 60);
-    const remainingMinutes = totalMinutes % 60;
-    return `${hours}h ${remainingMinutes}m`;
+
+  // Round to the precision the output will actually use, then bucket.
+  // Seconds are shown with one decimal place, so round to the nearest 0.1 s
+  // before deciding whether we have crossed into the minute range.
+  const deciseconds = Math.round(ms / 100);
+  if (deciseconds < 600) {
+    return `${(deciseconds / 10).toFixed(1)}s`;
   }
-  const remainingSeconds = (seconds % 60).toFixed(0);
-  return `${totalMinutes}m ${remainingSeconds}s`;
+
+  // Minutes are shown with whole seconds, so round to the nearest second
+  // before splitting into minutes and seconds.
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 3600) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}m ${seconds}s`;
+  }
+
+  // Hours are shown with whole minutes, so round to the nearest minute
+  // before splitting into hours and minutes.
+  const totalMinutes = Math.round(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
 }

@@ -1,116 +1,52 @@
 ---
-title: "Audits: agentic improvement detection"
-description: "AgentEye Audits: agentic improvement detection documentation."
+title: "Audits: your automatic reliability analyst"
+description: "AgentEye Audits: your automatic reliability analyst documentation."
 ---
 
 
-Audits tell you what to fix in your AI agents. An audit is a scheduled job that reads across all your agent sessions, hunts for patterns worth improving (a leaked API key, a silently failing tool, a prompt that is quietly degrading) and writes up concrete recommendations with the evidence behind each one. Use audits to answer "what should I improve?"; use alerts to be paged the moment a threshold you already know about is crossed.
+AgentEye goes looking for the failures you never wrote a rule for and hands you a ranked, evidence-backed to-do list of exactly what to fix. It is like having an analyst comb your logs every night, then leaving the short list on your desk by morning.
 
-Every recommendation links to the exact sessions and queries behind it, and a one-click shortcut drafts a recurrence alert so you catch the issue if it comes back. You will find audits in the dashboard at **`/<org-slug>/audits`** (sidebar → *analyze* → *audits*), gated by the `audits:read` / `audits:write` permissions.
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
-[![Watch: Automatically find where your agent is failing (2 min)](/agenteye/images/video-audit.jpg)](https://youtu.be/C5nHKGQIqZQ)
+*A two-minute tour: from a scheduled run to a fix you can act on.*
 
-*A two-minute tour of automatic failure audits: from a scheduled run to a fix you can act on.*
+![The Audits page: recurring jobs that scan your sessions for failure patterns, each with a schedule and sensitivity](/agenteye/images/audits.png)
+*Each audit is a recurring job that mines your sessions and writes up ranked, evidence-backed recommendations.*
 
-![The Audits page: recurring jobs that mine your logs for failure patterns, each with a schedule and analysis mode](/agenteye/images/audits.png)
+## Stop guessing what to fix next
 
----
+Alerts catch the problems you already know to watch for. Audits catch the ones you don't. On a schedule you set, an audit reads across all of your agent sessions and hunts for the patterns worth fixing, so you spend your time acting on findings instead of scrolling logs hoping to spot them yourself.
 
-## How a run works
+A single run goes after the failure modes that actually break agents in production:
 
-Each run has two layers: a deterministic floor and an agentic investigation.
+- **Error clusters**: the same failure repeating under a shared root cause.
+- **Drift versus a baseline**: behaviour quietly sliding away from a known-good window.
+- **Goal failure in transcripts**: runs that technically finished but never did the job.
+- **Tool misuse**: the wrong tool, bad arguments, or loops that burn calls.
+- **Quality and cost trade-offs**: where you are overpaying for output you could get cheaper.
+- **Coverage gaps**: behaviour that no eval or alert is watching.
 
-### 1. The policy pass (deterministic)
+You decide how hard it looks with a single **sensitivity** setting (low, medium, or high), so a noisy staging agent and a locked-down production one can each be tuned to the signal you want.
 
-Before any model runs, the audit executes a small catalog of **SQL policy checks** over the window: bounded aggregate queries that flag known-bad patterns and report *how many* events / *which* sessions matched, never the matched text itself. The catalog includes:
+## Every recommendation comes with receipts
 
-- **Secret / credential leakage** in event payloads: AWS access keys, `sk-…` API keys, PEM private keys, JWT / bearer tokens, and `KEY=…` credential assignments.
-- **Prompt-injection markers**: "ignore previous instructions", "reveal your system prompt", and similar.
-- **PII**: SSN-shaped numbers (heuristic).
-- **Tool-permission denials** and **runaway tool-call loops**.
+You never have to take a finding on faith. Each recommendation cites the exact sessions it came from and the SQL that surfaced it, so you can open the evidence and confirm the problem in a click instead of reverse-engineering a claim.
 
-Policy hits are persisted as findings (kind `policy`) that **always surface** (they are never trimmed by the per-run cap), and they are handed to the AI agent as starting leads. Because this layer needs no model, an audit still produces its most important security signals even if the AI agent is unavailable.
+That is also what keeps audits honest. The server checks that every cited session actually exists and **discards any recommendation whose evidence does not hold up**, so the audit investigates but never invents. What lands on your list is real, reproducible, and ranked by how much it matters, with the biggest wins at the top.
 
-### 2. The agentic investigation (AI)
+## Turn a fix into a guardrail
 
-The audit then runs an **autonomous reliability agent**: the same agent service that powers the AI assistant, running an audit-specific prompt. Given the audit's **scope** (selected agents × environments) and **time window**, the agent:
+Fixing an issue is only half the win. The other half is making sure it cannot quietly come back. Every finding carries a **one-click shortcut that drafts a recurrence alert**, prefilled with a sensible starting trigger you can tune. Close the finding, arm the alert, and the next time that pattern reappears you get paged instead of rediscovering it in a future audit.
 
-- runs read-only SQL queries against your analytics tables,
-- reads a handful of representative session transcripts,
-- optionally writes and runs short **Python scripts in a locked-down in-pod sandbox** (no network, no filesystem access, secrets scrubbed) for analysis SQL can't express: clustering errors, computing distributions, sweeping payloads it already fetched,
-- and records each well-evidenced **improvement** it finds.
+## Where to find it
 
-It works through several investigative lines (error clustering, drift vs. a baseline, goal failure in transcripts, tool misuse, quality/cost trade-offs, and coverage gaps) at the audit's **sensitivity** (low / medium / high). Every improvement **must cite evidence**: the session ids the agent actually inspected and/or the SQL it ran. The server validates that cited sessions exist and **discards any improvement with no surviving evidence**, so the agent investigates but never invents.
+Audits live in the dashboard at **`/<org-slug>/audits`** (sidebar to *analyze* to *audits*). Viewing runs and findings needs **`audits:read`**; creating, editing, and triaging audits needs **`audits:write`**. Set an audit's scope and cadence, then hit **Run now** whenever you want results immediately instead of waiting for the next scheduled pass.
 
-Each improvement carries:
+## Related
 
-- a **recommendation** (the concrete change to make: a prompt tweak, a tool-schema fix, a retry policy, a guardrail, more eval coverage),
-- an **expected impact** and an **effort** estimate (low / medium / high),
-- a **magnitude** (how loudly it should surface): `big` (an operator should be paged), `medium` (belongs in the run report), or `small` (dashboard context),
-- a stable **fingerprint**: an identity derived from the issue's category and scope, *not* this run's sessions, so the same issue is tracked run-over-run even as the evidence changes,
-- and, where a simple watcher could catch the issue coming back, a **suggested alert**: a read-only recommendation shown on the run page as a "graduation candidate" for what to watch. (Separately, every finding page has a one-click shortcut that drafts a recurrence alert prefilled with a sensible starting trigger, which you then tune.)
-
-> **Note:** The AI layer is optional but recommended. If no AI agent is configured for the audit pipeline, runs still execute, persist the policy findings, and honestly report "analysis unavailable" for the agentic layer rather than silently passing.
-
-### Failure modes
-
-Improvements classify into your org's durable **failure-mode catalog** (the running list of distinct ways your agents fail) or propose a new mode. Modes give patterns a stable identity across runs and long-horizon recurrence tracking.
-
-## Triage lifecycle
-
-On a finding page (`/audits/<id>/findings/<finding-id>`):
-
-| Action | Effect |
-|---|---|
-| **acknowledge** | Keeps the finding visible but halves its priority. |
-| **resolve** | Marks it fixed. If the pattern genuinely returns later, it re-opens as **new**, so a regression is loud, not silently folded into history. |
-| **mute** / **dismiss** | Durable suppression: the pattern's fingerprint is remembered and never surfaces again, even across runs. Use mute for "known, accepted"; dismiss for "not useful". |
-| **reopen** | Clears suppression / resolution and ranks the pattern again. |
-
-Low-signal noise is controlled per audit with a per-run findings cap (`top_k`) on the agentic improvements. Policy findings bypass the cap (they are security-relevant and always shown). Anything cut by the cap is counted in the run's stats; nothing is silently dropped.
-
-## Scheduling
-
-- **Cadence** (`schedule_interval_secs`): hourly to weekly; **daily is the default**. Audits are deliberately coarser than alerts: an agentic investigation scans whole windows and runs for minutes.
-- **Window**: either a fixed rolling lookback (e.g. "each run scans the last 7 days") or **since-last-run** (the default): each run picks up where the previous successful one ended, with a small overlap so boundary events are never missed.
-- The next run is scheduled a full interval after the previous one **completes**, so a slow run never stacks a second concurrent run of the same audit.
-- **Run now** on the audit page makes it due immediately.
-
-## Model selection
-
-When creating an audit you can pick which model the investigation uses, from the **list of models your operator has configured** for the agent service. With a single model configured, the picker shows it as a caption; with several, you choose. Leaving it unset uses the configured default.
-
-## Notifications
-
-When a run surfaces **new** findings, the audit notifies your organization's configured channels, the same `alerts.enabled_channels` gate and settings the alerts pipeline uses:
-
-- **Slack**: a summary of the significant (`big`) new items with a deep link.
-- **Email**: a designed **audit report** listing the new improvements (top severity, per-item recommendations, deep link), sent when the audit has an **email** channel attached and there is at least one new finding.
-
-Recurring-but-known findings do not re-notify.
-
-## Configuration reference
-
-Audit definitions are managed in the dashboard (`/audits/new`) or via the API. Per-audit settings include the schedule cadence and window, the scope (`{"environments": [...], "agent_ids": [...]}`), the sensitivity (`low` / `medium` / `high`), the notification channels, the per-run findings cap (`top_k`), and the model (via `llm_budget.model`). Operator-level server settings (timeouts, sandbox, the agent-service URL) are documented in [Deployment](/agenteye/deployment).
-
-## API
-
-All endpoints are org-scoped and follow the standard bearer-key auth (see [API keys](/agenteye/api-keys)).
-
-| Endpoint | Permission | Purpose |
-|---|---|---|
-| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | List / create audit definitions. |
-| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Inspect, edit, delete an audit. |
-| `POST /audits/:id/run` | `audits:write` | Make the audit due immediately. |
-| `GET /audits/:id/runs` | `audits:read` | Run history (window, status, stats, finding counts). |
-| `GET /audits/findings` | `audits:read` | Org-wide findings, filterable by `audit_id`, `status`; sorted by priority. |
-| `GET /audits/findings/:fid` | `audits:read` | Full finding detail (recommendation, evidence, priority). |
-| `POST /audits/findings/:fid/status` | `audits:write` | Triage: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
-
-For "audit ran but found nothing", "the code sandbox is disabled", and "audit email not delivered", see [Troubleshooting](/agenteye/troubleshooting#audits).
-
-## Next steps
-
-- [Alerts](/agenteye/alerts): get paged the moment a specific threshold you already know about is crossed.
-- [Evaluation suite](/agenteye/evaluation-suite): score every completed run so quality regressions surface on their own.
-- [AI assistant](/agenteye/assistant): ask questions about your agents in natural language and dig into any finding.
+- [Alerts](/agenteye/alerts): get paged the moment a threshold you already know about is crossed.
+- [Evaluations](/agenteye/evaluations): score every run so quality regressions surface on their own.
+- [Error tracking](/agenteye/error-tracking): group and follow the errors your agents throw.
+- [Incidents](/agenteye/incidents): track an issue an audit turns up through to its fix.

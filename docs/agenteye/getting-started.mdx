@@ -36,7 +36,9 @@ What you get:
 - **Alerts & incidents**: threshold rules that page you (email, Slack, webhook, in-dashboard) plus an incident workflow to triage them.
 - **CLI & AI assistant**: a terminal client (`agenteye`) and the in-dashboard **AI assistant** for asking questions in plain English.
 
-[![Watch: Agent Tracing by Failproof AI (2 min)](/agenteye/images/video-tracing.jpg)](https://youtu.be/VWxukZc5k7s)
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
 *See a live agent run trace itself in the AgentEye dashboard: every tool call, model request, and hook on one timeline.*
 
@@ -235,7 +237,32 @@ Click any session to open its **execution graph**, a git-style view of how agent
 
 ---
 
-## Step 8: Explore, chart, and alert
+## Step 8: Connect your coding agents
+
+The events you are now browsing are one plain-English question away from your terminal. The **`agenteye` CLI** reads and administers your deployment (sessions, events, evals, keys, alerts, incidents), and the **[CLI skill](/agenteye/cli-skill)** teaches a coding agent like Claude Code or Codex to drive it for you, so you can just ask "is anything broken today?" instead of memorizing commands.
+
+Install the CLI and sign in. This is a separate tool from the collector: the collector ships events to the server, while the CLI talks to your dashboard.
+
+```bash
+pipx install agenteye
+agenteye --base-url http://your-dashboard-host:3000 login --email you@example.com   # emailed 6-digit code
+agenteye whoami                                                                      # confirm user and active org
+agenteye --json sessions --since 24h                                                 # the runs from Step 7, as JSON
+```
+
+To let an agent answer for you, place the `agenteye-cli/` skill folder (AgentEye provides it) in `~/.claude/skills/`; Claude Code discovers it automatically. Then ask in plain English:
+
+```text
+you   ▸ Why did session run-001 fail?
+agent ▸ Running: agenteye --json events --session-id run-001 --all
+        checkout-agent hit TimeoutError on its third tool call
+```
+
+The agent runs the CLI as you, so it can do only what your login permits, and it can change things (rotate a key, resolve an incident) as well as read. It states each command and waits for your OK before any write. See [CLI and agents](/agenteye/cli-and-agents) for the full picture, the [CLI reference](/agenteye/cli) for every command, and [CLI recipes](/agenteye/cli-recipes) for automation patterns.
+
+---
+
+## Step 9: Explore, chart, and alert
 
 With events flowing, the **analyze** pages turn raw activity into answers, so you can measure agent behavior, share findings across the team, and get paged the moment something regresses. Dashboard pages are organization-scoped, so the URLs you see in the address bar are prefixed with your org slug (`/<org>/…`).
 

@@ -212,23 +212,23 @@ agenteye orgs perms       # your permissions in the active org, grouped by resou
 None of these need a confirmation. Shared filters: `--session-id`, `--agent-id`, `--env` (**not** `--environment`), and the time range (`--since` / `--from` / `--to`).
 
 ```bash
-# events (alias: the raw per-step trail) — newest first
+# events (alias: the raw per-step trail), newest first
 agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all --limit 1000
 agenteye --json events --since 1h --search timeout --all | jq '.events[].payload'
 
-# sessions — one row per agent run (time/env/agent/session/status; no score filtering)
+# sessions: one row per agent run (time/env/agent/session/status; no score filtering)
 agenteye --json sessions --since 24h --status error
 agenteye --json sessions --agent-id checkout-bot --env prod --all --limit 1000
 
-# evals — evaluation results + scores; --score filters by metric, --aggregate rolls up
+# evals: evaluation results + scores; --score filters by metric, --aggregate rolls up
 agenteye --json evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3
 agenteye --json evals --aggregate --since 7d --env prod        # status mix + per-key score stats
 
-# errors — errored events; --aggregate for counts/sessions/agents/last-seen
+# errors: errored events; --aggregate for counts/sessions/agents/last-seen
 agenteye --json errors --since 24h --aggregate
 agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 
-# list — discover valid filter values before you filter
+# list: discover valid filter values before you filter
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 

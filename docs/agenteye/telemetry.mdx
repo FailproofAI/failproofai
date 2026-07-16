@@ -1,0 +1,52 @@
+---
+title: "Performance Metrics"
+description: "AgentEye Performance Metrics documentation."
+---
+
+
+See the instant your models, tools, or hooks slow down or run up a bill, and catch a tail-latency spike before your users ever feel it. Three dedicated pages turn raw timings into p50, p95, and p99 you can read at a glance.
+
+![The Models page showing a latency heat-map, a percentile band, and per-model token, cost, and context-window figures](/agenteye/images/models.png)
+*The Models page: a latency heat-map, a percentile band, and per-model tokens, estimated cost, and context-window fill.*
+
+## Stop letting averages hide your worst runs
+
+An average latency number is comforting and useless: it smooths over the one call in fifty that stalls and pages your on-call at 2am. The Models, Tools, and Hooks pages refuse to do that. Each shares the same shape, so you learn it once:
+
+- A **24-bin sparkline** for the trend at a glance: is this getting worse?
+- A **vitals strip** with p50, p95, and p99 latency, so the typical run and the tail sit side by side.
+- A **latency heat-map**, 24 time bins by latency buckets, that shows *when* the slow calls clustered.
+- A **percentile band**: a p50 line with p25 to p75 and p10 to p90 shaded ribbons and p99 dots, so the spread stays visible instead of averaged away.
+
+A shared hover crosshair links the heat-map and the band, so a tail spike lines up in time across both instead of hiding behind a single mean line. Find all three pages in the **observe** section of your dashboard, each scoped to your organization and filterable by date range, environment, agent, and session.
+
+## Models: see exactly what each model costs you
+
+The Models page (shown up top) answers the two questions a bill always raises: which model, and how much. On top of the shared latency view, it adds **per-model token consumption**, **estimated cost**, and **context-window fill**, so runaway prompt growth and an impending compaction are visible before they surprise you.
+
+AgentEye recognizes common model IDs automatically. If a window looks wrong, or you run a private model of your own, correct it or add one under **Settings**, in **model context windows**, and the fill readouts follow.
+
+## Tools: tell the slow apart from the broken
+
+A tool call can be slow, or it can be quietly failing, and you want to know which one in seconds, not after digging through logs.
+
+![The Tools page showing the shared latency heat-map and percentile band beside a success and failure breakdown and a tool-distribution bar](/agenteye/images/tools.png)
+*The Tools page: the same heat-map and percentile band, plus a success and failure breakdown and a tool-distribution bar.*
+
+Alongside the shared latency view, the Tools page adds a **success and failure breakdown** and a **tool-distribution bar**, so you see at a glance which tools you lean on most and which are eating your error budget.
+
+## Hooks: pinpoint the exact hook and trigger
+
+When a lifecycle hook drags a run, "hooks are slow" is not something you can act on. The Hooks page gets you to the one that matters.
+
+![The Hooks page showing latency broken down by hook name and trigger event over the shared heat-map and percentile band](/agenteye/images/hooks.png)
+*The Hooks page: latency broken down by hook name and trigger event.*
+
+Over the same latency heat-map and percentile band, the Hooks page breaks activity down by **hook name** and **trigger event**, so you land on the single hook and the single event that need attention.
+
+## Related
+
+- [Event stream](/agenteye/event-stream): the live, colour-coded trail of every event.
+- [Sessions](/agenteye/sessions): roll events up into one row per run and open its execution graph.
+- [Error tracking](/agenteye/error-tracking): one triage surface for everything the dashboard paints red.
+- [Dashboards](/agenteye/dashboards): roll-up views across your fleet.

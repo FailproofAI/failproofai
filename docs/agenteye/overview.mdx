@@ -20,11 +20,15 @@ If you ship AI agents and you're tired of guessing why a run went wrong, this is
 
 Two short videos show the two things teams reach for first: tracing a run, and finding failures automatically.
 
-[![Watch: Agent Tracing by Failproof AI (2 min)](/agenteye/images/video-tracing.jpg)](https://youtu.be/VWxukZc5k7s)
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
 *Agent tracing: follow a single run step by step, from goal to tools to final answer.*
 
-[![Watch: Automatically find where your agent is failing (2 min)](/agenteye/images/video-audit.jpg)](https://youtu.be/C5nHKGQIqZQ)
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
 *Failproof Audit: let AgentEye mine your logs across sessions and tell you what to fix.*
 
@@ -47,10 +51,10 @@ AgentEye is organized around three ideas (**observe**, **analyze**, and **admin*
 
 **Observe** (the raw truth of what happened):
 
-- **Events**: the live, per-step trail of every run (tool calls, model calls, hooks, errors).
-- **Sessions**: those events rolled up into one row per run, each ready to be scored.
-- **Models, Tools, Hooks**: per-surface latency heat-maps and p50/p95/p99 vitals, so a tail spike stands out from the median.
-- **Errors**: one triage surface for everything that went wrong, one click from a firing alert.
+- **[Event stream](/agenteye/event-stream)**: the live, per-step trail of every run (tool calls, model calls, hooks, errors).
+- **[Sessions](/agenteye/sessions)**: those events rolled up into one row per run, each ready to be scored, with a git-style execution graph.
+- **[Performance metrics](/agenteye/telemetry)**: per-surface latency heat-maps and p50/p95/p99 vitals for models, tools, and hooks, so a tail spike stands out from the median.
+- **[Error tracking](/agenteye/error-tracking)**: one triage surface for everything that went wrong, one click from a firing alert.
 
 ![The Tools observe page: a latency heat-map, a percentile band, and a tool-distribution bar over 24 time bins](/agenteye/images/tools.png)
 
@@ -58,15 +62,20 @@ AgentEye is organized around three ideas (**observe**, **analyze**, and **admin*
 
 **Analyze** (turn activity into answers):
 
-- **Queries & dashboards**: saved SQL over your events and evaluations, charted into shared, org-scoped dashboards.
-- **Evaluations**: quality scores produced by your own evaluator service, with per-score reasoning.
-- **Audits**: recurring investigations that surface failure patterns across sessions.
-- **Alerts & incidents**: threshold rules that page you, plus an incident workflow to triage them.
+- **[Queries](/agenteye/queries)** and **[dashboards](/agenteye/dashboards)**: saved SQL over your events and evaluations, charted into shared, org-scoped dashboards.
+- **[Evaluations](/agenteye/evaluations)**: quality scores produced by your own evaluator service, with per-score reasoning.
+- **[Audits](/agenteye/audits)**: recurring investigations that surface failure patterns across sessions.
+- **[Alerts](/agenteye/alerts)** and **[incidents](/agenteye/incidents)**: threshold rules that page you, plus an incident workflow to triage them.
+
+**Interfaces** (reach your data your way):
+
+- **[CLI](/agenteye/cli-and-agents)**: drive your whole deployment from the terminal or a script, and let a coding agent do it for you in plain English.
+- **[AI assistant](/agenteye/assistant)**: ask questions about your agents in plain English, right inside the dashboard.
 
 **Admin** (run it for your team):
 
-- **API keys**: scoped tokens for the collector, the dashboard, and the assistant.
-- **Users**: passwordless, email-based sign-in with an allowlist.
+- **[API keys](/agenteye/api-keys)**: scoped tokens for the collector, the dashboard, and the assistant.
+- **[Users](/agenteye/tenant-management)**: passwordless, email-based sign-in with an allowlist.
 - **Settings**: per-org configuration, including model context-window overrides.
 
 ---

@@ -618,6 +618,31 @@ describe("hooks/builtin-policies", () => {
       expect((await policy.fn(ctx)).decision).toBe("deny");
     });
 
+    it.each([
+      "rm -rf $HOME",
+      "rm -rf ${HOME}",
+      "rm -rf ~/Documents",
+      "rm -rf /home/chetan",
+      "rm -rf /var/lib",
+    ])("blocks critical recursive-delete target %s", async (command) => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("blocks find / -delete", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "find / -delete" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("allows a configured home-relative path", async () => {
+      const ctx = makeCtx({
+        toolName: "Bash",
+        toolInput: { command: "rm -rf ~/scratch" },
+        params: { allowPaths: ["~/scratch"] },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
     it("allows rm -rf on specific directory", async () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "rm -rf ./node_modules" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");

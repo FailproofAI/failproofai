@@ -631,13 +631,26 @@ function rmTargetIsAllowed(cmd: string, allowPaths: string[]): boolean {
   return true;
 }
 
+function isCriticalRecursiveDeletePath(token: string): boolean {
+  const normalized = token.replace(/\/\*$/, "").replace(/\/+$/, "") || (token.startsWith("/") ? "/" : "");
+  return normalized === "/"
+    || normalized === "~"
+    || normalized === "$HOME"
+    || normalized === "${HOME}"
+    || normalized.startsWith("~/")
+    || /^\/[A-Za-z_][\w.-]*$/.test(normalized)
+    || /^\/(?:home|Users)\/[^/]+$/.test(normalized)
+    || /^\/(?:var\/(?:lib|log)|usr\/(?:lib|local))$/.test(normalized);
+}
+
 function blockRmRf(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
-  const hasDestructivePath = parseArgvTokens(cmd).some((token) => {
-    const normalized = token.replace(/\/\*$/, "").replace(/\/+$/, "") || (token.startsWith("/") ? "/" : "");
-    return normalized === "/" || normalized === "~" || /^\/[A-Za-z_][\w.-]*$/.test(normalized);
-  });
+  const hasDestructivePath = parseArgvTokens(cmd).some(isCriticalRecursiveDeletePath);
+
+  if (/\bfind\s+(?:\/|~|\$HOME|\$\{HOME\})(?=\s|$)[\s\S]*?\s-delete\b/.test(cmd)) {
+    return deny("Catastrophic deletion blocked");
+  }
 
   // Combined flags in one token: rm -rf /, rm -fr /
   if (hasDestructivePath && (

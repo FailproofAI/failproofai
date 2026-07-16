@@ -65,6 +65,67 @@ describe("CopyButton", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the checkmark for the full 2s window after the last of two rapid clicks", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    render(<CopyButton text="test" />);
+    const button = screen.getByTitle("Copy to clipboard");
+
+    // Click at t=0 (timer A would revert at t=2.0s)
+    await user.click(button);
+    expect(screen.getByTestId("check-icon")).toBeInTheDocument();
+
+    // Click again at t=1.5s — should reset the window (arm timer B, clear timer A)
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    await user.click(button);
+    expect(screen.getByTestId("check-icon")).toBeInTheDocument();
+
+    // t=2.0s: stale timer A must NOT flip the icon back early
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByTestId("check-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("copy-icon")).not.toBeInTheDocument();
+
+    // t=3.5s (2.0s after the LAST click at t=1.5s): timer B reverts it
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByTestId("copy-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("check-icon")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("does not update state or warn after unmounting mid-window", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { unmount } = render(<CopyButton text="test" />);
+    await user.click(screen.getByTitle("Copy to clipboard"));
+    expect(screen.getByTestId("check-icon")).toBeInTheDocument();
+
+    // Unmount before the 2s revert timer fires
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    unmount();
+
+    // Advance well past the original 2s window — no "state update on
+    // unmounted component" warning should be logged
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
   it("applies custom className", () => {
     render(<CopyButton text="test" className="custom-class" />);
     const button = screen.getByTitle("Copy to clipboard");

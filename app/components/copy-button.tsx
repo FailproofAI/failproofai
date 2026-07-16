@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,23 @@ interface CopyButtonProps {
 
 export function CopyButton({ text, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const revertTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Clear any pending revert timer on unmount so `setCopied` never fires
+  // after the component is gone.
+  useEffect(() => {
+    return () => {
+      if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
+    };
+  }, []);
+
+  const armRevertTimer = useCallback(() => {
+    // A re-click resets the 2s window rather than being cut short by the
+    // previous (stale) timer.
+    if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
+    setCopied(true);
+    revertTimerRef.current = setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -33,24 +50,23 @@ export function CopyButton({ text, className }: CopyButtonProps) {
       } else if (!fallbackCopyText(text)) {
         throw new Error("Both clipboard methods failed");
       }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      armRevertTimer();
     } catch (err) {
       console.error("Failed to copy to clipboard:", err);
       // Try fallback if the modern API threw
       try {
         if (fallbackCopyText(text)) {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
+          armRevertTimer();
         }
       } catch {
         // Both methods failed — do nothing
       }
     }
-  }, [text]);
+  }, [text, armRevertTimer]);
 
   return (
     <button
+      type="button"
       onClick={handleCopy}
       title="Copy to clipboard"
       className={cn(

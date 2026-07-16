@@ -600,6 +600,9 @@ const HOME_PREFIX_RE = /^(?:~[A-Za-z0-9_.-]*|\$HOME|\$\{HOME\})(?=$|\/)/;
 const RM_CMD_RE = /^(?:\/\S*\/)?rm$/;
 
 /** `find` expression that deletes: `-delete`, `-exec rm`, `-execdir rm`, `-ok rm`. */
+// Same shape as RM_CMD_RE: `find` is just as dangerous when invoked by
+// absolute path (`/usr/bin/find / -delete`), so match both forms.
+const FIND_CMD_RE = /^(?:\/\S*\/)?find$/;
 const FIND_EXEC_RE = /^-(?:exec|execdir|ok|okdir)$/;
 
 /** find's global options, which precede its path operands (`find -L / -delete`). */
@@ -675,7 +678,7 @@ function isCatastrophicTarget(token: string): boolean {
 function recursiveDeletionTargets(seg: string): string[] | null {
   const tokens = parseArgvTokens(seg);
 
-  const findIdx = tokens.findIndex((t) => t === "find");
+  const findIdx = tokens.findIndex((t) => FIND_CMD_RE.test(t));
   if (findIdx >= 0) {
     const expr = tokens.slice(findIdx + 1);
     const execIdx = expr.findIndex((t) => FIND_EXEC_RE.test(t));

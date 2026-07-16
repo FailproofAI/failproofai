@@ -706,6 +706,8 @@ describe("hooks/builtin-policies", () => {
       ["find with a global option before the path", "find -L /home/chetan -delete"],
       ["command substitution", "rm -rf $(echo /)"],
       ["absolute rm binary", "/bin/rm -rf /home/chetan"],
+      ["absolute find binary", "/usr/bin/find / -delete"],
+      ["absolute find binary with -exec rm", "/usr/bin/find /home/chetan -exec rm -rf {} \\;"],
     ] as const;
 
     for (const [label, command] of bypassForms) {

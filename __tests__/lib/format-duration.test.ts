@@ -26,6 +26,12 @@ describe("formatDuration", () => {
     expect(formatDuration(3200)).toBe("3.2s");
   });
 
+  it("carries rounded seconds into minutes", () => {
+    expect(formatDuration(59600)).toBe("59.6s");
+    expect(formatDuration(59999)).toBe("1m 0s");
+    expect(formatDuration(119600)).toBe("2m 0s");
+  });
+
   it("boundary: exactly 60000ms", () => {
     expect(formatDuration(60000)).toBe("1m 0s");
   });
@@ -40,6 +46,10 @@ describe("formatDuration", () => {
 
   it("hours: 8100000ms", () => {
     expect(formatDuration(8100000)).toBe("2h 15m");
+  });
+
+  it("carries rounded minutes into hours", () => {
+    expect(formatDuration(3599600)).toBe("1h 0m");
   });
 
   it("large: 86400000ms (24h)", () => {

@@ -1,12 +1,16 @@
 name: Translate Docs
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/*.mdx"
-      - "docs/**/*.mdx"
-      - "README.md"
+  # Auto-translation used to run on every push to main that touched a
+  # translatable source, fanning out the full 14-language matrix per doc
+  # commit — expensive. We batch instead: one daily run at 06:00 UTC coalesces
+  # a day's English-source edits. The content-hash cache
+  # (scripts/translate-docs/.translation-cache.json) still limits token spend to
+  # the documents whose source actually changed since the last successful run,
+  # so most days translate only a handful of pages (or none). Use the manual
+  # workflow_dispatch below for an on-demand or forced re-translation.
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       force:

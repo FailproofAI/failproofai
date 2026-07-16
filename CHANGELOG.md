@@ -35,6 +35,9 @@
 - Add all 12 supported-CLI logos to the README (added openclaw/factory/devin/antigravity/goose with light+dark variants), link each logo to its official site, and lay them out as 2 rows of 6. (#508)
 - Document that **VS Code Copilot agent mode** (Preview) is already covered by the `copilot` / `claude` integrations: its agent hooks load from `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, and `~/.claude/settings.json` — the exact paths failproofai already writes — so `--cli copilot` (or `--cli claude`) enforces in VS Code agent-mode sessions with no dedicated `vscode` id. (#508)
 
+### Dependencies
+- Pin `typescript` to the 6.x line by telling Dependabot to ignore `typescript` major-version bumps. TypeScript 7.0 is the native (Go) port, whose npm package drops the classic compiler API from its main entry (`exports["."]` → a version stub; the API moves to experimental `typescript/unstable/*`). Next.js's build-time TS config validation and `typescript-eslint` (peer `typescript >=4.8.4 <6.1.0`) both require the classic API, so the bump reddened every CI job (the `prepare`→`next build` step runs on every install). Revisit when Next.js and typescript-eslint support the native port; the incremental path is `@typescript/native-preview` (`tsgo`) as a separate type-check tool. (#536)
+
 ## 0.0.13 — 2026-07-14
 
 ### Release

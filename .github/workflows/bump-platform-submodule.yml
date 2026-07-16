@@ -28,7 +28,7 @@ jobs:
       # ruleset, so pushes to platform main bypass the PR requirement.
       - name: Mint version-bot app token
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.VERSION_BOT_APP_ID }}
           private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}

@@ -172,7 +172,8 @@ const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
-const FORCE_PUSH_RE = /(?:--force|-f\b)/;
+const SHORT_FLAG_BUNDLE_RE = /^-[a-zA-Z]*f[a-zA-Z]*$/;
+const SAFE_FORCE_PREFIXES = ["--force-with-lease", "--force-if-includes"] as const;
 
 // blockSecretsWrite
 const SECRET_FILE_RE = /\.(?:pem|key)$/;
@@ -675,11 +676,27 @@ function blockRmRf(ctx: PolicyContext): PolicyResult {
 
 function blockForcePush(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
-  const args = extractGitPushArgs(getCommand(ctx));
-  if (args.some((a) => FORCE_PUSH_RE.test(a))) {
-    return deny("Force-pushing is blocked");
+  for (const segment of extractGitPushArgs(getCommand(ctx))) {
+    let sawEndOfOptions = false;
+    for (const token of segment.split(/\s+/)) {
+      if (token === "--") {
+        sawEndOfOptions = true;
+        continue;
+      }
+      if (sawEndOfOptions) continue;
+      if (isForcePushFlag(token)) {
+        return deny("Force-pushing is blocked");
+      }
+    }
   }
   return allow();
+}
+
+function isForcePushFlag(token: string): boolean {
+  if (token === "--force") return true;
+  if (SAFE_FORCE_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
+  if (token.startsWith("--force")) return true;
+  return SHORT_FLAG_BUNDLE_RE.test(token);
 }
 
 function blockSecretsWrite(ctx: PolicyContext): PolicyResult {

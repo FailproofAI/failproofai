@@ -702,6 +702,46 @@ describe("hooks/builtin-policies", () => {
       expect((await policy.fn(ctx)).decision).toBe("deny");
     });
 
+    it("blocks git push -fu origin main (bundled short flags)", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push -fu origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("blocks git push -uf origin main (bundled short flags, alternate order)", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push -uf origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("blocks git push -fq origin main (bundled quiet + force)", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push -fq origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("allows git push --force-with-lease", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push --force-with-lease origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("allows git push --force-with-lease=main", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push --force-with-lease=main" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("allows git push --force-if-includes", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push --force-if-includes origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("allows git push --follow-tags", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push --follow-tags origin main" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("allows git push with --force as a positional ref after --", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push origin -- --force" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
     it("allows normal git push", async () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "git push origin feat/branch" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");

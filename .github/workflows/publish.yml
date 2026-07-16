@@ -33,7 +33,7 @@ jobs:
           timeout_minutes: 5
           command: bun install --frozen-lockfile
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"

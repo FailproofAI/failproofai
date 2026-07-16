@@ -132,7 +132,7 @@ jobs:
           bun scripts/translate-docs/cli.ts --update-nav
           --languages zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 

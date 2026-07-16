@@ -2,6 +2,9 @@
 
 ## 0.0.14-beta.1 — 2026-07-14
 
+### Docs
+- AgentEye docs: lead the Agent Observability sidebar with a Features group (one page per top-level feature), move Deployment to the last group, and publish the new per-feature pages, autoplaying demo embeds, and an AI assistant screenshot. (#548)
+
 ### Features
 - Brand the dashboard launch splash (bare `failproofai`) to match the `configure` wizard: the plain emoji title/version block is replaced with the half-block logomark, the `failproof ai` wordmark (pink "il"), the tagline, and a tidy teal-labelled version/links column (24-bit color where advertised, monochrome shape otherwise, plain text off a TTY). The logomark rendering is now shared via `renderBrandLogo` / `renderLaunchBanner` in `tui.ts`, so the wizard intro and the launch banner stay in lockstep. (#516)
 - Add an "Everything available" row to the wizard's assistants step that protects every supported CLI (detected + set-up-ahead) in one tick — it wins over the individual boxes, mirroring the policies "Everything" option. Detected CLIs stay pre-selected, so the default (hit ↵) is unchanged. (#516)

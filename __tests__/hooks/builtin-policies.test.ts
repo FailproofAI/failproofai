@@ -687,6 +687,78 @@ describe("hooks/builtin-policies", () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: 'rm --recursive --force "/home"' } });
       expect((await policy.fn(ctx)).decision).toBe("deny");
     });
+
+    // Bypass forms reported in #520 — each resolves to a catastrophic target
+    // even though the raw command text matches no destructive-path pattern.
+    const bypassForms = [
+      ["$HOME (unexpanded variable)", "rm -rf $HOME"],
+      ["${HOME} (braced variable)", "rm -rf ${HOME}"],
+      ['"$HOME" (quoted variable)', 'rm -rf "$HOME"'],
+      ["$HOME sub-path", "rm -rf $HOME/Documents"],
+      ["home-relative sub-path", "rm -rf ~/Documents"],
+      ["home-relative glob", "rm -rf ~/*"],
+      ["another user's home", "rm -rf ~chetan"],
+      ["multi-segment absolute path", "rm -rf /home/chetan"],
+      ["multi-segment system path", "rm -rf /var/lib"],
+      ["find -delete on root", "find / -delete"],
+      ["find -exec rm on root", "find / -exec rm -rf {} \\;"],
+      ["find -delete on home", "find $HOME -delete"],
+      ["find with a global option before the path", "find -L /home/chetan -delete"],
+      ["command substitution", "rm -rf $(echo /)"],
+      ["absolute rm binary", "/bin/rm -rf /home/chetan"],
+    ] as const;
+
+    for (const [label, command] of bypassForms) {
+      it(`blocks ${label}: ${command}`, async () => {
+        const ctx = makeCtx({ toolName: "Bash", toolInput: { command } });
+        expect((await policy.fn(ctx)).decision).toBe("deny");
+      });
+    }
+
+    // Fail-safe: a target this policy cannot resolve could expand to anything,
+    // including "/", so it is treated as catastrophic.
+    it("blocks rm -rf on an unknown variable (unresolvable target)", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "rm -rf $BUILD_DIR" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("blocks rm -rf on a backtick substitution (unresolvable target)", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "rm -rf `pwd`" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    // Ordinary deletes must keep working — a policy that blocks these is unusable.
+    const ordinaryDeletes = [
+      ["relative directory", "rm -rf ./dist"],
+      ["bare relative directory", "rm -rf node_modules"],
+      ["relative directory with trailing slash", "rm -rf build/"],
+      ["temp directory", "rm -rf /tmp/failproofai-cache"],
+      ["deep home-relative path", "rm -rf ~/dev/myapp/node_modules"],
+      ["deep absolute path", "rm -rf /home/chetan/myapp/dist"],
+      ["variable inside a relative path", "rm -rf dist/$VERSION"],
+      ["find -delete under a relative path", "find . -name '*.tmp' -delete"],
+      ["find -delete under a deep path", "find /home/chetan/myapp -name '*.log' -delete"],
+      ["find without a delete expression", "find / -name '*.log'"],
+      ["non-recursive rm of an absolute path", "rm /etc/hosts"],
+    ] as const;
+
+    for (const [label, command] of ordinaryDeletes) {
+      it(`allows ${label}: ${command}`, async () => {
+        const ctx = makeCtx({ toolName: "Bash", toolInput: { command } });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+    }
+
+    it("allows an absolute path mentioned outside the delete", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "ls /etc && rm -rf ./dist" } });
+      // /etc is an ls argument, not a deletion target — only resolved rm targets count
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("blocks a catastrophic delete chained after a harmless command", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "npm run build && rm -rf ~/Documents" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
   });
 
   describe("block-force-push", () => {
@@ -2079,6 +2151,52 @@ describe("hooks/builtin-policies", () => {
           toolName: "Bash",
           toolInput: { command: "rm --recursive --force /tmp/" },
           params: { allowPaths: ["/tmp"] },
+        });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("allows a home-relative rm -rf when the allowPaths entry is home-relative too", async () => {
+        const ctx = makeCtx({
+          toolName: "Bash",
+          toolInput: { command: "rm -rf ~/scratch" },
+          params: { allowPaths: ["~/scratch"] },
+        });
+        // Both sides expand to the real home directory before comparison
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("allows rm -rf $HOME/scratch when ~/scratch is allowed", async () => {
+        const ctx = makeCtx({
+          toolName: "Bash",
+          toolInput: { command: "rm -rf $HOME/scratch" },
+          params: { allowPaths: ["~/scratch"] },
+        });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("blocks rm -rf $HOME even when an unrelated path is allowed", async () => {
+        const ctx = makeCtx({
+          toolName: "Bash",
+          toolInput: { command: "rm -rf $HOME" },
+          params: { allowPaths: ["/tmp"] },
+        });
+        expect((await policy.fn(ctx)).decision).toBe("deny");
+      });
+
+      it("blocks find -delete on root even when an unrelated path is allowed", async () => {
+        const ctx = makeCtx({
+          toolName: "Bash",
+          toolInput: { command: "find / -delete" },
+          params: { allowPaths: ["/tmp"] },
+        });
+        expect((await policy.fn(ctx)).decision).toBe("deny");
+      });
+
+      it("allows find -delete under an allowed path", async () => {
+        const ctx = makeCtx({
+          toolName: "Bash",
+          toolInput: { command: "find /var/lib -name '*.log' -delete" },
+          params: { allowPaths: ["/var/lib"] },
         });
         expect((await policy.fn(ctx)).decision).toBe("allow");
       });

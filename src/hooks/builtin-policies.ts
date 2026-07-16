@@ -587,36 +587,151 @@ function blockPushMaster(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+// -- block-rm-rf: deletion-target resolution --
+
 /**
- * Check whether all *recursive* rm path targets in a command are under an allowlisted path.
+ * Leading shell forms that resolve to a home directory: `~`, `~user`, `$HOME`,
+ * `${HOME}`. The lookahead keeps `$HOMEBREW_PREFIX` (a variable this policy
+ * cannot resolve) from being mistaken for `$HOME`.
+ */
+const HOME_PREFIX_RE = /^(?:~[A-Za-z0-9_.-]*|\$HOME|\$\{HOME\})(?=$|\/)/;
+
+/** `rm`, `/bin/rm`, `/usr/bin/rm`, … — the command word of a delete. */
+const RM_CMD_RE = /^(?:\/\S*\/)?rm$/;
+
+/** `find` expression that deletes: `-delete`, `-exec rm`, `-execdir rm`, `-ok rm`. */
+const FIND_EXEC_RE = /^-(?:exec|execdir|ok|okdir)$/;
+
+/** find's global options, which precede its path operands (`find -L / -delete`). */
+const FIND_GLOBAL_OPT_RE = /^-(?:[HLP]|D|O\d*)$/;
+
+/** First token of find's expression — everything before it is a path operand. */
+const FIND_EXPR_START_RE = /^(?:-|\\?[(!])/;
+
+/**
+ * Roots that exist to hold throwaway data. A delete of the root itself is still
+ * catastrophic (`rm -rf /tmp` wipes every process's scratch space); a delete of
+ * something *inside* one is ordinary work.
+ */
+const SCRATCH_ROOTS = ["/tmp", "/var/tmp"];
+
+/**
+ * How many path segments below a root (`/` or a home directory) a delete has to
+ * reach before it stops being catastrophic. `/etc` (1) and `/home/chetan` (2)
+ * are system- and user-level directories; `/home/chetan/project` (3) is a
+ * specific thing the caller meant to delete.
+ */
+const CATASTROPHIC_DEPTH = 2;
+
+/** Expand the leading `~` / `$HOME` / `${HOME}` of a path to the real home directory. */
+function expandHomePrefix(path: string): string {
+  const m = path.match(/^(?:~|\$HOME|\$\{HOME\})(?=$|\/)/);
+  return m ? homedir() + path.slice(m[0].length) : path;
+}
+
+/** Drop a trailing `/*` glob and any trailing slashes: `/tmp/foo/*` → `/tmp/foo`. */
+function stripTrailingGlob(path: string): string {
+  return path.replace(/\/\*$/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Would deleting this target be catastrophic?
+ *
+ * Rather than pattern-matching the raw command text, this resolves the token as
+ * far as the shell would: quotes are stripped, `~` / `$HOME` are recognised as a
+ * root in their own right, and the remaining path segments are counted. A target
+ * within {@link CATASTROPHIC_DEPTH} segments of either root (`/` or home) takes
+ * out the machine or the user's data.
+ *
+ * Fails safe: a token whose head is an expansion this policy cannot evaluate —
+ * command substitution (`$(…)`, backticks) or any variable other than `$HOME` —
+ * could expand to `/`, so it counts as catastrophic. Relative targets are not
+ * flagged: they resolve under the working directory, not under a root.
+ */
+function isCatastrophicTarget(token: string): boolean {
+  const raw = token.replace(/^['"]|['"]$/g, "");
+  if (raw === "") return false;
+
+  const homePrefix = raw.match(HOME_PREFIX_RE);
+  // Unresolvable head: `$(echo /)`, `` `pwd` ``, `$TARGET_DIR`, …
+  if (!homePrefix && /^[$`]/.test(raw)) return true;
+
+  const belowRoot = homePrefix ? raw.slice(homePrefix[0].length) : raw.startsWith("/") ? raw : null;
+  if (belowRoot === null) return false;
+
+  const segments = stripTrailingGlob(belowRoot).split("/").filter(Boolean);
+  if (!homePrefix && SCRATCH_ROOTS.some((r) => `/${segments.join("/")}`.startsWith(`${r}/`))) return false;
+  return segments.length <= CATASTROPHIC_DEPTH;
+}
+
+/**
+ * The paths a single command segment would recursively delete, or `null` when the
+ * segment is not a recursive delete at all.
+ *
+ * Understands the two shapes that reach every file under a target: `rm` with both
+ * `-r` and `-f` (in any spelling or order), and `find`, which recurses by design,
+ * paired with `-delete` or an `-exec rm`.
+ */
+function recursiveDeletionTargets(seg: string): string[] | null {
+  const tokens = parseArgvTokens(seg);
+
+  const findIdx = tokens.findIndex((t) => t === "find");
+  if (findIdx >= 0) {
+    const expr = tokens.slice(findIdx + 1);
+    const execIdx = expr.findIndex((t) => FIND_EXEC_RE.test(t));
+    const deletes = expr.includes("-delete") || (execIdx >= 0 && RM_CMD_RE.test(expr[execIdx + 1] ?? ""));
+    if (deletes) {
+      // find's path operands sit between the leading global options and the
+      // first expression token: `find -L /home/chetan -name '*.log' -delete`
+      let start = 0;
+      while (start < expr.length && FIND_GLOBAL_OPT_RE.test(expr[start])) {
+        start += expr[start] === "-D" ? 2 : 1;
+      }
+      const rest = expr.slice(start);
+      const end = rest.findIndex((t) => FIND_EXPR_START_RE.test(t));
+      return end < 0 ? rest : rest.slice(0, end);
+    }
+  }
+
+  const rmIdx = tokens.findIndex((t) => RM_CMD_RE.test(t));
+  if (rmIdx >= 0) {
+    const args = tokens.slice(rmIdx + 1);
+    const shortFlags = args.filter((t) => /^-[^-]/.test(t)).join("");
+    const longFlags = args.filter((t) => /^--/.test(t));
+    const recursive = /r/i.test(shortFlags) || longFlags.some((f) => /^--recursive$/i.test(f));
+    const force = /f/.test(shortFlags) || longFlags.some((f) => /^--force$/i.test(f));
+    if (recursive && force) return args.filter((t) => !t.startsWith("-"));
+  }
+
+  return null;
+}
+
+/** Split a command into the segments the shell would run as separate commands. */
+function shellSegments(cmd: string): string[] {
+  return cmd.split(/&&|\|\||[|;\n]/).map((s) => s.trim()).filter((s) => s !== "");
+}
+
+/**
+ * Check whether all recursive-delete targets in a command are under an allowlisted path.
  * Splits on shell operators first so that `/tmp` appearing in an unrelated
  * sub-command (e.g. `echo /tmp && rm -rf /`) does not trigger a false allow.
  * Uses path-boundary comparison so `/tmp` does not cover `/tmp2`.
  * Non-recursive rm segments (no -r/-R flag) are skipped — they pose no catastrophic risk.
  * Quoted paths with spaces are handled via a segment-level regex fallback.
+ * Home-relative targets and allowPaths entries are expanded, so `~/scratch` is
+ * covered by an allowPaths entry of either `~/scratch` or the absolute home path.
  */
-function rmTargetIsAllowed(cmd: string, allowPaths: string[]): boolean {
+function deletionTargetIsAllowed(cmd: string, allowPaths: string[]): boolean {
   if (allowPaths.length === 0) return false;
-  const segments = cmd
-    .split(/&&|\|\||[|;\n]/)
-    .map((s) => s.trim())
-    .filter((s) => /\brm\b/.test(s));
-  if (segments.length === 0) return false;
-  for (const seg of segments) {
-    const tokens = parseArgvTokens(seg);
-    const rmIdx = tokens.findIndex((t) => t === "rm");
-    if (rmIdx < 0) continue;
-    // Only validate recursive rm segments — non-recursive rm has no catastrophic-deletion risk
-    const flagTokens = tokens.slice(rmIdx + 1).filter((t) => /^-[^-]/.test(t));
-    const longFlagsInSeg = tokens.slice(rmIdx + 1).filter((t) => /^--/.test(t));
-    if (!/r/i.test(flagTokens.join("")) && !longFlagsInSeg.some(f => /^--recursive$/i.test(f))) continue;
-    const pathArgs = tokens.slice(rmIdx + 1).filter((t) => !t.startsWith("-"));
-    for (const target of pathArgs) {
-      const normalized = target.replace(/\/\*$/, "").replace(/\/+$/, "") || "/";
-      const covered = allowPaths.some((p) => {
-        const np = p.replace(/\/+$/, "") || "/";
-        return normalized === np || normalized.startsWith(np + "/");
-      });
+  const normalizedAllowPaths = allowPaths.map((p) => stripTrailingGlob(expandHomePrefix(p)) || "/");
+  let sawRecursiveDelete = false;
+  for (const seg of shellSegments(cmd)) {
+    const targets = recursiveDeletionTargets(seg);
+    if (targets === null) continue;
+    sawRecursiveDelete = true;
+    for (const target of targets) {
+      const normalized = stripTrailingGlob(expandHomePrefix(target)) || "/";
+      const covered = normalizedAllowPaths.some((np) => normalized === np || normalized.startsWith(np + "/"));
       if (!covered) {
         // Fallback: check the raw segment for quoted paths that contain spaces
         // (parseArgvTokens splits on whitespace, so "/tmp/my dir" becomes two tokens)
@@ -628,40 +743,23 @@ function rmTargetIsAllowed(cmd: string, allowPaths: string[]): boolean {
       }
     }
   }
-  return true;
+  return sawRecursiveDelete;
 }
 
 function blockRmRf(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
-  const hasDestructivePath = parseArgvTokens(cmd).some((token) => {
-    const normalized = token.replace(/\/\*$/, "").replace(/\/+$/, "") || (token.startsWith("/") ? "/" : "");
-    return normalized === "/" || normalized === "~" || /^\/[A-Za-z_][\w.-]*$/.test(normalized);
-  });
 
-  // Combined flags in one token: rm -rf /, rm -fr /
-  if (hasDestructivePath && (
-    /rm\s+-[^\s]*r[^\s]*f[^\s]*/.test(cmd) ||
-    /rm\s+-[^\s]*f[^\s]*r[^\s]*/.test(cmd)
-  )) {
+  const hasCatastrophicTarget = shellSegments(cmd).some((seg) => {
+    const targets = recursiveDeletionTargets(seg);
+    return targets !== null && targets.some(isCatastrophicTarget);
+  });
+  if (hasCatastrophicTarget) {
     const allowPaths = ((ctx.params?.allowPaths ?? []) as string[]);
-    if (rmTargetIsAllowed(cmd, allowPaths)) return allow();
+    if (deletionTargetIsAllowed(cmd, allowPaths)) return allow();
     return deny("Catastrophic deletion blocked");
   }
 
-  // Separated flags: rm -r -f /, rm -f -r /, rm -r -v -f /, etc.
-  if (hasDestructivePath && /\brm\b/.test(cmd)) {
-    const tokens = parseArgvTokens(cmd);
-    const shortFlags = tokens.filter((t) => /^-[^-]/.test(t)).join("");
-    const longFlags = tokens.filter((t) => /^--/.test(t));
-    const hasRecursive = /r/i.test(shortFlags) || longFlags.some(f => /^--recursive$/i.test(f));
-    const hasForce = /f/.test(shortFlags) || longFlags.some(f => /^--force$/i.test(f));
-    if (hasRecursive && hasForce) {
-      const allowPaths = ((ctx.params?.allowPaths ?? []) as string[]);
-      if (rmTargetIsAllowed(cmd, allowPaths)) return allow();
-      return deny("Catastrophic deletion blocked");
-    }
-  }
   // PowerShell: Remove-Item -Recurse -Force on root/drive
   if (/Remove-Item\s+.*-Recurse.*-Force.*(?:[A-Z]:\\(?:\s|$)|\\\*)/i.test(cmd)) {
     return deny("Catastrophic deletion blocked");

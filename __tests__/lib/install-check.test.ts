@@ -319,6 +319,16 @@ describe("compareSemver", () => {
     expect(compareSemver("1.0.0-beta.2", "1.0.0-beta.10")).toBeLessThan(0);
   });
 
+  // Semver §9: identifiers are dot-separated; a hyphen is legal *inside* one.
+  // So `beta-2` is a single non-numeric identifier and compares lexically —
+  // making it GREATER than `beta-10` ("2" > "1"), the opposite of the numeric
+  // ordering you'd get by splitting on the hyphen.
+  it("treats a hyphen inside a prerelease identifier as part of it, not a separator", async () => {
+    const { compareSemver } = await import("../../lib/install-check");
+    expect(compareSemver("1.0.0-beta-2", "1.0.0-beta-10")).toBeGreaterThan(0);
+    expect(compareSemver("1.0.0-beta-10", "1.0.0-beta-2")).toBeLessThan(0);
+  });
+
   it("compares major/minor/patch numerically", async () => {
     const { compareSemver } = await import("../../lib/install-check");
     expect(compareSemver("1.9.0", "1.10.0")).toBeLessThan(0);

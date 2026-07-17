@@ -54,6 +54,10 @@ function lastVersionPath(): string {
  * Semver ordering. A release outranks the same version carrying a prerelease
  * tag (semver §11); within a prerelease, numeric identifiers rank below
  * non-numeric ones.
+ *
+ * Prerelease identifiers are separated by dots only (semver §9). A hyphen is a
+ * legal character *inside* an identifier, so `beta-2` is one non-numeric
+ * identifier compared lexically — not `beta` and `2`.
  */
 export function compareSemver(a: string, b: string): number {
   const parse = (v: string) => {
@@ -70,8 +74,8 @@ export function compareSemver(a: string, b: string): number {
   if (pa.pre === null && pb.pre === null) return 0;
   if (pa.pre === null) return 1;
   if (pb.pre === null) return -1;
-  const ax = pa.pre.split(/[.-]/);
-  const bx = pb.pre.split(/[.-]/);
+  const ax = pa.pre.split(".");
+  const bx = pb.pre.split(".");
   for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
     const ai = ax[i], bi = bx[i];
     if (ai === undefined) return -1;

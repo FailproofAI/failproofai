@@ -27,8 +27,20 @@ import { trackInstallEvent } from "../scripts/install-telemetry.mjs";
 const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__";
 const NAMESPACE = "failproofai-telemetry-v1";
 
-/** Cap on the once-per-version report so a hanging network never stalls a command. */
-const REPORT_TIMEOUT_MS = 2000;
+/**
+ * Cap on the once-per-version report so a hanging network never stalls a command.
+ *
+ * A ceiling, not a cost: delivery resolves as soon as PostHog answers, measured
+ * at ~1.1s from a cold process (these events are the first thing a fresh process
+ * sends, so they always pay the DNS + TLS handshake). Raising this only matters
+ * when the network is slow — precisely when a tight budget would silently drop
+ * the report instead.
+ *
+ * 5s matches hook-telemetry and the postinstall script this replaces. An earlier
+ * 2s left barely any headroom over a 1.85s worst case seen in testing, for a
+ * saving nobody experiences on a healthy network.
+ */
+const REPORT_TIMEOUT_MS = 5000;
 
 function hashToId(raw: string): string {
   return createHmac("sha256", NAMESPACE).update(raw).digest("hex");

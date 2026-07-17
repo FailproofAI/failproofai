@@ -104,6 +104,21 @@ describe("maybeReportInstall", () => {
       expect(writeFileSync).toHaveBeenCalledWith(LAST_VERSION, "1.0.0", "utf8");
     });
 
+    // Delivery measured at ~1.1s from a cold process against production PostHog,
+    // with a 1.85s worst case. The timeout is a ceiling, not a cost, so it needs
+    // real headroom over that — a tight budget only ever drops the report.
+    it("allows enough time for a cold-start delivery", async () => {
+      await setupFs({ lastVersion: null });
+      const { trackInstallEvent } = await import("../../scripts/install-telemetry.mjs");
+      const { maybeReportInstall } = await import("../../lib/install-check");
+
+      await maybeReportInstall("1.0.0");
+
+      for (const call of vi.mocked(trackInstallEvent).mock.calls) {
+        expect((call[2] as { timeoutMs: number }).timeoutMs).toBeGreaterThanOrEqual(5000);
+      }
+    });
+
     it("stamps the caller's version on the event, never 'unknown'", async () => {
       await setupFs({ lastVersion: null });
       const { trackInstallEvent } = await import("../../scripts/install-telemetry.mjs");

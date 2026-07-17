@@ -11,7 +11,7 @@ on:
   # so most days translate only a handful of pages (or none). Use the manual
   # workflow_dispatch below for an on-demand or forced re-translation.
   schedule:
-    - cron: "35 5 * * *" # 11:05 IST (05:35 UTC)
+    - cron: "35 10 * * *" # 11:05 IST (05:35 UTC)
   workflow_dispatch:
     inputs:
       force:

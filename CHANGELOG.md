@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.14-beta.1 — 2026-07-17
+
+### Fixes
+- Move the docs auto-translation daily cron from 06:00 UTC to 11:05 AM IST (05:35 UTC, encoded as `35 5 * * *` since GitHub Actions cron is always UTC). (#553)
+
 ## 0.0.14-beta.1 — 2026-07-14
 
 ### Docs

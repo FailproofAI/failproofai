@@ -1,12 +1,12 @@
 ---
 title: "CLI recipes for agents"
-description: "FailproofAI Observability CLI recipes for agents documentation."
+description: "Copy-paste query patterns and jq recipes that turn session, event, and evaluation data into something a script or coding agent can automate."
 ---
 
 
-Pull session, event, and evaluation data (and trigger re-evaluations) straight from a script or coding agent, with clean JSON on stdout that pipes directly into `jq`. These recipes turn FailproofAI Observability's data into something a terminal user or an AI coding agent (Claude Code, Cursor) can query and automate, without clicking through the dashboard.
+Pull session, event, and evaluation data (and trigger re-evaluations) straight from a script or coding agent, with clean JSON on stdout that pipes directly into `jq`. These recipes turn Failproof AI Observability's data into something a terminal user or an AI coding agent (Claude Code, Cursor) can query and automate, without clicking through the dashboard.
 
-The patterns below are copy-paste ready for the FailproofAI Observability CLI (`agenteye`). For installation, authentication, and the full option list see [CLI](/agenteye/cli); run `agenteye -h` or `agenteye <command> -h` for the built-in help.
+The patterns below are copy-paste ready for the Failproof AI Observability CLI (`agenteye`). For installation, authentication, and the full option list see [CLI](/agenteye/cli); run `agenteye -h` or `agenteye <command> -h` for the built-in help.
 
 ## Golden rules
 
@@ -176,4 +176,4 @@ Each command's `--fields` accepts exactly its own item's field names. The set di
 - [CLI](/agenteye/cli): installation, authentication, and the full option reference for every command.
 - [CLI agent skill](/agenteye/cli-skill): package these recipes as a skill your coding agent can load.
 - [API keys](/agenteye/api-keys): create and scope the keys the CLI, SDK, and collector authenticate with.
-- [Python SDK](/agenteye/python-sdk): send events into FailproofAI Observability so there is data for these recipes to query.
+- [Python SDK](/agenteye/python-sdk): send events into Failproof AI Observability so there is data for these recipes to query.

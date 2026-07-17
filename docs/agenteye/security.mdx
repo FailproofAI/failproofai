@@ -1,22 +1,22 @@
 ---
 title: "Security"
-description: "FailproofAI Observability Security documentation."
+description: "Failproof AI Observability is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs."
 ---
 
 
-FailproofAI Observability is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs. This page explains how it keeps that data isolated, controlled, and in your hands. If you're evaluating FailproofAI Observability for a security review, start here.
+Failproof AI Observability is built to sit close to your production agents, which means it sees your prompts, tool inputs, and outputs. This page explains how it keeps that data isolated, controlled, and in your hands. If you're evaluating Failproof AI Observability for a security review, start here.
 
 ---
 
 ## Your data stays in your environment
 
-FailproofAI Observability is self-hosted. Events, prompts, model responses, and analytics are stored in your own databases, in your own environment. Nothing is sent to a third-party SaaS for storage, and your data stays in your own cloud account.
+Failproof AI Observability is self-hosted. Events, prompts, model responses, and analytics are stored in your own databases, in your own environment. Nothing is sent to a third-party SaaS for storage, and your data stays in your own cloud account.
 
 ---
 
 ## Tenant isolation
 
-One FailproofAI Observability instance can host many organizations, and each is isolated at the storage layer — enforced by the database, not just the UI:
+One Failproof AI Observability instance can host many organizations, and each is isolated at the storage layer — enforced by the database, not just the UI:
 
 - An organization's operational data (users, keys, dashboards, saved queries) is scoped to that org, and cross-org reads are blocked by the database itself.
 - Every ingested event is stamped with its owning org, so one organization's events can never be read by another.
@@ -27,9 +27,9 @@ Every dashboard route is scoped under an org slug (`/<org-slug>/…`).
 
 ## Sign-in
 
-FailproofAI Observability uses passwordless, email-based sign-in. There is no password to phish or leak. A user requests a one-time code (or a one-click magic link), which is emailed to them and expires quickly. Sign-in is gated by an **allowlist**: only email addresses (or domains) you permit can authenticate.
+Failproof AI Observability uses passwordless, email-based sign-in. There is no password to phish or leak. A user requests a one-time code (or a one-click magic link), which is emailed to them and expires quickly. Sign-in is gated by an **allowlist**: only email addresses (or domains) you permit can authenticate.
 
-![The FailproofAI Observability sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
+![The Failproof AI Observability sign-in screen, which sends a single-use code to your email](/agenteye/images/login.png)
 
 ---
 
@@ -63,6 +63,6 @@ All traffic runs over HTTPS. You terminate TLS with your own certificates, so co
 
 ## Next steps
 
-- [Overview](/agenteye/overview): how FailproofAI Observability fits together.
+- [Overview](/agenteye/overview): how Failproof AI Observability fits together.
 - [API keys](/agenteye/api-keys): scope access for the collector, dashboard, and assistant.
-- [Observability](/agenteye/observability): what FailproofAI Observability captures from your agents.
+- [Observability](/agenteye/observability): what Failproof AI Observability captures from your agents.

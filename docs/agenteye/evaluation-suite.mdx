@@ -1,10 +1,10 @@
 ---
 title: "Evaluation Suite"
-description: "FailproofAI Observability Evaluation Suite documentation."
+description: "Failproof AI Observability can automatically score every finished agent run for quality: you supply a small scoring service, and Observability handles the rest."
 ---
 
 
-FailproofAI Observability can automatically score every finished agent run for quality: you supply a small scoring service, and Observability handles the rest. Use it to track the dimensions you care about (helpfulness, tool efficiency, factuality, safety; you choose), catch regressions early, and compare agents or environments at a glance. Scoring is opt-in: the pipeline does nothing until you set `EVALUATOR_ENDPOINT` on the server.
+Failproof AI Observability can automatically score every finished agent run for quality: you supply a small scoring service, and Observability handles the rest. Use it to track the dimensions you care about (helpfulness, tool efficiency, factuality, safety; you choose), catch regressions early, and compare agents or environments at a glance. Scoring is opt-in: the pipeline does nothing until you set `EVALUATOR_ENDPOINT` on the server.
 
 > **Note:** You define the score dimensions. Your evaluator can return any numeric keys it likes; Observability stores, trends, and displays whatever you send back.
 
@@ -169,7 +169,7 @@ You don't have to implement the HTTP contract by hand. The `agenteye-evaluator`
 Python package gives you a typed FastAPI wrapper that handles auth, routing, and
 the request/response shapes for you.
 
-FailproofAI Observability also ships a **working reference evaluator** that
+Failproof AI Observability also ships a **working reference evaluator** that
 scores `helpfulness`, `tool_efficiency`, and `factuality` from the shape of the
 transcript. Copy it as a starting point and swap in your own logic: an LLM
 judge, a rule engine, whatever fits your quality bar.
@@ -207,7 +207,7 @@ The full API reference, async pattern, and event schema are documented in the
 
 ## Running your evaluator
 
-The evaluator is **your service** — FailproofAI Observability does not ship a
+The evaluator is **your service** — Failproof AI Observability does not ship a
 default evaluator, so you build and run it wherever you run your own services.
 It runs under any ASGI server (for example `uvicorn my_evaluator:app`); serve
 the `/health`, `/config`, and `/evaluate` routes from the

@@ -1,17 +1,17 @@
 ---
 title: "Python SDK"
-description: "FailproofAI Observability Python SDK documentation."
+description: "See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention."
 ---
 
 
-See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention. The FailproofAI Observability Python SDK records that trail from inside your agent code so you can debug, audit, and evaluate what happened. Use it whenever you want FailproofAI Observability to observe your agents.
+See exactly what your AI agents did in production: every agent run, tool call, model request, hook, and human intervention. The Failproof AI Observability Python SDK records that trail from inside your agent code so you can debug, audit, and evaluate what happened. Use it whenever you want Failproof AI Observability to observe your agents.
 
 Under the hood, the SDK writes structured events to local JSONL files, and the collector daemon picks them up and ships them to the platform automatically. You do not manage those files yourself.
 
-> **Tip:** New to FailproofAI Observability? This page is the complete SDK event reference.
+> **Tip:** New to Failproof AI Observability? This page is the complete SDK event reference.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
@@ -56,7 +56,7 @@ agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="succ
 
 ### Instrumenting a real call
 
-In practice you wrap your existing agent code. Bracket a model call with `model_request` before and `model_response` after, so the two events span the real request and FailproofAI Observability can pair them:
+In practice you wrap your existing agent code. Bracket a model call with `model_request` before and `model_response` after, so the two events span the real request and Failproof AI Observability can pair them:
 
 ```python
 import anthropic
@@ -152,7 +152,7 @@ That makes redaction your choice and your responsibility. If a prompt or tool pa
 
 ## Event Reference
 
-Most events come in start/end pairs that share a correlation ID: `tool_use` and `tool_result` share a `tool_call_id`, `hook_triggered` and `hook_completed` share a `hook_id`, and `human_wait` and `human_input` share an `input_id`. Emit the start event, do the work, then emit the end event with the same ID. FailproofAI Observability matches the pair and computes `duration_ms` for you, so you never pass `duration_ms` yourself.
+Most events come in start/end pairs that share a correlation ID: `tool_use` and `tool_result` share a `tool_call_id`, `hook_triggered` and `hook_completed` share a `hook_id`, and `human_wait` and `human_input` share an `input_id`. Emit the start event, do the work, then emit the end event with the same ID. Failproof AI Observability matches the pair and computes `duration_ms` for you, so you never pass `duration_ms` yourself.
 
 ![A session's git-style execution graph beside its event timeline, reconstructed from the paired events, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
 

@@ -17,9 +17,9 @@
 
 **Übersetzungen:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Laufzeit-Fehlerbehebung für Coding-Agenten.**
-Klinkt sich in Claude Code und Codex ein. Erkennt Schleifen, gefährliche Aktionen und Secret-Leaks,
-bevor sie zu Vorfällen werden. Nulllatenz. Läuft lokal.
+**Laufzeit-Fehlerbehandlung für Coding-Agenten.**
+Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und geheimnisgefährdende Datenlecks,
+bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 </div>
 
@@ -29,7 +29,7 @@ bevor sie zu Vorfällen werden. Nulllatenz. Läuft lokal.
 
 ---
 
-## Unterstützte Agenten-CLIs
+## Unterstützte Agent-CLIs
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -125,19 +125,19 @@ bevor sie zu Vorfällen werden. Nulllatenz. Läuft lokal.
   </tr>
 </table>
 
-> Hooks für eine oder mehrere Kombinationen installieren: `failproofai policies --install --cli opencode pi` (oder `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). `--cli` weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl anzuzeigen.
+> Hooks für einen oder mehrere CLIs installieren: `failproofai policies --install --cli opencode pi` (oder `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Ohne `--cli` werden installierte CLIs automatisch erkannt und zur Auswahl angezeigt.
 >
-> **Hermes** (hermes-agent, ein Slack/Telegram-Gateway) wird sowohl für **Live-Hook-Durchsetzung** (`--cli hermes` — eine Installation fängt Tool-Aufrufe von jeder Plattform und jedem Subagenten ab) als auch für die Offline-**Audit**-Wiedergabe seiner Gateway-Sitzungen aus der einzelnen `~/.hermes/state.db` unterstützt.
+> **Hermes** (hermes-agent, ein Slack-/Telegram-Gateway) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli hermes` — eine einzige Installation fängt Tool-Aufrufe von jeder Plattform und jedem Subagenten ab) als auch für das Offline-**Audit**-Replay seiner Gateway-Sitzungen aus der einzelnen `~/.hermes/state.db` unterstützt.
 >
-> **OpenClaw** (openclaw gateway, ein selbst gehosteter Multi-Channel-Assistent) wird sowohl für **Live-Hook-Durchsetzung** (`--cli openclaw`, User-Scope) als auch für die Offline-**Audit**-Wiedergabe seiner JSONL-Sitzungen (`~/.openclaw/agents/<id>/sessions/*.jsonl`) unterstützt. Die Durchsetzung nutzt OpenClaws **In-Process-Plugin-Hooks** (ein mitgeliefertes `openclaw-plugin/`, das failproofai asynchron startet — seine dateibasierten internen Hooks dienen nur zur Beobachtung und können nicht blockieren): `before_tool_call` blockiert ein Tool, und `before_agent_finalize` ist ein echtes Turn-End-Gate, sodass die eingebauten `require-*-before-stop`-Regeln greifen.
+> **OpenClaw** (openclaw gateway, ein selbst gehosteter Multi-Channel-Assistent) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli openclaw`, Benutzer-Scope) als auch für das Offline-**Audit**-Replay seiner JSONL-Sitzungen (`~/.openclaw/agents/<id>/sessions/*.jsonl`) unterstützt. Die Durchsetzung verwendet OpenClaws **In-Process-Plugin-Hooks** (ein mitgeliefertes `openclaw-plugin/`, das failproofai asynchron startet — seine dateibasierten internen Hooks dienen nur zur Beobachtung und können nicht blockieren): `before_tool_call` blockiert ein Tool, und `before_agent_finalize` ist ein echtes Turn-End-Gate, sodass die eingebauten `require-*-before-stop`-Richtlinien greifen.
 >
-> **Factory Droid** (`droid`) wird sowohl für **Live-Hook-Durchsetzung** (`--cli factory`, User- und Project-Scope) als auch für die Offline-**Audit**-Wiedergabe seiner JSONL-Sitzungen auf der Festplatte unterstützt. droid blockiert Tool-Aufrufe über Hook-**Exit-Code 2** (kein JSON-Entscheid) und berücksichtigt `{decision:"block"}` nur beim Turn-End-`Stop`-Event — failproofai gibt automatisch die passende Form je nach Event aus.
+> **Factory Droid** (`droid`) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli factory`, Benutzer- und Projekt-Scope) als auch für das Offline-**Audit**-Replay seiner JSONL-Sitzungen auf der Festplatte unterstützt. droid blockiert Tool-Aufrufe per Hook über **Exit-Code 2** (keine JSON-Entscheidung) und berücksichtigt `{decision:"block"}` nur beim Turn-End-`Stop`-Ereignis — failproofai sendet automatisch die passende Struktur je nach Ereignis.
 >
-> **Devin CLI** (`devin`, Cognition) wird sowohl für **Live-Hook-Durchsetzung** (`--cli devin`, User- und Project-Scope) als auch für die Offline-**Audit**-Wiedergabe seiner SQLite-Sitzungen (`~/.local/share/devin/cli/sessions.db`) unterstützt. Devin ist ein **reiner Claude-Klon** — gleiche Event-Namen, gleiche snake_case-Payload, gleiche `"hooks"`-Wrapper-Konfiguration (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — Blockierung via `{decision:"block"}` JSON bei jedem Event.
+> **Devin CLI** (`devin`, Cognition) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli devin`, Benutzer- und Projekt-Scope) als auch für das Offline-**Audit**-Replay seiner SQLite-Sitzungen (`~/.local/share/devin/cli/sessions.db`) unterstützt. Devin ist ein **reiner Claude-Klon** — gleiche Ereignisnamen, gleiche snake_case-Nutzdaten, gleiche `"hooks"`-Wrapper-Konfiguration (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — Blockierung via `{decision:"block"}` JSON bei jedem Ereignis.
 >
-> **Antigravity CLI** (`agy`) wird sowohl für **Live-Hook-Durchsetzung** (`--cli antigravity`, User- und Project-Scope) als auch für die Offline-**Audit**-Wiedergabe seiner Plain-JSONL-Sitzungen (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`) unterstützt. Antigravity hat seinen **eigenen** Vertrag (kein Claude-Klon): ein **Named-Hook**-`hooks.json`-Schema (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), eine camelCase-stdin-Payload, die failproofai normalisiert, und eigene Antwortformate — `{decision:"deny"}` zum Blockieren eines Tools, `{decision:"continue"}` um einen weiteren Turn bei `Stop` zu erzwingen, `{injectSteps}` zum Einschleusen einer Erinnerung vor dem Modell-Lauf.
+> **Antigravity CLI** (`agy`) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli antigravity`, Benutzer- und Projekt-Scope) als auch für das Offline-**Audit**-Replay seiner plain-JSONL-Sitzungen (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`) unterstützt. Antigravity hat sein **eigenes** Vertragsschema (kein Claude-Klon): ein **named-hook** `hooks.json`-Schema (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), eine camelCase-stdin-Nutzlast, die failproofai normalisiert, sowie eigene Antwortstrukturen — `{decision:"deny"}` zum Blockieren eines Tools, `{decision:"continue"}` für einen weiteren Turn bei `Stop`, `{injectSteps}` zum Einschleusen einer Erinnerung vor dem Modell-Lauf.
 >
-> **Goose** (Codename goose, Block) wird sowohl für **Live-Hook-Durchsetzung** (`--cli goose`, User- und Project-Scope) als auch für die Offline-**Audit**-Wiedergabe seiner SQLite-Sitzungen (`~/.local/share/goose/sessions/sessions.db`) unterstützt. Die Durchsetzung nutzt Gooses **Hooks**-System (die agentenübergreifende **Open-Plugins**-Spezifikation) — das Installationsprogramm legt lediglich ein Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/` an, das Goose automatisch erkennt. Die Blockierung erfolgt via `{"decision":"block"}` JSON beim `PreToolUse`-Event (das für das Shell-Tool und innerhalb delegierter Subagenten ausgelöst wird), live verifiziert gegen goose v1.43.0; Goose hat kein Turn-End-`Stop`-Event, daher gelten die eingebauten `require-*-before-stop`-Regeln nicht (wie bei Hermes).
+> **Goose** (Codename goose, Block) wird sowohl für die **Live-Hook-Durchsetzung** (`--cli goose`, Benutzer- und Projekt-Scope) als auch für das Offline-**Audit**-Replay seiner SQLite-Sitzungen (`~/.local/share/goose/sessions/sessions.db`) unterstützt. Die Durchsetzung nutzt Gooses **Hooks**-System (die agentenübergreifende **Open-Plugins**-Spezifikation) — das Installationsprogramm legt lediglich ein Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/` an, das Goose automatisch erkennt. Die Blockierung erfolgt über `{"decision":"block"}` JSON beim `PreToolUse`-Ereignis (das für das Shell-Tool und innerhalb delegierter Subagenten ausgelöst wird), live verifiziert gegen goose v1.43.0; Goose hat kein Turn-End-`Stop`-Ereignis, daher gelten die eingebauten `require-*-before-stop`-Richtlinien nicht (wie bei Hermes).
 
 ---
 
@@ -153,15 +153,15 @@ failproofai
 
 ---
 
-## Was es verhindert
+## Was blockiert wird
 
 | Richtlinie | Was sie blockiert |
 |---|---|
 | `block-push-master` | Direkte Pushes auf `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, Merges, Rebases auf `main` / `master` |
+| `block-work-on-main` | Commits, Merges und Rebases auf `main` / `master` |
 | `block-rm-rf` | Rekursives Löschen von Dateien |
-| `sanitize-api-keys` | API-Keys, die in den Agenten-Kontext gelangen |
+| `sanitize-api-keys` | API-Schlüssel, die in den Agenten-Kontext gelangen |
 
 → [Alle 30 eingebauten Richtlinien](https://docs.befailproof.ai/built-in-policies)
 
@@ -170,7 +170,7 @@ failproofai
 ## Eigene Richtlinien
 
 Eine Datei in `.failproofai/policies/` ablegen — sie wird automatisch geladen, ohne zusätzliche Flags.
-Ins Repository committen, und das gesamte Team erhält sie beim nächsten Pull.
+Ins Repository einchecken und das gesamte Team erhält sie beim nächsten Pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -186,23 +186,23 @@ customPolicies.add({
 });
 ```
 
-Drei Entscheidungen stehen jeder Richtlinie zur Verfügung:
+Drei Entscheidungsoptionen stehen jeder Richtlinie zur Verfügung:
 
 | Entscheidung | Wirkung |
 |---|---|
-| `allow()` | Aktion zulassen |
+| `allow()` | Operation zulassen |
 | `deny(message)` | Blockieren — die Nachricht wird an den Agenten zurückgegeben |
-| `instruct(message)` | Durchlassen, aber dem nächsten Prompt des Agenten Kontext hinzufügen |
+| `instruct(message)` | Durchlassen, aber den nächsten Prompt des Agenten mit Kontext ergänzen |
 
-→ [Leitfaden für benutzerdefinierte Richtlinien](https://docs.befailproof.ai/custom-policies)
+→ [Leitfaden für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
 
 ---
 
 ## Sitzungstransparenz
 
 Jeder Tool-Aufruf des Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
-was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit man nicht rätseln muss,
-wenn etwas schiefgeht. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
+was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit man bei Fehlern
+nicht im Dunkeln tappt. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -212,8 +212,8 @@ wenn etwas schiefgeht. → [Dashboard-Leitfaden](https://docs.befailproof.ai/das
 |---|---|
 | [Erste Schritte](https://docs.befailproof.ai/getting-started) | Installation und Einstieg |
 | [Eingebaute Richtlinien](https://docs.befailproof.ai/built-in-policies) | Alle 30 Richtlinien mit Parametern |
-| [Benutzerdefinierte Richtlinien](https://docs.befailproof.ai/custom-policies) | Eigene Richtlinien schreiben |
-| [Konfiguration](https://docs.befailproof.ai/configuration) | Konfigurations-Scopes und Zusammenführungsregeln |
+| [Eigene Richtlinien](https://docs.befailproof.ai/custom-policies) | Eigene Richtlinien schreiben |
+| [Konfiguration](https://docs.befailproof.ai/configuration) | Konfigurations-Scopes und Merge-Regeln |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Sitzungsmonitor und Richtlinienaktivität |
 | [Architektur](https://docs.befailproof.ai/architecture) | Funktionsweise des Hook-Systems |
 
@@ -221,18 +221,18 @@ wenn etwas schiefgeht. → [Dashboard-Leitfaden](https://docs.befailproof.ai/das
 
 ## Lizenz
 
-MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und persönlichen Einsatz; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text unter [LICENSE](./LICENSE) nachlesen.
+MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und privaten Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text finden Sie in [LICENSE](./LICENSE).
 
 ---
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Grenzfälle und Übersetzungen sind jederzeit willkommen.
+Siehe [CONTRIBUTING.md](./CONTRIBUTING.md). Neue Richtlinien, Randfälle und Übersetzungen sind herzlich willkommen.
 
-> **Vor dem Start bauen.** Zunächst `bun install && bun run build` ausführen. Dieses Repository führt
-> failproofais eigene Hooks auf sich selbst aus, und diese lösen den `failproofai`-Import gegenüber dem
-> kompilierten `dist/`-Bundle auf — ohne einen Build tritt der Hook-Fehler `Cannot find package 'failproofai'` auf.
-> Nach Änderungen in `src/` neu bauen. Siehe
+> **Vor dem Start bauen.** Zuerst `bun install && bun run build` ausführen. Dieses Repository führt
+> failproofais eigene Hooks auf sich selbst aus, und diese lösen den `failproofai`-Import gegen das
+> kompilierte `dist/`-Bundle auf — ohne einen Build treten `Cannot find package 'failproofai'`
+> Hook-Fehler auf. Nach Änderungen an `src/` neu bauen. Siehe
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

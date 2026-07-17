@@ -1,0 +1,52 @@
+---
+title: "Performans Metrikleri"
+description: "FailproofAI Observability Performans Metrikleri dokümantasyonu."
+---
+
+
+Modellerinizin, araçlarınızın veya kancalarınızın ne zaman yavaşladığını ya da maliyetinin arttığını anlık olarak görmek ve kuyruk gecikmesindeki ani artışı kullanıcılarınız hissetmeden önce yakalayin. Üç ayrı sayfa ham zaman verilerini p50, p95 ve p99 istatistiklerine dönüştürerek bir bakışta okuyabileceğiniz hale getirir.
+
+![Modeller sayfası, gecikme ısı haritası, yüzdelik bant ve model başına token, maliyet ve bağlam penceresi rakamlarını göstermektedir](/agenteye/images/models.png)
+*Modeller sayfası: gecikme ısı haritası, yüzdelik bant ve model başına token sayıları, tahmini maliyet ve bağlam penceresi doldurma oranı.*
+
+## Ortalamaların en kötü çalıştırmalarınızı gizlemesine izin vermeyin
+
+Ortalama bir gecikme numarası rahatlatıcı ancak işe yaramaz: elli çağrıdan birinin takılmasını ve saat 2'de çağırıldığında yayınlanan kişiyi gizler. Modeller, Araçlar ve Kancalar sayfaları bunu yapmayı reddeder. Her birinin aynı yapısı vardır, bu yüzden bunu bir kez öğrenirsiniz:
+
+- Eğilimi bir bakışta görmek için **24 kutuluk mini grafik**: bu daha mı kötüleşiyor?
+- p50, p95 ve p99 gecikme ile **yaşam bulguları şeridi**, tipik çalıştırma ve kuyruk istatistikleri yan yana görülebilir.
+- **Gecikme ısı haritası**, 24 zaman kutusu x gecikme aralıkları, yavaş çağrıların *ne zaman* kümelendiğini gösterir.
+- **Yüzdelik bant**: p50 çizgisi, p25-p75 ve p10-p90 gölgeli şeritler ve p99 noktaları ile yayılım ortalamaya gizlenmek yerine görünür kalır.
+
+Paylaşılan bir hover çapraz saç ısı haritasını ve bandı birbirine bağlar, böylece kuyruk artışı zaman içinde her iki tarafta da hizalanır ve tek bir ortalama çizginin arkasında kaybolmaz. Üç sayfayı da panonunuzun **gözlemle** bölümünde bulun, her biri kuruluşunuza göre kapsamlandırılmış ve tarih aralığı, ortam, ajan ve oturum ile filtrelenebilir.
+
+## Modeller: her modelin size tam olarak ne mal olduğunu görün
+
+Modeller sayfası (yukarıda gösterilen) her faturanın ortaya çıkardığı iki soruyu yanıtlar: hangi model ve ne kadar. Paylaşılan gecikme görünümünün üstüne, **model başına token tüketimi**, **tahmini maliyet** ve **bağlam penceresi doldurma oranı** ekler, böylece kontrolsüz istem büyümesi ve yaklaşan sıkıştırma sizi şaşırtmadan önce görünür.
+
+FailproofAI Observability yaygın model kimliklerini otomatik olarak tanır. Bir pencere yanlış görünüyorsa veya kendi özel modelinizi çalıştırıyorsanız, **Ayarlar**'da **model bağlam pencereleri** bölümü altında düzeltin veya ekleyin, doldurma okumalarında değişiklik olur.
+
+## Araçlar: yavaş olanları bozuk olanlara ayırt edin
+
+Araç çağrısı yavaş olabilir veya sessizce başarısız olabilir ve bunu logları kazıdıktan sonra değil saniyeler içinde bilmek istiyorsunuz.
+
+![Araçlar sayfası, paylaşılan gecikme ısı haritasını ve yüzdelik bandı başarı/başarısızlık dökümü ve araç dağılım çubuğunun yanında göstermektedir](/agenteye/images/tools.png)
+*Araçlar sayfası: aynı ısı haritası ve yüzdelik bant, artı başarı/başarısızlık dökümü ve araç dağılım çubuğu.*
+
+Paylaşılan gecikme görünümünün yanısıra, Araçlar sayfası bir **başarı ve başarısızlık dökümü** ve bir **araç dağılım çubuğu** ekler, böylece en çok hangi araçlara güvendiğinizi ve hangilerinin hata bütçenizi tükettiğini bir bakışta görürsünüz.
+
+## Kancalar: tam olarak hangi kancayı ve tetikleyiciyi işaret edin
+
+Bir yaşam döngüsü kancası bir çalıştırmayı yavaşlatırsa, "kancalar yavaş" yapılacak bir şey değildir. Kancalar sayfası sizi önemli olan kancaya getirir.
+
+![Kancalar sayfası, gecikmeyi kanca adı ve tetikleyici olayına göre paylaşılan ısı haritası ve yüzdelik bant üzerinden ayırıştırıyor](/agenteye/images/hooks.png)
+*Kancalar sayfası: gecikme kanca adı ve tetikleyici olayına göre ayrıştırılmış.*
+
+Aynı gecikme ısı haritası ve yüzdelik bant üzerinden, Kancalar sayfası aktiviteyi **kanca adı** ve **tetikleyici olayı** ile böler, böylece dikkat gerektiren tek kancaya ve tek olaya inersiniz.
+
+## İlgili
+
+- [Olay akışı](/tr/agenteye/event-stream): her olayın canlı, renkle kodlanmış izi.
+- [Oturumlar](/tr/agenteye/sessions): olayları bir çalıştırma başına bir satır halinde toplayın ve yürütme grafiğini açın.
+- [Hata takibi](/tr/agenteye/error-tracking): pano tarafından kırmızıya boyanmış her şey için bir triage yüzeyi.
+- [Panolar](/tr/agenteye/dashboards): filonuz genelinde toplama görünümleri.

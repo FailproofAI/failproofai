@@ -1,0 +1,80 @@
+---
+title: "CLI"
+description: "Documentation CLI d'observabilité FailproofAI."
+---
+
+
+Votre déploiement d'observabilité FailproofAI entier, à une commande près. Vérifiez la production, créez une clé API ou acquittez un incident sans quitter votre terminal, puis scriptez le tout dans votre CI, ou laissez un agent de code le faire pour vous en langage naturel.
+
+```bash
+pipx install agenteye
+agenteye login --email you@example.com      # a 6-digit code lands in your inbox
+agenteye --json sessions --since 24h         # every agent run from the last day, newest first
+```
+
+*Le CLI `agenteye` communique avec votre tableau de bord. C'est un outil distinct du collecteur, qui achemine les événements vers le serveur.*
+
+## Tout votre déploiement, à une commande près
+
+Fini de jongler entre les onglets pour répondre à une question rapide. Le CLI `agenteye` lit vos données et administre votre organisation depuis un seul binaire : une vérification qui nécessitait autrefois de naviguer dans le tableau de bord se résume désormais à une ligne que vous pouvez relancer, aliaser ou coller dans un runbook. Quatre surfaces s'offrent à vous :
+
+- **Lire vos données :** `sessions`, `events`, `evals` et `errors`, filtrés par période, agent et environnement.
+- **Gérer votre organisation :** `keys`, `users`, `settings`, `alerts` et `incidents`.
+- **Lancer des analyses :** requêtes SQL sauvegardées et un runner `query` ad hoc sur vos données d'événements.
+- **Interroger l'assistant :** `agent ask` donne accès au même analyste en lecture seule que vous utilisez dans le tableau de bord.
+
+Installez-le une fois avec `pipx`, connectez-vous avec un code à 6 chiffres reçu par e-mail, et vous êtes prêt. La session dure environ une journée ; relancez `agenteye login` lorsqu'elle expire. Utilisez-le pour inspecter la production, provisionner une clé ou trier un incident en cours, sans jamais ouvrir un navigateur :
+
+```bash
+agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
+agenteye incidents list --state firing       # what is on fire right now
+agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
+```
+
+Un point de syntaxe à retenir : les options globales comme `--json` se placent avant la commande. `agenteye --json sessions` est correct ; `agenteye sessions --json` ne l'est pas.
+
+## Scriptez-le, intégrez-le à votre CI
+
+Chaque commande accepte `--json`, ce qui change tout. Le JSON propre est envoyé sur stdout tandis que les messages de statut et avertissements lisibles par un humain vont sur stderr, de sorte qu'une capture avec `--json` se pipe directement dans `jq` sans ligne parasite à supprimer. C'est ce qui rend le CLI aussi efficace pour vous à l'invite de commandes que pour un agent de code qui analyse la sortie :
+
+```bash
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+```
+
+Il est conçu pour s'exécuter sans surveillance. Les invites de confirmation sont automatiquement ignorées lorsqu'aucun terminal n'est connecté, ce qui évite tout blocage dans un pipeline. Chaque commande retourne un code de sortie significatif : `0` succès, `4` non connecté, `5` permission manquante (le message la nomme explicitement, par exemple `alerts:write`), `3` tableau de bord inaccessible. Un script peut brancher sur un `4` pour se réauthentifier ou sur un `5` pour savoir exactement quelle permission demander à un administrateur, plutôt que d'échouer silencieusement.
+
+## Laissez un agent de code le piloter en langage naturel
+
+Mieux encore : vous ne devriez pas avoir à vous souvenir de ces options. La **compétence CLI** est un petit dossier Agent Skill nommé `agenteye-cli` qui apprend à un agent de code comme Claude Code ou Codex à piloter le CLI depuis des demandes en langage naturel. Demandez « est-ce que quelque chose est cassé aujourd'hui ? » et l'agent choisit la commande, l'exécute en votre nom et répond en prose.
+
+Pour Claude Code, déposez le dossier `agenteye-cli` dans `~/.claude/skills/` et il est découvert automatiquement. FailproofAI Observability fournit le dossier ; rien de supplémentaire à installer, car il ne fait que piloter le CLI que vous avez déjà installé. Connectez-vous vous-même au préalable : la compétence ne peut pas effectuer la connexion avec le code envoyé par e-mail à votre place.
+
+Comme l'agent exécute le CLI en votre nom, il peut tout faire selon les permissions de votre session, en lecture comme en écriture : créer des clés, modifier des paramètres, résoudre des incidents. L'invite de confirmation du CLI ne se déclenche pas pour un agent ; la compétence est donc conçue pour indiquer la commande exacte et attendre votre accord avant toute modification. Vous êtes l'étape de confirmation.
+
+```text
+you    Why did session run-001 fail?
+
+agent  Running: agenteye --json events --session-id run-001 --all
+       The checkout-agent hit a TimeoutError on its third tool call.
+```
+
+Les lectures restent instantanées, et chaque écriture marque une pause pour vous :
+
+```text
+you    Give CI a key that can only push events.
+
+agent  This creates an API key. I'll run:
+         agenteye keys create ci --add events:add
+       OK to proceed?
+
+you    yes
+
+agent  Done. Key "ci" created with events:add only. The secret is shown once, so store it now.
+```
+
+## Ressources associées
+
+- [Référence CLI](/fr/agenteye/cli) : toutes les commandes, options et structures JSON.
+- [Recettes CLI pour agents](/fr/agenteye/cli-recipes) : modèles `jq` prêts à l'emploi et gestion des codes de sortie.
+- [Compétence CLI pour agent](/fr/agenteye/cli-skill) : installer et utiliser la compétence `agenteye-cli`.
+- [Assistant IA](/fr/agenteye/assistant) : l'analyste intégré au tableau de bord qu'`agent ask` interroge.

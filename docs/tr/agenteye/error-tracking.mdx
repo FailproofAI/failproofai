@@ -1,0 +1,40 @@
+---
+title: "Hata Takibi"
+description: "FailproofAI Observability Hata Takibi belgelendirmesi."
+---
+
+Ajanlarınızın ürettiği her hatayı tek bir yerde görün, gruplandırılmış şekilde böylece gürültülü bir patlama tek bir sorun olarak okunabilir. "Bir şey kırmızı" durumundan canlı bir akışta kaydırarak aramamanıza gerek kalmadan kıran tam çalışmaya kadar tek tıklamalı bir yol elde edersiniz.
+
+![Hatalar sayfası: zaman içinde başarısız işlemlerin histogramı, her biri tek tıklamalı "+ uyarı" düğmesine sahip gruplanmış kırmızı hata satırlarının üzerinde](/agenteye/images/errors.png)
+*Hatalar sayfası: zaman içinde başarısız işlemlerin histogramı, tekrarlanan hatalar olay başına bir satıra daraltılmıştır.*
+
+## Her hata, sizin için zaten toplanmış
+
+Bir ajan arızalanmışsa, kırmızı satırları kırmızı satırlar kayıp gitmeden yakalamayı umarak canlı bir etkinlik akışında kaydırmanız gerekli değildir. **Hatalar** sayfası toplamanızı sizin için yapar. Panon kırmızı olarak boyadığı her şeyi tek bir triyaj yüzeyinde bir araya getiriyor, böylece ilk gördüğünüz şey başarısız olan şeydir, nereye gitmek gerektiği değil.
+
+Ve açık olanlardan daha fazlasını yakalar. Açık `error` etkinliklerinin yanı sıra, FailproofAI Observability sessiz başarısızlıkları da ortaya çıkarır: yükleri bir hatayı içeren herhangi bir `tool_result`, `hook_completed` veya `agent_end` buraya görünür. Bir hata döndüren bir araç veya kötü şekilde çıkan bir kanca artık hiçbir şey yüksek bir istisna atmadığı için sizin gözünüzden kaçmaz.
+
+Sayfanın üst kısmında bir histogram zaman içinde hataları gösterir. Bir bakışta bunun sabit bir arka plan damlası mı yoksa birkaç dakika önce başlayan bir artış mı olduğunu anlayabilirsiniz, böylece hemen yaptığınız şeyi bırakıp bırakmayacağınızı bilirsiniz.
+
+Her gözlemle ilgili yüzey gibi, Hatalar sayfası da kuruluşunuza kapsamlıdır ve tarih aralığı, ortam, ajan ve oturum tarafından filtrelenmiştir. Bu, bir filo genelindeki listeyi almak ve gerçekten aldırış ettiğiniz bir ajan veya bir ortama daraltabileceğiniz anlamına gelir.
+
+## Bir olay, yüz aynı satır değil
+
+Tek bir kırık bağımlılık dakikada aynı hatayı yüzlerce kez tetikleyebilir. Ham bırakılırsa, bu neredeyse aynı satırlardan bir duvar olup gerçekte görmeniz gereken bir şeyi gömüp kalır.
+
+FailproofAI Observability aynı oturum ve hata türünü paylaşan tekrarlanan hataları tek bir satıra daraltır. Bir patlama bir olay olarak okunur. Sonunda sorunları sayarsınız, günlük satırlarını değil, önemli olan sinyal kendi ses seviyesiyle boğulmak yerine üstünde kalır.
+
+## "Bir şey kırmızı" durumundan tam olay dahil
+
+Herhangi bir satırı tıklayın ve o çalışmanın oturumunun içine iniş yaparak tam da başarısız olan etkinliğin üzerine konumlandırılmış olarak gidin. Oturum kimliklerini kopyalamaya, yanlış gitmesinin anını aramamaya gerek yoktur: buna doğrudan varırsınız, tam yürütme grafiği bir bakış uzağında olacak şekilde ajanın kırılmadan önceki anlar içinde ne yaptığını görebilirsiniz.
+
+`alerts:write` izniniz varsa, her satır ayrıca bir **+ uyarı** düğmesi taşır. Tıklayın ve Observability aynı hatayı yeniden yakalaması için zaten doldurulmuş yeni bir uyarı kuralı açar. Az önce triyaj ettiğiniz olay, sizi iki kez şaşırtmak yerine bir sonraki seferde sizi çağıran olay haline gelir.
+
+**Nerede bulunur:** **Hatalar** sayfası panelin gözlemi bölümünde, `/<org-slug>/errors` adresinde yer alır.
+
+## İlgili
+
+- [Uyarılar](/tr/agenteye/alerts): herhangi bir hatayı bir çağrı kuralına dönüştürün.
+- [Olaylar](/tr/agenteye/incidents): açıktan çözüme kadar bir uyarıyı takip edin.
+- [Oturumlar](/tr/agenteye/sessions): herhangi bir hatanın arkasındaki tam çalışmayı açın.
+- [Denetimler](/tr/agenteye/audits): Observability'nin çalışmalarınız arasında hata kalıplarını bulmasını sağlayın.

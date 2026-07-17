@@ -1,0 +1,50 @@
+---
+title: "Event Stream"
+description: "Documentazione di FailproofAI Observability Event Stream."
+---
+
+
+Nel momento in cui il tuo agente fa qualcosa, lo vedi. L'Event Stream è il tuo polso in tempo reale su ogni agente in produzione: niente attese, niente ricerche nei log, niente supposizioni su ciò che è appena accaduto.
+
+![L'Event Stream in diretta: righe di eventi codificate a colori che scorrono in tempo reale, filtrabili per ambiente, agente, sessione, tipo di evento e testo libero](/agenteye/images/events-stream.png)
+
+*Ogni evento da ogni agente nella tua organizzazione, i più recenti per primi, aggiornamento in tempo reale.*
+
+## Il tuo polso in tempo reale su ogni agente
+
+Quando un agente avvia un'esecuzione, chiama un modello, attiva uno strumento, esegue un hook o incontra un errore, la riga appare in cima al flusso nel momento in cui accade. Monitora ogni evento su ogni agente della tua organizzazione, i più recenti per primi, così hai sempre un quadro attuale invece di uno obsoleto.
+
+Questo significa niente coda di file di log su una macchina da qualche parte, niente ricerche su più macchine, niente assemblaggio manuale di timestamp. Apri una pagina e stai già guardando la produzione.
+
+Le righe sono codificate a colori per tipo, così puoi leggere il flusso a colpo d'occhio invece di analizzare ogni riga. A prima vista, ogni riga ti mostra:
+
+- **Il suo tipo**, codificato a colori: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, e altri ancora.
+- **Un riassunto su una riga** di ciò che è accaduto, così raramente hai bisogno di aprire nulla solo per capire l'essenza.
+- **Conteggi dei token** per il passaggio.
+- **Un badge di riempimento della finestra di contesto** dove applicabile, così la crescita del prompt e un compattamento imminente sono visibili prima che causino problemi.
+
+Osservarlo in diretta significa che catturi un deploy errato, un ciclo infinito o un'esplosione di errori mentre accade, non nella revisione dei log di domani.
+
+## Trova l'unica esecuzione che conta
+
+Quando qualcosa sembra non andare, non vuoi il firehose. Vuoi la singola esecuzione che ha rotto. Il flusso si filtra rapidamente: per ambiente, per agente, per sessione, per tipo di evento, o per testo libero.
+
+Filtra per session id o agent id per seguire un'esecuzione dal suo primo evento all'ultimo. Filtra per tipo di evento per isolare un singolo tipo di attività, ad esempio ogni `error` in tutta l'organizzazione in un'unica vista. Accatasta i filtri per restringere da "tutto, ovunque" a "questo agente, in prod, in errore" in un paio di clic, quindi agisci su ciò che trovi.
+
+La ricerca di testo libero va direttamente a un messaggio, un nome di strumento, o un id che hai già a portata di mano, così una segnalazione del cliente si trasforma nell'esecuzione esatta in pochi secondi.
+
+## Dove trovarlo
+
+L'Event Stream è la tua pagina iniziale dell'organizzazione. Accedi e è la prima superficie su cui arrivi, a `/<org-slug>/`, così il triage inizia nel momento in cui arrivi.
+
+Dietro di esso, i tuoi agenti emettono eventi attraverso l'SDK, il collector li spedisce al tuo server FailproofAI Observability, e il flusso li monitora man mano che arrivano nell'infrastruttura che controlli. Quando vuoi la vista riepilogativa invece della traccia grezza, gli eventi di ogni esecuzione si riducono a una singola riga su Sessions, a un clic di distanza.
+
+Questa è la fonte di verità grezza su cui si basano tutte le altre superfici di osservazione, quindi quando un numero sembra sbagliato altrove, il flusso è il luogo dove confermi ciò che è effettivamente accaduto.
+
+## Correlati
+
+- [Sessions](/it/agenteye/sessions): gli stessi eventi riepilogati in una riga per esecuzione, con un grafico di esecuzione in stile git.
+- [Telemetry](/it/agenteye/telemetry): ciò che i tuoi agenti inviano e come gli eventi raggiungono il flusso.
+- [Error tracking](/it/agenteye/error-tracking): un'unica superficie di triage per tutto ciò che è andato male.
+- [Alerts](/it/agenteye/alerts): trasforma qualsiasi soglia in una regola di paging.
+- [CLI and agents](/it/agenteye/cli-and-agents): la stessa traccia in diretta dal tuo terminale.

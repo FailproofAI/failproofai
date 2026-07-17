@@ -1,0 +1,80 @@
+---
+title: "CLI"
+description: "FailproofAI Observability CLI 文档。"
+---
+
+
+您的整个 FailproofAI Observability 部署，一条命令即可搞定。无需离开终端，即可检查生产环境、生成 API 密钥或确认事件，还可将任意操作脚本化集成到 CI，或者用自然语言让编码智能体替您完成。
+
+```bash
+pipx install agenteye
+agenteye login --email you@example.com      # a 6-digit code lands in your inbox
+agenteye --json sessions --since 24h         # every agent run from the last day, newest first
+```
+
+*`agenteye` CLI 与您的仪表板通信，它与负责将事件发送到服务器的采集器是两个不同的工具。*
+
+## 您的整个部署，一条命令即可搞定
+
+无需在多个标签页之间来回切换来回答一个简单的问题。`agenteye` CLI 通过单个二进制文件读取数据并管理您的组织，原本需要在仪表板中逐页点击的检查，现在变成一行可随时重复执行、设为别名或粘贴到运行手册的命令。它提供四个操作界面：
+
+- **读取数据：** `sessions`、`events`、`evals` 和 `errors`，支持按时间、智能体和环境筛选。
+- **管理组织：** `keys`、`users`、`settings`、`alerts` 和 `incidents`。
+- **运行分析：** 支持保存的 SQL 查询，以及针对事件数据的临时 `query` 执行器。
+- **调用助手：** `agent ask` 可访问与仪表板中相同的只读分析助手。
+
+使用 `pipx` 安装一次，通过邮件收到的 6 位验证码登录，即可开始使用。会话有效期约为一天；过期后重新运行 `agenteye login` 即可。无需打开浏览器，即可用它抽查生产环境、配置密钥或快速处理正在触发的事件：
+
+```bash
+agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
+agenteye incidents list --state firing       # what is on fire right now
+agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
+```
+
+有一个使用习惯需要注意：`--json` 等全局选项必须放在命令之前。`agenteye --json sessions` 是正确的写法，`agenteye sessions --json` 则不行。
+
+## 脚本化，集成到 CI
+
+每条命令都支持 `--json`，这改变了一切。干净的 JSON 输出到 stdout，而人类可读的状态信息和警告输出到 stderr，因此 `--json` 的输出可以直接通过管道传给 `jq`，无需去除多余的行。这正是 CLI 在交互式提示符下和在编码智能体解析输出时同样好用的原因：
+
+```bash
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+```
+
+它专为无人值守运行而设计。当没有终端连接时，确认提示会自动跳过，因此不会在管道中挂起，并且每条命令都会返回有意义的退出码：`0` 表示成功，`4` 表示未登录，`5` 表示缺少权限（消息中会具体说明，例如 `alerts:write`），`3` 表示仪表板不可达。脚本可以根据 `4` 重新进行身份验证，或根据 `5` 精确告知需要向管理员申请哪些权限，而不是盲目地失败。
+
+## 用自然语言让编码智能体来驱动
+
+更进一步，您根本不需要记住这些参数。**CLI 技能**是一个名为 `agenteye-cli` 的小型 Agent Skill 文件夹，它能教导 Claude Code 或 Codex 等编码智能体通过自然语言请求来驱动 CLI。只需问"今天有什么问题吗？"，智能体便会选择合适的命令、以您的身份运行，并用自然语言回答。
+
+对于 Claude Code，将 `agenteye-cli` 文件夹放入 `~/.claude/skills/` 即可自动发现。FailproofAI Observability 提供该文件夹，无需额外安装，因为它只是驱动您已经安装好的 CLI。请先自行登录：该技能无法替您完成邮件验证码登录流程。
+
+由于智能体以您的身份运行 CLI，它可以执行您的登录权限所允许的一切操作，包括读取和写入：创建密钥、更改设置、解决事件。CLI 的"确认操作"提示不会对智能体触发，因此该技能被设计为在执行任何变更操作前，先说明具体命令并等待您的确认。您就是那个确认步骤。
+
+```text
+you    Why did session run-001 fail?
+
+agent  Running: agenteye --json events --session-id run-001 --all
+       The checkout-agent hit a TimeoutError on its third tool call.
+```
+
+读取操作即时完成，每个写入操作都会暂停等待您的确认：
+
+```text
+you    Give CI a key that can only push events.
+
+agent  This creates an API key. I'll run:
+         agenteye keys create ci --add events:add
+       OK to proceed?
+
+you    yes
+
+agent  Done. Key "ci" created with events:add only. The secret is shown once, so store it now.
+```
+
+## 相关内容
+
+- [CLI 参考](/zh/agenteye/cli)：每条命令、参数及 JSON 结构的详细说明。
+- [面向智能体的 CLI 使用示例](/zh/agenteye/cli-recipes)：可直接复制使用的 `jq` 模式和退出码处理方法。
+- [CLI 智能体技能](/zh/agenteye/cli-skill)：安装并运行 `agenteye-cli` 技能。
+- [AI 助手](/zh/agenteye/assistant)：`agent ask` 所连接的仪表板内置分析助手。

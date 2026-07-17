@@ -141,27 +141,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "zh/agenteye/overview",
+                  "zh/agenteye/concepts",
+                  "zh/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "zh/agenteye/event-stream",
+                  "zh/agenteye/sessions",
+                  "zh/agenteye/telemetry",
+                  "zh/agenteye/error-tracking",
+                  "zh/agenteye/evaluations",
+                  "zh/agenteye/queries",
+                  "zh/agenteye/dashboards",
+                  "zh/agenteye/audits",
+                  "zh/agenteye/alerts",
+                  "zh/agenteye/incidents",
+                  "zh/agenteye/assistant",
+                  "zh/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "zh/agenteye/python-sdk",
                   "zh/agenteye/cli",
+                  "zh/agenteye/cli-skill",
                   "zh/agenteye/cli-recipes",
-                  "zh/agenteye/cli-skill"
+                  "zh/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "zh/agenteye/evaluation-suite",
-                  "zh/agenteye/audits",
-                  "zh/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "zh/agenteye/api-keys",
-                  "zh/agenteye/assistant"
+                  "zh/agenteye/security"
                 ]
               }
             ]
@@ -230,27 +248,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "ja/agenteye/overview",
+                  "ja/agenteye/concepts",
+                  "ja/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ja/agenteye/event-stream",
+                  "ja/agenteye/sessions",
+                  "ja/agenteye/telemetry",
+                  "ja/agenteye/error-tracking",
+                  "ja/agenteye/evaluations",
+                  "ja/agenteye/queries",
+                  "ja/agenteye/dashboards",
+                  "ja/agenteye/audits",
+                  "ja/agenteye/alerts",
+                  "ja/agenteye/incidents",
+                  "ja/agenteye/assistant",
+                  "ja/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "ja/agenteye/python-sdk",
                   "ja/agenteye/cli",
+                  "ja/agenteye/cli-skill",
                   "ja/agenteye/cli-recipes",
-                  "ja/agenteye/cli-skill"
+                  "ja/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ja/agenteye/evaluation-suite",
-                  "ja/agenteye/audits",
-                  "ja/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ja/agenteye/api-keys",
-                  "ja/agenteye/assistant"
+                  "ja/agenteye/security"
                 ]
               }
             ]
@@ -319,27 +355,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "ko/agenteye/overview",
+                  "ko/agenteye/concepts",
+                  "ko/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ko/agenteye/event-stream",
+                  "ko/agenteye/sessions",
+                  "ko/agenteye/telemetry",
+                  "ko/agenteye/error-tracking",
+                  "ko/agenteye/evaluations",
+                  "ko/agenteye/queries",
+                  "ko/agenteye/dashboards",
+                  "ko/agenteye/audits",
+                  "ko/agenteye/alerts",
+                  "ko/agenteye/incidents",
+                  "ko/agenteye/assistant",
+                  "ko/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "ko/agenteye/python-sdk",
                   "ko/agenteye/cli",
+                  "ko/agenteye/cli-skill",
                   "ko/agenteye/cli-recipes",
-                  "ko/agenteye/cli-skill"
+                  "ko/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ko/agenteye/evaluation-suite",
-                  "ko/agenteye/audits",
-                  "ko/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ko/agenteye/api-keys",
-                  "ko/agenteye/assistant"
+                  "ko/agenteye/security"
                 ]
               }
             ]
@@ -408,27 +462,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "es/agenteye/overview",
+                  "es/agenteye/concepts",
+                  "es/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "es/agenteye/event-stream",
+                  "es/agenteye/sessions",
+                  "es/agenteye/telemetry",
+                  "es/agenteye/error-tracking",
+                  "es/agenteye/evaluations",
+                  "es/agenteye/queries",
+                  "es/agenteye/dashboards",
+                  "es/agenteye/audits",
+                  "es/agenteye/alerts",
+                  "es/agenteye/incidents",
+                  "es/agenteye/assistant",
+                  "es/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "es/agenteye/python-sdk",
                   "es/agenteye/cli",
+                  "es/agenteye/cli-skill",
                   "es/agenteye/cli-recipes",
-                  "es/agenteye/cli-skill"
+                  "es/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "es/agenteye/evaluation-suite",
-                  "es/agenteye/audits",
-                  "es/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "es/agenteye/api-keys",
-                  "es/agenteye/assistant"
+                  "es/agenteye/security"
                 ]
               }
             ]
@@ -497,27 +569,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "pt-br/agenteye/overview",
+                  "pt-br/agenteye/concepts",
+                  "pt-br/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "pt-br/agenteye/event-stream",
+                  "pt-br/agenteye/sessions",
+                  "pt-br/agenteye/telemetry",
+                  "pt-br/agenteye/error-tracking",
+                  "pt-br/agenteye/evaluations",
+                  "pt-br/agenteye/queries",
+                  "pt-br/agenteye/dashboards",
+                  "pt-br/agenteye/audits",
+                  "pt-br/agenteye/alerts",
+                  "pt-br/agenteye/incidents",
+                  "pt-br/agenteye/assistant",
+                  "pt-br/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "pt-br/agenteye/python-sdk",
                   "pt-br/agenteye/cli",
+                  "pt-br/agenteye/cli-skill",
                   "pt-br/agenteye/cli-recipes",
-                  "pt-br/agenteye/cli-skill"
+                  "pt-br/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "pt-br/agenteye/evaluation-suite",
-                  "pt-br/agenteye/audits",
-                  "pt-br/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "pt-br/agenteye/api-keys",
-                  "pt-br/agenteye/assistant"
+                  "pt-br/agenteye/security"
                 ]
               }
             ]
@@ -586,27 +676,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "de/agenteye/overview",
+                  "de/agenteye/concepts",
+                  "de/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "de/agenteye/event-stream",
+                  "de/agenteye/sessions",
+                  "de/agenteye/telemetry",
+                  "de/agenteye/error-tracking",
+                  "de/agenteye/evaluations",
+                  "de/agenteye/queries",
+                  "de/agenteye/dashboards",
+                  "de/agenteye/audits",
+                  "de/agenteye/alerts",
+                  "de/agenteye/incidents",
+                  "de/agenteye/assistant",
+                  "de/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "de/agenteye/python-sdk",
                   "de/agenteye/cli",
+                  "de/agenteye/cli-skill",
                   "de/agenteye/cli-recipes",
-                  "de/agenteye/cli-skill"
+                  "de/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "de/agenteye/evaluation-suite",
-                  "de/agenteye/audits",
-                  "de/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "de/agenteye/api-keys",
-                  "de/agenteye/assistant"
+                  "de/agenteye/security"
                 ]
               }
             ]
@@ -675,27 +783,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "fr/agenteye/overview",
+                  "fr/agenteye/concepts",
+                  "fr/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "fr/agenteye/event-stream",
+                  "fr/agenteye/sessions",
+                  "fr/agenteye/telemetry",
+                  "fr/agenteye/error-tracking",
+                  "fr/agenteye/evaluations",
+                  "fr/agenteye/queries",
+                  "fr/agenteye/dashboards",
+                  "fr/agenteye/audits",
+                  "fr/agenteye/alerts",
+                  "fr/agenteye/incidents",
+                  "fr/agenteye/assistant",
+                  "fr/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "fr/agenteye/python-sdk",
                   "fr/agenteye/cli",
+                  "fr/agenteye/cli-skill",
                   "fr/agenteye/cli-recipes",
-                  "fr/agenteye/cli-skill"
+                  "fr/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "fr/agenteye/evaluation-suite",
-                  "fr/agenteye/audits",
-                  "fr/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "fr/agenteye/api-keys",
-                  "fr/agenteye/assistant"
+                  "fr/agenteye/security"
                 ]
               }
             ]
@@ -764,27 +890,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "ru/agenteye/overview",
+                  "ru/agenteye/concepts",
+                  "ru/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ru/agenteye/event-stream",
+                  "ru/agenteye/sessions",
+                  "ru/agenteye/telemetry",
+                  "ru/agenteye/error-tracking",
+                  "ru/agenteye/evaluations",
+                  "ru/agenteye/queries",
+                  "ru/agenteye/dashboards",
+                  "ru/agenteye/audits",
+                  "ru/agenteye/alerts",
+                  "ru/agenteye/incidents",
+                  "ru/agenteye/assistant",
+                  "ru/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "ru/agenteye/python-sdk",
                   "ru/agenteye/cli",
+                  "ru/agenteye/cli-skill",
                   "ru/agenteye/cli-recipes",
-                  "ru/agenteye/cli-skill"
+                  "ru/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ru/agenteye/evaluation-suite",
-                  "ru/agenteye/audits",
-                  "ru/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ru/agenteye/api-keys",
-                  "ru/agenteye/assistant"
+                  "ru/agenteye/security"
                 ]
               }
             ]
@@ -853,27 +997,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "hi/agenteye/overview",
+                  "hi/agenteye/concepts",
+                  "hi/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "hi/agenteye/event-stream",
+                  "hi/agenteye/sessions",
+                  "hi/agenteye/telemetry",
+                  "hi/agenteye/error-tracking",
+                  "hi/agenteye/evaluations",
+                  "hi/agenteye/queries",
+                  "hi/agenteye/dashboards",
+                  "hi/agenteye/audits",
+                  "hi/agenteye/alerts",
+                  "hi/agenteye/incidents",
+                  "hi/agenteye/assistant",
+                  "hi/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "hi/agenteye/python-sdk",
                   "hi/agenteye/cli",
+                  "hi/agenteye/cli-skill",
                   "hi/agenteye/cli-recipes",
-                  "hi/agenteye/cli-skill"
+                  "hi/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "hi/agenteye/evaluation-suite",
-                  "hi/agenteye/audits",
-                  "hi/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "hi/agenteye/api-keys",
-                  "hi/agenteye/assistant"
+                  "hi/agenteye/security"
                 ]
               }
             ]
@@ -942,27 +1104,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "tr/agenteye/overview",
+                  "tr/agenteye/concepts",
+                  "tr/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "tr/agenteye/event-stream",
+                  "tr/agenteye/sessions",
+                  "tr/agenteye/telemetry",
+                  "tr/agenteye/error-tracking",
+                  "tr/agenteye/evaluations",
+                  "tr/agenteye/queries",
+                  "tr/agenteye/dashboards",
+                  "tr/agenteye/audits",
+                  "tr/agenteye/alerts",
+                  "tr/agenteye/incidents",
+                  "tr/agenteye/assistant",
+                  "tr/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "tr/agenteye/python-sdk",
                   "tr/agenteye/cli",
+                  "tr/agenteye/cli-skill",
                   "tr/agenteye/cli-recipes",
-                  "tr/agenteye/cli-skill"
+                  "tr/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "tr/agenteye/evaluation-suite",
-                  "tr/agenteye/audits",
-                  "tr/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "tr/agenteye/api-keys",
-                  "tr/agenteye/assistant"
+                  "tr/agenteye/security"
                 ]
               }
             ]
@@ -1031,27 +1211,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "vi/agenteye/overview",
+                  "vi/agenteye/concepts",
+                  "vi/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "vi/agenteye/event-stream",
+                  "vi/agenteye/sessions",
+                  "vi/agenteye/telemetry",
+                  "vi/agenteye/error-tracking",
+                  "vi/agenteye/evaluations",
+                  "vi/agenteye/queries",
+                  "vi/agenteye/dashboards",
+                  "vi/agenteye/audits",
+                  "vi/agenteye/alerts",
+                  "vi/agenteye/incidents",
+                  "vi/agenteye/assistant",
+                  "vi/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "vi/agenteye/python-sdk",
                   "vi/agenteye/cli",
+                  "vi/agenteye/cli-skill",
                   "vi/agenteye/cli-recipes",
-                  "vi/agenteye/cli-skill"
+                  "vi/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "vi/agenteye/evaluation-suite",
-                  "vi/agenteye/audits",
-                  "vi/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "vi/agenteye/api-keys",
-                  "vi/agenteye/assistant"
+                  "vi/agenteye/security"
                 ]
               }
             ]
@@ -1120,27 +1318,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "it/agenteye/overview",
+                  "it/agenteye/concepts",
+                  "it/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "it/agenteye/event-stream",
+                  "it/agenteye/sessions",
+                  "it/agenteye/telemetry",
+                  "it/agenteye/error-tracking",
+                  "it/agenteye/evaluations",
+                  "it/agenteye/queries",
+                  "it/agenteye/dashboards",
+                  "it/agenteye/audits",
+                  "it/agenteye/alerts",
+                  "it/agenteye/incidents",
+                  "it/agenteye/assistant",
+                  "it/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "it/agenteye/python-sdk",
                   "it/agenteye/cli",
+                  "it/agenteye/cli-skill",
                   "it/agenteye/cli-recipes",
-                  "it/agenteye/cli-skill"
+                  "it/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "it/agenteye/evaluation-suite",
-                  "it/agenteye/audits",
-                  "it/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "it/agenteye/api-keys",
-                  "it/agenteye/assistant"
+                  "it/agenteye/security"
                 ]
               }
             ]
@@ -1209,27 +1425,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "ar/agenteye/overview",
+                  "ar/agenteye/concepts",
+                  "ar/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ar/agenteye/event-stream",
+                  "ar/agenteye/sessions",
+                  "ar/agenteye/telemetry",
+                  "ar/agenteye/error-tracking",
+                  "ar/agenteye/evaluations",
+                  "ar/agenteye/queries",
+                  "ar/agenteye/dashboards",
+                  "ar/agenteye/audits",
+                  "ar/agenteye/alerts",
+                  "ar/agenteye/incidents",
+                  "ar/agenteye/assistant",
+                  "ar/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "ar/agenteye/python-sdk",
                   "ar/agenteye/cli",
+                  "ar/agenteye/cli-skill",
                   "ar/agenteye/cli-recipes",
-                  "ar/agenteye/cli-skill"
+                  "ar/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ar/agenteye/evaluation-suite",
-                  "ar/agenteye/audits",
-                  "ar/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ar/agenteye/api-keys",
-                  "ar/agenteye/assistant"
+                  "ar/agenteye/security"
                 ]
               }
             ]
@@ -1298,27 +1532,45 @@
             "tab": "Observability",
             "groups": [
               {
-                "group": "Instrumentation and CLI",
+                "group": "Overview",
+                "pages": [
+                  "he/agenteye/overview",
+                  "he/agenteye/concepts",
+                  "he/agenteye/observability"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "he/agenteye/event-stream",
+                  "he/agenteye/sessions",
+                  "he/agenteye/telemetry",
+                  "he/agenteye/error-tracking",
+                  "he/agenteye/evaluations",
+                  "he/agenteye/queries",
+                  "he/agenteye/dashboards",
+                  "he/agenteye/audits",
+                  "he/agenteye/alerts",
+                  "he/agenteye/incidents",
+                  "he/agenteye/assistant",
+                  "he/agenteye/cli-and-agents"
+                ]
+              },
+              {
+                "group": "SDK and CLI",
                 "pages": [
                   "he/agenteye/python-sdk",
                   "he/agenteye/cli",
+                  "he/agenteye/cli-skill",
                   "he/agenteye/cli-recipes",
-                  "he/agenteye/cli-skill"
+                  "he/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "he/agenteye/evaluation-suite",
-                  "he/agenteye/audits",
-                  "he/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "he/agenteye/api-keys",
-                  "he/agenteye/assistant"
+                  "he/agenteye/security"
                 ]
               }
             ]

@@ -1,308 +1,63 @@
 ---
 title: "Avvisi"
-description: "Documentazione degli Avvisi di AgentEye."
+description: "Documentazione degli Avvisi di Osservabilità FailproofAI."
 ---
 
-Gli avvisi valutano una regola secondo una pianificazione e ti notificano quando qualcosa oltrepassa una soglia. Trasformano AgentEye da una dashboard passiva in una superficie di paging per le cose che contano: picchi di tasso d'errore, regressioni di latenza, cali nei punteggi degli evaluator, o qualsiasi evento personalizzato che puoi esprimere come query ClickHouse.
 
-Questa guida copre cos'è un avviso, i cinque tipi di trigger, i quattro canali di notifica, il ciclo di vita degli incidenti, e i controlli operativi.
+Scopri nel momento preciso quando qualcosa supera la tua soglia, sul canale che il tuo team già monitorà, invece di sentirne parlare da un cliente. Imposta una regola una volta sola e FailproofAI Observability la verifica secondo una pianificazione, quindi ti avvisa tramite email, Slack, webhook o direttamente nel dashboard.
 
-![La pagina Avvisi: una griglia di schede con le regole di avviso, ciascuna che mostra il tipo di trigger, la finestra di valutazione, i canali e un badge di severità info/avvertimento/critico](/agenteye/images/alerts.png)
+![La pagina Avvisi: una griglia di schede di regole di avviso, ognuna che mostra il suo trigger, la finestra di valutazione, i canali e un badge di gravità info, warning o critical](/agenteye/images/alerts.png)
+*Ogni regola di avviso a colpo d'occhio: cosa monitora, con che frequenza, dove avvisa e quanto è urgente.*
 
----
+## Vieni a conoscenza dei problemi prima che i tuoi utenti lo facciano
 
-## Concetti
+Smetti di aggiornare un dashboard nella speranza di catturare una regressione. Ricorri a un avviso ogni volta che c'è un segnale di cui vorresti sapere anche quando nessuno sta guardando, e fallo arrivare dove sei già:
 
-- **Avviso** — la regola. Dice *cosa* verificare (il trigger), *con quale frequenza* (l'intervallo di valutazione), *quando considerarla rotta* (logica composta), *quanto è urgente* (severità), e *chi/dove notificare* (canali).
-- **Incidente** — quello che accade quando un avviso si attiva. Un avviso ha al massimo un incidente aperto per volta. Le violazioni ripetute aggiornano le evidenze dello stesso incidente. Gli incidenti vengono risolti da un operatore; la risoluzione automatica quando la regola smette di attivarsi è pianificata ma non attualmente abilitata.
-- **Canale** — dove va una notifica: email, Slack, webhook generico, o in-dashboard. Ogni avviso può collegare qualsiasi combinazione.
+- **Email**, a chi deve saperlo.
+- **Slack**, un messaggio ricco con un pulsante che ti porta direttamente all'incidente.
+- **Webhook**, un JSON POST per PagerDuty, Opsgenie o il tuo endpoint, con una firma opzionale in modo che il destinatario possa fidarsi di esso.
+- **Nel dashboard**, silenzioso per design, per quando stai mettendo a punto una regola e non vuoi ancora avvisare nessuno.
 
-Gli avvisi e gli incidenti appartengono a un'organizzazione e sono condivisi tra gli operatori di quell'organizzazione (in un'implementazione single-tenant è semplicemente l'organizzazione predefinita `default`). Gli incidenti possono essere assegnati a un singolo operatore per il triage.
+Allega una qualsiasi combinazione a una singola regola, e la sua gravità (info, warning o critical) viene mantenuta in modo che quelli urgenti sembrino urgenti.
 
----
+## Costruisci la regola in un modulo, non JSON
 
-## Tipi di trigger
+Descrivi cosa significa "rotto" in un modulo e FailproofAI Observability scrive la regola sottostante per te. La specifica JSON è solo ciò che quel modulo produce sotto il cofano, quindi puoi leggerla per comprendere una regola ma raramente la digiterai.
 
-Cinque tipi, ciascuno con la propria specifica JSON. Scegli quello che corrisponde a come vuoi descrivere "rotto". La forma **nuovo avviso** della dashboard costruisce la stessa specifica per te, passando l'editor della condizione in modo che corrisponda al tipo di trigger che scegli:
+![Il modulo di nuovo avviso: nome e descrizione, un interruttore abilitato e un selettore di trigger che offre soglia metrica, SQL personalizzato, punteggio di valutazione, valutazione composta e condizioni per evento](/agenteye/images/alert-new.png)
+*Scegli un trigger e il modulo inserisce i campi giusti; Salva scrive la regola.*
 
-![Il modulo new-alert, con le basi (nome, descrizione, abilitato) e il selettore di trigger che mostra soglia metrica, SQL personalizzato, punteggio di valutazione, errori di valutazione e opzioni per evento](/agenteye/images/alert-new.png)
+Il percorso felice è veloce: assegnale un nome, scegli un **trigger** (cosa controllare), imposta la **soglia e la finestra** (quanto grave, per quanto tempo), allega almeno un **canale**, quindi **Salva** e premi **Test** per attivare una notifica sintetica e confermare che ogni destinazione è collegata. Dietro le quinte questo produce una piccola specifica come:
 
-### 1. `metric_threshold`
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
 
-Il più semplice. Scegli una metrica da un elenco chiuso, un operatore, una soglia e una finestra temporale.
+Non sei limitato a un solo tipo di segnale. Scegli il trigger che corrisponde al modo in cui pensi al guasto:
 
-| Metrica | Cosa conta |
+| Trigger | Si attiva quando |
 |---|---|
-| `event_count` | Eventi totali nella finestra |
-| `error_count` | `event_type = 'error'` O qualsiasi evento con `error_type IS NOT NULL` |
-| `error_rate` | `error_count / event_count` (0..1) |
-| `p95_latency_ms` | `quantile(0.95)(duration_ms)` su tutti gli eventi con `duration_ms` |
-| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
-| `token_sum` | `SUM(input_tokens + output_tokens)` |
+| **Soglia metrica** | una metrica preimpostata (tasso di errore, latenza p95 o p99, conteggio eventi o errori, spesa token) supera la tua soglia in una finestra |
+| **SQL personalizzato** | la tua query di sola lettura restituisce una riga, o un valore che calcola supera una soglia |
+| **Punteggio di valutazione** | la media del punteggio di un valutatore (ad es., allucinazione) supera una soglia |
+| **Valutazione composta** | diversi controlli di punteggio si combinano con logica any, all, o at-least-N, per catturare una regressione che si manifesta solo tra i punteggi |
+| **Per evento** | arriva un singolo evento corrispondente: un agente specifico, un tipo di errore specifico o una sottostringa di messaggio |
 
-Operatori: `>`, `>=`, `<`, `<=`, `==` (accettati anche come `gt`, `gte`, `lt`, `lte`, `eq`).
+Stai già osservando un guasto nella [pagina Errori](/it/agenteye/error-tracking)? Ogni riga lì ha un pulsante **+ avviso** che apre questo stesso modulo precompilato per catturare esattamente quel guasto di nuovo, in modo che l'incidente che hai appena triato diventi quello che ti avvisa la prossima volta.
 
-Filtri opzionali: `environment`, `event_type`.
+**Dove trovarlo:** Gli avvisi si trovano in `/<org-slug>/alerts`. La creazione, modifica, eliminazione e test delle regole richiede **`alerts:write`**; `alerts:read` è sufficiente per guardare. Il selettore dei destinatari elenca i membri della tua organizzazione per nome, in modo che tu possa avvisare una persona senza uscire dal modulo.
 
-Esempio di specifica:
+## Avvisami solo quando è reale
 
-```json
-{
-  "metric": "p95_latency_ms",
-  "filter": { "environment": "production" },
-  "window_secs": 900,
-  "op": ">",
-  "value": 5000
-}
-```
+Una misurazione errata non dovrebbe svegliarti. Il filtro del rumore **M di N** controlla quanti degli ultimi controlli devono fallire prima che l'avviso ti avvisi effettivamente. Impostalo su **3 di 5** e la regola si attiva solo dopo aver violato tre dei suoi ultimi cinque controlli, in modo che un segnale instabile smetta di gridare al lupo; lascialo al valore predefinito **1 di 1** per attivarsi al primo violazione. Scegli anche con che frequenza la regola viene eseguita, da preset di 1m, 5m, 15m e 1h, abbinati alla velocità effettiva del segnale.
 
-### 2. `custom_sql`
+## Cosa succede quando un avviso si attiva
 
-Per qualsiasi cosa le metriche preimpostate non coprano. L'SQL fornito dall'operatore passa attraverso la stessa protezione `/queries/run` (solo SELECT/WITH, singola istruzione, limite di 10.000 righe) prima che il dispatcher lo esegua. Due modalità:
+Una violazione apre un **incidente** e avvisa i tuoi canali una sola volta. Da lì il tuo team lo riconosce, assegna un proprietario, ne parla e lo risolve, il tutto rispetto a un record pulito e attribuito. Quel flusso di lavoro di triage ha la sua casa: vedi [Incidenti](/it/agenteye/incidents).
 
-- **modalità righe** (nessun `op`/`value`): l'avviso si attiva non appena la query restituisce almeno una riga.
-- **modalità valore**: la query deve alias una colonna come `metric_value`; il dispatcher confronta il `metric_value` della prima riga rispetto a `value` usando `op`.
+## Correlato
 
-```json
-{
-  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
-  "op": ">",
-  "value": 100
-}
-```
-
-### 3. `evaluation_score`
-
-Legge `agenteye.evaluations` e confronta la media di un punteggio denominato su una finestra.
-
-```json
-{
-  "score_key": "hallucination",
-  "op": ">",
-  "value": 0.6,
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-`min_count` protegge da outlier a singolo campione; il dispatcher non si attiva finché non esistono almeno N valutazioni nella finestra.
-
-### 4. `eval_compound`
-
-Cattura una regressione della qualità che si manifesta solo attraverso *diversi* punteggi degli evaluator contemporaneamente. Dove `evaluation_score` osserva un singolo punteggio denominato, `eval_compound` compone più condizioni di valutazione in un avviso e combina i loro risultati con una logica scelta; quindi una regola può esprimere "attivati se l'utilità scende **o** l'allucinazione sale", "attivati solo se l'utilità **e** l'efficienza dello strumento scendono entrambe", o "attivati se **almeno 2 di** questi tre controlli violano".
-
-Ogni condizione legge la media di un punteggio denominato da `agenteye.evaluations` nella finestra condivisa e lo verifica con il suo operatore e soglia. I risultati booleani vengono quindi combinati dal `combinator`:
-
-| Combinator | Logica | Si attiva quando |
-|---|---|---|
-| `"any"` | OR | almeno una condizione viola |
-| `"all"` | AND | ogni condizione viola |
-| `{ "at_least": N }` | M-of-N | almeno N condizioni violano |
-
-```json
-{
-  "combinator": { "at_least": 2 },
-  "conditions": [
-    { "score_key": "hallucination", "op": ">", "value": 0.8 },
-    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
-    { "score_key": "tone",          "op": "<", "value": 0.5 }
-  ],
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-- `combinator`: `"any"`, `"all"`, o `{ "at_least": N }`.
-- `conditions[]`: ogni `{ score_key, op, value }`, usando gli stessi operatori degli altri trigger (`>`, `>=`, `<`, `<=`, `==`).
-- `window_secs`: il lookback condiviso applicato a ogni condizione (predefinito `3600`).
-- `min_count`: numero minimo per-condizione di valutazioni prima che quella condizione possa violare; una condizione con troppi pochi campioni nella finestra conta come "non violata" (predefinito `1`).
-- `environment`: opzionale; limita ogni condizione a un ambiente.
-
-La notifica dell'incidente registra la media osservata di ogni condizione, la soglia su cui è stata testata, quante valutazioni sono state viste e se ha violato; quindi puoi vedere esattamente quali controlli si sono attivati.
-
-### 5. `per_event`
-
-Per avvisi "qualsiasi evento che corrisponde a X è arrivato". Nessuna aggregazione; il dispatcher si attiva non appena vede una corrispondenza nella finestra di lookback.
-
-```json
-{
-  "event_type": "error",
-  "lookback_secs": 60,
-  "environment": "production",
-  "tool_name": "bash",
-  "agent_id": "caa",
-  "error_type": "TimeoutError",
-  "message_contains": "vertex-ai timed out"
-}
-```
-
-Tutti i filtri sono AND-combinati; qualsiasi campo che ometti è non vincolato.
-
-| Campo | Scopo |
-|---|---|
-| `agent_id` | Limita agli errori da un agente specifico (quello mostrato nella riga `/errors`). |
-| `error_type` | Limita a una classe di errore specifica (ad es. `TimeoutError`) piuttosto che ogni errore. |
-| `message_contains` | Corrispondenza di sottostringa case-insensitive rispetto a `payload.message`. Utile per catturare una modalità di errore specifica (ad es. `prompt is too long`) senza avvertire ogni errore dello stesso agente. Limitato a 200 caratteri; abbinato come stringa letterale, non come pattern. |
-
-Consiglio: imposta `lookback_secs` per corrispondere approssimativamente all'`eval_interval_secs` dell'avviso in modo da non notificare due volte lo stesso evento.
-
-**Scorciatoia da `/errors`:** la riga rappresentativa di ogni gruppo di errori nella vista errori (e il pannello di dettaglio dell'evento della sessione per un evento di errore) ha un pulsante **+ alert** che apre `/alerts/new` precompilato con un trigger `per_event` basato su `event_type` + ambiente di quella riga, incluso un nome generato da `error_type` del payload se presente. Scegli ancora i canali e conferma il lookback, ma il matcher è compilato per te. Gli operatori hanno bisogno di `alerts:write` affinché il pulsante compaia.
-
----
-
-## Logica composta (M of N)
-
-Ogni avviso ha due manopole intere in aggiunta al trigger:
-
-- `eval_window`: quante valutazioni recenti guardare (predefinito 1)
-- `min_breaches`: quante di queste devono violare prima che l'avviso si attivi (predefinito 1)
-
-`1 of 1` (il valore predefinito) è "attivati sulla prima violazione". `3 of 5` significa "attivati quando la regola ha violato 3 delle ultime 5 valutazioni", utile per segnali tremolanti dove una singola misurazione negativa è rumore. Il dispatcher mantiene un ring buffer per avviso; non devi gestire lo stato.
-
----
-
-## Intervallo di valutazione
-
-`eval_interval_secs` controlla con quale frequenza il dispatcher esegue la tua regola. Vincolato a `[30, 86400]`. Preimpostazioni nel dashboard: 1m / 5m / 15m / 1h. Scegli un intervallo corrispondente a quanto velocemente il segnale sottostante si muove: un avviso di tasso d'errore a 5 minuti valutato ogni 15 secondi spreca CPU; un avviso per evento ha bisogno di un lookback breve o silenziamente perderà gli eventi tra i tick.
-
----
-
-## Canali
-
-Ogni avviso può collegare qualsiasi combinazione di questi quattro. Le credenziali per-canale (URL webhook Slack, URL webhook generico + segreto di firma, destinatari email predefiniti) sono configurate una sola volta in **`/settings`** e referenziate per chiave da ogni avviso. In questo modo un canale Slack può servire molti avvisi senza che ognuno memorizzi la propria copia dell'URL webhook.
-
-I tre tipi di canale esterni (email, Slack, webhook) sono anche controllati da un interruttore di disattivazione a livello di organizzazione, `alerts.enabled_channels`. Quando un avviso attivato collega un tipo di canale che non è in questo set, il dispatcher lo salta e registra una riga `alert_notifications` con status `skipped_disabled` e target `<channel_disabled>` (permettendoti di sospendere globalmente, ad esempio, tutte le consegne Slack senza modificare ogni regola). Il canale in-dashboard è sempre consentito. Vedi [Configuration](#configuration).
-
-### Email
-
-Riutilizza lo stesso trasporto SMTP che spedisce le email di login OTP. I destinatari si risolvono in ordine:
-
-1. Override `recipients[]` per-canale (quando non vuoto).
-2. L'impostazione `alerts.email_default_recipients` (un array di stringhe email).
-
-Se SMTP non è configurato il canale è un no-op; il dispatcher registra comunque una riga `alert_notifications` con target `<smtp_unconfigured>` in modo che l'audit trail renda la misconfiguration visibile.
-
-### Slack
-
-Invia un messaggio Block Kit a un [URL webhook in arrivo](https://api.slack.com/messaging/webhooks).
-
-- URL predefinito: `alerts.slack_default_webhook` (impostato in `/settings`).
-- Override per-alert: imposta il `webhook_setting_key` del canale a qualsiasi altra chiave di impostazione di tipo URL, ad es. `alerts.slack_oncall`, `alerts.slack_costs`.
-
-L'intestazione include un emoji di severità (`:rotating_light:` / `:warning:` / `:bell:`), e il messaggio include un pulsante che deep-linka alla pagina dell'incidente.
-
-### Webhook generico
-
-Un'integrazione JSON-POST per PagerDuty, Opsgenie, o il tuo endpoint di ingestione. Forma del corpo:
-
-```json
-{
-  "schema_version": 1,
-  "event": "alert.firing",
-  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
-  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
-  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
-}
-```
-
-Quando `alerts.webhook_signing_secret` è impostato, la richiesta include un'intestazione `X-AgentEye-Signature: sha256=<hex>`, l'HMAC-SHA256 del corpo usando il segreto. Verifica su chi riceve prima di fidarti del payload.
-
-L'intestazione `X-AgentEye-Event` trasporta `alert.firing` / `alert.test`. (`alert.resolved` è riservato per la funzione di auto-resolve pianificata e non è attualmente emessa.)
-
-### In-dashboard
-
-Nessuna consegna esterna: l'avviso scrive semplicemente una riga `alert_notifications` che la pagina incidenti della dashboard mostra. Utile mentre stai sintonizzando una regola e non vuoi spammare un sistema esterno, o per avvisi a bassa urgenza che gli operatori controllano durante il triage normale.
-
----
-
-## Ciclo di vita dell'incidente
-
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── operator resolve ───▶  resolved
-```
-
-- **firing** — il dispatcher ha appena aperto l'incidente o ha rilevato un'altra violazione. La notifica di firing è diffusa esattamente una volta (controllata dal timestamp `notified_firing_at` sull'incidente).
-- **acknowledged** — un operatore ha premuto *ack* su `/incidents/:id`. L'incidente è ancora considerato aperto; le violazioni successive aggiorneranno le sue evidenze senza ri-notificare.
-- **resolved** — un operatore ha premuto *resolve*. La risoluzione automatica quando la regola smette di violare è pianificata ma non attualmente abilitata, quindi un incidente aperto rimane aperto finché un operatore non lo risolve.
-
-Un nuovo incidente può riaprirsi nello stesso avviso in qualsiasi momento dopo che il precedente è stato risolto.
-
-**Timeline dell'attività.** Ogni azione su un incidente — aperto, acknowledged, risolto — è registrata in un log dell'attività append-only e mostrata sulla timeline dell'*attività* dell'incidente, ogni voce attribuita all'operatore che l'ha eseguita (per email) o a **automated** per le azioni che il dispatcher ha intrapreso da solo (auto-open su violazione). L'acknowledgement è condiviso: diversi operatori possono ack lo stesso incidente e ognuno appare come una voce separata e attribuita.
-
-La **casella di posta Incidenti** raggruppa gli incidenti aperti per stato e ti permette di filtrare per severità e assegnatario:
-
-![La casella di posta Incidenti che mostra schede di incidenti collegati ad alert e ad-hoc con badge di severità e assegnatari](/agenteye/images/incidents.png)
-
-L'apertura di un incidente mostra l'evidenza della violazione, gli assegnatari e i sottoscritti, la timeline dell'attività attribuita, e un thread di commenti:
-
-![Una visualizzazione di dettaglio dell'incidente: l'alert genitore, riassunto della violazione, assegnatari, sottoscritti, log dell'attività attribuito e conversazione](/agenteye/images/incident-detail.png)
-
----
-
-## Permessi richiesti
-
-La creazione di *regole* di avviso e il triage degli *incidenti* sono preoccupazioni separate con concessioni separate, quindi puoi dare a una rotazione on-call l'accesso agli incidenti senza anche darle la possibilità di riscrivere le regole.
-
-- `alerts:read`: visualizza le regole di avviso.
-- `alerts:write`: crea, modifica, elimina regole di avviso e attiva una notifica di test.
-- `incidents:read`: visualizza gli incidenti.
-- `incidents:write`: apri incidenti manuali (ad-hoc) non legati a un avviso.
-- `incidents:ack`: acknowledges, assegna, commenta e risolvi incidenti.
-
-> **Legacy `alerts:ack`.** Le chiavi e gli operatori a cui è stato concesso il token `alerts:ack` più vecchio continuano a funzionare: viene onorato come `incidents:ack` (e implica `incidents:read`), quindi gli on-caller esistenti mantengono il loro accesso senza ri-emettere credenziali. Emetti nuove concessioni con la famiglia `incidents:*`.
-
-Concedi su chiavi API (`POST /keys`) e operatori (`PUT /users/:id`). Il `PermGate` della dashboard blocca i pulsanti rilevanti quando manca un permesso; vedrai `// 403` accanto all'azione.
-
-> **Email-recipient picker.** Il selettore di destinatari dell'editor di avviso elenca i membri della tua organizzazione in modo da poterli selezionare per nome. Si carica per qualsiasi operatore che detiene `alerts:read` o `alerts:write`; visualizzare la directory del tuo team a questo scopo **non** richiede `users:read`, e il selettore restituisce solo gli indirizzi email dei membri, mai record utente completi.
-
----
-
-## Configurazione
-
-Variabili d'ambiente consumate dal dispatcher:
-
-| Var | Predefinito | Scopo |
-|---|---|---|
-| `ALERT_WORKERS` | `1` | Attività worker per istanza server. La maggior parte delle implementazioni ne hanno bisogno di una sola. |
-| `ALERT_CLAIM_BATCH` | `16` | Max avvisi che un singolo tick worker elabora. |
-| `ALERT_POLL_IDLE_SECS` | `5` | Sleep worker quando la coda è vuota. |
-| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Timeout di valutazione per-trigger. |
-| `DASHBOARD_URL` | `https://app.befailproof.ai` | Origine utilizzata per costruire il magic-link dell'incidente nelle notifiche. Impostala all'host della tua dashboard. |
-
-Dopo un errore di valutazione transitorio (ClickHouse irraggiungibile, timeout della query), il dispatcher riprova la regola con backoff esponenziale. Una volta che una regola ha accumulato **5** errori transitori consecutivi viene ripianificata al suo ritmo normale invece di continuare con backoff, quindi una regola persistentemente fallace continua ad essere rivalutata. Questo limite è fisso e non è sintonizzabile dall'operatore.
-
-Impostazioni dei canali (gestite da `/settings`, non env):
-
-- `alerts.email_default_recipients` (`email_list`): array JSON di stringhe email — i destinatari predefiniti per i canali email.
-- `alerts.slack_default_webhook` (`url`): URL webhook in arrivo Slack predefinito.
-- `alerts.webhook_default_url` (`url`): URL webhook generico predefinito.
-- `alerts.webhook_signing_secret` (`secret`): chiave HMAC-SHA256. Sempre restituita come `""` nella risposta GET; digita un nuovo valore per ruotare.
-- `alerts.enabled_channels` (`channel_set`): il set a livello di organizzazione dei tipi di canale esterni che vengono inviati quando un avviso si attiva; di default tutti e tre (`email`, `slack`, `webhook`). Rimuovendo un tipo qui globalmente sopprimi quel canale per ogni avviso senza modificare ogni regola. Il canale in-dashboard è sempre consegnato e non è interessato da questa impostazione.
-
----
-
-## Verifica un nuovo avviso
-
-Prima di affidarti a un nuovo avviso:
-
-1. Salvalo come abilitato con almeno un canale di notifica.
-2. Seleziona **test** sulla pagina di dettaglio dell'avviso e conferma che ogni destinazione configurato riceva la notifica sintetica.
-3. Dopo la prima violazione reale, conferma che l'incidente appaia sotto **Incidenti** e che il suo valore misurato corrisponda alla corrispondente query della dashboard.
-
-Gli incidenti non si risolvono automaticamente quando una condizione si cancella. Un operatore deve risolverli dalla pagina di dettaglio dell'incidente.
-
----
-
-## Risoluzione dei problemi
-
-| Sintomo | Causa probabile |
-|---|---|
-| L'avviso non si attiva mai | `enabled = false`, o nessun canale collegato, o la query CH sottostante restituisce 0 righe. Usa *test* per confermare i canali; usa `/queries/run` per confermare la metrica. |
-| Notifica Slack mancante | `alerts.slack_default_webhook` (o la chiave di override per-alert) non è impostata: controlla `alert_notifications.target` per righe `<unset:…>`; o il tipo `slack` è globalmente disabilitato in `alerts.enabled_channels`: controlla le righe `alert_notifications` con status `skipped_disabled` e target `<channel_disabled>`. |
-| Webhook generico 401 | Il destinatario richiede una firma ma `alerts.webhook_signing_secret` non è impostato. Verifica nel destinatario che l'HMAC corrisponda a `hmac_sha256(secret, body)`. |
-| Email "from all sends failed" | Credenziali SMTP sbagliate o l'indirizzo `from` è rifiutato dal tuo relay. Stessa superficie che spedisce le email OTP: se quelli funzionano, il trasporto SMTP va bene. |
-| L'incidente si riapre ripetutamente | Le manopole composte sono troppo aggressive: prova ad alzare `min_breaches` o `eval_window` in modo che i picchi transienti non riaprono gli incidenti che hai risolto. |
+- [Incidenti](/it/agenteye/incidents): traccia un avviso attivato da aperto a riconosciuto a risolto.
+- [Tracciamento errori](/it/agenteye/error-tracking): raggruppa i guasti dell'agente e promuovi uno a un avviso in un clic.
+- [Dashboard](/it/agenteye/dashboards): osserva le schede condivise da cui provengono le soglie su cui avvisi.
+- [CLI e agenti](/it/agenteye/cli-and-agents): crea avvisi e riconosci incidenti dal tuo terminale, o inseriscili in CI.

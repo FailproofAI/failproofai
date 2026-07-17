@@ -1,106 +1,52 @@
 ---
-title: "Audits — phát hiện cải tiến agentic"
-description: "AgentEye Audits — tài liệu về phát hiện cải tiến agentic."
+title: "Audits: trợ lý phân tích độ tin cậy tự động của bạn"
+description: "FailproofAI Observability Audits: tài liệu trợ lý phân tích độ tin cậy tự động của bạn."
 ---
 
 
-Audits là những công việc lặp lại khai thác nhật ký agent của bạn **trên các phiên** để tìm những thứ đáng cải tiến. Trong khi alert theo dõi một chỉ số bạn đã biết gần như thời gian thực, audit *điều tra*: theo lịch trình bạn đặt, nó chạy một lượt chính sách xác định trên cửa sổ thời gian, sau đó thả một **agent đáng tin cậy AI** lỏng lẻo trên các phiên của bạn — agent truy vấn dữ liệu, đọc các bản ghi nghi ngờ, và (khi hữu ích) chạy các script phân tích nhỏ, sau đó viết **khuyến nghị cải tiến** với bằng chứng đằng sau mỗi một.
+FailproofAI Observability tìm kiếm những lỗi mà bạn chưa bao giờ viết quy tắc cho chúng và đưa cho bạn một danh sách công việc cần làm được xếp hạng, có bằng chứng hỗ trợ về chính xác những gì cần sửa. Giống như có một nhà phân tích lược qua nhật ký của bạn mỗi đêm, rồi để danh sách ngắn trên bàn của bạn vào sáng hôm sau.
 
-Sử dụng audits để trả lời "tôi nên sửa hoặc cải tiến gì trong agents?" — và alerts để được thông báo ngay khi một ngưỡng cụ thể bị vượt quá. Mọi cải tiến đều liên kết đến các phiên và truy vấn chính xác đằng sau nó, và một lần nhấp sẽ tạo alert được điền sẵn để bắt lỗi lặp lại.
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
-Bề mặt dashboard là **`/<org-slug>/audits`** (thanh bên → *analyze* → *audits*), được kiểm soát bởi các quyền `audits:read` / `audits:write`.
+*Một tour hai phút: từ một lần chạy được lên lịch đến một bản sửa bạn có thể hành động.*
 
----
+![Trang Audits: các công việc định kỳ quét các phiên của bạn để tìm kiếm các mẫu lỗi, mỗi mẫu có lịch biểu và độ nhạy](/agenteye/images/audits.png)
+*Mỗi audit là một công việc định kỳ khai thác các phiên của bạn và đưa ra các khuyến nghị được xếp hạng, có bằng chứng hỗ trợ.*
 
-## Cách một lần chạy hoạt động
+## Dừng đoán nhầm cái gì cần sửa tiếp theo
 
-Mỗi lần chạy có hai lớp — nền xác định và điều tra agentic.
+Cảnh báo bắt các vấn đề bạn đã biết cần theo dõi. Audits bắt những vấn đề bạn không biết. Theo lịch biểu bạn đặt, một audit đọc qua tất cả các phiên agent của bạn và tìm kiếm những mẫu đáng sửa, vì vậy bạn dành thời gian hành động dựa trên những phát hiện thay vì cuộn qua nhật ký hy vọng tìm thấy chúng.
 
-### 1. Lượt kiểm tra chính sách (xác định)
+Một lần chạy duy nhất nhắm vào những chế độ lỗi thực sự phá vỡ các agent trong sản xuất:
 
-Trước khi bất kỳ model nào chạy, audit thực hiện một danh mục nhỏ **kiểm tra chính sách SQL** trên cửa sổ: các truy vấn tổng hợp có giới hạn đánh dấu các mẫu xấu đã biết và báo cáo *bao nhiêu* sự kiện / *phiên nào* trùng khớp — không bao giờ là văn bản đã trùng khớp. Danh mục bao gồm:
+- **Cụm lỗi**: cùng một lỗi lặp lại dưới một nguyên nhân gốc chung.
+- **Sự thay đổi so với đường cơ sở**: hành vi lặng lẽ trôi xa khỏi cửa sổ đã biết là tốt.
+- **Lỗi mục tiêu trong bản ghi**: các lần chạy về mặt kỹ thuật đã hoàn thành nhưng không bao giờ làm công việc.
+- **Sử dụng công cụ không đúng cách**: công cụ sai, các đối số xấu hoặc vòng lặp tiêu tốn các cuộc gọi.
+- **Sự cân bằng giữa chất lượng và chi phí**: nơi bạn trả quá nhiều cho kết quả mà bạn có thể nhận được rẻ hơn.
+- **Khoảng trống bảo phủ**: hành vi mà không có eval hoặc cảnh báo nào đang theo dõi.
 
-- **Rò rỉ bí mật / thông tin xác thực** trong tải trọng sự kiện — AWS access keys, `sk-…` API keys, PEM private keys, JWT / bearer tokens, và `KEY=…` credential assignments.
-- **Dấu hiệu injection prompt** — "ignore previous instructions", "reveal your system prompt", và các dấu hiệu tương tự.
-- **PII** — các số có hình dạng SSN (heuristic).
-- **Từ chối quyền tool** và **vòng lặp tool-call chạy trốn**.
+Bạn quyết định cách nó tìm kiếm cứng cõi bằng một cài đặt **độ nhạy** duy nhất (thấp, trung bình hoặc cao), vì vậy một agent staging ồn ào và một agent sản xuất khóa chặt có thể được điều chỉnh riêng cho tín hiệu bạn muốn.
 
-Các kết quả kiểm tra chính sách được duy trì dưới dạng findings (loại `policy`) **luôn xuất hiện** (chúng không bao giờ bị cắt bởi giới hạn mỗi lần chạy), và chúng được giao cho agent AI dưới dạng những dẫn chứng khởi đầu. Vì lớp này không cần model, audit vẫn tạo ra những tín hiệu bảo mật quan trọng nhất ngay cả khi agent AI không khả dụng.
+## Mọi khuyến nghị đều đi kèm bằng chứng
 
-### 2. Điều tra agentic (AI)
+Bạn không bao giờ phải tin tưởng vào một phát hiện dựa vào niềm tin. Mỗi khuyến nghị trích dẫn các phiên chính xác nó đến từ đó và SQL đã hiển thị nó, vì vậy bạn có thể mở bằng chứng và xác nhận vấn đề chỉ trong một cú nhấp chuột thay vì thử nghịch đảo kỹ sư một tuyên bố.
 
-Audit sau đó chạy một **agent đáng tin cậy tự chủ** (dịch vụ Agents SDK Claude giống như cái cung cấp trợ lý dashboard, với prompt cụ thể cho audit). Với **phạm vi** của audit (agent đã chọn × môi trường) và **cửa sổ thời gian**, agent:
+Điều đó cũng là điều giữ cho các audit trung thực. Máy chủ kiểm tra rằng mỗi phiên được trích dẫn thực sự tồn tại và **loại bỏ bất kỳ khuyến nghị có bằng chứng không đứng vững**, vì vậy audit điều tra nhưng không bao giờ phát minh. Những gì đặt trên danh sách của bạn là thực, có thể tái tạo được và được xếp hạng theo mức độ quan trọng, với những lợi thế lớn nhất ở đầu.
 
-- chạy các truy vấn SQL chỉ đọc trên bảng phân tích của bạn,
-- đọc một số phiên transcript đại diện,
-- tùy chọn viết và chạy các **script Python ngắn trong sandbox in-pod bị khóa** (không network, không filesystem access, secrets đã scrubbed) cho phân tích mà SQL không thể biểu diễn — clustering errors, computing distributions, sweeping payloads nó đã fetch,
-- và ghi lại mỗi **cải tiến** có bằng chứng tốt mà nó tìm thấy.
+## Biến một bản sửa thành một lá chắn
 
-Nó hoạt động thông qua các dòng điều tra — error clustering, drift so với baseline, goal failure trong transcripts, misuse tool, quality/cost trade-offs, và coverage gaps — ở **sensitivity** của audit (low / medium / high). Mọi cải tiến **phải trích dẫn bằng chứng**: các session ids mà agent thực tế đã kiểm tra và/hoặc SQL mà nó chạy. Server xác thực rằng các phiên được trích dẫn tồn tại và **loại bỏ bất kỳ cải tiến nào không có bằng chứng tồn tại**, vì vậy agent điều tra nhưng không bao giờ phát minh.
+Sửa một vấn đề chỉ là nửa lợi thắng. Nửa còn lại là đảm bảo nó không thể lặng lẽ quay lại. Mỗi phát hiện mang theo một **phím tắt một cú nhấp chuột dự thảo cảnh báo tái diễn**, được điền sẵn với một trình kích hoạt khởi đầu hợp lý bạn có thể điều chỉnh. Đóng phát hiện, kích hoạt cảnh báo, và lần tới mẫu đó xuất hiện lại bạn sẽ được gọi thay vì phát hiện lại trong một audit trong tương lai.
 
-Mỗi cải tiến mang theo:
+## Nơi để tìm nó
 
-- một **khuyến nghị** (thay đổi cụ thể cần thực hiện — một tweak prompt, một fix schema tool, một retry policy, một guardrail, coverage eval nhiều hơn),
-- một **tác động dự kiến** và ước tính **effort** (low / medium / high),
-- một **magnitude** — `big` (một operator nên được thông báo), `medium` (thuộc về report lần chạy), hoặc `small` (dashboard context),
-- một **fingerprint** ổn định (từ category + scope của issue, *không* sessions của lần chạy này) để vấn đề tương tự được theo dõi từ lần chạy này sang lần chạy khác ngay cả khi bằng chứng thay đổi,
-- và, khi một watcher xác định đơn giản có thể bắt sự lặp lại, một **alert được đề xuất** bạn có thể tạo trong một lần nhấp.
+Audits nằm trong bảng điều khiển tại **`/<org-slug>/audits`** (sidebar sang *analyze* sang *audits*). Xem các lần chạy và phát hiện cần **`audits:read`**; tạo, chỉnh sửa và phân loại các audit cần **`audits:write`**. Đặt phạm vi và tần suất của audit, sau đó nhấn **Run now** bất cứ khi nào bạn muốn kết quả ngay lập tức thay vì chờ lần chạy theo lịch biểu tiếp theo.
 
-> **Lớp AI là optional-but-recommended.** Nếu không có agent AI được định cấu hình cho pipeline audit, các lần chạy vẫn thực hiện, vẫn duy trì các findings chính sách, và thành thật báo cáo "analysis unavailable" cho lớp agentic thay vì im lặng trôi qua.
+## Liên quan
 
-### Chế độ lỗi
-
-Cải tiến được phân loại vào **catalog chế độ lỗi** bền chặt của tổ chức bạn (hoặc đề xuất một chế độ mới). Modes cung cấp một danh tính ổn định các mẫu trên các lần chạy và theo dõi recurrence horizon dài.
-
-## Vòng đời triage
-
-Trên trang finding (`/audits/<id>/findings/<finding-id>`):
-
-| Hành động | Hiệu ứng |
-|---|---|
-| **acknowledge** | Giữ cho finding hiển thị nhưng giảm nửa ưu tiên của nó. |
-| **resolve** | Đánh dấu đã được sửa. Nếu mẫu thực sự quay trở lại sau này, nó tái mở dưới dạng **new** — vì vậy một regression là rõ ràng, không được im lặng gộp vào lịch sử. |
-| **mute** / **dismiss** | Durable suppression: fingerprint của mẫu được ghi nhớ và không bao giờ xuất hiện lại, ngay cả trên các lần chạy. Sử dụng mute cho "known, accepted"; dismiss cho "not useful". |
-| **reopen** | Xóa suppression / resolution và xếp hạng mẫu lại. |
-
-Nhiễu tín hiệu thấp được kiểm soát trên mỗi audit với giới hạn findings mỗi lần chạy (`top_k`) trên các cải tiến agentic. Policy findings bỏ qua giới hạn (chúng liên quan đến bảo mật và luôn được hiển thị). Bất cứ thứ gì bị cắt bởi giới hạn được tính trong thống kê của lần chạy — không có gì được im lặng bỏ qua.
-
-## Lập lịch
-
-- **Cadence** (`schedule_interval_secs`): từng giờ đến hàng tuần; **daily là mặc định**. Audits được cố ý là thô hơn alerts — một điều tra agentic quét cả cửa sổ và chạy trong vài phút.
-- **Window**: hoặc là một lookback rolling cố định (ví dụ "mỗi lần chạy quét 7 ngày cuối cùng") hoặc **since-last-run** (mặc định) — mỗi lần chạy chọn từ nơi lần chạy thành công trước đó kết thúc, với một overlap nhỏ để các sự kiện biên không bao giờ bị bỏ lỡ.
-- Lần chạy tiếp theo được lên lịch một interval đầy đủ sau khi lần chạy trước đó **hoàn thành**, vì vậy một lần chạy chậm không bao giờ xếp chồng một lần chạy đồng thời thứ hai cùng một audit.
-- **Run now** trên trang audit làm cho nó đến hạn ngay lập tức.
-
-## Lựa chọn model
-
-Khi tạo audit, bạn có thể chọn model nào điều tra sử dụng, từ **danh sách các model mà operator của bạn đã định cấu hình** cho dịch vụ agent. Với một model được định cấu hình, picker hiển thị nó dưới dạng một chú thích; với nhiều, bạn chọn. Để nó unset sử dụng mặc định được định cấu hình.
-
-## Thông báo
-
-Khi một lần chạy xuất hiện **new** findings, audit thông báo cho các kênh được định cấu hình của tổ chức bạn — cổng `alerts.enabled_channels` giống nhau và cài đặt mà pipeline alerts sử dụng:
-
-- **Slack** — một tóm tắt các mục new significant (`big`) với deep link.
-- **Email** — một **audit report** được thiết kế liệt kê các cải tiến new (severity cao nhất, khuyến nghị mỗi item, deep link), được gửi khi audit có một **email** channel đính kèm và có ít nhất một finding new.
-
-Recurring-but-known findings không tái thông báo.
-
-## Tham chiếu cấu hình
-
-Các định nghĩa audit được quản lý trong dashboard (`/audits/new`) hoặc qua API. Cài đặt mỗi audit bao gồm cadence lịch trình và window, phạm vi (`{"environments": [...], "agent_ids": [...]}`), sensitivity (`low` / `medium` / `high`), các kênh thông báo, giới hạn findings mỗi lần chạy (`top_k`), và model (qua `llm_budget.model`). Cài đặt server cấp operator (timeouts, sandbox, URL dịch vụ agent) được tài liệu trong [deployment.md](/vi/agenteye/deployment).
-
-## API
-
-Tất cả endpoints được scoped org và tuân theo auth bearer-key tiêu chuẩn (xem [api-keys.md](/vi/agenteye/api-keys)).
-
-| Endpoint | Permission | Mục đích |
-|---|---|---|
-| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Liệt kê / tạo định nghĩa audit. |
-| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Kiểm tra, chỉnh sửa, xóa một audit. |
-| `POST /audits/:id/run` | `audits:write` | Làm audit đến hạn ngay lập tức. |
-| `GET /audits/:id/runs` | `audits:read` | Lịch sử chạy (window, status, stats, finding counts). |
-| `GET /audits/findings` | `audits:read` | Org-wide findings, có thể lọc theo `audit_id`, `status`; sắp xếp theo ưu tiên. |
-| `GET /audits/findings/:fid` | `audits:read` | Chi tiết finding đầy đủ (khuyến nghị, bằng chứng, ưu tiên). |
-| `POST /audits/findings/:fid/status` | `audits:write` | Triage: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
-
-Để "audit chạy nhưng không tìm thấy gì", "code sandbox bị vô hiệu", và "audit email không được gửi", xem [troubleshooting.md](/vi/agenteye/troubleshooting#audits).
+- [Alerts](/vi/agenteye/alerts): được gọi ngay khi ngưỡng bạn đã biết được vượt qua.
+- [Evaluations](/vi/agenteye/evaluations): cho điểm mọi lần chạy để các hồi quy chất lượng tự hiển thị.
+- [Error tracking](/vi/agenteye/error-tracking): nhóm và theo dõi các lỗi agent của bạn ném ra.
+- [Incidents](/vi/agenteye/incidents): theo dõi một vấn đề audit phát hiện ra cho đến khi được sửa.

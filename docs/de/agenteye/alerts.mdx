@@ -1,308 +1,62 @@
 ---
 title: "Alerts"
-description: "AgentEye Alerts Dokumentation."
+description: "Dokumentation zu FailproofAI Observability Alerts."
 ---
 
-Alerts werten eine Regel nach einem Zeitplan aus und benachrichtigen Sie, wenn ein Wert einen Schwellenwert überschreitet. Sie verwandeln AgentEye von einem passiven Dashboard in eine aktive Benachrichtigungsoberfläche für alles, was zählt: plötzliche Fehlerrate-Anstiege, Latenz-Regressionen, Abfälle bei Evaluator-Scores oder beliebige benutzerdefinierte Ereignisse, die Sie als ClickHouse-Abfrage ausdrücken können.
+Erfahren Sie sofort, wenn etwas eine Grenze überschreitet – über den Kanal, den Ihr Team bereits nutzt – anstatt erst von einem Kunden davon zu hören. Legen Sie eine Regel einmal fest, und FailproofAI Observability prüft sie regelmäßig und benachrichtigt Sie per E-Mail, Slack, Webhook oder direkt im Dashboard.
 
-Diese Anleitung behandelt den Aufbau eines Alerts, die fünf Trigger-Typen, die vier Benachrichtigungskanäle, den Incident-Lebenszyklus und die verfügbaren Konfigurationsparameter.
+![Die Alerts-Seite: ein Raster aus Alert-Regelkarten, jede mit Auslöser, Auswertungsfenster, Kanälen und einem Info-, Warn- oder Kritisch-Schweregrad-Badge](/agenteye/images/alerts.png)
+*Alle Alert-Regeln auf einen Blick: was überwacht wird, wie oft, wohin die Benachrichtigung geht und wie dringend.*
 
-![Die Alerts-Seite: ein Raster von Alert-Regel-Karten, jede mit Trigger-Typ, Auswertungsfenster, Kanälen und einem Info-/Warn-/Kritisch-Schweregrad-Badge](/agenteye/images/alerts.png)
+## Probleme erkennen, bevor Ihre Nutzer es tun
 
----
+Hören Sie auf, ein Dashboard zu aktualisieren und auf einen Rückschritt zu warten. Richten Sie einen Alert ein, sobald es ein Signal gibt, über das Sie auch dann informiert werden möchten, wenn niemand hinschaut – und lassen Sie ihn dort ankommen, wo Sie ohnehin sind:
 
-## Konzepte
+- **E-Mail**, an alle, die es wissen sollten.
+- **Slack**, eine informative Nachricht mit einer Schaltfläche, die direkt zum Vorfall führt.
+- **Webhook**, ein JSON-POST für PagerDuty, Opsgenie oder Ihren eigenen Endpunkt, mit optionaler Signatur, damit der Empfänger die Quelle verifizieren kann.
+- **Im Dashboard**, bewusst dezent – für den Fall, dass Sie eine Regel abstimmen und noch niemanden benachrichtigen möchten.
 
-- **Alert** — die Regel. Sie legt fest, *was* geprüft wird (der Trigger), *wie oft* (das Auswertungsintervall), *wann ein Verstoß vorliegt* (Verbundlogik), *wie dringend* (Schweregrad) und *wer/wohin benachrichtigt wird* (Kanäle).
-- **Incident** — das Ereignis, das ausgelöst wird, wenn ein Alert feuert. Ein Alert hat maximal einen offenen Incident gleichzeitig. Wiederholte Verstöße aktualisieren die Belege desselben Incidents. Incidents werden von einem Operator aufgelöst; eine automatische Auflösung, wenn die Regel nicht mehr feuert, ist geplant, aber derzeit nicht aktiviert.
-- **Channel** — wohin eine Benachrichtigung gesendet wird: E-Mail, Slack, generischer Webhook oder im Dashboard. Jeder Alert kann eine beliebige Kombination davon verwenden.
+Kombinieren Sie beliebig viele Kanäle für eine einzige Regel. Der Schweregrad (Info, Warnung oder Kritisch) wird dabei übertragen, sodass dringende Meldungen auch als dringend erscheinen.
 
-Alerts und Incidents gehören zu einer Organisation und werden gemeinsam von den Operatoren dieser Organisation genutzt (in einem Single-Tenant-Deployment ist das einfach die eingebaute `default`-Org). Incidents können zur Triage einem einzelnen Operator zugewiesen werden.
+## Regeln per Formular erstellen, nicht per JSON
 
----
+Sie beschreiben, was „fehlerhaft" bedeutet, in einem Formular – und FailproofAI Observability erstellt die zugrunde liegende Regel für Sie. Die JSON-Spezifikation ist lediglich das, was dieses Formular im Hintergrund erzeugt. Sie können sie lesen, um eine Regel zu verstehen, müssen sie aber kaum manuell eingeben.
 
-## Trigger-Typen
+![Das Formular für neue Alerts: Name und Beschreibung, ein Aktivierungs-Toggle und eine Auslöserauswahl mit Metrikschwellenwert, benutzerdefiniertem SQL, Auswertungsscore, zusammengesetzter Auswertung und ereignisbezogenen Bedingungen](/agenteye/images/alert-new.png)
+*Wählen Sie einen Auslöser, und das Formular zeigt die passenden Felder an; Speichern schreibt die Regel.*
 
-Fünf Arten, jede mit eigenem JSON-Spec. Wählen Sie diejenige, die am besten beschreibt, was bei Ihnen als „defekt" gilt. Das **Neuer Alert**-Formular im Dashboard erstellt dieselbe Spezifikation für Sie und passt den Bedingungseditor an den gewählten Trigger-Typ an:
+Der Standardweg geht schnell: Benennen Sie die Regel, wählen Sie einen **Auslöser** (was überwacht werden soll), legen Sie **Schwellenwert und Zeitfenster** fest (wie schwerwiegend, über welchen Zeitraum), fügen Sie mindestens einen **Kanal** hinzu, klicken Sie auf **Speichern** und anschließend auf **Testen**, um eine synthetische Benachrichtigung auszulösen und zu prüfen, ob alle Ziele korrekt konfiguriert sind. Im Hintergrund entsteht dabei eine kompakte Spezifikation wie:
 
-![Das Neuer-Alert-Formular mit den Grundeinstellungen (Name, Beschreibung, aktiviert) und dem Trigger-Picker mit Metrik-Schwellenwert, benutzerdefiniertem SQL, Evaluierungs-Score, Eval-Fehlern und Per-Event-Optionen](/agenteye/images/alert-new.png)
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
 
-### 1. `metric_threshold`
+Sie sind nicht auf eine einzige Art von Signal beschränkt. Wählen Sie den Auslöser, der Ihrer Vorstellung vom Fehler entspricht:
 
-Die einfachste Option. Wählen Sie eine Metrik aus einer festen Liste, einen Operator, einen Schwellenwert und ein Zeitfenster.
-
-| Metrik | Was gezählt wird |
+| Auslöser | Löst aus, wenn |
 |---|---|
-| `event_count` | Gesamte Ereignisse im Fenster |
-| `error_count` | `event_type = 'error'` ODER ein Ereignis mit `error_type IS NOT NULL` |
-| `error_rate` | `error_count / event_count` (0..1) |
-| `p95_latency_ms` | `quantile(0.95)(duration_ms)` über alle Ereignisse mit einem `duration_ms` |
-| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
-| `token_sum` | `SUM(input_tokens + output_tokens)` |
+| **Metrikschwellenwert** | eine vordefinierte Metrik (Fehlerrate, p95- oder p99-Latenz, Ereignis- oder Fehlerzählungen, Token-Ausgaben) innerhalb eines Zeitfensters Ihren Grenzwert überschreitet |
+| **Benutzerdefiniertes SQL** | Ihre eigene schreibgeschützte Abfrage eine Zeile zurückgibt oder ein berechneter Wert einen Schwellenwert überschreitet |
+| **Auswertungsscore** | der Durchschnittswert eines Evaluators (z. B. Halluzination) einen Schwellenwert überschreitet |
+| **Zusammengesetzte Auswertung** | mehrere Score-Prüfungen mit any-, all- oder at-least-N-Logik kombiniert werden, um eine Regression zu erkennen, die sich nur über mehrere Scores hinweg zeigt |
+| **Pro Ereignis** | ein einzelnes passendes Ereignis eintrifft: ein bestimmter Agent, ein bestimmter Fehlertyp oder ein Nachrichtensubstring |
 
-Operatoren: `>`, `>=`, `<`, `<=`, `==` (auch akzeptiert als `gt`, `gte`, `lt`, `lte`, `eq`).
+Schauen Sie sich gerade einen Fehler auf der [Errors-Seite](/de/agenteye/error-tracking) an? Jede Zeile dort hat eine Schaltfläche **+ Alert**, die dieses Formular vorausgefüllt öffnet, um genau diesen Fehler künftig abzufangen – damit der Vorfall, den Sie gerade triagiert haben, Sie beim nächsten Mal benachrichtigt.
 
-Optionale Filter: `environment`, `event_type`.
+**Wo Sie es finden:** Alerts befinden sich unter `/<org-slug>/alerts`. Zum Erstellen, Bearbeiten, Löschen und Testen von Regeln wird **`alerts:write`** benötigt; `alerts:read` reicht zum Anzeigen. Die Empfängerauswahl listet die Mitglieder Ihrer Organisation namentlich auf, sodass Sie eine Person benachrichtigen können, ohne das Formular zu verlassen.
 
-Beispiel-Spec:
+## Nur bei echten Problemen benachrichtigen
 
-```json
-{
-  "metric": "p95_latency_ms",
-  "filter": { "environment": "production" },
-  "window_secs": 900,
-  "op": ">",
-  "value": 5000
-}
-```
+Eine einzelne fehlerhafte Messung sollte Sie nicht aufwecken. Der **M of N**-Rauschfilter steuert, wie viele der letzten Prüfungen fehlschlagen müssen, bevor der Alert tatsächlich ausgelöst wird. Setzen Sie ihn auf **3 of 5**, und die Regel löst nur aus, wenn drei der letzten fünf Prüfungen den Schwellenwert überschritten haben – ein unruhiges Signal hört dadurch auf, falschen Alarm zu schlagen. Belassen Sie den Standardwert **1 of 1**, um beim ersten Überschreiten auszulösen. Sie wählen auch, wie häufig die Regel ausgeführt wird: aus vordefinierten Intervallen von 1m, 5m, 15m und 1h, abgestimmt auf die tatsächliche Dynamik des Signals.
 
-### 2. `custom_sql`
+## Was passiert, wenn ein Alert ausgelöst wird
 
-Für alles, was die vordefinierten Metriken nicht abdecken. Das vom Operator angegebene SQL durchläuft denselben `/queries/run`-Guard (nur SELECT/WITH, einzelne Anweisung, maximal 10.000 Zeilen), bevor der Dispatcher es ausführt. Zwei Modi:
+Ein Regelverstoß öffnet einen **Incident** und benachrichtigt Ihre Kanäle einmalig. Von dort aus bestätigt Ihr Team den Vorfall, weist einen Verantwortlichen zu, bespricht ihn und löst ihn auf – alles in einem übersichtlichen, nachvollziehbaren Protokoll. Dieser Triage-Workflow hat eine eigene Seite: siehe [Incidents](/de/agenteye/incidents).
 
-- **Zeilenmodus** (kein `op`/`value`): Der Alert feuert, sobald die Abfrage mindestens eine Zeile zurückgibt.
-- **Wertmodus**: Die Abfrage muss eine Spalte als `metric_value` aliasieren; der Dispatcher vergleicht den `metric_value` der ersten Zeile mit `value` unter Verwendung von `op`.
+## Verwandte Themen
 
-```json
-{
-  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
-  "op": ">",
-  "value": 100
-}
-```
-
-### 3. `evaluation_score`
-
-Liest `agenteye.evaluations` und vergleicht den Durchschnitt eines benannten Scores über ein Zeitfenster.
-
-```json
-{
-  "score_key": "hallucination",
-  "op": ">",
-  "value": 0.6,
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-`min_count` schützt vor Einzelstichproben-Ausreißern; der Dispatcher feuert erst, wenn mindestens N Evaluierungen im Fenster vorliegen.
-
-### 4. `eval_compound`
-
-Erkennt eine Qualitätsregression, die nur über *mehrere* Evaluator-Scores gleichzeitig sichtbar wird. Während `evaluation_score` einen einzelnen benannten Score überwacht, kombiniert `eval_compound` mehrere Evaluierungs-Score-Bedingungen in einem Alert und verknüpft deren Ergebnisse mit einer gewählten Logik. So kann eine Regel ausdrücken: „Feuern, wenn Hilfsbereitschaft sinkt **oder** Halluzination steigt", „Feuern nur, wenn Hilfsbereitschaft **und** Tool-Effizienz beide sinken" oder „Feuern, wenn **mindestens 2 von** diesen drei Prüfungen verletzt sind".
-
-Jede Bedingung liest den Durchschnitt eines benannten Scores aus `agenteye.evaluations` über das gemeinsame Fenster und prüft ihn mit eigenem Operator und Schwellenwert. Die booleschen Ergebnisse werden dann durch den `combinator` kombiniert:
-
-| Kombinator | Logik | Feuert, wenn |
-|---|---|---|
-| `"any"` | OR | mindestens eine Bedingung verletzt ist |
-| `"all"` | AND | jede Bedingung verletzt ist |
-| `{ "at_least": N }` | M von N | mindestens N Bedingungen verletzt sind |
-
-```json
-{
-  "combinator": { "at_least": 2 },
-  "conditions": [
-    { "score_key": "hallucination", "op": ">", "value": 0.8 },
-    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
-    { "score_key": "tone",          "op": "<", "value": 0.5 }
-  ],
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-- `combinator`: `"any"`, `"all"` oder `{ "at_least": N }`.
-- `conditions[]`: jeweils `{ score_key, op, value }`, mit denselben Operatoren wie die anderen Trigger (`>`, `>=`, `<`, `<=`, `==`).
-- `window_secs`: der gemeinsame Rückblickzeitraum, der auf jede Bedingung angewandt wird (Standard: `3600`).
-- `min_count`: Mindestanzahl von Evaluierungen pro Bedingung, bevor diese Bedingung als verletzt gelten kann; eine Bedingung mit zu wenigen Stichproben im Fenster gilt als „nicht verletzt" (Standard: `1`).
-- `environment`: optional; schränkt jede Bedingung auf eine Umgebung ein.
-
-Die Belege der Benachrichtigung zeichnen den beobachteten Durchschnitt jeder Bedingung, den geprüften Schwellenwert, die Anzahl der gesehenen Evaluierungen und ob ein Verstoß vorlag auf — so können Sie genau sehen, welche Prüfungen ausgelöst haben.
-
-### 5. `per_event`
-
-Für Alerts à la „ein Ereignis, das X entspricht, ist eingegangen". Keine Aggregation; der Dispatcher feuert, sobald er im Rückblickfenster eine Übereinstimmung findet.
-
-```json
-{
-  "event_type": "error",
-  "lookback_secs": 60,
-  "environment": "production",
-  "tool_name": "bash",
-  "agent_id": "caa",
-  "error_type": "TimeoutError",
-  "message_contains": "vertex-ai timed out"
-}
-```
-
-Alle Filter werden per UND verknüpft; jedes weggelassene Feld ist uneingeschränkt.
-
-| Feld | Zweck |
-|---|---|
-| `agent_id` | Auf Fehler eines bestimmten Agenten beschränken (der auf der `/errors`-Zeile angezeigt wird). |
-| `error_type` | Auf eine bestimmte Fehlerklasse beschränken (z. B. `TimeoutError`), anstatt jeden Fehler zu erfassen. |
-| `message_contains` | Groß-/Kleinschreibung-unabhängige Teilstring-Suche in `payload.message`. Nützlich, um einen bestimmten Fehlermodus zu erfassen (z. B. `prompt is too long`), ohne bei jedem Fehler desselben Agenten zu alarmieren. Auf 200 Zeichen begrenzt; als literaler String abgeglichen, nicht als Muster. |
-
-Tipp: Setzen Sie `lookback_secs` ungefähr auf den Wert von `eval_interval_secs` des Alerts, damit dasselbe Ereignis nicht doppelt gemeldet wird.
-
-**Schnellzugriff über `/errors`:** Die repräsentative Zeile jeder Fehlergruppe in der Fehleransicht (und das Session-Ereignisdetail-Panel für ein Fehlerereignis) enthält eine **+ Alert**-Schaltfläche, die `/alerts/new` mit einem `per_event`-Trigger öffnet, der auf `event_type` + Umgebung dieser Zeile vorausgefüllt ist, einschließlich eines aus dem `error_type` des Payloads abgeleiteten Namens, falls vorhanden. Sie wählen noch die Kanäle aus und bestätigen den Rückblickzeitraum, aber der Matcher ist bereits ausgefüllt. Operatoren benötigen `alerts:write`, damit die Schaltfläche angezeigt wird.
-
----
-
-## Verbundlogik (M von N)
-
-Jeder Alert hat zusätzlich zum Trigger zwei ganzzahlige Parameter:
-
-- `eval_window`: wie viele der letzten Auswertungen betrachtet werden (Standard: 1)
-- `min_breaches`: wie viele davon verletzt sein müssen, bevor der Alert feuert (Standard: 1)
-
-`1 von 1` (der Standard) bedeutet „beim ersten Verstoß feuern". `3 von 5` bedeutet „feuern, wenn die Regel bei 3 der letzten 5 Auswertungen verletzt war" — nützlich für unruhige Signale, bei denen ein einzelner schlechter Messwert Rauschen ist. Der Dispatcher verwaltet einen Ringpuffer pro Alert; Sie müssen keinen Zustand selbst pflegen.
-
----
-
-## Auswertungsintervall
-
-`eval_interval_secs` steuert, wie oft der Dispatcher Ihre Regel ausführt. Eingegrenzt auf `[30, 86400]`. Voreinstellungen im Dashboard: 1m / 5m / 15m / 1h. Wählen Sie ein Intervall, das zur Dynamik des zugrundeliegenden Signals passt: Ein 5-minütiger Fehlerrate-Alert, der alle 15 Sekunden ausgewertet wird, verschwendet CPU; ein Per-Event-Alert benötigt einen kurzen Rückblickzeitraum, sonst fallen Ereignisse zwischen den Ticks lautlos weg.
-
----
-
-## Kanäle
-
-Jeder Alert kann eine beliebige Kombination dieser vier Kanäle verwenden. Kanalspezifische Zugangsdaten (Slack-Webhook-URL, generische Webhook-URL + Signierungsgeheimnis, Standard-E-Mail-Empfänger) werden einmalig in **`/settings`** konfiguriert und von jedem Alert per Schlüssel referenziert. So kann ein Slack-Kanal viele Alerts bedienen, ohne dass jeder seine eigene Kopie der Webhook-URL speichert.
-
-Die drei externen Kanalarten (E-Mail, Slack, Webhook) werden außerdem durch einen organisationsweiten Kill-Switch, `alerts.enabled_channels`, gesteuert. Wenn ein gefeuerter Alert eine Kanalart angibt, die nicht in diesem Set enthalten ist, überspringt der Dispatcher sie und erstellt einen `alert_notifications`-Eintrag mit Status `skipped_disabled` und Ziel `<channel_disabled>` (so können Sie z. B. alle Slack-Benachrichtigungen global pausieren, ohne jede Regel bearbeiten zu müssen). Der In-Dashboard-Kanal ist immer aktiv. Siehe [Konfiguration](#configuration).
-
-### E-Mail
-
-Verwendet denselben SMTP-Transport wie die OTP-Login-E-Mails. Empfänger werden in dieser Reihenfolge aufgelöst:
-
-1. Per-Kanal-Überschreibung `recipients[]` (wenn nicht leer).
-2. Die Einstellung `alerts.email_default_recipients` (ein Array von E-Mail-Strings).
-
-Wenn SMTP nicht konfiguriert ist, ist der Kanal inaktiv; der Dispatcher erstellt dennoch einen `alert_notifications`-Eintrag mit Ziel `<smtp_unconfigured>`, damit der Audit-Trail die Fehlkonfiguration sichtbar macht.
-
-### Slack
-
-Sendet eine Block Kit-Nachricht an eine [Incoming-Webhook-URL](https://api.slack.com/messaging/webhooks).
-
-- Standard-URL: `alerts.slack_default_webhook` (in `/settings` gesetzt).
-- Per-Alert-Überschreibung: Setzen Sie `webhook_setting_key` des Kanals auf einen anderen URL-typisierten Einstellungsschlüssel, z. B. `alerts.slack_oncall`, `alerts.slack_costs`.
-
-Die Kopfzeile enthält ein Schweregrad-Emoji (`:rotating_light:` / `:warning:` / `:bell:`), und die Nachricht enthält eine Schaltfläche, die direkt zur Incident-Seite verlinkt.
-
-### Generischer Webhook
-
-Eine JSON-POST-Integration für PagerDuty, Opsgenie oder Ihren eigenen Endpunkt. Body-Struktur:
-
-```json
-{
-  "schema_version": 1,
-  "event": "alert.firing",
-  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
-  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
-  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
-}
-```
-
-Wenn `alerts.webhook_signing_secret` gesetzt ist, enthält die Anfrage einen `X-AgentEye-Signature: sha256=<hex>`-Header — den HMAC-SHA256 des Body unter Verwendung des Geheimnisses. Verifizieren Sie ihn auf der Empfängerseite, bevor Sie dem Payload vertrauen.
-
-Der Header `X-AgentEye-Event` enthält `alert.firing` / `alert.test`. (`alert.resolved` ist für die geplante Auto-Auflösungsfunktion reserviert und wird derzeit nicht gesendet.)
-
-### Im Dashboard
-
-Keine externe Zustellung: Der Alert schreibt lediglich einen `alert_notifications`-Eintrag, den die Incidents-Seite im Dashboard anzeigt. Nützlich, solange Sie eine Regel verfeinern und kein externes System mit Benachrichtigungen fluten möchten, oder für Alerts mit geringer Dringlichkeit, die Operatoren bei der normalen Triage prüfen.
-
----
-
-## Incident-Lebenszyklus
-
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── Operator auflösen ───▶  resolved
-```
-
-- **firing** — der Dispatcher hat gerade den Incident eröffnet oder einen weiteren Verstoß erkannt. Die Firing-Benachrichtigung wird genau einmal ausgesendet (gesteuert durch den `notified_firing_at`-Zeitstempel am Incident).
-- **acknowledged** — ein Operator hat *Ack* auf `/incidents/:id` gedrückt. Der Incident gilt noch als offen; nachfolgende Verstöße aktualisieren seine Belege, ohne erneut zu benachrichtigen.
-- **resolved** — ein Operator hat *Auflösen* gedrückt. Die automatische Auflösung, wenn die Regel nicht mehr verletzt wird, ist geplant, aber derzeit nicht aktiviert; ein offener Incident bleibt offen, bis ein Operator ihn auflöst.
-
-Ein neuer Incident kann nach der Auflösung des vorherigen jederzeit wieder für denselben Alert eröffnet werden.
-
-**Aktivitätszeitlinie.** Jede Aktion an einem Incident — geöffnet, bestätigt, aufgelöst — wird in einem append-only Aktivitätslog erfasst und auf der *Aktivitäts*-Zeitlinie des Incidents angezeigt. Jeder Eintrag ist dem Operator zugeordnet, der ihn ausgeführt hat (per E-Mail), oder als **automated** markiert für Aktionen, die der Dispatcher eigenständig vorgenommen hat (automatisches Öffnen bei Verstoß). Die Bestätigung ist gemeinsam nutzbar: Mehrere Operatoren können denselben Incident bestätigen, und jede Bestätigung erscheint als separater, zugeordneter Eintrag.
-
-Der **Incidents**-Posteingang gruppiert offene Incidents nach Status und ermöglicht die Filterung nach Schweregrad und Zuständigem:
-
-![Der Incidents-Posteingang mit Alert-verknüpften und Ad-hoc-Incident-Karten mit Schweregrad-Badges und Zuständigen](/agenteye/images/incidents.png)
-
-Das Öffnen eines Incidents zeigt die Verstoßbelege, Zuständige und Abonnenten, die zugeordnete Aktivitätszeitlinie und einen Kommentar-Thread:
-
-![Eine Incident-Detailansicht: der übergeordnete Alert, Verstoßzusammenfassung, Zuständige, Abonnenten, zugeordnetes Aktivitätslog und Konversation](/agenteye/images/incident-detail.png)
-
----
-
-## Erforderliche Berechtigungen
-
-Das Erstellen von Alert-*Regeln* und die Triage von *Incidents* sind getrennte Zuständigkeiten mit separaten Berechtigungen, sodass Sie einem Bereitschaftsdienst Incident-Zugriff geben können, ohne ihm auch die Möglichkeit zu geben, Regeln zu ändern.
-
-- `alerts:read`: Alert-Regeln anzeigen.
-- `alerts:write`: Alert-Regeln erstellen, bearbeiten, löschen und eine Test-Benachrichtigung auslösen.
-- `incidents:read`: Incidents anzeigen.
-- `incidents:write`: Manuelle (Ad-hoc-)Incidents öffnen, die nicht an einen Alert gebunden sind.
-- `incidents:ack`: Incidents bestätigen, zuweisen, kommentieren und auflösen.
-
-> **Legacy `alerts:ack`.** Schlüssel und Operatoren, denen das ältere `alerts:ack`-Token gewährt wurde, funktionieren weiterhin: Es wird als `incidents:ack` anerkannt (und impliziert `incidents:read`), sodass bestehende Bereitschaftsdienst-Mitglieder ihren Zugriff behalten, ohne Zugangsdaten neu auszustellen. Neue Berechtigungen sollten mit der `incidents:*`-Familie erteilt werden.
-
-Gewähren auf API-Schlüsseln (`POST /keys`) und Operatoren (`PUT /users/:id`). Das `PermGate` des Dashboards sperrt die entsprechenden Schaltflächen, wenn eine Berechtigung fehlt; neben der Aktion erscheint dann `// 403`.
-
-> **E-Mail-Empfänger-Auswahl.** Die Empfängerauswahl im Alert-Editor listet die Mitglieder Ihrer Organisation auf, sodass Sie sie nach Namen auswählen können. Sie lädt für jeden Operator mit `alerts:read` oder `alerts:write`; die Anzeige des Team-Verzeichnisses zu diesem Zweck erfordert **nicht** `users:read`, und die Auswahl gibt nur E-Mail-Adressen der Mitglieder zurück, niemals vollständige Benutzerdatensätze.
-
----
-
-## Konfiguration
-
-Vom Dispatcher verwendete Umgebungsvariablen:
-
-| Variable | Standard | Zweck |
-|---|---|---|
-| `ALERT_WORKERS` | `1` | Worker-Tasks pro Serverinstanz. Die meisten Deployments benötigen nur einen. |
-| `ALERT_CLAIM_BATCH` | `16` | Maximale Anzahl von Alerts, die ein einzelner Worker-Tick verarbeitet. |
-| `ALERT_POLL_IDLE_SECS` | `5` | Worker-Schlafzeit, wenn die Warteschlange leer ist. |
-| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Timeout pro Trigger-Auswertung. |
-| `DASHBOARD_URL` | `https://app.befailproof.ai` | Origin für den Incident-Magic-Link in Benachrichtigungen. Auf Ihren Dashboard-Host setzen. |
-
-Nach einem vorübergehenden Auswertungsfehler (ClickHouse nicht erreichbar, Query-Timeout) wiederholt der Dispatcher die Regel mit exponentiellem Backoff. Sobald eine Regel **5** aufeinanderfolgende vorübergehende Fehler angesammelt hat, wird sie wieder im normalen Rhythmus neu eingeplant, anstatt weiter zurückzuweichen — so wird eine dauerhaft fehlschlagende Regel weiterhin regelmäßig ausgewertet. Diese Obergrenze ist fest und nicht vom Operator anpassbar.
-
-Kanaleinstellungen (verwaltet über `/settings`, nicht per Umgebungsvariable):
-
-- `alerts.email_default_recipients` (`email_list`): JSON-Array von E-Mail-Strings — die Standard-Empfänger für E-Mail-Kanäle.
-- `alerts.slack_default_webhook` (`url`): Standard-Slack-Incoming-Webhook-URL.
-- `alerts.webhook_default_url` (`url`): Standard-URL für generische Webhooks.
-- `alerts.webhook_signing_secret` (`secret`): HMAC-SHA256-Schlüssel. Wird in der GET-Antwort immer als `""` zurückgegeben; geben Sie einen neuen Wert ein, um ihn zu rotieren.
-- `alerts.enabled_channels` (`channel_set`): Die organisationsweite Menge externer Kanalarten, die beim Feuern eines Alerts ausgelöst werden; standardmäßig alle drei (`email`, `slack`, `webhook`). Wird eine Art hier entfernt, wird dieser Kanal für jeden Alert global unterdrückt, ohne dass jede Regel bearbeitet werden muss. Der In-Dashboard-Kanal wird immer zugestellt und ist von dieser Einstellung nicht betroffen.
-
----
-
-## Neuen Alert verifizieren
-
-Bevor Sie sich auf einen neuen Alert verlassen:
-
-1. Speichern Sie ihn als aktiviert mit mindestens einem Benachrichtigungskanal.
-2. Wählen Sie **Test** auf der Alert-Detailseite und bestätigen Sie, dass jedes konfigurierte Ziel die synthetische Benachrichtigung erhält.
-3. Bestätigen Sie nach dem ersten echten Verstoß, dass der Incident unter **Incidents** erscheint und der gemessene Wert mit der entsprechenden Dashboard-Abfrage übereinstimmt.
-
-Incidents lösen sich nicht automatisch auf, wenn eine Bedingung nicht mehr erfüllt ist. Ein Operator muss sie über die Incident-Detailseite auflösen.
-
----
-
-## Fehlerbehebung
-
-| Symptom | Wahrscheinliche Ursache |
-|---|---|
-| Alert feuert nie | `enabled = false`, keine Kanäle angehängt, oder die zugrundeliegende CH-Abfrage gibt 0 Zeilen zurück. Verwenden Sie *Test*, um Kanäle zu bestätigen; verwenden Sie `/queries/run`, um die Metrik zu prüfen. |
-| Slack-Benachrichtigung fehlt | `alerts.slack_default_webhook` (oder der per-Alert-Überschreibungsschlüssel) ist nicht gesetzt: Prüfen Sie `alert_notifications.target` auf `<unset:…>`-Einträge; oder die `slack`-Art ist in `alerts.enabled_channels` global deaktiviert: Prüfen Sie auf `alert_notifications`-Einträge mit Status `skipped_disabled` und Ziel `<channel_disabled>`. |
-| Generischer Webhook 401 | Der Empfänger erwartet eine Signatur, aber `alerts.webhook_signing_secret` ist nicht gesetzt. Überprüfen Sie auf der Empfängerseite, ob der HMAC `hmac_sha256(secret, body)` entspricht. |
-| E-Mail "from all sends failed" | SMTP-Zugangsdaten falsch oder die `from`-Adresse wird von Ihrem Relay abgelehnt. Dieselbe Konfiguration wie für OTP-E-Mails: Wenn diese funktionieren, ist der SMTP-Transport in Ordnung. |
-| Incident öffnet sich wiederholt | Die Verbundparameter sind zu aggressiv: Versuchen Sie, `min_breaches` oder `eval_window` zu erhöhen, damit vorübergehende Spitzen keine Incidents erneut öffnen, die Sie bereits aufgelöst haben. |
+- [Incidents](/de/agenteye/incidents): Verfolgen Sie einen ausgelösten Alert von offen über bestätigt bis gelöst.
+- [Error tracking](/de/agenteye/error-tracking): Gruppieren Sie Agent-Fehler und befördern Sie einen mit einem Klick in einen Alert.
+- [Dashboards](/de/agenteye/dashboards): Behalten Sie die gemeinsamen Boards im Blick, aus denen die überwachten Schwellenwerte stammen.
+- [CLI und Agents](/de/agenteye/cli-and-agents): Erstellen Sie Alerts und bestätigen Sie Incidents über Ihr Terminal oder integrieren Sie sie in CI-Skripte.

@@ -1,106 +1,52 @@
 ---
-title: "Auditorias — detecção de melhorias por agente"
-description: "Documentação das Auditorias do AgentEye — detecção de melhorias por agente."
+title: "Auditorias: seu analista de confiabilidade automático"
+description: "Auditorias de Observabilidade do FailproofAI: documentação do seu analista de confiabilidade automático."
 ---
 
 
-Auditorias são jobs recorrentes que analisam os logs do seu agente **entre sessões** para identificar pontos de melhoria. Enquanto um alerta monitora uma métrica específica que você já conhece em tempo quase real, uma auditoria *investiga*: num agendamento definido por você, ela executa uma passagem de políticas determinística sobre a janela de tempo e, em seguida, solta um **agente de confiabilidade com IA** sobre suas sessões — o agente consulta os dados diretamente, lê transcrições suspeitas e (quando necessário) executa pequenos scripts de análise, produzindo **recomendações de melhoria** com as evidências por trás de cada uma.
+O FailproofAI Observability vai atrás das falhas para as quais você nunca escreveu uma regra e entrega uma lista de tarefas ranqueada, com evidências, indicando exatamente o que corrigir. É como ter um analista vasculhando seus logs toda noite e deixando um resumo na sua mesa de manhã.
 
-Use auditorias para responder "o que devo corrigir ou melhorar nos meus agentes?" — e alertas para ser notificado no momento em que um limite específico é ultrapassado. Cada melhoria aponta para as sessões exatas e consultas que a embasam, e um único clique cria um alerta pré-preenchido para capturar recorrências.
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Assista: Encontre automaticamente onde seu agente está falhando (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
 
-A superfície do dashboard é **`/<org-slug>/audits`** (barra lateral → *analyze* → *audits*), protegida pelas permissões `audits:read` / `audits:write`.
+*Um tour de dois minutos: de uma execução agendada a uma correção em que você pode agir.*
 
----
+![A página de Auditorias: tarefas recorrentes que analisam suas sessões em busca de padrões de falha, cada uma com um agendamento e sensibilidade](/agenteye/images/audits.png)
+*Cada auditoria é uma tarefa recorrente que minera suas sessões e gera recomendações ranqueadas com evidências.*
 
-## Como uma execução funciona
+## Pare de adivinhar o que corrigir a seguir
 
-Cada execução tem duas camadas — uma base determinística e uma investigação por agente.
+Alertas capturam os problemas que você já sabe que deve monitorar. Auditorias capturam os que você não sabe. Em um agendamento que você define, uma auditoria lê todas as suas sessões de agente e caça os padrões que valem a pena corrigir — para que você gaste seu tempo agindo sobre as descobertas, em vez de rolar logs na esperança de identificá-los sozinho.
 
-### 1. A passagem de políticas (determinística)
+Uma única execução vai atrás dos modos de falha que realmente quebram agentes em produção:
 
-Antes de qualquer modelo ser executado, a auditoria realiza um pequeno catálogo de **verificações de política em SQL** sobre a janela de tempo: consultas de agregação delimitadas que identificam padrões problemáticos conhecidos e reportam *quantos* eventos / *quais* sessões corresponderam — nunca o texto correspondente em si. O catálogo inclui:
+- **Clusters de erros**: a mesma falha se repetindo sob uma causa raiz comum.
+- **Desvio em relação a uma linha de base**: comportamento deslizando silenciosamente para longe de uma janela conhecida como boa.
+- **Falha de objetivo em transcrições**: execuções que tecnicamente terminaram, mas nunca cumpriram a tarefa.
+- **Uso incorreto de ferramentas**: a ferramenta errada, argumentos ruins ou loops que desperdiçam chamadas.
+- **Trade-offs de qualidade e custo**: onde você está pagando mais caro por uma saída que poderia obter mais barato.
+- **Lacunas de cobertura**: comportamentos que nenhuma avaliação ou alerta está monitorando.
 
-- **Vazamento de segredos / credenciais** em payloads de eventos — chaves de acesso AWS, chaves de API `sk-…`, chaves privadas PEM, tokens JWT / bearer e atribuições de credenciais do tipo `KEY=…`.
-- **Marcadores de injeção de prompt** — "ignore previous instructions", "reveal your system prompt" e similares.
-- **PII** — números com formato de CPF/SSN (heurística).
-- **Negações de permissão de ferramentas** e **loops descontrolados de chamadas a ferramentas**.
+Você decide a intensidade da análise com uma única configuração de **sensibilidade** (baixa, média ou alta), para que um agente barulhento de staging e um de produção rigidamente controlado possam ser ajustados ao sinal que você deseja.
 
-Ocorrências de política são persistidas como findings (tipo `policy`) que **sempre aparecem** (nunca são cortados pelo limite por execução) e são repassados ao agente de IA como pistas iniciais. Como essa camada não requer nenhum modelo, uma auditoria ainda produz seus sinais de segurança mais importantes mesmo que o agente de IA esteja indisponível.
+## Cada recomendação vem com comprovantes
 
-### 2. A investigação por agente (IA)
+Você nunca precisa aceitar uma descoberta pela fé. Cada recomendação cita as sessões exatas de onde ela veio e o SQL que a trouxe à tona, para que você possa abrir as evidências e confirmar o problema com um clique, em vez de ter que reverter uma afirmação.
 
-A auditoria então executa um **agente de confiabilidade autônomo** (o mesmo serviço Claude Agent SDK que alimenta o assistente do dashboard, com um prompt específico para auditoria). Com base no **escopo** da auditoria (agentes selecionados × ambientes) e na **janela de tempo**, o agente:
+É isso que também mantém as auditorias honestas. O servidor verifica se cada sessão citada realmente existe e **descarta qualquer recomendação cujas evidências não se sustentam** — portanto, a auditoria investiga, mas nunca inventa. O que chega à sua lista é real, reproduzível e ranqueado por importância, com os maiores ganhos no topo.
 
-- executa consultas SQL somente leitura nas suas tabelas de analytics,
-- lê um conjunto de transcrições de sessões representativas,
-- opcionalmente escreve e executa pequenos **scripts Python em um sandbox isolado dentro do pod** (sem rede, sem acesso ao sistema de arquivos, segredos removidos) para análises que o SQL não consegue expressar — agrupamento de erros, cálculo de distribuições, varredura de payloads já obtidos,
-- e registra cada **melhoria** bem fundamentada que encontrar.
+## Transforme uma correção em uma proteção
 
-O agente trabalha em várias linhas investigativas — agrupamento de erros, desvio em relação a uma linha de base, falha de objetivo em transcrições, uso inadequado de ferramentas, trade-offs de qualidade/custo e lacunas de cobertura — de acordo com a **sensibilidade** da auditoria (baixa / média / alta). Cada melhoria **deve citar evidências**: os IDs das sessões que o agente efetivamente inspecionou e/ou o SQL que executou. O servidor valida que as sessões citadas existem e **descarta qualquer melhoria sem evidências válidas**, garantindo que o agente investiga mas nunca inventa.
+Corrigir um problema é apenas metade da vitória. A outra metade é garantir que ele não volte silenciosamente. Cada descoberta traz um **atalho de um clique que cria um alerta de recorrência**, pré-preenchido com um gatilho inicial razoável que você pode ajustar. Feche a descoberta, ative o alerta, e na próxima vez que esse padrão reaparecer você será notificado em vez de redescobri-lo em uma auditoria futura.
 
-Cada melhoria inclui:
+## Onde encontrar
 
-- uma **recomendação** (a mudança concreta a ser feita — um ajuste de prompt, uma correção no schema de ferramenta, uma política de retry, um guardrail, mais cobertura de avaliação),
-- um **impacto esperado** e uma estimativa de **esforço** (baixo / médio / alto),
-- uma **magnitude** — `big` (um operador deve ser alertado), `medium` (pertence ao relatório de execução) ou `small` (contexto do dashboard),
-- um **fingerprint** estável (baseado na categoria + escopo do problema, *não* nas sessões desta execução) para que o mesmo problema seja rastreado de execução em execução mesmo quando as evidências mudam,
-- e, quando um observador determinístico simples pode capturar recorrências, um **alerta sugerido** que você pode criar com um clique.
+As Auditorias ficam no dashboard em **`/<org-slug>/audits`** (barra lateral em *analyze* > *audits*). Visualizar execuções e descobertas requer **`audits:read`**; criar, editar e triar auditorias requer **`audits:write`**. Defina o escopo e a cadência de uma auditoria, depois clique em **Run now** sempre que quiser resultados imediatamente, sem esperar pela próxima execução agendada.
 
-> **A camada de IA é opcional, mas recomendada.** Se nenhum agente de IA estiver configurado para o pipeline de auditoria, as execuções ainda acontecem, persistem os findings de política e reportam honestamente "análise indisponível" para a camada agêntica — em vez de passar silenciosamente sem resultados.
+## Relacionados
 
-### Modos de falha
-
-Melhorias são classificadas no **catálogo de modos de falha** duráveis da sua organização (ou propõem um novo modo). Os modos dão aos padrões uma identidade estável entre execuções e permitem rastreamento de recorrência no longo prazo.
-
-## Ciclo de vida da triagem
-
-Em uma página de finding (`/audits/<id>/findings/<finding-id>`):
-
-| Ação | Efeito |
-|---|---|
-| **acknowledge** | Mantém o finding visível, mas reduz sua prioridade à metade. |
-| **resolve** | Marca como corrigido. Se o padrão realmente retornar depois, ele reabre como **new** — tornando a regressão visível, não silenciosamente absorvida pelo histórico. |
-| **mute** / **dismiss** | Supressão durável: o fingerprint do padrão é memorizado e nunca aparece novamente, mesmo entre execuções. Use mute para "conhecido e aceito"; dismiss para "não é útil". |
-| **reopen** | Limpa a supressão / resolução e reposiciona o padrão na fila. |
-
-O ruído de baixo sinal é controlado por auditoria com um limite de findings por execução (`top_k`) sobre as melhorias agênticas. Findings de política ignoram esse limite (são relevantes para segurança e sempre exibidos). Tudo que for cortado pelo limite é contabilizado nas estatísticas da execução — nada é descartado silenciosamente.
-
-## Agendamento
-
-- **Cadência** (`schedule_interval_secs`): de horária a semanal; **diária é o padrão**. Auditorias são deliberadamente mais espaçadas do que alertas — uma investigação agêntica varre janelas inteiras e leva minutos para executar.
-- **Janela**: ou um lookback fixo e contínuo (ex.: "cada execução analisa os últimos 7 dias") ou **desde-a-última-execução** (o padrão) — cada execução retoma de onde a anterior bem-sucedida parou, com uma pequena sobreposição para que eventos de fronteira nunca sejam perdidos.
-- A próxima execução é agendada um intervalo completo após a **conclusão** da anterior, garantindo que uma execução lenta nunca empilhe uma segunda execução concorrente da mesma auditoria.
-- **Run now** na página da auditoria a torna imediatamente elegível para execução.
-
-## Seleção de modelo
-
-Ao criar uma auditoria, você pode escolher qual modelo a investigação utiliza, dentre a **lista de modelos configurados pelo seu operador** para o serviço de agente. Com um único modelo configurado, o seletor o exibe como legenda; com vários, você escolhe. Deixar sem definir utiliza o padrão configurado.
-
-## Notificações
-
-Quando uma execução encontra findings **novos**, a auditoria notifica os canais configurados da sua organização — os mesmos canais do `alerts.enabled_channels` e configurações que o pipeline de alertas utiliza:
-
-- **Slack** — um resumo dos novos itens significativos (`big`) com um link direto.
-- **Email** — um **relatório de auditoria** formatado listando as novas melhorias (maior severidade, recomendações por item, link direto), enviado quando a auditoria tem um canal de **email** configurado e há pelo menos um finding novo.
-
-Findings recorrentes já conhecidos não geram novas notificações.
-
-## Referência de configuração
-
-As definições de auditoria são gerenciadas no dashboard (`/audits/new`) ou via API. As configurações por auditoria incluem a cadência e a janela de agendamento, o escopo (`{"environments": [...], "agent_ids": [...]}`), a sensibilidade (`low` / `medium` / `high`), os canais de notificação, o limite de findings por execução (`top_k`) e o modelo (via `llm_budget.model`). Configurações de servidor no nível do operador (timeouts, sandbox, URL do serviço de agente) estão documentadas em [deployment.md](/pt-br/agenteye/deployment).
-
-## API
-
-Todos os endpoints têm escopo de organização e seguem a autenticação padrão por bearer key (veja [api-keys.md](/pt-br/agenteye/api-keys)).
-
-| Endpoint | Permissão | Finalidade |
-|---|---|---|
-| `GET /audits` · `POST /audits` | `audits:read` / `audits:write` | Listar / criar definições de auditoria. |
-| `GET` / `PUT` / `DELETE /audits/:id` | read / write / write | Inspecionar, editar, excluir uma auditoria. |
-| `POST /audits/:id/run` | `audits:write` | Tornar a auditoria imediatamente elegível para execução. |
-| `GET /audits/:id/runs` | `audits:read` | Histórico de execuções (janela, status, estatísticas, contagem de findings). |
-| `GET /audits/findings` | `audits:read` | Findings de toda a organização, filtráveis por `audit_id`, `status`; ordenados por prioridade. |
-| `GET /audits/findings/:fid` | `audits:read` | Detalhes completos do finding (recomendação, evidências, prioridade). |
-| `POST /audits/findings/:fid/status` | `audits:write` | Triagem: `{"action": "ack" \| "mute" \| "dismiss" \| "resolve" \| "reopen" \| "assign"}`. |
-
-Para "auditoria executou mas não encontrou nada", "o sandbox de código está desativado" e "email de auditoria não foi entregue", veja [troubleshooting.md](/pt-br/agenteye/troubleshooting#audits).
+- [Alertas](/pt-br/agenteye/alerts): seja notificado no momento em que um limite que você já conhece é ultrapassado.
+- [Avaliações](/pt-br/agenteye/evaluations): pontue cada execução para que regressões de qualidade apareçam por conta própria.
+- [Rastreamento de erros](/pt-br/agenteye/error-tracking): agrupe e acompanhe os erros que seus agentes geram.
+- [Incidentes](/pt-br/agenteye/incidents): acompanhe um problema encontrado em uma auditoria até a sua correção.

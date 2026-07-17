@@ -18,8 +18,8 @@
 **अनुवाद:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
 **कोडिंग एजेंट्स के लिए रनटाइम विफलता समाधान।**
-Claude Code और Codex में हुक करता है। लूप्स, खतरनाक कार्यों, और सीक्रेट लीक्स को
-उन्हें घटनाओं में बदलने से पहले पकड़ता है। शून्य लेटेंसी। स्थानीय रूप से चलता है।
+Claude Code और Codex में हुक करता है। लूप्स, खतरनाक क्रियाओं और गुप्त रिसाव को
+घटनाओं में बदलने से पहले पकड़ता है। शून्य विलंबता। स्थानीय रूप से चलता है।
 
 </div>
 
@@ -125,19 +125,19 @@ Claude Code और Codex में हुक करता है। लूप्
   </tr>
 </table>
 
-> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi` (या `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`)। स्वचालित रूप से संस्थापित CLIs का पता लगाने और संकेत देने के लिए `--cli` को छोड़ दें।
+> एक या किसी भी संयोजन के लिए हुक इंस्टॉल करें: `failproofai policies --install --cli opencode pi` (या `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`)। इंस्टॉल किए गए CLIs को स्वचालित रूप से पहचानने और प्रॉम्प्ट करने के लिए `--cli` छोड़ें।
 >
-> **Hermes** (hermes-agent, एक Slack/Telegram गेटवे) **लाइव-हुक प्रवर्तन** (`--cli hermes` — एक इंस्टॉल हर प्लेटफॉर्म और सबएजेंट से टूल कॉल को रोकता है) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके गेटवे सेशन का एकल `~/.hermes/state.db` से।
+> **Hermes** (hermes-agent, एक Slack/Telegram गेटवे) **लाइव-हुक प्रवर्तन** (`--cli hermes` — एक इंस्टॉल हर प्लेटफॉर्म और सबएजेंट से टूल कॉल को इंटरसेप्ट करता है) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके गेटवे सेशन का रिप्ले `~/.hermes/state.db` से।
 >
-> **OpenClaw** (openclaw गेटवे, एक self-hosted मल्टी-चैनल असिस्टेंट) **लाइव-हुक प्रवर्तन** (`--cli openclaw`, यूजर-स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके JSONL सेशन का (`~/.openclaw/agents/<id>/sessions/*.jsonl`)। प्रवर्तन OpenClaw के **in-process प्लगइन हुक्स** का उपयोग करता है (एक shipped `openclaw-plugin/` जो async-spawns failproofai — इसकी फाइल-आधारित आंतरिक हुक्स केवल अवलोकन हैं और ब्लॉक नहीं कर सकते): `before_tool_call` एक टूल को ब्लॉक करता है, और `before_agent_finalize` एक असली turn-end गेट है, इसलिए `require-*-before-stop` बिल्ट-इन्स को प्रवर्तित करते हैं।
+> **OpenClaw** (openclaw गेटवे, एक स्व-होस्ट किया गया बहु-चैनल असिस्टेंट) **लाइव-हुक प्रवर्तन** (`--cli openclaw`, यूजर-स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके JSONL सेशन का (`~/.openclaw/agents/<id>/sessions/*.jsonl`)। प्रवर्तन OpenClaw के **इन-प्रोसेस प्लगइन हुक्स** का उपयोग करता है (एक shipped `openclaw-plugin/` जो async-spawn failproofai करता है — इसकी फाइल-आधारित आंतरिक हुक्स केवल अवलोकन हैं और ब्लॉक नहीं कर सकते): `before_tool_call` एक टूल को ब्लॉक करता है, और `before_agent_finalize` एक वास्तविक टर्न-एंड गेट है, तो `require-*-before-stop` बिल्टइन्स प्रवर्तन करते हैं।
 >
-> **Factory Droid** (`droid`) **लाइव-हुक प्रवर्तन** (`--cli factory`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके ऑन-डिस्क JSONL सेशन का। droid हुक **exit code 2** (JSON निर्णय नहीं) को ब्लॉक करता है और `{decision:"block"}` को turn-end `Stop` event पर ही मानता है — failproofai स्वचालित रूप से प्रत्येक event के लिए सही आकार उत्सर्जित करता है।
+> **Factory Droid** (`droid`) **लाइव-हुक प्रवर्तन** (`--cli factory`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके ऑन-डिस्क JSONL सेशन का। droid टूल कॉल को हुक **exit code 2** से ब्लॉक करता है (JSON निर्णय नहीं) और `{decision:"block"}` को केवल टर्न-एंड `Stop` इवेंट पर सम्मान करता है — failproofai स्वचालित रूप से हर इवेंट के लिए सही आकार उत्सर्जित करता है।
 >
-> **Devin CLI** (`devin`, Cognition) **लाइव-हुक प्रवर्तन** (`--cli devin`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके SQLite सेशन का (`~/.local/share/devin/cli/sessions.db`)। Devin एक **शुद्ध Claude-क्लोन** है — समान event नाम, समान snake_case payload, समान `hooks`-wrapper config (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — `{decision:"block"}` JSON के माध्यम से प्रत्येक event पर ब्लॉकिंग।
+> **Devin CLI** (`devin`, Cognition) **लाइव-हुक प्रवर्तन** (`--cli devin`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके SQLite सेशन का (`~/.local/share/devin/cli/sessions.db`)। Devin एक **शुद्ध Claude-clone** है — समान इवेंट नाम, समान snake_case पेलोड, समान `hooks`-wrapper कॉन्फ़िगरेशन (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — `{decision:"block"}` JSON के माध्यम से हर इवेंट पर ब्लॉकिंग।
 >
-> **Antigravity CLI** (`agy`) **लाइव-हुक प्रवर्तन** (`--cli antigravity`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके प्लेन-JSONL सेशन का (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`)। Antigravity का अपना **contract** है (Claude-क्लोन नहीं): एक **नामित-हुक** `hooks.json` स्कीमा (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), एक camelCase stdin payload जिसे failproofai सामान्य करता है, और अपने स्वयं के प्रतिक्रिया आकार — `{decision:"deny"}` एक टूल को ब्लॉक करने के लिए, `{decision:"continue"}` को `Stop` पर दूसरी turn को बाध्य करने के लिए, `{injectSteps}` मॉडल चलाने से पहले एक अनुस्मारक इंजेक्ट करने के लिए।
+> **Antigravity CLI** (`agy`) **लाइव-हुक प्रवर्तन** (`--cli antigravity`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके सादे-JSONL सेशन का (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`)। Antigravity का **अपना** कॉन्ट्रैक्ट है (Claude-clone नहीं): एक **नामित-हुक** `hooks.json` स्कीमा (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), एक camelCase stdin पेलोड जिसे failproofai सामान्य करता है, और अपने स्वयं के प्रतिक्रिया आकार — `{decision:"deny"}` एक टूल को ब्लॉक करने के लिए, `{decision:"continue"}` `Stop` पर एक और टर्न को मजबूर करने के लिए, `{injectSteps}` मॉडल चलाने से पहले एक अनुस्मारक इंजेक्ट करने के लिए।
 >
-> **Goose** (codename goose, Block) **लाइव-हुक प्रवर्तन** (`--cli goose`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके SQLite सेशन का (`~/.local/share/goose/sessions/sessions.db`)। प्रवर्तन Goose की **hooks** सिस्टम का उपयोग करता है (cross-agent **Open Plugins** spec) — इंस्टॉलर बस एक प्लगइन dir को `~/.agents/plugins/failproofai/` पर ड्रॉप करता है और Goose इसे स्वचालित रूप से खोजता है। ब्लॉकिंग `PreToolUse` event पर `{"decision":"block"}` JSON है (जो shell टूल के लिए और प्रतिनिधिमंडल किए गए सबएजेंट्स के अंदर फायर करता है), goose v1.43.0 के विरुद्ध लाइव सत्यापित; Goose के पास कोई turn-end `Stop` event नहीं है, इसलिए `require-*-before-stop` बिल्ट-इन्स लागू नहीं होते (Hermes की तरह)।
+> **Goose** (codename goose, Block) **लाइव-हुक प्रवर्तन** (`--cli goose`, यूजर + प्रोजेक्ट स्कोप) और ऑफलाइन **ऑडिट** के लिए समर्थित है इसके SQLite सेशन का (`~/.local/share/goose/sessions/sessions.db`)। प्रवर्तन Goose के **हुक्स** सिस्टम का उपयोग करता है (क्रॉस-एजेंट **Open Plugins** स्पेक) — इंस्टॉलर बस `~/.agents/plugins/failproofai/` पर एक प्लगइन डायर ड्रॉप करता है और Goose इसे ऑटो-डिस्कवर करता है। ब्लॉकिंग `PreToolUse` इवेंट पर `{decision:"block"}` JSON है (जो शेल टूल और डेलिगेटेड सबएजेंट्स के अंदर फायर करता है), goose v1.43.0 के विरुद्ध लाइव में सत्यापित; Goose का कोई टर्न-एंड `Stop` इवेंट नहीं है, तो `require-*-before-stop` बिल्टइन्स लागू नहीं होते हैं (Hermes के साथ)।
 
 ---
 
@@ -145,11 +145,11 @@ Claude Code और Codex में हुक करता है। लूप्
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # या बस `failproofai` चलाएं और पहली-बार के संकेत को स्वीकार करें
+failproofai policies --install   # या बस `failproofai` चलाएं और पहली बार प्रॉम्प्ट को स्वीकार करें
 failproofai
 ```
 
-30 बिल्ट-इन नीतियां तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर। `FAILPROOFAI_NO_FIRST_RUN=1` के साथ पहली-बार के संकेत को अक्षम करें।
+30 बिल्ट-इन नीतियां तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर। पहली बार प्रॉम्प्ट को `FAILPROOFAI_NO_FIRST_RUN=1` से अक्षम करें।
 
 ---
 
@@ -157,20 +157,20 @@ failproofai
 
 | नीति | यह क्या ब्लॉक करता है |
 |---|---|
-| `block-push-master` | `main` / `master` को सीधे पुश |
+| `block-push-master` | `main` / `master` को सीधे पुश करता है |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` पर कमिट, मर्ज, रीबेस |
-| `block-rm-rf` | रिकर्सिव फाइल हटाना |
-| `sanitize-api-keys` | एजेंट context में API कुंजियों का लीक होना |
+| `block-work-on-main` | `main` / `master` पर कमिट, मर्ज, रीबेस करता है |
+| `block-rm-rf` | पुनरावर्ती फाइल विलोपन |
+| `sanitize-api-keys` | एजेंट संदर्भ में API कुंजी लीक होना |
 
 → [सभी 30 बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## आपकी अपनी नीतियां
+## अपनी अपनी नीतियां
 
-`.failproofai/policies/` में एक फाइल ड्रॉप करें — यह स्वचालित रूप से लोड हो जाती है, कोई फ्लैग की आवश्यकता नहीं।
-इसे कमिट करें और पूरी टीम को अगली pull पर यह मिल जाएगा।
+`.failproofai/policies/` में एक फाइल ड्रॉप करें — यह स्वचालित रूप से लोड होती है, कोई फ्लैग की आवश्यकता नहीं।
+इसे कमिट करें और पूरी टीम को अगली पुल पर मिलता है।
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -190,9 +190,9 @@ customPolicies.add({
 
 | निर्णय | प्रभाव |
 |---|---|
-| `allow()` | ऑपरेशन की अनुमति दें |
+| `allow()` | ऑपरेशन को अनुमति दें |
 | `deny(message)` | इसे ब्लॉक करें — संदेश एजेंट को वापस जाता है |
-| `instruct(message)` | इसे अनुमति दें, लेकिन एजेंट के अगले प्रॉम्प्ट में context जोड़ें |
+| `instruct(message)` | इसे के माध्यम से जाने दें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
 
 → [कस्टम नीतियां गाइड](https://docs.befailproof.ai/custom-policies)
 
@@ -200,20 +200,20 @@ customPolicies.add({
 
 ## सेशन दृश्यमानता
 
-आपके एजेंट द्वारा किया गया हर टूल कॉल स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
-क्या ब्लॉक किया गया, और नीति ने एजेंट को क्या बताया — इसलिए आप अनुमान नहीं लगा रहे हैं
+हर टूल कॉल जो आपका एजेंट करता है स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
+क्या ब्लॉक किया गया, और नीति ने एजेंट को क्या बताया — तो आप अनुमान नहीं लगा रहे हैं
 जब कुछ गलत हो जाता है। → [डैशबोर्ड गाइड](https://docs.befailproof.ai/dashboard)
 
 ---
 
-## दस्तावेज़
+## प्रलेखन
 
 | | |
 |---|---|
-| [आरंभ करें](https://docs.befailproof.ai/getting-started) | इंस्टॉलेशन और पहले कदम |
+| [शुरुआत करना](https://docs.befailproof.ai/getting-started) | इंस्टॉलेशन और पहले कदम |
 | [बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies) | सभी 30 नीतियां पैरामीटर के साथ |
 | [कस्टम नीतियां](https://docs.befailproof.ai/custom-policies) | अपनी खुद की लिखें |
-| [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िग स्कोप और मर्ज नियम |
+| [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िगरेशन स्कोप और मर्ज नियम |
 | [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सेशन मॉनिटर और नीति गतिविधि |
 | [आर्किटेक्चर](https://docs.befailproof.ai/architecture) | हुक सिस्टम कैसे काम करता है |
 
@@ -221,21 +221,21 @@ customPolicies.add({
 
 ## लाइसेंस
 
-MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए मुफ्त; failproofai की वाणिज्यिक पुनर्विक्रय के लिए एक अलग समझौता आवश्यक है। पूरे पाठ के लिए [LICENSE](./LICENSE) देखें।
+MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए मुक्त; failproofai स्वयं का वाणिज्यिक पुनर्विक्रय के लिए एक अलग समझौता की आवश्यकता है। पूर्ण पाठ के लिए [LICENSE](./LICENSE) देखें।
 
 ---
 
-## योगदान करना
+## योगदान
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) देखें। नई नीतियां, edge cases, और अनुवाद सभी स्वागत हैं।
+[CONTRIBUTING.md](./CONTRIBUTING.md) देखें। नई नीतियां, किनारे के मामले, और अनुवाद सभी स्वागत हैं।
 
-> **शुरू करने से पहले बिल्ड करें।** पहले `bun install && bun run build` चलाएं। यह रेपो
-> failproofai की अपनी हुक्स को अपने आप पर चलाता है, और वे `failproofai` import को संकलित
-> `dist/` bundle के विरुद्ध हल करते हैं — बिल्ड के बिना आप `Cannot find package 'failproofai'`
-> हुक त्रुटियों से टकराएंगे। `src/` बदलने के बाद पुनर्निर्माण करें। 
-> [in-repo dev हुक्स काम करने से पहले बिल्ड करें](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) देखें।
+> **शुरू करने से पहले बिल्ड करें।** पहले `bun install && bun run build` चलाएं। यह रीपो
+> failproofai के अपने हुक्स को स्वयं पर चलाता है, और वे `failproofai` आयात को
+> संकलित `dist/` बंडल के विरुद्ध समाधान करते हैं — बिल्ड के बिना आप `Cannot find package 'failproofai'`
+> हुक त्रुटियों को मारेंगे। `src/` को बदलने के बाद पुनः बिल्ड करें। देखें
+> [इन-रीपो डेव हुक्स काम करने से पहले बिल्ड करें](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) और [Nikita Agarwal](https://github.com/nk-ag) द्वारा निर्मित।
+निर्मित [Nivedit Jain](https://github.com/NiveditJain) और [Nikita Agarwal](https://github.com/nk-ag) द्वारा।
 [befailproof.ai](https://befailproof.ai)

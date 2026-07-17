@@ -1,0 +1,41 @@
+---
+title: "Suivi des erreurs"
+description: "Documentation sur le suivi des erreurs de l'observabilité FailproofAI."
+---
+
+
+Visualisez en un seul endroit toutes les défaillances produites par vos agents, regroupées de façon à ce qu'une rafale bruyante apparaisse comme un incident unique. Vous disposez d'un chemin en un clic entre « quelque chose est en rouge » et la session exacte qui a planté, sans avoir à faire défiler un flux en direct pour la trouver.
+
+![La page Erreurs : un histogramme des défaillances dans le temps au-dessus de lignes d'erreur rouges regroupées, chacune avec un bouton « + alert » en un clic](/agenteye/images/errors.png)
+*La page Erreurs : un histogramme des défaillances dans le temps, avec les erreurs répétées regroupées en une seule ligne par incident.*
+
+## Toutes les défaillances, déjà collectées pour vous
+
+Lorsqu'un agent plante, vous ne devriez pas avoir à faire défiler un flux d'événements en direct dans l'espoir d'attraper les lignes rouges avant qu'elles disparaissent. La page **Erreurs** se charge de la collecte à votre place. Elle rassemble tout ce que le tableau de bord aurait affiché en rouge sur une seule surface de triage, de sorte que la première chose que vous voyez est ce qui échoue, et non où aller chercher.
+
+Elle détecte également bien plus que les erreurs évidentes. Parallèlement aux événements `error` explicites, FailproofAI Observability fait remonter les défaillances silencieuses : tout `tool_result`, `hook_completed` ou `agent_end` dont le contenu signale un échec apparaît ici. Un outil qui a renvoyé une erreur, ou un hook qui s'est terminé anormalement, ne vous échappe plus simplement parce que rien n'a levé d'exception bruyante.
+
+En haut de page, un histogramme représente les erreurs dans le temps. Un seul coup d'œil vous indique s'il s'agit d'un flux de fond régulier ou d'un pic survenu il y a quelques minutes, vous permettant de savoir immédiatement si vous devez tout lâcher.
+
+Comme toutes les surfaces d'observation, la page Erreurs est limitée à votre organisation et filtre par plage de dates, environnement, agent et session. Cela vous permet de partir d'une liste couvrant l'ensemble de votre flotte et de la restreindre à l'agent ou à l'environnement qui vous intéresse réellement.
+
+## Un incident, pas cent lignes identiques
+
+Une seule dépendance défaillante peut déclencher la même erreur des centaines de fois par minute. Brutes, ces données se traduisent par un mur de lignes quasi-identiques qui noie ce que vous avez vraiment besoin de voir.
+
+FailproofAI Observability regroupe les défaillances répétées qui partagent la même session et le même type d'erreur en une seule ligne. Une rafale apparaît comme un seul incident. Vous comptez des problèmes, pas des lignes de logs, et le signal qui compte reste visible au lieu d'être noyé par son propre volume.
+
+## De « quelque chose est en rouge » à l'événement exact
+
+Cliquez sur une ligne pour atterrir directement dans la session de cette exécution, positionné sur l'événement exact qui a échoué. Pas besoin de copier des identifiants de session ni de faire défiler pour trouver le moment où tout a déraillé : vous arrivez directement dessus, avec le graphe d'exécution complet accessible en un coup d'œil pour voir ce que l'agent a fait dans les instants précédant la panne.
+
+Si vous disposez de la permission `alerts:write`, chaque ligne comporte également un bouton **+ alert**. Cliquez dessus et Observability ouvre une nouvelle règle d'alerte déjà configurée pour détecter la même défaillance à l'avenir. L'incident que vous venez de trier devient celui qui vous alertera la prochaine fois, plutôt que de vous surprendre une seconde fois.
+
+**Où le trouver :** la page **Erreurs** se trouve dans la section observe du tableau de bord, à l'adresse `/<org-slug>/errors`.
+
+## Voir aussi
+
+- [Alertes](/fr/agenteye/alerts) : transformez n'importe quelle défaillance en règle de notification.
+- [Incidents](/fr/agenteye/incidents) : suivez une alerte déclenchée de son ouverture à sa résolution.
+- [Sessions](/fr/agenteye/sessions) : ouvrez l'exécution complète derrière n'importe quelle erreur.
+- [Audits](/fr/agenteye/audits) : laissez Observability identifier pour vous les schémas de défaillance dans vos exécutions.

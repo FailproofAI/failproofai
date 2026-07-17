@@ -1,0 +1,67 @@
+---
+title: "सुरक्षा"
+description: "FailproofAI Observability सुरक्षा दस्तावेज़।"
+---
+
+FailproofAI Observability आपके प्रोडक्शन agents के पास रहने के लिए बनाया गया है, जिसका अर्थ है कि यह आपके prompts, tool inputs और outputs को देखता है। यह पृष्ठ समझाता है कि यह डेटा को कैसे अलग-थलग, नियंत्रित और आपके हाथों में रखता है। यदि आप security review के लिए FailproofAI Observability का मूल्यांकन कर रहे हैं, तो यहां से शुरू करें।
+
+---
+
+## आपका डेटा आपके environment में रहता है
+
+FailproofAI Observability self-hosted है। Events, prompts, model responses और analytics आपके स्वयं के databases में, आपके अपने environment में संग्रहीत हैं। किसी भी तीसरे पक्ष के SaaS को storage के लिए कुछ भी नहीं भेजा जाता है, और आपका डेटा आपके अपने cloud account में रहता है।
+
+---
+
+## Tenant isolation
+
+एक FailproofAI Observability instance कई organizations को host कर सकता है, और प्रत्येक storage layer पर अलग-थलग है — database द्वारा लागू किया जाता है, सिर्फ UI द्वारा नहीं:
+
+- एक organization के operational data (users, keys, dashboards, saved queries) उस org के लिए scoped हैं, और cross-org reads को database द्वारा ही block किया जाता है।
+- हर ingested event को अपने मालिक org से stamp किया जाता है, इसलिए एक organization के events को कभी दूसरा नहीं पढ़ सकता।
+
+हर dashboard route एक org slug के तहत scoped है (`/<org-slug>/…`)।
+
+---
+
+## साइन-इन
+
+FailproofAI Observability passwordless, email-based साइन-इन का उपयोग करता है। कोई password नहीं है जो phish किया जा सके या leak हो सके। एक user एक one-time code (या एक one-click magic link) के लिए request करता है, जिसे उन्हें email किया जाता है और जो जल्दी expire हो जाता है। साइन-इन एक **allowlist** द्वारा gated है: केवल email addresses (या domains) जो आप permit करते हैं, authenticate कर सकते हैं।
+
+![FailproofAI Observability साइन-इन स्क्रीन, जो आपके email को एक single-use code भेजता है](/agenteye/images/login.png)
+
+---
+
+## API keys के साथ Scoped access
+
+हर client एक API key के साथ authenticate करता है जो granular, least-privilege permissions रखता है। एक collector को केवल `events:add` की ज़रूरत है; एक dashboard या assistant key read-only हो सकता है; destructive actions (delete, regenerate) अलग grants हैं जिन्हें आप शामिल करना चुनते हैं।
+
+![API keys page: हर key की permission grants, read, write और destructive scope के आधार पर colour-coded](/agenteye/images/api-keys.png)
+
+Setup के लिए admin bootstrap key रखें, और बाकी सब कुछ के लिए narrow keys issue करें। [API keys](/hi/agenteye/api-keys) देखें।
+
+---
+
+## एक read-only, approval-gated assistant
+
+Dashboard में [AI assistant](/hi/agenteye/assistant) आपके डेटा पर सवालों का जवाब देता है, लेकिन यह design के साथ constrained है:
+
+- यह **डिफ़ॉल्ट रूप से read-only है**: इसका SQL एक guard के माध्यम से चलता है जो केवल `SELECT`/`WITH` queries को permit करता है, single-statement, एक row cap के साथ।
+- यह जो कुछ भी बनाता है (एक saved query, एक dashboard) **approval-gated है**: आप हर write को review करते हैं और approve करते हैं इससे पहले कि यह होता है।
+- यह **कभी delete नहीं कर सकता**।
+
+तो एक teammate पूछ सकता है "इस हफ्ते कौन से agents सबसे ज़्यादा error हुए?" और जवाब पर act कर सकता है, बिना assistant को अपने दम पर आपके डेटा को change या remove करने के लिए सक्षम किए।
+
+---
+
+## Transit में
+
+सभी traffic HTTPS पर चलता है। आप अपने अपने certificates के साथ TLS को terminate करते हैं, इसलिए collector-to-server और browser-to-server traffic transit में encrypted है।
+
+---
+
+## अगले कदम
+
+- [Overview](/hi/agenteye/overview): FailproofAI Observability कैसे एक साथ आता है।
+- [API keys](/hi/agenteye/api-keys): collector, dashboard और assistant के लिए access को scope करें।
+- [Observability](/hi/agenteye/observability): FailproofAI Observability आपके agents से क्या capture करता है।

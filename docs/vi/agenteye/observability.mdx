@@ -1,0 +1,23 @@
+---
+title: "Observe"
+description: "FailproofAI Observability Observe documentation."
+---
+
+
+Các bề mặt observe là nơi bạn theo dõi những gì các agent của mình đang làm ngay bây giờ và tìm hiểu chi tiết từng lần chạy. Mọi thứ ở đây đều được cập nhật trực tiếp, được phân loại theo tổ chức của bạn, và có thể lọc theo khoảng thời gian, môi trường, agent và session, để bạn có thể đi từ "có gì đó không ổn" đến đúng lần chạy chính xác chỉ trong vài giây.
+
+![The live Event Stream, colour-coded by type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
+
+Bốn bề mặt, mỗi cái có trang riêng của nó:
+
+- **[Event stream](/vi/agenteye/event-stream)**: dấu vết trực tiếp từng bước của mọi lần chạy trên mọi agent, mới nhất trước tiên. Trang chủ của tổ chức bạn và điểm dừng đầu tiên để phân loại sự cố.
+- **[Sessions and execution graph](/vi/agenteye/sessions)**: những sự kiện được gộp lại thành một hàng cho mỗi lần chạy, cộng với hình ảnh kiểu git của cách mỗi lần chạy diễn ra.
+- **[Performance metrics](/vi/agenteye/telemetry)**: sơ đồ nhiệt độ trễ và các số liệu sức khỏe p50/p95/p99 cho các mô hình, công cụ và hook của bạn, để một bất thường ở tail nổi bật so với giá trị trung bình.
+- **[Error tracking](/vi/agenteye/error-tracking)**: một bề mặt phân loại sự cố duy nhất cho tất cả những gì đã sai, chỉ cần một lần nhấp từ cảnh báo được kích hoạt đến lần chạy bị hỏng.
+
+## Liên quan
+
+- [Evaluations](/vi/agenteye/evaluations): đánh giá chất lượng mỗi lần chạy.
+- [Alerts](/vi/agenteye/alerts): chuyển bất kỳ ngưỡng nào thành quy tắc paging.
+- [Audits](/vi/agenteye/audits): để FailproofAI Observability tìm các mô hình lỗi trên các session cho bạn.
+- [CLI and agents](/vi/agenteye/cli-and-agents): khả năng quan sát giống nhau từ terminal của bạn.

@@ -1,0 +1,50 @@
+---
+title: "Event Stream"
+description: "FailproofAI Observability Event Stream belgelendirmesi."
+---
+
+
+Aracınız bir şey yaptığı anda bunu görürsünüz. Event Stream, üretimde çalışan her aracının canlı nabzıdır: beklemeye gerek yok, log dosyalarında arama yapmaya gerek yok, ne olduğunu tahmin etmeye gerek yok.
+
+![Canlı Event Stream: renkle kodlanmış event satırları gerçek zamanlı olarak akmakta, ortam, aracı, oturum, event türü ve serbest metin ile filtrelenebiliyor](/agenteye/images/events-stream.png)
+
+*Kuruluşunuzdaki her aracıdan gelen her event, en yeniler önce, gerçekleştikçe güncelleniyor.*
+
+## Her aracının canlı nabzı
+
+Bir aracı çalıştırıldığında, bir modeli çağırdığında, bir araç tetiklediğinde, bir hook çalıştırdığında veya bir hatayla karşılaştığında, satır gerçekleşir gerçekleşmez akışın en üstünde görünür. Kuruluşunuzdaki her aracı arasında her event'i takip eder, en yeniler önce, böylece her zaman güncel bir görünüme sahip olursunuz.
+
+Bu, bir yere bağlı log dosyalarını takip etmeye, makineler arasında arama yapmaya, zaman damgalarını elle bir araya getirmeye gerek olmadığı anlamına gelir. Bir sayfayı açtınız ve zaten üretimi izliyorsunuz.
+
+Satırlar türe göre renkle kodlanmıştır, böylece her satırı ayrıştırmak yerine akışı tek bakışta okuyabilirsiniz. Bir bakışta, her satır size şunu gösterir:
+
+- **Türü**, renkle kodlanmış: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` ve daha fazlası.
+- **Ne olduğunu** tek satırda özetleyen bir açıklama, böylece sadece genel fikri almak için nadir olarak bir şey açmanız gerekir.
+- **Token sayıları** adım için.
+- **Bağlam penceresi doldurma rozetleri** uygun olduğu yerlerde, böylece hızlı büyüme ve yaklaşan sıkıştırma görünür hale gelmeden önce fark edilir.
+
+Canlı izleme, kötü bir dağıtımı, kaçak bir döngüyü veya hata patlamasını gerçekleşirken yakalarız, yarının log incelemesinde değil.
+
+## Önemli olan o bir çalıştırmayı bulun
+
+Bir şey yanlış görünüyorsa, bol miktarda veri istemezsiniz. İstediğiniz kıran o tek çalıştırmadır. Akış hızla filtreler: ortam, aracı, oturum, event türü veya serbest metin ile.
+
+Bir çalıştırmayı ilk event'inden son event'ine takip etmek için oturum kimliğine veya aracı kimliğine göre filtreleyin. Tekil bir aktivite türünü izole etmek için event türüne göre filtreleyin, örneğin kuruluş genelinde her `error`. Filtreleri "her yerde her şey"den "bu aracı, üretimde, hata veriyor"a birkaç tıklamada daraltmak için yığın filtreler, ardından bulduğunuz şeyde harekete geçin.
+
+Serbest metin araması, elinizde bulunan bir mesaja, araç adına veya kimliğe doğrudan gider, böylece bir müşteri raporu saniyeler içinde tam çalıştırmaya dönüşür.
+
+## Nerede bulacağınız
+
+Event Stream, kuruluş evinizdir. Oturum açın ve `/<org-slug>/` adresinde iniş yaptığınız ilk yüzey olur, bu nedenle triage hemen vardığınızda başlar.
+
+Arkasında, aracılarınız SDK aracılığıyla event'ler yayınlar, toplayıcı bunları FailproofAI Observability sunucunuza gönderir ve akış bunları kontrol ettiğiniz altyapıya varış sırasında takip eder. Ham iz yerine toplu görünümü istediğinizde, her çalıştırmanın event'leri Sessions üzerinde tek satırda daraltılır, bir tıklama uzağında.
+
+Bu, diğer her gözlemci yüzeyinin üzerine kurduğu ham gerçeğin kaynağıdır, bu nedenle bir sayı başka bir yerde yanlış görünüyorsa, akış aslında ne olduğunu doğruladığınız yerdir.
+
+## İlgili
+
+- [Sessions](/tr/agenteye/sessions): aynı event'ler bir çalıştırma başına bir satırda toplandı, git tarzı yürütme grafiği ile.
+- [Telemetry](/tr/agenteye/telemetry): aracılarınızın neyi gönderdiği ve event'lerin akışa nasıl ulaştığı.
+- [Error tracking](/tr/agenteye/error-tracking): yanlış giden her şey için bir triage yüzeyi.
+- [Alerts](/tr/agenteye/alerts): herhangi bir eşiği bir sayfalama kuralına dönüştürün.
+- [CLI and agents](/tr/agenteye/cli-and-agents): terminalinizden aynı canlı iz.

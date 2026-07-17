@@ -1,63 +1,64 @@
 ---
 title: "Suite d'évaluation"
-description: "Documentation de la suite d'évaluation AgentEye."
+description: "Documentation de la suite d'évaluation d'observabilité FailproofAI."
 ---
 
 
-AgentEye évalue les sessions d'agents terminées en envoyant par POST la transcription complète des événements à un **service d'évaluation appartenant au client**. L'évaluateur retourne les scores directement en réponse ou en transmettant un `job_id` qu'AgentEye peut interroger. Les résultats sont stockés et affichés dans le tableau de bord.
+L'observabilité FailproofAI peut automatiquement évaluer la qualité de chaque exécution d'agent terminée : vous fournissez un petit service de scoring, et l'observabilité s'occupe du reste. Utilisez-la pour suivre les dimensions qui vous importent (utilité, efficacité des outils, factualité, sécurité — c'est vous qui choisissez), détecter les régressions tôt et comparer des agents ou des environnements en un coup d'œil. Le scoring est optionnel : le pipeline ne fait rien tant que vous n'avez pas défini `EVALUATOR_ENDPOINT` sur le serveur.
 
-Ce guide couvre :
+> **Remarque :** Vous définissez les dimensions de score. Votre évaluateur peut retourner les clés numériques de son choix ; l'observabilité stocke, suit les tendances et affiche tout ce que vous lui renvoyez.
 
-1. Comment la fin de session est détectée.
-2. Le contrat HTTP que l'évaluateur doit implémenter.
-3. La configuration du serveur AgentEye.
-4. La consultation des résultats.
-5. Le dépannage.
+## Vue d'ensemble
 
-Pour le module Python qui implémente ce contrat à votre place, consultez le
-[package `agenteye-evaluator` sur PyPI](https://pypi.org/project/agenteye-evaluator/).
+1. **Écrivez un scorer.** Mettez en place un petit service HTTP qui lit la transcription d'une session et retourne des scores. L'observabilité embarque une référence fonctionnelle que vous pouvez copier. Voir [Écrire un évaluateur avec le SDK](#writing-an-evaluator-with-the-sdk).
+2. **Pointez l'observabilité vers ce service.** Définissez `EVALUATOR_ENDPOINT` (ainsi qu'un `EVALUATOR_TOKEN` partagé) sur le processus serveur.
+3. **Observez les scores arriver.** Chaque session terminée est scorée automatiquement ; les résultats apparaissent sur la page de détail de la session, dans la grille des sessions et dans les tableaux de bord enregistrés.
+
+![Vue du détail d'une session avec le résumé d'évaluation, les barres de score par dimension et le texte de raisonnement dans le panneau de droite](/agenteye/images/session-detail.png)
+
+*Une fois un évaluateur configuré, chaque exécution terminée est scorée et les résultats apparaissent dans le panneau droit de la session : le résumé en haut, puis les barres de score par dimension avec le raisonnement associé.*
 
 ---
 
 ## Fonctionnement
 
-```text
-ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Service évaluateur
-   (agent_end)        server   ◀──── done | pending ────
-                          │
-                          │     GET /evaluate/{job_id} ─────▶
-                          │     ◀──── done ──────────────
-                          ▼
-                     evaluations  (résultats terminaux)
+```mermaid
+flowchart LR
+    ING["ingest /events<br/>agent_end"] --> SRV["Observability server"]
+    SRV -->|"POST /evaluate"| EV["Evaluator service"]
+    EV -->|"done or pending"| SRV
+    SRV -->|"poll GET /evaluate/{job_id}"| EV
+    EV -->|"done"| SRV
+    SRV --> RES["evaluations<br/>terminal results"]
 ```
 
-Lorsque le SDK AgentEye émet un événement `agent_end` pour une session, le serveur planifie une évaluation. Il envoie ensuite par POST la transcription complète des événements à votre service d'évaluation, qui peut :
+Lorsque le SDK d'observabilité émet un événement `agent_end` pour une session, le serveur planifie une évaluation. Il envoie ensuite la transcription complète des événements à votre service d'évaluation via POST, qui peut soit :
 
-- **Retourner le résultat directement** avec `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. Le résultat est ajouté à la chronologie d'évaluation de la session. `reasoning` et `summary` sont facultatifs.
-- **Différer** avec `{"status":"pending", "job_id":"abc-123"}`. AgentEye appelle alors `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` jusqu'à ce que votre évaluateur retourne `{"status":"done", ...}` ou `{"status":"error", "error":"..."}`.
+- **Retourner le résultat directement** avec `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. Le résultat est ajouté à la chronologie d'évaluation de la session. `reasoning` et `summary` sont optionnels.
+- **Différer** avec `{"status":"pending", "job_id":"abc-123"}`. L'observabilité appelle alors `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` jusqu'à ce que votre évaluateur retourne `{"status":"done", ...}` ou `{"status":"error", "error":"..."}`.
 
-  La cadence d'interrogation est définie par tâche : une réponse `pending` peut inclure `next_poll_secs` pour la remplacer ; sinon AgentEye utilise la valeur `default_poll_interval_secs` de `GET /config` ; à défaut, le serveur revient à `EVALUATOR_POLLING_INTERVAL_SECS` (par défaut 10 s). Toutes les valeurs sont limitées à [1 s, 1 h].
+  La cadence de polling est par job : une réponse `pending` peut inclure `next_poll_secs` pour la surcharger ; sinon l'observabilité utilise la valeur `default_poll_interval_secs` de `GET /config` ; à défaut, le serveur se rabat sur `EVALUATOR_POLLING_INTERVAL_SECS` (10 s par défaut). Toutes les valeurs sont limitées à [1 s, 1 h].
 
-Les sessions qui n'émettent jamais `agent_end` (par exemple, un processus d'agent planté) peuvent également être traitées : le `GET /config` de l'évaluateur peut retourner `{"inactivity_timeout_secs": 1800}`, et AgentEye évaluera toute session inactive depuis ce délai. Définissez le champ à `null` ou omettez-le pour désactiver ce mécanisme de secours.
+Les sessions qui n'émettent jamais `agent_end` (par exemple, un processus d'agent planté) peuvent également être traitées : le `GET /config` de l'évaluateur peut retourner `{"inactivity_timeout_secs": 1800}`, et l'observabilité évaluera toute session restée inactive aussi longtemps. Définir ce champ à `null` ou l'omettre désactive ce mécanisme de secours.
 
-Le pipeline est entièrement sans effet lorsque `EVALUATOR_ENDPOINT` n'est pas défini.
+Le pipeline est entièrement inactif lorsque `EVALUATOR_ENDPOINT` n'est pas défini.
 
-Une session peut accumuler **plusieurs évaluations terminales au fil du temps** : chaque événement `agent_end` (et chaque réévaluation manuelle depuis le tableau de bord) ajoute une nouvelle ligne d'évaluation. C'est la méthode recommandée pour évaluer une conversation reprise : un utilisateur termine un agent, revient plus tard, envoie de nouveaux événements, termine à nouveau l'agent, et une deuxième évaluation est exécutée sur la transcription complète mise à jour. Le tableau de bord affiche l'évaluation la plus récente en titre et les évaluations précédentes dans une chronologie rétractable. Pendant qu'une évaluation est en cours pour une session, les événements `agent_end` supplémentaires pour cette session sont ignorés ; le suivant, après la fin de l'évaluation en cours, mettra en file d'attente une nouvelle évaluation normalement.
+Une session peut accumuler **plusieurs évaluations terminales dans le temps** : chaque événement `agent_end` (ainsi que chaque réévaluation manuelle depuis le tableau de bord) ajoute une nouvelle ligne d'évaluation. C'est la méthode recommandée pour évaluer une conversation reprise : un utilisateur termine un agent, revient plus tard, envoie de nouveaux événements, termine à nouveau l'agent, et une deuxième évaluation s'exécute sur la transcription complète mise à jour. Le tableau de bord affiche l'évaluation la plus récente comme titre principal, et les évaluations précédentes dans une chronologie rétractable. Pendant qu'une évaluation est en cours pour une session, les événements `agent_end` supplémentaires pour cette session sont ignorés ; le suivant une fois l'évaluation en cours terminée mettra en file d'attente une nouvelle évaluation normalement.
 
-Le mécanisme de secours d'inactivité s'applique également aux sessions reprises : si de nouveaux événements arrivent après une évaluation terminale précédente et que la session devient ensuite inactive au-delà de `inactivity_timeout_secs`, une nouvelle évaluation est mise en file d'attente.
+Le mécanisme de secours par inactivité s'applique également aux sessions reprises : si de nouveaux événements arrivent après une évaluation terminale précédente et que la session devient ensuite inactive au-delà de `inactivity_timeout_secs`, une nouvelle évaluation est mise en file d'attente.
 
-Les échecs transitoires (5xx, 429, délais d'expiration, erreurs réseau) sont réessayés avec un recul exponentiel jusqu'à `EVALUATOR_MAX_ATTEMPTS` ; les réponses 4xx sont terminales. AgentEye peut être exécuté avec plusieurs instances de serveur mises à l'échelle horizontalement ; le travail est partitionné de sorte que la même session ne soit jamais traitée deux fois simultanément.
+Les échecs transitoires (5xx, 429, timeouts, erreurs réseau) sont relancés avec un backoff exponentiel jusqu'à `EVALUATOR_MAX_ATTEMPTS` ; les réponses 4xx sont terminales. L'observabilité peut fonctionner en toute sécurité avec plusieurs instances de serveur en parallèle ; le travail est partitionné de sorte qu'une même session n'est jamais traitée deux fois simultanément.
 
 ---
 
 ## Contrat HTTP
 
-Chaque route authentifiée utilise **l'authentification par jeton Bearer**. La même valeur doit être configurée des deux côtés :
+Chaque route authentifiée utilise **l'authentification par bearer token**. La même valeur doit être configurée des deux côtés :
 
-- Serveur AgentEye : variable d'environnement `EVALUATOR_TOKEN`
+- Serveur d'observabilité : variable d'environnement `EVALUATOR_TOKEN`
 - Service d'évaluation : configuré de la même manière (le SDK `agenteye-evaluator` lit `EVALUATOR_TOKEN` par convention)
 
-Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Authorization` ; l'évaluateur peut alors accepter des requêtes anonymes, ce qui convient pour un réseau interne uniquement, mais est déconseillé sur l'internet public.
+Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Authorization` ; l'évaluateur peut alors accepter les requêtes anonymes, ce qui est acceptable sur un réseau interne uniquement, mais déconseillé sur Internet public.
 
 ### Routes que l'évaluateur doit exposer
 
@@ -66,7 +67,7 @@ Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Auth
 | `GET /health` | aucun | `{"status":"ok"}` (ouvert, sans authentification) |
 | `GET /config` | aucun | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
 | `POST /evaluate` | JSON `EvalRequest` | `{"status":"done", ...}` ou `{"status":"pending", "job_id":"..."}` |
-| `GET /evaluate/{id}` | aucun | même forme de réponse que `/evaluate` |
+| `GET /evaluate/{id}` | aucun | même format de réponse que `/evaluate` |
 
 ### Corps `EvalRequest` envoyé par le serveur
 
@@ -85,7 +86,7 @@ Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Auth
 }
 ```
 
-### Formes de réponse
+### Formats de réponse
 
 **Synchrone (done) :**
 
@@ -101,7 +102,7 @@ Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Auth
 }
 ```
 
-`reasoning` (une carte de justification par score) et `summary` (un récit global en un paragraphe) sont tous deux facultatifs. Les clés de `reasoning` doivent correspondre aux clés de `scores` ; le tableau de bord affiche chaque entrée sous sa barre de score. Les évaluateurs plus anciens qui ne retournent que `scores` continuent de fonctionner sans modification ; `reasoning` et `summary` sont simplement lus comme null et les fonctionnalités d'interface correspondantes sont omises.
+`reasoning` (une carte de justification par score) et `summary` (un récit global en un paragraphe) sont tous deux optionnels. Les clés de `reasoning` doivent refléter celles de `scores` ; le tableau de bord affiche chaque entrée directement sous la barre de score correspondante. Les évaluateurs plus anciens qui ne retournent que `scores` continuent de fonctionner sans modification ; `reasoning` et `summary` sont simplement considérés comme nuls et les éléments d'interface correspondants sont omis.
 
 **Asynchrone (différé) :**
 
@@ -109,7 +110,7 @@ Si `EVALUATOR_TOKEN` n'est pas défini, le serveur n'envoie pas d'en-tête `Auth
 { "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
 ```
 
-`next_poll_secs` est facultatif ; s'il est omis, le serveur revient au `default_poll_interval_secs` de l'évaluateur depuis `/config`, puis à sa propre variable d'environnement `EVALUATOR_POLLING_INTERVAL_SECS`.
+`next_poll_secs` est optionnel ; s'il est omis, le serveur se rabat sur `default_poll_interval_secs` de l'évaluateur via `/config`, puis sur sa propre variable d'environnement `EVALUATOR_POLLING_INTERVAL_SECS`.
 
 **Erreur terminale côté évaluateur :**
 
@@ -123,11 +124,9 @@ Le serveur traite tout autre corps 2xx comme une erreur de protocole et enregist
 
 ## Écrire un évaluateur avec le SDK
 
-Le package Python `agenteye-evaluator` vous fournit un wrapper FastAPI typé qui implémente le contrat HTTP ci-dessus. Installez-le depuis PyPI :
+Vous n'avez pas à implémenter le contrat HTTP manuellement. Le package Python `agenteye-evaluator` vous offre un wrapper FastAPI typé qui gère l'authentification, le routage et les formats requête/réponse à votre place.
 
-```bash
-pip install agenteye-evaluator
-```
+L'observabilité FailproofAI embarque également un **évaluateur de référence fonctionnel** qui score `helpfulness`, `tool_efficiency` et `factuality` à partir de la structure de la transcription. Copiez-le comme point de départ et remplacez la logique par la vôtre : un juge LLM, un moteur de règles, tout ce qui correspond à votre critère de qualité.
 
 Évaluateur minimal viable :
 
@@ -139,7 +138,7 @@ app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
 
 @app.evaluator
 def run(req: EvalRequest) -> EvalResponse:
-    # Inspectez req.events (la transcription complète de la session) et retournez des scores.
+    # Inspect req.events (the full session transcript) and return scores.
     tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
     return EvalResponse(
         scores={"tool_calls": float(tool_calls)},
@@ -148,103 +147,42 @@ def run(req: EvalRequest) -> EvalResponse:
     )
 ```
 
-L'instance `app` est appelable en ASGI, donc `uvicorn module:app` la démarre.
+L'instance `app` s'exécute sous n'importe quel serveur ASGI, donc `uvicorn module:app` suffit à la démarrer.
 
-Pour les évaluateurs qui ont besoin de différer des traitements coûteux, retournez `JobPending` à la place et enregistrez un gestionnaire `@app.job_lookup` ; le serveur AgentEye interroge `GET /evaluate/{job_id}` jusqu'à ce que vous retourniez un statut terminal ou que le délai `EVALUATOR_MAX_POLL_DURATION_SECS` (par défaut 1 h) soit écoulé.
+Pour les évaluateurs qui doivent différer un traitement coûteux, retournez `JobPending` à la place et enregistrez un handler `@app.job_lookup` ; le serveur d'observabilité interroge `GET /evaluate/{job_id}` jusqu'à ce que vous retourniez un statut terminal ou que la limite `EVALUATOR_MAX_POLL_DURATION_SECS` (1 h par défaut) soit atteinte.
 
-Référence complète de l'API, modèle asynchrone et schéma des événements : le README de `agenteye-evaluator` est inclus dans chaque archive de version sur la [page des versions agenteye-enterprise](https://github.com/agenteye-enterprise/releases), ou vous pouvez le consulter sur la page PyPI du package.
-
----
-
-## Déployer un évaluateur sur Kubernetes
-
-L'évaluateur est **votre service** : AgentEye ne fournit pas de conteneur d'évaluation par défaut. La version inclut des manifestes Kubernetes de référence sous `deploy/examples/evaluator/` que vous pouvez appliquer tels quels après avoir remplacé votre image et un jeton Bearer partagé.
-
-### 1. Conteneuriser votre évaluateur
-
-Un Dockerfile minimal pour votre évaluateur :
-
-```dockerfile
-FROM python:3.12-slim
-WORKDIR /app
-RUN pip install --no-cache-dir agenteye-evaluator uvicorn
-COPY my_evaluator.py .
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
-    && chown -R evaluator:evaluator /app
-USER evaluator
-EXPOSE 9000
-CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
-```
-
-`runAsNonRoot` (UID 10001) rend le conteneur compatible avec les profils de sécurité restreints des Pods.
-
-### 2. Créer le jeton Bearer partagé
-
-```bash
-kubectl -n agenteye create secret generic evaluator-token \
-  --from-literal=token="$(openssl rand -hex 32)"
-```
-
-Utilisez la même valeur que `EVALUATOR_TOKEN` sur le serveur AgentEye. Le serveur envoie `Authorization: Bearer <token>` à chaque requête ; le SDK utilise `hmac.compare_digest` pour une vérification en temps constant et rejette les discordances avec HTTP 401.
-
-### 3. Appliquer les manifestes d'exemple
-
-```bash
-# Éditez d'abord deploy/examples/evaluator/deployment.yaml pour pointer
-# `image:` vers votre registre, puis :
-kubectl apply -k deploy/examples/evaluator/
-```
-
-L'exemple comprend :
-
-- Un Deployment à 2 répliques avec `runAsNonRoot`, système de fichiers racine en lecture seule, toutes les capacités supprimées, liveness + readiness sur `/health`
-- Un Service ClusterIP sur le port 9000
-- Un modèle `secret.example.yaml` (intentionnellement exclu de la Kustomization ; créez le vrai secret hors bande afin qu'aucun jeton ne se retrouve dans git)
-
-### 4. Connecter AgentEye au service
-
-Sur le serveur AgentEye, définissez :
-
-```bash
-EVALUATOR_ENDPOINT=http://evaluator:9000
-EVALUATOR_TOKEN=<la valeur générée ci-dessus>
-```
-
-Le serveur distribue `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` requêtes concurrentes sur tous les pods de l'évaluateur (valeurs par défaut : `2 × 4 = 8`). Ajustez `replicas` et les limites de ressources par pod en accord avec ces paramètres côté serveur.
-
-### Vérification
-
-```bash
-kubectl -n agenteye port-forward svc/evaluator 9000:9000
-curl -s http://localhost:9000/health   # → {"status":"ok"}
-```
-
-Après l'exécution complète d'un agent, `GET /evaluations` sur le serveur AgentEye devrait retourner une ligne avec `status: "done"` et les scores produits par votre évaluateur.
+La référence API complète, le modèle asynchrone et le schéma des événements sont documentés dans le README du SDK `agenteye-evaluator`.
 
 ---
 
-## Configurer le serveur AgentEye
+## Exécuter votre évaluateur
+
+L'évaluateur est **votre service** — l'observabilité FailproofAI ne fournit pas d'évaluateur par défaut, vous le construisez et le déployez là où vous déployez vos propres services. Il s'exécute sous n'importe quel serveur ASGI (par exemple `uvicorn my_evaluator:app`) ; exposez les routes `/health`, `/config` et `/evaluate` définies dans le [contrat HTTP](#http-contract), puis pointez le serveur vers lui (voir [Configurer le serveur](#configuring-the-server)).
+
+Une fois l'évaluateur accessible, `GET /health` retourne `{"status":"ok"}`. Après une exécution complète d'un agent, `GET /evaluations` sur le serveur retourne une ligne avec `status: "done"` et les scores produits par votre évaluateur.
+
+---
+
+## Configurer le serveur
 
 À définir sur le processus serveur :
 
-| Variable d'environnement | Signification |
+| Variable d'env | Signification |
 |---|---|
 | `EVALUATOR_ENDPOINT` | URL de base de votre évaluateur (`http://evaluator:9000`). Non définie = pipeline désactivé. |
-| `EVALUATOR_TOKEN` | Jeton Bearer. Doit être identique à la valeur configurée sur le service d'évaluation. |
-| `EVALUATOR_WORKERS` | Tâches de travail par instance de serveur (par défaut 2). |
-| `EVALUATOR_CLAIM_BATCH` | Lignes réclamées par tick de travail (par défaut 4). Les lots sont traités **de manière concurrente** ; la concurrence effective sur votre endpoint d'évaluation est `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | Durée de veille d'un worker entre les tentatives de distribution lorsqu'aucune évaluation n'est due (par défaut 2 s). |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | Dernier recours pour la cadence de `GET /evaluate/{id}` quand ni `next_poll_secs` par réponse ni `default_poll_interval_secs` de l'évaluateur ne sont définis (par défaut 10 s). |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | Délai d'expiration par requête (par défaut 30000). |
-| `EVALUATOR_MAX_ATTEMPTS` | Après ce nombre d'échecs transitoires, le résultat est enregistré comme `error` terminal (par défaut 5). |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | Cadence de `GET /config` (par défaut 300). |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | Durée maximale en temps réel pendant laquelle une session peut rester dans la file d'interrogation avant d'être terminée avec le statut `timeout` (par défaut 3600 s). Protège contre un évaluateur qui retourne indéfiniment `pending`. |
+| `EVALUATOR_TOKEN` | Bearer token. Doit être identique à la valeur configurée dans le service d'évaluation. |
+| `EVALUATOR_WORKERS` | Tâches worker par instance de serveur (2 par défaut). |
+| `EVALUATOR_CLAIM_BATCH` | Lignes réclamées par tick worker (4 par défaut). Les lots sont traités **en parallèle** ; la concurrence effective sur votre endpoint d'évaluation est `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | Durée de veille d'un worker entre les tentatives de dispatch lorsqu'aucune évaluation n'est due (2 s par défaut). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Dernier recours pour la cadence de `GET /evaluate/{id}` lorsque ni `next_poll_secs` par réponse ni `default_poll_interval_secs` de l'évaluateur ne sont définis (10 s par défaut). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Timeout par requête (30000 par défaut). |
+| `EVALUATOR_MAX_ATTEMPTS` | Après ce nombre d'échecs transitoires, le résultat est enregistré comme `error` terminale (5 par défaut). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | Cadence de `GET /config` (300 par défaut). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Durée maximale en temps réel pendant laquelle une session peut rester dans la file de polling avant d'être terminée en `timeout` (3600 s par défaut). Protège contre un évaluateur qui retourne indéfiniment `pending`. |
 
-Pour activer la notation automatique sur l'ensemble de l'instance, provisionnez le Secret `agenteye-evaluator` avec les deux clés définies. Dans les manifestes Kubernetes fournis, le serveur lit `EVALUATOR_ENDPOINT` et `EVALUATOR_TOKEN` depuis ce Secret optionnel. Créez-le via le processus de gestion des secrets standard de votre organisation, puis redémarrez le Deployment du serveur pour prendre en compte le changement.
+Pour activer le scoring automatique, définissez `EVALUATOR_ENDPOINT` et `EVALUATOR_TOKEN` sur le serveur, puis redémarrez-le pour prendre en compte la modification. Sans `EVALUATOR_ENDPOINT`, le pipeline reste inactif.
 
-Les paramètres de réglage ci-dessus ne sont pas câblés par défaut ; exposez les variables d'environnement correspondantes sur le conteneur serveur dans votre manifeste Deployment si vous devez remplacer les valeurs par défaut.
-
-Consultez [deployment.md](/fr/agenteye/deployment) pour le tableau complet des variables d'environnement.
+Les paramètres de réglage ci-dessus sont optionnels ; définissez les variables d'environnement correspondantes sur le serveur uniquement si vous souhaitez remplacer les valeurs par défaut.
 
 ---
 
@@ -252,48 +190,48 @@ Consultez [deployment.md](/fr/agenteye/deployment) pour le tableau complet des v
 
 | Méthode | Chemin | Permission requise | Objectif |
 |---|---|---|---|
-| `GET` | `/evaluations` | `evaluations:read` | Interroger les résultats terminaux. Supporte `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` est par défaut à 50 et plafonné à 200 (à noter, différent de `/events` qui plafonne à 1000). `environment` accepte une liste séparée par des virgules (ex. `environment=prod,staging`) ; les valeurs uniques fonctionnent toujours. Avec `latest_per_session=true`, la réponse contient au plus une ligne par `session_id` (la plus récente par `completed_at`), utilisée par la page de liste des sessions pour réduire la chronologie d'évaluation d'une session à son titre actuel. Par défaut false (retourne l'historique complet). |
-| `GET` | `/evaluations/aggregate` | `evaluations:read` | Santé agrégée des évaluations pour une tranche filtrée : nombre total, répartition done/error/timeout, statistiques par clé de score (count/avg/min/max/p50 sur les clés `scores` arbitraires), et une chronologie par intervalle de temps. Accepte les **mêmes paramètres de filtre que `/evaluations`** plus `featured_keys` (CSV de clés de score à suivre) et `latest_per_session`. Alimente la fonctionnalité Dashboards ; les métriques sont exactes sur l'ensemble correspondant, sans échantillonnage. |
-| `GET` | `/evaluations/environments` | `evaluations:read` | Valeurs d'environnement distinctes de la table `evaluations`. Utilisé pour remplir les menus déroulants de filtres limités aux données accessibles en lecture d'évaluation. |
-| `GET` | `/evaluation-jobs` | `evaluations:read` | Visibilité sur les évaluations en cours. Filtrage par `status` (`pending`/`polling`). |
-| `GET` | `/events` | `events:read` | Diffuser les événements bruts d'une session. Supporte `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit` et `order`. `order` est `desc` (les plus récents en premier, par défaut) ou `asc` (les plus anciens en premier) ; une valeur non reconnue revient à `desc`. Paginez par curseur via le `next_cursor` de la réponse (un id d'événement) : transmettez-le en tant que `cursor` pour obtenir la page suivante ; avec `asc` la page suivante contient les événements après cet id, avec `desc` les événements avant lui. `limit` est par défaut à 50 et plafonné à 1000. |
-| `GET` | `/sessions/:session_id/export` | `events:read` | Retourne le corps JSON exact que l'évaluateur recevrait pour cette session, servi en tant que pièce jointe téléchargeable nommée `session-<id>.json`. Utile pour rejouer des sessions de production via `agenteye-evaluator` pour des tests hors ligne. Les octets sont identiques à ce qu'envoie le pipeline d'évaluation. |
-| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | Met en file d'attente une nouvelle évaluation pour une session ; s'exécute qu'une évaluation précédente existe ou non. Le nouveau résultat est **ajouté** à la chronologie d'évaluation de la session plutôt que d'écraser le précédent, de sorte que les scores antérieurs restent visibles en tant qu'historique. Retourne `202` à la mise en file d'attente, `404` pour une session inconnue, `409` si une évaluation est déjà en cours. Utilisez-le après le déploiement d'un nouvel évaluateur, ou pour des sessions qui n'ont jamais émis `agent_end`. |
+| `GET` | `/evaluations` | `evaluations:read` | Interroger les résultats terminaux. Supporte `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` est 50 par défaut et plafonné à 200 (différent de `/events` qui est plafonné à 1000). `environment` accepte une liste séparée par des virgules (ex. `environment=prod,staging`) ; les valeurs uniques fonctionnent toujours. Avec `latest_per_session=true`, la réponse contient au plus une ligne par `session_id` (la plus récente par `completed_at`), utilisée par la page de liste des sessions pour réduire la chronologie d'évaluation d'une session à son titre courant. False par défaut (retourne l'historique complet). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | Santé d'évaluation agrégée pour un sous-ensemble filtré : nombre total, répartition done/error/timeout, statistiques par clé de score (count/avg/min/max/p50 sur les clés `scores` arbitraires), et une chronologie par tranches de temps. Accepte les **mêmes paramètres de filtre que `/evaluations`** plus `featured_keys` (CSV des clés de score à suivre) et `latest_per_session`. Alimente la fonctionnalité Tableaux de bord ; les métriques sont exactes sur l'ensemble correspondant, sans échantillonnage. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | Valeurs d'environnement distinctes de la table `evaluations`. Utilisé pour alimenter les listes déroulantes de filtres limitées aux données accessibles en lecture d'évaluation. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | Visibilité sur les évaluations en cours. Filtre par `status` (`pending`/`polling`). |
+| `GET` | `/events` | `events:read` | Diffuser les événements bruts d'une session. Supporte `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit` et `order`. `order` est `desc` (plus récent en premier, par défaut) ou `asc` (plus ancien en premier) ; une valeur non reconnue revient à `desc`. Paginez via le `next_cursor` de la réponse (un id d'événement) : passez-le comme `cursor` pour obtenir la page suivante ; avec `asc` la page suivante contient les événements après cet id, avec `desc` les événements avant. `limit` est 50 par défaut et plafonné à 1000. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | Retourne le corps JSON exact que l'évaluateur recevrait pour cette session, servi en pièce jointe téléchargeable nommée `session-<id>.json`. Utile pour rejouer des sessions de production via `agenteye-evaluator` lors de tests hors ligne. Les octets sont identiques à ce qu'envoie le pipeline d'évaluation. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | Mettre en file d'attente une nouvelle évaluation pour une session ; s'exécute qu'une évaluation précédente existe ou non. Le nouveau résultat est **ajouté** à la chronologie d'évaluation de la session plutôt que d'écraser le précédent, les scores antérieurs restent donc visibles dans l'historique. Retourne `202` lors de la mise en file d'attente, `404` pour une session inconnue, `409` si une évaluation est déjà en cours. À utiliser après le déploiement d'un nouvel évaluateur, ou pour les sessions qui n'ont jamais émis `agent_end`. |
 
 ### Filtrage par plage de score : `score_filters`
 
-`GET /evaluations` accepte un paramètre optionnel `score_filters` qui restreint les résultats par valeurs numériques dans l'objet `scores`. Le paramètre est une liste séparée par des virgules d'entrées `key:min..max` ; l'une ou l'autre borne peut être omise. Plusieurs entrées se combinent avec un ET logique. Les lignes où la clé nommée est absente ou non numérique sont exclues. Une requête peut contenir au maximum 20 entrées de filtre ; dépasser ce nombre retourne HTTP 400.
+`GET /evaluations` accepte un paramètre optionnel `score_filters` qui restreint les résultats selon les valeurs numériques de l'objet `scores`. Le paramètre est une liste séparée par des virgules d'entrées `key:min..max` ; chaque borne peut être omise. Plusieurs entrées se combinent avec un ET logique. Les lignes où la clé nommée est absente ou non numérique sont exclues. Une requête peut contenir au maximum 20 entrées de filtre ; dépasser ce nombre retourne HTTP 400.
 
 Exemples :
 ```text
-# helpfulness dans [0.5, 0.8]
+# helpfulness in [0.5, 0.8]
 GET /evaluations?score_filters=helpfulness:0.5..0.8
 
-# tool_efficiency au maximum 0.3 (pas de borne inférieure)
+# tool_efficiency at most 0.3 (no lower bound)
 GET /evaluations?score_filters=tool_efficiency:..0.3
 
-# helpfulness >= 0.5 ET factuality >= 0.9
+# helpfulness >= 0.5 AND factuality >= 0.9
 GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 ```
 
-Chaque objet de réponse `/evaluations` possède ces champs :
+Chaque objet de réponse `/evaluations` comporte ces champs :
 
 | Champ | Type | Notes |
 |---|---|---|
-| `evaluation_id` | string (UUID) | L'identifiant canonique de cette évaluation terminale. Chaque évaluation terminale reçoit un nouvel UUID ; une seule session peut en contenir plusieurs. |
-| `id` | string (UUID) | Alias de compatibilité ascendante portant la même valeur que `evaluation_id`. |
-| `session_id` | string | La session contre laquelle cette évaluation a été exécutée. Une session peut avoir plusieurs évaluations dans la chronologie. |
-| `agent_id` | string | Identifie l'agent qui a produit la session. |
-| `environment` | string | Étiquette d'environnement copiée depuis la session. |
-| `status` | enum | L'une de `"done"`, `"error"`, `"timeout"`. |
-| `scores` | object \| null | Scores retournés par votre évaluateur. |
-| `reasoning` | object \| null | Carte de justification par score optionnelle retournée par votre évaluateur. Les clés correspondent généralement à celles de `scores`. Le tableau de bord affiche chaque entrée sous sa barre de score. |
-| `summary` | string \| null | Récit global optionnel en un paragraphe retourné par votre évaluateur. Le tableau de bord l'affiche au-dessus de la décomposition par score en tant que titre de l'évaluation. |
-| `error` | string \| null | Renseigné uniquement pour `"error"` / `"timeout"`. |
-| `attempt_count` | integer | Nombre de tentatives de distribution (≥ 1). |
-| `duration_ms` | integer \| null | Durée de la dernière tentative. |
-| `completed_at` | string (ISO 8601 UTC) | Moment où le résultat terminal a été enregistré. Les résultats sont classés par `completed_at` (les plus récents en premier). |
-| `created_at` | string (ISO 8601 UTC) | Porte le même horodatage que `completed_at` (sémantique d'écriture unique). |
+| `evaluation_id` | chaîne (UUID) | L'identifiant canonique de cette évaluation terminale. Chaque évaluation terminale reçoit un nouvel UUID ; une seule session peut en contenir plusieurs. |
+| `id` | chaîne (UUID) | Alias de compatibilité ascendante portant la même valeur que `evaluation_id`. |
+| `session_id` | chaîne | La session contre laquelle cette évaluation a été exécutée. Une session peut avoir plusieurs évaluations dans sa chronologie. |
+| `agent_id` | chaîne | Identifie l'agent qui a produit la session. |
+| `environment` | chaîne | Étiquette d'environnement copiée depuis la session. |
+| `status` | enum | L'un de `"done"`, `"error"`, `"timeout"`. |
+| `scores` | objet \| null | Scores retournés par votre évaluateur. |
+| `reasoning` | objet \| null | Carte de justification optionnelle par score retournée par votre évaluateur. Les clés reflètent généralement celles de `scores`. Le tableau de bord affiche chaque entrée sous sa barre de score. |
+| `summary` | chaîne \| null | Récit global optionnel en un paragraphe retourné par votre évaluateur. Le tableau de bord l'affiche au-dessus du détail par score comme titre de l'évaluation. |
+| `error` | chaîne \| null | Renseigné uniquement pour `"error"` / `"timeout"`. |
+| `attempt_count` | entier | Nombre de tentatives de dispatch (≥ 1). |
+| `duration_ms` | entier \| null | Durée de la dernière tentative. |
+| `completed_at` | chaîne (ISO 8601 UTC) | Moment où le résultat terminal a été enregistré. Les résultats sont triés par `completed_at` (plus récent en premier). |
+| `created_at` | chaîne (ISO 8601 UTC) | Porte le même horodatage que `completed_at` (sémantique d'écriture unique). |
 
 ---
 
@@ -301,9 +239,9 @@ Chaque objet de réponse `/evaluations` possède ces champs :
 
 | Permission | Accorde |
 |---|---|
-| `evaluations:read` | Lister les résultats d'évaluation, afficher les scores dans le tableau de bord et charger les métriques de santé du tableau de bord. |
-| `evaluations:trigger` | Mettre en file d'attente manuellement une évaluation pour une session via `POST /sessions/:session_id/re-evaluate` ou le bouton de réévaluation du tableau de bord. |
-| `dashboards:read` | Afficher les tableaux de bord sauvegardés (nécessite également `evaluations:read` pour charger leurs métriques). |
+| `evaluations:read` | Lister les résultats d'évaluation, voir les scores dans le tableau de bord et charger les métriques de santé du tableau de bord. |
+| `evaluations:trigger` | Mettre manuellement en file d'attente une évaluation pour une session via `POST /sessions/:session_id/re-evaluate` ou le bouton de réévaluation du tableau de bord. |
+| `dashboards:read` | Consulter les tableaux de bord enregistrés (nécessite également `evaluations:read` pour charger leurs métriques). |
 | `dashboards:write` | Créer et modifier des tableaux de bord. |
 | `dashboards:delete` | Supprimer des tableaux de bord. |
 
@@ -313,45 +251,49 @@ L'administrateur bootstrap (`ADMIN_KEY`, `ADMIN_EMAIL`) reçoit automatiquement 
 
 ## Consulter les résultats
 
-- **`/sessions/<id>`** : chronologie des événements + un panneau latéral droit affichant les scores de la session et toute erreur issue de la tentative de distribution. Si votre clé dispose de `evaluations:trigger`, un bouton **re-evaluate** apparaît à côté du bouton d'export, utile pour les sessions qui n'ont jamais émis `agent_end`, ou pour rafraîchir les scores après le déploiement d'un nouvel évaluateur. Le tableau de bord interroge le nouveau résultat et met à jour le panneau latéral droit lorsqu'il est disponible.
+- **`/sessions/<id>`** : chronologie des événements + panneau droit affichant les scores de la session et toute erreur de la tentative de dispatch. Si votre clé dispose de `evaluations:trigger`, un bouton **re-evaluate** apparaît à côté du bouton d'export, utile pour les sessions qui n'ont jamais émis `agent_end` ou pour actualiser les scores après le déploiement d'un nouvel évaluateur. Le tableau de bord interroge le nouveau résultat et met à jour le panneau droit à son arrivée.
 - **`/sessions`** : grille de sessions filtrable ; la colonne de score affiche le statut d'évaluation et les scores de chaque session en un coup d'œil.
-- **`/dashboards`** : vues de santé d'évaluation sauvegardées (voir [Dashboards](#dashboards) ci-dessous).
+- **`/dashboards`** : vues de santé d'évaluation enregistrées (voir [Tableaux de bord](#dashboards) ci-dessous).
 
-![La grille Sessions avec des pastilles de statut d'évaluation par session et des badges de score codés par couleur (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
+![La grille des sessions avec les pastilles de statut d'évaluation par session et les badges de score colorés (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
 
 *La grille des sessions affiche le statut d'évaluation et les scores de chaque exécution en un coup d'œil ; les badges rouge/orange/vert font ressortir les scores faibles.*
 
-![Une vue détaillée de session avec les scores d'évaluation et le statut de distribution dans le panneau latéral droit](/agenteye/images/session-detail.png)
-
-*L'ouverture d'une session affiche sa chronologie complète aux côtés des scores d'évaluation et de toute erreur du distributeur dans le panneau latéral droit.*
-
 ---
 
-## Dashboards
+## Tableaux de bord
 
-La page **Dashboards** (`/dashboards`) vous permet de sauvegarder une combinaison de filtres d'évaluation en tant que vue nommée et réutilisable, et de surveiller l'état de cette tranche d'évaluations en un coup d'œil. Les tableaux de bord sont **partagés dans toute votre organisation** ; toute personne disposant de `dashboards:read` voit le même ensemble.
+La page **Tableaux de bord** (`/dashboards`) vous permet d'enregistrer une combinaison de filtres d'évaluation sous forme de vue nommée et réutilisable, et de surveiller l'état de cette tranche d'évaluations en un coup d'œil. Les tableaux de bord sont **partagés à l'échelle de toute votre organisation** ; toute personne disposant de `dashboards:read` voit le même ensemble.
 
 Chaque tableau de bord fixe :
 
-- **Les filtres** : les mêmes contrôles que la page des sessions : environnement, statut, agent, une fenêtre temporelle glissante et des filtres de plage de score (`key:min..max`).
-- **Une configuration d'affichage** : quelles clés de score mettre en avant, les seuils de santé vert/orange/rouge, quels panneaux afficher et si l'on doit réduire à la dernière évaluation par session.
+- **Filtres** : les mêmes contrôles que la page des sessions : environnement, statut, agent, une fenêtre temporelle glissante et des filtres de plage de score (`key:min..max`).
+- **Une configuration d'affichage** : les clés de score à mettre en avant, les seuils de santé vert/orange/rouge, les panneaux à afficher et s'il faut réduire à la dernière évaluation par session.
 
-Chaque carte affiche le nombre de sessions correspondantes, une répartition done/error/timeout, la moyenne de chaque score mis en avant et une petite sparkline de tendance. L'ouverture d'un tableau de bord affiche les panneaux en taille réelle ; **"ouvrir dans les sessions"** vous amène sur la page des sessions pré-filtrée sur exactement cette tranche. Les métriques sont calculées côté serveur sur l'ensemble correspondant (via `GET /evaluations/aggregate`), donc les chiffres sont exacts plutôt qu'échantillonnés.
+Chaque carte affiche le nombre de sessions correspondantes, une répartition done/error/timeout, la moyenne de chaque score mis en avant et une petite sparkline de tendance. Ouvrir un tableau de bord affiche les panneaux en plein écran ; **"ouvrir dans les sessions"** vous amène directement à la page des sessions pré-filtrée sur cette tranche exacte. Les métriques sont calculées côté serveur sur l'ensemble correspondant (via `GET /evaluations/aggregate`), les chiffres sont donc exacts et non échantillonnés.
 
-![Un tableau de bord de santé d'évaluation avec des barres de score moyen par dimension d'évaluateur, une répartition ok/erreur des outils, les principaux outils et une tendance des événements par heure](/agenteye/images/dashboard-quality.png)
+![Un tableau de bord de santé d'évaluation avec des barres de score moyen par dimension d'évaluateur, une répartition outil ok/erreur, les outils les plus utilisés et une tendance d'événements par heure](/agenteye/images/dashboard-quality.png)
 
-**Permissions :** la consultation nécessite à la fois `dashboards:read` et `evaluations:read` ; la création et la modification nécessitent `dashboards:write` ; la suppression nécessite `dashboards:delete`. L'administrateur bootstrap reçoit toutes ces permissions automatiquement.
+**Permissions :** la consultation nécessite `dashboards:read` et `evaluations:read` ; la création et la modification nécessitent `dashboards:write` ; la suppression nécessite `dashboards:delete`. L'administrateur bootstrap reçoit toutes ces permissions automatiquement.
 
 ---
 
 ## Dépannage
 
-**Des sessions existent mais aucune évaluation n'est créée.** Vérifiez que `EVALUATOR_ENDPOINT` est défini sur le processus serveur, que le serveur et l'évaluateur partagent la même valeur `EVALUATOR_TOKEN`, et que l'endpoint `/health` de l'évaluateur est accessible depuis le serveur. Si `EVALUATOR_ENDPOINT` n'est pas défini, le pipeline est sans effet.
+**Les sessions existent mais aucune évaluation n'est créée.** Vérifiez que `EVALUATOR_ENDPOINT` est défini sur le processus serveur, que le serveur et l'évaluateur partagent la même valeur `EVALUATOR_TOKEN`, et que l'endpoint `/health` de l'évaluateur est accessible depuis le serveur. Sans `EVALUATOR_ENDPOINT`, le pipeline est inactif.
 
-**Les évaluations en cours s'accumulent.** Interrogez `GET /evaluation-jobs` pour voir la file d'attente en cours. Inspectez `attempt_count`, `next_attempt_at` et `last_error` sur chaque ligne. Causes courantes : service d'évaluation inaccessible ou retournant 5xx (réessayé avec recul), mauvais `EVALUATOR_TOKEN` (401 est terminal), ou évaluateur asynchrone retournant `pending` indéfiniment (voir ci-dessous).
+**Les évaluations en cours s'accumulent.** Interrogez `GET /evaluation-jobs` pour voir la file en cours. Inspectez `attempt_count`, `next_attempt_at` et `last_error` sur chaque ligne. Causes fréquentes : service d'évaluation inaccessible ou retournant des 5xx (relancé avec backoff), `EVALUATOR_TOKEN` incorrect (401 est terminal), ou évaluateur asynchrone retournant `pending` indéfiniment (voir ci-dessous).
 
-**Les sessions sont terminées mais aucune évaluation terminale n'existe.** Interrogez `GET /evaluation-jobs?status=polling` ; le résultat peut encore être en cours. Si une tâche est bloquée en `pending`, le serveur a du mal à atteindre l'évaluateur ; vérifiez que l'évaluateur est opérationnel et que `EVALUATOR_TOKEN` correspond.
+**Les sessions sont terminées mais aucune évaluation terminale n'apparaît.** Interrogez `GET /evaluation-jobs?status=polling` ; le résultat est peut-être encore en cours. Si un job est bloqué sur `pending`, le serveur a du mal à joindre l'évaluateur ; vérifiez que l'évaluateur est en ligne et que `EVALUATOR_TOKEN` correspond.
 
-**`HTTP 401 from evaluator: invalid bearer token`.** Le `EVALUATOR_TOKEN` sur le serveur ne correspond pas à la valeur configurée sur le service d'évaluation. Ils doivent être identiques.
+**`HTTP 401 from evaluator: invalid bearer token`.** Le `EVALUATOR_TOKEN` sur le serveur ne correspond pas à la valeur configurée dans le service d'évaluation. Ils doivent être identiques.
 
-**L'évaluateur asynchrone retourne `pending` indéfiniment.** Le serveur interroge `GET /evaluate/{job_id}` jusqu'à ce que l'évaluateur retourne `done` ou `error`, ou jusqu'à l'expiration de `EVALUATOR_MAX_POLL_DURATION_SECS` (par défaut 1 h). Passé ce délai, l'évaluation est enregistrée comme `timeout` et retirée de la file d'attente en cours. Augmentez `EVALUATOR_MAX_POLL_DURATION_SECS` si votre évaluateur a légitimement besoin de plus de temps que la valeur par défaut.
+**L'évaluateur asynchrone retourne `pending` indéfiniment.** Le serveur interroge `GET /evaluate/{job_id}` jusqu'à ce que l'évaluateur retourne `done` ou `error`, ou jusqu'à ce que la limite `EVALUATOR_MAX_POLL_DURATION_SECS` (1 h par défaut) soit atteinte. Passé ce délai, l'évaluation est enregistrée comme `timeout` et retirée de la file en cours. Augmentez `EVALUATOR_MAX_POLL_DURATION_SECS` si votre évaluateur a légitimement besoin de plus que la valeur par défaut.
+
+---
+
+## Prochaines étapes
+
+- [SDK Python](/fr/agenteye/python-sdk) : émettre les événements `agent_end` qui déclenchent le scoring.
+- [Clés API](/fr/agenteye/api-keys) : les permissions `evaluations:read` et `evaluations:trigger`.
+- [Audits](/fr/agenteye/audits) : l'autre fonctionnalité de qualité automatisée de l'observabilité, pour la révision basée sur les politiques.

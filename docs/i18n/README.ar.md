@@ -19,8 +19,8 @@
 
 **الترجمات:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**حل فوري لأخطاء وقت التشغيل للعملاء الذين يكتبون الأكواد.**
-يتكامل مع Claude Code و Codex. يوقف الحلقات اللانهائية والإجراءات الخطرة وتسريب الأسرار
+**حل أعطال وقت التشغيل لعوامل الترميز.**
+تتصل بـ Claude Code و Codex. تكتشف الحلقات والإجراءات الخطرة وتسرب الأسرار
 قبل أن تصبح حوادث. بدون تأخير. يعمل محليًا.
 
 </div>
@@ -31,7 +31,7 @@
 
 ---
 
-## واجهات سطر الأوامر للعملاء المدعومة
+## واجهات سطر أوامر العوامل المدعومة
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -127,19 +127,19 @@
   </tr>
 </table>
 
-> ثبّت الخطافات لأحد العملاء أو مجموعة منهم: `failproofai policies --install --cli opencode pi` (أو `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). حذف `--cli` للكشف التلقائي عن واجهات سطر الأوامر المثبتة والطلب منك الاختيار.
+> تثبيت الخطافات لواحد أو أي مجموعة: `failproofai policies --install --cli opencode pi` (أو `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). حذف `--cli` للكشف التلقائي عن واجهات سطر الأوامر المثبتة والموجهة.
 >
-> يتم دعم **Hermes** (hermes-agent، بوابة Slack/Telegram) لكل من **فرض الخطاف المباشر** (`--cli hermes` — يتم اعتراض استدعاءات الأدوات من كل منصة والعملاء الفرعيين) و**تدقيق** لا يتصل بالإنترنت لجلسات البوابة من `~/.hermes/state.db`.
+> **Hermes** (hermes-agent، بوابة Slack/Telegram) مدعوم لكل من **فرض الخطاف المباشر** (`--cli hermes` — يعترض تثبيت واحد استدعاءات الأدوات من كل منصة ووكيل فرعي) و **التدقيق** دون اتصال لجلسات البوابة الخاصة به من ملف `~/.hermes/state.db` الوحيد.
 >
-> يتم دعم **OpenClaw** (بوابة openclaw، مساعد متعدد القنوات مستضاف ذاتيًا) لكل من **فرض الخطاف المباشر** (`--cli openclaw`، نطاق المستخدم) و**تدقيق** لا يتصل بالإنترنت لجلسات JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). يستخدم الفرض خطافات **المكون الإضافي داخل العملية** الخاصة بـ OpenClaw (مكون إضافي مرسل `openclaw-plugin/` ينفذ failproofai بشكل غير متزامن — خطافاته الداخلية القائمة على الملفات هي للمراقبة فقط ولا يمكنها الحظر): `before_tool_call` يحظر أداة، و `before_agent_finalize` هو بوابة نهاية دور حقيقية، لذا تفرض العناصر المدمجة `require-*-before-stop`.
+> **OpenClaw** (بوابة openclaw، مساعد متعدد القنوات ذاتي الاستضافة) مدعوم لكل من **فرض الخطاف المباشر** (`--cli openclaw`، نطاق المستخدم) و **التدقيق** دون اتصال لجلسات JSONL الخاصة به (`~/.openclaw/agents/<id>/sessions/*.jsonl`). يستخدم الفرض **خطافات البرنامج المساعد داخل العملية** الخاصة بـ OpenClaw (ملف `openclaw-plugin/` مرسل يستدعي failproofai بشكل غير متزامن — خطافاتها الداخلية القائمة على الملفات للملاحظة فقط ولا يمكنها حجب): `before_tool_call` يحجب أداة، و `before_agent_finalize` بوابة حقيقية لنهاية الدور، لذلك تفرض المدمجات `require-*-before-stop`.
 >
-> يتم دعم **Factory Droid** (`droid`) لكل من **فرض الخطاف المباشر** (`--cli factory`، نطاق المستخدم والمشروع) و**تدقيق** لا يتصل بالإنترنت لجلسات JSONL المخزنة على القرص. يحظر droid استدعاءات الأدوات من **رمز الخروج 2** (وليس قرار JSON) ويحترم `{decision:"block"}` فقط في حدث النهاية `Stop` — يصدر failproofai الشكل الصحيح لكل حدث تلقائيًا.
+> **Factory Droid** (`droid`) مدعوم لكل من **فرض الخطاف المباشر** (`--cli factory`، نطاق المستخدم والمشروع) و **التدقيق** دون اتصال لجلسات JSONL الخاصة به على القرص. يحجب droid استدعاءات الأدوات من خطاف **كود الخروج 2** (ليس قرارًا JSON) ويحترم `{decision:"block"}` فقط على حدث نهاية الدور `Stop` — ينبعث failproofai من الشكل الصحيح لكل حدث تلقائيًا.
 >
-> يتم دعم **Devin CLI** (`devin`، Cognition) لكل من **فرض الخطاف المباشر** (`--cli devin`، نطاق المستخدم والمشروع) و**تدقيق** لا يتصل بالإنترنت لجلسات SQLite (`~/.local/share/devin/cli/sessions.db`). Devin هو **استنساخ Claude نقي** — نفس أسماء الأحداث، نفس حمولة snake_case، نفس إعداد `hooks` (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — الحظر عبر JSON `{decision:"block"}` في كل حدث.
+> **Devin CLI** (`devin`, Cognition) مدعوم لكل من **فرض الخطاف المباشر** (`--cli devin`، نطاق المستخدم والمشروع) و **التدقيق** دون اتصال لجلسات SQLite الخاصة به (`~/.local/share/devin/cli/sessions.db`). Devin هو **نسخة نقية من Claude** — نفس أسماء الأحداث، نفس حمل snake_case، نفس إعدادات `hooks`-wrapper (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — الحجب عبر `{decision:"block"}` JSON على كل حدث.
 >
-> يتم دعم **Antigravity CLI** (`agy`) لكل من **فرض الخطاف المباشر** (`--cli antigravity`، نطاق المستخدم والمشروع) و**تدقيق** لا يتصل بالإنترنت لجلسات JSONL العادية (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity لديها **عقد خاص بها** (وليس استنساخ Claude): مخطط `hooks.json` بـ **خطاف مسمى** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`)، حمولة stdin بـ camelCase التي يقوم failproofai بتطبيعها، وأشكال استجابة خاصة بها — `{decision:"deny"}` لحظر أداة، `{decision:"continue"}` لفرض دور آخر في `Stop`، `{injectSteps}` لحقن تذكير قبل تشغيل النموذج.
+> **Antigravity CLI** (`agy`) مدعوم لكل من **فرض الخطاف المباشر** (`--cli antigravity`، نطاق المستخدم والمشروع) و **التدقيق** دون اتصال لجلسات JSONL البسيطة الخاصة به (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). لدى Antigravity **عقده الخاص** (ليس نسخة من Claude): مخطط خطاف **مسمى** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`)، حمل stdin بصيغة camelCase ينسيّره failproofai، وأشكال الاستجابة الخاصة به — `{decision:"deny"}` لحجب أداة، `{decision:"continue"}` لفرض دور آخر في `Stop`، `{injectSteps}` لحقن تذكير قبل تشغيل النموذج.
 >
-> يتم دعم **Goose** (كنية goose، Block) لكل من **فرض الخطاف المباشر** (`--cli goose`، نطاق المستخدم والمشروع) و**تدقيق** لا يتصل بالإنترنت لجلسات SQLite (`~/.local/share/goose/sessions/sessions.db`). يستخدم الفرض نظام **الخطافات** الخاص بـ Goose (مواصفة **Open Plugins** متعددة الوكلاء) — يقوم المثبّت بإسقاط دليل مكون إضافي في `~/.agents/plugins/failproofai/` ويكتشفه Goose تلقائيًا. الحظر هو JSON `{"decision":"block"}` في حدث `PreToolUse` (الذي يتم تشغيله لأداة shell والعملاء الفرعيين المفوضة)، تم التحقق منه مباشرة مقابل goose v1.43.0؛ Goose ليس لديه حدث نهاية `Stop`، لذا فإن العناصر المدمجة `require-*-before-stop` لا تنطبق (كما هو الحال مع Hermes).
+> **Goose** (codename goose، Block) مدعوم لكل من **فرض الخطاف المباشر** (`--cli goose`، نطاق المستخدم والمشروع) و **التدقيق** دون اتصال لجلسات SQLite الخاصة به (`~/.local/share/goose/sessions/sessions.db`). يستخدم الفرض **نظام الخطافات** الخاص بـ Goose (مواصفة **البرامج المساعدة المفتوحة** بين الوكلاء) — يقوم المثبت بإسقاط مجلد البرنامج المساعد في `~/.agents/plugins/failproofai/` و Goose تكتشفه تلقائيًا. الحجب هو `{"decision":"block"}` JSON على حدث `PreToolUse` (الذي يطلق لأداة الشل وداخل الوكلاء الفرعيين المفوضين)، تم التحقق منه مباشرة ضد goose v1.43.0؛ Goose لا تحتوي على حدث نهاية دور `Stop`، لذا المدمجات `require-*-before-stop` لا تنطبق (كما هو الحال مع Hermes).
 
 ---
 
@@ -147,21 +147,21 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # أو فقط شغّل `failproofai` واقبل موجه التشغيل الأول
+failproofai policies --install   # أو قم بتشغيل `failproofai` فقط وقبل الموجه الأولى
 failproofai
 ```
 
-30 سياسة مدمجة تُفعّل فورًا. لوحة التحكم على `localhost:8020`. عطّل موجه التشغيل الأول مع `FAILPROOFAI_NO_FIRST_RUN=1`.
+يتم تفعيل 30 سياسة مدمجة فورًا. لوحة التحكم على `localhost:8020`. قم بتعطيل الموجه الأولى باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## ما يوقفه
+## ما يحجبه
 
-| السياسة | ما يحظره |
+| السياسة | ما تحجبه |
 |---|---|
 | `block-push-master` | الدفع المباشر إلى `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | الالتزامات والدمج والإعادة على `main` / `master` |
+| `block-work-on-main` | التزام وتجميع وإعادة تأسيس على `main` / `master` |
 | `block-rm-rf` | حذف الملفات بشكل متكرر |
 | `sanitize-api-keys` | تسريب مفاتيح API إلى سياق الوكيل |
 
@@ -171,8 +171,8 @@ failproofai
 
 ## سياساتك الخاصة
 
-ألقِ ملفًا في `.failproofai/policies/` — يتم تحميله تلقائيًا، لا توجد أعلام مطلوبة.
-قم بإرساله والفريق بأكمله سيحصل عليه في السحب التالي.
+اسحب ملفًا إلى `.failproofai/policies/` — يتم تحميله تلقائيًا، لا توجد علامات مطلوبة.
+قم بالتزام به وستحصل الفريق بالكامل عليه في الجلب التالي.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -192,9 +192,9 @@ customPolicies.add({
 
 | القرار | التأثير |
 |---|---|
-| `allow()` | اسمح بالعملية |
-| `deny(message)` | حظرها — تُرسل الرسالة مرة أخرى إلى الوكيل |
-| `instruct(message)` | اسمح بها، لكن أضف سياقًا إلى الموجه التالي للوكيل |
+| `allow()` | السماح بالعملية |
+| `deny(message)` | حجبها — تذهب الرسالة مرة أخرى إلى الوكيل |
+| `instruct(message)` | السماح بها، لكن أضف سياقًا إلى الموجه التالي للوكيل |
 
 → [دليل السياسات المخصصة](https://docs.befailproof.ai/custom-policies)
 
@@ -202,9 +202,9 @@ customPolicies.add({
 
 ## رؤية الجلسة
 
-يتم تسجيل كل استدعاء أداة يقوم به وكيلك محليًا. تظهر لوحة التحكم ما الذي تم تشغيله،
-ما تم حظره، وما قالته السياسة للوكيل — لذلك لن تتخمن
-عند حدوث خطأ ما. → [دليل لوحة التحكم](https://docs.befailproof.ai/dashboard)
+يتم تسجيل كل استدعاء أداة يجريه وكيلك محليًا. تظهر لوحة التحكم ما تم تشغيله،
+ما تم حجبه، وما قالته السياسة للوكيل — لذا أنت لا تخمن
+عندما يحدث خطأ ما. → [دليل لوحة التحكم](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -212,34 +212,31 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [البدء السريع](https://docs.befailproof.ai/getting-started) | التثبيت والخطوات الأولى |
+| [البدء](https://docs.befailproof.ai/getting-started) | التثبيت والخطوات الأولى |
 | [السياسات المدمجة](https://docs.befailproof.ai/built-in-policies) | جميع السياسات الـ 30 مع المعاملات |
-| [السياسات المخصصة](https://docs.befailproof.ai/custom-policies) | اكتب سياساتك الخاصة |
-| [التكوين](https://docs.befailproof.ai/configuration) | نطاقات التكوين وقواعد الدمج |
-| [لوحة التحكم](https://docs.befailproof.ai/dashboard) | مراقب الجلسة وأنشطة السياسة |
-| [الهندسة المعمارية](https://docs.befailproof.ai/architecture) | كيفية عمل نظام الخطاف |
+| [السياسات المخصصة](https://docs.befailproof.ai/custom-policies) | اكتب الخاص بك |
+| [الإعدادات](https://docs.befailproof.ai/configuration) | نطاقات الإعدادات وقواعد الدمج |
+| [لوحة التحكم](https://docs.befailproof.ai/dashboard) | مراقب الجلسة ونشاط السياسة |
+| [العمارة](https://docs.befailproof.ai/architecture) | كيفية عمل نظام الخطافات |
 
 ---
 
 ## الترخيص
 
-MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة بيع failproofai نفسه بشكل تجاري تتطلب اتفاقية منفصلة. اطّلع على [LICENSE](./LICENSE) للحصول على النص الكامل.
+MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة البيع التجاري لـ failproofai نفسه يتطلب اتفاقية منفصلة. انظر [LICENSE](./LICENSE) للنص الكامل.
 
 ---
 
 ## المساهمة
 
-اطّلع على [CONTRIBUTING.md](./CONTRIBUTING.md). السياسات الجديدة والحالات الخاصة والترجمات كلها مرحب بها.
+انظر [CONTRIBUTING.md](./CONTRIBUTING.md). السياسات الجديدة والحالات الحدية والترجمات كلها موضع ترحيب.
 
-> **أنشئ قبل أن تبدأ.** شغّل `bun install && bun run build` أولاً. يقوم هذا المستودع
-> بتشغيل خطافات failproofai الخاصة به على نفسه، وهي تحل استيراد `failproofai` مقابل
-> حزمة `dist/` المترجمة — بدون build ستصطدم برسائل خطأ خطاف `Cannot find package 'failproofai'`.
-> أعد البناء بعد تغيير `src/`. اطّلع على
-> [بناء قبل أن تعمل خطافات dev داخل المستودع](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **قم بالبناء قبل البدء.** قم بتشغيل `bun install && bun run build` أولاً. يقوم هذا المستودع بتشغيل خطافات failproofai الخاصة به على نفسه، ويحل استيراد `failproofai` مقابل الحزمة `dist/` المترجمة — بدون بناء، ستضرب أخطاء خطاف `Cannot find package 'failproofai'`. أعد البناء بعد تغيير `src/`. انظر
+> [البناء قبل أن تعمل خطافات الـ dev داخل المستودع](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-بُني بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
+تم البناء بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)
 
 

@@ -1,0 +1,49 @@
+---
+title: "Flujo de Eventos"
+description: "Documentación del Flujo de Eventos de Observabilidad de FailproofAI."
+---
+
+En el momento en que tu agente hace algo, tú lo ves. El Flujo de Eventos es tu pulso en tiempo real sobre cada agente en producción: sin esperas, sin buscar en logs, sin adivinar qué acaba de pasar.
+
+![El Flujo de Eventos en vivo: filas de eventos con código de colores actualizándose en tiempo real, filtrables por entorno, agente, sesión, tipo de evento y texto libre](/agenteye/images/events-stream.png)
+
+*Cada evento de cada agente en tu organización, el más reciente primero, actualizándose a medida que ocurre.*
+
+## Tu pulso en tiempo real sobre cada agente
+
+Cuando un agente inicia una ejecución, llama a un modelo, dispara una herramienta, ejecuta un hook o encuentra un error, la fila aparece en la parte superior del flujo en el instante en que ocurre. Sigue cada evento de cada agente en tu organización, el más reciente primero, para que siempre tengas una imagen actual en lugar de una obsoleta.
+
+Eso significa que no tienes que vigilar archivos de log en algún servidor, ni buscar entre máquinas, ni unir marcas de tiempo manualmente. Abres una página y ya estás observando producción.
+
+Las filas tienen código de colores por tipo, para que puedas leer el flujo de un vistazo en lugar de analizar cada línea. De un vistazo, cada fila te muestra:
+
+- **Su tipo**, con código de color: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` y más.
+- **Un resumen de una línea** de lo que ocurrió, para que rara vez necesites abrir algo solo para entender la idea general.
+- **Conteos de tokens** para el paso.
+- **Un indicador de llenado de la ventana de contexto** donde aplica, para que el crecimiento del prompt y una compactación próxima sean visibles antes de que se conviertan en un problema.
+
+Observarlo en tiempo real significa que detectas un despliegue defectuoso, un bucle descontrolado o una ráfaga de errores mientras ocurre, no en la revisión de logs del día siguiente.
+
+## Encuentra la ejecución que importa
+
+Cuando algo parece estar mal, no quieres el diluvio de datos. Quieres la única ejecución que falló. El flujo se filtra rápidamente: por entorno, por agente, por sesión, por tipo de evento o por texto libre.
+
+Filtra por id de sesión o id de agente para seguir una ejecución desde su primer evento hasta el último. Filtra por tipo de evento para aislar un solo tipo de actividad; por ejemplo, cada `error` en toda la organización en una sola vista. Combina filtros para pasar de "todo, en todas partes" a "este agente, en prod, con errores" en un par de clics, y luego actúa sobre lo que encuentras.
+
+La búsqueda de texto libre llega directamente a un mensaje, un nombre de herramienta o un id que ya tienes a mano, para que un reporte de cliente se convierta en la ejecución exacta en segundos.
+
+## Dónde encontrarlo
+
+El Flujo de Eventos es la página de inicio de tu organización. Inicia sesión y es la primera superficie en la que aterrizas, en `/<org-slug>/`, para que el triaje comience en el segundo en que llegas.
+
+Detrás de él, tus agentes emiten eventos a través del SDK, el colector los envía a tu servidor de Observabilidad de FailproofAI, y el flujo los sigue a medida que llegan en una infraestructura que tú controlas. Cuando quieres la vista resumida en lugar del rastro sin procesar, los eventos de cada ejecución se colapsan en una sola fila en Sesiones, a un clic de distancia.
+
+Esta es la fuente de verdad sin procesar sobre la que se construyen todas las demás superficies de observación, así que cuando un número parece incorrecto en otro lugar, el flujo es donde confirmas lo que realmente ocurrió.
+
+## Relacionados
+
+- [Sesiones](/es/agenteye/sessions): los mismos eventos consolidados en una fila por ejecución, con un gráfico de ejecución al estilo de git.
+- [Telemetría](/es/agenteye/telemetry): qué envían tus agentes y cómo llegan los eventos al flujo.
+- [Seguimiento de errores](/es/agenteye/error-tracking): una superficie de triaje unificada para todo lo que salió mal.
+- [Alertas](/es/agenteye/alerts): convierte cualquier umbral en una regla de notificación.
+- [CLI y agentes](/es/agenteye/cli-and-agents): el mismo rastro en tiempo real desde tu terminal.

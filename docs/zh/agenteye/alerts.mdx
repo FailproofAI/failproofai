@@ -1,308 +1,63 @@
 ---
 title: "告警"
-description: "AgentEye 告警文档。"
+description: "FailproofAI Observability 告警文档。"
 ---
 
-告警会按计划对规则进行评估，并在某项指标超过阈值时通知您。它们将 AgentEye 从一个被动的仪表盘转变为一个主动的事件通知系统，用于监测您真正关心的事项：错误率飙升、延迟回归、评估分数下降，或任何可以用 ClickHouse 查询表达的自定义事件。
 
-本指南涵盖告警的定义、五种触发器类型、四种通知渠道、事件生命周期以及各项操作参数。
+在问题越过你的警戒线的那一刻即时获知，通过你团队已在使用的渠道，而不是从用户那里听说。只需设置一次规则，FailproofAI Observability 便会按计划检查，并通过邮件、Slack、Webhook 或直接在仪表板中通知你。
 
-![告警页面：告警规则卡片网格，每张卡片显示其触发器类型、评估窗口、渠道以及信息/警告/严重等级徽章](/agenteye/images/alerts.png)
+![告警页面：由告警规则卡片组成的网格，每张卡片显示其触发条件、评估窗口、通知渠道，以及信息、警告或严重的级别徽章](/agenteye/images/alerts.png)
+*一览所有告警规则：监控内容、检查频率、通知位置及紧急程度。*
 
----
+## 在用户察觉之前发现问题
 
-## 核心概念
+不必盯着仪表板刷新以期捕捉到回归问题。只要有一个信号是你在无人值守时也希望第一时间获悉的，就为它设置一条告警，让通知直达你已在使用的地方：
 
-- **告警** — 规则本身。它定义了*检查什么*（触发器）、*检查频率*（评估间隔）、*何时判定为异常*（组合逻辑）、*严重程度*（等级），以及*通知谁/通知到哪里*（渠道）。
-- **事件** — 告警触发时所发生的事情。同一时间，一条告警最多只有一个开放中的事件。重复触发会更新同一事件的证据。事件需由操作员手动解决；规则停止触发时的自动解决功能已在规划中，但目前尚未启用。
-- **渠道** — 通知的发送目的地：电子邮件、Slack、通用 Webhook 或仪表盘内通知。每条告警可以附加任意组合的渠道。
+- **邮件**，发送给所有需要知晓的人。
+- **Slack**，发送一条富文本消息，附带可直接跳转到事件详情的按钮。
+- **Webhook**，向 PagerDuty、Opsgenie 或你自己的接口发送 JSON POST 请求，可选签名以便接收方验证来源。
+- **仪表板内通知**，设计上保持静默，适用于你在调试规则、暂时不想打扰任何人的阶段。
 
-告警和事件归属于某个组织，并在该组织的所有操作员之间共享（在单租户部署中，即内置的 `default` 组织）。事件可以分配给单个操作员进行分类处理。
+你可以为同一条规则绑定任意组合的渠道，告警的严重级别（信息、警告或严重）也会随之传递，让紧急的事件一眼看上去就显得紧急。
 
----
+## 在表单中创建规则，而非编写 JSON
 
-## 触发器类型
+你在表单中描述"出了问题"意味着什么，FailproofAI Observability 会为你生成底层规则。JSON 规范只是该表单在底层产生的结果，你可以阅读它来理解一条规则，但几乎无需手动编写。
 
-共有五种类型，每种类型都有其对应的 JSON 规范。选择最符合您对"异常"定义方式的类型。仪表盘的**新建告警**表单会为您构建相应的规范，并根据您选择的触发器类型切换条件编辑器：
+![新建告警表单：名称与描述、启用开关，以及提供指标阈值、自定义 SQL、评估得分、复合评估和单事件条件的触发器选择器](/agenteye/images/alert-new.png)
+*选择触发器后，表单会自动切换为对应的字段；点击保存即完成规则创建。*
 
-![新建告警表单，包含基本信息（名称、描述、是否启用）以及触发器选择器，显示指标阈值、自定义 SQL、评估分数、评估失败和逐事件等选项](/agenteye/images/alert-new.png)
+常规流程非常简洁：为规则命名，选择**触发器**（监控什么），设置**阈值和窗口**（严重程度和持续时长），绑定至少一个**通知渠道**，然后点击**保存**，再点击**测试**发送一条模拟通知，确认所有目标都已正确配置。在底层，这会生成一个类似如下的简短规范：
 
-### 1. `metric_threshold`
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
 
-最简单的类型。从固定列表中选择一个指标、一个运算符、一个阈值和一个时间窗口。
+你不局限于单一类型的信号。根据你对故障的理解方式来选择对应的触发器：
 
-| 指标 | 计算内容 |
+| 触发器 | 触发时机 |
 |---|---|
-| `event_count` | 窗口内的事件总数 |
-| `error_count` | `event_type = 'error'` 或任何 `error_type IS NOT NULL` 的事件 |
-| `error_rate` | `error_count / event_count`（范围 0..1） |
-| `p95_latency_ms` | 所有含 `duration_ms` 事件的 `quantile(0.95)(duration_ms)` |
-| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
-| `token_sum` | `SUM(input_tokens + output_tokens)` |
+| **指标阈值** | 预设指标（错误率、p95 或 p99 延迟、事件或错误计数、Token 消耗）在一个时间窗口内超过设定值 |
+| **自定义 SQL** | 你的只读查询返回了某行数据，或其计算值超过阈值 |
+| **评估得分** | 某个评估器得分的平均值（如幻觉率）超过阈值 |
+| **复合评估** | 多项得分检查通过 any、all 或 at-least-N 逻辑组合，以捕捉仅在多个得分维度综合表现下才显现的回归 |
+| **单事件** | 单个匹配事件发生：特定 Agent、特定错误类型或包含特定子字符串的消息 |
 
-运算符：`>`、`>=`、`<`、`<=`、`==`（也可使用 `gt`、`gte`、`lt`、`lte`、`eq`）。
+已经在[错误页面](/zh/agenteye/error-tracking)盯着一个故障看了？每一行都有一个 **+ alert** 按钮，点击后会打开这个表单并预填内容，精准捕捉同类故障的再次发生——这样你刚处理完的事件，下次出现时就会主动通知你。
 
-可选过滤器：`environment`、`event_type`。
+**访问路径：** 告警页面位于 `/<org-slug>/alerts`。创建、编辑、删除和测试规则需要 **`alerts:write`** 权限；仅查看需要 `alerts:read`。收件人选择器会按姓名列出你的组织成员，无需离开表单即可指定通知对象。
 
-示例规范：
+## 仅在真正需要时通知我
 
-```json
-{
-  "metric": "p95_latency_ms",
-  "filter": { "environment": "production" },
-  "window_secs": 900,
-  "op": ">",
-  "value": 5000
-}
-```
+一次异常测量不应该把你从睡梦中吵醒。**M of N** 降噪过滤器控制在告警真正触发通知之前，最近几次检查中必须有多少次失败。设置为 **3 of 5** 后，规则仅在最近五次检查中有三次超阈值时才触发，避免抖动信号频繁误报；保持默认的 **1 of 1** 则在第一次超阈值时立即触发。你还可以选择规则的执行频率，预设选项有 1m、5m、15m 和 1h，可根据信号的实际变化速度来匹配。
 
-### 2. `custom_sql`
+## 告警触发后会发生什么
 
-适用于预设指标无法覆盖的场景。操作员提供的 SQL 会经过与 `/queries/run` 相同的安全检查（仅支持 SELECT/WITH，单条语句，最多返回 10,000 行），然后由调度器执行。支持两种模式：
+一次超阈值事件会开启一个**事件（incident）**，并向你的通知渠道发送一次通知。随后，你的团队可以对其进行确认、指派负责人、讨论处理方案并最终解决，整个过程都有清晰且可追溯的记录。该处理流程有独立的页面：请参阅[事件管理](/zh/agenteye/incidents)。
 
-- **rows 模式**（不含 `op`/`value`）：查询返回至少一行时，告警即触发。
-- **value 模式**：查询必须将某一列别名为 `metric_value`；调度器使用 `op` 将第一行的 `metric_value` 与 `value` 进行比较。
+## 相关内容
 
-```json
-{
-  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
-  "op": ">",
-  "value": 100
-}
-```
-
-### 3. `evaluation_score`
-
-读取 `agenteye.evaluations` 并比较指定分数在某个窗口内的平均值。
-
-```json
-{
-  "score_key": "hallucination",
-  "op": ">",
-  "value": 0.6,
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-`min_count` 用于防止单样本异常值的干扰；在窗口内至少有 N 条评估数据之前，调度器不会触发告警。
-
-### 4. `eval_compound`
-
-用于捕获仅在*多个*评估分数同时出现时才显现的质量回归问题。与 `evaluation_score` 只监控单个命名分数不同，`eval_compound` 将多个评估分数条件组合到一条告警中，并使用所选逻辑合并结果；因此一条规则可以表达"helpfulness 下降**或**幻觉率上升时触发"、"仅当 helpfulness **且** tool-efficiency 均下降时触发"，或"这三项检查中**至少 2 项**超出阈值时触发"。
-
-每个条件读取 `agenteye.evaluations` 中某个命名分数在共享窗口内的平均值，并用其自身的运算符和阈值进行测试。布尔结果随后由 `combinator` 进行合并：
-
-| 合并器 | 逻辑 | 触发条件 |
-|---|---|---|
-| `"any"` | OR | 至少一个条件超出阈值 |
-| `"all"` | AND | 所有条件均超出阈值 |
-| `{ "at_least": N }` | M-of-N | 至少 N 个条件超出阈值 |
-
-```json
-{
-  "combinator": { "at_least": 2 },
-  "conditions": [
-    { "score_key": "hallucination", "op": ">", "value": 0.8 },
-    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
-    { "score_key": "tone",          "op": "<", "value": 0.5 }
-  ],
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-- `combinator`：`"any"`、`"all"` 或 `{ "at_least": N }`。
-- `conditions[]`：每项为 `{ score_key, op, value }`，使用与其他触发器相同的运算符（`>`、`>=`、`<`、`<=`、`==`）。
-- `window_secs`：应用于每个条件的共享回溯时长（默认 `3600`）。
-- `min_count`：每个条件在触发前所需的最少评估数量；窗口内样本不足的条件视为"未超出阈值"（默认 `1`）。
-- `environment`：可选；将每个条件限定到单个环境。
-
-通知的证据记录每个条件的实测平均值、测试所用阈值、评估数量以及是否超出阈值，让您清楚地看到哪些检查项被触发。
-
-### 5. `per_event`
-
-适用于"任何匹配 X 的事件已到达"类型的告警。无需聚合；调度器一旦在回溯窗口内发现匹配项即触发。
-
-```json
-{
-  "event_type": "error",
-  "lookback_secs": 60,
-  "environment": "production",
-  "tool_name": "bash",
-  "agent_id": "caa",
-  "error_type": "TimeoutError",
-  "message_contains": "vertex-ai timed out"
-}
-```
-
-所有过滤条件均为 AND 组合；未填写的字段不作限制。
-
-| 字段 | 用途 |
-|---|---|
-| `agent_id` | 限定为特定 Agent 的错误（即 `/errors` 行中显示的那个）。 |
-| `error_type` | 限定为特定错误类（如 `TimeoutError`），而非所有错误。 |
-| `message_contains` | 对 `payload.message` 进行大小写不敏感的子字符串匹配。适用于捕获某种特定故障模式（如 `prompt is too long`），而无需对来自同一 Agent 的每个错误都发送告警。最多 200 个字符；按字面字符串匹配，不支持模式匹配。 |
-
-提示：将 `lookback_secs` 设置为与告警的 `eval_interval_secs` 大致匹配，以避免对同一事件重复通知。
-
-**来自 `/errors` 的快捷方式：** 错误视图中每个错误分组的代表行（以及错误事件的会话事件详情面板）都有一个 **+ alert** 按钮，点击后会打开 `/alerts/new`，并预填充以该行 `event_type` + 环境为键的 `per_event` 触发器，名称会在载荷中存在 `error_type` 时自动从中提取。您仍需选择渠道并确认回溯时长，但匹配条件已为您填写完毕。按钮的显示需要操作员具有 `alerts:write` 权限。
-
----
-
-## 组合逻辑（M of N）
-
-除触发器外，每条告警还有两个整数参数：
-
-- `eval_window`：查看最近多少次评估（默认 1）
-- `min_breaches`：其中必须有多少次超出阈值才触发告警（默认 1）
-
-`1 of 1`（默认值）表示"首次超出阈值即触发"。`3 of 5` 表示"最近 5 次评估中有 3 次超出阈值时触发"，适用于单次不良测量属于噪声的抖动信号。调度器为每条告警维护一个环形缓冲区，您无需手动管理状态。
-
----
-
-## 评估间隔
-
-`eval_interval_secs` 控制调度器运行规则的频率。取值范围为 `[30, 86400]`。仪表盘中的预设值：1m / 5m / 15m / 1h。请根据底层信号的变化速度选择合适的间隔：以 15 秒为间隔评估一条 5 分钟错误率告警会浪费 CPU 资源；逐事件告警需要较短的回溯窗口，否则会在两次评估之间静默丢失事件。
-
----
-
-## 渠道
-
-每条告警可以附加以下四种渠道的任意组合。每个渠道的凭据（Slack Webhook URL、通用 Webhook URL + 签名密钥、默认邮件收件人）在 **`/settings`** 中统一配置，并通过键名在每条告警中引用。这样，一个 Slack 频道可以服务于多条告警，而无需每条告警单独存储其 Webhook URL。
-
-三种外部渠道类型（电子邮件、Slack、Webhook）还受到组织级开关 `alerts.enabled_channels` 的控制。当已触发的告警附加了不在此集合中的渠道类型时，调度器会跳过它，并记录一条状态为 `skipped_disabled`、目标为 `<channel_disabled>` 的 `alert_notifications` 记录（这样您就可以全局暂停某种渠道，例如所有 Slack 推送，而无需逐条编辑规则）。仪表盘内通知渠道始终可用。请参阅[配置](#configuration)。
-
-### 电子邮件
-
-复用发送 OTP 登录邮件的 SMTP 传输。收件人按以下顺序解析：
-
-1. 每个渠道的 `recipients[]` 覆盖设置（非空时使用）。
-2. `alerts.email_default_recipients` 设置（一个邮件地址字符串数组）。
-
-如果未配置 SMTP，该渠道为空操作；调度器仍会记录一条目标为 `<smtp_unconfigured>` 的 `alert_notifications` 记录，以便审计跟踪中可见此配置缺失。
-
-### Slack
-
-向 [Incoming Webhook URL](https://api.slack.com/messaging/webhooks) 发送 Block Kit 消息。
-
-- 默认 URL：`alerts.slack_default_webhook`（在 `/settings` 中设置）。
-- 每条告警的覆盖设置：将渠道的 `webhook_setting_key` 设置为任何其他 URL 类型的设置键，例如 `alerts.slack_oncall`、`alerts.slack_costs`。
-
-消息头包含等级表情符（`:rotating_light:` / `:warning:` / `:bell:`），消息中附有直达事件页面的深链接按钮。
-
-### 通用 Webhook
-
-用于与 PagerDuty、Opsgenie 或您自定义接收端集成的 JSON POST 方式。请求体结构：
-
-```json
-{
-  "schema_version": 1,
-  "event": "alert.firing",
-  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
-  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
-  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
-}
-```
-
-当 `alerts.webhook_signing_secret` 已设置时，请求会包含 `X-AgentEye-Signature: sha256=<hex>` 请求头，该值为使用密钥对请求体计算的 HMAC-SHA256。请在接收端验证此签名后再信任载荷内容。
-
-请求头 `X-AgentEye-Event` 携带 `alert.firing` / `alert.test`。（`alert.resolved` 保留给计划中的自动解决功能，目前尚未发出。）
-
-### 仪表盘内通知
-
-无需外部推送：告警仅写入一条 `alert_notifications` 记录，由仪表盘的事件页面展示。适用于您正在调试规则且不希望向外部系统发送大量通知的场景，或用于操作员在日常分类处理期间查看的低紧急度告警。
-
----
-
-## 事件生命周期
-
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── operator resolve ───▶  resolved
-```
-
-- **firing（触发中）** — 调度器刚刚开启事件，或检测到另一次超出阈值。触发通知只会发送一次（由事件上的 `notified_firing_at` 时间戳控制）。
-- **acknowledged（已确认）** — 操作员在 `/incidents/:id` 上点击了*确认*。事件仍视为开放；后续的阈值触发会更新证据，但不会重新发送通知。
-- **resolved（已解决）** — 操作员点击了*解决*。规则停止触发时的自动解决功能已在规划中，但目前尚未启用，因此开放的事件会一直保持开放，直到操作员手动解决。
-
-之前的事件解决后，同一告警可以随时再次开启新事件。
-
-**活动时间线。** 事件上的每个操作——开启、确认、解决——都会记录在一个只追加的活动日志中，并显示在事件的*活动*时间线上。每条记录都会标注执行操作的操作员（通过邮件地址）或**自动化**（对于调度器自主执行的操作，如因超出阈值自动开启）。确认操作是共享的：多位操作员可以确认同一事件，每位操作员都会作为独立的带归属条目出现。
-
-**事件**收件箱按状态对开放事件进行分组，并支持按严重程度和负责人筛选：
-
-![事件收件箱，显示与告警关联及临时事件卡片，含严重程度徽章和负责人信息](/agenteye/images/incidents.png)
-
-打开某个事件后，可以看到超出阈值的证据、负责人与订阅者、带归属的活动时间线，以及评论区：
-
-![事件详情视图：父级告警、超出阈值摘要、负责人、订阅者、带归属的活动日志和讨论区](/agenteye/images/incident-detail.png)
-
----
-
-## 所需权限
-
-编写告警*规则*和处理*事件*是两件独立的事情，各有独立的授权，因此您可以给值班轮换组授予事件处理权限，而无需同时赋予其修改规则的能力。
-
-- `alerts:read`：查看告警规则。
-- `alerts:write`：创建、编辑、删除告警规则，以及触发测试通知。
-- `incidents:read`：查看事件。
-- `incidents:write`：开启不与告警关联的手动（临时）事件。
-- `incidents:ack`：确认、分配、评论和解决事件。
-
-> **旧版 `alerts:ack`。** 被授予旧版 `alerts:ack` 令牌的密钥和操作员可继续使用：该令牌被视为 `incidents:ack`（并隐含 `incidents:read`），因此现有值班人员无需重新签发凭据即可保留其访问权限。新的授权请使用 `incidents:*` 系列。
-
-在 API 密钥（`POST /keys`）和操作员（`PUT /users/:id`）上进行授权。当缺少某项权限时，仪表盘的 `PermGate` 会锁定相关按钮；您会在操作旁看到 `// 403` 提示。
-
-> **邮件收件人选择器。** 告警编辑器的收件人选择器会列出您组织的成员，方便您按姓名选择。任何持有 `alerts:read` 或 `alerts:write` 权限的操作员均可加载此列表；为此目的查看团队成员目录**不需要** `users:read` 权限，且选择器仅返回成员邮件地址，不返回完整的用户记录。
-
----
-
-## 配置
-
-调度器使用的环境变量：
-
-| 变量 | 默认值 | 用途 |
-|---|---|---|
-| `ALERT_WORKERS` | `1` | 每个服务器实例的工作任务数。大多数部署只需要一个。 |
-| `ALERT_CLAIM_BATCH` | `16` | 单次工作器 tick 处理的最大告警数。 |
-| `ALERT_POLL_IDLE_SECS` | `5` | 队列为空时工作器的休眠时长。 |
-| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | 每次触发器评估的超时时长。 |
-| `DASHBOARD_URL` | `https://app.befailproof.ai` | 用于在通知中构建事件魔法链接的域名。请设置为您的仪表盘主机地址。 |
-
-发生临时评估失败（ClickHouse 不可达、查询超时）后，调度器会以指数退避策略重试规则。一旦某条规则累计发生 **5** 次连续临时失败，它将按正常节奏重新调度，而不继续退避，因此持续失败的规则仍会定期重新评估。此上限为固定值，操作员不可调整。
-
-渠道设置（通过 `/settings` 管理，而非环境变量）：
-
-- `alerts.email_default_recipients`（`email_list`）：邮件地址字符串的 JSON 数组——邮件渠道的默认收件人。
-- `alerts.slack_default_webhook`（`url`）：默认 Slack Incoming Webhook URL。
-- `alerts.webhook_default_url`（`url`）：默认通用 Webhook URL。
-- `alerts.webhook_signing_secret`（`secret`）：HMAC-SHA256 密钥。GET 响应中始终返回 `""`；输入新值即可轮换。
-- `alerts.enabled_channels`（`channel_set`）：告警触发时允许调度的外部渠道类型的组织级集合；默认包含全部三种（`email`、`slack`、`webhook`）。从此处移除某种类型会对所有告警全局屏蔽该渠道，无需逐条编辑规则。仪表盘内通知渠道始终推送，不受此设置影响。
-
----
-
-## 验证新告警
-
-在依赖新告警之前：
-
-1. 启用告警并附加至少一个通知渠道后保存。
-2. 在告警详情页选择**测试**，并确认每个已配置的目标都收到了模拟通知。
-3. 在第一次真实触发后，确认事件出现在**事件**列表中，且其测量值与仪表盘对应查询的结果相符。
-
-条件恢复后，事件不会自动解决。操作员必须在事件详情页手动解决。
-
----
-
-## 故障排查
-
-| 现象 | 可能原因 |
-|---|---|
-| 告警从不触发 | `enabled = false`，或未附加渠道，或底层 CH 查询返回 0 行。使用*测试*确认渠道是否正常；使用 `/queries/run` 确认指标是否正常。 |
-| Slack 通知未收到 | `alerts.slack_default_webhook`（或每条告警的覆盖键）未设置：检查 `alert_notifications.target` 中是否有 `<unset:…>` 记录；或 `slack` 类型在 `alerts.enabled_channels` 中被全局禁用：检查是否存在状态为 `skipped_disabled`、目标为 `<channel_disabled>` 的 `alert_notifications` 记录。 |
-| 通用 Webhook 返回 401 | 接收端要求签名验证，但 `alerts.webhook_signing_secret` 未设置。在接收端验证 HMAC 是否与 `hmac_sha256(secret, body)` 匹配。 |
-| 邮件提示"所有发送均失败" | SMTP 凭据错误，或 `from` 地址被您的邮件中继拒绝。该传输与发送 OTP 邮件的是同一个：如果 OTP 邮件正常，则 SMTP 传输本身没有问题。 |
-| 事件反复重新开启 | 组合参数设置过于激进：尝试调高 `min_breaches` 或 `eval_window`，以避免临时尖峰重新开启您已解决的事件。 |
+- [事件管理](/zh/agenteye/incidents)：跟踪触发告警从开启到确认再到解决的全过程。
+- [错误追踪](/zh/agenteye/error-tracking)：对 Agent 故障进行分组，一键将其转化为告警。
+- [仪表板](/zh/agenteye/dashboards)：查看共享看板，其中包含你设置告警的各项阈值来源。
+- [CLI 与 Agents](/zh/agenteye/cli-and-agents)：从终端创建告警、确认事件，或将其脚本化集成到 CI 流程中。

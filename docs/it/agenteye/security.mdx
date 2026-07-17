@@ -1,0 +1,68 @@
+---
+title: "Sicurezza"
+description: "Documentazione sulla sicurezza di FailproofAI Observability."
+---
+
+
+FailproofAI Observability è costruito per stare a stretto contatto con i tuoi agent di produzione, il che significa che vede i tuoi prompt, gli input dei tool e gli output. Questa pagina spiega come mantiene i tuoi dati isolati, controllati e nelle tue mani. Se stai valutando FailproofAI Observability per una revisione di sicurezza, inizia da qui.
+
+---
+
+## I tuoi dati rimangono nel tuo ambiente
+
+FailproofAI Observability è self-hosted. Gli eventi, i prompt, le risposte del modello e le analitiche sono memorizzati nei tuoi database, nel tuo ambiente. Niente viene inviato a un SaaS di terze parti per lo storage, e i tuoi dati rimangono nel tuo account cloud.
+
+---
+
+## Isolamento dei tenant
+
+Un'istanza di FailproofAI Observability può ospitare molte organizzazioni, ognuna isolata a livello di storage — fatto rispettare dal database, non solo dall'interfaccia utente:
+
+- I dati operativi di un'organizzazione (utenti, chiavi, dashboard, query salvate) sono scoped a quella org, e le letture cross-org sono bloccate dal database stesso.
+- Ogni evento acquisito è etichettato con l'organizzazione proprietaria, quindi gli eventi di un'organizzazione non possono mai essere letti da un'altra.
+
+Ogni rotta della dashboard è scoped sotto uno slug org (`/<org-slug>/…`).
+
+---
+
+## Sign-in
+
+FailproofAI Observability utilizza un sign-in senza password, basato su email. Non c'è nessuna password da phishing o da leak. Un utente richiede un codice monouso (o un magic link con un clic), che viene inviato via email e scade rapidamente. Il sign-in è controllato da una **allowlist**: solo gli indirizzi email (o i domini) che permetti possono autenticarsi.
+
+![La schermata di sign-in di FailproofAI Observability, che invia un codice monouso al tuo email](/agenteye/images/login.png)
+
+---
+
+## Accesso scoped con API key
+
+Ogni client si autentica con un'API key che porta permessi granulari e least-privilege. Un collector ha bisogno solo di `events:add`; una key di dashboard o assistant può essere di sola lettura; le azioni distruttive (delete, regenerate) sono grant separati che scegli di includere.
+
+![La pagina delle API key: i grant di permessi di ogni key, codificati per colore in base allo scope di lettura, scrittura e distruttivo](/agenteye/images/api-keys.png)
+
+Conserva la key di bootstrap admin per la configurazione, e emetti key ristrette per tutto il resto. Vedi [API keys](/it/agenteye/api-keys).
+
+---
+
+## Un assistant di sola lettura, controllato da approvazione
+
+L'[AI assistant](/it/agenteye/assistant) in dashboard risponde alle domande sui tuoi dati, ma è limitato dal design:
+
+- È **di sola lettura per impostazione predefinita**: la sua SQL passa attraverso un guard che permette solo query `SELECT`/`WITH`, single-statement, con un row cap.
+- Tutto ciò che crea (una query salvata, una dashboard) è **controllato da approvazione**: rivedi e approvi ogni scrittura prima che accada.
+- **Non può mai eliminare**.
+
+Quindi un membro del team può chiedere "quali agent hanno avuto più errori questa settimana?" e agire sulla risposta, senza che l'assistant sia in grado di cambiare o rimuovere i tuoi dati da solo.
+
+---
+
+## In transito
+
+Tutto il traffico passa su HTTPS. Termini TLS con i tuoi certificati, quindi il traffico da collector a server e da browser a server è crittografato in transito.
+
+---
+
+## Prossimi passi
+
+- [Overview](/it/agenteye/overview): come FailproofAI Observability si integra.
+- [API keys](/it/agenteye/api-keys): scopa l'accesso per il collector, dashboard e assistant.
+- [Observability](/it/agenteye/observability): cosa FailproofAI Observability cattura dai tuoi agent.

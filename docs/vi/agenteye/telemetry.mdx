@@ -1,0 +1,52 @@
+---
+title: "Chỉ số Hiệu suất"
+description: "Tài liệu Chỉ số Hiệu suất Quan sát FailproofAI."
+---
+
+
+Nhìn thấy ngay khi các mô hình, công cụ hoặc hook của bạn chậm lại hoặc tốn chi phí, và bắt được sự tăng độ trễ tail trước khi người dùng của bạn cảm nhận được. Ba trang dành riêng biến các thời gian thô thành p50, p95 và p99 mà bạn có thể đọc trong một cái nhìn.
+
+![Trang Models hiển thị bản đồ nhiệt độ trễ, dải phần trăm vị trí và các con số token, chi phí và cửa sổ ngữ cảnh theo mô hình](/agenteye/images/models.png)
+*Trang Models: bản đồ nhiệt độ trễ, dải phần trăm vị trí và token theo mô hình, chi phí ước tính và độ lấp đầy cửa sổ ngữ cảnh.*
+
+## Ngừng để cho trung bình che dấu các lần chạy tệ nhất của bạn
+
+Một con số độ trễ trung bình là an toàn và vô dụng: nó làm mịn đi một lần gọi trong năm mươi lần bị tắc nghẽn và gọi nhân viên trực của bạn lúc 2 giờ sáng. Các trang Models, Tools và Hooks từ chối làm điều đó. Mỗi trang chia sẻ cùng một hình dạng, vì vậy bạn chỉ cần học một lần:
+
+- **Sparkline 24 bin** để xem xu hướng trong một cái nhìn: điều này có trở nên tệ hơn không?
+- **Dải chỉ số sống** với độ trễ p50, p95 và p99, vì vậy lần chạy điển hình và tail nằm cạnh nhau.
+- **Bản đồ nhiệt độ trễ**, 24 bin thời gian theo các nhóm độ trễ, cho thấy *khi nào* các lần gọi chậm được tập hợp.
+- **Dải phần trăm vị trí**: một đường p50 với các dải bóng p25 đến p75 và p10 đến p90 và các chấm p99, vì vậy sự phân tán vẫn hiển thị thay vì bị tính trung bình.
+
+Một tia chéo di chuột chung kết nối bản đồ nhiệt độ và dải, vì vậy một đỉnh tail được sắp xếp thời gian trên cả hai thay vì ẩn sau một đường trung bình duy nhất. Tìm cả ba trang trong phần **quan sát** của bảng điều khiển của bạn, mỗi trang được phạm vi tới tổ chức của bạn và có thể lọc theo phạm vi ngày, môi trường, đại lý và phiên.
+
+## Models: xem chính xác mỗi mô hình tốn chi phí bao nhiêu cho bạn
+
+Trang Models (hiển thị ở trên) trả lời hai câu hỏi mà hóa đơn luôn đặt ra: mô hình nào và bao nhiêu tiền. Trên cùng với chế độ xem độ trễ được chia sẻ, nó thêm **tiêu thụ token theo mô hình**, **chi phí ước tính** và **độ lấp đầy cửa sổ ngữ cảnh**, vì vậy sự tăng trưởng prompt không kiểm soát và sự tích tụ sắp xảy ra được hiển thị trước khi chúng làm bạn ngạc nhiên.
+
+FailproofAI Observability tự động nhận biết các ID mô hình phổ biến. Nếu một cửa sổ trông sai, hoặc bạn chạy một mô hình riêng tư của riêng mình, hãy sửa nó hoặc thêm một mô hình dưới **Settings**, trong **model context windows**, và các số đọc lấp đầy sẽ tuân theo.
+
+## Tools: phân biệt cái chậm với cái bị hỏng
+
+Một lệnh gọi công cụ có thể chậm, hoặc nó có thể im lặng bị hỏng, và bạn muốn biết đó là cái nào trong vài giây, không phải sau khi đào bới qua các bản ghi.
+
+![Trang Tools hiển thị bản đồ nhiệt độ trễ được chia sẻ và dải phần trăm vị trí bên cạnh sự phân tách thành công và thất bại cũng như thanh phân phối công cụ](/agenteye/images/tools.png)
+*Trang Tools: cùng bản đồ nhiệt độ và dải phần trăm vị trí, cộng với sự phân tách thành công và thất bại cũng như thanh phân phối công cụ.*
+
+Cạnh chế độ xem độ trễ được chia sẻ, trang Tools thêm một **sự phân tách thành công và thất bại** và một **thanh phân phối công cụ**, vì vậy bạn thấy trong một cái nhìn những công cụ nào bạn dựa vào nhiều nhất và những công cụ nào đang tiêu thụ ngân sách lỗi của bạn.
+
+## Hooks: xác định chính xác hook và kích hoạt
+
+Khi một hook vòng đời kéo một lần chạy, "hooks chậm" không phải là điều gì bạn có thể hành động. Trang Hooks giúp bạn đến trang đó.
+
+![Trang Hooks hiển thị độ trễ được chia nhỏ theo tên hook và sự kiện kích hoạt trên bản đồ nhiệt độ và dải phần trăm vị trí được chia sẻ](/agenteye/images/hooks.png)
+*Trang Hooks: độ trễ được chia nhỏ theo tên hook và sự kiện kích hoạt.*
+
+Trên cùng bản đồ nhiệt độ trễ và dải phần trăm vị trí, trang Hooks chia hoạt động theo **tên hook** và **sự kiện kích hoạt**, vì vậy bạn hạ cánh trên hook duy nhất và sự kiện duy nhất cần được chú ý.
+
+## Liên quan
+
+- [Event stream](/vi/agenteye/event-stream): dấu vết thời gian thực, được mã hóa màu của mọi sự kiện.
+- [Sessions](/vi/agenteye/sessions): cuộn các sự kiện thành một hàng cho mỗi lần chạy và mở biểu đồ thực thi của nó.
+- [Error tracking](/vi/agenteye/error-tracking): một bề mặt phân loại cho tất cả những gì bảng điều khiển vẽ màu đỏ.
+- [Dashboards](/vi/agenteye/dashboards): chế độ xem tích hợp trên toàn bộ đội của bạn.

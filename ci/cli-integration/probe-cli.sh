@@ -31,7 +31,11 @@ GW="${CANARY_LLM_BASE_URL:-https://models.aikin.club}"; GW="${GW%/}"
 # of /repo/dist (bin/failproofai.mjs only sets it when unset, so this wins). Kept
 # fresh each run so it tracks main HEAD's built dist.
 FP_DIST="$HOME/fp-dist"
-mkdir -p "$FP_DIST" && cp -r /repo/dist/. "$FP_DIST/" 2>/dev/null
+# Recreate from scratch each run: the volume can persist across runs, so overlaying
+# with `cp` would leave files a newer HEAD removed behind (mixed build). Fail loudly
+# rather than probe against a stale/partial dist.
+rm -rf "$FP_DIST"; mkdir -p "$FP_DIST"
+cp -r /repo/dist/. "$FP_DIST/" || { echo "failed to prepare failproofai dist from /repo/dist" >&2; exit 1; }
 export FAILPROOFAI_DIST_PATH="$FP_DIST" FAILPROOFAI_TELEMETRY_DISABLED=1 FAILPROOFAI_LOG_LEVEL=info
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.factory/bin:$PATH"
 
@@ -105,8 +109,10 @@ YAML
     openclaw) openclaw onboard --non-interactive --accept-risk --skip-health --auth-choice custom-api-key \
                 --custom-provider-id gw --custom-base-url "$GW/v1" --custom-api-key "$CANARY_LLM_API_KEY" \
                 --custom-compatibility openai --custom-model-id "$CANARY_LLM_MODEL" --custom-text-input >/dev/null 2>&1
-              # onboard rewrites openclaw.json and drops the plugin — re-register it AFTER onboard
-              bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user >/dev/null 2>&1
+              # onboard rewrites openclaw.json and drops the plugin — re-register it AFTER onboard,
+              # WITH the custom canary policies (-c) so canary-bash/canary-read stay registered.
+              bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user \
+                -c "$CUSTOM_POLICIES" >/dev/null 2>&1
               # open exec approval (both layers) so the agent issues tool calls headlessly
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.tools=c.tools||{};c.tools.exec=Object.assign({},c.tools.exec,{security:"full",ask:"off",host:"gateway"});fs.writeFileSync(p,JSON.stringify(c,null,2));'
               unset FAILPROOFAI_BINARY_OVERRIDE ;;  # plugin does `node <override>`; unset → self-resolves to main HEAD

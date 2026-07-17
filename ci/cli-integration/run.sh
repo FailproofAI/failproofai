@@ -85,10 +85,23 @@ printf '%s\n' "$report"   # also to stdout for the workflow log / artifact
 
 if [ -n "${CANARY_SLACK_WEBHOOK:-}" ]; then
   payload="$(node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))' <<<"$report")"
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+  code="$(curl -sS --connect-timeout 10 --max-time 30 \
+            -o /dev/null -w '%{http_code}' -X POST -H 'Content-type: application/json' \
             --data "$payload" "$CANARY_SLACK_WEBHOOK" 2>/dev/null || echo 000)"
   if [ "$code" = 200 ]; then echo "✓ posted to Slack webhook" >&2
   else echo "⚠️  Slack webhook POST returned HTTP $code" >&2; fi
 else
   echo "(no CANARY_SLACK_WEBHOOK set — report not posted)" >&2
+fi
+
+# Fail the job when any probe reported a hard FAIL (broken enforcement) so this
+# scheduled check actually blocks regressions. ERROR (vendor quota/auth) and
+# INCONCLUSIVE (model didn't attempt the tool) are NOT failures — they mean
+# "couldn't confirm", not "enforcement broke". The report is already emitted +
+# posted above regardless, so the signal is never lost.
+if node -e 'const r=JSON.parse(process.argv[1]);process.exit(r.some(x=>Object.values(x.probes||{}).includes("FAIL"))?1:0)' "$results"; then
+  exit 0
+else
+  echo "✗ FAIL verdict(s) present — failing the job" >&2
+  exit 1
 fi

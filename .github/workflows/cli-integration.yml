@@ -125,7 +125,10 @@ jobs:
           # force=true → "none" (non-"all" ⇒ run.sh gates nothing ⇒ probe all). A
           # literal '' can't be used: GHA `x && '' || 'all'` is always 'all'.
           CANARY_VERSION_GATED: ${{ inputs.force && 'none' || 'all' }}
-        run: bash ci/cli-integration/run.sh ${{ inputs.clis }}
+          # Pass the dispatch input via env (NOT interpolated into the run script)
+          # to prevent template/shell injection; run.sh word-splits it into CLI args.
+          CANARY_CLIS: ${{ inputs.clis }}
+        run: bash ci/cli-integration/run.sh $CANARY_CLIS
 
       - name: Save integration-test state
         if: always()

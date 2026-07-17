@@ -36,7 +36,9 @@ for (const r of results) {
     mark = `  🔵 _gated: CLI v${r.version || "?"} + failproofai ${r.fpSha || "?"} unchanged, last green_`;
   } else if (prevSt && prevSt !== "red" && st === "red") {
     mark = "  ⚠️ *BROKE*"; breaks.push(r.cli);
-  } else if (prevSt === "red" && st !== "red") {
+  } else if (prevSt === "red" && st === "green") {
+    // Only a green result is a genuine recovery — ERROR/INCONCLUSIVE/no-verdict
+    // are "couldn't confirm", not "fixed".
     mark = "  ✅ *recovered*"; recoveries.push(r.cli);
   }
   if (rank[st] > rank[worst]) worst = st;
@@ -47,14 +49,17 @@ for (const r of results) {
 const errored = results.filter((r) => statusOf(r.probes) === "error").map((r) => r.cli);
 let hdr;
 if (breaks.length) hdr = `🔴 *ENFORCEMENT BROKEN*: ${breaks.join(", ")} — investigate now`;
-else if (recoveries.length) hdr = `✅ recovered: ${recoveries.join(", ")}`;
+// Any CLI still red dominates the header — a recovery elsewhere must not mask it.
 else if (worst === "red") hdr = "🔴 still broken (unchanged)";
+else if (recoveries.length) hdr = `✅ recovered: ${recoveries.join(", ")}`;
 else if (errored.length) hdr = `⚠️ enforcing; couldn't test ${errored.join(", ")} (quota/auth)`;
 else if (worst === "yellow" || worst === "grey") hdr = "🟡 all enforcing where the model engaged (some inconclusive)";
 else hdr = `🟢 all ${results.length} enforcing`;
 lines.push("", hdr);
 
-const newState = { lastRun: new Date().toISOString(), clis: {} };
+// Start from the previous state so CLIs omitted from a subset run (run.sh cursor
+// devin) keep their green gating records instead of being wiped + needlessly re-probed.
+const newState = { lastRun: new Date().toISOString(), clis: { ...(prev.clis || {}) } };
 for (const r of results) {
   const prevEntry = prev.clis && prev.clis[r.cli];
   newState.clis[r.cli] = {

@@ -43,4 +43,10 @@ export interface TranslationResult {
   inputTokens: number;
   outputTokens: number;
   cached: boolean;
+  /**
+   * Total translation attempts spent (1 = valid on first try). Optional so the
+   * cached / dry-run result literals need no change; absent means "not
+   * translated this run" (cached) or "1".
+   */
+  attempts?: number;
 }

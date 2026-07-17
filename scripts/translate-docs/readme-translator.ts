@@ -2,12 +2,13 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LANGUAGES, getLanguageByCode } from "./config";
-import { translateContent } from "./translator";
+import { translateValidated } from "./translator";
 import {
   stripStrayTrailingFence,
   convertHtmlComments,
   sanitizeJsxAttributes,
 } from "./mdx-translator";
+import { findTranslationError } from "./validate-translation";
 import { readCache, writeCache, isCached, setCacheEntry } from "./cache";
 import type { TranslationResult, TranslationCache } from "./types";
 
@@ -90,15 +91,12 @@ export async function translateReadme(
     };
   }
 
-  // Translate
-  const { translated, inputTokens, outputTokens } = await translateContent(
-    sourceContent,
-    lang,
-    langConfig.name,
-    options.model,
-  );
-
-  // Build the final output with header
+  // Compute the wrapper (disclaimer, language selector, RTL <div>) up front so
+  // the render callback can assemble the FINAL bytes on every attempt. The
+  // assembled bytes — not the raw model output — are what gets validated: the
+  // swallowed-`</div>` class is introduced by the wrapper AFTER the model
+  // returns, and `mintlify validate` never sees the README at all, so this gate
+  // is the only thing standing between a broken README and the deploy.
   const disclaimer = langConfig.rtl
     ? `> **\u26a0\ufe0f** \u0647\u0630\u0647 \u062a\u0631\u062c\u0645\u0629 \u0622\u0644\u064a\u0629. \u0644\u0644\u0627\u0637\u0644\u0627\u0639 \u0639\u0644\u0649 \u0623\u062d\u062f\u062b \u0625\u0635\u062f\u0627\u0631\u060c \u0631\u0627\u062c\u0639 [English README](../../README.md).`
     : `> **\u26a0\ufe0f** This is an auto-generated translation. For the latest version, see the [English README](../../README.md). Community corrections welcome!`;
@@ -107,20 +105,31 @@ export async function translateReadme(
   const rtlOpen = langConfig.rtl ? `<div dir="rtl">\n\n` : "";
   const rtlClose = langConfig.rtl ? `\n\n</div>` : "";
 
-  // Run the same MDX sanitizers as translateMdxPage — the README emits JSX
-  // (the logo table), so its output has to satisfy Mintlify's MDX parser too:
-  // strip stray quote artifacts from JSX attributes, drop any unmatched
-  // trailing code fence the model hallucinates (which would swallow the RTL
-  // `</div>` wrapper), and convert HTML comments to MDX comments.
-  const cleaned = convertHtmlComments(
-    stripStrayTrailingFence(sanitizeJsxAttributes(translated)),
-  );
-
-  const output = `${disclaimer}\n\n${langSelector}\n\n---\n${rtlOpen}\n${cleaned}\n${rtlClose}`;
+  // Translate and validate the assembled bytes, re-translating on failure.
+  const { rendered, inputTokens, outputTokens, attempts } =
+    await translateValidated({
+      source: sourceContent,
+      lang,
+      langName: langConfig.name,
+      model: options.model,
+      label: `README.${lang}.md`,
+      render: (raw) => {
+        // Same MDX sanitizers as translateMdxPage — the README emits JSX (the
+        // logo table), so strip stray attribute quotes, drop any unmatched
+        // trailing code fence (which would swallow the RTL `</div>`), and
+        // convert HTML comments to MDX — then wrap in disclaimer + selector +
+        // RTL div.
+        const cleaned = convertHtmlComments(
+          stripStrayTrailingFence(sanitizeJsxAttributes(raw)),
+        );
+        return `${disclaimer}\n\n${langSelector}\n\n---\n${rtlOpen}\n${cleaned}\n${rtlClose}`;
+      },
+      validate: (bytes) => findTranslationError(bytes, sourceContent),
+    });
 
   // Write output
   mkdirSync(I18N_DIR, { recursive: true });
-  writeFileSync(outputPath, output);
+  writeFileSync(outputPath, rendered);
 
   // Update cache — skip if caller manages the cache (batch write)
   if (!options.cache) {
@@ -136,6 +145,7 @@ export async function translateReadme(
     inputTokens,
     outputTokens,
     cached: false,
+    attempts,
   };
 }
 

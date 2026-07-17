@@ -10,7 +10,8 @@ import {
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLanguageByCode } from "./config";
-import { translateContent } from "./translator";
+import { translateValidated } from "./translator";
+import { findTranslationError } from "./validate-translation";
 import {
   readCache,
   writeCache,
@@ -193,10 +194,13 @@ export async function translateMdxPage(
     dryRun?: boolean;
     model?: string;
     cache?: TranslationCache;
+    /** Override the docs root. Tests point this at a fixture tree. */
+    docsDir?: string;
   } = {},
 ): Promise<TranslationResult> {
-  const relPath = relative(DOCS_DIR, sourcePath);
-  const outputPath = join(DOCS_DIR, lang, relPath);
+  const docsDir = options.docsDir ?? DOCS_DIR;
+  const relPath = relative(docsDir, sourcePath);
+  const outputPath = join(docsDir, lang, relPath);
   const sourceContent = readFileSync(sourcePath, "utf-8");
 
   const langConfig = getLanguageByCode(lang);
@@ -228,25 +232,31 @@ export async function translateMdxPage(
     };
   }
 
-  // Translate
-  const { translated, inputTokens, outputTokens } = await translateContent(
-    sourceContent,
-    lang,
-    langConfig.name,
-    options.model,
-  );
-
-  // Strip stray quote artifacts from JSX attribute values, drop any
-  // unmatched trailing code fence the model sometimes hallucinates, convert
-  // any HTML comments to MDX comments, then rewrite links.
-  const sanitized = convertHtmlComments(
-    stripStrayTrailingFence(sanitizeJsxAttributes(translated)),
-  );
-  const withLinks = rewriteInternalLinks(sanitized, lang);
+  // Translate and validate the exact bytes we will write. The render callback
+  // reproduces the historical sanitize + link-rewrite chain byte-for-byte
+  // (strip stray JSX-attribute quotes, drop an unmatched trailing fence,
+  // convert HTML comments to MDX, then add the language prefix to links), so
+  // the validated bytes ARE the written bytes and a pass here equals a pass in
+  // the deploy. On exhaustion translateValidated throws before we reach the
+  // write, so an invalid page is never written or cached.
+  const { rendered, inputTokens, outputTokens, attempts } =
+    await translateValidated({
+      source: sourceContent,
+      lang,
+      langName: langConfig.name,
+      model: options.model,
+      label: `${relPath} [${lang}]`,
+      render: (raw) =>
+        rewriteInternalLinks(
+          convertHtmlComments(stripStrayTrailingFence(sanitizeJsxAttributes(raw))),
+          lang,
+        ),
+      validate: (bytes) => findTranslationError(bytes, sourceContent),
+    });
 
   // Write output
   mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, withLinks);
+  writeFileSync(outputPath, rendered);
 
   // Update cache — skip if caller manages the cache (batch write)
   if (!options.cache) {
@@ -269,6 +279,7 @@ export async function translateMdxPage(
     inputTokens,
     outputTokens,
     cached: false,
+    attempts,
   };
 }
 

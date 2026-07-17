@@ -1,8 +1,26 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+
+// Mock the Anthropic SDK so the validation-gate tests below drive translation
+// output deterministically. Harmless to the pure/real-tree tests in this file,
+// which never call the translator.
+const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class MockAnthropic {
+    messages = { stream: streamMock };
+  },
+}));
+
 import {
   rewriteInternalLinks,
   sanitizeJsxAttributes,
@@ -10,8 +28,35 @@ import {
   convertHtmlComments,
   getEnglishMdxPages,
   pruneOrphanedTranslations,
+  translateMdxPage,
 } from "@/scripts/translate-docs/mdx-translator";
 import type { TranslationCache } from "@/scripts/translate-docs/types";
+
+/** Queue ONE `end_turn` translation response; call once per expected attempt. */
+function queueTranslation(text: string): void {
+  streamMock.mockReturnValueOnce({
+    finalMessage: async () => ({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text }],
+      usage: { input_tokens: 10, output_tokens: 20 },
+    }),
+  });
+}
+
+/** Sticky response — every attempt returns the same text. */
+function stickyTranslation(text: string): void {
+  streamMock.mockReturnValue({
+    finalMessage: async () => ({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text }],
+      usage: { input_tokens: 10, output_tokens: 20 },
+    }),
+  });
+}
+
+function emptyCache(): TranslationCache {
+  return { sourceHash: "", lastUpdated: "", translations: {} };
+}
 
 describe("getEnglishMdxPages", () => {
   it("includes AgentEye pages in automatic translation", () => {
@@ -402,5 +447,108 @@ describe("convertHtmlComments", () => {
   it("treats an unterminated fence as running to end of document", () => {
     const input = "```\n<!-- inside an unclosed fence -->\n";
     expect(convertHtmlComments(input)).toBe(input);
+  });
+});
+
+describe("translateMdxPage validation gate", () => {
+  const EN_SOURCE = `---\ntitle: "Skill"\ndescription: "A page"\n---\n\n# Body\n`;
+  const REL = "agenteye/cli-skill.mdx";
+  const VALID_DE = `---\ntitle: "Fähigkeit"\ndescription: "Eine Seite"\n---\n\n# Körper\n`;
+  // An unescaped inner quote in the description — the reported failure class.
+  const BROKEN_FM_DE = `---\ntitle: "Fähigkeit"\ndescription: "Fragen Sie "ist kaputt?""\n---\n\n# Körper\n`;
+
+  let docsDir: string;
+  let srcPath: string;
+  let outputPath: string;
+
+  beforeEach(() => {
+    streamMock.mockReset();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    docsDir = mkdtempSync(join(tmpdir(), "mdx-gate-"));
+    srcPath = join(docsDir, REL);
+    mkdirSync(dirname(srcPath), { recursive: true });
+    writeFileSync(srcPath, EN_SOURCE);
+    outputPath = join(docsDir, "de", REL);
+  });
+
+  afterEach(() => {
+    rmSync(docsDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("writes the translation when it validates on the first try", async () => {
+    queueTranslation(VALID_DE);
+    const cache = emptyCache();
+
+    const result = await translateMdxPage(srcPath, "de", { docsDir, cache });
+
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(existsSync(outputPath)).toBe(true);
+    expect(result.attempts).toBe(1);
+  });
+
+  it("writes the valid retry after a broken-frontmatter first attempt", async () => {
+    queueTranslation(BROKEN_FM_DE);
+    queueTranslation(VALID_DE);
+    const cache = emptyCache();
+
+    const result = await translateMdxPage(srcPath, "de", { docsDir, cache });
+
+    expect(streamMock).toHaveBeenCalledTimes(2);
+    expect(result.attempts).toBe(2);
+    expect(existsSync(outputPath)).toBe(true);
+    // The VALID translation is what got written, not the broken first attempt.
+    expect(readFileSync(outputPath, "utf-8")).toContain("Eine Seite");
+  });
+
+  it("throws and writes no file when every attempt fails validation", async () => {
+    stickyTranslation(BROKEN_FM_DE);
+    const cache = emptyCache();
+
+    await expect(
+      translateMdxPage(srcPath, "de", { docsDir, cache }),
+    ).rejects.toThrow(/still fails validation/);
+    expect(existsSync(outputPath)).toBe(false);
+  });
+
+  it("adds no cache entry when every attempt fails validation", async () => {
+    stickyTranslation(BROKEN_FM_DE);
+    const cache = emptyCache();
+
+    await expect(
+      translateMdxPage(srcPath, "de", { docsDir, cache }),
+    ).rejects.toThrow();
+    expect(cache.translations).not.toHaveProperty(`${REL}::de`);
+    expect(Object.keys(cache.translations)).toHaveLength(0);
+  });
+
+  it("validates the sanitized, link-rewritten bytes rather than the raw model output", async () => {
+    // Raw output has a stray doubled quote in a JSX attribute (invalid MDX);
+    // sanitizeJsxAttributes fixes it before validation, so it passes on the
+    // first attempt — proving validation runs on the RENDERED bytes. Only one
+    // response is queued, so a wrongly-triggered retry would fail the test.
+    const RAW_FIXABLE = `---\ntitle: "Fähigkeit"\ndescription: "Eine Seite"\n---\n\n<Card title="Foo"" />\n`;
+    queueTranslation(RAW_FIXABLE);
+    const cache = emptyCache();
+
+    const result = await translateMdxPage(srcPath, "de", { docsDir, cache });
+
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(result.attempts).toBe(1);
+    const written = readFileSync(outputPath, "utf-8");
+    expect(written).toContain('title="Foo"');
+    expect(written).not.toContain('title="Foo""');
+  });
+
+  it("performs no validation and no model call under dryRun", async () => {
+    const result = await translateMdxPage(srcPath, "de", {
+      docsDir,
+      cache: emptyCache(),
+      dryRun: true,
+    });
+
+    expect(streamMock).not.toHaveBeenCalled();
+    expect(existsSync(outputPath)).toBe(false);
+    expect(result.cached).toBe(false);
   });
 });

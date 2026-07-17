@@ -46,9 +46,13 @@ jobs:
     strategy:
       fail-fast: false
       # Cap matrix fan-out so the LiteLLM proxy at ANTHROPIC_BASE_URL
-      # never sees the full 14-way burst. With 4 jobs x MAX_CONCURRENT=2
-      # = 8 simultaneous requests, well under the proxy's empirical
-      # connection-drop knee point (see scripts/translate-docs/cli.ts).
+      # never sees the full 14-way burst. With max-parallel 4 jobs x
+      # MAX_CONCURRENT=4 (the cli.ts default; the env block below does not set
+      # TRANSLATE_MAX_CONCURRENT) that is 16 simultaneous requests. A
+      # generation-time validation retry (TRANSLATE_MAX_ATTEMPTS) re-translates
+      # inside the worker's existing slot, so it lengthens that slot's
+      # wall-clock rather than adding a concurrent request — peak concurrency
+      # stays 16 no matter how many attempts a page needs.
       max-parallel: 4
       matrix:
         lang: ${{ fromJson(needs.prepare.outputs.languages) }}

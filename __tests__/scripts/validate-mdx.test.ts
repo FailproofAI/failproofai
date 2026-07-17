@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import {
   collectMdxFiles,
   encodeAnnotation,
+  findFrontmatterError,
   findMdxParseError,
+  findPageError,
   stripFrontmatter,
 } from "@/scripts/validate-mdx";
 
@@ -107,6 +109,120 @@ describe("findMdxParseError", () => {
     // keeps its `<!-- -->` — which is why convertHtmlComments skips fences.
     const src = "```xml\n<!-- ~/Library/LaunchAgents/foo.plist -->\n```\n";
     expect(await findMdxParseError(src)).toBeNull();
+  });
+});
+
+describe("findFrontmatterError", () => {
+  it("catches an unescaped inner quote in a double-quoted description scalar", () => {
+    // The exact class that failed run 29575781632: the model re-emits an inner
+    // quote unescaped into the YAML value.
+    const src = [
+      "---",
+      'title: "Failproof AI Observability CLI Agent Skill"',
+      'description: "Fragen Sie "ist etwas kaputt?" und lassen"',
+      "---",
+      "",
+      "# Body",
+      "",
+    ].join("\n");
+    const error = findFrontmatterError(src);
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/scalar|unexpected/i);
+  });
+
+  it("accepts a description with a properly escaped inner quote (the English source form)", () => {
+    // The English source escapes its inner quotes (`\"`), which is valid YAML;
+    // only the translation dropping the escape breaks it.
+    const src = [
+      "---",
+      'title: "Failproof AI Observability CLI Agent Skill"',
+      'description: "Ask your coding agent \\"is anything broken today?\\" and let it answer."',
+      "---",
+      "",
+      "# Body",
+      "",
+    ].join("\n");
+    expect(findFrontmatterError(src)).toBeNull();
+  });
+
+  it("returns null for a page with no frontmatter block", () => {
+    expect(findFrontmatterError("# Title\n\nJust prose.\n")).toBeNull();
+  });
+
+  it("returns null for well-formed frontmatter", () => {
+    const src = `---\ntitle: "Hello"\ndescription: "A page"\n---\n\n# Body\n`;
+    expect(findFrontmatterError(src)).toBeNull();
+  });
+
+  it("reports a file-relative line that counts the opening ---", () => {
+    // Error is on the `title` line — block line 1, file line 2 (the opening
+    // `---` is file line 1). This is deliberately one greater than the
+    // block-relative number mintlify prints; do not "fix" it to match.
+    const src = [
+      "---",
+      'title: "Foo "bar" baz"',
+      'description: "ok"',
+      "---",
+      "",
+      "# Body",
+      "",
+    ].join("\n");
+    const error = findFrontmatterError(src);
+    expect(error).not.toBeNull();
+    expect(error?.line).toBe(2);
+  });
+
+  it("strips the block-relative position from the message but keeps the caret excerpt", () => {
+    const src = `---\ntitle: "Foo "bar" baz"\n---\n\n# Body\n`;
+    const error = findFrontmatterError(src);
+    expect(error).not.toBeNull();
+    // The redundant "at line N, column N:" phrase is removed (it would
+    // contradict our file-relative line)...
+    expect(error?.message).not.toMatch(/at line \d+, column \d+/);
+    // ...but the caret-underlined excerpt that points a model at the defect
+    // is preserved.
+    expect(error?.message).toContain("^");
+  });
+
+  it("does not treat a mid-document --- thematic break as frontmatter", () => {
+    // The block must be at the very top; a `---` rule later in the body (and a
+    // broken-looking line after it) is not frontmatter.
+    const src = `# Title\n\nSome prose.\n\n---\n\ntitle: "not frontmatter "at all"\n`;
+    expect(findFrontmatterError(src)).toBeNull();
+  });
+});
+
+describe("findPageError", () => {
+  it("flags a frontmatter YAML error that the body compile misses", async () => {
+    // findMdxParseError blanks the frontmatter, so it alone returns null here;
+    // findPageError must still catch the frontmatter error.
+    const src = [
+      "---",
+      'title: "Foo "bar" baz"',
+      "---",
+      "",
+      "# A perfectly valid body",
+      "",
+    ].join("\n");
+    expect(await findMdxParseError(src)).toBeNull();
+    const error = await findPageError(src);
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/scalar|unexpected/i);
+  });
+
+  it("flags a body MDX error that the frontmatter check misses", async () => {
+    const src = [
+      "---",
+      'title: "All good here"',
+      "---",
+      "",
+      "Install with failproofai policy add <slug> now.",
+      "",
+    ].join("\n");
+    expect(findFrontmatterError(src)).toBeNull();
+    const error = await findPageError(src);
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/slug|closing tag/i);
   });
 });
 

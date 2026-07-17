@@ -419,6 +419,12 @@ async function main() {
   if (totalInput > 0) {
     console.log(`Total tokens: ${totalInput} input + ${totalOutput} output`);
   }
+  // Surface pages that needed a re-translation to pass validation, so a run
+  // that quietly retried does not read as a clean one in the job log.
+  const retried = translated.filter((r) => (r.attempts ?? 1) > 1);
+  if (retried.length > 0) {
+    console.log(`Retried: ${retried.length}`);
+  }
 
   if (errors.length > 0) {
     process.exit(1);

@@ -1,0 +1,131 @@
+---
+title: "Failproof AI Observability Python SDK Agent Skill"
+description: "Go from an uninstrumented agent to events you can see, with your coding agent finding the instrumentation points, writing them, and proving they landed."
+---
+
+Tell your coding agent *"add Failproof AI Observability to this agent"* and let it read your loop, work out where the instrumentation belongs, write it, and verify the events before it calls the job done.
+
+The **Python SDK skill** (`agenteye-python-sdk`) is an *Agent Skill*: a folder of instructions that a coding agent such as Claude Code or Codex loads on demand when a task matches it. It teaches the agent to use the [Python SDK](/agenteye/python-sdk) — it is not a library, and it changes nothing about how the SDK works.
+
+## Instrumentation is easy to write and easy to get quietly wrong
+
+The SDK is small: thirteen event methods, all keyword-only. A coding agent can read the [Python SDK](/agenteye/python-sdk) reference and produce plausible instrumentation in a minute.
+
+The catch is that this SDK does not raise when you get it wrong, and wrong instrumentation looks exactly like right instrumentation until someone opens a dashboard and finds it empty. The mistakes that cost real time are all silences:
+
+| The mistake | What you see |
+|---|---|
+| No `agent_start` | Every event lands. Zero sessions. |
+| Environment never set | Everything works, filed under `dev`. |
+| `outcome="failure"` | The run shows green — only `failed`, `error`, `timeout`, `rejected` count. |
+| A typo'd field name | Accepted and stored as a new field. |
+| Events emitted from a thread pool | Silently dropped. |
+
+None of these raise. None show up in tests. Every one is in the skill, stated as a contract with the check that catches it.
+
+## What it does, in order
+
+The skill runs the same three steps a careful engineer would:
+
+1. **Plan.** It reads your agent loop and asks the two questions only you can answer: what counts as one run (your `session_id`), and who the distinguishable actors are (your `agent_id`). It gets those agreed before writing code, because changing them later splits your history and breaks the trends.
+2. **Write.** It binds identity once per run rather than threading it through every call site, and it picks a concurrency-safe shape — a detail that matters, because the obvious shortcut silently mixes two overlapping runs into one session.
+3. **Verify.** It runs your agent and reads the resulting event files, checking that `agent_start` is present, the environment is right, and one run produced one session.
+
+That third step is the one people skip. The SDK writes events to local files, so a complete integration can be proven on a laptop with no server, no API key, and no network — which is exactly why the skill insists on doing it.
+
+## How it relates to the other skills
+
+Three skills, one clean split:
+
+| Skill | Reach for it when | What it touches |
+|---|---|---|
+| **Python SDK skill** (this page) | You want your agent to *emit* telemetry — "add observability", "why isn't my agent showing up?" | Writes code in your agent's repo. Reads nothing. |
+| **[Evaluator skill](/agenteye/evaluator-skill)** | You want to *score* runs — "what should we even measure?" | Writes code in your repo; reads telemetry |
+| **[CLI skill](/agenteye/cli-skill)** | You want to *read* what happened, or operate your deployment | Drives the CLI as you, including changes |
+
+They hand off in that order: this skill gets events flowing, the evaluator scores them, the CLI reads them back. There is nothing to evaluate and nothing to read until your agent emits sessions, so if you are starting from scratch, start here.
+
+## Prerequisites
+
+1. **Python 3.10+** and the agent codebase you want to instrument.
+2. **The SDK.** It is distributed to customers as a private wheel rather than from a public index — your onboarding covers how to get it and install it. The skill knows the install path and will ask you rather than guess if it cannot find it.
+3. **Nothing else.** No dashboard login, no API key, no network. The skill verifies against the event files the SDK writes, so it can finish and prove its work offline.
+
+## Where to get it
+
+The skill lives in the public [`FailproofAI/skills`](https://github.com/FailproofAI/skills) collection:
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+Add `-g` to install it for every project instead of just the current one, and `--copy` if your environment does not follow symlinks. For Codex, pass `-a codex`.
+
+## Installing it by hand
+
+Agent Skills are folders containing a `SKILL.md` plus references. If you would rather not use the installer:
+
+- **Claude Code**: copy the `agenteye-python-sdk/` folder into `~/.claude/skills/` (every project) or `<your-repo>/.claude/skills/` (that repo only). Claude Code discovers it automatically — check the `/skills` list, or just ask something that matches it.
+- **Codex**: Codex reads the same `SKILL.md`. The bundled `agents/openai.yaml` sets `allow_implicit_invocation: true`, so it is auto-selected when a task matches; otherwise invoke it as `$agenteye-python-sdk`.
+
+Run your agent **in the repository holding the code you want instrumented** — the skill reads your agent loop before it proposes anything.
+
+## What a session looks like
+
+```text
+you   ▸ Add Failproof AI Observability to this agent.
+
+agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
+        wrapper in llm.py. Two questions before I write anything.
+
+        What counts as one run? You handle requests concurrently, so I'd
+        use the request id you already have in ctx.request_id — then a
+        session here and a request in your logs are the same string.
+
+        And who are the actors? I see a planner path and a researcher
+        path. Label them separately, or is that one agent to you?
+
+you   ▸ Request id is right. They're one agent, call it "assistant".
+
+agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
+        agent_end bracket handle_request, including the error path. Used
+        a context-local for identity — your dispatcher runs tools in a
+        thread pool, and the simpler approach would have mixed concurrent
+        runs into one session without complaining.
+
+        Verified against a real run: 11 events across 4 files —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, one session
+        per request, durations paired.
+
+        One thing I did NOT do: your worker pool in batch.py submits
+        straight to the executor, so events from there would be dropped.
+        Want me to fix those too?
+```
+
+The pattern to notice: it read the code before proposing, asked only the questions you can answer, reused an id you already had, chose the concurrency-safe shape *because* it saw a thread pool, and **verified by reading the actual events** rather than declaring success — then flagged the one place it knew would fail quietly.
+
+## What you can ask it
+
+- *"Why isn't my agent showing up on the dashboard?"* → walks the ladder: are events being written, is `agent_start` there, is the environment right, is the collector reading the same place.
+- *"Everything's landing under dev."* → the environment was never set, or was reset by a later call.
+- *"Add token tracking."* → finds your LLM wrapper and records model, stop reason, and usage.
+- *"Instrument the sub-agents too."* → one session, distinct agent labels, nested under their parent.
+- *"Write tests for the instrumentation."* → points the SDK at a temporary directory and asserts on the events it wrote.
+
+## What to watch for
+
+**Let it verify.** The step that makes this skill worth using is the last one — running your agent and reading the events back. An agent that writes instrumentation and stops has done the easy half, and the half that fails silently is the other one.
+
+**Agree the names before the code.** `session_id` and `agent_id` are the axes every surface groups by. Renaming them later splits the history: old runs keep the old labels and your trends break. The skill will ask; the answer is worth a minute's thought.
+
+**If your agent proposes installing the SDK from a public index, the skill did not load.** The SDK is distributed privately. That proposal is a reliable tell that your coding agent is guessing rather than following the skill — stop it there and check the skill is installed.
+
+Beyond that its blast radius is small: it writes code in your working directory and event files where you tell it. It reads nothing from your deployment and changes nothing about it.
+
+## Next steps
+
+- **[Python SDK](/agenteye/python-sdk)**: the complete event reference — every event type and field — behind what this skill automates.
+- **[Sessions](/agenteye/sessions)**: what your instrumentation produces once events land.
+- **[Evaluator Agent Skill](/agenteye/evaluator-skill)**: the next step once runs are landing — scoring them.
+- **[CLI Agent Skill](/agenteye/cli-skill)**: reading your telemetry back.

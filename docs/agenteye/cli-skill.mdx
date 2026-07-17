@@ -20,6 +20,7 @@ Failproof AI Observability gives you four ways to reach the same data and contro
 | **[CLI recipes](/agenteye/cli-recipes)** | Copy-paste `jq`/pipeline patterns | Your terminal / scripts | You're wiring the CLI into automation |
 | **CLI skill** (this doc) | A natural-language front door on the CLI | Your coding agent, on your workstation | You want to *just ask* and let the agent pick the command |
 | **[Evaluator skill](/agenteye/evaluator-skill)** | A sibling skill that designs and builds your scoring service | Your coding agent, on your workstation | You want to *produce* eval scores rather than read them |
+| **[Python SDK skill](/agenteye/python-sdk-skill)** | A sibling skill that instruments your agent so it emits telemetry at all | Your coding agent, on your workstation | You want your agent to *produce* the events this skill reads |
 | **[In-dashboard AI assistant](/agenteye/assistant)** | A chat embedded in the dashboard | Server-side (in the dashboard) | You want in-dashboard Q&A over your data |
 
 The skill itself has no privileges of its own; it just turns your words into CLI calls that run as you:
@@ -153,5 +154,6 @@ For the exact commands, flags, and JSON shapes behind these, see the [CLI](/agen
 - **[CLI](/agenteye/cli)**: full command and flag reference for `agenteye`.
 - **[CLI recipes for agents](/agenteye/cli-recipes)**: copy-paste `jq` patterns and exit-code handling.
 - **[Evaluator agent skill](/agenteye/evaluator-skill)**: the sibling skill, for building the evaluator whose scores `agenteye evals` reads.
+- **[Python SDK agent skill](/agenteye/python-sdk-skill)**: the sibling skill, for instrumenting an agent so it emits the telemetry `agenteye` reads.
 - **[AI assistant](/agenteye/assistant)**: the in-dashboard assistant (not to be confused with this terminal skill).
 - **[API keys](/agenteye/api-keys)**: the per-org permission model that bounds what the skill can do.

@@ -18,11 +18,15 @@ Under the hood, the SDK writes structured events to local JSONL files, and the c
 
 ## Installation
 
-Install the SDK from PyPI:
+The SDK is distributed to customers as a private wheel rather than from a public package index. Your onboarding covers how to obtain it, install it, and pin it — talk to your Failproof AI contact if you need access.
+
+Once it is installed, confirm you have it:
 
 ```bash
-pip install agenteye
+python -c "import agenteye; print(agenteye.__version__)"
 ```
+
+Prefer to let a coding agent do the whole integration? The [Python SDK Agent Skill](/agenteye/python-sdk-skill) knows the install path, plans the instrumentation points, writes them, and verifies the events land.
 
 ---
 

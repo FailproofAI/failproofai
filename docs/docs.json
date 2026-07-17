@@ -63,6 +63,7 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "agenteye/python-sdk",
+                  "agenteye/python-sdk-skill",
                   "agenteye/cli",
                   "agenteye/cli-skill",
                   "agenteye/cli-recipes",

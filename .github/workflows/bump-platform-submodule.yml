@@ -1,31 +1,45 @@
-name: Bump platform submodule pointer
+name: Bump downstream submodule pointers
 
-# When this repo's main moves, push a matching gitlink bump to the
-# FailproofAI/platform monorepo so its `failproofai/oss` submodule tracks
-# upstream automatically. Direct push to platform `main` — no PR.
+# When this repo's main moves, push a matching gitlink bump to every downstream
+# repo that carries this one as a `failproofai/oss` submodule, so their pinned
+# commits track upstream automatically. Direct push to each downstream `main` —
+# no PR.
 #
-# The platform repo is governed by the `failproofai-rules` ruleset (PR + 1 review
-# required on main), which rejects a plain GITHUB_TOKEN push with GH013. We
-# instead mint a token for the version-bot GitHub App — a bypass actor on that
-# ruleset — so the push is accepted.
+# Both downstreams are governed by the org-level `failproofai-rules` ruleset
+# (PR + 1 review required on main), which rejects a plain GITHUB_TOKEN push with
+# GH013. We instead mint a token for the version-bot GitHub App — a bypass actor
+# on that ruleset — so the push is accepted. The same ruleset object governs both
+# repos, so one bypass covers both.
+#
+# The filename still says `platform` so the Actions run history — which GitHub
+# keys by workflow path — survives; the matrix below is the source of truth for
+# which repos actually get bumped.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Serialize runs so back-to-back merges produce sequential bumps,
-# not a race that loses one of them.
-concurrency:
-  group: bump-platform-submodule
-  cancel-in-progress: false
-
 jobs:
   bump:
     runs-on: ubuntu-latest
+    strategy:
+      # Independent repos: a failure bumping one must not cancel the other.
+      fail-fast: false
+      matrix:
+        # Every repo carrying this one at `failproofai/oss`. Add a repo here and
+        # it gets bumped — nothing else in this file is downstream-specific.
+        repo: [platform, agenteye]
+    # Serialize per downstream so back-to-back merges produce sequential bumps,
+    # not a race that loses one of them. Keyed by repo so a slow platform bump
+    # never delays agenteye's.
+    concurrency:
+      group: bump-submodule-${{ matrix.repo }}
+      cancel-in-progress: false
     steps:
       # Token for the version-bot GitHub App — a bypass actor on the org
-      # ruleset, so pushes to platform main bypass the PR requirement.
+      # ruleset, so pushes to the downstream main bypass the PR requirement.
+      # Scoped to just the one repo this matrix leg touches.
       - name: Mint version-bot app token
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -33,14 +47,14 @@ jobs:
           app-id: ${{ secrets.VERSION_BOT_APP_ID }}
           private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
           # Without an explicit owner/repository, the action scopes the token
-          # to this repository, which cannot checkout the private platform repo.
+          # to this repository, which cannot checkout the private downstream repo.
           owner: FailproofAI
-          repositories: platform
+          repositories: ${{ matrix.repo }}
 
-      - name: Checkout FailproofAI/platform main
+      - name: Checkout FailproofAI/${{ matrix.repo }} main
         uses: actions/checkout@v7
         with:
-          repository: FailproofAI/platform
+          repository: FailproofAI/${{ matrix.repo }}
           # Persist the app token so `git push` below bypasses the ruleset.
           # The version-bot App is a bypass actor on `failproofai-rules`.
           token: ${{ steps.app-token.outputs.token }}
@@ -54,6 +68,7 @@ jobs:
           NEW_SHA: ${{ github.sha }}
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
           UPSTREAM_REPO: ${{ github.repository }}
+          DOWNSTREAM_REPO: ${{ matrix.repo }}
         run: |
           set -euo pipefail
 
@@ -62,7 +77,7 @@ jobs:
 
           CURRENT_SHA=$(git ls-tree HEAD failproofai/oss | awk '{print $3}')
           if [ -z "$CURRENT_SHA" ]; then
-            echo "::error::failproofai/oss is not a gitlink in platform main — aborting."
+            echo "::error::failproofai/oss is not a gitlink in $DOWNSTREAM_REPO main — aborting."
             exit 1
           fi
           if [ "$CURRENT_SHA" = "$NEW_SHA" ]; then
@@ -87,8 +102,8 @@ jobs:
                      -m "Upstream: $SUBJECT_LINE" \
                      -m "https://github.com/$UPSTREAM_REPO/commit/$NEW_SHA"
 
-          # Race-safe push: if platform main moved between checkout and push,
-          # rebase the single bump commit on top and try again.
+          # Race-safe push: if the downstream main moved between checkout and
+          # push, rebase the single bump commit on top and try again.
           for attempt in 1 2 3; do
             if git push origin main; then
               echo "Pushed bump on attempt $attempt"

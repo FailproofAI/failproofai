@@ -47,14 +47,43 @@ These are two different tools with very different blast radii:
 
 ---
 
+## Where to get it
+
+The skill is published in Failproof AI's public skills collection:
+
+**[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-cli/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-cli)
+
+Nothing about it is gated — the repository is public and the skill needs no credential of its own, because it only drives the **public** `agenteye` CLI against *your* dashboard, using the session *you* logged in with. You do not need to ask anyone for it.
+
+Note it ships as its own folder and is **not** inside the `pipx install agenteye` package, so don't look for it there.
+
 ## Installing the skill
 
-Agent Skills are folders that contain a `SKILL.md` (plus optional references). You install the `agenteye-cli` skill by placing its folder where your agent looks for skills:
+The quickest path is the [`skills`](https://skills.sh) CLI, which fetches the folder and drops it where your agent looks:
 
-- **Claude Code**: copy the `agenteye-cli/` folder into `~/.claude/skills/` (available in every project) or into `<your-repo>/.claude/skills/` (scoped to that repo). Claude Code auto-discovers it; verify with the `/skills` list, or just ask a question that matches its description.
+```bash
+# Claude Code, this project only
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
+
+# every project (installs to ~/.claude/skills/)
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
+
+# Codex instead
+npx skills add FailproofAI/skills --skill agenteye-cli -a codex
+```
+
+Then manage it like any other skill:
+
+```bash
+npx skills list -a claude-code      # what's installed
+npx skills update agenteye-cli      # pull the latest version
+npx skills remove agenteye-cli      # remove it
+```
+
+Prefer to install by hand? An Agent Skill is just a folder containing a `SKILL.md` (plus optional references), so copying it works too:
+
+- **Claude Code**: put the `agenteye-cli/` folder in `~/.claude/skills/` (every project) or `<your-repo>/.claude/skills/` (that repo only). Claude Code auto-discovers it — verify with the `/skills` list, or simply ask a question that matches its description.
 - **Codex (OpenAI)**: Codex reads the same `SKILL.md`. The bundled `agents/openai.yaml` sets `allow_implicit_invocation: true`, so Codex auto-selects the skill when a task matches; otherwise invoke it explicitly as `$agenteye-cli`.
-
-The skill is maintained alongside the `agenteye` CLI but ships as a **separate folder**, not inside the `pipx install agenteye` package, so don't look for it there. Failproof AI Observability delivers the `agenteye-cli/` folder to you on its own; if you don't have it, ask your Failproof AI contact. Nothing about it is gated: it needs no credential at all, because it only drives the **public** `agenteye` CLI against your own dashboard.
 
 ---
 

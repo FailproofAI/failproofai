@@ -1405,16 +1405,108 @@
     "links": [],
     "primary": {
       "type": "button",
-      "label": "Get started",
-      "href": "/getting-started"
+      "label": "Talk to us",
+      "href": "https://cal.com/nikita-agarwal-exosphere/30-minute-chat-failproof-ai"
     }
   },
   "footer": {
     "socials": {
+      "website": "https://befailproof.ai",
       "github": "https://github.com/failproofai/failproofai",
+      "discord": "https://discord.befailproof.ai/",
       "x": "https://x.com/failproofai"
-    }
+    },
+    "links": [
+      {
+        "header": "Product",
+        "items": [
+          {
+            "label": "Home",
+            "href": "https://befailproof.ai"
+          },
+          {
+            "label": "Blog",
+            "href": "https://befailproof.ai/blog/"
+          },
+          {
+            "label": "Guides",
+            "href": "https://befailproof.ai/guides/"
+          }
+        ]
+      },
+      {
+        "header": "Resources",
+        "items": [
+          {
+            "label": "npm",
+            "href": "https://www.npmjs.com/package/failproofai"
+          },
+          {
+            "label": "GitHub",
+            "href": "https://github.com/failproofai/failproofai"
+          },
+          {
+            "label": "Discord",
+            "href": "https://discord.befailproof.ai/"
+          }
+        ]
+      }
+    ]
   },
+  "redirects": [
+    {
+      "source": "/agenteye/collector-installation",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/collector-migration",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/deployment-options",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/faq",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/getting-started",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/github-token",
+      "destination": "/agenteye/api-keys"
+    },
+    {
+      "source": "/agenteye/health-monitoring",
+      "destination": "/agenteye/observability"
+    },
+    {
+      "source": "/agenteye/kubernetes-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/managed-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/single-pod-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/tenant-management",
+      "destination": "/agenteye/api-keys"
+    },
+    {
+      "source": "/agenteye/troubleshooting",
+      "destination": "/agenteye/overview"
+    }
+  ],
   "integrations": {
     "ga4": {
       "measurementId": "G-Z3Z6GJ74H9"

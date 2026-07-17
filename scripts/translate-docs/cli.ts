@@ -9,7 +9,11 @@ import {
   getLanguageByCode,
   getModelForTier,
 } from "./config";
-import { getEnglishMdxPages, translateMdxPage } from "./mdx-translator";
+import {
+  getEnglishMdxPages,
+  translateMdxPage,
+  pruneOrphanedTranslations,
+} from "./mdx-translator";
 import { translateReadme } from "./readme-translator";
 import {
   getNavigationPageReferences,
@@ -33,6 +37,8 @@ const { values: args } = parseArgs({
     force: { type: "boolean", short: "f", default: false },
     "update-nav": { type: "boolean", default: false },
     validate: { type: "boolean", default: false },
+    prune: { type: "boolean", default: false },
+    "no-prune": { type: "boolean", default: false },
     model: { type: "string", short: "m" },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -53,6 +59,8 @@ Options:
   -f, --force              Ignore cache, re-translate everything
       --update-nav         Regenerate docs.json navigation after translation
       --validate           Check all nav references resolve to files
+      --prune              Only delete translations whose English source is gone
+      --no-prune           Skip the prune step during a normal translation run
   -m, --model <model>      Claude model override (default: Sonnet for Tier 1, Haiku for Tier 2/3)
   -h, --help               Show this help
 
@@ -65,6 +73,7 @@ Examples:
   bun scripts/translate-docs/cli.ts --dry-run --tier 3    # Preview all translations
   bun scripts/translate-docs/cli.ts --validate            # Check nav references
   bun scripts/translate-docs/cli.ts --update-nav          # Regenerate docs.json
+  bun scripts/translate-docs/cli.ts --prune --tier 3      # Drop orphaned translations
 `);
   process.exit(0);
 }
@@ -132,6 +141,26 @@ async function main() {
     return;
   }
 
+  // Prune-only mode
+  if (args.prune) {
+    const langCodes = resolveLanguages();
+    const cache = readCache();
+    const pruned = pruneOrphanedTranslations(langCodes, {
+      dryRun: args["dry-run"],
+      cache,
+    });
+    for (const file of pruned) {
+      console.log(
+        `  ${args["dry-run"] ? "would remove" : "removed"}: ${file}`,
+      );
+    }
+    if (pruned.length > 0 && !args["dry-run"]) writeCache(cache);
+    console.log(
+      `\n${pruned.length} orphaned translation(s)${args["dry-run"] ? " would be" : ""} removed.`,
+    );
+    return;
+  }
+
   const langCodes = resolveLanguages();
   const isDryRun = args["dry-run"];
   const isForce = args.force;
@@ -196,6 +225,23 @@ async function main() {
 
   // Translate docs
   if (!args["readme-only"]) {
+    // Drop translations orphaned by an upstream English deletion before
+    // translating, so a stale locale page can never outlive its source.
+    if (!args["no-prune"]) {
+      const pruned = pruneOrphanedTranslations(langCodes, {
+        dryRun: isDryRun,
+        cache,
+      });
+      for (const file of pruned) {
+        console.log(`  ${isDryRun ? "would prune" : "pruned"}: ${file}`);
+      }
+      if (pruned.length > 0) {
+        console.log(
+          `${pruned.length} orphaned translation(s)${isDryRun ? " would be" : ""} removed.`,
+        );
+      }
+    }
+
     const pages = getEnglishMdxPages();
     const filteredPages = args.pages
       ? pages.filter((p) => {

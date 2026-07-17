@@ -132,6 +132,15 @@ jobs:
           merge-multiple: true
           path: docs
 
+      # The per-language jobs prune their own tree, but this job re-checks out
+      # main and *overlays* the artifacts — download-artifact only adds files,
+      # it never deletes — so any orphan committed on main is resurrected here.
+      # Prune again on the merged tree, which is what actually gets committed.
+      - name: Prune translations whose English source was deleted
+        run: >-
+          bun scripts/translate-docs/cli.ts --prune
+          --languages zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he
+
       - name: Update localized product navigation
         run: >-
           bun scripts/translate-docs/cli.ts --update-nav

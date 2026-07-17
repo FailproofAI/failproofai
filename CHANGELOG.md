@@ -2,7 +2,13 @@
 
 ## 0.0.14-beta.1 — 2026-07-17
 
+### Docs
+- Point the docs navbar button at the landing page's "talk to us" booking link instead of `/getting-started`, so the primary CTA matches befailproof.ai. (#556)
+- Give the docs footer a way back to the product: add `website` + `discord` to the footer socials and Product (Home / Blog / Guides) and Resources (npm / GitHub / Discord) link columns, mirroring the befailproof.ai footer. Previously the docs linked back to the marketing site from nowhere. (#556)
+- Redirect the 13 AgentEye pages the upstream syncs deleted (`/agenteye/deployment`, `/agenteye/kubernetes-deployment`, `/agenteye/troubleshooting`, …) to a live page instead of hard-404ing. (#556)
+
 ### Fixes
+- Delete translated pages whose English source no longer exists, and stop them coming back: `translate-docs` gained a `--prune` mode that runs by default on every translation pass (`--no-prune` opts out) and as an explicit step in the `consolidate` job — that job re-checks-out `main` and *overlays* the artifacts, so a prune done only in the per-language jobs would be undone. Translation only ever moved forward, so the 11 pages the AgentEye syncs removed upstream left 154 orphans (11 × 14 locales) that `--update-nav` dropped from the sidebar but Mintlify still served and indexed — non-English readers could land on docs for a deleted feature with no way out. A repo invariant test now fails if any translation outlives its English source. (#556)
 - Move the docs auto-translation daily cron from 06:00 UTC to 11:05 AM IST (05:35 UTC, encoded as `35 5 * * *` since GitHub Actions cron is always UTC). (#553)
 
 ## 0.0.14-beta.1 — 2026-07-14

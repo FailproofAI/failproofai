@@ -119,22 +119,6 @@ before they become incidents. Zero latency. Runs locally.
   </tr>
 </table>
 
-> Install hooks for one or any combination: `failproofai policies --install --cli opencode pi` (or `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Omit `--cli` to auto-detect installed CLIs and prompt.
->
-> **Hermes** (hermes-agent, a Slack/Telegram gateway) is supported for both **live-hook enforcement** (`--cli hermes` — one install intercepts tool calls from every platform and subagent) and offline **audit** replay of its gateway sessions from the single `~/.hermes/state.db`.
->
-> **OpenClaw** (openclaw gateway, a self-hosted multi-channel assistant) is supported for both **live-hook enforcement** (`--cli openclaw`, user-scope) and offline **audit** replay of its JSONL sessions (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Enforcement uses OpenClaw's **in-process plugin hooks** (a shipped `openclaw-plugin/` that async-spawns failproofai — its file-based internal hooks are observation-only and can't block): `before_tool_call` blocks a tool, and `before_agent_finalize` is a real turn-end gate, so the `require-*-before-stop` builtins enforce.
->
-> **Factory Droid** (`droid`) is supported for both **live-hook enforcement** (`--cli factory`, user + project scope) and offline **audit** replay of its on-disk JSONL sessions. droid blocks tool calls off hook **exit code 2** (not a JSON decision) and honors `{decision:"block"}` only on the turn-end `Stop` event — failproofai emits the right shape per event automatically.
->
-> **Devin CLI** (`devin`, Cognition) is supported for both **live-hook enforcement** (`--cli devin`, user + project scope) and offline **audit** replay of its SQLite sessions (`~/.local/share/devin/cli/sessions.db`). Devin is a **pure Claude-clone** — same event names, same snake_case payload, same `"hooks"`-wrapper config (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — blocking via `{decision:"block"}` JSON on every event.
->
-> **Antigravity CLI** (`agy`) is supported for both **live-hook enforcement** (`--cli antigravity`, user + project scope) and offline **audit** replay of its plain-JSONL sessions (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity has its **own** contract (not a Claude-clone): a **named-hook** `hooks.json` schema (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), a camelCase stdin payload that failproofai normalizes, and its own response shapes — `{decision:"deny"}` to block a tool, `{decision:"continue"}` to force another turn at `Stop`, `{injectSteps}` to inject a reminder before the model runs.
->
-> **Goose** (codename goose, Block) is supported for both **live-hook enforcement** (`--cli goose`, user + project scope) and offline **audit** replay of its SQLite sessions (`~/.local/share/goose/sessions/sessions.db`). Enforcement uses Goose's **hooks** system (the cross-agent **Open Plugins** spec) — the installer just drops a plugin dir at `~/.agents/plugins/failproofai/` and Goose auto-discovers it. Blocking is `{"decision":"block"}` JSON on the `PreToolUse` event (which fires for the shell tool and inside delegated subagents), verified live against goose v1.43.0; Goose has no turn-end `Stop` event, so the `require-*-before-stop` builtins don't apply (as with Hermes).
-
----
-
 ## Install
 
 ```sh

@@ -11,15 +11,15 @@
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
-[![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.gg/2zjBZP7yQJ)
+[![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
 
 **Bản dịch:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
 **Giải quyết lỗi thời gian chạy cho các agent mã hóa.**
-Tích hợp vào Claude Code và Codex. Phát hiện các vòng lặp, hành động nguy hiểm và rò rỉ bí mật
-trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục bộ.
+Kết nối với Claude Code và Codex. Bắt các vòng lặp, hành động nguy hiểm và rò rỉ bí mật
+trước khi chúng trở thành sự cố. Độ trễ bằng không. Chạy cục bộ.
 
 </div>
 
@@ -29,7 +29,7 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
 
 ---
 
-## Các CLI agent được hỗ trợ
+## Agent CLI được hỗ trợ
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -125,19 +125,19 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
   </tr>
 </table>
 
-> Cài đặt hook cho một hoặc bất kỳ sự kết hợp nào: `failproofai policies --install --cli opencode pi` (hoặc `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Bỏ qua `--cli` để tự động phát hiện CLI đã cài đặt và nhắc nhở.
+> Cài đặt hooks cho một hoặc nhiều kết hợp: `failproofai policies --install --cli opencode pi` (hoặc `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Bỏ qua `--cli` để tự động phát hiện các CLI đã cài đặt và nhắc.
 >
-> **Hermes** (hermes-agent, một gateway Slack/Telegram) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli hermes` — một lần cài đặt chặn lệnh gọi công cụ từ mọi nền tảng và agent phụ) và **kiểm tra** ngoại tuyến phát lại các phiên gateway từ `~/.hermes/state.db` duy nhất.
+> **Hermes** (hermes-agent, một cổng Slack/Telegram) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli hermes` — một bản cài đặt chặn các lệnh công cụ từ mọi nền tảng và agent con) và **kiểm toán** ngoại tuyến của các phiên cổng từ `~/.hermes/state.db` duy nhất.
 >
-> **OpenClaw** (openclaw gateway, một assistant đa kênh tự lưu trữ) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli openclaw`, phạm vi người dùng) và **kiểm tra** ngoại tuyến phát lại các phiên JSONL của nó (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Cụ thể sử dụng **hook plugin quy trình OpenClaw** (một `openclaw-plugin/` được gửi kèm theo hệ thống tạo failproofai không đồng bộ — hook nội bộ dựa trên tệp của nó chỉ quan sát và không thể chặn): `before_tool_call` chặn một công cụ, và `before_agent_finalize` là một cổng turn-end thực, vì vậy các builtins `require-*-before-stop` cũng cụ thể.
+> **OpenClaw** (cổng openclaw, trợ lý tự lưu trữ đa kênh) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli openclaw`, phạm vi người dùng) và **kiểm toán** ngoại tuyến của các phiên JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Thực thi sử dụng **hook plugin trong quá trình** của OpenClaw (một `openclaw-plugin/` được gửi kèm mà tạo failproofai không đồng bộ — các hook nội bộ dựa trên tệp của nó chỉ có thể quan sát và không thể chặn): `before_tool_call` chặn một công cụ, và `before_agent_finalize` là cổng kết thúc lượt thực sự, vì vậy các builtins `require-*-before-stop` thực thi.
 >
-> **Factory Droid** (`droid`) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli factory`, phạm vi người dùng + dự án) và **kiểm tra** ngoại tuyến phát lại các phiên JSONL trên đĩa của nó. droid chặn lệnh gọi công cụ ngoài mã thoát hook **2** (không phải quyết định JSON) và chỉ tôn trọng `{decision:"block"}` trên sự kiện turn-end `Stop` — failproofai phát ra hình dạng phù hợp cho mỗi sự kiện tự động.
+> **Factory Droid** (`droid`) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli factory`, phạm vi người dùng + dự án) và **kiểm toán** ngoại tuyến của các phiên JSONL trên đĩa. droid chặn các lệnh công cụ tắt hook **mã thoát 2** (không phải quyết định JSON) và chỉ tôn trọng `{decision:"block"}` trên sự kiện kết thúc lượt `Stop` — failproofai tự động phát ra hình dạng đúng cho mỗi sự kiện.
 >
-> **Devin CLI** (`devin`, Cognition) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli devin`, phạm vi người dùng + dự án) và **kiểm tra** ngoại tuyến phát lại các phiên SQLite của nó (`~/.local/share/devin/cli/sessions.db`). Devin là một **bản sao Claude tinh khiết** — cùng tên sự kiện, cùng tải trọng snake_case, cùng cấu hình `hooks`-wrapper (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — chặn thông qua JSON `{decision:"block"}` trên mọi sự kiện.
+> **Devin CLI** (`devin`, Cognition) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli devin`, phạm vi người dùng + dự án) và **kiểm toán** ngoại tuyến của các phiên SQLite (`~/.local/share/devin/cli/sessions.db`). Devin là một **Claude-clone thuần túy** — các tên sự kiện giống nhau, payload snake_case giống nhau, cấu hình bao bọc `hooks` giống nhau (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — chặn qua JSON `{decision:"block"}` trên mọi sự kiện.
 >
-> **Antigravity CLI** (`agy`) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli antigravity`, phạm vi người dùng + dự án) và **kiểm tra** ngoại tuyến phát lại các phiên JSONL thuần của nó (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity có **riêng** hợp đồng của nó (không phải bản sao Claude): một sơ đồ `hooks.json` **hook có tên** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), tải trọng stdin camelCase mà failproofai chuẩn hóa, và các hình dạng phản hồi của riêng nó — `{decision:"deny"}` để chặn một công cụ, `{decision:"continue"}` để buộc một turn khác tại `Stop`, `{injectSteps}` để tiêm một lời nhắc trước khi mô hình chạy.
+> **Antigravity CLI** (`agy`) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli antigravity`, phạm vi người dùng + dự án) và **kiểm toán** ngoại tuyến của các phiên JSONL thuần (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity có **hợp đồng riêng của nó** (không phải Claude-clone): một lược đồ `hooks.json` **hook được đặt tên** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), payload stdin camelCase mà failproofai chuẩn hóa, và hình dạng phản hồi riêng của nó — `{decision:"deny"}` để chặn một công cụ, `{decision:"continue"}` để buộc một lượt khác ở `Stop`, `{injectSteps}` để tiêm nhắc nhở trước khi mô hình chạy.
 >
-> **Goose** (codename goose, Block) được hỗ trợ cho cả **cụ thể thực thi hook trực tiếp** (`--cli goose`, phạm vi người dùng + dự án) và **kiểm tra** ngoại tuyến phát lại các phiên SQLite của nó (`~/.local/share/goose/sessions/sessions.db`). Cụ thể sử dụng hệ thống **hooks** của Goose (spec **Open Plugins** xuyên agent) — bộ cài đặt chỉ thả một thư mục plugin tại `~/.agents/plugins/failproofai/` và Goose tự động phát hiện nó. Chặn là JSON `{"decision":"block"}` trên sự kiện `PreToolUse` (kích hoạt cho công cụ shell và bên trong các agent phụ được ủy quyền), được xác minh trực tiếp với goose v1.43.0; Goose không có sự kiện turn-end `Stop`, vì vậy các builtins `require-*-before-stop` không áp dụng (như với Hermes).
+> **Goose** (codename goose, Block) được hỗ trợ cho cả **thực thi hook trực tiếp** (`--cli goose`, phạm vi người dùng + dự án) và **kiểm toán** ngoại tuyến của các phiên SQLite (`~/.local/share/goose/sessions/sessions.db`). Thực thi sử dụng hệ thống **hooks** của Goose (lệnh **Open Plugins** đa agent) — trình cài đặt chỉ cần thả thư mục plugin tại `~/.agents/plugins/failproofai/` và Goose sẽ tự động khám phá nó. Chặn là JSON `{"decision":"block"}` trên sự kiện `PreToolUse` (kích hoạt cho công cụ shell và bên trong các agent con được ủy thác), xác minh trực tiếp trên goose v1.43.0; Goose không có sự kiện kết thúc lượt `Stop`, vì vậy các builtins `require-*-before-stop` không áp dụng (như Hermes).
 
 ---
 
@@ -145,32 +145,32 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # hoặc chỉ chạy `failproofai` và chấp nhận lời nhắc lần đầu
+failproofai policies --install   # hoặc chạy `failproofai` và chấp nhận lời nhắc lần đầu
 failproofai
 ```
 
-30 chính sách tích hợp được kích hoạt ngay lập tức. Bảng điều khiển tại `localhost:8020`. Tắt lời nhắc lần đầu bằng `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 chính sách tích hợp sẽ kích hoạt ngay lập tức. Bảng điều khiển tại `localhost:8020`. Tắt lời nhắc lần đầu với `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Những gì nó ngăn chặn
+## Những gì nó chặn
 
 | Chính sách | Những gì nó chặn |
 |---|---|
-| `block-push-master` | Đẩy trực tiếp đến `main` / `master` |
+| `block-push-master` | Đẩy trực tiếp tới `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Cam kết, hợp nhất, rebase trên `main` / `master` |
+| `block-work-on-main` | Commits, merges, rebases trên `main` / `master` |
 | `block-rm-rf` | Xóa tệp đệ quy |
-| `sanitize-api-keys` | Các khóa API rò rỉ vào ngữ cảnh agent |
+| `sanitize-api-keys` | Khóa API rò rỉ vào ngữ cảnh agent |
 
 → [Tất cả 30 chính sách tích hợp](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## Các chính sách của riêng bạn
+## Chính sách của riêng bạn
 
-Thả một tệp vào `.failproofai/policies/` — nó tải tự động, không cần cờ.
-Cam kết nó và toàn bộ nhóm sẽ nhận được nó vào lần kéo tiếp theo.
+Thả tệp vào `.failproofai/policies/` — nó tải tự động, không cần cờ nào.
+Commit nó và toàn bộ nhóm sẽ có được nó trên lần pull tiếp theo.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -191,8 +191,8 @@ Ba quyết định có sẵn cho mọi chính sách:
 | Quyết định | Hiệu ứng |
 |---|---|
 | `allow()` | Cho phép hoạt động |
-| `deny(message)` | Chặn nó — thông báo quay trở lại agent |
-| `instruct(message)` | Để nó đi qua, nhưng thêm ngữ cảnh vào lời nhắc tiếp theo của agent |
+| `deny(message)` | Chặn nó — thông báo trở về agent |
+| `instruct(message)` | Cho phép nó, nhưng thêm ngữ cảnh vào lời nhắc tiếp theo của agent |
 
 → [Hướng dẫn chính sách tùy chỉnh](https://docs.befailproof.ai/custom-policies)
 
@@ -200,9 +200,9 @@ Ba quyết định có sẵn cho mọi chính sách:
 
 ## Khả năng hiển thị phiên
 
-Mọi lệnh gọi công cụ mà agent của bạn thực hiện đều được ghi nhật ký cục bộ. Bảng điều khiển hiển thị những gì đã chạy,
-những gì bị chặn và những gì chính sách đã nói với agent — vì vậy bạn không phải đoán
-khi có điều gì đó không ổn. → [Hướng dẫn bảng điều khiển](https://docs.befailproof.ai/dashboard)
+Mọi lệnh công cụ mà agent của bạn thực hiện đều được ghi lại cục bộ. Bảng điều khiển hiển thị những gì đã chạy,
+những gì đã bị chặn và những gì chính sách cho agent biết — vì vậy bạn không phải đoán
+khi có điều gì đó trục trặc. → [Hướng dẫn bảng điều khiển](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -210,8 +210,8 @@ khi có điều gì đó không ổn. → [Hướng dẫn bảng điều khiển
 
 | | |
 |---|---|
-| [Bắt đầu](https://docs.befailproof.ai/getting-started) | Cài đặt và bước đầu tiên |
-| [Chính sách tích hợp](https://docs.befailproof.ai/built-in-policies) | Tất cả 30 chính sách với các tham số |
+| [Bắt đầu](https://docs.befailproof.ai/getting-started) | Cài đặt và các bước đầu tiên |
+| [Chính sách tích hợp](https://docs.befailproof.ai/built-in-policies) | Tất cả 30 chính sách với tham số |
 | [Chính sách tùy chỉnh](https://docs.befailproof.ai/custom-policies) | Viết của riêng bạn |
 | [Cấu hình](https://docs.befailproof.ai/configuration) | Phạm vi cấu hình và quy tắc hợp nhất |
 | [Bảng điều khiển](https://docs.befailproof.ai/dashboard) | Giám sát phiên và hoạt động chính sách |
@@ -221,19 +221,19 @@ khi có điều gì đó không ổn. → [Hướng dẫn bảng điều khiển
 
 ## Giấy phép
 
-MIT với [Commons Clause](https://commonsclause.com/) — miễn phí cho việc sử dụng nội bộ và cá nhân; bán lại thương mại của failproofai yêu cầu một thỏa thuận riêng. Xem [LICENSE](./LICENSE) để có toàn bộ văn bản.
+MIT với [Commons Clause](https://commonsclause.com/) — miễn phí cho mục đích nội bộ và cá nhân; bán lại thương mại failproofai yêu cầu một thỏa thuận riêng. Xem [LICENSE](./LICENSE) để biết toàn bộ văn bản.
 
 ---
 
 ## Đóng góp
 
-Xem [CONTRIBUTING.md](./CONTRIBUTING.md). Các chính sách mới, trường hợp cạnh và bản dịch đều được chào đón.
+Xem [CONTRIBUTING.md](./CONTRIBUTING.md). Các chính sách mới, trường hợp cạnh, và bản dịch đều được chào đón.
 
-> **Xây dựng trước khi bắt đầu.** Chạy `bun install && bun run build` trước tiên. Kho lưu trữ này chạy
+> **Xây dựng trước khi bạn bắt đầu.** Chạy `bun install && bun run build` trước tiên. Kho lưu trữ này chạy
 > các hook của failproofai trên chính nó, và chúng giải quyết nhập `failproofai` so với
-> gói biên dịch `dist/` — mà không cần xây dựng bạn sẽ gặp `Cannot find package 'failproofai'`
-> lỗi hook. Xây dựng lại sau khi thay đổi `src/`. Xem
-> [Xây dựng trước khi các hook dev trong repo sẽ hoạt động](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> gói được biên dịch `dist/` — không có bản dựng bạn sẽ gặp lỗi `Cannot find package 'failproofai'`
+> hook. Xây dựng lại sau khi thay đổi `src/`. Xem
+> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

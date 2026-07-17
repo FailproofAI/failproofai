@@ -1,61 +1,70 @@
 ---
-title: "Habilidad de Agente CLI AgentEye"
-description: "Documentación de la habilidad de Agente CLI AgentEye."
+title: "Habilidad del Agente CLI de Observabilidad de FailproofAI"
+description: "Documentación de la Habilidad del Agente CLI de Observabilidad de FailproofAI."
 ---
 
 
-La **habilidad CLI de AgentEye** (`agenteye-cli`) es una *Habilidad de Agente* instalable que enseña a un agente de codificación — Claude Code, Codex y herramientas compatibles — a operar tu despliegue de AgentEye a través de la [`agenteye` CLI](/es/agenteye/cli) mediante solicitudes en lenguaje natural: *"¿hay algo roto hoy?"*, *"dale a CI una clave que solo pueda enviar eventos"*, *"reconoce el incidente activo y asígnamelo"*.
+Pregúntale a tu agente de programación *"¿hay algo roto hoy?"* y deja que responda con tus datos en vivo de Observabilidad de FailproofAI, sin necesidad de memorizar comandos. La **habilidad CLI de Observabilidad de FailproofAI** (`agenteye-cli`) es una *Habilidad de Agente*: una pequeña carpeta de instrucciones que un agente de programación como Claude Code o Codex carga bajo demanda. Le enseña al agente a operar tu despliegue de Observabilidad a través de la [CLI `agenteye`](/es/agenteye/cli) con solicitudes en lenguaje natural como *"dale a CI una clave que solo pueda enviar eventos"* o *"acepta el incidente activo y asígnalo a mí."*
 
-**No** es un servicio ni un binario independiente. Es un pequeño paquete de instrucciones que se apoya en la CLI que ya tienes instalada: el agente ejecuta `agenteye --json …`, analiza el JSON limpio y te responde en prosa. Todo lo que puede hacer, podrías hacerlo tú mismo escribiendo los mismos comandos.
+**No** es un servicio ni un binario separado; no hay nada que desplegar. Se apoya en la CLI que ya tienes instalada: el agente ejecuta `agenteye --json …`, analiza el JSON limpio y te responde en prosa. Todo lo que puede hacer, tú podrías hacerlo escribiendo los mismos comandos.
 
 ---
 
-## Cómo se relaciona con las demás interfaces de AgentEye
+## Cómo se relaciona con las otras interfaces de Observabilidad de FailproofAI
 
-AgentEye te ofrece cuatro formas de acceder a los mismos datos y controles. Se complementan entre sí:
+Observabilidad de FailproofAI te ofrece cuatro formas de acceder a los mismos datos y controles. Se complementan entre sí:
 
 | Interfaz | Qué es | Dónde se ejecuta | Úsala cuando |
 |---|---|---|---|
-| **[CLI](/es/agenteye/cli)** | La referencia de comandos y opciones de `agenteye` | Tu terminal | Quieres ejecutar o automatizar un comando específico |
-| **[Recetas de CLI](/es/agenteye/cli-recipes)** | Patrones de `jq`/pipeline listos para copiar | Tu terminal / scripts | Estás integrando la CLI en automatización |
-| **Habilidad CLI** (este documento) | Una puerta de entrada en lenguaje natural a la CLI | Tu agente de codificación, en tu estación de trabajo | Quieres *simplemente preguntar* y dejar que el agente elija el comando |
-| **[Asistente de IA en el panel](/es/agenteye/assistant)** | Un chat integrado en el panel | Un contenedor `agent` interno en tu clúster | Quieres hacer preguntas sobre tus datos directamente en el panel |
+| **[CLI](/es/agenteye/cli)** | La referencia de comandos y flags para `agenteye` | Tu terminal | Quieres ejecutar o automatizar un comando específico |
+| **[Recetas de CLI](/es/agenteye/cli-recipes)** | Patrones de `jq`/pipeline para copiar y pegar | Tu terminal / scripts | Estás integrando la CLI en automatización |
+| **Habilidad CLI** (este doc) | Una interfaz de lenguaje natural para la CLI | Tu agente de programación, en tu estación de trabajo | Quieres simplemente preguntar y dejar que el agente elija el comando |
+| **[Asistente de IA en el panel](/es/agenteye/assistant)** | Un chat integrado en el panel | En el servidor (dentro del panel) | Quieres hacer preguntas sobre tus datos desde el panel |
 
-### vs. el Asistente de IA en el panel — una distinción importante
+La habilidad en sí no tiene privilegios propios; simplemente convierte tus palabras en llamadas a la CLI que se ejecutan como tú:
 
-Son dos herramientas distintas con radios de acción muy diferentes:
+```mermaid
+flowchart TD
+    YOU["tú: 'acepta el incidente activo'"] --> AGENT["agente de programación (Claude Code / Codex)<br/>carga la habilidad agenteye-cli"]
+    AGENT --> CLI["agenteye --json incidents ack ..."]
+    CLI -->|tu sesión de CLI autenticada| API["API del panel de Observabilidad"]
+```
 
-- El **Asistente de IA en el panel** ([assistant.md](/es/agenteye/assistant)) es un chat integrado en el panel, respaldado por un contenedor `agent` interno. Es **de solo lectura más autoría con aprobación**: puede redactar consultas guardadas y paneles, pero cada escritura se detiene para que hagas clic de aprobación explícita, y nunca elimina nada. Requiere el permiso `agent:use` y solo accede a los datos de la organización que estás viendo.
-- La **habilidad CLI** se ejecuta en *tu* estación de trabajo dentro de *tu* agente de codificación y maneja la `agenteye` CLI **como tú**. Puede realizar toda la **superficie de la CLI, incluidas las mutaciones** — crear/rotar/deshabilitar claves de API, cambiar configuración de la organización, resolver incidentes, eliminar consultas guardadas — limitada únicamente por los permisos de tu sesión en la CLI. Trátala exactamente con el mismo cuidado con el que tratarías ejecutar esos comandos manualmente.
+### vs. el asistente de IA en el panel: una distinción importante
+
+Son dos herramientas diferentes con radios de acción muy distintos:
+
+- El **asistente de IA en el panel** ([asistente de IA](/es/agenteye/assistant)) es un chat integrado en el panel, respaldado por el servicio de agente. Es **solo lectura más creación con aprobación**: puede crear consultas guardadas y paneles, pero cada escritura se pausa para tu aprobación explícita con un clic, y nunca elimina nada. Está controlado por el permiso `agent:use` y solo accede a los datos de la organización que estás viendo.
+- La **habilidad CLI** se ejecuta en *tu* estación de trabajo dentro de *tu* agente de programación y opera la CLI `agenteye` como **tú**. Puede realizar la **superficie completa de la CLI, incluidas las mutaciones** (crear/rotar/deshabilitar claves API, cambiar configuraciones de la organización, resolver incidentes, eliminar consultas guardadas), limitadas únicamente por los permisos de tu sesión de CLI. Trátala exactamente con el mismo cuidado con el que tratarías ejecutar esos comandos manualmente.
 
 ---
 
 ## Requisitos previos
 
-1. La **CLI `agenteye` instalada** y disponible en el `PATH` (ver [cli.md](/es/agenteye/cli) — `pipx install agenteye`).
-2. La **URL del panel** configurada (`AGENTEYE_DASHBOARD_URL`, o el agente pasa `--base-url`).
-3. Una **sesión iniciada**: ejecuta `agenteye login` tú mismo primero. La habilidad **no puede** completar el inicio de sesión con código de un solo uso enviado por correo — te indicará que ejecutes `agenteye login` si la sesión está ausente o caducada (código de salida `4` de la CLI).
+1. La **CLI `agenteye` instalada** y en el `PATH` (consulta la referencia de [CLI](/es/agenteye/cli): `pipx install agenteye`).
+2. Tu **URL del panel** configurada (`AGENTEYE_DASHBOARD_URL`, o el agente pasa `--base-url`).
+3. Una **sesión activa**: ejecuta `agenteye login` tú mismo primero. La habilidad **no puede** completar el inicio de sesión con código de un solo uso enviado por correo electrónico; te indicará que ejecutes `agenteye login` si la sesión falta o ha expirado (código de salida de CLI `4`).
 
 ---
 
 ## Instalación de la habilidad
 
-Las Habilidades de Agente son carpetas que contienen un `SKILL.md` (más referencias opcionales). Instala la habilidad `agenteye-cli` colocando su carpeta donde tu agente busca habilidades:
+Las Habilidades de Agente son carpetas que contienen un `SKILL.md` (más referencias opcionales). Instalas la habilidad `agenteye-cli` colocando su carpeta donde tu agente busca habilidades:
 
-- **Claude Code** — copia la carpeta `agenteye-cli/` en `~/.claude/skills/` (disponible en todos los proyectos) o en `<tu-repositorio>/.claude/skills/` (limitado a ese repositorio). Claude Code la detecta automáticamente; verifica con la lista `/skills`, o simplemente haz una pregunta que coincida con su descripción.
-- **Codex (OpenAI)** — Codex lee el mismo `SKILL.md`. El archivo `agents/openai.yaml` incluido establece `allow_implicit_invocation: true`, por lo que Codex selecciona la habilidad automáticamente cuando una tarea coincide; de lo contrario, invócala explícitamente como `$agenteye-cli`.
+- **Claude Code**: copia la carpeta `agenteye-cli/` en `~/.claude/skills/` (disponible en todos los proyectos) o en `<tu-repositorio>/.claude/skills/` (limitado a ese repositorio). Claude Code la descubre automáticamente; verifícalo con la lista `/skills`, o simplemente haz una pregunta que coincida con su descripción.
+- **Codex (OpenAI)**: Codex lee el mismo `SKILL.md`. El archivo `agents/openai.yaml` incluido establece `allow_implicit_invocation: true`, por lo que Codex selecciona la habilidad automáticamente cuando una tarea coincide; de lo contrario, invócala explícitamente como `$agenteye-cli`.
 
-La habilidad se mantiene junto con la CLI `agenteye` y se distribuye como parte de tu paquete AgentEye — si no tienes la carpeta `agenteye-cli`, contacta a tu responsable de AgentEye. No hay restricciones de acceso: no necesita ninguna imagen Docker ni credencial, ya que solo maneja la `agenteye` CLI **pública** contra tu propio panel.
+La habilidad se mantiene junto a la CLI `agenteye` pero se distribuye como una **carpeta separada**, no dentro del paquete `pipx install agenteye`, así que no la busques ahí. Observabilidad de FailproofAI te entrega la carpeta `agenteye-cli/` por su cuenta; si no la tienes, contacta a tu representante de FailproofAI. No hay nada restringido: no necesita ninguna credencial, porque solo opera la CLI **pública** `agenteye` contra tu propio panel.
 
 ---
 
-## Seguridad — las mutaciones NO solicitan confirmación cuando un agente ejecuta la CLI
+## Seguridad: las mutaciones NO solicitan confirmación cuando un agente ejecuta la CLI
 
-**Lee esto antes de permitir que un agente realice cambios.**
+> **Advertencia:** Lee esto antes de permitir que un agente realice cambios.
 
-La CLI `agenteye` normalmente pregunta *"¿estás seguro?"* antes de una acción destructiva. **Omite automáticamente esa confirmación siempre que no esté conectada a un terminal — que es exactamente como la ejecuta un agente de codificación — y `--json` también la omite.** Por lo tanto, el aviso de seguridad **no** se activará para el agente.
+La CLI `agenteye` normalmente pregunta *"¿estás seguro?"* antes de una acción destructiva. **Omite automáticamente esa confirmación cuando no está conectada a una terminal (que es exactamente cómo la ejecuta un agente de programación), y `--json` también la omite.** Por lo tanto, la solicitud de confirmación **no** se activará para el agente.
 
-La habilidad está diseñada para compensar esto: se le instruye que indique el comando exacto que ejecutará y obtenga tu **confirmación explícita antes de cualquier cambio de estado**. Mantén esa disciplina — cuando manejas AgentEye a través de un agente, *tú* eres el paso de confirmación. Los comandos que modifican estado que debes vigilar:
+La habilidad está diseñada para compensar esto: está instruida para indicar el comando exacto que va a ejecutar y obtener tu **confirmación explícita antes de cualquier cambio de estado**. Mantén esa disciplina. Cuando operas Observabilidad de FailproofAI a través de un agente, *tú* eres el paso de confirmación. Los comandos que cambian estado que debes vigilar:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
@@ -66,30 +75,52 @@ La habilidad está diseñada para compensar esto: se le instruye que indique el 
 - `agent rename` / `delete`
 - `orgs switch`
 
-Todo lo que está bajo **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) es de solo lectura y no modifica nada.
+Todo lo que está bajo **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) es de solo lectura y no cambia nada.
 
-Dado que el agente actúa **como tú**, solo puede hacer lo que tu sesión tiene permitido — los permisos se resuelven **por organización** (ver [api-keys.md](/es/agenteye/api-keys)). Un comando para el que no tienes permiso devuelve el código de salida `5` con el nombre exacto del permiso requerido, por lo que el agente puede indicarte con precisión qué solicitar a un administrador en lugar de fallar de forma opaca.
+Dado que el agente actúa como **tú**, solo puede hacer lo que tu inicio de sesión tiene permiso de hacer; los permisos se resuelven **por organización** (consulta [Claves API](/es/agenteye/api-keys)). Un comando para el que no tienes permiso devuelve el código de salida `5` con el nombre exacto del permiso, para que el agente pueda indicarte exactamente qué pedirle a un administrador en lugar de fallar de forma opaca.
 
 ---
 
 ## Qué puedes pedirle
 
-La habilidad traduce la intención en lenguaje natural al comando `agenteye` correcto, descubriendo primero los valores válidos (`list <kind>`, `whoami`) para no adivinar:
+Aquí hay un ejemplo de un intercambio real: una lectura, seguida de un cambio que espera tu confirmación:
+
+```text
+tú    ▸ ¿Hay algo roto en el último día?
+
+agente ▸ Ejecutando: agenteye --json errors --since 24h --aggregate
+         3 tipos de errores en las últimas 24h. El mayor es TimeoutError
+         (18 ocurrencias, todas en el checkout-agent), luego RateLimited (5).
+         ¿Quieres las sesiones fallidas para TimeoutError?
+
+tú    ▸ Dale a CI una clave que solo pueda enviar eventos.
+
+agente ▸ Esto creará una clave API. Voy a ejecutar:
+           agenteye keys create ci --add events:add
+         ¿Procedo?
+
+tú    ▸ sí
+
+agente ▸ Listo. Clave "ci" creada solo con events:add.
+         El secreto se muestra una única vez, guárdalo ahora. No puedo volver a mostrarlo.
+```
+
+La habilidad mapea cada intención en lenguaje natural al comando `agenteye` correcto, descubriendo primero los valores válidos (`list <kind>`, `whoami`) para no adivinar, e indicando el comando exacto antes de cualquier cambio. Más ejemplos:
 
 - *"¿Hay algo roto o fallando en las últimas 24 horas?"* → `errors --since 24h --aggregate`, seguido de un desglose.
 - *"¿Por qué falló la sesión `run-001`?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
-- *"¿Cómo evoluciona la calidad esta semana?"* → `evals --aggregate --since 7d`, luego profundiza en las ejecuciones con puntuación baja.
+- *"¿Cómo está evolucionando la calidad esta semana?"* → `evals --aggregate --since 7d`, luego profundizar en las ejecuciones con puntuación baja.
 - *"Dale a CI una clave que solo pueda enviar eventos."* → `keys create ci --add events:add` (indica el comando, luego lo crea y captura el secreto de un solo uso).
-- *"¿Quién tiene acceso? Haz que Dana sea solo lectura."* → `users list` → `users update dana@… --permission-set read-only` (tras confirmar contigo).
-- *"Reconoce el incidente activo y asígnamelo."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> tu@…`.
+- *"¿Quién tiene acceso? Haz que Dana sea de solo lectura."* → `users list` → `users update dana@… --permission-set read-only` (después de confirmar contigo).
+- *"Acepta el incidente activo y asígnalo a mí."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> tu@…`.
 
-Para los comandos exactos, opciones y estructuras JSON detrás de estos casos, consulta [cli.md](/es/agenteye/cli) y [cli-recipes.md](/es/agenteye/cli-recipes).
+Para los comandos exactos, flags y estructuras JSON detrás de estas operaciones, consulta la referencia de [CLI](/es/agenteye/cli) y las [recetas de CLI para agentes](/es/agenteye/cli-recipes).
 
 ---
 
-## Ver también
+## Próximos pasos
 
-- **[CLI](/es/agenteye/cli)** — referencia completa de comandos y opciones para `agenteye`.
-- **[Recetas de CLI para agentes](/es/agenteye/cli-recipes)** — patrones de `jq` listos para copiar y manejo de códigos de salida.
-- **[Asistente de IA](/es/agenteye/assistant)** — el asistente integrado en el panel (no confundir con esta habilidad de terminal).
-- **[Claves de API](/es/agenteye/api-keys)** — el modelo de permisos por organización que delimita lo que la habilidad puede hacer.
+- **[CLI](/es/agenteye/cli)**: referencia completa de comandos y flags para `agenteye`.
+- **[Recetas de CLI para agentes](/es/agenteye/cli-recipes)**: patrones `jq` para copiar y pegar, y manejo de códigos de salida.
+- **[Asistente de IA](/es/agenteye/assistant)**: el asistente integrado en el panel (no confundir con esta habilidad de terminal).
+- **[Claves API](/es/agenteye/api-keys)**: el modelo de permisos por organización que limita lo que la habilidad puede hacer.

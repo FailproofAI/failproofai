@@ -209,7 +209,7 @@ EXAMPLES
 LINKS
   ⭐ Star us:      https://github.com/failproofai/failproofai
   📖 Docs:         https://docs.befailproof.ai/introduction
-  💬 Discord:      https://discord.gg/2zjBZP7yQJ
+  💬 Discord:      https://discord.befailproof.ai/
 `.trimStart());
     process.exit(0);
   }

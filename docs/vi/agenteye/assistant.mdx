@@ -1,196 +1,62 @@
 ---
-title: "Trợ lý AI"
-description: "Tài liệu về Trợ lý AI của AgentEye."
+title: "AI Assistant"
+description: "Tài liệu về AI Assistant Observability của FailproofAI."
 ---
 
+Hỏi dữ liệu agent của bạn một câu hỏi bằng tiếng Anh thuần túy và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng. Không cần viết SQL, không cần tìm kiếm qua các dashboard — **trợ lý Observability của FailproofAI** là cách nhanh nhất để bất kỳ ai trong nhóm của bạn có thể nhận được câu trả lời về agents của bạn.
 
-Bảng điều khiển bao gồm một **trợ lý AI** tùy chọn, một bảng trò chuyện được ghim ở cạnh phải của bảng điều khiển giúp trả lời các câu hỏi bằng ngôn ngữ tự nhiên về các agents của bạn ("chất lượng đang xu hướng như thế nào trong prod tuần này?", "những sessions nào gặp lỗi hôm nay?", "tóm tắt session này") và khi người dùng cho phép từng hành động, nó sẽ soạn thảo và lưu các truy vấn SQL và bảng điều khiển thay mặt họ. Nó cung cấp các liên kết có thể nhấp trực tiếp đến các sessions, truy vấn và bảng điều khiển liên quan, và nó **biết về trang hiện tại**: hỏi về "session này" khi xem một session và nó sẽ hiểu ý của bạn.
+![Trợ lý Observability của FailproofAI trả lời một câu hỏi bằng tiếng Anh thuần túy bên trong dashboard, hiển thị bảng Agent Activity trực tiếp, bảng phân tích mức sử dụng mô hình theo từng agent, và các nhận xét được viết ra, cùng với các truy vấn mà nó chạy được hiển thị inline](/agenteye/images/assistant.png)
+*Hỏi bằng tiếng Anh thuần túy và nhận được câu trả lời được xây dựng từ dữ liệu của riêng bạn. Ở đây nó chia nhỏ agent nào bận nhất và mô hình nào mà chúng sử dụng, đồng thời hiển thị các truy vấn mà nó chạy để bạn có thể xác minh từng con số.*
 
-Bảng dock hiển thị dưới dạng một **thanh dọc 44px mỏng** theo mặc định: một ký tự dấu nhắc `›_` cộng với một chấm chỉ báo sức khỏe có màu. Nhấp vào thanh (hoặc nhấn `⌘J` / `Ctrl+J`) để mở rộng nó thành bảng trò chuyện đầy đủ. Bảng mở rộng **có thể thay đổi kích thước** từ 320 đến 640 pixel bằng cách kéo cạnh trái của nó; độ rộng ưa thích của bạn được ghi nhớ khi tải lại.
-
-Nó chạy dưới dạng một container **`agent`** nội bộ nhỏ (trên Claude Agent SDK) mà chỉ bảng điều khiển có thể truy cập. Nó **bị tắt theo mặc định** và ở trạng thái ẩn cho đến khi bạn cấu hình một điểm cuối LLM.
-
----
-
-## Nó có thể và không thể làm gì
-
-- **Đọc dữ liệu hoạt động mà người dùng yêu cầu có thể nhìn thấy.** Sự kiện, đánh giá, sessions, hàng đợi công việc đánh giá, truy vấn đã lưu và bảng điều khiển đã lưu, được phân loại theo yêu cầu dựa trên quyền đọc của người dùng. Các công cụ đọc được thực hiện ngay lập tức.
-- **Ghi được kiểm soát bằng cách phê duyệt từng hành động.** Nó có thể tạo truy vấn đã lưu (`create_saved_query`, `update_saved_query`), chạy SQL dự thảo lại với vai trò chỉ đọc để xác thực nó (`run_query`) và lắp ráp bảng điều khiển từ các truy vấn đó (`create_dashboard`, `update_dashboard`, `add_query_to_dashboard`). Mỗi lần ghi sẽ tạm dừng để nhắc **Phê duyệt / Từ chối / Hỏi một câu hỏi**; SDK không gọi công cụ cho đến khi người vận hành nhấp Phê duyệt. **Xoá không bao giờ có sẵn cho trợ lý**; các hoạt động phá hủy dữ liệu vẫn được giữ với các nhà vận hành.
-- **SQL soạn thảo được xem qua cùng xác thực `sql_guard` và vai trò chỉ đọc như SQL được viết bởi người dùng** (chỉ SELECT/WITH, không có câu lệnh nhiều dòng). Thực thi được định tuyến bằng các bảng mà truy vấn chạm vào: các truy vấn tham chiếu đến các bảng phân tích (events, evaluations, sessions) chạy với tư cách người dùng chỉ đọc ClickHouse của tổ chức (được phạm vi hóa theo tổ chức bằng chính sách hàng, với giới hạn thực thi 10 giây và giới hạn hàng 100k) trong khi các truy vấn chỉ chạm các bảng quan hệ chạy trên vai trò Postgres chỉ đọc (10 giây, 10k hàng). Trợ lý không thể mở rộng bề mặt dữ liệu; nó chỉ có thể tạo trên bề mặt truy vấn mà nhà vận hành đã có.
-- Nó sử dụng một **khóa trợ lý chuyên dụng** (xem bên dưới) được gieo với một bộ quyền cố định; ngay cả khi mô hình hoạt động sai, nó cũng không thể vượt quá những phạm vi đó.
-- Mỗi người dùng bảng điều khiển cần quyền **`agent:use`** để xem và sử dụng trợ lý. Các công cụ được lọc theo yêu cầu để phù hợp với quyền dữ liệu của người dùng riêng, vì vậy người dùng `events:read` sẽ nhận các công cụ sự kiện nhưng không có công cụ `dashboards:write`.
-
----
-
-## Bảng dock AI nhận biết trang: soạn thảo trên `/queries`, trò chuyện ở những nơi khác
-
-Bảng dock trợ lý ở bên phải **nhận biết trang**. Bộ chọn mô hình, lịch sử trò chuyện, chấm chỉ báo sức khỏe mô hình và đầu vào trò chuyện không thay đổi, nhưng **các chip mẫu trạng thái trống, văn bản giữ chỗ và điểm cuối backend mà thông báo của người dùng chạm tới** tất cả đều chuyển đổi tự động dựa trên tuyến đường hiện tại. Bảng dock trở thành "trợ lý AI cho bất kỳ trang nào bạn đang đứng trên đó".
-
-**Hai backends, được chọn theo trang (với các ghi đè mỗi chip).**
-
-| Tuyến đường | Backend mặc định trang | Lý do |
-| ------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `/queries`, `/queries/new`     | `POST /api/agent/compose-sql` (không có vòng lặp công cụ)                        | Người dùng đang bắt đầu mới; SQL ≤1s token đầu tiên được phát trực tiếp vào trình chỉnh sửa                                          |
-| `/queries/<id>` (hiện có)     | `POST /api/agent/chat` (trợ lý vòng lặp công cụ đầy đủ), mặc định trang    | Các tin nhắn được nhập tự do nên cho phép người dùng hỏi bất cứ điều gì ("giải thích cái này", "cái này làm gì?"); các chip tái cấu trúc chọn ngược lại thành compose-sql thông qua `kind` mỗi chip |
-| mọi trang khác               | `POST /api/agent/chat` (trợ lý vòng lặp công cụ đầy đủ)                   | Công cụ đọc + công cụ ghi được phê duyệt                                                                                   |
-
-Các chip trên `/queries/<id>` mang một `kind` rõ ràng để một trang có thể trộn hai luồng một cách liền mạch. Bộ chip mặc định là hai chip **chat** (`giải thích truy vấn trên màn hình`, `truy vấn này làm gì?`) cộng với năm chip **compose-sql** (`tham số hóa theo phạm vi ngày`, `thêm bộ lọc status='error'`, v.v.). Các tin nhắn được nhập tự do rơi vào mặc định trang (chat), vì vậy một câu hỏi như "tại sao cái này lại chậm?" sẽ nhận được câu trả lời dạng văn bản, trong khi nhấp vào chip `tham số hóa theo phạm vi ngày` sẽ định tuyến thông qua điểm cuối soạn thảo và chỉnh sửa SQL.
-
-Khi trình soạn thảo chạy ở **chế độ chỉnh sửa** (nó thấy một `currentSql` không trống vì người dùng đang ở `/queries/<id>` hoặc `/queries/new` với SQL được đề xuất đã được tải), lời nhắc hệ thống của nó chuyển từ "soạn một truy vấn mới" thành "sửa đổi SQL được cung cấp tối thiểu: bảo tồn lựa chọn bảng, tên cột, cấu trúc nối, bí danh, thụt lề". Mô hình được hiển thị một bộ ví dụ làm việc riêng biệt trước/sau (tham số hóa, thêm bộ lọc, chuyển đổi thành bucket hàng giờ), vì vậy một tái cấu trúc được nhấp chip tạo ra một diff tối thiểu so với SQL của trình chỉnh sửa, không phải viết lại từ đầu.
-
-Nhấp vào một chip soạn thảo (hoặc nhập tự do trên `/queries/new`) → SQL phát trực tiếp vào thông báo trợ lý dưới dạng một khối ` ```sql ` được bao quanh. **Ngay khi luồng kết thúc, nếu Monaco được gắn trên tuyến đường hiện tại, trình chỉnh sửa sẽ tự động sáng lên trong chế độ diff** (bản gốc ở bên trái, bản được đề xuất ở bên phải, một dấu `▾ AI đề xuất chỉnh sửa` ở trên cùng, và các viên **Chấp nhận / Từ chối** phía dưới). Người dùng không cần tìm hoặc nhấp vào nút `Chèn vào trình chỉnh sửa` để xem diff. Nút Chèn vẫn được hiển thị dưới khối SQL dưới dạng kích hoạt lại thủ công (hữu ích sau khi Từ chối hoặc khi người dùng đã điều hướng đi và quay lại), và nó vẫn là con đường duy nhất khi người dùng ở trên một trang không phải trình chỉnh sửa (ví dụ: danh sách các truy vấn đã lưu); ở đó nó sẽ lưu trữ SQL trong `sessionStorage` và điều hướng đến `/queries/new`, nơi trình chỉnh sửa vừa được gắn sẽ đọc kho lưu trữ khi gắn và mở chế độ diff tương tự.
-
-Nếu SQL được đề xuất giống byte với những gì đã có trong trình chỉnh sửa (một chỉnh sửa vô-op), tự động mở sẽ bị bỏ qua; chúng tôi không hiển thị một diff trống. Nút `Chèn vào trình chỉnh sửa` cũng là vô-op trong trường hợp đó.
-
-Khi người dùng chấp nhận một gợi ý trên `/queries/new`, hành động chính của thanh công cụ đọc **`save`** thay vì `create`; SQL đã được trao cho họ bởi trợ lý; mô hình tinh thần là "hoàn thành cái này", không phải "viết từ đầu". Nhãn lật một lần bảng dock chèn SQL và vẫn là `save` cho đến khi điều hướng trang. Trên `/queries/<id>` nút luôn đọc `save`; không có gì thay đổi ở đó.
-
-Bên ngoài `/queries`, bảng dock hoạt động chính xác như trước: trò chuyện đầy đủ với các thẻ phê duyệt công cụ, nhận biết bối cảnh trang, trích dẫn.
-
-**Quyền / kiểm soát.** Điểm cuối soạn thảo kiểm soát quyền `queries:run` theo người dùng (đọc tương đương; người dùng vẫn phải nhấp Chấp nhận và Chạy, và Chạy đi qua `sql_guard` + `references_ch_tables` định tuyến hiện có trên máy chủ Rust). Điểm cuối trò chuyện kiểm soát `agent:use`. Cả hai đều vẫn yêu cầu một kết nối LLM được cấu hình trên container `agent`; nếu không có bất kỳ điều nào được cấu hình, bảng dock sẽ hiển thị một biểu ngữ "trợ lý không được cấu hình trên triển khai này" trên một trong hai tuyến đường.
-
-**Từ chối.** Trình soạn thảo từ chối bất kỳ yêu cầu nào mà nó không thể thỏa mãn bằng một truy vấn phân tích chỉ đọc và phát ra `-- REFUSE: <one-sentence reason>` thay vì SQL. Nó từ chối các yêu cầu sẽ ghi dữ liệu hoặc truy cập các bảng bên ngoài các chế độ xem phân tích (`api_keys`, `users`, `dashboards`, `saved_queries`, `evaluation_jobs`), và nó từ chối các yêu cầu văn bản thuần túy ("giải thích cái này", "cái này làm gì?") trên tuyến đường soạn thảo; những cái đó thuộc về tuyến đường trò chuyện và tạo ra câu trả lời văn bản ở đó. Bảng dock hiển thị chuỗi từ chối dưới dạng một chip lỗi đỏ nội tuyến trong thông báo trợ lý; không có gì được chèn vào.
-
-**Lựa chọn mô hình.** Được chia sẻ với tuyến đường trò chuyện. Bộ chọn mô hình trong tiêu đề bảng dock áp dụng cho cả hai điểm cuối (cuộc gọi soạn thảo chuyển mô hình được chọn thông qua `resolveModel()` trên dịch vụ agent). Khi `AGENTEYE_AGENT_MODELS` liệt kê nhiều mô hình, các nhà vận hành có thể trộn một tùy chọn lớp Haiku cho trình soạn thảo với tùy chọn lớp Sonnet cho trò chuyện; người dùng chọn mỗi cuộc hội thoại.
-
-**Mẫu theo trang.** Mỗi trang có mẫu riêng của nó (tiêu đề, nội dung phần thân, văn bản giữ chỗ và các chip gợi ý) để bảng dock thích ứng với trang bạn đang đứng. Các chip được cung cấp trên một tuyến đường nhất định ánh xạ đến các ý định giống nhau mà trình soạn thảo được tinh chỉnh, vì vậy nhấp vào một gợi ý tạo ra chỉnh sửa bạn mong đợi.
-
-**Tắt nó.** Giống như tuyến đường trò chuyện: bảng dock + trình soạn thảo đều được kiểm soát bởi container `agent` và kết nối LLM của nó. Nếu bạn muốn hành vi chỉ trò chuyện cho một người dùng cụ thể, hãy xóa quyền `queries:run` (nó cũng vô hiệu hóa nút **Chạy** của trình chỉnh sửa); nếu bạn muốn hành vi chỉ soạn thảo, hãy xóa `agent:use` khỏi các vai trò của người dùng đó, sau đó thêm lại `queries:run` riêng để họ có thể vẫn thực thi SQL được tác giả viết.
-
----
-
-## Bật nó
-
-Dịch vụ `agent` được gửi trong tệp Docker Compose và các bản kê khai Kubernetes. Để bật trợ lý, cung cấp **(1)** một điểm cuối LLM và **(2)** khóa dữ liệu chuyên dụng của trợ lý.
-
-### 1. Chọn một kết nối LLM
-
-Chọn một trong những cái này và đặt các biến tương ứng trên dịch vụ `agent`:
-
-**a) Trực tiếp từ Anthropic**
+Không có gì phải học. Mở cuộc trò chuyện, gõ những gì bạn muốn biết, và theo các liên kết mà nó trả về:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
+
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
 ```
 
-**b) Thông qua Portkey (được khuyên dùng; slug danh mục mô hình, chỉ khóa)**
+## Chỉ cần hỏi, rồi nhảy thẳng đến bằng chứng
 
-```
-PORTKEY_API_KEY=<your-portkey-key>
-AGENTEYE_AGENT_MODEL=@<your-anthropic-integration-slug>/claude-sonnet-4-6
-```
+Bạn không còn phải đoán và không còn phải viết truy vấn. Hỏi "chất lượng đang xu hướng như thế nào trong prod tuần này?", "session nào bị lỗi hôm nay?", hoặc "tóm tắt session này," và bạn nhận được câu trả lời thẳng trong vài giây thay vì xây dựng một truy vấn và tự đọc nó.
 
-Đây là con đường đơn giản nhất: trong Portkey, hãy thiết lập một **tích hợp Anthropic** (Danh mục mô hình); nó sẽ nhận một **slug**. Đặt tên mô hình dưới dạng `@<slug>/<model>` và slug sẽ thực hiện định tuyến nhà cung cấp + thông tin xác thực, vì vậy **không cần khóa ảo**, chỉ cần khóa Portkey API của bạn. Agent chỉ gửi `x-portkey-api-key` và trỏ đến cổng Portkey; Portkey giải quyết phần còn lại. (Một tên mô hình *plain* sẽ thất bại với "x-portkey-config or x-portkey-provider header is required"; tiền tố `@slug/` là cái làm cho chỉ khóa có thể hoạt động.) Đối với một cổng tự lưu trữ, hãy đặt `PORTKEY_BASE_URL`.
+Mọi câu trả lời đều đi kèm với biên lai của nó. Trợ lý sẽ liên kết các session chính xác, các truy vấn đã lưu, và các dashboard mà nó sử dụng để đạt được câu trả lời, vì vậy bạn có thể nhấp vào và xác nhận chứ không phải chấp nhận lời nó mà thôi. Nó cũng **nhận biết trang**: hỏi về "session này" khi bạn đang xem session đó và nó đã biết bạn đang nói về run nào. Mở lại bất kỳ cuộc trò chuyện nào từ trước đó từ bộ chuyển đổi lịch sử và tiếp tục từ nơi bạn dừng lại.
 
-Thích định tuyến theo yêu cầu thay vì slug? Đặt `PORTKEY_VIRTUAL_KEY=<vk>` (hoặc `PORTKEY_CONFIG=<id>`) với một `AGENTEYE_AGENT_MODEL` thuần túy.
+## Biến một câu trả lời tốt thành truy vấn đã lưu hoặc dashboard
 
-**c) Bất kỳ cổng tương thích Anthropic nào khác (LiteLLM, tự lưu trữ, …)**
+Khi một câu trả lời đáng giữ lại, hãy yêu cầu trợ lý lưu nó. Nó sẽ soạn thảo SQL cho một truy vấn đã lưu, hoặc lắp ráp một dashboard từ các truy vấn đó, rồi hiển thị cho bạn một thẻ **Phê duyệt / Từ chối**. Không có gì được viết cho đến khi bạn nhấp Phê duyệt, vì vậy bạn có được tốc độ của "chỉ cần hỏi" với quyền phát ngôn cuối cùng luôn là của bạn.
 
-```
-ANTHROPIC_BASE_URL=https://your-gateway
-# Newline-delimited "Name: Value" header lines (NOT JSON):
-ANTHROPIC_CUSTOM_HEADERS=x-my-header: value
-```
+Trên trang **Truy vấn**, nó đi xa hơn và trở thành tác giả SQL: mô tả truy vấn bạn muốn ("hiển thị tỷ lệ lỗi theo agent trong 7 ngày qua") và nó sẽ stream SQL thẳng vào trình chỉnh sửa, mở một chế độ xem diff để bạn có thể **Chấp nhận** hoặc **Từ chối** thay đổi trước khi nó được triển khai.
 
-**d) Amazon Bedrock / Google Vertex**
+![Trang Truy vấn Observability và trình chỉnh sửa SQL của nó](/agenteye/images/query-lab.png)
+*Trang Truy vấn: trình chỉnh sửa này là nơi trợ lý stream một dự thảo truy vấn chỉ đọc để bạn chấp nhận hoặc từ chối.*
 
-```
-CLAUDE_CODE_USE_BEDROCK=1   # + standard AWS credentials in the environment
-# or
-CLAUDE_CODE_USE_VERTEX=1    # + standard GCP credentials in the environment
-```
+Soạn thảo SQL bằng cách hỏi ở đây sử dụng quyền `queries:run`, cùng quyền đằng sau nút **Chạy** của trình chỉnh sửa. Cuộc trò chuyện ở nơi khác cần `agent:use`.
 
-Tùy chọn ghim mô hình mặc định với `AGENTEYE_AGENT_MODEL` (mặc định `claude-sonnet-4-6`). Để cho phép người dùng **chọn** từ một số mô hình, hãy đặt `AGENTEYE_AGENT_MODELS` thành danh sách cho phép được phân tách bằng dấu phẩy (ví dụ: `@anthropic-prod/claude-opus-4-7,@anthropic-prod/claude-sonnet-4-6`); một bộ chọn mô hình sẽ xuất hiện trong tiêu đề trò chuyện, và lựa chọn của mỗi người dùng được ghi nhớ. Agent chỉ bao giờ gọi một mô hình trên danh sách cho phép này.
+## An toàn để trao cho toàn bộ nhóm
 
-### 2. Cung cấp khóa trợ lý
+Bạn có thể mở trợ lý cho mọi người mà không lo lắng về những gì nó có thể chạm vào:
 
-Chọn bất kỳ bí mật ngẫu nhiên nào và cung cấp cho **agent** dưới dạng `AGENTEYE_API_KEY` và cho **server** dưới dạng `AGENT_API_KEY` (cùng một giá trị). Khi khởi động, máy chủ sẽ gieo nó dưới dạng một khóa chuyên dụng có tên `dashboard-assistant` với bộ quyền cố định này: `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`. Các quyền ghi chỉ bao giờ được thực hiện thông qua các công cụ được kiểm soát bằng cách phê duyệt (xem "Nó có thể và không thể làm gì" ở trên). **Không có bước tạo khóa thủ công và không có khóa admin liên quan**. Bộ quyền được cố định trong máy chủ, và khóa được gieo **được bảo vệ**: nó không thể bị vô hiệu hóa hoặc tái tạo thông qua API khóa; xoay nó bằng cách thay đổi giá trị và khởi động lại máy chủ. **Không** tái sử dụng khóa admin/bảng điều khiển.
+- **Nó chỉ đọc những gì bạn đã có thể thấy.** Các câu trả lời được scoped theo quyền đọc của riêng bạn, vì vậy nó không bao giờ mở rộng bề mặt dữ liệu của bạn.
+- **Mọi lần ghi đều chờ bạn.** Các truy vấn đã lưu và dashboard chỉ được tạo sau khi bạn nhấp Phê duyệt một cách rõ ràng, và không có cài đặt nào biến cổng đó tắt.
+- **Nó không bao giờ có thể xóa bất cứ điều gì.** Không có công cụ xóa nào được công khai và trợ lý không có quyền xóa. Các lần xóa vẫn ở tay bạn, trong dashboard.
+- **Nó ở lại bên trong tổ chức của bạn.** Trợ lý chỉ nhìn thấy tổ chức mà bạn hiện đang xem.
+- **Các câu hỏi của bạn là của bạn.** Các prompt và câu trả lời nằm trong cơ sở dữ liệu Observability của riêng bạn; phân tích sản phẩm chỉ ghi lại dữ liệu siêu dữ liệu sử dụng, không bao giờ là văn bản prompt của bạn.
 
-```bash
-SECRET="$(openssl rand -base64 32)"
-# on the agent service:
-AGENTEYE_API_KEY="$SECRET"
-# on the server service:
-AGENT_API_KEY="$SECRET"
-```
+## Nơi để tìm nó
 
-Trên Kubernetes điều này được kết nối cho bạn: đặt `AGENTEYE_API_KEY` trong bí mật `agenteye-agent` và Deployment máy chủ đã đọc giá trị đó dưới dạng `AGENT_API_KEY`.
+Trợ lý nằm dọc theo cạnh phải của mọi trang dưới org của bạn (`/<org-slug>/...`). Nhấp vào thanh, hoặc nhấn `⌘J` / `Ctrl+J`, để mở rộng nó thành toàn bộ bảng trò chuyện, và kéo cạnh của nó để thay đổi kích thước; chiều rộng của bạn sẽ được ghi nhớ qua các lần tải lại. Bạn cần quyền **`agent:use`** để sử dụng nó, nếu không thanh sẽ bị làm mờ. Nếu nó chưa được bật cho triển khai của bạn (nó cần kết nối LLM), bạn sẽ thấy một thanh làm mờ thay vì cuộc trò chuyện hoạt động.
 
-### 3. Đặt token chia sẻ bảng điều khiển ↔ agent
+## Liên quan
 
-Đặt cùng `AGENTEYE_AGENT_TOKEN` trên **cả hai** dịch vụ `dashboard` và `agent`. Bảng điều khiển trình bày nó khi gọi dịch vụ agent nội bộ; agent từ chối các cuộc gọi không có nó.
-
-### 4. Cấp cho người dùng quyền truy cập
-
-Cung cấp cho các nhà vận hành bảng điều khiển liên quan quyền `agent:use` (xem [enterprise-docs/api-keys.md](/vi/agenteye/api-keys)). Người dùng không có nó sẽ không bao giờ thấy trợ lý.
-
-Khi một điểm cuối LLM và khóa chỉ đọc được đặt, hãy khởi động lại **máy chủ** (để gieo khóa chỉ đọc) và dịch vụ **agent**. Bảng dock trợ lý xuất hiện ở cạnh phải cho bất kỳ người dùng `agent:use` nào, thu gọn theo mặc định; nhấp vào thanh hoặc nhấn `⌘J` / `Ctrl+J` để mở rộng.
-
----
-
-## Tham chiếu biến môi trường
-
-Đặt trên dịch vụ **`agent`**:
-
-| Biến | Mục đích |
-|---|---|
-| `PORTKEY_API_KEY` | Định tuyến thông qua Portkey (agent xây dựng kết nối cổng từ cái này) |
-| `PORTKEY_VIRTUAL_KEY` | Khóa ảo Portkey cho thông tin xác thực Anthropic của bạn (tùy chọn nếu khóa có cấu hình mặc định) |
-| `PORTKEY_CONFIG` / `PORTKEY_BASE_URL` | Cấu hình Portkey được đặt tên / URL cổng Portkey tự lưu trữ (tùy chọn) |
-| `PORTKEY_PROVIDER` | Slug nhà cung cấp Portkey — một tùy chọn định tuyến thứ ba cùng với `PORTKEY_VIRTUAL_KEY` / `PORTKEY_CONFIG` (chỉ được sử dụng khi cả hai không được đặt) |
-| `ANTHROPIC_API_KEY` | Truy cập Anthropic trực tiếp (thay thế cho cổng / Bedrock / Vertex) |
-| `ANTHROPIC_AUTH_TOKEN` | Mã thông báo Bearer cho một cổng xác thực qua `Authorization: Bearer` thay vì `x-api-key` (tùy chọn) |
-| `ANTHROPIC_BASE_URL` | Điểm cuối cho một cổng không phải Portkey |
-| `ANTHROPIC_CUSTOM_HEADERS` | Tiêu đề bổ sung cho một cổng không phải Portkey: các dòng `Name: Value` được phân tách bằng dòng mới (không phải JSON) |
-| `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` | Định tuyến qua Bedrock / Vertex |
-| `AGENTEYE_AGENT_MODEL` | Id mô hình mặc định (mặc định `claude-sonnet-4-6`) |
-| `AGENTEYE_AGENT_MODELS` | Danh sách cho phép được phân tách bằng dấu phẩy của các mô hình mà người dùng có thể chọn từ trong tiêu đề trò chuyện. Để trống để có một mô hình duy nhất cố định. Mô hình mặc định ở trên phải là một trong những cái này (nếu không nó được thêm vào). |
-| `AGENTEYE_AGENT_MAX_CONCURRENCY` | Trò chuyện đồng thời tối đa cho mỗi pod (mặc định 4); các yêu cầu dư thừa nhận 429 |
-| `AGENTEYE_API_KEY` | Khóa dữ liệu của trợ lý. Đặt **cùng** giá trị với `AGENT_API_KEY` của máy chủ, được gieo với một bộ quyền phạm vi cố định khi khởi động (xem bước 2). |
-| `AGENTEYE_AGENT_TOKEN` | Bí mật chia sẻ với bảng điều khiển |
-| `AGENTEYE_SERVER_URL` | URL máy chủ AgentEye (mặc định `http://server:8080`) |
-| `AGENTEYE_AGENT_ALLOW_NO_ORG` | **Đa người thuê.** Tắt theo mặc định (thất bại kín): trợ lý từ chối một yêu cầu `/chat` không mang bối cảnh tổ chức với `400`, vì mọi công cụ nó chạy đều được phạm vi hóa thành một tổ chức. Bảng điều khiển luôn gửi bối cảnh đó sau khi nó nhận biết tổ chức, vì vậy bạn thường để cái này không được đặt. Đặt thành `1` **chỉ** trong quá trình triển khai chuyển tiếp khi một bảng điều khiển chưa nhận biết tổ chức đang nói chuyện với một agent nhận biết tổ chức, để trợ lý quay lại tổ chức `default` thay vì từ chối. Xóa nó khi nâng cấp bảng điều khiển đáp ứng. |
-| `AGENTEYE_AGENT_MAX_STEPS` | Các bước sử dụng công cụ tối đa mỗi câu trả lời (mặc định 8) |
-| `AGENTEYE_AGENT_TIMEOUT_MS` | Thời chờ yêu cầu `/chat` tổng thể (tất cả các lần quay của mô hình + các bước công cụ), tính bằng mili giây (mặc định 90000); công cụ SQL có giới hạn 10s riêng |
-| `AGENTEYE_AGENT_SELF_TELEMETRY` | `1` để ghi lại các lần chạy của riêng trợ lý vào AgentEye |
-| `AGENTEYE_TELEMETRY_API_KEY` | Khóa riêng `events:add` để tự động hóa |
-| `AGENTEYE_AGENT_ENV` | Thẻ môi trường được áp dụng cho tự động đo từ xa của trợ lý (mặc định `prod`) |
-
-Đặt trên dịch vụ **`dashboard`**:
-
-| Biến | Mục đích |
-|---|---|
-| `AGENTEYE_AGENT_URL` | Nơi bảng điều khiển tiếp cận dịch vụ agent. Các bản kê khai Kubernetes và tệp Compose được gói đóng đặt cái này thành `http://agent:9100`. Để trống để ẩn trợ lý hoàn toàn. |
-| `AGENTEYE_AGENT_TOKEN` | Phải phù hợp với token của agent |
-
----
-
-## Đo từ xa & xem những gì người dùng hỏi
-
-Nội dung nhắc **ở lại bên trong các hệ thống riêng của bạn** theo mặc định. Ba lớp:
-
-1. **Kho lưu trữ cuộc hội thoại**: mỗi nhắc nhở và câu trả lời được lưu trong cơ sở dữ liệu AgentEye của bạn (theo người dùng, riêng tư) và có thể được tải lại từ bộ chuyển đổi lịch sử của trợ lý. Đây là bản ghi bền về những gì người dùng hỏi.
-2. **Phân tích sản phẩm**: bảng điều khiển ghi lại **chỉ siêu dữ liệu** (tần suất sử dụng trợ lý, số lượng công cụ, độ trễ) vào phân tích của bạn. **Văn bản** nhắc nhở không bao giờ được bao gồm trên con đường này.
-3. **Tự động hóa (tùy chọn)**: đặt `AGENTEYE_AGENT_SELF_TELEMETRY=1` (cộng với một `events:add` chỉ `AGENTEYE_TELEMETRY_API_KEY`) và trợ lý sẽ ghi các lần chạy của riêng nó vào AgentEye dưới dạng một agent `dashboard-assistant`. Bạn sau đó xem các nhắc nhở của người dùng và lý luận của trợ lý trong các chế độ xem sessions/events giống nhau mà bạn sử dụng cho mọi thứ khác. Lưu ý: các sự kiện đó hiển thị cho bất kỳ ai có `events:read`; nếu điều đó quá rộng, hãy tắt cái này.
-
----
-
-## Tắt nó
-
-Bất kỳ điều nào trong số này sẽ tắt trợ lý (thanh railing dock biến mất):
-
-- Hủy đặt `AGENTEYE_AGENT_URL` trên bảng điều khiển, **hoặc**
-- Để điểm cuối LLM không được cấu hình trên agent (không `ANTHROPIC_API_KEY` / gateway / Bedrock / Vertex), **hoặc**
-- Không triển khai dịch vụ `agent` nào cả.
-
----
-
-## Tóm tắt bảo mật
-
-- **Không ghi lặng lẽ**: các công cụ ghi của trợ lý (`create_saved_query`, `update_saved_query`, `create_dashboard`, `update_dashboard`, `add_query_to_dashboard`) không thể thực hiện mà không cần một cú nhấp chuột rõ ràng của nhà vận hành vào nút Phê duyệt trong trò chuyện; cổng trước cuộc gọi của SDK chặn công cụ cho đến khi phê duyệt tiếp cận agent qua một kênh phụ. Không có cài đặt nào tắt cổng này.
-- **Phạm vi dữ liệu cố định, hẹp**: trợ lý xác thực với máy chủ bằng một khóa chuyên dụng có bộ quyền cố định trong máy chủ (`events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run`). Các lần ghi duy nhất nó có thể tạo là các truy vấn đã lưu và bảng điều khiển; máy chủ từ chối bất kỳ điều gì ngoài phạm vi đó bất kể mô hình cố gắng.
-- **Không bề mặt xoá**: khóa không mang quyền xoá và không có công cụ xoá nào được công khai. Các nhà vận hành xoá thông qua giao diện người dùng bảng điều khiển, không bao giờ trợ lý.
-- **Chỉ nội bộ**: agent không có tuyến đường công khai; chỉ bảng điều khiển có thể gọi nó, và chỉ có token chia sẻ. (Trong Kubernetes, một NetworkPolicy hạn chế agent chỉ tiếp cận máy chủ AgentEye và điểm cuối LLM.)
-- **Phạm vi theo người dùng**: chỉ người dùng `agent:use` mới nhận được trợ lý, và nó chỉ được cung cấp các công cụ phù hợp với quyền đọc của mỗi người dùng.
-- **Không HTML thô / không thoát link**: câu trả lời hiển thị dưới dạng markdown được làm sạch; các liên kết bên ngoài bị khử độc.
-
-Xem [enterprise-docs/troubleshooting.md](/vi/agenteye/troubleshooting) để biết các vấn đề phổ biến.
+- [CLI and agents](/vi/agenteye/cli-and-agents)
+- [Queries](/vi/agenteye/queries)
+- [Dashboards](/vi/agenteye/dashboards)
+- [Evaluation suite](/vi/agenteye/evaluation-suite)

@@ -1,0 +1,50 @@
+---
+title: "Event Stream"
+description: "FailproofAI Observability Event-Stream-Dokumentation."
+---
+
+
+Sobald Ihr Agent etwas tut, sehen Sie es. Der Event Stream ist Ihr Live-Puls auf jeden Agenten in der Produktion: kein Warten, kein Durchsuchen von Logs, kein Rätseln über das, was gerade passiert ist.
+
+![Der Live-Event-Stream: farbkodierte Event-Zeilen, die in Echtzeit eintreffen, filterbar nach Umgebung, Agent, Session, Event-Typ und Freitext](/agenteye/images/events-stream.png)
+
+*Jedes Event von jedem Agenten in Ihrer Organisation, neueste zuerst, aktualisiert sich laufend.*
+
+## Ihr Live-Puls auf jeden Agenten
+
+Wenn ein Agent einen Lauf startet, ein Modell aufruft, ein Tool auslöst, einen Hook ausführt oder auf einen Fehler stößt, erscheint die Zeile im selben Moment oben im Stream. Er verfolgt alle Events aller Agenten in Ihrer Organisation – neueste zuerst – sodass Sie immer ein aktuelles Bild haben statt eines veralteten.
+
+Das bedeutet: kein Durchsuchen von Log-Dateien auf irgendeinem Server, kein Greppen über Maschinen hinweg, kein manuelles Zusammensetzen von Zeitstempeln. Sie öffnen eine Seite und beobachten bereits die Produktion.
+
+Zeilen sind farbkodiert nach Typ, sodass Sie den Stream auf einen Blick lesen können, ohne jede Zeile einzeln zu parsen. Auf einen Blick zeigt Ihnen jede Zeile:
+
+- **Den Typ**, farbkodiert: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` und weitere.
+- **Eine einzeilige Zusammenfassung** des Geschehens, sodass Sie selten etwas öffnen müssen, nur um den Kern zu verstehen.
+- **Token-Zählungen** für den Schritt.
+- **Ein Context-Window-Füllstandsabzeichen**, wo zutreffend, damit Prompt-Wachstum und eine bevorstehende Kompaktierung sichtbar werden, bevor sie zum Problem werden.
+
+Die Live-Beobachtung bedeutet, dass Sie ein fehlerhaftes Deployment, eine unkontrollierte Schleife oder einen Fehlerburst in dem Moment erkennen, in dem es passiert – nicht erst bei der Log-Auswertung am nächsten Tag.
+
+## Den einen Lauf finden, der wichtig ist
+
+Wenn etwas nicht stimmt, wollen Sie nicht den Datenstrom im Vollfluss. Sie wollen den einen Lauf, der fehlgeschlagen ist. Der Stream lässt sich schnell filtern: nach Umgebung, nach Agent, nach Session, nach Event-Typ oder nach Freitext.
+
+Filtern Sie nach Session-ID oder Agent-ID, um einem Lauf von seinem ersten bis zu seinem letzten Event zu folgen. Filtern Sie nach Event-Typ, um eine einzelne Art von Aktivität zu isolieren – zum Beispiel alle `error`-Events der gesamten Organisation in einer Ansicht. Stapeln Sie Filter, um in wenigen Klicks von „alles, überall" zu „dieser Agent, in Prod, mit Fehlern" zu gelangen, und handeln Sie dann auf Basis dessen, was Sie finden.
+
+Die Freitextsuche führt Sie direkt zu einer Nachricht, einem Tool-Namen oder einer ID, die Sie bereits zur Hand haben – so wird ein Kundenbericht in Sekunden zum genauen Lauf.
+
+## Wo Sie ihn finden
+
+Der Event Stream ist Ihre Organisations-Startseite. Melden Sie sich an und es ist die erste Oberfläche, auf der Sie landen, unter `/<org-slug>/`, sodass die Fehlersuche in dem Moment beginnt, in dem Sie ankommen.
+
+Im Hintergrund senden Ihre Agenten Events über das SDK, der Collector leitet sie an Ihren FailproofAI Observability-Server weiter, und der Stream verfolgt sie, während sie in der von Ihnen kontrollierten Infrastruktur eintreffen. Wenn Sie statt des rohen Verlaufs die aggregierte Ansicht möchten, fassen sich die Events eines Laufs in Sessions zu einer einzelnen Zeile zusammen – einen Klick entfernt.
+
+Dies ist die rohe Wahrheitsquelle, auf der jede andere Beobachtungsoberfläche aufbaut. Wenn also anderswo eine Zahl falsch aussieht, ist der Stream der Ort, an dem Sie bestätigen, was tatsächlich passiert ist.
+
+## Verwandte Themen
+
+- [Sessions](/de/agenteye/sessions): dieselben Events, zu einer Zeile pro Lauf zusammengefasst, mit einem git-artigen Ausführungsgraphen.
+- [Telemetry](/de/agenteye/telemetry): was Ihre Agenten senden und wie Events den Stream erreichen.
+- [Error tracking](/de/agenteye/error-tracking): eine Triage-Oberfläche für alles, was schiefgelaufen ist.
+- [Alerts](/de/agenteye/alerts): jeden Schwellenwert in eine Benachrichtigungsregel umwandeln.
+- [CLI and agents](/de/agenteye/cli-and-agents): denselben Live-Verlauf aus Ihrem Terminal.

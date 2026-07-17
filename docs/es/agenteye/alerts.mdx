@@ -1,308 +1,63 @@
 ---
 title: "Alertas"
-description: "Documentación de Alertas de AgentEye."
+description: "Documentación de alertas de observabilidad de FailproofAI."
 ---
 
-Las alertas evalúan una regla según un calendario y te notifican cuando algo supera un umbral. Transforman AgentEye de un panel pasivo en una superficie de avisos para lo que realmente importa: picos en la tasa de errores, regresiones de latencia, caídas en la puntuación de los evaluadores o cualquier evento personalizado que puedas expresar como una consulta ClickHouse.
 
-Esta guía cubre qué es una alerta, los cinco tipos de disparadores, los cuatro canales de notificación, el ciclo de vida de los incidentes y los controles operativos disponibles.
+Entérate al instante cuando algo supere tus límites, en el canal que tu equipo ya utiliza, en lugar de que te lo cuente un cliente. Configura una regla una sola vez y FailproofAI Observability la evalúa periódicamente, notificándote por correo electrónico, Slack, webhook o directamente en el panel.
 
-![La página de Alertas: una cuadrícula de tarjetas de reglas de alerta, cada una mostrando su tipo de disparador, ventana de evaluación, canales y una insignia de severidad informativa/advertencia/crítica](/agenteye/images/alerts.png)
+![La página de Alertas: una cuadrícula de tarjetas de reglas de alerta, cada una mostrando su disparador, ventana de evaluación, canales y una insignia de severidad de información, advertencia o crítico](/agenteye/images/alerts.png)
+*Todas las reglas de alerta de un vistazo: qué monitorean, con qué frecuencia, dónde notifican y qué tan urgentes son.*
 
----
+## Entérate de los problemas antes que tus usuarios
 
-## Conceptos
+Deja de actualizar un panel esperando detectar una regresión. Configura una alerta cada vez que haya una señal de la que quieras enterarte incluso cuando nadie esté mirando, y recíbela donde ya estás:
 
-- **Alerta** — la regla. Define *qué* verificar (el disparador), *con qué frecuencia* (el intervalo de evaluación), *cuándo considerarla rota* (lógica compuesta), *qué tan urgente es* (severidad) y *a quién/dónde notificar* (canales).
-- **Incidente** — lo que ocurre cuando una alerta se activa. Una alerta tiene como máximo un incidente abierto a la vez. Los incidentes repetidos actualizan la evidencia del mismo incidente. Los incidentes son resueltos por un operador; la resolución automática cuando la regla deja de activarse está planificada pero aún no está habilitada.
-- **Canal** — hacia dónde va una notificación: correo electrónico, Slack, webhook genérico o en el panel. Cada alerta puede combinar cualquier combinación de estos.
+- **Correo electrónico**, para quien deba saberlo.
+- **Slack**, un mensaje enriquecido con un botón que lleva directamente al incidente.
+- **Webhook**, un POST JSON para PagerDuty, Opsgenie o tu propio endpoint, con una firma opcional para que el receptor pueda verificar su autenticidad.
+- **En el panel**, silencioso por diseño, para cuando estés ajustando una regla y aún no quieras notificar a nadie.
 
-Las alertas e incidentes pertenecen a una organización y se comparten entre los operadores de esa organización (en un despliegue de inquilino único, esto es simplemente la organización `default` integrada). Los incidentes pueden asignarse a un operador individual para su triaje.
+Combina cualquier combinación en una sola regla, y su severidad (información, advertencia o crítico) se incluye para que las urgentes se vean como urgentes.
 
----
+## Crea la regla en un formulario, no en JSON
 
-## Tipos de disparadores
+Describes qué significa "roto" en un formulario y FailproofAI Observability escribe la regla subyacente por ti. La especificación JSON es solo lo que ese formulario produce internamente, así que puedes leerla para entender una regla, pero rara vez necesitas escribirla.
 
-Cinco tipos, cada uno con su propia especificación JSON. Elige el que mejor describa lo que significa "roto" en tu contexto. El formulario de **nueva alerta** del panel construye la misma especificación, adaptando el editor de condiciones al tipo de disparador que selecciones:
+![El formulario de nueva alerta: nombre y descripción, un interruptor de habilitación y un selector de disparador con opciones de umbral de métrica, SQL personalizado, puntuación de evaluación, evaluación compuesta y condiciones por evento](/agenteye/images/alert-new.png)
+*Elige un disparador y el formulario mostrará los campos correspondientes; Guardar escribe la regla.*
 
-![El formulario de nueva alerta, con los campos básicos (nombre, descripción, habilitado) y el selector de disparador mostrando las opciones: umbral de métrica, SQL personalizado, puntuación de evaluación, fallos de evaluación y por evento](/agenteye/images/alert-new.png)
+El flujo habitual es rápido: ponle nombre, elige un **disparador** (qué monitorear), define el **umbral y la ventana** (qué tan grave, durante cuánto tiempo), conecta al menos un **canal**, luego **Guarda** y pulsa **Probar** para enviar una notificación sintética y confirmar que cada destino está correctamente configurado. Internamente, esto produce una pequeña especificación como:
 
-### 1. `metric_threshold`
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
 
-El más sencillo. Elige una métrica de una lista cerrada, un operador, un umbral y una ventana de tiempo.
+No estás limitado a un solo tipo de señal. Elige el disparador que mejor se adapte a cómo piensas sobre el fallo:
 
-| Métrica | Qué cuenta |
+| Disparador | Se activa cuando |
 |---|---|
-| `event_count` | Total de eventos en la ventana |
-| `error_count` | `event_type = 'error'` O cualquier evento con `error_type IS NOT NULL` |
-| `error_rate` | `error_count / event_count` (0..1) |
-| `p95_latency_ms` | `quantile(0.95)(duration_ms)` sobre todos los eventos con `duration_ms` |
-| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
-| `token_sum` | `SUM(input_tokens + output_tokens)` |
+| **Umbral de métrica** | una métrica predefinida (tasa de error, latencia p95 o p99, conteos de eventos o errores, gasto en tokens) supera tu límite durante una ventana de tiempo |
+| **SQL personalizado** | tu propia consulta de solo lectura devuelve una fila, o un valor calculado supera un umbral |
+| **Puntuación de evaluación** | el promedio de la puntuación de un evaluador (por ejemplo, alucinaciones) supera un umbral |
+| **Evaluación compuesta** | varias comprobaciones de puntuación se combinan con lógica any, all o al-menos-N, para detectar una regresión que solo se manifiesta en múltiples puntuaciones |
+| **Por evento** | llega un único evento coincidente: un agente específico, un tipo de error específico o una subcadena de mensaje |
 
-Operadores: `>`, `>=`, `<`, `<=`, `==` (también aceptados como `gt`, `gte`, `lt`, `lte`, `eq`).
+¿Ya estás analizando un fallo en la [página de Errores](/es/agenteye/error-tracking)? Cada fila tiene un botón **+ alerta** que abre este mismo formulario prellenado para detectar exactamente ese fallo en el futuro, de modo que el incidente que acabas de triagear sea el que te notifique la próxima vez.
 
-Filtros opcionales: `environment`, `event_type`.
+**Dónde encontrarlo:** Las alertas se encuentran en `/<org-slug>/alerts`. Crear, editar, eliminar y probar reglas requiere **`alerts:write`**; con `alerts:read` es suficiente para consultar. El selector de destinatarios lista a los miembros de tu organización por nombre, para que puedas notificar a una persona sin salir del formulario.
 
-Ejemplo de especificación:
+## Notifícame solo cuando sea real
 
-```json
-{
-  "metric": "p95_latency_ms",
-  "filter": { "environment": "production" },
-  "window_secs": 900,
-  "op": ">",
-  "value": 5000
-}
-```
+Una medición incorrecta no debería despertarte. El filtro de ruido **M de N** controla cuántas de las últimas evaluaciones deben fallar antes de que la alerta te notifique realmente. Configúralo en **3 de 5** y la regla se activará solo después de haber superado el umbral en tres de sus últimas cinco comprobaciones, evitando así falsas alarmas por señales inestables; déjalo en el valor predeterminado de **1 de 1** para que se active en la primera infracción. También puedes elegir con qué frecuencia se ejecuta la regla, con valores preestablecidos de 1m, 5m, 15m y 1h, ajustados a la velocidad real de la señal.
 
-### 2. `custom_sql`
+## Qué ocurre cuando se activa una alerta
 
-Para cualquier cosa que las métricas predefinidas no cubran. El SQL proporcionado por el operador pasa por el mismo guardia `/queries/run` (solo SELECT/WITH, una única sentencia, límite de 10 000 filas) antes de que el despachador lo ejecute. Dos modos:
+Una infracción abre un **incidente** y notifica tus canales una sola vez. A partir de ahí, tu equipo lo reconoce, asigna un responsable, lo analiza y lo resuelve, todo con un registro limpio y atribuido. Ese flujo de triaje tiene su propio espacio: consulta [Incidentes](/es/agenteye/incidents).
 
-- **modo rows** (sin `op`/`value`): la alerta se activa en cuanto la consulta devuelve al menos una fila.
-- **modo value**: la consulta debe tener un alias de columna llamado `metric_value`; el despachador compara el `metric_value` de la primera fila con `value` usando `op`.
+## Relacionado
 
-```json
-{
-  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
-  "op": ">",
-  "value": 100
-}
-```
-
-### 3. `evaluation_score`
-
-Lee `agenteye.evaluations` y compara el promedio de una puntuación con nombre a lo largo de una ventana de tiempo.
-
-```json
-{
-  "score_key": "hallucination",
-  "op": ">",
-  "value": 0.6,
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-`min_count` protege contra valores atípicos de una sola muestra; el despachador no se activará hasta que existan al menos N evaluaciones en la ventana.
-
-### 4. `eval_compound`
-
-Detecta una regresión de calidad que solo se manifiesta en *varias* puntuaciones de evaluadores a la vez. Mientras que `evaluation_score` monitorea una única puntuación con nombre, `eval_compound` compone múltiples condiciones de puntuación de evaluación en una sola alerta y combina sus resultados con una lógica elegida; así una sola regla puede expresar "activar si la utilidad cae **o** la alucinación sube", "activar solo si la utilidad **y** la eficiencia de herramientas caen ambas", o "activar si **al menos 2 de** estas tres comprobaciones superan el umbral".
-
-Cada condición lee el promedio de una puntuación con nombre de `agenteye.evaluations` sobre la ventana compartida y la evalúa con su propio operador y umbral. Los resultados booleanos se combinan luego mediante el `combinator`:
-
-| Combinador | Lógica | Se activa cuando |
-|---|---|---|
-| `"any"` | O | al menos una condición supera el umbral |
-| `"all"` | Y | todas las condiciones superan el umbral |
-| `{ "at_least": N }` | M de N | al menos N condiciones superan el umbral |
-
-```json
-{
-  "combinator": { "at_least": 2 },
-  "conditions": [
-    { "score_key": "hallucination", "op": ">", "value": 0.8 },
-    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
-    { "score_key": "tone",          "op": "<", "value": 0.5 }
-  ],
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-- `combinator`: `"any"`, `"all"` o `{ "at_least": N }`.
-- `conditions[]`: cada una como `{ score_key, op, value }`, usando los mismos operadores que los demás disparadores (`>`, `>=`, `<`, `<=`, `==`).
-- `window_secs`: el período de retrospección compartido que se aplica a cada condición (por defecto `3600`).
-- `min_count`: número mínimo de evaluaciones por condición antes de que esa condición pueda superar el umbral; una condición con muy pocas muestras en la ventana se cuenta como "no superada" (por defecto `1`).
-- `environment`: opcional; restringe cada condición a un entorno.
-
-La evidencia de la notificación registra el promedio observado de cada condición, el umbral contra el que se evaluó, cuántas evaluaciones se vieron y si superó el umbral; así puedes ver exactamente qué comprobaciones se activaron.
-
-### 5. `per_event`
-
-Para alertas del tipo "ha llegado algún evento que coincide con X". Sin agregación; el despachador se activa en cuanto detecta una coincidencia en la ventana de retrospección.
-
-```json
-{
-  "event_type": "error",
-  "lookback_secs": 60,
-  "environment": "production",
-  "tool_name": "bash",
-  "agent_id": "caa",
-  "error_type": "TimeoutError",
-  "message_contains": "vertex-ai timed out"
-}
-```
-
-Todos los filtros se combinan con AND; cualquier campo que omitas queda sin restricción.
-
-| Campo | Propósito |
-|---|---|
-| `agent_id` | Restringe a los errores de un agente específico (el que aparece en la fila `/errors`). |
-| `error_type` | Restringe a una clase de error específica (p. ej. `TimeoutError`) en lugar de todos los errores. |
-| `message_contains` | Coincidencia de subcadena sin distinción entre mayúsculas y minúsculas contra `payload.message`. Útil para capturar un modo de fallo específico (p. ej. `prompt is too long`) sin alertar por cada error del mismo agente. Limitado a 200 caracteres; se compara como cadena literal, no como patrón. |
-
-Consejo: establece `lookback_secs` de forma aproximada al `eval_interval_secs` de la alerta para evitar notificaciones duplicadas del mismo evento.
-
-**Atajo desde `/errors`:** el botón **+ alert** en la fila representativa de cada grupo de errores en la vista de errores (y en el panel de detalle de evento de sesión para un evento de error) abre `/alerts/new` con el disparador `per_event` ya completado con el `event_type` y el entorno de esa fila, incluyendo un nombre derivado del `error_type` del payload cuando está disponible. Aún debes seleccionar los canales y confirmar la retrospección, pero el comparador ya viene rellenado. Los operadores necesitan `alerts:write` para que aparezca el botón.
-
----
-
-## Lógica compuesta (M de N)
-
-Cada alerta tiene dos controles enteros adicionales al disparador:
-
-- `eval_window`: cuántas evaluaciones recientes considerar (por defecto 1)
-- `min_breaches`: cuántas de esas deben superar el umbral antes de que la alerta se active (por defecto 1)
-
-`1 de 1` (el valor por defecto) significa "activar en el primer incumplimiento". `3 de 5` significa "activar cuando la regla haya superado el umbral en 3 de las últimas 5 evaluaciones", útil para señales inestables donde una sola medición incorrecta es ruido. El despachador mantiene un búfer circular por alerta; no tienes que gestionar el estado.
-
----
-
-## Intervalo de evaluación
-
-`eval_interval_secs` controla con qué frecuencia el despachador ejecuta tu regla. Limitado al rango `[30, 86400]`. Valores predefinidos en el panel: 1m / 5m / 15m / 1h. Elige un intervalo acorde a la velocidad con que cambia la señal subyacente: una alerta de tasa de error de 5 minutos evaluada cada 15 segundos desperdicia CPU; una alerta por evento necesita una retrospección corta o perderá eventos silenciosamente entre ticks.
-
----
-
-## Canales
-
-Cada alerta puede combinar cualquiera de estos cuatro. Las credenciales por canal (URL del webhook de Slack, URL del webhook genérico + secreto de firma, destinatarios de correo predeterminados) se configuran una sola vez en **`/settings`** y se referencian por clave desde cada alerta. De esta forma, un canal de Slack puede servir a muchas alertas sin que cada una almacene su propia copia de la URL del webhook.
-
-Los tres tipos de canales externos (email, Slack, webhook) también están controlados por un interruptor global a nivel de organización, `alerts.enabled_channels`. Cuando una alerta activada incluye un tipo de canal que no está en este conjunto, el despachador lo omite y registra una fila en `alert_notifications` con estado `skipped_disabled` y destino `<channel_disabled>` (lo que permite pausar globalmente, por ejemplo, todas las entregas de Slack sin editar cada regla). El canal en el panel siempre está habilitado. Consulta [Configuración](#configuration).
-
-### Correo electrónico
-
-Reutiliza el mismo transporte SMTP que envía los correos de inicio de sesión OTP. Los destinatarios se resuelven en este orden:
-
-1. Anulación `recipients[]` por canal (cuando no está vacío).
-2. La configuración `alerts.email_default_recipients` (un array de cadenas de correo).
-
-Si SMTP no está configurado, el canal no hace nada; el despachador igualmente registra una fila en `alert_notifications` con destino `<smtp_unconfigured>` para que el registro de auditoría haga visible la mala configuración.
-
-### Slack
-
-Envía un mensaje Block Kit a una [URL de webhook entrante](https://api.slack.com/messaging/webhooks).
-
-- URL predeterminada: `alerts.slack_default_webhook` (configurada en `/settings`).
-- Anulación por alerta: establece el `webhook_setting_key` del canal a cualquier otra clave de configuración de tipo URL, p. ej. `alerts.slack_oncall`, `alerts.slack_costs`.
-
-El encabezado incluye un emoji de severidad (`:rotating_light:` / `:warning:` / `:bell:`), y el mensaje incluye un botón con enlace directo a la página del incidente.
-
-### Webhook genérico
-
-Una integración JSON-POST para PagerDuty, Opsgenie o tu propio endpoint de ingesta. Estructura del cuerpo:
-
-```json
-{
-  "schema_version": 1,
-  "event": "alert.firing",
-  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
-  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
-  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
-}
-```
-
-Cuando `alerts.webhook_signing_secret` está configurado, la solicitud incluye un encabezado `X-AgentEye-Signature: sha256=<hex>`, el HMAC-SHA256 del cuerpo usando el secreto. Verifícalo en el lado receptor antes de confiar en el payload.
-
-El encabezado `X-AgentEye-Event` contiene `alert.firing` / `alert.test`. (`alert.resolved` está reservado para la función de resolución automática planificada y actualmente no se emite.)
-
-### En el panel
-
-Sin entrega externa: la alerta simplemente escribe una fila en `alert_notifications` que la página de incidentes del panel muestra. Útil mientras ajustas una regla y no quieres saturar un sistema externo, o para alertas de baja urgencia que los operadores revisan durante el triaje habitual.
-
----
-
-## Ciclo de vida del incidente
-
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── operator resolve ───▶  resolved
-```
-
-- **firing** — el despachador acaba de abrir el incidente o detectó otro incumplimiento. La notificación de activación se envía exactamente una vez (controlada por la marca de tiempo `notified_firing_at` del incidente).
-- **acknowledged** — un operador presionó *ack* en `/incidents/:id`. El incidente sigue considerándose abierto; los incumplimientos posteriores actualizarán su evidencia sin volver a notificar.
-- **resolved** — un operador presionó *resolve*. La resolución automática cuando la regla deja de incumplir está planificada pero aún no está habilitada, por lo que un incidente abierto permanece abierto hasta que un operador lo resuelva.
-
-Un nuevo incidente puede reabrirse en la misma alerta en cualquier momento después de que el anterior haya sido resuelto.
-
-**Línea de tiempo de actividad.** Cada acción sobre un incidente — apertura, reconocimiento, resolución — se registra en un registro de actividad de solo adición y se muestra en la línea de tiempo de *actividad* del incidente, con cada entrada atribuida al operador que la realizó (por correo electrónico) o a **automated** para las acciones que el despachador tomó por su cuenta (apertura automática ante un incumplimiento). El reconocimiento es compartido: varios operadores pueden reconocer el mismo incidente y cada uno aparece como una entrada separada y atribuida.
-
-La bandeja de entrada de **Incidents** agrupa los incidentes abiertos por estado y permite filtrar por severidad y responsable asignado:
-
-![La bandeja de entrada de Incidents mostrando tarjetas de incidentes vinculados a alertas y ad-hoc con insignias de severidad y responsables asignados](/agenteye/images/incidents.png)
-
-Al abrir un incidente se muestra la evidencia del incumplimiento, los responsables asignados y suscriptores, la línea de tiempo de actividad atribuida y un hilo de comentarios:
-
-![Vista de detalle de un incidente: la alerta padre, resumen del incumplimiento, responsables asignados, suscriptores, registro de actividad atribuido y conversación](/agenteye/images/incident-detail.png)
-
----
-
-## Permisos requeridos
-
-La creación de *reglas* de alerta y el triaje de *incidentes* son responsabilidades separadas con permisos distintos, de modo que puedes dar a una rotación de guardia acceso a incidentes sin también otorgarle la capacidad de reescribir las reglas.
-
-- `alerts:read`: ver reglas de alerta.
-- `alerts:write`: crear, editar, eliminar reglas de alerta y disparar una notificación de prueba.
-- `incidents:read`: ver incidentes.
-- `incidents:write`: abrir incidentes manuales (ad-hoc) que no están vinculados a una alerta.
-- `incidents:ack`: reconocer, asignar, comentar y resolver incidentes.
-
-> **`alerts:ack` heredado.** Las claves y operadores a los que se otorgó el token anterior `alerts:ack` siguen funcionando: se trata como `incidents:ack` (e implica `incidents:read`), por lo que los operadores de guardia existentes mantienen su acceso sin necesidad de reemitir credenciales. Emite nuevos permisos con la familia `incidents:*`.
-
-Otorga permisos en claves de API (`POST /keys`) y operadores (`PUT /users/:id`). El `PermGate` del panel bloquea los botones relevantes cuando falta un permiso; verás `// 403` junto a la acción.
-
-> **Selector de destinatarios de correo.** El selector de destinatarios del editor de alertas lista los miembros de tu organización para que puedas seleccionarlos por nombre. Se carga para cualquier operador que tenga `alerts:read` o `alerts:write`; ver el directorio de tu equipo para este fin **no** requiere `users:read`, y el selector devuelve únicamente las direcciones de correo de los miembros, nunca registros de usuario completos.
-
----
-
-## Configuración
-
-Variables de entorno consumidas por el despachador:
-
-| Variable | Por defecto | Propósito |
-|---|---|---|
-| `ALERT_WORKERS` | `1` | Tareas de worker por instancia de servidor. La mayoría de los despliegues solo necesitan una. |
-| `ALERT_CLAIM_BATCH` | `16` | Máximo de alertas que procesa un único tick de worker. |
-| `ALERT_POLL_IDLE_SECS` | `5` | Tiempo de espera del worker cuando la cola está vacía. |
-| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | Tiempo límite de evaluación por disparador. |
-| `DASHBOARD_URL` | `https://app.befailproof.ai` | Origen usado para construir el enlace mágico al incidente en las notificaciones. Establécelo al host de tu panel. |
-
-Tras un fallo de evaluación transitorio (ClickHouse inaccesible, tiempo límite de consulta), el despachador reintenta la regla con retroceso exponencial. Una vez que una regla acumula **5** fallos transitorios consecutivos, se reprograma a su cadencia normal en lugar de continuar el retroceso, de modo que una regla que falla persistentemente sigue siendo reevaluada. Este límite es fijo y no es configurable por el operador.
-
-Configuraciones de canal (administradas desde `/settings`, no como variables de entorno):
-
-- `alerts.email_default_recipients` (`email_list`): array JSON de cadenas de correo — los destinatarios predeterminados para los canales de correo.
-- `alerts.slack_default_webhook` (`url`): URL de webhook entrante de Slack por defecto.
-- `alerts.webhook_default_url` (`url`): URL de webhook genérico por defecto.
-- `alerts.webhook_signing_secret` (`secret`): clave HMAC-SHA256. Siempre se devuelve como `""` en la respuesta GET; escribe un nuevo valor para rotarla.
-- `alerts.enabled_channels` (`channel_set`): el conjunto global de tipos de canales externos que se despachan cuando se activa una alerta; por defecto incluye los tres (`email`, `slack`, `webhook`). Eliminar un tipo aquí suprime globalmente ese canal para cada alerta sin editar cada regla. El canal en el panel siempre se entrega y no se ve afectado por esta configuración.
-
----
-
-## Verificar una nueva alerta
-
-Antes de confiar en una nueva alerta:
-
-1. Guárdala como habilitada con al menos un canal de notificación.
-2. Selecciona **test** en la página de detalle de la alerta y confirma que cada destino configurado recibe la notificación sintética.
-3. Tras el primer incumplimiento real, confirma que el incidente aparece en **Incidents** y que el valor medido coincide con la consulta correspondiente en el panel.
-
-Los incidentes no se resuelven automáticamente cuando una condición se normaliza. Un operador debe resolverlos desde la página de detalle del incidente.
-
----
-
-## Solución de problemas
-
-| Síntoma | Causa probable |
-|---|---|
-| La alerta nunca se activa | `enabled = false`, o no hay canales adjuntos, o la consulta CH subyacente devuelve 0 filas. Usa *test* para confirmar los canales; usa `/queries/run` para confirmar la métrica. |
-| Falta la notificación de Slack | `alerts.slack_default_webhook` (o la clave de anulación por alerta) no está configurada: verifica en `alert_notifications.target` si hay filas con `<unset:…>`; o el tipo `slack` está deshabilitado globalmente en `alerts.enabled_channels`: busca filas en `alert_notifications` con estado `skipped_disabled` y destino `<channel_disabled>`. |
-| Webhook genérico con 401 | El receptor está requiriendo una firma pero `alerts.webhook_signing_secret` no está configurado. Verifica en el receptor que el HMAC coincida con `hmac_sha256(secret, body)`. |
-| Correo con "from all sends failed" | Las credenciales SMTP son incorrectas o tu relay rechaza la dirección `from`. Es la misma superficie que envía los correos OTP: si esos funcionan, el transporte SMTP está bien. |
-| El incidente se reabre repetidamente | Los controles compuestos son demasiado agresivos: intenta aumentar `min_breaches` o `eval_window` para que los picos transitorios no vuelvan a abrir incidentes que ya resolviste. |
+- [Incidentes](/es/agenteye/incidents): sigue una alerta activa desde abierta hasta reconocida y resuelta.
+- [Seguimiento de errores](/es/agenteye/error-tracking): agrupa fallos de agentes y convierte uno en alerta con un clic.
+- [Paneles](/es/agenteye/dashboards): monitorea los paneles compartidos de donde provienen los umbrales que configuras como alertas.
+- [CLI y agentes](/es/agenteye/cli-and-agents): crea alertas y reconoce incidentes desde tu terminal, o inclúyelos en scripts de CI.

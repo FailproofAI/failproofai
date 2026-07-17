@@ -1,0 +1,22 @@
+---
+title: "Observar"
+description: "Documentação de Observabilidade do FailproofAI - Observe."
+---
+
+As superfícies de observação são onde você acompanha o que seus agentes estão fazendo agora e aprofunda em qualquer execução individual. Tudo aqui é em tempo real, com escopo para sua organização e filtrável por intervalo de datas, ambiente, agente e sessão — assim você vai de "algo parece errado" ao exato run em segundos.
+
+![O Event Stream ao vivo, com código de cores por tipo e filtrável por ambiente, agente e sessão](/agenteye/images/events-stream.png)
+
+Quatro superfícies, cada uma com sua própria página:
+
+- **[Event stream](/pt-br/agenteye/event-stream)**: o rastro em tempo real, passo a passo, de cada execução em todos os agentes, do mais recente ao mais antigo. É a página inicial da sua organização e o primeiro passo para triagem.
+- **[Sessions and execution graph](/pt-br/agenteye/sessions)**: esses eventos consolidados em uma linha por execução, mais uma visualização no estilo git de como cada run se desenvolveu.
+- **[Performance metrics](/pt-br/agenteye/telemetry)**: mapas de calor de latência e vitais p50/p95/p99 para seus modelos, ferramentas e hooks, para que um pico na cauda se destaque da mediana.
+- **[Error tracking](/pt-br/agenteye/error-tracking)**: uma superfície de triagem unificada para tudo que deu errado, a um clique de um alerta ativo até o run que falhou.
+
+## Relacionados
+
+- [Evaluations](/pt-br/agenteye/evaluations): avalie a qualidade de cada execução.
+- [Alerts](/pt-br/agenteye/alerts): transforme qualquer limite em uma regra de notificação.
+- [Audits](/pt-br/agenteye/audits): deixe o FailproofAI Observability identificar padrões de falha nas sessões por você.
+- [CLI and agents](/pt-br/agenteye/cli-and-agents): a mesma observabilidade direto do seu terminal.

@@ -1,73 +1,75 @@
 ---
-title: "Bộ công cụ Đánh giá"
-description: "Tài liệu về Bộ công cụ Đánh giá AgentEye."
+title: "Evaluation Suite"
+description: "Tài liệu FailproofAI Observability Evaluation Suite."
 ---
 
-AgentEye đánh giá các phiên làm việc của agent đã hoàn thành bằng cách gửi toàn bộ bản ghi sự kiện đến **một dịch vụ đánh giá do khách hàng sở hữu**. Dịch vụ đánh giá trả về điểm số theo cách trực tiếp hoặc bằng cách trả về một `job_id` để AgentEye thăm dò. Kết quả được lưu trữ và hiển thị trên bảng điều khiển.
 
-Hướng dẫn này bao gồm:
+FailproofAI Observability có thể tự động chấm điểm mỗi lần chạy agent hoàn tất để đánh giá chất lượng: bạn cung cấp một dịch vụ chấm điểm nhỏ, và Observability xử lý phần còn lại. Sử dụng nó để theo dõi các chiều kích bạn quan tâm (hữu ích, hiệu quả công cụ, độ chính xác, an toàn; bạn chọn), phát hiện hồi quy sớm và so sánh các agent hoặc môi trường một cách nhanh chóng. Chấm điểm là tùy chọn: pipeline không làm gì cho đến khi bạn đặt `EVALUATOR_ENDPOINT` trên máy chủ.
 
-1. Cách phát hiện hoàn thành phiên làm việc.
-2. Hợp đồng HTTP mà dịch vụ đánh giá phải triển khai.
-3. Cấu hình máy chủ AgentEye.
-4. Xem kết quả.
-5. Xử lý sự cố.
+> **Lưu ý:** Bạn định nghĩa các chiều chấm điểm. Evaluator của bạn có thể trả về bất kỳ khóa số nào mà nó muốn; Observability lưu trữ, theo dõi xu hướng và hiển thị bất cứ thứ gì bạn gửi lại.
 
-Để tìm helper Python triển khai hợp đồng này, hãy xem
-[gói `agenteye-evaluator` trên PyPI](https://pypi.org/project/agenteye-evaluator/).
+## Tổng quan
+
+1. **Viết một scorer.** Thiết lập một dịch vụ HTTP nhỏ đọc phiên bản ghi nội dung và trả về các điểm số. Observability có kèm một tham chiếu làm việc mà bạn có thể sao chép. Xem [Viết một evaluator với SDK](#writing-an-evaluator-with-the-sdk).
+2. **Chỉ Observability đến nó.** Đặt `EVALUATOR_ENDPOINT` (và một `EVALUATOR_TOKEN` được chia sẻ) trên quy trình máy chủ.
+3. **Xem các điểm số đến.** Mỗi phiên hoàn tất sẽ được chấm điểm tự động; kết quả xuất hiện trên trang chi tiết phiên, lưới phiên và các bảng điều khiển đã lưu.
+
+![Chế độ xem chi tiết phiên với bản tóm tắt đánh giá, thanh điểm số theo chiều kích và văn bản lý do trong phần rail bên phải](/agenteye/images/session-detail.png)
+
+*Khi một evaluator được định cấu hình, mỗi lần chạy hoàn tất sẽ được chấm điểm và kết quả xuất hiện trong phần rail bên phải của phiên: bản tóm tắt ở trên cùng, sau đó là các thanh điểm số theo chiều kích với lý do.*
 
 ---
 
 ## Cách hoạt động
 
-```text
-ingest /events  ──▶  AgentEye  ──── POST /evaluate ────▶  Dịch vụ đánh giá
-   (agent_end)        server   ◀──── done | pending ────
-                          │
-                          │     GET /evaluate/{job_id} ─────▶
-                          │     ◀──── done ──────────────
-                          ▼
-                     evaluations  (kết quả cuối cùng)
+```mermaid
+flowchart LR
+    ING["ingest /events<br/>agent_end"] --> SRV["Observability server"]
+    SRV -->|"POST /evaluate"| EV["Evaluator service"]
+    EV -->|"done or pending"| SRV
+    SRV -->|"poll GET /evaluate/{job_id}"| EV
+    EV -->|"done"| SRV
+    SRV --> RES["evaluations<br/>terminal results"]
 ```
 
-Khi AgentEye SDK phát hành sự kiện `agent_end` cho một phiên làm việc, máy chủ lên lịch một đánh giá. Sau đó, nó gửi toàn bộ bản ghi sự kiện đến dịch vụ đánh giá của bạn, dịch vụ này có thể:
+Khi FailproofAI Observability SDK phát ra sự kiện `agent_end` cho một phiên, máy chủ lên lịch một đánh giá. Sau đó, nó POST toàn bộ phiên ghi nội dung sự kiện đến dịch vụ evaluator của bạn, dịch vụ này có thể:
 
-- **Trả về kết quả trực tiếp** với `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. Kết quả được thêm vào dòng thời gian đánh giá của phiên. `reasoning` và `summary` là tùy chọn.
-- **Trì hoãn** với `{"status":"pending", "job_id":"abc-123"}`. AgentEye sau đó sẽ gọi `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` cho đến khi dịch vụ đánh giá của bạn trả về `{"status":"done", ...}` hoặc `{"status":"error", "error":"..."}`.
+- **Trả về kết quả inline** với `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. Kết quả được thêm vào dòng thời gian đánh giá của phiên. `reasoning` và `summary` là tùy chọn.
+- **Hoãn lại** với `{"status":"pending", "job_id":"abc-123"}`. Observability sau đó gọi `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` cho đến khi evaluator của bạn trả về `{"status":"done", ...}` hoặc `{"status":"error", "error":"..."}`.
 
-  Tốc độ thăm dò là theo từng công việc: một phản hồi `pending` có thể bao gồm `next_poll_secs` để ghi đè; nếu không thì AgentEye sử dụng giá trị `default_poll_interval_secs` từ `GET /config`; nếu không thì máy chủ quay lại `EVALUATOR_POLLING_INTERVAL_SECS` (mặc định 10s). Tất cả các giá trị được giới hạn ở [1s, 1h].
+  Tần suất polling là từng công việc: phản hồi `pending` có thể bao gồm `next_poll_secs` để ghi đè; nếu không, Observability sử dụng giá trị `default_poll_interval_secs` từ `GET /config`; nếu không, máy chủ quay lại `EVALUATOR_POLLING_INTERVAL_SECS` (mặc định 10s). Tất cả các giá trị được giới hạn trong [1s, 1h].
 
-Các phiên làm việc không bao giờ phát hành `agent_end` (ví dụ: quá trình agent bị sập) cũng có thể được nhận diện: `GET /config` của dịch vụ đánh giá có thể trả về `{"inactivity_timeout_secs": 1800}`, và AgentEye sẽ đánh giá bất kỳ phiên nào không hoạt động trong khoảng thời gian đó. Đặt trường thành `null` hoặc bỏ qua để vô hiệu hóa fallback này.
+Các phiên không bao giờ phát ra `agent_end` (ví dụ, một quy trình agent bị sập) cũng có thể được nhận: `GET /config` của evaluator có thể trả về `{"inactivity_timeout_secs": 1800}`, và Observability sẽ đánh giá bất kỳ phiên nào không hoạt động lâu hơn thế. Đặt trường thành `null` hoặc bỏ qua nó để vô hiệu hóa fallback này.
 
-Pipeline hoàn toàn không hoạt động khi `EVALUATOR_ENDPOINT` không được đặt.
+Pipeline hoàn toàn là no-op khi `EVALUATOR_ENDPOINT` không được đặt.
 
-Một phiên có thể tích lũy **nhiều đánh giá cuối cùng theo thời gian**: mỗi sự kiện `agent_end` (và mỗi lần đánh giá lại thủ công từ bảng điều khiển) sẽ thêm một hàng đánh giá mới. Đây là cách được hỗ trợ để đánh giá một cuộc trò chuyện được tiếp tục: người dùng kết thúc agent, quay lại sau đó, gửi thêm sự kiện, kết thúc agent lần nữa, và một đánh giá thứ hai chạy với toàn bộ bản ghi được cập nhật. Bảng điều khiển hiển thị đánh giá gần nhất là tiêu đề chính và các đánh giá trước đó dưới dạng dòng thời gian có thể thu gọn. Trong khi một đánh giá đang chạy cho một phiên, các sự kiện `agent_end` bổ sung cho phiên đó sẽ bị bỏ qua; sự kiện tiếp theo sau khi đánh giá đang chạy hoàn thành sẽ xếp hàng một đánh giá mới như bình thường.
+Một phiên có thể tích lũy **nhiều đánh giá terminal theo thời gian**: mỗi sự kiện `agent_end` (và mỗi re-eval thủ công từ bảng điều khiển) thêm một hàng đánh giá mới. Đây là cách được hỗ trợ để đánh giá một cuộc trò chuyện được tiếp tục: người dùng kết thúc một agent, quay lại sau đó, gửi thêm sự kiện, kết thúc agent lần nữa, và một đánh giá thứ hai chạy dựa trên phiên ghi nội dung toàn bộ đã cập nhật. Bảng điều khiển hiển thị đánh giá gần đây nhất dưới dạng tiêu đề chính và các đánh giá trước đó dưới dạng dòng thời gian có thể thu gọn. Trong khi một đánh giá đang chạy cho một phiên, các sự kiện `agent_end` bổ sung cho phiên đó bị bỏ qua; cái tiếp theo sau khi đánh giá đang chạy hoàn tất sẽ xếp hàng một đánh giá mới như bình thường.
 
-Fallback không hoạt động sẽ tái kích hoạt trên các phiên được tiếp tục: nếu các sự kiện mới đến sau một đánh giá cuối cùng trước đó và phiên sau đó trở nên không hoạt động quá `inactivity_timeout_secs`, một đánh giá mới sẽ được xếp hàng.
+Fallback không hoạt động lại khi các phiên được tiếp tục: nếu các sự kiện mới đến sau một đánh giá terminal trước đó và phiên sau đó lại không hoạt động vượt quá `inactivity_timeout_secs`, một đánh giá mới sẽ được xếp hàng.
 
-Các lỗi tạm thời (5xx, 429, timeout, lỗi mạng) sẽ được thử lại với backoff hàm mũ cho đến `EVALUATOR_MAX_ATTEMPTS`; phản hồi 4xx là cuối cùng. AgentEye có thể chạy an toàn với nhiều phiên bản máy chủ có tỷ lệ ngang; công việc được phân vùng sao cho cùng một phiên không bao giờ được gửi đi hai lần cùng lúc.
+Các lỗi tạm thời (5xx, 429, timeout, lỗi mạng) được thử lại với backoff theo cấp số nhân lên tới `EVALUATOR_MAX_ATTEMPTS`; phản hồi 4xx là terminal. Observability an toàn để chạy với nhiều phiên bản máy chủ được mở rộng theo chiều ngang; công việc được phân vùng sao cho phiên được gửi không bao giờ xảy ra hai lần đồng thời.
 
 ---
 
 ## Hợp đồng HTTP
 
-Mọi tuyến đường được xác thực sử dụng **xác thực mã thông báo người mang**. Giá trị tương tự phải được cấu hình ở cả hai bên:
+Mỗi tuyến được xác thực sử dụng **xác thực mã thông báo bearer**. Cùng một giá trị phải được định cấu hình trên cả hai bên:
 
-- Máy chủ AgentEye: biến env `EVALUATOR_TOKEN`
-- Dịch vụ đánh giá: được cấu hình theo cách tương tự (SDK `agenteye-evaluator` theo quy ước đọc `EVALUATOR_TOKEN`)
+- Máy chủ Observability: biến env `EVALUATOR_TOKEN`
+- Dịch vụ evaluator: được định cấu hình theo cách tương tự (SDK `agenteye-evaluator` đọc `EVALUATOR_TOKEN` theo quy ước)
 
-Nếu `EVALUATOR_TOKEN` không được đặt, máy chủ không gửi tiêu đề `Authorization`; dịch vụ đánh giá sau đó có thể chấp nhận các yêu cầu ẩn danh, điều này tốt cho một mạng nội bộ nhưng không được khuyến khích trên internet công cộng.
+Nếu `EVALUATOR_TOKEN` không được đặt, máy chủ không gửi tiêu đề `Authorization`; evaluator sau đó có thể chấp nhận các yêu cầu ẩn danh, điều này là tốt cho một mạng chỉ nội bộ nhưng không được khuyến khích trên internet công khai.
 
-### Các tuyến đường mà dịch vụ đánh giá phải phục vụ
+### Các tuyến mà evaluator phải phục vụ
 
-| Tuyến đường | Phần thân / thông số | Phản hồi |
+| Tuyến | Nội dung / tham số | Phản hồi |
 |---|---|---|
-| `GET /health` | không có | `{"status":"ok"}` (công khai, không xác thực) |
-| `GET /config` | không có | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| bỏ qua}` |
-| `POST /evaluate` | JSON `EvalRequest` | `{"status":"done", ...}` hoặc `{"status":"pending", "job_id":"..."}` |
-| `GET /evaluate/{id}` | không có | hình dạng phản hồi giống như `/evaluate` |
+| `GET /health` | none | `{"status":"ok"}` (mở, không có xác thực) |
+| `GET /config` | none | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` hoặc `{"status":"pending", "job_id":"..."}` |
+| `GET /evaluate/{id}` | none | hình dạng phản hồi giống như `/evaluate` |
 
-### Phần thân `EvalRequest` được gửi bởi máy chủ
+### Nội dung `EvalRequest` được gửi bởi máy chủ
 
 ```json
 {
@@ -84,7 +86,7 @@ Nếu `EVALUATOR_TOKEN` không được đặt, máy chủ không gửi tiêu đ
 }
 ```
 
-### Các hình dạng phản hồi
+### Hình dạng phản hồi
 
 **Đồng bộ (done):**
 
@@ -100,35 +102,33 @@ Nếu `EVALUATOR_TOKEN` không được đặt, máy chủ không gửi tiêu đ
 }
 ```
 
-`reasoning` (bản đồ giải thích theo từng điểm) và `summary` (lý thuyết tổng thể) đều là tùy chọn. Các khóa trong `reasoning` phải phản ánh các khóa trong `scores`; bảng điều khiển hiển thị mỗi mục nội tuyến dưới thanh điểm của nó. Các đánh giá cũ hơn chỉ trả về `scores` tiếp tục hoạt động không thay đổi; `reasoning` và `summary` đơn giản đọc là null và các affordance UI tương ứng sẽ bị bỏ qua.
+`reasoning` (một bản đồ lý giải cho mỗi điểm số) và `summary` (một bản tóm tắt tổng thể một đoạn) đều là tùy chọn. Các khóa trong `reasoning` phải phản ánh các khóa trong `scores`; bảng điều khiển hiển thị từng mục inline dưới thanh điểm của nó. Các evaluator cũ chỉ trả về `scores` tiếp tục hoạt động không thay đổi; `reasoning` và `summary` chỉ đơn giản là đọc là null và các affordance giao diện người dùng tương ứng bị bỏ qua.
 
-**Không đồng bộ (trì hoãn):**
+**Không đồng bộ (hoãn lại):**
 
 ```json
 { "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
 ```
 
-`next_poll_secs` là tùy chọn; nếu bỏ qua thì máy chủ quay lại `default_poll_interval_secs` của dịch vụ đánh giá từ `/config`, sau đó đến biến env `EVALUATOR_POLLING_INTERVAL_SECS` của nó.
+`next_poll_secs` là tùy chọn; nếu bỏ qua, máy chủ quay lại `default_poll_interval_secs` của evaluator từ `/config`, sau đó đến biến env `EVALUATOR_POLLING_INTERVAL_SECS` của chính nó.
 
-**Lỗi cuối cùng phía đánh giá:**
+**Lỗi terminal phía evaluator:**
 
 ```json
 { "status": "error", "error": "model service unavailable" }
 ```
 
-Máy chủ coi bất kỳ phần thân 2xx nào khác là lỗi giao thức và ghi lại một `error` cuối cùng cho phiên.
+Máy chủ coi bất kỳ nội dung 2xx khác là lỗi giao thức và ghi một `error` terminal cho phiên.
 
 ---
 
-## Viết một dịch vụ đánh giá với SDK
+## Viết một evaluator với SDK
 
-Gói Python `agenteye-evaluator` cung cấp cho bạn một trình bao FastAPI được gõ triển khai hợp đồng HTTP ở trên. Cài đặt nó từ PyPI:
+Bạn không phải triển khai hợp đồng HTTP bằng tay. Gói Python `agenteye-evaluator` cung cấp một trình bao lọc FastAPI được gõ xử lý xác thực, định tuyến và các hình dạng yêu cầu/phản hồi cho bạn.
 
-```bash
-pip install agenteye-evaluator
-```
+FailproofAI Observability cũng có kèm **một evaluator tham chiếu làm việc** chấm điểm `helpfulness`, `tool_efficiency` và `factuality` từ hình dạng của phiên ghi nội dung. Sao chép nó làm điểm bắt đầu và hoán đổi logic của riêng bạn: một thẩm phán LLM, một công cụ quy tắc, bất cứ điều gì phù hợp với thanh chất lượng của bạn.
 
-Dịch vụ đánh giá tối thiểu:
+Evaluator tối thiểu khả thi:
 
 ```python
 import os
@@ -138,7 +138,7 @@ app = Evaluator(token=os.environ["EVALUATOR_TOKEN"])
 
 @app.evaluator
 def run(req: EvalRequest) -> EvalResponse:
-    # Kiểm tra req.events (bản ghi phiên đầy đủ) và trả về điểm số.
+    # Inspect req.events (the full session transcript) and return scores.
     tool_calls = sum(1 for e in req.events if e.event_type == "tool_use")
     return EvalResponse(
         scores={"tool_calls": float(tool_calls)},
@@ -147,121 +147,60 @@ def run(req: EvalRequest) -> EvalResponse:
     )
 ```
 
-Phiên bản `app` là ASGI-callable, vì vậy `uvicorn module:app` chạy nó.
+Phiên bản `app` chạy dưới bất kỳ máy chủ ASGI nào, vì vậy `uvicorn module:app` khởi động nó.
 
-Đối với các dịch vụ đánh giá cần trì hoãn công việc tốn kém, hãy trả về `JobPending` thay thế và đăng ký trình xử lý `@app.job_lookup`; máy chủ AgentEye thăm dò `GET /evaluate/{job_id}` cho đến khi bạn trả về trạng thái cuối cùng hoặc giới hạn `EVALUATOR_MAX_POLL_DURATION_SECS` (mặc định 1 giờ) hết hiệu lực.
+Đối với các evaluator cần hoãn lại công việc tốn kém, hãy trả về `JobPending` thay thế và đăng ký trình xử lý `@app.job_lookup`; máy chủ Observability thăm dò `GET /evaluate/{job_id}` cho đến khi bạn trả về trạng thái terminal hoặc mũ `EVALUATOR_MAX_POLL_DURATION_SECS` (mặc định 1 h) hết.
 
-Tham khảo API đầy đủ, mẫu không đồng bộ và lược đồ sự kiện: README của `agenteye-evaluator` được gửi kèm trong mỗi tarball bản phát hành trên [trang bản phát hành agenteye-enterprise](https://github.com/agenteye-enterprise/releases), hoặc bạn có thể đọc nó trên trang PyPI của gói.
-
----
-
-## Chạy một dịch vụ đánh giá trên Kubernetes
-
-Dịch vụ đánh giá là **dịch vụ của bạn**: AgentEye không gửi một container dịch vụ đánh giá mặc định. Bản phát hành bao gồm các bản kê khai Kubernetes tham khảo dưới `deploy/examples/evaluator/` mà bạn có thể áp dụng nguyên trạng sau khi thay thế hình ảnh và mã thông báo người mang dùng chung.
-
-### 1. Đóng gói dịch vụ đánh giá của bạn
-
-Một Dockerfile tối thiểu cho dịch vụ đánh giá của bạn:
-
-```dockerfile
-FROM python:3.12-slim
-WORKDIR /app
-RUN pip install --no-cache-dir agenteye-evaluator uvicorn
-COPY my_evaluator.py .
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin evaluator \
-    && chown -R evaluator:evaluator /app
-USER evaluator
-EXPOSE 9000
-CMD ["uvicorn", "my_evaluator:app", "--host", "0.0.0.0", "--port", "9000"]
-```
-
-`runAsNonRoot` (UID 10001) giữ container tương thích với các hồ sơ Pod Security bị hạn chế.
-
-### 2. Tạo mã thông báo người mang dùng chung
-
-```bash
-kubectl -n agenteye create secret generic evaluator-token \
-  --from-literal=token="$(openssl rand -hex 32)"
-```
-
-Sử dụng cùng giá trị với `EVALUATOR_TOKEN` trên máy chủ AgentEye. Máy chủ gửi `Authorization: Bearer <token>` trên mọi yêu cầu; SDK sử dụng `hmac.compare_digest` để kiểm tra thời gian không đổi và từ chối sự không khớp với HTTP 401.
-
-### 3. Áp dụng các bản kê khai ví dụ
-
-```bash
-# Trước tiên hãy chỉnh sửa deploy/examples/evaluator/deployment.yaml để trỏ
-# `image:` tại registry của bạn, sau đó:
-kubectl apply -k deploy/examples/evaluator/
-```
-
-Ví dụ bao gồm:
-
-- Một Deployment 2 bản sao với `runAsNonRoot`, hệ thống tệp gốc chỉ đọc, tất cả khả năng được bỏ, liveness + readiness trên `/health`
-- Một Dịch vụ ClusterIP trên cổng 9000
-- Một bản mẫu `secret.example.yaml` (cố tình không được bao gồm trong Kustomization; tạo secret thực tế ngoài dòng để không có mã thông báo nào được đặt trong git)
-
-### 4. Kết nối AgentEye với nó
-
-Trên máy chủ AgentEye, đặt:
-
-```bash
-EVALUATOR_ENDPOINT=http://evaluator:9000
-EVALUATOR_TOKEN=<the value generated above>
-```
-
-Máy chủ trải rộng các yêu cầu `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` song song trên tất cả các pod dịch vụ đánh giá (mặc định: `2 × 4 = 8`). Mở rộng `replicas` và giới hạn tài nguyên trên mỗi pod phối hợp với các công tắc này phía máy chủ.
-
-### Xác minh
-
-```bash
-kubectl -n agenteye port-forward svc/evaluator 9000:9000
-curl -s http://localhost:9000/health   # → {"status":"ok"}
-```
-
-Sau khi agent chạy từ đầu đến cuối, `GET /evaluations` trên máy chủ AgentEye phải trả về một hàng có `status: "done"` và các điểm số mà dịch vụ đánh giá của bạn tạo ra.
+Tham chiếu API đầy đủ, mô hình không đồng bộ và sơ đồ sự kiện được ghi lại trong README của SDK `agenteye-evaluator`.
 
 ---
 
-## Cấu hình máy chủ AgentEye
+## Chạy evaluator của bạn
 
-Đặt trên quá trình máy chủ:
+Evaluator là **dịch vụ của bạn** — FailproofAI Observability không có kèm một evaluator mặc định, vì vậy bạn xây dựng và chạy nó ở bất kỳ nơi nào bạn chạy các dịch vụ của riêng bạn. Nó chạy dưới bất kỳ máy chủ ASGI nào (ví dụ `uvicorn my_evaluator:app`); phục vụ các tuyến `/health`, `/config` và `/evaluate` từ [hợp đồng HTTP](#http-contract), sau đó chỉ máy chủ vào nó (xem [Định cấu hình máy chủ](#configuring-the-server)).
 
-| Biến Env | Ý nghĩa |
+Khi evaluator có thể truy cập được, `GET /health` trả về `{"status":"ok"}`. Sau khi một agent chạy end-to-end, `GET /evaluations` trên máy chủ trả về một hàng có `status: "done"` và các điểm số mà evaluator của bạn tạo ra.
+
+---
+
+## Định cấu hình máy chủ
+
+Đặt trên quy trình máy chủ:
+
+| Biến env | Ý nghĩa |
 |---|---|
-| `EVALUATOR_ENDPOINT` | URL cơ sở của dịch vụ đánh giá của bạn (`http://evaluator:9000`). Không được đặt = pipeline bị vô hiệu hóa. |
-| `EVALUATOR_TOKEN` | Mã thông báo người mang. Phải bằng giá trị mà dịch vụ đánh giá được cấu hình. |
-| `EVALUATOR_WORKERS` | Nhiệm vụ công nhân trên mỗi phiên bản máy chủ (mặc định 2). |
-| `EVALUATOR_CLAIM_BATCH` | Các hàng được yêu cầu trên mỗi tick công nhân (mặc định 4). Các lô được xử lý **song song**; đồng quy hiệu quả trên endpoint dịch vụ đánh giá của bạn là `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | Công nhân ngủ bao lâu giữa các nỗ lực gửi khi không có đánh giá nào đến hạn (mặc định 2s). |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | Fallback cuối cùng cho tốc độ `GET /evaluate/{id}` khi cả `next_poll_secs` trên mỗi phản hồi và `default_poll_interval_secs` của dịch vụ đánh giá không được đặt (mặc định 10s). |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | Timeout theo yêu cầu (mặc định 30000). |
-| `EVALUATOR_MAX_ATTEMPTS` | Sau nhiều lần thất bại tạm thời này, kết quả được ghi lại là `error` cuối cùng (mặc định 5). |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | Tốc độ `GET /config` (mặc định 300). |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | Thời gian tối đa một phiên có thể ở trong hàng thăm dò trước khi bị kết thúc là `timeout` (mặc định 3600s). Bảo vệ chống lại một dịch vụ đánh giá luôn trả về `pending`. |
+| `EVALUATOR_ENDPOINT` | URL cơ sở của evaluator của bạn (`http://evaluator:9000`). Không được đặt = pipeline bị tắt. |
+| `EVALUATOR_TOKEN` | Mã thông báo bearer. Phải bằng giá trị mà dịch vụ evaluator được định cấu hình với. |
+| `EVALUATOR_WORKERS` | Tác vụ worker cho mỗi phiên bản máy chủ (mặc định 2). |
+| `EVALUATOR_CLAIM_BATCH` | Hàng được yêu cầu cho mỗi tick worker (mặc định 4). Các batch được xử lý **đồng thời**; đồng thời hiệu quả trên điểm cuối evaluator của bạn là `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | Thời gian worker ngủ giữa các nỗ lực gửi khi không có đánh giá nào đến hạn (mặc định 2s). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Fallback cuối cùng cho tần suất `GET /evaluate/{id}` khi cả `next_poll_secs` trên mỗi phản hồi và `default_poll_interval_secs` của evaluator đều không được đặt (mặc định 10s). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Timeout cho mỗi yêu cầu (mặc định 30000). |
+| `EVALUATOR_MAX_ATTEMPTS` | Sau nhiều lỗi tạm thời này, kết quả được ghi lại dưới dạng terminal `error` (mặc định 5). |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | Tần suất `GET /config` (mặc định 300). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | Thời gian tối đa một phiên có thể ở trong hàng đợi polling trước khi nó bị chấm dứt dưới dạng `timeout` (mặc định 3600s). Bảo vệ chống lại một evaluator liên tục trả về `pending` mãi mãi. |
 
-Để bật chấm điểm tự động trên toàn bộ phiên bản, cung cấp Secret `agenteye-evaluator` với cả hai khóa được đặt. Trên các bản kê khai Kubernetes đi kèm, máy chủ đọc `EVALUATOR_ENDPOINT` và `EVALUATOR_TOKEN` từ Secret tùy chọn này. Tạo nó thông qua quy trình quản lý bí mật tiêu chuẩn của tổ chức của bạn, sau đó khởi động lại Deployment máy chủ để nhận up sự thay đổi.
+Để bật chấm điểm tự động, hãy đặt cả `EVALUATOR_ENDPOINT` và `EVALUATOR_TOKEN` trên máy chủ, sau đó khởi động lại để áp dụng thay đổi. Với `EVALUATOR_ENDPOINT` không được đặt, pipeline vẫn là no-op.
 
-Các công tắc điều chỉnh ở trên không được kết nối theo mặc định; hiển thị các biến môi trường tương ứng trên container máy chủ trong bản kê khai Deployment của bạn nếu bạn cần ghi đè các mặc định.
-
-Xem [deployment.md](/vi/agenteye/deployment) để xem bảng biến env đầy đủ.
+Các nút điều chỉnh ở trên là tùy chọn; chỉ đặt các biến môi trường tương ứng trên máy chủ nếu bạn cần ghi đè các giá trị mặc định.
 
 ---
 
-## Tham khảo API
+## Tham chiếu API
 
-| Phương pháp | Đường dẫn | Quyền bắt buộc | Mục đích |
+| Phương thức | Đường dẫn | Quyền bắt buộc | Mục đích |
 |---|---|---|---|
-| `GET` | `/evaluations` | `evaluations:read` | Kết quả đầu cuối truy vấn. Hỗ trợ `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` mặc định là 50 và được giới hạn ở 200 (lưu ý điều này khác với `/events`, giới hạn ở 1000). `environment` chấp nhận danh sách tách bằng dấu phẩy (ví dụ: `environment=prod,staging`); các giá trị đơn vẫn hoạt động. Với `latest_per_session=true` phản hồi chứa nhiều nhất một hàng trên mỗi `session_id` (gần đây nhất theo `completed_at`) được sử dụng bởi trang danh sách phiên để thu gọn dòng thời gian đánh giá của phiên thành tiêu đề hiện tại của nó. Mặc định là false (trả về lịch sử đầy đủ). |
-| `GET` | `/evaluations/aggregate` | `evaluations:read` | Sức khỏe eval được cuộn lại cho một lát được lọc: tổng số lần, phân tích xong/lỗi/timeout, thống kê theo khóa điểm (số lần/trung bình/tối thiểu/tối đa/p50 trên các khóa `scores` tùy ý), và dòng thời gian được phân nhóm theo thời gian. Chấp nhận **các thông số bộ lọc giống như `/evaluations`** cộng với `featured_keys` (CSV của các khóa điểm để theo dõi) và `latest_per_session`. Powers tính năng Bảng điều khiển; các số liệu chính xác trên toàn bộ tập hợp phù hợp, không được lấy mẫu. |
-| `GET` | `/evaluations/environments` | `evaluations:read` | Các giá trị môi trường riêng biệt từ bảng `evaluations`. Được sử dụng để điền các menu thả xuống bộ lọc phạm vi dữ liệu đánh giá có thể đọc. |
-| `GET` | `/evaluation-jobs` | `evaluations:read` | Khả năng hiển thị vào các đánh giá đang thực hiện. Lọc theo `status` (`pending`/`polling`). |
-| `GET` | `/events` | `events:read` | Truyền phát sự kiện thô của phiên. Hỗ trợ `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit` và `order`. `order` là `desc` (mới nhất trước, mặc định) hoặc `asc` (cũ nhất trước); giá trị không được nhận dạng quay lại `desc`. Phân trang con trỏ thông qua `next_cursor` của phản hồi (một id sự kiện): chuyển nó trở lại thành `cursor` để lấy trang tiếp theo; với `asc` trang tiếp theo là các sự kiện sau id đó, với `desc` là các sự kiện trước nó. `limit` mặc định là 50 và được giới hạn ở 1000. |
-| `GET` | `/sessions/:session_id/export` | `events:read` | Trả về phần thân JSON chính xác mà dịch vụ đánh giá sẽ nhận cho phiên này, được phục vụ dưới dạng tệp đính kèm có thể tải xuống có tên `session-<id>.json`. Hữu ích để phát lại các phiên sản xuất qua `agenteye-evaluator` để thử nghiệm ngoài tuyến. Các byte giống hệt với những gì pipeline dịch vụ đánh giá gửi. |
-| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | Xếp hàng một đánh giá mới cho một phiên; chạy cho dù đánh giá trước đó có tồn tại hay không. Kết quả mới được **nối thêm** vào dòng thời gian đánh giá của phiên thay vì ghi đè kết quả trước đó, vì vậy điểm số trước đó vẫn hiển thị dưới dạng lịch sử. Trả về `202` trên xếp hàng, `404` cho một phiên không xác định, `409` nếu một đánh giá đã đang thực hiện. Sử dụng sau khi triển khai một dịch vụ đánh giá mới hoặc cho các phiên không bao giờ phát hành `agent_end`. |
+| `GET` | `/evaluations` | `evaluations:read` | Kết quả terminal truy vấn. Hỗ trợ `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` mặc định là 50 và được giới hạn ở 200 (lưu ý điều này khác với `/events`, được giới hạn ở 1000). `environment` chấp nhận danh sách được phân cách bằng dấu phẩy (ví dụ: `environment=prod,staging`); các giá trị đơn vẫn hoạt động. Với `latest_per_session=true` phản hồi chứa nhiều nhất một hàng cho mỗi `session_id` (cái gần đây nhất theo `completed_at`) được sử dụng bởi trang danh sách phiên để thu gọn dòng thời gian đánh giá của phiên thành tiêu đề hiện tại của nó. Mặc định là false (trả về lịch sử đầy đủ). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | Sức khỏe eval cuộn lên cho một lát được lọc: tổng số, đột ngột/lỗi/timeout, thống kê cho mỗi khóa điểm số (đếm/trung bình/tối thiểu/tối đa/p50 trên các khóa `scores` tùy ý) và dòng thời gian được chia theo khoảng thời gian. Chấp nhận **các tham số bộ lọc giống như `/evaluations`** cộng với `featured_keys` (CSV của các khóa điểm số để xu hướng) và `latest_per_session`. Quyền lực tính năng Dashboards; các số liệu là chính xác trên toàn bộ tập hợp phù hợp, không được lấy mẫu. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | Giá trị môi trường riêng biệt từ bảng `evaluations`. Được sử dụng để điền các danh sách thả xuống được phạm vi đến dữ liệu đọc được từ đánh giá. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | Khả năng hiển thị các đánh giá đang bay. Lọc theo `status` (`pending`/`polling`). |
+| `GET` | `/events` | `events:read` | Luồng các sự kiện thô của phiên. Hỗ trợ `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit` và `order`. `order` là `desc` (mới nhất trước, mặc định) hoặc `asc` (cũ nhất trước); một giá trị không được công nhận quay lại `desc`. Con trỏ phân trang qua `next_cursor` của phản hồi (một id sự kiện): chuyển nó trở lại như `cursor` để nhận trang tiếp theo; với `asc` trang tiếp theo là các sự kiện sau id đó, với `desc` các sự kiện trước nó. `limit` mặc định là 50 và được giới hạn ở 1000. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | Trả về nội dung JSON chính xác mà evaluator sẽ nhận được cho phiên này, được phục vụ dưới dạng tệp đính kèm có thể tải xuống được đặt tên `session-<id>.json`. Hữu ích để phát lại các phiên sản xuất thông qua `agenteye-evaluator` để kiểm tra ngoại tuyến. Các byte giống hệt với những gì đường ống evaluator gửi đi. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | Xếp hàng một đánh giá mới cho một phiên; chạy dù có hay không có một đánh giá trước đó. Kết quả mới được **thêm vào** dòng thời gian đánh giá của phiên thay vì ghi đè cái trước, vì vậy các điểm số trước vẫn hiển thị dưới dạng lịch sử. Trả về `202` khi xếp hàng, `404` cho một phiên không xác định, `409` nếu một đánh giá đã đang bay. Sử dụng điều này sau khi triển khai một evaluator mới, hoặc cho các phiên không bao giờ phát ra `agent_end`. |
 
-### Lọc theo phạm vi điểm: `score_filters`
+### Lọc theo phạm vi điểm số: `score_filters`
 
-`GET /evaluations` chấp nhận một thông số `score_filters` tùy chọn thu hẹp kết quả theo các giá trị số bên trong đối tượng `scores`. Thông số này là danh sách tách bằng dấu phẩy của các mục `key:min..max`; có thể bỏ qua một trong hai giới hạn. Nhiều mục kết hợp với AND logic. Các hàng trong đó khóa được đặt tên vắng mặt hoặc không phải số được loại trừ. Một yêu cầu có thể chứa nhiều nhất 20 mục bộ lọc; vượt quá điều đó trả về HTTP 400.
+`GET /evaluations` chấp nhận một tham số `score_filters` tùy chọn mà thu hẹp kết quả theo các giá trị số bên trong đối tượng `scores`. Tham số là danh sách được phân cách bằng dấu phẩy của các mục `key:min..max`; bất kỳ ràng buộc nào cũng có thể bị bỏ qua. Các mục multiple kết hợp với AND logic. Các hàng trong đó khóa được đặt tên không có hoặc không phải là số bị loại trừ. Yêu cầu có thể mang theo nhiều nhất 20 mục bộ lọc; vượt quá điều đó trả về HTTP 400.
 
 Ví dụ:
 ```text
@@ -275,24 +214,24 @@ GET /evaluations?score_filters=tool_efficiency:..0.3
 GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 ```
 
-Mỗi đối tượng phản hồi `/evaluations` có những trường này:
+Mỗi đối tượng phản hồi `/evaluations` có các trường này:
 
-| Trường | Loại | Ghi chú |
+| Trường | Kiểu | Ghi chú |
 |---|---|---|
-| `evaluation_id` | string (UUID) | Mã định danh chính tắc cho đánh giá cuối cùng này. Mỗi đánh giá cuối cùng nhận được một UUID mới; một phiên duy nhất có thể giữ nhiều. |
-| `id` | string (UUID) | Bí danh tương thích ngược mang giá trị giống như `evaluation_id`. |
-| `session_id` | string | Phiên mà đánh giá chạy trên đó. Một phiên có thể có nhiều đánh giá trong dòng thời gian. |
-| `agent_id` | string | Xác định agent đã tạo phiên. |
+| `evaluation_id` | string (UUID) | Định danh chính tắc cho đánh giá terminal này. Mỗi đánh giá terminal nhận được một UUID mới; một phiên duy nhất có thể chứa nhiều. |
+| `id` | string (UUID) | Bí danh tương thích ngược mang cùng giá trị như `evaluation_id`. |
+| `session_id` | string | Phiên này đánh giá chạy dựa trên. Một phiên có thể có nhiều đánh giá trong dòng thời gian. |
+| `agent_id` | string | Xác định agent đã tạo ra phiên. |
 | `environment` | string | Nhãn môi trường được sao chép từ phiên. |
 | `status` | enum | Một trong `"done"`, `"error"`, `"timeout"`. |
-| `scores` | object \| null | Điểm số được trả về bởi dịch vụ đánh giá của bạn. |
-| `reasoning` | object \| null | Bản đồ giải thích tùy chọn theo từng điểm được trả về bởi dịch vụ đánh giá của bạn. Các khóa thường phản ánh những khóa trong `scores`. Bảng điều khiển hiển thị mỗi mục dưới thanh điểm của nó. |
-| `summary` | string \| null | Tương tự tùy chọn một đoạn tổng thể được trả về bởi dịch vụ đánh giá của bạn. Bảng điều khiển hiển thị nó ở trên bước phân tích theo điểm làm tiêu đề của đánh giá. |
-| `error` | string \| null | Được điền trên `"error"` / `"timeout"` chỉ. |
-| `attempt_count` | integer | Số lần nỗ lực gửi (≥ 1). |
-| `duration_ms` | integer \| null | Khoảng thời gian của nỗ lực cuối cùng. |
-| `completed_at` | string (ISO 8601 UTC) | Khi kết quả cuối cùng được ghi lại. Kết quả được sắp xếp theo `completed_at` (mới nhất trước). |
-| `created_at` | string (ISO 8601 UTC) | Mang cùng một dấu thời gian như `completed_at` (ngữ nghĩa ghi một lần). |
+| `scores` | object \| null | Điểm số được trả về bởi evaluator của bạn. |
+| `reasoning` | object \| null | Bản đồ lý giải tùy chọn cho mỗi điểm số được trả về bởi evaluator của bạn. Các khóa thường phản ánh những cái trong `scores`. Bảng điều khiển hiển thị từng mục dưới thanh điểm của nó. |
+| `summary` | string \| null | Câu chuyện tổng thể tùy chọn một đoạn được trả về bởi evaluator của bạn. Bảng điều khiển hiển thị cái này ở trên phần đột phá theo chiều kích như tiêu đề của đánh giá. |
+| `error` | string \| null | Điền trên `"error"` / `"timeout"` chỉ. |
+| `attempt_count` | integer | Số lần cố gắng gửi (≥ 1). |
+| `duration_ms` | integer \| null | Thời lượng của nỗ lực cuối cùng. |
+| `completed_at` | string (ISO 8601 UTC) | Khi kết quả terminal được ghi lại. Kết quả được sắp xếp theo `completed_at` (mới nhất trước). |
+| `created_at` | string (ISO 8601 UTC) | Mang cùng dấu thời gian như `completed_at` (ngữ nghĩa viết một lần). |
 
 ---
 
@@ -300,57 +239,61 @@ Mỗi đối tượng phản hồi `/evaluations` có những trường này:
 
 | Quyền | Cấp |
 |---|---|
-| `evaluations:read` | Danh sách kết quả đánh giá, xem điểm trong bảng điều khiển và tải số liệu sức khỏe bảng điều khiển. |
-| `evaluations:trigger` | Tự động xếp hàng một đánh giá cho một phiên qua `POST /sessions/:session_id/re-evaluate` hoặc nút đánh giá lại của bảng điều khiển. |
-| `dashboards:read` | Xem các bảng điều khiển đã lưu (cũng cần `evaluations:read` để tải các số liệu của chúng). |
+| `evaluations:read` | Liệt kê kết quả đánh giá, xem điểm số trong bảng điều khiển và tải các số liệu sức khỏe bảng điều khiển. |
+| `evaluations:trigger` | Thủ công xếp hàng một đánh giá cho một phiên qua `POST /sessions/:session_id/re-evaluate` hoặc nút re-evaluate của bảng điều khiển. |
+| `dashboards:read` | Xem các bảng điều khiển được lưu (cũng cần `evaluations:read` để tải các số liệu của họ). |
 | `dashboards:write` | Tạo và chỉnh sửa bảng điều khiển. |
 | `dashboards:delete` | Xóa bảng điều khiển. |
 
-Admin bootstrap (`ADMIN_KEY`, `ADMIN_EMAIL`) tự động nhận các quyền này.
+Bootstrap admin (`ADMIN_KEY`, `ADMIN_EMAIL`) tự động nhận các cái này.
 
 ---
 
 ## Xem kết quả
 
-- **`/sessions/<id>`**: dòng thời gian sự kiện + thanh bên phải hiển thị điểm số của phiên và bất kỳ lỗi nào từ nỗ lực gửi. Nếu khóa của bạn có `evaluations:trigger`, một nút **đánh giá lại** sẽ xuất hiện bên cạnh nút xuất, hữu ích cho các phiên không bao giờ phát hành `agent_end`, hoặc để làm mới điểm sau khi triển khai một dịch vụ đánh giá mới. Bảng điều khiển thăm dò tìm kết quả mới và cập nhật thanh bên phải khi nó đến.
-- **`/sessions`**: lưới phiên có thể lọc; cột điểm hiển thị trạng thái đánh giá và điểm của mỗi phiên trong nháy mắt.
-- **`/dashboards`**: các chế độ xem sức khỏe eval đã lưu (xem [Bảng điều khiển](#dashboards) dưới đây).
+- **`/sessions/<id>`**: dòng thời gian sự kiện + phần rail bên phải hiển thị điểm số của phiên và bất kỳ lỗi nào từ nỗ lực gửi. Nếu khóa của bạn có `evaluations:trigger`, nút **re-evaluate** xuất hiện bên cạnh nút xuất, hữu ích cho các phiên không bao giờ phát ra `agent_end`, hoặc để làm mới điểm số sau khi triển khai một evaluator mới. Bảng điều khiển thăm dò kết quả mới và cập nhật phần rail bên phải khi nó đến.
+- **`/sessions`**: lưới phiên có thể lọc được; cột điểm số hiển thị trạng thái đánh giá và điểm số của mỗi phiên một cái nhìn. 
+- **`/dashboards`**: chế độ xem sức khỏe eval được lưu (xem [Dashboards](#dashboards) dưới đây).
 
-![Lưới Sessions với các viên chứng chỉ trạng thái đánh giá mỗi phiên và lá cờ điểm được mã hóa màu (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
+![Lưới Sessions với các pill trạng thái đánh giá mỗi phiên và các badge điểm số được mã hóa theo màu (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
 
-*Lưới phiên hiển thị trạng thái đánh giá và điểm của mỗi lần chạy trong nháy mắt; lá cờ đỏ/hổ phách/xanh làm cho các điểm thấp nổi bật.*
-
-![Chế độ xem chi tiết phiên với điểm đánh giá và trạng thái gửi trong thanh bên phải](/agenteye/images/session-detail.png)
-
-*Mở một phiên hiển thị dòng thời gian đầy đủ của nó cùng với điểm đánh giá và bất kỳ lỗi gửi nào trong thanh bên phải.*
+*Lưới phiên hiển thị trạng thái đánh giá và điểm số của mỗi lần chạy một cái nhìn; các badge đỏ/hổ phách/xanh làm cho các điểm số thấp nổi bật.*
 
 ---
 
 ## Bảng điều khiển
 
-Trang **Bảng điều khiển** (`/dashboards`) cho phép bạn lưu một kết hợp các bộ lọc đánh giá dưới dạng chế độ xem được đặt tên, có thể tái sử dụng và xem cách lát cắt đánh giá đó hoạt động trong nháy mắt. Bảng điều khiển được **chia sẻ trên toàn bộ tổ chức của bạn**; mọi người có `dashboards:read` đều nhìn thấy cùng một tập hợp.
+Trang **Dashboards** (`/dashboards`) cho phép bạn lưu một sự kết hợp của các bộ lọc đánh giá dưới dạng chế độ xem có tên, có thể tái sử dụng và xem cách mà lát cắt đánh giá đó đang làm một cái nhìn. Dashboards được **chia sẻ trên toàn bộ tổ chức của bạn**; mọi người có `dashboards:read` thấy cùng một bộ.
 
 Mỗi bảng điều khiển ghim:
 
-- **Bộ lọc**: cùng các điều khiển với trang phiên: môi trường, trạng thái, agent, cửa sổ thời gian lăn và bộ lọc phạm vi điểm (`key:min..max`).
-- **Cấu hình hiển thị**: khóa điểm nào để đặc biệt, ngưỡng sức khỏe xanh/hổ phách/đỏ, bảng điều khiển nào để hiển thị và có nên thu gọn thành đánh giá gần đây nhất cho mỗi phiên hay không.
+- **Bộ lọc**: các điều khiển giống như trang phiên: môi trường, trạng thái, agent, một cửa sổ thời gian lăn và bộ lọc phạm vi điểm số (`key:min..max`).
+- **Một cấu hình hiển thị**: các khóa điểm số nào để đặc trưng, ngưỡng sức khỏe xanh/hổ phách/đỏ, bảng nào để hiển thị và có nên thu gọn thành đánh giá mới nhất cho mỗi phiên hay không.
 
-Mỗi thẻ hiển thị số lượng phiên phù hợp, phân tích xong/lỗi/timeout, trung bình của mỗi điểm đặc biệt và một sparkline xu hướng nhỏ. Mở bảng điều khiển hiển thị bảng điều khiển kích thước đầy đủ; **đơn vị mở trong phiên** bỏ bạn vào trang phiên được lọc trước sẵn với chính xác lát cắt đó. Các số liệu được tính toán phía máy chủ trên toàn bộ tập hợp phù hợp (thông qua `GET /evaluations/aggregate`), vì vậy các số chính xác hơn là lấy mẫu.
+Mỗi thẻ hiển thị số phiên phù hợp, đột ngột/lỗi/timeout, trung bình của mỗi điểm số đặc trưng và một sparkline xu hướng nhỏ. Mở một bảng điều khiển hiển thị các bảng điều khiển kích thước đầy đủ; **mở trong phiên** thả bạn vào trang phiên được lọc trước đó thành chính xác lát cắt đó. Các số liệu được tính toán phía máy chủ trên toàn bộ tập hợp phù hợp (qua `GET /evaluations/aggregate`), vì vậy các số là chính xác hơn là được lấy mẫu.
 
-![Bảng điều khiển sức khỏe eval với thanh điểm trung bình cho mỗi chiều đánh giá, phân tích công cụ ok-vs-error, công cụ hàng đầu và xu hướng sự kiện mỗi giờ](/agenteye/images/dashboard-quality.png)
+![Một bảng điều khiển sức khỏe eval với thanh điểm số trung bình cho mỗi chiều đánh giá, đột ngột công cụ ok so với lỗi, các công cụ hàng đầu và xu hướng sự kiện mỗi giờ](/agenteye/images/dashboard-quality.png)
 
-**Quyền:** xem cần cả `dashboards:read` và `evaluations:read`; tạo và chỉnh sửa cần `dashboards:write`; xóa cần `dashboards:delete`. Admin bootstrap nhận tất cả những cái này tự động.
+**Quyền:** xem cần cả `dashboards:read` và `evaluations:read`; tạo và chỉnh sửa cần `dashboards:write`; xóa cần `dashboards:delete`. Bootstrap admin tự động nhận toàn bộ những cái này.
 
 ---
 
-## Xử lý sự cố
+## Khắc phục sự cố
 
-**Các phiên tồn tại nhưng không có đánh giá nào được tạo.** Xác nhận rằng `EVALUATOR_ENDPOINT` được đặt trên quá trình máy chủ, máy chủ và dịch vụ đánh giá chia sẻ cùng một giá trị `EVALUATOR_TOKEN` và endpoint `/health` của dịch vụ đánh giá có thể truy cập được từ máy chủ. Khi `EVALUATOR_ENDPOINT` không được đặt, pipeline là không hoạt động.
+**Phiên tồn tại nhưng không có đánh giá nào được tạo.** Xác nhận `EVALUATOR_ENDPOINT` được đặt trên quy trình máy chủ, rằng máy chủ và evaluator chia sẻ cùng một giá trị `EVALUATOR_TOKEN` và rằng điểm cuối `/health` của evaluator có thể truy cập được từ máy chủ. Với `EVALUATOR_ENDPOINT` không được đặt, pipeline là no-op.
 
-**Các đánh giá đang thực hiện tích tụ.** Truy vấn `GET /evaluation-jobs` để xem hàng đợi đang thực hiện. Kiểm tra `attempt_count`, `next_attempt_at` và `last_error` trên mỗi hàng. Nguyên nhân phổ biến: dịch vụ đánh giá không thể truy cập hoặc trả về 5xx (được thử lại với backoff), `EVALUATOR_TOKEN` sai (401 là cuối cùng), hoặc một dịch vụ đánh giá không đồng bộ trả về `pending` vô thời hạn (xem dưới đây).
+**Các đánh giá đang bay chất đống. ** Truy vấn `GET /evaluation-jobs` để xem hàng đợi đang bay. Kiểm tra `attempt_count`, `next_attempt_at` và `last_error` trên mỗi hàng. Nguyên nhân phổ biến: dịch vụ evaluator không thể tiếp cận hoặc trả về 5xx (được thử lại với backoff), sai `EVALUATOR_TOKEN` (401 là terminal) hoặc một evaluator không đồng bộ trả về `pending` mãi mãi (xem bên dưới).
 
-**Các phiên đã hoàn thành nhưng không có đánh giá cuối cùng.** Truy vấn `GET /evaluation-jobs?status=polling`; kết quả vẫn có thể đang thực hiện. Nếu một công việc bị kẹt ở `pending`, máy chủ gặp sự cố khi kết nối với dịch vụ đánh giá; hãy kiểm tra xem dịch vụ đánh giá có được bật và `EVALUATOR_TOKEN` khớp không.
+**Phiên hoàn tất nhưng không có đánh giá terminal.** Truy vấn `GET /evaluation-jobs?status=polling`; kết quả có thể vẫn đang bay. Nếu một công việc bị kẹt trong `pending`, máy chủ gặp vấn đề khi tiếp cận evaluator; kiểm tra rằng evaluator đang hoạt động và `EVALUATOR_TOKEN` phù hợp.
 
-**`HTTP 401 từ dịch vụ đánh giá: mã thông báo người mang không hợp lệ`.** `EVALUATOR_TOKEN` trên máy chủ không khớp với giá trị mà dịch vụ đánh giá được cấu hình. Chúng phải giống hệt nhau.
+**`HTTP 401 from evaluator: invalid bearer token`.** `EVALUATOR_TOKEN` trên máy chủ không khớp với giá trị mà dịch vụ evaluator được định cấu hình với. Chúng phải giống hệt nhau.
 
-**Dịch vụ đánh giá không đồng bộ trả về `pending` vĩnh viễn.** Máy chủ thăm dò `GET /evaluate/{job_id}` cho đến khi dịch vụ đánh giá trả về `done` hoặc `error`, hoặc cho đến khi `EVALUATOR_MAX_POLL_DURATION_SECS` (mặc định 1 giờ) hết hiệu lực. Sau khi vượt quá giới hạn, đánh giá được ghi lại là `timeout` và được xóa khỏi hàng đợi đang thực hiện. Tăng `EVALUATOR_MAX_POLL_DURATION_SECS` nếu dịch vụ đánh giá của bạn hợp pháp cần lâu hơn mặc định.
+**Async evaluator trả về `pending` mãi mãi.** Máy chủ thăm dò `GET /evaluate/{job_id}` cho đến khi evaluator trả về `done` hoặc `error`, hoặc cho đến khi `EVALUATOR_MAX_POLL_DURATION_SECS` (mặc định 1 h) hết. Sau mũ, đánh giá được ghi lại là `timeout` và bị xóa khỏi hàng đợi đang bay. Tăng `EVALUATOR_MAX_POLL_DURATION_SECS` nếu evaluator của bạn hợp pháp cần lâu hơn mặc định.
+
+---
+
+## Các bước tiếp theo
+
+- [Python SDK](/vi/agenteye/python-sdk): phát ra các sự kiện `agent_end` kích hoạt chấm điểm.
+- [API keys](/vi/agenteye/api-keys): các quyền `evaluations:read` và `evaluations:trigger`.
+- [Audits](/vi/agenteye/audits): tính năng chất lượng tự động khác của Observability, để xem xét dựa trên chính sách.

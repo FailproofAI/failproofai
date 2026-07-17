@@ -1,0 +1,87 @@
+---
+title: "Conceptos"
+description: "Documentación de conceptos de FailproofAI Observability."
+---
+
+
+Esta página define el vocabulario que utiliza FailproofAI Observability. Si algún término en otra guía te resulta desconocido, aquí encontrarás su definición. No necesitas leerla de principio a fin: puedes ojearla o volver a ella cuando encuentres una palabra que quieras aclarar.
+
+---
+
+## El modelo de datos
+
+**Evento**
+La unidad mínima de datos. Un evento registra un único paso que realizó tu agente: un `tool_use`, un `model_request`, un `hook_completed`, un `error`, etc. Tu agente emite eventos a través del [SDK de Python](/es/agenteye/python-sdk); aparecen en tiempo real en la página de **Eventos**.
+
+**Sesión**
+Una ejecución del agente, identificada por un `session_id`. Una sesión agrupa todos los eventos que comparten ese identificador, los consolida en una única fila en la página de **Sesiones** y los representa como un grafo de ejecución en su página de detalle. Normalmente una sesión comienza con `agent_start` y termina con `agent_end`.
+
+**Agente**
+Un actor con nombre dentro de una ejecución, identificado por un `agent_id`. Una ejecución puede involucrar varios agentes: por ejemplo, un planificador que lanza un subagente de resumen. Los subagentes llevan un `parent_id`, que es lo que permite a FailproofAI Observability representarlos en sus propios carriles dentro del grafo de ejecución.
+
+**Entorno**
+Una etiqueta que indica dónde ocurrió la ejecución: `production`, `staging`, `dev`. Se configura una sola vez al configurar el SDK. Casi todas las páginas del panel pueden filtrarse por entorno.
+
+**Ocupación de la ventana de contexto**
+El porcentaje de la ventana de contexto de un modelo que consumió una respuesta. FailproofAI Observability lo registra en los eventos `model_response` para los modelos que reconoce, de modo que el crecimiento del prompt y la compactación inminente son visibles directamente en el flujo de eventos.
+
+---
+
+## Calidad
+
+**Evaluación**
+Una puntuación de calidad para una sesión finalizada, producida por un servicio de puntuación que tú ejecutas. Las evaluaciones son opcionales: hasta que conectes un evaluador, las sesiones se registran pero no se puntúan. Cada evaluación puede incluir varias puntuaciones con nombre (por ejemplo, `helpfulness`, `factuality`, `tool_efficiency`), cada una con una breve nota de razonamiento. Consulta [Suite de evaluación](/es/agenteye/evaluation-suite).
+
+**Clave de puntuación**
+El nombre de una dimensión que reporta un evaluador, como `helpfulness`. Las alertas y auditorías pueden monitorizar una clave de puntuación específica a lo largo del tiempo.
+
+**Evaluador**
+Tu servicio de puntuación. FailproofAI Observability envía mediante POST la transcripción de una ejecución finalizada y almacena las puntuaciones que devuelve. No incluye un evaluador predeterminado; la lógica de puntuación es tuya.
+
+---
+
+## Detección y corrección de fallos
+
+**Hook**
+Una salvaguarda o efecto secundario que tu framework de agentes ejecuta en torno a un paso: una verificación de seguridad de contenido, redacción de PII, un control de presupuesto. Los hooks emiten eventos `hook_triggered` / `hook_completed` con un `outcome` (allow, deny, modify) y tienen su propia página de observación.
+
+**Regla de alerta**
+Una regla que se activa cuando una métrica supera un umbral que tú estableces: tasa de errores, latencia p95, coste en tokens o una puntuación de evaluador. Cuando se activa una regla, abre un incidente y notifica a los canales que hayas configurado (correo electrónico, Slack, webhook, dentro del panel). Consulta [Alertas](/es/agenteye/alerts).
+
+**Incidente**
+Un problema abierto que se crea cuando se activa una regla de alerta. Los incidentes tienen un ciclo de vida (reconocer, asignar, resolver) y una línea de tiempo de actividad que registra cada acción. También puedes abrirlos manualmente.
+
+**Auditoría**
+Una investigación recurrente (de cada hora a semanal) que analiza tus registros *entre* sesiones en busca de patrones de fallo para los que aún no has escrito una regla: clústeres de errores, puntuaciones bajas, valores atípicos de latencia, bucles de llamadas a herramientas y ejecuciones que nunca terminaron. Mientras que una alerta vigila una métrica que ya conoces, una auditoría te indica qué deberías examinar a continuación. Consulta [Auditorías](/es/agenteye/audits).
+
+**Hallazgo**
+Un resultado clasificado y respaldado por evidencias de una ejecución de auditoría. Un hallazgo identifica un patrón, enlaza a las sesiones exactas que lo sustentan y tiene un ciclo de vida de triaje (reconocer, resolver, silenciar, descartar). FailproofAI Observability deduplica los hallazgos entre ejecuciones, de modo que un patrón conocido se actualiza en lugar de acumularse.
+
+**El asistente de IA**
+El chat integrado en el panel que responde preguntas sobre tus agentes en lenguaje natural, sobre tus propios datos. Es de solo lectura por defecto; cualquier elemento que cree (una consulta guardada, un panel) requiere aprobación, y nunca puede eliminar nada. Consulta [Asistente de IA](/es/agenteye/assistant).
+
+---
+
+## Cómo funciona
+
+**Organización (tenant)**
+Un espacio de trabajo aislado. Una instancia de FailproofAI Observability puede alojar muchas organizaciones, cada una con sus propios usuarios, claves y datos. Cada URL del panel está bajo el slug de tu organización (`/<org-slug>/…`).
+
+**Collector**
+`agenteye-collector`, el daemon ligero que se ejecuta en cada máquina del agente, agrupa los eventos que el SDK escribe en disco y los envía al servidor.
+
+**Clave de API**
+Un token con ámbito definido que autentica a un cliente frente al servidor. Las claves tienen permisos granulares (por ejemplo, `events:add` para el collector, ámbitos de solo lectura para una clave del panel). Consulta [Claves de API](/es/agenteye/api-keys).
+
+**Servidor**
+El servicio de ingesta y API. Ingiere eventos, almacena el estado operacional en tus bases de datos y sirve el panel y la CLI.
+
+**Panel**
+La interfaz web. Cada página está acotada a una organización y se comunica a través de la API del servidor.
+
+---
+
+## Próximos pasos
+
+- [Resumen](/es/agenteye/overview): cómo encajan todas estas piezas.
+- [Observabilidad](/es/agenteye/observability): las superficies de observación (Eventos, Sesiones, Modelos, Herramientas, Hooks, Errores).

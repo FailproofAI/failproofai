@@ -1,0 +1,40 @@
+---
+title: "Rastreamento de Erros"
+description: "Documentação de Rastreamento de Erros da Observabilidade do FailproofAI."
+---
+
+Veja todas as falhas produzidas pelos seus agentes em um único lugar, agrupadas para que uma rajada de erros apareça como um único problema. Você tem um caminho de um clique entre "algo está vermelho" e a execução exata que quebrou, sem precisar rolar um feed ao vivo para encontrá-lo.
+
+![A página de Erros: um histograma de falhas ao longo do tempo acima de linhas de erro vermelhas agrupadas, cada uma com um botão "+ alert" de um clique](/agenteye/images/errors.png)
+*A página de Erros: um histograma de falhas ao longo do tempo, com falhas repetidas recolhidas em uma única linha por incidente.*
+
+## Cada falha, já coletada para você
+
+Quando um agente quebra, você não deveria precisar rolar um stream de eventos ao vivo esperando capturar as linhas vermelhas antes que desapareçam. A página **Errors** faz a coleta por você. Ela reúne tudo que o dashboard pintaria de vermelho em uma única superfície de triagem, para que a primeira coisa que você veja seja o que está falhando, não onde procurar.
+
+E ela captura mais do que as óbvias. Além de eventos explícitos de `error`, a Observabilidade do FailproofAI também exibe as falhas silenciosas: qualquer `tool_result`, `hook_completed` ou `agent_end` cujo payload indique uma falha aparece aqui. Uma ferramenta que retornou um erro, ou um hook que encerrou de forma incorreta, não passa mais despercebida só porque nenhuma exceção ruidosa foi lançada.
+
+No topo, um histograma mostra os erros ao longo do tempo. Um olhar já diz se trata de um gotejamento constante em segundo plano ou um pico que começou há alguns minutos, para que você saiba imediatamente se precisa largar o que está fazendo.
+
+Como toda superfície de observação, a página de Erros é limitada à sua organização e pode ser filtrada por intervalo de datas, ambiente, agente e sessão. Isso significa que você pode partir de uma lista geral de toda a frota e reduzi-la ao único agente ou ambiente que realmente importa.
+
+## Um incidente, não centenas de linhas idênticas
+
+Uma única dependência quebrada pode disparar o mesmo erro centenas de vezes por minuto. Sem processamento, isso é uma parede de linhas quase idênticas que enterra a única coisa que você realmente precisa ver.
+
+A Observabilidade do FailproofAI recolhe falhas repetidas que compartilham a mesma sessão e tipo de erro em uma única linha. Uma rajada aparece como um único incidente. Você acaba contando problemas, não linhas de log, e o sinal que importa permanece no topo em vez de ser sufocado pelo próprio volume.
+
+## De "algo está vermelho" ao evento exato
+
+Clique em qualquer linha para ir diretamente para a sessão daquela execução, posicionado no evento exato que falhou. Sem copiar IDs de sessão, sem rolar para encontrar o momento em que algo deu errado: você chega direto nele, com o gráfico completo de execução a um olhar de distância para ver o que o agente fez nos momentos antes de quebrar.
+
+Se você tem permissão `alerts:write`, cada linha também exibe um botão **+ alert**. Clique nele e a Observabilidade abre uma nova regra de alerta já preenchida para detectar essa mesma falha novamente. O incidente que você acabou de triar se torna o que vai te avisar na próxima vez, em vez de te surpreender duas vezes.
+
+**Onde encontrar:** a página **Errors** fica na seção de observação do dashboard, em `/<org-slug>/errors`.
+
+## Relacionados
+
+- [Alerts](/pt-br/agenteye/alerts): transforme qualquer falha em uma regra de notificação.
+- [Incidents](/pt-br/agenteye/incidents): acompanhe um alerta ativo do início à resolução.
+- [Sessions](/pt-br/agenteye/sessions): abra a execução completa por trás de qualquer erro.
+- [Audits](/pt-br/agenteye/audits): deixe a Observabilidade encontrar padrões de falha em suas execuções para você.

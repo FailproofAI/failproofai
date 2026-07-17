@@ -1,0 +1,50 @@
+---
+title: "Event Stream"
+description: "FailproofAI Observability Event Stream documentation."
+---
+
+
+Ngay khi agent của bạn thực hiện một hành động, bạn sẽ thấy nó. Event Stream là nhịp đập trực tiếp của mọi agent trong production: không cần chờ đợi, không cần grep logs, không cần đoán điều gì vừa xảy ra.
+
+![Event Stream trực tiếp: các dòng sự kiện được mã hóa màu sắc cập nhật theo thời gian thực, có thể lọc theo môi trường, agent, session, loại sự kiện và tìm kiếm tự do](/agenteye/images/events-stream.png)
+
+*Mọi sự kiện từ mọi agent trong tổ chức của bạn, sự kiện mới nhất ở trên, cập nhật khi nó xảy ra.*
+
+## Nhịp đập trực tiếp của mọi agent
+
+Khi một agent bắt đầu chạy, gọi một mô hình, kích hoạt một tool, chạy một hook hoặc gặp lỗi, dòng đó sẽ xuất hiện ở đầu stream ngay khi nó xảy ra. Nó theo dõi mọi sự kiện trên mọi agent trong tổ chức của bạn, sự kiện mới nhất ở trên, để bạn luôn có bức tranh hiện tại thay vì một bức tranh cũ.
+
+Điều đó có nghĩa là không cần theo dõi log files trên một máy nào đó, không cần grep trên nhiều máy, không cần ghép timestamp lại với nhau bằng tay. Bạn mở một trang và bạn đã đang theo dõi production.
+
+Các dòng được mã hóa màu sắc theo loại, vì vậy bạn có thể đọc stream nhanh chóng thay vì phân tích từng dòng. Ngay lập tức, mỗi dòng cho bạn thấy:
+
+- **Loại của nó**, được mã hóa màu sắc: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, và hơn thế nữa.
+- **Một tóm tắt một dòng** về những gì đã xảy ra, vì vậy bạn hiếm khi cần mở bất cứ điều gì chỉ để hiểu được ý chính.
+- **Số lượng token** cho bước đó.
+- **Một badge về mức độ đầy của cửa sổ ngữ cảnh** nơi nó áp dụng, vì vậy sự tăng trưởng của prompt và một compaction sắp tới có thể nhìn thấy trước khi nó gây ra vấn đề.
+
+Theo dõi nó trực tiếp có nghĩa là bạn phát hiện một deploy tồi tệ, một vòng lặp chạy thoát khỏi tầm kiểm soát, hoặc một loạt lỗi khi nó xảy ra, không phải trong đánh giá log của ngày mai.
+
+## Tìm một run duy nhất mà quan trọng
+
+Khi có điều gì đó trông không ổn, bạn không muốn một dòng thông tin quá lớn. Bạn muốn một run duy nhất bị hỏng. Stream lọc xuống nhanh chóng: theo môi trường, theo agent, theo session, theo loại sự kiện, hoặc theo tìm kiếm tự do.
+
+Lọc theo session id hoặc agent id để theo dõi một run từ sự kiện đầu tiên đến sự kiện cuối cùng. Lọc theo loại sự kiện để cô lập một loại hoạt động duy nhất, ví dụ như mọi `error` trên toàn tổ chức trong một view. Xếp chồng các bộ lọc để thu hẹp từ "mọi thứ, ở mọi nơi" thành "agent này, trong prod, gặp lỗi" trong vài cú nhấp chuột, sau đó hành động dựa trên những gì bạn tìm thấy.
+
+Tìm kiếm tự do cắt ngay đến một tin nhắn, tên của một tool, hoặc một id mà bạn đã có sẵn, vì vậy một báo cáo từ khách hàng biến thành một run chính xác trong vài giây.
+
+## Nơi tìm nó
+
+Event Stream là trang chủ tổ chức của bạn. Đăng nhập và đó là trang bề mặt đầu tiên bạn đáp xuống, tại `/<org-slug>/`, vì vậy triage bắt đầu ngay khi bạn đến.
+
+Đằng sau nó, các agent của bạn phát ra các sự kiện thông qua SDK, collector vận chuyển chúng đến máy chủ FailproofAI Observability của bạn, và stream theo dõi chúng khi chúng đến trong cơ sở hạ tầng mà bạn kiểm soát. Khi bạn muốn xem tổng hợp thay vì theo dõi thô, các sự kiện của mỗi run sẽ sụp lại thành một dòng trên Sessions, chỉ cách một cú nhấp chuột.
+
+Đây là nguồn sự thật thô sơ mà mọi bề mặt quan sát khác xây dựng trên nó, vì vậy khi một con số trông sai ở nơi khác, stream là nơi bạn xác nhận những gì thực sự đã xảy ra.
+
+## Các liên quan
+
+- [Sessions](/vi/agenteye/sessions): các sự kiện giống nhau tổng hợp thành một dòng cho mỗi run, với một biểu đồ thực thi kiểu git.
+- [Telemetry](/vi/agenteye/telemetry): những gì các agent của bạn gửi và cách các sự kiện tiếp cận stream.
+- [Error tracking](/vi/agenteye/error-tracking): một bề mặt triage duy nhất cho tất cả những gì đã sai.
+- [Alerts](/vi/agenteye/alerts): biến bất kỳ ngưỡng nào thành một quy tắc paging.
+- [CLI and agents](/vi/agenteye/cli-and-agents): cùng một đường dẫn trực tiếp từ terminal của bạn.

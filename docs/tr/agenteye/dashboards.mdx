@@ -1,0 +1,45 @@
+---
+title: "Panolar"
+description: "FailproofAI Observability Panolar belgelendirmesi."
+---
+
+Canlı aracı verilerinizi tüm takımınızın izlediği tek bir görüntüye dönüştürün. Önemli sorguları grafikler olarak sabitleyin ve herkes sorguyu yeniden çalıştırmadan bir bakışta aynı rakamları görsün.
+
+![Kaydedilmiş sorgulardan oluşturulmuş bir pano: saatlik olaylar çizgisi, türe göre hatalar çubuğu, gecikme alan grafiği ve modele göre tokenler](/agenteye/images/dashboard-fleet.png)
+
+*Bir pano, dört kaydedilmiş sorgu: saatlik olaylar, türe göre hatalar, gecikme ve modele göre tokenler.*
+
+## Herkes aynı gerçeği görür
+
+Sohbete ekran görüntüsü yapıştırmayı ve aynı sorguyu günde beş kez çalıştırmayı bırakın. Pano, takımınızdaki herkesin tam olarak aynı görünümü açabileceği paylaşılan, kuruluş genelinde bir tahtadır. Temel veriler değiştiğinde, grafikler de onunla birlikte hareket eder, bu nedenle pano her zaman güncel kalır ve hiç kimse eski numaralar üzerinden tartışmaz.
+
+Yukarıdaki filo panosu günlük operasyonlar için iyi bir başlangıç şeklidir:
+
+- **saatlik olaylar** çizgisi, akış hızını izleyebilmeniz ve ani düşüşü yakalayabilmeniz için
+- **türe göre hatalar** çubuğu, en büyük arıza kategorileriniz öne çıksın diye
+- **gecikme** alan grafiği, yavaşlamalar kullanıcılar şikayet etmeden görünsün diye
+- **modele göre tokenler** dökümü, maliyet görünümde kalsın diye
+
+Panolarınızı `/<org-slug>/dashboards` adresinde bulacaksınız.
+
+## Zaten kaydettiğiniz sorguları sabitleyin
+
+Her dönem kaydedilmiş bir sorgu ile başlar. [Sorguları](/tr/agenteye/queries) kitaplığında (yerleşik ön ayarlar ve kendi sorgularınız, olaylarınız ve değerlendirmeleriniz üzerinde) önem verdiğiniz sorguyu oluşturun ve kaydedin, ardından verilere uyan grafik olarak bir panoya sabitleyin: zaman içindeki eğilimler için **çizgi**, kategorileri karşılaştırmak için **çubuk**, hacim için **alan** veya paylaşım dökümü için **pasta**.
+
+Bir dönem sadece kaydedilmiş sorgunuzun grafik olarak işlenmesi olduğundan, elle senkronize tutacak bir şey yoktur. Sorguyu bir kez güncelleyin ve onu kullanan her pano da güncellenir.
+
+## Sadece hacmi değil, kaliteyi izleyin
+
+Hacim, aracıların meşgul olduğunu gösterir. Kalite, aslında işi yaptıklarını gösterir. Bir panoyu [değerlendirme puanlarınıza](/tr/agenteye/evaluations) yönlendirin ve çalıştırmaların zaman içinde ne kadar iyi gittiklerini izleyen bir pano elde edersiniz, böylece kalite gerillemesi müşteriden gelen bir sürpriz yerine grafikteki bir dip olarak görünür.
+
+![Kaydedilmiş değerlendirme sorgularından oluşturulmuş kaliteye odaklı bir pano](/agenteye/images/dashboard-quality.png)
+
+*Kalite panosu, değerlendirme puanlarınızı işletim numaralarının hemen yanında ön ve merkeze alır.*
+
+Operasyon panonu ve kalite panonu yan yana tutun ve takımınız hem "çalışıyor mu?" hem de "iyi mi?" sorularına cevap vermek için hiç kimsenin sorguyu yeniden çalıştırmadan tek bir yere sahip olur.
+
+## İlgili
+
+- [Sorgular](/tr/agenteye/queries): panolarınızın dönemleri haline gelen sorguları oluşturun ve kaydedin.
+- [Değerlendirmeler](/tr/agenteye/evaluations): çalıştırmalarınızı puanlandırarak zaman içinde kaliteyi grafiklendirebilmeniz için.
+- [Uyarılar](/tr/agenteye/alerts): bu metriklerden herhangi birine bir eşik dönüştürün bir sayfaya.

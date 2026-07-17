@@ -1,0 +1,4 @@
+[submodule "skills"]
+	path = skills
+	url = https://github.com/failproofai/skills.git
+	branch = main

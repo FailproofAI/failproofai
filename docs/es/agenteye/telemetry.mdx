@@ -1,0 +1,51 @@
+---
+title: "Métricas de Rendimiento"
+description: "Documentación de Métricas de Rendimiento de Observabilidad de FailproofAI."
+---
+
+Detecta al instante cuándo tus modelos, herramientas o hooks se ralentizan o disparan el gasto, y anticipa un pico de latencia en la cola antes de que tus usuarios lo noten. Tres páginas dedicadas convierten los tiempos brutos en p50, p95 y p99 que puedes interpretar de un vistazo.
+
+![La página de Modelos mostrando un mapa de calor de latencia, una banda de percentiles y cifras de tokens, costo y ventana de contexto por modelo](/agenteye/images/models.png)
+*La página de Modelos: un mapa de calor de latencia, una banda de percentiles y tokens, costo estimado y uso de ventana de contexto por modelo.*
+
+## Deja de dejar que los promedios oculten tus peores ejecuciones
+
+Un número de latencia promedio es reconfortante e inútil: suaviza esa llamada de cada cincuenta que se bloquea y despierta a tu equipo de guardia a las 2am. Las páginas de Modelos, Herramientas y Hooks se niegan a hacer eso. Cada una comparte la misma estructura, así que la aprendes una vez:
+
+- Un **sparkline de 24 intervalos** para ver la tendencia de un vistazo: ¿está empeorando?
+- Una **franja de métricas vitales** con latencia p50, p95 y p99, para que la ejecución típica y la cola aparezcan una junto a la otra.
+- Un **mapa de calor de latencia** de 24 intervalos temporales por rangos de latencia, que muestra *cuándo* se agruparon las llamadas lentas.
+- Una **banda de percentiles**: una línea p50 con cintas sombreadas de p25 a p75 y de p10 a p90, más puntos p99, para que la dispersión permanezca visible en lugar de quedar diluida en un promedio.
+
+Un cursor cruzado compartido al pasar el ratón vincula el mapa de calor y la banda, de modo que un pico en la cola se alinea temporalmente en ambos en lugar de ocultarse detrás de una única línea de media. Encuentra las tres páginas en la sección **observe** de tu dashboard, cada una acotada a tu organización y filtrable por rango de fechas, entorno, agente y sesión.
+
+## Modelos: ve exactamente lo que te cuesta cada modelo
+
+La página de Modelos (mostrada arriba) responde las dos preguntas que siempre plantea una factura: qué modelo y cuánto. Además de la vista de latencia compartida, añade el **consumo de tokens por modelo**, el **costo estimado** y el **uso de ventana de contexto**, de modo que el crecimiento descontrolado del prompt y una compactación inminente sean visibles antes de que te sorprendan.
+
+FailproofAI Observability reconoce los IDs de modelos comunes automáticamente. Si una ventana parece incorrecta, o ejecutas un modelo privado propio, corrígelo o añade uno en **Settings**, bajo **model context windows**, y las lecturas de uso se actualizarán.
+
+## Herramientas: distingue lo lento de lo roto
+
+Una llamada a una herramienta puede ser lenta, o puede estar fallando silenciosamente, y quieres saber cuál es el caso en segundos, no después de revisar logs.
+
+![La página de Herramientas mostrando el mapa de calor de latencia compartido y la banda de percentiles junto a un desglose de éxitos y fallos y una barra de distribución de herramientas](/agenteye/images/tools.png)
+*La página de Herramientas: el mismo mapa de calor y banda de percentiles, más un desglose de éxitos y fallos y una barra de distribución de herramientas.*
+
+Junto a la vista de latencia compartida, la página de Herramientas añade un **desglose de éxitos y fallos** y una **barra de distribución de herramientas**, para que veas de un vistazo qué herramientas usas más y cuáles están consumiendo tu presupuesto de errores.
+
+## Hooks: localiza el hook y el disparador exactos
+
+Cuando un hook de ciclo de vida ralentiza una ejecución, decir que "los hooks son lentos" no es algo sobre lo que puedas actuar. La página de Hooks te lleva directamente al que importa.
+
+![La página de Hooks mostrando la latencia desglosada por nombre de hook y evento disparador sobre el mapa de calor y la banda de percentiles compartidos](/agenteye/images/hooks.png)
+*La página de Hooks: latencia desglosada por nombre de hook y evento disparador.*
+
+Sobre el mismo mapa de calor de latencia y banda de percentiles, la página de Hooks desglosa la actividad por **nombre de hook** y **evento disparador**, para que llegues directamente al hook y al evento concreto que necesitan atención.
+
+## Relacionados
+
+- [Flujo de eventos](/es/agenteye/event-stream): el rastro en vivo con código de colores de cada evento.
+- [Sesiones](/es/agenteye/sessions): agrupa los eventos en una fila por ejecución y abre su grafo de ejecución.
+- [Seguimiento de errores](/es/agenteye/error-tracking): una superficie de triaje única para todo lo que el dashboard marca en rojo.
+- [Dashboards](/es/agenteye/dashboards): vistas consolidadas de toda tu flota.

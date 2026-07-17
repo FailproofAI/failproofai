@@ -1,0 +1,40 @@
+---
+title: "Fehlerverfolgung"
+description: "Dokumentation zur Fehlerverfolgung von FailproofAI Observability."
+---
+
+Sehen Sie jeden Fehler, den Ihre Agenten erzeugen, an einem Ort – gruppiert, sodass ein Häufungsrauschen als einzelnes Problem erscheint. Sie erhalten einen Ein-Klick-Pfad von „etwas ist rot" zu genau dem Durchlauf, der fehlgeschlagen ist, ohne durch einen Live-Feed scrollen zu müssen.
+
+![Die Fehlerseite: ein Histogramm der Fehler über die Zeit über gruppierten roten Fehlerzeilen, jede mit einem Ein-Klick-Schaltfläche „+ alert"](/agenteye/images/errors.png)
+*Die Fehlerseite: ein Histogramm der Fehler über die Zeit, mit wiederholten Fehlern, die zu einer Zeile pro Vorfall zusammengefasst werden.*
+
+## Jeder Fehler, bereits für Sie gesammelt
+
+Wenn ein Agent abbricht, sollten Sie keinen Live-Event-Stream durchscrollen müssen und hoffen, die roten Zeilen zu erwischen, bevor sie verschwinden. Die Seite **Errors** übernimmt das Sammeln für Sie. Sie zieht alles zusammen, was das Dashboard rot markieren würde, auf eine einzige Triage-Oberfläche – das Erste, was Sie sehen, ist, was fehlschlägt, nicht, wo Sie danach suchen müssen.
+
+Und sie erfasst mehr als die offensichtlichen Fehler. Neben expliziten `error`-Ereignissen macht FailproofAI Observability auch die stillen Fehler sichtbar: jedes `tool_result`, `hook_completed` oder `agent_end`, dessen Payload einen Fehlschlag enthält, erscheint hier. Ein Tool, das einen Fehler zurückgegeben hat, oder ein Hook, der mit einem Fehler beendet wurde, entgeht Ihnen nicht mehr nur deshalb, weil keine laute Exception geworfen wurde.
+
+Am oberen Rand zeichnet ein Histogramm Fehler über die Zeit auf. Ein Blick genügt, um zu erkennen, ob es sich um ein gleichmäßiges Hintergrundrauschen oder um einen Anstieg handelt, der vor einigen Minuten begann – so wissen Sie sofort, ob Sie Ihre aktuelle Arbeit unterbrechen sollten.
+
+Wie jede Observe-Oberfläche ist die Fehlerseite auf Ihre Organisation beschränkt und lässt sich nach Zeitraum, Umgebung, Agent und Session filtern. Das bedeutet, Sie können eine flottenweit Liste nehmen und auf den einen Agenten oder die eine Umgebung eingrenzen, die Sie tatsächlich interessiert.
+
+## Ein Vorfall, nicht hundert identische Zeilen
+
+Eine einzelne defekte Abhängigkeit kann denselben Fehler hunderte Male pro Minute auslösen. Unkomprimiert ist das eine Wand aus nahezu identischen Zeilen, die das eine verdeckt, was Sie wirklich sehen müssen.
+
+FailproofAI Observability fasst wiederholte Fehler, die dieselbe Session und denselben Fehlertyp teilen, zu einer einzigen Zeile zusammen. Ein Häufungsrauschen erscheint als ein einziger Vorfall. Sie zählen Probleme, keine Log-Zeilen, und das relevante Signal bleibt oben, anstatt von seinem eigenen Volumen überwältigt zu werden.
+
+## Von „etwas ist rot" zum genauen Ereignis
+
+Klicken Sie auf eine beliebige Zeile, um direkt in die Session dieses Durchlaufs zu gelangen, positioniert auf genau dem Ereignis, das fehlgeschlagen ist. Kein Kopieren von Session-IDs, kein Scrollen auf der Suche nach dem Moment, in dem etwas schiefgelaufen ist: Sie kommen direkt dort an, mit dem vollständigen Ausführungsgraphen auf einen Blick, damit Sie sehen können, was der Agent in den Momenten vor dem Fehler getan hat.
+
+Wenn Sie `alerts:write` besitzen, trägt jede Zeile auch eine Schaltfläche **+ alert**. Klicken Sie darauf, und Observability öffnet eine neue Alert-Regel, die bereits so vorausgefüllt ist, dass sie denselben Fehler beim nächsten Auftreten abfängt. Der Vorfall, den Sie gerade triagiert haben, wird zum nächsten, der Sie benachrichtigt – anstatt Sie ein zweites Mal zu überraschen.
+
+**Wo Sie sie finden:** Die Seite **Errors** befindet sich im Bereich „observe" des Dashboards unter `/<org-slug>/errors`.
+
+## Verwandte Themen
+
+- [Alerts](/de/agenteye/alerts): Wandeln Sie jeden Fehler in eine Benachrichtigungsregel um.
+- [Incidents](/de/agenteye/incidents): Verfolgen Sie einen ausgelösten Alert von offen bis gelöst.
+- [Sessions](/de/agenteye/sessions): Öffnen Sie den vollständigen Durchlauf hinter einem Fehler.
+- [Audits](/de/agenteye/audits): Lassen Sie Observability Fehlermuster in Ihren Durchläufen für Sie finden.

@@ -1,18 +1,164 @@
 // @vitest-environment node
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   rewriteInternalLinks,
   sanitizeJsxAttributes,
   stripStrayTrailingFence,
   convertHtmlComments,
   getEnglishMdxPages,
+  pruneOrphanedTranslations,
 } from "@/scripts/translate-docs/mdx-translator";
+import type { TranslationCache } from "@/scripts/translate-docs/types";
 
 describe("getEnglishMdxPages", () => {
   it("includes AgentEye pages in automatic translation", () => {
     const pages = getEnglishMdxPages();
     expect(pages.length).toBeGreaterThan(0);
     expect(pages.some((page) => page.includes("/agenteye/"))).toBe(true);
+  });
+});
+
+describe("pruneOrphanedTranslations", () => {
+  let docsDir: string;
+
+  /** Build a fixture docs tree; `page` paths are relative to the docs root. */
+  function write(page: string, body = "# hi\n") {
+    const full = join(docsDir, page);
+    mkdirSync(join(full, ".."), { recursive: true });
+    writeFileSync(full, body);
+    return full;
+  }
+
+  beforeEach(() => {
+    docsDir = mkdtempSync(join(tmpdir(), "prune-docs-"));
+  });
+
+  afterEach(() => {
+    rmSync(docsDir, { recursive: true, force: true });
+  });
+
+  it("removes a translation whose English source is gone", () => {
+    const orphan = write("zh/agenteye/deployment.mdx");
+
+    const removed = pruneOrphanedTranslations(["zh"], { docsDir });
+
+    expect(removed).toEqual(["zh/agenteye/deployment.mdx"]);
+    expect(existsSync(orphan)).toBe(false);
+  });
+
+  it("keeps a translation whose English source still exists", () => {
+    write("agenteye/overview.mdx");
+    const live = write("zh/agenteye/overview.mdx");
+
+    const removed = pruneOrphanedTranslations(["zh"], { docsDir });
+
+    expect(removed).toEqual([]);
+    expect(existsSync(live)).toBe(true);
+  });
+
+  it("reports without deleting under dryRun", () => {
+    const orphan = write("zh/agenteye/deployment.mdx");
+
+    const removed = pruneOrphanedTranslations(["zh"], { docsDir, dryRun: true });
+
+    expect(removed).toEqual(["zh/agenteye/deployment.mdx"]);
+    expect(existsSync(orphan)).toBe(true);
+  });
+
+  it("drops the cache entry so a re-added page is not skipped as cached", () => {
+    write("zh/agenteye/deployment.mdx");
+    const cache: TranslationCache = {
+      sourceHash: "",
+      lastUpdated: "",
+      translations: {
+        "agenteye/deployment.mdx::zh": {
+          sourceHash: "abc123",
+          targetLang: "zh",
+          translatedAt: "2026-01-01T00:00:00.000Z",
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+        "agenteye/overview.mdx::zh": {
+          sourceHash: "def456",
+          targetLang: "zh",
+          translatedAt: "2026-01-01T00:00:00.000Z",
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+      },
+    };
+
+    pruneOrphanedTranslations(["zh"], { docsDir, cache });
+
+    expect(cache.translations).not.toHaveProperty("agenteye/deployment.mdx::zh");
+    expect(cache.translations).toHaveProperty("agenteye/overview.mdx::zh");
+  });
+
+  it("leaves the cache untouched under dryRun", () => {
+    write("zh/agenteye/deployment.mdx");
+    const cache: TranslationCache = {
+      sourceHash: "",
+      lastUpdated: "",
+      translations: {
+        "agenteye/deployment.mdx::zh": {
+          sourceHash: "abc123",
+          targetLang: "zh",
+          translatedAt: "2026-01-01T00:00:00.000Z",
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+      },
+    };
+
+    pruneOrphanedTranslations(["zh"], { docsDir, cache, dryRun: true });
+
+    expect(cache.translations).toHaveProperty("agenteye/deployment.mdx::zh");
+  });
+
+  it("only touches the languages it is given", () => {
+    const zh = write("zh/agenteye/deployment.mdx");
+    const ja = write("ja/agenteye/deployment.mdx");
+
+    const removed = pruneOrphanedTranslations(["zh"], { docsDir });
+
+    expect(removed).toEqual(["zh/agenteye/deployment.mdx"]);
+    expect(existsSync(zh)).toBe(false);
+    expect(existsSync(ja)).toBe(true);
+  });
+
+  it("skips a language with no directory on disk", () => {
+    expect(() =>
+      pruneOrphanedTranslations(["pt-br"], { docsDir }),
+    ).not.toThrow();
+    expect(pruneOrphanedTranslations(["pt-br"], { docsDir })).toEqual([]);
+  });
+
+  it("prunes nested non-agenteye pages too", () => {
+    write("cli/hook.mdx");
+    const liveCli = write("zh/cli/hook.mdx");
+    const orphanCli = write("zh/cli/removed-command.mdx");
+
+    const removed = pruneOrphanedTranslations(["zh"], { docsDir });
+
+    expect(removed).toEqual(["zh/cli/removed-command.mdx"]);
+    expect(existsSync(liveCli)).toBe(true);
+    expect(existsSync(orphanCli)).toBe(false);
+  });
+});
+
+describe("translation tree invariant", () => {
+  // Guards the real docs/ tree: an English page deleted upstream (the agenteye
+  // sync does this routinely) must not leave its 14 translations behind, live
+  // and indexable, documenting a feature that no longer exists.
+  it("has no translated page whose English source is missing", () => {
+    const orphans = pruneOrphanedTranslations(
+      ["zh", "ja", "ko", "es", "pt-br", "de", "fr", "ru", "hi", "tr", "vi", "it", "ar", "he"],
+      { dryRun: true },
+    );
+    expect(orphans).toEqual([]);
   });
 });
 

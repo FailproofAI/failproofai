@@ -1,0 +1,48 @@
+---
+title: "Valutazioni"
+description: "Documentazione delle Valutazioni di FailproofAI Observability."
+---
+
+
+I problemi di qualità ti trovano adesso, invece di ascoltare i reclami degli utenti. Connetti il tuo servizio di scoring una volta e FailproofAI Observability valuta automaticamente ogni esecuzione completata, così un calo di utilità o un picco di allucinazioni emerge da solo, prima che un cliente lo noti.
+
+![La griglia Sessions con una colonna di score: ogni esecuzione porta un badge di stato di valutazione e badge codificati a colori per utilità, fattualità ed efficienza degli strumenti](/agenteye/images/sessions-list.png)
+
+*Ogni esecuzione nella griglia sessions porta i suoi score; i badge rossi, ambra e verdi fanno risaltare le esecuzioni deboli senza aprire un singolo transcript.*
+
+## Smetti di campionare le esecuzioni manualmente
+
+Una volta controllavi un pugno di esecuzioni sperando che il resto fosse a posto. Ora ogni sessione completata viene valutata nel momento in cui finisce, secondo le dimensioni che ti interessano: utilità, efficienza degli strumenti, fattualità, sicurezza, qualunque sia il tuo standard di qualità. Definisci i tasti di score; FailproofAI Observability archivia, tende e visualizza qualunque cosa il tuo valutatore restituisca. Nessuna esecuzione sfugge senza valutazione, e smetterai di apprendere di una regressione da un ticket di supporto.
+
+Gli score appaiono nella griglia sessions su **`/<org-slug>/sessions`** (barra laterale → *observe* → *sessions*), un cluster di badge per riga. Vuoi solo le esecuzioni che non hanno raggiunto l'obiettivo? Filtra la griglia per intervallo di score, ad esempio utilità sotto 0.5, e visualizza esattamente le esecuzioni che vale la pena leggere. La visualizzazione dei score richiede il permesso `evaluations:read`.
+
+## Scopri perché un'esecuzione ha ricevuto un basso score
+
+Un numero ti dice che un'esecuzione era debole; la pagina della sessione ti spiega perché. Apri qualunque esecuzione e la barra laterale destra inizia con il riassunto principale, quindi mostra una barra per dimensione con il ragionamento del tuo valutatore sotto ognuna, così passi da "questo ha ricevuto 0.4 su fattualità" all'affermazione esatta che ha sbagliato in secondi.
+
+![La barra laterale destra di una sessione: il riassunto della valutazione in alto, poi barre di score per dimensione ognuna con una riga di ragionamento, accanto alla cronologia completa degli eventi](/agenteye/images/session-detail.png)
+
+*La vista dei dettagli della sessione: riassunto, barre di score per dimensione e il ragionamento dietro ogni score, proprio accanto alla cronologia degli eventi dell'esecuzione.*
+
+Hai distribuito un valutatore più raffinato, o stai guardando un'esecuzione che si è bloccata prima di poter essere valutata? Un pulsante **re-evaluate** (controllato da `evaluations:trigger`) rivaluta la sessione sul posto e aggiunge il risultato fresco alla sua cronologia, così i score precedenti rimangono visibili come cronologia. Lo troverai su **`/<org-slug>/sessions/<session-id>`**.
+
+## Monitora il trend di qualità su tutta la flotta
+
+Un'esecuzione con basso score è rumore; un'intera coorte in declino è un segnale. I dashboard salvati trasformano i tuoi score in un trend che puoi monitorare a colpo d'occhio: utilità media questa settimana rispetto a quella scorsa, per agente, per ambiente.
+
+![Un dashboard di qualità: barre di score medio per dimensione di valutatore insieme a un trend nel tempo](/agenteye/images/dashboard-quality.png)
+
+*Un dashboard di qualità salvato tende i tasti di score che presenti, così una deriva lenta è ovvia molto prima di diventare un incidente.*
+
+I dashboard si trovano su **`/<org-slug>/dashboards`** (barra laterale → *analyze* → *dashboards*), sono condivisi con tutta la tua organizzazione, e ogni card aggrega le sessioni corrispondenti: quante sono, la media di ogni score presentato e una sparkline di trend. "Apri in sessions" ti porta direttamente alle esecuzioni pre-filtrate dietro qualsiasi numero. La visualizzazione richiede `dashboards:read` più `evaluations:read`.
+
+## Connetti un valutatore una volta
+
+Lo scoring è opzionale e rimane completamente disattivato fino a quando non indichi a FailproofAI Observability uno scorer. Crei un piccolo servizio HTTP (Observability ne spedisce uno di riferimento funzionante che puoi copiare), imposti due valori sul tuo server e ogni esecuzione da quel momento in poi viene valutata per te. La procedura completa, il contratto di scoring e l'SDK si trovano nella guida approfondita.
+
+## Correlati
+
+- [Suite di valutazione](/it/agenteye/evaluation-suite): connetti il tuo valutatore, il contratto di scoring e l'SDK.
+- [Sessions](/it/agenteye/sessions): la griglia esecuzione per esecuzione dove appaiono i score.
+- [Dashboards](/it/agenteye/dashboards): salva e condividi i trend di qualità nella tua organizzazione.
+- [Audits](/it/agenteye/audits): l'altra funzione di qualità automatica di Observability, per indagini tra sessioni.

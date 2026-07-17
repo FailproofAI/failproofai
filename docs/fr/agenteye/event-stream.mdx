@@ -1,0 +1,50 @@
+---
+title: "Flux d'événements"
+description: "Documentation du flux d'événements d'observabilité FailproofAI."
+---
+
+
+Dès qu'un agent fait quelque chose, vous le voyez. Le flux d'événements est votre pouls en temps réel sur chaque agent en production : plus d'attente, plus de grep dans les logs, plus de suppositions sur ce qui vient de se passer.
+
+![Le flux d'événements en direct : lignes d'événements colorées se mettant à jour en temps réel, filtrables par environnement, agent, session, type d'événement et texte libre](/agenteye/images/events-stream.png)
+
+*Chaque événement de chaque agent de votre organisation, du plus récent au plus ancien, mis à jour au fil du temps.*
+
+## Votre pouls en temps réel sur chaque agent
+
+Quand un agent démarre une exécution, appelle un modèle, déclenche un outil, exécute un hook ou rencontre une erreur, la ligne apparaît en haut du flux au moment même où cela se produit. Il suit en continu tous les événements de tous les agents de votre organisation, du plus récent au plus ancien, pour que vous ayez toujours une image à jour plutôt qu'une image périmée.
+
+Cela signifie : plus de surveillance de fichiers de logs sur une machine quelque part, plus de grep entre plusieurs machines, plus d'assemblage manuel d'horodatages. Vous ouvrez une seule page et vous observez déjà la production.
+
+Les lignes sont colorées par type, ce qui vous permet de lire le flux d'un seul coup d'œil plutôt que d'analyser chaque ligne. En un regard, chaque ligne vous indique :
+
+- **Son type**, avec un code couleur : `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, et bien d'autres.
+- **Un résumé en une ligne** de ce qui s'est passé, ce qui vous évite d'avoir à ouvrir quoi que ce soit juste pour comprendre l'essentiel.
+- **Le nombre de tokens** pour l'étape.
+- **Un indicateur de remplissage de la fenêtre de contexte** lorsque c'est pertinent, afin de détecter une croissance du prompt ou une compaction imminente avant qu'elles ne posent problème.
+
+Observer en direct signifie que vous détectez un déploiement défaillant, une boucle incontrôlée ou une rafale d'erreurs au moment où cela se produit, et non lors de la révision des logs du lendemain.
+
+## Trouver l'exécution qui pose problème
+
+Quand quelque chose semble anormal, vous ne voulez pas être submergé de données. Vous voulez identifier l'exécution précise qui a échoué. Le flux se filtre rapidement : par environnement, par agent, par session, par type d'événement ou par texte libre.
+
+Filtrez par identifiant de session ou d'agent pour suivre une exécution du premier au dernier événement. Filtrez par type d'événement pour isoler un seul type d'activité — par exemple, toutes les `error` de l'organisation dans une même vue. Combinez les filtres pour passer de « tout, partout » à « cet agent, en prod, en erreur » en quelques clics, puis agissez en conséquence.
+
+La recherche en texte libre vous amène directement à un message, un nom d'outil ou un identifiant que vous avez déjà sous la main, transformant un signalement client en exécution précise en quelques secondes.
+
+## Où le trouver
+
+Le flux d'événements est la page d'accueil de votre organisation. Connectez-vous et c'est la première surface sur laquelle vous atterrissez, à `/<org-slug>/`, de sorte que le triage commence dès votre arrivée.
+
+En arrière-plan, vos agents émettent des événements via le SDK, le collecteur les achemine vers votre serveur d'observabilité FailproofAI, et le flux les suit à mesure qu'ils arrivent dans une infrastructure que vous contrôlez. Quand vous préférez la vue agrégée plutôt que la trace brute, les événements de chaque exécution se condensent en une seule ligne dans Sessions, accessible en un clic.
+
+C'est la source de vérité brute sur laquelle s'appuient toutes les autres surfaces d'observation — lorsqu'un chiffre semble incorrect ailleurs, le flux est l'endroit où vous confirmez ce qui s'est réellement passé.
+
+## Voir aussi
+
+- [Sessions](/fr/agenteye/sessions) : les mêmes événements agrégés en une ligne par exécution, avec un graphe d'exécution de style git.
+- [Telemetry](/fr/agenteye/telemetry) : ce que vos agents envoient et comment les événements parviennent au flux.
+- [Suivi des erreurs](/fr/agenteye/error-tracking) : une surface de triage unique pour tout ce qui s'est mal passé.
+- [Alertes](/fr/agenteye/alerts) : transformez n'importe quel seuil en règle de notification.
+- [CLI et agents](/fr/agenteye/cli-and-agents) : la même trace en direct depuis votre terminal.

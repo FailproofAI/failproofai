@@ -1,0 +1,55 @@
+---
+title: "Sessioni & Grafo di Esecuzione"
+description: "Documentazione FailproofAI Observability Sessioni & Grafo di Esecuzione."
+---
+
+
+Smetti di indovinare perché un run è fallito. FailproofAI Observability raccoglie ogni evento da un run in una singola riga leggibile, quindi disegna l'intero run come un'immagine in stile git che puoi leggere in secondi, così vedi esattamente cosa ha fatto il tuo agent, passo dopo passo.
+
+![L'elenco Sessioni: una riga per run, attraverso ambienti e agent, con pillole di stato e badge di punteggio valutazione](/agenteye/images/sessions-list.png)
+
+*Una riga per run: la pillola di stato ti dice come è terminato il run a colpo d'occhio, e un badge di punteggio compare una volta connesso un valutatore.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent tracing: segui un singolo run passo dopo passo, dall'obiettivo agli strumenti alla risposta finale.*
+
+---
+
+## Visualizza ogni run a colpo d'occhio
+
+La traccia di eventi grezzo è la verità di ogni passo, ma quando hai migliaia di passi attraverso dozzine di run, hai bisogno del run, non del passo. La pagina Sessioni raggruppa tutti gli eventi di un run in una singola riga, così un giorno di attività diventa un elenco scansionabile invece di un flusso continuo.
+
+Ogni riga porta una pillola di stato, quindi un run fallito si distingue da uno sano prima di fare clic su nulla. Filtra per intervallo di date, ambiente, agent o sessione per passare da "tutto" a "il run che mi interessa" in un paio di clic.
+
+Una volta connesso un valutatore, ogni run completato viene automaticamente valutato e il suo punteggio più recente appare sulla riga come badge. Puoi filtrare per qualsiasi intervallo di punteggio, quindi "mostrami ogni run in prod con basso punteggio questa settimana" è un filtro, non una revisione manuale. Finché non ne configuri uno, le sessioni catturano comunque il run completo; semplicemente non portano ancora un punteggio.
+
+---
+
+## Leggi l'intero run come un'immagine
+
+![Un grafo di esecuzione in stile git di una sessione accanto alla sua timeline degli eventi, con il pannello di dettaglio dello strumento, modello e hook](/agenteye/images/session-detail.png)
+
+*Il grafo di esecuzione (sinistra) si trova accanto alla timeline degli eventi; la barra destra scompone gli strumenti, i modelli, gli hook e la spesa di token per il run.*
+
+Fai clic su qualsiasi sessione per aprire il suo grafo di esecuzione: una vista in stile git di come agent, strumenti, hook e chiamate di modello si sono svolti nel tempo. I sub-agent paralleli si ramificano ciascuno sulla propria corsia, così puoi vedere quale lavoro è stato eseguito fianco a fianco, quale sub-agent si è fermato e dove il run è andato fuori strada, senza rigiocare il tutto nella tua testa da un muro di log.
+
+La barra destra ti fornisce il dettaglio per-run: quali strumenti e modelli hanno eseguito, quali hook si sono attivati e cosa il run ha speso in token. Questa è la risposta a "perché questo run è costato così tanto?" o "quale strumento è quello lento?" seduta proprio accanto al grafo che l'ha causato.
+
+---
+
+## Dove trovarla
+
+Ogni pagina del dashboard è limitata alla tua organizzazione (`/<org-slug>/…`). Sessioni si trova sotto **Observe** nella barra laterale sinistra, accanto a Events, con i filtri per intervallo di date, ambiente, agent e sessione in cima all'elenco. Ogni riga è a un clic dal suo grafo di esecuzione completo.
+
+Per attivare i badge di punteggio e il filtraggio per intervallo di punteggio, connetti un valutatore: vedi [Evaluations](/it/agenteye/evaluations).
+
+---
+
+## Correlato
+
+- [Event stream](/it/agenteye/event-stream): la traccia grezzo per-passo da cui ogni sessione è aggregata.
+- [Evaluations](/it/agenteye/evaluations): connetti un valutatore in modo che ogni run ottenga un badge di punteggio per cui puoi filtrare.
+- [Telemetry](/it/agenteye/telemetry): come i run passano dal tuo agent a queste sessioni.

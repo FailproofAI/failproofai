@@ -1,11 +1,47 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildLanguageNav,
   generateLanguagesArray,
   getNavigationPageReferences,
   localizeProductsNavigation,
+  readDocsConfig,
 } from "@/scripts/translate-docs/mintlify-nav";
+
+const DOCS_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "docs",
+);
+
+describe("docs.json redirects", () => {
+  interface Redirect {
+    source: string;
+    destination: string;
+  }
+  const redirects = (readDocsConfig().redirects ?? []) as Redirect[];
+
+  it("points every redirect at a page that exists", () => {
+    const broken = redirects.filter(
+      (r) => !existsSync(join(DOCS_DIR, `${r.destination}.mdx`)),
+    );
+    expect(broken).toEqual([]);
+  });
+
+  it("never shadows a live page with a redirect", () => {
+    // A redirect whose source still resolves to a real .mdx would make that
+    // page permanently unreachable.
+    const shadowing = redirects.filter((r) =>
+      existsSync(join(DOCS_DIR, `${r.source}.mdx`)),
+    );
+    expect(shadowing).toEqual([]);
+  });
+});
 
 const sampleEnglishTabs = [
   {

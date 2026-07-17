@@ -12,63 +12,73 @@
     "dark": "/logo/Failproof_AI_logo.png"
   },
   "favicon": "/favicon.ico",
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "assistant",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
   "navigation": {
     "languages": [
       {
         "language": "en",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "agenteye/getting-started",
-                  "agenteye/github-token"
+                  "agenteye/overview",
+                  "agenteye/concepts",
+                  "agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "agenteye/deployment",
-                  "agenteye/managed-deployment",
-                  "agenteye/kubernetes-deployment",
-                  "agenteye/single-pod-deployment",
-                  "agenteye/collector-installation",
-                  "agenteye/collector-migration"
+                  "agenteye/event-stream",
+                  "agenteye/sessions",
+                  "agenteye/telemetry",
+                  "agenteye/error-tracking",
+                  "agenteye/evaluations",
+                  "agenteye/queries",
+                  "agenteye/dashboards",
+                  "agenteye/audits",
+                  "agenteye/alerts",
+                  "agenteye/incidents",
+                  "agenteye/assistant",
+                  "agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "agenteye/python-sdk",
                   "agenteye/cli",
+                  "agenteye/cli-skill",
                   "agenteye/cli-recipes",
-                  "agenteye/cli-skill"
+                  "agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "agenteye/evaluation-suite",
-                  "agenteye/audits",
-                  "agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "agenteye/api-keys",
-                  "agenteye/tenant-management",
-                  "agenteye/health-monitoring",
-                  "agenteye/assistant",
-                  "agenteye/troubleshooting"
+                  "agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Getting Started",
@@ -128,57 +138,54 @@
         "language": "zh",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "zh/agenteye/getting-started",
-                  "zh/agenteye/github-token"
+                  "zh/agenteye/overview",
+                  "zh/agenteye/concepts",
+                  "zh/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "zh/agenteye/deployment",
-                  "zh/agenteye/managed-deployment",
-                  "zh/agenteye/kubernetes-deployment",
-                  "zh/agenteye/single-pod-deployment",
-                  "zh/agenteye/collector-installation",
-                  "zh/agenteye/collector-migration"
+                  "zh/agenteye/event-stream",
+                  "zh/agenteye/sessions",
+                  "zh/agenteye/telemetry",
+                  "zh/agenteye/error-tracking",
+                  "zh/agenteye/evaluations",
+                  "zh/agenteye/queries",
+                  "zh/agenteye/dashboards",
+                  "zh/agenteye/audits",
+                  "zh/agenteye/alerts",
+                  "zh/agenteye/incidents",
+                  "zh/agenteye/assistant",
+                  "zh/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "zh/agenteye/python-sdk",
                   "zh/agenteye/cli",
+                  "zh/agenteye/cli-skill",
                   "zh/agenteye/cli-recipes",
-                  "zh/agenteye/cli-skill"
+                  "zh/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "zh/agenteye/evaluation-suite",
-                  "zh/agenteye/audits",
-                  "zh/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "zh/agenteye/api-keys",
-                  "zh/agenteye/tenant-management",
-                  "zh/agenteye/health-monitoring",
-                  "zh/agenteye/assistant",
-                  "zh/agenteye/troubleshooting"
+                  "zh/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "快速开始",
@@ -238,57 +245,54 @@
         "language": "ja",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "ja/agenteye/getting-started",
-                  "ja/agenteye/github-token"
+                  "ja/agenteye/overview",
+                  "ja/agenteye/concepts",
+                  "ja/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "ja/agenteye/deployment",
-                  "ja/agenteye/managed-deployment",
-                  "ja/agenteye/kubernetes-deployment",
-                  "ja/agenteye/single-pod-deployment",
-                  "ja/agenteye/collector-installation",
-                  "ja/agenteye/collector-migration"
+                  "ja/agenteye/event-stream",
+                  "ja/agenteye/sessions",
+                  "ja/agenteye/telemetry",
+                  "ja/agenteye/error-tracking",
+                  "ja/agenteye/evaluations",
+                  "ja/agenteye/queries",
+                  "ja/agenteye/dashboards",
+                  "ja/agenteye/audits",
+                  "ja/agenteye/alerts",
+                  "ja/agenteye/incidents",
+                  "ja/agenteye/assistant",
+                  "ja/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "ja/agenteye/python-sdk",
                   "ja/agenteye/cli",
+                  "ja/agenteye/cli-skill",
                   "ja/agenteye/cli-recipes",
-                  "ja/agenteye/cli-skill"
+                  "ja/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ja/agenteye/evaluation-suite",
-                  "ja/agenteye/audits",
-                  "ja/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ja/agenteye/api-keys",
-                  "ja/agenteye/tenant-management",
-                  "ja/agenteye/health-monitoring",
-                  "ja/agenteye/assistant",
-                  "ja/agenteye/troubleshooting"
+                  "ja/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "はじめに",
@@ -348,57 +352,54 @@
         "language": "ko",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "ko/agenteye/getting-started",
-                  "ko/agenteye/github-token"
+                  "ko/agenteye/overview",
+                  "ko/agenteye/concepts",
+                  "ko/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "ko/agenteye/deployment",
-                  "ko/agenteye/managed-deployment",
-                  "ko/agenteye/kubernetes-deployment",
-                  "ko/agenteye/single-pod-deployment",
-                  "ko/agenteye/collector-installation",
-                  "ko/agenteye/collector-migration"
+                  "ko/agenteye/event-stream",
+                  "ko/agenteye/sessions",
+                  "ko/agenteye/telemetry",
+                  "ko/agenteye/error-tracking",
+                  "ko/agenteye/evaluations",
+                  "ko/agenteye/queries",
+                  "ko/agenteye/dashboards",
+                  "ko/agenteye/audits",
+                  "ko/agenteye/alerts",
+                  "ko/agenteye/incidents",
+                  "ko/agenteye/assistant",
+                  "ko/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "ko/agenteye/python-sdk",
                   "ko/agenteye/cli",
+                  "ko/agenteye/cli-skill",
                   "ko/agenteye/cli-recipes",
-                  "ko/agenteye/cli-skill"
+                  "ko/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ko/agenteye/evaluation-suite",
-                  "ko/agenteye/audits",
-                  "ko/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ko/agenteye/api-keys",
-                  "ko/agenteye/tenant-management",
-                  "ko/agenteye/health-monitoring",
-                  "ko/agenteye/assistant",
-                  "ko/agenteye/troubleshooting"
+                  "ko/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "시작하기",
@@ -458,57 +459,54 @@
         "language": "es",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "es/agenteye/getting-started",
-                  "es/agenteye/github-token"
+                  "es/agenteye/overview",
+                  "es/agenteye/concepts",
+                  "es/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "es/agenteye/deployment",
-                  "es/agenteye/managed-deployment",
-                  "es/agenteye/kubernetes-deployment",
-                  "es/agenteye/single-pod-deployment",
-                  "es/agenteye/collector-installation",
-                  "es/agenteye/collector-migration"
+                  "es/agenteye/event-stream",
+                  "es/agenteye/sessions",
+                  "es/agenteye/telemetry",
+                  "es/agenteye/error-tracking",
+                  "es/agenteye/evaluations",
+                  "es/agenteye/queries",
+                  "es/agenteye/dashboards",
+                  "es/agenteye/audits",
+                  "es/agenteye/alerts",
+                  "es/agenteye/incidents",
+                  "es/agenteye/assistant",
+                  "es/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "es/agenteye/python-sdk",
                   "es/agenteye/cli",
+                  "es/agenteye/cli-skill",
                   "es/agenteye/cli-recipes",
-                  "es/agenteye/cli-skill"
+                  "es/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "es/agenteye/evaluation-suite",
-                  "es/agenteye/audits",
-                  "es/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "es/agenteye/api-keys",
-                  "es/agenteye/tenant-management",
-                  "es/agenteye/health-monitoring",
-                  "es/agenteye/assistant",
-                  "es/agenteye/troubleshooting"
+                  "es/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Primeros pasos",
@@ -568,57 +566,54 @@
         "language": "pt-BR",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "pt-br/agenteye/getting-started",
-                  "pt-br/agenteye/github-token"
+                  "pt-br/agenteye/overview",
+                  "pt-br/agenteye/concepts",
+                  "pt-br/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "pt-br/agenteye/deployment",
-                  "pt-br/agenteye/managed-deployment",
-                  "pt-br/agenteye/kubernetes-deployment",
-                  "pt-br/agenteye/single-pod-deployment",
-                  "pt-br/agenteye/collector-installation",
-                  "pt-br/agenteye/collector-migration"
+                  "pt-br/agenteye/event-stream",
+                  "pt-br/agenteye/sessions",
+                  "pt-br/agenteye/telemetry",
+                  "pt-br/agenteye/error-tracking",
+                  "pt-br/agenteye/evaluations",
+                  "pt-br/agenteye/queries",
+                  "pt-br/agenteye/dashboards",
+                  "pt-br/agenteye/audits",
+                  "pt-br/agenteye/alerts",
+                  "pt-br/agenteye/incidents",
+                  "pt-br/agenteye/assistant",
+                  "pt-br/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "pt-br/agenteye/python-sdk",
                   "pt-br/agenteye/cli",
+                  "pt-br/agenteye/cli-skill",
                   "pt-br/agenteye/cli-recipes",
-                  "pt-br/agenteye/cli-skill"
+                  "pt-br/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "pt-br/agenteye/evaluation-suite",
-                  "pt-br/agenteye/audits",
-                  "pt-br/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "pt-br/agenteye/api-keys",
-                  "pt-br/agenteye/tenant-management",
-                  "pt-br/agenteye/health-monitoring",
-                  "pt-br/agenteye/assistant",
-                  "pt-br/agenteye/troubleshooting"
+                  "pt-br/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Começando",
@@ -678,57 +673,54 @@
         "language": "de",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "de/agenteye/getting-started",
-                  "de/agenteye/github-token"
+                  "de/agenteye/overview",
+                  "de/agenteye/concepts",
+                  "de/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "de/agenteye/deployment",
-                  "de/agenteye/managed-deployment",
-                  "de/agenteye/kubernetes-deployment",
-                  "de/agenteye/single-pod-deployment",
-                  "de/agenteye/collector-installation",
-                  "de/agenteye/collector-migration"
+                  "de/agenteye/event-stream",
+                  "de/agenteye/sessions",
+                  "de/agenteye/telemetry",
+                  "de/agenteye/error-tracking",
+                  "de/agenteye/evaluations",
+                  "de/agenteye/queries",
+                  "de/agenteye/dashboards",
+                  "de/agenteye/audits",
+                  "de/agenteye/alerts",
+                  "de/agenteye/incidents",
+                  "de/agenteye/assistant",
+                  "de/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "de/agenteye/python-sdk",
                   "de/agenteye/cli",
+                  "de/agenteye/cli-skill",
                   "de/agenteye/cli-recipes",
-                  "de/agenteye/cli-skill"
+                  "de/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "de/agenteye/evaluation-suite",
-                  "de/agenteye/audits",
-                  "de/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "de/agenteye/api-keys",
-                  "de/agenteye/tenant-management",
-                  "de/agenteye/health-monitoring",
-                  "de/agenteye/assistant",
-                  "de/agenteye/troubleshooting"
+                  "de/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Erste Schritte",
@@ -788,57 +780,54 @@
         "language": "fr",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "fr/agenteye/getting-started",
-                  "fr/agenteye/github-token"
+                  "fr/agenteye/overview",
+                  "fr/agenteye/concepts",
+                  "fr/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "fr/agenteye/deployment",
-                  "fr/agenteye/managed-deployment",
-                  "fr/agenteye/kubernetes-deployment",
-                  "fr/agenteye/single-pod-deployment",
-                  "fr/agenteye/collector-installation",
-                  "fr/agenteye/collector-migration"
+                  "fr/agenteye/event-stream",
+                  "fr/agenteye/sessions",
+                  "fr/agenteye/telemetry",
+                  "fr/agenteye/error-tracking",
+                  "fr/agenteye/evaluations",
+                  "fr/agenteye/queries",
+                  "fr/agenteye/dashboards",
+                  "fr/agenteye/audits",
+                  "fr/agenteye/alerts",
+                  "fr/agenteye/incidents",
+                  "fr/agenteye/assistant",
+                  "fr/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "fr/agenteye/python-sdk",
                   "fr/agenteye/cli",
+                  "fr/agenteye/cli-skill",
                   "fr/agenteye/cli-recipes",
-                  "fr/agenteye/cli-skill"
+                  "fr/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "fr/agenteye/evaluation-suite",
-                  "fr/agenteye/audits",
-                  "fr/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "fr/agenteye/api-keys",
-                  "fr/agenteye/tenant-management",
-                  "fr/agenteye/health-monitoring",
-                  "fr/agenteye/assistant",
-                  "fr/agenteye/troubleshooting"
+                  "fr/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Démarrage",
@@ -898,57 +887,54 @@
         "language": "ru",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "ru/agenteye/getting-started",
-                  "ru/agenteye/github-token"
+                  "ru/agenteye/overview",
+                  "ru/agenteye/concepts",
+                  "ru/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "ru/agenteye/deployment",
-                  "ru/agenteye/managed-deployment",
-                  "ru/agenteye/kubernetes-deployment",
-                  "ru/agenteye/single-pod-deployment",
-                  "ru/agenteye/collector-installation",
-                  "ru/agenteye/collector-migration"
+                  "ru/agenteye/event-stream",
+                  "ru/agenteye/sessions",
+                  "ru/agenteye/telemetry",
+                  "ru/agenteye/error-tracking",
+                  "ru/agenteye/evaluations",
+                  "ru/agenteye/queries",
+                  "ru/agenteye/dashboards",
+                  "ru/agenteye/audits",
+                  "ru/agenteye/alerts",
+                  "ru/agenteye/incidents",
+                  "ru/agenteye/assistant",
+                  "ru/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "ru/agenteye/python-sdk",
                   "ru/agenteye/cli",
+                  "ru/agenteye/cli-skill",
                   "ru/agenteye/cli-recipes",
-                  "ru/agenteye/cli-skill"
+                  "ru/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ru/agenteye/evaluation-suite",
-                  "ru/agenteye/audits",
-                  "ru/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ru/agenteye/api-keys",
-                  "ru/agenteye/tenant-management",
-                  "ru/agenteye/health-monitoring",
-                  "ru/agenteye/assistant",
-                  "ru/agenteye/troubleshooting"
+                  "ru/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Начало работы",
@@ -1008,57 +994,54 @@
         "language": "hi",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "hi/agenteye/getting-started",
-                  "hi/agenteye/github-token"
+                  "hi/agenteye/overview",
+                  "hi/agenteye/concepts",
+                  "hi/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "hi/agenteye/deployment",
-                  "hi/agenteye/managed-deployment",
-                  "hi/agenteye/kubernetes-deployment",
-                  "hi/agenteye/single-pod-deployment",
-                  "hi/agenteye/collector-installation",
-                  "hi/agenteye/collector-migration"
+                  "hi/agenteye/event-stream",
+                  "hi/agenteye/sessions",
+                  "hi/agenteye/telemetry",
+                  "hi/agenteye/error-tracking",
+                  "hi/agenteye/evaluations",
+                  "hi/agenteye/queries",
+                  "hi/agenteye/dashboards",
+                  "hi/agenteye/audits",
+                  "hi/agenteye/alerts",
+                  "hi/agenteye/incidents",
+                  "hi/agenteye/assistant",
+                  "hi/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "hi/agenteye/python-sdk",
                   "hi/agenteye/cli",
+                  "hi/agenteye/cli-skill",
                   "hi/agenteye/cli-recipes",
-                  "hi/agenteye/cli-skill"
+                  "hi/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "hi/agenteye/evaluation-suite",
-                  "hi/agenteye/audits",
-                  "hi/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "hi/agenteye/api-keys",
-                  "hi/agenteye/tenant-management",
-                  "hi/agenteye/health-monitoring",
-                  "hi/agenteye/assistant",
-                  "hi/agenteye/troubleshooting"
+                  "hi/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "शुरू करें",
@@ -1118,57 +1101,54 @@
         "language": "tr",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "tr/agenteye/getting-started",
-                  "tr/agenteye/github-token"
+                  "tr/agenteye/overview",
+                  "tr/agenteye/concepts",
+                  "tr/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "tr/agenteye/deployment",
-                  "tr/agenteye/managed-deployment",
-                  "tr/agenteye/kubernetes-deployment",
-                  "tr/agenteye/single-pod-deployment",
-                  "tr/agenteye/collector-installation",
-                  "tr/agenteye/collector-migration"
+                  "tr/agenteye/event-stream",
+                  "tr/agenteye/sessions",
+                  "tr/agenteye/telemetry",
+                  "tr/agenteye/error-tracking",
+                  "tr/agenteye/evaluations",
+                  "tr/agenteye/queries",
+                  "tr/agenteye/dashboards",
+                  "tr/agenteye/audits",
+                  "tr/agenteye/alerts",
+                  "tr/agenteye/incidents",
+                  "tr/agenteye/assistant",
+                  "tr/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "tr/agenteye/python-sdk",
                   "tr/agenteye/cli",
+                  "tr/agenteye/cli-skill",
                   "tr/agenteye/cli-recipes",
-                  "tr/agenteye/cli-skill"
+                  "tr/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "tr/agenteye/evaluation-suite",
-                  "tr/agenteye/audits",
-                  "tr/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "tr/agenteye/api-keys",
-                  "tr/agenteye/tenant-management",
-                  "tr/agenteye/health-monitoring",
-                  "tr/agenteye/assistant",
-                  "tr/agenteye/troubleshooting"
+                  "tr/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Başlangıç",
@@ -1228,57 +1208,54 @@
         "language": "vi",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "vi/agenteye/getting-started",
-                  "vi/agenteye/github-token"
+                  "vi/agenteye/overview",
+                  "vi/agenteye/concepts",
+                  "vi/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "vi/agenteye/deployment",
-                  "vi/agenteye/managed-deployment",
-                  "vi/agenteye/kubernetes-deployment",
-                  "vi/agenteye/single-pod-deployment",
-                  "vi/agenteye/collector-installation",
-                  "vi/agenteye/collector-migration"
+                  "vi/agenteye/event-stream",
+                  "vi/agenteye/sessions",
+                  "vi/agenteye/telemetry",
+                  "vi/agenteye/error-tracking",
+                  "vi/agenteye/evaluations",
+                  "vi/agenteye/queries",
+                  "vi/agenteye/dashboards",
+                  "vi/agenteye/audits",
+                  "vi/agenteye/alerts",
+                  "vi/agenteye/incidents",
+                  "vi/agenteye/assistant",
+                  "vi/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "vi/agenteye/python-sdk",
                   "vi/agenteye/cli",
+                  "vi/agenteye/cli-skill",
                   "vi/agenteye/cli-recipes",
-                  "vi/agenteye/cli-skill"
+                  "vi/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "vi/agenteye/evaluation-suite",
-                  "vi/agenteye/audits",
-                  "vi/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "vi/agenteye/api-keys",
-                  "vi/agenteye/tenant-management",
-                  "vi/agenteye/health-monitoring",
-                  "vi/agenteye/assistant",
-                  "vi/agenteye/troubleshooting"
+                  "vi/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Bắt đầu",
@@ -1338,57 +1315,54 @@
         "language": "it",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "it/agenteye/getting-started",
-                  "it/agenteye/github-token"
+                  "it/agenteye/overview",
+                  "it/agenteye/concepts",
+                  "it/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "it/agenteye/deployment",
-                  "it/agenteye/managed-deployment",
-                  "it/agenteye/kubernetes-deployment",
-                  "it/agenteye/single-pod-deployment",
-                  "it/agenteye/collector-installation",
-                  "it/agenteye/collector-migration"
+                  "it/agenteye/event-stream",
+                  "it/agenteye/sessions",
+                  "it/agenteye/telemetry",
+                  "it/agenteye/error-tracking",
+                  "it/agenteye/evaluations",
+                  "it/agenteye/queries",
+                  "it/agenteye/dashboards",
+                  "it/agenteye/audits",
+                  "it/agenteye/alerts",
+                  "it/agenteye/incidents",
+                  "it/agenteye/assistant",
+                  "it/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "it/agenteye/python-sdk",
                   "it/agenteye/cli",
+                  "it/agenteye/cli-skill",
                   "it/agenteye/cli-recipes",
-                  "it/agenteye/cli-skill"
+                  "it/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "it/agenteye/evaluation-suite",
-                  "it/agenteye/audits",
-                  "it/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "it/agenteye/api-keys",
-                  "it/agenteye/tenant-management",
-                  "it/agenteye/health-monitoring",
-                  "it/agenteye/assistant",
-                  "it/agenteye/troubleshooting"
+                  "it/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "Per iniziare",
@@ -1448,57 +1422,54 @@
         "language": "ar",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "ar/agenteye/getting-started",
-                  "ar/agenteye/github-token"
+                  "ar/agenteye/overview",
+                  "ar/agenteye/concepts",
+                  "ar/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "ar/agenteye/deployment",
-                  "ar/agenteye/managed-deployment",
-                  "ar/agenteye/kubernetes-deployment",
-                  "ar/agenteye/single-pod-deployment",
-                  "ar/agenteye/collector-installation",
-                  "ar/agenteye/collector-migration"
+                  "ar/agenteye/event-stream",
+                  "ar/agenteye/sessions",
+                  "ar/agenteye/telemetry",
+                  "ar/agenteye/error-tracking",
+                  "ar/agenteye/evaluations",
+                  "ar/agenteye/queries",
+                  "ar/agenteye/dashboards",
+                  "ar/agenteye/audits",
+                  "ar/agenteye/alerts",
+                  "ar/agenteye/incidents",
+                  "ar/agenteye/assistant",
+                  "ar/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "ar/agenteye/python-sdk",
                   "ar/agenteye/cli",
+                  "ar/agenteye/cli-skill",
                   "ar/agenteye/cli-recipes",
-                  "ar/agenteye/cli-skill"
+                  "ar/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "ar/agenteye/evaluation-suite",
-                  "ar/agenteye/audits",
-                  "ar/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "ar/agenteye/api-keys",
-                  "ar/agenteye/tenant-management",
-                  "ar/agenteye/health-monitoring",
-                  "ar/agenteye/assistant",
-                  "ar/agenteye/troubleshooting"
+                  "ar/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "البداية",
@@ -1558,57 +1529,54 @@
         "language": "he",
         "tabs": [
           {
-            "tab": "Agent Observability",
+            "tab": "Observability",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Overview",
                 "pages": [
-                  "he/agenteye/getting-started",
-                  "he/agenteye/github-token"
+                  "he/agenteye/overview",
+                  "he/agenteye/concepts",
+                  "he/agenteye/observability"
                 ]
               },
               {
-                "group": "Deployment",
+                "group": "Features",
                 "pages": [
-                  "he/agenteye/deployment",
-                  "he/agenteye/managed-deployment",
-                  "he/agenteye/kubernetes-deployment",
-                  "he/agenteye/single-pod-deployment",
-                  "he/agenteye/collector-installation",
-                  "he/agenteye/collector-migration"
+                  "he/agenteye/event-stream",
+                  "he/agenteye/sessions",
+                  "he/agenteye/telemetry",
+                  "he/agenteye/error-tracking",
+                  "he/agenteye/evaluations",
+                  "he/agenteye/queries",
+                  "he/agenteye/dashboards",
+                  "he/agenteye/audits",
+                  "he/agenteye/alerts",
+                  "he/agenteye/incidents",
+                  "he/agenteye/assistant",
+                  "he/agenteye/cli-and-agents"
                 ]
               },
               {
-                "group": "Instrumentation and CLI",
+                "group": "SDK and CLI",
                 "pages": [
                   "he/agenteye/python-sdk",
                   "he/agenteye/cli",
+                  "he/agenteye/cli-skill",
                   "he/agenteye/cli-recipes",
-                  "he/agenteye/cli-skill"
+                  "he/agenteye/evaluation-suite"
                 ]
               },
               {
-                "group": "Quality",
-                "pages": [
-                  "he/agenteye/evaluation-suite",
-                  "he/agenteye/audits",
-                  "he/agenteye/alerts"
-                ]
-              },
-              {
-                "group": "Operations",
+                "group": "Administration",
                 "pages": [
                   "he/agenteye/api-keys",
-                  "he/agenteye/tenant-management",
-                  "he/agenteye/health-monitoring",
-                  "he/agenteye/assistant",
-                  "he/agenteye/troubleshooting"
+                  "he/agenteye/security"
                 ]
               }
             ]
           },
           {
-            "tab": "Agent Enforcement",
+            "tab": "Enforcement",
             "groups": [
               {
                 "group": "תחילת עבודה",
@@ -1679,7 +1647,7 @@
         },
         {
           "anchor": "Discord",
-          "href": "https://discord.gg/2zjBZP7yQJ",
+          "href": "https://discord.befailproof.ai/",
           "icon": "discord"
         }
       ]
@@ -1689,16 +1657,108 @@
     "links": [],
     "primary": {
       "type": "button",
-      "label": "Get started",
-      "href": "/getting-started"
+      "label": "Talk to us",
+      "href": "https://cal.com/nikita-agarwal-exosphere/30-minute-chat-failproof-ai"
     }
   },
   "footer": {
     "socials": {
+      "website": "https://befailproof.ai",
       "github": "https://github.com/failproofai/failproofai",
+      "discord": "https://discord.befailproof.ai/",
       "x": "https://x.com/failproofai"
-    }
+    },
+    "links": [
+      {
+        "header": "Product",
+        "items": [
+          {
+            "label": "Home",
+            "href": "https://befailproof.ai"
+          },
+          {
+            "label": "Blog",
+            "href": "https://befailproof.ai/blog/"
+          },
+          {
+            "label": "Guides",
+            "href": "https://befailproof.ai/guides/"
+          }
+        ]
+      },
+      {
+        "header": "Resources",
+        "items": [
+          {
+            "label": "npm",
+            "href": "https://www.npmjs.com/package/failproofai"
+          },
+          {
+            "label": "GitHub",
+            "href": "https://github.com/failproofai/failproofai"
+          },
+          {
+            "label": "Discord",
+            "href": "https://discord.befailproof.ai/"
+          }
+        ]
+      }
+    ]
   },
+  "redirects": [
+    {
+      "source": "/agenteye/collector-installation",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/collector-migration",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/deployment-options",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/faq",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/getting-started",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/github-token",
+      "destination": "/agenteye/api-keys"
+    },
+    {
+      "source": "/agenteye/health-monitoring",
+      "destination": "/agenteye/observability"
+    },
+    {
+      "source": "/agenteye/kubernetes-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/managed-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/single-pod-deployment",
+      "destination": "/agenteye/overview"
+    },
+    {
+      "source": "/agenteye/tenant-management",
+      "destination": "/agenteye/api-keys"
+    },
+    {
+      "source": "/agenteye/troubleshooting",
+      "destination": "/agenteye/overview"
+    }
+  ],
   "integrations": {
     "ga4": {
       "measurementId": "G-Z3Z6GJ74H9"

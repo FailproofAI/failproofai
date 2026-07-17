@@ -1,308 +1,62 @@
 ---
-title: "Alerts"
-description: "AgentEye Alerts 문서."
+title: "알림"
+description: "FailproofAI Observability 알림 문서입니다."
 ---
 
-Alerts는 스케줄에 따라 규칙을 평가하고, 특정 값이 임계값을 초과하면 알림을 보냅니다. AgentEye를 단순한 수동형 대시보드에서 벗어나, 오류율 급등, 지연 시간 저하, 평가자 점수 하락, 또는 ClickHouse 쿼리로 표현할 수 있는 모든 커스텀 이벤트를 즉시 감지하는 알림 서비스로 전환합니다.
+문제가 발생하는 순간, 팀이 이미 사용 중인 채널에서 직접 알림을 받아보세요. 고객으로부터 먼저 듣는 일이 없도록 하세요. 규칙을 한 번 설정하면 FailproofAI Observability가 주기적으로 확인하고, 이메일, Slack, 웹훅, 또는 대시보드를 통해 알림을 전송합니다.
 
-이 가이드에서는 Alert의 개념, 다섯 가지 트리거 유형, 네 가지 알림 채널, 인시던트 생명주기, 그리고 운영 설정 옵션을 다룹니다.
+![알림 페이지: 각 알림 규칙 카드에 트리거, 평가 기간, 채널, 정보·경고·심각 수준 배지가 표시된 그리드](/agenteye/images/alerts.png)
+*모든 알림 규칙을 한눈에: 감시 대상, 평가 주기, 알림 채널, 긴급도.*
 
-![Alerts 페이지: 트리거 유형, 평가 윈도우, 채널, info/warning/critical 심각도 배지를 각각 표시하는 alert 규칙 카드 그리드](/agenteye/images/alerts.png)
+## 사용자보다 먼저 문제를 파악하세요
 
----
+회귀 오류를 잡으려고 대시보드를 계속 새로고침하지 마세요. 아무도 보지 않을 때도 알아야 할 신호가 있다면 알림을 설정하고, 이미 사용 중인 곳으로 전달받으세요:
 
-## 개념
+- **이메일**, 알아야 할 담당자에게 직접.
+- **Slack**, 인시던트로 바로 이동하는 버튼이 포함된 풍부한 메시지.
+- **웹훅**, PagerDuty, Opsgenie 또는 직접 구축한 엔드포인트로 전송되는 JSON POST. 수신 측 검증을 위한 서명 옵션도 지원합니다.
+- **대시보드 내**, 규칙을 조정하면서 아직 아무에게도 알리고 싶지 않을 때 활용할 수 있는 조용한 알림.
 
-- **Alert** — 규칙입니다. *무엇을* 확인할지(트리거), *얼마나 자주*(평가 주기), *언제 문제로 볼지*(복합 로직), *얼마나 긴급한지*(심각도), *누구에게/어디로 알릴지*(채널)를 정의합니다.
-- **Incident** — Alert가 발동될 때 생성됩니다. 하나의 Alert에는 동시에 열린 인시던트가 최대 하나만 존재합니다. 반복적인 위반은 동일 인시던트의 근거 데이터를 업데이트합니다. 인시던트는 운영자가 직접 해결해야 하며, 규칙이 발동을 멈출 때 자동 해결하는 기능은 계획 중이나 현재는 미지원입니다.
-- **Channel** — 알림이 전달되는 대상: 이메일, Slack, 일반 웹훅, 또는 대시보드 내. 각 Alert에 원하는 조합을 붙일 수 있습니다.
+하나의 규칙에 여러 채널을 조합해서 연결할 수 있으며, 심각도(정보, 경고, 심각)도 함께 전달되어 긴급한 알림은 긴급하게 보입니다.
 
-Alert와 인시던트는 조직 단위에 속하며, 해당 조직의 모든 운영자가 공유합니다(단일 테넌트 배포에서는 기본 제공 `default` 조직이 이에 해당합니다). 인시던트는 트리아지를 위해 특정 운영자에게 배정할 수 있습니다.
+## JSON이 아닌 폼으로 규칙을 만드세요
 
----
+무엇이 "문제"인지를 폼에 입력하면 FailproofAI Observability가 내부적으로 규칙을 작성합니다. JSON 명세는 폼이 내부적으로 생성하는 결과물이므로, 규칙을 이해하기 위해 읽을 수는 있지만 직접 입력할 일은 거의 없습니다.
 
-## 트리거 유형
+![새 알림 폼: 이름과 설명, 활성화 토글, 그리고 메트릭 임계값, 사용자 정의 SQL, 평가 점수, 복합 평가, 이벤트별 조건을 제공하는 트리거 선택기](/agenteye/images/alert-new.png)
+*트리거를 선택하면 폼이 해당 필드로 전환됩니다. 저장하면 규칙이 생성됩니다.*
 
-각각 고유한 JSON 스펙을 가진 다섯 가지 종류가 있습니다. "문제 있음"을 어떻게 표현하고 싶은지에 맞는 유형을 선택하세요. 대시보드의 **새 Alert** 폼은 동일한 스펙을 자동으로 구성하며, 선택한 트리거 유형에 맞게 조건 편집기를 전환합니다.
+기본 흐름은 간단합니다: 이름을 지정하고, **트리거**(감시 대상)를 선택한 다음, **임계값과 기간**(얼마나 나쁜 상태가 얼마나 오래 지속될 때)을 설정하고, 최소 하나의 **채널**을 연결한 뒤 **저장**합니다. 이후 **테스트**를 눌러 테스트 알림을 발송하고 모든 채널이 정상적으로 연결되었는지 확인하세요. 내부적으로는 다음과 같은 소규모 명세가 생성됩니다:
 
-![새 Alert 폼: 기본 정보(이름, 설명, 활성화) 및 metric threshold, custom SQL, evaluation score, eval failures, per-event 옵션을 보여주는 트리거 선택기](/agenteye/images/alert-new.png)
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
 
-### 1. `metric_threshold`
+하나의 신호 유형에만 국한되지 않습니다. 장애를 어떻게 인식하느냐에 맞는 트리거를 선택하세요:
 
-가장 단순한 유형입니다. 제공된 목록에서 메트릭, 연산자, 임계값, 시간 윈도우를 선택합니다.
-
-| 메트릭 | 측정 대상 |
+| 트리거 | 발동 조건 |
 |---|---|
-| `event_count` | 윈도우 내 전체 이벤트 수 |
-| `error_count` | `event_type = 'error'` 이거나 `error_type IS NOT NULL`인 이벤트 |
-| `error_rate` | `error_count / event_count` (0..1) |
-| `p95_latency_ms` | `duration_ms`가 있는 모든 이벤트의 `quantile(0.95)(duration_ms)` |
-| `p99_latency_ms` | `quantile(0.99)(duration_ms)` |
-| `token_sum` | `SUM(input_tokens + output_tokens)` |
+| **메트릭 임계값** | 오류율, p95 또는 p99 지연 시간, 이벤트 또는 오류 횟수, 토큰 사용량 등 사전 정의된 메트릭이 일정 기간 동안 설정한 기준을 초과할 때 |
+| **사용자 정의 SQL** | 직접 작성한 읽기 전용 쿼리가 행을 반환하거나, 계산된 값이 임계값을 초과할 때 |
+| **평가 점수** | 환각 탐지 등 평가 점수의 평균이 임계값을 초과할 때 |
+| **복합 평가** | 여러 점수 조건을 any, all, 또는 N개 이상 로직으로 조합하여, 여러 점수에 걸쳐 나타나는 회귀를 감지할 때 |
+| **이벤트별** | 특정 에이전트, 특정 오류 유형, 또는 메시지 하위 문자열과 일치하는 단일 이벤트가 발생할 때 |
 
-연산자: `>`, `>=`, `<`, `<=`, `==` (`gt`, `gte`, `lt`, `lte`, `eq`도 사용 가능).
+[오류 페이지](/ko/agenteye/error-tracking)에서 이미 장애를 확인하고 있다면, 각 행에 있는 **+ 알림** 버튼으로 동일한 폼을 열 수 있습니다. 해당 장애를 다시 감지하도록 미리 채워져 있어, 방금 처리한 인시던트가 다음번에 바로 알림으로 연결됩니다.
 
-선택적 필터: `environment`, `event_type`.
+**위치:** 알림은 `/<org-slug>/alerts`에 있습니다. 규칙 생성, 편집, 삭제, 테스트에는 **`alerts:write`** 권한이 필요하며, 조회에는 `alerts:read`로 충분합니다. 수신자 선택기에는 조직 구성원 이름이 표시되므로, 폼을 벗어나지 않고도 특정 담당자에게 알림을 보낼 수 있습니다.
 
-스펙 예시:
+## 실제 문제일 때만 알림을 받으세요
 
-```json
-{
-  "metric": "p95_latency_ms",
-  "filter": { "environment": "production" },
-  "window_secs": 900,
-  "op": ">",
-  "value": 5000
-}
-```
+잘못된 측정값 하나로 잠을 깨워서는 안 됩니다. **M of N** 노이즈 필터는 최근 몇 번의 확인 중 몇 번이 실패해야 실제 알림을 발송할지 제어합니다. **5번 중 3번**으로 설정하면 최근 다섯 번의 확인 중 세 번이 기준을 초과한 경우에만 규칙이 발동하므로, 불안정한 신호가 지속적으로 오탐을 유발하는 것을 방지합니다. 기본값인 **1 of 1**을 유지하면 첫 번째 기준 초과 시 바로 발동합니다. 신호가 실제로 변동하는 속도에 맞게 1m, 5m, 15m, 1h 프리셋 중 하나를 선택하여 규칙 실행 주기를 설정할 수도 있습니다.
 
-### 2. `custom_sql`
+## 알림이 발동되면 어떻게 되나요
 
-프리셋 메트릭으로 표현할 수 없는 모든 경우에 사용합니다. 운영자가 작성한 SQL은 디스패처가 실행하기 전에 동일한 `/queries/run` 가드(SELECT/WITH만 허용, 단일 문, 10,000행 제한)를 통과합니다. 두 가지 모드가 있습니다:
+기준 초과가 발생하면 **인시던트**가 열리고 채널에 한 번 알림이 전송됩니다. 이후 팀이 인시던트를 확인하고, 담당자를 지정하고, 논의하고, 해결하는 과정이 명확하게 기록됩니다. 이 트리아지 워크플로에는 별도의 공간이 있습니다: [인시던트](/ko/agenteye/incidents)를 참조하세요.
 
-- **rows 모드** (`op`/`value` 없음): 쿼리가 하나 이상의 행을 반환하는 즉시 Alert가 발동됩니다.
-- **value 모드**: 쿼리에서 컬럼 하나를 `metric_value`로 별칭 지정해야 하며, 디스패처는 첫 번째 행의 `metric_value`를 `op`를 사용해 `value`와 비교합니다.
+## 관련 문서
 
-```json
-{
-  "sql": "SELECT count() AS metric_value FROM agenteye.events WHERE event_type = 'error' AND ts >= now() - INTERVAL 1 HOUR",
-  "op": ">",
-  "value": 100
-}
-```
-
-### 3. `evaluation_score`
-
-`agenteye.evaluations`를 읽어 특정 점수의 윈도우 내 평균값을 비교합니다.
-
-```json
-{
-  "score_key": "hallucination",
-  "op": ">",
-  "value": 0.6,
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-`min_count`는 단일 샘플 이상치를 방지합니다. 윈도우 내 평가 횟수가 N개 이상이 될 때까지 디스패처는 발동하지 않습니다.
-
-### 4. `eval_compound`
-
-*여러* 평가자 점수에 걸쳐서만 나타나는 품질 저하를 감지합니다. `evaluation_score`가 단일 점수를 감시하는 반면, `eval_compound`는 여러 evaluation-score 조건을 하나의 Alert로 묶고 선택한 로직으로 결과를 결합합니다. 따라서 "helpfulness가 떨어지거나 **또는** hallucination이 올라가면 발동", "helpfulness와 tool-efficiency 모두 떨어질 때만 발동", "이 세 가지 검사 중 **최소 2개** 이상 위반 시 발동" 같은 규칙을 하나로 표현할 수 있습니다.
-
-각 조건은 공유 윈도우에서 `agenteye.evaluations`의 특정 점수 평균을 읽어 고유한 연산자와 임계값으로 테스트합니다. 불리언 결과는 `combinator`에 의해 결합됩니다:
-
-| Combinator | 논리 | 발동 조건 |
-|---|---|---|
-| `"any"` | OR | 최소 하나의 조건이 위반될 때 |
-| `"all"` | AND | 모든 조건이 위반될 때 |
-| `{ "at_least": N }` | M of N | 최소 N개의 조건이 위반될 때 |
-
-```json
-{
-  "combinator": { "at_least": 2 },
-  "conditions": [
-    { "score_key": "hallucination", "op": ">", "value": 0.8 },
-    { "score_key": "helpfulness",   "op": "<", "value": 0.6 },
-    { "score_key": "tone",          "op": "<", "value": 0.5 }
-  ],
-  "window_secs": 3600,
-  "min_count": 5,
-  "environment": "production"
-}
-```
-
-- `combinator`: `"any"`, `"all"`, 또는 `{ "at_least": N }`.
-- `conditions[]`: 각각 `{ score_key, op, value }` 형태이며, 다른 트리거와 동일한 연산자(`>`, `>=`, `<`, `<=`, `==`)를 사용합니다.
-- `window_secs`: 모든 조건에 공통으로 적용되는 기간(기본값 `3600`).
-- `min_count`: 조건이 위반으로 판정되기 전 필요한 최소 평가 횟수. 윈도우 내 샘플이 부족한 조건은 "위반 없음"으로 처리됩니다(기본값 `1`).
-- `environment`: 선택 사항. 모든 조건을 특정 환경으로 제한합니다.
-
-알림의 근거 데이터에는 각 조건의 관측 평균, 비교 임계값, 평가 횟수, 위반 여부가 기록되므로 어떤 검사가 발동했는지 정확히 확인할 수 있습니다.
-
-### 5. `per_event`
-
-"X와 일치하는 이벤트가 발생했을 때" 알림에 사용합니다. 집계 없이, 디스패처는 조회 윈도우에서 일치하는 항목을 발견하는 즉시 발동합니다.
-
-```json
-{
-  "event_type": "error",
-  "lookback_secs": 60,
-  "environment": "production",
-  "tool_name": "bash",
-  "agent_id": "caa",
-  "error_type": "TimeoutError",
-  "message_contains": "vertex-ai timed out"
-}
-```
-
-모든 필터는 AND로 결합되며, 생략한 필드는 제한 없이 허용됩니다.
-
-| 필드 | 용도 |
-|---|---|
-| `agent_id` | 특정 에이전트(`/errors` 행에 표시된 에이전트)의 오류만 감지합니다. |
-| `error_type` | 모든 오류가 아닌 특정 오류 클래스(예: `TimeoutError`)만 감지합니다. |
-| `message_contains` | `payload.message`에 대한 대소문자 구분 없는 부분 문자열 검색입니다. 동일 에이전트의 모든 오류에 Alert를 보내지 않고 특정 실패 유형(예: `prompt is too long`)만 감지할 때 유용합니다. 최대 200자이며, 패턴이 아닌 리터럴 문자열로 매칭됩니다. |
-
-팁: `lookback_secs`를 Alert의 `eval_interval_secs`와 대략 일치하도록 설정하면 동일 이벤트에 대한 중복 알림을 방지할 수 있습니다.
-
-**`/errors`에서 바로 생성:** 오류 보기의 각 오류 그룹 대표 행(및 오류 이벤트의 세션 이벤트 상세 패널)에는 **+ alert** 버튼이 있으며, 해당 행의 `event_type` + 환경 정보로 미리 채워진 `per_event` 트리거와 함께 `/alerts/new`를 엽니다. 페이로드의 `error_type`이 있을 경우 이름도 자동으로 채워집니다. 채널 선택과 조회 기간 확인은 여전히 필요하지만, 매처는 자동으로 입력됩니다. 버튼이 표시되려면 운영자에게 `alerts:write` 권한이 필요합니다.
-
----
-
-## 복합 로직 (M of N)
-
-모든 Alert에는 트리거 외에 두 개의 정수 설정이 있습니다:
-
-- `eval_window`: 살펴볼 최근 평가 횟수 (기본값 1)
-- `min_breaches`: 그 중 Alert가 발동되기 위해 위반되어야 하는 횟수 (기본값 1)
-
-`1 of 1`(기본값)은 "첫 번째 위반 시 발동"입니다. `3 of 5`는 "최근 5번의 평가 중 3번 위반 시 발동"으로, 단일 불량 측정값이 노이즈인 불안정한 신호에 유용합니다. 디스패처가 Alert별로 링 버퍼를 관리하므로 상태를 직접 관리할 필요가 없습니다.
-
----
-
-## 평가 주기
-
-`eval_interval_secs`는 디스패처가 규칙을 실행하는 빈도를 제어합니다. `[30, 86400]` 범위로 제한됩니다. 대시보드 프리셋: 1분 / 5분 / 15분 / 1시간. 기반 신호가 변화하는 속도에 맞는 주기를 선택하세요. 5분 오류율 Alert를 15초마다 평가하면 CPU 낭비이고, per-event Alert는 틱 사이 이벤트를 조용히 놓치지 않으려면 짧은 조회 기간이 필요합니다.
-
----
-
-## 채널
-
-각 Alert에 아래 네 가지의 조합을 붙일 수 있습니다. 채널별 자격 증명(Slack 웹훅 URL, 일반 웹훅 URL + 서명 시크릿, 기본 이메일 수신자)은 **`/settings`** 에서 한 번만 설정하고 각 Alert에서 키로 참조합니다. 이렇게 하면 하나의 Slack 채널이 각자 웹훅 URL 사본을 저장하지 않아도 여러 Alert에 사용될 수 있습니다.
-
-세 가지 외부 채널(이메일, Slack, 웹훅)은 조직 전체 킬 스위치인 `alerts.enabled_channels`의 적용을 받습니다. 발동된 Alert에 이 설정에 없는 채널 종류가 연결된 경우, 디스패처는 해당 채널을 건너뛰고 `alert_notifications` 행에 `skipped_disabled` 상태와 `<channel_disabled>` 대상을 기록합니다(예: 모든 규칙을 편집하지 않고도 Slack 전송을 전역으로 일시 중지 가능). 대시보드 내 채널은 항상 허용됩니다. [구성](#configuration)을 참조하세요.
-
-### 이메일
-
-OTP 로그인 이메일을 전송하는 동일한 SMTP 트랜스포트를 재사용합니다. 수신자 결정 순서:
-
-1. 채널별 `recipients[]` 재정의(비어 있지 않은 경우).
-2. `alerts.email_default_recipients` 설정(이메일 문자열 배열).
-
-SMTP가 설정되지 않은 경우 채널은 아무 동작도 하지 않으며, 디스패처는 `<smtp_unconfigured>` 대상과 함께 `alert_notifications` 행을 기록하여 감사 추적에서 설정 오류를 확인할 수 있게 합니다.
-
-### Slack
-
-[수신 웹훅 URL](https://api.slack.com/messaging/webhooks)로 Block Kit 메시지를 전송합니다.
-
-- 기본 URL: `alerts.slack_default_webhook` (`/settings`에서 설정).
-- Alert별 재정의: 채널의 `webhook_setting_key`를 다른 URL 유형 설정 키(예: `alerts.slack_oncall`, `alerts.slack_costs`)로 지정합니다.
-
-헤더에는 심각도 이모지(`:rotating_light:` / `:warning:` / `:bell:`)가 포함되며, 메시지에는 인시던트 페이지로 바로 연결되는 버튼이 있습니다.
-
-### 일반 웹훅
-
-PagerDuty, Opsgenie, 또는 자체 수집 엔드포인트를 위한 JSON POST 연동입니다. 본문 형식:
-
-```json
-{
-  "schema_version": 1,
-  "event": "alert.firing",
-  "incident": { "id": "uuid", "url": "https://…/incidents/uuid", "opened_at": "2026-…" },
-  "alert":    { "id": "uuid", "name": "errors > 50/hr", "severity": "critical" },
-  "breach":   { "value": 73.0, "summary": "ErrorCount > 50 (observed 73.000)", "evidence": { … } }
-}
-```
-
-`alerts.webhook_signing_secret`이 설정된 경우, 요청에 `X-AgentEye-Signature: sha256=<hex>` 헤더가 포함됩니다. 이는 시크릿을 사용한 본문의 HMAC-SHA256 값입니다. 수신 측에서 페이로드를 신뢰하기 전에 검증하세요.
-
-`X-AgentEye-Event` 헤더에는 `alert.firing` / `alert.test`가 전달됩니다. (`alert.resolved`는 예정된 자동 해결 기능을 위해 예약되어 있으며 현재는 전송되지 않습니다.)
-
-### 대시보드 내
-
-외부 전달 없음: Alert가 `alert_notifications` 행만 기록하며, 대시보드의 인시던트 페이지에서 확인할 수 있습니다. 규칙을 조정하는 동안 외부 시스템에 스팸을 보내고 싶지 않거나, 운영자가 일반 트리아지 중에 확인하는 낮은 긴급도 Alert에 유용합니다.
-
----
-
-## 인시던트 생명주기
-
-```
-firing  ──ack──▶  acknowledged
-   │                    │
-   └────────────────────┴───── 운영자 해결 ───▶  resolved
-```
-
-- **firing** — 디스패처가 방금 인시던트를 열었거나 또 다른 위반을 감지했습니다. 발동 알림은 정확히 한 번만 전송됩니다(인시던트의 `notified_firing_at` 타임스탬프로 게이팅).
-- **acknowledged** — 운영자가 `/incidents/:id`에서 *ack*를 눌렀습니다. 인시던트는 여전히 열린 상태로 간주되며, 이후 위반은 재알림 없이 근거 데이터를 업데이트합니다.
-- **resolved** — 운영자가 *resolve*를 눌렀습니다. 규칙 위반이 멈출 때 자동 해결하는 기능은 계획 중이나 현재는 미지원이므로, 열린 인시던트는 운영자가 해결할 때까지 유지됩니다.
-
-이전 인시던트가 해결된 이후 언제든지 동일 Alert에서 새 인시던트가 다시 열릴 수 있습니다.
-
-**활동 타임라인.** 인시던트에 대한 모든 작업(열림, 확인, 해결)은 추가 전용 활동 로그에 기록되며, 인시던트의 *활동* 타임라인에 표시됩니다. 각 항목은 작업을 수행한 운영자(이메일로 표시) 또는 디스패처가 자체적으로 수행한 작업(위반 시 자동 열림)의 경우 **automated**로 귀속됩니다. 확인은 공유됩니다. 여러 운영자가 동일 인시던트를 ack할 수 있으며 각각 별도의 귀속 항목으로 나타납니다.
-
-**Incidents** 인박스는 열린 인시던트를 상태별로 그룹화하고 심각도 및 담당자별로 필터링할 수 있습니다:
-
-![심각도 배지와 담당자가 있는 Alert 연결 및 임시 인시던트 카드를 보여주는 Incidents 인박스](/agenteye/images/incidents.png)
-
-인시던트를 열면 위반 근거, 담당자 및 구독자, 귀속 활동 타임라인, 댓글 스레드가 표시됩니다:
-
-![상위 Alert, 위반 요약, 담당자, 구독자, 귀속 활동 로그, 대화를 보여주는 인시던트 상세 보기](/agenteye/images/incident-detail.png)
-
----
-
-## 필요 권한
-
-Alert *규칙* 작성과 *인시던트* 트리아지는 별개의 관심사로 각각 별도의 권한을 가지므로, 규칙 재작성 권한 없이도 온콜 로테이션에 인시던트 접근 권한을 부여할 수 있습니다.
-
-- `alerts:read`: Alert 규칙 보기.
-- `alerts:write`: Alert 규칙 생성, 편집, 삭제 및 테스트 알림 트리거.
-- `incidents:read`: 인시던트 보기.
-- `incidents:write`: Alert와 연결되지 않은 수동(임시) 인시던트 열기.
-- `incidents:ack`: 인시던트 확인, 배정, 댓글 작성, 해결.
-
-> **레거시 `alerts:ack`.** 이전 `alerts:ack` 토큰을 부여받은 키와 운영자는 계속 사용 가능합니다. `incidents:ack`로 인정되며(`incidents:read` 포함), 기존 온콜 담당자는 자격 증명을 재발급하지 않아도 접근 권한을 유지합니다. 새 권한은 `incidents:*` 계열로 발급하세요.
-
-API 키(`POST /keys`) 및 운영자(`PUT /users/:id`)에 권한을 부여합니다. 대시보드의 `PermGate`는 권한이 없을 때 관련 버튼을 잠그며, 작업 옆에 `// 403`이 표시됩니다.
-
-> **이메일 수신자 선택기.** Alert 편집기의 수신자 선택기는 이름으로 선택할 수 있도록 조직 구성원 목록을 표시합니다. `alerts:read` 또는 `alerts:write` 권한을 가진 운영자라면 로드되며, 이 목적으로 팀 디렉터리를 보는 데는 `users:read`가 **필요하지 않습니다**. 선택기는 구성원 이메일 주소만 반환하며, 전체 사용자 레코드는 반환하지 않습니다.
-
----
-
-## 구성
-
-디스패처가 사용하는 환경 변수:
-
-| 변수 | 기본값 | 용도 |
-|---|---|---|
-| `ALERT_WORKERS` | `1` | 서버 인스턴스당 워커 태스크 수. 대부분의 배포에서 하나면 충분합니다. |
-| `ALERT_CLAIM_BATCH` | `16` | 단일 워커 틱이 처리하는 최대 Alert 수. |
-| `ALERT_POLL_IDLE_SECS` | `5` | 큐가 비어 있을 때 워커 대기 시간(초). |
-| `ALERT_REQUEST_TIMEOUT_MS` | `15000` | 트리거별 평가 제한 시간(ms). |
-| `DASHBOARD_URL` | `https://app.befailproof.ai` | 알림의 인시던트 매직 링크 생성에 사용되는 출처. 대시보드 호스트로 설정하세요. |
-
-일시적인 평가 실패(ClickHouse 연결 불가, 쿼리 타임아웃) 후 디스패처는 지수 백오프로 규칙을 재시도합니다. 규칙에서 일시적 실패가 **5번** 연속 누적되면 계속 백오프하는 대신 정상 주기로 재스케줄링되므로, 지속적으로 실패하는 규칙도 계속 재평가됩니다. 이 상한값은 고정이며 운영자가 변경할 수 없습니다.
-
-채널 설정(`/settings`에서 관리, 환경 변수 아님):
-
-- `alerts.email_default_recipients` (`email_list`): 이메일 채널의 기본 수신자를 담은 이메일 문자열 JSON 배열.
-- `alerts.slack_default_webhook` (`url`): 기본 Slack 수신 웹훅 URL.
-- `alerts.webhook_default_url` (`url`): 기본 일반 웹훅 URL.
-- `alerts.webhook_signing_secret` (`secret`): HMAC-SHA256 키. GET 응답에서는 항상 `""`로 반환되며, 새 값을 입력하면 교체됩니다.
-- `alerts.enabled_channels` (`channel_set`): Alert 발동 시 디스패치되는 외부 채널 종류의 조직 전체 설정. 기본값은 세 가지 모두(`email`, `slack`, `webhook`). 여기서 채널 종류를 제거하면 각 규칙을 편집하지 않아도 모든 Alert에서 해당 채널이 전역으로 억제됩니다. 대시보드 내 채널은 항상 전달되며 이 설정의 영향을 받지 않습니다.
-
----
-
-## 새 Alert 검증
-
-새 Alert를 신뢰하기 전에:
-
-1. 최소 하나의 알림 채널을 붙여 활성화된 상태로 저장합니다.
-2. Alert 상세 페이지에서 **test**를 선택하고 설정된 각 대상이 테스트 알림을 수신하는지 확인합니다.
-3. 실제 첫 번째 위반 후, **Incidents** 아래에 인시던트가 나타나고 측정값이 해당 대시보드 쿼리와 일치하는지 확인합니다.
-
-조건이 해소되어도 인시던트는 자동으로 해결되지 않습니다. 운영자가 인시던트 상세 페이지에서 직접 해결해야 합니다.
-
----
-
-## 문제 해결
-
-| 증상 | 가능한 원인 |
-|---|---|
-| Alert가 전혀 발동하지 않음 | `enabled = false`이거나, 채널이 연결되지 않았거나, 기반 CH 쿼리가 0개의 행을 반환합니다. *test*로 채널을 확인하고, `/queries/run`으로 메트릭을 확인하세요. |
-| Slack 알림 없음 | `alerts.slack_default_webhook`(또는 Alert별 재정의 키)이 설정되지 않았습니다: `alert_notifications.target`에서 `<unset:…>` 행을 확인하세요. 또는 `slack` 종류가 `alerts.enabled_channels`에서 전역으로 비활성화되었습니다: `alert_notifications` 행에서 `skipped_disabled` 상태와 `<channel_disabled>` 대상을 확인하세요. |
-| 일반 웹훅 401 | 수신자가 서명을 요구하는데 `alerts.webhook_signing_secret`이 설정되지 않았습니다. 수신 측에서 HMAC이 `hmac_sha256(secret, body)`와 일치하는지 확인하세요. |
-| 이메일 전송 실패 | SMTP 자격 증명이 잘못되었거나 `from` 주소가 릴레이에서 거부되었습니다. OTP 이메일을 전송하는 동일한 서비스입니다: OTP 이메일이 정상이라면 SMTP 트랜스포트는 문제없는 것입니다. |
-| 인시던트가 반복적으로 재열림 | 복합 설정이 너무 공격적입니다: 일시적인 급등으로 해결한 인시던트가 다시 열리지 않도록 `min_breaches` 또는 `eval_window`를 높여보세요. |
+- [인시던트](/ko/agenteye/incidents): 발동된 알림을 오픈부터 확인, 해결까지 추적합니다.
+- [오류 추적](/ko/agenteye/error-tracking): 에이전트 장애를 그룹화하고 클릭 한 번으로 알림으로 전환합니다.
+- [대시보드](/ko/agenteye/dashboards): 알림 임계값의 기준이 되는 공유 보드를 확인합니다.
+- [CLI 및 에이전트](/ko/agenteye/cli-and-agents): 터미널에서 알림을 생성하고 인시던트를 확인하거나, CI에 스크립트로 통합합니다.

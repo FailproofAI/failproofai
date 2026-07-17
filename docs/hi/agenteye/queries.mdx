@@ -1,0 +1,56 @@
+---
+title: "Queries"
+description: "FailproofAI Observability Queries documentation."
+---
+
+
+अपने agent डेटा से कोई भी सवाल पूछें और सेकंड में जवाब पाएं। FailproofAI Observability आपको आपके events और evaluations पर सहेजे गए, तुरंत चलाने के लिए तैयार queries की एक लाइब्रेरी देता है, जिससे आप खाली SQL editor से शुरू करने के बजाय एक काम करने वाले उदाहरण से शुरू कर सकते हैं।
+
+![The saved-queries library: a grid of reusable queries, both built-in presets and custom ones](/agenteye/images/queries.png)
+
+*आपकी saved-queries लाइब्रेरी `/<org-slug>/queries` पर: built-in presets आपकी टीम द्वारा सहेजे गए queries के साथ बैठे हैं।*
+
+## एक preset से शुरू करें, खाली पन्ने से नहीं
+
+आपको table के नाम याद रखने या SQL को scratch से लिखने की जरूरत नहीं है। लाइब्रेरी built-in presets के साथ खुलती है जो टीमें सबसे ज्यादा पूछते हैं, आपकी अपनी टीम द्वारा सहेजे और नाम दिए गए queries के ठीक बगल में। एक ऐसा चुनें जो आप जो चाहते हैं उसके करीब हो और आप जवाब तक पहुंचने का ज्यादातर रास्ता तय कर देंगे।
+
+हर saved query org-scoped है और साझा किया जाता है, इसलिए उपयोगी queries जो आपके सहकर्मी लिखते हैं वे आपके भी बन जाते हैं। एक query को नाम दें और एक बार description दें, और आपके org में कोई भी इसे ढूंढ सकता है, चला सकता है, या बाद में इसके परिणामों को एक dashboard पर pin कर सकता है।
+
+इसे `/<org-slug>/queries` पर खोजें।
+
+## इसे SQL composer में Tweak करें और चलाएं
+
+कोई भी query खोलें और यह SQL composer में आ जाता है, जहां आप इसे समायोजित कर सकते हैं और तुरंत जवाब देख सकते हैं: कोई export नहीं, कोई round-trip नहीं, किसी और की प्रतीक्षा नहीं।
+
+![The SQL query composer running a saved query, with a schema sidebar and a live result grid](/agenteye/images/query-lab.png)
+
+*SQL composer: आपकी query बाईं ओर, एक schema sidebar जिससे आप कभी column name के लिए अनुमान नहीं लगाते, और नीचे एक live result grid।*
+
+- **एक schema sidebar** analytics tables और उनके columns को lay out करता है, इसलिए आप field names के लिए शिकार किए बिना एक query को shape कर सकते हैं।
+- **एक live result grid** वह क्षण रिटर्न करता है जब आप चलाते हैं, इसलिए आप अनुमान और फिर से अनुमान लगाने के बजाय सेकंड में iterate कर सकते हैं।
+- **Design से read-only।** Queries आपके event store के विरुद्ध चलती हैं और server पर validate की जाती हैं: केवल `SELECT` और `WITH` statements की अनुमति है, statement timeout और row cap के साथ। एक exploratory query कभी भी आपके डेटा को संशोधित नहीं कर सकता, और एक runaway को आपके लिए रोका जाता है।
+
+परिणाम से खुश हैं? इसे लाइब्रेरी में वापस सहेजें ताकि पूरी टीम इसे inherit करे, या इसके output को एक dashboard पर एक line, bar, area, या pie tile के रूप में pin करें।
+
+## उन्हें terminal से चलाएं, या assistant को उन्हें लिखने दें
+
+एक ही saved queries आपके साथ जहां कहीं भी आप काम करते हैं वहां जाती हैं:
+
+- **Terminal से।** `agenteye` CLI उसी queries को list, run, और save करता है, इसलिए आप एक result को एक script में डाल सकते हैं, इसे CI में wire कर सकते हैं, या इसे एक coding agent को दे सकते हैं।
+
+```bash
+agenteye query list                 # the same saved queries, from your terminal
+agenteye query run errs --arg prod  # run one and print the rows (add --json to pipe it)
+```
+
+  पूरे command set के लिए [CLI and agents](/hi/agenteye/cli-and-agents) देखें।
+
+- **AI assistant से।** यकीन नहीं कि SQL को कैसे phrase करें? Dashboard में in-dashboard [AI assistant](/hi/agenteye/assistant) से plain English में पूछें और यह query को draft करेगा और इसे आपकी लाइब्रेरी में save करेगा।
+
+एक saved query चलाना `queries:run` permission द्वारा gated है, queries बनाने या delete करने की permissions से अलग रखा गया है, इसलिए आप read access दे सकते हैं बिना सभी को लाइब्रेरी को rewrite करने दिए।
+
+## संबंधित
+
+- [Dashboards](/hi/agenteye/dashboards): query के results को shared, org-wide charts में pin करें।
+- [AI assistant](/hi/agenteye/assistant): plain English में सवाल पूछें और एक query वापस पाएं।
+- [CLI and agents](/hi/agenteye/cli-and-agents): अपने terminal से एक ही queries को run और save करें।

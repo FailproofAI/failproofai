@@ -4,12 +4,20 @@ import {
   mkdirSync,
   readdirSync,
   statSync,
+  existsSync,
+  rmSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLanguageByCode } from "./config";
 import { translateContent } from "./translator";
-import { readCache, writeCache, isCached, setCacheEntry } from "./cache";
+import {
+  readCache,
+  writeCache,
+  isCached,
+  setCacheEntry,
+  getCacheKey,
+} from "./cache";
 import type { TranslationResult, TranslationCache } from "./types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -288,6 +296,71 @@ export function getEnglishMdxPages(): string[] {
 
   walk(DOCS_DIR);
   return results.sort();
+}
+
+/** Every `.mdx` file under `dir`, recursively. */
+function collectMdxFiles(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...collectMdxFiles(full));
+    } else if (entry.endsWith(".mdx")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+/**
+ * Delete translated pages whose English source no longer exists, and drop
+ * their cache entries.
+ *
+ * Translation only ever moves forward: `getEnglishMdxPages()` drives what gets
+ * written, so when an English page is deleted upstream (the agenteye sync does
+ * this routinely) its 14 translations are simply never revisited. They linger
+ * on disk and `--update-nav` drops them from `docs.json`, which hides them from
+ * the sidebar but does *not* unpublish them — Mintlify still serves and indexes
+ * any `.mdx` present, so non-English readers can land on a page documenting a
+ * removed feature with no navigation out. Left unpruned these also accumulate
+ * as permanent `validate:mdx` surface area for content no English source can
+ * ever correct.
+ *
+ * Returns the docs-dir-relative paths that were (or, when `dryRun`, would be)
+ * removed.
+ */
+export function pruneOrphanedTranslations(
+  langCodes: string[],
+  options: {
+    dryRun?: boolean;
+    cache?: TranslationCache;
+    /** Override the docs root. Tests point this at a fixture tree. */
+    docsDir?: string;
+  } = {},
+): string[] {
+  const docsDir = options.docsDir ?? DOCS_DIR;
+  const removed: string[] = [];
+
+  for (const lang of langCodes) {
+    const langDir = join(docsDir, lang);
+    if (!existsSync(langDir)) continue;
+
+    for (const file of collectMdxFiles(langDir)) {
+      // docs/zh/agenteye/foo.mdx -> agenteye/foo.mdx -> docs/agenteye/foo.mdx
+      const relPath = relative(langDir, file);
+      if (existsSync(join(docsDir, relPath))) continue;
+
+      removed.push(relative(docsDir, file));
+      if (!options.dryRun) {
+        rmSync(file);
+        if (options.cache) {
+          delete options.cache.translations[getCacheKey(relPath, lang)];
+        }
+      }
+    }
+  }
+
+  return removed.sort();
 }
 
 function isLanguageDir(name: string): boolean {

@@ -3,6 +3,28 @@ import { DO_NOT_TRANSLATE } from "./config";
 
 let client: Anthropic | null = null;
 
+// Output-token ceiling for a single translation. The largest English docs
+// (e.g. agenteye/kubernetes-deployment.mdx at ~1400 lines) translate to well
+// beyond the old 16384 cap for verbose target languages. When a response hit
+// that cap it was silently truncated mid-MDX — leaving an unbalanced `{` or an
+// unterminated JSX expression — and the partial output was written to disk and
+// the cache, only to fail `mintlify validate` later in the consolidate job
+// (or, for the very largest pages, to trip the proxy with a "stream ended"
+// error). 64000 is Claude Haiku 4.5's max output (Tier 2/3 languages) and well
+// inside Claude Sonnet 4.6's 128000 (Tier 1), with headroom over the largest
+// observed translation; max_tokens is only a ceiling, so smaller pages still
+// stop at `end_turn` and cost the same. Streaming (below) is what keeps an
+// output this large safe from the SDK's HTTP timeout.
+// Override via TRANSLATE_MAX_TOKENS (integer >= 1; otherwise default).
+const parsedMaxTokens = Number.parseInt(
+  process.env.TRANSLATE_MAX_TOKENS ?? "",
+  10,
+);
+const MAX_TOKENS =
+  Number.isInteger(parsedMaxTokens) && parsedMaxTokens > 0
+    ? parsedMaxTokens
+    : 64000;
+
 function getClient(): Anthropic {
   if (!client) {
     // Default 5 retries (up from SDK default of 2) so transient
@@ -61,7 +83,7 @@ export async function translateContent(
   // as `messages.create(...)`, so the rest of the pipeline is unchanged.
   const response = await anthropic.messages.stream({
     model,
-    max_tokens: 16384,
+    max_tokens: MAX_TOKENS,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
     messages: [
       {
@@ -71,8 +93,22 @@ export async function translateContent(
     ],
   }).finalMessage();
 
+  // A truncated translation is worse than a failed one: the model stops
+  // mid-MDX, and that partial would otherwise be written to disk and cached as
+  // if complete, surfacing only as an unbalanced-brace parse error in
+  // `mintlify validate`. Fail loudly instead so the caller (cli.ts) records an
+  // error, never caches the partial, and excludes this language from the
+  // consolidate publish step. If a page ever legitimately needs more than
+  // MAX_TOKENS, raise TRANSLATE_MAX_TOKENS or split the source.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `translation truncated at max_tokens=${MAX_TOKENS} ` +
+        `(output ${response.usage.output_tokens} tokens) — source too large to translate in one request`,
+    );
+  }
+
   const translated =
-    response.content[0].type === "text" ? response.content[0].text : "";
+    response.content[0]?.type === "text" ? response.content[0].text : "";
 
   return {
     translated,

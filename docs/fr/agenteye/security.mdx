@@ -1,0 +1,68 @@
+---
+title: "Sécurité"
+description: "Documentation de sécurité de FailproofAI Observability."
+---
+
+
+FailproofAI Observability est conçu pour s'intégrer au plus près de vos agents en production, ce qui signifie qu'il accède à vos prompts, aux entrées des outils et à leurs sorties. Cette page explique comment vos données sont isolées, contrôlées et restent entre vos mains. Si vous évaluez FailproofAI Observability dans le cadre d'un audit de sécurité, commencez ici.
+
+---
+
+## Vos données restent dans votre environnement
+
+FailproofAI Observability est auto-hébergé. Les événements, prompts, réponses des modèles et données analytiques sont stockés dans vos propres bases de données, dans votre propre environnement. Aucune donnée n'est envoyée vers un service SaaS tiers pour y être stockée — tout reste dans votre propre compte cloud.
+
+---
+
+## Isolation des locataires
+
+Une instance FailproofAI Observability peut héberger plusieurs organisations, chacune étant isolée au niveau de la couche de stockage — garantie par la base de données elle-même, et pas seulement par l'interface :
+
+- Les données opérationnelles d'une organisation (utilisateurs, clés, tableaux de bord, requêtes sauvegardées) sont limitées à cette organisation, et les lectures inter-organisations sont bloquées par la base de données elle-même.
+- Chaque événement ingéré est marqué avec l'organisation propriétaire, de sorte que les événements d'une organisation ne peuvent jamais être lus par une autre.
+
+Chaque route de tableau de bord est délimitée par un identifiant d'organisation (`/<org-slug>/…`).
+
+---
+
+## Connexion
+
+FailproofAI Observability utilise une connexion sans mot de passe, par email. Il n'y a aucun mot de passe à hameçonner ou à faire fuiter. Un utilisateur demande un code à usage unique (ou un lien magique en un clic), qui lui est envoyé par email et expire rapidement. La connexion est contrôlée par une **liste d'autorisation** : seules les adresses email (ou domaines) que vous autorisez peuvent s'authentifier.
+
+![L'écran de connexion de FailproofAI Observability, qui envoie un code à usage unique à votre adresse email](/agenteye/images/login.png)
+
+---
+
+## Accès délimité avec les clés API
+
+Chaque client s'authentifie avec une clé API dotée de permissions granulaires selon le principe du moindre privilège. Un collecteur n'a besoin que de `events:add` ; une clé de tableau de bord ou d'assistant peut être en lecture seule ; les actions destructrices (suppression, regénération) sont des droits distincts que vous choisissez d'accorder.
+
+![La page des clés API : les permissions de chaque clé, codées par couleur selon la portée lecture, écriture et destruction](/agenteye/images/api-keys.png)
+
+Conservez la clé d'administration principale pour la configuration et émettez des clés à portée limitée pour tout le reste. Voir [Clés API](/fr/agenteye/api-keys).
+
+---
+
+## Un assistant en lecture seule avec approbation requise
+
+L'[assistant IA](/fr/agenteye/assistant) intégré au tableau de bord répond à des questions sur vos données, mais il est conçu avec des contraintes strictes :
+
+- Il est **en lecture seule par défaut** : son SQL passe par un garde-fou qui n'autorise que les requêtes `SELECT`/`WITH`, instruction unique, avec une limite de lignes.
+- Tout ce qu'il crée (une requête sauvegardée, un tableau de bord) est **soumis à approbation** : vous examinez et approuvez chaque écriture avant qu'elle ne soit effectuée.
+- Il **ne peut jamais supprimer**.
+
+Ainsi, un membre de votre équipe peut demander « quels agents ont généré le plus d'erreurs cette semaine ? » et agir sur la réponse, sans que l'assistant puisse modifier ou supprimer vos données de son propre chef.
+
+---
+
+## En transit
+
+Tout le trafic transite via HTTPS. Vous gérez la terminaison TLS avec vos propres certificats, de sorte que le trafic collecteur-vers-serveur et navigateur-vers-serveur est chiffré en transit.
+
+---
+
+## Prochaines étapes
+
+- [Vue d'ensemble](/fr/agenteye/overview) : comment FailproofAI Observability s'articule.
+- [Clés API](/fr/agenteye/api-keys) : délimitez l'accès pour le collecteur, le tableau de bord et l'assistant.
+- [Observabilité](/fr/agenteye/observability) : ce que FailproofAI Observability capture depuis vos agents.

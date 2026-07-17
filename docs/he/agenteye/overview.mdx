@@ -1,0 +1,107 @@
+---
+title: "מה זה FailproofAI Observability?"
+description: "FailproofAI Observability מה זה FailproofAI Observability? תיעוד."
+---
+
+
+FailproofAI Observability היא פלטפורמה שמתארחת בשרת משלך להתבוננות, הערכה ושיפור של エージנטים בתצורה בעצמך. היא מתעדת הכל שה-agents שלך עושים (כל קריאת tool, בקשת model, hook וטעות), נותנת ציון לאיכות של כל הרצה, וחושפת את הכשלים שלא ידעת שצריך לחפש, הכל בדשבורד שאתה מריץ בתוך התשתית שלך.
+
+אם אתה משגר AI agents וזה מעייף אותך לנחש למה הרצה נכשלה, זו הדף ממנו כדאי להתחיל. הוא מסביר מה FailproofAI Observability נותנת לך וכיצד החלקים משתלבים ביחד, לפני שתתקין כום דבר.
+
+> **FailproofAI Observability הוא מוצר enterprise מ-FailproofAI.** רוצה לראות את זה בפעולה? בקש הדגמה: שלח אימייל ל-[nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+
+![הפעלת FailproofAI Observability מצוירת כגרף ביצוע בסגנון git לצד ציר הזמן של האירועים שלה, עם פירוק לכל הרצה של tools, models, ו-hooks בעמודה הימנית](/agenteye/images/session-detail.png)
+
+*כל הרצה של agent מצוירת כגרף ביצוע בסגנון git (משמאל) לצד ציר הזמן של האירועים שלה. לכל sub-agent במקביל יש פס משלו; העמודה הימנית מפרקת את ה-tools, ה-models, ה-hooks וה-token spend עבור ההרצה.*
+
+---
+
+## ראה את זה בפעולה
+
+שני וידאו קצרים מציגים את שני הדברים שקבוצות מחפשות תחילה: עקיבה אחר הרצה, וגילוי כשלים באופן אוטומטי.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*עקיבה אחר agent: עקוב אחרי הרצה יחידה שלב אחר שלב, מהמטרה דרך tools לתשובה סופית.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Failproof Audit: תן ל-FailproofAI Observability לחפור בקבצי הרישום שלך על פני sessions ולספר לך מה לתקן.*
+
+---
+
+## למה קבוצות משתמשות בזה
+
+- **ראה מה ה-agent שלך בעצם עשה.** כל הרצה הופכת לגרף ביצוע קריא בסגנון git: אילו tools רצו במקביל, אילו sub-agents התפצלו, איפה זה עצר, ומה זה הוציא.
+- **תפוס ירידות איכות באופן אוטומטי.** חבר שירות scoring קטן וFailing(failproof)AI Observability נותן ציון לכל הרצה שהסתיימה, כך שירידה בשימושיות או עלייה בהזיות מופיע בעצמו.
+- **מצא כשלים שלא כתבת כלל עבורם.** ביקורות חוזרות חופרות בקבצי הרישום שלך על פני sessions לחפש clusters של שגיאות, חריגי latency, ציונים נמוכים, והרצות שנתקעו, ואחר כך מעניקות לך ממצאים מדורגים ותומכים בראיות.
+- **קבל דף כשזה משנה.** כללי סף נורים בשיעור שגיאה, latency, עלות, או ציוני evaluator ופותחים incidents שאתה יכול להכיר בהם, להקצות, ולפתור.
+- **שאל שאלות באנגלית פשוטה.** עוזר ה-AI בדשבורד עונה ל"איך איכות תופסת בפרוד השבוע?" על הנתונים שלך. כל שינוי שהוא עושה מנוהל בשער אישור.
+- **שמור את הנתונים שלך.** FailproofAI Observability מתארח בעצמו: אירועים, prompts, וניתוח נתונים נשארים בתשתית שאתה שולט בה.
+
+---
+
+## מה אתה מקבל
+
+FailproofAI Observability מאורגנת סביב שלוש רעיונות (**observe**, **analyze**, ו**admin**), משתקפת בעמודה השמאלית של הדשבורד.
+
+**Observe** (האמת הגולמית של מה שקרה):
+
+- **[Event stream](/he/agenteye/event-stream)**: שביל בחי-זמן, לכל צעד של כל הרצה (tool calls, model calls, hooks, errors).
+- **[Sessions](/he/agenteye/sessions)**: אירועים אלה מקובצים לשורה אחת לכל הרצה, כל אחד מוכן לקבל ציון, עם גרף ביצוע בסגנון git.
+- **[Performance metrics](/he/agenteye/telemetry)**: latency heat-maps לכל משטח וחיוני p50/p95/p99 עבור models, tools, ו-hooks, כך שעלייה בעקבה בולטת מהממוצע.
+- **[Error tracking](/he/agenteye/error-tracking)**: משטח triage אחד לכל מה שהלך לא בסדר, לחיצה אחת מערנה נורה.
+
+![דף Tools observe: heat-map של latency, רצועת percentile, וברעדה של tool-distribution על פני 24 bins זמן](/agenteye/images/tools.png)
+
+*כל משטח observe משלב sparkline וחיוני p50/p95/p99 עם heat-map של latency ורצועת percentile. מוצג כאן: Tools.*
+
+**Analyze** (הפוך פעילות לתשובות):
+
+- **[Queries](/he/agenteye/queries)** ו**[dashboards](/he/agenteye/dashboards)**: SQL שמור על האירועים וההערכות שלך, מתוארים לדשבורדים משותפים בתחום הארגון.
+- **[Evaluations](/he/agenteye/evaluations)**: ציוני איכות המיוצרים על ידי שירות ה-evaluator שלך, עם נימוק לכל ציון.
+- **[Audits](/he/agenteye/audits)**: חקירות חוזרות שחושפות דפוסי כשלים על פני sessions.
+- **[Alerts](/he/agenteye/alerts)** ו**[incidents](/he/agenteye/incidents)**: כללי סף שמעדכנים אותך, בתוספת תזרים עבודה של incidents לטריאג.
+
+**Interfaces** (הגע לנתונים שלך בדרך שלך):
+
+- **[CLI](/he/agenteye/cli-and-agents)**: נהל את כל ההצגה שלך מהטרמינל או סקריפט, והנח לאוכן coding לעשות את זה בשבילך באנגלית פשוטה.
+- **[AI assistant](/he/agenteye/assistant)**: שאל שאלות על ה-agents שלך באנגלית פשוטה, ממש בתוך הדשבורד.
+
+**Admin** (הרץ את זה עבור הקבוצה שלך):
+
+- **[API keys](/he/agenteye/api-keys)**: tokens בהיקף עבור ה-collector, הדשבורד, והעוזר.
+- **Users**: כניסה ללא סיסמה מבוססת אימייל עם רשימה מותרת.
+- **Settings**: תצורה לכל ארגון, כולל overrides של context-window של model.
+
+---
+
+## כיצד החלקים משתלבים
+
+נתונים זורמים בכיוון אחד, מקוד ה-agent שלך לדשבורד: ה-agent שלך (דרך Python SDK) פולט אירועים ל-agenteye-collector, שמעביר אותם לשרת, שמגיש את הדשבורד. שני שירותים אופציונליים משלימים את זה — שירות scoring (evaluations) ושירות עוזר AI (צ'אט בדשבורד).
+
+- **Python SDK**: אתה מוסיף כמה קריאות `agenteye.event.*` ל-agent שלך; אירועים מאוחסנים מקומית.
+- **agenteye-collector**: daemon קל משקל בכל מכונת agent שמקבץ אירועים וגורם להם להישלח לשרת.
+- **Server**: ספוג את האירועים שלך ושומר מצב תפעולי בבסיסי הנתונים שלך.
+- **Dashboard**: איפה אתה חוקר הכל.
+- **Optional services**: שירות scoring (evaluations), ושירות עוזר AI (צ'אט בדשבורד).
+
+לאוצר המילים המשמש בכל התיעודים (*event, session, evaluation, audit, finding, incident*), ראה [Concepts](/he/agenteye/concepts).
+
+---
+
+## קבל את FailproofAI Observability
+
+FailproofAI Observability היא מוצר enterprise מ-FailproofAI, והיא עובדת לצד FailproofAI Enforcement — מוצר הפוליטיקה וה-guardrail — תחת הברנד FailproofAI. היא רצה לחלוטין בסביבה שלך. אם עדיין אין לך גישה לחבילות, בקש הדגמה ונשים אותך בסידור: שלח אימייל ל-[nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+
+---
+
+## הצעדים הבאים
+
+- [Concepts](/he/agenteye/concepts): אוצר המילים של FailproofAI Observability במקום אחד.
+- [Observability](/he/agenteye/observability): עקוב מה ה-agents שלך עושים, הרצה אחר הרצה.
+- [Security](/he/agenteye/security): איך FailproofAI Observability שומרת על הנתונים שלך מבודדים ותחת שליטתך.

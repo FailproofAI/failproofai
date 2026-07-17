@@ -11,15 +11,15 @@
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
-[![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.gg/2zjBZP7yQJ)
+[![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
 
 **Переводы:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Разрешение ошибок времени выполнения для кодирующих агентов.**
+**Разрешение ошибок в режиме реального времени для агентов кодирования.**
 Встраивается в Claude Code и Codex. Перехватывает циклы, опасные действия и утечки секретов
-прежде чем они станут инцидентами. Нулевая задержка. Работает локально.
+до того, как они превратятся в инциденты. Нулевая задержка. Работает локально.
 
 </div>
 
@@ -125,19 +125,19 @@
   </tr>
 </table>
 
-> Установите хуки для одного или любой комбинации: `failproofai policies --install --cli opencode pi` (или `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Опустите `--cli` для автоматического обнаружения установленных CLI и получения подсказок.
+> Установите хуки для одного или любой комбинации: `failproofai policies --install --cli opencode pi` (или `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Опустите `--cli` для автоматического обнаружения установленных CLI и подсказки.
 >
-> **Hermes** (hermes-agent, шлюз Slack/Telegram) поддерживается как для **активной реализации хуков** (`--cli hermes` — одна установка перехватывает вызовы инструментов со всех платформ и вложенных агентов), так и для автономного **аудита** повторного воспроизведения его сеансов шлюза из `~/.hermes/state.db`.
+> **Hermes** (hermes-agent, шлюз Slack/Telegram) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli hermes` — одна установка перехватывает вызовы инструментов от каждой платформы и подагента), так и для автономного **аудита** воспроизведения его сеансов шлюза из единственной базы данных `~/.hermes/state.db`.
 >
-> **OpenClaw** (шлюз openclaw, многоканальный ассистент с собственным размещением) поддерживается как для **активной реализации хуков** (`--cli openclaw`, область пользователя), так и для автономного **аудита** повторного воспроизведения его JSONL-сеансов (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Реализация использует **встроенные плагины хуков** OpenClaw (поставляемый `openclaw-plugin/`, который асинхронно запускает failproofai — его встроенные хуки на основе файлов только для наблюдения и не могут блокировать): `before_tool_call` блокирует инструмент, а `before_agent_finalize` — это реальные ворота конца хода, поэтому встроенные `require-*-before-stop` реализуют принуждение.
+> **OpenClaw** (шлюз openclaw, многоканальный самостоятельный помощник) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli openclaw`, область пользователя), так и для автономного **аудита** воспроизведения его JSONL сеансов (`~/.openclaw/agents/<id>/sessions/*.jsonl`). Принудительное применение использует **встроенные хуки плагина** OpenClaw (отправляемый `openclaw-plugin/`, который асинхронно запускает failproofai — его внутренние хуки на основе файлов предназначены только для наблюдения и не могут блокировать): `before_tool_call` блокирует инструмент, а `before_agent_finalize` — реальный шлюз конца хода, поэтому встроенные `require-*-before-stop` применяют принудительно.
 >
-> **Factory Droid** (`droid`) поддерживается как для **активной реализации хуков** (`--cli factory`, область пользователя + проект), так и для автономного **аудита** повторного воспроизведения его JSONL-сеансов на диске. droid блокирует вызовы инструментов по коду выхода хука **2** (не решение JSON) и соответствует `{decision:"block"}` только на события конца хода `Stop` — failproofai автоматически выдает правильную форму для каждого события.
+> **Factory Droid** (`droid`) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli factory`, область пользователя и проекта), так и для автономного **аудита** воспроизведения его сеансов JSONL на диске. droid блокирует вызовы инструментов по коду выхода хука **2** (не решение JSON) и учитывает `{decision:"block"}` только на событии конца хода `Stop` — failproofai автоматически выдает правильную форму для каждого события.
 >
-> **Devin CLI** (`devin`, Cognition) поддерживается как для **активной реализации хуков** (`--cli devin`, область пользователя + проект), так и для автономного **аудита** повторного воспроизведения его SQLite-сеансов (`~/.local/share/devin/cli/sessions.db`). Devin — это **чистый клон Claude** — те же имена событий, тот же snake_case-полезные нагрузки, та же конфигурация `"hooks"`-обертки (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — блокирование через JSON `{decision:"block"}` на каждом событии.
+> **Devin CLI** (`devin`, Cognition) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli devin`, область пользователя и проекта), так и для автономного **аудита** воспроизведения его сеансов SQLite (`~/.local/share/devin/cli/sessions.db`). Devin — **чистый клон Claude** — те же имена событий, тот же полезный груз snake_case, та же конфигурация `hooks`-wrapper (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — блокирование с помощью `{decision:"block"}` JSON для каждого события.
 >
-> **Antigravity CLI** (`agy`) поддерживается как для **активной реализации хуков** (`--cli antigravity`, область пользователя + проект), так и для автономного **аудита** повторного воспроизведения его JSONL-сеансов (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity имеет **свой** контракт (не клон Claude): схему **именованного хука** `hooks.json` (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), полезные нагрузки stdin в camelCase, которые failproofai нормализует, и свои формы ответов — `{decision:"deny"}` для блокирования инструмента, `{decision:"continue"}` для принудительного следующего хода на `Stop`, `{injectSteps}` для внедрения напоминания перед запуском модели.
+> **Antigravity CLI** (`agy`) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli antigravity`, область пользователя и проекта), так и для автономного **аудита** воспроизведения его обычных JSONL сеансов (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity имеет **собственный** контракт (не клон Claude): **именованная схема хука** `hooks.json` (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), полезный груз stdin camelCase, который failproofai нормализует, и его собственные формы ответов — `{decision:"deny"}` для блокирования инструмента, `{decision:"continue"}` для принудительного выполнения другого хода в `Stop`, `{injectSteps}` для внедрения напоминания перед тем, как модель запустится.
 >
-> **Goose** (кодовое имя goose, Block) поддерживается как для **активной реализации хуков** (`--cli goose`, область пользователя + проект), так и для автономного **аудита** повторного воспроизведения его SQLite-сеансов (`~/.local/share/goose/sessions/sessions.db`). Реализация использует систему **хуков** Goose (кроссагентная спецификация **Open Plugins**) — установщик просто размещает каталог плагина в `~/.agents/plugins/failproofai/` и Goose автоматически обнаруживает его. Блокирование — это JSON `{"decision":"block"}` на событии `PreToolUse` (которое срабатывает для инструмента shell и внутри делегированных подагентов), подтверждено в реальном времени для goose v1.43.0; Goose не имеет события конца хода `Stop`, поэтому встроенные `require-*-before-stop` не применяются (как и в случае Hermes).
+> **Goose** (кодовое имя goose, Block) поддерживается как для **принудительного применения хуков в реальном времени** (`--cli goose`, область пользователя и проекта), так и для автономного **аудита** воспроизведения его сеансов SQLite (`~/.local/share/goose/sessions/sessions.db`). Принудительное применение использует систему **хуков** Goose (кроссагентная спецификация **Open Plugins**) — установщик просто перемещает каталог плагина в `~/.agents/plugins/failproofai/` и Goose автоматически его обнаруживает. Блокирование — это `{"decision":"block"}` JSON на событии `PreToolUse` (которое срабатывает для инструмента shell и внутри делегированных подагентов), проверено в реальном времени против goose v1.43.0; Goose не имеет события конца хода `Stop`, поэтому встроенные `require-*-before-stop` не применяются (как с Hermes).
 
 ---
 
@@ -145,23 +145,23 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто запустите `failproofai` и примите первую подсказку
+failproofai policies --install   # или просто запустите `failproofai` и примите первый запрос
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель инструментов в `localhost:8020`. Отключите первую подсказку с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 встроенных политик активируются сразу. Панель управления находится по адресу `localhost:8020`. Отключите первый запрос с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Что это останавливает
+## Что это блокирует
 
 | Политика | Что она блокирует |
 |---|---|
 | `block-push-master` | Прямые отправки в `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Коммиты, слияния, перебазирование на `main` / `master` |
+| `block-work-on-main` | Коммиты, слияния, переиндексирование на `main` / `master` |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки ключей API в контекст агента |
+| `sanitize-api-keys` | API ключи, утекающие в контекст агента |
 
 → [Все 30 встроенных политик](https://docs.befailproof.ai/built-in-policies)
 
@@ -169,8 +169,8 @@ failproofai
 
 ## Ваши собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически, флаги не требуются.
-Зафиксируйте его, и вся команда получит его при следующем запросе.
+Поместите файл в `.failproofai/policies/` — он загружается автоматически, без флагов.
+Закоммитьте это, и вся команда получит это при следующем pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -180,7 +180,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Запись в пути production заблокирована.");
     return allow();
   },
 });
@@ -191,18 +191,18 @@ customPolicies.add({
 | Решение | Эффект |
 |---|---|
 | `allow()` | Разрешить операцию |
-| `deny(message)` | Блокировать её — сообщение возвращается агенту |
-| `instruct(message)` | Пропустить, но добавить контекст к следующей подсказке агента |
+| `deny(message)` | Заблокировать — сообщение возвращается агенту |
+| `instruct(message)` | Пропустить, но добавить контекст к следующему запросу агента |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Видимость сеансов
+## Видимость сеанса
 
-Каждый вызов инструмента, который делает ваш агент, регистрируется локально. На панели инструментов показано, что было запущено,
+Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что запустилось,
 что было заблокировано и что политика сказала агенту — поэтому вы не гадаете,
-когда что-то идет не так. → [Руководство по панели инструментов](https://docs.befailproof.ai/dashboard)
+когда что-то идет не так. → [Руководство по панели управления](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -212,9 +212,9 @@ customPolicies.add({
 |---|---|
 | [Начало работы](https://docs.befailproof.ai/getting-started) | Установка и первые шаги |
 | [Встроенные политики](https://docs.befailproof.ai/built-in-policies) | Все 30 политик с параметрами |
-| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои |
+| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои собственные |
 | [Конфигурация](https://docs.befailproof.ai/configuration) | Области конфигурации и правила слияния |
-| [Панель инструментов](https://docs.befailproof.ai/dashboard) | Монитор сеансов и активность политик |
+| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сеанса и активность политики |
 | [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система хуков |
 
 ---
@@ -225,12 +225,12 @@ MIT с [Commons Clause](https://commonsclause.com/) — бесплатно дл�
 
 ---
 
-## Участие в разработке
+## Содействие
 
 См. [CONTRIBUTING.md](./CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Соберите перед началом.** Запустите `bun install && bun run build` сначала. Это репозиторий запускает собственные хуки failproofai на себе, и они разрешают импорт `failproofai` в отношении скомпилированного пакета `dist/` — без сборки вы получите ошибки `Cannot find package 'failproofai'`. Перестройте после изменения `src/`. См.
-> [Собрать перед тем, как встроенные хуки разработки будут работать](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Выполните сборку перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себе, и они разрешают импорт `failproofai` для скомпилированного пакета `dist/` — без сборки вы получите ошибки хука `Cannot find package 'failproofai'`. Перестройте после изменения `src/`. См.
+> [Сборка перед тем, как хуки разработки в репозитории будут работать](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

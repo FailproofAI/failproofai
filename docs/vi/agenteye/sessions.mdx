@@ -1,0 +1,55 @@
+---
+title: "Sessions & Execution Graph"
+description: "Tài liệu Sessions & Execution Graph của FailproofAI Observability."
+---
+
+
+Hãy dừng đoán thử tại sao một lần chạy thất bại. FailproofAI Observability gộp mọi sự kiện từ một lần chạy thành một hàng dễ đọc, sau đó vẽ toàn bộ lần chạy dưới dạng biểu đồ kiểu git mà bạn có thể đọc trong vài giây, để bạn thấy chính xác agent của bạn đã làm gì, từng bước một.
+
+![Danh sách Sessions: một hàng cho mỗi lần chạy, trên các môi trường và agent, với các viên thuốc trạng thái và huy hiệu điểm đánh giá](/agenteye/images/sessions-list.png)
+
+*Một hàng cho mỗi lần chạy: viên thuốc trạng thái cho bạn biết lần chạy kết thúc như thế nào ngay lập tức, và một huy hiệu điểm xuất hiện sau khi kết nối với một trình đánh giá.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Truy vết agent: theo dõi một lần chạy từng bước một, từ mục tiêu đến các công cụ đến câu trả lời cuối cùng.*
+
+---
+
+## Xem mọi lần chạy ngay lập tức
+
+Dòng sự kiện thô là sự thật của mỗi bước, nhưng khi bạn có hàng nghìn bước trên hàng chục lần chạy, bạn cần lần chạy, không phải bước. Trang Sessions gộp tất cả các sự kiện của một lần chạy thành một hàng, để hoạt động trong một ngày trở thành danh sách có thể quét được thay vì một luồng dữ liệu khổng lồ.
+
+Mỗi hàng mang một viên thuốc trạng thái, vì vậy một lần chạy thất bại nổi bật so với một lần chạy khỏe mạnh trước khi bạn nhấp vào bất cứ thứ gì. Lọc theo khoảng thời gian, môi trường, agent hoặc phiên để đi từ "mọi thứ" đến "lần chạy tôi quan tâm" chỉ trong vài cú nhấp.
+
+Sau khi kết nối một trình đánh giá, mọi lần chạy đã hoàn thành sẽ được tự động chấm điểm và điểm mới nhất của nó sẽ xuất hiện trên hàng dưới dạng huy hiệu. Bạn có thể lọc theo bất kỳ khoảng điểm nào, vì vậy "cho tôi xem mọi lần chạy prod có điểm thấp trong tuần này" là một bộ lọc, không phải một bài đánh giá thủ công. Cho đến khi bạn thiết lập một cái, các phiên vẫn ghi lại toàn bộ lần chạy; chúng chỉ chưa có điểm mà thôi.
+
+---
+
+## Đọc toàn bộ lần chạy dưới dạng hình ảnh
+
+![Execution graph kiểu git của một phiên bên cạnh dòng thời gian sự kiện của nó, với bảng phân tích công cụ, mô hình và hook](/agenteye/images/session-detail.png)
+
+*Execution graph (bên trái) nằm bên cạnh dòng thời gian sự kiện; thanh bên phải phân tích các công cụ, mô hình, hook và chi phí token cho lần chạy.*
+
+Nhấp vào bất kỳ phiên nào để mở execution graph của nó: một chế độ xem kiểu git về cách các agent, công cụ, hook và lệnh gọi mô hình diễn ra theo thời gian. Các sub-agent song song mỗi cái nhánh vào làn của riêng họ, vì vậy bạn có thể thấy công việc nào chạy cùng nhau, sub-agent nào bị trì hoãn, và nơi lần chạy bị lệch khỏi quỹ đạo, mà không cần phải phát lại nó trong đầu từ một bức tường nhật ký.
+
+Thanh bên phải cung cấp cho bạn bảng phân tích mỗi lần chạy: công cụ và mô hình nào chạy, hook nào bị kích hoạt, và lần chạy tiêu tốn bao nhiêu token. Đó là câu trả lời cho "tại sao lần chạy này tốn kém như vậy?" hoặc "công cụ nào là công cụ chậm?" nằm ngay bên cạnh biểu đồ gây ra nó.
+
+---
+
+## Tìm nó ở đâu
+
+Mọi trang bảng điều khiển được phạm vi cho tổ chức của bạn (`/<org-slug>/…`). Sessions nằm dưới **Observe** trong thanh bên trái, bên cạnh Events, với các bộ lọc khoảng ngày, môi trường, agent và phiên ở đầu danh sách. Mỗi hàng cách một cú nhấp từ execution graph đầy đủ của nó.
+
+Để bật các huy hiệu điểm và lọc theo khoảng điểm, kết nối một trình đánh giá: xem [Evaluations](/vi/agenteye/evaluations).
+
+---
+
+## Liên quan
+
+- [Event stream](/vi/agenteye/event-stream): dòng thô, theo từng bước mà mỗi phiên được gộp từ.
+- [Evaluations](/vi/agenteye/evaluations): kết nối một trình đánh giá để mỗi lần chạy nhận được một huy hiệu điểm mà bạn có thể lọc theo.
+- [Telemetry](/vi/agenteye/telemetry): cách các lần chạy đi từ agent của bạn vào các phiên này.

@@ -100,7 +100,7 @@ describe("CopyButton", () => {
     vi.useRealTimers();
   });
 
-  it("does not update state or warn after unmounting mid-window", async () => {
+  it("clears the armed revert timer on unmount", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -109,18 +109,23 @@ describe("CopyButton", () => {
     await user.click(screen.getByTitle("Copy to clipboard"));
     expect(screen.getByTestId("check-icon")).toBeInTheDocument();
 
-    // Unmount before the 2s revert timer fires
+    // The click armed the 2s revert timer — it is pending mid-window.
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    unmount();
+    expect(vi.getTimerCount()).toBe(1);
 
-    // Advance well past the original 2s window — no "state update on
-    // unmounted component" warning should be logged
+    // Unmounting before the timer fires must clear it, so nothing is left
+    // pending to call `setCopied` on the gone component. This is the
+    // load-bearing assertion: it bites without the useEffect cleanup.
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Secondary: advancing past the original window logs no error (e.g. a
+    // "state update on unmounted component" warning), belt-and-suspenders.
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-
     expect(errorSpy).not.toHaveBeenCalled();
 
     vi.useRealTimers();

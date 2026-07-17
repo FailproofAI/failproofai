@@ -237,6 +237,26 @@ function printSummary(result: AuditResult): void {
   for (const line of buildSummary(result)) process.stdout.write(`  ${line}\n`);
 }
 
+// ── Audit telemetry ──────────────────────────────────────────────────────────
+
+/**
+ * Which entry point ran the audit. `onboarding` is the automatic post-setup run;
+ * `cli` is an explicit `failproofai audit`. Carried on every cli_audit_* event so
+ * the first audit a user ever runs is distinguishable from later deliberate ones.
+ */
+type AuditSource = "cli" | "onboarding";
+
+/** Shared so both entry points report cli_audit_completed identically. */
+function auditCompletedProps(source: AuditSource, result: AuditResult) {
+  return {
+    source,
+    events_scanned: result.eventsScanned,
+    sessions_scanned: result.transcripts.scanned,
+    total_hits: result.totals.hits,
+    findings: result.results.length,
+  };
+}
+
 // ── Post-setup background audit ────────────────────────────────────────────────
 
 /**
@@ -252,7 +272,13 @@ function printSummary(result: AuditResult): void {
  */
 export async function runPostSetupAudit(): Promise<void> {
   if (process.env.FAILPROOFAI_NO_AUTO_AUDIT === "1") return;
-  
+
+  const instanceId = getInstanceId();
+  // Fire-and-forget, as in runAuditCli: the multi-second scan below keeps the
+  // process alive long enough for this to land, and the completed/failed event
+  // that follows is awaited.
+  void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
+
   process.stdout.write(
     `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
   );
@@ -260,12 +286,24 @@ export async function runPostSetupAudit(): Promise<void> {
   let result: AuditResult;
   try {
     result = await runWithProgress({});
-  } catch {
+  } catch (err) {
+    // Awaited: this function returns straight into the dashboard boot, and a
+    // fire-and-forget fetch would race it.
+    await trackHookEvent(instanceId, "cli_audit_failed", {
+      source: "onboarding",
+      error_type: err instanceof Error ? err.name : "unknown",
+      error_message: sanitizeErrorMessage(err),
+    });
     process.stdout.write(
       `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
     );
     return;
   }
+
+  // Reported before the empty-history return below, so an onboarding audit that
+  // finds nothing is still counted — matching runAuditCli, which reports
+  // completed regardless of what the scan turned up.
+  await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
 
   if (result.eventsScanned === 0) {
     process.stdout.write(
@@ -328,13 +366,7 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // would otherwise drop this event. On the dashboard path launch() keeps the
   // process alive, but awaiting makes delivery reliable on every exit path.
   // Bounded (5s) and never throws.
-  await trackHookEvent(instanceId, "cli_audit_completed", {
-    source: "cli",
-    events_scanned: result.eventsScanned,
-    sessions_scanned: result.transcripts.scanned,
-    total_hits: result.totals.hits,
-    findings: result.results.length,
-  });
+  await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("cli", result));
 
   // No sessions on disk — guide the user instead of opening an empty dashboard.
   if (result.eventsScanned === 0) {

@@ -4,7 +4,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook SessionStart --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionStart --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -16,7 +16,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -29,7 +29,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook PreToolUse --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -42,7 +42,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook PostToolUse --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -54,7 +54,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook Notification --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook Notification --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -66,7 +66,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook Stop --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -78,7 +78,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook SubagentStop --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook SubagentStop --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -90,7 +90,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook PreCompact --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreCompact --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }
@@ -102,7 +102,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bun bin/failproofai.mjs --hook SessionEnd --cli factory",
+          "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionEnd --cli factory",
           "timeout": 30,
           "__failproofai_hook__": true
         }

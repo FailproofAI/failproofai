@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli antigravity",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli antigravity",
             "timeout": 30,
             "__failproofai_hook__": true
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli antigravity",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli antigravity",
             "timeout": 30,
             "__failproofai_hook__": true
           }
@@ -29,7 +29,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "bun bin/failproofai.mjs --hook PreInvocation --cli antigravity",
+        "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreInvocation --cli antigravity",
         "timeout": 30,
         "__failproofai_hook__": true
       }
@@ -37,7 +37,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "bun bin/failproofai.mjs --hook Stop --cli antigravity",
+        "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli antigravity",
         "timeout": 30,
         "__failproofai_hook__": true
       }

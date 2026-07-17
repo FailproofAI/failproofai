@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook SessionStart --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook SessionStart --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionStart --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 2 }; node scripts/dev-hook.mjs --hook SessionStart --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }
@@ -19,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook SessionEnd --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook SessionEnd --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionEnd --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 2 }; node scripts/dev-hook.mjs --hook SessionEnd --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }
@@ -32,8 +32,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 2 }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }
@@ -45,8 +45,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook PreToolUse --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook PreToolUse --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 2 }; node scripts/dev-hook.mjs --hook PreToolUse --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }
@@ -58,8 +58,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook PostToolUse --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook PostToolUse --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 2 }; node scripts/dev-hook.mjs --hook PostToolUse --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }
@@ -71,8 +71,8 @@
         "hooks": [
           {
             "type": "command",
-            "bash": "bun bin/failproofai.mjs --hook Stop --cli copilot",
-            "powershell": "bun bin/failproofai.mjs --hook Stop --cli copilot",
+            "bash": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli copilot",
+            "powershell": "if (-not (Get-Command node -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine('[failproofai] node not found; install Node >=20.9'); exit 1 }; node scripts/dev-hook.mjs --hook Stop --cli copilot",
             "timeoutSec": 60,
             "__failproofai_hook__": true
           }

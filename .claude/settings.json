@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SessionStart",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook SessionStart",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SessionEnd",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook SessionEnd",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook UserPromptSubmit",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook UserPromptSubmit",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PreToolUse",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PreToolUse",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PermissionRequest",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PermissionRequest",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PermissionDenied",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PermissionDenied",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostToolUse",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PostToolUse",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostToolUseFailure",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PostToolUseFailure",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -101,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Notification",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook Notification",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -113,7 +113,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SubagentStart",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook SubagentStart",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -125,7 +125,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook SubagentStop",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook SubagentStop",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -137,7 +137,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TaskCreated",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook TaskCreated",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TaskCompleted",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook TaskCompleted",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -161,7 +161,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Stop",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook Stop",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -173,7 +173,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook StopFailure",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook StopFailure",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -185,7 +185,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook TeammateIdle",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook TeammateIdle",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -197,7 +197,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook InstructionsLoaded",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook InstructionsLoaded",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -209,7 +209,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook ConfigChange",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook ConfigChange",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -221,7 +221,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook CwdChanged",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook CwdChanged",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -233,7 +233,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook FileChanged",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook FileChanged",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -245,7 +245,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook WorktreeCreate",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook WorktreeCreate",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -257,7 +257,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook WorktreeRemove",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook WorktreeRemove",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -269,7 +269,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PreCompact",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PreCompact",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -281,7 +281,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook PostCompact",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook PostCompact",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -293,7 +293,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook Elicitation",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook Elicitation",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -305,7 +305,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook ElicitationResult",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook ElicitationResult",
             "timeout": 60,
             "__failproofai_hook__": true
           }

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook SessionStart --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionStart --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PermissionRequest --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PermissionRequest --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook Stop --cli codex",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli codex",
             "timeout": 60,
             "__failproofai_hook__": true
           }

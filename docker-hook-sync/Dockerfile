@@ -5,10 +5,14 @@
 # harness we integrate with and this repo, and opens ONE auto-PR with the fix.
 #
 # Bundles:
-#   - Node 20 + npm
-#   - bun (REQUIRED: the cloned repo's .claude/settings.json fires hooks via
-#     `bun $CLAUDE_PROJECT_DIR/bin/failproofai.mjs --hook <Event>`, so the
-#     dogfooded require-*-before-stop policies enforce the commit/push/PR)
+#   - Node 20 + npm (npm is a fallback bun installer for scripts/dev-hook.mjs;
+#     node runs the launcher itself)
+#   - bun (STILL REQUIRED: the cloned repo's .claude/settings.json fires hooks via
+#     `node "$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs" --hook <Event>`, and that
+#     launcher only *locates* bun — it cannot conjure one. Without this layer the
+#     dogfooded require-*-before-stop policies never fire and the auto-PR is
+#     never committed/pushed. We install to BUN_INSTALL=/home/appuser/.bun, which
+#     the launcher probes explicitly, so enforcement survives a broken PATH.)
 #   - Claude Code CLI (`claude`) — run headless with --effort ultracode
 #   - failproofai@latest on PATH (belt-and-suspenders; the dogfood hooks actually
 #     run the clone's SOURCE via bun, not this global)

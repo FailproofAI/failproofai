@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook SessionStart --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionStart --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook UserPromptSubmit --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PreToolUse --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PostToolUse --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook PermissionRequest --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PermissionRequest --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook Stop --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun bin/failproofai.mjs --hook SessionEnd --cli devin",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionEnd --cli devin",
             "timeout": 60,
             "__failproofai_hook__": true
           }

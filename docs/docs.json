@@ -66,7 +66,8 @@
                   "agenteye/cli",
                   "agenteye/cli-skill",
                   "agenteye/cli-recipes",
-                  "agenteye/evaluation-suite"
+                  "agenteye/evaluation-suite",
+                  "agenteye/evaluator-skill"
                 ]
               },
               {

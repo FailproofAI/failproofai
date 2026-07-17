@@ -40,9 +40,12 @@ Dashboards live at **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dash
 
 Scoring is opt-in and stays completely off until you point Failproof AI Observability at a scorer. You stand up one small HTTP service (Observability ships a working reference you can copy), set two values on your server, and every run from then on is scored for you. The full walkthrough, the scoring contract, and the SDK live in the deep guide.
 
+Not sure which dimensions are worth scoring in the first place? The [evaluator agent skill](/agenteye/evaluator-skill) has your coding agent work that out against your own sessions, then build and deploy the service.
+
 ## Related
 
 - [Evaluation suite](/agenteye/evaluation-suite): connect your evaluator, the scoring contract, and the SDK.
+- [Evaluator agent skill](/agenteye/evaluator-skill): let a coding agent pick your score dimensions and build the evaluator.
 - [Sessions](/agenteye/sessions): the run-by-run grid where scores appear.
 - [Dashboards](/agenteye/dashboards): save and share quality trends across your org.
 - [Audits](/agenteye/audits): Observability's other automatic quality feature, for cross-session investigations.

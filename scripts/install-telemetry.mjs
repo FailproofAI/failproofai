@@ -80,12 +80,20 @@ function getInstanceId() {
 
 /**
  * Track a named event to PostHog. No-op when telemetry is disabled.
- * Uses process.env.npm_package_version (set automatically by npm in lifecycle scripts).
+ *
+ * `opts.version` must be supplied by callers outside an npm lifecycle script:
+ * npm only sets npm_package_version while running one, and these events now
+ * fire from the CLI (see lib/install-check.ts) because package managers block
+ * install scripts by default.
+ *
+ * @param {string} event
+ * @param {Record<string, unknown>} [properties]
+ * @param {{ version?: string, timeoutMs?: number }} [opts]
  */
-export async function trackInstallEvent(event, properties = {}) {
+export async function trackInstallEvent(event, properties = {}, opts = {}) {
   if (process.env.FAILPROOFAI_TELEMETRY_DISABLED === "1") return;
 
-  const version = process.env.npm_package_version ?? "unknown";
+  const version = opts.version ?? process.env.npm_package_version ?? "unknown";
   const body = JSON.stringify({
     api_key: process.env.FAILPROOFAI_POSTHOG_KEY ?? API_KEY,
     event,
@@ -106,7 +114,7 @@ export async function trackInstallEvent(event, properties = {}) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 5000),
     }
   );
 }

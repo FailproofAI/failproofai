@@ -4,11 +4,9 @@
  * a `bun install -g failproofai` whose prefix sorts ahead of npm's on PATH.
  *
  * Used by:
- *   - scripts/postinstall.mjs — warn at install time so the customer never sees
- *     the misleading "missing build output" runtime error.
- *   - scripts/launch.ts        — when .next/standalone/server.js is missing,
- *     produce a shadow-shaped error if the cause is a shadow rather than a
- *     genuinely broken build.
+ *   - scripts/launch.ts — when .next/standalone/server.js is missing, produce a
+ *     shadow-shaped error if the cause is a shadow rather than a genuinely
+ *     broken build.
  *
  * Pure Node.js built-ins, no external dependencies. Every probe is wrapped in
  * try/catch — diagnoseShadow() is guaranteed not to throw.
@@ -125,9 +123,8 @@ function buildRecommendation(pathFirstBin) {
  *
  * @param {{ selfPackageRoot: string, selfVersion: string | null }} self
  *   The package root and version of the binary calling diagnoseShadow().
- *   Callers (bin/failproofai.mjs, scripts/postinstall.mjs) already have these
- *   values; passing them in keeps the helper deterministic and free of
- *   import.meta.url assumptions.
+ *   Callers (scripts/launch.ts) already have these values; passing them in keeps
+ *   the helper deterministic and free of import.meta.url assumptions.
  */
 export function diagnoseShadow(self) {
   const selfPackageRoot = (() => {

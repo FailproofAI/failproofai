@@ -70,7 +70,7 @@ npm info failproof
 
 Each alias package:
 
-1. Lists `failproofai` as a dependency - so the real package (including its `postinstall` hook setup) runs on install
+1. Lists `failproofai` as a dependency - so the real package is installed and its binary becomes available
 2. Exposes a binary matching its own name (e.g. `failprof-ai`) that proxies all arguments to the `failproofai` binary
 
 The proxy is a two-line Node script; there is no logic, no network calls, and no data collection beyond what `failproofai` itself does.

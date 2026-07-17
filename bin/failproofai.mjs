@@ -124,6 +124,16 @@ if (hookIdx >= 0) {
  * Error     → unexpected; shows message only, exits 2
  */
 async function runCli() {
+  // Report a fresh install / upgrade. Deliberately here rather than at module
+  // scope: everything above this point is the --hook fast path, which runs on
+  // every tool call. No-ops after the first run on a given version.
+  try {
+    const { maybeReportInstall } = await import("../lib/install-check");
+    await maybeReportInstall(version);
+  } catch {
+    // never block a command on reporting
+  }
+
   // --help / -h  (only when not inside a subcommand that handles its own --help)
   const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "config"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {

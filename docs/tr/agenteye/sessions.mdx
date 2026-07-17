@@ -1,55 +1,55 @@
 ---
-title: "Oturumlar ve Yürütme Grafiği"
-description: "FailproofAI Observability Oturumlar ve Yürütme Grafiği belgeleri."
+title: "Oturumlar & Execution Graph"
+description: "Bir çalıştırmadaki her olay, tek bir okunabilir satırda birleştirilmiş ve git tarzında bir execution graph olarak çizilmiş; saniyeler içinde okuyabileceğiniz bir görünüm."
 ---
 
 
-Bir çalıştırmanın neden başarısız olduğunu tahmin etmeyi bırakın. FailproofAI Observability, bir çalıştırmadaki her olayı okunabilir bir satıra toplar, ardından tüm çalıştırmayı saniyeler içinde okuyabileceğiniz git tarzı bir resim olarak çizer, böylece aracınızın adım adım tam olarak ne yaptığını görürsünüz.
+Bir çalıştırmanın neden başarısız olduğunu tahmin etmeyi bırakın. Failproof AI Observability, bir çalıştırmadaki her olayı tek bir okunabilir satıra toplar, ardından tüm çalıştırmayı git tarzında bir resim olarak çizer ve saniyeler içinde okuyabilirsiniz; böylece ajanınızın tam olarak ne yaptığını, adım adım görebilirsiniz.
 
-![Oturumlar listesi: ortamlar ve aracılar arasında çalıştırma başına bir satır, durum rozetleri ve değerlendirme puanı rozeti içeren](/agenteye/images/sessions-list.png)
+![Sessions listesi: ortamlar ve ajanlar arasında çalıştırma başına bir satır, durum gösterimleri ve değerlendirme puanı rozeti ile](/agenteye/images/sessions-list.png)
 
-*Çalıştırma başına bir satır: durum rozeti, çalıştırmanın nasıl sonlandığını bir bakışta gösterir ve bir değerlendirici bağlandığında puan rozeti yanında görünür.*
+*Çalıştırma başına bir satır: durum gösterimi, çalıştırmanın nasıl sonlandığını bir bakışta gösterir ve değerlendirici bağlandığında puan rozeti da yanında yer alır.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="İzleyin: FailproofAI ile Ajan İzlemesi (2 dak.)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Ajan izlemesi: hedeften araçlara, son cevaba kadar tek bir çalıştırmayı adım adım izleyin.*
+*Agent izleme: hedeften araçlara ve son yanıta kadar tek bir çalıştırmayı adım adım takip edin.*
 
 ---
 
 ## Her çalıştırmayı bir bakışta görün
 
-Ham olay izleri her adımın gerçeğidir, ancak onlarca çalıştırma arasında binlerce adım olduğunda, adıma değil çalıştırmaya ihtiyacınız vardır. Oturumlar sayfası bir çalıştırmanın tüm olaylarını tek bir satırda toplar, böylece bir günün etkinliği taranabilir bir liste haline gelir, bilgiye boğulmaktan kurtulursunuz.
+Ham olay izleri her adımın gerçeğidir, ancak adım arasında binlerce olay ve düzinelerce çalıştırma olduğunda, adıma değil, çalıştırmaya ihtiyacınız vardır. Sessions sayfası, bir çalıştırmanın tüm olaylarını tek bir satırda toplar; böylece bir günlük aktivite, bir konsol akışı yerine taranabilir bir listeye dönüşür.
 
-Her satır bir durum rozeti taşır, böylece başarısız bir çalıştırma, herhangi bir şeye tıklamadan sağlıklı bir çalıştırmadan öne çıkar. Tarih aralığı, ortam, ajan veya oturuma göre filtreleyin ve birkaç tıklama ile tüm gösterişten ilgilendiğiniz çalıştırmaya geçin.
+Her satır bir durum gösterimi taşır, böylece başarısız bir çalıştırma, hiçbir şeye tıklamadan önce sağlıklı bir çalıştırmadan öne çıkar. Tarih aralığına, ortama, ajana veya oturuma göre filtreleyin; böylece "her şey"den "umursadığım çalıştırma"ya birkaç tıklamada ulaşabilirsiniz.
 
-Bir değerlendirici bağladığınızda, tamamlanan her çalıştırma otomatik olarak puanlandırılır ve en son puanı satırda bir rozet olarak görünür. Herhangi bir puan aralığına göre filtreleyin, böylece bu haftanın düşük puanlı prod çalıştırmalarını görmek bir filtre olur, manuel inceleme değil. Bir tane ayarlayana kadar, oturumlar tam çalıştırmayı yakalarlar; sadece henüz bir puana sahip değildirler.
+Bir değerlendirici bağladığınızda, tamamlanan her çalıştırma otomatik olarak puanlanır ve en son puanı satırda bir rozet olarak görünür. Herhangi bir puan aralığına göre filtreleyebilirsiniz; böylece "bu haftanın düşük puanlı prod çalıştırmalarını göster" bir filtredir, manuel bir inceleme değil. Bir tane ayarlamana kadar, oturumlar yine de tam çalıştırmayı yakalarlar; sadece henüz puanı yoktur.
 
 ---
 
 ## Tüm çalıştırmayı bir resim olarak okuyun
 
-![Bir oturumun git tarzı yürütme grafiği, olay zaman çizelgesinin yanında, araç, model ve hook dağılım paneli](/agenteye/images/session-detail.png)
+![Bir oturumun git tarzında execution graph'ı, event zaman çizelgesi yanında ve sağ panel araçları, modeli ve hook dağılımı göstermekte](/agenteye/images/session-detail.png)
 
-*Yürütme grafiği (sol) olay zaman çizelgesinin yanında yer alır; sağ panel, çalıştırmanın araçlarını, modellerini, hook'larını ve token harcamasını detaylandırır.*
+*Execution graph (sol) event zaman çizelgesinin yanında yer alır; sağ şerit, çalıştırmanın araçlarını, modellerini, hook'larını ve token harcamasını gösterir.*
 
-Herhangi bir oturuma tıklayarak yürütme grafiğini açın: ajanların, araçların, hook'ların ve model çağrılarının zaman içinde nasıl geliştiğinin git tarzı görünümü. Paralel alt ajanlar kendi şeritine dallandırılır, böylece hangi işin yan yana çalıştığını, hangi alt ajanın durduğunu ve çalıştırmanın nerede rotasını değiştirdiğini görebilirsiniz, günlüklerin duvarı arasından sırasıyla yeniden oynatmanıza gerek kalmadan.
+Bir oturumu açmak için tıklayın: ajanların, araçların, hook'ların ve model çağrılarının zamanla nasıl geliştiğini gösteren git tarzında bir görünüm. Paralel alt-ajanlar kendi şeritlerinde dallanır; böylece hangi işin yan yana çalıştığını, hangi alt-ajanın takıldığını ve çalıştırmanın nerede yanlış gittiğini, günlüklerin bir duvarından zihninizde yeniden oynamadan görebilirsiniz.
 
-Sağ panel size çalıştırma başına dağılımı verir: hangi araçlar ve modeller çalıştı, hangi hook'lar ateşlendi ve çalıştırma token'larda ne harcadı. Bu tüm çıkmazların cevabıdır: bu çalıştırma neden bu kadar maliyetli oldu? veya hangi araç yavaş olandır? bunu başlatan grafik yanında oturmaktadır.
+Sağ şerit, çalıştırma başına dağılımı sunuyor: hangi araçlar ve modeller çalıştı, hangi hook'lar tetiklendi ve çalıştırmanın token'larda ne harcadığı. Bu, "bu çalıştırma neden bu kadar pahalıya mal oldu?" veya "hangi araç yavaş olan?" sorusunun cevabı, onu neden yaptığını gösteren graph'ın sağında oturuyor.
 
 ---
 
-## Nerede bulunur
+## Nerede bulabilirim
 
-Her pano sayfası kuruluşunuz kapsamına alınmıştır (`/<org-slug>/…`). Oturumlar sol kenar çubuğunda **Gözlem** altında, Olayların yanında yer alır ve listenin üst kısmında tarih aralığı, ortam, ajan ve oturum filtreleri bulunur. Her satır tam yürütme grafiğinden bir tıkla uzaktadır.
+Her dashboard sayfası org'nuz kapsamındadır (`/<org-slug>/…`). Sessions, sol kenar çubuğundaki **Observe** altında, Events'in yanında yer alır; tarih aralığı, ortam, ajan ve oturum filtreleri listenin üst kısmında yer alır. Her satır, tam execution graph'ından bir tıklık uzakta.
 
-Puan rozetlerini ve puan aralığı filtrelemesini açmak için bir değerlendirici bağlayın: [Değerlendirmeler](/tr/agenteye/evaluations) bölümüne bakın.
+Puan rozetlerini ve puan aralığı filtrelemesini açmak için bir değerlendirici bağlayın: bkz. [Evaluations](/tr/agenteye/evaluations).
 
 ---
 
 ## İlgili
 
-- [Olay akışı](/tr/agenteye/event-stream): her oturumun toplandığı ham, adım başına izleme.
-- [Değerlendirmeler](/tr/agenteye/evaluations): her çalıştırmanın filtrelediğiniz bir puan rozeti alması için bir değerlendirici bağlayın.
-- [Telemetri](/tr/agenteye/telemetry): çalıştırmalar aracınızdan bu oturumlara nasıl ulaşır.
+- [Event stream](/tr/agenteye/event-stream): her oturumun toplandığı ham, adım başına iz.
+- [Evaluations](/tr/agenteye/evaluations): her çalıştırmanın filtreleyebileceğiniz bir puan rozeti alması için bir değerlendirici bağlayın.
+- [Telemetry](/tr/agenteye/telemetry): çalıştırmalar ajanınızdan bu oturumlara nasıl ulaşır.

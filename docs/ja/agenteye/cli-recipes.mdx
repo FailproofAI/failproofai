@@ -1,30 +1,30 @@
 ---
-title: "エージェント向けCLIレシピ"
-description: "FailproofAI Observability CLIのエージェント向けレシピドキュメント。"
+title: "エージェント向けCLIレシピ集"
+description: "セッション・イベント・評価データを、スクリプトやコーディングエージェントが自動化できる形に変えるクエリパターンとjqレシピ集。"
 ---
 
 
-スクリプトやコーディングエージェントから、セッション・イベント・評価データを取得したり（再評価をトリガーしたり）、直接 `jq` にパイプできるクリーンなJSONを stdout に出力できます。これらのレシピは、FailproofAI Observability のデータをターミナルユーザーや AI コーディングエージェント（Claude Code、Cursor）がダッシュボードを操作せずにクエリ・自動化できる形にします。
+セッション・イベント・評価データの取得（および再評価のトリガー）をスクリプトやコーディングエージェントから直接行い、`jq` にそのままパイプできるクリーンなJSONをstdoutに出力します。これらのレシピは、Failproof AI ObservabilityのデータをターミナルユーザーやAIコーディングエージェント（Claude Code、Cursor）がダッシュボードを操作せずにクエリ・自動化できる形に変えます。
 
-以下のパターンは、FailproofAI Observability CLI（`agenteye`）にコピー＆ペーストしてすぐに使えます。インストール・認証・全オプション一覧は [CLI](/ja/agenteye/cli) を参照してください。組み込みヘルプは `agenteye -h` または `agenteye <command> -h` で確認できます。
+以下のパターンは、Failproof AI Observability CLIツール（`agenteye`）にそのままコピーして使えます。インストール・認証・全オプションの一覧は[CLI](/ja/agenteye/cli)を参照してください。また `agenteye -h` または `agenteye <command> -h` で組み込みヘルプが確認できます。
 
 ## 基本ルール
 
-1. **グローバルオプションはコマンドの*前*に置く。** `agenteye --json sessions` が正しく、`agenteye sessions --json` は誤りです。グローバルオプションは `--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet`、`--no-color` です。
-2. **出力をパースするときは必ず `--json` を付ける。** データは JSON として **stdout** に出力され、人向けのステータスやエラーは **stderr** に出力されるため、stdout を `jq` にパイプしてもクリーンな状態が保たれます。
-3. **終了コードで分岐する**（stderr のテキストではなく）: `0` 成功 · `1` 予期しないエラー · `2` 引数エラー · `3` ダッシュボードへの接続不可 · `4` 未ログインまたはセッション期限切れ · `5` 権限不足 · `6` リソースが見つからない。
-4. **`-h` で探索する。** すべてのコマンドにフィルター、値のフォーマット、JSON 形式が記載されています。
+1. **グローバルオプションはコマンドの*前*に指定する。** `agenteye --json sessions` が正しく、`agenteye sessions --json` は誤りです。グローバルオプションは `--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet`、`--no-color` です。
+2. **出力をパースするときは必ず `--json` を付ける。** データは**stdout**にJSONとして出力され、人向けのステータスやエラーは**stderr**に出力されるため、stdoutを `jq` にクリーンにパイプできます。
+3. **stderrのテキストではなく終了コードで分岐する。** `0` 成功 · `1` 予期しないエラー · `2` 引数不正 · `3` ダッシュボードに到達不可 · `4` 未ログインまたは期限切れ · `5` 権限不足 · `6` リソースが見つからない。
+4. **探索には `-h` を使う。** 各コマンドのフィルター・値の形式・JSONの構造はヘルプに記載されています。
 
 ## 初回セットアップ
 
 ```bash
-export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # --base-url を毎回指定しなくて済むよう設定
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # --base-url を毎回指定しなくて済む
 agenteye login --email you@example.com                       # メールで届いたコードを貼り付ける（有効期限 約24時間）
 ```
 
 ## 作業前に認証を確認する
 
-`whoami` はセッションが存在しない場合やセッションが期限切れでもエラーにならず、代わりに `logged_in:false` を返すため、エージェントが安全に認証状態を確認できます（ベース URL が未設定またはダッシュボードへの接続不可の場合は非ゼロで終了することがあります）。
+`whoami` はセッションが存在しない・期限切れの場合でもエラーにならず、代わりに `logged_in:false` を返すので、エージェントが安全に認証状態を確認できます（ベースURLが未設定またはダッシュボードに到達できない場合は非ゼロで終了することがあります）。
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -32,28 +32,28 @@ if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
 fi
 ```
 
-## 失敗または低スコアのセッションを探す
+## 失敗または低スコアのセッションを見つける
 
 ```bash
-# 過去24時間で評価がエラーになったセッション
+# 過去24時間以内に評価がエラーになったセッション
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# 特定エージェントの helpfulness スコアが 0.5 以下の評価
+# 特定エージェントのhelfulnessスコアが0.5以下の評価
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-スコアフィルタリングは `sessions` ではなく **`evals`** で行います。`--score KEY:MIN..MAX` は繰り返し指定でき、AND で結合されます。どちらの境界も省略可能です（`..0.5` は ≤ 0.5、`0.9..` は ≥ 0.9 を意味します）。1 リクエストあたり最大 20 のスコアフィルターを指定でき、それ以上は HTTP 400 が返されます。`sessions` は `--env`、`--status`、`--agent-id`、`--session-id`、および時間範囲フィルターを `evals` と共有していますが、`--score` は使用できません。
+スコアフィルタリングは `sessions` ではなく**`evals`**で行います。`--score KEY:MIN..MAX` は繰り返し指定可能でAND結合されます。どちらの境界値も省略可能（`..0.5` は ≤ 0.5、`0.9..` は ≥ 0.9 を意味します）。リクエストあたり最大20件のスコアフィルターを指定できます。超えるとHTTP 400が返ります。`sessions` は `--env`、`--status`、`--agent-id`、`--session-id`、時間範囲フィルターを `evals` と共有しますが、`--score` はサポートしていません。
 
-## 1 つのセッションをすべて読む
+## セッションを最初から最後まで読む
 
-単一の `session show` コマンドはありません。イベント履歴とセッションの評価を組み合わせてください。
+単一の `session show` コマンドはありません。イベント履歴とセッションの評価を組み合わせて使います。
 
 ```bash
-# セッションの最新評価（ステータスとスコア）
+# セッションの最新評価（ステータス + スコア）
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# 実行内のすべてのイベント（全件取得には --limit を大きくする）
+# 実行中の全イベント（全件取得には --limit を増やす）
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
 # セッション内のツール呼び出しのみ（生ペイロードを取得するには --full が必要）
@@ -61,17 +61,17 @@ agenteye --json events --full --session-id run-001 --event-type tool_use,tool_re
   | jq '.events[].payload'
 ```
 
-> **注:** デフォルトでは、`events` はペイロードなしの高速フィードを読み込みます。各イベントにはサーバーが計算した 1 行の `summary` と `is_error`、トークン数などのフラグが含まれますが、`payload` は `{}` として返されます。生ペイロードを取得するには `--full`（または `--fields payload`）を追加してください。フルフィードは大規模になると遅くなるため、`--full` と単一の `--session-id` を組み合わせて範囲を限定してください。
+> **Note:** デフォルトでは `events` はペイロードなしの高速フィードを読み込みます。各イベントにはサーバーが計算した一行の `summary` と `is_error`、トークン数などのフラグが含まれますが、`payload` は `{}` として返されます。生ペイロードを取得するには `--full`（または `--fields payload`）を追加してください。フルフィードは大規模だと遅くなるため、範囲を限定することを推奨します。`--full` と `--session-id` を組み合わせて使用してください。
 
-## すべてを取得する（ページネーション）
+## 全件取得（ページネーション）
 
-結果は新しい順にカーソルページネーションで返されます。
+結果は新しい順で返され、カーソルによるページネーションが使われます。
 
 ```bash
-# 一括取得: 200行ずつのページで最大500行を取得
+# 一括取得：200行ずつのページで最大500行を取得
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# 手動ページング: next_cursor を次のリクエストに渡す
+# 手動ページング：next_cursor を次のリクエストに渡す
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
@@ -79,41 +79,41 @@ cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 
 ## --fields で出力を絞り込む
 
-テーブルと `--json` の両方でキーを制限し、エージェントが読む必要のある情報を減らします。
+テーブルと `--json` の両方でキーを制限し、エージェントが読む量を減らします。
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
 agenteye --json events --session-id run-001 --fields ts,event_type --all
 ```
 
-不明なフィールド名は有効なフィールド一覧とともに（終了コード `2` で）拒否されるため、フィールド名を調べる簡単な方法にもなります。
+不明なフィールド名は有効なフィールド一覧と共に（終了コード `2` で）拒否されるため、フィールド名を調べる手軽な方法にもなります。
 
 ## 有効なフィルター値を調べる
 
 ```bash
-agenteye --json list envs | jq -r '.values[]'           # --env に使用できる値
-agenteye --json list tools | jq -r '.values[]'          # ツール名; agents, models, event_types なども同様
-agenteye --json list score_filters | jq -r '.values[]'  # --score KEY:MIN..MAX の有効な KEY
+agenteye --json list envs | jq -r '.values[]'           # --env に使える値
+agenteye --json list tools | jq -r '.values[]'          # ツール名；agents, models, event_types なども同様
+agenteye --json list score_filters | jq -r '.values[]'  # --score KEY:MIN..MAX の有効なKEY
 ```
 
-## org を選択する（マルチテナント）
+## 組織を選択する（マルチテナント）
 
-複数の org に所属している場合は、ログイン時にアクティブなテナントを選択します（保存されます）。
+複数の組織に所属している場合は、ログイン時にアクティブなテナントを選択します（保存されます）。
 
 ```bash
 agenteye login --org acme --email you@corp.com   # ログインと同時にテナントを設定
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
-agenteye --org globex --json sessions --since 24h   # 1 コマンドのみオーバーライド
+agenteye --org globex --json sessions --since 24h   # 1コマンドだけ切り替える
 ```
 
-`--org` を指定せずにマルチ org ログインすると非ゼロで終了し、選択肢となる org 一覧が表示されます。
+`--org` なしでマルチ組織ログインすると非ゼロで終了し、選択可能な組織一覧が表示されます。
 
-## SDK/コレクター用 API キーをプロビジョニングする
+## SDK/コレクター用のAPIキーを払い出す
 
 ```bash
-# シークレットは一度だけ表示される。--json では .key フィールドに格納される
+# シークレットは一度だけ表示される。--json の場合は .key フィールドに含まれる
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # ローテーション; 失効させるには agenteye keys disable ci-bot --yes
+agenteye keys regenerate ci-bot --yes    # ローテーション；失効させるには agenteye keys disable ci-bot --yes
 ```
 
 ## 保存済みまたはアドホッククエリを実行する
@@ -123,7 +123,7 @@ agenteye --json query run --sql "select count(*) from analytics.events" | jq '.r
 agenteye --json query run errs --arg prod | jq '.rows'   # 保存済みクエリ + 位置引数 $1
 ```
 
-## インシデントを非インタラクティブにトリアージする
+## インシデントを非対話式でトリアージする
 
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
@@ -132,7 +132,7 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **注:** ミューテーション系のコマンドは、`--json` 指定時または stdin が TTY でない場合に確認プロンプトを自動スキップするため、エージェントが止まることはありません。他の場面で明示的にスキップするには `--yes`/`-y` を指定してください。
+> **Note:** ミューテーションは `--json` 指定時またはstdinがTTYでない場合、確認プロンプトを自動スキップするため、エージェントが待機状態になることはありません。それ以外の場所で明示的にスキップしたい場合は `--yes`/`-y` を渡してください。
 
 ## スクリプトでの終了コード処理
 
@@ -147,9 +147,9 @@ case "${code:-0}" in
 esac
 ```
 
-## JSON 出力の形式
+## JSON出力の形式
 
-| コマンド | stdout JSON（`--json` 使用時） |
+| コマンド | stdoutのJSON（`--json` 指定時） |
 |---|---|
 | `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` または `{"logged_in": false}` |
 | `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
@@ -158,22 +158,22 @@ esac
 | `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
 | `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
 | `list <kind>` | `{"kind", "values": [...]}` |
-| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}`（`key` は一度だけ表示） |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` （`key` は一度だけ表示） |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| create/update/delete（全般） | リソースオブジェクト、または削除の場合は `{"deleted": true, "id"}` |
-| 失敗（全般、`--json` 使用時） | stdout に `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` |
+| create/update/delete（全般） | リソースオブジェクト。削除の場合は `{"deleted": true, "id"}` |
+| failure（全般、`--json` 指定時） | stdoutに `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` |
 
-- **event** アイテム（`events`）の各フィールド: `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`。`payload` は `--full`（または `--fields payload`）を指定しない限り `{}` となります。
+- **event** アイテム（`events`）の各フィールド: `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`。`payload` は `--full`（または `--fields payload`）でフルフィードをリクエストしない限り `{}` です。
 - **evaluation** アイテム（`evals`）の各フィールド: `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`。
 - **session** アイテム（`sessions`）の各フィールド: `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`。
 
-各コマンドの `--fields` は、そのアイテムのフィールド名のみを受け付けます。`sessions` と `evals` ではフィールドセットが異なるため、一方で有効な名前が他方では拒否されることがあります。
+各コマンドの `--fields` は、そのコマンド固有のアイテムのフィールド名のみを受け付けます。`sessions` と `evals` ではフィールドセットが異なるため、一方で有効な名前がもう一方では拒否されることがあります。
 
 ## 次のステップ
 
-- [CLI](/ja/agenteye/cli): インストール、認証、すべてのコマンドの全オプションリファレンス。
-- [CLI エージェントスキル](/ja/agenteye/cli-skill): これらのレシピをコーディングエージェントが読み込めるスキルとしてパッケージ化する。
-- [API キー](/ja/agenteye/api-keys): CLI、SDK、コレクターが認証に使用するキーの作成とスコープ設定。
-- [Python SDK](/ja/agenteye/python-sdk): FailproofAI Observability にイベントを送信し、これらのレシピがクエリできるデータを用意する。
+- [CLI](/ja/agenteye/cli)：インストール・認証・全コマンドのオプションリファレンス。
+- [CLIエージェントスキル](/ja/agenteye/cli-skill)：これらのレシピをコーディングエージェントが読み込めるスキルとしてパッケージ化する。
+- [APIキー](/ja/agenteye/api-keys)：CLI・SDK・コレクターが認証に使うキーの作成とスコープ設定。
+- [Python SDK](/ja/agenteye/python-sdk)：Failproof AI Observabilityにイベントを送信して、これらのレシピがクエリできるデータを用意する。

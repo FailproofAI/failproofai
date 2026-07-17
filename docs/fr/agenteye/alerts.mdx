@@ -1,62 +1,63 @@
 ---
 title: "Alertes"
-description: "Documentation sur les alertes d'observabilité FailproofAI."
+description: "Soyez informé dès qu'une anomalie franchit vos seuils, sur le canal que votre équipe utilise déjà, plutôt que de l'apprendre d'un client."
 ---
 
-Soyez informé dès qu'un seuil est franchi, sur le canal que votre équipe utilise déjà, plutôt que d'en entendre parler par un client. Définissez une règle une fois, et FailproofAI Observability la vérifie selon un calendrier, puis vous notifie par e-mail, Slack, webhook ou directement dans le tableau de bord.
 
-![La page Alertes : une grille de cartes de règles d'alerte, chacune affichant son déclencheur, sa fenêtre d'évaluation, ses canaux et un badge de sévérité info, warning ou critique](/agenteye/images/alerts.png)
+Soyez informé dès qu'une anomalie franchit vos seuils, sur le canal que votre équipe utilise déjà, plutôt que de l'apprendre d'un client. Définissez une règle une seule fois et l'observabilité Failproof AI la vérifie selon un planning, puis vous notifie par e-mail, Slack, webhook ou directement dans le tableau de bord.
+
+![La page Alertes : une grille de cartes de règles d'alerte, chacune affichant son déclencheur, sa fenêtre d'évaluation, ses canaux et un badge de sévérité info, warning ou critical](/agenteye/images/alerts.png)
 *Toutes vos règles d'alerte en un coup d'œil : ce qu'elles surveillent, à quelle fréquence, où elles notifient et leur niveau d'urgence.*
 
-## Soyez informé des problèmes avant vos utilisateurs
+## Soyez alerté avant vos utilisateurs
 
-Cessez d'actualiser un tableau de bord dans l'espoir de détecter une régression. Configurez une alerte dès qu'il existe un signal que vous souhaiteriez recevoir même quand personne ne surveille, et recevez-la là où vous vous trouvez déjà :
+Arrêtez de surveiller un tableau de bord en espérant détecter une régression. Créez une alerte dès qu'il existe un signal que vous souhaiteriez recevoir même lorsque personne ne regarde, et faites-le arriver là où vous êtes déjà :
 
-- **E-mail**, pour toute personne devant être informée.
-- **Slack**, un message enrichi avec un bouton qui pointe directement vers l'incident.
-- **Webhook**, un POST JSON pour PagerDuty, Opsgenie ou votre propre endpoint, avec une signature optionnelle permettant au destinataire de l'authentifier.
-- **Dans le tableau de bord**, discret par conception, pour lorsque vous affinez une règle et ne souhaitez pas encore envoyer de notification.
+- **E-mail**, pour les personnes concernées.
+- **Slack**, un message enrichi avec un bouton qui amène directement à l'incident.
+- **Webhook**, un POST JSON pour PagerDuty, Opsgenie ou votre propre endpoint, avec une signature optionnelle pour que le destinataire puisse lui faire confiance.
+- **In-dashboard**, discret par défaut, pour affiner une règle sans notifier qui que ce soit.
 
-Associez n'importe quelle combinaison à une seule règle ; sa sévérité (info, warning ou critique) est transmise avec elle, pour que les alertes urgentes paraissent urgentes.
+Associez n'importe quelle combinaison à une seule règle ; la sévérité (info, warning ou critical) est transmise avec la notification, afin que les urgences soient immédiatement identifiables.
 
-## Définissez la règle dans un formulaire, pas en JSON
+## Créez vos règles via un formulaire, pas du JSON
 
-Vous décrivez ce que signifie « cassé » dans un formulaire, et FailproofAI Observability génère la règle sous-jacente pour vous. La spécification JSON n'est que ce que ce formulaire produit en coulisses ; vous pouvez la lire pour comprendre une règle, mais vous la tapez rarement.
+Vous décrivez ce que signifie « cassé » dans un formulaire, et l'observabilité Failproof AI génère la règle sous-jacente pour vous. La spec JSON n'est que ce que ce formulaire produit en coulisses, vous pouvez donc la lire pour comprendre une règle, mais vous l'écrivez rarement manuellement.
 
-![Le formulaire de création d'alerte : nom et description, un interrupteur d'activation, et un sélecteur de déclencheur proposant seuil de métrique, SQL personnalisé, score d'évaluation, évaluation composée et conditions par événement](/agenteye/images/alert-new.png)
-*Choisissez un déclencheur et le formulaire affiche les bons champs ; Enregistrer écrit la règle.*
+![Le formulaire de création d'alerte : nom et description, un interrupteur d'activation, et un sélecteur de déclencheur proposant les options metric threshold, custom SQL, evaluation score, compound eval et per-event conditions](/agenteye/images/alert-new.png)
+*Choisissez un déclencheur et le formulaire affiche les champs correspondants ; Enregistrer écrit la règle.*
 
-Le parcours standard est rapide : nommez-la, choisissez un **déclencheur** (quoi surveiller), définissez le **seuil et la fenêtre** (à quel point, sur quelle durée), associez au moins un **canal**, puis **Enregistrez** et cliquez sur **Tester** pour déclencher une notification synthétique et confirmer que chaque destination est bien configurée. En coulisses, cela produit une petite spécification comme :
+Le chemin classique est rapide : nommez-la, choisissez un **déclencheur** (ce qu'il faut surveiller), définissez le **seuil et la fenêtre** (l'ampleur, sur quelle durée), associez au moins un **canal**, puis **Enregistrez** et appuyez sur **Test** pour envoyer une notification synthétique et vérifier que chaque destination est bien configurée. En coulisses, cela produit une petite spec de ce type :
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-Vous n'êtes pas limité à un seul type de signal. Choisissez le déclencheur qui correspond à la façon dont vous envisagez la défaillance :
+Vous n'êtes pas limité à un seul type de signal. Choisissez le déclencheur qui correspond à la façon dont vous pensez la défaillance :
 
 | Déclencheur | Se déclenche quand |
 |---|---|
-| **Seuil de métrique** | une métrique prédéfinie (taux d'erreur, latence p95 ou p99, nombre d'événements ou d'erreurs, dépenses en tokens) franchit votre seuil sur une fenêtre |
-| **SQL personnalisé** | votre propre requête en lecture seule retourne une ligne, ou une valeur calculée franchit un seuil |
-| **Score d'évaluation** | la moyenne d'un score d'évaluateur (par exemple, les hallucinations) franchit un seuil |
-| **Évaluation composée** | plusieurs vérifications de scores se combinent avec une logique any, all ou au-moins-N, pour détecter une régression qui n'apparaît qu'à travers plusieurs scores |
-| **Par événement** | un seul événement correspondant se produit : un agent spécifique, un type d'erreur spécifique ou une sous-chaîne de message |
+| **Metric threshold** | une métrique prédéfinie (taux d'erreur, latence p95 ou p99, nombre d'événements ou d'erreurs, dépenses en tokens) franchit votre seuil sur une fenêtre de temps |
+| **Custom SQL** | votre propre requête en lecture seule retourne une ligne, ou une valeur calculée franchit un seuil |
+| **Evaluation score** | la moyenne d'un score d'évaluateur (par exemple, l'hallucination) franchit un seuil |
+| **Compound eval** | plusieurs vérifications de scores se combinent avec une logique any, all ou at-least-N, pour détecter une régression visible uniquement sur plusieurs scores |
+| **Per event** | un seul événement correspondant survient : un agent spécifique, un type d'erreur spécifique, ou une sous-chaîne de message |
 
-Vous êtes déjà en train d'examiner une défaillance sur la [page Erreurs](/fr/agenteye/error-tracking) ? Chaque ligne dispose d'un bouton **+ alerte** qui ouvre ce même formulaire pré-rempli pour détecter exactement cette défaillance à nouveau, de sorte que l'incident que vous venez de traiter devienne celui qui vous notifiera la prochaine fois.
+Vous consultez déjà une défaillance sur la [page Erreurs](/fr/agenteye/error-tracking) ? Chaque ligne dispose d'un bouton **+ alert** qui ouvre ce même formulaire pré-rempli pour détecter exactement cette défaillance à nouveau, afin que l'incident que vous venez de trier devienne celui qui vous notifiera la prochaine fois.
 
-**Où le trouver :** Les alertes se trouvent à `/<org-slug>/alerts`. La création, la modification, la suppression et le test de règles nécessitent **`alerts:write`** ; `alerts:read` suffit pour consulter. Le sélecteur de destinataires liste les membres de votre organisation par nom, afin que vous puissiez notifier une personne sans quitter le formulaire.
+**Où le trouver :** Les alertes se trouvent à `/<org-slug>/alerts`. La création, modification, suppression et test des règles nécessitent **`alerts:write`** ; `alerts:read` suffit pour la consultation. Le sélecteur de destinataire liste les membres de votre organisation par nom, vous pouvez donc notifier une personne sans quitter le formulaire.
 
-## Être notifié uniquement quand c'est réel
+## Ne soyez alerté que quand c'est réel
 
-Une seule mesure défaillante ne devrait pas vous réveiller. Le filtre anti-bruit **M sur N** contrôle combien des dernières vérifications doivent échouer avant que l'alerte vous notifie réellement. Réglez-le sur **3 sur 5** et la règle se déclenche uniquement après avoir franchi le seuil trois fois sur ses cinq dernières vérifications, ce qui évite les fausses alarmes dues à un signal instable ; laissez-le à la valeur par défaut **1 sur 1** pour déclencher dès le premier franchissement. Vous choisissez également la fréquence d'exécution de la règle, parmi des préréglages de 1m, 5m, 15m et 1h, adaptés à la vitesse réelle d'évolution du signal.
+Une seule mauvaise mesure ne devrait pas vous réveiller. Le filtre de bruit **M of N** contrôle combien des dernières vérifications doivent échouer avant que l'alerte vous notifie réellement. Réglez-le à **3 of 5** et la règle ne se déclenche qu'après avoir dépassé le seuil trois fois sur ses cinq dernières vérifications, afin qu'un signal instable cesse de déclencher de fausses alarmes ; laissez la valeur par défaut **1 of 1** pour déclencher dès le premier dépassement. Vous choisissez également la fréquence d'exécution de la règle, parmi les valeurs prédéfinies de 1m, 5m, 15m et 1h, en adéquation avec la rapidité réelle d'évolution du signal.
 
 ## Ce qui se passe quand une alerte se déclenche
 
-Un franchissement ouvre un **incident** et notifie vos canaux une seule fois. À partir de là, votre équipe le prend en charge, lui assigne un responsable, en discute et le résout, le tout dans un historique clair et attribué. Ce flux de triage a son propre espace : voir [Incidents](/fr/agenteye/incidents).
+Un dépassement ouvre un **incident** et notifie vos canaux une seule fois. À partir de là, votre équipe l'acquitte, assigne un responsable, en discute et le résout, le tout dans un enregistrement clair et attribué. Ce workflow de triage a son propre espace : voir [Incidents](/fr/agenteye/incidents).
 
 ## Voir aussi
 
-- [Incidents](/fr/agenteye/incidents) : suivez une alerte déclenchée de l'ouverture à la prise en charge jusqu'à la résolution.
+- [Incidents](/fr/agenteye/incidents) : suivez une alerte déclenchée de son ouverture à son acquittement jusqu'à sa résolution.
 - [Suivi des erreurs](/fr/agenteye/error-tracking) : regroupez les défaillances des agents et promouvez-en une en alerte en un clic.
-- [Tableaux de bord](/fr/agenteye/dashboards) : surveillez les tableaux partagés d'où proviennent les seuils sur lesquels vous alertez.
-- [CLI et agents](/fr/agenteye/cli-and-agents) : créez des alertes et acquittez des incidents depuis votre terminal, ou intégrez-les dans votre CI.
+- [Tableaux de bord](/fr/agenteye/dashboards) : consultez les tableaux partagés dont proviennent les seuils que vous alertez.
+- [CLI et agents](/fr/agenteye/cli-and-agents) : créez des alertes et acquittez des incidents depuis votre terminal, ou intégrez-les dans votre CI via des scripts.

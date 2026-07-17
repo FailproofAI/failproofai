@@ -1,56 +1,56 @@
 ---
 title: "Truy vấn"
-description: "Tài liệu Truy vấn FailproofAI Observability."
+description: "Đặt bất kỳ câu hỏi nào về dữ liệu agent của bạn và nhận câu trả lời trong vài giây."
 ---
 
 
-Đặt bất kỳ câu hỏi nào về dữ liệu agent của bạn và nhận câu trả lời trong vài giây. FailproofAI Observability cung cấp cho bạn một thư viện các truy vấn đã lưu, sẵn sàng chạy trên các sự kiện và đánh giá của bạn, vì vậy bạn bắt đầu từ một ví dụ hoạt động thay vì một trình soạn thảo SQL trống.
+Đặt bất kỳ câu hỏi nào về dữ liệu agent của bạn và nhận câu trả lời trong vài giây. Failproof AI Observability cung cấp cho bạn một thư viện các truy vấn đã lưu, sẵn sàng chạy trên các sự kiện và đánh giá của bạn, vì vậy bạn bắt đầu từ một ví dụ hoạt động thay vì một trình chỉnh sửa SQL trống.
 
-![Thư viện các truy vấn đã lưu: một lưới các truy vấn tái sử dụng, cả các bộ dự định tích hợp sẵn và các truy vấn tùy chỉnh](/agenteye/images/queries.png)
+![Thư viện truy vấn đã lưu: một lưới các truy vấn có thể tái sử dụng, cả cài sẵn và những cái tùy chỉnh](/agenteye/images/queries.png)
 
-*Thư viện các truy vấn đã lưu của bạn tại `/<org-slug>/queries`: các bộ dự định tích hợp sẵn cùng với các truy vấn mà nhóm của bạn đã lưu.*
+*Thư viện truy vấn đã lưu của bạn tại `/<org-slug>/queries`: những cài sẵn nằm cạnh các truy vấn mà team của bạn đã lưu.*
 
-## Bắt đầu từ một bộ dự định, không phải từ một trang trống
+## Bắt đầu từ một cài sẵn, không phải từ một trang trống
 
-Bạn không phải nhớ tên bảng hoặc viết SQL từ đầu. Thư viện mở với các bộ dự định tích hợp sẵn cho những câu hỏi mà các nhóm thường đặt, nằm ngay cạnh các truy vấn mà nhóm của bạn đã lưu và đặt tên. Chọn một truy vấn gần với những gì bạn muốn và bạn đã có được hầu hết câu trả lời.
+Bạn không cần phải nhớ tên bảng hoặc viết SQL từ đầu. Thư viện mở ra với các cài sẵn cho những câu hỏi mà các team hỏi nhiều nhất, nằm ngay cạnh các truy vấn mà team của riêng bạn đã lưu và đặt tên. Chọn một cái gần với những gì bạn muốn và bạn đã được nửa đường tới câu trả lời.
 
-Mỗi truy vấn đã lưu được giới hạn trong org và được chia sẻ, vì vậy những truy vấn hữu ích mà đồng nghiệp của bạn viết cũng trở thành của bạn. Đặt tên cho một truy vấn và cung cấp một mô tả một lần, và bất kỳ ai trong org của bạn đều có thể tìm thấy nó, chạy nó hoặc ghim kết quả của nó vào bảng điều khiển sau này.
+Mỗi truy vấn đã lưu được phạm vi tổ chức và được chia sẻ, vì vậy những cái hữu ích mà đồng nghiệp của bạn viết cũng trở thành của bạn. Đặt tên cho một truy vấn và cung cấp cho nó một mô tả một lần, và bất kỳ ai trong tổ chức của bạn đều có thể tìm thấy nó, chạy nó, hoặc ghim kết quả của nó lên bảng điều khiển sau này.
 
 Tìm nó tại `/<org-slug>/queries`.
 
 ## Điều chỉnh nó và chạy nó trong trình soạn thảo SQL
 
-Mở bất kỳ truy vấn nào và nó sẽ được đặt vào trình soạn thảo SQL, nơi bạn có thể điều chỉnh nó và xem câu trả lời ngay lập tức: không cần xuất, không cần đi lại, không cần chờ người khác.
+Mở bất kỳ truy vấn nào và nó sẽ hạ cánh trong trình soạn thảo SQL, nơi bạn có thể điều chỉnh nó và xem câu trả lời ngay lập tức: không xuất, không vòng lặp, không chờ đợi ai khác.
 
-![Trình soạn thảo truy vấn SQL chạy một truy vấn đã lưu, với thanh bên lược đồ và lưới kết quả trực tiếp](/agenteye/images/query-lab.png)
+![Trình soạn thảo truy vấn SQL chạy một truy vấn đã lưu, với thanh bên sơ đồ và lưới kết quả trực tiếp](/agenteye/images/query-lab.png)
 
-*Trình soạn thảo SQL: truy vấn của bạn ở bên trái, thanh bên lược đồ để bạn không bao giờ đoán tên cột, và lưới kết quả trực tiếp bên dưới.*
+*Trình soạn thảo SQL: truy vấn của bạn ở bên trái, thanh bên sơ đồ để bạn không bao giờ đoán tên cột, và lưới kết quả trực tiếp ở dưới.*
 
-- **Thanh bên lược đồ** bố trí các bảng phân tích và các cột của chúng, vì vậy bạn có thể tạo một truy vấn mà không phải tìm kiếm tên trường.
+- **Thanh bên sơ đồ** trình bày các bảng phân tích và các cột của chúng, vì vậy bạn có thể hình thành một truy vấn mà không cần tìm tên trường.
 - **Lưới kết quả trực tiếp** trả về các hàng ngay khi bạn chạy, vì vậy bạn lặp lại trong vài giây thay vì đoán và đoán lại.
-- **Chỉ đọc theo thiết kế.** Các truy vấn chạy dựa trên kho lưu trữ sự kiện của bạn và được xác thực trên máy chủ: chỉ cho phép các câu lệnh `SELECT` và `WITH`, với thời gian chờ câu lệnh và giới hạn hàng. Một truy vấn khám phá không thể bao giờ sửa đổi dữ liệu của bạn, và một truy vấn chạy tràn sẽ được dừng cho bạn.
+- **Chỉ đọc theo thiết kế.** Truy vấn chạy trên kho sự kiện của bạn và được xác thực trên máy chủ: chỉ các câu lệnh `SELECT` và `WITH` được cho phép, với hết giờ của câu lệnh và giới hạn hàng. Một truy vấn khám phá không thể bao giờ sửa đổi dữ liệu của bạn, và một truy vấn chạy trốn sẽ bị dừng lại cho bạn.
 
-Hài lòng với kết quả? Lưu nó trở lại thư viện để toàn bộ nhóm kế thừa nó, hoặc ghim kết quả của nó vào bảng điều khiển dưới dạng ô hình, thanh, khu vực hoặc tròn.
+Hài lòng với kết quả? Lưu nó trở lại thư viện để cả team kế thừa nó, hoặc ghim kết quả của nó lên bảng điều khiển dưới dạng một ô dòng, thanh, diện tích hoặc hình tròn.
 
 ## Chạy chúng từ terminal, hoặc để trợ lý viết chúng
 
-Các truy vấn đã lưu tương tự theo dõi bạn ở bất cứ nơi bạn làm việc:
+Những truy vấn đã lưu tương tự theo bạn ở bất cứ nơi nào bạn làm việc:
 
-- **Từ terminal.** CLI `agenteye` liệt kê, chạy và lưu các truy vấn giống nhau, vì vậy bạn có thể thả kết quả vào một kịch bản, kết nối nó vào CI hoặc trao nó cho một coding agent.
+- **Từ terminal.** CLI `agenteye` liệt kê, chạy và lưu các truy vấn giống hệt nhau, vì vậy bạn có thể thả một kết quả vào một tập lệnh, kết nối nó vào CI, hoặc giao nó cho một agent mã.
 
 ```bash
-agenteye query list                 # the same saved queries, from your terminal
-agenteye query run errs --arg prod  # run one and print the rows (add --json to pipe it)
+agenteye query list                 # các truy vấn đã lưu giống nhau, từ terminal của bạn
+agenteye query run errs --arg prod  # chạy một cái và in các hàng (thêm --json để piping nó)
 ```
 
-  Xem [CLI và agents](/vi/agenteye/cli-and-agents) để biết bộ lệnh đầy đủ.
+  Xem [CLI và agents](/vi/agenteye/cli-and-agents) để xem bộ lệnh đầy đủ.
 
-- **Từ trợ lý AI.** Không chắc chắn cách diễn đạt SQL? Hỏi [trợ lý AI](/vi/agenteye/assistant) trong bảng điều khiển bằng tiếng Anh đơn giản và nó sẽ soạn thảo truy vấn và lưu nó vào thư viện của bạn cho bạn.
+- **Từ trợ lý AI.** Không chắc cách diễn đạt SQL? Hỏi [trợ lý AI](/vi/agenteye/assistant) trong bảng điều khiển bằng tiếng Anh thuần túy và nó sẽ soạn thảo truy vấn và lưu nó vào thư viện của bạn.
 
-Chạy một truy vấn đã lưu bị kiểm soát bởi quyền `queries:run`, được giữ riêng biệt với các quyền để tạo hoặc xóa truy vấn, vì vậy bạn có thể cấp quyền truy cập đọc mà không cho phép mọi người viết lại thư viện.
+Chạy một truy vấn đã lưu được kiểm soát bởi quyền `queries:run`, được giữ tách biệt với các quyền để tạo hoặc xóa truy vấn, vì vậy bạn có thể cấp quyền truy cập đọc mà không để mọi người viết lại thư viện.
 
 ## Liên quan
 
-- [Bảng điều khiển](/vi/agenteye/dashboards): ghim kết quả truy vấn vào các biểu đồ được chia sẻ trên toàn org.
-- [Trợ lý AI](/vi/agenteye/assistant): đặt câu hỏi bằng tiếng Anh đơn giản và nhận lại một truy vấn.
+- [Bảng điều khiển](/vi/agenteye/dashboards): ghim kết quả truy vấn vào các biểu đồ chia sẻ, toàn tổ chức.
+- [Trợ lý AI](/vi/agenteye/assistant): đặt câu hỏi bằng tiếng Anh thuần túy và nhận một truy vấn lại.
 - [CLI và agents](/vi/agenteye/cli-and-agents): chạy và lưu các truy vấn giống nhau từ terminal của bạn.

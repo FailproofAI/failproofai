@@ -1,49 +1,50 @@
 ---
 title: "Event Stream"
-description: "Documentação do Event Stream de Observabilidade do FailproofAI."
+description: "No momento em que seu agente faz algo, você vê."
 ---
 
-No momento em que seu agente faz algo, você vê. O Event Stream é o seu pulso em tempo real sobre cada agente em produção: sem esperas, sem grep nos logs, sem adivinhar o que acabou de acontecer.
+
+No momento em que seu agente faz algo, você vê. O Event Stream é seu pulso em tempo real sobre cada agente em produção: sem espera, sem vasculhar logs, sem precisar adivinhar o que acabou de acontecer.
 
 ![O Event Stream ao vivo: linhas de eventos com código de cores chegando em tempo real, filtráveis por ambiente, agente, sessão, tipo de evento e texto livre](/agenteye/images/events-stream.png)
 
-*Cada evento de cada agente na sua organização, do mais recente ao mais antigo, atualizado conforme acontece.*
+*Cada evento de cada agente da sua organização, os mais recentes primeiro, atualizando conforme acontece.*
 
 ## Seu pulso em tempo real sobre cada agente
 
-Quando um agente inicia uma execução, chama um modelo, dispara uma ferramenta, roda um hook ou encontra um erro, a linha aparece no topo do stream no instante em que acontece. Ele acompanha cada evento de cada agente na sua organização, do mais recente ao mais antigo, para que você sempre tenha uma visão atual em vez de uma desatualizada.
+Quando um agente inicia uma execução, chama um modelo, dispara uma ferramenta, executa um hook ou encontra um erro, a linha aparece no topo do stream no exato momento em que acontece. Ele acompanha todos os eventos de todos os agentes da sua organização, os mais recentes primeiro, para que você tenha sempre uma visão atual em vez de uma desatualizada.
 
-Isso significa sem precisar monitorar arquivos de log em algum servidor, sem fazer grep entre máquinas, sem juntar timestamps manualmente. Você abre uma página e já está monitorando a produção.
+Isso significa que não é preciso acompanhar arquivos de log em algum servidor, vasculhar máquinas ou montar timestamps manualmente. Você abre uma página e já está monitorando a produção.
 
-As linhas têm código de cores por tipo, então você consegue ler o stream de relance em vez de analisar cada linha. Em um olhar, cada linha mostra:
+As linhas têm código de cores por tipo, para que você leia o stream de relance em vez de analisar cada linha. De um olhar só, cada linha mostra:
 
-- **Seu tipo**, com código de cores: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` e mais.
-- **Um resumo de uma linha** do que aconteceu, para que você raramente precise abrir algo só para entender o básico.
+- **Seu tipo**, com código de cores: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` e outros.
+- **Um resumo de uma linha** do que aconteceu, para que raramente seja preciso abrir algo apenas para entender o essencial.
 - **Contagens de tokens** para o passo.
-- **Um indicador de preenchimento da janela de contexto** onde aplicável, para que o crescimento do prompt e uma compactação iminente sejam visíveis antes de se tornarem um problema.
+- **Um indicador de preenchimento da janela de contexto** onde aplicável, para que o crescimento do prompt e uma compactação iminente sejam visíveis antes de causarem problemas.
 
-Acompanhar ao vivo significa que você percebe um deploy problemático, um loop descontrolado ou uma rajada de erros no momento em que acontece — não na revisão de logs de amanhã.
+Acompanhar ao vivo significa que você detecta um deploy problemático, um loop descontrolado ou uma rajada de erros enquanto está acontecendo — não na revisão de logs do dia seguinte.
 
 ## Encontre a execução que importa
 
-Quando algo parece errado, você não quer a enxurrada de dados. Você quer a execução específica que quebrou. O stream filtra rapidamente: por ambiente, por agente, por sessão, por tipo de evento ou por texto livre.
+Quando algo parece errado, você não quer a enxurrada de dados. Você quer a execução específica que falhou. O stream filtra rapidamente: por ambiente, por agente, por sessão, por tipo de evento ou por texto livre.
 
-Filtre por id de sessão ou id de agente para acompanhar uma execução do seu primeiro evento até o último. Filtre por tipo de evento para isolar um único tipo de atividade — por exemplo, todos os `error` na organização em uma única visualização. Combine filtros para ir de "tudo, em todo lugar" para "este agente, em prod, com erros" em alguns cliques e, em seguida, aja sobre o que encontrar.
+Filtre por id de sessão ou id de agente para acompanhar uma execução do seu primeiro evento ao último. Filtre por tipo de evento para isolar um único tipo de atividade — por exemplo, todos os `error` da organização em uma só visualização. Combine filtros para ir de "tudo, em todo lugar" até "este agente, em produção, com erro" em poucos cliques, e então aja com base no que encontrar.
 
-A busca por texto livre vai direto a uma mensagem, nome de ferramenta ou id que você já tem em mãos, então um relato de cliente vira a execução exata em segundos.
+A busca por texto livre vai direto a uma mensagem, um nome de ferramenta ou um id que você já tem em mãos, transformando um relato de cliente na execução exata em segundos.
 
 ## Onde encontrar
 
-O Event Stream é a página inicial da sua organização. Faça login e é a primeira tela em que você chega, em `/<org-slug>/`, para que a triagem comece no segundo em que você chega.
+O Event Stream é a página inicial da sua organização. Faça login e ele é a primeira tela que você vê, em `/<org-slug>/`, para que a triagem comece no segundo em que você chega.
 
-Por trás disso, seus agentes emitem eventos pelo SDK, o collector os envia para o servidor de Observabilidade do FailproofAI, e o stream os acompanha conforme chegam na infraestrutura que você controla. Quando você quiser a visão consolidada em vez do rastro bruto, os eventos de cada execução se agrupam em uma única linha no Sessions, a um clique de distância.
+Por trás disso, seus agentes emitem eventos pelo SDK, o coletor os envia ao seu servidor de Observabilidade Failproof AI, e o stream os acompanha conforme chegam na infraestrutura que você controla. Quando você quiser a visão consolidada em vez do rastro bruto, os eventos de cada execução se recolhem em uma única linha no Sessions, a um clique de distância.
 
-Esta é a fonte de verdade bruta sobre a qual todas as outras superfícies de observação são construídas, então quando um número parece errado em outro lugar, o stream é onde você confirma o que realmente aconteceu.
+Este é a fonte bruta da verdade sobre a qual todas as outras superfícies de observação são construídas — então quando um número parece errado em outro lugar, o stream é onde você confirma o que realmente aconteceu.
 
-## Relacionados
+## Relacionado
 
-- [Sessions](/pt-br/agenteye/sessions): os mesmos eventos agrupados em uma linha por execução, com um gráfico de execução no estilo git.
+- [Sessions](/pt-br/agenteye/sessions): os mesmos eventos consolidados em uma linha por execução, com um gráfico de execução no estilo git.
 - [Telemetry](/pt-br/agenteye/telemetry): o que seus agentes enviam e como os eventos chegam ao stream.
-- [Error tracking](/pt-br/agenteye/error-tracking): uma superfície de triagem centralizada para tudo que deu errado.
-- [Alerts](/pt-br/agenteye/alerts): transforme qualquer limite em uma regra de notificação.
+- [Error tracking](/pt-br/agenteye/error-tracking): uma única superfície de triagem para tudo que deu errado.
+- [Alerts](/pt-br/agenteye/alerts): transforme qualquer threshold em uma regra de alerta.
 - [CLI and agents](/pt-br/agenteye/cli-and-agents): o mesmo rastro em tempo real pelo seu terminal.

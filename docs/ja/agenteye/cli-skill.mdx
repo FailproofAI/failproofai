@@ -1,70 +1,101 @@
 ---
-title: "FailproofAI Observability CLI エージェントスキル"
-description: "FailproofAI Observability CLI エージェントスキルのドキュメント。"
+title: "Failproof AI Observability CLI エージェントスキル"
+description: "コーディングエージェントに「今日、何か壊れていますか？」と聞くだけで、Failproof AI Observability のライブデータから答えを得られます。コマンドを覚える必要はありません。"
 ---
 
 
-コーディングエージェントに *「今日、何か壊れているものはある？」* と聞くだけで、ライブの FailproofAI Observability データから答えを得られます。コマンドを覚える必要はありません。**FailproofAI Observability CLI スキル**（`agenteye-cli`）は*エージェントスキル*です。これは、Claude Code や Codex などのコーディングエージェントがオンデマンドで読み込む、小さな指示ファイルのフォルダです。このスキルにより、エージェントは *「CIにイベントをプッシュするだけのキーを作って」* や *「発火中のインシデントをackして自分にアサインして」* といった自然な日本語のリクエストから [`agenteye` CLI](/ja/agenteye/cli) を使ってObservabilityデプロイメントを操作できるようになります。
+コーディングエージェントに *「今日、何か壊れていますか？」* と聞くだけで、Failproof AI Observability のライブデータから答えを得られます。コマンドを覚える必要はありません。**Failproof AI Observability CLI スキル**（`agenteye-cli`）は *エージェントスキル* です。Claude Code や Codex などのコーディングエージェントがオンデマンドで読み込む小さなフォルダで、*「イベントのプッシュだけが可能なキーを CI に渡して」* や *「発火中のインシデントをアックして自分にアサインして」* といった自然言語のリクエストを通じて、エージェントが [`agenteye` CLI](/ja/agenteye/cli) を使って Observability デプロイメントを操作できるようにします。
 
-これは**サービスでも独立したバイナリでもありません**。デプロイは不要です。すでにインストール済みのCLIの上で動作します。エージェントは `agenteye --json …` をシェル実行し、きれいなJSONを解析して、結果を文章で返します。エージェントができることは、同じコマンドを自分で入力すれば自分でもできることと同じです。
+これはサービスでも独立したバイナリでもなく、デプロイするものは何もありません。すでにインストール済みの CLI の上に乗るだけです。エージェントは `agenteye --json …` をシェルから呼び出し、クリーンな JSON を解析して、散文形式で回答します。エージェントができることはすべて、同じコマンドを手で入力しても実現できます。
 
 ---
 
-## 他の FailproofAI Observability インターフェースとの関係
+## 他の Failproof AI Observability インターフェースとの関係
 
-FailproofAI Observability では、同じデータとコントロールにアクセスするための4つの方法を提供しています。それぞれが互いを補完します。
+Failproof AI Observability は、同じデータとコントロールにアクセスするための 4 つの方法を提供しています。それぞれは補完的な関係にあります：
 
-| インターフェース | 概要 | 実行場所 | 使うべきとき |
+| インターフェース | 説明 | 動作環境 | 使いどころ |
 |---|---|---|---|
-| **[CLI](/ja/agenteye/cli)** | `agenteye` のコマンド・フラグリファレンス | ターミナル | 特定のコマンドを実行またはスクリプト化したいとき |
-| **[CLI レシピ](/ja/agenteye/cli-recipes)** | コピペ可能な `jq`/パイプラインパターン | ターミナル / スクリプト | CLIを自動化に組み込むとき |
-| **CLI スキル**（このドキュメント） | CLIへの自然言語フロントエンド | ワークステーション上のコーディングエージェント | 聞くだけでエージェントにコマンドを選ばせたいとき |
-| **[ダッシュボード内AIアシスタント](/ja/agenteye/assistant)** | ダッシュボードに組み込まれたチャット | サーバーサイド（ダッシュボード内） | ダッシュボード上でデータにQ&Aしたいとき |
+| **[CLI](/ja/agenteye/cli)** | `agenteye` のコマンド・フラグリファレンス | ターミナル | 特定のコマンドを実行またはスクリプト化したい場合 |
+| **[CLI レシピ](/ja/agenteye/cli-recipes)** | コピペ可能な `jq`/パイプラインパターン | ターミナル・スクリプト | CLI を自動化に組み込む場合 |
+| **CLI スキル**（このドキュメント） | CLI への自然言語フロントエンド | ワークステーション上のコーディングエージェント | 聞くだけでエージェントにコマンドを選ばせたい場合 |
+| **[エバリュエータースキル](/ja/agenteye/evaluator-skill)** | スコアリングサービスを設計・構築する姉妹スキル | ワークステーション上のコーディングエージェント | eval スコアを読むのではなく *生成* したい場合 |
+| **[Python SDK スキル](/ja/agenteye/python-sdk-skill)** | エージェントにテレメトリーを送出させるための姉妹スキル | ワークステーション上のコーディングエージェント | このスキルが読み取るイベントをエージェントに *生成* させたい場合 |
+| **[ダッシュボード内 AI アシスタント](/ja/agenteye/assistant)** | ダッシュボードに組み込まれたチャット | サーバーサイド（ダッシュボード内） | ダッシュボード内でデータへの Q&A を行いたい場合 |
 
-スキル自体には固有の権限はありません。あなたの言葉をCLI呼び出しに変換して、あなたとして実行するだけです。
+スキル自体には独自の権限はなく、あなたが発した言葉を CLI 呼び出しに変換してあなたとして実行するだけです：
 
 ```mermaid
 flowchart TD
-    YOU["あなた: 「発火中のインシデントをackして」"] --> AGENT["コーディングエージェント (Claude Code / Codex)<br/>agenteye-cli スキルを読み込む"]
+    YOU["あなた: '発火中のインシデントをアックして'"] --> AGENT["コーディングエージェント (Claude Code / Codex)<br/>agenteye-cli スキルを読み込む"]
     AGENT --> CLI["agenteye --json incidents ack ..."]
-    CLI -->|認証済みCLIセッション| API["Observability ダッシュボード API"]
+    CLI -->|認証済みの CLI セッション| API["Observability ダッシュボード API"]
 ```
 
-### ダッシュボード内AIアシスタントとの違い：重要な区別
+### ダッシュボード内 AI アシスタントとの比較：重要な違い
 
-これらは影響範囲が大きく異なる2つの別々のツールです。
+この 2 つは、影響範囲が大きく異なる別々のツールです：
 
-- **ダッシュボード内AIアシスタント**（[AIアシスタント](/ja/agenteye/assistant)）はダッシュボードに組み込まれたチャットで、エージェントサービスによってバックアップされています。**読み取り専用＋承認ゲート付きの編集**が可能です。保存済みクエリやダッシュボードの下書きは作れますが、書き込みはすべてあなたの明示的なクリック承認で一時停止し、削除は行いません。`agent:use` 権限によってゲートされ、閲覧中のOrg のデータのみを参照します。
-- **CLI スキル**は*あなたの*ワークステーション上の*あなたの*コーディングエージェント内で動作し、`agenteye` CLI を**あなたとして**駆動します。APIキーの作成/ローテーション/無効化、Org設定の変更、インシデントの解決、保存済みクエリの削除など、**ミューテーションを含むCLIの全機能**を実行できます。制限はCLIログインの権限のみです。これらのコマンドを手動で実行するのと同じくらい慎重に扱ってください。
+- **ダッシュボード内 AI アシスタント**（[AI アシスタント](/ja/agenteye/assistant)）はダッシュボードに組み込まれたチャットで、エージェントサービスによってバックアップされています。**読み取り専用 + 承認ゲート付きの作成**: 保存済みクエリやダッシュボードの下書きを作成できますが、すべての書き込みはあなたの明示的なクリック承認で一時停止し、削除は行いません。`agent:use` 権限でゲートされており、表示中の組織のデータのみにアクセスします。
+- **CLI スキル**は *あなたの* ワークステーション上の *あなたの* コーディングエージェント内で動作し、**あなたとして** `agenteye` CLI を操作します。API キーの作成・ローテーション・無効化、組織設定の変更、インシデントの解決、保存済みクエリの削除など、**ミューテーションを含む CLI のフル機能**を実行できます。制限は CLI ログインの権限のみです。これらのコマンドを手で実行するのと同じ慎重さで取り扱ってください。
 
 ---
 
 ## 前提条件
 
-1. **`agenteye` CLIがインストール済みで `PATH` に含まれていること**（[CLI](/ja/agenteye/cli) リファレンスを参照: `pipx install agenteye`）。
-2. **ダッシュボードURLが設定済みであること**（`AGENTEYE_DASHBOARD_URL`、またはエージェントが `--base-url` を渡す）。
-3. **ログイン済みのセッションがあること**：まず自分で `agenteye login` を実行してください。スキルはメールで送られるワンタイムコードのログインを代行**できません**。セッションが存在しないか期限切れの場合（CLIの終了コード `4`）、`agenteye login` を実行するよう案内します。
+1. **`agenteye` CLI がインストール済み**で `PATH` に含まれていること（[CLI](/ja/agenteye/cli) リファレンスを参照: `pipx install agenteye`）。
+2. **ダッシュボード URL** が設定されていること（`AGENTEYE_DASHBOARD_URL`、またはエージェントが `--base-url` で渡す）。
+3. **ログイン済みのセッション**: 事前に `agenteye login` を自分で実行しておくこと。スキルはメールで届くワンタイムコードのログインを代わりに完了させることは**できません**。セッションが存在しないか期限切れの場合（CLI 終了コード `4`）、`agenteye login` を実行するよう案内します。
 
 ---
+
+## 入手方法
+
+スキルは Failproof AI の公開スキルコレクションで公開されています：
+
+**[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-cli/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-cli)
+
+リポジトリは公開されており、スキル自体に独自の認証情報は不要です。*あなたが* ログインしたセッションを使って、**公開** `agenteye` CLI を *あなたの* ダッシュボードに対して実行するだけだからです。誰かに許可を求める必要はありません。
+
+なお、このスキルは独自のフォルダとして提供されており、`pipx install agenteye` パッケージには含まれていないため、そちらを探さないでください。
 
 ## スキルのインストール
 
-エージェントスキルは `SKILL.md`（およびオプションの参照ファイル）を含むフォルダです。`agenteye-cli` スキルをインストールするには、エージェントがスキルを探す場所にそのフォルダを配置します。
+最も手軽な方法は [`skills`](https://skills.sh) CLI を使うことです。フォルダを取得してエージェントが参照する場所に配置してくれます：
 
-- **Claude Code**: `agenteye-cli/` フォルダを `~/.claude/skills/`（すべてのプロジェクトで使用可能）または `<your-repo>/.claude/skills/`（そのリポジトリ限定）にコピーします。Claude Code は自動的に検出します。`/skills` リストで確認するか、その説明に合う質問をしてみてください。
-- **Codex (OpenAI)**: Codex も同じ `SKILL.md` を読み込みます。バンドルされている `agents/openai.yaml` は `allow_implicit_invocation: true` を設定しているため、タスクが一致すると Codex はスキルを自動選択します。それ以外の場合は `$agenteye-cli` として明示的に呼び出します。
+```bash
+# Claude Code、このプロジェクトのみ
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
 
-スキルは `agenteye` CLI と並行してメンテナンスされていますが、`pipx install agenteye` パッケージには含まれない**別フォルダ**として提供されます。そのため、パッケージの中を探さないでください。FailproofAI Observability は `agenteye-cli/` フォルダを別途提供します。お持ちでない場合は FailproofAI の担当者にお問い合わせください。何も制限はありません。スキル自体には認証情報は不要で、自分のダッシュボードに対して**公開**の `agenteye` CLI を駆動するだけです。
+# すべてのプロジェクト（~/.claude/skills/ にインストール）
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
+
+# Codex の場合
+npx skills add FailproofAI/skills --skill agenteye-cli -a codex
+```
+
+その後は他のスキルと同様に管理できます：
+
+```bash
+npx skills list -a claude-code      # インストール済みのスキルを確認
+npx skills update agenteye-cli      # 最新バージョンに更新
+npx skills remove agenteye-cli      # 削除
+```
+
+手動でインストールしたい場合は、エージェントスキルは `SKILL.md`（とオプションのリファレンス）を含むフォルダにすぎないため、コピーするだけでも動作します：
+
+- **Claude Code**: `agenteye-cli/` フォルダを `~/.claude/skills/`（全プロジェクト共通）または `<your-repo>/.claude/skills/`（そのリポジトリのみ）に配置してください。Claude Code は自動的に検出します。`/skills` リストで確認するか、スキルの説明に合致する質問をしてみてください。
+- **Codex（OpenAI）**: Codex も同じ `SKILL.md` を読み込みます。バンドルされた `agents/openai.yaml` に `allow_implicit_invocation: true` が設定されているため、タスクが合致すれば Codex が自動的にスキルを選択します。それ以外の場合は `$agenteye-cli` として明示的に呼び出してください。
 
 ---
 
-## 安全性：エージェントがCLIを実行するとき、ミューテーションは確認を求めません
+## 安全性：エージェントが CLI を実行する場合、ミューテーションは確認プロンプトを表示しない
 
-> **警告：** エージェントに変更を加えさせる前に必ずお読みください。
+> **警告:** エージェントに変更を加えさせる前に、必ずこちらをお読みください。
 
-`agenteye` CLI は通常、破壊的な操作の前に*「本当によいですか？」* と確認を求めます。しかし、**ターミナルに接続されていない場合（コーディングエージェントが実行する場合はまさにこれ）は確認を自動スキップします。`--json` も同様にスキップします**。そのため、エージェントに対して安全確認のプロンプトは**表示されません**。
+`agenteye` CLI は通常、破壊的な操作の前に *「本当によろしいですか？」* と確認します。ただし、**ターミナルに接続されていない場合（コーディングエージェントがまさにこの方式で実行します）、および `--json` を使用する場合は、その確認を自動的にスキップします。** そのため、エージェントに対して確認プロンプトは**表示されません**。
 
-スキルはこれを補うよう設計されています。実行するコマンドを明示し、状態を変更する前にあなたの明示的な **OK** を得るよう指示されています。この規律を守ってください。エージェントを通じて FailproofAI Observability を操作する場合、**あなた自身**が確認ステップとなります。注意すべき状態変更コマンドは以下のとおりです。
+スキルはこれを補うように設計されています。実行するコマンドを明示的に提示し、**状態を変更する前にあなたの明示的な OK を求める**よう指示されています。この規律を維持してください。エージェントを通じて Failproof AI Observability を操作する場合、*あなた* が確認ステップです。注意が必要な状態変更コマンドは以下のとおりです：
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
@@ -75,53 +106,55 @@ flowchart TD
 - `agent rename` / `delete`
 - `orgs switch`
 
-**Observe** 配下（`events`、`sessions`、`evals`、`errors`、`list`、`whoami`、`orgs list/current/perms`）はすべて読み取り専用で、何も変更しません。
+**Observe** 系（`events`、`sessions`、`evals`、`errors`、`list`、`whoami`、`orgs list/current/perms`）はすべて読み取り専用で、何も変更しません。
 
-エージェントは**あなたとして**動作するため、あなたのログインで許可されていることしかできません。権限は **Org ごと**に解決されます（[APIキー](/ja/agenteye/api-keys)を参照）。権限のないコマンドは、必要な権限名を明示した終了コード `5` を返します。そのため、エージェントは曖昧に失敗するのではなく、管理者に何を依頼すべきかを正確に伝えられます。
+エージェントは **あなたとして** 動作するため、あなたのログインが許可している操作しか実行できません。権限は**組織ごと**に解決されます（[API キー](/ja/agenteye/api-keys)を参照）。権限が不足しているコマンドは終了コード `5` と該当する権限名を返すため、エージェントは不明瞭な失敗ではなく、管理者に何を依頼すればよいかを正確に伝えられます。
 
 ---
 
-## 何を聞けるか
+## 聞けること
 
-実際のやり取りの例です。まず読み取り、次にOKを待つ変更を行います。
+実際のやり取りの例を示します。まず読み取り、次に確認を待つ変更操作です：
 
 ```text
-あなた ▸ 昨日から何か壊れているものはある？
+あなた ▸ 昨日から何か壊れていますか？
 
-エージェント ▸ 実行中: agenteye --json errors --since 24h --aggregate
-              過去24時間で3種類のエラーが見つかりました。最も多いのは
-              TimeoutError（18件、すべてcheckout-agent）、次いで
-              RateLimited（5件）です。
-              TimeoutError の失敗したセッションを確認しますか？
+エージェント ▸ 実行: agenteye --json errors --since 24h --aggregate
+              過去 24 時間に 3 種類のエラーがありました。最も多いのは
+              TimeoutError（18 件、すべて checkout-agent）、
+              次に RateLimited（5 件）です。
+              TimeoutError の失敗セッションを確認しますか？
 
-あなた ▸ CIにイベントをプッシュするだけのキーを作って。
+あなた ▸ イベントのプッシュだけが可能なキーを CI に渡して。
 
-エージェント ▸ APIキーを作成します。以下を実行します:
+エージェント ▸ API キーを作成します。実行するコマンド:
                 agenteye keys create ci --add events:add
-              実行してよいですか？
+              続行してよいですか？
 
 あなた ▸ yes
 
-エージェント ▸ 完了。キー "ci" が events:add のみで作成されました。
+エージェント ▸ 完了しました。events:add のみを持つキー "ci" を作成しました。
               シークレットは一度しか表示されないため、今すぐ保存してください。再表示はできません。
 ```
 
-スキルは各自然言語の意図を適切な `agenteye` コマンドにマッピングします。推測せず、有効な値を先に検出（`list <kind>`、`whoami`）し、変更前に正確なコマンドを提示します。その他の例：
+スキルは各自然言語の意図を適切な `agenteye` コマンドにマッピングし、`list <kind>` や `whoami` で有効な値を事前に確認して推測を避け、変更前に正確なコマンドを提示します。さらに例を挙げます：
 
-- *「過去24時間で壊れているもの・失敗しているものはある？」* → `errors --since 24h --aggregate`、その後内訳を表示。
-- *「セッション `run-001` はなぜ失敗した？」* → `events --session-id run-001 --all` + `evals --session-id run-001`。
-- *「今週の品質トレンドはどう？」* → `evals --aggregate --since 7d`、その後スコアの低いrunを詳細確認。
-- *「CIにイベントをプッシュするだけのキーを作って。」* → `keys create ci --add events:add`（コマンドを提示してから作成し、ワンタイムシークレットを取得）。
-- *「誰がアクセスできる？ Dana を読み取り専用にして。」* → `users list` → `users update dana@… --permission-set read-only`（確認後）。
-- *「発火中のインシデントをackして自分にアサインして。」* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`。
+- *「過去 24 時間で壊れている・失敗しているものはある？」* → `errors --since 24h --aggregate`、その後内訳を表示。
+- *「セッション `run-001` がなぜ失敗したのか教えて。」* → `events --session-id run-001 --all` + `evals --session-id run-001`。
+- *「今週の品質トレンドを教えて。」* → `evals --aggregate --since 7d`、その後低スコアのランを掘り下げ。
+- *「イベントのプッシュだけが可能なキーを CI に渡して。」* → `keys create ci --add events:add`（コマンドを提示後、作成してワンタイムシークレットを取得）。
+- *「誰がアクセス権を持っている？Dana を読み取り専用にして。」* → `users list` → `users update dana@… --permission-set read-only`（確認後）。
+- *「発火中のインシデントをアックして自分にアサインして。」* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`。
 
-これらの背後にある正確なコマンド、フラグ、JSONの形式については、[CLI](/ja/agenteye/cli) リファレンスと[エージェント向けCLIレシピ](/ja/agenteye/cli-recipes)を参照してください。
+これらの背景にある正確なコマンド、フラグ、JSON の形式については、[CLI](/ja/agenteye/cli) リファレンスと [エージェント向け CLI レシピ](/ja/agenteye/cli-recipes)を参照してください。
 
 ---
 
 ## 次のステップ
 
-- **[CLI](/ja/agenteye/cli)**: `agenteye` の全コマンド・フラグリファレンス。
-- **[エージェント向けCLIレシピ](/ja/agenteye/cli-recipes)**: コピペ可能な `jq` パターンと終了コードの処理。
-- **[AIアシスタント](/ja/agenteye/assistant)**: ダッシュボード内アシスタント（このターミナルスキルとは異なります）。
-- **[APIキー](/ja/agenteye/api-keys)**: スキルが実行できることを制限するOrg単位の権限モデル。
+- **[CLI](/ja/agenteye/cli)**: `agenteye` のコマンド・フラグの完全なリファレンス。
+- **[エージェント向け CLI レシピ](/ja/agenteye/cli-recipes)**: コピペ可能な `jq` パターンと終了コードの処理。
+- **[エバリュエータースキル](/ja/agenteye/evaluator-skill)**: `agenteye evals` が読み取るスコアを生成するエバリュエーターを構築するための姉妹スキル。
+- **[Python SDK エージェントスキル](/ja/agenteye/python-sdk-skill)**: `agenteye` が読み取るテレメトリーを送出するようエージェントをインストルメント化するための姉妹スキル。
+- **[AI アシスタント](/ja/agenteye/assistant)**: ダッシュボード内アシスタント（このターミナルスキルとは別物です）。
+- **[API キー](/ja/agenteye/api-keys)**: スキルが実行できる操作を制限する組織ごとの権限モデル。

@@ -1,52 +1,53 @@
 ---
-title: "Audits: trợ lý phân tích độ tin cậy tự động của bạn"
-description: "FailproofAI Observability Audits: tài liệu trợ lý phân tích độ tin cậy tự động của bạn."
+---
+title: "Audits: công cụ phân tích độ tin cậy tự động của bạn"
+description: "Failproof AI Observability tìm kiếm các lỗi mà bạn chưa bao giờ viết quy tắc cho, và cung cấp cho bạn một danh sách việc cần làm được xếp hạng và có bằng chứng rõ ràng về chính xác những gì cần sửa."
 ---
 
 
-FailproofAI Observability tìm kiếm những lỗi mà bạn chưa bao giờ viết quy tắc cho chúng và đưa cho bạn một danh sách công việc cần làm được xếp hạng, có bằng chứng hỗ trợ về chính xác những gì cần sửa. Giống như có một nhà phân tích lược qua nhật ký của bạn mỗi đêm, rồi để danh sách ngắn trên bàn của bạn vào sáng hôm sau.
+Failproof AI Observability tìm kiếm các lỗi mà bạn chưa bao giờ viết quy tắc cho, và cung cấp cho bạn một danh sách việc cần làm được xếp hạng và có bằng chứng rõ ràng về chính xác những gì cần sửa. Nó giống như có một nhân viên phân tích cào qua các bản ghi nhật ký của bạn mỗi tối, rồi để lại danh sách ngắn trên bàn làm việc vào sáng hôm sau.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Một tour hai phút: từ một lần chạy được lên lịch đến một bản sửa bạn có thể hành động.*
+*Một tour hai phút: từ một lần chạy được lên lịch đến một bản sửa mà bạn có thể thực hiện.*
 
-![Trang Audits: các công việc định kỳ quét các phiên của bạn để tìm kiếm các mẫu lỗi, mỗi mẫu có lịch biểu và độ nhạy](/agenteye/images/audits.png)
-*Mỗi audit là một công việc định kỳ khai thác các phiên của bạn và đưa ra các khuyến nghị được xếp hạng, có bằng chứng hỗ trợ.*
+![Trang Audits: các công việc định kỳ quét các phiên của bạn để tìm các mẫu lỗi, mỗi mẫu có một lịch trình và độ nhạy](/agenteye/images/audits.png)
+*Mỗi audit là một công việc định kỳ khai thác các phiên của bạn và đưa ra các khuyến nghị được xếp hạng và có bằng chứng.*
 
-## Dừng đoán nhầm cái gì cần sửa tiếp theo
+## Ngừng đoán xem phải sửa cái gì tiếp theo
 
-Cảnh báo bắt các vấn đề bạn đã biết cần theo dõi. Audits bắt những vấn đề bạn không biết. Theo lịch biểu bạn đặt, một audit đọc qua tất cả các phiên agent của bạn và tìm kiếm những mẫu đáng sửa, vì vậy bạn dành thời gian hành động dựa trên những phát hiện thay vì cuộn qua nhật ký hy vọng tìm thấy chúng.
+Cảnh báo bắt lấy các vấn đề mà bạn đã biết phải theo dõi. Audits bắt lấy những vấn đề bạn không biết. Theo lịch trình bạn đặt, một audit sẽ đọc trên tất cả các phiên agent của bạn và tìm kiếm các mẫu đáng để sửa, để bạn dành thời gian thực hiện các phát hiện thay vì cuộn qua các bản ghi nhật ký hy vọng tự phát hiện chúng.
 
-Một lần chạy duy nhất nhắm vào những chế độ lỗi thực sự phá vỡ các agent trong sản xuất:
+Một lần chạy duy nhất nhắm vào các chế độ lỗi thực sự làm hỏng các agent trong môi trường production:
 
-- **Cụm lỗi**: cùng một lỗi lặp lại dưới một nguyên nhân gốc chung.
-- **Sự thay đổi so với đường cơ sở**: hành vi lặng lẽ trôi xa khỏi cửa sổ đã biết là tốt.
-- **Lỗi mục tiêu trong bản ghi**: các lần chạy về mặt kỹ thuật đã hoàn thành nhưng không bao giờ làm công việc.
-- **Sử dụng công cụ không đúng cách**: công cụ sai, các đối số xấu hoặc vòng lặp tiêu tốn các cuộc gọi.
-- **Sự cân bằng giữa chất lượng và chi phí**: nơi bạn trả quá nhiều cho kết quả mà bạn có thể nhận được rẻ hơn.
-- **Khoảng trống bảo phủ**: hành vi mà không có eval hoặc cảnh báo nào đang theo dõi.
+- **Các cụm lỗi**: cùng một lỗi lặp lại dưới một nguyên nhân gốc chung.
+- **Độ trôi so với đường cơ sở**: hành vi im lặng trôi ra xa khỏi cửa sổ được biết là tốt.
+- **Mục tiêu thất bại trong bảng điểm**: các lần chạy kết thúc về kỹ thuật nhưng không bao giờ hoàn thành công việc.
+- **Sử dụng tool sai**: tool sai, đối số tệ, hoặc các vòng lặp đốt gọi.
+- **Sự cân bằng giữa chất lượng và chi phí**: nơi bạn trả quá nhiều cho kết quả mà bạn có thể nhận được với giá rẻ hơn.
+- **Khoảng trống phủ sóng**: hành vi mà không có eval hoặc cảnh báo nào đang theo dõi.
 
-Bạn quyết định cách nó tìm kiếm cứng cõi bằng một cài đặt **độ nhạy** duy nhất (thấp, trung bình hoặc cao), vì vậy một agent staging ồn ào và một agent sản xuất khóa chặt có thể được điều chỉnh riêng cho tín hiệu bạn muốn.
+Bạn quyết định xem nó nhìn sâu đến mức nào với một cài đặt **độ nhạy** duy nhất (thấp, trung bình, hoặc cao), vì vậy một agent staging ồn ào và một agent production khóa chặt có thể được điều chỉnh riêng lẻ theo tín hiệu bạn muốn.
 
-## Mọi khuyến nghị đều đi kèm bằng chứng
+## Mỗi khuyến nghị đều kèm theo bằng chứng
 
-Bạn không bao giờ phải tin tưởng vào một phát hiện dựa vào niềm tin. Mỗi khuyến nghị trích dẫn các phiên chính xác nó đến từ đó và SQL đã hiển thị nó, vì vậy bạn có thể mở bằng chứng và xác nhận vấn đề chỉ trong một cú nhấp chuột thay vì thử nghịch đảo kỹ sư một tuyên bố.
+Bạn không bao giờ phải tin một phát hiện. Mỗi khuyến nghị trích dẫn các phiên chính xác mà nó đến từ đó và SQL đã hiển thị nó, vì vậy bạn có thể mở bằng chứng và xác nhận vấn đề trong một cú nhấp chuột thay vì đảo ngược kỹ thuật một yêu cầu.
 
-Điều đó cũng là điều giữ cho các audit trung thực. Máy chủ kiểm tra rằng mỗi phiên được trích dẫn thực sự tồn tại và **loại bỏ bất kỳ khuyến nghị có bằng chứng không đứng vững**, vì vậy audit điều tra nhưng không bao giờ phát minh. Những gì đặt trên danh sách của bạn là thực, có thể tái tạo được và được xếp hạng theo mức độ quan trọng, với những lợi thế lớn nhất ở đầu.
+Đó cũng là những gì giữ cho các audit trung thực. Máy chủ kiểm tra rằng mỗi phiên được trích dẫn thực sự tồn tại và **loại bỏ bất kỳ khuyến nghị nào có bằng chứng không chịu đựng được**, vì vậy audit điều tra nhưng không bao giờ bịa đặt. Những gì xuất hiện trên danh sách của bạn là thực tế, có thể tái tạo được, và được xếp hạng theo mức độ quan trọng của nó, với những chiến thắng lớn nhất ở đầu.
 
-## Biến một bản sửa thành một lá chắn
+## Biến một bản sửa thành một hàng rào bảo vệ
 
-Sửa một vấn đề chỉ là nửa lợi thắng. Nửa còn lại là đảm bảo nó không thể lặng lẽ quay lại. Mỗi phát hiện mang theo một **phím tắt một cú nhấp chuột dự thảo cảnh báo tái diễn**, được điền sẵn với một trình kích hoạt khởi đầu hợp lý bạn có thể điều chỉnh. Đóng phát hiện, kích hoạt cảnh báo, và lần tới mẫu đó xuất hiện lại bạn sẽ được gọi thay vì phát hiện lại trong một audit trong tương lai.
+Sửa một vấn đề chỉ là một nửa của chiến thắng. Nửa kia là đảm bảo nó không thể im lặng quay lại. Mỗi phát hiện đều có **một phím tắt một cú nhấp chuột mà soạn thảo một cảnh báo tái diễn**, được điền trước bằng kích hoạt bắt đầu hợp lý mà bạn có thể điều chỉnh. Đóng phát hiện, vũ trang cảnh báo, và lần tiếp theo mẫu đó xuất hiện lại, bạn sẽ được trang báo thay vì phát hiện lại nó trong một audit trong tương lai.
 
-## Nơi để tìm nó
+## Nơi tìm thấy nó
 
-Audits nằm trong bảng điều khiển tại **`/<org-slug>/audits`** (sidebar sang *analyze* sang *audits*). Xem các lần chạy và phát hiện cần **`audits:read`**; tạo, chỉnh sửa và phân loại các audit cần **`audits:write`**. Đặt phạm vi và tần suất của audit, sau đó nhấn **Run now** bất cứ khi nào bạn muốn kết quả ngay lập tức thay vì chờ lần chạy theo lịch biểu tiếp theo.
+Audits nằm trong bảng điều khiển tại **`/<org-slug>/audits`** (thanh bên đến *analyze* đến *audits*). Xem các lần chạy và phát hiện cần **`audits:read`**; tạo, chỉnh sửa, và xếp hạng audits cần **`audits:write`**. Đặt phạm vi và chu kỳ của audit, rồi nhấp **Run now** bất cứ khi nào bạn muốn kết quả ngay lập tức thay vì chờ lần vượt qua được lên lịch tiếp theo.
 
 ## Liên quan
 
-- [Alerts](/vi/agenteye/alerts): được gọi ngay khi ngưỡng bạn đã biết được vượt qua.
-- [Evaluations](/vi/agenteye/evaluations): cho điểm mọi lần chạy để các hồi quy chất lượng tự hiển thị.
-- [Error tracking](/vi/agenteye/error-tracking): nhóm và theo dõi các lỗi agent của bạn ném ra.
-- [Incidents](/vi/agenteye/incidents): theo dõi một vấn đề audit phát hiện ra cho đến khi được sửa.
+- [Alerts](/vi/agenteye/alerts): được trang báo vào thời điểm một ngưỡng bạn đã biết được vượt qua.
+- [Evaluations](/vi/agenteye/evaluations): ghi điểm mỗi lần chạy để các suy thoái chất lượng tự hiển thị.
+- [Error tracking](/vi/agenteye/error-tracking): nhóm và theo dõi các lỗi mà agent của bạn ném ra.
+- [Incidents](/vi/agenteye/incidents): theo dõi một vấn đề mà audit phát hiện ra cho đến khi sửa nó.

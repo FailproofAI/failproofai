@@ -1,28 +1,32 @@
 ---
 title: "Python SDK"
-description: "FailproofAI Observability Python SDK документация."
+description: "Узнайте ровно, что делали ваши AI-агенты в production: каждый запуск агента, вызов инструмента, запрос модели, хук и человеческое вмешательство."
 ---
 
 
-Точно узнайте, что ваши AI-агенты делали в production: каждый запуск агента, вызов инструмента, запрос модели, hook и человеческое вмешательство. FailproofAI Observability Python SDK записывает этот цифровой след изнутри кода вашего агента, чтобы вы могли отлаживать, проверять и оценивать происходившее. Используйте его, когда хотите, чтобы FailproofAI Observability отслеживал ваши агенты.
+Узнайте ровно, что делали ваши AI-агенты в production: каждый запуск агента, вызов инструмента, запрос модели, хук и человеческое вмешательство. Failproof AI Observability Python SDK записывает этот след изнутри кода вашего агента, чтобы вы могли отлаживать, проверять и оценивать происходящее. Используйте его всякий раз, когда хотите, чтобы Failproof AI Observability отслеживал ваши агенты.
 
-Под капотом SDK записывает структурированные события в локальные JSONL файлы, и демон collector'а их подхватывает и автоматически отправляет на платформу. Вы не управляете этими файлами самостоятельно.
+Под капотом SDK записывает структурированные события в локальные JSONL-файлы, а демон сборщика подхватывает их и автоматически отправляет их на платформу. Вам не нужно самостоятельно управлять этими файлами.
 
-> **Совет:** Новичок в FailproofAI Observability? Эта страница — полный справочник событий SDK.
+> **Совет:** Новичок в Failproof AI Observability? Эта страница — полный справочник событий SDK.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
 ## Установка
 
-Установите SDK из PyPI:
+SDK распространяется клиентам как приватный wheel, а не из публичного индекса пакетов. Ваш процесс подключения содержит инструкции по его получению, установке и закреплению версии — обратитесь к контакту Failproof AI, если вам нужен доступ.
+
+Проверьте, что он установлен:
 
 ```bash
-pip install agenteye
+python -c "import agenteye; print(agenteye.__version__)"
 ```
+
+Хотите, чтобы кодирующий агент провел всю интеграцию? [Python SDK Agent Skill](/ru/agenteye/python-sdk-skill) знает путь установки, планирует точки инструментирования, записывает их и проверяет, что события попадают.
 
 ---
 
@@ -56,7 +60,7 @@ agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="succ
 
 ### Инструментирование реального вызова
 
-На практике вы оборачиваете существующий код агента. Обрамите вызов модели `model_request` перед вызовом и `model_response` после, чтобы эти два события охватывали реальный запрос и FailproofAI Observability мог их сопоставить:
+На практике вы оборачиваете существующий код агента. Заключите вызов модели между `model_request` до и `model_response` после, чтобы два события охватывали реальный запрос и Failproof AI Observability мог их связать:
 
 ```python
 import anthropic
@@ -91,11 +95,11 @@ agenteye.event.model_response(
 )
 ```
 
-Оборачивайте вызовы инструментов аналогично с `tool_use` и `tool_result`, переиспользуя один и тот же `tool_call_id` в обеих парах.
+Оборачивайте вызовы инструментов аналогично: `tool_use` и `tool_result`, переиспользуя один `tool_call_id` в паре.
 
-Вот как выглядят эти события на dashboard, раскрашенные по типам и фильтруемые по окружению, агенту и сессии:
+Вот как выглядят эти события в панели управления, окрашенные по типам и фильтруемые по окружению, агенту и сеансу:
 
-![Живой поток событий, раскрашенный по типам событий и фильтруемый по окружению, агенту и сессии](/agenteye/images/events-stream.png)
+![Поток живых событий, окрашенный по типам событий и фильтруемый по окружению, агенту и сеансу](/agenteye/images/events-stream.png)
 
 ---
 
@@ -103,24 +107,24 @@ agenteye.event.model_response(
 
 ```python
 agenteye.configure(
-    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
-    flush_interval=0.5,      # float, seconds between flush cycles
-    environment=None,        # str | None. Deployment environment label
+    base_dir=None,           # Path | str | None. По умолчанию: $AGENTEYE_HOME или ~/.agenteye
+    flush_interval=0.5,      # float, секунды между циклами сброса
+    environment=None,        # str | None. Метка окружения развертывания
 )
 ```
 
-Вызовите один раз перед любым вызовом `event.*`. Безопасно опустить; стандартные значения работают из коробки. Все аргументы только именованные; передавайте их по имени как показано выше.
+Вызовите один раз перед любым вызовом `event.*`. Безопасно опустить; значения по умолчанию работают из коробки. Все аргументы только именованные; передавайте их по имени, как показано выше.
 
-Когда `base_dir` — это `None` (по умолчанию), SDK читает `$AGENTEYE_HOME`, если он установлен,
-иначе откатывается на `~/.agenteye`. Это совпадает с собственным разрешением collector'а,
-поэтому одна переменная окружения `AGENTEYE_HOME` настраивает общий spool событий для обоих
-SDK и collector'а.
+Когда `base_dir` имеет значение `None` (по умолчанию), SDK читает `$AGENTEYE_HOME`, если он установлен,
+иначе возвращается к `~/.agenteye`. Это совпадает с собственным разрешением сборщика,
+поэтому одна переменная среды `AGENTEYE_HOME` настраивает общую очередь событий для
+SDK и сборщика.
 
 ---
 
 ## Окружение
 
-Добавляйте ярлык окружения развёртывания к каждому событию (`production`, `staging`, `qa`, `canary` и т.д.). Установите один раз; SDK автоматически присоединит его ко всем событиям.
+Обозначьте каждое событие окружением развертывания (`production`, `staging`, `qa`, `canary` и т. д.). Установите один раз; SDK автоматически прикрепляет его к каждому событию.
 
 **Вариант 1: через `configure()`:**
 
@@ -128,55 +132,55 @@ SDK и collector'а.
 agenteye.configure(environment="production")
 ```
 
-**Вариант 2: через переменную окружения:**
+**Вариант 2: через переменную среды:**
 
 ```bash
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**Приоритет:** `configure(environment=...)` выигрывает над переменной окружения. Если ничего не установлено, по умолчанию `"dev"`.
+**Приоритет:** `configure(environment=...)` победит переменную среды. Если ни один не установлен, по умолчанию — `"dev"`.
 
-Значение окружения отображается как фильтр первого класса на dashboard и хранится на сервере для быстрых запросов.
+Значение окружения отображается как фильтр первого класса в панели управления и хранится на сервере для быстрых запросов.
 
-> **Предупреждение:** Значения окружения не должны содержать буквальную запятую `,`. Фильтры dashboard используют мультивыбор с разделением запятыми (`?environment=prod,staging`), поэтому окружение с названием `prod,blue` было бы разбито на два значения. События с окружениями, содержащими запятые, отклоняются при приёме.
+> **Предупреждение:** Значения окружения не должны содержать буквальную запятую `,`. Фильтры панели управления используют многовыборочную запятой разделенные значения на проводе (`?environment=prod,staging`), поэтому окружение с названием `prod,blue` будет разделено на два значения. События с окружениями, содержащими запятые, отклоняются при приеме.
 
 ---
 
-## Данные и приватность
+## Данные и конфиденциальность
 
-SDK записывает только поля, которые вы явно передаёте. Приглашения, сообщения, вводы и выводы инструментов и содержимое модели захватываются исключительно потому, что вы передали их вызову `event.*`. Ничто не читается из вашего процесса и не захватывается неявно. Любое поле, которое вы оставили неустановленным, полностью опускается из события; оно не записывается на диск.
+SDK записывает только поля, которые вы явно передаете. Подсказки, сообщения, входные и выходные данные инструментов, а также содержимое модели захватываются только потому, что вы передаете их вызову `event.*`. Ничто не читается из вашего процесса и не захватывается неявно. Любое поле, которое вы не установили, полностью пропускается из события; оно не записывается на диск.
 
-Это делает редакцию вашим выбором и вашей ответственностью. Если приглашение или payload инструмента содержит PII или секреты, которые вы не хотели бы хранить, удалите или замаскируйте их перед передачей методу события.
+Это делает редактирование вашей ответственностью и вашим выбором. Если подсказка или полезная нагрузка инструмента содержит PII или секреты, которые вы предпочитаете не хранить, очистите или замаскируйте их перед передачей методу события.
 
 ---
 
 ## Справочник событий
 
-Большинство событий идут в парах старт/конец, которые делят ID корреляции: `tool_use` и `tool_result` делят `tool_call_id`, `hook_triggered` и `hook_completed` делят `hook_id`, и `human_wait` и `human_input` делят `input_id`. Выдайте стартовое событие, выполните работу, затем выдайте конечное событие с тем же ID. FailproofAI Observability сопоставляет пару и вычисляет `duration_ms` для вас, поэтому вы никогда не передаёте `duration_ms` самостоятельно.
+Большинство событий поступают в парах начала/конца, которые имеют общий ID корреляции: `tool_use` и `tool_result` имеют `tool_call_id`, `hook_triggered` и `hook_completed` имеют `hook_id`, а `human_wait` и `human_input` имеют `input_id`. Испустите начальное событие, выполните работу, затем испустите конечное событие с тем же ID. Failproof AI Observability сопоставляет пару и вычисляет `duration_ms` для вас, поэтому вы никогда не передаете `duration_ms` самостоятельно.
 
-![Граф выполнения сессии в git-стиле рядом со временной шкалой её событий, реконструированный из парных событий, с панелью разбивки инструмента/модели/hook](/agenteye/images/session-detail.png)
+![График выполнения сеанса в git-подобном стиле рядом с его шкалой времени событий, восстановленной из парных событий, с панелью разбиения инструмента/модели/хука](/agenteye/images/session-detail.png)
 
 Все методы событий требуют эти два поля:
 
 | Поле | Тип | Описание |
 |---|---|---|
 | `session_id` | `str` | Идентифицирует запуск агента верхнего уровня |
-| `agent_id` | `str` | Идентифицирует, какой агент в пределах сессии выдал событие |
+| `agent_id` | `str` | Идентифицирует, какой агент в сеансе испустил событие |
 
-Все методы также принимают произвольные `**kwargs` для пользовательских метаданных (см. [Пользовательские поля](#custom-fields)).
+Все методы также принимают произвольные `**kwargs` для пользовательских метаданных (см. [Пользовательские поля](#пользовательские-поля)).
 
 ---
 
 ### `event.agent_start()`
 
-Выдаётся, когда агент начинает работу.
+Испускается, когда агент начинает работу.
 
 ```python
 agenteye.event.agent_start(
     session_id="run-001",
     agent_id="planner",
     goal="answer user query",   # str | None
-    parent_id=None,             # str | None - parent agent_id for nested agents
+    parent_id=None,             # str | None - parent_id для вложенных агентов
 )
 ```
 
@@ -184,7 +188,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-Выдаётся, когда агент заканчивает работу.
+Испускается, когда агент завершает работу.
 
 ```python
 agenteye.event.agent_end(
@@ -199,14 +203,14 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-Выдаётся, когда агент вызывает инструмент. Сопоставьте с `tool_result`; SDK автоматически вычисляет `duration_ms`.
+Испускается, когда агент вызывает инструмент. Сопоставьте с `tool_result`; SDK автоматически вычисляет `duration_ms`.
 
 ```python
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
-    tool_name="web_search",     # str, required
-    tool_call_id="toolu_01",    # str, required - correlation key for the matching tool_result
+    tool_name="web_search",     # str, обязательно
+    tool_call_id="toolu_01",    # str, обязательно - ключ корреляции для сопоставления tool_result
     input={"query": "..."},     # dict | None
 )
 ```
@@ -215,17 +219,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-Выдаётся, когда инструмент возвращает результат. Коррелирует с `tool_use` через `tool_call_id`.
+Испускается, когда инструмент возвращает результат. Соотносится с `tool_use` через `tool_call_id`.
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # must match the prior tool_use
+    tool_call_id="toolu_01",        # должен совпадать с предыдущим tool_use
     output={"results": ["..."]},    # Any | None
-    error=None,                     # str | None - set if the tool raised
-    # duration_ms is computed automatically - do not pass it
+    error=None,                     # str | None - установить, если инструмент вызвал исключение
+    # duration_ms вычисляется автоматически - не передавайте его
 )
 ```
 
@@ -233,60 +237,60 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-Выдаётся непосредственно перед отправкой приглашения к LLM.
+Испускается непосредственно перед отправкой подсказки в LLM.
 
 ```python
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
-    messages=[                   # list[dict] | None - conversation turns
+    model="claude-sonnet-4-6", # str | None - любая строка провайдера/модели; не валидируется
+    messages=[                   # list[dict] | None - ходы беседы
         {"role": "user", "content": "..."},
     ],
-    system="You are helpful.",   # Any | None - str or list of content blocks
-    tools=[                      # list[dict] | None - tool schemas offered to the model
+    system="You are helpful.",   # Any | None - str или список блоков содержимого
+    tools=[                      # list[dict] | None - схемы инструментов, предлагаемые модели
         {"name": "search", "input_schema": {"type": "object"}},
     ],
 )
 ```
 
-Записи `messages` принимают либо простую строку `content`, либо Anthropic-стиль список блоков `content`. Параметры выборки (`temperature`, `max_tokens` и т.д.) могут передаваться как дополнительные kwargs.
+Записи `messages` принимают либо простое строковое `content`, либо Anthropic-подобный список блоков `content`. Параметры выборки (`temperature`, `max_tokens` и т. д.) могут быть переданы как дополнительные kwargs.
 
 ---
 
 ### `event.model_response()`
 
-Выдаётся, когда LLM возвращает ответ.
+Испускается, когда LLM возвращает ответ.
 
 ```python
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    model="claude-sonnet-4-6", # str | None - любая строка провайдера/модели; не валидируется
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
-    content=[                    # Any | None - str, or list of content blocks
+    content=[                    # Any | None - str или список блоков содержимого в стиле Anthropic
         {"type": "text", "text": "..."},
     ],
     role="assistant",            # str | None
 )
 ```
 
-`content` принимает либо простую строку (для универсальных поставщиков), либо список Anthropic-стиля блоков содержимого. Вызовы инструментов находятся внутри `content` как блоки `{"type": "tool_use", ...}`, без отдельного поля `tool_calls`.
+`content` принимает либо простую строку (универсальные провайдеры), либо список блоков содержимого в стиле Anthropic. Вызовы инструментов живут внутри `content` как блоки `{"type": "tool_use", ...}`, без отдельного поля `tool_calls`.
 
 ---
 
 ### `event.hook_triggered()`
 
-Выдаётся, когда hook срабатывает. Сопоставьте с `hook_completed`; SDK автоматически вычисляет `duration_ms`.
+Испускается, когда срабатывает хук. Сопоставьте с `hook_completed`; SDK автоматически вычисляет `duration_ms`.
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
-    hook_name="pre_tool_use",   # str, required
-    hook_id="hook-abc",         # str, required - correlation key
+    hook_name="pre_tool_use",   # str, обязательно
+    hook_id="hook-abc",         # str, обязательно - ключ корреляции
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -296,18 +300,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-Выдаётся, когда hook заканчивает работу. Коррелирует с `hook_triggered` через `hook_id`.
+Испускается, когда хук завершается. Соотносится с `hook_triggered` через `hook_id`.
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # must match the prior hook_triggered
+    hook_id="hook-abc",         # должен совпадать с предыдущим hook_triggered
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # duration_ms is computed automatically - do not pass it
+    # duration_ms вычисляется автоматически - не передавайте его
 )
 ```
 
@@ -315,77 +319,77 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-Выдаётся, когда происходит необработанная ошибка.
+Испускается, когда происходит необработанная ошибка.
 
 ```python
 agenteye.event.error(
     session_id="run-001",
     agent_id="planner",
-    error_type="TimeoutError",  # str, required
-    message="timed out",        # str, required
+    error_type="TimeoutError",  # str, обязательно
+    message="timed out",        # str, обязательно
     traceback="Traceback...",   # str | None
 )
 ```
 
 ---
 
-## События Human-in-the-Loop
+## События с участием человека
 
-События human-in-the-loop дают вам надзор над моментами, когда человек вмешивается в выполнение агента (ожидание одобрения, предоставление ввода, пауза или остановка агента). Они позволяют вам измерить, сколько времени люди тратят на ответ (SDK автоматически вычисляет `duration_ms` на парных событиях), проверить, кто приостановил или прервал агента, и создать рабочие процессы одобрения и надзора, которые отображаются на dashboard.
+События с участием человека дают вам контроль над моментами, когда человек вмешивается в выполнение агента (ожидание одобрения, ввод данных, приостановка или остановка агента). Они позволяют измерить, сколько времени люди тратят на ответ (SDK автоматически вычисляет `duration_ms` на парных событиях), проверить, кто приостановил или прервал агента, и создавать рабочие процессы одобрения и контроля, которые отображаются на панели управления.
 
 ### `event.human_wait()`
 
-Выдаётся, когда агент приостанавливает выполнение в ожидании человека для предоставления ввода. Сопоставьте с `human_input`; SDK автоматически вычисляет `duration_ms` (сколько времени человек потратил на ответ).
+Испускается, когда агент приостанавливает выполнение в ожидании ввода человека. Сопоставьте с `human_input`; SDK автоматически вычисляет `duration_ms` (как долго человек отвечал).
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, required - correlation key for the matching human_input
-    prompt="Do you approve this action?",        # str | None - the question shown to the human
-    options=["approve", "reject", "defer"],      # list[str] | None - choices presented to the human
-    reason="approval_required",                  # str | None - why the agent is waiting
+    input_id="inp-abc",                          # str, обязательно - ключ корреляции для сопоставления human_input
+    prompt="Do you approve this action?",        # str | None - вопрос, показываемый человеку
+    options=["approve", "reject", "defer"],      # list[str] | None - варианты, предоставляемые человеку
+    reason="approval_required",                  # str | None - почему агент ждет
 )
 ```
 
 ### `event.human_input()`
 
-Выдаётся, когда человек предоставляет ввод и агент возобновляет работу. Коррелирует с `human_wait` через `input_id`. `duration_ms` автоматически вычисляется и не должен передаваться вызывающей стороной.
+Испускается, когда человек предоставляет ввод и агент возобновляет работу. Соотносится с `human_wait` через `input_id`. `duration_ms` вычисляется автоматически и не должен быть передан вызывающей стороной.
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, required - must match the prior human_wait
-    response="approve",    # str | None - the human's answer (free text or selected option)
-    # duration_ms is computed automatically - do not pass it
+    input_id="inp-abc",    # str, обязательно - должен совпадать с предыдущим human_wait
+    response="approve",    # str | None - ответ человека (свободный текст или выбранный вариант)
+    # duration_ms вычисляется автоматически - не передавайте его
 )
 ```
 
 ### `event.human_pause()`
 
-Выдаётся, когда человек активно приостанавливает агента (например, через элемент управления dashboard). Агент приостановлен, но не завершён.
+Испускается, когда человек активно приостанавливает агента (например, через элемент управления панели управления). Агент приостановлен, но не завершен.
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - who paused the agent
+    user_id="usr_42",         # str | None - кто приостановил агента
 )
 ```
 
 ### `event.human_interrupt()`
 
-Выдаётся, когда человек активно останавливает агента в середине выполнения. В отличие от `human_pause`, работа агента завершается, а не приостанавливается.
+Испускается, когда человек активно останавливает агента во время выполнения. В отличие от `human_pause`, работа агента завершается, а не приостанавливается.
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - who interrupted the agent
-    at_step="tool_use:web_search",   # str | None - what the agent was doing when stopped
+    user_id="usr_42",                # str | None - кто прервал агента
+    at_step="tool_use:web_search",   # str | None - чем занимался агент при остановке
 )
 ```
 
@@ -401,30 +405,30 @@ agenteye.event.tool_use(
     agent_id="planner",
     tool_name="db_query",
     tool_call_id="toolu_02",
-    tenant_id="acme",           # custom field
-    region="us-east-1",         # custom field
+    tenant_id="acme",           # пользовательское поле
+    region="us-east-1",         # пользовательское поле
 )
 ```
 
-`timestamp`, `type` и `environment` зарезервированы и вызывают `ValueError` (`Reserved field names cannot be used as custom fields: [...]`), если переданы как пользовательские поля. `session_id` и `agent_id` — обязательные параметры для каждого метода события и не могут быть переданы второй раз; Python вызывает `TypeError`, если вы это сделаете. Вместо этого установите окружение с `configure(environment=...)` (или переменной `AGENTEYE_ENVIRONMENT`).
+`timestamp`, `type` и `environment` зарезервированы и вызывают `ValueError` (если переданы как пользовательские поля. `session_id` и `agent_id` — обязательные параметры для каждого метода события и не могут быть поданы второй раз; Python вызовет `TypeError`, если вы это сделаете. Вместо этого установите окружение с помощью `configure(environment=...)` (или переменной `AGENTEYE_ENVIRONMENT`).
 
 ---
 
-## Как события записываются
+## Как записываются события
 
-События буферизуются внутри процесса и выводятся на диск каждые `flush_interval` секунд (по умолчанию 500 мс). Каждый вывод записывает один JSONL файл:
+События буферизируются в процессе и сбрасываются на диск каждые `flush_interval` секунд (по умолчанию 500 мс). Каждый сброс записывает один JSONL-файл:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-Collector отслеживает этот каталог и автоматически загружает файлы. Вам не нужно управлять этими файлами напрямую.
+Сборщик отслеживает этот каталог и автоматически загружает файлы. Вам не нужно напрямую управлять этими файлами.
 
-Каждый файл записывается атомарно: SDK записывает во временный файл, а затем переименовывает его на место, поэтому collector никогда не видит наполовину написанный файл. Финальный вывод также запускается при выходе вашего процесса, поэтому события, буферизованные в последний интервал, не теряются. Если collector в сети отсутствует, события просто накапливаются как файлы на диске и отправляются, когда он вернётся.
+Каждый файл записывается атомарно: SDK записывает во временный файл, а затем переименовывает его на место, поэтому сборщик никогда не видит полузаписанный файл. Окончательный сброс также запускается при выходе вашего процесса, поэтому события, буферизованные в последнем интервале, не теряются. Если сборщик отключен, события просто накапливаются как файлы на диске и отправляются, как только он вернется в сеть.
 
 ---
 
-## Следующие шаги
+## Дальнейшие шаги
 
-- [Поток событий](/ru/agenteye/event-stream): просматривайте эти события в реальном времени, раскрашенные и фильтруемые по окружению, агенту и сессии.
-- [Сессии](/ru/agenteye/sessions): посмотрите, как парные события реконструируют каждый запуск агента как граф выполнения и временную шкалу.
+- [Поток событий](/ru/agenteye/event-stream): смотрите, как эти события прибывают в реальном времени, окрашенные и фильтруемые по окружению, агенту и сеансу.
+- [Сеансы](/ru/agenteye/sessions): посмотрите, как парные события восстанавливают каждый запуск агента как граф выполнения и шкалу времени.

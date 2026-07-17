@@ -1,30 +1,30 @@
 ---
-title: "एजेंटों के लिए CLI recipes"
-description: "FailproofAI Observability CLI recipes for agents documentation."
+---
+title: "एजेंट्स के लिए CLI रेसिपीज़"
+description: "कॉपी-पेस्ट क्वेरी पैटर्न और jq रेसिपीज़ जो सेशन, इवेंट और इवैलुएशन डेटा को ऐसे कुछ में बदल देते हैं जिसे स्क्रिप्ट या कोडिंग एजेंट ऑटोमेट कर सकता है।"
 ---
 
+सेशन, इवेंट और इवैलुएशन डेटा (और री-इवैलुएशन ट्रिगर करें) सीधे स्क्रिप्ट या कोडिंग एजेंट से खींचें, stdout पर क्लीन JSON के साथ जो सीधे `jq` में पाइप होता है। ये रेसिपीज़ Failproof AI Observability के डेटा को टर्मिनल यूजर या AI कोडिंग एजेंट (Claude Code, Cursor) के लिए कुछ ऐसा बनाती हैं जिसे डैशबोर्ड से क्लिक किए बिना क्वेरी और ऑटोमेट किया जा सकता है।
 
-किसी स्क्रिप्ट या कोडिंग एजेंट से सीधे सेशन, इवेंट और मूल्यांकन डेटा खींचें (और पुनः-मूल्यांकन ट्रिगर करें), `jq` में सीधे पाइप करने के लिए stdout पर साफ JSON के साथ। ये recipes FailproofAI Observability के डेटा को एक टर्मिनल यूजर या एक AI कोडिंग एजेंट (Claude Code, Cursor) के लिए कुछ ऐसा बनाता है जो डैशबोर्ड के माध्यम से क्लिक किए बिना क्वेरी और ऑटोमेट कर सकता है।
-
-नीचे दिए गए पैटर्न FailproofAI Observability CLI (`agenteye`) के लिए कॉपी-पेस्ट के लिए तैयार हैं। इंस्टॉलेशन, प्रमाणीकरण और पूर्ण विकल्प सूची के लिए [CLI](/hi/agenteye/cli) देखें; `agenteye -h` या `agenteye <command> -h` चलाएँ अंतर्निहित सहायता के लिए।
+नीचे दिए गए पैटर्न Failproof AI Observability CLI (`agenteye`) के लिए कॉपी-पेस्ट के लिए तैयार हैं। इंस्टॉलेशन, ऑथेंटिकेशन और पूरी ऑप्शन लिस्ट के लिए [CLI](/hi/agenteye/cli) देखें; बिल्ट-इन हेल्प के लिए `agenteye -h` या `agenteye <command> -h` चलाएँ।
 
 ## स्वर्णिम नियम
 
-1. **ग्लोबल ऑप्शन कमांड से *पहले* जाता है।** `agenteye --json sessions` सही है; `agenteye sessions --json` नहीं है। ग्लोबल्स हैं `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`।
-2. **जब भी आप आउटपुट को पार्स करते हैं तब `--json` पास करें।** डेटा stdout पर JSON के रूप में जाता है; मानव स्थिति और त्रुटियां stderr पर जाती हैं, इसलिए stdout `jq` में पाइप करने के लिए साफ रहता है।
-3. **stderr टेक्स्ट पर नहीं, exit code पर ब्रांच करें**: `0` ok · `1` अप्रत्याशित त्रुटि · `2` बुरे तर्क · `3` डैशबोर्ड तक नहीं पहुंच सकते · `4` लॉगिन नहीं किया गया या समाप्त · `5` अनुमति नहीं · `6` संसाधन नहीं मिला।
-4. **`-h` से खोजें।** हर कमांड अपने फिल्टर, वैल्यू फॉर्मेट और JSON आकार को दस्तावेज करता है।
+1. **ग्लोबल ऑप्शंस कमांड *से पहले* आते हैं।** `agenteye --json sessions` सही है; `agenteye sessions --json` नहीं है। ग्लोबल्स हैं `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`।
+2. **जब भी आप आउटपुट पार्स करें तो `--json` पास करें।** डेटा **stdout** पर JSON के रूप में जाता है; मानव स्टेटस और errors stderr पर जाते हैं, तो stdout क्लीन रहता है `jq` में पाइप करने के लिए।
+3. **stderr टेक्स्ट पर नहीं, exit कोड पर ब्रांच करें**: `0` ठीक है · `1` अप्रत्याशित error · `2` ख़राब arguments · `3` डैशबोर्ड तक नहीं पहुँच सकते · `4` लॉगिन नहीं है या एक्सपायरड है · `5` परमिशन नहीं है · `6` रिसोर्स नहीं मिला।
+4. **`-h` से खोजें।** हर कमांड अपने फिल्टर्स, वैल्यू फॉर्मेट्स और JSON शेप को दस्तावेज़ित करता है।
 
-## एक बार का सेटअप
+## एक बार सेटअप
 
 ```bash
-export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # so you don't repeat --base-url
-agenteye login --email you@example.com                       # paste the emailed code; valid ~24h
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # ताकि आप --base-url दोहराएँ नहीं
+agenteye login --email you@example.com                       # ईमेल किया गया कोड पेस्ट करें; ~24h के लिए मान्य
 ```
 
-## काम करने से पहले प्रमाणीकरण की पुष्टि करें
+## काम करने से पहले ऑथ की पुष्टि करें
 
-`whoami` लापता या समाप्त सेशन पर कभी त्रुटि नहीं देता; यह इसके बजाय `logged_in:false` रिपोर्ट करता है, इसलिए एक एजेंट प्रमाणीकरण स्थिति को सुरक्षित रूप से जांच सकता है। (यदि कोई बेस URL सेट नहीं है या डैशबोर्ड तक पहुंच योग्य नहीं है तो यह अभी भी गैर-शून्य exit दे सकता है।)
+`whoami` कभी missing या एक्सपायरड सेशन पर error नहीं करता; इसके बजाय `logged_in:false` रिपोर्ट करता है, तो एक एजेंट सुरक्षित रूप से ऑथ स्टेट प्रोब कर सकता है। (यदि कोई base URL सेट नहीं है या डैशबोर्ड अनरीचेबल है तो यह अभी भी non-zero exit कर सकता है।)
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -32,98 +32,98 @@ if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
 fi
 ```
 
-## विफल या कम स्कोरिंग वाले सेशन खोजें
+## विफल या कम-स्कोरिंग सेशन खोजें
 
 ```bash
-# sessions in the last 24h whose evaluation errored
+# पिछले 24h में सेशन जिनकी evaluation errored
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# evaluations scoring <= 0.5 on helpfulness, for one agent
+# एक एजेंट के लिए helpfulness पर <= 0.5 स्कोर करने वाली evaluations
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-स्कोर फिल्टरिंग **`evals`** पर रहती है, `sessions` पर नहीं। `--score KEY:MIN..MAX` दोहराया जा सकता है और AND-संयुक्त है; कोई भी सीमा वैकल्पिक है (`..0.5` मतलब ≤ 0.5, `0.9..` मतलब ≥ 0.9)। आप प्रति अनुरोध 20 स्कोर फिल्टर तक पास कर सकते हैं; अधिक HTTP 400 देता है। `sessions` में `evals` के साथ `--env`, `--status`, `--agent-id`, `--session-id` और समय-श्रेणी फिल्टर साझा होते हैं, लेकिन `--score` नहीं है।
+स्कोर फिल्टरिंग `sessions` पर नहीं, **`evals`** पर रहती है। `--score KEY:MIN..MAX` दोहराने योग्य है और AND-कम्बाइनड है; कोई भी बाउंड ऑप्शनल है (`..0.5` का मतलब ≤ 0.5, `0.9..` का मतलब ≥ 0.9)। आप प्रति रिक्वेस्ट 20 तक स्कोर फिल्टर पास कर सकते हैं; अधिक HTTP 400 रिटर्न करता है। `sessions` `--env`, `--status`, `--agent-id`, `--session-id` और `evals` के साथ time-range फिल्टर शेयर करता है, लेकिन `--score` नहीं है।
 
 ## एक सेशन को एंड-टू-एंड पढ़ें
 
-कोई एकल `session show` कमांड नहीं है। ईवेंट ट्रेल को सेशन के मूल्यांकन के साथ संयोजित करें:
+कोई single `session show` कमांड नहीं है। event ट्रेल को सेशन की evaluation के साथ कम्बाइन करें:
 
 ```bash
-# the session's latest evaluation (status + scores)
+# सेशन की लेटेस्ट evaluation (status + scores)
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# every event in the run (raise --limit for a full sweep)
+# रन में हर event (पूरी स्वीप के लिए --limit बढ़ाएँ)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# just the tool calls in a session (--full is required to get the raw payload)
+# सिर्फ एक सेशन में tool कॉल्स (--full raw payload पाने के लिए जरूरी है)
 agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
 
-> **नोट:** डिफॉल्ट रूप से, `events` एक तेज, payload-मुक्त फीड पढ़ता है। प्रत्येक ईवेंट एक सर्वर-कंप्यूटेड वन-लाइन `summary` प्लस `is_error` और टोकन काउंट जैसे फ्लैग ले जाता है, लेकिन `payload` `{}` के रूप में वापस आता है। कच्ची payload खींचने के लिए, `--full` (या `--fields payload`) जोड़ें। पूर्ण फीड स्केल पर धीमी है, इसलिए इसे सीमित रखें: `--full` को एकल `--session-id` के साथ जोड़ी।
+> **नोट:** डिफॉल्ट रूप से, `events` फास्ट, payload-फ्री फीड पढ़ता है। हर event एक सर्वर-कम्प्यूटेड वन-लाइन `summary` प्लस `is_error` जैसे फ्लैग्स और टोकन काउंट्स कैरी करता है, लेकिन `payload` `{}` के रूप में वापस आता है। raw payload खींचने के लिए, `--full` (या `--fields payload`) जोड़ें। पूरी फीड स्केल पर धीमी है, तो इसे बाउंडेड रखें: `--full` को single `--session-id` के साथ पेयर करें।
 
-## सबकुछ प्राप्त करें (pagination)
+## सब कुछ फेच करें (pagination)
 
-परिणाम सबसे नए-पहले हैं और cursor-paginated हैं।
+रिजल्ट्स नेवेस्ट-फर्स्ट और कर्सर-पेजिनेटेड हैं।
 
 ```bash
-# one shot: fetch up to 500 rows in 200-row pages
+# वन शॉट: 200-row पेजेज़ में 500 तक रो फेच करें
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# manual paging: feed next_cursor back in
+# मैनुअल पेजिंग: next_cursor को वापस फीड करें
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
 ```
 
-## --fields के साथ आउटपुट को स्लिम करें
+## --fields के साथ आउटपुट स्लिम करें
 
-keys को (टेबल और `--json` दोनों में) सीमित करें कि एजेंट को क्या पढ़ना चाहिए।
+कीज़ (टेबल और `--json` दोनों में) को प्रतिबंधित करें जो एक एजेंट को पढ़ना होगा उसे कम करने के लिए।
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
 agenteye --json events --session-id run-001 --fields ts,event_type --all
 ```
 
-अज्ञात फील्ड नाम खारिज कर दिए जाते हैं (exit `2`) वैध सूची के साथ, फील्ड नाम खोजने का एक सस्ता तरीका।
+अज्ञात फील्ड नेम्स को रिजेक्ट किया जाता है (exit `2`) वैलिड लिस्ट के साथ, फील्ड नेम्स खोजने का सस्ता तरीका।
 
-## वैध फिल्टर वैल्यूज खोजें
+## वैलिड फिल्टर वैल्यूज़ खोजें
 
 ```bash
-agenteye --json list envs | jq -r '.values[]'           # values for --env
-agenteye --json list tools | jq -r '.values[]'          # tool names; also agents, models, event_types, …
-agenteye --json list score_filters | jq -r '.values[]'  # valid KEY for --score KEY:MIN..MAX
+agenteye --json list envs | jq -r '.values[]'           # --env के लिए वैल्यूज़
+agenteye --json list tools | jq -r '.values[]'          # टूल नेम्स; agents, models, event_types भी
+agenteye --json list score_filters | jq -r '.values[]'  # --score KEY:MIN..MAX के लिए वैलिड KEY
 ```
 
-## अपने org को चुनें (multi-tenant)
+## अपना ऑर्ग चुनें (multi-tenant)
 
-यदि आप एक से अधिक org से संबंधित हैं, तो login पर सक्रिय tenant चुनें (यह सहेजा जाता है):
+यदि आप एक से अधिक ऑर्ग से संबंधित हैं, तो लॉगिन पर सक्रिय टेनेंट चुनें (यह सेव होता है):
 
 ```bash
-agenteye login --org acme --email you@corp.com   # set the tenant in the same step as login
+agenteye login --org acme --email you@corp.com   # लॉगिन के समान स्टेप में टेनेंट सेट करें
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
-agenteye --org globex --json sessions --since 24h   # override for one command
+agenteye --org globex --json sessions --since 24h   # एक कमांड के लिए ओवरराइड करें
 ```
 
-एक बहु-org login बिना `--org` के गैर-शून्य exit देता है और चुनने के लिए orgs को प्रिंट करता है।
+`--org` के बिना multi-org लॉगिन non-zero exit करता है और चुनने के लिए ऑर्ग्स प्रिंट करता है।
 
-## SDK/collector के लिए एक API key प्रदान करें
+## SDK/collector के लिए API कुंजी प्रोविजन करें
 
 ```bash
-# the secret is printed ONCE, with --json it's the .key field
+# सीक्रेट एक बार प्रिंट होता है, --json के साथ यह .key फील्ड है
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # rotate; agenteye keys disable ci-bot --yes to revoke
+agenteye keys regenerate ci-bot --yes    # रोटेट करें; रिवोक करने के लिए agenteye keys disable ci-bot --yes
 ```
 
-## एक सहेजी गई या ad-hoc क्वेरी चलाएँ
+## सेव्ड या एड-हॉक क्वेरी चलाएँ
 
 ```bash
 agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
-agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a positional $1
+agenteye --json query run errs --arg prod | jq '.rows'   # सेव्ड क्वेरी + पॉज़िशनल $1
 ```
 
-## एक घटना को गैर-इंटरैक्टिवली ट्रिएज करें
+## घटना को गैर-इंटरैक्टिवली ट्राइएज करें
 
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
@@ -132,9 +132,9 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **नोट:** Mutations अपने कन्फर्मेशन प्रॉम्प्ट को `--json` के तहत या जब stdin एक TTY नहीं है तब ऑटो-स्किप करते हैं, इसलिए एजेंट कभी hang नहीं करते; अन्यत्र स्पष्ट रूप से स्किप करने के लिए `--yes`/`-y` पास करें।
+> **नोट:** म्यूटेशंस `--json` के तहत या जब stdin TTY नहीं है तो अपनी कन्फर्मेशन प्रॉम्प्ट ऑटो-स्किप करते हैं, तो एजेंट्स कभी हैंग नहीं होते; दूसरी जगह स्पष्ट रूप से स्किप करने के लिए `--yes`/`-y` पास करें।
 
-## एक स्क्रिप्ट में Exit-code हैंडलिंग
+## स्क्रिप्ट में Exit-code हैंडलिंग
 
 ```bash
 out=$(agenteye --json sessions --since 1h) || code=$?
@@ -147,9 +147,9 @@ case "${code:-0}" in
 esac
 ```
 
-## JSON आउटपुट आकार
+## JSON आउटपुट शेप्स
 
-| कमांड | stdout JSON (with `--json`) |
+| कमांड | stdout JSON (`--json` के साथ) |
 |---|---|
 | `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` या `{"logged_in": false}` |
 | `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
@@ -158,22 +158,22 @@ esac
 | `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
 | `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
 | `list <kind>` | `{"kind", "values": [...]}` |
-| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` shown once) |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` एक बार दिखाया गया) |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| create/update/delete (any) | the resource object, या `{"deleted": true, "id"}` deletes के लिए |
-| failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` stdout पर |
+| create/update/delete (कोई भी) | रिसोर्स ऑब्जेक्ट, या डिलीट्स के लिए `{"deleted": true, "id"}` |
+| विफलता (कोई भी, `--json` के साथ) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` stdout पर |
 
-- प्रत्येक **event** आइटम (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`। ध्यान दें कि `payload` `{}` है जब तक आप `--full` (या `--fields payload`) के साथ पूर्ण फीड का अनुरोध नहीं करते।
-- प्रत्येक **evaluation** आइटम (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`।
-- प्रत्येक **session** आइटम (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`।
+- हर **event** आइटम (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`। नोट करें कि `payload` `{}` है जब तक आप `--full` (या `--fields payload`) के साथ पूरी फीड न मांगें।
+- हर **evaluation** आइटम (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`।
+- हर **session** आइटम (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`।
 
-प्रत्येक कमांड का `--fields` बिल्कुल अपने आइटम के फील्ड नाम स्वीकार करता है। सेट `sessions` और `evals` के बीच अलग है, इसलिए एक के लिए मान्य नाम दूसरे द्वारा खारिज किया जा सकता है।
+हर कमांड का `--fields` बिल्कुल अपने आइटम के फील्ड नेम्स स्वीकार करता है। सेट `sessions` और `evals` के बीच भिन्न है, तो एक के लिए वैलिड नाम दूसरे द्वारा रिजेक्ट किया जा सकता है।
 
 ## अगले कदम
 
-- [CLI](/hi/agenteye/cli): इंस्टॉलेशन, प्रमाणीकरण, और हर कमांड के लिए पूर्ण विकल्प संदर्भ।
-- [CLI agent skill](/hi/agenteye/cli-skill): इन recipes को एक कौशल के रूप में पैकेज करें जो आपका कोडिंग एजेंट लोड कर सकता है।
-- [API keys](/hi/agenteye/api-keys): वे keys बनाएँ और scope करें जिनके साथ CLI, SDK, और collector प्रमाणीकृत होते हैं।
-- [Python SDK](/hi/agenteye/python-sdk): FailproofAI Observability में इवेंट भेजें ताकि इन recipes के लिए क्वेरी करने के लिए डेटा हो।
+- [CLI](/hi/agenteye/cli): इंस्टॉलेशन, ऑथेंटिकेशन और हर कमांड के लिए पूरी ऑप्शन रेफरेंस।
+- [CLI एजेंट स्किल](/hi/agenteye/cli-skill): इन रेसिपीज़ को स्किल के रूप में पैकेज करें जो आपका कोडिंग एजेंट लोड कर सकता है।
+- [API कुंजियाँ](/hi/agenteye/api-keys): CLI, SDK और collector को ऑथेंटिकेट करने वाली कुंजियाँ बनाएँ और स्कोप करें।
+- [Python SDK](/hi/agenteye/python-sdk): Failproof AI Observability में events भेजें ताकि इन रेसिपीज़ को क्वेरी करने के लिए डेटा हो।

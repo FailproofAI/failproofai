@@ -1,68 +1,69 @@
 ---
+---
 title: "Bảo mật"
-description: "Tài liệu Bảo mật FailproofAI Observability."
+description: "Failproof AI Observability được xây dựng để hoạt động gần các agents sản xuất của bạn, nghĩa là nó có thể nhìn thấy các prompts, đầu vào công cụ và đầu ra của bạn."
 ---
 
 
-FailproofAI Observability được xây dựng để hoạt động gần với các agent production của bạn, điều này có nghĩa là nó có thể thấy các prompts, đầu vào công cụ và đầu ra của bạn. Trang này giải thích cách nó giữ dữ liệu đó bị cô lập, được kiểm soát và trong tay bạn. Nếu bạn đang đánh giá FailproofAI Observability cho một cuộc kiểm tra bảo mật, hãy bắt đầu từ đây.
+Failproof AI Observability được xây dựng để hoạt động gần các agents sản xuất của bạn, nghĩa là nó có thể nhìn thấy các prompts, đầu vào công cụ và đầu ra của bạn. Trang này giải thích cách nó giữ dữ liệu đó bị cách ly, được kiểm soát và nằm trong tay bạn. Nếu bạn đang đánh giá Failproof AI Observability cho một cuộc kiểm tra bảo mật, hãy bắt đầu ở đây.
 
 ---
 
 ## Dữ liệu của bạn ở lại trong môi trường của bạn
 
-FailproofAI Observability là tự lưu trữ. Các sự kiện, prompts, phản hồi mô hình và phân tích được lưu trữ trong cơ sở dữ liệu của riêng bạn, trong môi trường của riêng bạn. Không có dữ liệu nào được gửi đến một SaaS bên thứ ba để lưu trữ, và dữ liệu của bạn ở lại trong tài khoản cloud của riêng bạn.
+Failproof AI Observability được tự lưu trữ. Các events, prompts, phản hồi từ mô hình và phân tích được lưu trữ trong các cơ sở dữ liệu của riêng bạn, trong môi trường của riêng bạn. Không có dữ liệu nào được gửi đến SaaS của bên thứ ba để lưu trữ, và dữ liệu của bạn vẫn nằm trong tài khoản cloud của riêng bạn.
 
 ---
 
-## Cô lập theo tổ chức
+## Cách ly tenant
 
-Một instance FailproofAI Observability có thể lưu trữ nhiều tổ chức, và mỗi tổ chức được cô lập ở lớp lưu trữ — được thực thi bởi cơ sở dữ liệu, không chỉ là giao diện người dùng:
+Một phiên bản Failproof AI Observability có thể lưu trữ nhiều tổ chức, và mỗi tổ chức được cách ly ở lớp lưu trữ — được thực thi bởi cơ sở dữ liệu, không chỉ là giao diện người dùng:
 
-- Dữ liệu hoạt động của tổ chức (người dùng, khóa, bảng điều khiển, truy vấn đã lưu) được phạm vi đến tổ chức đó, và các lần đọc xuyên tổ chức bị chặn bởi chính cơ sở dữ liệu.
-- Mỗi sự kiện được nhập được đánh dấu bằng tổ chức sở hữu của nó, do đó các sự kiện của một tổ chức không bao giờ có thể được đọc bởi tổ chức khác.
+- Dữ liệu hoạt động của tổ chức (người dùng, khóa, bảng điều khiển, truy vấn đã lưu) được phạm vi đến tổ chức đó, và việc đọc chéo tổ chức bị chặn bởi chính cơ sở dữ liệu.
+- Mỗi event được nhập đều được gắn dấu với tổ chức sở hữu của nó, do đó các sự kiện của một tổ chức không bao giờ có thể được đọc bởi tổ chức khác.
 
-Mỗi tuyến đường bảng điều khiển được phạm vi dưới một org slug (`/<org-slug>/…`).
+Mỗi tuyến đường bảng điều khiển được phạm vi dưới một slug tổ chức (`/<org-slug>/…`).
 
 ---
 
 ## Đăng nhập
 
-FailproofAI Observability sử dụng đăng nhập không mật khẩu, dựa trên email. Không có mật khẩu để bị đánh cắp hoặc rò rỉ. Một người dùng yêu cầu một mã một lần (hoặc một liên kết magic một cú nhấp), được gửi qua email cho họ và hết hạn nhanh chóng. Đăng nhập được kiểm soát bởi một **danh sách cho phép**: chỉ những địa chỉ email (hoặc miền) mà bạn cho phép mới có thể xác thực.
+Failproof AI Observability sử dụng đăng nhập không có mật khẩu dựa trên email. Không có mật khẩu để bị lừa đảo hoặc rò rỉ. Người dùng yêu cầu một mã một lần (hoặc một liên kết magic một cú nhấp chuột), được gửi email cho họ và hết hạn nhanh chóng. Đăng nhập được kiểm soát bởi **danh sách cho phép**: chỉ các địa chỉ email (hoặc miền) mà bạn cho phép mới có thể xác thực.
 
-![Màn hình đăng nhập FailproofAI Observability, gửi một mã một lần đến email của bạn](/agenteye/images/login.png)
-
----
-
-## Truy cập có phạm vi với các khóa API
-
-Mỗi client xác thực bằng một khóa API mang quyền hạn chi tiết, tối thiểu cần thiết. Một collector chỉ cần `events:add`; một khóa bảng điều khiển hoặc trợ lý có thể chỉ đọc; các hành động tàn phá (xóa, tạo lại) là những cấp riêng biệt mà bạn chọn để bao gồm.
-
-![Trang khóa API: các cấp quyền của mỗi khóa, được mã hóa màu theo phạm vi đọc, ghi và tàn phá](/agenteye/images/api-keys.png)
-
-Giữ lại khóa bootstrap quản trị viên để thiết lập, và cấp các khóa hẹp cho mọi thứ khác. Xem [API keys](/vi/agenteye/api-keys).
+![Màn hình đăng nhập Failproof AI Observability, gửi một mã dùng một lần đến email của bạn](/agenteye/images/login.png)
 
 ---
 
-## Một trợ lý chỉ đọc, được gated phê duyệt
+## Truy cập có phạm vi với API keys
 
-[Trợ lý AI](/vi/agenteye/assistant) trong bảng điều khiển trả lời các câu hỏi về dữ liệu của bạn, nhưng nó bị ràng buộc bởi thiết kế:
+Mỗi máy khách xác thực bằng API key mang các quyền cụ thể, ít quyền nhất. Một collector chỉ cần `events:add`; một khóa bảng điều khiển hoặc trợ lý có thể chỉ đọc; các hành động tàn phá (xóa, tái tạo) là các cấp quyền riêng biệt mà bạn chọn để bao gồm.
 
-- Nó **chỉ đọc theo mặc định**: SQL của nó chạy qua một guard cho phép chỉ các truy vấn `SELECT`/`WITH`, đơn câu lệnh, với giới hạn hàng.
-- Bất cứ điều gì nó tạo (một truy vấn đã lưu, một bảng điều khiển) là **được gated phê duyệt**: bạn xem xét và phê duyệt mọi ghi trước khi nó xảy ra.
+![Trang API keys: các cấp quyền của từng khóa, được phân loại theo màu sắc theo phạm vi đọc, ghi và tàn phá](/agenteye/images/api-keys.png)
+
+Giữ lại khóa bootstrap admin cho việc thiết lập, và cấp các khóa hẹp cho mọi thứ khác. Xem [API keys](/vi/agenteye/api-keys).
+
+---
+
+## Một trợ lý chỉ đọc, được phê duyệt có cổng
+
+[Trợ lý AI](/vi/agenteye/assistant) trong bảng điều khiển trả lời các câu hỏi về dữ liệu của bạn, nhưng nó bị hạn chế bằng thiết kế:
+
+- Nó **chỉ đọc theo mặc định**: SQL của nó chạy qua một bảo vệ cho phép chỉ các truy vấn `SELECT`/`WITH`, một câu lệnh duy nhất, với giới hạn hàng.
+- Bất cứ thứ gì nó tạo (một truy vấn đã lưu, một bảng điều khiển) đều **được phê duyệt có cổng**: bạn xem xét và phê duyệt mọi lần ghi trước khi nó xảy ra.
 - Nó **không bao giờ có thể xóa**.
 
-Vì vậy, một đồng nghiệp có thể hỏi "những agent nào gặp lỗi nhiều nhất tuần này?" và hành động dựa trên câu trả lời, mà không cần trợ lý có khả năng thay đổi hoặc loại bỏ dữ liệu của bạn tự động.
+Vì vậy, một thành viên của nhóm có thể hỏi "agents nào bị lỗi nhiều nhất tuần này?" và hành động dựa trên câu trả lời, mà không cần trợ lý có thể thay đổi hoặc xóa dữ liệu của bạn tự động.
 
 ---
 
-## Trong quá trình truyền
+## Trong quá trình truyền tải
 
-Tất cả lưu lượng chạy qua HTTPS. Bạn chấm dứt TLS bằng các chứng chỉ của riêng bạn, do đó lưu lượng collector-to-server và browser-to-server được mã hóa trong quá trình truyền.
+Tất cả lưu lượng truy cập chạy qua HTTPS. Bạn chấm dứt TLS bằng các chứng chỉ của riêng bạn, vì vậy lưu lượng truy cập từ collector-to-server và browser-to-server được mã hóa trong quá trình truyền tải.
 
 ---
 
-## Các bước tiếp theo
+## Bước tiếp theo
 
-- [Tổng quan](/vi/agenteye/overview): cách FailproofAI Observability phù hợp với nhau.
+- [Overview](/vi/agenteye/overview): cách Failproof AI Observability kết hợp với nhau.
 - [API keys](/vi/agenteye/api-keys): phạm vi truy cập cho collector, bảng điều khiển và trợ lý.
-- [Observability](/vi/agenteye/observability): những gì FailproofAI Observability nắm bắt từ các agent của bạn.
+- [Observability](/vi/agenteye/observability): những gì Failproof AI Observability nắm bắt từ các agents của bạn.

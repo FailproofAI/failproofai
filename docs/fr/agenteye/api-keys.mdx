@@ -1,10 +1,10 @@
 ---
 title: "Clés API"
-description: "Documentation sur les clés API d'observabilité FailproofAI."
+description: "Les clés API contrôlent qui peut accéder à votre serveur d'observabilité Failproof AI, de sorte qu'un collecteur peut envoyer des événements sans jamais obtenir des droits de lecture ou d'administration."
 ---
 
 
-Les clés API contrôlent qui et quoi peut accéder à votre serveur d'observabilité FailproofAI, permettant ainsi à un collecteur d'envoyer des événements sans jamais obtenir de droits de lecture ou d'administration. Chaque clé possède une ou plusieurs permissions, et chaque permission contrôle l'accès à des routes spécifiques du serveur ; vous n'accordez que les droits nécessaires à chaque tâche. La plupart des déploiements créent seulement trois types de clés.
+Les clés API contrôlent qui peut accéder à votre serveur d'observabilité Failproof AI, de sorte qu'un collecteur peut envoyer des événements sans jamais obtenir des droits de lecture ou d'administration. Chaque clé possède une ou plusieurs permissions, et chaque permission contrôle l'accès à des routes spécifiques du serveur ; vous n'accordez que celles dont une tâche a besoin. La plupart des déploiements créent seulement trois types de clés.
 
 ## Les 3 clés dont la plupart des déploiements ont besoin
 
@@ -12,30 +12,30 @@ Les clés API contrôlent qui et quoi peut accéder à votre serveur d'observabi
 |---|---|---|
 | Clé collecteur | `events:add` | L'`agenteye-collector` sur chaque machine agent, pour envoyer des événements. |
 | Clé de lecture tableau de bord | `events:read`, `keys:read` | Un opérateur en lecture seule ou une intégration qui interroge les données sans les modifier. |
-| Clé admin d'amorçage | toutes les permissions | L'opérateur qui met en place l'instance pour la première fois (ainsi que le tableau de bord). Initialisée depuis la variable d'environnement `ADMIN_KEY`. Voir [Clé admin d'amorçage](#bootstrap-admin-key). |
+| Clé admin bootstrap | toutes les permissions | L'opérateur qui démarre l'instance pour la première fois (et le tableau de bord). Initialisée depuis la variable d'environnement `ADMIN_KEY`. Voir [Clé admin bootstrap](#bootstrap-admin-key). |
 
-Commencez ici. Ne consultez le catalogue complet des permissions ci-dessous que si vous avez besoin d'une clé avec une portée personnalisée et plus restreinte. Voir aussi [Disposition recommandée des clés](#recommended-key-layout) et [Création de clés](#creating-keys).
+Commencez par là. Ne consultez le catalogue complet des permissions ci-dessous que lorsque vous avez besoin d'une clé plus restreinte ou à portée personnalisée. Voir aussi [Disposition de clés recommandée](#recommended-key-layout) et [Création de clés](#creating-keys).
 
 ---
 
 ## Permissions
 
-Le serveur applique un catalogue fixe de permissions ; chacune contrôle l'accès à des routes HTTP spécifiques. Une **clé admin** les possède toutes ; une clé avec portée limitée ne possède que le sous-ensemble que vous accordez à la création. Les chaînes de permission inconnues sont rejetées lors de la création d'une clé.
+Le serveur applique un catalogue fixe de permissions ; chacune contrôle l'accès à des routes HTTP spécifiques. Une **clé admin** les possède toutes ; une clé à portée limitée ne possède que le sous-ensemble que vous accordez à la création. Les chaînes de permission inconnues sont rejetées lors de la création d'une clé.
 
-> **Remarque :** Deux permissions valides sont réservées aux humains/tableaux de bord et ne peuvent pas être accordées à une clé API : `orgs:admin` (administration de l'instance, réservée aux opérateurs) et `keys:update`. Une requête vers `POST /keys` ou `PATCH /keys/:id` qui tente d'accorder l'une ou l'autre est rejetée avec HTTP 422. Voir la ligne `keys:update` ci-dessous pour savoir pourquoi une clé bearer peut créer des clés mais jamais les modifier.
+> **Remarque :** Deux permissions valides sont réservées aux humains/tableau de bord et ne peuvent pas être accordées à une clé API : `orgs:admin` (administration de l'instance, réservée aux opérateurs) et `keys:update`. Une requête `POST /keys` ou `PATCH /keys/:id` qui tente d'accorder l'une ou l'autre est rejetée avec HTTP 422. Voir la ligne `keys:update` ci-dessous pour comprendre pourquoi une clé bearer peut créer des clés mais jamais les modifier.
 
-### Ingestion et interrogation d'événements
+### Ingestion et interrogation des événements
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `events:add` | `POST /events` | Ingérer des lots d'événements depuis un collecteur. C'est la seule permission dont un collecteur a besoin. |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Interroger les événements, lister les environnements connus, lister les identifiants de modèles présents dans les données (utilisés par la vue Modèles et les filtres de modèles), calculer l'agrégat de latence qui alimente la carte thermique / bande de percentile, et exporter une session en JSONL. Les endpoints de facette de la barre de filtres partagée `GET /events/environments` et `GET /events/agent_ids` sont accessibles avec **soit** `events:read` **soit** `evaluations:read`, de sorte que la page de sessions (sous `evaluations:read`) réutilise la même facette par organisation. `GET /events/models` n'en fait pas partie : il requiert `events:read`, donc un principal ne possédant que `evaluations:read` recevra une erreur 403. |
+| `events:add` | `POST /events` | Ingérer des lots d'événements depuis un collecteur. La seule permission dont un collecteur a besoin. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Interroger les événements, lister les environnements connus, lister les identifiants de modèles vus dans les données (utilisés par la vue Modèles et les filtres de modèles), calculer l'agrégat de latence qui alimente la carte thermique / bande de percentile, et exporter une session en JSONL. Les endpoints de facettes partagées `GET /events/environments` et `GET /events/agent_ids` sont accessibles avec **soit** `events:read` **soit** `evaluations:read`, ainsi la page de sessions (protégée par `evaluations:read`) réutilise la même facette par organisation. `GET /events/models` n'en fait pas partie : il requiert `events:read`, donc un principal ne possédant que `evaluations:read` reçoit une erreur 403. |
 
 ### Sessions et évaluations
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Lister les sessions, lire les résultats d'évaluation, l'état de santé agrégé des évaluations utilisé par les tableaux de bord, et l'état de la file de travaux d'évaluation. |
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Lister les sessions, lire les résultats d'évaluation, l'état de santé des évaluations consolidé utilisé par les tableaux de bord, et l'état de la file de travaux d'évaluation. |
 | `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Mettre manuellement en file d'attente une réévaluation pour une session terminée. |
 
 ### Tableaux de bord
@@ -59,37 +59,37 @@ Le serveur applique un catalogue fixe de permissions ; chacune contrôle l'accè
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Discuter avec l'assistant IA et gérer vos propres conversations (privées). Requise pour l'**utilisateur** afin d'afficher le panneau de l'assistant ; la propre clé de l'assistant est `dashboard-assistant` et est initialisée séparément (voir ci-dessous). |
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Interagir avec l'assistant IA et gérer vos propres conversations (privées). Requise pour l'**utilisateur** afin de voir le dock de l'assistant ; la clé propre à l'assistant est `dashboard-assistant` et est initialisée séparément (voir ci-dessous). |
 
 ### Clés API
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `keys:create` | `POST /keys` | Créer une nouvelle clé API avec portée limitée. Ne **permet pas** de modifier les permissions d'une clé existante (c'est `keys:update`). |
+| `keys:create` | `POST /keys` | Créer une nouvelle clé API à portée limitée. N'accorde **pas** la modification des permissions d'une clé existante (c'est `keys:update`). |
 | `keys:read` | `GET /keys` | Lister les clés existantes. Les secrets ne sont jamais retournés par cet endpoint. |
-| `keys:update` | `PATCH /keys/:id` | Modifier les permissions d'une clé existante. Permission **réservée aux humains/tableaux de bord** ; elle ne peut pas être assignée à une clé API (une clé bearer peut créer des clés mais jamais les modifier). |
+| `keys:update` | `PATCH /keys/:id` | Modifier les permissions d'une clé existante. Permission **réservée aux humains/tableau de bord** ; elle ne peut pas être assignée à une clé API (une clé bearer peut créer des clés mais jamais les modifier). |
 | `keys:disable` | `POST /keys/:id/disable` | Révoquer une clé. Les clés protégées (`admin`, `dashboard-assistant`) ne peuvent pas être désactivées ; faites-les pivoter via la variable d'environnement + redémarrage. |
-| `keys:regenerate` | `POST /keys/:id/regenerate` | Faire pivoter le secret d'une clé. Les clés protégées ne peuvent pas être régénérées via cette route. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Faire pivoter le secret d'une clé. Les clés protégées ne peuvent pas être régénérées par cette route. |
 
 ### Utilisateurs du tableau de bord
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | Inviter un nouvel utilisateur du tableau de bord (envoie un e-mail + connexion par code à usage unique (OTP)) et lire l'ensemble de permissions par défaut configuré dans le tableau de bord, utilisé pour pré-remplir le formulaire d'invitation. |
-| `users:read` | `GET /users`, `GET /users/:id` | Lister les utilisateurs et charger un enregistrement d'utilisateur particulier. |
-| `users:update` | `PUT /users/:id` | Modifier les permissions d'un utilisateur. Les mises à jour envoient un e-mail de changement de permissions à l'utilisateur concerné et prennent effet à sa prochaine requête ; aucune reconnexion n'est nécessaire. |
-| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Désactiver un utilisateur (révoque immédiatement ses sessions) et réactiver un utilisateur précédemment désactivé. |
+| `users:create` | `POST /users`, `GET /users/defaults` | Inviter un nouvel utilisateur du tableau de bord (envoie un email + connexion par mot de passe à usage unique (OTP)) et lire l'ensemble de permissions par défaut configuré dans le tableau de bord utilisé pour pré-remplir le formulaire d'invitation. |
+| `users:read` | `GET /users`, `GET /users/:id` | Lister les utilisateurs et charger un enregistrement utilisateur individuel. |
+| `users:update` | `PUT /users/:id` | Modifier les permissions d'un utilisateur. Les mises à jour envoient un email de changement de permission à l'utilisateur concerné et prennent effet à sa prochaine requête ; aucune reconnexion n'est nécessaire. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Désactiver un utilisateur (révoque ses sessions immédiatement) et réactiver un utilisateur précédemment désactivé. |
 
-Ces permissions alimentent la page **Utilisateurs** du tableau de bord, où les droits accordés à chaque membre sont affichés sous forme de puces :
+Ces permissions soutiennent la page **Utilisateurs** du tableau de bord, où les portées accordées à chaque membre sont affichées sous forme de puces :
 
-![La page Utilisateurs : une carte par utilisateur du tableau de bord avec son e-mail, ses permissions accordées et les contrôles de modification/désactivation](/agenteye/images/users.png)
+![La page Utilisateurs : une carte par utilisateur du tableau de bord avec leur email, les permissions accordées et les contrôles de modification/désactivation](/agenteye/images/users.png)
 
 ### Paramètres opérationnels
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Consulter les paramètres opérationnels gérés par le tableau de bord et leurs métadonnées ; lister les remplacements de fenêtres de contexte par modèle ; et résoudre la fenêtre effective pour un modèle. |
-| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Modifier les paramètres opérationnels et ajouter, changer ou supprimer des remplacements de fenêtres de contexte par modèle. Les modifications s'appliquent aux nouveaux événements sans redémarrer le serveur. |
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Consulter les paramètres opérationnels gérés par le tableau de bord et leurs métadonnées ; lister les remplacements de fenêtre de contexte par modèle ; et résoudre la fenêtre effective pour un modèle. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Modifier les paramètres opérationnels et ajouter, changer ou supprimer des remplacements de fenêtre de contexte par modèle. Les modifications s'appliquent aux nouveaux événements sans redémarrer le serveur. |
 
 ![La page Paramètres : paramètres opérationnels gérés par le tableau de bord tels que les connexions autorisées et les durées de vie des sessions/OTP, modifiables sans redémarrage](/agenteye/images/settings.png)
 
@@ -100,72 +100,72 @@ Ces permissions alimentent la page **Utilisateurs** du tableau de bord, où les 
 | `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Consulter les définitions d'alertes configurées. |
 | `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Créer, modifier, supprimer et tester des définitions d'alertes. |
 | `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Consulter les incidents et leur historique de triage. |
-| `incidents:write` | `POST /alerts/:id/incidents` | Ouvrir manuellement un incident sur une alerte existante. |
-| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Acquitter, assigner, résoudre et commenter les incidents. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Ouvrir manuellement un incident contre une alerte existante. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Acquitter, assigner, résoudre et commenter des incidents. |
 
 ### Audits
 
 | Permission | Routes HTTP | Ce qu'elle permet |
 |---|---|---|
-| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Consulter les définitions d'audit, l'historique des exécutions et les résultats. |
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Consulter les définitions d'audits, l'historique d'exécution et les résultats. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Créer, modifier, supprimer et exécuter des audits ; trier les résultats (acquitter / mettre en sourdine / ignorer / résoudre / rouvrir / assigner). |
 
-> **Remarque :** Pour donner à une clé accès à la surface d'audit, accordez-lui explicitement `audits:*`. Voir [Notes de mise à niveau et de compatibilité ascendante](#upgrade-and-backward-compatibility-notes) pour savoir comment les titulaires existants ont été migrés lors du lancement des Audits.
+> **Remarque :** Pour donner à une clé l'accès à la surface d'audit, accordez-lui `audits:*` explicitement. Voir [Notes de mise à niveau et de compatibilité ascendante](#upgrade-and-backward-compatibility-notes) pour savoir comment les bénéficiaires existants ont été migrés lors du lancement des Audits.
 
-> L'endpoint de sélection des destinataires `GET /alerts/recipients` (qui liste les e-mails des membres qu'un éditeur d'alertes peut notifier) est accessible par un titulaire de **soit** `alerts:read` **soit** `alerts:write`, de sorte que les éditeurs d'alertes peuvent alimenter le sélecteur sans avoir besoin de `users:read`.
+> L'endpoint de sélection de destinataires `GET /alerts/recipients` (qui liste les emails des membres qu'un éditeur d'alerte peut notifier) est accessible par un détenteur de **soit** `alerts:read` **soit** `alerts:write`, afin que les éditeurs d'alertes puissent remplir le sélecteur sans avoir besoin de `users:read`.
 
 > Un lecteur de tableaux de bord a besoin **à la fois** de `dashboards:read` (pour charger les vues sauvegardées) et de `evaluations:read` (les métriques de santé sont calculées à partir des données d'évaluation). Accordez `dashboards:write` pour permettre à un utilisateur de créer ou modifier des tableaux de bord, et `dashboards:delete` pour les supprimer.
 
-> `/health` et `/auth/*` (demande OTP, vérification OTP, vérification de session, déconnexion) sont non authentifiés par conception ; il s'agit du flux de connexion et de la sonde de disponibilité. `GET /access-granters` requiert une clé valide mais aucune permission spécifique, de sorte que tout utilisateur connecté peut voir quels administrateurs contacter pour les changements d'accès.
+> `/health` et `/auth/*` (demande OTP, vérification OTP, vérification de session, déconnexion) sont intentionnellement non authentifiés ; ils constituent le flux de connexion et la sonde de disponibilité. `GET /access-granters` nécessite une clé valide mais aucune permission spécifique, de sorte que tout utilisateur connecté peut voir quels administrateurs contacter pour les changements d'accès.
 
 ---
 
 ## Ensembles de permissions
 
-Les ensembles de permissions vous permettent d'appliquer un rôle nommé plutôt que de sélectionner manuellement des tokens individuels à chaque fois. Plutôt que de sélectionner une douzaine de permissions une par une pour chaque nouvel utilisateur du tableau de bord ou clé API, vous choisissez un ensemble, et tous ceux qui y sont assignés bénéficient d'un droit cohérent et vérifiable. La modification d'un ensemble personnalisé réapplique le nouveau droit à chaque utilisateur déjà assigné, de sorte qu'un changement de rôle est une seule modification plutôt qu'une mise à jour de chaque membre.
+Les ensembles de permissions vous permettent d'appliquer un rôle nommé plutôt que de sélectionner manuellement des jetons individuels à chaque fois. Plutôt que de sélectionner une douzaine de permissions une par une pour chaque nouvel utilisateur du tableau de bord ou clé API, vous choisissez un ensemble, et tous ceux qui y sont assignés bénéficient d'une attribution cohérente et vérifiable. La modification d'un ensemble personnalisé réapplique le nouveau grant à chaque utilisateur qui y est déjà assigné, de sorte qu'un changement de rôle ne nécessite qu'une seule modification plutôt qu'une mise à jour de chaque membre.
 
 Chaque organisation est initialisée avec trois ensembles intégrés :
 
 | Ensemble | Permissions | Destiné à |
 |---|---|---|
 | `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Accès en lecture seule sur toutes les surfaces opérationnelles. |
-| `standard` | tout ce qui est dans `read-only`, plus `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Lecture seule plus les actions courantes de l'opérateur de garde : exécuter des requêtes, réévaluer des sessions, acquitter des incidents et utiliser l'assistant IA. |
+| `standard` | tout ce qui est dans `read-only`, plus `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Lecture seule plus les actions quotidiennes de l'opérateur de garde : exécuter des requêtes, réévaluer des sessions, acquitter des incidents et utiliser l'assistant IA. |
 | `admin` | toutes les permissions assignables | Contrôle total de l'organisation. |
 
-Les trois ensembles intégrés sont **immuables** ; leurs noms ont toujours la même signification, donc `read-only`, `standard` et `admin` peuvent être référencés en toute sécurité dans les politiques et les processus d'intégration. Un opérateur peut créer des **ensembles personnalisés** supplémentaires pour modéliser des rôles spécifiques à votre organisation (par exemple, un rôle « auteur de tableau de bord » ou un rôle « collecteur uniquement »).
+Les trois ensembles intégrés sont **immuables** ; leurs noms signifient toujours la même chose, donc `read-only`, `standard` et `admin` peuvent être référencés en toute sécurité dans les politiques et l'intégration. Un opérateur peut créer des **ensembles personnalisés** supplémentaires pour modéliser des rôles spécifiques à votre organisation (par exemple, un rôle « auteur de tableau de bord » ou un rôle « collecteur uniquement »).
 
-Les ensembles sont affichés dans le tableau de bord et gérés via l'API à `GET /permission-sets` (liste, sous `users:read`) et `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (créer, modifier, supprimer un ensemble personnalisé, sous `settings:write`). La suppression ou la modification d'un ensemble intégré est refusée.
+Les ensembles sont accessibles dans le tableau de bord et gérés via l'API à `GET /permission-sets` (liste, protégée par `users:read`) et `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (créer, modifier, supprimer un ensemble personnalisé, protégé par `settings:write`). La suppression ou la modification d'un ensemble intégré est refusée.
 
-L'appartenance à un ensemble est ce qui alimente deux autres fonctionnalités :
+L'appartenance à un ensemble sous-tend deux autres fonctionnalités :
 
-- **`DEFAULT_USER_PERMISSIONS`** (le droit présélectionné lorsqu'un admin ouvre **+ nouvel utilisateur**) utilise par défaut l'ensemble `standard`.
-- **L'option `--set`** sur `agenteye-orgctl` (gestion des membres opérateurs) initialise un membre à partir d'un ensemble nommé, que vous affinez ensuite avec `--add` / `--remove`.
+- **`DEFAULT_USER_PERMISSIONS`** (le grant présélectionné quand un admin ouvre **+ nouvel utilisateur**) correspond par défaut à l'ensemble `standard`.
+- **Le flag `--set`** sur `agenteye-orgctl` (gestion des membres par l'opérateur) initialise un membre à partir d'un ensemble nommé, que vous affinez ensuite avec `--add` / `--remove`.
 
-> **Remarque :** Lorsqu'un ensemble inclut une permission non assignable à une clé (par exemple un ensemble personnalisé contenant `keys:update`), l'initialisation d'une clé à partir de cet ensemble supprime les tokens non assignables ; le serveur rejetterait sinon la clé avec HTTP 422. Les utilisateurs du tableau de bord ne sont pas soumis à cette restriction.
+> **Remarque :** Quand un ensemble inclut une permission non assignable à une clé (par exemple un ensemble personnalisé portant `keys:update`), l'initialisation d'une clé à partir de cet ensemble supprime les jetons non assignables ; le serveur rejetterait sinon la clé avec HTTP 422. Les utilisateurs du tableau de bord ne sont pas soumis à cette restriction.
 
 ---
 
-## Clé admin d'amorçage
+## Clé admin bootstrap
 
-La clé admin est le credential racine unique qui permet à un opérateur de démarrer l'accès depuis zéro : avec elle, vous pouvez créer toutes les autres clés avec portée limitée, inviter les premiers utilisateurs du tableau de bord et configurer l'instance avant qu'aucune autre clé n'existe. C'est la seule clé que vous ne créez pas via l'API des clés ; elle est provisionnée depuis l'environnement afin que le serveur soit accessible au premier démarrage.
+La clé admin est l'unique identifiant racine qui permet à un opérateur de démarrer l'accès depuis zéro : avec elle, vous pouvez créer toutes les autres clés à portée limitée, inviter les premiers utilisateurs du tableau de bord et configurer l'instance avant qu'aucune autre clé n'existe. C'est la seule clé que vous ne créez pas via l'API des clés ; elle est provisionnée depuis l'environnement pour que le serveur soit accessible au premier démarrage.
 
-Définissez la variable d'environnement `ADMIN_KEY` sur le serveur. À chaque démarrage, le serveur effectue un upsert de cette valeur en tant que clé admin avec toutes les permissions.
+Définissez la variable d'environnement `ADMIN_KEY` sur le serveur. À chaque démarrage, le serveur insère ou met à jour cette valeur comme clé admin avec toutes les permissions.
 
-Pour faire pivoter : changez `ADMIN_KEY` pour un nouveau secret et redémarrez le serveur.
+Pour faire pivoter : changez `ADMIN_KEY` en un nouveau secret et redémarrez le serveur.
 
 ---
 
 ## Portée organisationnelle
 
-**Les organisations elles-mêmes sont créées et gérées hors bande par un opérateur, et non via cette API de clés.** Le cycle de vie des organisations et des membres (créer / renommer / supprimer / purger une organisation ; ajouter / mettre à jour / supprimer un membre) est effectué avec le CLI **`agenteye-orgctl`** ; il n'existe pas d'API HTTP ou de bouton dans le tableau de bord pour cela. Ce qui *reste* inchangé : **les clés API par organisation sont toujours créées dans le tableau de bord (ou via cette API de clés)** par les membres de l'organisation.
+**Les organisations elles-mêmes sont créées et gérées hors bande par un opérateur, et non via cette API de clés.** Le cycle de vie des organisations et des membres (créer / renommer / supprimer / purger une organisation ; ajouter / mettre à jour / supprimer un membre) s'effectue avec le CLI **`agenteye-orgctl`** ; il n'existe pas d'API HTTP ni de bouton dans le tableau de bord pour cela. Ce qui *reste* inchangé : **les clés API par organisation sont toujours créées dans le tableau de bord (ou via cette API de clés)** par les membres de l'organisation.
 
-Dans un déploiement multi-organisations, chaque clé créée par un membre d'une organisation (via cette API de clés ou la page **Clés** du tableau de bord) appartient à **une seule organisation** et ne peut lire ou écrire que les données de cette organisation ; l'organisation est estampillée sur la clé lors de sa création et vérifiée à chaque requête. Les deux clés d'amorçage constituent la seule exception : la clé `admin` (initialisée depuis `ADMIN_KEY`) et la clé `dashboard-assistant` (initialisée depuis `AGENT_API_KEY`) sont **à portée d'instance** (elles ne portent aucune organisation). Le tableau de bord s'authentifie avec la clé `admin` afin de pouvoir proxier les requêtes par organisation au nom des membres connectés. Les déploiements mono-tenant n'ont pas à s'en préoccuper ; toutes les clés appartiennent à l'organisation `default` intégrée.
+Dans un déploiement multi-organisations, chaque clé créée par un membre d'une organisation (via cette API de clés ou la page **Clés** du tableau de bord) appartient à **une seule organisation** et ne peut lire ou écrire que les données de cette organisation ; l'organisation est inscrite sur la clé à la création et vérifiée à chaque requête. Les deux clés bootstrap constituent la seule exception : la clé `admin` (initialisée depuis `ADMIN_KEY`) et la clé `dashboard-assistant` (initialisée depuis `AGENT_API_KEY`) ont une **portée d'instance** (elles ne portent aucune organisation). Le tableau de bord s'authentifie avec la clé `admin` pour pouvoir proxyfier les requêtes par organisation au nom des membres connectés. Les déploiements mono-tenant n'ont pas besoin de s'en préoccuper ; toutes les clés appartiennent à l'organisation `default` intégrée.
 
 ---
 
 ## Création de clés
 
-Utilisez la clé admin (ou toute clé avec la permission `keys:create`) pour créer des clés supplémentaires avec portée limitée.
+Utilisez la clé admin (ou toute clé avec la permission `keys:create`) pour créer des clés à portée limitée supplémentaires.
 
 ### Clé collecteur (ingestion uniquement)
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Lorsque vous créez une clé via l'API HTTP, vous fournissez vous-même la valeur `key` ; choisissez un secret fort et stockez-le de manière sécurisée. (Le tableau de bord fonctionne à l'inverse : il génère un secret fort pour vous et l'affiche une seule fois lors de la création ; voir [Gestion des clés dans le tableau de bord](#key-management-in-the-dashboard).) La réponse confirme que la clé a été créée :
+Lorsque vous créez une clé via l'API HTTP, vous fournissez vous-même la valeur `key` ; choisissez un secret robuste et stockez-le de manière sécurisée. (Le tableau de bord fonctionne différemment : il génère un secret robuste pour vous et l'affiche une seule fois à la création ; voir [Gestion des clés dans le tableau de bord](#key-management-in-the-dashboard).) La réponse confirme que la clé a été créée :
 
 ```json
 {
@@ -206,14 +206,14 @@ Lorsque vous créez une clé via l'API HTTP, vous fournissez vous-même la valeu
 
 ---
 
-## Liste des clés
+## Listage des clés
 
 ```bash
 curl -s http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-Les secrets des clés ne sont pas retournés dans les réponses de liste, seulement les identifiants, les noms et les permissions.
+Les secrets des clés ne sont pas retournés dans les réponses de liste, seulement les identifiants, noms et permissions.
 
 ---
 
@@ -230,7 +230,7 @@ curl -s -X POST http://your-server/keys/<id>/disable \
 
 ## Régénération d'une clé
 
-Génère un nouveau secret pour une clé existante. L'ancien secret est immédiatement invalidé.
+Génère un nouveau secret pour une clé existante. L'ancien secret est invalidé immédiatement.
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/regenerate \
@@ -243,38 +243,38 @@ La réponse inclut le nouveau secret en clair, **affiché une seule fois**.
 
 ## Gestion des clés dans le tableau de bord
 
-La page **Clés** du tableau de bord fournit une interface pour toutes les opérations ci-dessus. Vous avez besoin d'une clé avec la permission `keys:read` pour consulter la liste, et de `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` pour les actions de création / modification / désactivation / régénération respectivement. La modification des permissions d'une clé (`keys:update`) est distincte de sa création (`keys:create`), ce qui vous permet d'accorder à un opérateur la capacité de créer des clés sans la capacité de modifier la portée des clés existantes, ou inversement. La clé admin couvre toutes ces opérations.
+La page **Clés** du tableau de bord fournit une interface utilisateur pour toutes les opérations ci-dessus. Vous avez besoin d'une clé avec la permission `keys:read` pour consulter la liste, et `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` pour les actions de création / modification / désactivation / régénération respectivement. La modification des permissions d'une clé (`keys:update`) est distincte de sa création (`keys:create`), ce qui vous permet d'accorder à un opérateur la capacité de créer des clés sans lui permettre de modifier la portée des clés existantes, ou inversement. La clé admin couvre toutes ces opérations.
 
-Lorsque vous créez une clé depuis le tableau de bord, vous ne fournissez pas le secret ; le tableau de bord génère un secret fort pour vous et l'affiche **une seule fois** lors de la création. Copiez-le immédiatement et stockez-le de manière sécurisée ; il n'est plus jamais affiché, exactement comme lors d'une régénération. Vous pouvez toujours choisir les permissions de la clé directement, ou les initialiser à partir d'un ensemble de permissions (voir ci-dessous).
+Lorsque vous créez une clé depuis le tableau de bord, vous ne fournissez pas le secret ; le tableau de bord génère un secret robuste pour vous et l'affiche **une seule fois** à la création. Copiez-le immédiatement et stockez-le de manière sécurisée ; il ne sera plus jamais affiché, exactement comme lors d'une régénération. Vous pouvez toujours choisir les permissions de la clé directement, ou les initialiser à partir d'un ensemble de permissions (voir ci-dessous).
 
-![La page Clés API : une carte par clé affichant son nom, les permissions accordées et la date de création, avec les actions de régénération et de désactivation ; les clés protégées comme `admin` sont marquées](/agenteye/images/api-keys.png)
+![La page Clés API : une carte par clé affichant son nom, les permissions accordées et la date de création, avec les actions de régénération et de désactivation ; les clés protégées comme `admin` sont signalées](/agenteye/images/api-keys.png)
 
 ---
 
-## Disposition recommandée des clés
+## Disposition de clés recommandée
 
 | Clé | Permissions | Utilisée par |
 |---|---|---|
-| `admin` (amorçage via la variable d'environnement `ADMIN_KEY`) | toutes | Ops/configuration, et le tableau de bord (s'authentifie avec `ADMIN_KEY`, proxie les requêtes utilisateurs avec vérifications des permissions) |
+| `admin` (bootstrap via la variable d'environnement `ADMIN_KEY`) | toutes | Ops/configuration, et le tableau de bord (s'authentifie avec `ADMIN_KEY`, proxyfie les requêtes utilisateurs avec vérification des permissions) |
 | Clé collecteur par hôte | `events:add` | Collecteur sur chaque machine agent |
-| `dashboard-assistant` (amorçage via la variable d'environnement `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Assistant IA, initialisé automatiquement, **protégé** ; ne peut pas être modifié via l'API |
+| `dashboard-assistant` (bootstrap via la variable d'environnement `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Assistant IA, initialisée automatiquement, **protégée** ; ne peut pas être modifiée via l'API |
 | Clé de télémétrie de l'assistant (optionnelle) | `events:add` | Auto-instrumentation de l'assistant IA, si activée |
 
-> **Remarque :** La clé de l'assistant est **initialisée automatiquement** par le serveur depuis la variable d'environnement `AGENT_API_KEY` (le même secret que l'agent présente en tant que `AGENTEYE_API_KEY`) ; il n'y a pas d'étape de création manuelle de clé et aucune clé admin n'est impliquée. Ses permissions sont fixées dans le code source afin que la portée ne puisse pas être élargie par une mauvaise configuration : lecture sur les événements / évaluations / tableaux de bord, plus dashboards-write et queries-read / write / run pour le flux de création « Demander à l'IA d'écrire une requête ». Tout le SQL passe toujours par le même rôle en lecture seule et le même chemin SQL protégé qu'une requête écrite par un utilisateur, ce qui élargit la *surface de création*, et non la surface des données ; les opérations destructives (`queries:delete`, `dashboards:delete`) restent délibérément hors de la clé de l'assistant. Comme la clé `admin`, elle est **protégée** : elle ne peut pas être désactivée ou régénérée via l'API des clés, seulement pivotée en changeant `AGENT_API_KEY` et en redémarrant. Les *utilisateurs* du tableau de bord ont également besoin de la permission `agent:use` pour voir et utiliser l'assistant. Si vous activez l'auto-instrumentation, donnez à l'assistant une clé séparée avec uniquement `events:add`.
+> **Remarque :** La clé de l'assistant est **initialisée automatiquement** par le serveur depuis la variable d'environnement `AGENT_API_KEY` (le même secret que l'agent présente en tant que `AGENTEYE_API_KEY`) ; il n'y a pas d'étape manuelle de création de clé et aucune clé admin impliquée. Ses permissions sont fixées dans le code source afin que la portée ne puisse pas être élargie par une mauvaise configuration : lecture des événements / évaluations / tableaux de bord, plus écriture de tableaux de bord et lecture / écriture / exécution de requêtes pour le flux de création « Demander à l'IA d'écrire une requête ». Tout le SQL passe toujours par le même rôle en lecture seule et le même chemin SQL protégé qu'une requête écrite par un utilisateur, ce qui élargit la *surface de création*, pas la surface des données ; les opérations destructives (`queries:delete`, `dashboards:delete`) restent délibérément absentes de la clé de l'assistant. Comme la clé `admin`, elle est **protégée** : elle ne peut pas être désactivée ni régénérée via l'API des clés, seulement pivotée en changeant `AGENT_API_KEY` et en redémarrant. Les *utilisateurs* du tableau de bord ont en outre besoin de la permission `agent:use` pour voir et utiliser l'assistant. Si vous activez l'auto-instrumentation, donnez à l'assistant une clé séparée avec uniquement `events:add`.
 
 ---
 
 ## Notes de mise à niveau et de compatibilité ascendante
 
-Ces informations ne sont nécessaires que si vous mettez à niveau une instance existante ; les nouveaux déploiements peuvent les ignorer.
+Ces notes ne sont nécessaires que si vous mettez à niveau une instance existante ; les nouveaux déploiements peuvent les ignorer.
 
-> Lors du lancement des Audits, les droits des titulaires existants ont été élargis selon les mêmes formes de rôle que pour les alertes : chaque utilisateur et ensemble de permissions possédant `alerts:read` a obtenu `audits:read`, et chaque titulaire de `alerts:write` a obtenu `audits:write`. Les clés API existantes **n'ont pas** été élargies. Accordez explicitement `audits:*` à une clé si elle a besoin d'accéder à la surface d'audit.
+> Lors du lancement des Audits, les bénéficiaires existants ont été élargis selon les mêmes formes de rôle que pour les alertes : chaque utilisateur et ensemble de permissions détenant `alerts:read` a obtenu `audits:read`, et chaque détenteur de `alerts:write` a obtenu `audits:write`. Les clés API existantes **n'ont pas** été élargies. Accordez `audits:*` à une clé explicitement si elle a besoin de la surface d'audit.
 
-> Les droits stockés du token legacy `alerts:ack` sont analysés comme `incidents:ack` afin que les opérateurs de garde conservent leur accès sans avoir à recréer leurs clés. Le token n'est plus assignable depuis l'éditeur d'utilisateurs du tableau de bord ; la matrice propose `incidents:ack` à la place.
+> Les grants stockés du jeton legacy `alerts:ack` sont interprétés comme `incidents:ack` afin que les opérateurs de garde conservent leur accès sans avoir à recréer leur clé. Le jeton n'est plus assignable depuis l'éditeur d'utilisateurs du tableau de bord ; la matrice propose `incidents:ack` à la place.
 
 ---
 
-## Prochaines étapes
+## Étapes suivantes
 
-- [SDK Python](/fr/agenteye/python-sdk) : comment le code de votre agent s'authentifie lors de l'envoi d'événements.
+- [SDK Python](/fr/agenteye/python-sdk) : comment votre code d'agent s'authentifie lors de l'envoi d'événements.
 - [Sécurité](/fr/agenteye/security) : comment fonctionnent la connexion, le contrôle d'accès et l'isolation des données par organisation.

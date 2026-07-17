@@ -1,26 +1,26 @@
 ---
-title: "Incident"
-description: "Documentazione degli Incident di FailproofAI Observability."
+title: "Incidents"
+description: "Quando un avviso si attiva, tutti possono vedere che l'incident è aperto, chi lo gestisce e cosa è successo finora — su una cronologia unica e attribuita."
 ---
 
 
-Quando un avviso scatta, la prima domanda è sempre "chi se ne sta occupando?" Gli incident rispondono a questa domanda: nel momento in cui qualcosa viene violato, tutti possono vedere che l'incident è aperto, chi è il proprietario, e esattamente cosa è accaduto finora, con un registro pulito e attribuito che puoi consegnare direttamente a un post-mortem.
+Quando un avviso si attiva, la prima domanda è sempre "chi se ne occupa?". Gli Incidents rispondono: nel momento in cui qualcosa viene violato, tutti possono vedere che l'incident è aperto, chi lo gestisce e esattamente cosa è successo finora, con un registro pulito e attribuito che puoi consegnare direttamente al post-mortem.
 
-![La inbox degli Incident: schede di incident aperte collegate ad avvisi e aperte manualmente, raggruppate per stato, ciascuna con un badge di gravità e un assegnatario](/agenteye/images/incidents.png)
-*La inbox raggruppa gli incident aperti per stato e filtra per gravità e assegnatario, così vedi cosa ha bisogno di un operatore adesso.*
+![La inbox Incidents: card di incident collegati agli avvisi e aperti manualmente, raggruppati per stato, ognuno con un badge di severità e un assegnatario](/agenteye/images/incidents.png)
+*La inbox raggruppa gli incident aperti per stato e filtra per severità e assegnatario, così vedi cosa ha bisogno di un intervento umano adesso.*
 
-## Sappi chi se ne sta occupando, a colpo d'occhio
+## Sappi chi se ne occupa, a colpo d'occhio
 
-Niente più "qualcuno sta guardando questo?" in un thread di chat. Una violazione apre automaticamente un incident e lo inserisce in una inbox condivisa, raggruppata per stato. Riconoscilo e il tuo nome sarà su di esso, così il resto del team sa che è gestito. Il riconoscimento è condiviso: diversi operatori possono riconoscere lo stesso incident e ciascuno è registrato singolarmente, così una sala guerra completa compare per nome invece di sovrapporsi l'uno con l'altro. Assegna un proprietario per il triage e filtra la inbox per gravità o assegnatario per ridurla a quello che è tuo.
+Niente più "qualcuno sta guardando questo?" in un thread di chat. Una violazione apre automaticamente un incident e lo inserisce in una inbox condivisa, raggruppato per stato. Riconoscilo e il tuo nome è su di esso, così il resto del team sa che è gestito. Il riconoscimento è condiviso: più operatori possono riconoscere lo stesso incident e ognuno viene registrato singolarmente, così una guerra room completa appare per nome invece di sovrapporsi. Assegna un proprietario per il triage e filtra la inbox per severità o assegnatario per ridurla a quello che è tuo.
 
-## L'intera storia, in una sola timeline
+## L'intera storia, in una sola cronologia
 
-Quando l'incident è concluso, avrai già la relazione. Apri un incident qualsiasi e ottieni l'evidenza della violazione, i suoi assegnatari e iscritti, un thread di commenti per coordinare sul posto, e una timeline di attività in sola aggiunta.
+Quando l'incident è finito, hai già il rapporto. Apri un incident qualsiasi e ottieni l'evidenza della violazione, i suoi assegnatari e sottoscrittori, un thread di commenti per coordinare sul posto, e una cronologia dell'attività in sola lettura.
 
-![Una vista dettaglio dell'incident: l'avviso padre e il riassunto della violazione, assegnatari e iscritti, una timeline di attività attribuita e un thread di commenti](/agenteye/images/incident-detail.png)
-*Tutto quello che è accaduto, in ordine, ogni riga firmata da chi l'ha fatto.*
+![Una vista dettagliata dell'incident: l'avviso padre e il riepilogo della violazione, assegnatari e sottoscrittori, una cronologia dell'attività attribuita, e un thread di commenti](/agenteye/images/incident-detail.png)
+*Tutto quello che è successo, in ordine, ogni riga firmata da chi l'ha fatto.*
 
-Ogni azione (aperto, riconosciuto, risolto, e così via) è scritta su quella timeline e mai modificata. Ogni voce è attribuita: all'operatore che l'ha presa, per email, o a **automated** per qualsiasi cosa FailproofAI Observability ha fatto autonomamente, come aprire l'incident sulla violazione. Niente è anonimo e niente è perso, così il post-mortem più o meno si scrive da solo.
+Ogni azione (apertura, riconoscimento, risoluzione, ecc.) viene scritta in quella cronologia e non viene mai modificata. Ogni voce è attribuita: all'operatore che l'ha eseguita, per email, o ad **automated** per tutto quello che Failproof AI Observability ha fatto da solo, come aprire l'incident sulla violazione. Niente è anonimo e niente viene perso, quindi il post-mortem più o meno si scrive da solo.
 
 ## Come si muove un incident
 
@@ -33,18 +33,18 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Aperto (firing):** la violazione apre l'incident e notifica i tuoi canali una sola volta. Le violazioni ripetute si uniscono allo stesso incident e aggiornano la sua evidenza invece di notificarti di nuovo e di nuovo.
-- **Riconosciuto:** un operatore se ne occupa. Rimane aperto, e le violazioni successive aggiornano l'evidenza silenziosamente.
-- **Risolto:** un operatore lo chiude. La risoluzione automatica quando la condizione si risolve è pianificata ma non ancora abilitata, quindi un incident rimane aperto finché un operatore non lo risolve, il che mantiene tutti onesti su cosa sia effettivamente stato risolto. Un nuovo incident può aprirsi sullo stesso avviso in seguito.
+- **Open (firing):** la violazione apre l'incident e pagina i tuoi canali una volta. Le violazioni ripetute si ripiegano nello stesso incident e aggiornano la sua evidenza invece di pagarti di nuovo e di nuovo.
+- **Acknowledged:** un operatore lo prende in carico. Rimane aperto, e le violazioni successive aggiornano l'evidenza silenziosamente.
+- **Resolved:** un operatore lo chiude. La risoluzione automatica quando la condizione si risolve è pianificata ma non ancora abilitata, quindi un incident rimane aperto fino a quando un umano non lo risolve, il che mantiene tutti onesti su quello che ha effettivamente risolto. Un nuovo incident può aprirsi sullo stesso avviso in seguito.
 
-Un avviso contiene al massimo un incident aperto alla volta, quindi una regola che oscilla non può seppellirti in duplicati. Puoi anche aprire un incident manualmente: uno standalone per qualcosa che nessun avviso ha catturato, o uno collegato a un avviso esistente, se hai `incidents:write`.
+Un avviso contiene al massimo un incident aperto alla volta, quindi una regola che sfarfalla non può sommergerti di duplicati. Puoi anche aprire un incident manualmente: uno standalone per qualcosa che nessun avviso ha catturato, o uno allegato a un avviso esistente, se hai `incidents:write`.
 
 ## Dove trovarlo
 
-Gli incident si trovano in `/<org-slug>/incidents`. La visualizzazione richiede **`incidents:read`**; aprire un incident manuale richiede **`incidents:write`**; riconoscere, assegnare, commentare e risolvere richiedono **`incidents:ack`**. Le chiavi più vecchie che hanno concesso il `alerts:ack` ritirato continuano a funzionare, poiché è onorato come `incidents:ack`, quindi il tuo on-call rotation non ha bisogno di essere rilasciato.
+Gli Incidents si trovano in `/<org-slug>/incidents`. La visualizzazione richiede **`incidents:read`**; aprire un incident manuale richiede **`incidents:write`**; riconoscere, assegnare, commentare e risolvere richiedono **`incidents:ack`**. Le chiavi più vecchie che hanno concesso il deprecato `alerts:ack` continuano a funzionare, poiché viene riconosciuto come `incidents:ack`, quindi la tua rotazione on-call non ha bisogno di essere riemessa.
 
 ## Correlati
 
-- [Avvisi](/it/agenteye/alerts): le regole che aprono questi incident quando una soglia viene violata.
-- [Tracciamento degli errori](/it/agenteye/error-tracking): vedi ogni fallimento in un solo posto e promuovine uno a un avviso.
-- [Audit](/it/agenteye/audits): l'analista programmato che trova i fallimenti che nessuna regola stava monitorando.
+- [Alerts](/it/agenteye/alerts): le regole che aprono questi incident quando una soglia viene violata.
+- [Error tracking](/it/agenteye/error-tracking): vedi ogni errore in un unico posto e promuovine uno a un avviso.
+- [Audits](/it/agenteye/audits): l'analista pianificato che trova i guasti che nessuna regola stava controllando.

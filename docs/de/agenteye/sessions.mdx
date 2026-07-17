@@ -1,54 +1,55 @@
 ---
-title: "Sessions & Execution Graph"
-description: "FailproofAI Observability Sessions & Execution Graph Dokumentation."
+title: "Sessions & Ausführungsgraph"
+description: "Jedes Ereignis eines Durchlaufs, zusammengefasst in einer lesbaren Zeile und als Git-ähnlicher Ausführungsgraph dargestellt, den Sie in Sekunden erfassen können."
 ---
 
-Hör auf zu raten, warum ein Durchlauf fehlgeschlagen ist. FailproofAI Observability fasst alle Ereignisse eines Durchlaufs in einer lesbaren Zeile zusammen und stellt den gesamten Ablauf als git-artiges Diagramm dar, das du in Sekunden erfassen kannst – so siehst du genau, was dein Agent Schritt für Schritt getan hat.
 
-![Die Sessions-Liste: eine Zeile pro Durchlauf, über Umgebungen und Agents hinweg, mit Status-Pills und Bewertungs-Badges](/agenteye/images/sessions-list.png)
+Schluss mit dem Rätseln, warum ein Durchlauf fehlgeschlagen ist. Failproof AI Observability fasst alle Ereignisse eines Durchlaufs in einer lesbaren Zeile zusammen und stellt den gesamten Durchlauf als Git-ähnliches Bild dar, das Sie in Sekunden erfassen können – so sehen Sie genau, was Ihr Agent Schritt für Schritt getan hat.
 
-*Eine Zeile pro Durchlauf: der Status-Pill zeigt auf den ersten Blick, wie der Durchlauf geendet hat, und ein Score-Badge erscheint, sobald ein Evaluator verbunden ist.*
+![Die Sessions-Liste: eine Zeile pro Durchlauf, über Umgebungen und Agents hinweg, mit Status-Badges und Bewertungs-Abzeichen](/agenteye/images/sessions-list.png)
+
+*Eine Zeile pro Durchlauf: die Status-Pille zeigt Ihnen auf einen Blick, wie der Durchlauf geendet hat, und ein Bewertungs-Abzeichen erscheint, sobald ein Evaluator verbunden ist.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Agent-Tracing: verfolge einen einzelnen Durchlauf Schritt für Schritt, vom Ziel über die Tools bis zur abschließenden Antwort.*
+*Agent-Tracing: verfolgen Sie einen einzelnen Durchlauf Schritt für Schritt, vom Ziel über die Tools bis zur abschließenden Antwort.*
 
 ---
 
 ## Alle Durchläufe auf einen Blick
 
-Der rohe Ereignis-Trail ist die Wahrheit hinter jedem Schritt – aber wenn du Tausende von Schritten über Dutzende von Durchläufen hast, brauchst du den Durchlauf, nicht den einzelnen Schritt. Die Sessions-Seite fasst alle Ereignisse eines Durchlaufs in einer einzigen Zeile zusammen, sodass ein ganzer Tag an Aktivität zu einer übersichtlichen Liste wird, anstatt zu einem unüberschaubaren Datenstrom.
+Das rohe Ereignisprotokoll ist die Wahrheit hinter jedem Schritt – doch wenn Sie Tausende von Schritten über Dutzende von Durchläufen hinweg haben, brauchen Sie den Durchlauf, nicht den einzelnen Schritt. Die Sessions-Seite fasst alle Ereignisse eines Durchlaufs in einer Zeile zusammen, sodass ein ganzer Tag an Aktivität zu einer übersichtlichen Liste wird und kein unkontrollierbarer Datenstrom mehr ist.
 
-Jede Zeile trägt einen Status-Pill, damit ein fehlgeschlagener Durchlauf sofort auffällt – noch bevor du irgendetwas anklickst. Filtere nach Datumsbereich, Umgebung, Agent oder Session, um von „alles anzeigen" zu „genau der Durchlauf, der mich interessiert" in wenigen Klicks zu gelangen.
+Jede Zeile trägt eine Status-Pille, sodass ein fehlgeschlagener Durchlauf sofort von einem erfolgreichen zu unterscheiden ist – noch bevor Sie etwas anklicken. Filtern Sie nach Datumsbereich, Umgebung, Agent oder Session, um in wenigen Klicks von „allem" zu „genau dem Durchlauf, der mich interessiert" zu gelangen.
 
-Sobald du einen Evaluator verbindest, wird jeder abgeschlossene Durchlauf automatisch bewertet, und der aktuelle Score erscheint als Badge in der jeweiligen Zeile. Du kannst nach beliebigen Score-Bereichen filtern – „zeig mir alle schlecht bewerteten Prod-Durchläufe dieser Woche" ist dann ein Filter und kein manueller Review-Prozess. Bis du einen Evaluator einrichtest, erfassen Sessions trotzdem den vollständigen Durchlauf – sie tragen lediglich noch keinen Score.
-
----
-
-## Den gesamten Durchlauf als Diagramm lesen
-
-![Der git-artige Execution Graph einer Session neben der Ereignis-Timeline, mit dem Aufschlüsselungs-Panel für Tools, Modelle und Hooks](/agenteye/images/session-detail.png)
-
-*Der Execution Graph (links) liegt neben der Ereignis-Timeline; die rechte Leiste schlüsselt Tools, Modelle, Hooks und Token-Verbrauch des Durchlaufs auf.*
-
-Klicke auf eine beliebige Session, um ihren Execution Graph zu öffnen: eine git-artige Ansicht, die zeigt, wie Agents, Tools, Hooks und Modell-Aufrufe sich über die Zeit entfaltet haben. Parallele Sub-Agents verzweigen sich jeweils in eine eigene Spur, sodass du siehst, welche Arbeit gleichzeitig lief, welcher Sub-Agent ins Stocken geriet und wo der Durchlauf aus dem Ruder lief – ohne ihn aus einer Wand von Logs gedanklich rekonstruieren zu müssen.
-
-Die rechte Leiste liefert die Aufschlüsselung pro Durchlauf: welche Tools und Modelle liefen, welche Hooks ausgelöst wurden und wie viele Tokens der Durchlauf verbraucht hat. Das ist die Antwort auf „Warum hat dieser Durchlauf so viel gekostet?" oder „Welches Tool ist das langsame?" – direkt neben dem Graphen, der die Ursache zeigt.
+Sobald Sie einen Evaluator verbinden, wird jeder abgeschlossene Durchlauf automatisch bewertet und die aktuelle Punktzahl erscheint als Abzeichen in der Zeile. Sie können nach beliebigen Wertebereichen filtern – „zeige mir alle Produktionsdurchläufe mit niedriger Punktzahl dieser Woche" ist ein Filter, keine manuelle Auswertung. Bis Sie einen Evaluator einrichten, werden Sessions weiterhin vollständig erfasst – sie tragen lediglich noch keine Punktzahl.
 
 ---
 
-## Wo du es findest
+## Den gesamten Durchlauf als Bild lesen
 
-Jede Dashboard-Seite ist auf deine Organisation beschränkt (`/<org-slug>/…`). Sessions findest du unter **Observe** in der linken Seitenleiste, neben Events, mit den Filtern für Datumsbereich, Umgebung, Agent und Session am oberen Rand der Liste. Jede Zeile ist einen Klick vom vollständigen Execution Graph entfernt.
+![Der Git-ähnliche Ausführungsgraph einer Session neben ihrer Ereignis-Timeline, mit dem Panel für Tool-, Modell- und Hook-Aufschlüsselung](/agenteye/images/session-detail.png)
 
-Um Score-Badges und Score-Bereich-Filterung zu aktivieren, verbinde einen Evaluator: siehe [Evaluations](/de/agenteye/evaluations).
+*Der Ausführungsgraph (links) befindet sich neben der Ereignis-Timeline; die rechte Leiste schlüsselt die Tools, Modelle, Hooks und den Token-Verbrauch des Durchlaufs auf.*
+
+Klicken Sie auf eine beliebige Session, um ihren Ausführungsgraphen zu öffnen: eine Git-ähnliche Ansicht, die zeigt, wie Agents, Tools, Hooks und Modellaufrufe sich über die Zeit entfaltet haben. Parallele Sub-Agents verzweigen sich jeweils in ihre eigene Spur, sodass Sie sehen können, welche Aufgaben gleichzeitig liefen, welcher Sub-Agent ins Stocken geriet und wo der Durchlauf vom Kurs abgekommen ist – ohne ihn anhand einer Wand von Logs im Kopf nachvollziehen zu müssen.
+
+Die rechte Leiste liefert Ihnen die Aufschlüsselung pro Durchlauf: welche Tools und Modelle genutzt wurden, welche Hooks ausgelöst wurden und wie viele Tokens der Durchlauf verbraucht hat. Das ist die Antwort auf „Warum hat dieser Durchlauf so viel gekostet?" oder „Welches Tool ist das langsame?" – direkt neben dem Graphen, der die Ursache zeigt.
+
+---
+
+## Wo Sie es finden
+
+Jede Dashboard-Seite ist auf Ihre Organisation beschränkt (`/<org-slug>/…`). Sessions befindet sich unter **Observe** in der linken Seitenleiste, direkt neben Events, mit den Filtern für Datumsbereich, Umgebung, Agent und Session oberhalb der Liste. Jede Zeile ist einen Klick vom vollständigen Ausführungsgraphen entfernt.
+
+Um die Bewertungs-Abzeichen und die Filterung nach Wertebereichen zu aktivieren, verbinden Sie einen Evaluator: siehe [Evaluations](/de/agenteye/evaluations).
 
 ---
 
 ## Verwandte Themen
 
-- [Event stream](/de/agenteye/event-stream): der rohe, schrittweise Trail, aus dem jede Session zusammengefasst wird.
-- [Evaluations](/de/agenteye/evaluations): verbinde einen Evaluator, damit jeder Durchlauf einen Score-Badge erhält, nach dem du filtern kannst.
-- [Telemetry](/de/agenteye/telemetry): wie Durchläufe von deinem Agent in diese Sessions gelangen.
+- [Event stream](/de/agenteye/event-stream): das rohe, schrittweise Protokoll, aus dem jede Session zusammengefasst wird.
+- [Evaluations](/de/agenteye/evaluations): verbinden Sie einen Evaluator, damit jeder Durchlauf ein Bewertungs-Abzeichen erhält, nach dem Sie filtern können.
+- [Telemetry](/de/agenteye/telemetry): wie Durchläufe von Ihrem Agent in diese Sessions gelangen.

@@ -1,63 +1,63 @@
 ---
 title: "Assistente de IA"
-description: "Documentação do Assistente de IA de Observabilidade do FailproofAI."
+description: "Faça perguntas sobre os dados do seu agente em português simples e obtenha respostas com links diretos para as evidências."
 ---
 
 
-Faça uma pergunta sobre os dados do seu agente em português simples e receba uma resposta com links diretos para as evidências. Sem SQL para escrever, sem dashboards para vasculhar — o assistente de **Observabilidade do FailproofAI** é a forma mais rápida para qualquer pessoa da sua equipe obter respostas sobre seus agentes.
+Faça perguntas sobre os dados do seu agente em linguagem natural e obtenha respostas com links diretos para as evidências. Sem SQL para escrever, sem dashboards para vasculhar — o assistente **Failproof AI Observability** é a forma mais rápida para qualquer membro da sua equipe encontrar respostas sobre seus agentes.
 
-![O assistente de Observabilidade do FailproofAI respondendo uma pergunta em linguagem natural dentro do dashboard, exibindo uma tabela de Atividade de Agentes ao vivo, um detalhamento de uso de modelos por agente e conclusões escritas, com as consultas executadas mostradas inline](/agenteye/images/assistant.png)
-*Pergunte em linguagem natural e receba uma resposta construída a partir dos seus próprios dados. Aqui ele detalha quais agentes estão mais ocupados e quais modelos utilizam, e mostra as consultas executadas para que você possa verificar cada número.*
+![O assistente Failproof AI Observability respondendo a uma pergunta em linguagem natural dentro do dashboard, mostrando uma tabela de Atividade do Agente ao vivo, um detalhamento de uso de modelo por agente e conclusões escritas, com as consultas executadas exibidas inline](/agenteye/images/assistant.png)
+*Pergunte em linguagem natural e obtenha uma resposta construída a partir dos seus próprios dados. Aqui ele detalha quais agentes estão mais ocupados e quais modelos utilizam, e mostra as consultas executadas para que você possa verificar cada número.*
 
-Não há nada para aprender. Abra o chat, digite o que você quer saber e siga os links que ele retornar:
+Não há nada para aprender. Abra o chat, escreva o que você quer saber e siga os links que ele retornar:
 
 ```
-Você:  quais sessões tiveram erro hoje?
-IA:    5 sessões tiveram erro hoje, da mais recente para a mais antiga. Cada uma tem link:
-       • checkout-agent   14:02   timeout de ferramenta
-       • billing-agent    11:47   erro não tratado
-       • ...e mais 3
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
 
-Você:  resuma esta sessão          (perguntado enquanto visualiza uma execução)
-IA:    Esta execução teve 12 etapas em 3 ferramentas e falhou perto do final quando uma
-       ferramenta de pagamento retornou um erro. Ela teve pontuação baixa na sua avaliação
-       "resolved". Links: a sessão, o evento com falha e essa avaliação.
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
 ```
 
-## Pergunte e vá direto para a prova
+## Pergunte e vá direto à prova
 
-Você para de adivinhar e para de escrever consultas. Pergunte "como está a qualidade em produção esta semana?", "quais sessões tiveram erro hoje?" ou "resuma esta sessão," e você obtém uma resposta direta em segundos, em vez de construir uma consulta e interpretá-la por conta própria.
+Você para de adivinhar e para de escrever consultas. Pergunte "como está a qualidade em produção esta semana?", "quais sessões deram erro hoje?" ou "resuma esta sessão", e obtenha uma resposta direta em segundos, sem precisar construir uma consulta e interpretá-la você mesmo.
 
-Cada resposta vem com suas comprovações. O assistente linka as sessões exatas, as consultas salvas e os dashboards que usou para chegar à resposta, para que você possa clicar e confirmar em vez de simplesmente acreditar na palavra dele. Ele também é **consciente da página**: pergunte sobre "esta sessão" enquanto estiver visualizando uma e ele já sabe a qual execução você se refere. Reabra qualquer conversa anterior mais tarde pelo seletor de histórico e continue de onde parou.
+Cada resposta vem com suas evidências. O assistente vincula as sessões exatas, consultas salvas e dashboards que utilizou para chegar à resposta, para que você possa clicar e confirmar em vez de confiar apenas na palavra dele. Ele também é **consciente do contexto da página**: pergunte sobre "esta sessão" enquanto estiver visualizando uma e ele já sabe qual execução você quer dizer. Reabra qualquer conversa anterior pelo seletor de histórico e continue de onde parou.
 
 ## Transforme uma boa resposta em uma consulta salva ou dashboard
 
-Quando uma resposta vale a pena guardar, peça ao assistente para salvá-la. Ele elabora o SQL para uma consulta salva, ou monta um dashboard a partir dessas consultas, e então exibe um cartão **Aprovar / Rejeitar**. Nada é gravado até que você clique em Aprovar, então você tem a agilidade do "basta perguntar" com a última palavra sempre sendo sua.
+Quando uma resposta vale a pena guardar, peça ao assistente para salvá-la. Ele cria o SQL para uma consulta salva, ou monta um dashboard a partir dessas consultas, e então exibe um cartão de **Aprovar / Rejeitar**. Nada é gravado até que você clique em Aprovar, então você tem a agilidade do "basta perguntar" com a palavra final sempre sendo sua.
 
-Na página **Queries** ele vai um passo além e se torna um autor SQL: descreva a consulta que você quer ("mostrar taxa de erro por agente nos últimos 7 dias") e ele transmite o SQL diretamente no editor, abrindo uma visualização de diff para que você possa **Aceitar** ou **Rejeitar** a alteração antes de aplicá-la.
+Na página de **Queries**, ele vai um passo além e se torna um autor de SQL: descreva a consulta que você quer ("mostrar taxa de erros por agente nos últimos 7 dias") e ele transmite o SQL diretamente para o editor, abrindo uma visualização de diff para que você possa **Aceitar** ou **Rejeitar** a alteração antes que ela seja aplicada.
 
-![A página Queries de Observabilidade e seu editor SQL](/agenteye/images/query-lab.png)
+![A página Queries do Observability e seu editor SQL](/agenteye/images/query-lab.png)
 *A página Queries: este editor é onde o assistente transmite um rascunho de consulta somente leitura para você aceitar ou rejeitar.*
 
-Criar SQL perguntando aqui usa a permissão `queries:run`, a mesma por trás do botão **Run** do editor. O chat em qualquer outro lugar requer `agent:use`.
+Criar SQL por perguntas aqui usa a permissão `queries:run`, a mesma por trás do botão **Run** do editor. O chat em qualquer outra parte requer `agent:use`.
 
-## Seguro para entregar a toda a equipe
+## Seguro para compartilhar com toda a equipe
 
-Você pode abrir o assistente para todos sem se preocupar com o que ele pode tocar:
+Você pode disponibilizar o assistente para todos sem se preocupar com o que ele pode tocar:
 
-- **Ele lê apenas o que você já pode ver.** As respostas são limitadas às suas próprias permissões de leitura, então ele nunca amplia sua superfície de dados.
-- **Toda escrita aguarda sua aprovação.** Consultas salvas e dashboards são criados somente após seu clique explícito em Aprovar, e não há configuração que desative esse controle.
-- **Ele nunca pode deletar nada.** Nenhuma ferramenta de exclusão é exposta e o assistente não possui permissão de exclusão. As exclusões permanecem nas suas mãos, no dashboard.
-- **Ele fica dentro da sua organização.** O assistente só visualiza a organização que você está acessando no momento.
-- **Suas perguntas são suas.** Prompts e respostas ficam no seu próprio banco de dados de Observabilidade; a análise de produto registra apenas metadados de uso, nunca o texto dos seus prompts.
+- **Ele lê apenas o que você já pode ver.** As respostas são limitadas às suas próprias permissões de leitura, portanto ele nunca amplia sua superfície de dados.
+- **Cada escrita aguarda sua confirmação.** Consultas salvas e dashboards são criados apenas após o seu clique explícito em Aprovar, e não há nenhuma configuração que desative esse controle.
+- **Ele nunca pode deletar nada.** Nenhuma ferramenta de exclusão é exposta e o assistente não possui permissão de exclusão. As exclusões ficam nas suas mãos, no dashboard.
+- **Ele permanece dentro da sua organização.** O assistente sempre vê apenas a organização que você está visualizando no momento.
+- **Suas perguntas são suas.** Prompts e respostas ficam no seu próprio banco de dados do Observability; a análise de produto registra apenas metadados de uso, nunca o texto dos seus prompts.
 
 ## Onde encontrá-lo
 
-O assistente fica na borda direita de cada página dentro da sua organização (`/<org-slug>/...`). Clique na barra lateral, ou pressione `⌘J` / `Ctrl+J`, para expandi-lo no painel de chat completo, e arraste a borda para redimensionar; sua largura é lembrada entre recarregamentos. Você precisa da permissão **`agent:use`** para usá-lo; caso contrário, a barra lateral aparece em cinza. Se ainda não foi ativado para sua implantação (requer uma conexão com LLM), você verá uma barra lateral esmaecida no lugar de um chat funcional.
+O assistente fica na borda direita de todas as páginas sob sua organização (`/<org-slug>/...`). Clique na barra lateral, ou pressione `⌘J` / `Ctrl+J`, para expandi-lo no painel de chat completo, e arraste sua borda para redimensioná-lo; sua largura é lembrada entre recarregamentos. Você precisa da permissão **`agent:use`** para utilizá-lo; caso contrário, a barra lateral ficará acinzentada. Se ainda não foi ativado para o seu deployment (é necessária uma conexão com um LLM), você verá uma barra lateral inativa no lugar de um chat funcionando.
 
 ## Relacionados
 
-- [CLI e agentes](/pt-br/agenteye/cli-and-agents)
+- [CLI and agents](/pt-br/agenteye/cli-and-agents)
 - [Queries](/pt-br/agenteye/queries)
 - [Dashboards](/pt-br/agenteye/dashboards)
-- [Suite de avaliação](/pt-br/agenteye/evaluation-suite)
+- [Evaluation suite](/pt-br/agenteye/evaluation-suite)

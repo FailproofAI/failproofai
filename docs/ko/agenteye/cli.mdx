@@ -1,33 +1,34 @@
 ---
 title: "CLI"
-description: "FailproofAI Observability CLI 문서."
+description: "터미널이나 스크립트에서 Failproof AI Observability 전체를 제어하세요: 대시보드를 오갈 필요가 없습니다."
 ---
 
-터미널이나 스크립트에서 FailproofAI Observability의 모든 기능을 사용할 수 있습니다. 대시보드를 열지 않아도 됩니다. `agenteye` CLI는 데이터(세션, 이벤트 로그, 평가)를 조회하고, 조직(API 키, 사용자, 설정, 알림, 인시던트, 저장된 쿼리)을 관리합니다. 자동화된 점검이 필요하거나, CI에 Observability를 연동하거나, 코딩 에이전트가 프로덕션을 검사할 때 활용하세요. 모든 명령어는 `--json` 플래그를 지원하므로, 직접 프롬프트에서 사용하든 코딩 에이전트(Claude Code, Cursor)가 셸을 통해 결과를 파싱하든 동일하게 작동합니다.
 
-단일 바이너리로 다음 작업이 가능합니다:
+터미널이나 스크립트에서 Failproof AI Observability 전체를 제어하세요: 대시보드를 오갈 필요가 없습니다. `agenteye` CLI는 데이터(세션, 이벤트 로그, 평가)를 조회하고 조직(API 키, 사용자, 설정, 알림, 인시던트, 저장된 쿼리)을 관리하므로, 자동화 확인이 필요하거나 CI에 Observability를 연결하거나 코딩 에이전트가 프로덕션을 점검할 때 활용하세요. 모든 명령은 `--json` 플래그를 지원하므로, 직접 터미널에서 사용하거나 코딩 에이전트(Claude Code, Cursor)가 명령을 실행하고 결과를 파싱할 때 모두 동일하게 작동합니다.
 
-- **데이터 읽기**: `sessions`, `events`, `evals`, `errors` (시간, 에이전트, 환경, 점수로 필터링).
+단 하나의 바이너리로 다음 작업이 가능합니다:
+
+- **데이터 조회**: `sessions`, `events`, `evals`, `errors` (시간, 에이전트, 환경, 점수로 필터링).
 - **조직 관리**: `keys`, `users`, `settings`, `alerts`, `incidents`.
-- **분석 실행**: 저장된 SQL 및 애드혹 쿼리 실행기 (`query`).
-- **AI 어시스턴트 사용**: 대시보드에서 사용하는 것과 동일한 읽기 전용 분석 어시스턴트 (`agent`).
+- **분석 실행**: 저장된 SQL 및 임시 쿼리 실행기(`query`).
+- **AI 어시스턴트에 질문**: 대시보드에서 채팅할 수 있는 읽기 전용 분석가와 동일합니다(`agent`).
 
-> **참고:** 이것은 `agenteye` CLI이며, 컬렉터 데몬(`agenteye-collector`)과는 다른 도구입니다. CLI는 대시보드와 통신하고, 컬렉터는 이벤트를 서버로 전송합니다.
+> **참고:** 이것은 `agenteye` CLI로, 수집기 데몬(`agenteye-collector`)과는 다른 도구입니다. CLI는 대시보드와 통신하고, 수집기는 이벤트를 서버로 전송합니다.
 
 ---
 
 ## 빠른 시작
 
-처음 설치부터 첫 번째 결과까지 네 줄로 시작할 수 있습니다. CLI가 대시보드를 가리키도록 설정하고, 로그인한 후, 본인임을 확인하고, 지난 하루치 실행 결과를 조회합니다:
+아무것도 없는 상태에서 첫 번째 결과를 얻기까지 네 줄이면 됩니다. CLI가 대시보드를 가리키도록 설정하고, 로그인하고, 본인 확인 후 지난 하루의 실행 결과를 가져옵니다:
 
 ```bash
 pipx install agenteye
-agenteye --base-url https://agenteye.example.com login --email you@example.com   # 이메일로 발송된 6자리 코드 입력
-agenteye whoami                                                                  # 현재 사용자 및 활성 조직 확인
-agenteye --json sessions --since 24h                                             # 에이전트 실행 한 줄씩, 최근 24시간
+agenteye --base-url https://agenteye.example.com login --email you@example.com   # 이메일로 6자리 코드 전송
+agenteye whoami                                                                  # 현재 사용자 + 활성 조직 확인
+agenteye --json sessions --since 24h                                             # 에이전트 실행당 한 행, 최근 24h
 ```
 
-마지막 명령어는 가장 최근 세션의 JSON 객체를 출력합니다(최신순 정렬, 기본적으로 최대 50개). `jq`로 파이프하여 원하는 부분만 추출하거나, `--json`을 생략하면 박스 형태의 색상 테이블을 볼 수 있습니다. 각 행에는 실행 상태와, 평가자가 점수를 매긴 경우 메트릭 점수가 포함됩니다(여기서는 요약):
+마지막 명령은 가장 최근 세션의 JSON 객체를 출력합니다(최신순 정렬, 기본값 최대 50개). `jq`로 파이프하여 슬라이싱하거나, `--json`을 제거하면 박스 형태의 컬러 테이블로 볼 수 있습니다. 각 행에는 실행 상태와 평가자가 점수를 매긴 경우 지표 점수가 포함됩니다(여기서는 축약):
 
 ```json
 {
@@ -47,13 +48,13 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-이 페이지의 나머지 부분에서는 각 항목을 설명합니다: 격리 환경에서의 [설치](#installation), [로그인](#authentication), [설정](#configuration), 모든 명령어가 공유하는 [전역 규칙](#global-options--conventions), 그리고 [전체 명령어 참조](#command-reference).
+이 페이지의 나머지 부분에서는 각 구성 요소를 설명합니다: [설치](#installation)(격리 환경), [로그인](#authentication), [설정](#configuration), 모든 명령에 공통으로 적용되는 [전역 규칙](#global-options--conventions), 그리고 [전체 명령 레퍼런스](#command-reference).
 
 ---
 
 ## 설치
 
-CLI는 **`agenteye`**라는 이름의 공개 PyPI 패키지입니다. 자체 의존성을 항상 유지할 수 있도록 격리된 환경에 설치하세요:
+CLI는 **`agenteye`**라는 이름의 공개 PyPI 패키지입니다. 의존성 충돌을 방지하기 위해 격리된 환경에 설치하세요:
 
 ```bash
 pipx install agenteye
@@ -61,51 +62,51 @@ pipx install agenteye
 uv tool install agenteye
 ```
 
-Python 3.10 이상이 필요합니다. 설치된 명령어는 **`agenteye`**입니다:
+Python 3.10 이상이 필요합니다. 설치 후 명령어는 **`agenteye`**입니다:
 
 ```bash
 agenteye --version
 agenteye --help
 ```
 
-> **참고:** FailproofAI Observability Python SDK도 `agenteye` 배포 이름을 사용합니다. `pipx` 또는 `uv tool`로 CLI를 설치하면(공유 가상 환경에 `pip install`하는 방식 대신) 두 패키지 간의 충돌을 방지할 수 있습니다. SDK가 동일한 환경에 설치되어 있지 않은 경우에만 `pip install agenteye`를 사용하세요.
+> **참고:** Failproof AI Observability Python SDK도 `agenteye` 배포 이름을 사용합니다. `pipx` 또는 `uv tool`을 통해 CLI를 설치하면(공유 가상 환경에 `pip install`하는 대신) 두 패키지가 충돌하지 않습니다. 동일한 환경에 SDK가 설치되어 있지 않다면 `pip install agenteye`도 문제없습니다.
 
 ---
 
 ## 인증
 
-CLI는 이메일로 발송되는 일회용 코드로 **대시보드**에 인증합니다:
+CLI는 이메일로 전송되는 일회용 코드를 통해 **대시보드**에 인증합니다:
 
 ```bash
 agenteye login --email you@example.com
-# 6자리 코드가 이메일로 발송됩니다. 프롬프트에 붙여넣으세요.
+# 6자리 코드가 이메일로 전송됩니다; 프롬프트에 붙여넣으세요.
 ```
 
-세션 토큰은 `~/.agenteye/cli.json`에 저장되며(소유자만 읽을 수 있는 `0600` 권한), 기본적으로 24시간 유효합니다. 만료되면 `agenteye login`을 다시 실행하세요.
+세션 토큰은 `~/.agenteye/cli.json`에 저장되며(본인만 읽을 수 있도록 모드 `0600`), 기본적으로 24시간 동안 유효합니다. 만료되면 `agenteye login`을 다시 실행하세요.
 
 ```bash
 agenteye whoami     # 현재 사용자, 활성 조직, 권한 표시
 agenteye logout     # 세션을 취소하고 저장된 토큰 삭제
 ```
 
-`whoami`는 세션이 없거나 만료된 경우에도 오류를 발생시키지 않습니다. 대신 `logged_in: false`를 반환하므로, 스크립트나 에이전트가 안전하게 인증 상태를 확인할 수 있습니다(기본 URL이 설정되지 않았거나 대시보드에 접근할 수 없는 경우에는 여전히 비정상 종료될 수 있습니다).
+`whoami`는 세션이 없거나 만료된 경우에도 오류를 발생시키지 않고 `logged_in: false`를 반환하므로, 스크립트나 에이전트가 인증 상태를 안전하게 확인할 수 있습니다(기본 URL이 설정되지 않았거나 대시보드에 접근할 수 없는 경우에는 여전히 비정상 종료될 수 있습니다).
 
-**요구 사항:** 이메일이 대시보드 로그인을 허용받아야 하며(FailproofAI Observability 관리자에게 문의), 대시보드가 기본 URL에서 접근 가능해야 합니다([설정](#configuration) 참조). 코드를 요청했는데 수신되지 않는다면, 해당 이메일이 아직 대시보드 접근 권한을 받지 못한 것일 수 있습니다.
+**요구 사항:** 이메일이 대시보드 로그인 권한을 가지고 있어야 하며(Failproof AI Observability 관리자에게 문의), 대시보드가 기본 URL에서 접근 가능해야 합니다([설정](#configuration) 참조). 코드를 요청했지만 도착하지 않는다면, 해당 이메일이 대시보드 접근 권한을 아직 부여받지 못한 것입니다.
 
 ---
 
 ## 조직 선택 (멀티 테넌트)
 
-계정이 두 개 이상의 조직에 속해 있다면, **로그인 시** 활성 조직을 선택합니다. 선택한 조직은 이후 모든 명령어에 사용됩니다:
+계정이 둘 이상의 조직에 속해 있다면 **로그인 시** 활성 조직을 선택하세요; 이후 모든 명령에 저장된 조직이 사용됩니다:
 
 ```bash
 agenteye login --org acme           # 인증과 활성 테넌트 설정을 한 번에
-agenteye orgs list                  # 접근 가능한 조직 목록 (활성 조직 표시됨)
+agenteye orgs list                  # 접근 가능한 조직 목록 (활성 조직 표시)
 agenteye orgs switch globex         # 저장된 기본 조직 변경
-agenteye --org globex sessions      # 단일 명령어에만 적용
+agenteye --org globex sessions      # 단일 명령에 대해 재정의
 ```
 
-조직이 하나뿐이라면 자동으로 선택되므로 `--org`를 완전히 무시할 수 있습니다. 여러 조직에 속해 있는데 하나를 선택하지 않으면, CLI가 조직 목록을 표시하고 `--org <slug>`를 지정하여 다시 실행하도록 안내합니다. 활성 조직은 모든 요청에 전송되며, 권한은 **조직별로** 확인됩니다. `agenteye whoami`는 활성 조직, 해당 조직에서의 권한, 모든 멤버십을 표시합니다.
+조직이 하나뿐이라면 자동으로 선택되므로 `--org`를 신경 쓰지 않아도 됩니다. 여러 조직에 속해 있고 아무것도 선택하지 않으면, CLI가 목록을 표시하고 `--org <slug>`와 함께 다시 실행하도록 안내합니다. 활성 조직은 모든 요청에 포함되어 전송되며, 권한은 **조직별**로 결정됩니다; `agenteye whoami`는 활성 조직, 해당 조직에서의 권한, 모든 멤버십을 표시합니다.
 
 ---
 
@@ -114,78 +115,78 @@ agenteye --org globex sessions      # 단일 명령어에만 적용
 | 설정 | 플래그 | 환경 변수 | 기본값 |
 |---|---|---|---|
 | 대시보드 기본 URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **필수** (기본값 없음) |
-| 활성 조직/테넌트 | `--org` | `AGENTEYE_ORG` | 로그인 시 선택됨; `~/.agenteye/cli.json`에 저장 |
-| 세션 토큰 | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json`에서 로드 |
-| JSON 출력 | `--json` | `AGENTEYE_CLI_JSON` | 꺼짐 |
-| TLS 검증 건너뛰기 | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | 꺼짐 (로그인 시 저장) |
-| 요청 타임아웃 (초) | `--timeout` | _(없음)_ | 30 |
-| 사용 텔레메트리 비활성화 | _(없음)_ | `AGENTEYE_ANALYTICS_DISABLED` (또는 `DO_NOT_TRACK`) | 현재 텔레메트리 비활성화됨; 전송 없음 |
+| 활성 조직/테넌트 | `--org` | `AGENTEYE_ORG` | 로그인 시 선택; `~/.agenteye/cli.json`에 저장 |
+| 세션 토큰 | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json`에서 읽음 |
+| JSON 출력 | `--json` | `AGENTEYE_CLI_JSON` | 비활성 |
+| TLS 검증 건너뛰기 | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | 비활성 (로그인 시 저장) |
+| 요청 타임아웃(초) | `--timeout` | _(없음)_ | 30 |
+| 사용 텔레메트리 비활성화 | _(없음)_ | `AGENTEYE_ANALYTICS_DISABLED` (또는 `DO_NOT_TRACK`) | 텔레메트리는 현재 비활성; 아무것도 전송되지 않음 |
 
-우선순위는 **플래그 → 환경 변수 → 설정 파일** 순입니다. 기본값이 없으므로, 명령어마다 지정하거나(`--base-url https://agenteye.example.com`) 환경 변수로 한 번 설정해야 합니다(최초 `login` 이후에도 저장됨):
+우선순위는 **플래그 → 환경 변수 → 설정 파일** 순입니다. 기본값이 없으므로 반드시 CLI가 대시보드를 가리키도록 설정해야 합니다. 명령마다 지정(`--base-url https://agenteye.example.com`)하거나 환경 변수로 한 번만 설정하세요(첫 `login` 이후에도 저장됩니다):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-설정 디렉터리는 `AGENTEYE_HOME` 환경 변수를 따릅니다(SDK 및 컬렉터와 동일한 규칙). 설정되어 있으면 `cli.json`은 `$AGENTEYE_HOME/cli.json`에 위치합니다.
+설정 디렉터리는 `AGENTEYE_HOME`을 따릅니다(SDK 및 수집기와 동일한 규칙); 설정된 경우 `cli.json`은 `$AGENTEYE_HOME/cli.json`에 위치합니다.
 
 ### 자체 서명 또는 내부 TLS
 
-대시보드가 자체 서명 또는 내부 인증서로 HTTPS를 제공하는 경우(예: 로드 밸런서 호스트명 직접 사용), TLS 검증이 `CERTIFICATE_VERIFY_FAILED` 오류로 거부합니다. 인증서 검증을 건너뛰려면 `--insecure`를 사용하세요:
+대시보드가 자체 서명 또는 내부 인증서(예: 로드 밸런서 원시 호스트명)로 HTTPS를 제공하는 경우, TLS 검증이 `CERTIFICATE_VERIFY_FAILED` 오류로 거부됩니다. 인증서 검증을 건너뛰려면 `--insecure`를 전달하세요:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure`는 **로그인 시 `cli.json`에 저장**되므로, 이후 명령어는 자동으로 검증을 건너뜁니다. 플래그를 반복할 필요가 없습니다. 검증된 단일 호출에는 `--secure`를 사용하거나, 다음 로그인 시 검증을 다시 활성화하세요. CLI는 검증이 비활성화된 상태에서 대시보드에 접근하는 모든 명령어 전에 stderr로 경고를 출력합니다. 검증을 건너뛰면 중간자 공격에 대한 보호가 제거되므로, 대시보드로의 네트워크 경로를 신뢰할 수 있는 경우(VPN, 프라이빗 서브넷 등)에만 사용하세요.
+`--insecure`는 **로그인 시 `cli.json`에 저장**되므로 이후 명령에서 자동으로 검증을 건너뜁니다; 플래그를 반복할 필요가 없습니다. 일회성으로 검증을 활성화하려면 `--secure`를 전달하거나, 다음 로그인 시 검증을 다시 켜도록 저장할 수 있습니다. CLI는 검증이 비활성화된 상태에서 대시보드에 접속하는 모든 명령 전에 stderr에 경고를 출력합니다. 검증을 건너뛰면 중간자 공격에 대한 보호가 제거됩니다; 이를 사용하기 전에 대시보드까지의 네트워크 경로(VPN, 프라이빗 서브넷 등)를 신뢰할 수 있는지 확인하세요.
 
 ---
 
-## 텔레메트리 및 개인 정보
+## 텔레메트리 및 개인정보
 
-> **참고:** 현재 배포된 CLI는 **사용 텔레메트리를 전혀 전송하지 않습니다.** 마스터 킬 스위치가 활성화되어 있어 환경에 관계없이 아무것도 전송되지 않습니다. 아래 섹션은 텔레메트리가 언젠가 활성화될 경우를 대비한 옵트아웃 기능을 설명합니다.
+> **참고:** 배포된 CLI는 **현재 사용 텔레메트리를 전송하지 않습니다.** 마스터 킬 스위치가 활성화되어 있으므로 환경에 관계없이 아무것도 전송되지 않습니다. 아래 섹션은 텔레메트리가 언제든 활성화될 경우를 위한 옵트아웃 기능을 설명합니다.
 
-활성화되더라도, 텔레메트리는 **익명 사용 분석 데이터만** 수집하며, 에이전트, 세션, 이벤트 데이터는 절대 포함되지 않습니다:
+활성화되더라도 텔레메트리는 **익명 사용 분석만** 포함하며, 에이전트, 세션 또는 이벤트 데이터는 절대 포함되지 않습니다:
 
-- **에이전트, 세션, 이벤트 데이터는 인프라 외부로 절대 전송되지 않습니다.** CLI 사용 정보만 보고됩니다: 명령어 및 서브명령어 이름(예: `keys create`), 사용한 플래그의 **이름**(값은 절대 포함 안 됨), 성공/종료 상태, 실행 시간, 그리고 변경 작업에 대한 이벤트(예: `api_key_created`, `query_run`)는 정적 이름/열거형과 대략적인 카운트만 포함합니다. 대시보드 URL, 세션 토큰, 이메일, 조직 슬러그, 리소스 ID, SQL, 키 시크릿, 쿼리 필터는 **절대 전송되지 않습니다.** 운영자는 불투명한 내부 ID로만 식별되며, 이메일로는 식별되지 않습니다.
-- **미리 옵트아웃**하려면 CLI 환경에서 `AGENTEYE_ANALYTICS_DISABLED=1`을 설정하세요(CLI는 크로스 툴 표준인 `DO_NOT_TRACK=1`도 지원합니다). 텔레메트리가 활성화되는 순간부터 즉시 적용되므로, 개인 정보를 중시하는 환경에서 영구적으로 옵트아웃 상태를 유지할 수 있습니다.
-- 텔레메트리가 활성화된다면, CLI는 PostHog(`https://us.i.posthog.com`)로 직접 전송합니다. 해당 호스트가 차단된 머신에서는 아무것도 전송되지 않으며, CLI 동작에 영향을 주지 않습니다.
+- **에이전트, 세션 또는 이벤트 데이터는 절대 인프라 밖으로 나가지 않습니다.** CLI 사용 정보만 보고됩니다: 명령 및 하위 명령 이름(예: `keys create`), 사용한 플래그의 **이름**(값은 포함되지 않음), 성공/종료 상태, 소요 시간, 뮤테이션에 대한 이벤트(예: `api_key_created`, `query_run`)로 정적 이름/열거형과 개략적인 수량만 포함됩니다. 대시보드 URL, 세션 토큰, 이메일, 조직 슬러그, 리소스 ID, SQL, 키 시크릿, 쿼리 필터는 **절대 전송되지 않습니다.** 운영자는 불투명한 내부 ID로만 식별되며, 이메일은 사용되지 않습니다.
+- **미리 옵트아웃**하려면 CLI 환경에서 `AGENTEYE_ANALYTICS_DISABLED=1`을 설정하세요(CLI는 범용 `DO_NOT_TRACK=1` 규칙도 지원합니다). 텔레메트리가 활성화되는 즉시 적용되므로 개인정보를 중시하는 환경에서 영구적으로 옵트아웃 상태를 유지할 수 있습니다.
+- 텔레메트리가 활성화된 경우, CLI는 PostHog(`https://us.i.posthog.com`)로 직접 전송합니다; 해당 호스트가 차단된 머신에서는 아무것도 전송되지 않으며 CLI는 영향을 받지 않습니다.
 
 ---
 
 ## 전역 옵션 및 규칙
 
-한 번 읽어두세요. 모든 명령어에 적용됩니다.
+한 번만 읽으면 됩니다; 모든 명령에 적용됩니다.
 
-- **전역 옵션은 명령어 앞에 위치합니다.** `agenteye --json sessions`가 올바른 형식이며, `agenteye sessions --json`은 사용 오류입니다. 전역 옵션은 `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`입니다.
-- **`--json`은 순수 JSON만 stdout에 출력합니다.** 사람이 읽는 상태 메시지, 경고, 오류는 **stderr**로 출력되므로, 상태 메시지가 표시되더라도 `--json` stdout 캡처는 깔끔하게 `jq`로 파이프할 수 있습니다. `--json` 없이는 사람이 읽기 좋은 박스형 색상 뷰가 출력됩니다.
-- **`--help`로 탐색하세요.** 모든 명령어와 서브명령어에 `--help`(및 `-h` 별칭)가 있습니다: `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. 최상위 도움말에는 종료 코드와 전역 옵션도 나열됩니다. 전역 기계 가독형 요약은 없습니다. 명령어별 `--help`와 두 레지스트리 전용인 `agenteye query schema`, `agenteye settings schema`를 활용하세요.
-- **스크립트와 에이전트에서는 확인 프롬프트가 자동으로 건너뜁니다.** 생성/수정/삭제 명령어는 인터랙티브 터미널에서 "정말로 실행하시겠습니까?" 프롬프트를 표시하지만, **`--json`을 사용하거나 stdin이 TTY가 아닌 경우**(파이프나 CI 환경)에는 자동으로 건너뜁니다. 명시적으로 건너뛰려면 `--yes`/`-y`를 사용하세요. 에이전트에서는 프롬프트가 나타나지 않으므로, 파괴적인 작업은 먼저 사람에게 확인을 받아야 합니다.
-- **페이지네이션:** 결과는 최신순이며 커서 기반 페이지네이션을 사용합니다(각 페이지는 다음 페이지를 가져올 토큰을 반환합니다). `--limit N`(별칭 `-n`)은 행 수를 제한하며 **기본값은 50**입니다. `--all`은 자동으로 페이지네이션(200행 단위)하되 **`--limit`까지만** 가져오므로, `--all`만 사용하면 여전히 50개에서 멈춥니다. 전체를 가져오려면 높은 값을 명시하세요: `--all --limit 1000`. `--page-size N`은 요청당 청크 크기를 조정합니다(최대 200). `--cursor <id>`는 이전 페이지의 `next_cursor`에서 이어갑니다.
-- **시간 필터:** `--since`는 상대적 기간을 받습니다: `15m`, `1h`, `6h`, `24h`, `7d`, 또는 `all`(대시보드의 프리셋). 더 길거나 사용자 정의된 기간(예: 최근 30일)에는 `--from`/`--to`를 사용하세요: `--since`를 재정의하는 명시적 ISO-8601 UTC 타임스탬프로 **`T`와 타임존이 포함**되어야 합니다(예: `2026-06-01T00:00:00Z`). 공백으로 구분하거나 타임존이 없는 값은 사용 오류입니다.
-- **`--fields a,b,c`** (`events`, `sessions`, `evals`, `errors`에서): 테이블과 `--json` 모두 해당 키만 출력합니다. 알 수 없는 이름은 유효한 목록과 함께 거부되므로, 필드 이름을 쉽게 파악할 수 있습니다.
-- **`--file payload.json`** (또는 stdin을 읽으려면 `--file -`): 리소스가 복잡한 형태를 가질 때 전체 JSON 요청 본문을 제공합니다(`alerts create/update`, `settings set`, `users create/update`에서 사용). 저장된 쿼리 SQL은 대신 `--sql @file.sql`을 사용합니다.
-- **다중 값 필터**는 쉼표로 구분 → 집합으로 매칭됩니다(하나의 필터 내에서는 합집합, 필터 간에는 AND): `--event-type tool_use,tool_result`. Click 옵션은 가변 인자가 아니므로 `--add a b`는 오류입니다. `--add a,b`, 플래그 반복(`--add a --add b`), 또는 따옴표(`--add "a b"`)를 사용하세요.
+- **전역 옵션은 명령 앞에 위치합니다.** `agenteye --json sessions`는 올바르지만, `agenteye sessions --json`은 사용 오류입니다. 전역 옵션은 `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`입니다.
+- **`--json`은 순수 JSON만 stdout에 출력합니다.** 사람이 보는 상태 메시지, 경고, 오류는 **stderr**로 출력되므로, `--json` stdout 캡처는 상태 메시지가 표시될 때도 `jq`로 파이프하기에 깔끔합니다. `--json` 없이는 사람이 보기 좋은 박스형 컬러 뷰가 표시됩니다.
+- **`--help`로 탐색하세요.** 모든 명령과 하위 명령에는 `--help`(및 `-h` 단축키)가 있습니다: `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. 최상위 도움말에는 종료 코드와 전역 옵션도 나열됩니다. 전체 머신 읽기 가능 표면 덤프는 없습니다; 명령별 `--help`와 두 레지스트리를 위한 `agenteye query schema`, `agenteye settings schema`를 사용하세요.
+- **스크립트와 에이전트에서는 확인 프롬프트가 자동으로 건너뜁니다.** 생성/수정/삭제 명령은 인터랙티브 터미널에서 "정말로 하시겠습니까?" 프롬프트를 표시하지만, **`--json` 사용 시 또는 stdin이 TTY가 아닌 경우 자동으로 건너뜁니다**(TTY는 인터랙티브 터미널 세션이며, 파이프나 CI 러너는 해당되지 않음). 스크립트와 에이전트는 멈추지 않습니다. 명시적으로 건너뛰려면 `--yes`/`-y`를 전달하세요. 에이전트에서는 프롬프트가 실행되지 않으므로, 파괴적인 작업은 먼저 사람에게 확인을 받아야 합니다.
+- **페이지네이션:** 결과는 최신순이며 커서 방식으로 페이지가 나뉩니다(각 페이지는 다음 페이지를 가져오는 데 사용할 토큰을 반환합니다). `--limit N`(별칭 `-n`)은 행 수를 제한하며 **기본값은 50**입니다; `--all`은 자동으로 페이지를 넘기지만(200행 단위) **`--limit`까지만** 진행하므로, 단순 `--all`도 50에서 멈춥니다. 전체를 가져오려면 높은 값을 명시하세요: `--all --limit 1000`. `--page-size N`은 요청당 청크를 제어합니다(최대 200); `--cursor <id>`는 이전 페이지의 `next_cursor`에서 재개합니다.
+- **시간 필터:** `--since`는 상대적 창을 받습니다: `15m`, `1h`, `6h`, `24h`, `7d`, 또는 `all`(대시보드의 프리셋). 더 길거나 커스텀 범위(예: 최근 30일)에는 `--from`/`--to`를 사용하세요: `T`와 시간대를 포함한 명시적인 ISO-8601 UTC 타임스탬프(예: `2026-06-01T00:00:00Z`)로 `--since`를 재정의합니다. 공백으로 구분되거나 시간대가 없는 값은 사용 오류입니다.
+- **`--fields a,b,c`**(`events`, `sessions`, `evals`, `errors`에서 사용)는 출력을 해당 키로 제한하며, 테이블과 `--json` 모두에 적용됩니다. 알 수 없는 이름은 유효한 목록과 함께 오류로 반환되므로, 필드 이름을 확인하는 간편한 방법이기도 합니다.
+- **`--file payload.json`**(또는 stdin을 읽으려면 `--file -`)은 복잡한 형태의 리소스에 전체 JSON 요청 본문을 제공합니다(`alerts create/update`, `settings set`, `users create/update`에서 사용). 저장된 쿼리 SQL에는 `--sql @file.sql`을 사용합니다.
+- **다중 값 필터**는 쉼표로 구분되며 집합으로 매칭됩니다(하나의 필터 내에서는 합집합, 필터 간에는 AND): `--event-type tool_use,tool_result`. Click 옵션은 가변 인자가 아니므로 `--add a b`는 오류입니다. `--add a,b`를 사용하거나, 플래그를 반복(`--add a --add b`)하거나, 따옴표로 감싸세요(`--add "a b"`).
 
 ---
 
-## 명령어 참조
+## 명령 레퍼런스
 
-### 가장 자주 사용하는 5가지 명령어
+### 가장 자주 사용하는 5가지 명령
 
-일상적인 작업의 대부분은 몇 가지 읽기 명령어로 처리됩니다. 여기서 시작하고, 필요할 때 아래의 전체 기능을 활용하세요:
+대부분의 일상적인 작업은 몇 가지 읽기 명령으로 처리됩니다. 여기서 시작하고, 필요할 때 아래의 전체 기능으로 확장하세요:
 
-| 명령어 | 기능 | 예시 |
+| 명령 | 기능 | 사용 예 |
 |---|---|---|
-| `sessions` | 에이전트 실행 한 줄씩: 시간, 환경, 에이전트, 상태, 최신 점수. | `agenteye --json sessions --since 24h --status error` |
-| `events` | 실행 내부의 단계별 원시 추적 정보 (페이로드는 `--full` 추가). | `agenteye --json events --session-id run-001 --all` |
+| `sessions` | 에이전트 실행당 한 행: 시간, 환경, 에이전트, 상태, 최신 점수. | `agenteye --json sessions --since 24h --status error` |
+| `events` | 실행 내 단계별 원시 추적 정보(페이로드를 보려면 `--full` 추가). | `agenteye --json events --session-id run-001 --all` |
 | `evals` | 평가 결과 및 점수; `--aggregate`로 집계. | `agenteye --json evals --aggregate --since 7d --env prod` |
-| `errors` | 오류가 발생한 이벤트만; `--aggregate`로 유형별 카운트. | `agenteye --json errors --since 24h --aggregate` |
+| `errors` | 오류가 발생한 이벤트만; `--aggregate`로 유형별 집계. | `agenteye --json errors --since 24h --aggregate` |
 | `list` | 유효한 필터 값 탐색 (에이전트, 환경, 모델 등). | `agenteye list agents` |
 
-### CLI의 모든 기능
+### CLI가 할 수 있는 모든 것
 
-전체 기능은 다음과 같습니다. CLI에는 **18개의 최상위 명령어**가 있습니다. 모든 읽기 명령어는 `--json`과 위의 전역 옵션을 지원합니다. 각 명령어의 상세 플래그 목록과 JSON 형태는 `agenteye <command> -h`(또는 `<command> <subcommand> -h`)를 실행하세요.
+전체 기능이 이어집니다. CLI에는 **18개의 최상위 명령**이 있습니다. 모든 읽기 명령은 `--json`과 위의 전역 옵션을 받습니다; `agenteye <command> -h`(또는 `<command> <subcommand> -h`)를 실행하면 각 명령의 플래그 전체 목록과 JSON 형태를 확인할 수 있습니다.
 
 ### 신원: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -200,38 +201,38 @@ agenteye help                                         # 최상위 도움말 (--h
 `orgs`는 활성 테넌트를 검사하고 전환합니다:
 
 ```bash
-agenteye orgs list        # 조직 목록 + 각 조직에서의 역할 (활성 조직 표시)
-agenteye orgs switch acme # 저장된 활성 조직 변경 (슬러그 생략 시 TTY에서 목록 선택)
+agenteye orgs list        # 조직 목록 + 각 역할 (활성 조직 표시)
+agenteye orgs switch acme # 저장된 활성 조직 변경 (슬러그 생략 시 TTY에서 목록 표시)
 agenteye orgs current     # 활성 조직의 신원 카드
-agenteye orgs perms       # 활성 조직에서의 권한, 리소스별 그룹화
+agenteye orgs perms       # 활성 조직에서의 권한 (리소스별 그룹화)
 ```
 
 ### 관찰 (읽기 전용): `events` · `sessions` · `evals` · `errors` · `list`
 
-이 명령어들은 확인이 필요하지 않습니다. 공통 필터: `--session-id`, `--agent-id`, `--env` (**`--environment`가 아님**), 시간 범위 (`--since` / `--from` / `--to`).
+이 명령들은 확인 프롬프트가 필요하지 않습니다. 공유 필터: `--session-id`, `--agent-id`, `--env`(**`--environment`** 아님), 시간 범위(`--since` / `--from` / `--to`).
 
 ```bash
 # events (별칭: 단계별 원시 추적), 최신순
 agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all --limit 1000
 agenteye --json events --since 1h --search timeout --all | jq '.events[].payload'
 
-# sessions: 에이전트 실행 한 줄씩 (시간/환경/에이전트/세션/상태; 점수 필터링 없음)
+# sessions: 에이전트 실행당 한 행 (시간/환경/에이전트/세션/상태; 점수 필터링 없음)
 agenteye --json sessions --since 24h --status error
 agenteye --json sessions --agent-id checkout-bot --env prod --all --limit 1000
 
-# evals: 평가 결과 + 점수; --score로 메트릭 필터, --aggregate로 집계
+# evals: 평가 결과 + 점수; --score는 지표로 필터링, --aggregate는 집계
 agenteye --json evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3
 agenteye --json evals --aggregate --since 7d --env prod        # 상태 분포 + 키별 점수 통계
 
-# errors: 오류 이벤트; --aggregate로 카운트/세션/에이전트/마지막 발생 시간
+# errors: 오류 이벤트; --aggregate로 수량/세션/에이전트/마지막 발생 시간 집계
 agenteye --json errors --since 24h --aggregate
 agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 
-# list: 필터링 전 유효한 필터 값 탐색
-agenteye list envs        # 또한: agents event_types score_filters models hooks tools error_types
+# list: 필터링 전에 유효한 필터 값 탐색
+agenteye list envs        # 가능한 값: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (**`evals`** 전용, `sessions` 아님)는 반복 가능하며 AND로 결합됩니다. 각 경계는 선택 사항입니다(`..0.5`는 ≤ 0.5, `0.9..`는 ≥ 0.9). 요청당 최대 20개의 점수 필터. `evals --scores-full`은 **사람이 읽는 테이블 전용** 표시 플래그로, 처음 몇 개와 `+N` 카운트 대신 모든 점수 쌍을 표시합니다. `--json` 사용 시에는 효과가 없으며, 항상 완전한 점수 객체를 반환합니다. **한 세션을 처음부터 끝까지 읽으려면** 이벤트 추적과 평가를 함께 조회하세요:
+`--score KEY:MIN..MAX`(**`evals`**에서 사용, `sessions` 아님)는 반복 사용 가능하며 AND로 결합됩니다; 각 경계는 선택적입니다(`..0.5`는 ≤ 0.5, `0.9..`는 ≥ 0.9를 의미). 요청당 최대 20개의 점수 필터. `evals --scores-full`은 **사람용 테이블 전용** 표시 플래그입니다; 처음 몇 개와 `+N` 수 대신 모든 점수 쌍을 표시합니다. `--json`에서는 영향이 없으며, 항상 전체 점수 객체를 반환합니다. **세션 전체를 처음부터 끝까지 읽으려면** 이벤트 추적과 평가를 함께 확인하세요:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
@@ -240,54 +241,54 @@ agenteye --json evals  --session-id run-001                       # 점수 + 상
 
 ### 관리 (권한 필요): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: API 키. 시크릿은 로컬에서 생성되어 서버로 전송되며(서버는 해시만 저장), 생성/재생성 시 **딱 한 번만** 표시됩니다. 즉시 복사해두세요. `--json` 사용 시 `key` 필드에만 표시됩니다. **이름**으로 참조됩니다.
+**`keys`**: API 키. 시크릿은 로컬에서 생성되어 서버로 전송되며(서버는 해시만 저장), 생성/재생성 시 **한 번만 표시**됩니다; 그 때 캡처하세요. `--json` 사용 시 `key` 필드에만 나타납니다. **이름**으로 참조됩니다.
 
 ```bash
-agenteye keys list                                   # 활성 키 먼저, 그다음 취소된 키
+agenteye keys list                                   # 활성 키 먼저, 그 다음 취소된 키
 agenteye keys show ci-bot
-agenteye keys create ci-bot --add events:read.add    # 필요한 권한만 부여; 시크릿은 한 번만 출력
-agenteye keys create ops --permission-set standard --remove queries:run   # 프리셋 적용 후 조정
+agenteye keys create ci-bot --add events:read.add    # 필요한 범위로 제한; 시크릿 한 번 출력
+agenteye keys create ops --permission-set standard --remove queries:run   # 프리셋 사용 후 조정
 agenteye keys update ci-bot --add evaluations:read --yes
 agenteye keys regenerate ci-bot --yes                # 시크릿 교체 (이전 시크릿은 즉시 무효화)
 agenteye keys disable ci-bot --yes                   # 취소
 ```
 
-권한은 `(permission-set ∪ --add) − --remove` 방식으로 작동합니다. 토큰 형식은 `slug:action`(예: `events:read`) 또는 `slug:action.action`(한 리소스에 여러 작업 확장, `events:read.add` → `events:read`, `events:add`). 프리셋: `read-only`, `standard`, `admin`. 사람 전용 권한(`keys:update`)은 키에 부여할 수 없습니다.
+권한은 `(permission-set ∪ --add) − --remove` 방식으로 작동합니다. 토큰은 `slug:action`(예: `events:read`) 또는 하나의 리소스에 여러 액션을 확장하려면 `slug:action.action`을 사용합니다(`events:read.add` → `events:read`, `events:add`). 프리셋: `read-only`, `standard`, `admin`. 사람 전용 권한(`keys:update`)은 키에 부여할 수 없습니다.
 
-**`users`**: 조직 멤버, **이메일**로 참조됩니다(UUID id도 허용).
+**`users`**: 조직 구성원, **이메일**로 참조(UUID id도 허용).
 
 ```bash
 agenteye users list [--active-only]
 agenteye users show dev@corp.com
 agenteye users create dev@corp.com --permission-set standard
 agenteye users update dev@corp.com --add alerts:write --remove queries:delete   # 예측 + 확인
-agenteye users disable dev@corp.com --yes            # 보호된 사용자/자기 자신 보호 기능 있음
+agenteye users disable dev@corp.com --yes            # 보호된 계정/자기 자신 보호 기능 있음
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: 고정된 레지스트리(기존 키를 읽고 변경하며, 새 키 생성은 불가).
+**`settings`**: 고정된 레지스트리(기존 키를 읽고 변경할 수 있으나, 새 키를 만들 수는 없습니다).
 
 ```bash
-agenteye settings list                               # 키 · 값 · 유형 · 수정 시간 (시크릿은 마스킹)
-agenteye settings schema                             # 각 키가 허용하는 값 (유형 · 범위 · 설명)
+agenteye settings list                               # 키 · 값 · 타입 · 업데이트 시간 (시크릿 마스킹)
+agenteye settings schema                             # 각 키가 허용하는 값 (타입 · 범위 · 설명)
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: 알림 정의, **이름**으로 참조됩니다. `create`는 위치 인수 NAME과 플래그 또는 `--file`을 통한 전체 JSON 본문을 받습니다.
+**`alerts`**: 알림 정의, **이름**으로 참조. `create`는 위치 인자로 NAME을 받으며, 플래그 또는 `--file`을 통해 전체 JSON 본문을 제공할 수 있습니다.
 
 ```bash
 agenteye alerts list
 agenteye alerts show high-errors
-agenteye alerts create high-errors --file alert.json          # NAME은 필수 (위치 인수)
+agenteye alerts create high-errors --file alert.json          # NAME은 필수 (위치 인자)
 agenteye alerts update high-errors --severity critical --yes
 agenteye alerts test high-errors --yes                        # 테스트 알림 발송
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: 알림 인시던트, id로 참조됩니다(짧은 id 허용). `show`는 전체 활동 로그를 출력합니다. 조치 전에 반드시 확인하세요.
+**`incidents`**: 알림 인시던트, id로 참조(짧은 id 허용). `show`는 전체 활동 로그를 출력합니다; 조치 전에 먼저 읽으세요.
 
 ```bash
-agenteye incidents list --state firing                # 또한: acknowledged, resolved
+agenteye incidents list --state firing                # 가능한 값: acknowledged, resolved
 agenteye incidents count
 agenteye incidents show <id>
 agenteye incidents ack <id>
@@ -301,24 +302,24 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### 분석 및 어시스턴트: `query` · `agent`
 
-**`query`**: 분석 저장소 대상 저장된 SQL과 애드혹 실행기. 저장된 쿼리는 **이름**으로 참조됩니다. SQL은 서버 측에서 검증됩니다(SELECT/WITH만 허용, 구문 타임아웃, 행 수 제한).
+**`query`**: 분석 스토어에 대한 저장된 SQL 및 임시 실행기. 저장된 쿼리는 **이름**으로 참조하며, SQL은 서버 측에서 검증됩니다(SELECT/WITH만 허용, 실행 타임아웃, 행 수 제한).
 
 ```bash
 agenteye query schema [TABLE]                         # 분석 뷰의 컬럼 레이아웃
 agenteye query run --sql "select count(*) from analytics.events"
-agenteye query run errs --arg prod --limit 100        # 저장된 쿼리 실행 + 위치 인수 $1
+agenteye query run errs --arg prod --limit 100        # 저장된 쿼리 실행 + 위치 인자 $1
 agenteye query list ; agenteye query show errs
 agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: 내장 **AI 어시스턴트**와 대화합니다(대시보드에서 사용하는 것과 동일한 읽기 전용 분석 어시스턴트). 채팅은 짧은 chat-id로 참조됩니다(프리픽스 해석 지원).
+**`agent`**: 내장 **AI 어시스턴트**와 대화합니다(대시보드에서 채팅할 수 있는 읽기 전용 분석가와 동일). 채팅은 짧은 chat-id로 참조됩니다(접두사로 해석).
 
 ```bash
 agenteye agent health                                 # AI 어시스턴트 설정/접근 가능 여부 확인
-agenteye agent models                                 # --model에 사용 가능한 모델 (기본값 표시)
+agenteye agent models                                 # --model에 전달할 수 있는 모델 목록 (기본값 표시)
 agenteye agent ask "which agents errored most in the last day?"    # 채팅 시작; 짧은 id 출력
-agenteye agent ask --chat <short-id> "and which tools did they call?"   # 해당 채팅 이어서
+agenteye agent ask --chat <short-id> "and which tools did they call?"   # 채팅 이어가기
 agenteye agent chats ; agenteye agent show <short-id>
 agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete <short-id>
 ```
@@ -330,20 +331,20 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 | 코드 | 의미 |
 |---|---|
 | 0 | 성공 |
-| 1 | 예기치 않은 오류 (예: 대시보드가 5xx 반환) |
-| 2 | 사용 오류 (잘못된 인수, 알 수 없는 명령어/플래그, 이름 충돌) |
-| 3 | 대시보드에 접근할 수 없음 |
-| 4 | 로그인되지 않았거나 세션이 만료됨; `agenteye login` 실행 필요 |
-| 5 | 인증되었으나 필요한 권한이 없음 (메시지에 권한 이름 표시) |
+| 1 | 예상치 못한 오류 (예: 대시보드가 5xx 반환) |
+| 2 | 사용 오류 (잘못된 인수, 알 수 없는 명령/플래그, 이름 충돌) |
+| 3 | 대시보드에 접근 불가 |
+| 4 | 로그인하지 않았거나 세션 만료; `agenteye login` 실행 필요 |
+| 5 | 인증되었지만 계정에 필요한 권한이 없음 (메시지에 권한 이름 표시) |
 | 6 | 요청한 리소스를 찾을 수 없음 (예: 알 수 없는 세션 또는 인시던트 id) |
 
-이러한 종료 코드 덕분에 CLI를 안전하게 스크립트화할 수 있습니다. 코딩 에이전트는 `4`를 받으면 재인증을 요청하고, `5`를 받으면 누락된 권한을 알릴 수 있습니다. 종료 코드 처리 패턴과 JSON 출력 형태는 [에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes)를 참조하세요.
+이를 통해 CLI를 스크립트에서 안전하게 사용할 수 있습니다: 코딩 에이전트는 `4`를 받으면 재인증을 요청하거나, `5`를 받으면 누락된 권한을 알릴 수 있습니다. 종료 코드 처리 패턴과 JSON 출력 형태는 [에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes)를 참조하세요.
 
 ---
 
 ## 다음 단계
 
-- **[에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes)**: 복사해서 바로 쓸 수 있는 쿼리 패턴, `jq` 원라이너, `--fields` 프로젝션, 종료 코드 처리, JSON 출력 형태를 코딩 에이전트를 위해 정리한 가이드.
-- **[CLI 에이전트 스킬](/ko/agenteye/cli-skill)**: 이 CLI를 설치 가능한 Claude Code / Codex *스킬*로 패키징하여 코딩 에이전트가 자연어 요청으로 FailproofAI Observability를 제어할 수 있게 합니다.
+- **[에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes)**: 복사해서 사용할 수 있는 쿼리 패턴, `jq` 한 줄 명령, `--fields` 프로젝션, 종료 코드 처리, JSON 출력 형태 — CLI를 구동하는 코딩 에이전트를 위해 작성되었습니다.
+- **[CLI 에이전트 스킬](/ko/agenteye/cli-skill)**: 이 CLI를 설치 가능한 Claude Code / Codex *스킬*로 패키징하여 코딩 에이전트가 자연어 요청으로 Failproof AI Observability를 구동할 수 있도록 합니다.
 - **[API 키](/ko/agenteye/api-keys)**: `keys create --add …` 뒤에 있는 권한 모델.
 - **[AI 어시스턴트](/ko/agenteye/assistant)**: `agent ask`가 사용하는 어시스턴트 활성화 방법.

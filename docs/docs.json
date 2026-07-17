@@ -172,10 +172,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "zh/agenteye/python-sdk",
+                  "zh/agenteye/python-sdk-skill",
                   "zh/agenteye/cli",
                   "zh/agenteye/cli-skill",
                   "zh/agenteye/cli-recipes",
-                  "zh/agenteye/evaluation-suite"
+                  "zh/agenteye/evaluation-suite",
+                  "zh/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -279,10 +281,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "ja/agenteye/python-sdk",
+                  "ja/agenteye/python-sdk-skill",
                   "ja/agenteye/cli",
                   "ja/agenteye/cli-skill",
                   "ja/agenteye/cli-recipes",
-                  "ja/agenteye/evaluation-suite"
+                  "ja/agenteye/evaluation-suite",
+                  "ja/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -386,10 +390,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "ko/agenteye/python-sdk",
+                  "ko/agenteye/python-sdk-skill",
                   "ko/agenteye/cli",
                   "ko/agenteye/cli-skill",
                   "ko/agenteye/cli-recipes",
-                  "ko/agenteye/evaluation-suite"
+                  "ko/agenteye/evaluation-suite",
+                  "ko/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -493,10 +499,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "es/agenteye/python-sdk",
+                  "es/agenteye/python-sdk-skill",
                   "es/agenteye/cli",
                   "es/agenteye/cli-skill",
                   "es/agenteye/cli-recipes",
-                  "es/agenteye/evaluation-suite"
+                  "es/agenteye/evaluation-suite",
+                  "es/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -600,10 +608,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "pt-br/agenteye/python-sdk",
+                  "pt-br/agenteye/python-sdk-skill",
                   "pt-br/agenteye/cli",
                   "pt-br/agenteye/cli-skill",
                   "pt-br/agenteye/cli-recipes",
-                  "pt-br/agenteye/evaluation-suite"
+                  "pt-br/agenteye/evaluation-suite",
+                  "pt-br/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -707,10 +717,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "de/agenteye/python-sdk",
+                  "de/agenteye/python-sdk-skill",
                   "de/agenteye/cli",
                   "de/agenteye/cli-skill",
                   "de/agenteye/cli-recipes",
-                  "de/agenteye/evaluation-suite"
+                  "de/agenteye/evaluation-suite",
+                  "de/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -814,10 +826,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "fr/agenteye/python-sdk",
+                  "fr/agenteye/python-sdk-skill",
                   "fr/agenteye/cli",
                   "fr/agenteye/cli-skill",
                   "fr/agenteye/cli-recipes",
-                  "fr/agenteye/evaluation-suite"
+                  "fr/agenteye/evaluation-suite",
+                  "fr/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -921,10 +935,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "ru/agenteye/python-sdk",
+                  "ru/agenteye/python-sdk-skill",
                   "ru/agenteye/cli",
                   "ru/agenteye/cli-skill",
                   "ru/agenteye/cli-recipes",
-                  "ru/agenteye/evaluation-suite"
+                  "ru/agenteye/evaluation-suite",
+                  "ru/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1028,10 +1044,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "hi/agenteye/python-sdk",
+                  "hi/agenteye/python-sdk-skill",
                   "hi/agenteye/cli",
                   "hi/agenteye/cli-skill",
                   "hi/agenteye/cli-recipes",
-                  "hi/agenteye/evaluation-suite"
+                  "hi/agenteye/evaluation-suite",
+                  "hi/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1135,10 +1153,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "tr/agenteye/python-sdk",
+                  "tr/agenteye/python-sdk-skill",
                   "tr/agenteye/cli",
                   "tr/agenteye/cli-skill",
                   "tr/agenteye/cli-recipes",
-                  "tr/agenteye/evaluation-suite"
+                  "tr/agenteye/evaluation-suite",
+                  "tr/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1242,10 +1262,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "vi/agenteye/python-sdk",
+                  "vi/agenteye/python-sdk-skill",
                   "vi/agenteye/cli",
                   "vi/agenteye/cli-skill",
                   "vi/agenteye/cli-recipes",
-                  "vi/agenteye/evaluation-suite"
+                  "vi/agenteye/evaluation-suite",
+                  "vi/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1349,10 +1371,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "it/agenteye/python-sdk",
+                  "it/agenteye/python-sdk-skill",
                   "it/agenteye/cli",
                   "it/agenteye/cli-skill",
                   "it/agenteye/cli-recipes",
-                  "it/agenteye/evaluation-suite"
+                  "it/agenteye/evaluation-suite",
+                  "it/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1456,10 +1480,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "ar/agenteye/python-sdk",
+                  "ar/agenteye/python-sdk-skill",
                   "ar/agenteye/cli",
                   "ar/agenteye/cli-skill",
                   "ar/agenteye/cli-recipes",
-                  "ar/agenteye/evaluation-suite"
+                  "ar/agenteye/evaluation-suite",
+                  "ar/agenteye/evaluator-skill"
                 ]
               },
               {
@@ -1563,10 +1589,12 @@
                 "group": "SDK and CLI",
                 "pages": [
                   "he/agenteye/python-sdk",
+                  "he/agenteye/python-sdk-skill",
                   "he/agenteye/cli",
                   "he/agenteye/cli-skill",
                   "he/agenteye/cli-recipes",
-                  "he/agenteye/evaluation-suite"
+                  "he/agenteye/evaluation-suite",
+                  "he/agenteye/evaluator-skill"
                 ]
               },
               {

@@ -1,0 +1,131 @@
+---
+title: "Compétence Agent Python SDK Failproof AI Observability"
+description: "Passez d'un agent non instrumenté à des événements visibles, avec votre agent de codage qui identifie les points d'instrumentation, les écrit et prouve qu'ils fonctionnent."
+---
+
+Dites à votre agent de codage *« ajoute Failproof AI Observability à cet agent »* et laissez-le lire votre boucle, déterminer où placer l'instrumentation, l'écrire et vérifier les événements avant de considérer la tâche terminée.
+
+La **compétence Python SDK** (`agenteye-python-sdk`) est une *Agent Skill* : un dossier d'instructions qu'un agent de codage comme Claude Code ou Codex charge à la demande lorsqu'une tâche lui correspond. Elle apprend à l'agent à utiliser le [Python SDK](/fr/agenteye/python-sdk) — ce n'est pas une bibliothèque, et cela ne change rien au fonctionnement du SDK.
+
+## L'instrumentation est facile à écrire et facile à rater silencieusement
+
+Le SDK est compact : treize méthodes d'événement, toutes à arguments nommés uniquement. Un agent de codage peut lire la référence du [Python SDK](/fr/agenteye/python-sdk) et produire une instrumentation vraisemblable en une minute.
+
+Le piège, c'est que ce SDK ne lève pas d'exception quand vous vous trompez, et une instrumentation incorrecte ressemble exactement à une instrumentation correcte jusqu'à ce que quelqu'un ouvre un tableau de bord et le trouve vide. Les erreurs qui coûtent vraiment du temps sont toutes des silences :
+
+| L'erreur | Ce que vous voyez |
+|---|---|
+| Pas d'`agent_start` | Chaque événement atterrit. Zéro session. |
+| L'environnement n'est jamais défini | Tout fonctionne, classé sous `dev`. |
+| `outcome="failure"` | L'exécution s'affiche en vert — seuls `failed`, `error`, `timeout`, `rejected` comptent. |
+| Un nom de champ mal orthographié | Accepté et stocké comme un nouveau champ. |
+| Des événements émis depuis un pool de threads | Abandonnés silencieusement. |
+
+Aucun ne lève d'exception. Aucun n'apparaît dans les tests. Chacun est mentionné dans la compétence, formulé comme un contrat avec la vérification qui le détecte.
+
+## Ce qu'elle fait, dans l'ordre
+
+La compétence suit les mêmes trois étapes qu'un ingénieur attentif :
+
+1. **Planifier.** Elle lit votre boucle d'agent et pose les deux questions auxquelles vous seul pouvez répondre : ce qui constitue une exécution (votre `session_id`), et qui sont les acteurs distinguables (votre `agent_id`). Elle obtient ces réponses avant d'écrire du code, car les modifier plus tard fragmente votre historique et brise les tendances.
+2. **Écrire.** Elle lie l'identité une seule fois par exécution plutôt que de la propager à travers chaque point d'appel, et elle choisit une forme adaptée à la concurrence — un détail qui compte, car le raccourci évident mélange silencieusement deux exécutions simultanées en une seule session.
+3. **Vérifier.** Elle exécute votre agent et lit les fichiers d'événements résultants, en vérifiant que `agent_start` est présent, que l'environnement est correct et qu'une exécution a produit une seule session.
+
+Cette troisième étape est celle que les gens sautent. Le SDK écrit les événements dans des fichiers locaux, donc une intégration complète peut être prouvée sur un ordinateur portable sans serveur, sans clé API et sans réseau — c'est précisément pourquoi la compétence insiste pour le faire.
+
+## Son rapport aux autres compétences
+
+Trois compétences, une répartition nette :
+
+| Compétence | Utilisez-la quand | Ce qu'elle touche |
+|---|---|---|
+| **Compétence Python SDK** (cette page) | Vous voulez que votre agent *émette* de la télémétrie — « ajoute l'observabilité », « pourquoi mon agent n'apparaît pas ? » | Écrit du code dans le dépôt de votre agent. Ne lit rien. |
+| **[Compétence Evaluator](/fr/agenteye/evaluator-skill)** | Vous voulez *noter* les exécutions — « que devrait-on mesurer ? » | Écrit du code dans votre dépôt ; lit la télémétrie |
+| **[Compétence CLI](/fr/agenteye/cli-skill)** | Vous voulez *lire* ce qui s'est passé, ou opérer votre déploiement | Pilote la CLI en votre nom, y compris les modifications |
+
+Elles s'enchaînent dans cet ordre : cette compétence fait circuler les événements, l'évaluateur les note, la CLI les relit. Il n'y a rien à évaluer et rien à lire tant que votre agent n'émet pas de sessions — donc si vous partez de zéro, commencez ici.
+
+## Prérequis
+
+1. **Python 3.10+** et le code de l'agent que vous souhaitez instrumenter.
+2. **Le SDK.** Il est distribué aux clients sous forme de wheel privé plutôt que depuis un index public — votre processus d'intégration explique comment l'obtenir et l'installer. La compétence connaît le chemin d'installation et vous demandera plutôt que de deviner si elle ne le trouve pas.
+3. **Rien d'autre.** Pas de connexion au tableau de bord, pas de clé API, pas de réseau. La compétence vérifie à partir des fichiers d'événements écrits par le SDK, elle peut donc terminer et prouver son travail hors ligne.
+
+## Où l'obtenir
+
+La compétence se trouve dans la collection publique [`FailproofAI/skills`](https://github.com/FailproofAI/skills) :
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+Ajoutez `-g` pour l'installer pour tous les projets plutôt que pour le seul projet en cours, et `--copy` si votre environnement ne suit pas les liens symboliques. Pour Codex, passez `-a codex`.
+
+## Installation manuelle
+
+Les Agent Skills sont des dossiers contenant un `SKILL.md` et des références. Si vous préférez ne pas utiliser l'installateur :
+
+- **Claude Code** : copiez le dossier `agenteye-python-sdk/` dans `~/.claude/skills/` (tous les projets) ou `<votre-dépôt>/.claude/skills/` (ce dépôt uniquement). Claude Code le découvre automatiquement — vérifiez la liste `/skills`, ou demandez simplement quelque chose qui y correspond.
+- **Codex** : Codex lit le même `SKILL.md`. Le fichier `agents/openai.yaml` inclus définit `allow_implicit_invocation: true`, il est donc sélectionné automatiquement quand une tâche correspond ; sinon, invoquez-le comme `$agenteye-python-sdk`.
+
+Exécutez votre agent **dans le dépôt contenant le code que vous voulez instrumenter** — la compétence lit votre boucle d'agent avant de proposer quoi que ce soit.
+
+## À quoi ressemble une session
+
+```text
+vous  ▸ Add Failproof AI Observability to this agent.
+
+agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
+        wrapper in llm.py. Two questions before I write anything.
+
+        What counts as one run? You handle requests concurrently, so I'd
+        use the request id you already have in ctx.request_id — then a
+        session here and a request in your logs are the same string.
+
+        And who are the actors? I see a planner path and a researcher
+        path. Label them separately, or is that one agent to you?
+
+vous  ▸ Request id is right. They're one agent, call it "assistant".
+
+agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
+        agent_end bracket handle_request, including the error path. Used
+        a context-local for identity — your dispatcher runs tools in a
+        thread pool, and the simpler approach would have mixed concurrent
+        runs into one session without complaining.
+
+        Verified against a real run: 11 events across 4 files —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, one session
+        per request, durations paired.
+
+        One thing I did NOT do: your worker pool in batch.py submits
+        straight to the executor, so events from there would be dropped.
+        Want me to fix those too?
+```
+
+Le schéma à remarquer : l'agent a lu le code avant de proposer quoi que ce soit, n'a posé que les questions auxquelles vous pouvez répondre, a réutilisé un identifiant que vous aviez déjà, a choisi la forme adaptée à la concurrence *parce qu'il* a vu un pool de threads, et **a vérifié en lisant les événements réels** plutôt qu'en déclarant le succès — puis a signalé le seul endroit dont il savait qu'il échouerait silencieusement.
+
+## Ce que vous pouvez lui demander
+
+- *« Pourquoi mon agent n'apparaît pas sur le tableau de bord ? »* → remonte la chaîne : les événements sont-ils écrits, `agent_start` est-il présent, l'environnement est-il correct, le collecteur lit-il au même endroit.
+- *« Tout atterrit sous dev. »* → l'environnement n'a jamais été défini, ou a été réinitialisé par un appel ultérieur.
+- *« Ajoute le suivi des tokens. »* → trouve votre wrapper LLM et enregistre le modèle, la raison d'arrêt et l'utilisation.
+- *« Instrumente aussi les sous-agents. »* → une session, des étiquettes d'agent distinctes, imbriqués sous leur parent.
+- *« Écris des tests pour l'instrumentation. »* → pointe le SDK vers un répertoire temporaire et effectue des assertions sur les événements écrits.
+
+## Points de vigilance
+
+**Laissez-le vérifier.** L'étape qui rend cette compétence utile est la dernière — exécuter votre agent et relire les événements. Un agent qui écrit l'instrumentation et s'arrête a fait la moitié facile, et la moitié qui échoue silencieusement est l'autre.
+
+**Convenez des noms avant le code.** `session_id` et `agent_id` sont les axes par lesquels chaque vue groupe les données. Les renommer plus tard fragmente l'historique : les anciennes exécutions conservent les anciens labels et vos tendances se brisent. La compétence posera la question ; la réponse mérite une minute de réflexion.
+
+**Si votre agent propose d'installer le SDK depuis un index public, la compétence n'a pas été chargée.** Le SDK est distribué de manière privée. Cette proposition est un signe fiable que votre agent de codage devine plutôt qu'il ne suit la compétence — arrêtez-le là et vérifiez que la compétence est installée.
+
+Au-delà de cela, son rayon d'action est limité : elle écrit du code dans votre répertoire de travail et des fichiers d'événements là où vous lui indiquez. Elle ne lit rien de votre déploiement et n'y change rien.
+
+## Prochaines étapes
+
+- **[Python SDK](/fr/agenteye/python-sdk)** : la référence complète des événements — chaque type d'événement et chaque champ — qui sous-tend ce que cette compétence automatise.
+- **[Sessions](/fr/agenteye/sessions)** : ce que produit votre instrumentation une fois les événements reçus.
+- **[Agent Skill Evaluator](/fr/agenteye/evaluator-skill)** : la prochaine étape une fois que les exécutions arrivent — les noter.
+- **[Agent Skill CLI](/fr/agenteye/cli-skill)** : relire votre télémétrie.

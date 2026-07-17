@@ -1,25 +1,25 @@
 ---
 title: "Seguridad"
-description: "Documentación de seguridad de FailproofAI Observability."
+description: "Failproof AI Observability está diseñado para operar cerca de tus agentes en producción, lo que significa que procesa tus prompts, entradas de herramientas y salidas."
 ---
 
 
-FailproofAI Observability está diseñado para ejecutarse cerca de tus agentes en producción, lo que significa que tiene acceso a tus prompts, entradas de herramientas y salidas. Esta página explica cómo mantiene esos datos aislados, controlados y bajo tu control. Si estás evaluando FailproofAI Observability para una revisión de seguridad, empieza aquí.
+Failproof AI Observability está diseñado para operar cerca de tus agentes en producción, lo que significa que procesa tus prompts, entradas de herramientas y salidas. Esta página explica cómo mantiene esos datos aislados, controlados y en tus manos. Si estás evaluando Failproof AI Observability para una revisión de seguridad, comienza aquí.
 
 ---
 
 ## Tus datos permanecen en tu entorno
 
-FailproofAI Observability es autohospedado. Los eventos, prompts, respuestas del modelo y datos analíticos se almacenan en tus propias bases de datos, en tu propio entorno. Nada se envía a un SaaS de terceros para su almacenamiento, y tus datos permanecen en tu propia cuenta en la nube.
+Failproof AI Observability es autohospedado. Los eventos, prompts, respuestas del modelo y análisis se almacenan en tus propias bases de datos, en tu propio entorno. Nada se envía a un SaaS de terceros para su almacenamiento, y tus datos permanecen en tu propia cuenta en la nube.
 
 ---
 
 ## Aislamiento de inquilinos
 
-Una instancia de FailproofAI Observability puede alojar múltiples organizaciones, y cada una está aislada a nivel de almacenamiento — aplicado por la base de datos, no solo por la interfaz de usuario:
+Una instancia de Failproof AI Observability puede alojar muchas organizaciones, y cada una está aislada en la capa de almacenamiento — aplicado por la base de datos, no solo por la interfaz:
 
 - Los datos operativos de una organización (usuarios, claves, paneles, consultas guardadas) están limitados a esa organización, y las lecturas entre organizaciones están bloqueadas por la propia base de datos.
-- Cada evento ingestado lleva la marca de la organización propietaria, por lo que los eventos de una organización nunca pueden ser leídos por otra.
+- Cada evento ingestado lleva una marca de la organización propietaria, por lo que los eventos de una organización nunca pueden ser leídos por otra.
 
 Cada ruta del panel está delimitada bajo un slug de organización (`/<org-slug>/…`).
 
@@ -27,42 +27,42 @@ Cada ruta del panel está delimitada bajo un slug de organización (`/<org-slug>
 
 ## Inicio de sesión
 
-FailproofAI Observability utiliza inicio de sesión sin contraseña, basado en correo electrónico. No hay contraseña que pueda ser objeto de phishing o filtrarse. El usuario solicita un código de un solo uso (o un enlace mágico de un clic), que se envía por correo electrónico y caduca rápidamente. El inicio de sesión está controlado por una **lista de permitidos**: solo las direcciones de correo electrónico (o dominios) que autorices podrán autenticarse.
+Failproof AI Observability utiliza inicio de sesión sin contraseña, basado en correo electrónico. No hay contraseña que phishear ni filtrar. Un usuario solicita un código de un solo uso (o un enlace mágico de un clic), que se le envía por correo electrónico y caduca rápidamente. El inicio de sesión está controlado por una **lista de permitidos**: solo las direcciones de correo electrónico (o dominios) que autorices pueden autenticarse.
 
-![La pantalla de inicio de sesión de FailproofAI Observability, que envía un código de un solo uso a tu correo electrónico](/agenteye/images/login.png)
-
----
-
-## Acceso delimitado con claves API
-
-Cada cliente se autentica con una clave API que lleva permisos granulares de mínimo privilegio. Un recopilador solo necesita `events:add`; una clave de panel o asistente puede ser de solo lectura; las acciones destructivas (eliminar, regenerar) son permisos separados que puedes elegir incluir.
-
-![La página de claves API: los permisos de cada clave, codificados por color según el alcance de lectura, escritura y operaciones destructivas](/agenteye/images/api-keys.png)
-
-Conserva la clave de administrador de arranque para la configuración e emite claves con permisos mínimos para todo lo demás. Consulta [Claves API](/es/agenteye/api-keys).
+![La pantalla de inicio de sesión de Failproof AI Observability, que envía un código de uso único a tu correo electrónico](/agenteye/images/login.png)
 
 ---
 
-## Un asistente de solo lectura con aprobación previa
+## Acceso con ámbito mediante claves API
+
+Cada cliente se autentica con una clave API que lleva permisos granulares de mínimo privilegio. Un recolector solo necesita `events:add`; una clave de panel o asistente puede ser de solo lectura; las acciones destructivas (eliminar, regenerar) son permisos separados que tú eliges incluir.
+
+![La página de claves API: los permisos de cada clave, codificados por color según ámbito de lectura, escritura y destructivo](/agenteye/images/api-keys.png)
+
+Conserva la clave de arranque de administrador para la configuración e emite claves con permisos reducidos para todo lo demás. Consulta [Claves API](/es/agenteye/api-keys).
+
+---
+
+## Un asistente de solo lectura con aprobación requerida
 
 El [asistente de IA](/es/agenteye/assistant) integrado en el panel responde preguntas sobre tus datos, pero está diseñado con restricciones:
 
-- Es **de solo lectura por defecto**: su SQL pasa por un mecanismo de control que permite únicamente consultas `SELECT`/`WITH`, de una sola instrucción, con un límite de filas.
-- Todo lo que crea (una consulta guardada, un panel) requiere **aprobación previa**: tú revisas y apruebas cada escritura antes de que ocurra.
-- **Nunca puede eliminar datos**.
+- Es **de solo lectura por defecto**: su SQL pasa por un guardián que permite únicamente consultas `SELECT`/`WITH`, de una sola instrucción, con un límite de filas.
+- Todo lo que crea (una consulta guardada, un panel) requiere **aprobación**: tú revisas y apruebas cada escritura antes de que ocurra.
+- **Nunca puede eliminar**.
 
-Así, un compañero de equipo puede preguntar "¿qué agentes tuvieron más errores esta semana?" y actuar sobre la respuesta, sin que el asistente pueda modificar o eliminar tus datos por su cuenta.
+Así, un compañero de equipo puede preguntar «¿qué agentes tuvieron más errores esta semana?» y actuar sobre la respuesta, sin que el asistente pueda modificar ni eliminar tus datos por su cuenta.
 
 ---
 
 ## En tránsito
 
-Todo el tráfico circula sobre HTTPS. Tú terminas TLS con tus propios certificados, de modo que el tráfico de recopilador a servidor y de navegador a servidor está cifrado en tránsito.
+Todo el tráfico circula por HTTPS. Tú finalizas TLS con tus propios certificados, por lo que el tráfico del recolector al servidor y del navegador al servidor está cifrado en tránsito.
 
 ---
 
 ## Próximos pasos
 
-- [Descripción general](/es/agenteye/overview): cómo encaja FailproofAI Observability en su conjunto.
-- [Claves API](/es/agenteye/api-keys): delimita el acceso para el recopilador, el panel y el asistente.
-- [Observabilidad](/es/agenteye/observability): qué captura FailproofAI Observability de tus agentes.
+- [Descripción general](/es/agenteye/overview): cómo encaja Failproof AI Observability.
+- [Claves API](/es/agenteye/api-keys): delimita el acceso para el recolector, el panel y el asistente.
+- [Observabilidad](/es/agenteye/observability): qué captura Failproof AI Observability de tus agentes.

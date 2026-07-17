@@ -1,63 +1,63 @@
 ---
 title: "Avvisi"
-description: "Documentazione degli Avvisi di Osservabilità FailproofAI."
+description: "Scopri nel momento esatto in cui qualcosa supera il tuo limite, sul canale che il tuo team già monitora, invece di sentirlo dire da un cliente."
 ---
 
 
-Scopri nel momento preciso quando qualcosa supera la tua soglia, sul canale che il tuo team già monitorà, invece di sentirne parlare da un cliente. Imposta una regola una volta sola e FailproofAI Observability la verifica secondo una pianificazione, quindi ti avvisa tramite email, Slack, webhook o direttamente nel dashboard.
+Scopri nel momento esatto in cui qualcosa supera il tuo limite, sul canale che il tuo team già monitora, invece di sentirlo dire da un cliente. Imposta una regola una volta e Failproof AI Observability la controlla secondo una pianificazione, quindi ti avvisa via email, Slack, webhook o direttamente nel dashboard.
 
-![La pagina Avvisi: una griglia di schede di regole di avviso, ognuna che mostra il suo trigger, la finestra di valutazione, i canali e un badge di gravità info, warning o critical](/agenteye/images/alerts.png)
-*Ogni regola di avviso a colpo d'occhio: cosa monitora, con che frequenza, dove avvisa e quanto è urgente.*
+![La pagina Avvisi: una griglia di schede di regole di avviso, ognuna che mostra il suo trigger, la finestra di valutazione, i canali e un badge di gravità informativo, di avvertimento o critico](/agenteye/images/alerts.png)
+*Ogni regola di avviso a colpo d'occhio: cosa monitora, con che frequenza, dove invia notifiche e quanto è urgente.*
 
-## Vieni a conoscenza dei problemi prima che i tuoi utenti lo facciano
+## Scopri i problemi prima dei tuoi utenti
 
-Smetti di aggiornare un dashboard nella speranza di catturare una regressione. Ricorri a un avviso ogni volta che c'è un segnale di cui vorresti sapere anche quando nessuno sta guardando, e fallo arrivare dove sei già:
+Smetti di aggiornare un dashboard sperando di individuare una regressione. Usa un avviso ogni volta che c'è un segnale che vorresti ricevere anche quando nessuno sta guardando, e ricevilo dove sei già:
 
-- **Email**, a chi deve saperlo.
+- **Email**, a chiunque debba sapere.
 - **Slack**, un messaggio ricco con un pulsante che ti porta direttamente all'incidente.
-- **Webhook**, un JSON POST per PagerDuty, Opsgenie o il tuo endpoint, con una firma opzionale in modo che il destinatario possa fidarsi di esso.
-- **Nel dashboard**, silenzioso per design, per quando stai mettendo a punto una regola e non vuoi ancora avvisare nessuno.
+- **Webhook**, un POST JSON per PagerDuty, Opsgenie o il tuo endpoint personale, con una firma opzionale in modo che il destinatario possa fidarsi.
+- **Nel dashboard**, silenzioso per design, per quando stai regolando una regola e non vuoi ancora avvisare nessuno.
 
-Allega una qualsiasi combinazione a una singola regola, e la sua gravità (info, warning o critical) viene mantenuta in modo che quelli urgenti sembrino urgenti.
+Collega una qualsiasi combinazione a una singola regola, e la sua gravità (informativo, avvertimento o critico) viene trasmessa in modo che gli urgenti risultino urgenti.
 
-## Costruisci la regola in un modulo, non JSON
+## Crea la regola in un modulo, non in JSON
 
-Descrivi cosa significa "rotto" in un modulo e FailproofAI Observability scrive la regola sottostante per te. La specifica JSON è solo ciò che quel modulo produce sotto il cofano, quindi puoi leggerla per comprendere una regola ma raramente la digiterai.
+Descrivi cosa significa "rotto" in un modulo, e Failproof AI Observability scrive la regola sottostante per te. La specifica JSON è solo ciò che quel modulo produce dietro le quinte, quindi puoi leggerla per capire una regola ma raramente la digiti.
 
-![Il modulo di nuovo avviso: nome e descrizione, un interruttore abilitato e un selettore di trigger che offre soglia metrica, SQL personalizzato, punteggio di valutazione, valutazione composta e condizioni per evento](/agenteye/images/alert-new.png)
-*Scegli un trigger e il modulo inserisce i campi giusti; Salva scrive la regola.*
+![Il modulo di nuovo avviso: nome e descrizione, un interruttore abilitato e un selezionatore di trigger che offre soglia metrica, SQL personalizzato, punteggio di valutazione, valutazione composta e condizioni per evento](/agenteye/images/alert-new.png)
+*Scegli un trigger e il modulo commuta nei campi giusti; Salva scrive la regola.*
 
-Il percorso felice è veloce: assegnale un nome, scegli un **trigger** (cosa controllare), imposta la **soglia e la finestra** (quanto grave, per quanto tempo), allega almeno un **canale**, quindi **Salva** e premi **Test** per attivare una notifica sintetica e confermare che ogni destinazione è collegata. Dietro le quinte questo produce una piccola specifica come:
+Il percorso felice è veloce: dai un nome, scegli un **trigger** (cosa monitorare), imposta la **soglia e la finestra** (quanto grave, per quanto tempo), allega almeno un **canale**, poi **Salva** e premi **Test** per inviare una notifica sintetica e confermare che ogni destinazione è collegata. Dietro le quinte questo produce una piccola specifica come:
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-Non sei limitato a un solo tipo di segnale. Scegli il trigger che corrisponde al modo in cui pensi al guasto:
+Non sei limitato a un solo tipo di segnale. Scegli il trigger che corrisponde a come pensi al malfunzionamento:
 
 | Trigger | Si attiva quando |
 |---|---|
-| **Soglia metrica** | una metrica preimpostata (tasso di errore, latenza p95 o p99, conteggio eventi o errori, spesa token) supera la tua soglia in una finestra |
+| **Soglia metrica** | una metrica preimpostata (tasso di errore, latenza p95 o p99, conteggi di eventi o errori, spesa token) supera il tuo limite in una finestra |
 | **SQL personalizzato** | la tua query di sola lettura restituisce una riga, o un valore che calcola supera una soglia |
-| **Punteggio di valutazione** | la media del punteggio di un valutatore (ad es., allucinazione) supera una soglia |
-| **Valutazione composta** | diversi controlli di punteggio si combinano con logica any, all, o at-least-N, per catturare una regressione che si manifesta solo tra i punteggi |
-| **Per evento** | arriva un singolo evento corrispondente: un agente specifico, un tipo di errore specifico o una sottostringa di messaggio |
+| **Punteggio di valutazione** | la media del punteggio di un valutatore (ad esempio, allucinazione) supera una soglia |
+| **Valutazione composta** | diversi controlli di punteggio si combinano con logica any, all o almeno N, per individuare una regressione che si manifesta solo tra i punteggi |
+| **Per evento** | un singolo evento corrispondente arriva: un agente specifico, un tipo di errore specifico o una sottostringa di messaggio |
 
-Stai già osservando un guasto nella [pagina Errori](/it/agenteye/error-tracking)? Ogni riga lì ha un pulsante **+ avviso** che apre questo stesso modulo precompilato per catturare esattamente quel guasto di nuovo, in modo che l'incidente che hai appena triato diventi quello che ti avvisa la prossima volta.
+Stai già guardando un malfunzionamento nella [pagina Errori](/it/agenteye/error-tracking)? Ogni riga ha un pulsante **+ avviso** che apre questo stesso modulo precompilato per individuare di nuovo esattamente quel malfunzionamento, così l'incidente che hai appena triato diventa quello che ti avviserà la prossima volta.
 
-**Dove trovarlo:** Gli avvisi si trovano in `/<org-slug>/alerts`. La creazione, modifica, eliminazione e test delle regole richiede **`alerts:write`**; `alerts:read` è sufficiente per guardare. Il selettore dei destinatari elenca i membri della tua organizzazione per nome, in modo che tu possa avvisare una persona senza uscire dal modulo.
+**Dove trovarlo:** Gli avvisi si trovano in `/<org-slug>/alerts`. La creazione, modifica, eliminazione e test delle regole richiedono **`alerts:write`**; `alerts:read` è sufficiente per guardare. Il selezionatore dei destinatari elenca i membri dell'organizzazione per nome, quindi puoi avvisare una persona senza lasciare il modulo.
 
 ## Avvisami solo quando è reale
 
-Una misurazione errata non dovrebbe svegliarti. Il filtro del rumore **M di N** controlla quanti degli ultimi controlli devono fallire prima che l'avviso ti avvisi effettivamente. Impostalo su **3 di 5** e la regola si attiva solo dopo aver violato tre dei suoi ultimi cinque controlli, in modo che un segnale instabile smetta di gridare al lupo; lascialo al valore predefinito **1 di 1** per attivarsi al primo violazione. Scegli anche con che frequenza la regola viene eseguita, da preset di 1m, 5m, 15m e 1h, abbinati alla velocità effettiva del segnale.
+Una singola misurazione scorretta non dovrebbe svegliarti. Il filtro del rumore **M di N** controlla quanti degli ultimi controlli devono non riuscire prima che l'avviso ti avvisi effettivamente. Impostalo su **3 di 5** e la regola si attiva solo dopo aver violato tre dei suoi ultimi cinque controlli, quindi un segnale traballante smette di dare falsi allarmi; lascialo al default **1 di 1** per attivarsi al primo violazione. Scegli anche con che frequenza la regola viene eseguita, da preset di 1m, 5m, 15m e 1h, abbinati a quanto velocemente il segnale si muove veramente.
 
 ## Cosa succede quando un avviso si attiva
 
-Una violazione apre un **incidente** e avvisa i tuoi canali una sola volta. Da lì il tuo team lo riconosce, assegna un proprietario, ne parla e lo risolve, il tutto rispetto a un record pulito e attribuito. Quel flusso di lavoro di triage ha la sua casa: vedi [Incidenti](/it/agenteye/incidents).
+Una violazione apre un **incidente** e avvisa i tuoi canali una volta. Da lì il tuo team lo riconosce, assegna un proprietario, ne discute e lo risolve, il tutto rispetto a un record pulito e attribuito. Quel flusso di lavoro di triage ha una sua home: vedi [Incidenti](/it/agenteye/incidents).
 
-## Correlato
+## Correlati
 
 - [Incidenti](/it/agenteye/incidents): traccia un avviso attivato da aperto a riconosciuto a risolto.
-- [Tracciamento errori](/it/agenteye/error-tracking): raggruppa i guasti dell'agente e promuovi uno a un avviso in un clic.
-- [Dashboard](/it/agenteye/dashboards): osserva le schede condivise da cui provengono le soglie su cui avvisi.
+- [Tracciamento errori](/it/agenteye/error-tracking): raggruppa gli errori dell'agente e promuovi uno a un avviso con un clic.
+- [Dashboard](/it/agenteye/dashboards): guarda le bacheche condivise da cui provengono le soglie su cui avvisi.
 - [CLI e agenti](/it/agenteye/cli-and-agents): crea avvisi e riconosci incidenti dal tuo terminale, o inseriscili in CI.

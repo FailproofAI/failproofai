@@ -1,15 +1,15 @@
 ---
 title: "KI-Assistent"
-description: "Dokumentation zum FailproofAI Observability KI-Assistenten."
+description: "Stell deinen Agentendaten eine Frage in natürlicher Sprache und erhalte eine Antwort, die direkt auf die Belege verweist."
 ---
 
 
-Stellen Sie Ihren Agentendaten eine Frage in einfachem Deutsch und erhalten Sie eine Antwort, die direkt auf die Belege verweist. Kein SQL zu schreiben, keine Dashboards durchzuwühlen — der **FailproofAI Observability**-Assistent ist der schnellste Weg für jeden in Ihrem Team, Antworten über Ihre Agenten zu erhalten.
+Stell deinen Agentendaten eine Frage in natürlicher Sprache und erhalte eine Antwort, die direkt auf die Belege verweist. Kein SQL zu schreiben, keine Dashboards zu durchsuchen — der **Failproof AI Observability**-Assistent ist der schnellste Weg für jeden in deinem Team, Antworten über eure Agenten zu erhalten.
 
-![Der FailproofAI Observability-Assistent beantwortet eine Frage in natürlicher Sprache im Dashboard, zeigt eine Live-Agenten-Aktivitätstabelle, eine agentenspezifische Modellnutzungsübersicht und schriftliche Erkenntnisse, mit den ausgeführten Abfragen direkt eingeblendet](/agenteye/images/assistant.png)
-*Fragen Sie in natürlicher Sprache und erhalten Sie eine Antwort, die auf Ihren eigenen Daten basiert. Hier wird aufgeschlüsselt, welche Agenten am aktivsten sind und welche Modelle sie verwenden – mit den ausgeführten Abfragen, damit Sie jede Zahl nachvollziehen können.*
+![Der Failproof AI Observability-Assistent beantwortet eine Frage in natürlicher Sprache im Dashboard und zeigt eine Live-Agenten-Aktivitätstabelle, eine modellbezogene Nutzungsaufschlüsselung pro Agent sowie schriftliche Erkenntnisse, mit den ausgeführten Abfragen inline angezeigt](/agenteye/images/assistant.png)
+*Frag in natürlicher Sprache und erhalte eine Antwort aus deinen eigenen Daten. Hier wird aufgeschlüsselt, welche Agenten am stärksten ausgelastet sind und welche Modelle sie verwenden — und die ausgeführten Abfragen werden angezeigt, damit du jede Zahl nachprüfen kannst.*
 
-Es gibt nichts zu erlernen. Öffnen Sie den Chat, tippen Sie ein, was Sie wissen möchten, und folgen Sie den zurückgegebenen Links:
+Es gibt nichts zu lernen. Öffne den Chat, tippe deine Frage ein und folge den zurückgegebenen Links:
 
 ```
 You:  which sessions errored today?
@@ -26,38 +26,38 @@ AI:   This run took 12 steps across 3 tools and failed near the end when a
 
 ## Einfach fragen und direkt zum Beweis springen
 
-Sie hören auf zu raten und hören auf, Abfragen zu schreiben. Fragen Sie „Wie entwickelt sich die Qualität in Produktion diese Woche?", „Welche Sessions sind heute fehlgeschlagen?" oder „Fasse diese Session zusammen" – und Sie erhalten in Sekunden eine klare Antwort, anstatt selbst eine Abfrage erstellen und auswerten zu müssen.
+Du hörst auf zu raten und hörst auf, Abfragen zu schreiben. Frag „Wie entwickelt sich die Qualität in Produktion diese Woche?", „Welche Sessions haben heute Fehler produziert?" oder „Fasse diese Session zusammen" — und du erhältst in Sekunden eine direkte Antwort, statt selbst eine Abfrage zu bauen und auszuwerten.
 
-Jede Antwort kommt mit ihren Belegen. Der Assistent verlinkt die genauen Sessions, gespeicherten Abfragen und Dashboards, die er zur Antwortfindung genutzt hat – damit Sie durchklicken und selbst nachprüfen können, anstatt ihm einfach zu glauben. Er ist außerdem **seitenaware**: Fragen Sie nach „dieser Session", während Sie eine anzeigen, weiß er bereits, welchen Durchlauf Sie meinen. Öffnen Sie jede frühere Unterhaltung später über den Verlaufs-Umschalter erneut und machen Sie dort weiter, wo Sie aufgehört haben.
+Jede Antwort kommt mit ihren Belegen. Der Assistent verlinkt die genauen Sessions, gespeicherten Abfragen und Dashboards, die er zur Antwort verwendet hat, damit du durchklicken und bestätigen kannst, anstatt ihm einfach zu vertrauen. Er ist außerdem **seitenbewusst**: Frag nach „dieser Session", während du eine ansiehst, und er weiß bereits, welchen Durchlauf du meinst. Öffne jedes frühere Gespräch später über den Verlaufs-Umschalter erneut und mach weiter, wo du aufgehört hast.
 
 ## Eine gute Antwort als gespeicherte Abfrage oder Dashboard sichern
 
-Wenn eine Antwort es wert ist, sie zu behalten, bitten Sie den Assistenten, sie zu speichern. Er erstellt den SQL-Entwurf für eine gespeicherte Abfrage oder stellt ein Dashboard aus diesen Abfragen zusammen und zeigt Ihnen dann eine **Genehmigen / Ablehnen**-Karte. Nichts wird geschrieben, bis Sie auf „Genehmigen" klicken – Sie bekommen also die Schnelligkeit von „einfach fragen" und behalten dennoch immer das letzte Wort.
+Wenn eine Antwort es wert ist, aufbewahrt zu werden, bitte den Assistenten, sie zu speichern. Er entwirft das SQL für eine gespeicherte Abfrage oder stellt ein Dashboard aus diesen Abfragen zusammen und zeigt dir dann eine **Genehmigen / Ablehnen**-Karte. Nichts wird geschrieben, bis du auf „Genehmigen" klickst — du bekommst also die Geschwindigkeit des „Einfach fragen" mit dem letzten Wort immer bei dir.
 
-Auf der **Queries**-Seite geht er einen Schritt weiter und wird zum SQL-Autor: Beschreiben Sie die gewünschte Abfrage („zeige Fehlerrate nach Agent für die letzten 7 Tage") und er streamt SQL direkt in den Editor, wobei eine Diff-Ansicht geöffnet wird, sodass Sie die Änderung **Akzeptieren** oder **Ablehnen** können, bevor sie übernommen wird.
+Auf der **Queries**-Seite geht er einen Schritt weiter und wird zum SQL-Autor: Beschreibe die gewünschte Abfrage („Zeige die Fehlerrate nach Agent für die letzten 7 Tage") und er streamt SQL direkt in den Editor, öffnet eine Diff-Ansicht, damit du die Änderung **akzeptieren** oder **ablehnen** kannst, bevor sie übernommen wird.
 
-![Die Observability Queries-Seite und ihr SQL-Editor](/agenteye/images/query-lab.png)
-*Die Queries-Seite: In diesem Editor streamt der Assistent einen schreibgeschützten Entwurf, den Sie akzeptieren oder ablehnen können.*
+![Die Observability-Queries-Seite und ihr SQL-Editor](/agenteye/images/query-lab.png)
+*Die Queries-Seite: In diesem Editor streamt der Assistent einen schreibgeschützten Entwurf, den du akzeptieren oder ablehnen kannst.*
 
-Das Erstellen von SQL per Frage hier verwendet die Berechtigung `queries:run`, dieselbe, die hinter dem **Ausführen**-Button des Editors steckt. Der Chat überall sonst benötigt `agent:use`.
+Das Erstellen von SQL per Frage hier verwendet die Berechtigung `queries:run`, dieselbe, die hinter dem **Ausführen**-Button des Editors steht. Der Chat überall sonst benötigt `agent:use`.
 
 ## Sicher für das gesamte Team
 
-Sie können den Assistenten für alle öffnen, ohne sich Sorgen zu machen, was er anfassen könnte:
+Du kannst den Assistenten für alle öffnen, ohne dir Gedanken darüber zu machen, was er berühren könnte:
 
-- **Er liest nur, was Sie bereits sehen können.** Antworten sind auf Ihre eigenen Leseberechtigungen beschränkt, er erweitert also nie Ihre Datenfläche.
-- **Jeder Schreibvorgang wartet auf Sie.** Gespeicherte Abfragen und Dashboards werden erst nach Ihrem ausdrücklichen Klick auf „Genehmigen" erstellt, und es gibt keine Einstellung, die dieses Tor deaktiviert.
-- **Er kann niemals etwas löschen.** Kein Lösch-Werkzeug ist zugänglich und der Assistent hat keine Löschberechtigung. Löschvorgänge bleiben in Ihren Händen, im Dashboard.
-- **Er bleibt innerhalb Ihrer Organisation.** Der Assistent sieht immer nur die Organisation, die Sie gerade anzeigen.
-- **Ihre Fragen gehören Ihnen.** Eingaben und Antworten leben in Ihrer eigenen Observability-Datenbank; die Produktanalyse erfasst nur Nutzungsmetadaten, niemals Ihren Fragetext.
+- **Er liest nur, was du bereits sehen kannst.** Antworten sind auf deine eigenen Leseberechtigungen beschränkt, sodass er deine Datenfläche niemals erweitert.
+- **Jeder Schreibvorgang wartet auf dich.** Gespeicherte Abfragen und Dashboards werden erst nach deinem expliziten Klick auf „Genehmigen" erstellt, und es gibt keine Einstellung, die dieses Tor deaktiviert.
+- **Er kann niemals etwas löschen.** Kein Lösch-Tool ist exponiert und der Assistent hat keine Löschberechtigung. Löschvorgänge bleiben in deinen Händen, im Dashboard.
+- **Er bleibt in deiner Organisation.** Der Assistent sieht immer nur die Organisation, die du gerade ansiehst.
+- **Deine Fragen gehören dir.** Anfragen und Antworten leben in deiner eigenen Observability-Datenbank; Produkt-Analytics zeichnet nur Nutzungsmetadaten auf, niemals deinen Anfragetext.
 
-## Wo Sie ihn finden
+## Wo du ihn findest
 
-Der Assistent befindet sich am rechten Rand jeder Seite unter Ihrer Organisation (`/<org-slug>/...`). Klicken Sie auf die Leiste oder drücken Sie `⌘J` / `Ctrl+J`, um sie zum vollständigen Chat-Panel zu erweitern, und ziehen Sie den Rand, um die Größe anzupassen – Ihre Breite wird über Neuladen hinweg gespeichert. Sie benötigen die Berechtigung **`agent:use`**, um ihn zu verwenden, andernfalls ist die Leiste ausgegraut. Wenn er für Ihre Bereitstellung noch nicht aktiviert wurde (er benötigt eine LLM-Verbindung), sehen Sie eine gedämpfte Leiste anstelle eines funktionierenden Chats.
+Der Assistent befindet sich am rechten Rand jeder Seite unter deiner Organisation (`/<org-slug>/...`). Klicke auf die Leiste oder drücke `⌘J` / `Ctrl+J`, um sie zum vollständigen Chat-Panel zu erweitern, und ziehe den Rand zum Vergrößern; deine Breite wird seitenübergreifend gespeichert. Du benötigst die Berechtigung **`agent:use`**, um ihn zu verwenden, andernfalls ist die Leiste ausgegraut. Wenn er für deine Bereitstellung noch nicht aktiviert wurde (er benötigt eine LLM-Verbindung), siehst du eine gedämpfte Leiste anstelle eines funktionierenden Chats.
 
 ## Verwandte Themen
 
-- [CLI and agents](/de/agenteye/cli-and-agents)
+- [CLI und Agenten](/de/agenteye/cli-and-agents)
 - [Queries](/de/agenteye/queries)
 - [Dashboards](/de/agenteye/dashboards)
-- [Evaluation suite](/de/agenteye/evaluation-suite)
+- [Evaluierungs-Suite](/de/agenteye/evaluation-suite)

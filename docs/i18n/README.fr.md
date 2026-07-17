@@ -17,9 +17,9 @@
 
 **Traductions :** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Résolution des pannes d'exécution pour les agents de codage.**
+**Résolution des échecs d'exécution pour les agents de codage.**
 S'intègre à Claude Code et Codex. Détecte les boucles, les actions dangereuses et les fuites de secrets
-avant qu'elles ne deviennent des incidents. Zéro latence. Fonctionne en local.
+avant qu'ils ne deviennent des incidents. Zéro latence. Fonctionne en local.
 
 </div>
 
@@ -125,22 +125,6 @@ avant qu'elles ne deviennent des incidents. Zéro latence. Fonctionne en local.
   </tr>
 </table>
 
-> Installez les hooks pour l'un ou une combinaison quelconque : `failproofai policies --install --cli opencode pi` (ou `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Omettez `--cli` pour détecter automatiquement les CLI installés et afficher une invite.
->
-> **Hermes** (hermes-agent, une passerelle Slack/Telegram) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli hermes` — une seule installation intercepte les appels d'outils de chaque plateforme et sous-agent) que pour la **relecture d'audit** hors ligne de ses sessions de passerelle depuis l'unique `~/.hermes/state.db`.
->
-> **OpenClaw** (openclaw gateway, un assistant multi-canal auto-hébergé) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli openclaw`, portée utilisateur) que pour la **relecture d'audit** hors ligne de ses sessions JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). L'application utilise les **hooks de plugin in-process** d'OpenClaw (un `openclaw-plugin/` livré qui lance failproofai de façon asynchrone — ses hooks internes basés sur des fichiers sont en observation uniquement et ne peuvent pas bloquer) : `before_tool_call` bloque un outil, et `before_agent_finalize` est une vraie porte de fin de tour, ce qui permet aux fonctions intégrées `require-*-before-stop` de s'appliquer.
->
-> **Factory Droid** (`droid`) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli factory`, portée utilisateur + projet) que pour la **relecture d'audit** hors ligne de ses sessions JSONL sur disque. droid bloque les appels d'outils via le **code de sortie 2** du hook (et non une décision JSON) et respecte `{decision:"block"}` uniquement sur l'événement `Stop` de fin de tour — failproofai émet automatiquement la bonne structure selon l'événement.
->
-> **Devin CLI** (`devin`, Cognition) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli devin`, portée utilisateur + projet) que pour la **relecture d'audit** hors ligne de ses sessions SQLite (`~/.local/share/devin/cli/sessions.db`). Devin est un **clone pur de Claude** — mêmes noms d'événements, même payload en snake_case, même configuration avec wrapper `"hooks"` (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — blocage via `{decision:"block"}` JSON sur chaque événement.
->
-> **Antigravity CLI** (`agy`) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli antigravity`, portée utilisateur + projet) que pour la **relecture d'audit** hors ligne de ses sessions JSONL brutes (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity possède son **propre** contrat (pas un clone de Claude) : un schéma `hooks.json` avec **hooks nommés** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), un payload stdin en camelCase que failproofai normalise, et ses propres formes de réponse — `{decision:"deny"}` pour bloquer un outil, `{decision:"continue"}` pour forcer un nouveau tour au `Stop`, `{injectSteps}` pour injecter un rappel avant l'exécution du modèle.
->
-> **Goose** (nom de code goose, Block) est pris en charge aussi bien pour l'**application de hooks en direct** (`--cli goose`, portée utilisateur + projet) que pour la **relecture d'audit** hors ligne de ses sessions SQLite (`~/.local/share/goose/sessions/sessions.db`). L'application utilise le système de **hooks** de Goose (la spécification **Open Plugins** inter-agents) — l'installateur dépose simplement un répertoire de plugin dans `~/.agents/plugins/failproofai/` et Goose le détecte automatiquement. Le blocage s'effectue via `{"decision":"block"}` JSON sur l'événement `PreToolUse` (qui se déclenche pour l'outil shell et à l'intérieur des sous-agents délégués), vérifié en direct contre goose v1.43.0 ; Goose ne possède pas d'événement `Stop` de fin de tour, donc les fonctions intégrées `require-*-before-stop` ne s'appliquent pas (comme avec Hermes).
-
----
-
 ## Installation
 
 ```sh
@@ -157,11 +141,11 @@ failproofai
 
 | Politique | Ce qu'elle bloque |
 |---|---|
-| `block-push-master` | Les pushes directs vers `main` / `master` |
+| `block-push-master` | Les push directs vers `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Les commits, merges et rebases sur `main` / `master` |
+| `block-work-on-main` | Commits, merges et rebases sur `main` / `master` |
 | `block-rm-rf` | La suppression récursive de fichiers |
-| `sanitize-api-keys` | Les clés API qui fuient dans le contexte de l'agent |
+| `sanitize-api-keys` | Les clés API qui fuiteraient dans le contexte de l'agent |
 
 → [Les 30 politiques intégrées](https://docs.befailproof.ai/built-in-policies)
 
@@ -169,8 +153,8 @@ failproofai
 
 ## Vos propres politiques
 
-Déposez un fichier dans `.failproofai/policies/` — il se charge automatiquement, aucun flag nécessaire.
-Commitez-le et toute l'équipe l'obtiendra au prochain pull.
+Déposez un fichier dans `.failproofai/policies/` — il se charge automatiquement, sans aucun flag.
+Commitez-le et toute l'équipe en bénéficiera au prochain pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -198,11 +182,9 @@ Trois décisions disponibles pour chaque politique :
 
 ---
 
-## Visibilité des sessions
+## Visibilité de la session
 
-Chaque appel d'outil effectué par votre agent est journalisé localement. Le tableau de bord montre ce qui s'est exécuté,
-ce qui a été bloqué, et ce que la politique a transmis à l'agent — plus besoin de deviner
-quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befailproof.ai/dashboard)
+Chaque appel d'outil effectué par votre agent est journalisé localement. Le tableau de bord affiche ce qui a été exécuté, ce qui a été bloqué, et ce que la politique a communiqué à l'agent — plus besoin de deviner quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -221,18 +203,15 @@ quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befa
 
 ## Licence
 
-MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Voir [LICENSE](./LICENSE) pour le texte complet.
+MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour un usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Consultez [LICENSE](./LICENSE) pour le texte complet.
 
 ---
 
 ## Contribuer
 
-Consultez [CONTRIBUTING.md](./CONTRIBUTING.md). Les nouvelles politiques, cas limites et traductions sont les bienvenus.
+Voir [CONTRIBUTING.md](./CONTRIBUTING.md). Les nouvelles politiques, cas limites et traductions sont les bienvenus.
 
-> **Compilez avant de commencer.** Exécutez d'abord `bun install && bun run build`. Ce dépôt utilise
-> ses propres hooks failproofai sur lui-même, et ils résolvent l'import `failproofai` depuis le
-> bundle compilé `dist/` — sans compilation, vous obtiendrez des erreurs de hook `Cannot find package 'failproofai'`.
-> Recompilez après avoir modifié `src/`. Voir
+> **Compilez avant de commencer.** Exécutez `bun install && bun run build` en premier. Ce dépôt exécute ses propres hooks failproofai sur lui-même, et ceux-ci résolvent l'import `failproofai` depuis le bundle compilé `dist/` — sans compilation vous obtiendrez des erreurs de hook `Cannot find package 'failproofai'`. Recompilez après avoir modifié `src/`. Voir
 > [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

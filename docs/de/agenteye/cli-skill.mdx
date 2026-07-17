@@ -1,70 +1,101 @@
 ---
-title: "FailproofAI Observability CLI Agent Skill"
-description: "Dokumentation zur FailproofAI Observability CLI Agent Skill."
+title: "Failproof AI Observability CLI Agent Skill"
+description: "Fragen Sie Ihren Coding-Agenten, ob heute etwas kaputt ist, und lassen Sie ihn die Antwort aus Ihren Live-Daten von Failproof AI Observability liefern – ohne Befehle auswendig lernen zu müssen."
 ---
 
 
-Fragen Sie Ihren Coding-Agenten einfach *„Ist heute irgendetwas kaputt?"* und lassen Sie ihn direkt aus Ihren Live-FailproofAI-Observability-Daten antworten – ganz ohne Befehle auswendig lernen zu müssen. Der **FailproofAI Observability CLI Skill** (`agenteye-cli`) ist ein *Agent Skill*: ein kleines Verzeichnis mit Anweisungen, das ein Coding-Agent wie Claude Code oder Codex bei Bedarf lädt. Es bringt dem Agenten bei, Ihre Observability-Umgebung über die [`agenteye` CLI](/de/agenteye/cli) auf Basis von Anfragen in natürlicher Sprache zu steuern – zum Beispiel *„Erstelle für CI einen Schlüssel, der nur Events pushen darf"* oder *„Bestätige den aktiven Incident und weise ihn mir zu."*
+Fragen Sie Ihren Coding-Agenten *„Ist heute etwas kaputt?"* und lassen Sie ihn die Antwort aus Ihren Live-Daten von Failproof AI Observability liefern – ohne Befehle auswendig lernen zu müssen. Der **Failproof AI Observability CLI-Skill** (`agenteye-cli`) ist ein *Agent Skill*: ein kleiner Ordner mit Anweisungen, den ein Coding-Agent wie Claude Code oder Codex bei Bedarf lädt. Er bringt dem Agenten bei, Ihre Observability-Umgebung über das [`agenteye`-CLI](/de/agenteye/cli) auf Basis von Anfragen in natürlicher Sprache zu steuern – etwa *„Gib CI einen Schlüssel, der nur Events pushen kann"* oder *„Bestätige den aktiven Vorfall und weise ihn mir zu."*
 
-Es handelt sich **nicht** um einen Dienst oder eine separate ausführbare Datei; es gibt nichts zu deployen. Es setzt auf der bereits installierten CLI auf: Der Agent ruft `agenteye --json …` auf, verarbeitet das saubere JSON und antwortet Ihnen in verständlichem Prosatext. Alles, was er tun kann, könnten Sie selbst durch Eingabe derselben Befehle erledigen.
+Es handelt sich **nicht** um einen Dienst oder eine separate Binärdatei; es gibt nichts zu deployen. Der Skill setzt auf dem bereits installierten CLI auf: Der Agent ruft `agenteye --json …` auf, parst das saubere JSON und antwortet Ihnen in Prosatext. Alles, was er tun kann, könnten Sie selbst durch Eingabe derselben Befehle erreichen.
 
 ---
 
-## Einordnung in die anderen FailproofAI-Observability-Schnittstellen
+## Verhältnis zu den anderen Failproof AI Observability-Schnittstellen
 
-FailproofAI Observability bietet vier Wege, um auf dieselben Daten und Steuerungsmöglichkeiten zuzugreifen. Sie ergänzen sich gegenseitig:
+Failproof AI Observability bietet Ihnen vier Möglichkeiten, auf dieselben Daten und Steuerelemente zuzugreifen. Sie ergänzen einander:
 
-| Schnittstelle | Was es ist | Wo es läuft | Wann Sie es verwenden |
+| Schnittstelle | Was es ist | Wo es läuft | Verwenden Sie es, wenn |
 |---|---|---|---|
-| **[CLI](/de/agenteye/cli)** | Die Befehls- und Flag-Referenz für `agenteye` | Ihr Terminal | Wenn Sie einen bestimmten Befehl ausführen oder skripten möchten |
-| **[CLI-Rezepte](/de/agenteye/cli-recipes)** | Kopierfertige `jq`-/Pipeline-Muster | Ihr Terminal / Skripte | Wenn Sie die CLI in Automatisierungen einbinden |
-| **CLI Skill** (diese Dokumentation) | Ein natürlichsprachlicher Einstieg in die CLI | Ihr Coding-Agent auf Ihrer Workstation | Wenn Sie einfach fragen und den Agenten den Befehl auswählen lassen möchten |
-| **[KI-Assistent im Dashboard](/de/agenteye/assistant)** | Ein in das Dashboard eingebetteter Chat | Serverseitig (im Dashboard) | Wenn Sie im Dashboard Fragen zu Ihren Daten stellen möchten |
+| **[CLI](/de/agenteye/cli)** | Die Befehls-/Flag-Referenz für `agenteye` | Ihr Terminal | Sie einen bestimmten Befehl ausführen oder skripten möchten |
+| **[CLI-Rezepte](/de/agenteye/cli-recipes)** | Copy-paste-`jq`/Pipeline-Muster | Ihr Terminal / Skripte | Sie das CLI in die Automatisierung einbinden |
+| **CLI-Skill** (dieses Dokument) | Eine natürlichsprachliche Eingabeschnittstelle für das CLI | Ihr Coding-Agent, auf Ihrer Workstation | Sie einfach fragen und den Agenten den richtigen Befehl auswählen lassen möchten |
+| **[Evaluator-Skill](/de/agenteye/evaluator-skill)** | Ein verwandter Skill, der Ihren Scoring-Dienst entwirft und aufbaut | Ihr Coding-Agent, auf Ihrer Workstation | Sie Eval-Scores *erzeugen* statt lesen möchten |
+| **[Python-SDK-Skill](/de/agenteye/python-sdk-skill)** | Ein verwandter Skill, der Ihren Agenten instrumentiert, damit er überhaupt Telemetriedaten ausgibt | Ihr Coding-Agent, auf Ihrer Workstation | Sie möchten, dass Ihr Agent die Events *erzeugt*, die dieser Skill liest |
+| **[In-Dashboard-KI-Assistent](/de/agenteye/assistant)** | Ein in das Dashboard eingebetteter Chat | Serverseitig (im Dashboard) | Sie Q&A über Ihre Daten direkt im Dashboard durchführen möchten |
 
-Der Skill selbst besitzt keine eigenen Berechtigungen; er übersetzt lediglich Ihre Worte in CLI-Aufrufe, die als Sie ausgeführt werden:
+Der Skill selbst hat keine eigenen Berechtigungen; er übersetzt lediglich Ihre Worte in CLI-Aufrufe, die als Sie ausgeführt werden:
 
 ```mermaid
 flowchart TD
-    YOU["Sie: 'Bestätige den aktiven Incident'"] --> AGENT["Coding-Agent (Claude Code / Codex)<br/>lädt den agenteye-cli Skill"]
+    YOU["you: 'ack the firing incident'"] --> AGENT["coding agent (Claude Code / Codex)<br/>loads the agenteye-cli skill"]
     AGENT --> CLI["agenteye --json incidents ack ..."]
-    CLI -->|Ihre authentifizierte CLI-Sitzung| API["Observability Dashboard API"]
+    CLI -->|your authenticated CLI session| API["Observability dashboard API"]
 ```
 
-### vs. der KI-Assistent im Dashboard: ein wichtiger Unterschied
+### vs. der In-Dashboard-KI-Assistent: ein wichtiger Unterschied
 
-Dies sind zwei unterschiedliche Werkzeuge mit sehr unterschiedlichem Wirkungsbereich:
+Dies sind zwei verschiedene Tools mit sehr unterschiedlichem Wirkungsradius:
 
-- Der **KI-Assistent im Dashboard** ([AI assistant](/de/agenteye/assistant)) ist ein in das Dashboard eingebetteter Chat, der vom Agentendienst unterstützt wird. Er ist **schreibgeschützt mit genehmigungspflichtigem Authoring**: Er kann gespeicherte Abfragen und Dashboards entwerfen, aber jeder Schreibvorgang erfordert Ihre ausdrückliche Bestätigung per Klick, und er löscht niemals etwas. Er ist durch die Berechtigung `agent:use` abgesichert und sieht stets nur Daten der Organisation, die Sie gerade betrachten.
-- Der **CLI Skill** läuft auf *Ihrer* Workstation innerhalb *Ihres* Coding-Agenten und steuert die `agenteye` CLI **als Sie**. Er kann den **gesamten Funktionsumfang der CLI einschließlich aller Schreiboperationen** ausführen (API-Schlüssel erstellen/rotieren/deaktivieren, Organisationseinstellungen ändern, Incidents auflösen, gespeicherte Abfragen löschen) – begrenzt nur durch die Berechtigungen Ihres CLI-Logins. Behandeln Sie ihn genauso sorgfältig, wie Sie es beim manuellen Ausführen dieser Befehle tun würden.
+- Der **In-Dashboard-KI-Assistent** ([KI-Assistent](/de/agenteye/assistant)) ist ein in das Dashboard eingebetteter Chat, der vom Agentendienst unterstützt wird. Er ist **nur lesend plus genehmigungspflichtig bei Erstellungsaktionen**: Er kann gespeicherte Abfragen und Dashboards entwerfen, aber jeder Schreibvorgang wartet auf Ihre explizite Bestätigung per Klick, und er löscht nie. Er ist durch die Berechtigung `agent:use` gesichert und sieht immer nur Daten für die Organisation, die Sie gerade anzeigen.
+- Der **CLI-Skill** läuft auf *Ihrer* Workstation innerhalb *Ihres* Coding-Agenten und steuert das `agenteye`-CLI **als Sie**. Er kann die **volle Oberfläche des CLI nutzen, einschließlich Mutationen** (API-Schlüssel erstellen/rotieren/deaktivieren, Organisationseinstellungen ändern, Vorfälle auflösen, gespeicherte Abfragen löschen) – begrenzt nur durch die Berechtigungen Ihres CLI-Logins. Behandeln Sie ihn genauso sorgfältig, wie Sie diese Befehle manuell ausführen würden.
 
 ---
 
 ## Voraussetzungen
 
-1. Die **`agenteye` CLI muss installiert** und im `PATH` vorhanden sein (siehe [CLI](/de/agenteye/cli)-Referenz: `pipx install agenteye`).
-2. Ihre **Dashboard-URL** muss konfiguriert sein (`AGENTEYE_DASHBOARD_URL` oder der Agent übergibt `--base-url`).
-3. Eine **aktive Sitzung**: Führen Sie zunächst selbst `agenteye login` aus. Der Skill **kann** den per E-Mail zugesandten Einmalcode-Login nicht für Sie abschließen; er wird Sie auffordern, `agenteye login` auszuführen, wenn die Sitzung fehlt oder abgelaufen ist (CLI-Exit-Code `4`).
+1. Das **`agenteye`-CLI installiert** und im `PATH` (siehe die [CLI](/de/agenteye/cli)-Referenz: `pipx install agenteye`).
+2. Ihre **Dashboard-URL** gesetzt (`AGENTEYE_DASHBOARD_URL` oder der Agent übergibt `--base-url`).
+3. Eine **angemeldete Sitzung**: Führen Sie `agenteye login` selbst zuerst aus. Der Skill **kann** den per E-Mail gesendeten Einmalcode-Login nicht für Sie abschließen; er weist Sie an, `agenteye login` auszuführen, wenn die Sitzung fehlt oder abgelaufen ist (CLI-Exit-Code `4`).
 
 ---
+
+## Bezugsquelle
+
+Der Skill ist in der öffentlichen Skills-Sammlung von Failproof AI veröffentlicht:
+
+**[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-cli/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-cli)
+
+Es gibt keine Zugangsbeschränkungen – das Repository ist öffentlich, und der Skill benötigt keine eigenen Zugangsdaten, da er nur das **öffentliche** `agenteye`-CLI gegen *Ihr* Dashboard verwendet und dabei die Sitzung nutzt, mit der *Sie* sich angemeldet haben. Sie müssen niemanden darum bitten.
+
+Beachten Sie, dass er als eigener Ordner ausgeliefert wird und **nicht** im `pipx install agenteye`-Paket enthalten ist – suchen Sie ihn dort also nicht.
 
 ## Den Skill installieren
 
-Agent Skills sind Verzeichnisse, die eine `SKILL.md` (und optionale Referenzdateien) enthalten. Sie installieren den `agenteye-cli` Skill, indem Sie sein Verzeichnis dort ablegen, wo Ihr Agent nach Skills sucht:
+Der schnellste Weg ist das [`skills`](https://skills.sh)-CLI, das den Ordner abruft und dort ablegt, wo Ihr Agent sucht:
 
-- **Claude Code**: Kopieren Sie den Ordner `agenteye-cli/` in `~/.claude/skills/` (verfügbar in jedem Projekt) oder in `<ihr-repo>/.claude/skills/` (auf dieses Repository beschränkt). Claude Code erkennt ihn automatisch; überprüfen Sie dies mit der `/skills`-Liste, oder stellen Sie einfach eine Frage, die zu seiner Beschreibung passt.
-- **Codex (OpenAI)**: Codex liest dieselbe `SKILL.md`. Die mitgelieferte Datei `agents/openai.yaml` setzt `allow_implicit_invocation: true`, sodass Codex den Skill automatisch auswählt, wenn eine Aufgabe passt; andernfalls rufen Sie ihn explizit als `$agenteye-cli` auf.
+```bash
+# Claude Code, nur dieses Projekt
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
 
-Der Skill wird zusammen mit der `agenteye` CLI gepflegt, wird jedoch als **separates Verzeichnis** ausgeliefert – nicht im `pipx install agenteye`-Paket enthalten, suchen Sie ihn dort also nicht. FailproofAI Observability stellt Ihnen den Ordner `agenteye-cli/` eigenständig zur Verfügung; falls Sie ihn nicht haben, wenden Sie sich an Ihren FailproofAI-Kontakt. Er ist in keiner Weise eingeschränkt: Er benötigt keinerlei Zugangsdaten, da er ausschließlich die **öffentliche** `agenteye` CLI gegen Ihr eigenes Dashboard ausführt.
+# jedes Projekt (installiert in ~/.claude/skills/)
+npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
+
+# stattdessen Codex
+npx skills add FailproofAI/skills --skill agenteye-cli -a codex
+```
+
+Verwalten Sie ihn dann wie jeden anderen Skill:
+
+```bash
+npx skills list -a claude-code      # was ist installiert
+npx skills update agenteye-cli      # neueste Version laden
+npx skills remove agenteye-cli      # entfernen
+```
+
+Bevorzugen Sie manuelle Installation? Ein Agent Skill ist nur ein Ordner mit einer `SKILL.md` (plus optionalen Referenzen), daher funktioniert auch das Kopieren:
+
+- **Claude Code**: Legen Sie den Ordner `agenteye-cli/` in `~/.claude/skills/` (jedes Projekt) oder `<Ihr-Repo>/.claude/skills/` (nur dieses Repo) ab. Claude Code erkennt ihn automatisch – überprüfen Sie dies mit der `/skills`-Liste oder stellen Sie einfach eine Frage, die seiner Beschreibung entspricht.
+- **Codex (OpenAI)**: Codex liest dieselbe `SKILL.md`. Die mitgelieferte `agents/openai.yaml` setzt `allow_implicit_invocation: true`, sodass Codex den Skill automatisch auswählt, wenn eine Aufgabe passt; andernfalls rufen Sie ihn explizit als `$agenteye-cli` auf.
 
 ---
 
-## Sicherheit: Schreiboperationen zeigen KEINE Rückfragen, wenn ein Agent die CLI ausführt
+## Sicherheit: Mutationen fordern KEINE Bestätigung, wenn ein Agent das CLI ausführt
 
 > **Warnung:** Lesen Sie dies, bevor Sie einem Agenten erlauben, Änderungen vorzunehmen.
 
-Die `agenteye` CLI fragt normalerweise *„Sind Sie sicher?"* vor einer destruktiven Aktion. Sie **überspringt diese Bestätigung automatisch, wenn sie nicht an ein Terminal angebunden ist – was genau der Fall ist, wenn ein Coding-Agent sie ausführt – und `--json` überspringt sie ebenfalls.** Die Sicherheitsabfrage wird für den Agenten also **nicht** ausgelöst.
+Das `agenteye`-CLI fragt normalerweise *„Sind Sie sicher?"* vor einer destruktiven Aktion. Es **überspringt diese Bestätigung automatisch, wenn es nicht an ein Terminal angehängt ist (was genau der Fall ist, wenn ein Coding-Agent es ausführt), und `--json` überspringt sie ebenfalls.** Die Sicherheitsabfrage wird für den Agenten also **nicht** ausgelöst.
 
-Der Skill ist so konzipiert, dass er dies ausgleicht: Er ist angewiesen, den genauen auszuführenden Befehl anzugeben und Ihre ausdrückliche **Bestätigung vor jeder Zustandsänderung** einzuholen. Halten Sie diese Disziplin aufrecht. Wenn Sie FailproofAI Observability über einen Agenten steuern, *sind Sie* der Bestätigungsschritt. Die zustandsändernden Befehle, auf die Sie achten sollten:
+Der Skill ist so geschrieben, dass er dies kompensiert: Er ist angewiesen, den genauen Befehl anzugeben, den er ausführen wird, und Ihr ausdrückliches **OK vor jeder Zustandsänderung** einzuholen. Halten Sie diese Disziplin aufrecht. Wenn Sie Failproof AI Observability über einen Agenten steuern, sind *Sie* der Bestätigungsschritt. Die zustandsändernden Befehle, auf die Sie achten sollten:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
@@ -77,42 +108,42 @@ Der Skill ist so konzipiert, dass er dies ausgleicht: Er ist angewiesen, den gen
 
 Alles unter **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) ist schreibgeschützt und ändert nichts.
 
-Da der Agent **als Sie** handelt, kann er nur das tun, was Ihr Login erlaubt; Berechtigungen werden **pro Organisation** aufgelöst (siehe [API-Schlüssel](/de/agenteye/api-keys)). Ein Befehl, für den Sie keine Berechtigung haben, gibt Exit-Code `5` mit dem genauen Berechtigungsnamen zurück, sodass der Agent Ihnen genau mitteilen kann, was Sie bei einem Administrator anfragen müssen – anstatt undurchsichtig zu scheitern.
+Da der Agent **als Sie** agiert, kann er nur das tun, wozu Ihr Login berechtigt ist; Berechtigungen werden **pro Organisation** aufgelöst (siehe [API-Schlüssel](/de/agenteye/api-keys)). Ein Befehl, für den Sie keine Berechtigung haben, gibt Exit-Code `5` mit dem genauen Berechtigungsnamen zurück, sodass der Agent Ihnen präzise sagen kann, was Sie einen Administrator fragen müssen, anstatt undurchsichtig zu scheitern.
 
 ---
 
 ## Was Sie fragen können
 
-Hier sehen Sie, wie ein echter Ablauf aussieht – zuerst eine Leseanfrage, dann eine Änderung, die auf Ihre Bestätigung wartet:
+So sieht ein echter Ablauf aus – zunächst eine Abfrage, dann eine Änderung, die auf Ihr OK wartet:
 
 ```text
-Sie   ▸ Ist irgendetwas im letzten Tag schiefgelaufen?
+you   ▸ Is anything broken in the last day?
 
-Agent ▸ Führe aus: agenteye --json errors --since 24h --aggregate
-        3 Fehlertypen in den letzten 24 Stunden. Der häufigste ist TimeoutError
-        (18 Vorkommen, alle beim checkout-agent), dann RateLimited (5).
-        Soll ich die fehlgeschlagenen Sessions für TimeoutError aufrufen?
+agent ▸ Running: agenteye --json errors --since 24h --aggregate
+        3 error types in the last 24h. The biggest is TimeoutError
+        (18 hits, all on the checkout-agent), then RateLimited (5).
+        Want the failing sessions for TimeoutError?
 
-Sie   ▸ Erstelle für CI einen Schlüssel, der nur Events pushen darf.
+you   ▸ Give CI a key that can only push events.
 
-Agent ▸ Das erstellt einen API-Schlüssel. Ich werde folgendes ausführen:
+agent ▸ This creates an API key. I'll run:
           agenteye keys create ci --add events:add
-        OK, um fortzufahren?
+        OK to proceed?
 
-Sie   ▸ ja
+you   ▸ yes
 
-Agent ▸ Fertig. Schlüssel "ci" mit ausschließlich events:add erstellt.
-        Das Secret wird nur einmal angezeigt, also speichern Sie es jetzt. Ich kann es nicht erneut ausgeben.
+agent ▸ Done. Key "ci" created with events:add only.
+        The secret is shown only once, so store it now. I can't reprint it.
 ```
 
-Der Skill ordnet jede natürlichsprachliche Absicht dem richtigen `agenteye`-Befehl zu, ermittelt zunächst gültige Werte (`list <kind>`, `whoami`), um nicht zu raten, und gibt den genauen Befehl vor jeder Änderung an. Weitere Beispiele:
+Der Skill ordnet jede natürlichsprachliche Absicht dem richtigen `agenteye`-Befehl zu, ermittelt dabei zuerst gültige Werte (`list <kind>`, `whoami`), rät nicht und gibt den genauen Befehl vor jeder Änderung an. Weitere Beispiele:
 
-- *„Ist heute irgendetwas kaputt / fehlgeschlagen in den letzten 24 Stunden?"* → `errors --since 24h --aggregate`, dann eine Aufschlüsselung.
-- *„Warum ist Session `run-001` fehlgeschlagen?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
-- *„Wie entwickelt sich die Qualität diese Woche?"* → `evals --aggregate --since 7d`, dann in schlecht bewertete Ausführungen einsteigen.
-- *„Erstelle für CI einen Schlüssel, der nur Events pushen darf."* → `keys create ci --add events:add` (er gibt den Befehl an, erstellt ihn dann und erfasst das einmalige Secret).
-- *„Wer hat Zugriff? Setze Dana auf schreibgeschützt."* → `users list` → `users update dana@… --permission-set read-only` (nach Ihrer Bestätigung).
-- *„Bestätige den aktiven Incident und weise ihn mir zu."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> sie@…`.
+- *„Ist in den letzten 24 Stunden etwas kaputt gegangen / fehlgeschlagen?"* → `errors --since 24h --aggregate`, dann eine Aufschlüsselung.
+- *„Warum ist Sitzung `run-001` fehlgeschlagen?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *„Wie entwickelt sich die Qualität diese Woche?"* → `evals --aggregate --since 7d`, dann in niedrig bewertete Läufe einsteigen.
+- *„Gib CI einen Schlüssel, der nur Events pushen kann."* → `keys create ci --add events:add` (gibt den Befehl an, erstellt ihn dann und erfasst das einmalige Secret).
+- *„Wer hat Zugriff? Mach Dana schreibgeschützt."* → `users list` → `users update dana@… --permission-set read-only` (nach Bestätigung durch Sie).
+- *„Bestätige den aktiven Vorfall und weise ihn mir zu."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
 
 Die genauen Befehle, Flags und JSON-Strukturen dahinter finden Sie in der [CLI](/de/agenteye/cli)-Referenz und den [CLI-Rezepten für Agenten](/de/agenteye/cli-recipes).
 
@@ -121,6 +152,8 @@ Die genauen Befehle, Flags und JSON-Strukturen dahinter finden Sie in der [CLI](
 ## Nächste Schritte
 
 - **[CLI](/de/agenteye/cli)**: vollständige Befehls- und Flag-Referenz für `agenteye`.
-- **[CLI-Rezepte für Agenten](/de/agenteye/cli-recipes)**: kopierfertige `jq`-Muster und Exit-Code-Behandlung.
-- **[KI-Assistent](/de/agenteye/assistant)**: der Assistent im Dashboard (nicht zu verwechseln mit diesem Terminal-Skill).
-- **[API-Schlüssel](/de/agenteye/api-keys)**: das organisationsweite Berechtigungsmodell, das den Wirkungsbereich des Skills begrenzt.
+- **[CLI-Rezepte für Agenten](/de/agenteye/cli-recipes)**: Copy-paste-`jq`-Muster und Exit-Code-Behandlung.
+- **[Evaluator-Agent-Skill](/de/agenteye/evaluator-skill)**: der verwandte Skill zum Aufbau des Evaluators, dessen Scores `agenteye evals` liest.
+- **[Python-SDK-Agent-Skill](/de/agenteye/python-sdk-skill)**: der verwandte Skill zum Instrumentieren eines Agenten, damit er die Telemetriedaten ausgibt, die `agenteye` liest.
+- **[KI-Assistent](/de/agenteye/assistant)**: der In-Dashboard-Assistent (nicht zu verwechseln mit diesem Terminal-Skill).
+- **[API-Schlüssel](/de/agenteye/api-keys)**: das organisationsbasierte Berechtigungsmodell, das den Wirkungsbereich des Skills begrenzt.

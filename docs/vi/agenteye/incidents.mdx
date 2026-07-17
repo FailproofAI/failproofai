@@ -1,27 +1,28 @@
 ---
 title: "Sự cố"
-description: "Tài liệu FailproofAI Observability Incidents."
+description: "Khi một cảnh báo phát động, mọi người có thể thấy sự cố đã mở, ai đang xử lý, và những gì đã xảy ra cho đến nay — trên một dòng thời gian có ghi chú đầy đủ."
 ---
 
-Khi một cảnh báo phát động, câu hỏi đầu tiên luôn là "ai đang xử lý nó?". Sự cố trả lời điều đó: ngay khi có gì đó vi phạm, mọi người đều có thể thấy sự cố đã mở, ai sở hữu nó, và chính xác những gì đã xảy ra cho đến nay, với một bản ghi sạch sẽ có người chịu trách nhiệm mà bạn có thể đưa thẳng vào bản phân tích hậu sự cố.
 
-![Hộp inbox Sự cố: thẻ sự cố liên kết với cảnh báo và được mở thủ công, được nhóm theo trạng thái, mỗi cái có huy hiệu mức độ nghiêm trọng và người chỉ định](/agenteye/images/incidents.png)
-*Inbox nhóm các sự cố mở theo trạng thái và lọc theo mức độ nghiêm trọng và người chỉ định, vì vậy bạn sẽ thấy những gì cần một người xử lý ngay bây giờ.*
+Khi một cảnh báo phát động, câu hỏi đầu tiên luôn là "ai đang xử lý?" Sự cố trả lời nó: ngay khi có vi phạm, mọi người có thể thấy sự cố đã mở, ai đang sở hữu nó, và chính xác những gì đã xảy ra cho đến nay, với một hồ sơ sạch sẽ và được ghi chú mà bạn có thể đưa thẳng vào phân tích hậu sự cố.
 
-## Biết ai sở hữu nó, một cách nhanh chóng
+![Hộp thư Sự cố: các thẻ sự cố được liên kết với cảnh báo và được mở thủ công, được nhóm theo trạng thái, mỗi thẻ có một huy hiệu mức độ nghiêm trọng và người được giao](/agenteye/images/incidents.png)
+*Hộp thư nhóm các sự cố mở theo trạng thái và lọc theo mức độ nghiêm trọng và người được giao, vì vậy bạn chỉ thấy những gì cần sự can thiệp của con người ngay bây giờ.*
 
-Không còn "có ai đang xem cái này không?" trong một luồng chat. Một vi phạm sẽ tự động mở một sự cố và đưa nó vào hộp inbox được chia sẻ, được nhóm theo trạng thái. Thừa nhận nó và tên của bạn sẽ nằm trên đó, vì vậy phần còn lại của nhóm sẽ biết nó đã được xử lý. Thừa nhận là được chia sẻ: một số nhà khai thác có thể thừa nhận cùng một sự cố và mỗi cái được ghi lại riêng, vì vậy một phòng chiến tranh đầy đủ hiển thị theo tên thay vì xung đột lẫn nhau. Chỉ định một chủ sở hữu cho việc phân loại, và lọc inbox theo mức độ nghiêm trọng hoặc người chỉ định để giảm xuống những gì là của bạn.
+## Biết ai đang xử lý, một cách nhanh chóng
+
+Không còn "có ai đang xem cái này không?" trong một luồng trò chuyện. Vi phạm sẽ tự động mở một sự cố và đặt nó vào hộp thư được chia sẻ, được nhóm theo trạng thái. Xác nhận nó và tên bạn sẽ được ghi lại, vì vậy phần còn lại của đội biết nó đang được xử lý. Xác nhận được chia sẻ: một số nhà khai thác có thể xác nhận cùng một sự cố và mỗi bản được ghi lại riêng biệt, vì vậy một phòng chiến đấu đầy đủ sẽ hiển thị theo tên thay vì ghi đè lên nhau. Giao một chủ sở hữu để phân loại, và lọc hộp thư theo mức độ nghiêm trọng hoặc người được giao để giảm xuống những gì là của bạn.
 
 ## Toàn bộ câu chuyện, trong một dòng thời gian
 
-Khi sự cố kết thúc, bạn đã có bản viết. Mở bất kỳ sự cố nào và bạn sẽ nhận được bằng chứng vi phạm, những người chỉ định và người đăng ký của nó, một luồng nhận xét để phối hợp tại chỗ, và một dòng thời gian hoạt động chỉ nối thêm.
+Khi sự cố kết thúc, bạn đã có bài viết. Mở bất kỳ sự cố nào và bạn sẽ nhận được bằng chứng vi phạm, những người được giao và những người đăng ký của nó, một luồng bình luận để phối hợp tại chỗ, và một dòng thời gian hoạt động chỉ được thêm vào.
 
-![Một chế độ xem chi tiết sự cố: cảnh báo cha và tóm tắt vi phạm, những người chỉ định và người đăng ký, một dòng thời gian hoạt động có người chịu trách nhiệm, và một luồng nhận xét](/agenteye/images/incident-detail.png)
-*Mọi thứ đã xảy ra, theo thứ tự, mỗi dòng được ký bởi người đã làm nó.*
+![Một chế độ xem chi tiết sự cố: cảnh báo cha và tóm tắt vi phạm, những người được giao và những người đăng ký, một dòng thời gian hoạt động được ghi chú, và một luồng bình luận](/agenteye/images/incident-detail.png)
+*Mọi thứ đã xảy ra, theo thứ tự, mỗi dòng được ký bởi người đã thực hiện nó.*
 
-Mọi hành động (mở, thừa nhận, giải quyết, v.v.) được ghi vào dòng thời gian đó và không bao giờ được chỉnh sửa. Mỗi mục được ghi danh: cho nhà khai thác đã thực hiện nó, theo email, hoặc cho **automated** cho bất cứ điều gì FailproofAI Observability tự làm, như mở sự cố trên vi phạm. Không có gì là ẩn danh và không có gì bị mất, vì vậy bản phân tích hậu sự cố phần lớn tự viết.
+Mỗi hành động (mở, xác nhận, giải quyết, v.v.) được ghi vào dòng thời gian đó và không bao giờ được chỉnh sửa. Mỗi mục được ghi chú: cho nhà khai thác đã thực hiện nó, theo email, hoặc cho **automated** cho bất kỳ điều gì Failproof AI Observability tự thực hiện, như mở sự cố khi có vi phạm. Không có gì là ẩn danh và không có gì bị mất, vì vậy phân tích hậu sự cố gần như tự viết được.
 
-## Sự cố di chuyển như thế nào
+## Cách một sự cố tiến triển
 
 ```mermaid
 stateDiagram-v2
@@ -32,18 +33,18 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Mở (phát động):** vi phạm mở sự cố và page kênh của bạn một lần. Các vi phạm lặp lại gập vào cùng một sự cố và làm tươi bằng chứng của nó thay vì page bạn lặp đi lặp lại.
-- **Đã thừa nhận:** một nhà khai thác nhận nó. Nó vẫn mở, và các vi phạm sau cập nhật bằng chứng một cách yên tĩnh.
-- **Đã giải quyết:** một nhà khai thác đóng nó. Giải quyết tự động khi điều kiện được xóa được lên kế hoạch nhưng chưa được bật, vì vậy một sự cố vẫn mở cho đến khi một người xử lý giải quyết nó, điều này giữ cho mọi người trung thực về những gì thực sự đã được xóa. Một sự cố mới có thể mở trên cùng một cảnh báo sau.
+- **Mở (firing):** vi phạm mở sự cố và phát trang trên các kênh của bạn một lần. Những vi phạm lặp lại sẽ được gộp vào cùng một sự cố và làm mới bằng chứng của nó thay vì phát trang cho bạn nhiều lần.
+- **Xác nhận (acknowledged):** một nhà khai thác nhận nó. Nó vẫn mở, và các vi phạm sau đó sẽ cập nhật bằng chứng một cách yên tĩnh.
+- **Giải quyết (resolved):** một nhà khai thác đóng nó. Giải quyết tự động khi điều kiện được xóa được lên kế hoạch nhưng chưa được bật, vì vậy một sự cố vẫn mở cho đến khi con người giải quyết nó, điều này giữ cho mọi người trung thực về những gì thực sự đã được xóa. Một sự cố mới có thể mở trên cùng một cảnh báo sau đó.
 
-Một cảnh báo chứa tối đa một sự cố mở tại một thời điểm, vì vậy một quy tắc flapping không thể chôn bạn trong các bản sao. Bạn cũng có thể mở một sự cố bằng tay: một sự cố độc lập cho thứ gì đó mà không có cảnh báo nào bắt được, hoặc một sự cố gắn với một cảnh báo hiện có, nếu bạn có `incidents:write`.
+Một cảnh báo chứa tối đa một sự cố mở tại một thời điểm, vì vậy một quy tắc lên xuống không thể chôn vào các bản sao. Bạn cũng có thể mở một sự cố thủ công: một sự cố độc lập cho thứ gì đó không có cảnh báo nào bắt được, hoặc một sự cố được đính kèm vào một cảnh báo hiện có, nếu bạn có `incidents:write`.
 
-## Nơi tìm kiếm nó
+## Tìm nó ở đâu
 
-Sự cố sống tại `/<org-slug>/incidents`. Xem cần **`incidents:read`**; mở một sự cố thủ công cần **`incidents:write`**; thừa nhận, chỉ định, bình luận, và giải quyết cần **`incidents:ack`**. Các khóa cũ hơn được cấp `alerts:ack` đã loại bỏ vẫn hoạt động, vì nó được coi là `incidents:ack`, vì vậy ca trực của bạn không cần phát hành lại.
+Các sự cố nằm ở `/<org-slug>/incidents`. Xem yêu cầu **`incidents:read`**; mở một sự cố thủ công yêu cầu **`incidents:write`**; xác nhận, giao, bình luận, và giải quyết yêu cầu **`incidents:ack`**. Những khóa cũ hơn được cấp `alerts:ack` đã ngưng dùng vẫn hoạt động, vì nó được tôn trọng là `incidents:ack`, vì vậy vòng xoay trong ca không cần phát hành lại.
 
 ## Liên quan
 
-- [Cảnh báo](/vi/agenteye/alerts): các quy tắc mở các sự cố này khi một ngưỡng bị vi phạm.
-- [Theo dõi lỗi](/vi/agenteye/error-tracking): xem mọi lỗi ở một nơi và nâng cao một cái lên cảnh báo.
-- [Kiểm toán](/vi/agenteye/audits): nhà phân tích được lên lịch tìm thấy những lỗi mà không có quy tắc nào đang theo dõi.
+- [Cảnh báo](/vi/agenteye/alerts): các quy tắc mở những sự cố này khi ngưỡng bị vi phạm.
+- [Theo dõi lỗi](/vi/agenteye/error-tracking): xem mọi lỗi ở một nơi và nâng cao một cảnh báo.
+- [Kiểm toán](/vi/agenteye/audits): nhà phân tích theo lịch trình tìm những lỗi không có quy tắc nào đang theo dõi.

@@ -1,23 +1,23 @@
 ---
 title: "Observer"
-description: "Documentation d'observation FailproofAI Observability."
+description: "Les surfaces d'observation permettent de surveiller ce que font vos agents en temps réel et d'explorer en détail n'importe quelle exécution."
 ---
 
 
-Les surfaces d'observation vous permettent de surveiller ce que font vos agents en temps réel et d'analyser en détail n'importe quelle exécution. Tout ici est en direct, limité à votre organisation, et filtrable par plage de dates, environnement, agent et session — vous passez ainsi de « quelque chose cloche » à l'exécution exacte en quelques secondes.
+Les surfaces d'observation permettent de surveiller ce que font vos agents en temps réel et d'explorer en détail n'importe quelle exécution. Tout ici est en direct, limité à votre organisation et filtrable par plage de dates, environnement, agent et session — vous passez de « quelque chose semble bizarre » à l'exécution exacte en quelques secondes.
 
-![Le flux d'événements en direct, avec un code couleur par type et filtrable par environnement, agent et session](/agenteye/images/events-stream.png)
+![Le flux d'événements en direct, codé par couleur selon le type et filtrable par environnement, agent et session](/agenteye/images/events-stream.png)
 
 Quatre surfaces, chacune avec sa propre page :
 
-- **[Flux d'événements](/fr/agenteye/event-stream)** : la trace en direct, étape par étape, de chaque exécution sur l'ensemble de vos agents, du plus récent au plus ancien. La page d'accueil de votre organisation et le premier arrêt pour le triage.
-- **[Sessions et graphe d'exécution](/fr/agenteye/sessions)** : ces événements regroupés en une ligne par exécution, ainsi qu'une représentation de style git montrant comment chaque exécution s'est déroulée.
-- **[Métriques de performance](/fr/agenteye/telemetry)** : cartes thermiques de latence et indicateurs p50/p95/p99 pour vos modèles, outils et hooks, afin qu'un pic extrême se distingue clairement de la médiane.
-- **[Suivi des erreurs](/fr/agenteye/error-tracking)** : une surface de triage unique pour tout ce qui a mal tourné, à un clic d'une alerte déclenchée vers l'exécution défaillante.
+- **[Flux d'événements](/fr/agenteye/event-stream)** : le journal en direct, étape par étape, de chaque exécution sur l'ensemble des agents, du plus récent au plus ancien. La page d'accueil de votre organisation et premier arrêt pour le triage.
+- **[Sessions et graphe d'exécution](/fr/agenteye/sessions)** : ces événements regroupés en une ligne par exécution, plus une représentation de style git montrant comment chaque exécution s'est déroulée.
+- **[Métriques de performance](/fr/agenteye/telemetry)** : cartes de chaleur de latence et indicateurs p50/p95/p99 pour vos modèles, outils et hooks, afin qu'un pic de queue se distingue clairement de la médiane.
+- **[Suivi des erreurs](/fr/agenteye/error-tracking)** : une surface de triage unique pour tout ce qui a mal tourné, à un clic d'une alerte déclenchée vers l'exécution fautive.
 
-## Liens associés
+## Connexe
 
-- [Évaluations](/fr/agenteye/evaluations) : évaluez la qualité de chaque exécution.
-- [Alertes](/fr/agenteye/alerts) : transformez n'importe quel seuil en règle de notification.
-- [Audits](/fr/agenteye/audits) : laissez FailproofAI Observability identifier automatiquement les schémas d'échec entre les sessions.
+- [Évaluations](/fr/agenteye/evaluations) : noter chaque exécution en termes de qualité.
+- [Alertes](/fr/agenteye/alerts) : transformer n'importe quel seuil en règle de notification.
+- [Audits](/fr/agenteye/audits) : laisser Failproof AI Observability identifier les schémas d'échec entre les sessions à votre place.
 - [CLI et agents](/fr/agenteye/cli-and-agents) : la même observabilité depuis votre terminal.

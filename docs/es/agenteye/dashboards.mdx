@@ -1,45 +1,46 @@
 ---
 title: "Dashboards"
-description: "Documentación de los paneles de observabilidad de FailproofAI."
+description: "Convierte los datos en vivo de tus agentes en una vista compartida que todo tu equipo puede consultar."
 ---
 
-Convierte los datos en vivo de tus agentes en una imagen compartida que todo tu equipo puede consultar. Fija las consultas importantes como gráficos y todo el mundo verá los mismos números de un vistazo, sin necesidad de volver a ejecutar una sola consulta.
 
-![Un panel construido a partir de consultas guardadas: una línea de eventos por hora, una barra de errores por tipo, un gráfico de área de latencia y tokens por modelo](/agenteye/images/dashboard-fleet.png)
+Convierte los datos en vivo de tus agentes en una vista compartida que todo tu equipo puede consultar. Ancla las consultas que importan como gráficos, y todos verán los mismos números de un vistazo, sin necesidad de volver a ejecutar una sola consulta.
+
+![Un dashboard construido a partir de consultas guardadas: una línea de eventos por hora, una barra de errores por tipo, un gráfico de área de latencia y tokens por modelo](/agenteye/images/dashboard-fleet.png)
 
 *Un panel, cuatro consultas guardadas: eventos por hora, errores por tipo, latencia y tokens por modelo.*
 
-## Todos ven la misma verdad
+## Todos ven la misma realidad
 
-Deja de pegar capturas de pantalla en el chat y de volver a ejecutar la misma consulta cinco veces al día. Un panel es un tablero compartido a nivel de organización que cualquier miembro del equipo puede abrir para ver exactamente la misma vista. Cuando los datos subyacentes cambian, los gráficos se actualizan con ellos, así que el tablero siempre está al día y nadie discute sobre números desactualizados.
+Deja de pegar capturas de pantalla en el chat y de volver a ejecutar la misma consulta cinco veces al día. Un dashboard es un panel compartido a nivel de organización que cualquier miembro de tu equipo puede abrir para ver exactamente la misma información. Cuando los datos subyacentes cambian, los gráficos cambian con ellos, de modo que el panel siempre está actualizado y nadie discute sobre números desactualizados.
 
-El panel de flota anterior es una buena estructura de partida para las operaciones diarias:
+El dashboard de flota que aparece arriba es un buen punto de partida para las operaciones del día a día:
 
-- una línea de **eventos por hora**, para visualizar el rendimiento y detectar una caída repentina
-- una barra de **errores por tipo**, para que las categorías de fallos más frecuentes salten a la vista
-- un gráfico de área de **latencia**, para que las ralentizaciones sean visibles antes de que los usuarios se quejen
-- un desglose de **tokens por modelo**, para mantener los costes bajo control
+- una línea de **eventos por hora**, para monitorear el rendimiento y detectar caídas repentinas
+- una barra de **errores por tipo**, para que las categorías de fallos más frecuentes sean evidentes
+- un gráfico de área de **latencia**, para identificar ralentizaciones antes de que los usuarios se quejen
+- un desglose de **tokens por modelo**, para mantener el coste siempre visible
 
 Encontrarás tus paneles en `/<org-slug>/dashboards`.
 
-## Fija las consultas que ya guardaste
+## Ancla las consultas que ya guardaste
 
-Cada mosaico comienza como una consulta guardada. Crea y guarda la consulta que te interesa en la biblioteca de [Queries](/es/agenteye/queries) (preajustes integrados más los tuyos propios, sobre tus eventos y evaluaciones) y luego fíjala en un panel como el tipo de gráfico que mejor se adapte a los datos: una **línea** para tendencias a lo largo del tiempo, una **barra** para comparar categorías, un **área** para volumen o un **pastel** para ver distribuciones proporcionales.
+Cada ficha comienza como una consulta guardada. Crea y guarda la consulta que te interese en la biblioteca de [Queries](/es/agenteye/queries) (con preajustes integrados y los tuyos propios, sobre tus eventos y evaluaciones), y luego anclala a un dashboard como el gráfico que mejor representa los datos: una **línea** para tendencias a lo largo del tiempo, una **barra** para comparar categorías, un **área** para volumen, o un **pastel** para una distribución porcentual.
 
-Dado que un mosaico es simplemente tu consulta guardada representada como un gráfico, no hay nada que mantener sincronizado manualmente. Actualiza la consulta una vez y todos los paneles que la utilizan se actualizarán también.
+Como una ficha no es más que tu consulta guardada renderizada como gráfico, no hay nada que mantener sincronizado manualmente. Actualiza la consulta una vez y todos los dashboards que la usen se actualizarán también.
 
-## Supervisa la calidad, no solo el volumen
+## Observa la calidad, no solo el volumen
 
-El volumen te dice que los agentes están ocupados. La calidad te dice que realmente están haciendo el trabajo. Apunta un panel a tus [puntuaciones de evaluación](/es/agenteye/evaluations) y obtendrás un tablero que rastrea el desempeño de las ejecuciones a lo largo del tiempo, de modo que una regresión de calidad aparezca como una caída en un gráfico en lugar de ser una sorpresa de un cliente.
+El volumen te dice que los agentes están ocupados. La calidad te dice que realmente están haciendo su trabajo. Apunta un dashboard a tus [puntuaciones de evaluación](/es/agenteye/evaluations) y obtendrás un panel que rastrea el rendimiento de las ejecuciones a lo largo del tiempo, de modo que una regresión de calidad aparecerá como una caída en el gráfico en lugar de una sorpresa del cliente.
 
-![Un panel orientado a la calidad construido a partir de consultas de evaluación guardadas](/agenteye/images/dashboard-quality.png)
+![Un dashboard enfocado en calidad construido a partir de consultas de evaluación guardadas](/agenteye/images/dashboard-quality.png)
 
 *Un panel de calidad mantiene tus puntuaciones de evaluación en primer plano, justo junto a los números operativos.*
 
-Mantén un panel de operaciones y un panel de calidad uno al lado del otro y tu equipo tendrá un único lugar para responder tanto a «¿está funcionando?» como a «¿está funcionando bien?», sin que nadie tenga que volver a ejecutar una consulta.
+Mantén un panel de operaciones y un panel de calidad uno al lado del otro, y tu equipo tendrá un único lugar para responder tanto «¿está funcionando?» como «¿está funcionando bien?», sin que nadie tenga que volver a ejecutar una consulta.
 
 ## Relacionado
 
-- [Queries](/es/agenteye/queries): crea y guarda las consultas que se convertirán en tus mosaicos.
+- [Queries](/es/agenteye/queries): crea y guarda las consultas que se convertirán en tus fichas.
 - [Evaluations](/es/agenteye/evaluations): puntúa tus ejecuciones para poder graficar la calidad a lo largo del tiempo.
-- [Alerts](/es/agenteye/alerts): convierte un umbral en cualquiera de estas métricas en una notificación.
+- [Alerts](/es/agenteye/alerts): convierte un umbral sobre cualquiera de estas métricas en una alerta.

@@ -1,23 +1,23 @@
 ---
-title: "Observe"
-description: "FailproofAI Observability Observe documentation."
+title: "Quan sát"
+description: "Các bề mặt quan sát là nơi bạn theo dõi những gì các agent của bạn đang làm ngay bây giờ và đi sâu vào bất kỳ lần chạy nào."
 ---
 
 
-Các bề mặt observe là nơi bạn theo dõi những gì các agent của mình đang làm ngay bây giờ và tìm hiểu chi tiết từng lần chạy. Mọi thứ ở đây đều được cập nhật trực tiếp, được phân loại theo tổ chức của bạn, và có thể lọc theo khoảng thời gian, môi trường, agent và session, để bạn có thể đi từ "có gì đó không ổn" đến đúng lần chạy chính xác chỉ trong vài giây.
+Các bề mặt quan sát là nơi bạn theo dõi những gì các agent của bạn đang làm ngay bây giờ và đi sâu vào bất kỳ lần chạy nào. Mọi thứ ở đây là trực tiếp, được phân loại theo tổ chức của bạn, và có thể lọc theo phạm vi ngày, môi trường, agent và phiên, vì vậy bạn có thể từ "điều gì đó có vẻ không ổn" đến lần chạy chính xác trong vài giây.
 
-![The live Event Stream, colour-coded by type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
+![Luồng sự kiện trực tiếp, được mã hóa màu theo loại và có thể lọc theo môi trường, agent và phiên](/agenteye/images/events-stream.png)
 
 Bốn bề mặt, mỗi cái có trang riêng của nó:
 
-- **[Event stream](/vi/agenteye/event-stream)**: dấu vết trực tiếp từng bước của mọi lần chạy trên mọi agent, mới nhất trước tiên. Trang chủ của tổ chức bạn và điểm dừng đầu tiên để phân loại sự cố.
-- **[Sessions and execution graph](/vi/agenteye/sessions)**: những sự kiện được gộp lại thành một hàng cho mỗi lần chạy, cộng với hình ảnh kiểu git của cách mỗi lần chạy diễn ra.
-- **[Performance metrics](/vi/agenteye/telemetry)**: sơ đồ nhiệt độ trễ và các số liệu sức khỏe p50/p95/p99 cho các mô hình, công cụ và hook của bạn, để một bất thường ở tail nổi bật so với giá trị trung bình.
-- **[Error tracking](/vi/agenteye/error-tracking)**: một bề mặt phân loại sự cố duy nhất cho tất cả những gì đã sai, chỉ cần một lần nhấp từ cảnh báo được kích hoạt đến lần chạy bị hỏng.
+- **[Luồng sự kiện](/vi/agenteye/event-stream)**: đường dãi trực tiếp từng bước của mọi lần chạy trên mọi agent, mới nhất trước tiên. Trang chủ tổ chức của bạn và điểm dừng đầu tiên để phân loại.
+- **[Phiên và biểu đồ thực thi](/vi/agenteye/sessions)**: những sự kiện đó được tổng hợp thành một hàng cho mỗi lần chạy, cộng với hình ảnh kiểu git về cách mỗi lần chạy diễn ra.
+- **[Số liệu hiệu suất](/vi/agenteye/telemetry)**: bản đồ nhiệt độ trễ và số liệu quan trọng p50/p95/p99 cho các mô hình, công cụ và hook của bạn, vì vậy một đột biến đuôi sẽ nổi bật so với mức trung bình.
+- **[Theo dõi lỗi](/vi/agenteye/error-tracking)**: một bề mặt phân loại cho mọi thứ đã xảy ra sai, một lần nhấp chuột từ cảnh báo kích hoạt đến lần chạy bị hỏng.
 
 ## Liên quan
 
-- [Evaluations](/vi/agenteye/evaluations): đánh giá chất lượng mỗi lần chạy.
-- [Alerts](/vi/agenteye/alerts): chuyển bất kỳ ngưỡng nào thành quy tắc paging.
-- [Audits](/vi/agenteye/audits): để FailproofAI Observability tìm các mô hình lỗi trên các session cho bạn.
-- [CLI and agents](/vi/agenteye/cli-and-agents): khả năng quan sát giống nhau từ terminal của bạn.
+- [Đánh giá](/vi/agenteye/evaluations): đánh giá chất lượng mọi lần chạy.
+- [Cảnh báo](/vi/agenteye/alerts): biến bất kỳ ngưỡng nào thành quy tắc định trang.
+- [Kiểm toán](/vi/agenteye/audits): để Failproof AI Observability tìm các mẫu lỗi trên các phiên cho bạn.
+- [CLI và agent](/vi/agenteye/cli-and-agents): khả năng quan sát tương tự từ terminal của bạn.

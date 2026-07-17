@@ -1,63 +1,63 @@
 ---
 title: "Assistant IA"
-description: "Documentation de l'assistant IA d'observabilité FailproofAI."
+description: "Posez une question en langage naturel sur vos données d'agents et obtenez une réponse directement reliée aux preuves."
 ---
 
 
-Posez une question sur les données de votre agent en langage naturel et obtenez une réponse directement liée aux preuves. Pas de SQL à écrire, pas de tableaux de bord à parcourir — l'assistant **FailproofAI Observability** est le moyen le plus rapide pour n'importe quel membre de votre équipe d'obtenir des réponses sur vos agents.
+Posez une question en langage naturel sur vos données d'agents et obtenez une réponse directement reliée aux preuves. Pas de SQL à écrire, pas de tableaux de bord à parcourir — l'assistant **Failproof AI Observability** est le moyen le plus rapide pour n'importe quel membre de votre équipe d'obtenir des réponses sur vos agents.
 
-![L'assistant FailproofAI Observability répondant à une question en langage naturel dans le tableau de bord, affichant un tableau d'activité des agents en direct, une répartition de l'utilisation des modèles par agent, et des conclusions rédigées, avec les requêtes exécutées affichées en ligne](/agenteye/images/assistant.png)
-*Posez votre question en langage naturel et obtenez une réponse construite à partir de vos propres données. Ici, l'assistant détaille quels agents sont les plus actifs et quels modèles ils utilisent, et affiche les requêtes exécutées afin que vous puissiez vérifier chaque chiffre.*
+![L'assistant Failproof AI Observability répondant à une question en langage naturel dans le tableau de bord, affichant un tableau d'activité des agents en direct, une répartition de l'utilisation des modèles par agent, et des conclusions rédigées, avec les requêtes exécutées affichées en ligne](/agenteye/images/assistant.png)
+*Posez votre question en langage naturel et obtenez une réponse construite à partir de vos propres données. Ici, l'assistant détaille quels agents sont les plus actifs et quels modèles ils utilisent, et affiche les requêtes exécutées pour que vous puissiez vérifier chaque chiffre.*
 
-Il n'y a rien à apprendre. Ouvrez le chat, tapez ce que vous voulez savoir, et suivez les liens qu'il vous renvoie :
+Il n'y a rien à apprendre. Ouvrez le chat, tapez ce que vous voulez savoir, et suivez les liens qu'il vous retourne :
 
 ```
-Vous :  quelles sessions ont eu des erreurs aujourd'hui ?
-IA :    5 sessions ont eu des erreurs aujourd'hui, les plus récentes en premier. Chacune est liée :
-        • checkout-agent   14:02   timeout d'outil
-        • billing-agent    11:47   erreur non gérée
-        • ...et 3 autres
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
 
-Vous :  résume cette session          (demandé en visualisant une exécution)
-IA :    Cette exécution a pris 12 étapes sur 3 outils et a échoué vers la fin quand un
-        outil de paiement a retourné une erreur. Elle a obtenu un score faible sur votre évaluation "resolved".
-        Liens : la session, l'événement défaillant, et cette évaluation.
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
 ```
 
-## Posez la question, accédez directement à la preuve
+## Posez simplement la question et accédez directement aux preuves
 
-Vous arrêtez de deviner et d'écrire des requêtes. Demandez « comment évolue la qualité en prod cette semaine ? », « quelles sessions ont eu des erreurs aujourd'hui ? » ou « résume cette session », et vous obtenez une réponse précise en quelques secondes plutôt que de construire une requête et de l'interpréter vous-même.
+Vous arrêtez de deviner et vous arrêtez d'écrire des requêtes. Demandez « comment évolue la qualité en production cette semaine ? », « quelles sessions ont échoué aujourd'hui ? » ou « résume cette session », et vous obtenez une réponse directe en quelques secondes plutôt que de construire une requête et de la lire vous-même.
 
-Chaque réponse est accompagnée de ses justificatifs. L'assistant lie les sessions exactes, les requêtes sauvegardées et les tableaux de bord qu'il a utilisés pour parvenir à la réponse, afin que vous puissiez cliquer et vérifier plutôt que de le croire sur parole. Il est également **conscient du contexte de la page** : demandez « cette session » pendant que vous en visualisez une et il sait déjà de quelle exécution vous parlez. Rouvrez une conversation antérieure depuis le sélecteur d'historique pour reprendre là où vous vous étiez arrêté.
+Chaque réponse vient avec ses justificatifs. L'assistant renvoie vers les sessions exactes, les requêtes sauvegardées et les tableaux de bord qu'il a utilisés pour parvenir à la réponse, afin que vous puissiez cliquer pour confirmer plutôt que de le prendre sur parole. Il est également **conscient du contexte de la page** : demandez « cette session » pendant que vous en consultez une et il sait déjà de quelle exécution vous parlez. Rouvrez n'importe quelle conversation précédente depuis le sélecteur d'historique et reprenez là où vous vous étiez arrêté.
 
-## Transformez une bonne réponse en requête sauvegardée ou en tableau de bord
+## Transformer une bonne réponse en requête sauvegardée ou en tableau de bord
 
-Quand une réponse vaut la peine d'être conservée, demandez à l'assistant de la sauvegarder. Il rédige le SQL pour une requête sauvegardée, ou assemble un tableau de bord à partir de ces requêtes, puis vous présente une carte **Approuver / Rejeter**. Rien n'est écrit tant que vous ne cliquez pas sur Approuver, vous bénéficiez donc de la rapidité du « posez juste la question » tout en gardant toujours le dernier mot.
+Quand une réponse mérite d'être conservée, demandez à l'assistant de la sauvegarder. Il rédige le SQL d'une requête sauvegardée, ou assemble un tableau de bord à partir de ces requêtes, puis vous présente une carte **Approuver / Rejeter**. Rien n'est écrit tant que vous ne cliquez pas sur Approuver, vous bénéficiez donc de la rapidité du « posez simplement la question » tout en gardant toujours le dernier mot.
 
-Sur la page **Queries**, il va encore plus loin et devient un auteur SQL : décrivez la requête souhaitée (« afficher le taux d'erreur par agent pour les 7 derniers jours ») et il diffuse le SQL directement dans l'éditeur, ouvrant une vue de différences pour que vous puissiez **Accepter** ou **Rejeter** la modification avant qu'elle soit appliquée.
+Sur la page **Queries**, il va encore plus loin et devient un auteur SQL : décrivez la requête souhaitée (« afficher le taux d'erreur par agent sur les 7 derniers jours ») et il diffuse le SQL directement dans l'éditeur, en ouvrant une vue diff pour que vous puissiez **Accepter** ou **Rejeter** la modification avant qu'elle ne soit appliquée.
 
 ![La page Queries d'Observability et son éditeur SQL](/agenteye/images/query-lab.png)
-*La page Queries : cet éditeur est l'endroit où l'assistant diffuse une ébauche de requête en lecture seule que vous pouvez accepter ou rejeter.*
+*La page Queries : cet éditeur est l'endroit où l'assistant diffuse un brouillon de requête en lecture seule que vous pouvez accepter ou rejeter.*
 
 La rédaction de SQL par cette méthode utilise la permission `queries:run`, la même que celle du bouton **Run** de l'éditeur. Le chat partout ailleurs nécessite `agent:use`.
 
 ## Accessible à toute l'équipe en toute sécurité
 
-Vous pouvez ouvrir l'assistant à tout le monde sans vous inquiéter de ce qu'il pourrait toucher :
+Vous pouvez ouvrir l'assistant à tous sans vous inquiéter de ce qu'il pourrait toucher :
 
 - **Il ne lit que ce que vous pouvez déjà voir.** Les réponses sont limitées à vos propres permissions de lecture, il n'élargit donc jamais votre surface de données.
-- **Chaque écriture attend votre validation.** Les requêtes sauvegardées et les tableaux de bord ne sont créés qu'après votre clic explicite sur Approuver, et aucun paramètre ne désactive ce contrôle.
+- **Chaque écriture vous attend.** Les requêtes sauvegardées et les tableaux de bord ne sont créés qu'après votre clic explicite sur Approuver, et aucun paramètre ne permet de désactiver cette validation.
 - **Il ne peut jamais rien supprimer.** Aucun outil de suppression n'est exposé et l'assistant ne détient aucune permission de suppression. Les suppressions restent entre vos mains, dans le tableau de bord.
 - **Il reste dans votre organisation.** L'assistant ne voit jamais que l'organisation que vous consultez actuellement.
-- **Vos questions vous appartiennent.** Les invites et les réponses vivent dans votre propre base de données Observability ; l'analyse produit enregistre uniquement les métadonnées d'utilisation, jamais le texte de vos invites.
+- **Vos questions vous appartiennent.** Les prompts et les réponses vivent dans votre propre base de données Observability ; l'analytique produit n'enregistre que les métadonnées d'utilisation, jamais le texte de vos prompts.
 
 ## Où le trouver
 
-L'assistant se trouve sur le bord droit de chaque page sous votre organisation (`/<org-slug>/...`). Cliquez sur le rail, ou appuyez sur `⌘J` / `Ctrl+J`, pour le déployer en panneau de chat complet, et faites glisser son bord pour le redimensionner ; votre largeur est mémorisée entre les rechargements. Vous avez besoin de la permission **`agent:use`** pour l'utiliser, sinon le rail est grisé. S'il n'a pas encore été activé pour votre déploiement (une connexion LLM est requise), vous verrez un rail désactivé à la place d'un chat fonctionnel.
+L'assistant se trouve sur le bord droit de chaque page sous votre organisation (`/<org-slug>/...`). Cliquez sur le rail, ou appuyez sur `⌘J` / `Ctrl+J`, pour le déployer en panneau de chat complet, et faites glisser son bord pour le redimensionner ; votre largeur est mémorisée entre les rechargements. Vous avez besoin de la permission **`agent:use`** pour l'utiliser, sinon le rail est grisé. S'il n'a pas encore été activé pour votre déploiement (une connexion LLM est nécessaire), vous verrez un rail atténué à la place d'un chat fonctionnel.
 
-## En relation
+## Voir aussi
 
 - [CLI et agents](/fr/agenteye/cli-and-agents)
 - [Queries](/fr/agenteye/queries)
-- [Tableaux de bord](/fr/agenteye/dashboards)
+- [Dashboards](/fr/agenteye/dashboards)
 - [Suite d'évaluation](/fr/agenteye/evaluation-suite)

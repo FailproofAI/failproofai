@@ -1,68 +1,69 @@
 ---
+---
 title: "Güvenlik"
-description: "FailproofAI Observability Güvenlik dokumentasyonu."
+description: "Failproof AI Observability, üretim ajanlarınızın yanında çalışmak için tasarlandığından, istemlerinizi, araç girdilerini ve çıktılarını görmektedir."
 ---
 
 
-FailproofAI Observability, üretim ajanlarınıza yakın konumda çalışacak şekilde inşa edilmiştir; bu da istemlerinizi, araç girdilerini ve çıktılarını göreceği anlamına gelir. Bu sayfa, verilerinizi nasıl izole, kontrollü ve sizin ellerinizde tuttuğunu açıklar. FailproofAI Observability'yi bir güvenlik incelemesi için değerlendiriyorsanız, buradan başlayın.
+Failproof AI Observability, üretim ajanlarınızın yanında çalışmak için tasarlandığından, istemlerinizi, araç girdilerini ve çıktılarını görmektedir. Bu sayfa, verilerinizi nasıl izole tuttuğunu, kontrol altında tuttuğunu ve sizin elinizde tuttuğunu açıklamaktadır. Failproof AI Observability'yi bir güvenlik incelemesi için değerlendiriyorsanız, buradan başlayın.
 
 ---
 
-## Verileriniz ortamınızda kalır
+## Verileriniz kendi ortamınızda kalır
 
-FailproofAI Observability, kendi barındırdığınız (self-hosted) bir çözümdür. Olaylar, istemler, model yanıtları ve analizler, kendi ortamınızda, kendi veritabanlarınızda depolanır. Hiçbir veri depolama için üçüncü taraf bir SaaS'a gönderilmez ve verileriniz kendi bulut hesabınızda kalır.
+Failproof AI Observability kendi kendine barındırılan bir hizmettir. Olaylar, istemler, model yanıtları ve analitikler kendi veritabanlarınızda, kendi ortamınızda depolanır. Hiçbir şey üçüncü taraf bir SaaS'a depolanmak üzere gönderilmez ve verileriniz kendi bulut hesabınızda kalır.
 
 ---
 
 ## Kiracı izolasyonu
 
-Bir FailproofAI Observability örneği birçok kuruluşu barındırabilir ve her biri depolama katmanında izole edilir — yalnızca kullanıcı arayüzü değil, veritabanı tarafından zorunlu tutulur:
+Bir Failproof AI Observability örneği birçok organizasyonu barındırabilir ve her biri depolama katmanında izole edilmiştir — bu, yalnızca kullanıcı arayüzüyle değil, veritabanı tarafından uygulanır:
 
-- Bir kuruluşun operasyonel verileri (kullanıcılar, anahtarlar, panolar, kaydedilen sorgular) o kuruluşun kapsamında olup, kuruluşlar arası okumalar veritabanı tarafından engellenir.
-- Her alınan olay, sahibi olan kuruluşla damgalanır, bu nedenle bir kuruluşun olayları asla başka bir tarafından okunamaz.
+- Bir organizasyonun operasyonel verileri (kullanıcılar, anahtarlar, gösterge panoları, kaydedilmiş sorgular) o kuruluşa özgüdür ve kuruluşlar arası okuma işlemleri veritabanının kendisi tarafından engellenir.
+- Alınan her olay, onu sahibi olan kuruluş ile damgalanır, bu nedenle bir organizasyonun olayları asla başka bir organizasyon tarafından okunamaz.
 
-Her pano rotası bir kuruluş slug'ı altında kapsamlandırılır (`/<org-slug>/…`).
+Her gösterge paneli rotası bir kuruluş başlığı altında kapsamlandırılır (`/<org-slug>/…`).
 
 ---
 
 ## Oturum açma
 
-FailproofAI Observability, şifresiz, e-posta tabanlı oturum açma kullanır. Kimlik avı yapılması veya sızdırılması gereken bir parola yoktur. Bir kullanıcı tek seferlik bir kod (veya tek tıklamalı bir sihirli bağlantı) talep eder; bu, e-posta ile gönderilir ve hızla sona erer. Oturum açma, bir **izin listesi** tarafından kapılır: yalnızca izin verdiğiniz e-posta adresleri (veya etki alanları) kimlik doğrulaması yapabilir.
+Failproof AI Observability, şifresiz, e-posta tabanlı oturum açma kullanır. Kimsenin alabileceği bir şifre yoktur. Bir kullanıcı bir kerelik kod (veya tek tıklama sihirli bağlantı) talep eder; bu e-postayla gönderilir ve hızlı şekilde sona erer. Oturum açma bir **beyaz liste** tarafından kısıtlanır: yalnızca izin verdiğiniz e-posta adresleri (veya etki alanları) kimlik doğrulayabilir.
 
-![FailproofAI Observability oturum açma ekranı, e-postanıza tek kullanımlık bir kod gönderir](/agenteye/images/login.png)
-
----
-
-## API anahtarlarıyla kapsamlı erişim
-
-Her istemci, ayrıntılı, en düşük ayrıcalık izinlerine sahip bir API anahtarı ile kimlik doğrulaması yapar. Bir toplayıcı yalnızca `events:add` gerektirir; bir pano veya asistan anahtarı salt okunur olabilir; yıkıcı eylemler (silme, yeniden oluşturma) dahil etmeyi seçtiğiniz ayrı yetkilerdir.
-
-![API anahtarları sayfası: her anahtarın izin verdiği yetkiler, okuma, yazma ve yıkıcı kapsama göre renk kodlanmıştır](/agenteye/images/api-keys.png)
-
-Kurulum için yönetici önyükleme anahtarını tutun ve diğer her şey için dar anahtarlar verin. Bkz. [API anahtarları](/tr/agenteye/api-keys).
+![Failproof AI Observability oturum açma ekranı, tek kullanımlık bir kod göndermektedir](/agenteye/images/login.png)
 
 ---
 
-## Salt okunur, onay-kilitli bir asistan
+## API anahtarları ile kapsamlı erişim
 
-Pano içi [AI asistanı](/tr/agenteye/assistant), verileriniz üzerinde soruları yanıtlar, ancak tasarım gereği kısıtlanmıştır:
+Her istemci, ayrıntılı ve en az ayrıcalık izinleri taşıyan bir API anahtarıyla kimlik doğrulaması yapar. Bir toplayıcının yalnızca `events:add` izni gerekir; bir gösterge paneli veya asistan anahtarı salt okunur olabilir; yıkıcı işlemler (sil, yeniden oluştur) dahil etmeyi seçtiğiniz ayrı yetkilerdir.
 
-- **Varsayılan olarak salt okunur**: SQL'i yalnızca `SELECT`/`WITH` sorgularına, tek deyime, satır sınırı olan bir korumadan geçirir.
-- Oluşturduğu her şey (kaydedilen bir sorgu, bir pano) **onay-kilitli**: yazma gerçekleşmeden önce her şeyi gözden geçirip onaylarsınız.
-- **Asla silemez**.
+![API anahtarları sayfası: her anahtarın izin hibe etme işlemleri, okuma, yazma ve yıkıcı kapsama göre renk kodlu](/agenteye/images/api-keys.png)
 
-Yani bir takım üyesi "bu haftada en çok hangi ajanlar hata verdi?" diye sorabilir ve yanıt üzerinde harekete geçebilir; asistan kendi başına verilerinizi değiştiremez veya kaldıramaz.
+Kuruluş için yönetici başlangıç anahtarını tutun ve başka her şey için dar anahtarlar verin. [API anahtarları](/tr/agenteye/api-keys) bölümüne bakın.
+
+---
+
+## Salt okunur, onay geçitli bir asistan
+
+Kontrol paneli içindeki [yapay zeka asistanı](/tr/agenteye/assistant) verileriniz hakkında soruları yanıtlar, ancak tasarım gereği sınırlıdır:
+
+- Varsayılan olarak **salt okunur**: SQL'i yalnızca `SELECT`/`WITH` sorgularına, tek deyime ve satır sınırına izin veren bir koruma aracılığıyla çalıştırır.
+- Oluşturduğu her şey (kaydedilmiş bir sorgu, bir gösterge paneli) **onay geçitlidir**: gerçekleşmeden önce her yazma işlemini gözden geçirir ve onaylarsınız.
+- **Asla silenemez**.
+
+Bu nedenle bir takım üyesi "bu hafta hangi ajanlar en çok hata verdi?" sorusunu sorabilir ve yanıta göre hareket edebilir; asistan kendi başına verilerinizi değiştiremez veya kaldıramaz.
 
 ---
 
 ## Aktarım sırasında
 
-Tüm trafik HTTPS üzerinden çalışır. TLS'yi kendi sertifikalarınızla sonlandırırsınız, bu nedenle toplayıcı-sunucu ve tarayıcı-sunucu trafiği aktarım sırasında şifrelenir.
+Tüm trafik HTTPS üzerinden çalışır. TLS'i kendi sertifikalarınızla sonlandırırsınız, bu nedenle toplayıcı-sunucu ve tarayıcı-sunucu trafiği aktarım sırasında şifrelenir.
 
 ---
 
 ## Sonraki adımlar
 
-- [Genel bakış](/tr/agenteye/overview): FailproofAI Observability nasıl bir araya gelir.
-- [API anahtarları](/tr/agenteye/api-keys): toplayıcı, pano ve asistan için erişimi kapsamlandırın.
-- [Gözlemlenebilirlik](/tr/agenteye/observability): FailproofAI Observability, ajanlarınızdan neleri yakalar.
+- [Genel Bakış](/tr/agenteye/overview): Failproof AI Observability'nin nasıl bir araya geldiği.
+- [API anahtarları](/tr/agenteye/api-keys): toplayıcı, gösterge paneli ve asistan için erişimi kapsamlandırın.
+- [Gözlemlenebilirlik](/tr/agenteye/observability): Failproof AI Observability'nin ajanlarınızdan ne kaydını çektiğini.

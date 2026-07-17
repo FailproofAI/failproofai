@@ -1,20 +1,21 @@
 ---
-title: "Рецепты CLI для агентов"
-description: "Документация рецептов CLI FailproofAI Observability для агентов."
+title: "CLI-рецепты для агентов"
+description: "Скопируйте и используйте шаблоны запросов и рецепты jq, которые превращают данные сеансов, событий и оценок в автоматизацию для скриптов или кодирующих агентов."
 ---
 
-Извлекайте данные сеансов, событий и оценок (а также запускайте переоценки) прямо из скрипта или агента кодирования с помощью чистого JSON в stdout, который можно передать непосредственно в `jq`. Эти рецепты превращают данные FailproofAI Observability в то, что пользователь терминала или агент кодирования ИИ (Claude Code, Cursor) может запрашивать и автоматизировать без использования интерфейса приборной панели.
 
-Приведённые ниже примеры готовы к копированию для CLI FailproofAI Observability (`agenteye`). Информацию об установке, аутентификации и полном списке опций см. в разделе [CLI](/ru/agenteye/cli); выполните `agenteye -h` или `agenteye <command> -h` для встроенной справки.
+Извлекайте данные сеансов, событий и оценок (и запускайте переоценки) прямо из скрипта или кодирующего агента с чистым JSON на stdout, который передается в `jq`. Эти рецепты превращают данные Failproof AI Observability в то, что пользователь терминала или AI-агент кодирования (Claude Code, Cursor) может запрашивать и автоматизировать без нажатия на кнопки в панели управления.
+
+Приведённые ниже примеры готовы для копирования в CLI Failproof AI Observability (`agenteye`). Для установки, аутентификации и полного списка опций см. [CLI](/ru/agenteye/cli); выполните `agenteye -h` или `agenteye <command> -h` для встроенной справки.
 
 ## Золотые правила
 
-1. **Глобальные опции идут *перед* командой.** `agenteye --json sessions` верно; `agenteye sessions --json` нет. Глобальные опции: `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
-2. **Передавайте `--json` каждый раз при парсинге вывода.** Данные выводятся в **stdout** как JSON; статус человека и ошибки выводятся в **stderr**, поэтому stdout остаётся чистым для передачи в `jq`.
-3. **Ветвитесь по коду выхода**, а не по тексту stderr: `0` ок · `1` неожиданная ошибка · `2` неправильные аргументы · `3` не удаётся подключиться к приборной панели · `4` не авторизованы или сеанс истёк · `5` отсутствует разрешение · `6` ресурс не найден.
+1. **Глобальные опции идут *перед* командой.** `agenteye --json sessions` верно; `agenteye sessions --json` неверно. Глобальные опции: `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Передавайте `--json` каждый раз, когда вы парсите выход.** Данные идут в **stdout** как JSON; статус и ошибки идут в **stderr**, так что stdout остаётся чистым для передачи в `jq`.
+3. **Ветвитесь по коду выхода, а не по тексту stderr**: `0` ОК · `1` непредвиденная ошибка · `2` неправильные аргументы · `3` невозможно доступиться до панели управления · `4` не авторизован или сеанс истёк · `5` отсутствует разрешение · `6` ресурс не найден.
 4. **Исследуйте с помощью `-h`.** Каждая команда документирует свои фильтры, форматы значений и форму JSON.
 
-## Первоначальная настройка
+## Одноразовая настройка
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # чтобы не повторять --base-url
@@ -23,7 +24,7 @@ agenteye login --email you@example.com                       # вставьте 
 
 ## Проверьте аутентификацию перед работой
 
-`whoami` никогда не выдаёт ошибку при отсутствии или истёкшем сеансе; вместо этого возвращает `logged_in:false`, поэтому агент может безопасно проверить состояние аутентификации. (Он всё ещё может выйти с ненулевым кодом, если URL приборной панели не установлен или приборная панель недоступна.)
+`whoami` никогда не выдаёт ошибку при отсутствующем или истёкшем сеансе; вместо этого он сообщает `logged_in:false`, так что агент может безопасно проверить состояние аутентификации. (Он всё ещё может выдать ненулевой код, если не установлен базовый URL или панель управления недоступна.)
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -31,98 +32,98 @@ if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
 fi
 ```
 
-## Найдите сеансы с ошибками или низким баллом
+## Найдите сеансы с ошибками или низкими оценками
 
 ```bash
-# сеансы за последние 24ч, чья оценка привела к ошибке
+# сеансы за последние 24ч, в которых оценка завершилась с ошибкой
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# оценки с баллом <= 0,5 по полезности для одного агента
+# оценки с баллом <= 0.5 по полезности для одного агента
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-Фильтрация по баллам находится на **`evals`**, а не на `sessions`. `--score KEY:MIN..MAX` повторяемо и комбинируется с AND; любая граница опциональна (`..0.5` означает ≤ 0,5, `0.9..` означает ≥ 0,9). Вы можете передать до 20 фильтров баллов за запрос; больше вернёт HTTP 400. `sessions` делит фильтры `--env`, `--status`, `--agent-id`, `--session-id` и диапазон времени с `evals`, но не имеет `--score`.
+Фильтрация оценок работает на **`evals`**, а не на `sessions`. `--score KEY:MIN..MAX` повторяется и комбинируется оператором AND; любая граница опциональна (`..0.5` означает ≤ 0.5, `0.9..` означает ≥ 0.9). Вы можете передать до 20 фильтров оценок за запрос; больше возвращает HTTP 400. `sessions` распределяет фильтры `--env`, `--status`, `--agent-id`, `--session-id` и диапазон времени с `evals`, но не имеет `--score`.
 
-## Прочитайте один сеанс полностью
+## Прочитайте один сеанс целиком
 
-Нет отдельной команды `session show`. Комбинируйте список событий с оценкой сеанса:
+Единственной команды `session show` нет. Объедините цепь событий с оценкой сеанса:
 
 ```bash
-# последняя оценка сеанса (статус + баллы)
+# последняя оценка сеанса (статус + оценки)
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# каждое событие в запуске (увеличьте --limit для полного сканирования)
+# каждое событие в запуске (увеличьте --limit для полной проверки)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# только вызовы инструментов в сеансе (--full требуется для получения необработанной нагрузки)
+# только вызовы инструментов в сеансе (--full требуется для получения исходной полезной нагрузки)
 agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
 
-> **Примечание:** По умолчанию `events` читает быструю ленту без нагрузки. Каждое событие содержит вычисленную на сервере однострочную `summary` плюс флаги типа `is_error` и подсчёты токенов, но `payload` возвращается как `{}`. Чтобы получить необработанную нагрузку, добавьте `--full` (или `--fields payload`). Полная лента медленнее в масштабе, поэтому держите её ограниченной: сочетайте `--full` с одиночным `--session-id`.
+> **Примечание:** По умолчанию `events` читает быструю ленту без полезной нагрузки. Каждое событие содержит рассчитанную на сервере однострочную `summary` плюс флаги типа `is_error` и подсчёты токенов, но `payload` возвращается как `{}`. Чтобы извлечь исходную полезную нагрузку, добавьте `--full` (или `--fields payload`). Полная лента работает медленнее в масштабе, поэтому держите её ограниченной: комбинируйте `--full` с одним `--session-id`.
 
-## Получите всё (постраничное отображение)
+## Получите всё (постраничность)
 
-Результаты отсортированы от новых к старым и используют курсор-постраничное отображение.
+Результаты новейшие-первыми и разбиты на страницы по курсору.
 
 ```bash
-# одноразово: получить до 500 строк с постраничным отображением по 200 строк
+# в один приём: получите до 500 строк по 200 строк на странице
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# ручное постраничное отображение: передайте next_cursor обратно
+# ручная постраничность: передайте next_cursor обратно
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
 ```
 
-## Сократите вывод с помощью --fields
+## Уменьшите выход с помощью --fields
 
-Ограничьте ключи (как в таблице, так и в `--json`) чтобы уменьшить, что должен прочитать агент.
+Ограничьте ключи (и в таблице, и в `--json`) чтобы сократить то, что должен прочитать агент.
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
 agenteye --json events --session-id run-001 --fields ts,event_type --all
 ```
 
-Неизвестные имена полей отклоняются (выход `2`) с действительным списком — дешёвый способ обнаружения имён полей.
+Неизвестные имена полей отклоняются (выход `2`) с допустимым списком, дешёвый способ обнаружить имена полей.
 
-## Обнаружьте действительные значения фильтров
+## Обнаружьте допустимые значения фильтров
 
 ```bash
 agenteye --json list envs | jq -r '.values[]'           # значения для --env
-agenteye --json list tools | jq -r '.values[]'          # имена инструментов; также агенты, модели, event_types, …
-agenteye --json list score_filters | jq -r '.values[]'  # действительный KEY для --score KEY:MIN..MAX
+agenteye --json list tools | jq -r '.values[]'          # имена инструментов; также agents, models, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # допустимый KEY для --score KEY:MIN..MAX
 ```
 
-## Выберите вашу организацию (мультитеннантность)
+## Выберите вашу организацию (мультитенантность)
 
-Если вы принадлежите более чем одной организации, выберите активного тенанта при входе (сохраняется):
+Если вы принадлежите более чем одной организации, выберите активного клиента при входе (он сохраняется):
 
 ```bash
-agenteye login --org acme --email you@corp.com   # установите тенанта на том же этапе входа
+agenteye login --org acme --email you@corp.com   # установите клиента на том же этапе входа
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
 agenteye --org globex --json sessions --since 24h   # переопределите для одной команды
 ```
 
-Многоорганизационный вход без `--org` выходит с ненулевым кодом и выводит организации для выбора.
+Вход в мультиорганизацию без `--org` выдаёт ненулевой код и выводит организации на выбор.
 
-## Провизионируйте ключ API для SDK/коллектора
+## Подготовьте API-ключ для SDK/collector
 
 ```bash
 # секрет выводится ОДИН РАЗ, при --json это поле .key
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # ротация; agenteye keys disable ci-bot --yes для отзыва
+agenteye keys regenerate ci-bot --yes    # ротация; agenteye keys disable ci-bot --yes чтобы отозвать
 ```
 
-## Запустите сохранённый или специальный запрос
+## Запустите сохранённый или ad-hoc запрос
 
 ```bash
 agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
 agenteye --json query run errs --arg prod | jq '.rows'   # сохранённый запрос + позиционный $1
 ```
 
-## Триажируйте инцидент неинтерактивно
+## Классифицируйте инцидент неинтерактивно
 
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
@@ -131,9 +132,9 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **Примечание:** Мутации автоматически пропускают запрос подтверждения под `--json` или когда stdin не является TTY, поэтому агенты никогда не зависают; передайте `--yes`/`-y` чтобы пропустить явно в другом месте.
+> **Примечание:** Мутации автоматически пропускают запрос подтверждения при `--json` или когда stdin не является TTY, так что агенты никогда не зависают; передайте `--yes`/`-y` чтобы пропустить его явно в другом месте.
 
-## Обработка кода выхода в скрипте
+## Обработка кодов выхода в скрипте
 
 ```bash
 out=$(agenteye --json sessions --since 1h) || code=$?
@@ -146,7 +147,7 @@ case "${code:-0}" in
 esac
 ```
 
-## Формы вывода JSON
+## Формы JSON выхода
 
 | Команда | stdout JSON (с `--json`) |
 |---|---|
@@ -157,22 +158,22 @@ esac
 | `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
 | `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
 | `list <kind>` | `{"kind", "values": [...]}` |
-| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` показано один раз) |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` показан один раз) |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| create/update/delete (любая) | объект ресурса или `{"deleted": true, "id"}` для удалений |
-| сбой (любой, с `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` в stdout |
+| create/update/delete (любой) | объект ресурса или `{"deleted": true, "id"}` для удалений |
+| failure (любой, с `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` на stdout |
 
-- Каждый элемент **события** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Обратите внимание, что `payload` равен `{}` если вы не запросили полную ленту с `--full` (или `--fields payload`).
-- Каждый элемент **оценки** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
-- Каждый элемент **сеанса** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+- Каждый элемент **event** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Обратите внимание, что `payload` — это `{}` если вы не запросили полную ленту с помощью `--full` (или `--fields payload`).
+- Каждый элемент **evaluation** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- Каждый элемент **session** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
 
-Опция `--fields` каждой команды принимает ровно имена полей своего элемента. Набор отличается между `sessions` и `evals`, поэтому имя, действительное для одного, может быть отклонено другим.
+Каждая команда `--fields` принимает ровно имена полей своего собственного элемента. Набор различается между `sessions` и `evals`, поэтому имя допустимое для одного может быть отклонено другим.
 
 ## Следующие шаги
 
-- [CLI](/ru/agenteye/cli): установка, аутентификация и полная справка по опциям для каждой команды.
+- [CLI](/ru/agenteye/cli): установка, аутентификация и полный справочник опций для каждой команды.
 - [CLI agent skill](/ru/agenteye/cli-skill): упакуйте эти рецепты как навык, который ваш кодирующий агент может загрузить.
-- [API keys](/ru/agenteye/api-keys): создавайте и масштабируйте ключи, с помощью которых CLI, SDK и коллектор аутентифицируются.
-- [Python SDK](/ru/agenteye/python-sdk): отправляйте события в FailproofAI Observability так, чтобы там были данные для запроса этих рецептов.
+- [API keys](/ru/agenteye/api-keys): создайте и определите область действия ключей, с которыми аутентифицируются CLI, SDK и collector.
+- [Python SDK](/ru/agenteye/python-sdk): отправляйте события в Failproof AI Observability, чтобы у этих рецептов были данные для запроса.

@@ -1,172 +1,172 @@
 ---
-title: "API Keys"
-description: "Tài liệu FailproofAI Observability API Keys."
+title: "Khóa API"
+description: "Khóa API kiểm soát ai và cái gì có thể truy cập máy chủ Failproof AI Observability của bạn, do đó một bộ sưu tập có thể gửi các sự kiện mà không bao giờ có được quyền đọc hoặc quản trị."
 ---
 
-API keys kiểm soát ai và cái gì có thể truy cập máy chủ FailproofAI Observability của bạn, vì vậy một bộ sưu tập có thể gửi sự kiện mà không bao giờ có được quyền đọc hoặc quản trị. Mỗi khóa mang một hoặc nhiều quyền hạn, và mỗi quyền hạn kiểm soát các tuyến máy chủ cụ thể; bạn chỉ cấp những quyền mà một công việc cần. Hầu hết các triển khai chỉ tạo ba loại khóa.
+Khóa API kiểm soát ai và cái gì có thể truy cập máy chủ Failproof AI Observability của bạn, do đó một bộ sưu tập có thể gửi các sự kiện mà không bao giờ có được quyền đọc hoặc quản trị. Mỗi khóa mang một hoặc nhiều quyền, và mỗi quyền kiểm soát các tuyến máy chủ cụ thể; bạn chỉ cấp những quyền mà một công việc cần. Hầu hết các triển khai chỉ tạo ba loại khóa.
 
-## 3 khóa mà hầu hết các triển khai cần
+## Ba khóa mà hầu hết các triển khai cần
 
-| Khóa | Quyền hạn | Ai sử dụng |
+| Khóa | Quyền | Ai sử dụng |
 |---|---|---|
-| Collector key | `events:add` | `agenteye-collector` trên mỗi máy agent, để gửi sự kiện. |
-| Dashboard read key | `events:read`, `keys:read` | Một nhà điều hành chỉ đọc hoặc tích hợp truy vấn dữ liệu mà không thay đổi. |
-| Bootstrap admin key | tất cả quyền hạn | Nhà điều hành lần đầu tiên khởi động instance (và dashboard). Được khởi tạo từ biến môi trường `ADMIN_KEY`. Xem [Bootstrap admin key](#bootstrap-admin-key). |
+| Khóa bộ sưu tập | `events:add` | `agenteye-collector` trên mỗi máy agent, để gửi sự kiện. |
+| Khóa đọc bảng điều khiển | `events:read`, `keys:read` | Một nhà điều hành chỉ đọc hoặc tích hợp truy vấn dữ liệu mà không thay đổi nó. |
+| Khóa quản trị khởi động | tất cả quyền | Nhà điều hành người khởi động lần đầu tiên (và bảng điều khiển). Được hạt giống từ biến môi trường `ADMIN_KEY`. Xem [Khóa quản trị khởi động](#bootstrap-admin-key). |
 
-Bắt đầu từ đây. Chỉ truy cập danh mục quyền hạn đầy đủ bên dưới khi bạn cần một khóa tùy chỉnh với phạm vi hẹp hơn. Xem thêm [Recommended key layout](#recommended-key-layout) và [Creating keys](#creating-keys).
+Bắt đầu từ đây. Chỉ sử dụng danh mục quyền đầy đủ bên dưới khi bạn cần một khóa tùy chỉnh có phạm vi hẹp hơn. Xem thêm [Bố cục khóa được khuyến nghị](#recommended-key-layout) và [Tạo khóa](#creating-keys).
 
 ---
 
-## Quyền hạn
+## Quyền
 
-Máy chủ thực thi một danh mục cố định các quyền hạn; mỗi quyền kiểm soát các tuyến HTTP cụ thể. Một **admin key** giữ tất cả chúng; một khóa có phạm vi giữ tập hợp con bạn cấp khi tạo. Các chuỗi quyền hạn không xác định bị từ chối khi tạo khóa.
+Máy chủ thực thi một danh mục quyền cố định; mỗi một kiểm soát các tuyến HTTP cụ thể. Một **khóa quản trị** giữ tất cả chúng; một khóa có phạm vi giữ tập hợp con bạn cấp khi tạo. Các chuỗi quyền không xác định bị từ chối khi một khóa được tạo.
 
-> **Lưu ý:** Hai quyền hạn hợp lệ là chỉ dành cho con người/dashboard và không thể được cấp cho API key: `orgs:admin` (quản trị instance, chỉ dành cho nhà điều hành) và `keys:update`. Yêu cầu `POST /keys` hoặc `PATCH /keys/:id` cố gắng cấp bất kỳ quyền nào bị từ chối với HTTP 422. Xem hàng `keys:update` bên dưới để hiểu tại sao một khóa bearer có thể tạo khóa nhưng không bao giờ chỉnh sửa chúng.
+> **Lưu ý:** Hai quyền hợp lệ chỉ dành cho con người/bảng điều khiển và không thể được cấp cho khóa API: `orgs:admin` (quản trị phiên bản, chỉ dành cho nhà điều hành) và `keys:update`. Một yêu cầu `POST /keys` hoặc `PATCH /keys/:id` cố gắng cấp một trong hai quyền bị từ chối với HTTP 422. Xem hàng `keys:update` bên dưới để tìm hiểu tại sao một khóa truyền tải có thể tạo khóa nhưng không bao giờ chỉnh sửa chúng.
 
-### Ingest & query sự kiện
+### Nhập và truy vấn sự kiện
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `events:add` | `POST /events` | Ingest các lô sự kiện từ bộ sưu tập. Quyền hạn duy nhất mà bộ sưu tập cần. |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Truy vấn sự kiện, liệt kê các môi trường đã biết, liệt kê các định danh mô hình được nhìn thấy trong dữ liệu (được sử dụng bởi chế độ xem Mô hình và bộ lọc mô hình), tính toán tổng hợp độ trễ cung cấp cho bản đồ nhiệt / dải phần trăm, và xuất một phiên dưới dạng JSONL. Các endpoint facet của thanh lọc được chia sẻ `GET /events/environments` và `GET /events/agent_ids` có thể truy cập được với **either** `events:read` **hoặc** `evaluations:read`, vì vậy trang sessions (được cấp `evaluations:read`) tái sử dụng các facet mỗi tổ chức giống nhau. `GET /events/models` không phải là một trong số chúng: nó yêu cầu `events:read`, vì vậy một principal chỉ giữ `evaluations:read` nhận 403 từ nó. |
+| `events:add` | `POST /events` | Nhập các lô sự kiện từ bộ sưu tập. Quyền duy nhất mà bộ sưu tập cần. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Truy vấn sự kiện, liệt kê các môi trường đã biết, liệt kê các định danh mô hình được nhìn thấy trong dữ liệu (được sử dụng bởi chế độ xem Mô hình và bộ lọc mô hình), tính tổng hợp độ trễ cung cấp năng lượng cho bản đồ nhiệt / dải phần trăm, và xuất một phiên dưới dạng JSONL. Các điểm cuối khía cạnh bộ lọc được chia sẻ `GET /events/environments` và `GET /events/agent_ids` có thể truy cập được bằng **hoặc** `events:read` **hoặc** `evaluations:read`, do đó trang phiên (kiểm soát `evaluations:read`) sử dụng lại các khía cạnh mỗi tổ chức giống nhau. `GET /events/models` không phải là một trong số chúng: nó yêu cầu `events:read`, vì vậy một bên chỉ giữ `evaluations:read` nhận được 403 từ nó. |
 
-### Sessions & evaluations
+### Phiên & đánh giá
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Liệt kê sessions, đọc kết quả đánh giá, health eval được cuộn lên được sử dụng bởi dashboards, và trạng thái hàng đợi worker công việc đánh giá. |
-| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Thêm một re-evaluation vào hàng đợi cho một session hoàn thành. |
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Liệt kê các phiên, đọc kết quả đánh giá, sức khỏe đánh giá được cuộn lên được sử dụng bởi bảng điều khiển, và trạng thái hàng đợi công nhân công việc đánh giá. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Thủ công hàng đợi đánh giá lại cho một phiên hoàn thành. |
 
-### Dashboards
+### Bảng điều khiển
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Liệt kê dashboards, tải một, và đọc các tiles của nó. |
-| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Tạo và chỉnh sửa dashboards, thêm / chỉnh sửa / xóa tiles, và sắp xếp lại lưới tile. |
-| `dashboards:delete` | `DELETE /dashboards/:id` | Xóa toàn bộ dashboard (xóa ở cấp tile nằm dưới `dashboards:write`). |
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Liệt kê bảng điều khiển, tải một, và đọc các ô của nó. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Tạo và chỉnh sửa bảng điều khiển, thêm / chỉnh sửa / xóa ô, và sắp xếp lại lưới ô. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | Xóa toàn bộ bảng điều khiển (xóa cấp ô nằm dưới `dashboards:write`). |
 
-### Saved queries (SQL composer)
+### Truy vấn được lưu (trình soạn SQL)
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Liệt kê saved queries, tải một, và kiểm tra schema chỉ đọc mà composer nhắm tới. |
-| `queries:write` | `POST /queries`, `PUT /queries/:id` | Tạo và chỉnh sửa saved queries. SQL vẫn được định tuyến qua cùng một role chỉ đọc và kiểm tra SQL được bảo vệ như một lệnh gọi `queries:run`. |
-| `queries:delete` | `DELETE /queries/:id` | Xóa một saved query. |
-| `queries:run` | `POST /queries/run` | Thực thi saved hoặc ad-hoc SQL với role chỉ đọc được sử dụng bởi composer. |
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Liệt kê các truy vấn được lưu, tải một, và kiểm tra lược đồ chỉ đọc mà trình soạn nhắm tới. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Tạo và chỉnh sửa các truy vấn được lưu. SQL vẫn được định tuyến thông qua vai trò chỉ đọc giống nhau và kiểm tra SQL được bảo vệ như một lệnh gọi `queries:run`. |
+| `queries:delete` | `DELETE /queries/:id` | Xóa một truy vấn được lưu. |
+| `queries:run` | `POST /queries/run` | Thực hiện SQL được lưu hoặc ad-hoc so với vai trò chỉ đọc được sử dụng bởi trình soạn. |
 
 ### Trợ lý AI
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Nói chuyện với trợ lý AI và quản lý các cuộc trò chuyện của riêng bạn (cá nhân). Bắt buộc trên **user** để xem dock trợ lý; khóa của chính trợ lý là `dashboard-assistant` và được khởi tạo riêng biệt (xem bên dưới). |
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Nói chuyện với trợ lý AI và quản lý các cuộc trò chuyện của bạn (riêng tư). Bắt buộc trên **người dùng** để xem bảng trợ lý; khóa của chính trợ lý là `dashboard-assistant` và được hạt giống riêng biệt (xem bên dưới). |
 
-### API keys
+### Khóa API
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `keys:create` | `POST /keys` | Tạo một API key có phạm vi mới. **Không** cấp chỉnh sửa quyền hạn của khóa hiện tại (đó là `keys:update`). |
-| `keys:read` | `GET /keys` | Liệt kê các khóa hiện tại. Secrets không bao giờ được trả về bởi endpoint này. |
-| `keys:update` | `PATCH /keys/:id` | Chỉnh sửa quyền hạn của khóa hiện tại. Một quyền **chỉ dành cho con người/dashboard**; nó không thể được gán cho API key (một khóa bearer có thể tạo khóa nhưng không bao giờ chỉnh sửa chúng). |
-| `keys:disable` | `POST /keys/:id/disable` | Thu hồi khóa. Các khóa được bảo vệ (`admin`, `dashboard-assistant`) không thể bị tắt; xoay chúng qua env var + khởi động lại. |
-| `keys:regenerate` | `POST /keys/:id/regenerate` | Xoay secret của khóa. Các khóa được bảo vệ không thể được tạo lại qua tuyến này. |
+| `keys:create` | `POST /keys` | Tạo một khóa API có phạm vi mới. **Không** cấp quyền chỉnh sửa quyền khóa hiện có (đó là `keys:update`). |
+| `keys:read` | `GET /keys` | Liệt kê các khóa hiện có. Bí mật không bao giờ được trả về bởi điểm cuối này. |
+| `keys:update` | `PATCH /keys/:id` | Chỉnh sửa quyền khóa hiện có. Một **quyền chỉ dành cho con người/bảng điều khiển**; nó không thể được gán cho một khóa API (một khóa truyền tải có thể tạo khóa nhưng không bao giờ chỉnh sửa chúng). |
+| `keys:disable` | `POST /keys/:id/disable` | Thu hồi khóa. Khóa được bảo vệ (`admin`, `dashboard-assistant`) không thể bị vô hiệu hóa; xoay chúng qua biến env + khởi động lại. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Xoay bí mật khóa. Khóa được bảo vệ không thể được tạo lại thông qua tuyến này. |
 
-### Dashboard users
+### Người dùng bảng điều khiển
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | Mời một dashboard user mới (phát hành email + one-time passcode (OTP) login) và đọc bộ quyền hạn mặc định được cấu hình dashboard được sử dụng để khởi tạo biểu mẫu mời. |
-| `users:read` | `GET /users`, `GET /users/:id` | Liệt kê users và tải một hồ sơ user duy nhất. |
-| `users:update` | `PUT /users/:id` | Chỉnh sửa quyền hạn của user. Updates gửi email thay đổi quyền hạn cho user bị ảnh hưởng và có hiệu lực trong yêu cầu tiếp theo của họ; không cần đăng nhập lại. |
-| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Vô hiệu hóa một user (thu hồi các phiên của họ ngay lập tức) và bật lại một user đã bị vô hiệu hóa trước đó. |
+| `users:create` | `POST /users`, `GET /users/defaults` | Mời một người dùng bảng điều khiển mới (phát hành email + mã thông báo một lần (OTP) đăng nhập) và đọc tập quyền mặc định được định cấu hình bảng điều khiển được sử dụng để hạt giống biểu mẫu mời. |
+| `users:read` | `GET /users`, `GET /users/:id` | Liệt kê người dùng và tải một bản ghi người dùng duy nhất. |
+| `users:update` | `PUT /users/:id` | Chỉnh sửa quyền của người dùng. Các cập nhật gửi email thay đổi quyền cho người dùng bị ảnh hưởng và có hiệu lực khi yêu cầu tiếp theo của họ; không cần đăng nhập lại. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Vô hiệu hóa người dùng (thu hồi phiên của họ ngay lập tức) và bật lại một người dùng đã bị vô hiệu hóa trước đó. |
 
-Các quyền hạn này hỗ trợ trang **Users** của dashboard, nơi các scopes được cấp cho mỗi thành viên được hiển thị dưới dạng chips:
+Những quyền này hỗ trợ trang **Người dùng** của bảng điều khiển, nơi mỗi thành viên được cấp phạm vi được hiển thị dưới dạng chip:
 
-![Trang Users: một thẻ cho mỗi dashboard user với email, quyền hạn được cấp, và điều khiển chỉnh sửa/vô hiệu hóa](/agenteye/images/users.png)
+![Trang Người dùng: một thẻ cho mỗi người dùng bảng điều khiển với email, quyền được cấp và điều khiển chỉnh sửa/vô hiệu hóa của họ](/agenteye/images/users.png)
 
-### Operational settings
+### Cài đặt hoạt động
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Xem operational settings được quản lý dashboard và metadata của chúng; liệt kê các overrides context-window mỗi mô hình; và giải quyết cửa sổ hiệu quả cho một mô hình. |
-| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Chỉnh sửa operational settings và thêm, thay đổi, hoặc xóa per-model context-window overrides. Các thay đổi ảnh hưởng đến sự kiện mới mà không cần khởi động lại máy chủ. |
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Xem cài đặt hoạt động do bảng điều khiển quản lý và siêu dữ liệu của chúng; liệt kê các ghi đè cửa sổ ngữ cảnh mỗi mô hình; và giải quyết cửa sổ hiệu quả cho một mô hình. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Chỉnh sửa cài đặt hoạt động và thêm, thay đổi hoặc xóa ghi đè cửa sổ ngữ cảnh mỗi mô hình. Các thay đổi ảnh hưởng đến các sự kiện mới mà không cần khởi động lại máy chủ. |
 
-![Trang Settings: operational settings được quản lý dashboard chẳng hạn như allowed sign-ins và session/OTP lifetimes, có thể chỉnh sửa mà không cần khởi động lại](/agenteye/images/settings.png)
+![Trang Cài đặt: cài đặt hoạt động do bảng điều khiển quản lý như đăng nhập được phép và tuổi thọ phiên/OTP, có thể chỉnh sửa mà không cần khởi động lại](/agenteye/images/settings.png)
 
-### Alerts & incidents
+### Cảnh báo & sự cố
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Xem định nghĩa alert được cấu hình. |
-| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Tạo, chỉnh sửa, xóa, và test-fire định nghĩa alert. |
-| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Xem incidents và audit trail triage của chúng. |
-| `incidents:write` | `POST /alerts/:id/incidents` | Mở một incident theo cách thủ công với một alert hiện tại. |
-| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Xác nhận, gán, giải quyết, và bình luận về incidents. |
+| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Xem các định nghĩa cảnh báo được cấu hình. |
+| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Tạo, chỉnh sửa, xóa và thử-kích hoạt các định nghĩa cảnh báo. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Xem các sự cố và vệ sinh triage của chúng. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Mở sự cố theo cách thủ công so với một cảnh báo hiện có. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Xác nhận, gán, giải quyết và bình luận về các sự cố. |
 
-### Audits
+### Kiểm toán
 
-| Quyền hạn | Tuyến HTTP | Điều gì được phép |
+| Quyền | Tuyến HTTP | Nó cho phép |
 |---|---|---|
-| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Xem định nghĩa audit, lịch sử chạy, và findings. |
-| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Tạo, chỉnh sửa, xóa, và chạy audits; triage findings (xác nhận / tắt tiếng / bác bỏ / giải quyết / mở lại / gán). |
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Xem các định nghĩa kiểm toán, lịch sử chạy và phát hiện. |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Tạo, chỉnh sửa, xóa và chạy kiểm toán; triage phát hiện (xác nhận / im lặng / loại bỏ / giải quyết / mở lại / gán). |
 
-> **Lưu ý:** Để cấp cho khóa bề mặt audit, hãy cấp `audits:*` cho nó một cách rõ ràng. Xem [Upgrade and backward-compatibility notes](#upgrade-and-backward-compatibility-notes) để biết cách các grantee hiện tại được di chuyển khi Audits được phát hành.
+> **Lưu ý:** Để cấp cho khóa bề mặt kiểm toán, hãy cấp `audits:*` cho nó một cách rõ ràng. Xem [Ghi chú nâng cấp và tương thích ngược](#upgrade-and-backward-compatibility-notes) để tìm hiểu cách những người nhận hiện có được di chuyển khi Kiểm toán được cung cấp.
 
-> Endpoint recipient-picker `GET /alerts/recipients` (liệt kê các email thành viên mà editor alert có thể thông báo) có thể truy cập được bởi người nắm giữ **either** `alerts:read` **hoặc** `alerts:write`, vì vậy editors alert có thể điền picker mà không cần được cấp `users:read`.
+> Điểm cuối bộ chọn người nhận `GET /alerts/recipients` (liệt kê email thành viên mà trình chỉnh sửa cảnh báo có thể thông báo) có thể truy cập được bởi chủ sở hữu **hoặc** `alerts:read` **hoặc** `alerts:write`, do đó trình chỉnh sửa cảnh báo có thể điền bộ chọn mà không cần được cấp `users:read`.
 
-> Một dashboards viewer cần **both** `dashboards:read` (để tải các chế độ xem đã lưu) và `evaluations:read` (các metrics health được tính toán từ dữ liệu đánh giá). Cấp `dashboards:write` để cho phép user tạo hoặc chỉnh sửa dashboards, và `dashboards:delete` để xóa chúng.
+> Người xem bảng điều khiển cần **cả hai** `dashboards:read` (để tải các chế độ xem được lưu) và `evaluations:read` (các chỉ số sức khỏe được tính toán từ dữ liệu đánh giá). Cấp `dashboards:write` để cho phép người dùng tạo hoặc chỉnh sửa bảng điều khiển, và `dashboards:delete` để xóa chúng.
 
-> `/health` và `/auth/*` (OTP request, OTP verify, session check, logout) không được xác thực một cách cố ý; chúng là login flow và liveness probe. `GET /access-granters` yêu cầu một khóa hợp lệ nhưng không có quyền hạn cụ thể, vì vậy bất kỳ user đã đăng nhập nào cũng có thể thấy admins nào để liên hệ về các thay đổi truy cập.
+> `/health` và `/auth/*` (yêu cầu OTP, xác minh OTP, kiểm tra phiên, đăng xuất) không được xác thực theo thiết kế; họ là luồng đăng nhập và điểm dò sống. `GET /access-granters` yêu cầu một khóa hợp lệ nhưng không có quyền cụ thể, vì vậy bất kỳ người dùng đã đăng nhập nào có thể thấy những quản trị viên nào để liên hệ về các thay đổi truy cập.
 
 ---
 
-## Permission Sets
+## Bộ quyền
 
-Permission sets cho phép bạn áp dụng một role được đặt tên thay vì chọn các tokens riêng lẻ mỗi lần. Thay vì chọn một tá quyền hạn một cách từng cái một cho mỗi dashboard user hoặc API key mới, bạn chọn một set, và mọi người được gán cho nó đều mang một grant nhất quán, có thể xem xét được. Chỉnh sửa một custom set sẽ tái áp dụng grant mới cho mọi user đã được gán cho nó, vì vậy một thay đổi role là một chỉnh sửa chứ không phải một quét qua mọi thành viên.
+Bộ quyền cho phép bạn áp dụng một vai trò được đặt tên thay vì chọn lựa từng token riêng lẻ mỗi lần. Thay vì chọn một tá quyền một cái một cái cho mỗi người dùng bảng điều khiển hoặc khóa API mới, bạn chọn một bộ, và mọi người được gán cho nó mang một khoán cấp nhất quán, có thể xem xét. Chỉnh sửa bộ tùy chỉnh sẽ tái áp dụng khoán mới cho mọi người dùng đã được gán cho nó, vì vậy thay đổi vai trò là một chỉnh sửa chứ không phải quét thông qua mỗi thành viên.
 
-Mỗi tổ chức được khởi tạo với ba built-in sets:
+Mỗi tổ chức được hạt giống bằng ba bộ tích hợp:
 
-| Set | Quyền hạn | Dự định cho |
+| Bộ | Quyền | Dự định cho |
 |---|---|---|
-| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Quyền truy cập chỉ xem trên mọi bề mặt operational. |
-| `standard` | mọi thứ trong `read-only`, cộng với `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Chỉ đọc cộng với các hành động on-caller hàng ngày: chạy queries, re-evaluate sessions, xác nhận incidents, và sử dụng trợ lý AI. |
-| `admin` | mọi assignable permission | Quyền kiểm soát đầy đủ của tổ chức. |
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Truy cập chỉ xem trên mọi bề mặt hoạt động. |
+| `standard` | tất cả trong `read-only`, cộng với `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Chỉ đọc cộng với các hành động trên-call hàng ngày: chạy truy vấn, đánh giá lại phiên, xác nhận sự cố và sử dụng trợ lý AI. |
+| `admin` | mọi quyền có thể gán | Kiểm soát toàn bộ tổ chức. |
 
-Ba built-in sets là **immutable**; các tên của chúng luôn có cùng một ý nghĩa, vì vậy `read-only`, `standard`, và `admin` an toàn để tham khảo trong policy và onboarding. Một nhà điều hành có thể tạo thêm **custom sets** để mô hình các roles cụ thể cho tổ chức của bạn (ví dụ: role "dashboard author" hoặc role "collector-only").
+Ba bộ tích hợp là **bất biến**; tên của chúng luôn có nghĩa giống nhau, vì vậy `read-only`, `standard` và `admin` là an toàn để tham chiếu trong chính sách và hướng dẫn khi bắt đầu. Một nhà điều hành có thể tạo thêm **bộ tùy chỉnh** để mô hình các vai trò cụ thể cho tổ chức của bạn (ví dụ, vai trò author bảng điều khiển hoặc vai trò collector-only).
 
-Sets được bề mặt trong dashboard và được quản lý qua API tại `GET /permission-sets` (liệt kê, được cấp bởi `users:read`) và `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (tạo, chỉnh sửa, xóa một custom set, được cấp bởi `settings:write`). Xóa hoặc chỉnh sửa một built-in set bị từ chối.
+Các bộ được hiển thị trong bảng điều khiển và được quản lý qua API tại `GET /permission-sets` (danh sách, kiểm soát bởi `users:read`) và `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (tạo, chỉnh sửa, xóa bộ tùy chỉnh, kiểm soát bởi `settings:write`). Xóa hoặc chỉnh sửa bộ tích hợp bị từ chối.
 
-Set membership là những gì hỗ trợ hai tính năng khác:
+Thành viên bộ là những gì hỗ trợ hai tính năng khác:
 
-- **`DEFAULT_USER_PERMISSIONS`** (grant được chọn trước khi admin mở **+ new user**) mặc định là set `standard`.
-- **Cờ `--set`** trên `agenteye-orgctl` (quản lý thành viên nhà điều hành) bắt đầu một thành viên từ một set được đặt tên, sau đó bạn có thể tinh chỉnh với `--add` / `--remove`.
+- **`DEFAULT_USER_PERMISSIONS`** (khoán được chọn trước khi quản trị viên mở **+ người dùng mới**) mặc định cho bộ `standard`.
+- **Cờ `--set`** trên `agenteye-orgctl` (quản lý thành viên tổ chức) bắt đầu một thành viên từ bộ đặt tên, mà sau đó bạn tinh chỉnh bằng `--add` / `--remove`.
 
-> **Lưu ý:** Khi một set bao gồm một quyền hạn không thể gán khóa (ví dụ: một custom set mang `keys:update`), khởi tạo một khóa từ set đó sẽ bỏ các tokens không thể gán; máy chủ sẽ từ chối khóa bằng HTTP 422. Dashboard users không phải tuân theo hạn chế đó.
-
----
-
-## Bootstrap Admin Key
-
-Admin key là tài chứng root duy nhất cho phép nhà điều hành khởi động truy cập từ không có gì: với nó bạn có thể tạo mỗi khóa có phạm vi khác, mời các dashboard users đầu tiên, và cấu hình instance trước khi bất kỳ khóa nào khác tồn tại. Nó là khóa duy nhất bạn không tạo qua keys API; nó được cung cấp từ môi trường vì vậy máy chủ có thể truy cập được lần đầu khởi động.
-
-Đặt biến môi trường `ADMIN_KEY` trên máy chủ. Trên mỗi lần khởi động, máy chủ upserts giá trị này như một admin key với tất cả quyền hạn.
-
-Để xoay: thay đổi `ADMIN_KEY` thành một secret mới và khởi động lại máy chủ.
+> **Lưu ý:** Khi bộ bao gồm quyền không thể gán khóa (ví dụ bộ tùy chỉnh mang `keys:update`), hạt giống khóa từ bộ đó loại bỏ các token không thể gán; máy chủ sẽ từ chối khóa với HTTP 422. Người dùng bảng điều khiển không phải chịu giới hạn đó.
 
 ---
 
-## Organization scoping
+## Khóa quản trị khởi động
 
-**Các tổ chức chính nó được tạo và quản lý ngoài hệ thống bởi một nhà điều hành, không thông qua keys API này.** Lifecycle org và member (tạo / đổi tên / xóa / purge một org; thêm / cập nhật / xóa một member) được thực hiện với **`agenteye-orgctl`** CLI; không có HTTP API hoặc nút dashboard cho nó. Điều *không* thay đổi: **per-org API keys vẫn được tạo trong dashboard (hoặc qua keys API này)** bởi org members.
+Khóa quản trị là thông tin xác thực gốc duy nhất cho phép nhà điều hành mang lên truy cập từ không có gì: với nó bạn có thể đúc mọi khóa có phạm vi khác, mời người dùng bảng điều khiển đầu tiên, và định cấu hình phiên bản trước khi bất kỳ khóa nào khác tồn tại. Nó là khóa duy nhất bạn không tạo thông qua API khóa; nó được cung cấp từ môi trường nên máy chủ có thể truy cập được khi khởi động lần đầu.
 
-Trong triển khai multi-org, mỗi khóa mà org member tạo (qua keys API này hoặc trang **Keys** của dashboard) thuộc về **một tổ chức** và chỉ có thể đọc hoặc ghi dữ liệu của tổ chức đó; tổ chức được đặt trên khóa tại creation và thực thi trên mỗi yêu cầu. Hai bootstrap keys là ngoại lệ duy nhất: khóa `admin` (được khởi tạo từ `ADMIN_KEY`) và khóa `dashboard-assistant` (được khởi tạo từ `AGENT_API_KEY`) là **instance-scoped** (chúng không có org). Dashboard xác thực với khóa `admin` vì vậy nó có thể proxy yêu cầu per-org thay mặt các members đã đăng nhập. Các triển khai single-tenant không cần suy nghĩ về điều này; tất cả các khóa thuộc về built-in `default` org.
+Đặt biến môi trường `ADMIN_KEY` trên máy chủ. Khi mỗi lần khởi động máy chủ sẽ upsert giá trị này như một khóa quản trị với tất cả quyền.
+
+Để xoay: thay đổi `ADMIN_KEY` thành bí mật mới và khởi động lại máy chủ.
 
 ---
 
-## Creating Keys
+## Phạm vi tổ chức
 
-Sử dụng admin key (hoặc bất kỳ khóa nào có quyền hạn `keys:create`) để tạo các khóa có phạm vi bổ sung.
+**Các tổ chức chính được tạo và quản lý ngoài hệ thống bởi một nhà điều hành, không thông qua API khóa này.** Vòng đời tổ chức và thành viên (tạo / đổi tên / xóa / thanh lọc một tổ chức; thêm / cập nhật / xóa một thành viên) được thực hiện bằng CLI **`agenteye-orgctl`**; không có API HTTP hoặc nút bảng điều khiển cho nó. Điều không thay đổi là: **khóa API mỗi tổ chức vẫn được đúc trong bảng điều khiển (hoặc qua API khóa này)** bởi các thành viên tổ chức.
 
-### Collector key (ingest only)
+Trong triển khai đa tổ chức, mỗi khóa mà thành viên tổ chức tạo (thông qua API khóa này hoặc trang **Khóa** bảng điều khiển) thuộc về **một tổ chức** và chỉ có thể đọc hoặc ghi dữ liệu của tổ chức đó; tổ chức được đóng dấu trên khóa khi tạo và thực thi trên mỗi yêu cầu. Hai khóa khởi động là ngoại lệ duy nhất: khóa `admin` (hạt giống từ `ADMIN_KEY`) và khóa `dashboard-assistant` (hạt giống từ `AGENT_API_KEY`) là **phạm vi phiên bản** (họ không mang tổ chức). Bảng điều khiển xác thực bằng khóa `admin` vì vậy nó có thể chuyển tiếp các yêu cầu mỗi tổ chức thay mặt các thành viên đã đăng nhập. Triển khai đơn không cần suy nghĩ về điều này; tất cả khóa thuộc về tổ chức tích hợp `default`.
+
+---
+
+## Tạo khóa
+
+Sử dụng khóa quản trị (hoặc bất kỳ khóa nào có quyền `keys:create`) để tạo các khóa có phạm vi bổ sung.
+
+### Khóa bộ sưu tập (chỉ nhập)
 
 ```bash
 curl -s -X POST http://your-server/keys \
@@ -179,7 +179,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-### Dashboard key (read only)
+### Khóa bảng điều khiển (chỉ đọc)
 
 ```bash
 curl -s -X POST http://your-server/keys \
@@ -192,7 +192,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Khi bạn tạo một khóa qua HTTP API, bạn cung cấp giá trị `key` của riêng bạn; chọn một secret mạnh và lưu trữ nó một cách an toàn. (Dashboard hoạt động theo cách khác: nó tạo một secret mạnh cho bạn và hiển thị nó một lần khi creation; xem [Key Management in the Dashboard](#key-management-in-the-dashboard).) Phản hồi xác nhận khóa được tạo:
+Khi bạn tạo khóa qua API HTTP, bạn tự cung cấp giá trị `key`; chọn bí mật mạnh mẽ và lưu trữ nó một cách an toàn. (Bảng điều khiển hoạt động theo cách khác: nó tạo bí mật mạnh mẽ cho bạn và hiển thị nó một lần khi tạo; xem [Quản lý khóa trong bảng điều khiển](#key-management-in-the-dashboard).) Phản hồi xác nhận khóa đã được tạo:
 
 ```json
 {
@@ -205,20 +205,20 @@ Khi bạn tạo một khóa qua HTTP API, bạn cung cấp giá trị `key` củ
 
 ---
 
-## Listing Keys
+## Liệt kê khóa
 
 ```bash
 curl -s http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-Key secrets không được trả về trong danh sách responses, chỉ IDs, names, và permissions.
+Bí mật khóa không được trả về trong phản hồi danh sách, chỉ ID, tên và quyền.
 
 ---
 
-## Disabling a Key
+## Vô hiệu hóa khóa
 
-Vô hiệu hóa thu hồi quyền truy cập ngay lập tức mà không xóa hồ sơ khóa.
+Vô hiệu hóa thu hồi truy cập ngay lập tức mà không xóa bản ghi khóa.
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/disable \
@@ -227,53 +227,53 @@ curl -s -X POST http://your-server/keys/<id>/disable \
 
 ---
 
-## Regenerating a Key
+## Tạo lại khóa
 
-Tạo một secret mới cho một khóa hiện tại. Secret cũ bị vô hiệu hóa ngay lập tức.
+Tạo bí mật mới cho khóa hiện có. Bí mật cũ bị vô hiệu hóa ngay lập tức.
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/regenerate \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-Phản hồi bao gồm secret plaintext mới, **chỉ hiển thị một lần**.
+Phản hồi bao gồm bí mật dạng văn bản mới, **hiển thị chỉ một lần**.
 
 ---
 
-## Key Management in the Dashboard
+## Quản lý khóa trong bảng điều khiển
 
-Trang **Keys** trong dashboard cung cấp một UI cho tất cả các hoạt động trên. Bạn cần một khóa có quyền hạn `keys:read` để xem danh sách, và `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` cho các hành động create / edit / disable / regenerate tương ứng. Chỉnh sửa quyền hạn của khóa (`keys:update`) riêng biệt từ tạo một quyền (`keys:create`), vì vậy bạn có thể cấp cho nhà điều hành khả năng tạo khóa mà không có khả năng tái phạm vi cho các khóa hiện tại, hoặc ngược lại. Admin key bao gồm tất cả những điều này.
+Trang **Khóa** trong bảng điều khiển cung cấp UI cho tất cả các hoạt động trên. Bạn cần một khóa có quyền `keys:read` để xem danh sách, và `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` cho các hành động tạo / chỉnh sửa / vô hiệu hóa / tạo lại tương ứng. Chỉnh sửa quyền khóa (`keys:update`) riêng biệt với tạo một (`keys:create`), vì vậy bạn có thể cấp cho một nhà điều hành khả năng đúc khóa mà không có khả năng xác định phạm vi lại những khóa hiện có, hoặc ngược lại. Khóa quản trị bao gồm tất cả những cái này.
 
-Khi bạn tạo một khóa từ dashboard, bạn không cung cấp secret; dashboard tạo một secret mạnh cho bạn và hiển thị nó **một lần** khi creation. Sao chép nó ngay lập tức và lưu trữ nó một cách an toàn; nó không bao giờ được hiển thị lại, chính xác như một regenerate. Bạn vẫn có thể chọn quyền hạn của khóa trực tiếp, hoặc khởi tạo chúng từ một permission set (xem bên dưới).
+Khi bạn tạo khóa từ bảng điều khiển bạn không cung cấp bí mật; bảng điều khiển tạo bí mật mạnh mẽ cho bạn và hiển thị nó **một lần** khi tạo. Sao chép nó ngay lập tức và lưu trữ nó một cách an toàn; nó không bao giờ được hiển thị lại, giống như với tạo lại. Bạn vẫn có thể chọn quyền của khóa trực tiếp, hoặc hạt giống chúng từ bộ quyền (xem bên dưới).
 
-![Trang API Keys: một thẻ cho mỗi khóa hiển thị tên, quyền hạn được cấp, và creation time, với các hành động regenerate và disable; các khóa được bảo vệ như `admin` được đánh dấu](/agenteye/images/api-keys.png)
+![Trang Khóa API: một thẻ cho mỗi khóa hiển thị tên, quyền được cấp và thời gian tạo, với tái tạo và vô hiệu hóa hành động; khóa được bảo vệ như `admin` được đánh dấu](/agenteye/images/api-keys.png)
 
 ---
 
-## Recommended Key Layout
+## Bố cục khóa được khuyến nghị
 
-| Khóa | Quyền hạn | Được sử dụng bởi |
+| Khóa | Quyền | Được sử dụng bởi |
 |---|---|---|
-| `admin` (bootstrap qua biến môi trường `ADMIN_KEY`) | all | Ops/setup, và dashboard (xác thực với `ADMIN_KEY`, proxies yêu cầu user với kiểm tra quyền hạn) |
-| Per-host collector key | `events:add` | Collector trên mỗi máy agent |
-| `dashboard-assistant` (bootstrap qua biến môi trường `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Trợ lý AI, được khởi tạo tự động, **protected**; không thể được chỉnh sửa qua API |
-| Assistant telemetry key (optional) | `events:add` | Self-instrumentation trợ lý AI, nếu được bật |
+| `admin` (khởi động qua biến env `ADMIN_KEY`) | tất cả | Ops/setup, và bảng điều khiển (xác thực bằng `ADMIN_KEY`, chuyển tiếp các yêu cầu của người dùng bằng kiểm tra quyền) |
+| Khóa bộ sưu tập cho mỗi máy | `events:add` | Bộ sưu tập trên mỗi máy agent |
+| `dashboard-assistant` (khởi động qua biến env `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Trợ lý AI, hạt giống tự động, **được bảo vệ**; không thể chỉnh sửa thông qua API |
+| Khóa viễn cảm trợ lý (tùy chọn) | `events:add` | Tự kiểm dò trợ lý AI, nếu được bật |
 
-> **Lưu ý:** Khóa của trợ lý được **khởi tạo tự động** bởi máy chủ từ biến môi trường `AGENT_API_KEY` (secret giống nhau mà agent trình bày như `AGENTEYE_API_KEY`); không có bước key-minting thủ công và không có admin key liên quan. Quyền hạn của nó được cố định trong source code vì vậy scope không thể được mở rộng bằng cách cấu hình sai: đọc qua events / evaluations / dashboards, cộng với dashboards-write và queries-read / write / run cho luồng "Ask AI to write a query" authoring. Tất cả SQL vẫn đi qua cùng một role chỉ đọc và guarded SQL path như một query được viết bởi user, vì vậy điều này mở rộng *authoring surface*, không phải data surface; các hoạt động destructive (`queries:delete`, `dashboards:delete`) được cố ý giữ ngoài khóa trợ lý. Giống như khóa `admin`, nó là **protected**: nó không thể bị vô hiệu hóa hoặc tạo lại qua keys API, chỉ được xoay bằng cách thay đổi `AGENT_API_KEY` và khởi động lại. Dashboard *users* thêm vào cần quyền hạn `agent:use` để xem và sử dụng trợ lý. Nếu bạn bật self-instrumentation, cấp cho trợ lý một khóa `events:add`-only riêng biệt.
+> **Lưu ý:** Khóa của trợ lý là **hạt giống tự động** bởi máy chủ từ biến env `AGENT_API_KEY` (bí mật giống nhau agent trình bày như `AGENTEYE_API_KEY`); không có bước đúc khóa thủ công và không liên quan đến khóa quản trị. Quyền của nó được sửa trong mã nguồn vì vậy phạm vi không thể được mở rộng bởi cấu hình sai: đọc trên các sự kiện / đánh giá / bảng điều khiển, cộng với ghi bảng điều khiển và truy vấn-đọc / ghi / chạy cho luồng tác giả thứ hay "Yêu cầu AI viết truy vấn". Tất cả SQL vẫn đi qua vai trò chỉ đọc giống nhau và đường dẫn SQL được bảo vệ như truy vấn do người dùng viết, vì vậy điều này mở rộng bề mặt *tác giả*, không phải bề mặt dữ liệu; các hoạt động phá hủy (`queries:delete`, `dashboards:delete`) cố ý ở ngoài khóa trợ lý. Giống như khóa `admin`, nó **được bảo vệ**: nó không thể bị vô hiệu hóa hoặc tạo lại thông qua API khóa, chỉ xoay bằng cách thay đổi `AGENT_API_KEY` và khởi động lại. **Người dùng** bảng điều khiển thêm cần quyền `agent:use` để xem và sử dụng trợ lý. Nếu bạn bật tự kiểm dò, hãy cấp cho trợ lý khóa `events:add`-chỉ riêng biệt.
 
 ---
 
-## Upgrade and backward-compatibility notes
+## Ghi chú nâng cấp và tương thích ngược
 
-Bạn chỉ cần những điều này nếu bạn đang nâng cấp một instance hiện tại; các triển khai mới có thể bỏ qua chúng.
+Bạn chỉ cần những điều này nếu bạn nâng cấp phiên bản hiện có; các triển khai mới có thể bỏ qua chúng.
 
-> Khi Audits được phát hành, các grantee hiện tại được mở rộng cùng các role shapes như alerts: mọi user và permission set giữ `alerts:read` đều nhận `audits:read`, và mỗi holder của `alerts:write` đều nhận `audits:write`. Các API keys hiện tại **không** được mở rộng. Cấp `audits:*` cho một khóa một cách rõ ràng nếu nó cần bề mặt audit.
+> Khi Kiểm toán được cung cấp, những người nhận hiện có đã được mở rộng cùng các hình dạng vai trò như cảnh báo: mọi người dùng và bộ quyền giữ `alerts:read` đã có được `audits:read`, và mỗi chủ sở hữu của `alerts:write` đã có được `audits:write`. Các khóa API hiện có **không** được mở rộng. Cấp `audits:*` cho khóa một cách rõ ràng nếu nó cần bề mặt kiểm toán.
 
-> Stored grants của legacy token `alerts:ack` được phân tích cú pháp như `incidents:ack` vì vậy on-callers giữ quyền truy cập mà không cần rekeying. Token không còn assignable từ user editor của dashboard; ma trận cung cấp `incidents:ack` thay thế.
+> Các khoán được lưu trữ của token `alerts:ack` kế thừa được phân tích cú pháp như `incidents:ack` vì vậy on-callers giữ lại truy cập mà không cần khóa lại. Token không còn có thể gán từ trình chỉnh sửa người dùng bảng điều khiển; ma trận cung cấp `incidents:ack` thay thế.
 
 ---
 
 ## Bước tiếp theo
 
-- [Python SDK](/vi/agenteye/python-sdk): cách code agent của bạn xác thực khi gửi sự kiện.
-- [Security](/vi/agenteye/security): cách sign-in, access control, và per-organization data isolation hoạt động.
+- [Python SDK](/vi/agenteye/python-sdk): cách mã agent của bạn xác thực khi gửi sự kiện.
+- [Bảo mật](/vi/agenteye/security): cách đăng nhập, kiểm soát truy cập và cách ly dữ liệu mỗi tổ chức hoạt động.

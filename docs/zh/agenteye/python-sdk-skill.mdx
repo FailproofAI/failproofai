@@ -1,0 +1,131 @@
+---
+title: "Failproof AI Observability Python SDK Agent Skill"
+description: "从未插桩的智能体到可见的事件，由你的编码智能体找到插桩点、编写代码并验证结果。"
+---
+
+告诉你的编码智能体 *"为这个智能体添加 Failproof AI Observability"*，让它读取你的循环逻辑，判断插桩位置，编写代码，并在宣告任务完成之前验证事件。
+
+**Python SDK skill**（`agenteye-python-sdk`）是一个 *Agent Skill*：一个包含指令的文件夹，供 Claude Code 或 Codex 等编码智能体在任务匹配时按需加载。它教会智能体如何使用 [Python SDK](/zh/agenteye/python-sdk)——它不是一个库，也不会改变 SDK 的任何工作方式。
+
+## 插桩容易写，也容易悄悄出错
+
+SDK 很小：十三个事件方法，全部仅支持关键字参数。编码智能体可以读取 [Python SDK](/zh/agenteye/python-sdk) 参考文档，在一分钟内写出看起来合理的插桩代码。
+
+问题在于，这个 SDK 在出错时不会抛出异常，而错误的插桩看起来和正确的插桩完全一样——直到有人打开仪表盘发现一片空白。那些真正耗费时间的错误，全都是沉默：
+
+| 错误类型 | 你看到的现象 |
+|---|---|
+| 没有 `agent_start` | 每个事件都正常落地。会话数为零。 |
+| 环境变量从未设置 | 一切正常运行，但全部归档到 `dev` 下。 |
+| `outcome="failure"` | 运行显示绿色——只有 `failed`、`error`、`timeout`、`rejected` 才计入失败。 |
+| 字段名拼写错误 | 被接受并作为新字段存储。 |
+| 从线程池中发出事件 | 静默丢弃。 |
+
+这些错误都不会抛出异常，也不会在测试中暴露。每一条都在 skill 中有明确说明，并附有捕获它的检查契约。
+
+## 它的工作流程
+
+该 skill 执行的是一位细心工程师会做的同样三个步骤：
+
+1. **规划。** 它读取你的智能体循环，并提出只有你才能回答的两个问题：什么算作一次运行（你的 `session_id`），以及可区分的参与者是谁（你的 `agent_id`）。它在写任何代码之前先就这些问题达成一致，因为之后再修改会分裂你的历史数据并破坏趋势分析。
+2. **编写。** 它在每次运行时只绑定一次身份，而不是在每个调用点都传递，并选择并发安全的写法——这个细节很重要，因为看似简单的捷径会悄悄地将两个并发运行混入同一个会话。
+3. **验证。** 它运行你的智能体并读取生成的事件文件，检查 `agent_start` 是否存在、环境是否正确、一次运行是否只产生一个会话。
+
+第三步正是人们通常会跳过的。SDK 将事件写入本地文件，因此完整的集成可以在笔记本电脑上完成验证，无需服务器、无需 API 密钥、无需网络——这正是该 skill 坚持执行这一步的原因。
+
+## 它与其他 skill 的关系
+
+三个 skill，职责清晰划分：
+
+| Skill | 使用时机 | 操作范围 |
+|---|---|---|
+| **Python SDK skill**（本页） | 你希望智能体*发出*遥测数据——"添加可观测性"、"为什么我的智能体没有出现？" | 在你的智能体代码库中写代码，不读取任何内容。 |
+| **[Evaluator skill](/zh/agenteye/evaluator-skill)** | 你希望*评分*运行——"我们到底该衡量什么？" | 在你的代码库中写代码；读取遥测数据。 |
+| **[CLI skill](/zh/agenteye/cli-skill)** | 你希望*读取*发生了什么，或操作你的部署 | 以你的身份驱动 CLI，包括变更操作。 |
+
+它们按顺序交接：这个 skill 让事件流动起来，evaluator 对其评分，CLI 读取结果。在你的智能体发出会话之前，没有任何内容可评估，也没有任何内容可读取——所以如果你从零开始，就从这里开始。
+
+## 前置条件
+
+1. **Python 3.10+** 以及你想要插桩的智能体代码库。
+2. **SDK。** 它以私有 wheel 包的形式分发给客户，而非公开索引——你的入门流程会介绍如何获取和安装它。该 skill 知道安装路径，如果找不到会询问你而不是自行猜测。
+3. **不需要其他任何东西。** 无需登录仪表盘、无需 API 密钥、无需网络。该 skill 通过 SDK 写入的事件文件进行验证，因此可以在离线状态下完成并证明其工作成果。
+
+## 获取方式
+
+该 skill 位于公开的 [`FailproofAI/skills`](https://github.com/FailproofAI/skills) 集合中：
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+添加 `-g` 可为所有项目安装，而不仅限于当前项目；如果你的环境不支持符号链接，请添加 `--copy`。对于 Codex，传入 `-a codex`。
+
+## 手动安装
+
+Agent Skills 是包含 `SKILL.md` 及相关引用的文件夹。如果你不想使用安装程序：
+
+- **Claude Code**：将 `agenteye-python-sdk/` 文件夹复制到 `~/.claude/skills/`（所有项目）或 `<你的代码库>/.claude/skills/`（仅该代码库）。Claude Code 会自动发现它——查看 `/skills` 列表，或直接提问匹配的问题即可。
+- **Codex**：Codex 读取相同的 `SKILL.md`。捆绑的 `agents/openai.yaml` 设置了 `allow_implicit_invocation: true`，因此当任务匹配时会自动选择；否则使用 `$agenteye-python-sdk` 调用它。
+
+**在包含你要插桩代码的代码库中**运行你的智能体——该 skill 会在提出任何建议之前读取你的智能体循环。
+
+## 一次对话示例
+
+```text
+you   ▸ Add Failproof AI Observability to this agent.
+
+agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
+        wrapper in llm.py. Two questions before I write anything.
+
+        What counts as one run? You handle requests concurrently, so I'd
+        use the request id you already have in ctx.request_id — then a
+        session here and a request in your logs are the same string.
+
+        And who are the actors? I see a planner path and a researcher
+        path. Label them separately, or is that one agent to you?
+
+you   ▸ Request id is right. They're one agent, call it "assistant".
+
+agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
+        agent_end bracket handle_request, including the error path. Used
+        a context-local for identity — your dispatcher runs tools in a
+        thread pool, and the simpler approach would have mixed concurrent
+        runs into one session without complaining.
+
+        Verified against a real run: 11 events across 4 files —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, one session
+        per request, durations paired.
+
+        One thing I did NOT do: your worker pool in batch.py submits
+        straight to the executor, so events from there would be dropped.
+        Want me to fix those too?
+```
+
+值得注意的模式：它在提出建议之前先读取了代码，只问你才能回答的问题，复用了你已有的 ID，*因为*看到了线程池而选择了并发安全的写法，并且**通过读取实际事件来验证**而不是直接宣告成功——然后标记出它知道会静默失败的那一处。
+
+## 你可以问它的问题
+
+- *"为什么我的智能体没有出现在仪表盘上？"* → 逐层排查：事件是否被写入，`agent_start` 是否存在，环境是否正确，采集器是否读取了正确的位置。
+- *"所有内容都落在 dev 下。"* → 环境变量从未设置，或被后续调用重置了。
+- *"添加 token 追踪。"* → 找到你的 LLM wrapper，记录模型、停止原因和用量。
+- *"也为子智能体插桩。"* → 一个会话，不同的智能体标签，嵌套在各自的父级下。
+- *"为插桩代码编写测试。"* → 将 SDK 指向临时目录，并对写入的事件进行断言。
+
+## 注意事项
+
+**让它验证。** 让这个 skill 物有所值的步骤是最后一步——运行你的智能体并读回事件。一个只写插桩代码就停止的智能体只完成了容易的那一半，而静默失败的恰恰是另一半。
+
+**在写代码之前先商定命名。** `session_id` 和 `agent_id` 是每个展示面按其分组的坐标轴。之后重命名会分裂历史数据：旧运行保留旧标签，你的趋势就会中断。该 skill 会询问；答案值得花一分钟认真思考。
+
+**如果你的智能体提议从公开索引安装 SDK，说明该 skill 没有加载。** SDK 是私有分发的。这个提议是一个可靠的信号，说明你的编码智能体在猜测而不是遵循 skill——在那里停下来，检查 skill 是否已安装。
+
+除此之外，它的影响范围很小：它在你的工作目录中写代码，在你指定的位置写事件文件。它不读取你的部署中的任何内容，也不对其做任何修改。
+
+## 后续步骤
+
+- **[Python SDK](/zh/agenteye/python-sdk)**：完整的事件参考——该 skill 所自动化内容背后的每种事件类型和字段。
+- **[Sessions](/zh/agenteye/sessions)**：事件落地后你的插桩所产生的会话数据。
+- **[Evaluator Agent Skill](/zh/agenteye/evaluator-skill)**：运行数据落地后的下一步——对其评分。
+- **[CLI Agent Skill](/zh/agenteye/cli-skill)**：读取你的遥测数据。

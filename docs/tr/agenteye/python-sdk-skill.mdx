@@ -1,0 +1,130 @@
+---
+title: "Failproof AI Observability Python SDK Agent Skill"
+description: "Enstrümante edilmemiş bir ajanı, görebileceğiniz olaylara dönüştürün — kodlama ajanınız enstrümantasyon noktalarını bulur, yazar ve doğrulayarak işi tamamlar."
+---
+
+Kodlama ajanınıza *"bu ajana Failproof AI Observability ekle"* deyin ve onun döngünüzü okumasına, enstrümantasyonun nereye ait olduğunu anlamasına, yazmasına ve olayları doğrulamasına izin verin.
+
+**Python SDK becerisi** (`agenteye-python-sdk`) bir *Agent Skill*: bir kodlama ajanı (Claude Code veya Codex gibi) bir görev bununla eşleştiğinde talep üzerine yükleyen bir talimatlar klasörü. Ajana [Python SDK](/tr/agenteye/python-sdk) kullanmayı öğretir — bu bir kütüphane değildir ve SDK'nın çalışma şeklini hiçbir şekilde değiştirmez.
+
+## Enstrümantasyon yazması kolay ama sessiz yanlış yapmak kolay
+
+SDK küçüktür: on üç olay yöntemi, tümü yalnızca anahtar sözcükle. Bir kodlama ajanı [Python SDK](/tr/agenteye/python-sdk) başvurusunu okuyup bir dakikada makul enstrümantasyon üretebilir.
+
+Yakalanacak nokta şudur: bu SDK yanlış yaptığınızda uyarı vermez ve yanlış enstrümantasyon doğru enstrümantasyonla tamamen aynı görünür — ta ki birisi bir pano açana ve onu boş bulana kadar. Gerçek zamanı alan hatalar hepsi sessizlikleridir:
+
+| Hata | Ne görürsünüz |
+|---|---|
+| `agent_start` yok | Her olay iner. Sıfır oturum. |
+| Ortam hiç ayarlanmadı | Her şey çalışır, `dev` altında dosyalanır. |
+| `outcome="failure"` | Çalışma yeşil gösterilir — yalnızca `failed`, `error`, `timeout`, `rejected` sayılır. |
+| Yazım hatası yapılan alan adı | Kabul edilir ve yeni alan olarak depolanır. |
+| Thread havuzundan yayılan olaylar | Sessizce düşer. |
+
+Hiçbiri uyarı vermez. Hiçbiri testlerde gösterilmez. Hepsi beceri içindedir, bunu yakalayan kontrol ile açıklanmıştır.
+
+## Sırasıyla ne yapar
+
+Beceri, dikkatli bir mühendisçinin yapacağı üç adımı çalıştırır:
+
+1. **Planlama.** Ajan döngünüzü okur ve yalnızca siz cevaplayabilirsiniz iki soruyu sorar: bir çalışma neyi sayar (`session_id`) ve ayırt edilebilir oyuncular kimlerdir (`agent_id`). Kod yazmadan önce bunları kararlaştırır, çünkü daha sonra değiştirmek geçmişinizi böler ve trendleri kırar.
+2. **Yazma.** Kimliği çalışma başına bir kez bağlar, her çağrı sitesinden ipliği geçirmek yerine, ve eşzamanlılık açısından güvenli bir şekil seçer — önemli bir ayrıntı, çünkü belirgin kısayol sessizce iki çakışan çalışmayı bir oturumda karıştırır.
+3. **Doğrulama.** Ajanınızı çalıştırır ve elde edilen olay dosyalarını okur, `agent_start` bulunup bulunmadığını, ortamın doğru olduğunu ve bir çalışmanın bir oturum ürettiğini kontrol eder.
+
+Üçüncü adım, insanların atladığı adımdır. SDK olayları yerel dosyalara yazar, bu nedenle tam bir entegrasyon dizüstü bilgisayarda sunucu, API anahtarı ve ağ olmadan kanıtlanabilir — ki bu tam olarak becerinin bunu yapmasını ısrar etme nedenidir.
+
+## Diğer becerilerle ilişkisi
+
+Üç beceri, bir temiz ayrım:
+
+| Beceri | Şu durumlarda kullanın | Ne dokunur |
+|---|---|---|
+| **Python SDK becerisi** (bu sayfa) | Ajanınızın telemetri *yayması* istiyorsanız — "gözlemlenebilirlik ekle", "ajanım neden gösterilmiyor?" | Ajanınızın deposunda kod yazar. Hiçbir şey okumaz. |
+| **[Evaluator becerisi](/tr/agenteye/evaluator-skill)** | Çalışmaları *puanlamak* istiyorsanız — "neyi ölçmeliyiz?" | Deponuzda kod yazar; telemetryi okur |
+| **[CLI becerisi](/tr/agenteye/cli-skill)** | Ne olduğunu *okumak* veya dağıtımınızı işletmek istiyorsanız | CLI'ı siz olarak yönetir, değişiklikler dahil |
+
+Bu sırada teslim ederler: bu beceri olayları akıtır, değerlendirici onları puanlar, CLI onları geri okur. Ajanınız oturum yayınlayana kadar değerlendirecek hiçbir şey ve okunacak hiçbir şey yoktur, bu nedenle sıfırdan başlıyorsanız buradan başlayın.
+
+## Ön Koşullar
+
+1. **Python 3.10+** ve enstrümante etmek istediğiniz ajan kod tabanı.
+2. **SDK.** Müşterilere genel bir dizin yerine özel bir wheel olarak dağıtılır — sorunuz başlamak nasıl alacağınızı ve kuracağınızı kapsar. Beceri kurulum yolunu bilir ve bulamazsa bilgisini tahmin etmek yerine sizi soracaktır.
+3. **Başka bir şey yok.** Pano giriş yok, API anahtarı yok, ağ yok. Beceri SDK'nın yazdığı olay dosyaları ile doğrular, bu nedenle çalışmayı tamamlayıp çevrimdışı olarak kanıtlayabilir.
+
+## Nerede bulacağınız
+
+Beceri genel [`FailproofAI/skills`](https://github.com/FailproofAI/skills) koleksiyonunda yaşar:
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+Yalnızca geçerli proje yerine her proje için kurmak için `-g` ekleyin ve ortamınız sembolik bağlantıları izlemiyorsa `--copy` ekleyin. Codex için `-a codex` geçirin.
+
+## Elle kurmak
+
+Agent Skills, bir `SKILL.md` artı referanslar içeren klasörlerdir. Yükleyiciyi kullanmak istemiyorsanız:
+
+- **Claude Code**: `agenteye-python-sdk/` klasörünü `~/.claude/skills/` (her proje) veya `<your-repo>/.claude/skills/` (yalnızca o depo) içine kopyalayın. Claude Code bunu otomatik olarak bulur — `/skills` listesini kontrol edin veya bununla eşleşen bir şey sorun.
+- **Codex**: Codex aynı `SKILL.md` okur. Paket halinde `agents/openai.yaml` `allow_implicit_invocation: true` ayarlar, bu nedenle bir görev bununla eşleştiğinde otomatik olarak seçilir; aksi takdirde `$agenteye-python-sdk` olarak çağırın.
+
+Ajanınızı **enstrümante etmek istediğiniz kodu tutan depoda** çalıştırın — beceri kod yazmanızdan önce ajan döngünüzü okur.
+
+## Oturum nasıl görünür
+
+```text
+siz   ▸ Bu ajana Failproof AI Observability ekle.
+
+ajan  ▸ Döngünüzü okudum — tools.py içinde bir araç görevlendiricisi, llm.py içinde bir
+        Anthropic sarmalayıcısı. Yazı yazılmadan önce iki soru.
+
+        Bir çalışma neyi sayar? İstekleri eşzamanlı olarak yönetiyorsunuz, bu nedenle
+        zaten ctx.request_id içinde bulunan istek kimliğini kullanırım — sonra burada
+        bir oturum ve günlüklerinizde bir istek aynı dizedir.
+
+        Ve oyuncular kimlerdir? Bir planlayıcı yolu ve bir araştırma yolu görüyorum.
+        Onları ayrı olarak etiketle, yoksa bu siz için bir ajanmı?
+
+siz   ▸ İstek kimliği doğru. Bunlar bir ajan, "asistan" olarak adlandır.
+
+ajan  ▸ Bitti. Görevlendiricili ve LLM istemcisini sarmaladım; agent_start ve
+        agent_end, hata yolu dahil handle_request'i kapsar. Kimlik için bağlam-yerel
+        kullandım — görevlendiriciye araçları bir thread havuzunda çalıştırır ve daha
+        basit yaklaşım hiç şikayetçi olmadan eş zamanlı çalışmaları bir oturumda
+        karıştırırdı.
+
+        Gerçek bir çalıştırmaya karşı doğruladı: 4 dosya arasında 11 olay —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, istek başına bir oturum,
+        eşleştirilmiş süreler.
+
+        Bir şey YAPMADIM: batch.py içindeki çalışan havuzunuz doğrudan yürütücüye
+        gönderir, bu nedenle oradan gelen olaylar düşer. Bunları da düzeltmemi istiyorsunuz?
+```
+
+Fark edilecek desen: kodun yorum yapılmadan önce okudu, yalnızca cevaplayabileceğiniz soruları sordu, zaten sahip olduğunuz bir kimliği yeniden kullandı, bir thread havuzu gördüğü için eşzamanlılık açısından güvenli şekli seçti ve başarıyı ilan etmek yerine **gerçek olayları okuyarak doğruladı** — ardından sessizce başarısız olacağını bildiği yeri işaretledi.
+
+## Ona neler sorabilirsiniz
+
+- *"Ajanım neden panoda gösterilmiyor?"* → merdiveni yürür: olaylar yazılıyor mu, `agent_start` var mı, ortam doğru mu, collector aynı yeri okuyor mu.
+- *"Her şey dev altında iniyor."* → ortam hiç ayarlanmadı veya daha sonraki bir çağrı tarafından sıfırlandı.
+- *"Token takibini ekle."* → LLM sarmalayıcınızı bulur ve modeli, durdurma nedenini ve kullanımı kaydeder.
+- *"Alt ajanları da enstrümantle."* → bir oturum, belirgin ajan etiketleri, ana öğeleri altında iç içe.
+- *"Enstrümantasyon için testler yaz."* → SDK'yi geçici bir dizine gösterir ve yazdığı olaylar için iddialarda bulunur.
+
+## Dikkat edilecekler
+
+**Doğrulamaya izin verin.** Bu beceriyi kullanmaya değer kılan adım son adımdır — ajanınızı çalıştırıp olayları geri okumak. Enstrümantasyon yazıp duran bir ajan kolay yarısını yapmıştır ve sessiz olarak başarısız olan yarısı öteki yarısıdır.
+
+**Kod yazılmadan önce adları kabul edin.** `session_id` ve `agent_id` her yüzey tarafından gruplandırılabilen eksenlerdir. Onları daha sonra yeniden adlandırmak geçmişi böler: eski çalışmalar eski etiketleri tutar ve trendleriniz kırılır. Beceri soracak; cevap bir dakikalık düşünmeye değer.
+
+**Ajanınız SDK'yi genel bir dizinden kurmayı önerirse, beceri yüklenmedi.** SDK özel olarak dağıtılır. Bu teklif, kodlama ajanınızın beceriyi takip etmek yerine tahmin ettiğinin güvenilir bir göstergesidir — oraya gidin ve becerinin kurulu olduğunu kontrol edin.
+
+Bunun ötesinde sürü yarıçapı küçüktür: çalışma dizininizde kod ve size söylediğiniz yerde olay dosyaları yazar. Dağıtımınızdan hiçbir şey okumaz ve bunun hakkında hiçbir şeyi değiştirmez.
+
+## Sonraki adımlar
+
+- **[Python SDK](/tr/agenteye/python-sdk)**: bu becerinin otomatikleştirdiği şeyin arkasında — her olay türü ve alan — tam olay başvurusu.
+- **[Sessions](/tr/agenteye/sessions)**: enstrümantasyonunuz olaylar iniş sayfasında ne üretir.
+- **[Evaluator Agent Skill](/tr/agenteye/evaluator-skill)**: çalışmalar iniş sayfasında bir kez sonraki adım — onları puanlamak.
+- **[CLI Agent Skill](/tr/agenteye/cli-skill)**: telemetrinizi geri okumak.

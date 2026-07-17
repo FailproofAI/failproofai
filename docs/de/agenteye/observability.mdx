@@ -1,23 +1,23 @@
 ---
 title: "Beobachten"
-description: "Dokumentation zur FailproofAI Observability – Bereich Beobachten."
+description: "Die Beobachtungsoberflächen zeigen, was Ihre Agents gerade tun, und ermöglichen den genauen Einblick in einzelne Ausführungen."
 ---
 
 
-Die Observe-Oberflächen zeigen Ihnen, was Ihre Agents gerade tun, und ermöglichen es Ihnen, jeden einzelnen Run im Detail zu untersuchen. Alles hier ist live, auf Ihre Organisation beschränkt und nach Zeitraum, Umgebung, Agent und Session filterbar – so gelangen Sie in Sekunden von „irgendetwas stimmt nicht" zum genauen Run.
+Die Beobachtungsoberflächen zeigen, was Ihre Agents gerade tun, und ermöglichen den genauen Einblick in einzelne Ausführungen. Alle Daten sind live, auf Ihre Organisation beschränkt und nach Zeitraum, Umgebung, Agent und Session filterbar – so gelangen Sie in Sekunden von „irgendetwas stimmt nicht" zum exakten Ausführungsprotokoll.
 
-![Der Live-Event-Stream, farblich nach Typ kodiert und nach Umgebung, Agent und Session filterbar](/agenteye/images/events-stream.png)
+![Der Live-Event-Stream, farbcodiert nach Typ und filterbar nach Umgebung, Agent und Session](/agenteye/images/events-stream.png)
 
-Vier Oberflächen, jede mit einer eigenen Seite:
+Vier Oberflächen, jeweils mit eigener Seite:
 
-- **[Event Stream](/de/agenteye/event-stream)**: Die live, schrittweise Verlaufsspur jedes Runs über alle Agents hinweg, neueste zuerst. Ihr Organisations-Einstiegspunkt und erste Anlaufstelle für die Fehlersuche.
-- **[Sessions und Ausführungsgraph](/de/agenteye/sessions)**: Diese Events zu einer Zeile pro Run zusammengefasst, plus eine Git-ähnliche Darstellung, wie sich jeder Run entfaltet hat.
-- **[Performance-Metriken](/de/agenteye/telemetry)**: Latenz-Heatmaps sowie p50/p95/p99-Kennwerte für Ihre Modelle, Tools und Hooks – damit sticht ein Ausreißer sofort aus dem Median hervor.
-- **[Fehlerverfolgung](/de/agenteye/error-tracking)**: Eine zentrale Triage-Oberfläche für alles, was schiefgelaufen ist – ein Klick von einem ausgelösten Alert zum betroffenen Run.
+- **[Event-Stream](/de/agenteye/event-stream)**: der live, schrittweise Verlauf jeder Ausführung über alle Agents hinweg, neueste zuerst. Ihre Organisations-Startseite und erste Anlaufstelle für die Fehleranalyse.
+- **[Sessions und Ausführungsgraph](/de/agenteye/sessions)**: diese Events zusammengefasst als eine Zeile pro Ausführung, plus eine git-ähnliche Darstellung des Verlaufs jeder Ausführung.
+- **[Performance-Metriken](/de/agenteye/telemetry)**: Latenz-Heatmaps sowie p50/p95/p99-Kennzahlen für Ihre Modelle, Tools und Hooks, sodass Ausreißer gegenüber dem Median sofort auffallen.
+- **[Fehlerverfolgung](/de/agenteye/error-tracking)**: eine einzige Triage-Oberfläche für alles, was schiefgelaufen ist – ein Klick von einem ausgelösten Alert zur fehlerhaften Ausführung.
 
 ## Verwandte Themen
 
-- [Evaluierungen](/de/agenteye/evaluations): Jeden Run auf Qualität bewerten.
-- [Alerts](/de/agenteye/alerts): Jeden Schwellenwert in eine Benachrichtigungsregel umwandeln.
-- [Audits](/de/agenteye/audits): FailproofAI Observability lässt sitzungsübergreifende Fehlermuster automatisch erkennen.
-- [CLI und Agents](/de/agenteye/cli-and-agents): Dieselbe Observability direkt aus Ihrem Terminal.
+- [Evaluierungen](/de/agenteye/evaluations): Bewerten Sie jede Ausführung nach Qualität.
+- [Alerts](/de/agenteye/alerts): Wandeln Sie jeden Schwellenwert in eine Benachrichtigungsregel um.
+- [Audits](/de/agenteye/audits): Lassen Sie Failproof AI Observability Fehlermuster über Sessions hinweg automatisch erkennen.
+- [CLI und Agents](/de/agenteye/cli-and-agents): dieselbe Observability direkt aus Ihrem Terminal.

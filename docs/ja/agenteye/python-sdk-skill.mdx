@@ -1,0 +1,131 @@
+---
+title: "Failproof AI Observability Python SDK エージェントスキル"
+description: "計装されていないエージェントから可視化できるイベントへ — コーディングエージェントが計装箇所を特定し、実装し、正しく動作することを確認します。"
+---
+
+コーディングエージェントに *「このエージェントに Failproof AI Observability を追加して」* と伝えるだけで、エージェントがループを読み込み、計装箇所を判断し、コードを書き、完了と宣言する前にイベントを検証します。
+
+**Python SDK スキル** (`agenteye-python-sdk`) は *エージェントスキル* です。これはコーディングエージェント（Claude Code や Codex など）がタスクに応じてオンデマンドで読み込む、指示内容を収めたフォルダです。このスキルはエージェントに [Python SDK](/ja/agenteye/python-sdk) の使い方を教えるものであり、ライブラリではなく、SDK の動作には一切影響を与えません。
+
+## 計装は書くのは簡単、気づかぬうちに間違えるのも簡単
+
+SDK はシンプルです。イベントメソッドは 13 個、すべてキーワード引数のみ。コーディングエージェントなら [Python SDK](/ja/agenteye/python-sdk) リファレンスを読めば、1 分でそれらしい計装コードを生成できます。
+
+問題は、この SDK は誤りがあってもエラーを発生させないことです。間違った計装は正しい計装と見た目がまったく同じで、誰かがダッシュボードを開いて空白を見つけるまでわかりません。実際に時間を無駄にさせるミスは、どれも「無音の失敗」です。
+
+| ミスの内容 | 見え方 |
+|---|---|
+| `agent_start` がない | すべてのイベントは記録される。セッションはゼロ。 |
+| 環境が設定されていない | すべて動作しているが、`dev` として記録されている。 |
+| `outcome="failure"` | 実行が成功に見える — カウントされるのは `failed`、`error`、`timeout`、`rejected` のみ。 |
+| フィールド名のタイポ | 受け入れられ、新しいフィールドとして保存される。 |
+| スレッドプールからイベントを送信 | 無音でドロップされる。 |
+
+これらはどれもエラーを発生させず、テストにも現れません。スキルではそれぞれが「契約」として明記され、検出するためのチェックが定義されています。
+
+## スキルが行うこと（順番に）
+
+このスキルは、丁寧なエンジニアが踏むのと同じ 3 ステップを実行します。
+
+1. **計画。** エージェントのループを読み込み、あなたにしか答えられない 2 つの質問をします。「1 回の実行とは何か（`session_id`）」と「識別可能なアクターは誰か（`agent_id`）」です。コードを書く前にこれらを合意します。後から変更すると履歴が分断され、トレンドが壊れるからです。
+2. **実装。** 呼び出しのたびに渡すのではなく、実行ごとに 1 度だけ ID をバインドし、並行処理に安全な形式を選択します。これは重要な細部です。安易なショートカットは、重複する 2 つの実行を無音で 1 つのセッションに混在させてしまいます。
+3. **検証。** エージェントを実行して生成されたイベントファイルを読み込み、`agent_start` が存在するか、環境が正しいか、1 回の実行で 1 つのセッションが生成されたかを確認します。
+
+この 3 番目のステップこそ、多くの人が省略するものです。SDK はイベントをローカルファイルに書き込むため、完全な統合をサーバー、API キー、ネットワークなしでラップトップ上で証明できます。だからこそ、スキルはこのステップを必須としています。
+
+## 他のスキルとの関係
+
+3 つのスキル、明確な役割分担：
+
+| スキル | 使うタイミング | 操作対象 |
+|---|---|---|
+| **Python SDK スキル**（このページ） | エージェントにテレメトリを *送信* させたいとき — 「オブザーバビリティを追加したい」「エージェントが表示されない」 | エージェントのリポジトリにコードを書く。何も読まない。 |
+| **[Evaluator スキル](/ja/agenteye/evaluator-skill)** | 実行を *スコアリング* したいとき — 「何を計測すべきか?」 | リポジトリにコードを書く。テレメトリを読む。 |
+| **[CLI スキル](/ja/agenteye/cli-skill)** | 何が起きたかを *読み取りたい*、またはデプロイを操作したいとき | あなたの代わりに CLI を操作（変更を含む） |
+
+この順番で連携します。このスキルがイベントを流し、エバリュエーターがスコアリングし、CLI が読み取ります。エージェントがセッションを送信するまで、評価するものも読み取るものもありません。ゼロから始めるなら、ここから始めてください。
+
+## 前提条件
+
+1. **Python 3.10 以上** と計装対象のエージェントコードベース。
+2. **SDK。** 公開インデックスではなくプライベートホイールとして顧客に配布されます。取得方法とインストール方法はオンボーディングで説明されます。スキルはインストールパスを把握しており、見つからない場合は推測せずに確認します。
+3. **それ以外は不要。** ダッシュボードへのログイン、API キー、ネットワーク接続は必要ありません。スキルは SDK が書き出すイベントファイルに対して検証するため、オフラインで完了・証明できます。
+
+## 入手方法
+
+スキルは公開 [`FailproofAI/skills`](https://github.com/FailproofAI/skills) コレクションにあります。
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+現在のプロジェクトだけでなくすべてのプロジェクトにインストールする場合は `-g` を追加し、シンボリックリンクが使えない環境では `--copy` を指定してください。Codex の場合は `-a codex` を渡します。
+
+## 手動でインストールする場合
+
+エージェントスキルは `SKILL.md` とその参照ファイルを含むフォルダです。インストーラーを使いたくない場合：
+
+- **Claude Code**: `agenteye-python-sdk/` フォルダを `~/.claude/skills/`（すべてのプロジェクト）または `<リポジトリ>/.claude/skills/`（そのリポジトリのみ）にコピーします。Claude Code は自動的に検出します。`/skills` リストで確認するか、対応するタスクを尋ねるだけで使えます。
+- **Codex**: Codex も同じ `SKILL.md` を読み込みます。同梱の `agents/openai.yaml` に `allow_implicit_invocation: true` が設定されているため、タスクが一致すれば自動的に選択されます。明示的に呼び出す場合は `$agenteye-python-sdk` を使用します。
+
+計装したいコードが含まれる **リポジトリ内でエージェントを実行してください** — スキルは提案する前にエージェントのループを読み込みます。
+
+## セッションの流れ
+
+```text
+you   ▸ Add Failproof AI Observability to this agent.
+
+agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
+        wrapper in llm.py. Two questions before I write anything.
+
+        What counts as one run? You handle requests concurrently, so I'd
+        use the request id you already have in ctx.request_id — then a
+        session here and a request in your logs are the same string.
+
+        And who are the actors? I see a planner path and a researcher
+        path. Label them separately, or is that one agent to you?
+
+you   ▸ Request id is right. They're one agent, call it "assistant".
+
+agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
+        agent_end bracket handle_request, including the error path. Used
+        a context-local for identity — your dispatcher runs tools in a
+        thread pool, and the simpler approach would have mixed concurrent
+        runs into one session without complaining.
+
+        Verified against a real run: 11 events across 4 files —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, one session
+        per request, durations paired.
+
+        One thing I did NOT do: your worker pool in batch.py submits
+        straight to the executor, so events from there would be dropped.
+        Want me to fix those too?
+```
+
+注目すべきパターン: 提案する前にコードを読み込み、あなたにしか答えられない質問だけをし、すでに持っている ID を再利用し、スレッドプールを確認したうえで並行処理に安全な形式を選択し、成功を宣言するのではなく **実際のイベントを読み取って検証** し、そして無音で失敗することがわかっている箇所をフラグとして伝えています。
+
+## 使い方の例
+
+- *「エージェントがダッシュボードに表示されない」* → 順番に確認します: イベントが書き込まれているか、`agent_start` はあるか、環境は正しいか、コレクターは同じ場所を読んでいるか。
+- *「すべて dev として記録されている」* → 環境が設定されていないか、後続の呼び出しでリセットされています。
+- *「トークンのトラッキングを追加して」* → LLM ラッパーを見つけて、モデル、停止理由、使用量を記録します。
+- *「サブエージェントも計装して」* → 1 つのセッション、異なるエージェントラベル、親の下にネスト。
+- *「計装のテストを書いて」* → SDK を一時ディレクトリに向け、書き込まれたイベントをアサートします。
+
+## 注意事項
+
+**検証ステップを省略しないでください。** このスキルを価値あるものにしている最後のステップは、エージェントを実行してイベントを読み取ることです。計装を書いて止まるエージェントは簡単な半分しかやっていません。無音で失敗するのはもう半分です。
+
+**コードの前に名前を合意してください。** `session_id` と `agent_id` はすべての画面がグループ化する軸です。後から名前を変更すると履歴が分断されます。古い実行には古いラベルが残り、トレンドが壊れます。スキルが確認しますので、答えは少し考える価値があります。
+
+**エージェントが公開インデックスから SDK をインストールしようとした場合、スキルが読み込まれていません。** SDK はプライベートで配布されています。このような提案は、コーディングエージェントがスキルに従わず推測していることを示す確実なサインです。そこで止めて、スキルがインストールされているか確認してください。
+
+それ以外の影響範囲は小さいです。作業ディレクトリにコードを書き込み、指定した場所にイベントファイルを書き込みます。デプロイから何かを読み取ることも、変更することもありません。
+
+## 次のステップ
+
+- **[Python SDK](/ja/agenteye/python-sdk)**: このスキルが自動化する処理の背後にある完全なイベントリファレンス — すべてのイベントタイプとフィールド。
+- **[Sessions](/ja/agenteye/sessions)**: イベントが記録されると計装が生み出すもの。
+- **[Evaluator エージェントスキル](/ja/agenteye/evaluator-skill)**: 実行が記録されたら次のステップ — スコアリング。
+- **[CLI エージェントスキル](/ja/agenteye/cli-skill)**: テレメトリの読み取り。

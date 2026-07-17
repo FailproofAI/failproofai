@@ -1,63 +1,63 @@
 ---
 title: "Cảnh báo"
-description: "Tài liệu về Cảnh báo FailproofAI Observability."
+description: "Phát hiện ngay khi có vấn đề vượt quá giới hạn cho phép, trên kênh mà nhóm của bạn đã theo dõi, thay vì nghe về nó từ khách hàng."
 ---
 
 
-Nắm bắt ngay lúc thứ gì đó vượt quá giới hạn của bạn, trên kênh mà đội của bạn đã theo dõi, thay vì phải nghe tin từ khách hàng. Đặt một quy tắc một lần và FailproofAI Observability sẽ kiểm tra nó theo lịch trình, rồi thông báo cho bạn qua email, Slack, webhook, hoặc ngay trên dashboard.
+Phát hiện ngay khi có vấn đề vượt quá giới hạn cho phép, trên kênh mà nhóm của bạn đã theo dõi, thay vì nghe về nó từ khách hàng. Đặt một quy tắc một lần và Failproof AI Observability sẽ kiểm tra nó theo lịch trình, rồi gửi thông báo cho bạn qua email, Slack, webhook, hoặc ngay trên bảng điều khiển.
 
-![Trang Cảnh báo: một lưới các thẻ quy tắc cảnh báo, mỗi thẻ hiển thị kích hoạt, cửa sổ đánh giá, kênh và một huy hiệu mức độ nghiêm trọng (thông tin, cảnh báo hoặc tới hạn)](/agenteye/images/alerts.png)
-*Mọi quy tắc cảnh báo một cách nhanh chóng: những gì nó theo dõi, tần suất, nơi nó gửi thông báo và mức độ khẩn cấp.*
+![Trang Cảnh báo: một lưới các thẻ quy tắc cảnh báo, mỗi thẻ hiển thị kích hoạt, cửa sổ đánh giá, kênh và huy hiệu mức độ nghiêm trọng (thông tin, cảnh báo hoặc quan trọng)](/agenteye/images/alerts.png)
+*Mỗi quy tắc cảnh báo trong tầm nhìn: nó theo dõi cái gì, bao thường xuyên, gửi thông báo ở đâu và mức độ khẩn cấp.*
 
-## Biết về các vấn đề trước khi người dùng của bạn nhận thức được
+## Biết về các vấn đề trước khi người dùng của bạn phát hiện
 
-Dừng lại việc làm mới dashboard với hy vọng bắt được một sự suy giảm. Sử dụng cảnh báo khi có một tín hiệu mà bạn muốn nhận thức ngay cả khi không ai đang xem, và hãy để nó đến nơi bạn đã có:
+Hãy dừng việc làm mới trang bảng điều khiển với hy vọng bắt được một lỗi. Sử dụng cảnh báo bất cứ khi nào có tín hiệu mà bạn muốn biết ngay cả khi không ai đang xem, và để nó xuất hiện ở nơi bạn đã có:
 
-- **Email**, cho những người cần biết.
-- **Slack**, một tin nhắn phong phú với nút bấm để nhảy thẳng đến sự cố.
-- **Webhook**, một POST JSON cho PagerDuty, Opsgenie, hoặc endpoint riêng của bạn, với chữ ký tùy chọn để người nhận có thể tin tưởng.
-- **Trên dashboard**, tĩnh lặng theo thiết kế, dành cho khi bạn đang tinh chỉnh quy tắc và không muốn thông báo cho ai cả.
+- **Email**, cho những người nên biết.
+- **Slack**, một tin nhắn phong phú với nút có thể nhảy thẳng đến sự cố.
+- **Webhook**, một JSON POST cho PagerDuty, Opsgenie, hoặc endpoint của riêng bạn, với chữ ký tùy chọn để người nhận có thể tin tưởng.
+- **Trên bảng điều khiển**, yên tĩnh theo thiết kế, dành cho khi bạn điều chỉnh quy tắc và không muốn gửi thông báo cho ai cả.
 
-Gắn bất kỳ sự kết hợp nào vào một quy tắc duy nhất, và mức độ nghiêm trọng của nó (thông tin, cảnh báo hoặc tới hạn) đi kèm để những cảnh báo khẩn cấp trông như thế.
+Gắn bất kỳ sự kết hợp nào vào một quy tắc duy nhất, và mức độ nghiêm trọng của nó (thông tin, cảnh báo hoặc quan trọng) cũng được gửi theo để những cái khẩn cấp trông khẩn cấp.
 
 ## Xây dựng quy tắc trong một biểu mẫu, không phải JSON
 
-Bạn mô tả ý nghĩa của "bị hỏng" trong một biểu mẫu, và FailproofAI Observability sẽ viết quy tắc cơ bản cho bạn. Thông số kỹ thuật JSON chỉ là những gì biểu mẫu đó tạo ra ở phía sau, vì vậy bạn có thể đọc nó để hiểu một quy tắc nhưng bạn hiếm khi gõ nó.
+Bạn mô tả "bị hỏng" có nghĩa là gì trong một biểu mẫu, và Failproof AI Observability sẽ viết quy tắc cơ bản cho bạn. Thông số kỹ thuật JSON chỉ là thứ mà biểu mẫu tạo ra phía dưới, vì vậy bạn có thể đọc nó để hiểu quy tắc nhưng bạn hiếm khi nhập nó.
 
-![Biểu mẫu cảnh báo mới: tên và mô tả, bộ chuyển đổi được bật, và bộ chọn kích hoạt cung cấp ngưỡng số liệu, SQL tùy chỉnh, điểm đánh giá, đánh giá kết hợp và điều kiện cho mỗi sự kiện](/agenteye/images/alert-new.png)
-*Chọn một kích hoạt và biểu mẫu sẽ hoán đổi các trường phù hợp; Lưu viết quy tắc.*
+![Biểu mẫu cảnh báo mới: tên và mô tả, chuyển đổi bật, và một bộ chọn kích hoạt cung cấp ngưỡng số liệu, SQL tùy chỉnh, điểm đánh giá, đánh giá ghép và điều kiện cho mỗi sự kiện](/agenteye/images/alert-new.png)
+*Chọn một kích hoạt và biểu mẫu sẽ hiển thị các trường thích hợp; Lưu sẽ viết quy tắc.*
 
-Con đường hạnh phúc rất nhanh: đặt tên cho nó, chọn một **kích hoạt** (những gì cần theo dõi), đặt **ngưỡng và cửa sổ** (mức độ xấu, trong bao lâu), gắn ít nhất một **kênh**, rồi **Lưu** và nhấn **Test** để kích hoạt một thông báo tổng hợp và xác nhận mọi đích đến đều được kết nối. Ở phía sau, điều đó tạo ra một thông số kỹ thuật nhỏ như:
+Đường dẫn hạnh phúc là nhanh chóng: đặt tên cho nó, chọn một **kích hoạt** (cái gì cần theo dõi), đặt **ngưỡng và cửa sổ** (mức độ xấu bao lâu), gắn ít nhất một **kênh**, rồi **Lưu** và nhấn **Kiểm tra** để kích hoạt thông báo tổng hợp và xác nhận mỗi đích đến đã được kết nối. Phía dưới tạo ra một thông số kỹ thuật nhỏ như:
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-Bạn không bị giới hạn ở một loại tín hiệu. Chọn kích hoạt phù hợp với cách bạn suy nghĩ về lỗi:
+Bạn không bị giới hạn ở một loại tín hiệu. Chọn kích hoạt phù hợp với cách bạn nghĩ về lỗi:
 
 | Kích hoạt | Kích hoạt khi |
 |---|---|
-| **Ngưỡng số liệu** | một số liệu được đặt trước (tỷ lệ lỗi, độ trễ p95 hoặc p99, số lượng sự kiện hoặc lỗi, chi phí token) vượt quá giới hạn của bạn trong một cửa sổ |
-| **SQL tùy chỉnh** | truy vấn chỉ đọc của bạn trả về một hàng, hoặc một giá trị nó tính toán vượt quá ngưỡng |
-| **Điểm đánh giá** | trung bình của một điểm đánh giá (ví dụ: ảo tưởng) vượt quá ngưỡng |
-| **Đánh giá kết hợp** | một số kiểm tra điểm kết hợp với bất kỳ, tất cả hoặc logic ít nhất N, để bắt được sự suy giảm chỉ hiển thị trên các điểm |
-| **Cho mỗi sự kiện** | một sự kiện phù hợp duy nhất đến: một agent cụ thể, một loại lỗi cụ thể hoặc chuỗi con tin nhắn |
+| **Ngưỡng số liệu** | một số liệu được đặt trước (tỷ lệ lỗi, độ trễ p95 hoặc p99, số sự kiện hoặc lỗi, chi tiêu mã thông báo) vượt quá giới hạn của bạn trong một cửa sổ |
+| **SQL tùy chỉnh** | truy vấn chỉ đọc của bạn trả về một hàng, hoặc một giá trị nó tính toán vượt quá một ngưỡng |
+| **Điểm đánh giá** | trung bình điểm đánh giá của một đánh giá (ví dụ, ảo tưởng) vượt quá một ngưỡng |
+| **Đánh giá ghép** | nhiều kiểm tra điểm kết hợp với bất kỳ, tất cả hoặc ít nhất N logic, để bắt được một lỗi chỉ xuất hiện trên các điểm |
+| **Mỗi sự kiện** | một sự kiện phù hợp duy nhất xuất hiện: một agent cụ thể, một loại lỗi cụ thể, hoặc một chuỗi con tin nhắn |
 
-Đã nhìn thấy một lỗi trên [trang Lỗi](/vi/agenteye/error-tracking)? Mỗi hàng ở đó có một nút **+ cảnh báo** mở cùng một biểu mẫu này được điền sẵn để bắt lỗi đó lần nữa, vì vậy sự cố bạn vừa phân loại trở thành sự cố sẽ thông báo cho bạn lần tới.
+Đã nhìn thấy một lỗi trên [trang Lỗi](/vi/agenteye/error-tracking)? Mỗi hàng ở đó có nút **+ cảnh báo** mở cùng biểu mẫu này được điền trước để bắt lỗi chính xác đó lần nữa, vì vậy sự cố bạn vừa phân loại sẽ là sự cố gửi thông báo cho bạn lần tới.
 
-**Nơi tìm:** Cảnh báo nằm ở `/<org-slug>/alerts`. Tạo, chỉnh sửa, xóa và kiểm tra quy tắc cần **`alerts:write`**; `alerts:read` đủ để xem. Bộ chọn người nhận liệt kê các thành viên tổ chức của bạn theo tên, vì vậy bạn có thể thông báo cho một người mà không cần rời khỏi biểu mẫu.
+**Nơi tìm thấy nó:** Cảnh báo nằm tại `/<org-slug>/alerts`. Tạo, chỉnh sửa, xóa và kiểm tra quy tắc cần **`alerts:write`**; `alerts:read` đủ để xem. Bộ chọn người nhận liệt kê các thành viên của tổ chức của bạn theo tên, vì vậy bạn có thể gửi thông báo cho một người mà không cần rời khỏi biểu mẫu.
 
-## Chỉ thông báo cho tôi khi nó là thật
+## Chỉ gửi thông báo cho tôi khi nó thực sự xảy ra
 
-Một phép đo tệ không nên làm bạn thức giấc. Bộ lọc nhiễu **M của N** kiểm soát có bao nhiêu trong số các kiểm tra gần đây phải bị lỗi trước khi cảnh báo thực sự thông báo cho bạn. Đặt nó thành **3 của 5** và quy tắc sẽ kích hoạt chỉ sau khi nó vi phạm ba trong năm kiểm tra cuối cùng, vì vậy tín hiệu không ổn định ngừng kêu gọi; để nó ở mặc định **1 của 1** để kích hoạt khi vi phạm lần đầu. Bạn cũng chọn tần suất chạy quy tắc, từ các cài đặt 1m, 5m, 15m và 1h, phù hợp với tốc độ di chuyển thực tế của tín hiệu.
+Một phép đo xấu không nên làm bạn thức dậy. Bộ lọc nhiễu **M của N** kiểm soát có bao nhiêu trong số các kiểm tra cuối cùng phải thất bại trước khi cảnh báo thực sự gửi thông báo cho bạn. Đặt nó thành **3 trên 5** và quy tắc chỉ kích hoạt sau khi nó đã vi phạm ba trong năm kiểm tra cuối cùng của nó, vì vậy một tín hiệu không ổn định sẽ ngừng báo động giả; để nó ở mặc định **1 trên 1** để kích hoạt vào lần vi phạm đầu tiên. Bạn cũng chọn bao thường xuyên quy tắc chạy, từ các cài đặt trước của 1m, 5m, 15m và 1h, phù hợp với tốc độ thực sự của tín hiệu.
 
 ## Điều gì xảy ra khi một cảnh báo kích hoạt
 
-Một vi phạm sẽ mở một **sự cố** và thông báo cho các kênh của bạn một lần. Từ đó, đội của bạn xác nhận nó, gán chủ sở hữu, thảo luận và giải quyết nó, tất cả dựa trên một bản ghi sạch sẽ, có nguồn gốc. Quy trình phân loại đó có nhà riêng: xem [Sự cố](/vi/agenteye/incidents).
+Một vi phạm mở ra một **sự cố** và gửi thông báo cho các kênh của bạn một lần. Từ đó nhóm của bạn xác nhận nó, gán chủ sở hữu, thảo luận về nó và giải quyết nó, tất cả đối với một bản ghi sạch, có thuộc tính. Quy trình phân loại đó có ngôi nhà riêng: xem [Các sự cố](/vi/agenteye/incidents).
 
 ## Liên quan
 
-- [Sự cố](/vi/agenteye/incidents): theo dõi một cảnh báo kích hoạt từ mở đến xác nhận đến giải quyết.
-- [Theo dõi lỗi](/vi/agenteye/error-tracking): nhóm các lỗi agent và nâng cấp một cảnh báo bằng một cú nhấp chuột.
-- [Dashboard](/vi/agenteye/dashboards): xem các bảng chia sẻ các ngưỡng mà bạn cảnh báo từ đó.
-- [CLI và agent](/vi/agenteye/cli-and-agents): tạo cảnh báo và xác nhận sự cố từ terminal của bạn, hoặc viết kịch bản chúng vào CI.
+- [Các sự cố](/vi/agenteye/incidents): theo dõi cảnh báo kích hoạt từ mở đến xác nhận đến giải quyết.
+- [Theo dõi lỗi](/vi/agenteye/error-tracking): nhóm các lỗi agent và nâng cấp một lỗi thành cảnh báo chỉ bằng một cú nhấp chuột.
+- [Bảng điều khiển](/vi/agenteye/dashboards): xem các bảng được chia sẻ mà các ngưỡng bạn cảnh báo đến.
+- [CLI và agents](/vi/agenteye/cli-and-agents): tạo cảnh báo và xác nhận các sự cố từ terminal của bạn, hoặc sử dụng script chúng vào CI.

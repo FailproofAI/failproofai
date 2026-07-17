@@ -1,56 +1,56 @@
 ---
 title: "Query"
-description: "Documentazione delle Query di FailproofAI Observability."
+description: "Poni qualsiasi domanda sui dati del tuo agente e ricevi una risposta in secondi."
 ---
 
 
-Fai qualsiasi domanda sui dati del tuo agent e ottieni una risposta in pochi secondi. FailproofAI Observability ti mette a disposizione una libreria di query salvate e pronte all'uso sui tuoi eventi e valutazioni, così puoi partire da un esempio funzionante invece che da un editor SQL vuoto.
+Poni qualsiasi domanda sui dati del tuo agente e ricevi una risposta in secondi. Failproof AI Observability ti fornisce una libreria di query salvate e pronte all'uso sui tuoi eventi e valutazioni, così puoi iniziare da un esempio funzionante invece da un editor SQL vuoto.
 
-![La libreria delle query salvate: una griglia di query riutilizzabili, sia preset integrati che personalizzati](/agenteye/images/queries.png)
+![La libreria di query salvate: una griglia di query riutilizzabili, sia preset integrati che personalizzati](/agenteye/images/queries.png)
 
-*La tua libreria di query salvate in `/<org-slug>/queries`: i preset integrati affiancati dalle query salvate dal tuo team.*
+*La libreria di query salvate su `/<org-slug>/queries`: preset integrati affiancati alle query salvate dal tuo team.*
 
 ## Inizia da un preset, non da una pagina vuota
 
-Non devi ricordare i nomi delle tabelle o scrivere SQL da zero. La libreria si apre con i preset integrati per le domande che i team pongono più frequentemente, proprio accanto alle query che il tuo team ha salvato e nominato. Scegline una che si avvicina a quello che cerchi e avrai già risolto la maggior parte del problema.
+Non devi ricordare i nomi delle tabelle o scrivere SQL da zero. La libreria si apre con preset integrati per le domande che i team fanno più frequentemente, insieme alle query salvate e nominate dal tuo team. Scegline una simile a quello che cerchi e avrai già la maggior parte della risposta.
 
-Ogni query salvata è a livello organizzativo e condivisa, quindi quelle utili scritte dai tuoi colleghi diventano tue. Nomina una query, assegnale una descrizione una volta sola, e chiunque nella tua organizzazione potrà trovarla, eseguirla o fissarne i risultati su un dashboard in seguito.
+Ogni query salvata è nell'ambito dell'organizzazione e condivisa, quindi le query utili scritte dai tuoi colleghi diventano anche tue. Una volta nominata una query e aggiunta una descrizione, chiunque nella tua organizzazione può trovarla, eseguirla o fissare i suoi risultati su un dashboard in seguito.
 
-La trovi in `/<org-slug>/queries`.
+Trovala su `/<org-slug>/queries`.
 
-## Modificala ed eseguila nel composer SQL
+## Adattala ed eseguila nel compositore SQL
 
-Apri qualsiasi query e apparirà nel composer SQL, dove potrai regolarla e vedere la risposta istantaneamente: niente esportazioni, niente andirivieni, niente attese.
+Apri qualsiasi query e si carica nel compositore SQL, dove puoi modificarla e vedere la risposta immediatamente: nessuna esportazione, nessun andirivieni, nessuna attesa di qualcun altro.
 
-![Il composer di query SQL che esegue una query salvata, con una barra laterale dello schema e una griglia di risultati live](/agenteye/images/query-lab.png)
+![Il compositore di query SQL che esegue una query salvata, con una barra laterale dello schema e una griglia di risultati in tempo reale](/agenteye/images/query-lab.png)
 
-*Il composer SQL: la tua query a sinistra, una barra laterale dello schema così non dovrai mai indovinare un nome di colonna, e una griglia di risultati live sottostante.*
+*Il compositore SQL: la tua query a sinistra, una barra laterale dello schema in modo che tu non debba indovinare un nome di colonna, e una griglia di risultati in tempo reale sottostante.*
 
-- **Una barra laterale dello schema** illustra le tabelle di analitici e le loro colonne, così puoi costruire una query senza cercare i nomi dei campi.
-- **Una griglia di risultati live** restituisce le righe nel momento in cui le esegui, così iteri in pochi secondi invece di indovinare e ricominciare.
-- **Progettato in sola lettura.** Le query vengono eseguite sul tuo archivio eventi e validate dal server: solo i comandi `SELECT` e `WITH` sono consentiti, con un timeout per l'istruzione e un limite di righe. Una query esplorativa non potrà mai modificare i tuoi dati, e una query anomala sarà fermata automaticamente.
+- **Una barra laterale dello schema** espone le tabelle di analisi e le loro colonne, così puoi strutturare una query senza cercare i nomi dei campi.
+- **Una griglia di risultati in tempo reale** restituisce le righe non appena le esegui, così iteri in secondi anziché indovinare e reindivinare.
+- **Progettata come sola lettura.** Le query vengono eseguite sul tuo archivio eventi e validate dal server: sono consentiti solo gli statement `SELECT` e `WITH`, con un timeout e un limite di righe. Una query esplorativa non può mai modificare i tuoi dati, e una che va fuori controllo viene fermata per te.
 
-Soddisfatto del risultato? Salvalo di nuovo nella libreria così tutto il team ne beneficia, oppure fissa il suo output su un dashboard come tile lineare, a barre, ad area o a torta.
+Soddisfatto del risultato? Salvalo di nuovo nella libreria in modo che il team intero lo erediti, oppure fissa il suo output su un dashboard come una tile lineare, a barre, ad area o a torta.
 
 ## Eseguile dal terminale, o lascia che l'assistente le scriva
 
-Le stesse query salvate ti seguono ovunque lavori:
+Le stesse query salvate ti seguono dovunque tu lavori:
 
-- **Dal terminale.** La CLI `agenteye` elenca, esegue e salva le stesse identiche query, così puoi inserire un risultato in uno script, integrarlo in CI, o passarlo a un coding agent.
+- **Dal terminale.** La CLI `agenteye` elenca, esegue e salva le stesse identiche query, così puoi inserire un risultato in uno script, collegarlo a una CI o passarlo a un agente di codifica.
 
 ```bash
 agenteye query list                 # le stesse query salvate, dal tuo terminale
-agenteye query run errs --arg prod  # esegui una e stampa le righe (aggiungi --json per usarlo in pipe)
+agenteye query run errs --arg prod  # esegui una e stampa le righe (aggiungi --json per piparla)
 ```
 
-  Consulta [CLI e agents](/it/agenteye/cli-and-agents) per l'elenco completo dei comandi.
+  Vedi [CLI e agenti](/it/agenteye/cli-and-agents) per l'insieme completo di comandi.
 
-- **Dall'assistente AI.** Non sei sicuro di come formulare l'SQL? Chiedi all'[assistente AI](/it/agenteye/assistant) nel dashboard in inglese semplice e ti redige la query e la salva nella tua libreria.
+- **Dall'assistente AI.** Non sei sicuro di come formulare l'SQL? Chiedi all'[assistente AI](/it/agenteye/assistant) nel dashboard in inglese semplice e lui elaborerà la query e la salverà nella tua libreria per te.
 
-L'esecuzione di una query salvata è gestita dal permesso `queries:run`, mantenuto separato dai permessi per creare o eliminare query, così puoi concedere accesso in lettura senza permettere a tutti di riscrivere la libreria.
+L'esecuzione di una query salvata è controllata dal permesso `queries:run`, mantenuto separato dai permessi per creare o eliminare query, così puoi concedere l'accesso in lettura senza consentire a tutti di riscrivere la libreria.
 
 ## Correlati
 
-- [Dashboard](/it/agenteye/dashboards): fissa i risultati delle query in grafici condivisi a livello organizzativo.
-- [Assistente AI](/it/agenteye/assistant): fai domande in inglese semplice e ottieni una query.
-- [CLI e agents](/it/agenteye/cli-and-agents): esegui e salva le stesse query dal tuo terminale.
+- [Dashboard](/it/agenteye/dashboards): fissa i risultati delle query in grafici condivisi e a livello di organizzazione.
+- [Assistente AI](/it/agenteye/assistant): poni domande in inglese semplice e ottieni una query in risposta.
+- [CLI e agenti](/it/agenteye/cli-and-agents): esegui e salva le stesse query dal tuo terminale.

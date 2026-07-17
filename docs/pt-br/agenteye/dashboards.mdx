@@ -1,45 +1,46 @@
 ---
 title: "Dashboards"
-description: "Documentação de Dashboards de Observabilidade do FailproofAI."
+description: "Transforme os dados do seu agente em tempo real em uma visão compartilhada que toda a sua equipe acompanha."
 ---
 
-Transforme os dados ao vivo dos seus agentes em uma visão compartilhada que toda a sua equipe acompanha. Fixe as consultas que importam como gráficos, e todos terão acesso aos mesmos números de relance, sem precisar reexecutar uma única consulta.
 
-![Um dashboard construído a partir de consultas salvas: uma linha de eventos por hora, um gráfico de barras de erros por tipo, um gráfico de área de latência e tokens por modelo](/agenteye/images/dashboard-fleet.png)
+Transforme os dados do seu agente em tempo real em uma visão compartilhada que toda a sua equipe acompanha. Fixe as consultas que importam como gráficos, e todos visualizam os mesmos números de relance, sem precisar reexecutar uma única consulta.
+
+![Um dashboard construído a partir de consultas salvas: uma linha de eventos por hora, uma barra de erros por tipo, um gráfico de área de latência e tokens por modelo](/agenteye/images/dashboard-fleet.png)
 
 *Um painel, quatro consultas salvas: eventos por hora, erros por tipo, latência e tokens por modelo.*
 
 ## Todos veem a mesma verdade
 
-Pare de colar capturas de tela no chat e de reexecutar a mesma consulta cinco vezes por dia. Um dashboard é um painel compartilhado, em nível organizacional, que qualquer membro da sua equipe pode abrir e ver exatamente a mesma visão. Quando os dados subjacentes mudam, os gráficos mudam junto, então o painel está sempre atualizado e ninguém fica discutindo sobre números desatualizados.
+Pare de colar capturas de tela no chat e de reexecutar a mesma consulta cinco vezes por dia. Um dashboard é um painel compartilhado, visível para toda a organização, que qualquer membro da equipe pode abrir para ver exatamente a mesma visualização. Quando os dados subjacentes mudam, os gráficos acompanham, então o painel está sempre atualizado e ninguém discute sobre números desatualizados.
 
 O dashboard de frota acima é um bom ponto de partida para operações do dia a dia:
 
-- uma linha de **eventos por hora**, para acompanhar o throughput e detectar quedas repentinas
-- um gráfico de barras de **erros por tipo**, para que as maiores categorias de falhas fiquem evidentes
+- uma linha de **eventos por hora**, para monitorar o throughput e detectar quedas repentinas
+- uma barra de **erros por tipo**, para que as maiores categorias de falha fiquem evidentes
 - um gráfico de área de **latência**, para que lentidões apareçam antes que os usuários reclamem
-- um detalhamento de **tokens por modelo**, para manter os custos sempre à vista
+- um detalhamento de **tokens por modelo**, para manter os custos sempre visíveis
 
 Você encontrará seus painéis em `/<org-slug>/dashboards`.
 
 ## Fixe as consultas que você já salvou
 
-Cada tile começa como uma consulta salva. Crie e salve a consulta que você precisa na biblioteca de [Consultas](/pt-br/agenteye/queries) (presets integrados mais os seus próprios, sobre seus eventos e avaliações) e fixe-a em um dashboard como o gráfico que melhor representa os dados: uma **linha** para tendências ao longo do tempo, uma **barra** para comparar categorias, uma **área** para volume, ou um **pizza** para mostrar a distribuição percentual.
+Cada bloco começa como uma consulta salva. Construa e salve a consulta desejada na biblioteca de [Consultas](/pt-br/agenteye/queries) (predefinições integradas mais as suas próprias, sobre seus eventos e avaliações) e, em seguida, fixe-a em um dashboard como o gráfico que melhor representa os dados: uma **linha** para tendências ao longo do tempo, uma **barra** para comparar categorias, uma **área** para volume, ou um **pie** para distribuição percentual.
 
-Como um tile é apenas sua consulta salva renderizada como gráfico, não há nada que precise ser sincronizado manualmente. Atualize a consulta uma vez e todo dashboard que a utiliza será atualizado automaticamente.
+Como um bloco é apenas sua consulta salva renderizada como gráfico, não há nada para manter sincronizado manualmente. Atualize a consulta uma vez e todos os dashboards que a utilizam também são atualizados.
 
-## Acompanhe qualidade, não apenas volume
+## Monitore qualidade, não apenas volume
 
-Volume indica que os agentes estão ocupados. Qualidade indica que eles estão realmente fazendo o trabalho. Aponte um dashboard para suas [pontuações de avaliação](/pt-br/agenteye/evaluations) e você terá um painel que acompanha o desempenho das execuções ao longo do tempo — assim, uma regressão de qualidade aparece como uma queda no gráfico, e não como uma surpresa vinda de um cliente.
+O volume informa que os agentes estão ocupados. A qualidade informa se eles estão realmente fazendo o trabalho. Aponte um dashboard para suas [pontuações de avaliação](/pt-br/agenteye/evaluations) e você terá um painel que rastreia o desempenho das execuções ao longo do tempo, de modo que uma regressão de qualidade aparece como uma queda no gráfico em vez de uma surpresa vinda de um cliente.
 
 ![Um dashboard focado em qualidade construído a partir de consultas de avaliação salvas](/agenteye/images/dashboard-quality.png)
 
 *Um painel de qualidade mantém suas pontuações de avaliação em destaque, lado a lado com os números operacionais.*
 
-Mantenha um painel de operações e um painel de qualidade lado a lado e sua equipe terá um único lugar para responder tanto "está funcionando?" quanto "está bom?" — sem que ninguém precise reexecutar uma consulta.
+Mantenha um painel de operações e um painel de qualidade lado a lado e sua equipe terá um único lugar para responder tanto "está funcionando?" quanto "está bom?", sem que ninguém precise reexecutar uma consulta.
 
 ## Relacionados
 
-- [Consultas](/pt-br/agenteye/queries): crie e salve as consultas que se tornarão seus tiles.
-- [Avaliações](/pt-br/agenteye/evaluations): pontue suas execuções para poder monitorar a qualidade ao longo do tempo.
+- [Consultas](/pt-br/agenteye/queries): construa e salve as consultas que se tornam seus blocos.
+- [Avaliações](/pt-br/agenteye/evaluations): pontue suas execuções para poder acompanhar a qualidade ao longo do tempo.
 - [Alertas](/pt-br/agenteye/alerts): transforme um limite em qualquer uma dessas métricas em uma notificação.

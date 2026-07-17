@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "Tài liệu FailproofAI Observability CLI."
+description: "Toàn bộ triển khai Failproof AI Observability của bạn, chỉ cách một lệnh."
 ---
 
 
-Toàn bộ triển khai FailproofAI Observability của bạn, chỉ cách một lệnh. Kiểm tra môi trường production, tạo khóa API, hoặc xác nhận một sự cố mà không cần rời khỏi terminal của bạn, sau đó có thể viết kịch bản bất kỳ điều gì vào CI, hoặc để một coding agent thực hiện nó cho bạn bằng tiếng Anh thường ngôn.
+Toàn bộ triển khai Failproof AI Observability của bạn, chỉ cách một lệnh. Kiểm tra sản xuất, cấp khóa API hoặc xác nhận sự cố mà không cần rời khỏi terminal của bạn, sau đó viết kịch bản bất kỳ điều gì vào CI, hoặc để một coding agent thực hiện nó cho bạn bằng tiếng Anh thuần.
 
 ```bash
 pipx install agenteye
@@ -12,18 +12,18 @@ agenteye login --email you@example.com      # a 6-digit code lands in your inbox
 agenteye --json sessions --since 24h         # every agent run from the last day, newest first
 ```
 
-*CLI `agenteye` kết nối với bảng điều khiển của bạn. Đây là một công cụ khác với collector, công cụ này gửi các sự kiện đến máy chủ.*
+*CLI `agenteye` giao tiếp với dashboard của bạn. Đó là một công cụ khác với bộ thu thập, công cụ này gửi sự kiện đến máy chủ.*
 
 ## Toàn bộ triển khai của bạn, chỉ cách một lệnh
 
-Dừng việc chuyển tab để trả lời một câu hỏi nhanh. CLI `agenteye` đọc dữ liệu của bạn và quản lý tổ chức của bạn từ một tệp nhị phân duy nhất, vì vậy một kiểm tra mà trước đây có nghĩa là nhấp qua bảng điều khiển trở thành một dòng mà bạn có thể chạy lại, tạo bí danh hoặc dán vào một runbook. Bạn có bốn giao diện:
+Ngừng chuyển tab để trả lời một câu hỏi nhanh. CLI `agenteye` đọc dữ liệu của bạn và quản trị tổ chức từ một tệp nhị phân duy nhất, do đó một kiểm tra mà trước đây có nghĩa là nhấp chuột qua dashboard sẽ trở thành một dòng mà bạn có thể chạy lại, đặt bí danh hoặc dán vào runbook. Bạn nhận được bốn bề mặt:
 
 - **Đọc dữ liệu của bạn:** `sessions`, `events`, `evals`, và `errors`, được lọc theo thời gian, agent và môi trường.
 - **Quản lý tổ chức của bạn:** `keys`, `users`, `settings`, `alerts`, và `incidents`.
-- **Chạy phân tích:** SQL đã lưu cộng với một trình chạy `query` ad-hoc trên dữ liệu sự kiện của bạn.
-- **Hỏi trợ lý:** `agent ask` kết nối với cùng một nhà phân tích chỉ đọc mà bạn trò chuyện trong bảng điều khiển.
+- **Chạy phân tích:** SQL được lưu cùng với trình chạy `query` ad-hoc trên dữ liệu sự kiện của bạn.
+- **Hỏi trợ lý:** `agent ask` kết nối với cùng nhà phân tích chỉ đọc mà bạn trò chuyện trong dashboard.
 
-Cài đặt một lần với `pipx`, đăng nhập bằng mã 6 chữ số gửi qua email, và bạn đã sẵn sàng. Phiên kéo dài khoảng một ngày; chạy lại `agenteye login` khi nó hết hạn. Sử dụng nó để kiểm tra nhanh production, cấp phát một khóa, hoặc sàng lọc một sự cố đang kích hoạt, tất cả mà không cần mở trình duyệt:
+Cài đặt nó một lần với `pipx`, đăng nhập bằng mã 6 chữ số được gửi qua email, và bạn đã sẵn sàng. Phiên này kéo dài khoảng một ngày; chạy lại `agenteye login` khi nó hết hạn. Sử dụng nó để kiểm tra sản xuất, cấp khóa hoặc phân loại sự cố đang diễn ra, tất cả mà không cần mở trình duyệt:
 
 ```bash
 agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
@@ -31,25 +31,25 @@ agenteye incidents list --state firing       # what is on fire right now
 agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
 ```
 
-Một thói quen cần biết: các tùy chọn toàn cục như `--json` đặt trước lệnh. `agenteye --json sessions` là đúng; `agenteye sessions --json` là sai.
+Một thói quen cần biết: các tùy chọn toàn cục như `--json` đi trước lệnh. `agenteye --json sessions` là đúng; `agenteye sessions --json` là sai.
 
-## Viết kịch bản, kết nối nó vào CI
+## Viết kịch bản, tích hợp vào CI
 
-Mỗi lệnh nhận `--json`, và điều đó thay đổi mọi thứ. JSON sạch được gửi đến stdout trong khi các cảnh báo và trạng thái dành cho con người được gửi đến stderr, vì vậy việc capture `--json` piped thẳng vào `jq` mà không có dòng lạc. Đó là những gì làm cho CLI tốt ngang nhau cho bạn ở dấu nhắc và cho một coding agent phân tích đầu ra:
+Mọi lệnh đều nhận `--json`, và điều đó thay đổi mọi thứ. JSON sạch đi tới stdout trong khi trạng thái con người và cảnh báo đi tới stderr, do đó việc capture `--json` đẩy thẳng vào `jq` mà không có dòng lạc. Đó là điều làm cho CLI cũng tốt cho bạn ở dấu nhắc lệnh và cho coding agent phân tích đầu ra:
 
 ```bash
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 ```
 
-Nó được xây dựng để chạy không giám sát. Các lời nhắc xác nhận tự động bỏ qua khi không có terminal được đính kèm, vì vậy không có gì treo trong pipeline, và mỗi lệnh trả về mã thoát có ý nghĩa: `0` thành công, `4` chưa đăng nhập, `5` thiếu quyền (thông báo đặt tên cho nó, ví dụ `alerts:write`), `3` bảng điều khiển không thể truy cập. Một kịch bản có thể phân nhánh trên `4` để xác thực lại hoặc `5` để cho bạn biết chính xác những gì cần yêu cầu từ một quản trị viên, thay vì thất bại mù quáng.
+Nó được xây dựng để chạy không có giám sát. Các lời nhắc xác nhận tự động bỏ qua khi không có terminal được gắn, do đó không có gì bị treo trong pipeline, và mọi lệnh đều trả về mã thoát có ý nghĩa: `0` thành công, `4` chưa đăng nhập, `5` thiếu quyền (thông báo đặt tên nó, ví dụ `alerts:write`), `3` dashboard không thể tiếp cận. Một kịch bản có thể phân nhánh trên `4` để xác thực lại hoặc `5` để nói cho bạn chính xác những gì phải yêu cầu quản trị viên, thay vì thất bại mù mờ.
 
-## Để một coding agent điều khiển nó bằng tiếng Anh thường ngôn
+## Để coding agent điều khiển nó bằng tiếng Anh thuần
 
-Tốt hơn nữa, bạn không phải nhớ bất kỳ cờ nào trong số này. **Kỹ năng CLI** là một thư mục Agent Skill nhỏ có tên `agenteye-cli` dạy một coding agent chẳng hạn như Claude Code hoặc Codex cách điều khiển CLI từ các yêu cầu bằng tiếng Anh thường ngôn. Hỏi "có gì bị hỏng hôm nay không?" và agent chọn lệnh, chạy nó dưới tư cách bạn, và trả lời bằng văn bản.
+Tốt hơn nữa, bạn không nên phải nhớ bất kỳ cờ nào trong số này. **CLI skill** là một thư mục Agent Skill nhỏ có tên `agenteye-cli` dạy coding agent chẳng hạn như Claude Code hoặc Codex cách điều khiển CLI từ các yêu cầu tiếng Anh thuần. Hỏi "có cái gì bị hỏng hôm nay không?" và agent chọn lệnh, chạy nó dưới danh tính của bạn, và trả lời bằng văn bản.
 
-Đối với Claude Code, thả thư mục `agenteye-cli` vào `~/.claude/skills/` và nó được tự động phát hiện. FailproofAI Observability cung cấp thư mục; không có gì thêm để cài đặt, vì nó chỉ điều khiển CLI bạn đã cài đặt. Đăng nhập bạn trước tiên: kỹ năng không thể hoàn thành việc đăng nhập mã gửi qua email cho bạn.
+Đối với Claude Code, hãy thả thư mục `agenteye-cli` vào `~/.claude/skills/` và nó sẽ được tự động phát hiện. Failproof AI Observability cung cấp thư mục; không có gì thêm để cài đặt, vì nó chỉ điều khiển CLI mà bạn đã cài đặt. Đăng nhập chính bạn trước: skill không thể hoàn thành đăng nhập bằng mã được gửi qua email cho bạn.
 
-Vì agent chạy CLI dưới tư cách bạn, nó có thể làm mọi thứ mà đăng nhập của bạn cho phép, cả đọc và ghi: tạo khóa, thay đổi cài đặt, giải quyết sự cố. Lời nhắc "bạn có chắc chắn không?" của CLI không kích hoạt cho một agent, vì vậy kỹ năng được viết để nêu lệnh chính xác và chờ OK của bạn trước bất kỳ thay đổi nào. Bạn là bước xác nhận.
+Vì agent chạy CLI dưới danh tính của bạn, nó có thể làm mọi thứ mà đăng nhập của bạn cho phép, cả đọc và ghi: tạo khóa, thay đổi cài đặt, giải quyết sự cố. Lời nhắc "bạn có chắc không?" của CLI không kích hoạt cho agent, do đó skill được viết để nêu lệnh chính xác và chờ OK của bạn trước bất kỳ thay đổi nào. Bạn là bước xác nhận.
 
 ```text
 you    Why did session run-001 fail?
@@ -58,7 +58,7 @@ agent  Running: agenteye --json events --session-id run-001 --all
        The checkout-agent hit a TimeoutError on its third tool call.
 ```
 
-Các lần đọc vẫn tức thì, và mỗi lần ghi tạm dừng cho bạn:
+Các đọc cơ sở vẫn tức thì, và mọi ghi đều tạm dừng cho bạn:
 
 ```text
 you    Give CI a key that can only push events.
@@ -74,7 +74,7 @@ agent  Done. Key "ci" created with events:add only. The secret is shown once, so
 
 ## Liên quan
 
-- [CLI reference](/vi/agenteye/cli): mỗi lệnh, cờ, và hình dạng JSON.
-- [CLI recipes for agents](/vi/agenteye/cli-recipes): các mẫu `jq` sao chép-dán và xử lý mã thoát.
-- [CLI agent skill](/vi/agenteye/cli-skill): cài đặt và chạy kỹ năng `agenteye-cli`.
-- [AI assistant](/vi/agenteye/assistant): nhà phân tích trong bảng điều khiển mà `agent ask` kết nối với.
+- [CLI reference](/vi/agenteye/cli): mọi lệnh, cờ và hình dạng JSON.
+- [CLI recipes for agents](/vi/agenteye/cli-recipes): các mẫu `jq` sao chép dán và xử lý mã thoát.
+- [CLI agent skill](/vi/agenteye/cli-skill): cài đặt và chạy skill `agenteye-cli`.
+- [AI assistant](/vi/agenteye/assistant): nhà phân tích trong dashboard mà `agent ask` giao tiếp với.

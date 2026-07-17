@@ -1,173 +1,173 @@
 ---
 title: "APIキー"
-description: "FailproofAI Observability APIキードキュメント。"
+description: "APIキーは、Failproof AI ObservabilityサーバーへのアクセスをコントロールするKey管理の仕組みです。コレクターは読み取り権限や管理者権限を持つことなく、イベントを送信できます。"
 ---
 
 
-APIキーは、FailproofAI Observabilityサーバーへのアクセスを制御します。コレクターはAPIキーを使用して読み取り権限や管理権限を持たずにイベントを送信できます。各キーには1つ以上の権限が付与されており、各権限は特定のサーバールートへのアクセスを管理します。必要最小限の権限だけを付与するのが基本原則です。ほとんどのデプロイメントでは、3種類のキーを作成するだけで十分です。
+APIキーは、Failproof AI Observabilityサーバーへのアクセス制御の要です。コレクターは読み取り権限や管理者権限を持たずにイベントを送信できます。各キーには1つ以上のパーミッションが付与されており、それぞれのパーミッションが特定のサーバールートへのアクセスをゲートします。必要な権限のみを付与する最小権限の原則に基づいて設計されています。多くのデプロイメントでは、次の3種類のキーを作成するだけで十分です。
 
-## ほとんどのデプロイメントで必要な3種類のキー
+## ほとんどのデプロイメントで必要な3つのキー
 
-| キー | 権限 | 使用者 |
+| キー | パーミッション | 使用者 |
 |---|---|---|
 | コレクターキー | `events:add` | 各エージェントマシン上の `agenteye-collector`（イベント送信用） |
-| ダッシュボード読み取りキー | `events:read`, `keys:read` | データを変更せずにクエリを実行する読み取り専用のオペレーターまたはインテグレーション |
-| ブートストラップ管理者キー | すべての権限 | インスタンスを最初に起動するオペレーター（およびダッシュボード）。`ADMIN_KEY` 環境変数からシードされます。[ブートストラップ管理者キー](#bootstrap-admin-key) を参照してください。 |
+| ダッシュボード読み取りキー | `events:read`、`keys:read` | データを変更せずにクエリを実行する読み取り専用のオペレーターやインテグレーション |
+| ブートストラップ管理者キー | 全パーミッション | インスタンスを初回起動するオペレーター（およびダッシュボード）。`ADMIN_KEY` 環境変数からシードされます。[ブートストラップ管理者キー](#bootstrap-admin-key) を参照。 |
 
-まずここから始めてください。より細かいカスタムスコープのキーが必要な場合のみ、以下の権限カタログを参照してください。[推奨キーレイアウト](#recommended-key-layout) と [キーの作成](#creating-keys) も参照してください。
+まずここから始めてください。より細かいカスタムスコープのキーが必要になったときに限り、以下の完全なパーミッションカタログを参照してください。[推奨キーレイアウト](#recommended-key-layout) および [キーの作成](#creating-keys) も参照してください。
 
 ---
 
-## 権限
+## パーミッション
 
-サーバーは固定の権限カタログを強制します。各権限は特定のHTTPルートへのアクセスを管理します。**管理者キー** はすべての権限を持ち、スコープ付きキーは作成時に付与したサブセットのみを持ちます。不明な権限文字列はキー作成時に拒否されます。
+サーバーは固定されたパーミッションカタログを強制適用します。各パーミッションは特定のHTTPルートへのアクセスをゲートします。**管理者キー** はすべてのパーミッションを持ち、スコープ付きキーは作成時に付与したサブセットのみを持ちます。未知のパーミッション文字列はキー作成時に拒否されます。
 
-> **注意:** 2つの有効な権限はダッシュボード専用であり、APIキーには付与できません: `orgs:admin`（インスタンス管理、オペレーター専用）と `keys:update` です。`POST /keys` または `PATCH /keys/:id` リクエストでいずれかを付与しようとすると、HTTP 422で拒否されます。ベアラーキーがキーを作成できても編集できない理由については、以下の `keys:update` の行を参照してください。
+> **注意:** 有効なパーミッションのうち、2つは人間・ダッシュボード専用であり、APIキーには付与できません: `orgs:admin`（インスタンス管理、オペレーター専用）と `keys:update` です。`POST /keys` または `PATCH /keys/:id` のリクエストでこれらのいずれかを付与しようとすると、HTTP 422 で拒否されます。ベアラーキーがキーを作成できても編集できない理由については、以下の `keys:update` の行を参照してください。
 
-### イベントのインジェストとクエリ
+### イベントの取り込みとクエリ
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `events:add` | `POST /events` | コレクターからのイベントバッチをインジェストします。コレクターが必要とする唯一の権限です。 |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | イベントのクエリ、既知の環境の一覧表示、データ内で検出されたモデル識別子の一覧表示（モデルビューおよびモデルフィルターで使用）、ヒートマップ／パーセンタイルバンドを生成するレイテンシ集計の計算、セッションのJSONLエクスポートを行います。共有フィルターバーのファセットエンドポイント `GET /events/environments` と `GET /events/agent_ids` は **`events:read`** または **`evaluations:read`** のいずれかを持つ場合にアクセス可能です（`evaluations:read` でゲートされたセッションページが同じオーガニゼーション単位のファセットを再利用できます）。`GET /events/models` はこれに該当しません: `events:read` が必要なので、`evaluations:read` のみを持つプリンシパルは403を受け取ります。 |
+| `events:add` | `POST /events` | コレクターからイベントのバッチを取り込む。コレクターに必要な唯一のパーミッション。 |
+| `events:read` | `GET /events`、`GET /events/latency_aggregate`、`GET /events/environments`、`GET /events/models`、`GET /sessions/:session_id/export` | イベントのクエリ、既知の環境の一覧取得、データで検出されたモデル識別子の一覧取得（Modelsビューおよびモデルフィルターで使用）、ヒートマップ/パーセンタイルバンドを生成するレイテンシ集計の計算、セッションのJSONLエクスポート。共有フィルターバーファセットエンドポイント `GET /events/environments` および `GET /events/agent_ids` は `events:read` または `evaluations:read` のいずれかで到達可能なため、セッションページ（`evaluations:read` でゲート）も同じ組織ごとのファセットを再利用できます。`GET /events/models` はこれに含まれません: `events:read` が必要なため、`evaluations:read` のみを持つプリンシパルは 403 を受け取ります。 |
 
 ### セッションと評価
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | セッションの一覧表示、評価結果の読み取り、ダッシュボードで使用されるロールアップされた評価ヘルス、評価ジョブワーカーキューの状態確認を行います。 |
-| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | 完了したセッションの再評価を手動でエンキューします。 |
+| `evaluations:read` | `GET /sessions`、`GET /evaluations`、`GET /evaluations/aggregate`、`GET /evaluations/environments`、`GET /evaluation-jobs` | セッションの一覧取得、評価結果の読み取り、ダッシュボードが使用するロールアップされた評価ヘルス、評価ジョブワーカーキューの状態の確認。 |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | 完了したセッションの再評価を手動でエンキューする。 |
 
 ### ダッシュボード
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | ダッシュボードの一覧表示、個別の読み込み、タイルの読み取りを行います。 |
-| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | ダッシュボードの作成・編集、タイルの追加・編集・削除、タイルグリッドの並べ替えを行います。 |
-| `dashboards:delete` | `DELETE /dashboards/:id` | ダッシュボード全体を削除します（タイルレベルの削除は `dashboards:write` に含まれます）。 |
+| `dashboards:read` | `GET /dashboards`、`GET /dashboards/:id`、`GET /dashboards/:id/tiles` | ダッシュボードの一覧取得、個別のダッシュボードの読み込み、タイルの読み取り。 |
+| `dashboards:write` | `POST /dashboards`、`PUT /dashboards/:id`、`POST /dashboards/:id/tiles`、`PUT /dashboards/:id/tiles/:tile_id`、`DELETE /dashboards/:id/tiles/:tile_id`、`PUT /dashboards/:id/tiles/layout` | ダッシュボードの作成・編集、タイルの追加・編集・削除、タイルグリッドの並び替え。 |
+| `dashboards:delete` | `DELETE /dashboards/:id` | ダッシュボード全体の削除（タイルレベルの削除は `dashboards:write` の管轄）。 |
 
 ### 保存済みクエリ（SQLコンポーザー）
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | 保存済みクエリの一覧表示、個別の読み込み、コンポーザーが対象とする読み取り専用スキーマの確認を行います。 |
-| `queries:write` | `POST /queries`, `PUT /queries/:id` | 保存済みクエリの作成・編集を行います。SQLは `queries:run` 呼び出しと同じ読み取り専用ロールおよびSQLガードチェックを経由します。 |
-| `queries:delete` | `DELETE /queries/:id` | 保存済みクエリを削除します。 |
-| `queries:run` | `POST /queries/run` | コンポーザーが使用する読み取り専用ロールに対して保存済みまたはアドホックSQLを実行します。 |
+| `queries:read` | `GET /queries`、`GET /queries/:id`、`GET /queries/schema` | 保存済みクエリの一覧取得、個別クエリの読み込み、コンポーザーが対象とする読み取り専用スキーマの検査。 |
+| `queries:write` | `POST /queries`、`PUT /queries/:id` | 保存済みクエリの作成・編集。SQLは `queries:run` 呼び出しと同様に、同じ読み取り専用ロールおよびガード付きSQLチェックを通じてルーティングされます。 |
+| `queries:delete` | `DELETE /queries/:id` | 保存済みクエリの削除。 |
+| `queries:run` | `POST /queries/run` | コンポーザーが使用する読み取り専用ロールに対して保存済みまたはアドホックなSQLを実行する。 |
 
 ### AIアシスタント
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | AIアシスタントと対話し、自分専用の（プライベートな）会話を管理します。アシスタントドックを表示するには **ユーザー** にこの権限が必要です。アシスタント自身のキーは `dashboard-assistant` であり、別途シードされます（以下を参照）。 |
+| `agent:use` | `GET /agent/conversations`、`POST /agent/conversations`、`GET /agent/conversations/:id`、`PATCH /agent/conversations/:id`、`DELETE /agent/conversations/:id`、`PUT /agent/conversations/:id/messages` | AIアシスタントとの会話および自分専用（プライベート）の会話の管理。アシスタントドックを表示するには **ユーザー** に必要です。アシスタント自身のキーは `dashboard-assistant` であり、別途シードされます（下記参照）。 |
 
 ### APIキー
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `keys:create` | `POST /keys` | 新しいスコープ付きAPIキーを作成します。既存のキーの権限の編集は **許可しません**（それは `keys:update` です）。 |
-| `keys:read` | `GET /keys` | 既存のキーを一覧表示します。シークレットはこのエンドポイントから返されません。 |
-| `keys:update` | `PATCH /keys/:id` | 既存のキーの権限を編集します。**ダッシュボード専用** の権限であり、APIキーには割り当てられません（ベアラーキーはキーを作成できますが、編集はできません）。 |
-| `keys:disable` | `POST /keys/:id/disable` | キーを無効化します。保護されたキー（`admin`、`dashboard-assistant`）は無効化できません。それらはenv varの変更と再起動でローテーションしてください。 |
-| `keys:regenerate` | `POST /keys/:id/regenerate` | キーのシークレットをローテーションします。保護されたキーはこのルートから再生成できません。 |
+| `keys:create` | `POST /keys` | 新しいスコープ付きAPIキーの作成。既存キーのパーミッション編集は **付与しない**（それは `keys:update`）。 |
+| `keys:read` | `GET /keys` | 既存キーの一覧取得。シークレットはこのエンドポイントから返されない。 |
+| `keys:update` | `PATCH /keys/:id` | 既存キーのパーミッション編集。**人間・ダッシュボード専用** パーミッションであり、APIキーには割り当て不可（ベアラーキーはキーを作成できても編集はできない）。 |
+| `keys:disable` | `POST /keys/:id/disable` | キーの無効化。保護されたキー（`admin`、`dashboard-assistant`）は無効化できません。これらをローテーションするには環境変数の変更 + 再起動が必要です。 |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | キーのシークレットをローテーションする。保護されたキーはこのルートから再生成できません。 |
 
 ### ダッシュボードユーザー
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | 新しいダッシュボードユーザーを招待し（メール＋ワンタイムパスコード（OTP）ログインを発行）、招待フォームのシードに使用するダッシュボード設定済みのデフォルト権限セットを読み取ります。 |
-| `users:read` | `GET /users`, `GET /users/:id` | ユーザーの一覧表示および個別のユーザーレコードの読み込みを行います。 |
-| `users:update` | `PUT /users/:id` | ユーザーの権限を編集します。更新時に影響を受けるユーザーへ権限変更メールが送信され、次のリクエストから有効になります。再ログインは不要です。 |
-| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | ユーザーを無効化し（セッションを即座に取り消し）、以前に無効化されたユーザーを再有効化します。 |
+| `users:create` | `POST /users`、`GET /users/defaults` | 新しいダッシュボードユーザーを招待する（メール + ワンタイムパスコード（OTP）ログインを発行）、招待フォームの初期値として使用されるダッシュボード設定のデフォルトパーミッションセットを読み取る。 |
+| `users:read` | `GET /users`、`GET /users/:id` | ユーザーの一覧取得および単一ユーザーレコードの読み込み。 |
+| `users:update` | `PUT /users/:id` | ユーザーのパーミッション編集。更新時に対象ユーザーにパーミッション変更メールが送信され、次のリクエスト時に有効になります。再ログイン不要。 |
+| `users:delete` | `DELETE /users/:id`、`POST /users/:id/enable` | ユーザーの無効化（セッションを即時に失効させる）および無効化済みユーザーの再有効化。 |
 
-これらの権限はダッシュボードの **ユーザー** ページを支えており、各メンバーの付与されたスコープがチップとして表示されます:
+これらのパーミッションはダッシュボードの **Users** ページを支えており、各メンバーの付与されたスコープがチップとして表示されます:
 
-![ユーザーページ：各ダッシュボードユーザーのカード（メール、付与された権限、編集／無効化コントロールを表示）](/agenteye/images/users.png)
+![Usersページ: ダッシュボードユーザーごとのカード。メールアドレス、付与されたパーミッション、編集・無効化コントロールが表示される](/agenteye/images/users.png)
 
 ### 運用設定
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | ダッシュボード管理の運用設定とそのメタデータの表示、モデルごとのコンテキストウィンドウオーバーライドの一覧表示、モデルの有効なウィンドウの解決を行います。 |
-| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | 運用設定の編集、モデルごとのコンテキストウィンドウオーバーライドの追加・変更・削除を行います。変更はサーバーを再起動せずに新しいイベントに適用されます。 |
+| `settings:read` | `GET /settings`、`GET /settings/schema`、`GET /settings/model-context-windows`、`GET /settings/model-context-windows/resolve` | ダッシュボード管理の運用設定とそのメタデータの表示、モデルごとのコンテキストウィンドウオーバーライドの一覧取得、モデルの有効ウィンドウの解決。 |
+| `settings:write` | `PUT /settings/:key`、`PUT /settings/model-context-windows`、`DELETE /settings/model-context-windows` | 運用設定の編集、モデルごとのコンテキストウィンドウオーバーライドの追加・変更・削除。変更はサーバーを再起動せずに新しいイベントに反映されます。 |
 
-![設定ページ：許可されたサインインやセッション／OTPの有効期限などのダッシュボード管理の運用設定（再起動なしで編集可能）](/agenteye/images/settings.png)
+![Settingsページ: 許可されたサインインやセッション/OTPの有効期限などのダッシュボード管理の運用設定。再起動なしで編集可能](/agenteye/images/settings.png)
 
 ### アラートとインシデント
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | 設定済みのアラート定義を表示します。 |
-| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | アラート定義の作成・編集・削除・テスト発火を行います。 |
-| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | インシデントとそのトリアージ履歴を表示します。 |
-| `incidents:write` | `POST /alerts/:id/incidents` | 既存のアラートに対して手動でインシデントを起票します。 |
-| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | インシデントの確認・割り当て・解決・コメントを行います。 |
+| `alerts:read` | `GET /alerts`、`GET /alerts/:id` | 設定済みアラート定義の表示。 |
+| `alerts:write` | `POST /alerts`、`PUT /alerts/:id`、`DELETE /alerts/:id`、`POST /alerts/:id/test` | アラート定義の作成・編集・削除・テスト発火。 |
+| `incidents:read` | `GET /alerts/incidents`、`GET /alerts/incidents/:iid`、`GET /alerts/incidents/:iid/comments`、`GET /alerts/incidents/:iid/subscribers` | インシデントとそのトリアージ履歴の表示。 |
+| `incidents:write` | `POST /alerts/:id/incidents` | 既存のアラートに対して手動でインシデントを開く。 |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`、`POST /alerts/incidents/:iid/assign`、`POST /alerts/incidents/:iid/resolve`、`POST /alerts/incidents/:iid/comments`、`POST /alerts/incidents/:iid/subscribe`、`POST /alerts/incidents/:iid/unsubscribe` | インシデントの確認・アサイン・解決・コメント。 |
 
 ### 監査
 
-| 権限 | HTTPルート | 許可する操作 |
+| パーミッション | HTTPルート | 許可される操作 |
 |---|---|---|
-| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | 監査定義、実行履歴、および検出結果を表示します。 |
-| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | 監査の作成・編集・削除・実行、検出結果のトリアージ（確認・ミュート・却下・解決・再オープン・割り当て）を行います。 |
+| `audits:read` | `GET /audits`、`GET /audits/:id`、`GET /audits/:id/runs`、`GET /audits/findings`、`GET /audits/findings/:fid` | 監査定義、実行履歴、検出結果の表示。 |
+| `audits:write` | `POST /audits`、`PUT /audits/:id`、`DELETE /audits/:id`、`POST /audits/:id/run`、`POST /audits/findings/:fid/status` | 監査の作成・編集・削除・実行、検出結果のトリアージ（確認 / ミュート / 却下 / 解決 / 再オープン / アサイン）。 |
 
-> **注意:** キーに監査サーフェスを付与するには、`audits:*` を明示的に付与してください。監査機能がリリースされた際に既存の付与者がどのように移行されたかについては、[アップグレードおよび後方互換性に関する注意事項](#upgrade-and-backward-compatibility-notes) を参照してください。
+> **注意:** キーに監査サーフェスを与えるには、`audits:*` を明示的に付与してください。既存の付与者が監査機能リリース時にどのように移行されたかについては、[アップグレードおよび後方互換性に関する注意事項](#upgrade-and-backward-compatibility-notes) を参照してください。
 
-> 受信者ピッカーエンドポイント `GET /alerts/recipients`（アラートエディターが通知できるメンバーのメールアドレス一覧を返す）は、**`alerts:read`** または **`alerts:write`** のいずれかを持つ場合にアクセス可能です。これにより、アラートエディターは `users:read` を付与されなくてもピッカーを使用できます。
+> 受信者ピッカーエンドポイント `GET /alerts/recipients`（アラートエディターが通知できるメンバーのメールアドレスを一覧表示）は `alerts:read` または `alerts:write` のいずれかを持つホルダーから到達可能です。そのため、アラートエディターは `users:read` を付与されることなくピッカーに値を入力できます。
 
-> ダッシュボードの閲覧者には **`dashboards:read`**（保存済みビューの読み込み用）と **`evaluations:read`**（ヘルスメトリクスは評価データから計算されます）の両方が必要です。ダッシュボードの作成・編集には `dashboards:write`、削除には `dashboards:delete` を付与してください。
+> ダッシュボードビューアーには **`dashboards:read`**（保存済みビューの読み込み）と **`evaluations:read`**（ヘルスメトリクスは評価データから計算される）の両方が必要です。ダッシュボードの作成・編集には `dashboards:write`、削除には `dashboards:delete` を付与してください。
 
-> `/health` と `/auth/*`（OTPリクエスト、OTP検証、セッション確認、ログアウト）は設計上認証不要です。これらはログインフローとライブネスプローブです。`GET /access-granters` は有効なキーが必要ですが特定の権限は不要なので、ログインしているすべてのユーザーがアクセス変更について問い合わせる管理者を確認できます。
+> `/health` と `/auth/*`（OTPリクエスト、OTP検証、セッションチェック、ログアウト）は設計上、認証不要です。これらはログインフローとライブネスプローブです。`GET /access-granters` は有効なキーは必要ですが特定のパーミッションは不要なので、ログイン済みのユーザーであればアクセス変更について連絡すべき管理者を確認できます。
 
 ---
 
-## 権限セット
+## パーミッションセット
 
-権限セットを使用すると、毎回個別のトークンを手作業で選ぶ代わりに、名前付きロールを適用できます。新しいダッシュボードユーザーやAPIキーごとに十数個の権限を一つひとつ選ぶ代わりに、セットを選択するだけで、割り当てられた全員が一貫したレビュー可能な権限を持ちます。カスタムセットを編集すると、すでにそのセットに割り当てられているすべてのユーザーに新しい権限が再適用されるため、ロールの変更は1回の編集で済み、全メンバーを一つひとつ修正する必要がありません。
+パーミッションセットを使うと、個々のトークンをその都度手作業で選択する代わりに、名前付きロールを適用できます。新しいダッシュボードユーザーやAPIキーのたびに十数個のパーミッションを一つずつ選ぶのではなく、セットを選ぶだけで、そのセットに割り当てられた全員が一貫した、見直し可能な付与を受けます。カスタムセットを編集すると、すでにそのセットに割り当てられているすべてのユーザーに新しい付与が再適用されます。ロール変更が全メンバーの一括更新ではなく1回の編集で完結します。
 
-すべてのオーガニゼーションには、3つの組み込みセットがシードされています:
+すべての組織には3つの組み込みセットがシードされています:
 
-| セット | 権限 | 対象 |
+| セット | パーミッション | 対象 |
 |---|---|---|
-| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | すべての運用サーフェスへの閲覧専用アクセス |
-| `standard` | `read-only` のすべての権限に加えて `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | 読み取り専用に加えて日常的なオンコール操作: クエリの実行、セッションの再評価、インシデントの確認、AIアシスタントの使用 |
-| `admin` | 割り当て可能なすべての権限 | オーガニゼーションの完全な管理 |
+| `read-only` | `events:read`、`keys:read`、`users:read`、`evaluations:read`、`dashboards:read`、`queries:read`、`settings:read`、`alerts:read`、`audits:read`、`incidents:read` | すべての運用サーフェスへの閲覧専用アクセス。 |
+| `standard` | `read-only` のすべて、加えて `evaluations:trigger`、`queries:run`、`incidents:ack`、`agent:use` | 読み取り専用に加え、日常的なオンコール操作: クエリの実行、セッションの再評価、インシデントの確認、AIアシスタントの使用。 |
+| `admin` | 割り当て可能なすべてのパーミッション | 組織のフルコントロール。 |
 
-3つの組み込みセットは **変更不可** です。その名前は常に同じ意味を持つため、`read-only`、`standard`、`admin` はポリシーやオンボーディングで安全に参照できます。オペレーターは、オーガニゼーション固有のロールをモデル化するための追加の **カスタムセット** を作成できます（例: 「ダッシュボード作成者」ロールや「コレクター専用」ロール）。
+3つの組み込みセットは **変更不可** です。`read-only`、`standard`、`admin` は常に同じ意味を持つため、ポリシーやオンボーディングでの参照が安全です。オペレーターは追加の **カスタムセット** を作成して、組織固有のロール（例: 「ダッシュボード作成者」ロールや「コレクター専用」ロール）をモデル化できます。
 
-セットはダッシュボードに表示され、APIでは `GET /permission-sets`（一覧、`users:read` でゲート）および `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name`（カスタムセットの作成・編集・削除、`settings:write` でゲート）で管理されます。組み込みセットの削除や編集は拒否されます。
+セットはダッシュボードに表示され、API経由では `GET /permission-sets`（一覧取得、`users:read` でゲート）および `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name`（カスタムセットの作成・編集・削除、`settings:write` でゲート）で管理されます。組み込みセットの削除または編集は拒否されます。
 
-セットメンバーシップは以下の2つの機能を支えています:
+セットのメンバーシップは、以下の2つの機能を支えています:
 
-- **`DEFAULT_USER_PERMISSIONS`**（管理者が **+ 新規ユーザー** を開いたときにあらかじめ選択される権限）はデフォルトで `standard` セットになります。
-- **`agenteye-orgctl` の `--set` フラグ**（オペレーターのメンバー管理）は、名前付きセットからメンバーを開始し、`--add` / `--remove` で細かく調整します。
+- **`DEFAULT_USER_PERMISSIONS`**（管理者が **+ new user** を開いたときに事前選択される付与）のデフォルトは `standard` セットです。
+- **`agenteye-orgctl` の `--set` フラグ**（オペレーターメンバー管理）は、名前付きセットからメンバーを開始し、その後 `--add` / `--remove` で微調整します。
 
-> **注意:** セットにキーに割り当てられない権限が含まれている場合（例: `keys:update` を含むカスタムセット）、そのセットからキーをシードすると割り当て不可能なトークンが除外されます。サーバーは通常HTTP 422でキーを拒否するためです。ダッシュボードユーザーにはこの制限は適用されません。
+> **注意:** セットにキーに割り当て不可なパーミッション（例: `keys:update` を持つカスタムセット）が含まれている場合、そのセットからキーをシードすると、割り当て不可なトークンは除外されます。そのままでは HTTP 422 でキーが拒否されるためです。ダッシュボードユーザーにはこの制限は適用されません。
 
 ---
 
 ## ブートストラップ管理者キー
 
-管理者キーは、オペレーターがゼロからアクセスを構築できる唯一のルート資格情報です。これを使用して、他のすべてのスコープ付きキーを作成し、最初のダッシュボードユーザーを招待し、他のキーが存在しない状態でインスタンスを設定できます。これはキーAPIを通じて作成しない唯一のキーです。サーバーが初回起動時にアクセス可能になるよう、環境からプロビジョニングされます。
+管理者キーは、オペレーターがアクセスをゼロから構築するための唯一のルート認証情報です。これを使えば、他のすべてのスコープ付きキーを作成し、最初のダッシュボードユーザーを招待し、他のキーが存在しない状態でインスタンスを設定できます。これはキーAPIを通じて作成しない唯一のキーです。サーバーが初回起動時にアクセス可能になるよう、環境からプロビジョニングされます。
 
-サーバーの `ADMIN_KEY` 環境変数を設定してください。起動のたびにサーバーはこの値をすべての権限を持つ管理者キーとしてアップサートします。
+サーバーに `ADMIN_KEY` 環境変数を設定してください。起動のたびに、サーバーはこの値をすべてのパーミッションを持つ管理者キーとしてアップサートします。
 
-ローテーションするには: `ADMIN_KEY` を新しいシークレットに変更し、サーバーを再起動してください。
+ローテーションするには: `ADMIN_KEY` を新しいシークレットに変更してサーバーを再起動します。
 
 ---
 
-## オーガニゼーションスコーピング
+## 組織スコープ
 
-**オーガニゼーション自体は、このキーAPIではなく、オペレーターによってアウトオブバンドで作成・管理されます。** オーガニゼーションとメンバーのライフサイクル（オーガニゼーションの作成・名称変更・削除・パージ、メンバーの追加・更新・削除）は **`agenteye-orgctl`** CLIで行います。このためのHTTP APIやダッシュボードボタンはありません。**変わらない点:** **オーガニゼーション単位のAPIキーは、引き続きダッシュボード（またはこのキーAPI経由で）オーガニゼーションメンバーが作成します。**
+**組織自体は、このキーAPIではなく、オペレーターによって帯域外で作成・管理されます。** 組織とメンバーのライフサイクル（組織の作成・名前変更・削除・パージ、メンバーの追加・更新・削除）は **`agenteye-orgctl`** CLIで行います。HTTPAPIもダッシュボードのボタンも存在しません。変わらないのは: **組織ごとのAPIキーは、引き続きダッシュボード（またはこのキーAPI経由で）組織メンバーが作成できる** という点です。
 
-マルチオーガニゼーションデプロイメントでは、オーガニゼーションメンバーが作成するすべてのキー（このキーAPIまたはダッシュボードの **Keys** ページ経由）は **1つのオーガニゼーション** に属し、そのオーガニゼーションのデータのみ読み書きできます。オーガニゼーションはキー作成時にスタンプされ、すべてのリクエストで強制されます。2つのブートストラップキーだけが例外です: `admin` キー（`ADMIN_KEY` からシード）と `dashboard-assistant` キー（`AGENT_API_KEY` からシード）は **インスタンススコープ**（オーガニゼーションを持たない）です。ダッシュボードは `admin` キーで認証し、サインイン済みメンバーの代わりにオーガニゼーション単位のリクエストをプロキシします。シングルテナントデプロイメントではこれを意識する必要はありません。すべてのキーは組み込みの `default` オーガニゼーションに属します。
+マルチ組織デプロイメントでは、組織メンバーが作成するすべてのキー（このキーAPIまたはダッシュボードの **Keys** ページ経由）は **1つの組織** に属し、その組織のデータのみを読み書きできます。組織はキー作成時にスタンプされ、すべてのリクエストで強制適用されます。2つのブートストラップキーのみが例外です: `admin` キー（`ADMIN_KEY` からシード）と `dashboard-assistant` キー（`AGENT_API_KEY` からシード）は **インスタンススコープ**（組織を持たない）です。ダッシュボードは `admin` キーで認証し、サインイン済みメンバーに代わって組織ごとのリクエストをプロキシします。シングルテナントデプロイメントではこれを意識する必要はありません。すべてのキーは組み込みの `default` 組織に属します。
 
 ---
 
 ## キーの作成
 
-管理者キー（または `keys:create` 権限を持つキー）を使用して、追加のスコープ付きキーを作成します。
+管理者キー（または `keys:create` パーミッションを持つキー）を使用して、追加のスコープ付きキーを作成します。
 
-### コレクターキー（インジェストのみ）
+### コレクターキー（取り込み専用）
 
 ```bash
 curl -s -X POST http://your-server/keys \
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-HTTP API経由でキーを作成する場合、`key` の値は自分で指定します。強力なシークレットを選択し、安全に保管してください。（ダッシュボードは逆の動作をします: 強力なシークレットが自動生成され、作成時に一度だけ表示されます。[ダッシュボードでのキー管理](#key-management-in-the-dashboard) を参照してください。）レスポンスでキーが作成されたことを確認できます:
+HTTPI API経由でキーを作成する場合、`key` の値は自分で指定します。強力なシークレットを選び、安全に保管してください。（ダッシュボードでは逆に、強力なシークレットを生成して作成時に1度だけ表示します。[ダッシュボードでのキー管理](#key-management-in-the-dashboard) を参照してください。）レスポンスでキーの作成が確認されます:
 
 ```json
 {
@@ -206,20 +206,20 @@ HTTP API経由でキーを作成する場合、`key` の値は自分で指定し
 
 ---
 
-## キーの一覧表示
+## キーの一覧取得
 
 ```bash
 curl -s http://your-server/keys \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-キーのシークレットは一覧レスポンスには含まれません。ID、名前、権限のみが返されます。
+キーのシークレットは一覧レスポンスに含まれません。ID、名前、パーミッションのみが返されます。
 
 ---
 
 ## キーの無効化
 
-無効化すると、キーレコードを削除せずに即座にアクセスが取り消されます。
+無効化するとキーレコードを削除せずに、即座にアクセスが失効します。
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/disable \
@@ -237,44 +237,44 @@ curl -s -X POST http://your-server/keys/<id>/regenerate \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-レスポンスには新しい平文のシークレットが含まれます。**一度だけ表示されます。**
+レスポンスには新しいプレーンテキストのシークレットが含まれます。**1度しか表示されません。**
 
 ---
 
 ## ダッシュボードでのキー管理
 
-ダッシュボードの **Keys** ページでは、上記のすべての操作をUIで行えます。一覧を表示するには `keys:read` 権限を持つキーが必要で、作成・編集・無効化・再生成の操作にはそれぞれ `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` が必要です。キーの権限の編集（`keys:update`）は作成（`keys:create`）とは別に管理されるため、既存のキーのスコープを変更する権限を持たせずにキーを作成する権限だけを付与したり、その逆も可能です。管理者キーはこれらすべてをカバーします。
+ダッシュボードの **Keys** ページには、上記のすべての操作を行うUIが用意されています。一覧を表示するには `keys:read` パーミッションを持つキーが必要で、作成・編集・無効化・再生成の各操作にはそれぞれ `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` が必要です。キーのパーミッション編集（`keys:update`）とキーの作成（`keys:create`）は分離されているため、既存キーのスコープ変更権限を与えずにキーの作成権限だけを付与したり、その逆も可能です。管理者キーはこれらすべてをカバーします。
 
-ダッシュボードからキーを作成する場合、シークレットを自分で入力する必要はありません。ダッシュボードが強力なシークレットを生成し、作成時に **一度だけ** 表示します。すぐにコピーして安全に保管してください。再生成と同様に、二度と表示されません。キーの権限を直接選択することも、権限セットからシードすることもできます（以下を参照）。
+ダッシュボードからキーを作成する場合、シークレットを指定する必要はありません。ダッシュボードが強力なシークレットを生成し、作成時に **1度だけ** 表示します。すぐにコピーして安全に保管してください。再生成と同様に、以降は表示されません。キーのパーミッションは直接選択することも、パーミッションセットからシードすることもできます（下記参照）。
 
-![APIキーページ：キーごとのカード（名前、付与された権限、作成日時を表示）と再生成・無効化アクション。`admin` などの保護されたキーはマーク付きで表示](/agenteye/images/api-keys.png)
+![APIキーページ: キーごとのカード。名前、付与されたパーミッション、作成日時が表示され、再生成と無効化のアクションがある。`admin` などの保護されたキーにはマークが付く](/agenteye/images/api-keys.png)
 
 ---
 
 ## 推奨キーレイアウト
 
-| キー | 権限 | 使用者 |
+| キー | パーミッション | 使用者 |
 |---|---|---|
-| `admin`（`ADMIN_KEY` env var経由でブートストラップ） | すべて | Ops/セットアップ、およびダッシュボード（`ADMIN_KEY` で認証し、権限チェックとともにユーザーリクエストをプロキシ） |
+| `admin`（`ADMIN_KEY` 環境変数経由でブートストラップ） | 全て | Ops/セットアップ、およびダッシュボード（`ADMIN_KEY` で認証し、パーミッションチェックとともにユーザーリクエストをプロキシ） |
 | ホストごとのコレクターキー | `events:add` | 各エージェントマシン上のコレクター |
-| `dashboard-assistant`（`AGENT_API_KEY` env var経由でブートストラップ） | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AIアシスタント、自動シード、**保護済み**; APIから編集不可 |
-| アシスタントテレメトリキー（オプション） | `events:add` | AIアシスタントの自己計測（有効な場合） |
+| `dashboard-assistant`（`AGENT_API_KEY` 環境変数経由でブートストラップ） | `events:read`、`evaluations:read`、`dashboards:read`、`dashboards:write`、`queries:read`、`queries:write`、`queries:run` | AIアシスタント。自動的にシードされ、**保護されている**。APIを通じた編集不可。 |
+| アシスタントテレメトリーキー（オプション） | `events:add` | AIアシスタントの自己計装（有効な場合） |
 
-> **注意:** アシスタントのキーは、サーバーが `AGENT_API_KEY` env var（エージェントが `AGENTEYE_API_KEY` として提示する同じシークレット）から **自動的にシード** されます。手動でキーを作成する手順も管理者キーも不要です。権限はソースコードに固定されているため、設定ミスによるスコープの拡大はありません: イベント／評価／ダッシュボードの読み取り、「AIにクエリを書いてもらう」フロー用のダッシュボード書き込みおよびクエリ読み取り／書き込み／実行。すべてのSQLはユーザーが書いたクエリと同じ読み取り専用ロールとSQLガードパスを通るため、これは *作成サーフェス* を広げるのであってデータサーフェスを広げるわけではありません。破壊的な操作（`queries:delete`、`dashboards:delete`）は意図的にアシスタントキーから除外されています。`admin` キーと同様に **保護済み** です: キーAPIから無効化や再生成はできず、`AGENT_API_KEY` を変更して再起動することでのみローテーションできます。ダッシュボードの *ユーザー* がアシスタントを表示・使用するには、別途 `agent:use` 権限が必要です。自己計測を有効にする場合は、アシスタントに `events:add` のみを持つ別のキーを付与してください。
+> **注意:** アシスタントのキーはサーバーが `AGENT_API_KEY` 環境変数から **自動的にシード** します（エージェントが `AGENTEYE_API_KEY` として提示するのと同じシークレット）。手動のキー作成ステップも管理者キーも不要です。パーミッションはソースコードで固定されているため、設定ミスによってスコープが拡大することはありません: イベント/評価/ダッシュボードへの読み取りアクセス、加えて「AIにクエリを書かせる」オーサリングフロー用の dashboards-write および queries-read/write/run。すべてのSQLはユーザーが書いたクエリと同様に、同じ読み取り専用ロールとガード付きSQLパスを通じて実行されます。これは *オーサリングサーフェス* を広げますが、データサーフェスを広げません。破壊的な操作（`queries:delete`、`dashboards:delete`）は意図的にアシスタントキーから除外されています。`admin` キーと同様に **保護されています**: キーAPIを通じて無効化や再生成はできず、`AGENT_API_KEY` を変更して再起動することによってのみローテーションできます。ダッシュボードの *ユーザー* がアシスタントを表示・使用するには、別途 `agent:use` パーミッションが必要です。自己計装を有効にする場合は、アシスタントに `events:add` のみの別個のキーを付与してください。
 
 ---
 
 ## アップグレードおよび後方互換性に関する注意事項
 
-これらは既存のインスタンスをアップグレードする場合にのみ必要です。新規デプロイメントはスキップして構いません。
+既存インスタンスをアップグレードする場合のみ必要です。新規デプロイメントはスキップしてください。
 
-> 監査機能がリリースされた際、既存の付与者はアラートと同じロール形状に沿って拡張されました: `alerts:read` を持つすべてのユーザーと権限セットは `audits:read` を取得し、`alerts:write` を持つすべての保有者は `audits:write` を取得しました。既存のAPIキーは **拡張されていません**。キーに監査サーフェスが必要な場合は `audits:*` を明示的に付与してください。
+> 監査機能がリリースされたとき、既存の付与者はアラートと同じロール形状に沿って拡張されました: `alerts:read` を持つすべてのユーザーとパーミッションセットが `audits:read` を獲得し、`alerts:write` を持つすべてのホルダーが `audits:write` を獲得しました。既存のAPIキーは **拡張されませんでした**。監査サーフェスが必要なキーには、`audits:*` を明示的に付与してください。
 
-> レガシーの `alerts:ack` トークンの保存済み付与は `incidents:ack` として解析されるため、オンコール担当者はキーを再発行せずにアクセスを維持できます。このトークンはダッシュボードのユーザーエディターからはもう割り当てられません。マトリクスでは代わりに `incidents:ack` が提供されます。
+> レガシーの `alerts:ack` トークンの保存済み付与は `incidents:ack` として解析されるため、オンコール担当者は再キー不要でアクセスを維持できます。このトークンはダッシュボードのユーザーエディターから割り当てられなくなりました。マトリクスでは代わりに `incidents:ack` が提供されています。
 
 ---
 
 ## 次のステップ
 
 - [Python SDK](/ja/agenteye/python-sdk): エージェントコードがイベント送信時にどのように認証するか。
-- [Security](/ja/agenteye/security): サインイン、アクセス制御、オーガニゼーション単位のデータ分離の仕組み。
+- [Security](/ja/agenteye/security): サインイン、アクセス制御、組織ごとのデータ分離の仕組み。

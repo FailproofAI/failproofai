@@ -1,28 +1,28 @@
 ---
 title: "Incidents"
-description: "FailproofAI Observability Incidents documentation."
+description: "जब कोई अलर्ट फायर होता है, तो सभी को पता चल जाता है कि incident खुला है, इसका मालिक कौन है, और अब तक क्या हुआ है — एक attributed timeline पर।"
 ---
 
 
-जब कोई अलर्ट ट्रिगर होता है, तो पहला सवाल हमेशा यही होता है "कौन इस पर काम कर रहा है?" Incidents इसका जवाब देते हैं: जैसे ही कोई समस्या पकड़ी जाती है, सभी देख सकते हैं कि incident खुला है, उसका मालिक कौन है, और अब तक क्या हुआ है। आपके पास एक स्पष्ट, attribute किया गया record होता है जिसे आप सीधे post-mortem में दे सकते हैं।
+जब कोई अलर्ट फायर होता है, तो पहला सवाल हमेशा यही होता है "इस पर कौन काम कर रहा है?" Incidents इसका जवाब देते हैं: जैसे ही कोई breach होता है, सभी को पता चल जाता है कि incident खुला है, इसका मालिक कौन है, और अभी तक बिल्कुल क्या हुआ है, साथ ही एक साफ़, attributed record जो आप सीधे post-mortem को दे सकते हैं।
 
-![The Incidents inbox: alert-linked और manually opened incident cards, state के आधार पर grouped, प्रत्येक के साथ severity badge और assignee](/agenteye/images/incidents.png)
-*Inbox open incidents को state के आधार पर group करता है और severity और assignee के आधार पर filter करता है, ताकि आप देख सकें कि अभी किसे human की ज़रूरत है।*
+![Incidents inbox: alert-linked और manually opened incident cards, state के अनुसार grouped, प्रत्येक के साथ severity badge और assignee](/agenteye/images/incidents.png)
+*Inbox open incidents को state के अनुसार group करता है और severity तथा assignee के अनुसार filter करता है, ताकि आप देख सकें कि किन्हें अभी मानवीय हस्तक्षेप की आवश्यकता है।*
 
-## एक नज़र में जानें कि किसके पास है
+## एक नजर में जान लें कि किसके पास है
 
-अब chat thread में "क्या कोई इस पर देख रहा है?" पूछने की ज़रूरत नहीं। एक breach automatically एक incident खोलता है और इसे shared inbox में डालता है, जो state के आधार पर grouped होता है। इसे acknowledge करें और आपका नाम उस पर होगा, ताकि बाकी टीम को पता चल जाए कि यह handle हो गया है। Acknowledgement shared होता है: कई operators एक ही incident को ack कर सकते हैं और हर एक को अलग से record किया जाता है, ताकि एक पूरा war room नामों के साथ दिख सके, एक-दूसरे के ऊपर न चढ़ें। Triage के लिए एक owner assign करें, और inbox को severity या assignee के आधार पर filter करें ताकि सिर्फ आपका काम दिखे।
+अब "क्या कोई इस पर नज़र रख रहा है?" चैट thread में नहीं पूछना पड़ेगा। एक breach automatically एक incident खोलता है और इसे एक shared inbox में डालता है, state के अनुसार grouped। इसे acknowledge करें और आपका नाम इस पर होगा, ताकि बाकी team को पता चल जाए कि इसे संभाल लिया गया है। Acknowledgement shared है: कई operators एक ही incident को ack कर सकते हैं और प्रत्येक को अलग-अलग record किया जाता है, इसलिए एक पूरे war room में सभी के नाम दिखते हैं। Triage के लिए एक owner assign करें, और inbox को severity या assignee के अनुसार filter करें ताकि आप सिर्फ अपने काम को देख सकें।
 
 ## पूरी कहानी, एक timeline में
 
-जब incident ख़त्म हो जाता है, तो आपके पास पहले से ही write-up होता है। किसी भी incident को खोलें और आपको breach का सबूत, इसके assignees और subscribers, coordinating के लिए एक comment thread, और एक append-only activity timeline मिलता है।
+जब incident खत्म हो जाता है, तो आपके पास पहले से ही write-up होता है। कोई भी incident खोलें और आपको breach का evidence, इसके assignees और subscribers, coordination के लिए एक comment thread, और एक append-only activity timeline मिलता है।
 
-![An incident detail view: parent alert और breach summary, assignees और subscribers, एक attributed activity timeline, और एक comment thread](/agenteye/images/incident-detail.png)
-*जो कुछ हुआ, क्रम में, हर line को जो किसी ने किया उसके द्वारा signed।*
+![एक incident detail view: parent alert और breach summary, assignees और subscribers, एक attributed activity timeline, और एक comment thread](/agenteye/images/incident-detail.png)
+*सब कुछ जो हुआ, क्रम में, प्रत्येक line उस पर sign किया गया है जिसने यह किया।*
 
-हर action (opened, acknowledged, resolved, आदि) उस timeline में लिखा जाता है और कभी edit नहीं किया जाता। हर entry attribute किया होता है: जो operator ने यह action लिया, उसके email के साथ, या **automated** के लिए कोई भी चीज़ जो FailproofAI Observability ने अपने आप की, जैसे breach पर incident खोलना। कुछ भी anonymous नहीं है और कुछ भी खो नहीं जाता, इसलिए post-mortem कमोबेश खुद ही लिख जाता है।
+प्रत्येक action (opened, acknowledged, resolved, आदि) उस timeline पर लिखा जाता है और कभी edit नहीं किया जाता। प्रत्येक entry attributed है: जिस operator ने यह किया उसे, email द्वारा, या **automated** को Failproof AI Observability के लिए जो कुछ अपने आप करता है, जैसे breach पर incident खोलना। कुछ भी anonymous नहीं है और कुछ भी खोया नहीं जाता, इसलिए post-mortem ज्यादातर खुद लिख जाता है।
 
-## एक incident कैसे आगे बढ़ता है
+## एक incident कैसे move करता है
 
 ```mermaid
 stateDiagram-v2
@@ -33,18 +33,18 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Open (firing):** breach incident को खोलता है और आपके channels को एक बार page करता है। दोहराए गए breaches उसी incident में fold हो जाते हैं और इसके evidence को refresh करते हैं, बजाय आपको बार-बार page करने के।
-- **Acknowledged:** एक operator इसे pick करता है। यह खुला रहता है, और बाद के breaches quietly evidence को update करते हैं।
-- **Resolved:** एक operator इसे बंद करता है। Automatic resolution जब condition clear हो जाता है, planned है लेकिन अभी enable नहीं है, तो एक incident तब तक खुला रहता है जब तक एक human इसे resolve न कर दे, जो सभी को यह honest रहने देता है कि वास्तव में क्या clear हो गया है। एक ही alert पर बाद में एक नया incident खुल सकता है।
+- **Open (firing):** breach incident को खोलता है और आपके channels को एक बार page करता है। Repeated breaches एक ही incident में fold हो जाते हैं और इसके evidence को refresh करते हैं बजाय आपको बार-बार page करने के।
+- **Acknowledged:** कोई operator इसे pick up करता है। यह खुला रहता है, और बाद में breaches quietly evidence को update करते हैं।
+- **Resolved:** एक operator इसे close कर देता है। Automatic resolution जब condition clear हो जाती है, यह planned है लेकिन अभी enabled नहीं है, इसलिए एक incident तब तक खुला रहता है जब तक कोई मानव इसे resolve न कर दे, जो सभी को honest रखता है कि वास्तव में क्या clear हुआ है। एक ही alert पर बाद में एक fresh incident खुल सकता है।
 
-एक alert के पास एक समय में अधिकतम एक open incident हो सकता है, इसलिए एक flapping rule आपको duplicates में नहीं दफन कर सकता। आप manually भी एक incident खोल सकते हैं: कोई alert नहीं पकड़ने के लिए एक standalone, या एक existing alert से attach किया हुआ, अगर आपके पास `incidents:write` है।
+एक alert एक बार में सबसे ज्यादा एक open incident hold कर सकता है, इसलिए एक flapping rule आपको duplicates में दबा नहीं सकता। आप एक incident को manually भी खोल सकते हैं: कुछ के लिए एक standalone जो कोई alert नहीं पकड़ा, या एक existing alert से attached, अगर आपके पास `incidents:write` है।
 
 ## इसे कहाँ खोजें
 
-Incidents `/<org-slug>/incidents` पर रहते हैं। Viewing के लिए **`incidents:read`** चाहिए; manual incident खोलने के लिए **`incidents:write`** चाहिए; acknowledging, assigning, commenting, और resolving के लिए **`incidents:ack`** चाहिए। पुरानी keys जिन्होंने retired `alerts:ack` दिया, काम करती रहती हैं, क्योंकि इसे `incidents:ack` के रूप में honor किया जाता है, तो आपके on-call rotation को फिर से issue करने की ज़रूरत नहीं है।
+Incidents `/<org-slug>/incidents` पर live हैं। Viewing को **`incidents:read`** की आवश्यकता है; एक manual incident खोलने के लिए **`incidents:write`** की आवश्यकता है; acknowledging, assigning, commenting, और resolving के लिए **`incidents:ack`** की आवश्यकता है। Older keys जिन्होंने retired `alerts:ack` को grant किया है वे काम करते रहते हैं, क्योंकि इसे `incidents:ack` के रूप में honor किया जाता है, इसलिए आपके on-call rotation को re-issue नहीं करना पड़ता।
 
 ## संबंधित
 
-- [Alerts](/hi/agenteye/alerts): वह rules जो threshold breach होने पर ये incidents खोलते हैं।
+- [Alerts](/hi/agenteye/alerts): वे rules जो ये incidents खोलते हैं जब threshold breach हो।
 - [Error tracking](/hi/agenteye/error-tracking): हर failure को एक जगह देखें और एक को alert में promote करें।
-- [Audits](/hi/agenteye/audits): वह scheduled analyst जो उन failures को ढूंढता है जिन्हें कोई rule नहीं देख रहा था।
+- [Audits](/hi/agenteye/audits): scheduled analyst जो वे failures खोजता है जिनको कोई rule देख नहीं रहा था।

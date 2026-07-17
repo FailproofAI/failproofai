@@ -1,22 +1,22 @@
 ---
 title: "Segurança"
-description: "Documentação de Segurança da Observabilidade FailproofAI."
+description: "O Failproof AI Observability foi criado para operar próximo aos seus agentes em produção, o que significa que ele vê seus prompts, entradas de ferramentas e saídas."
 ---
 
 
-A Observabilidade FailproofAI foi desenvolvida para operar próxima aos seus agentes em produção, o que significa que ela tem acesso aos seus prompts, entradas de ferramentas e saídas. Esta página explica como os dados são mantidos isolados, controlados e sob seu domínio. Se você está avaliando a Observabilidade FailproofAI para uma revisão de segurança, comece por aqui.
+O Failproof AI Observability foi criado para operar próximo aos seus agentes em produção, o que significa que ele vê seus prompts, entradas de ferramentas e saídas. Esta página explica como ele mantém esses dados isolados, controlados e em suas mãos. Se você está avaliando o Failproof AI Observability para uma revisão de segurança, comece por aqui.
 
 ---
 
 ## Seus dados permanecem no seu ambiente
 
-A Observabilidade FailproofAI é auto-hospedada. Eventos, prompts, respostas de modelos e análises são armazenados nos seus próprios bancos de dados, no seu próprio ambiente. Nada é enviado para um SaaS de terceiros para armazenamento, e seus dados permanecem na sua própria conta de nuvem.
+O Failproof AI Observability é auto-hospedado. Eventos, prompts, respostas do modelo e análises são armazenados em seus próprios bancos de dados, no seu próprio ambiente. Nada é enviado para um SaaS de terceiros para armazenamento, e seus dados permanecem na sua própria conta de nuvem.
 
 ---
 
-## Isolamento por tenant
+## Isolamento de tenants
 
-Uma instância da Observabilidade FailproofAI pode hospedar muitas organizações, e cada uma é isolada na camada de armazenamento — garantido pelo banco de dados, não apenas pela interface:
+Uma instância do Failproof AI Observability pode hospedar muitas organizações, e cada uma é isolada na camada de armazenamento — imposto pelo banco de dados, não apenas pela interface:
 
 - Os dados operacionais de uma organização (usuários, chaves, dashboards, consultas salvas) são restritos àquela org, e leituras entre orgs são bloqueadas pelo próprio banco de dados.
 - Cada evento ingerido é marcado com a org proprietária, portanto os eventos de uma organização nunca podem ser lidos por outra.
@@ -25,21 +25,21 @@ Cada rota de dashboard é escopada sob um slug de org (`/<org-slug>/…`).
 
 ---
 
-## Autenticação
+## Login
 
-A Observabilidade FailproofAI utiliza autenticação sem senha, baseada em e-mail. Não há senha para ser phishada ou vazada. O usuário solicita um código de uso único (ou um magic link de um clique), que é enviado por e-mail e expira rapidamente. O acesso é controlado por uma **lista de permissão**: apenas endereços de e-mail (ou domínios) que você autorizar podem se autenticar.
+O Failproof AI Observability utiliza login sem senha, baseado em e-mail. Não há senha para ser roubada ou vazada. O usuário solicita um código de uso único (ou um magic link de um clique), que é enviado por e-mail e expira rapidamente. O login é controlado por uma **lista de permissões**: somente endereços de e-mail (ou domínios) que você autorizar poderão se autenticar.
 
-![A tela de autenticação da Observabilidade FailproofAI, que envia um código de uso único para seu e-mail](/agenteye/images/login.png)
+![A tela de login do Failproof AI Observability, que envia um código de uso único para o seu e-mail](/agenteye/images/login.png)
 
 ---
 
 ## Acesso escopado com chaves de API
 
-Cada cliente se autentica com uma chave de API que carrega permissões granulares e de menor privilégio. Um coletor precisa apenas de `events:add`; uma chave de dashboard ou assistente pode ser somente leitura; ações destrutivas (excluir, regenerar) são concessões separadas que você escolhe incluir.
+Cada cliente se autentica com uma chave de API que carrega permissões granulares e de privilégio mínimo. Um coletor precisa apenas de `events:add`; uma chave de dashboard ou assistente pode ser somente leitura; ações destrutivas (excluir, regenerar) são concessões separadas que você escolhe incluir.
 
 ![A página de chaves de API: as concessões de permissão de cada chave, com código de cores por escopo de leitura, escrita e destrutivo](/agenteye/images/api-keys.png)
 
-Mantenha a chave de bootstrap de administrador para a configuração e emita chaves restritas para todo o resto. Consulte [Chaves de API](/pt-br/agenteye/api-keys).
+Mantenha a chave de bootstrap admin para configuração e emita chaves restritas para todo o resto. Consulte [Chaves de API](/pt-br/agenteye/api-keys).
 
 ---
 
@@ -47,22 +47,22 @@ Mantenha a chave de bootstrap de administrador para a configuração e emita cha
 
 O [assistente de IA](/pt-br/agenteye/assistant) no dashboard responde perguntas sobre seus dados, mas é restrito por design:
 
-- É **somente leitura por padrão**: seu SQL passa por um guard que permite apenas consultas `SELECT`/`WITH`, com instrução única e limite de linhas.
-- Tudo o que ele cria (uma consulta salva, um dashboard) exige **aprovação**: você revisa e aprova cada escrita antes que ela aconteça.
-- Ele **jamais pode excluir**.
+- É **somente leitura por padrão**: seu SQL passa por uma proteção que permite apenas consultas `SELECT`/`WITH`, instrução única, com limite de linhas.
+- Tudo que ele cria (uma consulta salva, um dashboard) **requer aprovação**: você revisa e aprova cada escrita antes que ela aconteça.
+- Ele **nunca pode excluir**.
 
-Assim, um colega de equipe pode perguntar "quais agentes geraram mais erros esta semana?" e agir com base na resposta, sem que o assistente possa alterar ou remover seus dados por conta própria.
+Assim, um colega de equipe pode perguntar "quais agentes tiveram mais erros esta semana?" e agir com base na resposta, sem que o assistente possa alterar ou remover seus dados por conta própria.
 
 ---
 
 ## Em trânsito
 
-Todo o tráfego utiliza HTTPS. Você encerra o TLS com seus próprios certificados, portanto o tráfego coletor-para-servidor e navegador-para-servidor é criptografado em trânsito.
+Todo o tráfego é transmitido via HTTPS. Você encerra o TLS com seus próprios certificados, portanto o tráfego do coletor para o servidor e do navegador para o servidor é criptografado em trânsito.
 
 ---
 
 ## Próximos passos
 
-- [Visão geral](/pt-br/agenteye/overview): como a Observabilidade FailproofAI se encaixa.
+- [Visão geral](/pt-br/agenteye/overview): como o Failproof AI Observability se encaixa.
 - [Chaves de API](/pt-br/agenteye/api-keys): escopo de acesso para o coletor, dashboard e assistente.
-- [Observabilidade](/pt-br/agenteye/observability): o que a Observabilidade FailproofAI captura dos seus agentes.
+- [Observabilidade](/pt-br/agenteye/observability): o que o Failproof AI Observability captura dos seus agentes.

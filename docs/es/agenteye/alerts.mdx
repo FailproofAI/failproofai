@@ -1,63 +1,63 @@
 ---
 title: "Alertas"
-description: "Documentación de alertas de observabilidad de FailproofAI."
+description: "Entérate en el momento en que algo supera tu límite, en el canal que tu equipo ya usa, en lugar de que te lo cuente un cliente."
 ---
 
 
-Entérate al instante cuando algo supere tus límites, en el canal que tu equipo ya utiliza, en lugar de que te lo cuente un cliente. Configura una regla una sola vez y FailproofAI Observability la evalúa periódicamente, notificándote por correo electrónico, Slack, webhook o directamente en el panel.
+Entérate en el momento en que algo supera tu límite, en el canal que tu equipo ya usa, en lugar de que te lo cuente un cliente. Define una regla una sola vez y la observabilidad de Failproof AI la verifica según un horario, enviándote notificaciones por email, Slack, webhook o directamente en el dashboard.
 
-![La página de Alertas: una cuadrícula de tarjetas de reglas de alerta, cada una mostrando su disparador, ventana de evaluación, canales y una insignia de severidad de información, advertencia o crítico](/agenteye/images/alerts.png)
+![La página de Alertas: una cuadrícula de tarjetas de reglas de alerta, cada una mostrando su disparador, ventana de evaluación, canales y un distintivo de severidad de información, advertencia o crítica](/agenteye/images/alerts.png)
 *Todas las reglas de alerta de un vistazo: qué monitorean, con qué frecuencia, dónde notifican y qué tan urgentes son.*
 
 ## Entérate de los problemas antes que tus usuarios
 
-Deja de actualizar un panel esperando detectar una regresión. Configura una alerta cada vez que haya una señal de la que quieras enterarte incluso cuando nadie esté mirando, y recíbela donde ya estás:
+Deja de actualizar un dashboard con la esperanza de detectar una regresión. Configura una alerta cada vez que haya una señal de la que quieras enterarte incluso cuando nadie esté mirando, y recíbela donde ya estás:
 
-- **Correo electrónico**, para quien deba saberlo.
+- **Email**, para quien deba saberlo.
 - **Slack**, un mensaje enriquecido con un botón que lleva directamente al incidente.
 - **Webhook**, un POST JSON para PagerDuty, Opsgenie o tu propio endpoint, con una firma opcional para que el receptor pueda verificar su autenticidad.
-- **En el panel**, silencioso por diseño, para cuando estés ajustando una regla y aún no quieras notificar a nadie.
+- **En el dashboard**, silencioso por diseño, para cuando estés ajustando una regla y no quieras notificar a nadie todavía.
 
-Combina cualquier combinación en una sola regla, y su severidad (información, advertencia o crítico) se incluye para que las urgentes se vean como urgentes.
+Combina cualquier cantidad de canales en una sola regla, y su severidad (info, advertencia o crítica) se transmite junto con ella para que las urgentes se vean urgentes.
 
-## Crea la regla en un formulario, no en JSON
+## Define la regla en un formulario, no en JSON
 
-Describes qué significa "roto" en un formulario y FailproofAI Observability escribe la regla subyacente por ti. La especificación JSON es solo lo que ese formulario produce internamente, así que puedes leerla para entender una regla, pero rara vez necesitas escribirla.
+Describes qué significa "roto" en un formulario y la observabilidad de Failproof AI escribe la regla subyacente por ti. La especificación JSON es simplemente lo que ese formulario produce internamente, así que puedes leerla para entender una regla, pero rara vez necesitas escribirla.
 
-![El formulario de nueva alerta: nombre y descripción, un interruptor de habilitación y un selector de disparador con opciones de umbral de métrica, SQL personalizado, puntuación de evaluación, evaluación compuesta y condiciones por evento](/agenteye/images/alert-new.png)
-*Elige un disparador y el formulario mostrará los campos correspondientes; Guardar escribe la regla.*
+![El formulario de nueva alerta: nombre y descripción, un interruptor de habilitación y un selector de disparador que ofrece umbral de métrica, SQL personalizado, puntuación de evaluación, evaluación compuesta y condiciones por evento](/agenteye/images/alert-new.png)
+*Elige un disparador y el formulario muestra los campos correspondientes; Guardar escribe la regla.*
 
-El flujo habitual es rápido: ponle nombre, elige un **disparador** (qué monitorear), define el **umbral y la ventana** (qué tan grave, durante cuánto tiempo), conecta al menos un **canal**, luego **Guarda** y pulsa **Probar** para enviar una notificación sintética y confirmar que cada destino está correctamente configurado. Internamente, esto produce una pequeña especificación como:
+El camino habitual es rápido: ponle nombre, elige un **disparador** (qué monitorear), define el **umbral y la ventana** (qué tan grave, durante cuánto tiempo), añade al menos un **canal**, luego haz **Guardar** y presiona **Probar** para enviar una notificación sintética y confirmar que todos los destinos están correctamente configurados. Internamente esto produce una pequeña especificación como:
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-No estás limitado a un solo tipo de señal. Elige el disparador que mejor se adapte a cómo piensas sobre el fallo:
+No estás limitado a un solo tipo de señal. Elige el disparador que se ajuste a cómo piensas en el fallo:
 
 | Disparador | Se activa cuando |
 |---|---|
-| **Umbral de métrica** | una métrica predefinida (tasa de error, latencia p95 o p99, conteos de eventos o errores, gasto en tokens) supera tu límite durante una ventana de tiempo |
+| **Umbral de métrica** | una métrica predefinida (tasa de error, latencia p95 o p99, recuentos de eventos o errores, gasto en tokens) supera tu límite durante una ventana |
 | **SQL personalizado** | tu propia consulta de solo lectura devuelve una fila, o un valor calculado supera un umbral |
-| **Puntuación de evaluación** | el promedio de la puntuación de un evaluador (por ejemplo, alucinaciones) supera un umbral |
-| **Evaluación compuesta** | varias comprobaciones de puntuación se combinan con lógica any, all o al-menos-N, para detectar una regresión que solo se manifiesta en múltiples puntuaciones |
+| **Puntuación de evaluación** | el promedio de la puntuación de un evaluador (por ejemplo, alucinación) supera un umbral |
+| **Evaluación compuesta** | varias comprobaciones de puntuación se combinan con lógica de cualquiera, todos o al-menos-N, para detectar una regresión que solo se manifiesta en múltiples puntuaciones |
 | **Por evento** | llega un único evento coincidente: un agente específico, un tipo de error específico o una subcadena de mensaje |
 
-¿Ya estás analizando un fallo en la [página de Errores](/es/agenteye/error-tracking)? Cada fila tiene un botón **+ alerta** que abre este mismo formulario prellenado para detectar exactamente ese fallo en el futuro, de modo que el incidente que acabas de triagear sea el que te notifique la próxima vez.
+¿Ya estás mirando un fallo en la [página de Errores](/es/agenteye/error-tracking)? Cada fila tiene un botón **+ alerta** que abre este mismo formulario prellenado para detectar exactamente ese fallo nuevamente, de modo que el incidente que acabas de clasificar sea el que te notifique la próxima vez.
 
-**Dónde encontrarlo:** Las alertas se encuentran en `/<org-slug>/alerts`. Crear, editar, eliminar y probar reglas requiere **`alerts:write`**; con `alerts:read` es suficiente para consultar. El selector de destinatarios lista a los miembros de tu organización por nombre, para que puedas notificar a una persona sin salir del formulario.
+**Dónde encontrarlas:** Las alertas se encuentran en `/<org-slug>/alerts`. Crear, editar, eliminar y probar reglas requiere **`alerts:write`**; con `alerts:read` es suficiente para consultar. El selector de destinatarios muestra a los miembros de tu organización por nombre, para que puedas notificar a una persona sin salir del formulario.
 
 ## Notifícame solo cuando sea real
 
-Una medición incorrecta no debería despertarte. El filtro de ruido **M de N** controla cuántas de las últimas evaluaciones deben fallar antes de que la alerta te notifique realmente. Configúralo en **3 de 5** y la regla se activará solo después de haber superado el umbral en tres de sus últimas cinco comprobaciones, evitando así falsas alarmas por señales inestables; déjalo en el valor predeterminado de **1 de 1** para que se active en la primera infracción. También puedes elegir con qué frecuencia se ejecuta la regla, con valores preestablecidos de 1m, 5m, 15m y 1h, ajustados a la velocidad real de la señal.
+Una sola medición errónea no debería despertarte. El filtro de ruido **M de N** controla cuántas de las últimas verificaciones deben fallar antes de que la alerta te notifique. Configúralo en **3 de 5** y la regla se activa solo después de haber superado el umbral en tres de sus últimas cinco verificaciones, evitando que una señal inestable genere falsas alarmas; déjalo en el valor predeterminado **1 de 1** para activarse en la primera infracción. También puedes elegir con qué frecuencia se ejecuta la regla, con valores predefinidos de 1m, 5m, 15m y 1h, adaptados a la velocidad real del movimiento de la señal.
 
-## Qué ocurre cuando se activa una alerta
+## Qué sucede cuando se activa una alerta
 
-Una infracción abre un **incidente** y notifica tus canales una sola vez. A partir de ahí, tu equipo lo reconoce, asigna un responsable, lo analiza y lo resuelve, todo con un registro limpio y atribuido. Ese flujo de triaje tiene su propio espacio: consulta [Incidentes](/es/agenteye/incidents).
+Una infracción abre un **incidente** y notifica a tus canales una sola vez. A partir de ahí, tu equipo lo reconoce, asigna un responsable, lo analiza y lo resuelve, todo con un registro limpio y atribuido. Ese flujo de trabajo de clasificación tiene su propio espacio: consulta [Incidentes](/es/agenteye/incidents).
 
 ## Relacionado
 
 - [Incidentes](/es/agenteye/incidents): sigue una alerta activa desde abierta hasta reconocida y resuelta.
-- [Seguimiento de errores](/es/agenteye/error-tracking): agrupa fallos de agentes y convierte uno en alerta con un clic.
-- [Paneles](/es/agenteye/dashboards): monitorea los paneles compartidos de donde provienen los umbrales que configuras como alertas.
-- [CLI y agentes](/es/agenteye/cli-and-agents): crea alertas y reconoce incidentes desde tu terminal, o inclúyelos en scripts de CI.
+- [Seguimiento de errores](/es/agenteye/error-tracking): agrupa los fallos de agentes y convierte uno en una alerta con un clic.
+- [Dashboards](/es/agenteye/dashboards): monitorea los paneles compartidos de los que provienen los umbrales que alertas.
+- [CLI y agentes](/es/agenteye/cli-and-agents): crea alertas y confirma incidentes desde tu terminal, o incorpóralos en CI mediante scripts.

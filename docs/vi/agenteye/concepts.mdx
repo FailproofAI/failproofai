@@ -1,87 +1,88 @@
 ---
-title: "Concepts"
-description: "Tài liệu về Khái niệm FailproofAI Observability."
+---
+title: "Khái niệm"
+description: "Từ vựng đằng sau Failproof AI Observability — events, sessions, evaluations, audits, findings, và incidents — được định nghĩa ở một chỗ."
 ---
 
 
-Trang này định nghĩa từ vựng mà FailproofAI Observability sử dụng. Nếu bạn gặp một thuật ngữ lạ trong các hướng dẫn khác, nó được định nghĩa ở đây. Bạn không cần phải đọc từ đầu đến cuối: chỉ cần lướt qua hoặc quay lại khi bạn gặp một từ bạn muốn hiểu rõ hơn.
+Trang này định nghĩa từ vựng mà Failproof AI Observability sử dụng. Nếu bạn gặp một thuật ngữ lạ trong hướng dẫn khác, nó được định nghĩa ở đây. Bạn không cần đọc nó từ đầu đến cuối: hãy lướt qua, hoặc quay lại khi bạn muốn làm rõ một từ nào đó.
 
 ---
 
 ## Mô hình dữ liệu
 
 **Event**
-Đơn vị dữ liệu nhỏ nhất. Một event ghi lại một bước duy nhất mà agent của bạn thực hiện: một `tool_use`, một `model_request`, một `hook_completed`, một `error`, v.v. Agent của bạn phát ra các event thông qua [Python SDK](/vi/agenteye/python-sdk); chúng xuất hiện trực tiếp trên trang **Events**.
+Đơn vị dữ liệu nhỏ nhất. Một event ghi lại một bước duy nhất mà agent của bạn thực hiện: một `tool_use`, một `model_request`, một `hook_completed`, một `error`, và cứ thế. Agent của bạn phát ra các event thông qua [Python SDK](/vi/agenteye/python-sdk); chúng xuất hiện trực tiếp trên trang **Events**.
 
 **Session**
-Một lần chạy agent, được xác định bởi một `session_id`. Một session là tất cả các event chia sẻ cùng một id đó, được tổng hợp thành một hàng trên trang **Sessions** và được vẽ dưới dạng một đồ thị thực thi trên trang chi tiết của nó. Một session thường bắt đầu với `agent_start` và kết thúc với `agent_end`.
+Một lần chạy của agent, được xác định bằng `session_id`. Một session là tất cả các event chia sẻ id đó, được tổng hợp thành một hàng trên trang **Sessions** và vẽ thành một biểu đồ thực thi trên trang chi tiết của nó. Một session thường bắt đầu với `agent_start` và kết thúc với `agent_end`.
 
 **Agent**
-Một diễn viên được đặt tên bên trong một lần chạy, được xác định bởi một `agent_id`. Một lần chạy có thể liên quan đến nhiều agent: ví dụ, một agent lập kế hoạch có thể tạo ra một agent phụ là trình tóm tắt. Các sub-agent mang theo một `parent_id`, đây là cách FailproofAI Observability vẽ chúng trên các làn riêng của mình trong đồ thị thực thi.
+Một diễn viên được đặt tên trong một lần chạy, được xác định bằng `agent_id`. Một lần chạy có thể liên quan đến nhiều agent: chẳng hạn như một planner tạo ra một sub-agent để tóm tắt. Sub-agent mang theo `parent_id`, đó là cách Failproof AI Observability vẽ chúng trên các làn riêng trong biểu đồ thực thi.
 
 **Environment**
-Một nhãn cho nơi diễn ra lần chạy: `production`, `staging`, `dev`. Bạn đặt nó một lần khi cấu hình SDK. Hầu như mọi trang bảng điều khiển đều có thể lọc theo environment.
+Một nhãn cho nơi lần chạy diễn ra: `production`, `staging`, `dev`. Bạn đặt nó một lần khi cấu hình SDK. Hầu như mọi trang bảng điều khiển đều có thể lọc theo environment.
 
 **Context-window fill**
-Phần trăm cửa sổ ngữ cảnh của mô hình mà một phản hồi tiêu thụ. FailproofAI Observability đóng dấu nó trên các event `model_response` cho các mô hình nó nhận ra, do đó sự phát triển của prompt và sự nén sắp tới đều có thể nhìn thấy ngay trong dòng event.
+Tỷ lệ phần trăm của cửa sổ context của mô hình mà một response tiêu thụ. Failproof AI Observability đặt dấu nó trên các event `model_response` cho những mô hình nó nhận biết, vì vậy sự tăng trưởng của prompt và sự nén sắp tới đều hiển thị ngay trong event stream.
 
 ---
 
 ## Chất lượng
 
 **Evaluation**
-Một điểm chất lượng cho một session hoàn tất, được tạo ra bởi một dịch vụ chấm điểm mà bạn chạy. Evaluations là tùy chọn: cho đến khi bạn kết nối một evaluator, các session được ghi nhận nhưng không được chấm điểm. Mỗi evaluation có thể mang theo nhiều điểm được đặt tên (ví dụ `helpfulness`, `factuality`, `tool_efficiency`), mỗi cái có một ghi chú lý do ngắn gọn. Xem [Evaluation suite](/vi/agenteye/evaluation-suite).
+Điểm chất lượng cho một session hoàn thành, được tạo ra bởi một dịch vụ chấm điểm mà bạn chạy. Evaluations là tùy chọn: cho đến khi bạn kết nối một evaluator, các session được ghi nhận nhưng không được chấm điểm. Mỗi evaluation có thể mang theo nhiều điểm được đặt tên (ví dụ `helpfulness`, `factuality`, `tool_efficiency`), mỗi điểm đi kèm với một ghi chú suy luận ngắn. Xem [Evaluation suite](/vi/agenteye/evaluation-suite).
 
 **Score key**
-Tên của một chiều mà một evaluator báo cáo, chẳng hạn như `helpfulness`. Cảnh báo và kiểm toán có thể theo dõi một score key cụ thể theo thời gian.
+Tên của một chiều mà evaluator báo cáo, chẳng hạn như `helpfulness`. Alerts và audits có thể giám sát một score key cụ thể theo thời gian.
 
 **Evaluator**
-Dịch vụ chấm điểm của bạn. FailproofAI Observability POSTs bản ghi lại lần chạy hoàn tất của bạn tới nó và lưu trữ các điểm nó trả về. Nó không cung cấp một evaluator mặc định; logic chấm điểm là của bạn.
+Dịch vụ chấm điểm của bạn. Failproof AI Observability POST một bản ghi của lần chạy hoàn thành tới nó và lưu trữ các điểm nó trả về. Nó không cung cấp một evaluator mặc định; logic chấm điểm là của bạn.
 
 ---
 
-## Tìm kiếm và sửa chữa các lỗi
+## Tìm kiếm và khắc phục sự cố
 
 **Hook**
-Một guardrail hoặc side-effect mà framework agent của bạn chạy xung quanh một bước: kiểm tra an toàn nội dung, biên tập PII, một bộ bảo vệ ngân sách. Hooks phát ra các event `hook_triggered` / `hook_completed` có một `outcome` (allow, deny, modify), và có trang observe riêng của chúng.
+Một guardrail hoặc side-effect mà framework agent của bạn chạy xung quanh một bước: kiểm tra an toàn nội dung, redaction PII, một guard ngân sách. Hooks phát ra các event `hook_triggered` / `hook_completed` với một `outcome` (allow, deny, modify), và có trang observe riêng của chúng.
 
 **Alert rule**
-Một quy tắc kích hoạt khi một chỉ số vượt quá ngưỡng bạn đặt: tỷ lệ lỗi, p95 latency, chi phí token, hoặc một điểm evaluator. Khi một quy tắc kích hoạt, nó mở một sự cố và thông báo cho các kênh bạn chọn (email, Slack, webhook, trong bảng điều khiển). Xem [Alerts](/vi/agenteye/alerts).
+Một quy tắc kích hoạt khi một metric vượt qua ngưỡng bạn đặt: error rate, p95 latency, token cost, hoặc một evaluator score. Khi một quy tắc kích hoạt, nó sẽ mở một incident và thông báo cho các kênh bạn chọn (email, Slack, webhook, in-dashboard). Xem [Alerts](/vi/agenteye/alerts).
 
 **Incident**
-Một vấn đề mở được tạo khi một alert rule kích hoạt. Incidents có một vòng đời (acknowledge, assign, resolve) và một dòng thời gian hoạt động ghi lại mọi hành động. Bạn cũng có thể mở một incident thủ công.
+Một vấn đề mở được tạo khi một alert rule kích hoạt. Incidents có một vòng đời (acknowledge, assign, resolve) và một timeline hoạt động ghi lại mọi hành động. Bạn cũng có thể mở một cái thủ công.
 
 **Audit**
-Một cuộc điều tra định kỳ (hàng giờ đến hàng tuần) khai thác các bản ghi của bạn *trên các* session để tìm các mẫu lỗi bạn chưa viết quy tắc cho: các cụm lỗi, điểm thấp, ngoại lệ latency, các vòng lặp gọi công cụ, và các lần chạy chưa bao giờ hoàn tất. Trong khi một cảnh báo theo dõi một chỉ số bạn đã biết, một audit cho bạn biết điều gì cần xem xét tiếp theo. Xem [Audits](/vi/agenteye/audits).
+Một cuộc điều tra định kỳ (hàng giờ đến hàng tuần) khai thác nhật ký của bạn *trên* các session để tìm các mẫu sự cố mà bạn chưa viết quy tắc cho: error clusters, low scores, latency outliers, tool-call loops, và các lần chạy không bao giờ hoàn thành. Trong khi alert giám sát một metric bạn đã biết, audit cho bạn biết cần xem xét tiếp theo. Xem [Audits](/vi/agenteye/audits).
 
 **Finding**
-Một kết quả được xếp hạng và hỗ trợ bằng bằng chứng từ một lần chạy audit. Một finding đặt tên cho một mẫu, liên kết tới các session chính xác đằng sau nó, và mang một vòng đời phân loại (acknowledge, resolve, mute, dismiss). FailproofAI Observability loại bỏ trùng lặp các finding từ lần chạy này sang lần chạy khác để một mẫu đã biết cập nhật thay vì chất đống.
+Một kết quả được xếp hạng và hỗ trợ bằng bằng chứng từ một lần chạy audit. Một finding đặt tên cho một mẫu, liên kết tới các session chính xác đằng sau nó, và mang theo một vòng đời triage (acknowledge, resolve, mute, dismiss). Failproof AI Observability khử trùng findings từ lần chạy này sang lần chạy khác vì vậy một mẫu đã biết cập nhật thay vì tích tụ.
 
 **The AI assistant**
-Trò chát trong bảng điều khiển trả lời các câu hỏi về các agent của bạn bằng tiếng Anh đơn giản, dựa trên dữ liệu của bạn. Nó chỉ đọc theo mặc định; bất cứ điều gì nó tạo (một truy vấn đã lưu, một bảng điều khiển) đều được gated phê duyệt, và nó không bao giờ có thể xóa. Xem [AI assistant](/vi/agenteye/assistant).
+Cuộc trò chuyện trong bảng điều khiển trả lời các câu hỏi về agent của bạn bằng tiếng Anh thuần túy, trên dữ liệu của bạn. Nó ở chế độ chỉ đọc theo mặc định; bất cứ điều gì nó tạo (một saved query, một dashboard) đều được gated phê duyệt, và nó không bao giờ có thể xóa. Xem [AI assistant](/vi/agenteye/assistant).
 
 ---
 
-## Vận hành
+## Chạy nó
 
 **Organization (tenant)**
-Một không gian làm việc cô lập. Một phiên bản FailproofAI Observability có thể lưu trữ nhiều tổ chức, mỗi tổ chức có người dùng, khóa và dữ liệu riêng. Mỗi URL bảng điều khiển được phạm vi dưới slug org của bạn (`/<org-slug>/…`).
+Một không gian làm việc riêng lẻ. Một instance Failproof AI Observability có thể lưu trữ nhiều organizations, mỗi cái có người dùng, khóa và dữ liệu riêng. Mọi URL bảng điều khiển đều được scoped dưới org slug của bạn (`/<org-slug>/…`).
 
 **Collector**
-`agenteye-collector`, daemon nhẹ chạy trên mỗi máy agent, đóng gói các event mà SDK ghi vào đĩa, và gửi chúng tới máy chủ.
+`agenteye-collector`, daemon nhẹ chạy trên mỗi máy agent, batch các event mà SDK ghi vào disk, và gửi chúng tới server.
 
 **API key**
-Một token được phạm vi xác thực một client đối với máy chủ. Các khóa mang theo các quyền chi tiết (ví dụ `events:add` cho collector, phạm vi chỉ đọc cho một khóa bảng điều khiển). Xem [API keys](/vi/agenteye/api-keys).
+Một token được scoped xác thực một client chống lại server. Keys mang các permissions granular (ví dụ `events:add` cho collector, read-only scopes cho một dashboard key). Xem [API keys](/vi/agenteye/api-keys).
 
 **Server**
-Dịch vụ ingestion và API. Nó ingests các event, lưu trữ trạng thái hoạt động trong cơ sở dữ liệu của bạn, và phục vụ bảng điều khiển và CLI.
+Dịch vụ ingest và API. Nó ingest các event, lưu trữ operational state trong database của bạn, và phục vụ dashboard và CLI.
 
 **Dashboard**
-Giao diện người dùng web. Mỗi trang được phạm vi cho một tổ chức và đọc thông qua API của máy chủ.
+Giao diện web. Mọi trang đều được scoped tới một organization và đọc thông qua API của server.
 
 ---
 
 ## Các bước tiếp theo
 
-- [Overview](/vi/agenteye/overview): cách các phần này kết hợp với nhau.
-- [Observability](/vi/agenteye/observability): các bề mặt quan sát (Events, Sessions, Models, Tools, Hooks, Errors).
+- [Overview](/vi/agenteye/overview): cách các phần này phù hợp với nhau.
+- [Observability](/vi/agenteye/observability): các bề mặt observe (Events, Sessions, Models, Tools, Hooks, Errors).

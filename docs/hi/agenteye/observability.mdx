@@ -1,22 +1,23 @@
 ---
 title: "Observe"
-description: "FailproofAI Observability Observe documentation."
+description: "Observe सतहें वह स्थान हैं जहां आप अपने agents को वर्तमान में काम करते हुए देख सकते हैं और किसी भी एकल run को drill कर सकते हैं।"
 ---
 
-observe सर्फेस वह जगहें हैं जहाँ आप अपने agents को अभी वास्तविक समय में कार्य करते हुए देखते हैं और किसी भी एक run में विस्तार से जाँच कर सकते हैं। यहाँ की हर चीज़ live है, आपके organization के लिए scoped है, और date range, environment, agent, और session के आधार पर filterable है, ताकि आप "कुछ गलत लग रहा है" से लेकर सटीक run तक कुछ ही सेकंड में पहुँच जाएँ।
 
-![Live Event Stream, type के आधार पर रंग-कोडित और environment, agent, और session के आधार पर filterable](/agenteye/images/events-stream.png)
+Observe सतहें वह स्थान हैं जहां आप अपने agents को वर्तमान में काम करते हुए देख सकते हैं और किसी भी एकल run को drill कर सकते हैं। यहां सब कुछ live है, आपके organization के लिए scoped है, और date range, environment, agent, और session द्वारा filterable है, ताकि आप "कुछ गलत लग रहा है" से लेकर सटीक run तक सेकंडों में पहुंच सकें।
 
-चार सर्फेस, प्रत्येक के अपने पृष्ठ के साथ:
+![Live Event Stream, जो type के आधार पर रंग-coded है और environment, agent, और session के आधार पर filterable है](/agenteye/images/events-stream.png)
 
-- **[Event stream](/hi/agenteye/event-stream)**: हर agent में हर run का live, प्रति-step ट्रेल, सबसे नई पहले। आपके org का होम और triage के लिए पहला स्टॉप।
-- **[Sessions और execution graph](/hi/agenteye/sessions)**: वे events एक row में rolled up प्रति run, साथ ही एक git-शैली की तस्वीर कि कैसे प्रत्येक run unfold हुआ।
+चार सतहें, प्रत्येक का अपना पृष्ठ है:
+
+- **[Event stream](/hi/agenteye/event-stream)**: हर agent के across हर run का live, per-step trail, सबसे नया पहले। आपके org का home और triage के लिए पहला पड़ाव।
+- **[Sessions और execution graph](/hi/agenteye/sessions)**: ये events एक row में rolled up हैं प्रति run, साथ ही एक git-style चित्र जो दिखाता है कि हर run कैसे unfold हुआ।
 - **[Performance metrics](/hi/agenteye/telemetry)**: latency heat-maps और आपके models, tools, और hooks के लिए p50/p95/p99 vitals, ताकि एक tail spike median से अलग दिखे।
-- **[Error tracking](/hi/agenteye/error-tracking)**: हर चीज़ जो गलत हुई उसके लिए एक triage सर्फेस, एक firing alert से उस run तक जो टूटा एक क्लिक दूर।
+- **[Error tracking](/hi/agenteye/error-tracking)**: एक triage सतह जहां सब कुछ गलत हुआ, एक firing alert से उस run तक एक click दूर जो break हुआ।
 
 ## संबंधित
 
 - [Evaluations](/hi/agenteye/evaluations): हर run को quality के लिए score करें।
-- [Alerts](/hi/agenteye/alerts): किसी भी threshold को एक paging rule में बदलें।
-- [Audits](/hi/agenteye/audits): FailproofAI Observability को sessions में failure patterns खोजने दें।
-- [CLI और agents](/hi/agenteye/cli-and-agents): आपके terminal से same observability।
+- [Alerts](/hi/agenteye/alerts): किसी भी threshold को एक paging rule में परिणत करें।
+- [Audits](/hi/agenteye/audits): Failproof AI Observability को sessions के across failure patterns खोजने दें।
+- [CLI और agents](/hi/agenteye/cli-and-agents): आपके terminal से एक ही observability।

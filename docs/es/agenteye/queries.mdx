@@ -1,55 +1,56 @@
 ---
 title: "Consultas"
-description: "Documentación de Consultas de Observabilidad de FailproofAI."
+description: "Hazle cualquier pregunta a los datos de tu agente y obtén una respuesta en segundos."
 ---
 
-Haz cualquier pregunta sobre los datos de tu agente y obtén una respuesta en segundos. La Observabilidad de FailproofAI te ofrece una biblioteca de consultas guardadas y listas para ejecutar sobre tus eventos y evaluaciones, para que partas de un ejemplo funcional en lugar de un editor SQL en blanco.
+
+Hazle cualquier pregunta a los datos de tu agente y obtén una respuesta en segundos. Failproof AI Observability te ofrece una biblioteca de consultas guardadas y listas para ejecutar sobre tus eventos y evaluaciones, para que partas de un ejemplo funcional en lugar de un editor SQL en blanco.
 
 ![La biblioteca de consultas guardadas: una cuadrícula de consultas reutilizables, tanto presets integrados como personalizados](/agenteye/images/queries.png)
 
-*Tu biblioteca de consultas guardadas en `/<org-slug>/queries`: presets integrados junto a las consultas que tu equipo ha guardado.*
+*Tu biblioteca de consultas guardadas en `/<org-slug>/queries`: presets integrados junto a las consultas que ha guardado tu equipo.*
 
-## Parte de un preset, no de una página en blanco
+## Comienza desde un preset, no desde una página en blanco
 
-No necesitas recordar nombres de tablas ni escribir SQL desde cero. La biblioteca se abre con presets integrados para las preguntas que los equipos hacen con más frecuencia, justo al lado de las consultas que tu propio equipo ha guardado y nombrado. Elige una que se aproxime a lo que buscas y ya tendrás gran parte de la respuesta.
+No tienes que recordar nombres de tablas ni escribir SQL desde cero. La biblioteca se abre con presets integrados para las preguntas que los equipos hacen con más frecuencia, justo al lado de las consultas que tu propio equipo ha guardado y nombrado. Elige una que se aproxime a lo que necesitas y ya estarás la mayor parte del camino hacia una respuesta.
 
-Cada consulta guardada tiene alcance de organización y se comparte con todos, así que las consultas útiles que escriban tus compañeros también estarán disponibles para ti. Ponle nombre a una consulta y añade una descripción una sola vez, y cualquiera de tu organización podrá encontrarla, ejecutarla o fijar sus resultados en un dashboard más adelante.
+Cada consulta guardada tiene alcance de organización y es compartida, por lo que las consultas útiles que escriben tus compañeros también son tuyas. Dale nombre y descripción a una consulta una sola vez, y cualquier persona de tu organización podrá encontrarla, ejecutarla o anclar sus resultados en un dashboard más adelante.
 
 Encuéntrala en `/<org-slug>/queries`.
 
 ## Ajústala y ejecútala en el compositor SQL
 
-Abre cualquier consulta y aterrizará en el compositor SQL, donde puedes ajustarla y ver la respuesta de inmediato: sin exportaciones, sin idas y vueltas, sin esperar a que alguien más lo haga.
+Abre cualquier consulta y aterrizará en el compositor SQL, donde puedes modificarla y ver la respuesta de inmediato: sin exportaciones, sin idas y vueltas, sin esperar a nadie más.
 
-![El compositor de consultas SQL ejecutando una consulta guardada, con una barra lateral de esquema y una cuadrícula de resultados en tiempo real](/agenteye/images/query-lab.png)
+![El compositor de consultas SQL ejecutando una consulta guardada, con una barra lateral del esquema y una cuadrícula de resultados en vivo](/agenteye/images/query-lab.png)
 
-*El compositor SQL: tu consulta a la izquierda, una barra lateral de esquema para que nunca tengas que adivinar el nombre de una columna, y una cuadrícula de resultados en tiempo real debajo.*
+*El compositor SQL: tu consulta a la izquierda, una barra lateral del esquema para que nunca tengas que adivinar un nombre de columna, y una cuadrícula de resultados en vivo debajo.*
 
-- **Una barra lateral de esquema** muestra las tablas de análisis y sus columnas, para que puedas dar forma a una consulta sin tener que buscar nombres de campos.
-- **Una cuadrícula de resultados en tiempo real** devuelve las filas en el momento en que ejecutas, así iteras en segundos en lugar de adivinar una y otra vez.
-- **Solo lectura por diseño.** Las consultas se ejecutan contra tu almacén de eventos y se validan en el servidor: solo se permiten sentencias `SELECT` y `WITH`, con un tiempo límite de ejecución y un tope de filas. Una consulta exploratoria nunca puede modificar tus datos, y si una se desboca, el sistema la detiene automáticamente.
+- **Una barra lateral del esquema** muestra las tablas de análisis y sus columnas, para que puedas construir una consulta sin tener que buscar nombres de campos.
+- **Una cuadrícula de resultados en vivo** devuelve filas en el momento en que ejecutas, para que iteres en segundos en lugar de adivinar una y otra vez.
+- **Solo lectura por diseño.** Las consultas se ejecutan contra tu almacén de eventos y se validan en el servidor: solo se permiten sentencias `SELECT` y `WITH`, con un tiempo de espera y un límite de filas. Una consulta exploratoria nunca puede modificar tus datos, y una que se descontrole se detiene automáticamente.
 
-¿Satisfecho con el resultado? Guárdalo de vuelta en la biblioteca para que todo el equipo lo herede, o fija su salida en un dashboard como un tile de línea, barra, área o pastel.
+¿Satisfecho con el resultado? Guárdala de nuevo en la biblioteca para que todo el equipo la herede, o ancla su salida en un dashboard como un panel de líneas, barras, áreas o torta.
 
-## Ejecútalas desde la terminal o deja que el asistente las escriba
+## Ejecútalas desde la terminal, o deja que el asistente las escriba
 
-Las mismas consultas guardadas te siguen donde quiera que trabajes:
+Las mismas consultas guardadas te siguen dondequiera que trabajes:
 
-- **Desde la terminal.** El CLI `agenteye` lista, ejecuta y guarda exactamente las mismas consultas, para que puedas incorporar un resultado en un script, integrarlo en CI o pasárselo a un agente de codificación.
+- **Desde la terminal.** El CLI `agenteye` lista, ejecuta y guarda exactamente las mismas consultas, para que puedas incluir un resultado en un script, integrarlo en CI o pasárselo a un agente de código.
 
 ```bash
 agenteye query list                 # las mismas consultas guardadas, desde tu terminal
-agenteye query run errs --arg prod  # ejecuta una e imprime las filas (añade --json para redirigirla)
+agenteye query run errs --arg prod  # ejecuta una e imprime las filas (agrega --json para canalizarla)
 ```
 
   Consulta [CLI y agentes](/es/agenteye/cli-and-agents) para ver el conjunto completo de comandos.
 
-- **Desde el asistente de IA.** ¿No sabes cómo formular el SQL? Pregúntale al [asistente de IA](/es/agenteye/assistant) integrado en el dashboard en lenguaje natural y él redactará la consulta y la guardará en tu biblioteca por ti.
+- **Desde el asistente de IA.** ¿No sabes cómo formular el SQL? Pregúntale al [asistente de IA](/es/agenteye/assistant) integrado en el dashboard en lenguaje natural y redactará la consulta y la guardará en tu biblioteca por ti.
 
-La ejecución de una consulta guardada está controlada por el permiso `queries:run`, separado de los permisos para crear o eliminar consultas, de modo que puedes otorgar acceso de lectura sin permitir que todos reescriban la biblioteca.
+Ejecutar una consulta guardada requiere el permiso `queries:run`, separado de los permisos para crear o eliminar consultas, para que puedas otorgar acceso de lectura sin permitir que todos reescriban la biblioteca.
 
 ## Relacionado
 
-- [Dashboards](/es/agenteye/dashboards): fija resultados de consultas en gráficos compartidos para toda la organización.
-- [Asistente de IA](/es/agenteye/assistant): haz preguntas en lenguaje natural y obtén una consulta como respuesta.
+- [Dashboards](/es/agenteye/dashboards): ancla resultados de consultas en gráficos compartidos para toda la organización.
+- [Asistente de IA](/es/agenteye/assistant): haz preguntas en lenguaje natural y obtén una consulta de respuesta.
 - [CLI y agentes](/es/agenteye/cli-and-agents): ejecuta y guarda las mismas consultas desde tu terminal.

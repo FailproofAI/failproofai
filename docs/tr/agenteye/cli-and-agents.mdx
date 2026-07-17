@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "FailproofAI Observability CLI belgelendirmesi."
+description: "Tüm Failproof AI Observability dağıtımınız, tek komut uzaklığında."
 ---
 
 
-Tüm FailproofAI Observability dağıtımınız, tek bir komut uzağınızda. Production'ı kontrol edin, bir API anahtarı oluşturun veya bir olayı onaylayın, terminalinizi asla terk etmeden, ardından bunları CI'a yazın veya bir kod aracısının bunu düz İngilizce olarak yapmasını sağlayın.
+Tüm Failproof AI Observability dağıtımınız, tek komut uzaklığında. Üretim ortamınızı kontrol edin, API anahtarı oluşturun veya bir olayı onaylayın — hiç terminalinizi terk etmeden, ardından bunu CI'ye entegre edin veya bir kod ajanı bunu sizin için düz İngilizce ile yapsın.
 
 ```bash
 pipx install agenteye
@@ -12,18 +12,18 @@ agenteye login --email you@example.com      # a 6-digit code lands in your inbox
 agenteye --json sessions --since 24h         # every agent run from the last day, newest first
 ```
 
-*`agenteye` CLI, dashboard'unuzla iletişim kurar. Collector'dan (olayları sunucuya gönderen) farklı bir araçtır.*
+*`agenteye` CLI'si pano ile iletişim kurar. Olayları sunucuya gönderen toplayıcıdan farklı bir araçtır.*
 
-## Tüm dağıtımınız, tek bir komut uzağında
+## Tüm dağıtımınız, tek komut uzaklığında
 
-Hızlı bir soruyu cevaplamak için sekme arasında geçmeyi durdurun. `agenteye` CLI verilerinizi okur ve kuruluşunuzu tek bir binary'den yönetir, böylece dashboard'da tıklama gerektiren bir kontrol tek satır haline gelir ve bunu yeniden çalıştırabilir, takma ad oluşturabilir veya runbook'a yapıştırabilirsiniz. Dört yüzeyiniz var:
+Sekme atlayarak hızlı bir soruyu cevaplamayı bırakın. `agenteye` CLI'si verilerinizi okur ve kuruluşunuzu tek bir ikili dosyadan yönetir, böylece panoda tıklamak anlamına gelen bir kontrol tek bir satıra dönüşür — bunu tekrar çalıştırabilir, takma ad oluşturabilir veya runbook'a yapıştırabilirsiniz. Dört yüzey elde edersiniz:
 
-- **Verilerinizi okuyun:** `sessions`, `events`, `evals`, ve `errors`, zaman, agent ve ortama göre filtrelenmiş.
-- **Kuruluşunuzu yönetin:** `keys`, `users`, `settings`, `alerts`, ve `incidents`.
-- **Analitiği çalıştırın:** kaydedilmiş SQL artı olay verileriniz üzerinde ad-hoc `query` çalıştırıcı.
-- **Asistana sorun:** `agent ask` dashboard'da sohbet ettiğiniz aynı salt okunur analisite ulaşır.
+- **Verilerinizi okuyun:** `sessions`, `events`, `evals` ve `errors`, zaman, ajan ve ortama göre filtrelendi.
+- **Kuruluşunuzu yönetin:** `keys`, `users`, `settings`, `alerts` ve `incidents`.
+- **Analitik çalıştırın:** kaydedilmiş SQL artı etkinlik verilerinizin üzerinde ad-hoc `query` çalıştırıcısı.
+- **Asistana sorun:** `agent ask` panoda sohbet ettiğiniz aynı salt okunur analisti ulaşır.
 
-`pipx` ile bir kez yükleyin, emaille alınan 6 haneli koduyla oturum açın ve hazırsınız. Oturum yaklaşık bir gün sürer; süresi dolduğunda `agenteye login` komutunu yeniden çalıştırın. Production'ı kontrol etmek, bir anahtar sağlamak veya bir firing olayını triage etmek için kullanın, tümü bir browser açmadan:
+`pipx` ile bir kez yükleyin, e-posta ile gelen 6 haneli kod ile oturum açın ve hazırsınız. Oturum yaklaşık bir gün sürer; `agenteye login` süresi dolduğunda yeniden çalıştırın. Üretim ortamını spot-check yapmak, anahtar sağlamak veya başlatılan bir olayı sınıflandırmak için kullanın — hiç tarayıcı açmadan:
 
 ```bash
 agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
@@ -31,25 +31,25 @@ agenteye incidents list --state firing       # what is on fire right now
 agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
 ```
 
-Bilmeniz gereken bir alışkanlık: `--json` gibi global seçenekler komuttan önce gelir. `agenteye --json sessions` doğru; `agenteye sessions --json` değildir.
+Bilmeniz gereken bir alışkanlık: `--json` gibi genel seçenekler komuttan önce gelir. `agenteye --json sessions` doğru; `agenteye sessions --json` değildir.
 
-## Scriptle, CI'a bağla
+## Bunu betikleştirin, CI'ye kablolayın
 
-Her komut `--json` alır ve bu her şeyi değiştirir. Temiz JSON stdout'a giderken insan durumu ve uyarıları stderr'e gider, böylece `--json` yakalama doğrudan `jq`'ye boşa harcanacak satır olmadan bağlanır. Bu, CLI'ı hem promptta siz için hem de çıktıyı ayrıştıran bir kod aracısı için eşit derecede iyi yapar:
+Her komut `--json` alır ve bu her şeyi değiştirir. Temiz JSON stdout'a gider, insan durumu ve uyarıları stderr'e gider, böylece bir `--json` yakalama doğrudan `jq`'ye borulanır, hiç çıkarılacak satır olmadan. Bu, CLI'yi bir istemde siz için ve bir kod ajanı çıktıyı ayrıştırmak için eşit derecede iyi yapar:
 
 ```bash
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 ```
 
-İşsiz çalışmak için tasarlanmıştır. Onay istemlerine terminał bağlı olmadığında otomatik olarak atlanır, böylece pipeline'da hiçbir şey askıda kalmaz ve her komut anlamlı bir çıkış kodu döndürür: `0` başarı, `4` oturum açılmadı, `5` izin eksik (mesaj adını verir, örneğin `alerts:write`), `3` dashboard ulaşılamaz. Bir script, kodu yeniden doğrulamak için `4` veya bir yöneticiden tam olarak ne isteyeceğinizi söylemek için `5` üzerinde branş yapabilir, körü körüne başarısız olmak yerine.
+Katılımsız çalışmak için inşa edilmiştir. Onay istemleri, terminal bağlı olmadığında otomatik olarak atlanır, böylece bir işlem hattında hiçbir şey askıda kalmaz ve her komut anlamlı bir çıkış kodu döndürür: `0` başarı, `4` oturum açılmamış, `5` izin eksik (ileti bunu adlandırır, örneğin `alerts:write`), `3` pano ulaşılamaz. Bir betik, `4`'ü yeniden kimlik doğrulaması için veya `5`'i tam olarak ne isteyeceğinizi bir yöneticit den istemek için dallandırabilir, körlü bir şekilde başarısız olmak yerine.
 
-## Bir kod aracısının düz İngilizce olarak bunu sürücü yapmasına izin verin
+## Bir kod ajanı düz İngilizce ile onu yönetmesine izin verin
 
-Daha iyi bir şekilde, tüm bu bayrakları hatırlamanız gerekmemelidir. **CLI skill** `agenteye-cli` adlı küçük bir Agent Skill klasörüdür ve Claude Code veya Codex gibi bir kod aracısını düz İngilizce isteklerinden CLI'ı sürücü yapmayı öğretir. "Bugün hiçbir şey bozuk mu?" diye sorun ve agent komutu seçer, sizin olarak çalıştırır ve prozayla cevaplar.
+Daha da iyi, tüm bu bayrakları hatırlamanız gerekmez. **CLI becerisi** `agenteye-cli` adında küçük bir Agent Skill klasörüdür; Claude Code veya Codex gibi bir kod ajanı, CLI'yi düz İngilizce isteklerinden yönetmeyi öğretir. "Bugün bir şey kırık mı?" sorun ve ajan komutu seçer, bunu sizin olarak çalıştırır ve düz yazı ile cevaplar.
 
-Claude Code için, `agenteye-cli` klasörünü `~/.claude/skills/` içine bırakın ve otomatik olarak keşfedilir. FailproofAI Observability klasörü sağlar; kurulacak ekstra bir şey yoktur, çünkü yalnızca zaten yüklediğiniz CLI'ı sürücü yapar. Kendiniz oturum açın: skill, emaille alınan kodu tamamlayamaz.
+Claude Code için, `agenteye-cli` klasörünü `~/.claude/skills/` içine bırakın ve otomatik olarak keşfedilir. Failproof AI Observability klasörü sağlar; kurulacak ekstra bir şey yoktur, çünkü yalnızca zaten kurduğunuz CLI'yi yönetir. Kendiniz ilk oturum açın: beceri sizin için e-posta kodlu girişi tamamlayamaz.
 
-Agent CLI'ı sizin olarak çalıştırdığından, oturum açmışken yaptığınız her şeyi yapabilir, okuma ve yazma gibi: anahtar oluşturun, ayarları değiştirin, olayları çözün. CLI'ın "emin misiniz?" istemi bir agent için ateşlenmez, bu nedenle skill tam komutu ifade etmek ve herhangi bir değişiklik yapılmadan önce onayınızı beklemek için yazılmıştır. Siz onaylama adımısınız.
+Ajan CLI'yi sizin olarak çalıştırdığından, oturum açmanız izin verdiği her şeyi yapabilir, okuma ve yazma gibi: anahtarlar oluşturun, ayarları değiştirin, olayları çözün. CLI'nin "emin misiniz?" istemi bir ajan için etkinleşmez, bu nedenle beceri tam komutu belirtir ve herhangi bir değişiklikten önce OK'niz bekler. Siz onay adımısınız.
 
 ```text
 you    Why did session run-001 fail?
@@ -74,7 +74,7 @@ agent  Done. Key "ci" created with events:add only. The secret is shown once, so
 
 ## İlgili
 
-- [CLI reference](/tr/agenteye/cli): her komut, bayrak ve JSON şekli.
-- [CLI recipes for agents](/tr/agenteye/cli-recipes): kopyala-yapıştır `jq` desenler ve çıkış kodu işleme.
-- [CLI agent skill](/tr/agenteye/cli-skill): `agenteye-cli` skill'ini kurun ve çalıştırın.
-- [AI assistant](/tr/agenteye/assistant): `agent ask` ile konuşan dashboard içi analist.
+- [CLI referansı](/tr/agenteye/cli): her komut, bayrak ve JSON şekli.
+- [Ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes): kopyala-yapıştır `jq` desenleri ve çıkış kodu işleme.
+- [CLI ajan becerisi](/tr/agenteye/cli-skill): `agenteye-cli` becerisini yükleyin ve çalıştırın.
+- [AI asistanı](/tr/agenteye/assistant): `agent ask` ile iletişim kuran pano içi analist.

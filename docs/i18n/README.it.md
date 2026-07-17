@@ -18,8 +18,8 @@
 **Traduzioni:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
 **Risoluzione degli errori di runtime per agenti di codifica.**
-Si integra in Claude Code e Codex. Rileva cicli, azioni pericolose e fughe di segreti
-prima che diventino incidenti. Latenza zero. Funziona localmente.
+Si integra con Claude Code e Codex. Intercetta cicli infiniti, azioni pericolose e fughe di segreti
+prima che diventino incidenti. Zero latenza. Eseguito localmente.
 
 </div>
 
@@ -29,7 +29,7 @@ prima che diventino incidenti. Latenza zero. Funziona localmente.
 
 ---
 
-## CLI di agenti supportati
+## Agent CLI supportati
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -125,52 +125,36 @@ prima che diventino incidenti. Latenza zero. Funziona localmente.
   </tr>
 </table>
 
-> Installa hook per uno o una combinazione qualsiasi: `failproofai policies --install --cli opencode pi` (o `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). Ometti `--cli` per rilevare automaticamente i CLI installati e ricevere una richiesta.
->
-> **Hermes** (hermes-agent, un gateway Slack/Telegram) è supportato sia per l'**esecuzione live-hook** (`--cli hermes` — un'installazione intercetta le chiamate di strumenti da ogni piattaforma e sub-agente) che per l'**audit** offline delle sessioni del gateway dal singolo `~/.hermes/state.db`.
->
-> **OpenClaw** (gateway openclaw, un assistente multi-canale self-hosted) è supportato sia per l'**esecuzione live-hook** (`--cli openclaw`, ambito utente) che per l'**audit** offline delle sessioni JSONL (`~/.openclaw/agents/<id>/sessions/*.jsonl`). L'esecuzione utilizza gli **hook plugin in-process** di OpenClaw (un `openclaw-plugin/` fornito che avvia failproofai in modo asincrono — i suoi hook interni basati su file sono solo osservazione e non possono bloccare): `before_tool_call` blocca uno strumento e `before_agent_finalize` è un vero gate di fine turno, quindi i builtin `require-*-before-stop` applicano.
->
-> **Factory Droid** (`droid`) è supportato sia per l'**esecuzione live-hook** (`--cli factory`, ambito utente + progetto) che per l'**audit** offline delle sessioni JSONL su disco. droid blocca le chiamate di strumenti tramite **codice di uscita 2** dell'hook (non una decisione JSON) e onora `{decision:"block"}` solo sull'evento `Stop` di fine turno — failproofai emette automaticamente la forma corretta per ogni evento.
->
-> **Devin CLI** (`devin`, Cognition) è supportato sia per l'**esecuzione live-hook** (`--cli devin`, ambito utente + progetto) che per l'**audit** offline delle sessioni SQLite (`~/.local/share/devin/cli/sessions.db`). Devin è un **puro clone di Claude** — stessi nomi di eventi, stesso payload snake_case, stessa configurazione wrapper `"hooks"` (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — blocco tramite JSON `{decision:"block"}` su ogni evento.
->
-> **Antigravity CLI** (`agy`) è supportato sia per l'**esecuzione live-hook** (`--cli antigravity`, ambito utente + progetto) che per l'**audit** offline delle sessioni plain-JSONL (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity ha il suo **proprio** contratto (non un clone di Claude): uno schema `hooks.json` con **hook denominati** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), un payload stdin camelCase che failproofai normalizza e le sue forme di risposta proprie — `{decision:"deny"}` per bloccare uno strumento, `{decision:"continue"}` per forzare un altro turno a `Stop`, `{injectSteps}` per iniettare un promemoria prima che il modello giri.
->
-> **Goose** (codename goose, Block) è supportato sia per l'**esecuzione live-hook** (`--cli goose`, ambito utente + progetto) che per l'**audit** offline delle sessioni SQLite (`~/.local/share/goose/sessions/sessions.db`). L'esecuzione utilizza il sistema **hooks** di Goose (la specifica **Open Plugins** cross-agent) — il programma di installazione lascia semplicemente una directory di plugin in `~/.agents/plugins/failproofai/` e Goose la scopre automaticamente. Il blocco è JSON `{"decision":"block"}` sull'evento `PreToolUse` (che si attiva per lo strumento shell e dentro i sub-agenti delegati), verificato live rispetto a goose v1.43.0; Goose non ha un evento `Stop` di fine turno, quindi i builtin `require-*-before-stop` non si applicano (come con Hermes).
-
----
-
 ## Installazione
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # o esegui semplicemente `failproofai` e accetta il prompt della prima esecuzione
+failproofai policies --install   # oppure esegui semplicemente `failproofai` e accetta il prompt al primo avvio
 failproofai
 ```
 
-30 politiche integrate si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt della prima esecuzione con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 politiche integrate si attivano immediatamente. Dashboard disponibile su `localhost:8020`. Disabilita il prompt al primo avvio con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Cosa blocca
+## Cosa viene bloccato
 
 | Politica | Cosa blocca |
 |---|---|
-| `block-push-master` | Push diretti a `main` / `master` |
+| `block-push-master` | Push diretti su `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commit, merge, rebase su `main` / `master` |
 | `block-rm-rf` | Eliminazione ricorsiva di file |
-| `sanitize-api-keys` | Chiavi API che fuoriescono nel contesto dell'agente |
+| `sanitize-api-keys` | Chiavi API che trapelano nel contesto dell'agente |
 
 → [Tutte le 30 politiche integrate](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## Le tue politiche personali
+## Tue politiche personalizzate
 
-Inserisci un file in `.failproofai/policies/` — carica automaticamente, senza flag necessari.
-Commitla e l'intero team la riceverà al prossimo pull.
+Rilascia un file in `.failproofai/policies/` — viene caricato automaticamente, senza flag necessari.
+Committalo e l'intero team lo ottiene al prossimo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -180,7 +164,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Le scritture su percorsi di produzione sono bloccate.");
     return allow();
   },
 });
@@ -191,8 +175,8 @@ Tre decisioni disponibili per ogni politica:
 | Decisione | Effetto |
 |---|---|
 | `allow()` | Consenti l'operazione |
-| `deny(message)` | Bloccala — il messaggio torna all'agente |
-| `instruct(message)` | Lasciarla passare, ma aggiungere contesto al prossimo prompt dell'agente |
+| `deny(message)` | Bloccalo — il messaggio viene restituito all'agente |
+| `instruct(message)` | Lascialo passare, ma aggiungi contesto al prossimo prompt dell'agente |
 
 → [Guida alle politiche personalizzate](https://docs.befailproof.ai/custom-policies)
 
@@ -200,9 +184,9 @@ Tre decisioni disponibili per ogni politica:
 
 ## Visibilità della sessione
 
-Ogni chiamata di strumento che il tuo agente fa è registrata localmente. Il dashboard mostra cosa è stato eseguito,
-cosa è stato bloccato e cosa la politica ha detto all'agente — così non stai indovinando
-quando qualcosa va male. → [Guida del dashboard](https://docs.befailproof.ai/dashboard)
+Ogni chiamata di strumento eseguita dal tuo agente viene registrata localmente. Il dashboard mostra cosa è stato eseguito,
+cosa è stato bloccato e cosa la politica ha comunicato all'agente — così non devi indovinare
+quando qualcosa va storto. → [Guida al dashboard](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -212,16 +196,16 @@ quando qualcosa va male. → [Guida del dashboard](https://docs.befailproof.ai/d
 |---|---|
 | [Guida introduttiva](https://docs.befailproof.ai/getting-started) | Installazione e primi passi |
 | [Politiche integrate](https://docs.befailproof.ai/built-in-policies) | Tutte le 30 politiche con parametri |
-| [Politiche personalizzate](https://docs.befailproof.ai/custom-policies) | Scrivi le tue |
-| [Configurazione](https://docs.befailproof.ai/configuration) | Ambiti di configurazione e regole di merge |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor di sessione e attività di politica |
+| [Politiche personalizzate](https://docs.befailproof.ai/custom-policies) | Crea le tue |
+| [Configurazione](https://docs.befailproof.ai/configuration) | Ambiti di configurazione e regole di unione |
+| [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor di sessione e attività delle politiche |
 | [Architettura](https://docs.befailproof.ai/architecture) | Come funziona il sistema di hook |
 
 ---
 
 ## Licenza
 
-MIT con [Commons Clause](https://commonsclause.com/) — gratuita per uso interno e personale; la rivendita commerciale di failproofai stesso richiede un accordo separato. Vedi [LICENSE](./LICENSE) per il testo completo.
+MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso interno e personale; la rivendita commerciale di failproofai stesso richiede un accordo separato. Vedi [LICENSE](./LICENSE) per il testo completo.
 
 ---
 
@@ -229,10 +213,13 @@ MIT con [Commons Clause](https://commonsclause.com/) — gratuita per uso intern
 
 Vedi [CONTRIBUTING.md](./CONTRIBUTING.md). Nuove politiche, casi limite e traduzioni sono tutti benvenuti.
 
-> **Crea prima di iniziare.** Esegui prima `bun install && bun run build`. Questo repository esegue i propri hook di failproofai su se stesso e risolvono l'importazione `failproofai` rispetto al bundle compilato `dist/` — senza una compilazione otterrai errori hook `Cannot find package 'failproofai'`. Ricompila dopo aver cambiato `src/`. Vedi
-> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Compila prima di iniziare.** Esegui `bun install && bun run build` prima. Questo repository esegue
+> i propri hook di failproofai su se stesso, e risolvono l'importazione di `failproofai` rispetto al
+> bundle compilato `dist/` — senza una compilazione riceverai errori di hook `Cannot find package 'failproofai'`.
+> Ricompila dopo aver modificato `src/`. Vedi
+> [Compila prima che i dev hook nel repository funzionino](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Costruito da [Nivedit Jain](https://github.com/NiveditJain) e [Nikita Agarwal](https://github.com/nk-ag).
+Realizzato da [Nivedit Jain](https://github.com/NiveditJain) e [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

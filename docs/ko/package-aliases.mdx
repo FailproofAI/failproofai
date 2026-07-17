@@ -1,6 +1,6 @@
 ---
 title: 패키지 별칭
-description: "등록된 오타 방지 별칭과 그 작동 방식"
+description: "등록된 오타 방지 별칭과 작동 방식"
 icon: copy
 ---
 
@@ -16,67 +16,67 @@ bun add -g failproofai
 
 ---
 
-## 별칭 이름을 직접 소유하는 이유
+## 별칭 이름을 직접 등록한 이유
 
-타이포스쿼팅(typosquatting)은 공급망 공격의 일종으로, 악의적인 공격자가 인기 패키지 이름에서 오타 한 글자 차이나는 패키지 이름을 등록합니다. 설치 명령어를 잘못 입력한 사용자는 자신도 모르는 사이에 공격자가 제어하는 코드를 전체 시스템 접근 권한으로 실행하게 됩니다 — 이것이 바로 Failproof AI가 방어하도록 설계된 위협 유형입니다.
+타이포스쿼팅(typosquatting)은 악의적인 행위자가 인기 패키지와 한 글자 차이 나는 이름을 등록하는 흔한 공급망 공격 방식입니다. 설치 명령어를 잘못 입력한 사용자는 시스템 전체에 접근 권한을 가진 공격자 제어 코드를 실행하게 됩니다. 이것이 바로 Failproof AI가 방어하고자 하는 위협 유형입니다.
 
-이러한 공격 표면을 없애기 위해, **npm에서 `failproofai`의 흔한 오타 및 표기 변형 이름을 선제적으로 모두 소유**하고 있습니다. 이 이름들은 제3자가 등록할 수 없으며, 각각은 실제 `failproofai` 패키지를 설치하고 위임하는 얇은 프록시입니다.
+이러한 공격 표면을 제거하기 위해 **npm에서 `failproofai`의 모든 일반적인 오타 및 형식 변형을 선제적으로 등록했습니다**. 이 이름들은 제3자가 등록할 수 없으며, 각각은 실제 `failproofai` 패키지를 설치하고 위임하는 얇은 프록시입니다.
 
 ---
 
 ## 등록된 별칭
 
-**표기 변형** - "failproof ai"를 표현하는 다양한 방식:
+**형식 변형** - "failproof ai"를 작성하는 다양한 방법:
 
 | 패키지 | 상태 |
 |---------|--------|
 | `failproof` | ✅ 게시됨 |
-| `failproof-ai` | ⏳ npm 승인 대기 중 |
-| `fail-proof-ai` | ⏳ npm 승인 대기 중 |
-| `failproof_ai` | ⏳ npm 승인 대기 중 |
-| `fail_proof_ai` | ⏳ npm 승인 대기 중 |
-| `fail-proofai` | ⏳ npm 승인 대기 중 |
+| `failproof-ai` | ⏳ npm 지원 대기 중 |
+| `fail-proof-ai` | ⏳ npm 지원 대기 중 |
+| `failproof_ai` | ⏳ npm 지원 대기 중 |
+| `fail_proof_ai` | ⏳ npm 지원 대기 중 |
+| `fail-proofai` | ⏳ npm 지원 대기 중 |
 
-**`failprof*` 오타** - "proof"에서 `o` 하나가 빠진 경우:
+**`failprof*` 오타** - "proof"에서 `o` 하나 누락:
 
 | 패키지 | 상태 |
 |---------|--------|
 | `failprof` | ✅ 게시됨 |
 | `failprof-ai` | ✅ 게시됨 |
-| `failprofai` | ⏳ npm 승인 대기 중 |
-| `fail-prof-ai` | ⏳ npm 승인 대기 중 |
-| `failprof_ai` | ⏳ npm 승인 대기 중 |
+| `failprofai` | ⏳ npm 지원 대기 중 |
+| `fail-prof-ai` | ⏳ npm 지원 대기 중 |
+| `failprof_ai` | ⏳ npm 지원 대기 중 |
 
-**`faliproof*` 오타** - `a`와 `i`가 뒤바뀐 경우:
+**`faliproof*` 오타** - `a`와 `i` 위치 바뀜:
 
 | 패키지 | 상태 |
 |---------|--------|
 | `faliproof` | ✅ 게시됨 |
 | `faliproof-ai` | ✅ 게시됨 |
-| `faliproofai` | ⏳ npm 승인 대기 중 |
+| `faliproofai` | ⏳ npm 지원 대기 중 |
 
-> **승인 대기 중인 이유는?** npm의 스팸 방지 정책은 구두점을 제거하고 유사도 검사를 실행한 후 기존 패키지와 동일한 문자열로 정규화되는 이름을 차단합니다. 저희는 안티 스쿼팅 목적으로 이 이름들을 예약하기 위해 npm 지원팀에 문의한 상태이며, 승인되는 대로 활성화될 예정입니다.
+> **대기 중인 이유는?** npm의 스팸 방지 정책은 구두점을 제거하고 유사도 검사를 실행한 후 기존 패키지와 동일한 문자열로 정규화되는 이름을 차단합니다. 저희는 타이포스쿼팅 방지 목적으로 이 이름들을 예약하기 위해 npm 지원팀에 연락했으며, 승인되는 대로 활성화될 예정입니다.
 
-게시된 별칭이 저희 소유인지 다음과 같이 확인할 수 있습니다:
+게시된 별칭이 저희 소유인지 확인하려면:
 
 ```bash
 npm info failproof
-# Look for: "ExosphereHost Inc." in the maintainers field
+# 유지관리자 필드에서 "ExosphereHost Inc."를 확인하세요
 ```
 
 ---
 
-## 별칭의 작동 방식
+## 별칭 작동 방식
 
 각 별칭 패키지는:
 
-1. `failproofai`를 의존성으로 등록합니다 — 설치 시 실제 패키지(및 해당 `postinstall` 훅 설정 포함)가 실행됩니다.
-2. 자신의 이름에 해당하는 바이너리(예: `failprof-ai`)를 노출하여 모든 인자를 `failproofai` 바이너리로 전달합니다.
+1. `failproofai`를 의존성으로 등록하여 실제 패키지가 설치되고 바이너리를 사용할 수 있게 합니다
+2. 자신의 이름(예: `failprof-ai`)과 일치하는 바이너리를 노출하여 모든 인자를 `failproofai` 바이너리로 프록시합니다
 
-프록시는 두 줄짜리 Node 스크립트이며, `failproofai` 자체가 수행하는 것 외에는 어떠한 로직, 네트워크 호출, 데이터 수집도 없습니다.
+프록시는 두 줄짜리 Node 스크립트로, `failproofai` 자체가 수행하는 것 외에 별도의 로직, 네트워크 호출, 데이터 수집이 없습니다.
 
 ---
 
 ## 누락된 이름을 발견한 경우
 
-[failproofai/failproofai](https://github.com/failproofai/failproofai/issues)에 이슈를 등록해 주시면 해당 이름을 등록하겠습니다.
+[failproofai/failproofai](https://github.com/failproofai/failproofai/issues)에 이슈를 열어 주시면 등록하겠습니다.

@@ -19,9 +19,9 @@
 
 **תרגומים:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה לסוכנים בעלי קוד.**
-מתחברת ל Claude Code ו Codex. תופסת לולאות, פעולות מסוכנות וניתוח סוד
-לפני שהן הופכות לתקריות. ללא עיכוב. רץ באופן מקומי.
+**פתרון כשלי זמן ריצה עבור סוכני קידוד.**
+חוטפים Claude Code ו-Codex. תופסים לולאות, פעולות מסוכנות, וניצולי סודות
+לפני שהם הופכים לתקריות. זמן השהיה אפס. רץ באופן מקומי.
 
 </div>
 
@@ -31,7 +31,7 @@
 
 ---
 
-## CLIs סוכנים נתמכים
+## CLI סוכנים נתמכים
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -127,52 +127,36 @@
   </tr>
 </table>
 
-> התקן hookים לאחד או לכל שילוב: `failproofai policies --install --cli opencode pi` (או `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`). השמט את `--cli` לגילוי אוטומטי של CLIs מותקנים ודרישה.
->
-> **Hermes** (hermes-agent, שער Slack/Telegram) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli hermes` — התקנה אחת יוצרת צל לקריאות כלים מכל פלטפורמה ותת-סוכן) ו**ביקורת** לא מקוונת של הפעלות שער שלה מה `~/.hermes/state.db` היחיד.
->
-> **OpenClaw** (שער openclaw, עוזר מרובה ערוצים שמארח את עצמו) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli openclaw`, user-scope) ו**ביקורת** לא מקוונת של הפעלות JSONL שלו (`~/.openclaw/agents/<id>/sessions/*.jsonl`). הגבלה משתמשת בהוקק הפלאגין **בתוך תהליך** של OpenClaw (פלאגין מסופק `openclaw-plugin/` שמציץ async failproofai — הוקק פנימי מבוסס קבצים שלה הוא תצפית בלבד ולא יכול לחסום): `before_tool_call` חוסם כלי, ו `before_agent_finalize` היא שער אמיתי בקצה הפנייה, לכן ה `require-*-before-stop` builtins גורמים להיפעלות.
->
-> **Factory Droid** (`droid`) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli factory`, user + project scope) ו**ביקורת** לא מקוונת של הפעלות JSONL שלו שנמצאות בדיסק. droid חוסם קריאות כלים מחוץ להוק **קוד יציאה 2** (לא החלטה JSON) וכבד `{decision:"block"}` רק באירוע הפנייה-קצה `Stop` — failproofai פולט את הצורה הנכונה לכל אירוע באופן אוטומטי.
->
-> **Devin CLI** (`devin`, Cognition) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli devin`, user + project scope) ו**ביקורת** לא מקוונת של הפעלות SQLite שלו (`~/.local/share/devin/cli/sessions.db`). Devin הוא **שיבוט Claude טהור** — אותם שמות אירוע, אותו payload snake_case, אותו `hooks` config בעטיפה (`~/.config/devin/config.json` / `<cwd>/.devin/config.json`) — חסימה דרך JSON `{decision:"block"}` בכל אירוע.
->
-> **Antigravity CLI** (`agy`) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli antigravity`, user + project scope) ו**ביקורת** לא מקוונת של הפעלות JSONL גרידא שלו (`~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`). Antigravity יש את **שלה** חוזה (לא שיבוט Claude): סכימה `hooks.json` של **הוק שם** (`~/.gemini/config/hooks.json` / `<cwd>/.agents/hooks.json`), payload stdin camelCase שfailproofai מנרמל, וצורות התגובה שלה — `{decision:"deny"}` לחסום כלי, `{decision:"continue"}` לכפות סיבוב נוסף ב `Stop`, `{injectSteps}` להזרקת תזכורת לפני שהמודל רץ.
->
-> **Goose** (שם קוד goose, Block) נתמך לשתי מטרות **הגבלת hook חיה** (`--cli goose`, user + project scope) ו**ביקורת** לא מקוונת של הפעלות SQLite שלו (`~/.local/share/goose/sessions/sessions.db`). הגבלה משתמשת במערכת **hooks** של Goose (מפרט **Open Plugins** חוצה-סוכנים) — המתקין פשוט מוריד תיקייה plug-in ב `~/.agents/plugins/failproofai/` וGoose גוגל אותה באופן אוטומטי. חסימה היא JSON `{"decision":"block"}` באירוע `PreToolUse` (שיורה עבור כלי הקליפה וללא תת-סוכנים משלחים), מוודא חיה נגד goose v1.43.0; Goose אין אירוע `Stop` בקצה הפנייה, לכן ה `require-*-before-stop` builtins אינם חלים (כמו עם Hermes).
-
----
-
-## התקן
+## התקנה
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או רק הרץ `failproofai` וקבל את הודעת הריצה הראשונה
+failproofai policies --install   # או פשוט הרץ `failproofai` והסכים להנחיה בהפעלה ראשונה
 failproofai
 ```
 
-30 מדיניות מובנות מופעלות מיד. לוח מחוונים ב `localhost:8020`. השבת את הודעת הריצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניות מובנות מופעלות מיד. לוח בקרה ב- `localhost:8020`. השבת את הנחיית ההפעלה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## מה זה עוצר
 
-| מדיניות | מה זה חוסם |
+| מדיניות | מה היא חוסמת |
 |---|---|
-| `block-push-master` | דחיפות ישירות ל `main` / `master` |
+| `block-push-master` | דחיפה ישירה ל- `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | commits, merges, rebases ב `main` / `master` |
+| `block-work-on-main` | קומיטים, מיזוגים, ריביסים ב- `main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API שדולפים להקשר סוכן |
+| `sanitize-api-keys` | מפתחות API שדולפים להקשר הסוכן |
 
 → [כל 30 המדיניות המובנות](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## המדיניויות שלך
+## המדיניות שלך
 
-זרוק קובץ ל `.failproofai/policies/` — הוא נטען באופן אוטומטי, אין דגלים.
-בצע הערה ובכל הצוות יקבל אותה בדרך השנייה.
+זרוק קובץ ל- `.failproofai/policies/` — הוא נטען באופן אוטומטי, ללא דגלים.
+בצע קומיט ושכל הצוות יקבל אותו בפול הבא.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -193,18 +177,18 @@ customPolicies.add({
 | החלטה | השפעה |
 |---|---|
 | `allow()` | אפשר את הפעולה |
-| `deny(message)` | חסום אותו — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לה לעבור, אך הוסף הקשר להנחיה הבאה של הסוכן |
+| `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
+| `instruct(message)` | תן לה לעבור, אך הוסף הקשר לפרומפט הבא של הסוכן |
 
-→ [מדריך מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies)
+→ [מדריך מדיניות מותאמות](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## נראות הפעלה
+## נראות הפגישה
 
-כל קריאת כלים שהסוכן שלך עושה מתועדת באופן מקומי. לוח המחוונים מראה מה רץ,
-מה היה חסום, ומה הגיד המדיניות לסוכן — כך שאתה לא מנחש
-כשמשהו הולך לאיבוד. → [מדריך לוח המחוונים](https://docs.befailproof.ai/dashboard)
+כל קריאת כלי שהסוכן שלך עושה מוקדשת באופן מקומי. לוח הבקרה מציג מה רץ,
+מה נחסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
+כשמשהו השתבש. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -212,34 +196,31 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [Getting Started](https://docs.befailproof.ai/getting-started) | התקנה ושלבים ראשונים |
-| [Built-in Policies](https://docs.befailproof.ai/built-in-policies) | כל 30 מדיניויות עם פרמטרים |
-| [Custom Policies](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
-| [Configuration](https://docs.befailproof.ai/configuration) | היקפי תצורה וכללי מיזוג |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | צג הפעלה ופעילות מדיניות |
-| [Architecture](https://docs.befailproof.ai/architecture) | איך מערכת ההוק עובדת |
+| [שיתוף פעולה](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשונים |
+| [מדיניות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניות עם פרמטרים |
+| [מדיניות מותאמות](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
+| [הגדרה](https://docs.befailproof.ai/configuration) | סקופים של הגדרה וכללי מיזוג |
+| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מונו ופעילות מדיניות בפגישה |
+| [ארכיטקטורה](https://docs.befailproof.ai/architecture) | איך מערכת התוק עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חינמי לשימוש פנימי ואישי; שינוי מסחרי של failproofai עצמו דורש הסכם נפרד. ראה [LICENSE](./LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מסחרית מחדש של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](./LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה ותרגומים כולם מסובים.
+ראה [CONTRIBUTING.md](./CONTRIBUTING.md). מדיניות חדשות, מקרים קצה, ותרגומים בברכה.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` תחילה. מאגר זה מריץ
-> את ה hoooks של failproofai שלו על עצמו, והם פותרים את יבוא `failproofai` נגד
-> חבילת `dist/` מורכבת — ללא בנייה תפגע `Cannot find package 'failproofai'`
-> שגיאות hoock. בנה מחדש לאחר שינוי `src/`. ראה
-> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` ראשון. ריפוזיטורי זה מריץ את הוקיים שלו על עצמו, והם פותרים את ייבוא ה-`failproofai` נגד הקבוצה `dist/` המקומפלת — בלי בנייה תוכל להיתקל בשגיאות `Cannot find package 'failproofai'` מהוק. בנה מחדש לאחר שינוי `src/`. ראה
+> [בנה לפני שההוקים להתפתח בריפוזיטורי יעבדו](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-בנוי על ידי [Nivedit Jain](https://github.com/NiveditJain) ו [Nikita Agarwal](https://github.com/nk-ag).
+בנוי על ידי [Nivedit Jain](https://github.com/NiveditJain) ו-[Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)
 
 

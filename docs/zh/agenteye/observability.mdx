@@ -1,23 +1,23 @@
 ---
 title: "观测"
-description: "FailproofAI Observability 观测功能文档。"
+description: "观测界面用于实时查看代理正在执行的操作，并深入分析任意单次运行。"
 ---
 
 
-观测界面用于实时查看 Agent 的运行状态，并深入分析任意单次运行的详情。这里的所有内容均为实时数据，按组织维度归类，支持按日期范围、环境、Agent 和会话进行筛选，让你能在数秒内从"感觉有些不对劲"定位到具体的运行记录。
+观测界面用于实时查看代理正在执行的操作，并深入分析任意单次运行。这里的所有内容均为实时数据，以您的组织为范围，支持按日期范围、环境、代理和会话进行筛选，让您能够在数秒内从"感觉有些不对"定位到具体的运行记录。
 
-![实时事件流，按类型进行颜色区分，支持按环境、Agent 和会话筛选](/agenteye/images/events-stream.png)
+![实时事件流，按类型进行颜色编码，支持按环境、代理和会话筛选](/agenteye/images/events-stream.png)
 
-共有四个子界面，每个均有独立页面：
+共四个界面，每个均有独立页面：
 
-- **[事件流](/zh/agenteye/event-stream)**：所有 Agent 每次运行的实时逐步记录，最新内容排在最前。这是你的组织主页，也是排查问题的第一站。
-- **[会话与执行图](/zh/agenteye/sessions)**：将事件汇总为每次运行一行的视图，并以类 Git 的图形展示每次运行的完整过程。
-- **[性能指标](/zh/agenteye/telemetry)**：针对模型、工具和 Hook 的延迟热图及 p50/p95/p99 关键指标，让尾部延迟峰值与中位数之间的差异一目了然。
-- **[错误追踪](/zh/agenteye/error-tracking)**：将所有异常统一汇聚到一个排查界面，一键从触发的告警跳转到对应的问题运行记录。
+- **[事件流](/zh/agenteye/event-stream)**：所有代理每次运行的实时逐步记录，最新条目优先显示。这是您组织的主页，也是问题分类排查的第一站。
+- **[会话与执行图](/zh/agenteye/sessions)**：将事件汇总为每次运行一行的视图，并以类似 git 的图示展示每次运行的展开过程。
+- **[性能指标](/zh/agenteye/telemetry)**：模型、工具和 hook 的延迟热力图及 p50/p95/p99 关键指标，让尾部延迟峰值从中位数中一目了然地凸显出来。
+- **[错误追踪](/zh/agenteye/error-tracking)**：一个统一的错误分类排查界面，汇集所有异常情况，一键从触发的告警跳转至引发问题的运行记录。
 
 ## 相关内容
 
 - [评估](/zh/agenteye/evaluations)：对每次运行进行质量评分。
 - [告警](/zh/agenteye/alerts)：将任意阈值转化为告警规则。
-- [审计](/zh/agenteye/audits)：让 FailproofAI Observability 自动为你发现跨会话的失败模式。
-- [CLI 与 Agent](/zh/agenteye/cli-and-agents)：在终端中使用同等完整的可观测性能力。
+- [审计](/zh/agenteye/audits)：让 Failproof AI Observability 自动为您发现跨会话的失败模式。
+- [CLI 与代理](/zh/agenteye/cli-and-agents)：在终端中获得同等的可观测能力。

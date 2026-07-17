@@ -1,52 +1,52 @@
 ---
 title: "Metriche di Performance"
-description: "Documentazione delle Metriche di Performance di FailproofAI Observability."
+description: "Vedi l'istante in cui i tuoi modelli, strumenti o hook rallentano o aumentano i costi, e cattura un picco di latenza in coda prima che i tuoi utenti lo avvertano."
 ---
 
 
-Vedi nell'istante in cui i tuoi modelli, strumenti o hook rallentano o comportano costi, e individua un picco di latenza in coda prima che i tuoi utenti lo avvertano. Tre pagine dedicate trasformano i tempi grezzi in p50, p95 e p99 che puoi leggere a colpo d'occhio.
+Vedi l'istante in cui i tuoi modelli, strumenti o hook rallentano o aumentano i costi, e cattura un picco di latenza in coda prima che i tuoi utenti lo avvertano. Tre pagine dedicate trasformano i tempi grezzi in p50, p95 e p99 che puoi leggere a colpo d'occhio.
 
-![La pagina Models che mostra una heat-map di latenza, una banda percentile e figure per modello di token, costi e context-window](/agenteye/images/models.png)
-*La pagina Models: una heat-map di latenza, una banda percentile e token per modello, costi stimati e riempimento context-window.*
+![La pagina Models che mostra una mappa termica di latenza, una banda percentile e figure per modello di token, costo e finestra di contesto](/agenteye/images/models.png)
+*La pagina Models: una mappa termica di latenza, una banda percentile e token per modello, costo stimato e riempimento della finestra di contesto.*
 
 ## Smetti di lasciare che le medie nascondano i tuoi peggiori risultati
 
-Un numero di latenza media è rassicurante e inutile: nasconde la chiamata ogni cinquanta che si blocca e chiama il tuo on-call alle 2 di mattina. Le pagine Models, Tools e Hooks si rifiutano di farlo. Ognuna ha la stessa forma, quindi la impari una volta sola:
+Un numero medio di latenza è rassicurante e inutile: nasconde quella chiamata su cinquanta che si blocca e sveglia l'on-call alle 2 del mattino. Le pagine Models, Tools e Hooks rifiutano di farlo. Ognuna condivide la stessa struttura, quindi la impari una sola volta:
 
-- Un **sparkline a 24 bin** per il trend a colpo d'occhio: sta peggiorando?
-- Una **striscia di parametri vitali** con latenza p50, p95 e p99, così l'esecuzione tipica e la coda stanno fianco a fianco.
-- Una **heat-map di latenza**, 24 bin di tempo per bucket di latenza, che mostra *quando* le chiamate lente si sono raggruppate.
-- Una **banda percentile**: una linea p50 con p25 a p75 e p10 a p90 come nastri sfumati e punti p99, così la distribuzione rimane visibile invece di essere mediata.
+- Una **sparkline a 24 bin** per il trend a colpo d'occhio: sta peggiorando?
+- Una **striscia vitals** con latenza p50, p95 e p99, così la tipica esecuzione e la coda stanno fianco a fianco.
+- Una **mappa termica di latenza**, 24 bin temporali per bucket di latenza, che mostra *quando* le chiamate lente si sono raggruppate.
+- Una **banda percentile**: una linea p50 con nastri ombreggiati da p25 a p75 e da p10 a p90 e punti p99, così la dispersione rimane visibile invece di essere appiattita dalla media.
 
-Un reticolo di hover condiviso collega la heat-map e la banda, così un picco in coda si allinea nel tempo su entrambi invece di nascondersi dietro una singola linea media. Trova tutte e tre le pagine nella sezione **observe** del tuo dashboard, ognuna con scope alla tua organizzazione e filtrabile per intervallo di date, ambiente, agent e sessione.
+Un reticolo di hover condiviso collega la mappa termica e la banda, così un picco in coda si allinea nel tempo su entrambe invece di nascondersi dietro una singola linea media. Trova tutte e tre le pagine nella sezione **observe** del tuo dashboard, ognuna con scope alla tua organizzazione e filtrabile per intervallo di date, ambiente, agent e sessione.
 
 ## Models: vedi esattamente quanto ti costa ogni modello
 
-La pagina Models (mostrata in alto) risponde alle due domande che una fattura sempre solleva: quale modello, e quanto costa. Oltre alla vista di latenza condivisa, aggiunge **consumo di token per modello**, **costo stimato** e **riempimento context-window**, così la crescita incontrollata del prompt e una compressione imminente sono visibili prima che ti sorprendano.
+La pagina Models (mostrata in alto) risponde alle due domande che ogni fattura pone: quale modello e quanto costa. Oltre alla vista di latenza condivisa, aggiunge **consumo di token per modello**, **costo stimato** e **riempimento della finestra di contesto**, così la crescita incontrollata del prompt e una compattazione imminente sono visibili prima che ti sorprendano.
 
-FailproofAI Observability riconosce automaticamente gli ID di modello comuni. Se una finestra sembra sbagliata, o usi un modello privato tuo, correggila o aggiungine uno in **Settings**, in **model context windows**, e le letture di riempimento seguiranno.
+Failproof AI Observability riconosce automaticamente gli ID modello comuni. Se una finestra sembra scorretta, o esegui un modello privato tuo, correggilo o aggiungine uno in **Settings**, in **model context windows**, e i valori di riempimento seguono.
 
-## Tools: distingui i lenti dai non funzionanti
+## Tools: distingui il lento dal rotto
 
-Una chiamata di tool può essere lenta, oppure può stare silenziosamente fallendo, e vuoi sapere quale sia in pochi secondi, non dopo aver scavato tra i log.
+Una chiamata a strumento può essere lenta, o può stare silenziosamente fallendo, e vuoi sapere quale in secondi, non dopo aver scavato tra i log.
 
-![La pagina Tools che mostra la heat-map di latenza condivisa e la banda percentile accanto a un breakdown di successo e fallimento e una barra di distribuzione degli strumenti](/agenteye/images/tools.png)
-*La pagina Tools: la stessa heat-map e banda percentile, più un breakdown di successo e fallimento e una barra di distribuzione degli strumenti.*
+![La pagina Tools che mostra la mappa termica di latenza condivisa e la banda percentile accanto a una scomposizione di successo e fallimento e una barra di distribuzione degli strumenti](/agenteye/images/tools.png)
+*La pagina Tools: la stessa mappa termica e banda percentile, più una scomposizione di successo e fallimento e una barra di distribuzione degli strumenti.*
 
-Insieme alla vista di latenza condivisa, la pagina Tools aggiunge un **breakdown di successo e fallimento** e una **barra di distribuzione degli strumenti**, così vedi a colpo d'occhio quali strumenti usi di più e quali stanno consumando il tuo error budget.
+Accanto alla vista di latenza condivisa, la pagina Tools aggiunge una **scomposizione di successo e fallimento** e una **barra di distribuzione degli strumenti**, così vedi a colpo d'occhio quali strumenti usi di più e quali stanno consumando il tuo error budget.
 
-## Hooks: individua l'esatto hook e il trigger
+## Hooks: identifica l'esatto hook e il trigger
 
 Quando un lifecycle hook rallenta un'esecuzione, "gli hook sono lenti" non è qualcosa su cui puoi agire. La pagina Hooks ti porta a quello che conta.
 
-![La pagina Hooks che mostra la latenza suddivisa per nome hook e evento trigger sulla heat-map e banda percentile condivise](/agenteye/images/hooks.png)
-*La pagina Hooks: latenza suddivisa per nome hook e evento trigger.*
+![La pagina Hooks che mostra la latenza scomposta per nome dell'hook e evento trigger sulla mappa termica di latenza condivisa e sulla banda percentile](/agenteye/images/hooks.png)
+*La pagina Hooks: latenza scomposta per nome dell'hook e evento trigger.*
 
-Sulla stessa heat-map di latenza e banda percentile, la pagina Hooks suddivide l'attività per **nome hook** e **evento trigger**, così arrivi all'esatto hook e all'esatto evento che richiedono attenzione.
+Sulla stessa mappa termica di latenza e banda percentile, la pagina Hooks scompone l'attività per **nome dell'hook** e **evento trigger**, così arrivi al singolo hook e al singolo evento che hanno bisogno di attenzione.
 
 ## Correlati
 
-- [Event stream](/it/agenteye/event-stream): il trail live e con codice colore di ogni evento.
-- [Sessions](/it/agenteye/sessions): raggruppa gli eventi in una riga per esecuzione e apri il suo grafico di esecuzione.
-- [Error tracking](/it/agenteye/error-tracking): una superficie di triage unica per tutto ciò che il dashboard dipinge di rosso.
-- [Dashboards](/it/agenteye/dashboards): viste roll-up attraverso la tua flotta.
+- [Event stream](/it/agenteye/event-stream): il percorso live e codificato a colori di ogni evento.
+- [Sessions](/it/agenteye/sessions): raggruppa gli eventi in una sola riga per esecuzione e apri il suo grafico di esecuzione.
+- [Error tracking](/it/agenteye/error-tracking): una singola superficie di triage per tutto ciò che il dashboard dipinge di rosso.
+- [Dashboards](/it/agenteye/dashboards): visualizzazioni di riepilogo su tutta la tua flotta.

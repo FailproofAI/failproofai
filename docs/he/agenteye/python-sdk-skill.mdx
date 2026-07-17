@@ -1,0 +1,132 @@
+---
+---
+title: "Python SDK Agent Skill של Failproof AI Observability"
+description: "עברו מ-agent ללא instrumentation לאירועים שתוכלו לראות, כאשר coding agent שלכם מוצא את נקודות ה-instrumentation, כותב אותן ומוכיח שהן הועברו בהצלחה."
+---
+
+ספרו ל-coding agent שלכם *"add Failproof AI Observability to this agent"* והניחו לו לקרוא את ה-loop שלכם, להבין היכן ה-instrumentation צריך להיות, לכתוב אותו ולאמת את האירועים לפני שהוא מסיים את התרגיל.
+
+ה-**Python SDK skill** (`agenteye-python-sdk`) הוא *Agent Skill*: תיקייה של הוראות שמסוגל coding agent כמו Claude Code או Codex לטעון על-דרישה כשמשימה תואמת אותה. היא מלמדת את ה-agent להשתמש ב-[Python SDK](/he/agenteye/python-sdk) — זה לא ספרייה, וזה לא משנה כלום בדרך שה-SDK עובד.
+
+## Instrumentation קל לכתיבה וקל להשתבש בשקט
+
+ה-SDK קטן: שלוש עשרה שיטות אירוע, כולן keyword-only. coding agent יכול לקרוא את ה-[Python SDK](/he/agenteye/python-sdk) reference ולייצר instrumentation הגיוני תוך דקה.
+
+הבעיה היא ש-SDK זה לא זורק exception כשאתם טועים, וinstrumentation שגוי נראה בדיוק כמו instrumentation נכון עד שמישהו פותח dashboard ומוצא אותו ריק. הטעויות שעולות זמן אמיתי הן כולן שקטות:
+
+| הטעות | מה אתם רואים |
+|---|---|
+| No `agent_start` | כל אירוע מעבור בהצלחה. אפס sessions. |
+| Environment מעולם לא הוגדר | הכל עובד, מוקדש תחת `dev`. |
+| `outcome="failure"` | ה-run מופיע בירוק — רק `failed`, `error`, `timeout`, `rejected` נספרים. |
+| שם שדה עם typo | מתקבל ומאוחסן כשדה חדש. |
+| אירועים שנפלטו מ-thread pool | מושמטים בשקט. |
+
+כלא אחד מאלה זורק exception. כלא אחד מופיע בבדיקות. כל אחד נמצא בה-skill, צוין כחוזה עם הבדיקה שתופסת אותו.
+
+## מה היא עושה, בסדר
+
+ה-skill מריצה את אותם שלושה שלבים שמהנדס זהיר היה עושה:
+
+1. **Plan.** היא קוראת את ה-agent loop שלכם ושואלת שתי שאלות שרק אתם יכולים לענות עליהן: מה נחשב כ-run אחד (ה-`session_id` שלכם), ומי הגורמים המובחנים (ה-`agent_id` שלכם). היא מקבלת את ההסכמה לפני כתיבת קוד, כי שינוי שלהם מאוחר יותר מפצל את ההיסטוריה שלכם ושובר את המגמות.
+2. **Write.** היא קשרת identity פעם אחת ל-run במקום להעביר אותו דרך כל callsite, והיא בוחרת צורה בטוחה לconcurrency — פרט שחשוב, כי הדרך הקצרה הברורה מערבבת בשקט שני runs חופפים ל-session אחד.
+3. **Verify.** היא מריצה את ה-agent שלכם וקוראת את קובצי האירוע שנוצרו, בודקת ש-`agent_start` קיים, ש-environment נכון, וש-run אחד ייצר session אחד.
+
+השלב השלישי הוא זה שאנשים דילגים עליו. ה-SDK כותב אירועים לקבצים מקומיים, כך שintegration מלא יכול להיות מוכח על לפטופ ללא server, ללא API key, וללא רשת — שזה בדיוק למה ה-skill מחייבת לעשות את זה.
+
+## איך זה קשור לשאר ה-skills
+
+שלוש skills, חלוקה נקייה אחת:
+
+| Skill | השתמשו בה כאשר | מה היא נוגעת |
+|---|---|---|
+| **Python SDK skill** (עמוד זה) | אתם רוצים שה-agent שלכם *ישדר* telemetry — "add observability", "למה ה-agent שלי לא מופיע?" | כותבת קוד בחזן של ה-agent שלכם. קוראת כלום. |
+| **[Evaluator skill](/he/agenteye/evaluator-skill)** | אתם רוצים *לדרג* runs — "מה אנחנו אפילו צריכים למדוד?" | כותבת קוד בחזן שלכם; קוראת telemetry |
+| **[CLI skill](/he/agenteye/cli-skill)** | אתם רוצים *לקרוא* מה קרה, או להפעיל את ה-deployment שלכם | מנהלת את ה-CLI כאתכם, כולל שינויים |
+
+הן מעבירות בסדר הזה: skill זה מקבל אירועים לזרימה, ה-evaluator דורג אותם, ה-CLI קוראה אותם חזרה. אין כלום להערכה וכלום לקריאה עד שה-agent שלכם משדר sessions, אז אם אתם מתחילים מאפס, התחילו כאן.
+
+## דרישות מוקדמות
+
+1. **Python 3.10+** וחזן ה-agent שתרצו לinstrument.
+2. **ה-SDK.** הוא מופץ ללקוחות כ-private wheel ולא מindex ציבורי — ה-onboarding שלכם מכסה איך להשיג אותו והתקן אותו. ה-skill יודעת את נתיב ההתקנה ותשאל אתכם במקום לנחש אם היא לא יכולה למצוא אותו.
+3. **כלום אחר.** אין dashboard login, אין API key, אין רשת. ה-skill מאמתת מול קובצי האירוע שה-SDK כותב, כך שהיא יכולה לסיים ולהוכיח את עבודתה offline.
+
+## היכן להשיג אותה
+
+ה-skill גרה בקולקציית [`FailproofAI/skills`](https://github.com/FailproofAI/skills) הציבורית:
+
+```bash
+npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
+```
+
+הוסיפו `-g` כדי להתקין אותה לכל פרויקט במקום רק לפרויקט הנוכחי, וודא `--copy` אם הסביבה שלכם לא עוקבת אחרי symlinks. עבור Codex, העברו `-a codex`.
+
+## התקנה ידנית
+
+Agent Skills הן תיקיות המכילות `SKILL.md` בתוספת הפניות. אם הייתם מעדיפים לא להשתמש במתקין:
+
+- **Claude Code**: העתיקו את התיקייה `agenteye-python-sdk/` ל-`~/.claude/skills/` (כל פרויקט) או ל-`<your-repo>/.claude/skills/` (רק הריפו הזה). Claude Code גילתה אותה באופן אוטומטי — בדוקו את רשימת `/skills`, או פשוט שאלו משהו שתואם אותה.
+- **Codex**: Codex קוראה את אותו `SKILL.md`. ה-`agents/openai.yaml` המאוחסן מגדיר `allow_implicit_invocation: true`, אז היא נבחרת באופן אוטומטי כשמשימה תואמת; אחרת הפעילו אותה כ-`$agenteye-python-sdk`.
+
+הריצו את ה-agent שלכם **בחזן המחזיק את הקוד שתרצו לinstrument** — ה-skill קוראת את ה-agent loop שלכם לפני שהיא מציעה כלום.
+
+## איך session נראה
+
+```text
+you   ▸ Add Failproof AI Observability to this agent.
+
+agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
+        wrapper in llm.py. Two questions before I write anything.
+
+        What counts as one run? You handle requests concurrently, so I'd
+        use the request id you already have in ctx.request_id — then a
+        session here and a request in your logs are the same string.
+
+        And who are the actors? I see a planner path and a researcher
+        path. Label them separately, or is that one agent to you?
+
+you   ▸ Request id is right. They're one agent, call it "assistant".
+
+agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
+        agent_end bracket handle_request, including the error path. Used
+        a context-local for identity — your dispatcher runs tools in a
+        thread pool, and the simpler approach would have mixed concurrent
+        runs into one session without complaining.
+
+        Verified against a real run: 11 events across 4 files —
+        agent_start, model_request/response, tool_use/tool_result x3,
+        agent_end (outcome=success). environment=production, one session
+        per request, durations paired.
+
+        One thing I did NOT do: your worker pool in batch.py submits
+        straight to the executor, so events from there would be dropped.
+        Want me to fix those too?
+```
+
+הדפוס שיש לשים לב אליו: היא קראה את הקוד לפני הצעה, שאלה רק את השאלות שאתם יכולים לענות, עשתה שימוש חוזר בid שכבר היה לכם, בחרה בצורה בטוחה לconcurrency *כי* היא ראתה thread pool, **ואימתה על ידי קריאת האירועים הממשיים** במקום להצהיר על הצלחה — ואז סימנה את המקום היחיד שהיא ידעה שיכשל בשקט.
+
+## מה אתם יכולים לשאול אותה
+
+- *"Why isn't my agent showing up on the dashboard?"* → הולכת בסולם: האם אירועים נכתבים, האם `agent_start` שם, האם environment נכון, האם ה-collector קוראה באותו מקום.
+- *"Everything's landing under dev."* → ה-environment מעולם לא הוגדר, או הוגדר מחדש על ידי קריאה מאוחרת יותר.
+- *"Add token tracking."* → מוצאת את LLM wrapper שלכם ורושמת model, stop reason, ו-usage.
+- *"Instrument the sub-agents too."* → session אחד, תוויות agent מובחנות, קינון תחת ההורה שלהם.
+- *"Write tests for the instrumentation."* → מעניקה ל-SDK ספריית ארעית וטוענת על האירועים שהיא כתבה.
+
+## מה יש לשים לב אליו
+
+**הניחו לה לאמת.** השלב שהופך את ה-skill הזו לשווה שימוש הוא האחרון — הרצת ה-agent שלכם וקריאת האירועים חזרה. agent שכותב instrumentation ועוצר עשה את החצי הקל, והחצי שנכשל בשקט הוא האחר.
+
+**הסכימו על השמות לפני הקוד.** `session_id` ו-`agent_id` הם הצירים שכל משטח מקבץ על ידם. שינוי שם מאוחר יותר מפצל את ההיסטוריה: runs ישנים שומרים את התוויות הישנות וההמגמות שלכם שוברות. ה-skill תשאל; התשובה שווה דקה של חשיבה.
+
+**אם ה-agent שלכם מציע התקנת ה-SDK מindex ציבורי, ה-skill לא נטענה.** ה-SDK מופץ בפרטיות. הצעה זו היא ספר אמין שה-coding agent שלכם מנחש במקום לעקוב אחרי ה-skill — עצרו אותה שם ובדוקו שה-skill מותקנת.
+
+מעבר לכך זה blast radius קטן: היא כותבת קוד בספרייה העבודה שלכם וקובצי אירוע היכן שאתם אומרים לה. היא קוראת כלום מה-deployment שלכם ולא משנה כלום בו.
+
+## שלבים הבאים
+
+- **[Python SDK](/he/agenteye/python-sdk)**: ה-event reference השלם — כל סוג אירוע ושדה — מאחורי מה שה-skill זו מאטומטית.
+- **[Sessions](/he/agenteye/sessions)**: מה ה-instrumentation שלכם ייצור כאשר אירועים יעברו בהצלחה.
+- **[Evaluator Agent Skill](/he/agenteye/evaluator-skill)**: השלב הבא ברגע ש-runs מעברים בהצלחה — דירוגם.
+- **[CLI Agent Skill](/he/agenteye/cli-skill)**: קריאת ה-telemetry שלכם חזרה.

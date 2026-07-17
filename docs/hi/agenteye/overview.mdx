@@ -1,106 +1,106 @@
 ---
-title: "FailproofAI Observability क्या है?"
-description: "FailproofAI Observability क्या है? FailproofAI Observability दस्तावेज़।"
+title: "Failproof AI: एजेंटों में विफलताओं का अवलोकन करें"
+description: "Failproof AI Observability एक स्व-होस्टेड प्लेटफॉर्म है जो आपके AI एजेंटों को प्रोडक्शन में अवलोकन, मूल्यांकन और सुधार करने के लिए है।"
 ---
 
-FailproofAI Observability एक self-hosted प्लेटफॉर्म है जो आपके AI agents को production में observe, evaluate, और improve करने के लिए डिज़ाइन किया गया है। यह आपके agents द्वारा की जाने वाली सभी चीज़ों को record करता है (हर tool call, model request, hook, और error), प्रत्येक run की quality को score करता है, और उन failures को surface करता है जिन्हें आप देखना भूल गए हैं — सब कुछ एक dashboard में जो आप अपने infrastructure के अंदर चलाते हैं।
+Failproof AI Observability एक स्व-होस्टेड प्लेटफॉर्म है जो आपके AI एजेंटों को प्रोडक्शन में अवलोकन, मूल्यांकन और सुधार करने के लिए है। यह आपके एजेंटों द्वारा की जाने वाली सभी चीजों को रिकॉर्ड करता है (प्रत्येक टूल कॉल, मॉडल अनुरोध, हुक और त्रुटि), प्रत्येक रन की गुणवत्ता को स्कोर करता है, और ऐसी विफलताओं को सामने लाता है जिन्हें आप खोजना चाहते थे, सभी एक डैशबोर्ड में जो आप अपने स्वयं के इंफ्रास्ट्रक्चर के अंदर चलाते हैं।
 
-अगर आप AI agents ship करते हैं और आप अनुमान लगाने से थक गए हैं कि एक run क्यों गलत हुआ, तो यह शुरू करने का सही पेज है। यह बताता है कि FailproofAI Observability आपको क्या देता है और कैसे pieces एक साथ fit करते हैं, कुछ भी install करने से पहले।
+यदि आप AI एजेंट भेजते हैं और आप अनुमान लगाने से थक गए हैं कि रन क्यों गलत हुआ, तो यह शुरू करने के लिए पृष्ठ है। यह समझाता है कि Failproof AI Observability आपको क्या देता है और कैसे अलग-अलग भाग एक साथ काम करते हैं, इससे पहले कि आप कुछ भी इंस्टॉल करें।
 
-> **FailproofAI Observability एक enterprise product है FailproofAI का।** इसे action में देखना चाहते हैं? एक demo request करें: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) को email करें।
+> **Failproof AI Observability, Failproof AI का एक एंटरप्राइज़ उत्पाद है।** क्या इसे कार्रवाई में देखना चाहते हैं? एक डेमो का अनुरोध करें: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) को ईमेल करें।
 
-![एक FailproofAI Observability session को git-style execution graph के रूप में drawn किया गया है, इसके event timeline के बगल में, दाएं rail में प्रति-run tools, models, और hooks का breakdown के साथ](/agenteye/images/session-detail.png)
+![एक Failproof AI Observability सत्र को git-स्टाइल एक्सीक्यूशन ग्राफ़ के रूप में खींचा गया है जो इसकी इवेंट टाइमलाइन के बगल में है, दाईं ओर की पट्टी में प्रति-रन टूल, मॉडल और हुक का विवरण है](/agenteye/images/session-detail.png)
 
-*प्रत्येक agent run को git-style execution graph के रूप में drawn किया जाता है (बाएं) इसके event timeline के बगल में। Parallel sub-agents को अपना अपना lane मिलता है; दाएं rail run के लिए tools, models, hooks, और token spend को break down करता है।*
+*प्रत्येक एजेंट रन को git-स्टाइल एक्सीक्यूशन ग्राफ़ (बाईं ओर) इसकी इवेंट टाइमलाइन के बगल में खींचा जाता है। समानांतर उप-एजेंट को अपनी-अपनी लेन मिलती है; दाईं ओर की पट्टी रन के लिए टूल, मॉडल, हुक और टोकन व्यय को तोड़ती है।*
 
 ---
 
-## इसे action में देखें
+## कार्रवाई में देखें
 
-दो छोटे वीडियो दो चीज़ें दिखाते हैं जिन्हें teams सबसे पहले चाहते हैं: एक run को trace करना, और failures को automatically खोजना।
+दो छोटे वीडियो उन दो चीजों को दिखाते हैं जिनके लिए टीमें सबसे पहले पहुंचती हैं: एक रन को ट्रेस करना और विफलताओं को स्वचालित रूप से ढूंढना।
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Agent tracing: एक single run को step by step follow करें, goal से tools से लेकर final answer तक।*
+*एजेंट ट्रेसिंग: एक एकल रन को चरण दर चरण अनुसरण करें, लक्ष्य से लेकर टूल तक अंतिम उत्तर तक।*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Failproof Audit: FailproofAI Observability को अपने logs को sessions में mine करने दें और आपको बताएं कि क्या ठीक करना है।*
+*Failproof Audit: Failproof AI Observability को अपने लॉग को सत्रों में खोजने और आपको बताने दें कि क्या ठीक करना है।*
 
 ---
 
-## Teams इसे क्यों use करती हैं
+## टीमें इसका उपयोग क्यों करती हैं
 
-- **देखें कि आपके agent ने actually क्या किया।** प्रत्येक run एक readable, git-style execution graph बन जाता है: कौन से tools parallel में चले, कौन से sub-agents branch off हुए, कहाँ यह stall हुआ, और इसने क्या spend किया।
-- **Quality regressions को automatically catch करें।** एक small scoring service को connect करें और FailproofAI Observability प्रत्येक finished run को score करता है, इसलिए helpfulness में एक drop या hallucinations में एक spike अपने आप दिखता है।
-- **Failures खोजें जिन्हें आपने rule के लिए नहीं लिखा।** Recurring audits आपके logs को sessions में failure clusters, latency outliers, low scores, और stuck runs के लिए mine करते हैं, फिर आपको ranked, evidence-backed findings देते हैं।
-- **जब यह मायने रखे तो page दें।** Threshold rules error rate, latency, cost, या evaluator scores पर fire करते हैं और incidents open करते हैं जिन्हें आप acknowledge, assign, और resolve कर सकते हैं।
-- **Plain English में सवाल पूछें।** एक in-dashboard AI assistant आपके own data पर सवालों का जवाब देता है जैसे "इस हफ्ते prod में quality कैसे trend कर रही है?" कोई भी change जो यह करता है वह approval-gated होता है।
-- **अपना data रखें।** FailproofAI Observability self-hosted है: events, prompts, और analytics उस infrastructure में रहते हैं जिसे आप control करते हैं।
+- **देखें कि आपका एजेंट वास्तव में क्या करता है।** प्रत्येक रन एक पठनीय, git-स्टाइल एक्सीक्यूशन ग्राफ़ बन जाता है: कौन से टूल समानांतर में चले, कौन से उप-एजेंट अलग हुए, यह कहाँ रुका और इसने क्या व्यय किया।
+- **गुणवत्ता में गिरावट को स्वचालित रूप से पकड़ें।** एक छोटी स्कोरिंग सेवा को कनेक्ट करें और Failproof AI Observability हर पूरे रन को स्कोर करता है, इसलिए सहायकता में गिरावट या भ्रम में वृद्धि अपने आप दिखाई देती है।
+- **ऐसी विफलताएं खोजें जिनके लिए आपने कोई नियम नहीं लिखा।** आवर्ती ऑडिट सत्रों में अपने लॉग को खोजते हैं और त्रुटि क्लस्टर, विलंबता आउटलायर, कम स्कोर और फंसे हुए रन को हाथ देते हैं, फिर आपको रैंक किए गए, साक्ष्य-समर्थित निष्कर्ष देते हैं।
+- **जब यह मायने रखता है तो पेज प्राप्त करें।** थ्रेसहोल्ड नियम त्रुटि दर, विलंबता, लागत या मूल्यांकनकर्ता स्कोर पर फायर होते हैं और घटनाएं खोलते हैं जिन्हें आप स्वीकार, असाइन और हल कर सकते हैं।
+- **सादे अंग्रेजी में प्रश्न पूछें।** एक इन-डैशबोर्ड AI सहायक आपके अपने डेटा पर सवाल का जवाब देता है। इसके द्वारा किया जाने वाला कोई भी परिवर्तन अनुमोदन-गेटेड है।
+- **अपना डेटा रखें।** Failproof AI Observability स्व-होस्टेड है: ईवेंट, प्रॉम्प्ट और विश्लेषण आपके द्वारा नियंत्रित इंफ्रास्ट्रक्चर में रहते हैं।
 
 ---
 
 ## आपको क्या मिलता है
 
-FailproofAI Observability तीन ideas के चारों ओर organized है (**observe**, **analyze**, और **admin**), जो dashboard के left sidebar में भी दिखते हैं।
+Failproof AI Observability तीन विचारों (**observe**, **analyze** और **admin**) के चारों ओर व्यवस्थित है, जो डैशबोर्ड के बाईं साइडबार में प्रतिबिंबित होते हैं।
 
-**Observe** (जो हुआ उसकी raw truth):
+**Observe** (जो हुआ उसकी कच्ची सच्चाई):
 
-- **[Event stream](/hi/agenteye/event-stream)**: प्रत्येक run का live, per-step trail (tool calls, model calls, hooks, errors)।
-- **[Sessions](/hi/agenteye/sessions)**: वे events को one row per run में rolled up किया गया है, प्रत्येक को score के लिए तैयार है, git-style execution graph के साथ।
-- **[Performance metrics](/hi/agenteye/telemetry)**: per-surface latency heat-maps और models, tools, और hooks के लिए p50/p95/p99 vitals, ताकि एक tail spike median से अलग दिखे।
-- **[Error tracking](/hi/agenteye/error-tracking)**: सब कुछ के लिए एक triage surface जो गलत हुआ, एक firing alert से एक click दूर।
+- **[Event stream](/hi/agenteye/event-stream)**: प्रत्येक रन की लाइव, प्रति-चरण ट्रेल (टूल कॉल, मॉडल कॉल, हुक, त्रुटियां)।
+- **[Sessions](/hi/agenteye/sessions)**: उन ईवेंटों को प्रति-रन एक पंक्ति में रोल किया गया, प्रत्येक स्कोर किए जाने के लिए तैयार, git-स्टाइल एक्सीक्यूशन ग्राफ़ के साथ।
+- **[Performance metrics](/hi/agenteye/telemetry)**: प्रति-सतह विलंबता हीट-मैप और मॉडल, टूल और हुक के लिए p50/p95/p99 महत्वपूर्ण, इसलिए एक टेल स्पाइक माध्यिका से अलग दिखता है।
+- **[Error tracking](/hi/agenteye/error-tracking)**: हर चीज के लिए एक ट्रिएज सतह जो गलत हुई, एक फायरिंग अलर्ट से एक क्लिक।
 
-![Tools observe page: एक latency heat-map, एक percentile band, और 24 time bins पर एक tool-distribution bar](/agenteye/images/tools.png)
+![Tools observe पृष्ठ: एक विलंबता हीट-मैप, एक प्रतिशत बैंड और 24 समय बिन्स पर टूल-वितरण बार](/agenteye/images/tools.png)
 
-*प्रत्येक observe surface एक sparkline और p50/p95/p99 vitals को एक latency heat-map और एक percentile band के साथ pair करता है। दिखाया गया है: Tools।*
+*प्रत्येक observe सतह एक स्पार्कलाइन और p50/p95/p99 महत्वपूर्ण को एक विलंबता हीट-मैप और एक प्रतिशत बैंड के साथ जोड़ता है। यहाँ दिखाया गया है: Tools।*
 
-**Analyze** (activity को answers में बदलें):
+**Analyze** (गतिविधि को उत्तरों में बदलें):
 
-- **[Queries](/hi/agenteye/queries)** और **[dashboards](/hi/agenteye/dashboards)**: आपके events और evaluations पर saved SQL, shared, org-scoped dashboards में charted।
-- **[Evaluations](/hi/agenteye/evaluations)**: आपकी own evaluator service द्वारा उत्पादित quality scores, per-score reasoning के साथ।
-- **[Audits](/hi/agenteye/audits)**: recurring investigations जो sessions में failure patterns surface करते हैं।
-- **[Alerts](/hi/agenteye/alerts)** और **[incidents](/hi/agenteye/incidents)**: threshold rules जो आपको page करते हैं, plus एक incident workflow उन्हें triage करने के लिए।
+- **[Queries](/hi/agenteye/queries)** और **[dashboards](/hi/agenteye/dashboards)**: आपकी ईवेंट और मूल्यांकन पर बचाया गया SQL, साझा, org-स्कोप्ड डैशबोर्ड में चार्ट किया गया।
+- **[Evaluations](/hi/agenteye/evaluations)**: आपकी अपनी मूल्यांकनकर्ता सेवा द्वारा निर्मित गुणवत्ता स्कोर, प्रति-स्कोर तर्क के साथ।
+- **[Audits](/hi/agenteye/audits)**: आवर्ती जांच जो सत्रों में विफलता पैटर्न को सामने लाती है।
+- **[Alerts](/hi/agenteye/alerts)** और **[incidents](/hi/agenteye/incidents)**: थ्रेसहोल्ड नियम जो आपको पेज करते हैं, साथ ही उन्हें ट्रिएज करने के लिए एक घटना वर्कफ़्लो।
 
-**Interfaces** (अपना data अपने तरीके से पहुंचें):
+**Interfaces** (अपने डेटा को अपने तरीके से प्राप्त करें):
 
-- **[CLI](/hi/agenteye/cli-and-agents)**: terminal से या script से अपनी पूरी deployment को drive करें, और एक coding agent को plain English में इसके लिए करने दें।
-- **[AI assistant](/hi/agenteye/assistant)**: dashboard के अंदर ही plain English में अपने agents के बारे में सवाल पूछें।
+- **[CLI](/hi/agenteye/cli-and-agents)**: टर्मिनल या स्क्रिप्ट से अपने संपूर्ण परिनियोजन को चलाएं, और एक कोडिंग एजेंट को सादे अंग्रेजी में ऐसा करने दें।
+- **[AI assistant](/hi/agenteye/assistant)**: सादे अंग्रेजी में अपने एजेंटों के बारे में प्रश्न पूछें, डैशबोर्ड के अंदर सही।
 
-**Admin** (अपनी team के लिए इसे run करें):
+**Admin** (इसे अपनी टीम के लिए चलाएं):
 
-- **[API keys](/hi/agenteye/api-keys)**: collector, dashboard, और assistant के लिए scoped tokens।
-- **Users**: passwordless, email-based sign-in एक allowlist के साथ।
-- **Settings**: per-org configuration, जिसमें model context-window overrides शामिल हैं।
-
----
-
-## Pieces कैसे fit करते हैं
-
-Data एक दिशा में बहता है, आपके agent code से dashboard तक: आपका agent (Python SDK के via) events को agenteye-collector में emit करता है, जो उन्हें server को ship करता है, जो dashboard serve करता है। दो optional services इसे round out करते हैं — एक scoring service (evaluations) और एक AI assistant service (in-dashboard chat)।
-
-- **Python SDK**: आप अपने agent में कुछ `agenteye.event.*` calls add करते हैं; events को locally buffer किया जाता है।
-- **agenteye-collector**: एक lightweight daemon हर agent machine पर जो events को batch करता है और उन्हें server को ship करता है।
-- **Server**: आपके events को ingest करता है और अपने own databases में operational state रखता है।
-- **Dashboard**: जहाँ आप सब कुछ explore करते हैं।
-- **Optional services**: एक scoring service (evaluations), और एक AI assistant service (in-dashboard chat)।
-
-Docs में उपयोग की जाने वाली vocabulary के लिए (*event, session, evaluation, audit, finding, incident*), [Concepts](/hi/agenteye/concepts) देखें।
+- **[API keys](/hi/agenteye/api-keys)**: कलेक्टर, डैशबोर्ड और सहायक के लिए स्कोप्ड टोकन।
+- **Users**: पासवर्डविहीन, ईमेल-आधारित साइन-इन एक अनुमतिसूची के साथ।
+- **Settings**: प्रति-org कॉन्फ़िगरेशन, जिसमें मॉडल संदर्भ-विंडो ओवरराइड शामिल हैं।
 
 ---
 
-## FailproofAI Observability प्राप्त करना
+## भाग कैसे फिट होते हैं
 
-FailproofAI Observability एक enterprise product है FailproofAI का, और यह FailproofAI Enforcement के साथ काम करता है — policy और guardrail product — FailproofAI brand के तहत। यह पूरी तरह से आपने own environment में चलता है। अगर आपके पास अभी तक packages तक access नहीं है, तो एक demo request करें और हम आपको set up करेंगे: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) को email करें।
+डेटा एक दिशा में बहता है, आपके एजेंट कोड से डैशबोर्ड तक: आपका एजेंट (Python SDK के माध्यम से) agenteye-collector को ईवेंट भेजता है, जो उन्हें सर्वर को भेजता है, जो डैशबोर्ड परोसता है। दो वैकल्पिक सेवाएं इसे पूरा करती हैं — एक स्कोरिंग सेवा (मूल्यांकन) और एक AI सहायक सेवा (इन-डैशबोर्ड चैट)।
+
+- **Python SDK**: आप अपने एजेंट में कुछ `agenteye.event.*` कॉल जोड़ते हैं; ईवेंट स्थानीय रूप से बफर किए जाते हैं।
+- **agenteye-collector**: एक हल्का डेमॉन प्रत्येक एजेंट मशीन पर जो ईवेंट को बैच करता है और सर्वर को भेजता है।
+- **Server**: आपकी ईवेंट लेता है और आपने अपने स्वयं के डेटाबेस में परिचालनात्मक स्थिति रखी।
+- **Dashboard**: जहाँ आप सब कुछ अन्वेषण करते हैं।
+- **Optional services**: एक स्कोरिंग सेवा (मूल्यांकन) और एक AI सहायक सेवा (इन-डैशबोर्ड चैट)।
+
+दस्तावेज़ों में उपयोग की जाने वाली शब्दावली के लिए (*event, session, evaluation, audit, finding, incident*), [Concepts](/hi/agenteye/concepts) देखें।
 
 ---
 
-## अगली steps
+## Failproof AI Observability प्राप्त करना
 
-- [Concepts](/hi/agenteye/concepts): FailproofAI Observability vocabulary एक जगह पर।
-- [Observability](/hi/agenteye/observability): अपने agents द्वारा जो किया जाए उसे follow करें, run by run।
-- [Security](/hi/agenteye/security): कैसे FailproofAI Observability आपके data को isolated रखता है और आपके control में।
+Failproof AI Observability, Failproof AI का एक एंटरप्राइज़ उत्पाद है, और यह Failproof AI Enforcement के साथ काम करता है — नीति और गार्डरेल उत्पाद — Failproof AI ब्रैंड के तहत। यह पूरी तरह से आपने अपने परिवेश में चलता है। यदि आपके पास अभी तक पैकेज तक पहुंच नहीं है, तो एक डेमो का अनुरोध करें और हम आपको सेट अप करेंगे: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) को ईमेल करें।
+
+---
+
+## अगले कदम
+
+- [Concepts](/hi/agenteye/concepts): Failproof AI Observability शब्दावली एक जगह में।
+- [Observability](/hi/agenteye/observability): अपने एजेंटों को अनुसरण करें, रन दर रन।
+- [Security](/hi/agenteye/security): कैसे Failproof AI Observability आपके डेटा को अलग-थलग और आपने नियंत्रण में रखता है।

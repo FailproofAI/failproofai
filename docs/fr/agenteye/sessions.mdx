@@ -1,47 +1,48 @@
 ---
 title: "Sessions & Graphe d'exécution"
-description: "Documentation FailproofAI Observability Sessions & Graphe d'exécution."
+description: "Chaque événement d'une exécution, regroupé en une ligne lisible et représenté sous forme de graphe d'exécution façon git que vous pouvez lire en quelques secondes."
 ---
 
-Fini les conjectures sur les causes d'échec d'une exécution. FailproofAI Observability regroupe tous les événements d'une exécution en une seule ligne lisible, puis représente l'ensemble de l'exécution sous forme de diagramme à la git que vous pouvez déchiffrer en quelques secondes — vous voyez exactement ce qu'a fait votre agent, étape par étape.
 
-![La liste des sessions : une ligne par exécution, tous environnements et agents confondus, avec des pastilles de statut et des badges de score d'évaluation](/agenteye/images/sessions-list.png)
+Fini les suppositions sur les causes d'une exécution échouée. Failproof AI Observability regroupe chaque événement d'une exécution en une ligne lisible, puis dessine l'intégralité de l'exécution sous forme d'un schéma façon git que vous pouvez lire en quelques secondes — vous voyez exactement ce que votre agent a fait, étape par étape.
 
-*Une ligne par exécution : la pastille de statut vous indique immédiatement comment s'est terminée l'exécution, et un badge de score apparaît dès qu'un évaluateur est connecté.*
+![La liste des Sessions : une ligne par exécution, toutes les exécutions des différents environnements et agents, avec des badges de statut et des scores d'évaluation](/agenteye/images/sessions-list.png)
+
+*Une ligne par exécution : le badge de statut vous indique d'un coup d'œil comment l'exécution s'est terminée, et un badge de score apparaît dès qu'un évaluateur est connecté.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 *Traçage d'agent : suivez une exécution pas à pas, de l'objectif aux outils jusqu'à la réponse finale.*
 
 ---
 
-## Visualiser toutes les exécutions en un coup d'œil
+## Visualiser toutes les exécutions d'un coup d'œil
 
-Le journal brut des événements constitue la vérité de chaque étape, mais lorsque vous avez des milliers d'étapes réparties sur des dizaines d'exécutions, c'est l'exécution qui vous intéresse, pas l'étape. La page Sessions regroupe tous les événements d'une exécution en une seule ligne, transformant une journée d'activité en liste consultable plutôt qu'en flux ininterrompu.
+Le journal brut des événements est la vérité de chaque étape, mais lorsque vous avez des milliers d'étapes réparties sur des dizaines d'exécutions, vous avez besoin d'une vue de l'exécution, pas de l'étape. La page Sessions regroupe tous les événements d'une exécution en une seule ligne, transformant une journée d'activité en une liste parcourable plutôt qu'en un flux ininterrompu.
 
-Chaque ligne porte une pastille de statut, ce qui permet de repérer une exécution échouée parmi les saines avant même de cliquer. Filtrez par plage de dates, environnement, agent ou session pour passer de « tout » à « l'exécution qui m'intéresse » en quelques clics.
+Chaque ligne porte un badge de statut, ce qui permet de distinguer une exécution échouée d'une exécution saine avant même de cliquer. Filtrez par plage de dates, environnement, agent ou session pour passer de « tout » à « l'exécution qui m'intéresse » en quelques clics.
 
-Une fois un évaluateur connecté, chaque exécution terminée est notée automatiquement et son dernier score s'affiche sur la ligne sous forme de badge. Vous pouvez filtrer par n'importe quelle plage de scores, ce qui fait de « montre-moi toutes les exécutions prod à faible score cette semaine » un simple filtre, et non une revue manuelle. Tant que vous n'en avez pas configuré un, les sessions capturent toujours l'exécution complète — elles n'ont simplement pas encore de score.
+Une fois qu'un évaluateur est connecté, chaque exécution terminée est scorée automatiquement et son dernier score apparaît sur la ligne sous forme de badge. Vous pouvez filtrer par plage de scores, de sorte que « montrez-moi toutes les exécutions de production avec un score faible cette semaine » devient un simple filtre, et non une revue manuelle. Tant que vous n'en avez pas configuré un, les sessions capturent quand même l'intégralité de l'exécution — elles ne portent simplement pas encore de score.
 
 ---
 
-## Lire l'ensemble d'une exécution sous forme de diagramme
+## Lire l'intégralité d'une exécution sous forme de schéma
 
-![Le graphe d'exécution à la git d'une session, à côté de sa chronologie d'événements, avec le panneau de répartition des outils, modèles et hooks](/agenteye/images/session-detail.png)
+![Le graphe d'exécution façon git d'une session à côté de sa chronologie d'événements, avec le panneau de détail des outils, modèles et hooks](/agenteye/images/session-detail.png)
 
-*Le graphe d'exécution (à gauche) est affiché à côté de la chronologie des événements ; le rail de droite détaille les outils, modèles, hooks et la consommation de tokens pour l'exécution.*
+*Le graphe d'exécution (à gauche) est affiché aux côtés de la chronologie des événements ; le panneau de droite détaille les outils, modèles, hooks et la consommation de tokens pour l'exécution.*
 
-Cliquez sur n'importe quelle session pour ouvrir son graphe d'exécution : une vue à la git montrant comment les agents, outils, hooks et appels de modèle se sont déroulés dans le temps. Les sous-agents parallèles se ramifient chacun sur leur propre voie, ce qui vous permet de voir quels travaux se sont déroulés en parallèle, quel sous-agent a calé et où l'exécution a dévié — sans avoir à rejouer mentalement un mur de logs.
+Cliquez sur une session pour ouvrir son graphe d'exécution : une vue façon git représentant le déroulement des agents, outils, hooks et appels de modèle dans le temps. Les sous-agents parallèles se déploient chacun sur leur propre couloir, ce qui vous permet de voir quels travaux ont été exécutés en parallèle, quel sous-agent a bloqué et où l'exécution a dévié — sans avoir à la reconstituer mentalement à partir d'un mur de logs.
 
-Le rail de droite vous fournit la décomposition par exécution : quels outils et modèles ont été utilisés, quels hooks ont été déclenchés et ce que l'exécution a consommé en tokens. C'est la réponse à « pourquoi cette exécution a-t-elle coûté si cher ? » ou « quel est l'outil lent ? », affichée juste à côté du graphe qui en est la cause.
+Le panneau de droite vous donne le détail par exécution : quels outils et modèles ont été utilisés, quels hooks se sont déclenchés, et ce que l'exécution a consommé en tokens. C'est la réponse à « pourquoi cette exécution a-t-elle coûté autant ? » ou « quel est l'outil le plus lent ? », directement à côté du graphe qui en est à l'origine.
 
 ---
 
 ## Où le trouver
 
-Chaque page du tableau de bord est délimitée par votre organisation (`/<org-slug>/…`). Sessions se trouve sous **Observe** dans la barre latérale gauche, à côté d'Events, avec les filtres de plage de dates, d'environnement, d'agent et de session en haut de la liste. Chaque ligne est à un clic de son graphe d'exécution complet.
+Chaque page du tableau de bord est scopée à votre organisation (`/<org-slug>/…`). Sessions se trouve sous **Observe** dans la barre latérale gauche, à côté d'Events, avec les filtres de plage de dates, environnement, agent et session en haut de la liste. Chaque ligne est à un clic de son graphe d'exécution complet.
 
 Pour activer les badges de score et le filtrage par plage de scores, connectez un évaluateur : voir [Évaluations](/fr/agenteye/evaluations).
 
@@ -49,6 +50,6 @@ Pour activer les badges de score et le filtrage par plage de scores, connectez u
 
 ## Voir aussi
 
-- [Flux d'événements](/fr/agenteye/event-stream) : le journal brut, étape par étape, dont chaque session est la synthèse.
+- [Flux d'événements](/fr/agenteye/event-stream) : le journal brut par étape dont chaque session est issue.
 - [Évaluations](/fr/agenteye/evaluations) : connectez un évaluateur pour que chaque exécution reçoive un badge de score filtrable.
-- [Télémétrie](/fr/agenteye/telemetry) : comment les exécutions passent de votre agent vers ces sessions.
+- [Télémétrie](/fr/agenteye/telemetry) : comment les exécutions transitent de votre agent vers ces sessions.

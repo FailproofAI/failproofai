@@ -1,27 +1,32 @@
 ---
 title: "Python SDK"
-description: "FailproofAI Observability Python SDK 文档。"
+description: "精确掌握 AI 智能体在生产环境中的每一步：每次运行、工具调用、模型请求、hook 及人工干预。"
 ---
 
-精确掌握 AI 智能体在生产环境中的每一个动作：每次智能体运行、工具调用、模型请求、钩子触发以及人工干预。FailproofAI Observability Python SDK 在您的智能体代码内部记录完整的执行链路，让您能够调试、审计和评估实际发生的情况。只要您希望 FailproofAI Observability 对您的智能体进行观测，就可以使用它。
 
-在底层，SDK 将结构化事件写入本地 JSONL 文件，收集器守护进程会自动拾取并将其上传到平台。您无需自行管理这些文件。
+精确掌握 AI 智能体在生产环境中的每一步：每次运行、工具调用、模型请求、hook 及人工干预。Failproof AI Observability Python SDK 在智能体代码内部记录完整的执行轨迹，让你能够调试、审计和评估发生的一切。凡是需要 Failproof AI Observability 监控智能体时，均可使用它。
 
-> **提示：** 初次使用 FailproofAI Observability？本页是完整的 SDK 事件参考文档。
+SDK 底层将结构化事件写入本地 JSONL 文件，采集器守护进程会自动拾取并上传至平台。你无需自行管理这些文件。
+
+> **提示：** 初次使用 Failproof AI Observability？本页是完整的 SDK 事件参考文档。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by FailproofAI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
 ## 安装
 
-从 PyPI 安装 SDK：
+SDK 作为私有 wheel 包分发给客户，不在公共包索引中提供。具体的获取方式、安装步骤及版本锁定方法在入门培训中均有说明——如需访问权限，请联系你的 Failproof AI 对接人。
+
+安装完成后，可通过以下命令确认：
 
 ```bash
-pip install agenteye
+python -c "import agenteye; print(agenteye.__version__)"
 ```
+
+想让编程智能体完成整个集成过程？[Python SDK Agent Skill](/zh/agenteye/python-sdk-skill) 了解安装路径，能够规划插桩点、编写代码并验证事件是否成功上报。
 
 ---
 
@@ -53,9 +58,9 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
-### 对真实调用进行埋点
+### 对真实调用进行插桩
 
-实际使用时，您需要在现有的智能体代码中进行包装。在模型调用之前发出 `model_request` 事件，调用结束后发出 `model_response` 事件，这样两个事件就能覆盖真实的请求过程，FailproofAI Observability 也能将它们配对关联：
+实际使用时，你需要对现有智能体代码进行包装。在模型调用前发送 `model_request`，调用后发送 `model_response`，使这两个事件覆盖真实请求的完整时间段，Failproof AI Observability 便能将它们关联配对：
 
 ```python
 import anthropic
@@ -90,11 +95,11 @@ agenteye.event.model_response(
 )
 ```
 
-工具调用同理，使用 `tool_use` 和 `tool_result` 进行包装，并在配对事件中复用同一个 `tool_call_id`。
+工具调用同理，使用 `tool_use` 和 `tool_result` 进行包装，并在一对事件中复用同一个 `tool_call_id`。
 
-以下是这些事件到达仪表盘后的展示效果，按类型进行颜色编码，并可按环境、智能体和会话进行过滤：
+以下是这些事件在仪表板中的呈现效果——按类型色彩编码，可按环境、智能体和会话筛选：
 
-![实时事件流，按事件类型颜色编码，可按环境、智能体和会话进行过滤](/agenteye/images/events-stream.png)
+![实时事件流，按事件类型色彩编码，可按环境、智能体和会话筛选](/agenteye/images/events-stream.png)
 
 ---
 
@@ -102,21 +107,21 @@ agenteye.event.model_response(
 
 ```python
 agenteye.configure(
-    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
-    flush_interval=0.5,      # float, seconds between flush cycles
-    environment=None,        # str | None. Deployment environment label
+    base_dir=None,           # Path | str | None. 默认：$AGENTEYE_HOME 或 ~/.agenteye
+    flush_interval=0.5,      # float，刷新周期（秒）
+    environment=None,        # str | None. 部署环境标签
 )
 ```
 
-在调用任何 `event.*` 方法之前调用一次。可以省略，默认配置开箱即用。所有参数均为仅限关键字参数，请按照上方示例通过名称传递。
+在任何 `event.*` 调用之前调用一次。可以省略，默认配置开箱即用。所有参数均为关键字参数，须按如上所示按名称传入。
 
-当 `base_dir` 为 `None`（默认值）时，SDK 会优先读取 `$AGENTEYE_HOME` 环境变量（若已设置），否则回退到 `~/.agenteye`。这与收集器的解析逻辑保持一致，因此只需设置一个 `AGENTEYE_HOME` 环境变量，即可同时为 SDK 和收集器配置共享的事件缓冲目录。
+当 `base_dir` 为 `None`（默认值）时，SDK 优先读取 `$AGENTEYE_HOME` 环境变量（若已设置），否则回退到 `~/.agenteye`。这与采集器自身的路径解析逻辑一致，因此只需设置一个 `AGENTEYE_HOME` 环境变量，即可同时为 SDK 和采集器配置共享的事件缓冲目录。
 
 ---
 
 ## 环境
 
-为每个事件打上部署环境标签（如 `production`、`staging`、`qa`、`canary` 等）。只需设置一次，SDK 会自动将其附加到所有事件中。
+为每个事件打上部署环境标签（如 `production`、`staging`、`qa`、`canary` 等）。只需设置一次，SDK 会自动将其附加到每个事件上。
 
 **方式一：通过 `configure()` 设置：**
 
@@ -130,34 +135,34 @@ agenteye.configure(environment="production")
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**优先级：** `configure(environment=...)` 的优先级高于环境变量。若两者均未设置，默认值为 `"dev"`。
+**优先级：** `configure(environment=...)` 的优先级高于环境变量。若两者均未设置，默认为 `"dev"`。
 
-环境值在仪表盘中作为一级过滤条件显示，并存储在服务器端以支持快速查询。
+环境值在仪表板中作为一级筛选条件显示，并存储在服务端以支持快速查询。
 
-> **警告：** 环境值不得包含字面逗号 `,`。仪表盘过滤器在传输时使用逗号分隔的多选格式（如 `?environment=prod,staging`），因此名为 `prod,blue` 的环境会被拆分为两个值。包含逗号的环境值的事件将在数据摄取时被拒绝。
+> **警告：** 环境值中不得包含英文逗号 `,`。仪表板筛选器在传输时使用逗号分隔的多选格式（`?environment=prod,staging`），因此名为 `prod,blue` 的环境会被拆分为两个值。包含逗号的环境值在采集时会被拒绝。
 
 ---
 
 ## 数据与隐私
 
-SDK 只记录您明确传入的字段。提示词、消息、工具输入/输出以及模型内容，仅在您将其传递给 `event.*` 方法时才会被采集。SDK 不会读取您的进程数据，也不会隐式捕获任何信息。未传入的字段会从事件中完全省略，不会写入磁盘。
+SDK 仅记录你显式传入的字段。提示词、消息、工具输入输出及模型内容，只有在你将其传给 `event.*` 方法时才会被捕获。SDK 不会从你的进程中读取任何内容，也不会隐式捕获任何数据。未设置的字段将从事件中完全省略，不会写入磁盘。
 
-因此，数据脱敏是您的权利，也是您的责任。如果提示词或工具载荷中包含您不希望存储的个人信息（PII）或敏感凭证，请在传递给事件方法之前自行进行过滤或脱敏处理。
+因此，数据脱敏是你的选择，也是你的责任。如果提示词或工具载荷中包含你不希望存储的个人信息或密钥，请在传入事件方法之前进行脱敏或遮蔽处理。
 
 ---
 
 ## 事件参考
 
-大多数事件以开始/结束配对的形式出现，并共享一个关联 ID：`tool_use` 和 `tool_result` 共享 `tool_call_id`，`hook_triggered` 和 `hook_completed` 共享 `hook_id`，`human_wait` 和 `human_input` 共享 `input_id`。先发出开始事件，执行实际操作，再使用相同的 ID 发出结束事件。FailproofAI Observability 会自动匹配配对事件并计算 `duration_ms`，您无需自行传入该字段。
+大多数事件以开始/结束配对形式出现，并通过关联 ID 绑定：`tool_use` 与 `tool_result` 共享 `tool_call_id`，`hook_triggered` 与 `hook_completed` 共享 `hook_id`，`human_wait` 与 `human_input` 共享 `input_id`。发送开始事件，执行操作，然后用相同的 ID 发送结束事件。Failproof AI Observability 会自动匹配配对并为你计算 `duration_ms`，无需你手动传入。
 
-![会话的 git 风格执行图及其事件时间线（由配对事件重建），以及工具/模型/钩子分布面板](/agenteye/images/session-detail.png)
+![会话的 git 风格执行图及其事件时间线，由配对事件重建而成，附有工具/模型/hook 细分面板](/agenteye/images/session-detail.png)
 
-所有事件方法均需要以下两个字段：
+所有事件方法都需要以下两个字段：
 
-| 字段 | 类型 | 描述 |
+| 字段 | 类型 | 说明 |
 |---|---|---|
-| `session_id` | `str` | 标识顶层智能体运行实例 |
-| `agent_id` | `str` | 标识会话中发出该事件的具体智能体 |
+| `session_id` | `str` | 标识顶层智能体运行 |
+| `agent_id` | `str` | 标识会话内发出事件的智能体 |
 
 所有方法还接受任意 `**kwargs` 用于自定义元数据（参见[自定义字段](#custom-fields)）。
 
@@ -165,14 +170,14 @@ SDK 只记录您明确传入的字段。提示词、消息、工具输入/输出
 
 ### `event.agent_start()`
 
-智能体开始工作时发出。
+智能体开始工作时发送。
 
 ```python
 agenteye.event.agent_start(
     session_id="run-001",
     agent_id="planner",
     goal="answer user query",   # str | None
-    parent_id=None,             # str | None - parent agent_id for nested agents
+    parent_id=None,             # str | None - 嵌套智能体的父级 agent_id
 )
 ```
 
@@ -180,7 +185,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-智能体完成工作时发出。
+智能体完成工作时发送。
 
 ```python
 agenteye.event.agent_end(
@@ -195,14 +200,14 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-智能体调用工具时发出。与 `tool_result` 配对使用，SDK 会自动计算 `duration_ms`。
+智能体调用工具时发送。与 `tool_result` 配对使用，SDK 自动计算 `duration_ms`。
 
 ```python
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
-    tool_name="web_search",     # str, required
-    tool_call_id="toolu_01",    # str, required - correlation key for the matching tool_result
+    tool_name="web_search",     # str，必填
+    tool_call_id="toolu_01",    # str，必填 - 与对应 tool_result 的关联键
     input={"query": "..."},     # dict | None
 )
 ```
@@ -211,17 +216,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-工具返回结果时发出。通过 `tool_call_id` 与 `tool_use` 进行关联。
+工具返回结果时发送。通过 `tool_call_id` 与 `tool_use` 关联。
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # must match the prior tool_use
+    tool_call_id="toolu_01",        # 必须与前序 tool_use 匹配
     output={"results": ["..."]},    # Any | None
-    error=None,                     # str | None - set if the tool raised
-    # duration_ms is computed automatically - do not pass it
+    error=None,                     # str | None - 工具抛出异常时设置
+    # duration_ms 自动计算，无需传入
 )
 ```
 
@@ -229,60 +234,60 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-向 LLM 发送提示词之前发出。
+向 LLM 发送提示词之前发送。
 
 ```python
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
-    messages=[                   # list[dict] | None - conversation turns
+    model="claude-sonnet-4-6", # str | None - 任意提供商/模型字符串，不作验证
+    messages=[                   # list[dict] | None - 对话轮次
         {"role": "user", "content": "..."},
     ],
-    system="You are helpful.",   # Any | None - str or list of content blocks
-    tools=[                      # list[dict] | None - tool schemas offered to the model
+    system="You are helpful.",   # Any | None - 字符串或内容块列表
+    tools=[                      # list[dict] | None - 提供给模型的工具 schema
         {"name": "search", "input_schema": {"type": "object"}},
     ],
 )
 ```
 
-`messages` 中的条目支持纯字符串 `content` 或 Anthropic 风格的内容块列表 `content`。采样参数（如 `temperature`、`max_tokens` 等）可作为额外的关键字参数传入。
+`messages` 中的条目支持纯字符串 `content` 或 Anthropic 风格的内容块列表 `content`。采样参数（`temperature`、`max_tokens` 等）可作为额外 kwargs 传入。
 
 ---
 
 ### `event.model_response()`
 
-LLM 返回响应时发出。
+LLM 返回响应时发送。
 
 ```python
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    model="claude-sonnet-4-6", # str | None - 任意提供商/模型字符串，不作验证
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
-    content=[                    # Any | None - str, or list of content blocks
+    content=[                    # Any | None - 字符串或内容块列表
         {"type": "text", "text": "..."},
     ],
     role="assistant",            # str | None
 )
 ```
 
-`content` 支持纯字符串（通用提供商）或 Anthropic 风格的内容块列表。工具调用以 `{"type": "tool_use", ...}` 块的形式存在于 `content` 中，没有单独的 `tool_calls` 字段。
+`content` 支持纯字符串（通用提供商）或 Anthropic 风格的内容块列表。工具调用以 `{"type": "tool_use", ...}` 块的形式嵌入 `content` 中，无单独的 `tool_calls` 字段。
 
 ---
 
 ### `event.hook_triggered()`
 
-钩子触发时发出。与 `hook_completed` 配对使用，SDK 会自动计算 `duration_ms`。
+hook 触发时发送。与 `hook_completed` 配对使用，SDK 自动计算 `duration_ms`。
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
-    hook_name="pre_tool_use",   # str, required
-    hook_id="hook-abc",         # str, required - correlation key
+    hook_name="pre_tool_use",   # str，必填
+    hook_id="hook-abc",         # str，必填 - 关联键
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -292,18 +297,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-钩子执行完成时发出。通过 `hook_id` 与 `hook_triggered` 进行关联。
+hook 执行完成时发送。通过 `hook_id` 与 `hook_triggered` 关联。
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # must match the prior hook_triggered
+    hook_id="hook-abc",         # 必须与前序 hook_triggered 匹配
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # duration_ms is computed automatically - do not pass it
+    # duration_ms 自动计算，无需传入
 )
 ```
 
@@ -311,77 +316,77 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-发生未处理的错误时发出。
+发生未处理错误时发送。
 
 ```python
 agenteye.event.error(
     session_id="run-001",
     agent_id="planner",
-    error_type="TimeoutError",  # str, required
-    message="timed out",        # str, required
+    error_type="TimeoutError",  # str，必填
+    message="timed out",        # str，必填
     traceback="Traceback...",   # str | None
 )
 ```
 
 ---
 
-## 人工介入事件
+## 人工干预事件
 
-人工介入事件让您能够监控人员介入智能体执行过程的各个时刻（等待审批、提供输入、暂停或停止智能体）。通过这些事件，您可以衡量人工响应所需的时间（SDK 会自动计算配对事件的 `duration_ms`）、审计谁暂停或中断了智能体，并构建在仪表盘中可见的审批和监督工作流。
+人工干预事件让你能够监控人员介入智能体执行的关键时刻（等待审批、提供输入、暂停或停止智能体）。借助这些事件，你可以：衡量人工响应所需时长（SDK 自动计算配对事件的 `duration_ms`）、审计是谁暂停或中断了智能体，以及构建在仪表板中可见的审批和监督工作流。
 
 ### `event.human_wait()`
 
-智能体暂停执行以等待人工提供输入时发出。与 `human_input` 配对使用，SDK 会自动计算 `duration_ms`（即人工响应所用时间）。
+智能体暂停执行、等待人工输入时发送。与 `human_input` 配对使用，SDK 自动计算 `duration_ms`（即人工响应所需时长）。
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, required - correlation key for the matching human_input
-    prompt="Do you approve this action?",        # str | None - the question shown to the human
-    options=["approve", "reject", "defer"],      # list[str] | None - choices presented to the human
-    reason="approval_required",                  # str | None - why the agent is waiting
+    input_id="inp-abc",                          # str，必填 - 与对应 human_input 的关联键
+    prompt="Do you approve this action?",        # str | None - 向人工展示的问题
+    options=["approve", "reject", "defer"],      # list[str] | None - 提供给人工的选项
+    reason="approval_required",                  # str | None - 等待原因
 )
 ```
 
 ### `event.human_input()`
 
-人工提供输入且智能体恢复执行时发出。通过 `input_id` 与 `human_wait` 进行关联。`duration_ms` 由系统自动计算，调用方不得传入该字段。
+人工提供输入、智能体恢复执行时发送。通过 `input_id` 与 `human_wait` 关联。`duration_ms` 自动计算，调用方不得传入。
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, required - must match the prior human_wait
-    response="approve",    # str | None - the human's answer (free text or selected option)
-    # duration_ms is computed automatically - do not pass it
+    input_id="inp-abc",    # str，必填 - 必须与前序 human_wait 匹配
+    response="approve",    # str | None - 人工的回答（自由文本或所选选项）
+    # duration_ms 自动计算，无需传入
 )
 ```
 
 ### `event.human_pause()`
 
-人工主动暂停智能体时发出（例如通过仪表盘控制）。智能体处于挂起状态但未被终止。
+人工主动暂停智能体时发送（例如通过仪表板控件）。智能体被挂起但未终止。
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - who paused the agent
+    user_id="usr_42",         # str | None - 执行暂停操作的用户
 )
 ```
 
 ### `event.human_interrupt()`
 
-人工在智能体执行过程中主动停止智能体时发出。与 `human_pause` 不同，智能体的工作会被终止而非挂起。
+人工在执行过程中主动停止智能体时发送。与 `human_pause` 不同，此事件表示智能体的工作被终止而非挂起。
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - who interrupted the agent
-    at_step="tool_use:web_search",   # str | None - what the agent was doing when stopped
+    user_id="usr_42",                # str | None - 执行中断操作的用户
+    at_step="tool_use:web_search",   # str | None - 被停止时智能体正在执行的操作
 )
 ```
 
@@ -389,7 +394,7 @@ agenteye.event.human_interrupt(
 
 ## 自定义字段
 
-任何额外的关键字参数都会在标准字段之后附加到事件中：
+任何额外的关键字参数都会附加到标准字段之后：
 
 ```python
 agenteye.event.tool_use(
@@ -397,30 +402,30 @@ agenteye.event.tool_use(
     agent_id="planner",
     tool_name="db_query",
     tool_call_id="toolu_02",
-    tenant_id="acme",           # custom field
-    region="us-east-1",         # custom field
+    tenant_id="acme",           # 自定义字段
+    region="us-east-1",         # 自定义字段
 )
 ```
 
-`timestamp`、`type` 和 `environment` 为保留字段，若作为自定义字段传入会抛出 `ValueError`（错误信息：`Reserved field names cannot be used as custom fields: [...]`）。`session_id` 和 `agent_id` 是每个事件方法的必填参数，不能重复传入；若重复传入，Python 会抛出 `TypeError`。请通过 `configure(environment=...)` 或 `AGENTEYE_ENVIRONMENT` 环境变量来设置环境值。
+`timestamp`、`type` 和 `environment` 为保留字段，若作为自定义字段传入会引发 `ValueError`（`Reserved field names cannot be used as custom fields: [...]`）。`session_id` 和 `agent_id` 是每个事件方法的必填参数，不能重复传入；若重复传入，Python 会引发 `TypeError`。请通过 `configure(environment=...)` 或 `AGENTEYE_ENVIRONMENT` 变量来设置环境值。
 
 ---
 
-## 事件写入机制
+## 事件写入方式
 
-事件会在进程内缓冲，并每隔 `flush_interval` 秒（默认 500 毫秒）刷新到磁盘。每次刷新会写入一个 JSONL 文件：
+事件在进程内缓冲，每隔 `flush_interval` 秒（默认 500 毫秒）刷新到磁盘。每次刷新写入一个 JSONL 文件：
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-收集器会监控该目录并自动上传文件，您无需手动管理这些文件。
+采集器监控此目录并自动上传文件，你无需直接管理这些文件。
 
-每个文件均以原子方式写入：SDK 先写入临时文件，然后将其重命名到目标位置，因此收集器永远不会看到写入中途的不完整文件。进程退出时还会执行最后一次刷新，确保最后一个刷新间隔内缓冲的事件不会丢失。如果收集器处于离线状态，事件会以文件形式在磁盘上累积，待收集器恢复后自动上传。
+每个文件采用原子写入方式：SDK 先写入临时文件，再重命名到目标位置，确保采集器不会读取到半写状态的文件。进程退出时还会执行一次最终刷新，避免最后一个间隔内缓冲的事件丢失。如果采集器处于离线状态，事件会以文件形式在磁盘上累积，待采集器恢复后自动上传。
 
 ---
 
 ## 后续步骤
 
-- [事件流](/zh/agenteye/event-stream)：实时查看这些事件的到达情况，按类型颜色编码，并可按环境、智能体和会话进行过滤。
+- [事件流](/zh/agenteye/event-stream)：实时查看事件到达情况，按类型色彩编码，可按环境、智能体和会话筛选。
 - [会话](/zh/agenteye/sessions)：了解配对事件如何将每次智能体运行重建为执行图和时间线。

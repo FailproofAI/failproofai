@@ -1,52 +1,52 @@
 ---
-title: "Audit: il tuo analista automatico dell'affidabilità"
-description: "FailproofAI Observability Audits: documentazione del tuo analista automatico dell'affidabilità."
+title: "Audits: il vostro analista automatico di affidabilità"
+description: "Failproof AI Observability cerca i guasti che non avete mai scritto una regola per rilevare e vi consegna una lista ordinata per priorità e supportata da prove di esattamente cosa correggere."
 ---
 
 
-FailproofAI Observability cerca i guasti per i quali non hai mai scritto una regola e ti fornisce una lista di cose da fare ordinata per priorità, supportata da prove concrete, esattamente quello che devi correggere. È come avere un analista che passa al setaccio i tuoi log ogni notte e lascia la lista ristretta sulla tua scrivania al mattino.
+Failproof AI Observability cerca i guasti che non avete mai scritto una regola per rilevare e vi consegna una lista ordinata per priorità e supportata da prove di esattamente cosa correggere. È come avere un analista che setaccia i vostri log ogni notte e vi lascia la lista breve sulla scrivania al mattino.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Un tour di due minuti: da un'esecuzione programmata a una correzione su cui puoi agire.*
+*Un tour di due minuti: da un'esecuzione programmata a una correzione su cui potete agire.*
 
-![La pagina Audits: job ricorrenti che scansionano le tue sessioni alla ricerca di pattern di fallimento, ciascuno con una pianificazione e una sensibilità](/agenteye/images/audits.png)
-*Ogni audit è un job ricorrente che estrae i dati dalle tue sessioni e redige raccomandazioni ordinate per priorità e supportate da prove.*
+![La pagina Audits: processi ricorrenti che scansionano le vostre sessioni per modelli di guasto, ciascuno con una pianificazione e una sensibilità](/agenteye/images/audits.png)
+*Ogni audit è un processo ricorrente che analizza le vostre sessioni e redige raccomandazioni ordinate per priorità e supportate da prove.*
 
-## Smetti di indovinare cosa correggere dopo
+## Smettete di indovinare cosa correggere dopo
 
-Gli alert catturano i problemi che già sai di dover monitorare. Gli audit catturano quelli che non sai. Secondo una pianificazione che tu imposti, un audit legge tutte le tue sessioni di agent e ricerca i pattern che vale la pena correggere, così spendi il tuo tempo agendo sui risultati invece di scorrere i log sperando di individuarli tu stesso.
+Gli avvisi catturano i problemi che già sapete di dover monitorare. Gli audit catturano quelli che non sapete. Secondo una pianificazione che voi decidete, un audit legge tutte le vostre sessioni di agent e cerca i modelli che meritano di essere corretti, così potete dedicare il vostro tempo ad agire sui risultati invece di scorrere i log sperando di individuarli da soli.
 
-Una singola esecuzione va alla ricerca dei modi di fallimento che effettivamente rompono gli agent in produzione:
+Una singola esecuzione va alla ricerca dei modi di guasto che effettivamente interrompono gli agent in produzione:
 
-- **Cluster di errori**: lo stesso fallimento che si ripete sotto una causa radice condivisa.
-- **Drift rispetto a una baseline**: il comportamento che lentamente si allontana da una finestra nota come corretta.
-- **Goal failure nei transcript**: esecuzioni che tecnicamente si sono concluse ma non hanno mai fatto il lavoro.
-- **Utilizzo errato dei tool**: il tool sbagliato, argomenti non corretti, o loop che consumano call.
-- **Compromessi di qualità e costo**: dove stai pagando troppo per un output che potresti ottenere più economicamente.
-- **Gap di copertura**: comportamenti che nessun eval o alert sta monitorando.
+- **Cluster di errori**: lo stesso guasto che si ripete con una causa radice condivisa.
+- **Deviazione rispetto a una linea di base**: comportamento che scivola silenziosamente via da una finestra nota come funzionante.
+- **Guasto dell'obiettivo nei transcript**: esecuzioni che tecnicamente si sono completate ma non hanno mai fatto il lavoro.
+- **Uso errato dello strumento**: lo strumento sbagliato, argomenti non validi o loop che consumano chiamate.
+- **Compromessi tra qualità e costo**: dove state pagando più del dovuto per output che potreste ottenere a minor costo.
+- **Lacune di copertura**: comportamento che nessun eval o avviso sta monitorando.
 
-Tu decidi quanto approfonditamente cercare con una singola impostazione di **sensibilità** (bassa, media o alta), così un agent di staging rumoroso e uno di produzione blindato possono essere ciascuno sintonizzati sul segnale che vuoi.
+Voi decidete quanto rigorosamente cerca con una singola impostazione di **sensibilità** (bassa, media o alta), così un agent di staging rumoroso e uno di produzione bloccato possono essere sintonizzati ognuno sul segnale che volete.
 
 ## Ogni raccomandazione viene con le prove
 
-Non devi mai accettare una scoperta in buona fede. Ogni raccomandazione cita le sessioni esatte da cui proviene e lo SQL che l'ha portata alla luce, così puoi aprire le prove e confermare il problema in un click invece di fare reverse engineering di un'affermazione.
+Non dovete mai accettare un risultato sulla base della fiducia. Ogni raccomandazione cita le sessioni esatte da cui proviene e l'SQL che l'ha fatta emergere, così potete aprire le prove e confermare il problema con un click invece di decifrare un'affermazione.
 
-È anche questo che mantiene gli audit onesti. Il server verifica che ogni sessione citata esista effettivamente e **scarta qualsiasi raccomandazione le cui prove non reggono**, così l'audit indaga ma non inventa mai. Quello che finisce sulla tua lista è reale, riproducibile, e ordinato per importanza, con i guadagni maggiori in cima.
+Questo è anche ciò che mantiene gli audit onesti. Il server verifica che ogni sessione citata effettivamente esista e **scarta qualsiasi raccomandazione le cui prove non resistono**, così l'audit indaga ma non inventa mai. Quello che finisce sulla vostra lista è reale, riproducibile e ordinato per priorità in base a quanto importa, con i risultati più importanti in alto.
 
-## Trasforma una correzione in un guardrail
+## Trasformate una correzione in una guardrail
 
-Correggere un problema è solo metà della vittoria. L'altra metà è assicurarsi che non possa tornare silenziosamente. Ogni scoperta include un **collegamento con un click che predispone un alert di ricorrenza**, precompilato con un trigger di avvio sensato che puoi sintonizzare. Chiudi la scoperta, attiva l'alert, e la prossima volta che quel pattern riappare ricevi una notifica invece di riscoprirlo in un futuro audit.
+Correggere un problema è solo metà della vittoria. L'altra metà è assicurarsi che non possa tornare silenziosamente. Ogni risultato comporta un **collegamento con un click che redige un avviso di ricorrenza**, precompilato con un trigger di partenza ragionevole che potete sintonizzare. Chiudete il risultato, attivate l'avviso, e la prossima volta che quel modello riappare ricevete una notifica invece di riscoprirlo in un audit futuro.
 
 ## Dove trovarlo
 
-Gli Audit si trovano nel dashboard a **`/<org-slug>/audits`** (barra laterale su *analyze* quindi *audits*). La visualizzazione di esecuzioni e scoperte richiede **`audits:read`**; la creazione, modifica e triage degli audit richiede **`audits:write`**. Imposta l'ambito e la cadenza di un audit, quindi premi **Run now** quando vuoi risultati immediatamente invece di aspettare la prossima esecuzione programmata.
+Gli audit si trovano nel dashboard su **`/<org-slug>/audits`** (barra laterale per *analyze* a *audits*). La visualizzazione di esecuzioni e risultati richiede **`audits:read`**; la creazione, la modifica e il triage degli audit richiedono **`audits:write`**. Impostate l'ambito e la cadenza di un audit, quindi fate clic su **Run now** quando volete risultati immediati invece di aspettare il prossimo passaggio programmato.
 
-## Correlato
+## Correlati
 
-- [Alerts](/it/agenteye/alerts): ricevi una notifica nel momento in cui viene superata una soglia che già conosci.
-- [Evaluations](/it/agenteye/evaluations): assegna un punteggio a ogni esecuzione così le regressioni di qualità emergono da sole.
-- [Error tracking](/it/agenteye/error-tracking): raggruppa e monitora gli errori che i tuoi agent generano.
-- [Incidents](/it/agenteye/incidents): traccia un problema che un audit scopre fino alla sua correzione.
+- [Alerts](/it/agenteye/alerts): ricevete una notifica nel momento in cui una soglia che già conoscete viene superata.
+- [Evaluations](/it/agenteye/evaluations): assegnate un punteggio a ogni esecuzione così le regressioni di qualità emergono da sole.
+- [Error tracking](/it/agenteye/error-tracking): raggruppate e monitorate gli errori che i vostri agent generano.
+- [Incidents](/it/agenteye/incidents): tracciate un problema che un audit fa emergere fino alla sua correzione.

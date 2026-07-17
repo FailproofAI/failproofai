@@ -69,4 +69,23 @@ describe("findTranslationError", () => {
     const valid = `# Titel\n\nEinfache Prosa.\n`;
     expect(await findTranslationError(valid, README_SOURCE)).toBeNull();
   });
+
+  it("flags malformed frontmatter the model added to a frontmatter-less source", async () => {
+    // The source has no frontmatter, but the translation invents a leading
+    // `---` block and botches its YAML. findMdxParseError would blank the block
+    // and miss it, so this only fails if the frontmatter is validated for every
+    // source shape — not just when the source itself had frontmatter.
+    const rendered = `---\ntitle: "Titel "kaputt""\n---\n\n# Körper\n`;
+    const error = await findTranslationError(rendered, README_SOURCE);
+    expect(error).not.toBeNull();
+    expect(error).toContain("frontmatter");
+    expect(error).toMatch(/does not parse/);
+  });
+
+  it("allows well-formed frontmatter the model added to a frontmatter-less source", async () => {
+    // A well-formed added block is harmless — Mintlify ignores unknown keys —
+    // so it must not be rejected.
+    const rendered = `---\ntitle: "Titel"\n---\n\n# Körper\n`;
+    expect(await findTranslationError(rendered, README_SOURCE)).toBeNull();
+  });
 });

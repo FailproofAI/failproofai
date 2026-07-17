@@ -79,18 +79,24 @@ export async function findTranslationError(
   rendered: string,
   source: string,
 ): Promise<string | null> {
+  // Validate the rendered frontmatter block FIRST, for every source shape —
+  // even when the source had none. findMdxParseError (below) blanks a leading
+  // `---` block before compiling, so a malformed block the model *added* to a
+  // frontmatter-less page would otherwise be invisible here yet still break the
+  // Mintlify deploy. Closing exactly that blind spot is this module's job, so
+  // it must hold regardless of whether the source has frontmatter.
+  const fm = findFrontmatterError(rendered);
+  if (fm) {
+    return (
+      "The YAML frontmatter (the `---` block at the top of the file) does " +
+      `not parse:\n\n${fm.message}`
+    );
+  }
+
   const sourceKeys = frontmatterKeys(source);
   if (sourceKeys) {
-    // The source has frontmatter, so the translation must too. Check YAML
-    // validity FIRST — an unparseable block must surface as a syntax error,
-    // not be misreported as "missing" by the key check below.
-    const fm = findFrontmatterError(rendered);
-    if (fm) {
-      return (
-        "The YAML frontmatter (the `---` block at the top of the file) does " +
-        `not parse:\n\n${fm.message}`
-      );
-    }
+    // The source has frontmatter, so the translation must carry the same keys.
+    // (Its block, if present, already parsed cleanly above.)
     const keys = frontmatterKeys(rendered);
     if (keys === null) {
       return (
@@ -99,8 +105,11 @@ export async function findTranslationError(
         "must start with the same block — translate the values, keep the keys."
       );
     }
-    // Subset check: extra keys are tolerated (they cannot break the deploy),
-    // but a dropped or renamed key is a content regression the prompt forbids.
+    // Subset check BY DESIGN: a missing or renamed key is a content regression
+    // (the page loses its title/description), so reject it. An *extra* key is
+    // harmless — Mintlify ignores unknown frontmatter keys — so tolerate it
+    // rather than burn a retry (and risk exhausting the whole batch) on a page
+    // that would deploy fine. Reject content loss; allow harmless additions.
     const missing = sourceKeys.filter((k) => !keys.includes(k));
     if (missing.length > 0) {
       return (

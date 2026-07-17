@@ -9,7 +9,8 @@
   },
   "logo": {
     "light": "/logo/Failproof_AI_logo_light.png",
-    "dark": "/logo/Failproof_AI_logo.png"
+    "dark": "/logo/Failproof_AI_logo.png",
+    "href": "https://befailproof.ai"
   },
   "favicon": "/favicon.ico",
   "contextual": {

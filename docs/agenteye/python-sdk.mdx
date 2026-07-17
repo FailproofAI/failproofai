@@ -412,6 +412,8 @@ agenteye.event.tool_use(
 
 `timestamp`, `type`, and `environment` are reserved and raise `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) if passed as custom fields. `session_id` and `agent_id` are required parameters on every event method and cannot be supplied a second time; Python raises `TypeError` if you do. Set the environment with `configure(environment=...)` (or the `AGENTEYE_ENVIRONMENT` variable) instead.
 
+Keep payloads as structured JSON when you want to query their fields. Values JSON does not natively support—such as datetimes, UUIDs, decimals, sets, bytes, or model objects—are converted to strings so recording continues safely.
+
 ---
 
 ## How Events Are Written

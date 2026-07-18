@@ -39,7 +39,12 @@ import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
-import { claimHookInvocation } from "./hook-invocation-dedup";
+import { claimHookInvocation, createHookRuntimeIdentity } from "./hook-invocation-dedup";
+
+function writeHookResponse(response: { stdout: string; stderr: string }): void {
+  if (response.stdout) process.stdout.write(response.stdout);
+  if (response.stderr) process.stderr.write(response.stderr);
+}
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -199,14 +204,6 @@ export async function handleHookEvent(
       }
     }
 
-    invocationClaim = await claimHookInvocation(eventType, cli, parsed);
-    if (invocationClaim.role === "duplicate") {
-      if (invocationClaim.response.stdout) process.stdout.write(invocationClaim.response.stdout);
-      if (invocationClaim.response.stderr) process.stderr.write(invocationClaim.response.stderr);
-      hookLogInfo(`duplicate invocation replayed event=${eventType} cli=${cli}`);
-      return invocationClaim.response.exitCode;
-    }
-
     // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
     const canonicalEventType = canonicalizeEventType(eventType, cli);
 
@@ -256,6 +253,18 @@ export async function handleHookEvent(
     const loadResult = await loadAllCustomHooks(config.customPoliciesPath, { sessionCwd: session.cwd });
     const customHooksList = loadResult.hooks;
     const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
+
+    invocationClaim = await claimHookInvocation(
+      eventType,
+      cli,
+      parsed,
+      createHookRuntimeIdentity(config, customHooksList, session.cwd),
+    );
+    if (invocationClaim.role === "duplicate") {
+      writeHookResponse(invocationClaim.response);
+      hookLogInfo(`duplicate invocation replayed event=${eventType} cli=${cli}`);
+      return invocationClaim.response.exitCode;
+    }
 
     for (const hook of customHooksList) {
       const hookName = hook.name;
@@ -331,12 +340,7 @@ export async function handleHookEvent(
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
-    if (result.stdout) {
-      process.stdout.write(result.stdout);
-    }
-    if (result.stderr) {
-      process.stderr.write(result.stderr);
-    }
+    writeHookResponse(result);
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {

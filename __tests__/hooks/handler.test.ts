@@ -51,6 +51,7 @@ vi.mock("../../src/hooks/hook-logger", () => ({
 
 vi.mock("../../src/hooks/hook-invocation-dedup", () => ({
   claimHookInvocation: vi.fn(() => Promise.resolve({ role: "independent" })),
+  createHookRuntimeIdentity: vi.fn(() => "test-runtime"),
 }));
 
 describe("hooks/handler", () => {
@@ -1275,6 +1276,37 @@ describe("hooks/handler", () => {
     expect(stderrSpy).toHaveBeenCalledWith("blocked once");
     expect(evaluatePolicies).not.toHaveBeenCalled();
     expect(persistHookActivity).not.toHaveBeenCalled();
+  });
+
+  it("publishes and releases the owner decision", async () => {
+    const { claimHookInvocation } = await import("../../src/hooks/hook-invocation-dedup");
+    const complete = vi.fn(() => Promise.resolve());
+    const release = vi.fn(() => Promise.resolve());
+    vi.mocked(claimHookInvocation).mockResolvedValueOnce({ role: "owner", complete, release });
+    const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+    vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+      exitCode: 2,
+      stdout: "",
+      stderr: "blocked by owner",
+      policyName: "block-sudo",
+      reason: "blocked",
+      decision: "deny",
+    });
+    mockStdin(JSON.stringify({
+      session_id: "session-1",
+      tool_use_id: "tool-1",
+      tool_name: "Bash",
+    }));
+
+    const exitCode = await handleHookEvent("PreToolUse");
+
+    expect(exitCode).toBe(2);
+    expect(complete).toHaveBeenCalledWith({
+      exitCode: 2,
+      stdout: "",
+      stderr: "blocked by owner",
+    });
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("persists instruct decision as 'instruct' in activity store", async () => {

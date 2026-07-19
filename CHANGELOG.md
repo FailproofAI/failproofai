@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.14-beta.1 — 2026-07-19
+
+### Docs
+- Sync the agent-CLI hook harnesses against upstream docs. Verified all six documented CLIs; Claude, Codex, and OpenCode are up to date. Detected new upstream drift that needs a reviewer decision (surfaced in the PR checklist, not auto-applied): **Copilot** documents two camelCase-only events with no PascalCase "VS Code compatible" variant — the already-deferred `subagentStart` and the new `userPromptTransformed` (now recorded alongside it in `types.ts`) — plus tools `task`/`ask_user`/`web_search` that are absent from `COPILOT_TOOL_MAP`; **Cursor** documents 14 events beyond the curated 7-event parity set (`beforeShellExecution`, `afterShellExecution`, `beforeMCPExecution`, `afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `postToolUseFailure`, `subagentStart`, `preCompact`, and five observation/IDE-lifecycle events), each needing a `CURSOR_EVENT_MAP` mapping decision; **Pi** `PI_TOOL_MAP` maps `glob` while the docs' built-in tool list shows `find`/`ls` (low confidence — needs verification against the live tool registry). No event arrays or maps were auto-appended: no mirror CLI (Claude/Codex) gained events, and the curated-subset CLIs' (Cursor/OpenCode/Pi) additions are product-scoping decisions left to the reviewer. (#573)
+
 ## 0.0.14-beta.1 — 2026-07-17
 
 ### Docs

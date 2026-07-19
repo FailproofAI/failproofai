@@ -177,10 +177,10 @@ export const COPILOT_HOOK_EVENT_TYPES = [
   // Newly documented upstream (cli-hooks-reference), each with an explicit
   // PascalCase "VS Code compatible" variant shown in the docs. No COPILOT_EVENT_MAP
   // exists (Copilot names are already Pascal), so appending keeps the build green.
-  // NOTE: `subagentStart` is also newly documented but appears camelCase-ONLY (no
-  // PascalCase variant listed), so it is deferred to the reviewer checklist rather
-  // than guessing a casing. `notification`, by contrast, DOES have a documented
-  // `Notification` PascalCase variant, so it is appended below.
+  // NOTE: `subagentStart` and `userPromptTransformed` are also newly documented but
+  // appear camelCase-ONLY (no PascalCase variant listed), so they are deferred to the
+  // reviewer checklist rather than guessing a casing. `notification`, by contrast, DOES
+  // have a documented `Notification` PascalCase variant, so it is appended below.
   "PostToolUseFailure",
   "ErrorOccurred",
   "PreCompact",

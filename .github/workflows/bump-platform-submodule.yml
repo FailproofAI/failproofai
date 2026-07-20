@@ -52,7 +52,7 @@ jobs:
           repositories: ${{ matrix.repo }}
 
       - name: Checkout FailproofAI/${{ matrix.repo }} main
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: FailproofAI/${{ matrix.repo }}
           # Persist the app token so `git push` below bypasses the ruleset.

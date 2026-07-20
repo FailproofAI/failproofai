@@ -71,7 +71,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
+    "@anthropic-ai/sdk": "^0.112.4",
     "@mdx-js/mdx": "^3.1.1",
     "@tailwindcss/postcss": "^4.3.1",
     "@tanstack/react-virtual": "^3.14.3",

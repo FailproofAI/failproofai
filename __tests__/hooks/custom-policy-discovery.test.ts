@@ -8,7 +8,7 @@
  *
  * These pin both halves: the files we load, and the near-misses we now report.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -24,6 +24,30 @@ import {
 
 let dir: string;
 let policiesDir: string;
+
+// describeCustomPolicies scans the GLOBAL policies dir (~/.failproofai/policies)
+// as well as the project one — correctly, since custom policies really do live
+// in both. But that made these tests read the developer's own policy files:
+// green on a machine with an empty global dir, eight failures on one with
+// personal rules in it. That is the same ambient-state defect this PR fixes for
+// the Pi tests in #569, reintroduced one file over.
+//
+// Pin HOME to a temp dir for the whole file (the pattern configure-wizard.test.ts
+// already uses) so the global half is empty and controlled, not inherited.
+let fileHome: string;
+let realHome: string | undefined;
+
+beforeAll(() => {
+  realHome = process.env.HOME;
+  fileHome = mkdtempSync(resolve(tmpdir(), "fpai-custom-home-"));
+  process.env.HOME = fileHome;
+});
+
+afterAll(() => {
+  if (realHome === undefined) delete process.env.HOME;
+  else process.env.HOME = realHome;
+  rmSync(fileHome, { recursive: true, force: true });
+});
 
 beforeEach(() => {
   dir = mkdtempSync(resolve(tmpdir(), "fpai-custom-"));
@@ -96,11 +120,11 @@ describe("wizard review screen — custom policies", () => {
   });
 
   it("says nothing when there are no custom policies at all", () => {
+    // Both halves can be asserted now that HOME is pinned — previously the
+    // global half was whatever the developer happened to have on disk.
     const { active, warnings } = describeCustomPolicies(dir);
-    // A project dir with no files contributes no line; the global dir may hold
-    // the developer's own policies, so only assert the project half is absent.
-    expect(active.some((l) => l.includes("(project)"))).toBe(false);
-    expect(warnings.some((w) => w.includes(dir))).toBe(false);
+    expect(active).toEqual([]);
+    expect(warnings).toEqual([]);
   });
 });
 

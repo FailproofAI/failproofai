@@ -120,10 +120,10 @@ export function colorsEnabled(out: TTYOut): boolean {
  * follows. Emits truecolor where the terminal advertises it, basic ANSI
  * otherwise; the caller still decides *whether* to colour at all.
  */
-export function brandAnsi(role: keyof typeof HUES, bold = false): string {
+export function brandAnsi(role: keyof typeof HUES): string {
   const h = HUES[role];
   const code = truecolorEnabled() ? `38;2;${h.rgb.join(";")}` : h.basic;
-  return `${ESC}[${bold ? "1;" : ""}${code}m`;
+  return `${ESC}[${code}m`;
 }
 
 export const ANSI_RESET = `${ESC}[0m`;

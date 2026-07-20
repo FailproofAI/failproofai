@@ -111,6 +111,30 @@ describe("sleep-polling-loop", () => {
   it("does not match `sleep 1`", () => {
     expect(sleepPollingLoop.detect(bash("sleep 1"), {})).toBeNull();
   });
+  // #522: the explicit-seconds suffix is the most common spelling, and the
+  // unit group used to omit `s` — the trailing \b then failed on the `s`
+  // (both `0` and `s` are word characters), so the whole match failed
+  // rather than falling back to the bare number.
+  it("matches `sleep 30s`", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 30s"), {})).not.toBeNull();
+  });
+  it("matches `sleep 45s`", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 45s"), {})).not.toBeNull();
+  });
+  it("matches `sleep 60s` inside a longer command", () => {
+    expect(
+      sleepPollingLoop.detect(bash("echo waiting && sleep 60s && curl localhost:3000"), {}),
+    ).not.toBeNull();
+  });
+  it("does not match `sleep 5s` (below the 30s threshold)", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 5s"), {})).toBeNull();
+  });
+  it("does not match `sleep 29s` (just below the threshold)", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 29s"), {})).toBeNull();
+  });
+  it("matches `sleep 30.0s` (fractional with an explicit unit)", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 30.0s"), {})).not.toBeNull();
+  });
 });
 
 describe("find-from-root", () => {

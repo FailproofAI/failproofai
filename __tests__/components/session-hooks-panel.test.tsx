@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   Shield: () => <span data-testid="shield" />,
   Copy: (props: any) => <span data-testid="copy-icon" {...props} />,
   Check: (props: any) => <span data-testid="check-icon" {...props} />,
+  ChevronLeft: () => <span data-testid="chevron-left" />,
+  ChevronRight: () => <span data-testid="chevron-right" />,
 }));
 
 vi.mock("@/app/actions/get-hook-activity", () => ({

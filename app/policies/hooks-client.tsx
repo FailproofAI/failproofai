@@ -698,6 +698,7 @@ function ActivityTab({
                               className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${
                                 isExpanded ? "rotate-0" : "-rotate-90"
                               }`}
+                              aria-hidden="true"
                             />
                           </button>
                         </td>

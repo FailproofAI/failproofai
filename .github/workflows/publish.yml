@@ -12,9 +12,24 @@ jobs:
       contents: write
       id-token: write
     steps:
+      # Token for the version-bot GitHub App — a bypass actor on the org-level
+      # `failproofai-rules` ruleset (PR + 1 review required on main). The default
+      # GITHUB_TOKEN is not a bypass actor, so the "Bump version for next
+      # development cycle" push below is rejected with GH013 without this. Same
+      # app and secrets the bump-platform-submodule workflow uses.
+      - name: Mint version-bot app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
+          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
+          # Persist the app token so the version-bump `git push origin main`
+          # below authenticates as the bypass actor, not the default token.
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -113,4 +128,7 @@ jobs:
 
           git add package.json
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+
+          # Authenticated as the version-bot App (persisted by the checkout above),
+          # which bypasses the ruleset's pull-request requirement on main.
           git push origin main

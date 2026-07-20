@@ -1,0 +1,115 @@
+name: Integration Suite
+
+# Daily integration test: does failproofai still ENFORCE against every supported
+# agent CLI @latest? Installs all 12 CLIs into an isolated Docker sandbox, drives
+# each one against failproofai's OWN policies (built from THIS repo's HEAD), and
+# asserts the hook log shows a DENY. A silent-allow — a blocked action that ran
+# with no deny — means enforcement broke against that CLI (e.g. a vendor changed
+# their hook schema out from under us), and turns the run red. Reports only
+# CHANGES (broke/recovered) plus a daily heartbeat to Slack.
+#
+# Unlike the unit/e2e suites, this drives REAL vendor CLIs against real gateway
+# models, so it needs credentials. They live in the `cli-integration` Environment
+# and the workflow runs ONLY on schedule / manual dispatch — never on pull_request
+# — so fork PRs can never reach the secrets.
+#
+# This file is a THIN TRIGGER on purpose. Everything beyond the GitHub-specific
+# wiring (checkout, bun, cache, secret->env mapping) lives in
+# integration-suite/ci-entrypoint.sh, so the harness is readable — and runnable —
+# without opening this YAML. See integration-suite/README.md.
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # ~06:17 UTC daily
+  workflow_dispatch:
+    inputs:
+      clis:
+        description: "CLIs to probe (space-separated; empty = all 12)"
+        required: false
+        default: ""
+      force:
+        description: "Disable the version-gate (re-probe everything)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: integration-suite
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  integration-suite:
+    runs-on: ubuntu-latest
+    # NOTE: this is the GitHub *Environment* name where the secrets live. It is
+    # configured in repo settings and is deliberately NOT renamed alongside this
+    # directory — changing it here without renaming it there loses access to
+    # every secret below.
+    environment: cli-integration
+    # Fresh install of 12 CLIs (~a few min on GH runners) + first-run probes of
+    # all 12 (empty gate) can approach an hour; steady-state gated runs are short.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Restore integration-suite state (version-gate + broke/recovered)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: integration-suite-state.json
+          key: integration-suite-state-${{ github.run_id }}
+          restore-keys: integration-suite-state-
+
+      # TRANSITION (delete once an integration-suite-state-* cache exists — i.e.
+      # after the first successful run on main). This harness was renamed from
+      # `cli-integration`, which took the cache key with it; without this the
+      # version-gate loses its baseline and the next run re-probes all 12 CLIs
+      # and reports every CLI as newly-changed. The archive carries the OLD
+      # filename, so it lands as cli-integration-state.json and ci-entrypoint.sh
+      # adopts it only when the new file is absent.
+      - name: Restore legacy state (rename transition)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: cli-integration-state.json
+          key: cli-integration-state-${{ github.run_id }}
+          restore-keys: cli-integration-state-
+
+      - name: Run integration suite
+        env:
+          # gateway + PAT credentials
+          CANARY_LLM_API_KEY: ${{ secrets.CANARY_LLM_API_KEY }}
+          CANARY_LLM_BASE_URL: ${{ secrets.CANARY_LLM_BASE_URL }}
+          CANARY_LLM_MODEL: ${{ secrets.CANARY_LLM_MODEL }}
+          CANARY_CLAUDE_MODEL: ${{ secrets.CANARY_CLAUDE_MODEL }}
+          CANARY_PI_MODEL: ${{ secrets.CANARY_PI_MODEL }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          # OAuth credential trees (base64 gzip-tars rooted at $HOME)
+          CURSOR_TOKEN_TGZ_B64: ${{ secrets.CURSOR_TOKEN_TGZ_B64 }}
+          DEVIN_TOKEN_TGZ_B64: ${{ secrets.DEVIN_TOKEN_TGZ_B64 }}
+          ANTIGRAVITY_TOKEN_TGZ_B64: ${{ secrets.ANTIGRAVITY_TOKEN_TGZ_B64 }}
+          # reporting + version-gating
+          CANARY_SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CANARY_STATE: ${{ github.workspace }}/integration-suite-state.json
+          CANARY_FP_SHA: ${{ github.sha }}
+          # force=true → "none" (non-"all" ⇒ run.sh gates nothing ⇒ probe all). A
+          # literal '' can't be used: GHA `x && '' || 'all'` is always 'all'.
+          CANARY_VERSION_GATED: ${{ inputs.force && 'none' || 'all' }}
+          # Pass the dispatch input via env (NOT interpolated into the run script)
+          # to prevent template/shell injection; run.sh word-splits it into args.
+          CANARY_CLIS: ${{ inputs.clis }}
+        run: bash integration-suite/ci-entrypoint.sh
+
+      - name: Save integration-suite state
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: integration-suite-state.json
+          key: integration-suite-state-${{ github.run_id }}

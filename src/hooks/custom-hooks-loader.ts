@@ -27,6 +27,9 @@ const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 /** Regex matching convention policy filenames: *policies.{js,mjs,ts} */
 const CONVENTION_FILE_RE = /policies\.(js|mjs|ts)$/;
 
+/** Script extensions we could load, used to spot near-miss filenames. */
+const LOADABLE_EXT_RE = /\.(js|mjs|ts)$/;
+
 /**
  * Scan a directory for convention policy files (*policies.{js,mjs,ts}).
  * Returns sorted absolute paths. Returns [] if the directory doesn't exist.
@@ -39,6 +42,36 @@ export function discoverPolicyFiles(dir: string): string[] {
       .filter((e) => e.isFile() && CONVENTION_FILE_RE.test(e.name))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((e) => resolve(dir, e.name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Script files sitting in a policies directory that the convention will NOT
+ * load, because the name doesn't end in `policies.{js,mjs,ts}`.
+ *
+ * The failure this exists for is silent and total: a file in exactly the right
+ * directory, exporting exactly the right thing, named `block-foo.mjs` instead
+ * of `block-foo-policies.mjs`, is skipped with no warning — it looks installed
+ * and enforces nothing. This repo shipped `block-version-bumps.mjs` that way,
+ * so the guard written after a bad version bump had never once run. Callers
+ * surface these as a warning rather than loading them, since a file that opts
+ * out of the naming convention may well not be a policy file at all.
+ */
+export function findSkippedPolicyFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter(
+        (e) =>
+          e.isFile() &&
+          LOADABLE_EXT_RE.test(e.name) &&
+          !CONVENTION_FILE_RE.test(e.name) &&
+          !e.name.endsWith(".d.ts"),
+      )
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b));
   } catch {
     return [];
   }
@@ -135,15 +168,38 @@ export interface LoadAllResult {
  * Each file is loaded independently (fail-open per file).
  * Convention hooks are tagged with __conventionScope so the handler can build scoped prefixes.
  */
+/**
+ * Warn once per directory about script files the naming convention will skip.
+ * Fires on the hook path, so it must stay cheap (one readdir) and must never
+ * throw — a warning is not worth failing a tool call over.
+ */
+function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
+  const skipped = findSkippedPolicyFiles(dir);
+  if (skipped.length === 0) return;
+  const suggest = (n: string) => n.replace(/\.(js|mjs|ts)$/, "-policies.$1");
+  hookLogWarn(
+    `${scope} policies: ${skipped.length} file(s) in ${dir} are NOT loaded — ` +
+      `the convention only loads names ending in "policies.js|mjs|ts". ` +
+      skipped.map((n) => `${n} → rename to ${suggest(n)}`).join("; "),
+  );
+}
+
 export async function loadAllCustomHooks(
   customPoliciesPath: string | undefined,
-  opts?: { sessionCwd?: string },
+  opts?: { sessionCwd?: string; customPoliciesEnabled?: boolean },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
 
   const conventionSources: ConventionSource[] = [];
 
   const projectRoot = findProjectConfigDir(opts?.sessionCwd ?? process.cwd());
+
+  // Convention discovery can be switched off from config without renaming or
+  // deleting anything. Absent means on, so dropping a file in works with no
+  // config at all and upgrades don't silently disable anyone's rules. An
+  // explicit `customPoliciesPath` is NOT gated by this: that one was named on
+  // purpose, so switching off *discovery* shouldn't silently drop it too.
+  const conventionEnabled = opts?.customPoliciesEnabled !== false;
 
   // 1. Explicit customPoliciesPath (existing behavior)
   if (customPoliciesPath) {
@@ -161,7 +217,8 @@ export async function loadAllCustomHooks(
 
   // 2. Project convention: {projectRoot}/.failproofai/policies/*policies.{js,mjs,ts}
   const projectDir = resolve(projectRoot, ".failproofai", "policies");
-  const projectFiles = discoverPolicyFiles(projectDir);
+  if (conventionEnabled) warnSkippedPolicyFiles(projectDir, "project");
+  const projectFiles = conventionEnabled ? discoverPolicyFiles(projectDir) : [];
   for (const file of projectFiles) {
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "project" });
@@ -177,7 +234,8 @@ export async function loadAllCustomHooks(
 
   // 3. User convention: ~/.failproofai/policies/*policies.{js,mjs,ts}
   const userDir = resolve(homedir(), ".failproofai", "policies");
-  const userFiles = discoverPolicyFiles(userDir);
+  if (conventionEnabled) warnSkippedPolicyFiles(userDir, "user");
+  const userFiles = conventionEnabled ? discoverPolicyFiles(userDir) : [];
   for (const file of userFiles) {
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });
@@ -194,7 +252,15 @@ export async function loadAllCustomHooks(
   const allHooks = getCustomHooks();
   const conventionCount = allHooks.length - hooksBeforeConvention;
 
-  if (projectFiles.length > 0 || userFiles.length > 0) {
+  if (!conventionEnabled) {
+    // Say so. Silently loading nothing is exactly the failure this feature set
+    // exists to remove — a user who forgot the flag would see their policies
+    // do nothing with no way to tell why.
+    hookLogInfo(
+      "convention policies: DISABLED via customPoliciesEnabled:false — " +
+        "no .failproofai/policies/ files loaded",
+    );
+  } else if (projectFiles.length > 0 || userFiles.length > 0) {
     hookLogInfo(
       `convention policies: ${projectFiles.length} project file(s), ${userFiles.length} user file(s), ${conventionCount} hook(s)`,
     );

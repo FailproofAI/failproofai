@@ -28,6 +28,7 @@ import {
   writeAuth,
 } from "../../lib/auth/auth-store";
 import { CliError } from "../cli-error";
+import { brandAnsi, colorsEnabled, ANSI_RESET, ANSI_DIM } from "../hooks/tui";
 import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 
@@ -123,11 +124,19 @@ function prompt(question: string, opts: { hidden?: boolean } = {}): Promise<stri
   });
 }
 
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
-const PINK = "\x1b[38;5;204m";
-const GREEN = "\x1b[38;5;120m";
-const RED = "\x1b[38;5;197m";
+// Brand palette (see hooks/tui.ts) rather than this file's former private
+// 256-colour set, so `auth` matches `config` and `audit`. Resolved once here
+// and blanked when colour is off — these are interpolated directly into
+// template literals at ~15 call sites, which previously meant `auth` emitted
+// escape codes even under NO_COLOR. Blanking the constants fixes every call
+// site at once. The palette has no red, and both uses are recoverable input
+// errors ("try again") rather than failures, so they take the amber warn hue.
+const COLOR = colorsEnabled(process.stdout);
+const DIM = COLOR ? ANSI_DIM : "";
+const RESET = COLOR ? ANSI_RESET : "";
+const PINK = COLOR ? brandAnsi("pink") : "";
+const GREEN = COLOR ? brandAnsi("guide") : "";
+const RED = COLOR ? brandAnsi("warn") : "";
 
 function emailLooksValid(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

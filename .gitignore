@@ -93,3 +93,10 @@ mint-dev.log
 
 # transient commit-message scratch files
 COMMIT_MSG.tmp
+
+# integration-suite: decoded credentials during a local/CI run (the suite
+# deletes both on exit, but a crashed run could leave them stageable)
+/tokens/
+/canary.env
+/integration-suite-state.json
+/cli-integration-state.json

@@ -339,8 +339,15 @@ describe("E2E: Pi integration — install/uninstall", () => {
       expect(Array.isArray(packages)).toBe(true);
       expect(packages.length).toBe(1);
       // The entry references failproofai's pi-extension package directory.
+      // Resolve it the way Pi does — relative to the directory holding
+      // settings.json — and assert it lands on a real, loadable extension.
+      // Asserting the literal string "failproofai" instead only passed because
+      // the checkout happened to be named that, and failed from any other
+      // directory (#569); this checks the property that actually matters.
       expect(packages[0]).toContain("pi-extension");
-      expect(packages[0]).toContain("failproofai");
+      const extDir = resolve(dirname(settingsPath), packages[0]);
+      expect(existsSync(join(extDir, "index.ts"))).toBe(true);
+      expect(existsSync(join(extDir, "package.json"))).toBe(true);
     } finally {
       env.cleanup();
     }

@@ -1,5 +1,5 @@
 /**
- * block-version-bumps.mjs — Prevent feature PRs from bumping package.json's
+ * block-version-bumps-policies.mjs — Prevent feature PRs from bumping package.json's
  * `version` field. Only release-cut PRs (branch name `luv-cut-X.Y.Z`) may.
  *
  * Why: PR #270 merged with package.json at 0.0.13-beta.1 because two parallel

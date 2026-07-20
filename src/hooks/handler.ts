@@ -243,7 +243,10 @@ export async function handleHookEvent(
     registerBuiltinPolicies(config.enabledPolicies);
 
     // Load and register custom hooks (layer 2, after builtins)
-    const loadResult = await loadAllCustomHooks(config.customPoliciesPath, { sessionCwd: session.cwd });
+    const loadResult = await loadAllCustomHooks(config.customPoliciesPath, {
+      sessionCwd: session.cwd,
+      customPoliciesEnabled: config.customPoliciesEnabled,
+    });
     const customHooksList = loadResult.hooks;
     const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 

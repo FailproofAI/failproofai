@@ -84,10 +84,19 @@ function buildFixes(result: AuditResult): FixRow[] {
     }));
 }
 
+/**
+ * The "install all" command.
+ *
+ * `policy add` and `policies --install` are DIFFERENT commands, not aliases:
+ * `policy add` enables exactly one policy and rejects a second name outright
+ * ("`policy add` takes exactly one policy name"). This button is almost always
+ * multi-policy — listing the gaps is the section's whole job — so it must use
+ * the plural form, which is the one that accepts a list. Using `policy add`
+ * here handed the user a command that errored on paste.
+ */
 function bulkInstall(fixes: FixRow[]): string {
   if (fixes.length === 0) return "";
-  if (fixes.length === 1) return `failproofai policy add ${fixes[0]!.name}`;
-  return `failproofai policy add ${fixes.map((f) => f.name).join(" ")}`;
+  return `failproofai policies --install ${fixes.map((f) => f.name).join(" ")}`;
 }
 
 export function HowToImproveSection({ result, projected, projectedGrade }: Props) {

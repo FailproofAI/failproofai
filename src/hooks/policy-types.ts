@@ -85,4 +85,12 @@ export interface HooksConfig {
   llm?: LlmConfig;
   policyParams?: Record<string, Record<string, unknown>>;
   customPoliciesPath?: string;
+  /**
+   * Turn off convention-discovered custom policies (`.failproofai/policies/`)
+   * without deleting or renaming the files. Absent means enabled — the default
+   * has to be "on" so that dropping a policy file in works with no config at
+   * all, and so existing installs don't lose their custom rules on upgrade.
+   * Only ever written explicitly as `false`.
+   */
+  customPoliciesEnabled?: boolean;
 }

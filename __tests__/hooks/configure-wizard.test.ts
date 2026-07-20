@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { summarize } from "../../src/hooks/tui";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -22,12 +23,13 @@ vi.mock("../../src/hooks/integrations", async (importOriginal) => {
   return { ...actual, detectInstalledClis: vi.fn(() => ["claude"]) };
 });
 
-import { selectOne, multiSelect, type TTYIn, type TTYOut } from "../../src/hooks/tui";
+import { selectOne, multiSelect, outro, type TTYIn, type TTYOut } from "../../src/hooks/tui";
 import { installHooks } from "../../src/hooks/manager";
 import {
   buildScopeChoices,
   buildAgentChoices,
   buildPresetChoices,
+  clisSupportingScope,
   resolvePresetSelection,
   reviewLines,
   runConfigureWizard,
@@ -36,7 +38,8 @@ import {
   markLauncherSeen,
 } from "../../src/hooks/configure-wizard";
 import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
-import { INTEGRATION_TYPES } from "../../src/hooks/types";
+import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
+import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
@@ -69,6 +72,7 @@ beforeEach(() => {
   vi.mocked(multiSelect).mockReset();
   vi.mocked(installHooks).mockClear();
   vi.mocked(runPostSetupAudit).mockClear();
+  vi.mocked(outro).mockClear();
 });
 
 describe("configure-wizard pure builders", () => {
@@ -77,9 +81,31 @@ describe("configure-wizard pure builders", () => {
     expect(choices.map((c) => c.value)).toEqual(["user", "project"]);
   });
 
-  it("buildPresetChoices lists the presets plus Everything (no Custom)", () => {
-    const values = buildPresetChoices().map((c) => c.value);
-    expect(values).toEqual(["secrets", "git", "ship", "infra", "__everything__"]);
+  // Pass an explicit cwd with no `.failproofai/policies/`. Relying on the
+  // default (process.cwd()) made this depend on whether the directory the
+  // suite happens to run from has custom policies — this repo's does, so it
+  // asserted on ambient filesystem state rather than on the builder. Same
+  // class of defect as #569.
+  it("buildPresetChoices lists the presets, Everything, then Custom", () => {
+    const values = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-nocustom-"))).map(
+      (c) => c.value,
+    );
+    // Custom is always last and always present — even with nothing on disk, it
+    // is the only place a user can discover that custom policies are a thing.
+    expect(values).toEqual(["secrets", "git", "ship", "infra", "__everything__", "__custom__"]);
+  });
+
+  // With files on disk the Custom row is a real checkbox (unticking writes
+  // customPoliciesEnabled:false); with none it is a locked status row. Full
+  // behaviour is covered in custom-policy-discovery.test.ts.
+  it("buildPresetChoices makes Custom togglable once custom policies exist", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "fpai-custom-"));
+    mkdirSync(resolve(dir, ".failproofai", "policies"), { recursive: true });
+    writeFileSync(resolve(dir, ".failproofai", "policies", "team-policies.mjs"), "// x\n");
+    const custom = buildPresetChoices(dir).find((c) => c.label === "Custom");
+    expect(custom).toBeDefined();
+    expect(custom!.locked).toBeUndefined();
+    expect(custom!.checked).toBe(true);
   });
 
   it("resolvePresetSelection returns a single preset's policies", () => {
@@ -262,5 +288,85 @@ describe("first-run redirect", () => {
     const handled = await maybeFirstRunConfigure(ttyIO());
     expect(handled).toBe(false);
     expect(selectOne).not.toHaveBeenCalled();
+  });
+});
+
+describe("assistant selection summary", () => {
+  // The "Everything available" row is a selector, not an assistant. Counting it
+  // produced "13 assistants · Everything available, Claude Code, …" for the 12
+  // supported CLIs — an off-by-one visible on the wizard's own summary line.
+  it("excludes the Everything-available selector from the assistant count", () => {
+    const real = INTEGRATION_TYPES.map((t) => getIntegration(t).displayName);
+    // What the wizard used to pass: the selector row alongside every CLI.
+    expect(summarize(["Everything available", ...real], "assistants")).toContain(
+      `${real.length + 1} assistants`,
+    );
+    // What it passes now — the selector is marked summaryExclude.
+    const fixed = summarize(real, "assistants");
+    expect(fixed).toContain(`${real.length} assistants`);
+    expect(fixed).not.toContain("Everything available");
+  });
+});
+
+describe("scope-aware assistant selection", () => {
+  // Regression: the wizard offered all 12 CLIs at project scope and expanded
+  // "Everything available" to all 12, so applying died with
+  // `Scope "project" is not supported by Hermes` — after every question had
+  // been answered, with nothing written.
+  it("locks CLIs that cannot be configured at the chosen scope", () => {
+    const projectRows = buildAgentChoices("project", "/tmp/proj");
+    const locked = projectRows.filter((c) => c.locked);
+    expect(locked.length).toBeGreaterThan(0);
+    for (const row of locked) {
+      expect(row.checked).toBe(false); // never selectable, so never installed
+      expect(getIntegration(row.value).scopes).not.toContain("project");
+    }
+  });
+
+  it("locks nothing at user scope, which every CLI supports", () => {
+    expect(buildAgentChoices("user", "/tmp/proj").filter((c) => c.locked)).toHaveLength(0);
+  });
+
+  it("clisSupportingScope excludes the user-only gateways from project scope", () => {
+    const project = clisSupportingScope("project");
+    const user = clisSupportingScope("user");
+    expect(user).toHaveLength(INTEGRATION_TYPES.length);
+    expect(project.length).toBeLessThan(user.length);
+    for (const id of project) expect(getIntegration(id).scopes).toContain("project");
+  });
+
+  // writeLines truncates with a hard cut and no ellipsis, so an over-long
+  // closing line does not merely lose its tail — it reads as broken output.
+  // Naming all ten CLIs made it 182 characters against an 80-column terminal,
+  // cutting off the custom-policy note entirely and then stopping mid-word.
+  it("keeps the closing line inside an 80-column terminal", async () => {
+    const stdout = mkTtyStdout();
+    vi.mocked(selectOne).mockResolvedValueOnce("project").mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect)
+      .mockResolvedValueOnce(["__all_clis__"]) // widest: every CLI
+      .mockResolvedValueOnce(["__everything__"]); // widest: every policy
+
+    await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
+
+    const message = vi.mocked(outro).mock.calls[0]![0];
+    expect(message).toContain("Setup complete");
+    // 3 columns of gutter ("└  ") sit in front of it when rendered.
+    expect(message.length + 3).toBeLessThanOrEqual(80);
+    expect(message).toContain("assistants"); // the tail survived
+  });
+
+  it("applies to only the scope-supported CLIs when Everything available is ticked", async () => {
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("project") // scope
+      .mockResolvedValueOnce("apply"); // review
+    vi.mocked(multiSelect)
+      .mockResolvedValueOnce(["__all_clis__"]) // every assistant
+      .mockResolvedValueOnce(["git"]); // one bundle
+
+    await runConfigureWizard(ttyIO());
+
+    const clis = vi.mocked(installHooks).mock.calls[0]![7] as IntegrationType[];
+    expect(clis.length).toBe(clisSupportingScope("project").length);
+    for (const id of clis) expect(getIntegration(id).scopes).toContain("project");
   });
 });

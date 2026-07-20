@@ -4,9 +4,9 @@ import tsParser from "@typescript-eslint/parser";
 const config = [
   // Skip generated bundles and design-asset reference files. assets/audit
   // is the brand team's reference HTML/JSX kit, not source code we ship.
-  // ci/cli-integration is a standalone Docker+shell test harness (Node CJS
+  // integration-suite is a standalone Docker+shell test harness (Node CJS
   // scripts driven inside a container), not shipped source — like dist/assets.
-  { ignores: ["dist/", "assets/", "ci/"] },
+  { ignores: ["dist/", "assets/", "integration-suite/"] },
   ...nextConfig,
   { settings: { react: { version: "19" } } },
   {

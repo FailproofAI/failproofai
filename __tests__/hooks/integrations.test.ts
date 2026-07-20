@@ -977,7 +977,13 @@ describe("Pi integration", () => {
     const entry = (packages?.[0] ?? "") as string;
     expect(typeof entry).toBe("string");
     expect(entry).toContain("pi-extension");
-    expect(entry).toContain("failproofai");
+    // Assert the entry is recognised as ours, NOT that its path contains the
+    // string "failproofai". The entry is derived from the package root, so a
+    // literal check only passed because the checkout happened to be named
+    // `failproofai` — it failed in any other directory (#569). This also makes
+    // the assertion test something real: that install and uninstall agree on
+    // what a failproofai entry looks like.
+    expect(pi.isFailproofaiHook(entry)).toBe(true);
   });
 
   it("writeHookEntries appends to an existing packages array, preserving user entries", () => {

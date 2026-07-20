@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# failproofai CLI Integration Tests — orchestrator (runs on the GitHub Actions runner).
+# failproofai integration suite — orchestrator (runs on the GitHub Actions runner).
 #   ./run.sh [cli ...]      default: all 12
 #
 # Mirrors the box's run-canary.sh, but every path is env-parameterised (the
 # runner is ephemeral) and the report is POSTed to a Slack Incoming Webhook
-# instead of delivered via Hermes. Assumes the workflow has already:
+# instead of delivered via Hermes. Assumes ci-entrypoint.sh has already:
 #   • checked out + built failproofai (dist/index.js + dist/cli.mjs) at $CANARY_REPO
 #   • built the sandbox image ($CANARY_IMAGE)
 #   • created the per-run volume ($CANARY_VOL) and INSTALLED the CLIs into it
@@ -23,8 +23,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 REPO="${CANARY_REPO:?CANARY_REPO (built failproofai checkout) required}"
 SANDBOX="${CANARY_SANDBOX:-$HERE}"
-VOL="${CANARY_VOL:-canary-ci}"
-IMAGE="${CANARY_IMAGE:-failproofai-canary:base}"
+VOL="${CANARY_VOL:-integration-suite}"
+IMAGE="${CANARY_IMAGE:-failproofai-integration-suite:base}"
 STATE="${CANARY_STATE:-$HERE/state.json}"
 ENVFILE="${CANARY_ENVFILE:?CANARY_ENVFILE (docker --env-file with gateway creds) required}"
 MODEL="${CANARY_LLM_MODEL:-deepseek-v4-pro}"

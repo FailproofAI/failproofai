@@ -48,6 +48,19 @@ export interface MultiChoice<T> {
   hint?: string;
   checked?: boolean;
   section?: string;
+  /**
+   * Render as un-togglable and ignore space on it. For rows that report a
+   * state rather than offer a choice — a checkbox the user can click but that
+   * changes nothing is worse than no checkbox. Locked rows default to checked;
+   * set `checked: false` for a locked row that reports "nothing here yet".
+   */
+  locked?: boolean;
+  /**
+   * Keep this row out of the "N selected · a, b, c" summary line. For selector
+   * rows ("Everything available") and status rows ("Custom") that are not
+   * themselves one of the things being counted.
+   */
+  summaryExclude?: boolean;
 }
 
 export interface MultiSelectOptions<T> {
@@ -96,6 +109,26 @@ const HUES = {
 export function colorsEnabled(out: TTYOut): boolean {
   return !!out.isTTY && !process.env.NO_COLOR;
 }
+
+/**
+ * The raw ANSI opening sequence for a brand role, for callers that assemble
+ * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`,
+ * `src/auth/cli.ts`). Those files previously hardcoded their own 256-colour
+ * palette — a green and a blue that appear nowhere in the brand — so `audit`
+ * and `auth` looked like different products from `config`. Routing them here
+ * keeps HUES the single source of truth: change a hue once and every surface
+ * follows. Emits truecolor where the terminal advertises it, basic ANSI
+ * otherwise; the caller still decides *whether* to colour at all.
+ */
+export function brandAnsi(role: keyof typeof HUES, bold = false): string {
+  const h = HUES[role];
+  const code = truecolorEnabled() ? `38;2;${h.rgb.join(";")}` : h.basic;
+  return `${ESC}[${bold ? "1;" : ""}${code}m`;
+}
+
+export const ANSI_RESET = `${ESC}[0m`;
+export const ANSI_BOLD = `${ESC}[1m`;
+export const ANSI_DIM = `${ESC}[2m`;
 function truecolorEnabled(): boolean {
   return /truecolor|24bit/i.test(process.env.COLORTERM || "");
 }
@@ -131,29 +164,45 @@ export function paint(on: boolean) {
 const LOGO_MIN_COLS = 22;
 const TAGLINE = "end-to-end failure layer for ai agents";
 
+// Three editing rules, all learned the hard way:
+//   1. The two uprights must be the SAME width. In the artwork both are 93px of
+//      a 379px canvas; an earlier grid drew the right one a column narrower and
+//      it read as a mistake at every terminal size.
+//   2. Keep the uprights an EVEN number of columns. They are 4 here, so the
+//      flower and cross — which are centred on them — can use even widths and
+//      taper 2→4→6. An odd upright forces odd widths (1/3/5), which pinches the
+//      flower to a one-column tip and makes it read as a spike, not a bloom.
+//   3. A colour boundary on an ODD row renders mid-cell (▀/▄). That is what
+//      rounds the cross's corners, so the cross starts on an odd row — but the
+//      same thing at the flower's edge leaves it looking detached, so the
+//      flower and the base bar stay on even boundaries.
+// Shrinking this means choosing a vertical element to spend, and the printed
+// height moves in whole lines (2 grid rows) — the cross in particular needs 4
+// rows to keep both rounded edges AND its solid middle; at 3 it loses the
+// bottom edge and goes lopsided. This grid spends the stem (the short upright
+// between cross and base), so the cross meets the base directly. Adding it back
+// costs one line and restores the original exactly, 3 columns narrower.
 const LOGO_GRID = [
-  "...tt...........",
-  "..tttt..........",
-  ".tttttt.........",
-  ".tttttt.....ppp.",
-  "..tttt......ppp.",
-  "...tt.......ppp.",
-  "............ppp.",
-  "............ppp.",
-  "..pppp......ppp.",
-  "..pppp......ppp.",
-  "..pppp......ppp.",
-  ".pppppp.....ppp.",
-  ".pppppp.....ppp.",
-  ".pppppp.....ppp.",
-  ".pppppp.....ppp.",
-  "..pppp......ppp.",
-  "..pppp......ppp.",
-  "..pppp......ppp.",
-  "..ppppppppppppp.",
-  "..ppppppppppppp.",
-  "..ppppppppppppp.",
-  "..ppppppppppppp.",
+  "...tt........",
+  "..tttt.......",
+  ".tttttt..pppp",
+  ".tttttt..pppp",
+  "..tttt...pppp",
+  "...tt....pppp",
+  ".........pppp",
+  ".........pppp",
+  "..pppp...pppp",
+  "..pppp...pppp",
+  "..pppp...pppp",
+  ".pppppp..pppp",
+  ".pppppp..pppp",
+  ".pppppp..pppp",
+  ".pppppp..pppp",
+  "..pppp...pppp",
+  "..ppppppppppp",
+  "..ppppppppppp",
+  "..ppppppppppp",
+  "..ppppppppppp",
 ];
 // Derived from the shared HUES table so a palette tweak needs one edit.
 const LOGO_TEAL: [number, number, number] = HUES.guide.rgb;
@@ -519,7 +568,8 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
   const choices = opts.choices;
   const minSelected = opts.minSelected ?? 0;
   const noun = opts.summaryNoun ?? "selected";
-  const checked = choices.map((ch) => !!ch.checked);
+  // A locked row defaults to on, but may opt out with an explicit `checked:false`.
+  const checked = choices.map((ch) => (ch.locked ? (ch.checked ?? true) : !!ch.checked));
 
   if (!stdin.isTTY || !stdout.isTTY) {
     return Promise.resolve(choices.filter((_, i) => checked[i]).map((ch) => ch.value));
@@ -538,7 +588,16 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
     renderRow: (index, active, budget) => {
       const choice = choices[index];
       const caret = active ? c.pink(CARET) : " ";
-      const box = checked[index] ? c.pink(CHECK_ON) : c.dim(CHECK_OFF);
+      // Locked rows use the teal guide hue rather than selection pink, so they
+      // read as "already true" instead of "you picked this"; an unchecked
+      // locked row is a dim empty box — nothing there yet.
+      const box = choice.locked
+        ? checked[index]
+          ? c.guide(CHECK_ON)
+          : c.dim(CHECK_OFF)
+        : checked[index]
+          ? c.pink(CHECK_ON)
+          : c.dim(CHECK_OFF);
       const rawLabel = choice.label.padEnd(nameCol);
       const label = active ? c.pinkBold(rawLabel) : checked[index] ? rawLabel : c.dim(rawLabel);
       const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
@@ -548,18 +607,24 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
     footer: opts.hint ?? "↑/↓ move · space select · ctrl+a all · enter confirm",
     onKey: (key, cursor) => {
       if (key.name === "space") {
+        if (choices[cursor]?.locked) return "redraw"; // always on — not a choice
         checked[cursor] = !checked[cursor];
         warn = false;
         return "redraw";
       }
       if (key.ctrl && key.name === "a") {
-        const allOn = checked.every(Boolean);
-        for (let i = 0; i < checked.length; i++) checked[i] = !allOn;
+        const allOn = choices.every((ch, i) => checked[i] || ch.locked);
+        for (let i = 0; i < checked.length; i++) {
+          checked[i] = choices[i]?.locked ? true : !allOn;
+        }
         return "redraw";
       }
       if (key.name === "return") {
         const selected = choices.filter((_, i) => checked[i]).map((ch) => ch.value);
-        if (selected.length < minSelected) {
+        // Locked rows don't count toward the minimum — they're on regardless,
+        // so counting them would let the user through having chosen nothing.
+        const chosen = choices.filter((ch, i) => checked[i] && !ch.locked).length;
+        if (chosen < minSelected) {
           warn = true;
           return "redraw";
         }
@@ -571,7 +636,9 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
       values === null
         ? "cancelled"
         : summarize(
-            choices.filter((ch) => values.includes(ch.value)).map((ch) => ch.label),
+            choices
+              .filter((ch) => values.includes(ch.value) && !ch.summaryExclude)
+              .map((ch) => ch.label),
             noun,
           ),
   });

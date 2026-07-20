@@ -12,19 +12,29 @@
  * whatever is already enabled, so unticking removes). Reuses the tested
  * install/uninstall manager and the existing searchable policy picker.
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 
-import { selectOne, multiSelect, intro, outro, summarize, type TTYIn, type TTYOut } from "./tui";
+import {
+  selectOne,
+  multiSelect,
+  intro,
+  outro,
+  summarize,
+  type MultiChoice,
+  type TTYIn,
+  type TTYOut,
+} from "./tui";
 import {
   detectInstalledClis,
   getIntegration,
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
-import { getConfigPathForScope } from "./hooks-config";
+import { getConfigPathForScope, readHooksConfig } from "./hooks-config";
 import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-presets";
+import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 
@@ -75,7 +85,13 @@ export function buildScopeChoices(cwd: string) {
   ];
 }
 
-export function buildAgentChoices(scope: HookScope, cwd: string) {
+/** The CLIs that can actually be configured at `scope`. Hermes and OpenClaw
+ *  are gateways with no project-level config, so they are user-scope only. */
+export function clisSupportingScope(scope: HookScope): IntegrationType[] {
+  return INTEGRATION_TYPES.filter((id) => getIntegration(id).scopes.includes(scope));
+}
+
+export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<IntegrationType>[] {
   const detected = new Set(detectInstalledClis());
   // Detected first, then the rest as "install ahead of time".
   const ordered = [
@@ -85,6 +101,25 @@ export function buildAgentChoices(scope: HookScope, cwd: string) {
   return ordered.map((id) => {
     const integration = getIntegration(id);
     const isDetected = detected.has(id);
+
+    // Not every CLI can be configured at every scope — Hermes and OpenClaw
+    // have no project config at all. Offering them anyway meant picking "Just
+    // this project" and applying died with `Scope "project" is not supported
+    // by Hermes`, after the user had answered every question. Show them as
+    // locked and unchecked with the reason, so the constraint is visible
+    // instead of being discovered as a crash.
+    const supported = integration.scopes.includes(scope);
+    if (!supported) {
+      return {
+        label: integration.displayName,
+        value: id,
+        checked: false,
+        locked: true,
+        section: "Global only · not configurable per-project",
+        hint: `supports ${integration.scopes.join(", ")} scope — rerun with "Everywhere I code"`,
+      };
+    }
+
     let installedHere = false;
     try {
       installedHere = integration.hooksInstalledInSettings(scope, cwd);
@@ -103,18 +138,62 @@ export function buildAgentChoices(scope: HookScope, cwd: string) {
 
 const EVERYTHING = "__everything__";
 const ALL_CLIS = "__all_clis__";
+/** Sentinel for the locked "Custom" row — informational, never resolves to
+ *  builtin policy names (custom policies load by convention, not by config). */
+const CUSTOM = "__custom__";
 
 /** The themed preset bundles for the wizard's multi-select, plus an "Everything"
  *  option that enables the full builtin policy set. */
-export function buildPresetChoices() {
-  const choices: Array<{ label: string; value: string; hint: string }> = POLICY_PRESETS.map(
-    (p) => ({ label: p.label, value: p.id, hint: p.description }),
-  );
+export function buildPresetChoices(cwd: string = process.cwd(), enabled = true) {
+  const choices: MultiChoice<string>[] = POLICY_PRESETS.map((p) => ({
+    label: p.label,
+    value: p.id,
+    hint: p.description,
+  }));
   choices.push({
     label: "Everything",
     value: EVERYTHING,
     hint: `all ${resolveEverything().length} policies`,
   });
+
+  // The Custom row is ALWAYS present, because it is the only place the feature
+  // is discoverable: a user who has never written a policy cannot learn the
+  // capability exists, and one who wrote a badly-named file cannot learn why
+  // nothing happened.
+  //
+  // When there are loadable files it is a REAL checkbox — unticking writes
+  // `customPoliciesEnabled: false`, which switches convention discovery off
+  // without renaming or deleting anything. With nothing to toggle (no files,
+  // or only skipped ones) it falls back to a locked status row.
+  const custom = describeCustomPolicies(cwd);
+  const skipped = custom.warnings.length;
+  const plural = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
+  const skippedNote = skipped > 0 ? ` · ${skipped} skipped, see next screen` : "";
+
+  if (custom.fileCount > 0) {
+    choices.push({
+      label: "Custom",
+      value: CUSTOM,
+      checked: enabled,
+      // Deliberately NOT summaryExclude'd: this one is a real choice, and the
+      // step summary is the only place the user sees what they picked. Hiding
+      // it meant unticking Custom and every bundle showed "none", giving no
+      // way to tell the toggle had registered.
+      hint: `${plural(custom.fileCount)} in ${custom.scopes.join(" + ")}${skippedNote}`,
+    });
+  } else {
+    choices.push({
+      label: "Custom",
+      value: CUSTOM,
+      locked: true,
+      checked: false,
+      summaryExclude: true,
+      hint:
+        skipped > 0
+          ? `${plural(skipped)} found but NOT loaded — see next screen`
+          : "none yet · drop *-policies.mjs in .failproofai/policies/",
+    });
+  }
   return choices;
 }
 
@@ -124,14 +203,100 @@ export function buildPresetChoices() {
  * enables the full policy set and wins over any presets.
  */
 export function resolvePresetSelection(values: string[]): string[] {
-  if (values.includes(EVERYTHING)) return resolveEverything();
-  return [...new Set(values.flatMap((id) => resolvePreset(id)))];
+  // The Custom row is informational — custom policies are discovered from disk
+  // by the loader, never named in the enabled-policies config — so it must not
+  // reach resolvePreset(), which only knows builtin bundle ids.
+  const selected = values.filter((v) => v !== CUSTOM);
+  if (selected.includes(EVERYTHING)) return resolveEverything();
+  return [...new Set(selected.flatMap((id) => resolvePreset(id)))];
 }
 
-export function reviewLines(
-  state: { scope: HookScope; clis: IntegrationType[]; policies: string[]; cwd: string },
-): string[] {
-  const { scope, clis, policies, cwd } = state;
+const DIM_NOTE = "(auto-loaded)";
+
+/**
+ * Persist the Custom checkbox into the scope's config, after installHooks has
+ * written it (installHooks copies the previous config forward, so writing
+ * first would be overwritten).
+ *
+ * Writes the key only to turn discovery OFF, and removes it when turning back
+ * on, so the common case leaves no `customPoliciesEnabled: true` noise in the
+ * file and "absent means enabled" stays the single default. `undefined` means
+ * there was nothing to toggle — leave whatever is there alone.
+ */
+export function setCustomPoliciesEnabled(
+  scope: HookScope,
+  cwd: string,
+  enabled: boolean | undefined,
+): void {
+  if (enabled === undefined) return;
+  const path = getConfigPathForScope(scope, cwd);
+  let config: Record<string, unknown> = {};
+  try {
+    if (existsSync(path)) config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  } catch {
+    return; // a malformed config is the install path's problem, not ours
+  }
+  if (enabled) delete config.customPoliciesEnabled;
+  else config.customPoliciesEnabled = false;
+  try {
+    writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
+  } catch {
+    /* best-effort: never fail a completed setup over this flag */
+  }
+}
+
+/**
+ * Summarise the custom policy files on disk, for the review screen.
+ *
+ * Only lists files — it deliberately does NOT load them. Loading executes
+ * user code, which is fine on the hook path but wrong in an interactive
+ * wizard the user hasn't confirmed yet.
+ *
+ * `warnings` covers the silent-skip trap: a file in the right directory whose
+ * name doesn't end in `policies.{js,mjs,ts}` is ignored entirely, with nothing
+ * on screen to say so. Surfacing it here is the difference between "my rule
+ * isn't working and I don't know why" and a one-line rename.
+ */
+export function describeCustomPolicies(cwd: string): {
+  active: string[];
+  warnings: string[];
+  fileCount: number;
+  scopes: string[];
+} {
+  const active: string[] = [];
+  const warnings: string[] = [];
+  const scopes: string[] = [];
+  let fileCount = 0;
+  const dirs: Array<{ dir: string; label: string }> = [
+    { dir: resolve(cwd, ".failproofai", "policies"), label: "project" },
+    { dir: resolve(homedir(), ".failproofai", "policies"), label: "global" },
+  ];
+  for (const { dir, label } of dirs) {
+    const found = discoverPolicyFiles(dir);
+    if (found.length > 0) {
+      active.push(`${found.length} file${found.length === 1 ? "" : "s"} (${label})`);
+      scopes.push(label);
+      fileCount += found.length;
+    }
+    for (const name of findSkippedPolicyFiles(dir)) {
+      warnings.push(
+        `! ${homeify(resolve(dir, name))} is NOT loaded — rename to ` +
+          `${name.replace(/\.(js|mjs|ts)$/, "-policies.$1")}`,
+      );
+    }
+  }
+  return { active, warnings, fileCount, scopes };
+}
+
+export function reviewLines(state: {
+  scope: HookScope;
+  clis: IntegrationType[];
+  policies: string[];
+  cwd: string;
+  /** The Custom checkbox. `undefined` = nothing to toggle, leave as-is. */
+  customEnabled?: boolean;
+}): string[] {
+  const { scope, clis, policies, cwd, customEnabled } = state;
   const where =
     scope === "project" ? `This project (${homeify(cwd)})` : "Everywhere (global)";
   const lines: string[] = [];
@@ -139,6 +304,20 @@ export function reviewLines(
   lines.push(`  Where      : ${where}`);
   lines.push(`  Assistants : ${assistantNames.length ? summarize(assistantNames, "assistants") : "(none)"}`);
   lines.push(`  Policies   : ${policies.length} enabled`);
+
+  // Reflect the Custom decision, not just what is on disk. Reporting
+  // "1 file (project) (auto-loaded)" after the user had just unticked the row
+  // stated the opposite of what was about to happen.
+  const custom = describeCustomPolicies(cwd);
+  if (custom.active.length > 0) {
+    lines.push(
+      `  Custom     : ${custom.active.join(" · ")} ${
+        customEnabled === false ? "— DISABLED, will not load" : DIM_NOTE
+      }`,
+    );
+  }
+  for (const warning of custom.warnings) lines.push(`  ${warning}`);
+
   lines.push("");
   lines.push("  This will update:");
   for (const cli of clis) {
@@ -279,7 +458,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       {
         label: "Everything available",
         value: ALL_CLIS,
-        hint: `protect all ${INTEGRATION_TYPES.length} supported CLIs`,
+        // Counts only what this scope can actually take — expanding to all 12
+        // under project scope is what crashed the apply on Hermes.
+        hint: `protect all ${clisSupportingScope(scope).length} CLIs configurable here`,
+        // A selector, not an assistant. Counting it gave "13 assistants" for
+        // the 12 supported CLIs, and listed "Everything available" among them.
+        summaryExclude: true,
       },
       ...buildAgentChoices(scope, cwd),
     ],
@@ -290,15 +474,28 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     stdout,
   });
   if (clisSel === null) return cancel();
-  const clis: IntegrationType[] = clisSel.includes(ALL_CLIS)
-    ? [...INTEGRATION_TYPES]
-    : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[]);
+  // Filter to what this scope supports in BOTH branches: "Everything
+  // available" must not expand to CLIs that cannot take this scope, and a
+  // locked row can't be ticked but belt-and-braces keeps the invariant local
+  // to the one place `clis` is built.
+  const supported = new Set(clisSupportingScope(scope));
+  const clis: IntegrationType[] = (
+    clisSel.includes(ALL_CLIS)
+      ? [...INTEGRATION_TYPES]
+      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
+  ).filter((id) => supported.has(id));
 
   // 3 — Which policies? Multi-select of themed presets — additive, so the
   // enabled set is the union of every ticked bundle.
+  // Seed the Custom checkbox from whatever the config already says, so the
+  // wizard shows the current state rather than resetting it every run.
+  const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
+  const presetChoices = buildPresetChoices(cwd, customEnabledBefore);
+  const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
+
   const presets = await multiSelect<string>({
     message: "What should we guard against?",
-    choices: buildPresetChoices(),
+    choices: presetChoices,
     minSelected: 1,
     summaryNoun: "bundles",
     hint: "space toggles · combine presets · ↵ confirm",
@@ -307,11 +504,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   });
   if (presets === null) return cancel();
   const policies = resolvePresetSelection(presets);
+  // Only meaningful when there are files to switch off; with none, the row is
+  // locked-unchecked and must not write a disabling flag.
+  const customEnabled = hasCustomFiles ? presets.includes(CUSTOM) : undefined;
 
   // 4 — Review & apply
   const decision = await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
-    body: reviewLines({ scope, clis, policies, cwd }),
+    body: reviewLines({ scope, clis, policies, cwd, customEnabled }),
     choices: [
       { label: "Yes, apply now", value: "apply", hint: "write the config" },
       { label: "Cancel", value: "cancel", hint: "quit, no changes" },
@@ -345,12 +545,28 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     clis,
     { replace: true, quiet: true },
   );
+  setCustomPoliciesEnabled(scope, cwd, customEnabled);
   await applied;
   // Only now — a completed apply — is the launcher considered "seen", so the
   // first-run bare invocation stops redirecting here and opens the dashboard.
   markLauncherSeen();
 
-  const agentNames = clis.map((c) => getIntegration(c).displayName).join(", ");
-  outro(`Setup complete — ${policies.length} policies guarding ${agentNames}.`, { ok: true }, stdout);
+  // Keep this inside a standard 80-column terminal. `writeLines` truncates with
+  // a hard cut and no ellipsis, so an over-long line doesn't just lose its tail
+  // — it reads as broken output. Naming all ten CLIs took it to 182 characters;
+  // the count alone carries the same information, and the user picked them two
+  // screens ago.
+  const customNote =
+    customEnabled === true
+      ? " + your custom policies"
+      : customEnabled === false
+        ? " · custom policies DISABLED"
+        : "";
+  const assistants = `${clis.length} assistant${clis.length === 1 ? "" : "s"}`;
+  outro(
+    `Setup complete — ${policies.length} policies${customNote} · ${assistants}`,
+    { ok: true },
+    stdout,
+  );
   return { applied: true, scope, clis, policies };
 }

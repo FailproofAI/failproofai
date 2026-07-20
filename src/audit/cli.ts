@@ -22,6 +22,7 @@ import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
+import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
  *  for `start` mode, which `failproofai` (bare) already uses. */
@@ -59,12 +60,17 @@ WHAT IT DOES
 `.trimStart();
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
-const RESET = "\x1b[0m";
-const DIM = "\x1b[2m";
-const BOLD = "\x1b[1m";
-const PINK = "\x1b[38;5;204m";
-const GREEN = "\x1b[38;5;120m";
-const CYAN = "\x1b[38;5;81m";
+// Colours come from the shared brand palette in hooks/tui.ts, so `audit` reads
+// as the same product as `config`. This file used to define its own 256-colour
+// set (a green and a blue that appear nowhere in the brand). The palette has
+// two accents rather than three, so success and command/URL text share the
+// teal — the glyph (✓) and the surrounding copy already distinguish them.
+const RESET = ANSI_RESET;
+const DIM = ANSI_DIM;
+const BOLD = ANSI_BOLD;
+const PINK = brandAnsi("pink");
+const GREEN = brandAnsi("guide"); // success — brand teal
+const CYAN = brandAnsi("guide"); // commands & URLs — brand teal
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function colorOn(): boolean {

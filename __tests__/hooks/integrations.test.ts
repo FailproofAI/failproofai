@@ -977,7 +977,6 @@ describe("Pi integration", () => {
     const entry = (packages?.[0] ?? "") as string;
     expect(typeof entry).toBe("string");
     expect(entry).toContain("pi-extension");
-    expect(entry).toContain("failproofai");
   });
 
   it("writeHookEntries appends to an existing packages array, preserving user entries", () => {

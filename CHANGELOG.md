@@ -2,6 +2,9 @@
 
 ## 0.0.14-beta.3 — 2026-07-20
 
+### Dependencies
+- Bump `brace-expansion` to 1.1.16 / 5.0.7, clearing GHSA-3jxr-9vmj-r5cp (CVSS 7.7, High) on both resolutions in `bun.lock` — 5.0.6 at the top level and 1.1.15 under `minimatch` via `eslint-plugin-import` / `eslint-plugin-jsx-a11y` / `eslint-plugin-react`. The advisory was published after the lockfile was last written, so the `Supply Chain` gate began failing on every PR that ran it (first observed on #575, which touches no dependencies) and would have failed on `main` too. Both are patch bumps inside the existing `^1.1.7` / `^5.0.5` ranges with identical dependency sets, so only the four affected lockfile lines change — no `package.json` edit and no other package re-resolved. Fixed rather than added to `osv-scanner.toml`, per that file's own guidance to prefer a real fix when one exists. (#PR)
+
 ### Fixes
 - Fix the npm `publish` workflow's post-publish version bump being rejected with `GH013` when it pushed to `main`. The "Bump version for next development cycle" step pushed with the default `GITHUB_TOKEN`, which is not a bypass actor on the org-level `failproofai-rules` ruleset (pull request + 1 review required on `main`), so the automated `chore: bump version` commit was declined ("Changes must be made through a pull request") and every release left `package.json` un-bumped. The step now mints a token for the version-bot GitHub App — the same bypass actor the `bump-platform-submodule` workflow already uses — via `actions/create-github-app-token`, persists it through `actions/checkout`, and pushes as it. (#577)
 - Reconcile `main`'s `package.json` version to `0.0.14-beta.3`. The post-publish auto-bump had been failing to push for several releases (the fix above), so `main` drifted to `0.0.14-beta.1` while npm published through `0.0.14-beta.2`; this sets it to the next development version the now-fixed automation carries forward. (#577)

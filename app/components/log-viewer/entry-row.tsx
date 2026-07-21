@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { Workflow, ChevronRight } from "lucide-react";
 import type { LogEntry, ToolUseBlock } from "@/lib/log-entries";
+import { buildEntryKeys } from "@/lib/entry-keys";
 import { cn } from "@/lib/utils";
 import { ENTRY_BORDER_COLORS } from "./constants";
 import { TypeBadge } from "./type-badge";
@@ -38,6 +39,10 @@ export function SubagentToolCard({ block, subagentEntries, projectName, sessionI
   }, []);
 
   const hasEntries = subagentEntries && subagentEntries.length > 0;
+
+  // Same stable-key treatment as the top-level list — subagent transcripts from
+  // uuid-less CLIs collide on timestamp just as readily.
+  const subagentKeys = useMemo(() => buildEntryKeys(subagentEntries ?? []), [subagentEntries]);
 
   return (
     <div className="border border-border/50 rounded-lg p-3 bg-muted/10">
@@ -94,12 +99,12 @@ export function SubagentToolCard({ block, subagentEntries, projectName, sessionI
           {subagentEntries && subagentEntries.map((entry) =>
             entry.type === "queue-operation" ? (
               <QueueDivider
-                key={entry.uuid || entry.timestamp}
+                key={subagentKeys.get(entry)}
                 entry={entry}
               />
             ) : (
               <EntryRow
-                key={entry.uuid || entry.timestamp}
+                key={subagentKeys.get(entry)}
                 entry={entry}
                 projectName={projectName}
                 sessionId={sessionId}

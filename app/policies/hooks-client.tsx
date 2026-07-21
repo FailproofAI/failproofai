@@ -575,7 +575,7 @@ function ActivityTab({
               type="text"
               value={filterPolicy}
               onChange={(e) => setFilterPolicy(e.target.value)}
-              placeholder="filter by policy\u2026"
+              placeholder="filter by policy…"
               className="filter-input"
             />
           </div>

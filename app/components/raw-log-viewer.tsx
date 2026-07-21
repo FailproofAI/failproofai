@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, Wrench } from "lucide-react";
 import type { LogEntry, ToolUseBlock } from "@/lib/log-entries";
+import { buildEntryKeys } from "@/lib/entry-keys";
 import { StatsBar } from "@/app/components/log-viewer/stats-bar";
 import { QueueDivider } from "@/app/components/log-viewer/queue-divider";
 import { EntryRow } from "@/app/components/log-viewer/entry-row";
@@ -123,8 +124,11 @@ function estimateSize(entry: LogEntry): number {
 
 type QueueOperationEntry = Extract<LogEntry, { type: "queue-operation" }>;
 
-function getSegmentId(entry: QueueOperationEntry): string {
-  return `${entry.uuid}-${entry.timestampMs}`;
+// Segment ids come from the same stable-key map as the rows, so uuid-less
+// transcripts (Codex, Copilot, Cursor, Pi) can't collapse two dividers that
+// happen to share a millisecond into one segment.
+function getSegmentId(entry: QueueOperationEntry, keys: Map<LogEntry, string>): string {
+  return keys.get(entry) ?? `${entry.uuid}-${entry.timestampMs}`;
 }
 
 /**
@@ -132,7 +136,7 @@ function getSegmentId(entry: QueueOperationEntry): string {
  * to the count of non-queue-operation entries in its segment (entries after
  * it until the next queue-operation or end of list).
  */
-function computeSegments(entries: LogEntry[]): Map<string, number> {
+function computeSegments(entries: LogEntry[], keys: Map<LogEntry, string>): Map<string, number> {
   const segments = new Map<string, number>();
   let currentId: string | null = null;
   let count = 0;
@@ -142,7 +146,7 @@ function computeSegments(entries: LogEntry[]): Map<string, number> {
       if (currentId !== null) {
         segments.set(currentId, count);
       }
-      currentId = getSegmentId(entry);
+      currentId = getSegmentId(entry, keys);
       count = 0;
     } else if (currentId !== null) {
       count++;
@@ -154,11 +158,11 @@ function computeSegments(entries: LogEntry[]): Map<string, number> {
   return segments;
 }
 
-function filterVisibleEntries(entries: LogEntry[], collapsedSessions: Set<string>): LogEntry[] {
+function filterVisibleEntries(entries: LogEntry[], collapsedSessions: Set<string>, keys: Map<LogEntry, string>): LogEntry[] {
   let currentCollapsed = false;
   return entries.filter((entry) => {
     if (entry.type === "queue-operation") {
-      currentCollapsed = collapsedSessions.has(getSegmentId(entry as QueueOperationEntry));
+      currentCollapsed = collapsedSessions.has(getSegmentId(entry as QueueOperationEntry, keys));
       return true; // dividers are always visible
     }
     return !currentCollapsed;
@@ -234,11 +238,16 @@ function VirtualizedEntryList({ entries, entriesBySource, projectName, sessionId
     };
   }, []);
 
-  const segments = useMemo(() => computeSegments(entries), [entries]);
+  // One identity per entry, shared by the React key, the segment ids and the
+  // virtualizer's measurement cache — all three must agree or rows get
+  // measured against the wrong entry.
+  const entryKeys = useMemo(() => buildEntryKeys(entries), [entries]);
+
+  const segments = useMemo(() => computeSegments(entries, entryKeys), [entries, entryKeys]);
 
   const visibleEntries = useMemo(
-    () => filterVisibleEntries(entries, collapsedSessions),
-    [entries, collapsedSessions],
+    () => filterVisibleEntries(entries, collapsedSessions, entryKeys),
+    [entries, collapsedSessions, entryKeys],
   );
 
   // UUID-to-index map for visible entries
@@ -303,14 +312,14 @@ function VirtualizedEntryList({ entries, entriesBySource, projectName, sessionId
       let currentSegmentId: string | null = null;
       for (const entry of entries) {
         if (entry.type === "queue-operation") {
-          currentSegmentId = getSegmentId(entry);
+          currentSegmentId = getSegmentId(entry, entryKeys);
         } else if (entry.uuid === lookupUuid && currentSegmentId) {
           return currentSegmentId;
         }
       }
     }
     return null;
-  }, [highlightedUuid, parentUuidForSubagent, entries, uuidToIndex]);
+  }, [highlightedUuid, parentUuidForSubagent, entries, uuidToIndex, entryKeys]);
 
   useEffect(() => {
     if (!segmentToExpand) return;
@@ -337,9 +346,18 @@ function VirtualizedEntryList({ entries, entriesBySource, projectName, sessionId
     });
   }, []);
 
+  // getItemKey must match the React key. Without it the virtualizer defaults to
+  // keying its size/element caches by index, so collapsing a segment shifts
+  // every index and replays one entry's cached height onto a different entry.
+  const getItemKey = useCallback(
+    (index: number) => entryKeys.get(visibleEntries[index]) ?? index,
+    [entryKeys, visibleEntries],
+  );
+
   const virtualizer = useWindowVirtualizer({
     count: visibleEntries.length,
     estimateSize: (index) => estimateSize(visibleEntries[index]),
+    getItemKey,
     overscan: 5,
     scrollMargin,
   });
@@ -370,7 +388,7 @@ function VirtualizedEntryList({ entries, entriesBySource, projectName, sessionId
           const isTarget = !!highlightedUuid && entry.uuid === (parentUuidForSubagent ?? highlightedUuid);
           return (
             <div
-              key={entry.type === "queue-operation" ? getSegmentId(entry) : (entry.uuid || entry.timestamp)}
+              key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               style={{
@@ -384,9 +402,9 @@ function VirtualizedEntryList({ entries, entriesBySource, projectName, sessionId
               {entry.type === "queue-operation" ? (
                 <QueueDivider
                   entry={entry}
-                  isCollapsed={collapsedSessions.has(getSegmentId(entry))}
-                  entryCount={segments.get(getSegmentId(entry)) ?? 0}
-                  onToggle={() => handleToggleSegment(getSegmentId(entry))}
+                  isCollapsed={collapsedSessions.has(getSegmentId(entry, entryKeys))}
+                  entryCount={segments.get(getSegmentId(entry, entryKeys)) ?? 0}
+                  onToggle={() => handleToggleSegment(getSegmentId(entry, entryKeys))}
                 />
               ) : (
                 <EntryRow

@@ -106,6 +106,7 @@
     "postcss": "8.5.14",
     "eslint-plugin-react-hooks": "7.0.1",
     "vite": "8.0.16",
-    "undici": "7.28.0"
+    "undici": "7.28.0",
+    "brace-expansion": "5.0.7"
   }
 }

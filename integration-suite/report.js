@@ -8,7 +8,7 @@
 // enforcement broken?" but "is it about to break?" — so it compares each CLI
 // against the sibling stable leg's last known state (peerStatePath).
 const fs = require("fs");
-const [, , resultsJson, statePath, model, channel = "stable", peerStatePath = ""] = process.argv;
+const [, , resultsJson, statePath, model, channel = "stable", peerStatePath = "", eligible = ""] = process.argv;
 const results = JSON.parse(resultsJson);
 const isBeta = channel !== "stable";
 
@@ -84,8 +84,12 @@ let hdr;
 if (isBeta) {
   // Coverage is stated explicitly and always: only some vendors publish a
   // pre-release ref, and "beta: all green" must never read as assurance for the
-  // CLIs that were never probed at all.
-  const cov = `_watching ${results.length}/12 CLIs — the rest publish no pre-release ref_`;
+  // CLIs that were never probed at all. The denominator is how many are ELIGIBLE
+  // (passed in by run.sh), not 12 — a targeted run must not imply the CLIs it
+  // skipped have no pre-release ref, and hardcoding the eligible list here would
+  // be a third copy to drift against.
+  const total = Number(eligible) || results.length;
+  const cov = `_watching ${results.length}/${total} CLIs that publish a pre-release ref (of 12 total)_`;
   hdr = incoming.length
     ? `🚨 *INCOMING BREAKAGE*: ${incoming.join(", ")} — broken on ${channel}, still green on stable. Fix before it ships.\n${cov}`
     : `🔮 no incoming breakage detected on ${channel}\n${cov}`;

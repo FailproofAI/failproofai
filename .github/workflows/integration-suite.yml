@@ -132,7 +132,11 @@ jobs:
           CANARY_SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
           CANARY_CHANNEL: ${{ matrix.channel }}
           CANARY_STATE: ${{ github.workspace }}/${{ matrix.channel == 'stable' && 'integration-suite-state.json' || format('integration-suite-state-{0}.json', matrix.channel) }}
-          CANARY_PEER_STATE: ${{ matrix.channel == 'stable' && '' || format('{0}/integration-suite-state.json', github.workspace) }}
+          # Operands are FLIPPED deliberately. GHA has no ternary — `cond && a || b`
+          # is the idiom, but an empty `a` is falsy, so `channel == 'stable' && ''`
+          # short-circuits to the fallback and the stable leg would get a peer path
+          # pointing at its own state. Same trap as CANARY_VERSION_GATED above.
+          CANARY_PEER_STATE: ${{ matrix.channel != 'stable' && format('{0}/integration-suite-state.json', github.workspace) || '' }}
           CANARY_FP_SHA: ${{ github.sha }}
           # force=true → "none" (non-"all" ⇒ run.sh gates nothing ⇒ probe all). A
           # literal '' can't be used: GHA `x && '' || 'all'` is always 'all'.

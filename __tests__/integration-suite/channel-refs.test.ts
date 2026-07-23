@@ -36,10 +36,10 @@ function cliesWithBetaRef(): string[] {
   return out.sort();
 }
 
-/** The beta-leg CLI list from run.sh's else branch. */
+/** The beta-leg CLI list from run.sh. Doubles as the report's coverage denominator. */
 function betaLegClis(): string[] {
-  const m = /else\s*\n\s*#[\s\S]*?CLIS=\(([^)]*)\)/.exec(runSh);
-  if (!m) throw new Error("beta CLI list not found in run.sh — was the branch restructured?");
+  const m = /^BETA_CLIS=\(([^)]*)\)/m.exec(runSh);
+  if (!m) throw new Error("BETA_CLIS not found in run.sh — was it renamed?");
   return m[1].trim().split(/\s+/).sort();
 }
 
@@ -77,5 +77,22 @@ describe("beta channel refs", () => {
 
   it("keeps the beta leg advisory — it must never fail the job", () => {
     expect(runSh).toMatch(/if \[ "\$CHANNEL" != stable \]; then[\s\S]{0,300}?exit 0/);
+  });
+
+  it("passes the eligible count to report.js so coverage stays honest on targeted runs", () => {
+    // Without this the beta report says "the rest publish no pre-release ref"
+    // about CLIs that were merely not requested — overstating coverage, which is
+    // the one thing an early-warning report must never do.
+    expect(runSh).toMatch(/report\.js"[^\n]*"\$\{#BETA_CLIS\[@\]\}"/);
+  });
+
+  it("does not use a falsy-true-branch ternary for CANARY_PEER_STATE", () => {
+    // GitHub Actions has no ternary: `cond && '' || fallback` short-circuits to
+    // the fallback because '' is falsy, so the stable leg would get a peer path
+    // pointing at its own state. Operands must be flipped instead.
+    const wf = readFileSync(path.join(__dirname, "../../.github/workflows/integration-suite.yml"), "utf8");
+    const line = wf.split("\n").find((l) => l.includes("CANARY_PEER_STATE:")) || "";
+    expect(line).not.toMatch(/==\s*'stable'\s*&&\s*''/);
+    expect(line).toMatch(/!=\s*'stable'\s*&&\s*format\(/);
   });
 });

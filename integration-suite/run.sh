@@ -37,16 +37,20 @@ CHANNEL="${CANARY_CHANNEL:-stable}"
 # "the vendor is about to break us" from "this CLI is broken for everyone already".
 PEER_STATE="${CANARY_PEER_STATE:-}"
 
+# The CLIs with a public pre-release ref — kept in sync with the beta refs in
+# install-clis.sh (__tests__/integration-suite/channel-refs.test.ts asserts the two
+# lists agree, since a silent drift here would look like coverage while probing
+# nothing). Its LENGTH is also the honest denominator for the beta report: a
+# targeted run (`run.sh cursor`) must not imply the CLIs it skipped have no
+# pre-release ref.
+BETA_CLIS=(claude codex copilot cursor goose openclaw)
+
 CLIS=("$@")
 if [ ${#CLIS[@]} -eq 0 ]; then
   if [ "$CHANNEL" = stable ]; then
     CLIS=(claude codex copilot cursor factory devin antigravity goose opencode pi hermes openclaw)
   else
-    # Only the CLIs with a public pre-release ref — kept in sync with the beta
-    # refs in install-clis.sh (__tests__/integration-suite/channel-refs.test.ts
-    # asserts the two lists agree, since a silent drift here would look like
-    # coverage while probing nothing).
-    CLIS=(claude codex copilot cursor goose openclaw)
+    CLIS=("${BETA_CLIS[@]}")
   fi
 fi
 
@@ -116,7 +120,7 @@ for cli in "${CLIS[@]}"; do
   results="$(node -e 'const a=JSON.parse(process.argv[1]);a.push(JSON.parse(process.argv[2]));process.stdout.write(JSON.stringify(a))' "$results" "$vj")"
 done
 
-report="$(node "$HERE/report.js" "$results" "$STATE" "$MODEL" "$CHANNEL" "$PEER_STATE")"
+report="$(node "$HERE/report.js" "$results" "$STATE" "$MODEL" "$CHANNEL" "$PEER_STATE" "${#BETA_CLIS[@]}")"
 echo "════ report ════" >&2; printf '%s\n' "$report" >&2; echo "════════════════" >&2
 printf '%s\n' "$report"   # also to stdout for the workflow log / artifact
 

@@ -72,7 +72,21 @@ for cli in "${CLIS[@]}"; do
     vj="$(node -e 'const st=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const p=st.clis[process.argv[2]];process.stdout.write(JSON.stringify({cli:process.argv[2],probes:p.probes||p,version:p.version,fpSha:p.fpSha,gated:true}))' "$STATE" "$cli")"
   else
     echo ">> probing $cli ..." >&2
-    vj="$(run_probe "$cli" | sed -n 's/^VERDICT_JSON //p' | tail -1)"
+    out="$(run_probe "$cli")"
+    vj="$(printf '%s\n' "$out" | sed -n 's/^VERDICT_JSON //p' | tail -1)"
+    # Echo the probe tail whenever the verdict is not a clean pass. Without this the
+    # ONLY thing that survived a probe was its VERDICT_JSON line, so a yellow/red run
+    # said WHAT broke and never WHY — and re-running told you no more, because the
+    # cause (a vendor error message) was discarded both times. Diagnosing codex's
+    # 0.145.0 regression needed a full local reproduction purely for want of these
+    # lines. Safe in a public log: every credential here is a registered Actions
+    # secret, so GitHub masks it on the way out.
+    case "$vj" in
+      *FAIL*|*INCONCLUSIVE*|*ERROR*|"")
+        echo "── $cli probe output (tail) ──" >&2
+        printf '%s\n' "$out" | tail -20 >&2
+        echo "── end $cli ──" >&2 ;;
+    esac
     [ -z "$vj" ] && vj="{\"cli\":\"$cli\",\"probes\":{}}"
     vj="$(node -e 'const v=JSON.parse(process.argv[1]);v.version=process.argv[2]||null;v.fpSha=process.argv[3]||null;process.stdout.write(JSON.stringify(v))' "$vj" "$cur_ver" "$FP_SHA")"
   fi

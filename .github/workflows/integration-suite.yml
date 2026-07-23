@@ -90,6 +90,10 @@ jobs:
           CANARY_LLM_MODEL: ${{ secrets.CANARY_LLM_MODEL }}
           CANARY_CLAUDE_MODEL: ${{ secrets.CANARY_CLAUDE_MODEL }}
           CANARY_PI_MODEL: ${{ secrets.CANARY_PI_MODEL }}
+          # Optional: unset falls back to ci-entrypoint.sh's default. Present so a
+          # model that starts refusing codex's payload can be repointed from repo
+          # settings without a code change (see probe-cli.sh's CANARY_CODEX_MODEL note).
+          CANARY_CODEX_MODEL: ${{ secrets.CANARY_CODEX_MODEL }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           # OAuth credential trees (base64 gzip-tars rooted at $HOME)
           CURSOR_TOKEN_TGZ_B64: ${{ secrets.CURSOR_TOKEN_TGZ_B64 }}

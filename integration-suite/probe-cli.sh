@@ -14,14 +14,29 @@
 set -u
 CLI="${1:?usage: probe-cli.sh <cli>}"
 : "${CANARY_LLM_API_KEY:?gateway key missing}"
-# Gateway default model. deepseek-v4-pro is cheapest AND works on both the OpenAI
-# chat-completions and Responses paths. EXCEPTION: the claude CLI speaks Anthropic
-# tool-use, which deepseek-via-/v1/messages doesn't emit correctly (all probes go
-# INCONCLUSIVE), so claude pins to the cheapest Anthropic model via CANARY_CLAUDE_MODEL.
+# Gateway default model, used by every CLI without a pin of its own. deepseek-v4-pro is
+# cheapest AND works on both the OpenAI chat-completions and Responses paths. Three CLIs
+# are pinned away from it below (claude, pi, codex) — each for a payload deepseek refuses.
+# EXCEPTION 1: the claude CLI speaks Anthropic tool-use, which deepseek-via-/v1/messages
+# doesn't emit correctly (all probes go INCONCLUSIVE), so claude pins to the cheapest
+# Anthropic model via CANARY_CLAUDE_MODEL.
 : "${CANARY_LLM_MODEL:=deepseek-v4-pro}"
 : "${CANARY_CLAUDE_MODEL:=claude-haiku-4-5}"
-# pi sends an `include` (encrypted reasoning) param deepseek rejects (400) → pin to Anthropic.
+# EXCEPTION 2: pi sends an `include` (encrypted reasoning) param deepseek rejects (400).
 : "${CANARY_PI_MODEL:=claude-haiku-4-5}"
+# EXCEPTION 3: codex ≥0.145.0 hits the SAME rejection. For a model it has no metadata for
+# (deepseek logs "Model metadata not found. Defaulting to fallback metadata") it now sends
+# `reasoning:{summary:"auto"}` + `include:["reasoning.encrypted_content"]`, where 0.144.6
+# sent `reasoning:null` + `include:[]`. The gateway answers 400 "Encrypted content is not
+# supported with this model" (param: include), codex exits before its first tool call, and
+# BOTH probes report INCONCLUSIVE — enforcement is fine, there is just nothing to observe.
+# No config override strips it (`model_reasoning_summary=none`,
+# `model_supports_reasoning_summaries=false`, `model_reasoning_effort=none` all still emit
+# `include`), and the old escape hatch is gone — `wire_api="chat"` is rejected outright in
+# 0.145.0 (openai/codex#7782). So codex needs a model that accepts encrypted reasoning
+# content. gpt-5.1-codex-mini is the cheapest that does AND supports codex's full toolset:
+# gpt-5.4-nano accepts the reasoning params but 400s on `tool_search`.
+: "${CANARY_CODEX_MODEL:=gpt-5.1-codex-mini}"
 # Gateway base URL — overridable via env (CI supplies it as a secret). Strip any
 # trailing slash so the `$GW/v1` joins below never produce `//v1`.
 GW="${CANARY_LLM_BASE_URL:-https://models.aikin.club}"; GW="${GW%/}"
@@ -129,7 +144,7 @@ drive() { # $1 = prompt ; run ONE prompt headless, executing tools without appro
     codex)    ( cd "$BASE" && codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust \
                   -c model_providers.gw.name="gw" -c model_providers.gw.base_url="$GW/v1" -c model_providers.gw.wire_api="responses" \
                   -c model_providers.gw.env_key="CANARY_LLM_API_KEY" -c model_provider="gw" \
-                  -c model="${CANARY_CODEX_MODEL:-deepseek-v4-pro}" "$1" 2>&1 ) ;;  # Claude models 400 on Bedrock metadata; deepseek is non-Bedrock
+                  -c model="$CANARY_CODEX_MODEL" "$1" 2>&1 ) ;;
     cursor)   ( cd "$BASE" && cursor-agent -p --force "$1" 2>&1 ) ;;
     copilot)  ( cd "$BASE" && copilot -p "$1" --allow-all-tools 2>&1 ) ;;
     devin)    ( cd "$BASE" && devin -p "$1" --permission-mode dangerous --respect-workspace-trust false 2>&1 ) ;;
@@ -163,7 +178,12 @@ read_denied() { grep -qE "result=deny policy=(failproofai/|custom/)?(canary-read
 # Vendor quota / auth errors (Copilot-Free credits, antigravity Google quota,
 # expired logins) → the CLI errors before any tool call. Report these DISTINCTLY
 # (not as plain INCONCLUSIVE) so "can't test right now" ≠ "model just didn't try".
-is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not logged in|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b"; }
+# Payload rejections (400 / "not supported" / "invalid_request_error") belong in the
+# same bucket: when a CLI update starts sending a param the pinned model refuses, the
+# run is untestable, NOT a model that declined to act. Leaving those as INCONCLUSIVE
+# is how codex 0.145.0's `include: ["reasoning.encrypted_content"]` 400 read as a
+# quiet 🟡 for a full day instead of the ⚠️ it was.
+is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not logged in|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b|\\b400\\b|bad.?request|invalid_request_error|(is )?not supported|unsupported (parameter|model|value)|deploymentnotfound"; }
 
 ATTEMPTS=3   # retry up to N times to absorb LLM nondeterminism (flaky tool-callers)
 

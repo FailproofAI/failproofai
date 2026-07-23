@@ -27,6 +27,7 @@
 #   CANARY_LLM_MODEL       (default deepseek-v4-pro)
 #   CANARY_CLAUDE_MODEL    (default claude-haiku-4-5)
 #   CANARY_PI_MODEL        (default claude-haiku-4-5)
+#   CANARY_CODEX_MODEL     (default gpt-5.1-codex-mini)
 #   COPILOT_GITHUB_TOKEN   copilot PAT
 #   CURSOR_TOKEN_TGZ_B64   } base64 gzip-tars of each OAuth credential tree,
 #   DEVIN_TOKEN_TGZ_B64    } rooted at $HOME (see capture-tokens.sh)
@@ -145,6 +146,9 @@ step "assembling gateway env-file"
     echo "CANARY_LLM_MODEL=${CANARY_LLM_MODEL:-deepseek-v4-pro}"
     echo "CANARY_CLAUDE_MODEL=${CANARY_CLAUDE_MODEL:-claude-haiku-4-5}"
     echo "CANARY_PI_MODEL=${CANARY_PI_MODEL:-claude-haiku-4-5}"
+    # Without this line probe-cli.sh's CANARY_CODEX_MODEL override was dead plumbing:
+    # the var is read inside the container, and only what is written here crosses into it.
+    echo "CANARY_CODEX_MODEL=${CANARY_CODEX_MODEL:-gpt-5.1-codex-mini}"
     echo "COPILOT_GITHUB_TOKEN=${COPILOT_GITHUB_TOKEN:-}"
   } > "$ENVFILE"
 )

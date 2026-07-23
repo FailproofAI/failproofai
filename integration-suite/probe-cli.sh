@@ -36,6 +36,10 @@ CLI="${1:?usage: probe-cli.sh <cli>}"
 # 0.145.0 (openai/codex#7782). So codex needs a model that accepts encrypted reasoning
 # content. gpt-5.1-codex-mini is the cheapest that does AND supports codex's full toolset:
 # gpt-5.4-nano accepts the reasoning params but 400s on `tool_search`.
+# Do NOT "fix" this by pinning codex to a Claude model the way pi and claude are: the
+# gateway routes Anthropic weighted 1:1 through Bedrock, which 400s on codex's request
+# metadata (#576). That fails on roughly half of requests — a coin-flip red is worse in a
+# daily canary than a consistent one, and a single green probe does not disprove it.
 : "${CANARY_CODEX_MODEL:=gpt-5.1-codex-mini}"
 # Gateway base URL — overridable via env (CI supplies it as a secret). Strip any
 # trailing slash so the `$GW/v1` joins below never produce `//v1`.
@@ -178,12 +182,21 @@ read_denied() { grep -qE "result=deny policy=(failproofai/|custom/)?(canary-read
 # Vendor quota / auth errors (Copilot-Free credits, antigravity Google quota,
 # expired logins) → the CLI errors before any tool call. Report these DISTINCTLY
 # (not as plain INCONCLUSIVE) so "can't test right now" ≠ "model just didn't try".
-# Payload rejections (400 / "not supported" / "invalid_request_error") belong in the
-# same bucket: when a CLI update starts sending a param the pinned model refuses, the
-# run is untestable, NOT a model that declined to act. Leaving those as INCONCLUSIVE
-# is how codex 0.145.0's `include: ["reasoning.encrypted_content"]` 400 read as a
-# quiet 🟡 for a full day instead of the ⚠️ it was.
-is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not logged in|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b|\\b400\\b|bad.?request|invalid_request_error|(is )?not supported|unsupported (parameter|model|value)|deploymentnotfound"; }
+# Payload rejections belong in the same bucket: when a CLI update starts sending a param
+# the pinned model refuses, the run is untestable, NOT a model that declined to act.
+# Leaving those as INCONCLUSIVE is how codex 0.145.0's `include:
+# ["reasoning.encrypted_content"]` 400 read as a quiet 🟡 for a full day instead of the
+# ⚠️ it was.
+#
+# These patterns MUST stay machine-shaped. `$1` is the agent's whole transcript, so a bare
+# `400` or `not supported` also matches ordinary prose ("400 tests passed", "that flag is
+# not supported") and would report a chatty refusal as a vendor outage — the exact
+# inversion this function exists to prevent. Hence: the structured `"code": 400` form
+# rather than a loose `400`, and `not supported with` (the gateway's own phrasing:
+# "not supported with this model") rather than `not supported`. Both live failures we have
+# seen carry `invalid_request_error` AND `BadRequestError` anyway, so the tight forms lose
+# nothing. __tests__/integration-suite/is-error.test.ts holds the fixtures both ways.
+is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not logged in|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b|\"code\"[[:space:]]*:[[:space:]]*\"?40[0-9]|bad.?request(error)?\\b|invalid_request_error|not supported with|unsupported (parameter|model|value)|deploymentnotfound"; }
 
 ATTEMPTS=3   # retry up to N times to absorb LLM nondeterminism (flaky tool-callers)
 

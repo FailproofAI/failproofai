@@ -72,8 +72,12 @@ for cli in "${CLIS[@]}"; do
     vj="$(node -e 'const st=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const p=st.clis[process.argv[2]];process.stdout.write(JSON.stringify({cli:process.argv[2],probes:p.probes||p,version:p.version,fpSha:p.fpSha,gated:true}))' "$STATE" "$cli")"
   else
     echo ">> probing $cli ..." >&2
-    out="$(run_probe "$cli")"
-    vj="$(printf '%s\n' "$out" | sed -n 's/^VERDICT_JSON //p' | tail -1)"
+    # Spool to a file rather than a shell variable: a probe's output is a full agent
+    # transcript from up to 6 CLI invocations, and a stuck or noisy client could make it
+    # arbitrarily large. Only the verdict line and a 20-line tail are ever needed.
+    out_file="$(mktemp)"
+    run_probe "$cli" > "$out_file"
+    vj="$(sed -n 's/^VERDICT_JSON //p' "$out_file" | tail -1)"
     # Echo the probe tail whenever the verdict is not a clean pass. Without this the
     # ONLY thing that survived a probe was its VERDICT_JSON line, so a yellow/red run
     # said WHAT broke and never WHY — and re-running told you no more, because the
@@ -84,9 +88,10 @@ for cli in "${CLIS[@]}"; do
     case "$vj" in
       *FAIL*|*INCONCLUSIVE*|*ERROR*|"")
         echo "── $cli probe output (tail) ──" >&2
-        printf '%s\n' "$out" | tail -20 >&2
+        tail -20 "$out_file" >&2
         echo "── end $cli ──" >&2 ;;
     esac
+    rm -f "$out_file"
     [ -z "$vj" ] && vj="{\"cli\":\"$cli\",\"probes\":{}}"
     vj="$(node -e 'const v=JSON.parse(process.argv[1]);v.version=process.argv[2]||null;v.fpSha=process.argv[3]||null;process.stdout.write(JSON.stringify(v))' "$vj" "$cur_ver" "$FP_SHA")"
   fi

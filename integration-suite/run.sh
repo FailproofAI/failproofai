@@ -30,7 +30,25 @@ ENVFILE="${CANARY_ENVFILE:?CANARY_ENVFILE (docker --env-file with gateway creds)
 MODEL="${CANARY_LLM_MODEL:-deepseek-v4-pro}"
 GATED="${CANARY_VERSION_GATED-all}"
 
-CLIS=("$@"); [ ${#CLIS[@]} -eq 0 ] && CLIS=(claude codex copilot cursor factory devin antigravity goose opencode pi hermes openclaw)
+CHANNEL="${CANARY_CHANNEL:-stable}"
+# Sibling leg's state file, for the cross-leg comparison (see report.js). The beta
+# leg needs to know whether a CLI is green on stable: "stable green + beta not
+# green" is the incoming-breakage signal, and it is the ONLY way to distinguish
+# "the vendor is about to break us" from "this CLI is broken for everyone already".
+PEER_STATE="${CANARY_PEER_STATE:-}"
+
+CLIS=("$@")
+if [ ${#CLIS[@]} -eq 0 ]; then
+  if [ "$CHANNEL" = stable ]; then
+    CLIS=(claude codex copilot cursor factory devin antigravity goose opencode pi hermes openclaw)
+  else
+    # Only the CLIs with a public pre-release ref — kept in sync with the beta
+    # refs in install-clis.sh (__tests__/integration-suite/channel-refs.test.ts
+    # asserts the two lists agree, since a silent drift here would look like
+    # coverage while probing nothing).
+    CLIS=(claude codex copilot cursor goose openclaw)
+  fi
+fi
 
 # failproofai main HEAD — the second gate dimension. Prefer the value the workflow
 # computed; fall back to git in the checkout.
@@ -98,7 +116,7 @@ for cli in "${CLIS[@]}"; do
   results="$(node -e 'const a=JSON.parse(process.argv[1]);a.push(JSON.parse(process.argv[2]));process.stdout.write(JSON.stringify(a))' "$results" "$vj")"
 done
 
-report="$(node "$HERE/report.js" "$results" "$STATE" "$MODEL")"
+report="$(node "$HERE/report.js" "$results" "$STATE" "$MODEL" "$CHANNEL" "$PEER_STATE")"
 echo "════ report ════" >&2; printf '%s\n' "$report" >&2; echo "════════════════" >&2
 printf '%s\n' "$report"   # also to stdout for the workflow log / artifact
 
@@ -111,6 +129,17 @@ if [ -n "${CANARY_SLACK_WEBHOOK:-}" ]; then
   else echo "⚠️  Slack webhook POST returned HTTP $code" >&2; fi
 else
   echo "(no CANARY_SLACK_WEBHOOK set — report not posted)" >&2
+fi
+
+# The beta leg is ADVISORY and must never fail the job. It probes vendor
+# pre-release builds, which are broken-by-nature often enough that gating CI on
+# them would train everyone to ignore a red run — and the thing it reports is
+# "this WILL break on release", not "this IS broken", which is not a reason to
+# stop the world. The report is emitted and posted either way, so the signal is
+# never lost; escalation is the report's job, not the exit code's.
+if [ "$CHANNEL" != stable ]; then
+  echo "(channel=$CHANNEL — advisory only, not failing the job)" >&2
+  exit 0
 fi
 
 # Fail the job when any probe reported a hard FAIL (broken enforcement) so this

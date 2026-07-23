@@ -42,6 +42,16 @@ permissions:
 jobs:
   integration-suite:
     runs-on: ubuntu-latest
+    strategy:
+      # Two legs. `stable` is the contract test: what users get, and a FAIL fails
+      # the job. `beta` probes each vendor's public pre-release ref for the CLIs
+      # that publish one, and is ADVISORY — run.sh exits 0 on it regardless,
+      # because "this will break on release" is not a reason to stop the world,
+      # and gating CI on third-party alphas trains everyone to ignore a red run.
+      # fail-fast: false so a stable failure never cancels the early-warning leg.
+      fail-fast: false
+      matrix:
+        channel: [stable, beta]
     # NOTE: this is the GitHub *Environment* name where the secrets live. It is
     # configured in repo settings and is deliberately NOT renamed alongside this
     # directory — changing it here without renaming it there loses access to
@@ -61,12 +71,30 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Restore integration-suite state (version-gate + broke/recovered)
+      - name: Restore this leg's state (version-gate + broke/recovered)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ matrix.channel == 'stable' && 'integration-suite-state.json' || format('integration-suite-state-{0}.json', matrix.channel) }}
+          key: integration-suite-state-${{ matrix.channel }}-${{ github.run_id }}
+          # The channel-scoped prefix first; the unscoped one second so the stable
+          # leg still adopts the pre-matrix cache on the first run after this
+          # change, instead of losing its gate baseline and re-probing all 12.
+          restore-keys: |
+            integration-suite-state-${{ matrix.channel }}-
+            integration-suite-state-
+
+      # The beta leg needs the STABLE leg's state to tell "about to break" from
+      # "already broken" — a CLI that is red on both is the stable leg's alarm,
+      # not an early warning. Restored read-only; only the stable leg writes it.
+      - name: Restore stable leg's state (cross-leg comparison)
+        if: matrix.channel != 'stable'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: integration-suite-state.json
-          key: integration-suite-state-${{ github.run_id }}
-          restore-keys: integration-suite-state-
+          key: integration-suite-state-stable-${{ github.run_id }}
+          restore-keys: |
+            integration-suite-state-stable-
+            integration-suite-state-
 
       # TRANSITION (delete once an integration-suite-state-* cache exists — i.e.
       # after the first successful run on main). This harness was renamed from
@@ -76,6 +104,7 @@ jobs:
       # filename, so it lands as cli-integration-state.json and ci-entrypoint.sh
       # adopts it only when the new file is absent.
       - name: Restore legacy state (rename transition)
+        if: matrix.channel == 'stable'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: cli-integration-state.json
@@ -101,7 +130,9 @@ jobs:
           ANTIGRAVITY_TOKEN_TGZ_B64: ${{ secrets.ANTIGRAVITY_TOKEN_TGZ_B64 }}
           # reporting + version-gating
           CANARY_SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          CANARY_STATE: ${{ github.workspace }}/integration-suite-state.json
+          CANARY_CHANNEL: ${{ matrix.channel }}
+          CANARY_STATE: ${{ github.workspace }}/${{ matrix.channel == 'stable' && 'integration-suite-state.json' || format('integration-suite-state-{0}.json', matrix.channel) }}
+          CANARY_PEER_STATE: ${{ matrix.channel == 'stable' && '' || format('{0}/integration-suite-state.json', github.workspace) }}
           CANARY_FP_SHA: ${{ github.sha }}
           # force=true → "none" (non-"all" ⇒ run.sh gates nothing ⇒ probe all). A
           # literal '' can't be used: GHA `x && '' || 'all'` is always 'all'.
@@ -111,9 +142,12 @@ jobs:
           CANARY_CLIS: ${{ inputs.clis }}
         run: bash integration-suite/ci-entrypoint.sh
 
+      # Each leg saves ONLY its own file under a channel-scoped key: the legs run
+      # concurrently, so sharing a key would race, and a beta result must never
+      # be able to overwrite the stable leg's gating record.
       - name: Save integration-suite state
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: integration-suite-state.json
-          key: integration-suite-state-${{ github.run_id }}
+          path: ${{ matrix.channel == 'stable' && 'integration-suite-state.json' || format('integration-suite-state-{0}.json', matrix.channel) }}
+          key: integration-suite-state-${{ matrix.channel }}-${{ github.run_id }}

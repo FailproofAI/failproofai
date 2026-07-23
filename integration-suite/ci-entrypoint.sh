@@ -44,11 +44,20 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${GITHUB_WORKSPACE:-$(dirname "$HERE")}"
 
-VOL="${CANARY_VOL:-integration-suite}"
+# Each channel gets its OWN volume: installing a pre-release into the same $HOME
+# overwrites the stable binary (npm -g, and the vendor installers all rewrite
+# their own shims), so the two refs cannot coexist in one volume.
+CHANNEL="${CANARY_CHANNEL:-stable}"
+SUFFIX=""; [ "$CHANNEL" != stable ] && SUFFIX="-$CHANNEL"
+VOL="${CANARY_VOL:-integration-suite$SUFFIX}"
 IMAGE="${CANARY_IMAGE:-failproofai-integration-suite:base}"
-ENVFILE="${CANARY_ENVFILE:-$REPO/canary.env}"
-TOKENS_DIR="${CANARY_TOKENS_DIR:-$REPO/tokens}"
-STATE="${CANARY_STATE:-$REPO/integration-suite-state.json}"
+ENVFILE="${CANARY_ENVFILE:-$REPO/canary$SUFFIX.env}"
+TOKENS_DIR="${CANARY_TOKENS_DIR:-$REPO/tokens$SUFFIX}"
+STATE="${CANARY_STATE:-$REPO/integration-suite-state$SUFFIX.json}"
+# The stable leg's state, so the beta leg can tell "about to break" from
+# "already broken" (see report.js). Unset on the stable leg.
+PEER_STATE="${CANARY_PEER_STATE:-}"
+[ "$CHANNEL" != stable ] && [ -z "$PEER_STATE" ] && PEER_STATE="$REPO/integration-suite-state.json"
 
 step() { echo "── $* ──" >&2; }
 
@@ -124,8 +133,8 @@ docker volume rm "$VOL" -f >/dev/null 2>&1 || true
 docker volume create "$VOL" >/dev/null || { echo "✗ volume create failed" >&2; exit 1; }
 
 # ── 4. install CLIs @latest, then inject tokens ─────────────────────────────
-step "installing 12 CLIs @latest into the fresh volume"
-docker run --rm -v "$VOL:/home/canary" -v "$HERE:/opt/canary:ro" \
+step "installing CLIs (channel=$CHANNEL) into the fresh volume"
+docker run --rm -e CANARY_CHANNEL="$CHANNEL" -v "$VOL:/home/canary" -v "$HERE:/opt/canary:ro" \
   "$IMAGE" bash /opt/canary/install-clis.sh \
   || { echo "✗ CLI install failed" >&2; exit 1; }
 
@@ -165,4 +174,6 @@ CANARY_VOL="$VOL" \
 CANARY_IMAGE="$IMAGE" \
 CANARY_STATE="$STATE" \
 CANARY_ENVFILE="$ENVFILE" \
+CANARY_CHANNEL="$CHANNEL" \
+CANARY_PEER_STATE="$PEER_STATE" \
   bash "$HERE/run.sh" ${CANARY_CLIS:-}

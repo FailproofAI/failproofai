@@ -45,6 +45,48 @@ failproofai's HEAD changed since its last green run — unchanged ⇒ can't have
 drifted ⇒ skip, protecting LLM/vendor quota. `FAIL`/`INCONCLUSIVE`/`ERROR` always
 re-probe until they recover. Dispatch with **force** to probe everything.
 
+## Two channels: `stable` and `beta`
+
+The workflow runs as a **matrix over `CANARY_CHANNEL`**, in two concurrent legs
+answering different questions:
+
+| Leg | Installs | Question | On failure |
+|-----|----------|----------|------------|
+| `stable` | what users get, all 12 CLIs | *is enforcement broken now?* | **fails the job** + Slack |
+| `beta` | each vendor's public pre-release ref, 6 CLIs | *is it about to break?* | **advisory only** — never fails |
+
+Only six vendors publish something usable ahead of their release, so the beta leg
+skips the rest rather than re-installing a stable build and reporting it as
+pre-release coverage:
+
+| CLI | Pre-release ref | Typical lead |
+|-----|-----------------|--------------|
+| codex | npm `alpha` | up to ~12 d (minor bumps only — patches ship blind) |
+| copilot | npm `prerelease` | 0.6–5.8 d |
+| openclaw | npm `beta` | 0.3–11.4 d |
+| cursor | `install?channel=lab` | 2–4 d |
+| goose | `CANARY=true` (rolling tag) | ~1 release cycle |
+| claude | `latest` — **inverted**, see below | ~13 d |
+
+**claude runs backwards.** Nothing ships ahead of `latest`, which *is* the
+bleeding edge (~1 release/day); what exists is `stable`, ~13 days behind. So the
+stable leg pins `bash -s stable` — testing what conservative users run, and
+stopping a same-day Anthropic release from red-lighting an unrelated PR — and
+`latest` becomes the early-warning ref. **hermes** is inverted too but has no fix:
+its installer git-clones `main`, which is also what every hermes user gets, so
+there is nothing ahead of us to probe.
+
+**Escalation is a cross-leg comparison, not a beta failure.** A CLI red on both
+legs is already broken and belongs to the stable leg's alarm. The early warning is
+`stable green + beta not-green`, held for **two consecutive runs** so a broken
+alpha that gets reverted before release doesn't burn attention. Note the signal is
+usually `INCONCLUSIVE`/`ERROR`, not `FAIL` — a vendor payload change stops the
+model before it ever calls a tool — so a FAIL-only rule would miss it entirely.
+
+Each leg has its own Docker volume and Actions cache key: a pre-release install
+overwrites the stable binary in a shared `$HOME`, and a beta result must never be
+able to overwrite the stable leg's gating record.
+
 ## Auth & secrets (the `cli-integration` Environment)
 
 > The GitHub **Environment** is still named `cli-integration` — it's configured in
@@ -77,7 +119,7 @@ re-login on the capture machine and refresh the secret.
 ```
 ci-entrypoint.sh      CI front door: build -> sandbox -> install -> probe -> cleanup
 Dockerfile            non-root sandbox base image
-install-clis.sh       install/upgrade all 12 CLIs @latest (with retries)
+install-clis.sh       install/upgrade the CLIs for $CANARY_CHANNEL (with retries)
 inject-tokens.sh      write captured OAuth creds into the fresh volume
 probe-cli.sh          live enforcement probe for ONE CLI (the oracle)
 canary-policies.mjs   benign-marker custom policies the probe trips

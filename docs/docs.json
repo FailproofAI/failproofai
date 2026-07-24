@@ -64,6 +64,7 @@
                 "pages": [
                   "agenteye/python-sdk",
                   "agenteye/python-sdk-skill",
+                  "agenteye/codex-capture",
                   "agenteye/cli",
                   "agenteye/cli-skill",
                   "agenteye/cli-recipes",

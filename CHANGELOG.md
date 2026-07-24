@@ -19,6 +19,9 @@
 - Restore the note explaining why codex is not pinned to a Claude model, which the fix above had deleted along with the line it annotated. The gateway routes Anthropic weighted 1:1 through Bedrock, which 400s on codex's request metadata (#576) — so a Claude-pinned codex probe fails on roughly half its requests, and a coin-flip red in a daily canary is worse than a consistent one. Worth keeping precisely because a single green probe looks like proof that it works. (#591)
 - Echo the probe's output tail whenever a CLI's verdict is not a clean pass. `run.sh` discarded everything a probe printed except its `VERDICT_JSON` line, so a yellow or red run said *what* broke and never *why*, and re-running produced no more detail because the vendor's error message was thrown away both times — diagnosing the codex regression above needed a full local reproduction purely for want of these twenty lines. Safe in a public log: every credential involved is a registered Actions secret, so GitHub masks it on the way out. (#591)
 
+### Docs
+- Add a Codex session capture page for AgentEye: what the collector picks up from local OpenAI Codex sessions (CLI, IDE, desktop app), how to turn it on with an `events:add` key, and where captured sessions show up. Value/contract level only, no implementation detail. (#592)
+
 ## 0.0.14-beta.3 — 2026-07-20
 
 ### Fixes

@@ -71,6 +71,7 @@ Failproof AI Observability is organized around three ideas (**observe**, **analy
 
 - **[CLI](/agenteye/cli-and-agents)**: drive your whole deployment from the terminal or a script, and let a coding agent do it for you in plain English.
 - **[AI assistant](/agenteye/assistant)**: ask questions about your agents in plain English, right inside the dashboard.
+- **REST API**: everything the dashboard and CLI do is backed by a REST API you can call directly with a scoped [API key](/agenteye/api-keys) — ingest events, query sessions and evaluations, and manage dashboards, alerts, audits, users, and keys, so you can wire Failproof AI Observability into your own tooling.
 
 **Admin** (run it for your team):
 
@@ -86,7 +87,7 @@ Data flows in one direction, from your agent code to the dashboard: your agent (
 
 - **Python SDK**: you add a few `agenteye.event.*` calls to your agent; events are buffered locally.
 - **agenteye-collector**: a lightweight daemon on each agent machine that batches events and ships them to the server.
-- **Server**: ingests your events and keeps operational state in your own databases.
+- **Server**: ingests your events, keeps operational state in your own databases, and serves the REST API that the dashboard, CLI, and your own integrations all use.
 - **Dashboard**: where you explore everything.
 - **Optional services**: a scoring service (evaluations), and an AI assistant service (the in-dashboard chat).
 

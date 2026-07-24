@@ -21,6 +21,7 @@
 
 ### Docs
 - Add a Codex session capture page for AgentEye: what the collector picks up from local OpenAI Codex sessions (CLI, IDE, desktop app), how to turn it on with an `events:add` key, and where captured sessions show up. Value/contract level only, no implementation detail. (#592)
+- Note in the AgentEye overview that the dashboard and CLI are backed by a REST API callable with a scoped key, so prospects can see a programmatic API exists. Gist/contract level only — no endpoint signatures; the exhaustive HTTP API reference stays in the enterprise docs. (#593)
 
 ## 0.0.14-beta.3 — 2026-07-20
 

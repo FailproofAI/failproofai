@@ -1,0 +1,53 @@
+---
+title: "Codex session capture"
+description: "Tail your team's local OpenAI Codex sessions into AgentEye as ordinary sessions and events — with no change to how they run Codex."
+---
+
+המהנדסים שלך כבר מריצים OpenAI Codex כל יום. Codex session capture מביא את הסשנים של coding האלה ל-AgentEye כסשנים ואירועים רגילים, כך שתוכל לחפש, להשמיע חוזר (replay) ולהעריך אותם לצד הכל השני שאתה צופה בו. זה משלים את [Python SDK](/he/agenteye/python-sdk): ה-SDK מכנסת אג'נטים שאתה כותב, בעוד שזה תופס את עבודת Codex של הצוות שלך — ללא שינוי בדרך שהם מריצים אותו.
+
+אספן רקע קטן קורא את תמלול הסשן המקומי של Codex כפי שהוא נכתב וגורם להם להגיע ל-AgentEye. אספן אחד למכונה תופס כל משטח Codex מקומי בו זמנית — אין הגדרה לכל משטח.
+
+---
+
+## מה זה תופס
+
+כל משטח Codex שרץ **locally** מייצר את אותם תמלול סשן על הדיסק, והאספן באוצר אותם:
+
+- Codex **CLI** ו-`codex exec`
+- **VS Code / IDE extension**
+- **desktop app**, כאשר הוא מריץ סשן locally
+
+כל סשן Codex הופך ל-AgentEye [session](/he/agenteye/sessions); הודעות המשתמש והעוזר שלו, חשיבה, קריאות כלים (tool calls), תוצאות כלים וסימון שימוש הופכים ל-[events](/he/agenteye/event-stream) התואמים. המשטח שכל סשן הגיע ממנו (CLI, IDE, או desktop) מתועד, כך שתוכל להבדיל ביניהם.
+
+> **Cloud sessions are not captured.** ה-desktop app כל יום יותר מריץ סשנים בענן של Codex ומשמר רק את המטא-דטה שלהם במכונה — אין תמלול מקומי לקריאה. רק סשנים שמבוצעים locally תופסים.
+
+---
+
+## הפעל את זה
+
+capture כבויה עד שתפעיל אותה. התקן את האספן עם API key שיש לו את ההרשאה `events:add` (ראה [API keys](/he/agenteye/api-keys)), והפעל את Codex capture:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --codex-enabled
+```
+
+זה מתקין את האספן, רושם אותו כשירות רקע, ומתחיל לתפוס. אשר שהוא רץ:
+
+```bash
+agenteye-collector health
+```
+
+בריצה ראשונה, הסשנים קיימים של Codex שלך מלאים חזרה פעם אחת ופעילות חדשה אז זורמת בתוך שניות. הקבצים של Codex עצמו נקראים בלבד — לעולם לא שונים, הועברו או נמחקו — וכל סשן נשלח בדיוק פעם אחת, אפילו על פני restarts.
+
+---
+
+## איפה זה מופיע
+
+סשנים תופסו מופיעים ב-**Sessions**, ואירועיהם בזרם **Events**, בדיוק כמו כל אג'נט אחר שאתה צופה בו — כך [session replay](/he/agenteye/sessions), [search](/he/agenteye/queries), [evaluations](/he/agenteye/evaluations), ו-[alerts](/he/agenteye/alerts) כולם עובדים עליהם. סנן לפי ה-agent של Codex כדי לראות אותם בעצמם.
+
+---
+
+## פרטיות
+
+תמלול של Codex מכיל את הסשן המלא — כולל פלט פקודה, תוכן קבצים, וכל דבר שCodex קרא או כתב — ויכול להכיל סודות. סשנים תפסו נשלחים כמו שהם, כך שהפעל capture רק על מכונות וצוותים שבהם ריכוז תוכן זה ב-AgentEye מתאים, ותן לאספן key שמתוחם ל-`events:add` בלבד. ראה [Security](/he/agenteye/security) לקבלת מידע כיצד הנתונים שלך מובדלים.

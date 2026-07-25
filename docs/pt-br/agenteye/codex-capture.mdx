@@ -1,0 +1,53 @@
+---
+title: "Captura de sessão do Codex"
+description: "Transmita as sessões locais do OpenAI Codex da sua equipe para o AgentEye como sessões e eventos comuns — sem nenhuma alteração na forma como eles executam o Codex."
+---
+
+Seus engenheiros já executam o OpenAI Codex todos os dias. A captura de sessão do Codex traz essas sessões de codificação para o AgentEye como sessões e eventos comuns, para que você possa pesquisar, reproduzir e avaliar junto com tudo mais que você observa. Ela complementa o [Python SDK](/pt-br/agenteye/python-sdk): o SDK instrumenta os agentes que você escreve, enquanto esta captura o trabalho do Codex que sua equipe já faz — sem nenhuma alteração na forma como eles o executam.
+
+Um pequeno coletor em segundo plano lê os transcritos de sessão locais do Codex conforme são gravados e os envia para o AgentEye. Um coletor por máquina captura todas as superfícies locais do Codex de uma vez — não há configuração por superfície.
+
+---
+
+## O que é capturado
+
+Toda superfície do Codex que executa **localmente** produz os mesmos transcritos de sessão em disco, e o coletor captura todos eles:
+
+- o **CLI** do Codex e `codex exec`
+- a **extensão para VS Code / IDE**
+- o **aplicativo desktop**, quando executa uma sessão localmente
+
+Cada sessão do Codex torna-se uma [sessão](/pt-br/agenteye/sessions) do AgentEye; suas mensagens de usuário e assistente, raciocínio, chamadas de ferramentas, resultados de ferramentas e uso de tokens tornam-se os [eventos](/pt-br/agenteye/event-stream) correspondentes. A superfície de origem de cada sessão (CLI, IDE ou desktop) é registrada, para que você possa diferenciá-las.
+
+> **Sessões na nuvem não são capturadas.** O aplicativo desktop executa cada vez mais sessões na nuvem do Codex e mantém apenas os metadados delas na máquina — não há transcrito local para ler. Apenas sessões executadas localmente são capturadas.
+
+---
+
+## Como ativar
+
+A captura fica desativada até que você a habilite. Instale o coletor com uma chave de API que tenha a permissão `events:add` (consulte [Chaves de API](/pt-br/agenteye/api-keys)) e ative a captura do Codex:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --codex-enabled
+```
+
+Isso instala o coletor, registra-o como um serviço em segundo plano e inicia a captura. Confirme que está em execução:
+
+```bash
+agenteye-collector health
+```
+
+Na primeira execução, suas sessões do Codex existentes são importadas retroativamente uma vez, e a nova atividade passa a ser transmitida em segundos. Os arquivos do próprio Codex são apenas lidos — nunca modificados, movidos ou excluídos — e cada sessão é enviada exatamente uma vez, mesmo entre reinicializações.
+
+---
+
+## Onde aparece
+
+As sessões capturadas aparecem em **Sessions**, e seus eventos no fluxo de **Events**, da mesma forma que qualquer outro agente que você observa — portanto, [reprodução de sessão](/pt-br/agenteye/sessions), [pesquisa](/pt-br/agenteye/queries), [avaliações](/pt-br/agenteye/evaluations) e [alertas](/pt-br/agenteye/alerts) funcionam normalmente nelas. Filtre pelo agente Codex para visualizá-las separadamente.
+
+---
+
+## Privacidade
+
+Os transcritos do Codex contêm a sessão completa — incluindo saída de comandos, conteúdo de arquivos e tudo que o Codex leu ou escreveu — e podem conter segredos. As sessões capturadas são enviadas como estão, portanto, habilite a captura apenas em máquinas e para equipes em que centralizar esse conteúdo no AgentEye seja apropriado, e forneça ao coletor uma chave com escopo apenas para `events:add`. Consulte [Segurança](/pt-br/agenteye/security) para saber como seus dados são mantidos isolados.

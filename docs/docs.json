@@ -174,6 +174,7 @@
                 "pages": [
                   "zh/agenteye/python-sdk",
                   "zh/agenteye/python-sdk-skill",
+                  "zh/agenteye/codex-capture",
                   "zh/agenteye/cli",
                   "zh/agenteye/cli-skill",
                   "zh/agenteye/cli-recipes",
@@ -283,6 +284,7 @@
                 "pages": [
                   "ja/agenteye/python-sdk",
                   "ja/agenteye/python-sdk-skill",
+                  "ja/agenteye/codex-capture",
                   "ja/agenteye/cli",
                   "ja/agenteye/cli-skill",
                   "ja/agenteye/cli-recipes",
@@ -392,6 +394,7 @@
                 "pages": [
                   "ko/agenteye/python-sdk",
                   "ko/agenteye/python-sdk-skill",
+                  "ko/agenteye/codex-capture",
                   "ko/agenteye/cli",
                   "ko/agenteye/cli-skill",
                   "ko/agenteye/cli-recipes",
@@ -501,6 +504,7 @@
                 "pages": [
                   "es/agenteye/python-sdk",
                   "es/agenteye/python-sdk-skill",
+                  "es/agenteye/codex-capture",
                   "es/agenteye/cli",
                   "es/agenteye/cli-skill",
                   "es/agenteye/cli-recipes",
@@ -610,6 +614,7 @@
                 "pages": [
                   "pt-br/agenteye/python-sdk",
                   "pt-br/agenteye/python-sdk-skill",
+                  "pt-br/agenteye/codex-capture",
                   "pt-br/agenteye/cli",
                   "pt-br/agenteye/cli-skill",
                   "pt-br/agenteye/cli-recipes",
@@ -719,6 +724,7 @@
                 "pages": [
                   "de/agenteye/python-sdk",
                   "de/agenteye/python-sdk-skill",
+                  "de/agenteye/codex-capture",
                   "de/agenteye/cli",
                   "de/agenteye/cli-skill",
                   "de/agenteye/cli-recipes",
@@ -828,6 +834,7 @@
                 "pages": [
                   "fr/agenteye/python-sdk",
                   "fr/agenteye/python-sdk-skill",
+                  "fr/agenteye/codex-capture",
                   "fr/agenteye/cli",
                   "fr/agenteye/cli-skill",
                   "fr/agenteye/cli-recipes",
@@ -937,6 +944,7 @@
                 "pages": [
                   "ru/agenteye/python-sdk",
                   "ru/agenteye/python-sdk-skill",
+                  "ru/agenteye/codex-capture",
                   "ru/agenteye/cli",
                   "ru/agenteye/cli-skill",
                   "ru/agenteye/cli-recipes",
@@ -1046,6 +1054,7 @@
                 "pages": [
                   "hi/agenteye/python-sdk",
                   "hi/agenteye/python-sdk-skill",
+                  "hi/agenteye/codex-capture",
                   "hi/agenteye/cli",
                   "hi/agenteye/cli-skill",
                   "hi/agenteye/cli-recipes",
@@ -1155,6 +1164,7 @@
                 "pages": [
                   "tr/agenteye/python-sdk",
                   "tr/agenteye/python-sdk-skill",
+                  "tr/agenteye/codex-capture",
                   "tr/agenteye/cli",
                   "tr/agenteye/cli-skill",
                   "tr/agenteye/cli-recipes",
@@ -1264,6 +1274,7 @@
                 "pages": [
                   "vi/agenteye/python-sdk",
                   "vi/agenteye/python-sdk-skill",
+                  "vi/agenteye/codex-capture",
                   "vi/agenteye/cli",
                   "vi/agenteye/cli-skill",
                   "vi/agenteye/cli-recipes",
@@ -1373,6 +1384,7 @@
                 "pages": [
                   "it/agenteye/python-sdk",
                   "it/agenteye/python-sdk-skill",
+                  "it/agenteye/codex-capture",
                   "it/agenteye/cli",
                   "it/agenteye/cli-skill",
                   "it/agenteye/cli-recipes",
@@ -1482,6 +1494,7 @@
                 "pages": [
                   "ar/agenteye/python-sdk",
                   "ar/agenteye/python-sdk-skill",
+                  "ar/agenteye/codex-capture",
                   "ar/agenteye/cli",
                   "ar/agenteye/cli-skill",
                   "ar/agenteye/cli-recipes",
@@ -1591,6 +1604,7 @@
                 "pages": [
                   "he/agenteye/python-sdk",
                   "he/agenteye/python-sdk-skill",
+                  "he/agenteye/codex-capture",
                   "he/agenteye/cli",
                   "he/agenteye/cli-skill",
                   "he/agenteye/cli-recipes",

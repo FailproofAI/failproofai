@@ -1,0 +1,53 @@
+---
+title: "Codex oturumu yakalama"
+description: "Ekibinizin yerel OpenAI Codex oturumlarını AgentEye'a sıradan oturumlar ve etkinlikler olarak yönlendirin — Codex'i çalıştırma şeklinizde hiçbir değişiklik olmadan."
+---
+
+Mühendisleriniz zaten her gün OpenAI Codex'i çalıştırıyorlar. Codex oturumu yakalama, bu kodlama oturumlarını AgentEye'a sıradan oturumlar ve etkinlikler olarak getirerek, bunları aradığınız her şeyin yanında arayabilir, tekrar oynatabilir ve değerlendirebilirsiniz. [Python SDK](/tr/agenteye/python-sdk) ile tamamlayıcıdır: SDK, yazdığınız aracıları işaretlerken, bu, ekibinizin zaten yaptığı Codex işini yakalar — çalıştırma şeklinizde hiçbir değişiklik olmadan.
+
+Küçük bir arka plan toplayıcı, Codex'in yerel oturum yazıklarını yazıldıkları sırada okur ve bunları AgentEye'a gönderir. Makine başına bir toplayıcı tüm yerel Codex yüzeylerini aynı anda yakalar — yüzey başına kurulum gerekli değildir.
+
+---
+
+## Neler yakalar
+
+**Yerel olarak** çalışan her Codex yüzeyi aynı disk üstü oturum yazıklarını üretir ve toplayıcı hepsini alır:
+
+- Codex **CLI** ve `codex exec`
+- **VS Code / IDE uzantısı**
+- bir oturumu yerel olarak çalıştırdığında **masaüstü uygulaması**
+
+Her Codex oturumu bir AgentEye [oturumu](/tr/agenteye/sessions) olur; kullanıcı ve asistan mesajları, akıl yürütme, araç çağrıları, araç sonuçları ve belirteç kullanımı eşleşen [etkinlikler](/tr/agenteye/event-stream) olur. Her oturumun geldiği yüzey (CLI, IDE veya masaüstü) kaydedilir, böylece bunları ayırt edebilirsiniz.
+
+> **Bulut oturumları yaklanmaz.** Masaüstü uygulaması giderek artan şekilde oturumları Codex bulutunda çalıştırır ve yalnızca bunların meta verilerini makinede tutar — okunacak yerel yazık yoktur. Yalnızca yerel olarak yürütülen oturumlar yaklanır.
+
+---
+
+## Açın
+
+Yakalama siz etkinleştirene kadar kapalıdır. `events:add` izni olan bir API anahtarı ile toplayıcıyı yükleyin (bkz. [API anahtarları](/tr/agenteye/api-keys)) ve Codex yakalamayı açın:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --codex-enabled
+```
+
+Bu, toplayıcıyı yükler, onu arka plan hizmeti olarak kaydeder ve yakalamaya başlar. Çalıştığını onaylayın:
+
+```bash
+agenteye-collector health
+```
+
+İlk çalıştırmada, mevcut Codex oturumlarınız bir kez geri doldurulur ve yeni etkinlik daha sonra saniyeler içinde akar. Codex'in kendi dosyaları yalnızca okunur — asla değiştirilmez, taşınmaz veya silinmez — ve her oturum yeniden başlatmalar arasında bile tam olarak bir kez gönderilir.
+
+---
+
+## Nerede görünür
+
+Yakalanan oturumlar **Oturumlar**'da ve bunların etkinlikleri **Etkinlikler** akışında görünür — başka herhangi bir gözlemlediğiniz aracı gibi aynı şekilde — bu nedenle [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) hepsi bunlar üzerinde çalışır. Codex aracısına göre filtreleyin ve bunları kendi başlarına görün.
+
+---
+
+## Gizlilik
+
+Codex yazıkları tam oturumu içerir — komut çıktısı, dosya içeriği ve Codex'in okuduğu veya yazdığı her şey dahil — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yakalamayı yalnızca bu içeriği AgentEye'a merkezileştirmenin uygun olduğu makinelerde ve ekipler için açın ve toplayıcıya yalnızca `events:add` kapsamına alınmış bir anahtar verin. Verilerinizin nasıl izole tutulduğu hakkında [Güvenlik](/tr/agenteye/security) sayfasına bakın.

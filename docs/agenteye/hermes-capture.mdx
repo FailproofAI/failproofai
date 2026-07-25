@@ -1,0 +1,49 @@
+---
+title: "Hermes session capture"
+description: "Bring your team's Hermes gateway sessions — Slack, Telegram, CLI, and scheduled runs — into AgentEye as ordinary sessions and events."
+---
+
+[Hermes](https://hermes-agent.nousresearch.com) answers your team from wherever they already work — Slack, Telegram, the CLI, scheduled runs. Hermes session capture brings all of it into AgentEye as ordinary sessions and events, so the assistant your team talks to every day is as observable as the agents you write yourself.
+
+A small background collector reads Hermes's local session store as it is written and ships sessions to AgentEye. It works the same way as [Codex](/agenteye/codex-capture) and [OpenClaw](/agenteye/openclaw-capture) capture, and one collector can capture several at once.
+
+---
+
+## What it captures
+
+Every Hermes session on the machine is captured, whichever channel it came from. Each one becomes an AgentEye [session](/agenteye/sessions); its user and assistant messages, tool calls, and tool results become the matching [events](/agenteye/event-stream).
+
+The channel a session started from — Slack, Telegram, CLI, or a scheduled run — is recorded on the session, so you can tell them apart and filter to one at a time.
+
+---
+
+## Turn it on
+
+Capture is off until you enable it. Install the collector with an API key that has the `events:add` permission (see [API keys](/agenteye/api-keys)), and turn on Hermes capture:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
+```
+
+That installs the collector, registers it as a background service, and starts capturing. Confirm it is running:
+
+```bash
+agenteye-collector health
+```
+
+Capturing more than one agent on the same machine? Add each one's flag to the same command — for example `--hermes-enabled --codex-enabled`.
+
+On first run, your existing Hermes sessions are backfilled once and new activity then streams within seconds. Hermes's own data is only ever read — never modified or deleted — and each message is shipped exactly once, even across restarts.
+
+---
+
+## Where it shows up
+
+Captured sessions appear in **Sessions**, and their events in the **Events** stream, the same as any other agent you observe — so [session replay](/agenteye/sessions), [search](/agenteye/queries), [evaluations](/agenteye/evaluations), and [alerts](/agenteye/alerts) all work on them. Filter by the Hermes agent to see them on their own.
+
+---
+
+## Privacy
+
+Hermes sessions contain the full transcript — including command output, file contents, and anything the agent read or wrote — and can contain secrets. Captured sessions are shipped as-is, so enable capture only where centralizing that content in AgentEye is appropriate, and give the collector a key scoped to `events:add` only. See [Security](/agenteye/security) for how your data is kept isolated.

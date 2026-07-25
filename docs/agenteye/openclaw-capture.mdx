@@ -1,0 +1,49 @@
+---
+title: "OpenClaw session capture"
+description: "Tail your team's local OpenClaw sessions into AgentEye as ordinary sessions and events — with no change to how OpenClaw runs."
+---
+
+If your team runs [OpenClaw](https://docs.openclaw.ai), OpenClaw session capture brings those sessions into AgentEye as ordinary sessions and events, so you can search, replay, and evaluate them next to everything else you observe. It complements the [Python SDK](/agenteye/python-sdk): the SDK instruments agents you write, while this captures the OpenClaw work your team already does — with no change to how they run it.
+
+A small background collector reads OpenClaw's local session transcripts as they are written and ships them to AgentEye. It works the same way as [Codex capture](/agenteye/codex-capture), and one collector can capture both at once.
+
+---
+
+## What it captures
+
+Every agent configured in a machine's OpenClaw setup is captured by that machine's collector — there is no per-agent setup.
+
+Each OpenClaw session becomes an AgentEye [session](/agenteye/sessions); its user and assistant messages, tool calls, and tool results become the matching [events](/agenteye/event-stream).
+
+---
+
+## Turn it on
+
+Capture is off until you enable it. Install the collector with an API key that has the `events:add` permission (see [API keys](/agenteye/api-keys)), and turn on OpenClaw capture:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
+```
+
+That installs the collector, registers it as a background service, and starts capturing. Confirm it is running:
+
+```bash
+agenteye-collector health
+```
+
+Capturing more than one agent on the same machine? Add each one's flag to the same command — for example `--openclaw-enabled --codex-enabled`.
+
+On first run, your existing OpenClaw sessions are backfilled once and new activity then streams within seconds. OpenClaw's own files are only ever read — never modified, moved, or deleted — and each session is shipped exactly once, even across restarts.
+
+---
+
+## Where it shows up
+
+Captured sessions appear in **Sessions**, and their events in the **Events** stream, the same as any other agent you observe — so [session replay](/agenteye/sessions), [search](/agenteye/queries), [evaluations](/agenteye/evaluations), and [alerts](/agenteye/alerts) all work on them. Filter by the OpenClaw agent to see them on their own.
+
+---
+
+## Privacy
+
+OpenClaw transcripts contain the full session — including command output, file contents, and anything the agent read or wrote — and can contain secrets. Captured sessions are shipped as-is, so enable capture only on machines and for teams where centralizing that content in AgentEye is appropriate, and give the collector a key scoped to `events:add` only. See [Security](/agenteye/security) for how your data is kept isolated.

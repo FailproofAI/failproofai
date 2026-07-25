@@ -13,7 +13,9 @@ A small background collector reads Hermes's local session store as it is written
 
 Every Hermes session on the machine is captured, whichever channel it came from. Each one becomes an AgentEye [session](/agenteye/sessions); its user and assistant messages, tool calls, and tool results become the matching [events](/agenteye/event-stream).
 
-The channel a session started from — Slack, Telegram, CLI, or a scheduled run — is recorded on the session, so you can tell them apart and filter to one at a time.
+The channel a session started from — Slack, Telegram, CLI, or a scheduled run — is recorded on the session, so you can tell them apart and filter to one at a time. Alongside it come the model the session ran on, the chat and person it was started from, and, when a session spawned another, the link back to its parent.
+
+Sessions appear as soon as Hermes starts them, whether or not anything has been said yet, and a turn's reply and its tool calls stay in the order they actually happened. When a session ends you also get why it ended, what it cost, and how many tokens it used.
 
 ---
 
@@ -34,7 +36,9 @@ agenteye-collector health
 
 Capturing more than one agent on the same machine? Add each one's flag to the same command — for example `--hermes-enabled --codex-enabled`.
 
-On first run, your existing Hermes sessions are backfilled once and new activity then streams within seconds. Hermes's own data is only ever read — never modified or deleted — and each message is shipped exactly once, even across restarts.
+On first run, your existing Hermes sessions are backfilled once and new activity then streams within seconds. Hermes's own data is only ever read — never modified or deleted — and each message is shipped once, even across restarts.
+
+`health` also tells you whether everything the collector captured actually reached AgentEye. If a batch could not be delivered it is kept and retried rather than discarded, and the check reports unhealthy while anything is still outstanding — so "healthy" means your data arrived, not merely that the process is alive.
 
 ---
 

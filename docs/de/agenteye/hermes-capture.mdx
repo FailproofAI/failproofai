@@ -1,0 +1,53 @@
+---
+title: "Hermes-Sitzungserfassung"
+description: "Führen Sie die Hermes-Gateway-Sitzungen Ihres Teams – Slack, Telegram, CLI und geplante Ausführungen – als normale Sitzungen und Ereignisse in AgentEye zusammen."
+---
+
+[Hermes](https://hermes-agent.nousresearch.com) beantwortet Anfragen Ihres Teams dort, wo es ohnehin arbeitet – in Slack, Telegram, der CLI oder per geplanter Ausführung. Die Hermes-Sitzungserfassung bringt all das als normale Sitzungen und Ereignisse in AgentEye, sodass der Assistent, mit dem Ihr Team täglich arbeitet, genauso beobachtbar ist wie die Agents, die Sie selbst schreiben.
+
+Ein kleiner Hintergrundsammler liest Hermes' lokalen Sitzungsspeicher, während er beschrieben wird, und überträgt die Sitzungen an AgentEye. Er funktioniert genauso wie die Erfassung für [Codex](/de/agenteye/codex-capture) und [OpenClaw](/de/agenteye/openclaw-capture), und ein einziger Collector kann mehrere davon gleichzeitig erfassen.
+
+---
+
+## Was erfasst wird
+
+Alle Hermes-Sitzungen auf dem Rechner werden erfasst, unabhängig davon, über welchen Kanal sie entstanden sind. Jede wird zu einer AgentEye-[Sitzung](/de/agenteye/sessions); ihre Benutzer- und Assistentennachrichten, Tool-Aufrufe und Tool-Ergebnisse werden zu den entsprechenden [Ereignissen](/de/agenteye/event-stream).
+
+Der Kanal, über den eine Sitzung gestartet wurde – Slack, Telegram, CLI oder eine geplante Ausführung – wird in der Sitzung vermerkt, sodass Sie sie unterscheiden und nach jeweils einem filtern können. Dazu kommen das Modell, auf dem die Sitzung lief, der Chat und die Person, von der sie gestartet wurde, sowie – wenn eine Sitzung eine weitere erzeugt hat – die Verknüpfung zur übergeordneten Sitzung.
+
+Sitzungen erscheinen, sobald Hermes sie startet, unabhängig davon, ob bereits etwas gesagt wurde. Die Antwort eines Gesprächszugs und seine Tool-Aufrufe bleiben in der tatsächlichen Reihenfolge. Wenn eine Sitzung endet, erfahren Sie auch, warum sie endete, was sie gekostet hat und wie viele Token sie verbrauchte.
+
+---
+
+## Aktivierung
+
+Die Erfassung ist standardmäßig deaktiviert. Installieren Sie den Collector mit einem API-Schlüssel, der die Berechtigung `events:add` besitzt (siehe [API-Schlüssel](/de/agenteye/api-keys)), und aktivieren Sie die Hermes-Erfassung:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
+```
+
+Dadurch wird der Collector installiert, als Hintergrunddienst registriert und die Erfassung gestartet. Prüfen Sie, ob er läuft:
+
+```bash
+agenteye-collector health
+```
+
+Erfassen Sie mehrere Agents auf demselben Rechner? Fügen Sie die Flags aller gewünschten Agents in einem einzigen Befehl zusammen – zum Beispiel `--hermes-enabled --codex-enabled`.
+
+Beim ersten Start werden Ihre vorhandenen Hermes-Sitzungen einmalig nachgeladen, danach werden neue Aktivitäten innerhalb von Sekunden übertragen. Hermes' eigene Daten werden ausschließlich gelesen – nie verändert oder gelöscht – und jede Nachricht wird genau einmal übertragen, auch nach Neustarts.
+
+`health` zeigt Ihnen außerdem, ob alles, was der Collector erfasst hat, tatsächlich bei AgentEye angekommen ist. Wenn ein Stapel nicht zugestellt werden konnte, wird er aufbewahrt und erneut versucht, anstatt verworfen zu werden. Der Check meldet „unhealthy", solange noch etwas aussteht – „healthy" bedeutet also, dass Ihre Daten angekommen sind, nicht nur, dass der Prozess läuft.
+
+---
+
+## Wo es erscheint
+
+Erfasste Sitzungen erscheinen unter **Sessions** und ihre Ereignisse im **Events**-Stream – genauso wie bei jedem anderen beobachteten Agent. Damit stehen [Sitzungswiederholung](/de/agenteye/sessions), [Suche](/de/agenteye/queries), [Auswertungen](/de/agenteye/evaluations) und [Benachrichtigungen](/de/agenteye/alerts) für sie zur Verfügung. Filtern Sie nach dem Hermes-Agent, um nur diese anzuzeigen.
+
+---
+
+## Datenschutz
+
+Hermes-Sitzungen enthalten das vollständige Protokoll – einschließlich Befehlsausgaben, Dateiinhalten und allem, was der Agent gelesen oder geschrieben hat – und können Geheimnisse enthalten. Erfasste Sitzungen werden unverändert übertragen. Aktivieren Sie die Erfassung daher nur dort, wo es sinnvoll ist, diese Inhalte in AgentEye zu zentralisieren, und versehen Sie den Collector-Schlüssel ausschließlich mit der Berechtigung `events:add`. Unter [Sicherheit](/de/agenteye/security) erfahren Sie, wie Ihre Daten isoliert aufbewahrt werden.

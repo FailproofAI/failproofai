@@ -1,54 +1,55 @@
 ---
----
 title: "Codex session capture"
 description: "Tail your team's local OpenAI Codex sessions into AgentEye as ordinary sessions and events — with no change to how they run Codex."
 ---
 
-Các kỹ sư của bạn đã chạy OpenAI Codex hàng ngày. Codex session capture đưa những phiên làm việc mã hóa đó vào AgentEye như những phiên và sự kiện thông thường, cho phép bạn tìm kiếm, phát lại và đánh giá chúng cùng với mọi thứ khác bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK công cụ các agent bạn viết, trong khi này thu thập công việc Codex mà nhóm của bạn đã làm — mà không cần thay đổi cách họ chạy nó.
+Những kỹ sư của bạn đã chạy OpenAI Codex hàng ngày. Codex session capture đưa những phiên lập trình đó vào AgentEye như các phiên và sự kiện thường xuyên, để bạn có thể tìm kiếm, phát lại và đánh giá chúng cùng với mọi thứ khác mà bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK này cung cấp công cụ cho các agent bạn viết, trong khi cách này lấy công việc Codex mà đội ngũ của bạn đã thực hiện — mà không có bất kỳ thay đổi nào về cách họ chạy nó.
 
-Một bộ sưu tập nền nhỏ đọc các bản ghi lại phiên làm việc Codex trên máy cục bộ khi chúng được ghi lại và gửi chúng tới AgentEye. Một bộ sưu tập trên mỗi máy sẽ thu thập mọi bề mặt Codex cục bộ cùng một lúc — không cần thiết lập cho từng bề mặt.
+Một bộ thu thập nền nhỏ đọc các bảng ghi phiên Codex cục bộ khi chúng được viết và gửi chúng đến AgentEye. Một bộ thu thập trên mỗi máy sẽ lấy tất cả các bề mặt Codex cục bộ cùng một lúc — không có cách thiết lập cho từng bề mặt.
+
+Bộ thu thập tương tự cũng lấy các agent khác — xem [OpenClaw](/vi/agenteye/openclaw-capture) và [Hermes](/vi/agenteye/hermes-capture). Bật từng cái bạn chạy; một bộ thu thập có thể lấy nhiều cái cùng một lúc.
 
 ---
 
-## Nó thu thập cái gì
+## Nó lấy những gì
 
-Mọi bề mặt Codex chạy **cục bộ** đều tạo ra các bản ghi phiên làm việc trên đĩa giống nhau, và bộ sưu tập sẽ nhặt tất cả chúng:
+Mỗi bề mặt Codex chạy **cục bộ** sản xuất các bảng ghi phiên trên đĩa giống nhau, và bộ thu thập sẽ lấy tất cả chúng:
 
 - Codex **CLI** và `codex exec`
-- **VS Code / IDE extension**
-- **desktop app**, khi nó chạy một phiên cục bộ
+- phần mở rộng **VS Code / IDE**
+- **ứng dụng desktop**, khi nó chạy một phiên cục bộ
 
-Mỗi phiên Codex trở thành một AgentEye [session](/vi/agenteye/sessions); các tin nhắn người dùng và trợ lý, lập luận, lệnh gọi công cụ, kết quả công cụ và sử dụng token của nó trở thành các [events](/vi/agenteye/event-stream) tương ứng. Bề mặt mà từng phiên đến (CLI, IDE, hoặc desktop) được ghi lại, vì vậy bạn có thể phân biệt chúng.
+Mỗi phiên Codex trở thành một [phiên](/vi/agenteye/sessions) AgentEye; những tin nhắn người dùng và trợ lý, lý luận, lệnh gọi công cụ, kết quả công cụ và mức sử dụng token của nó trở thành các [sự kiện](/vi/agenteye/event-stream) phù hợp. Bề mặt mà mỗi phiên đến từ đó (CLI, IDE hoặc desktop) được ghi lại, vì vậy bạn có thể phân biệt chúng.
 
-> **Các phiên cloud không được thu thập.** Desktop app ngày càng chạy các phiên trong cloud Codex và chỉ giữ siêu dữ liệu của chúng trên máy — không có bản ghi lại cục bộ để đọc. Chỉ các phiên được thực thi cục bộ mới được thu thập.
+> **Các phiên cloud không được lấy.** Ứng dụng desktop ngày càng chạy các phiên trong cloud Codex và chỉ giữ lại siêu dữ liệu của chúng trên máy — không có bảng ghi phiên cục bộ để đọc. Chỉ các phiên được thực thi cục bộ mới được lấy.
 
 ---
 
-## Bật nó lên
+## Bật nó
 
-Chức năng thu thập bị tắt cho đến khi bạn bật nó. Cài đặt bộ sưu tập với khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)), và bật chức năng capture Codex:
+Capture bị tắt cho đến khi bạn bật nó. Cài đặt bộ thu thập với khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)) và bật capture Codex:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-Cái này cài đặt bộ sưu tập, đăng ký nó như một dịch vụ nền, và bắt đầu thu thập. Xác nhận rằng nó đang chạy:
+Điều đó cài đặt bộ thu thập, đăng ký nó như một dịch vụ nền và bắt đầu lấy. Xác nhận rằng nó đang chạy:
 
 ```bash
 agenteye-collector health
 ```
 
-Khi chạy lần đầu tiên, các phiên Codex hiện có của bạn sẽ được điền lại một lần và hoạt động mới sau đó được truyền trong vòng vài giây. Các tệp của chính Codex chỉ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên được gửi đi đúng một lần, ngay cả khi khởi động lại.
+Lần chạy đầu tiên, các phiên Codex hiện có của bạn được điền lại một lần và hoạt động mới sau đó sẽ được phát trong vòng vài giây. Các tệp của chính Codex chỉ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên được gửi chính xác một lần, ngay cả trên các lần khởi động lại.
 
 ---
 
 ## Nó xuất hiện ở đâu
 
-Các phiên được thu thập xuất hiện trong **Sessions**, và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [session replay](/vi/agenteye/sessions), [search](/vi/agenteye/queries), [evaluations](/vi/agenteye/evaluations), và [alerts](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Codex để xem chúng riêng biệt.
+Các phiên được lấy xuất hiện trong **Sessions**, và các sự kiện của chúng trong luồng **Events**, cũng giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [session replay](/vi/agenteye/sessions), [search](/vi/agenteye/queries), [evaluations](/vi/agenteye/evaluations) và [alerts](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Codex để xem chúng riêng.
 
 ---
 
 ## Quyền riêng tư
 
-Các bản ghi lại Codex chứa phiên làm việc đầy đủ — bao gồm đầu ra lệnh, nội dung tệp, và bất cứ thứ gì Codex đã đọc hoặc viết — và có thể chứa các bí mật. Các phiên được thu thập được gửi nguyên trạng, vì vậy chỉ bật chức năng capture trên các máy và cho các nhóm nơi tập trung hóa nội dung đó trong AgentEye là thích hợp, và cấp cho bộ sưu tập một khóa được phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết cách dữ liệu của bạn được giữ riêng biệt.
+Các bảng ghi Codex chứa toàn bộ phiên — bao gồm đầu ra lệnh, nội dung tệp và bất kỳ thứ gì Codex đã đọc hoặc viết — và có thể chứa bí mật. Các phiên được lấy được gửi nguyên trạng, vì vậy chỉ bật capture trên các máy và cho các đội mà tập trung hóa nội dung đó trong AgentEye là thích hợp, và cấp cho bộ thu thập một khóa với phạm vi `events:add` chỉ. Xem [Security](/vi/agenteye/security) để biết cách dữ liệu của bạn được giữ cách ly.

@@ -38,6 +38,7 @@ import {
   ANTIGRAVITY_HOOK_SCOPES,
   GOOSE_HOOK_EVENT_TYPES,
   GOOSE_HOOK_SCOPES,
+  ADAL_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -2172,6 +2173,143 @@ export const goose: Integration = {
   },
 };
 
+// ── AdaL integration ────────────────────────────────────────────────────────
+//
+// AdaL's hook protocol is Claude-compatible by design (see the ADAL_* notes in
+// types.ts). Material differences from claudeCode:
+//   • Settings paths: ~/.adal/settings.json (user) and <cwd>/.adal/settings.json (project)
+//   • No "local" scope (AdaL has no settings.local.json equivalent)
+//   • Only PreToolUse / UserPromptSubmit can enforce; the other four events are
+//     observational, so a deny there is advisory (documented in CLAUDE.md)
+// Stdin event names are already canonical PascalCase, so — unlike codex — there
+// is NO event map and NO canonicalizeEventType branch.
+
+interface AdalSettingsFile {
+  hooks?: Record<string, ClaudeHookMatcher[]>;
+  [key: string]: unknown;
+}
+
+/** Events AdaL actually fires. A subset of HOOK_EVENT_TYPES, spelled identically. */
+const ADAL_EVENT_TYPES = [
+  "PreToolUse",
+  "UserPromptSubmit",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PermissionRequest",
+  "Stop",
+] as const;
+
+export const adal: Integration = {
+  id: "adal",
+  displayName: "AdaL",
+  scopes: ADAL_HOOK_SCOPES,
+  eventTypes: ADAL_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "project":
+        return resolve(base, ".adal", "settings.json");
+      default:
+        return resolve(homedir(), ".adal", "settings.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli adal`
+        : `"${binaryPath}" --hook ${eventType} --cli adal`;
+    return {
+      type: "command",
+      command,
+      // AdaL reads `timeout` in SECONDS, same as Claude. 60 = 60s.
+      timeout: 60,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as AdalSettingsFile;
+    if (!s.hooks) s.hooks = {};
+
+    for (const eventType of ADAL_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      if (!s.hooks[eventType]) s.hooks[eventType] = [];
+      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      if (!found) matchers.push({ hooks: [hookEntry] });
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as AdalSettingsFile;
+    if (!settings.hooks) return 0;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings.hooks)) {
+      const matchers = settings.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i];
+        if (!matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings.hooks[eventType];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as AdalSettingsFile;
+      if (!settings.hooks) return false;
+      for (const matchers of Object.values(settings.hooks)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers) {
+          if (!matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("adal") || binaryExists("adal-cli");
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 // `Partial` is kept (not every IntegrationType is guaranteed installable for
@@ -2192,6 +2330,7 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   devin,
   antigravity,
   goose,
+  adal,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

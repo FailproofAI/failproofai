@@ -25,6 +25,8 @@ import {
   ANTIGRAVITY_TOOL_INPUT_MAP,
   GOOSE_TOOL_MAP,
   GOOSE_TOOL_INPUT_MAP,
+  ADAL_TOOL_MAP,
+  ADAL_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -56,6 +58,9 @@ export function canonicalizeToolName(
   // Goose: shell→Bash, write/edit/view→file ops, todo__todo_write→TodoWrite, …
   // (verified live against goose v1.43.0). Handles bare + `<ext>__<tool>` names.
   if (cli === "goose") return GOOSE_TOOL_MAP[raw] ?? raw;
+  // AdaL: bash→Bash, read_file→Read, create_file/rewrite_file→Write,
+  // replace_by_string/delete_lines→Edit. Unknown names (incl. mcp__*) pass through.
+  if (cli === "adal") return ADAL_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -95,6 +100,9 @@ export function canonicalizeToolInput(
   // Goose file tools (write/edit/view) deliver the path as `path`, read_image as
   // `source`; map to `file_path` so path builtins fire (verified goose v1.43.0).
   else if (cli === "goose") perToolMap = GOOSE_TOOL_INPUT_MAP[toolName];
+  // AdaL file tools already deliver `file_path`; only create_file/rewrite_file's
+  // body key differs (`new_string` → `content`) so content builtins fire.
+  else if (cli === "adal") perToolMap = ADAL_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

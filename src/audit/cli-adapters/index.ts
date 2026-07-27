@@ -23,6 +23,7 @@ import { listFactoryTranscriptMetadata, streamFactoryEvents } from "./factory";
 import { listAntigravityTranscriptMetadata, streamAntigravityEvents } from "./antigravity";
 import { listDevinTranscriptMetadata, streamDevinEvents } from "./devin";
 import { listGooseTranscriptMetadata, streamGooseEvents } from "./goose";
+import { listAdalTranscriptMetadata, streamAdalEvents } from "./adal";
 
 export type { ListOpts };
 
@@ -92,6 +93,13 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "goose",
     listTranscripts: listGooseTranscriptMetadata,
     streamEvents: streamGooseEvents,
+  },
+  // AdaL is live-hooks-only: this adapter is inert because AdaL persists no
+  // replayable tool-event log yet. See ./adal.ts for the full rationale.
+  adal: {
+    cli: "adal",
+    listTranscripts: listAdalTranscriptMetadata,
+    streamEvents: streamAdalEvents,
   },
 };
 

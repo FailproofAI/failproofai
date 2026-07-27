@@ -5,7 +5,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "adal"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -957,6 +957,69 @@ export const GOOSE_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Write: { path: "file_path" },
   Edit: { path: "file_path" },
   LS: { path: "file_path" },
+};
+
+// ── AdaL (@sylphai/adal-cli) ────────────────────────────────────────────────
+//
+// AdaL is the only integration so far that needs NO event map and NO
+// canonicalizeEventType branch in handler.ts:
+//
+//   1. **Events are already canonical PascalCase.** AdaL fires exactly six
+//      lifecycle events — PreToolUse, UserPromptSubmit, PostToolUse,
+//      PostToolUseFailure, PermissionRequest, Stop — and every one already
+//      exists in HOOK_EVENT_TYPES below, spelled identically. So AdaL falls
+//      through canonicalizeEventType's "claude / copilot / unknown — already
+//      PascalCase, pass through" tail, exactly like claude does. Adding an
+//      ADAL_EVENT_MAP would be an identity map.
+//
+//   2. **Only two events can enforce.** PreToolUse and UserPromptSubmit run
+//      before the action and can deny it. PostToolUse, PostToolUseFailure,
+//      PermissionRequest, and Stop fire after the fact — a deny there cannot
+//      reverse what already ran, so policies matching those events are
+//      observational (same shape as Factory/Hermes on non-Stop events).
+//
+//   3. **Settings shape is Claude-shaped.** ~/.adal/settings.json uses the same
+//      `hooks: { <Event>: [{ matcher?, hooks: [{ type, command, timeout }] }] }`
+//      structure Claude uses, and `timeout` is in SECONDS — so the adal
+//      Integration in integrations.ts mirrors claudeCode rather than inventing
+//      a new writer.
+//
+//   4. **Tool names are snake_case internally**, so ADAL_TOOL_MAP is required to
+//      let existing builtin policies (which match Bash/Read/Write/Edit) apply
+//      unchanged. Unknown tools pass through via the `?? raw` fallback, which
+//      preserves `mcp__server__tool` identity.
+//
+// Settings paths:
+//   user    → ~/.adal/settings.json
+//   project → <cwd>/.adal/settings.json
+export const ADAL_HOOK_SCOPES = ["user", "project"] as const;
+
+export const ADAL_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read_file: "Read",
+  read_image: "Read",
+  write_file: "Write",
+  create_file: "Write",
+  rewrite_file: "Write",
+  replace_by_string: "Edit",
+  delete_lines: "Edit",
+  grep: "Grep",
+  glob: "Glob",
+  fetch_url: "WebFetch",
+  web_search: "WebSearch",
+};
+
+/**
+ * Per-tool input-key translation, keyed by the *canonical* tool name (the
+ * handler canonicalizes the name before calling canonicalizeToolInput).
+ * AdaL's file tools already deliver `file_path`, so Read/Edit need no mapping.
+ * Its create/rewrite tools carry the body as `new_string` while Claude builtins
+ * (block-secrets-write) read `content`, so map that one key — mirroring how
+ * GOOSE_TOOL_INPUT_MAP maps only the keys a builtin actually inspects. `bash`
+ * already delivers `command` (canonical), so Bash needs no entry.
+ */
+export const ADAL_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Write: { new_string: "content" },
 };
 
 export const HOOK_EVENT_TYPES = [

@@ -787,6 +787,67 @@ For production users the recommended Goose install is:
 failproofai policies --install --cli goose --scope project
 ```
 
+### AdaL hooks (`~/.adal/settings.json`)
+
+AdaL (`@sylphai/adal-cli`) is the **only integration that needs no event map and
+no `canonicalizeEventType` branch**. Its hook contract is deliberately
+Claude-shaped, so the `adal` Integration in `integrations.ts` mirrors
+`claudeCode` rather than inventing a new writer.
+
+**Settings file paths:**
+
+| Scope   | Path                          |
+|---------|-------------------------------|
+| user    | `~/.adal/settings.json`       |
+| project | `<cwd>/.adal/settings.json`   |
+
+There is no `local` scope (AdaL has no `settings.local.json` equivalent), so
+`adal.scopes` is `["user", "project"]`.
+
+**Events are already canonical.** AdaL fires exactly six lifecycle events and
+every one is spelled identically to its `HOOK_EVENT_TYPES` entry, so AdaL falls
+through `canonicalizeEventType`'s "already PascalCase, pass through" tail:
+
+| Event                | Enforceable? |
+|----------------------|--------------|
+| `PreToolUse`         | ✅ can block |
+| `UserPromptSubmit`   | ✅ can block |
+| `PostToolUse`        | ❌ observation only |
+| `PostToolUseFailure` | ❌ observation only |
+| `PermissionRequest`  | ❌ observation only |
+| `Stop`               | ❌ observation only |
+
+**Only `PreToolUse` and `UserPromptSubmit` can prevent an action.** The other
+four fire after the action has already run, so a `deny` there cannot reverse it
+— policies matching those events are advisory (same shape as Factory/Hermes on
+non-`Stop` events). Do not write a post-action policy expecting it to block.
+
+**Hook entry shape** — `timeout` is in SECONDS (like Claude, not milliseconds):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "hooks": [{ "type": "command", "command": "failproofai --hook PreToolUse --cli adal", "timeout": 60 }] }
+    ]
+  }
+}
+```
+
+Install is idempotent and preserves both unrelated settings keys and
+pre-existing user hooks; uninstall removes only marker-owned entries.
+
+**Tool names** are snake_case internally, so `ADAL_TOOL_MAP` maps them onto the
+Claude vocabulary (`bash`→`Bash`, `read_file`→`Read`, `create_file`→`Write`,
+`replace_by_string`→`Edit`, …) and `ADAL_TOOL_INPUT_MAP` maps `create_file`'s
+`new_string` body onto `content`. Unknown names — including `mcp__*` — pass
+through unchanged.
+
+**Audit pillar: none yet.** AdaL persists no replayable tool-event log
+(`~/.adal/sessions/<id>/` holds only side-artifacts; `~/.adal/adal.db` has no
+tables), so `src/audit/cli-adapters/adal.ts` is inert by design and returns `[]`
+from both functions. See that module's header for the rationale.
+
 ### Dogfood configs for Factory / Devin / Antigravity / Goose
 
 Like the Codex / Cursor / OpenCode / Pi setups above, this repo ships

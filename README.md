@@ -116,6 +116,11 @@ before they become incidents. Zero latency. Runs locally.
         </picture>
       </a>
     </td>
+    <td align="center" width="96">
+      <a href="https://docs.sylph.ai" title="AdaL (@sylphai/adal-cli)">
+        <img src="assets/logos/adal.svg" alt="AdaL" width="56" height="56" />
+      </a>
+    </td>
   </tr>
 </table>
 

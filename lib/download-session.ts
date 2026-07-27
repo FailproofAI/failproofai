@@ -152,6 +152,12 @@ export async function resolveDownloadSource(
     return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
+  if (cli === "adal") {
+    // AdaL is live-hooks-only: it persists no replayable transcript, so there is
+    // nothing to download. See src/audit/cli-adapters/adal.ts for the rationale.
+    return null;
+  }
+
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the
   // if-chain above, so guard with a runtime fallback.
   const _exhaustive: never = cli;

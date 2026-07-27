@@ -26,6 +26,7 @@ import {
   devin,
   antigravity,
   goose,
+  adal,
   getIntegration,
   listIntegrations,
 } from "../../src/hooks/integrations";
@@ -79,7 +80,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "adal"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -128,6 +129,10 @@ describe("integrations registry", () => {
 
   it("getIntegration('devin') returns devin", () => {
     expect(getIntegration("devin")).toBe(devin);
+  });
+
+  it("getIntegration('adal') returns adal", () => {
+    expect(getIntegration("adal")).toBe(adal);
   });
 
   it("getIntegration throws for unknown id", () => {
@@ -1642,5 +1647,110 @@ describe("Goose integration", () => {
     goose.writeSettings(settingsPath, settings);
 
     expect(goose.hooksInstalledInSettings("project", tempDir)).toBe(true);
+  });
+});
+
+describe("AdaL integration", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "fpai-adal-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("exposes only the six lifecycle events AdaL actually fires", () => {
+    expect([...adal.eventTypes]).toEqual([
+      "PreToolUse",
+      "UserPromptSubmit",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PermissionRequest",
+      "Stop",
+    ]);
+  });
+
+  it("supports user and project scope only (no local scope)", () => {
+    expect([...adal.scopes]).toEqual(["user", "project"]);
+  });
+
+  it("resolves project scope to <cwd>/.adal/settings.json", () => {
+    expect(adal.getSettingsPath("project", tmp)).toBe(resolve(tmp, ".adal", "settings.json"));
+  });
+
+  it("buildHookEntry emits only fields AdaL accepts, with timeout in seconds", () => {
+    const entry = adal.buildHookEntry("/usr/local/bin/failproofai", "PreToolUse", "user");
+    expect(entry.type).toBe("command");
+    expect(entry.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse --cli adal');
+    // AdaL reads timeout in SECONDS (same as Claude) — 60, not 60000.
+    expect(entry.timeout).toBe(60);
+    expect(adal.isFailproofaiHook(entry)).toBe(true);
+  });
+
+  it("buildHookEntry uses npx for project scope", () => {
+    const entry = adal.buildHookEntry("/ignored", "Stop", "project");
+    expect(entry.command).toBe("npx -y failproofai --hook Stop --cli adal");
+  });
+
+  it("writeHookEntries registers every event and is idempotent", () => {
+    const settings: Record<string, unknown> = {};
+    adal.writeHookEntries(settings, "/bin/failproofai", "user");
+    adal.writeHookEntries(settings, "/bin/failproofai", "user");
+
+    const hooks = settings.hooks as Record<string, Array<{ hooks: unknown[] }>>;
+    expect(Object.keys(hooks).sort()).toEqual([...adal.eventTypes].sort());
+    for (const event of adal.eventTypes) {
+      const marked = hooks[event].flatMap((m) => m.hooks).filter((h) => adal.isFailproofaiHook(h));
+      expect(marked).toHaveLength(1);
+    }
+  });
+
+  it("preserves unrelated settings and pre-existing user hooks", () => {
+    const settings: Record<string, unknown> = {
+      model: "claude-opus-5",
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "my-own-hook.sh" }] }],
+      },
+    };
+    adal.writeHookEntries(settings, "/bin/failproofai", "user");
+
+    expect(settings.model).toBe("claude-opus-5");
+    const pre = (settings.hooks as Record<string, Array<{ matcher?: string; hooks: Array<Record<string, unknown>> }>>).PreToolUse;
+    const userHook = pre.flatMap((m) => m.hooks).find((h) => h.command === "my-own-hook.sh");
+    expect(userHook).toBeDefined();
+    expect(pre.flatMap((m) => m.hooks).filter((h) => adal.isFailproofaiHook(h))).toHaveLength(1);
+  });
+
+  it("removeHooksFromFile removes only marked entries and leaves user hooks", () => {
+    const settingsPath = adal.getSettingsPath("project", tmp);
+    mkdirSync(resolve(tmp, ".adal"), { recursive: true });
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "my-own-hook.sh" }] }],
+      },
+    };
+    adal.writeHookEntries(settings, "/bin/failproofai", "project");
+    writeFileSync(settingsPath, JSON.stringify(settings), "utf-8");
+
+    expect(adal.hooksInstalledInSettings("project", tmp)).toBe(true);
+    const removed = adal.removeHooksFromFile(settingsPath);
+    expect(removed).toBe(adal.eventTypes.length);
+    expect(adal.hooksInstalledInSettings("project", tmp)).toBe(false);
+
+    const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as {
+      hooks?: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>;
+    };
+    const survivors = after.hooks?.PreToolUse?.flatMap((m) => m.hooks) ?? [];
+    expect(survivors).toHaveLength(1);
+    expect(survivors[0].command).toBe("my-own-hook.sh");
+  });
+
+  it("hooksInstalledInSettings is false for a missing or corrupt settings file", () => {
+    expect(adal.hooksInstalledInSettings("project", tmp)).toBe(false);
+    mkdirSync(resolve(tmp, ".adal"), { recursive: true });
+    writeFileSync(adal.getSettingsPath("project", tmp), "{ not json", "utf-8");
+    expect(adal.hooksInstalledInSettings("project", tmp)).toBe(false);
   });
 });

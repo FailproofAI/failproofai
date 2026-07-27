@@ -14,6 +14,26 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { version } from "../package.json";
 
+// Canonical CLI allowlist — mirrors INTEGRATION_TYPES in src/hooks/types.ts.
+// Hoisted to module scope so the --hook, install, uninstall, and policy
+// add/remove parsers cannot drift apart (a per-parser copy previously let a new
+// CLI be installable but not removable).
+const VALID_CLIS = new Set([
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "opencode",
+  "pi",
+  "hermes",
+  "openclaw",
+  "factory",
+  "devin",
+  "antigravity",
+  "goose",
+  "adal",
+]);
+
 // Resolve the real package root early (following any npm bin symlinks) so that
 // scripts/launch.ts can locate .next/standalone/server.js correctly regardless
 // of how bun resolves import.meta.url for dynamically-imported modules.
@@ -325,7 +345,6 @@ EXAMPLES
       //   --cli claude codex copilot
       //   --cli claude --cli codex
       // Values are consumed greedily until the next flag or end of argv.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "adal"]);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -414,7 +433,6 @@ EXAMPLES
       }
 
       // --cli accepts one or more space-separated values; same parser as install.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -578,7 +596,6 @@ EXAMPLES
     }
 
     // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
     const cliFlagValues = [];
     const cliConsumedIdxs = new Set();
     const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);

@@ -42,6 +42,7 @@ next-env.d.ts
 # claude
 .claude/*
 !.claude/settings.json
+!.claude/skills/
 
 # cursor
 .cursor/*

@@ -11,7 +11,7 @@ Turn failproofai from a stateless, cold-start-per-event hook into a long-lived d
 also absorbs `agenteye-collector`, so that one process per machine both **enforces** policy
 and **collects** agent sessions for every supported CLI.
 
-Three things this unlocks that are impossible today:
+Four things this unlocks that are impossible today:
 
 1. **Policies that remember.** Cross-event session state makes a whole class of policy
    writable for the first time — starting with `require-tests-before-stop`.
@@ -20,6 +20,11 @@ Three things this unlocks that are impossible today:
    already written and already live-verified.
 3. **A joined timeline.** Hook events carry the *policy verdict*; transcripts carry the
    *model output and tool results*. Neither product can compute the join alone.
+4. **A tool that keeps itself current.** Vendors change their transcript and hook schemas
+   without notice and things quietly stop working. Today nothing in this repo checks whether
+   the installed version is still the right one — there is no update command, no version
+   check, and no drift signal of any kind. A long-lived process can both update itself on the
+   stable channel and, more valuably, *notice* that a vendor has moved.
 
 This document is for review and iteration. **No implementation is proposed for this PR.**
 
@@ -32,6 +37,10 @@ This document is for review and iteration. **No implementation is proposed for t
 - The wire contract, and how the exit-code and byte-exact-stdout guarantees survive it.
 - Absorbing the collector: transcript tailing, cursors, the durable spool, cloud shipping.
 - Correlating live hook events with tailed transcript events into one session timeline.
+- **The dashboard's re-architecture** — where it gets its data, what authority it holds, and
+  how it is packaged once it is no longer part of the main tarball.
+- **Staying current** — the update channel, `failproofai update`, and runtime detection of
+  vendor schema drift.
 - npm distribution of per-platform Rust binaries, and the CI/publish changes it needs.
 - A staged delivery sequence, with the point of no return named.
 - Security findings in the *current* codebase that this architecture would amplify.
@@ -40,8 +49,8 @@ This document is for review and iteration. **No implementation is proposed for t
 
 - Windows. Linux and macOS first; Windows is sketched only where it changes a decision
   (named-pipe ACLs, the Copilot dual-shell command strings).
-- The dashboard's own re-architecture. It becomes separately installable; its internals do
-  not change here.
+- The dashboard's *visual* design and feature set. Its data path and its authority model
+  change here; what it chooses to render does not.
 - The AgentEye server, its API surface, and its data model. One dependency on it is called
   out as an open question.
 - Evaluations, audits, alerts, incidents — the analysis half of Observability.
@@ -475,6 +484,190 @@ becomes `project:`-scoped with `.git/HEAD` mtime invalidation and approaches 100
 
 ---
 
+## The dashboard becomes a client of the daemon
+
+The dashboard cannot stay as it is. Today it is a second, independent reader of the same
+on-disk state and a second, unauthenticated writer of the same config. That is merely
+redundant in single-user mode. Under a root, multi-user daemon it is a confused deputy
+sitting directly on top of the authority boundary the rest of this design is built around.
+
+What it is today, verified:
+
+- Two page files — `app/project/[name]/page.tsx` and its session page — import the twelve
+  `lib/<cli>-projects` and `lib/<cli>-sessions` modules directly and re-parse transcripts
+  from disk on every request.
+- `app/actions/update-hooks-config.ts` and `app/actions/update-policy-params.ts` are Server
+  Actions calling `writeHooksConfig` directly.
+- There is **no `middleware.ts` in the repo at all**, and `app/api/auth/` is an identity
+  *cache* for the audit feature — it reads `~/.failproofai/auth.json` to display who is signed
+  in. Nothing under `app/actions/` or `app/project/` consults it. It is not an access gate.
+- `scripts/launch.ts` sets `HOSTNAME` to `0.0.0.0`.
+
+```mermaid
+flowchart LR
+    subgraph now["Today — two readers, two writers"]
+        D1["dashboard<br/>(Next server)"] -->|"re-parse whole files<br/>per request"| FS1[("transcripts on disk")]
+        D1 -->|"writeHooksConfig<br/>(no identity)"| CFG1[("hooks config")]
+        HK1["hook process"] -->|"reads"| CFG1
+    end
+
+    subgraph after["After — one reader, one writer"]
+        D2["dashboard<br/>(daemon client)"] -->|"query + live push"| DA["failproofaid"]
+        D2 -->|"config RPC<br/>(uid-bound)"| DA
+        DA -->|"incremental tail"| FS2[("transcripts on disk")]
+        DA --> CFG2[("hooks config<br/>daemon-owned")]
+    end
+```
+
+Four changes, in dependency order.
+
+**1. Reads move to the daemon.** The daemon already tails and normalizes exactly these files,
+incrementally and with real WAL visibility. Two independent readers of one format is the
+duplication class this project keeps getting burned by. *This resolves open question 3 on its
+own*: once the dashboard reads through the daemon, `node:sqlite` versus `sql.js` stops being a
+dashboard problem, because `rusqlite` becomes the only SQLite reader in the product.
+
+**2. Writes move to the daemon, and acquire an identity.** Config mutation becomes an RPC, so
+the precedence rules established in stage 0b — org beats user beats project, and project may
+only tighten — have exactly one enforcement point. Today the Server Action is a second writer
+that bypasses every rule the daemon would enforce, including org-locked policy under
+`--system`.
+
+**3. The dashboard gets an identity, because without one it is a confused deputy.** The daemon
+derives uid from `SO_PEERCRED` on the socket; the dashboard currently has no way to
+participate in that model. A Next server that connects as whoever started it, and answers to
+whoever can reach its port, holds strictly more authority than the person looking at the
+screen. Minimum: loopback bind, connect over the viewing user's own socket, and treat "view my
+sessions" and "change what is enforced" as separate capabilities rather than one page.
+
+**4. Live instead of polled.** Today freshness is bounded by a page load re-reading the
+filesystem. A daemon can push. This is the live-UI motivation from the original brief, and it
+is nearly free once change 1 lands.
+
+**Packaging.** `.next/standalone/` leaves the main tarball, so the artifact on the hot path
+stays small and `failproofai dashboard` resolves `@failproofai/dashboard`, installing it on
+first use and printing a hint when it is absent. The daemon must run perfectly with the
+dashboard absent — that direction is already decided. The new constraint is the inverse: **the
+dashboard requires the daemon.** It is no longer a standalone disk reader, and it should say
+so plainly rather than silently degrading to a stale view.
+
+---
+
+## Staying current: updates, and vendor schema drift
+
+Two problems that get conflated. **Updates** keep the installed version current with what we
+have published. **Drift detection** is about the window between a vendor changing something
+and anyone knowing. Auto-update only helps once a fix exists upstream; drift detection is what
+shortens the part before that.
+
+### The present state: there is no update path at all
+
+Verified across the repo: no version check, no update notifier, no `update` command, nothing
+that compares the installed version against the registry. The two install shapes rot
+differently:
+
+- **Project scope** writes `npx -y failproofai --hook ...`, which re-resolves against the
+  registry, so it drifts forward on its own — at the price of a registry round trip on the
+  hot path.
+- **User scope** bakes the result of `which failproofai` into the vendor's settings file at
+  install time. The path keeps working across an upgrade, but **nothing performs, prompts, or
+  even mentions the upgrade.** A machine set up in March is running March's parsers today.
+  The same baked path is why switching Node versions under nvm can leave the hook pointing at
+  a binary that no longer exists — exit 127, silent allow.
+
+So the slower install path is the one that stays fresh, and the recommended one is the one
+that freezes. The daemon inverts that: **resolution happens once at daemon start, and
+freshness becomes the daemon's job rather than the hot path's.**
+
+### Updating
+
+`failproofaid-updater` is short-lived, talks to one host, and only ever writes to a staging
+directory. The supervisor itself never opens a network socket.
+
+```mermaid
+flowchart TB
+    CH["check channel<br/>stable / beta / pinned"] --> MAN{"signed manifest<br/>exists for this version?"}
+    MAN -->|"no"| NOOP["stay put<br/>record 'checked, current'"]
+    MAN -->|"yes"| SIG{"signature +<br/>complete platform set?"}
+    SIG -->|"fail"| REJ["refuse, report,<br/>do not retry blindly"]
+    SIG -->|"ok"| STG["stage into<br/>staging dir"]
+    STG --> HC{"exec staged binary:<br/>--version, then a canned<br/>deny vector from the<br/>generated response table"}
+    HC -->|"fail"| REJ
+    HC -->|"pass"| DR["drain: finish in-flight,<br/>hand over listener"]
+    DR --> SWAP["atomic swap<br/>keep N-1"]
+    SWAP --> PHC{"post-swap health"}
+    PHC -->|"fail"| RB["roll back to N-1<br/>report as an event"]
+    PHC -->|"pass"| DONE["serving new version"]
+
+    style REJ fill:#3b1d1d,stroke:#e4587c,color:#fff
+    style RB fill:#3b3620,stroke:#facc15,color:#fff
+    style DONE fill:#1d3b2a,stroke:#4ade80,color:#fff
+```
+
+- **Channels**: `stable` (default, auto-apply), `beta`, `pinned`. Org policy may pin or
+  disable entirely — "never move without us saying so" is a real enterprise requirement and
+  must be expressible.
+- **A release becomes visible to updaters only after every platform artifact is verified.**
+  The manifest is published by the same job that passes the `verify-platform` gate from R12.
+  Without that coupling, auto-update converts a partial publish from *"some new installs are
+  broken"* into *"the fleet is broken within one check interval."* This is the single most
+  important constraint in this section.
+- **Health-gated swap, with automatic rollback.** Verify the signature, stage, exec the staged
+  binary, run it against a canned deny vector from the generated response table, and only then
+  swap atomically. Keep N-1. If the post-swap health check fails, roll back and keep serving
+  from the old version. **An update must never be able to leave a machine unenforced** — that
+  is this project's characteristic bug, arriving by automation and at fleet scale.
+- **Drain, do not drop.** In-flight requests complete and the listener is handed over. With
+  fail-closed as the default, a refused connection during the swap does not lose a metric — it
+  blocks the user's agent. The client should also retry once on a refused connection before
+  applying the configured failure mode.
+- **Package-managed installs are notify-only.** If apt, brew, or npm owns the install root,
+  self-replacement breaks the next upgrade through that manager. Detect the install method and
+  self-replace only where we own the tree.
+- **`failproofai update`** — bare form applies now; `--check` reports and sets an exit code;
+  `--channel` switches; `--rollback` returns to N-1. `failproofai health` reports current
+  version, channel, last successful check, and any pending version. **"Never checked
+  successfully" must be a visible state**, not an empty field — a machine that has silently
+  failed every check for two months looks identical to a current one otherwise.
+- **Revocation, bounded.** A manifest may mark a version bad and move machines off it. Bound
+  what that can do: it may move a machine forward or to N-1, and it may never disable
+  enforcement or change what is enforced. It is a code channel, not a policy channel.
+
+### Noticing drift
+
+The complaint this is meant to fix — a vendor changes a schema and things quietly stop
+working — is really about the lag before anyone knows. Today the only detector is a daily cron
+running the integration suite against twelve vendors: our machines, our probes, our cadence.
+A long-lived process on the affected machine can do better, in increasing order of value:
+
+- **Parse drift.** The tailer hits a record whose shape no adapter recognizes. Count it per
+  CLI and vendor version, degrade health, and name it in `failproofai health` rather than
+  skipping the record silently, which is what the parsers do today.
+- **Config drift.** Re-read the twelve vendors' settings files periodically and compare them
+  against what we wrote. A renamed hook key, a moved settings path, or a file that no longer
+  contains our entry is detectable **without waiting for an event that never fires** — and
+  self-healing it is exactly the careless-human threat model already agreed.
+- **Silence.** We know the CLI is installed, we can watch its session file growing, and
+  **zero hook events arrived for that session.** That is "enforcement is off and nobody
+  noticed", stated directly. It is structurally unobservable in a per-event process, because
+  the process that would notice is the one that never ran. This is the strongest argument for
+  the daemon that has nothing to do with latency or state.
+
+With opt-in telemetry these signals mean we learn a vendor moved within hours of the first
+affected user rather than at the next cron. Without telemetry the user still sees a degraded
+health line locally, which is more than they get today.
+
+**A fork worth deciding explicitly.** Much of what rots is data, not logic: hook config key
+names, event name spellings, path layouts, which vendor versions map to which schema. Shipping
+those as a signed *data* manifest on a faster cadence than the binary would cut fix latency
+substantially. But a manifest that a root daemon fetches and acts on is one design slip away
+from being a remote code channel. If we do it: strictly declarative, schema-validated before
+use, no ability to add or disable a policy, and it may only affect **parsing and detection —
+never a verdict**. Recommendation: yes for the collector and drift detection, never for the
+enforcement path.
+
+---
+
 ## Findings in the current codebase
 
 These are present-tense issues that the daemon amplifies. They are worth fixing whether or not
@@ -485,11 +678,12 @@ the daemon ships, and several must be fixed *before* it does.
 | **F1** | **Running the builtins as root would be root RCE on demand.** `builtin-policies.ts` imports `execSync` and `execFileSync` and has roughly twenty call sites running `git` and `gh` with a `cwd` that `resolve-cwd.ts` takes **verbatim from the client-supplied payload**. A `.git/config` carrying `core.pager`, `core.fsmonitor`, an alias, or `include.path`, plus a chosen `cwd`, executes as root. This is why the pure/impure split is a prerequisite, not a nicety. |
 | **F2** | **The activity store is world-readable.** `hook-activity-store.ts` calls `writeFileSync` and `appendFileSync` with no `mode`, yielding 0644 — while `lib/atomic-write.ts` defaults to 0600 and `src/audit/cache.ts` passes `mode: 0o600` explicitly. On a shared box every user can read every other user's project paths and session ids today. `hook-logger.ts` has the same problem. |
 | **F3** | **RCE on `git clone`.** A cloned repo containing `.failproofai/policies/*policies.mjs` has that file imported with full privileges on the first hook event — no prompt, no diff, no marker. `isAgentSettingsFile` protects fourteen agent config paths but **not `.failproofai/` itself**, so a prompt-injected agent can also write its own policy file and persist across events. |
-| **F4** | **The dashboard is a LAN-reachable, unauthenticated enforcement-disable endpoint.** `scripts/launch.ts` binds `0.0.0.0`, and `app/actions/update-hooks-config.ts` is an unauthenticated Server Action that flips `enabledPolicies`. |
+| **F4** | **The dashboard is a LAN-reachable, unauthenticated enforcement-disable endpoint.** `scripts/launch.ts` binds `0.0.0.0`, and `app/actions/update-hooks-config.ts` is an unauthenticated Server Action that flips `enabledPolicies`. There is no `middleware.ts` in the repo to gate it. The bind is a one-line fix in stage 0b; that the dashboard has **no identity to check in the first place** is the architectural half, and is why its re-architecture is in scope. |
 | **F5** | **The config merge has downgrade channels.** `policyParams` resolves project-first-wins, and a project file can set `customPoliciesEnabled: false`. Both are reachable by `git clone`. Under the daemon the rule should invert: org beats user beats project for anything that *loosens*; project may only tighten. |
 | **F6** | **The collector's documented install is `curl ... \| sh`, which failproofai's own `block-curl-pipe-sh` builtin denies.** Shipping a root daemon whose install method your own default policy set blocks will not survive a security review. Replace with signed packages and a tarball with a detached signature. |
 | **F7** | **The API key is passed on the command line**, which puts it in shell history and `ps` output. Read it from a file or stdin, at mode 0600. |
 | **F8** | **The self-hosting claim conflicts with a default vendor endpoint.** `docs/agenteye/security.mdx` states that nothing is sent to a third-party SaaS and data stays in your own cloud account. If the daemon defaults to a hosted endpoint, that is false for every customer who does not self-host — a controller/processor question, not a hygiene one. **Resolve before shipping.** |
+| **F9** | **Nothing in the product knows whether it is out of date.** There is no version check, no update notifier, and no `update` command anywhere in the repo. Project scope drifts forward through `npx`; user scope bakes an absolute binary path into the vendor's settings file at install time and then stays where it is until a human upgrades it manually. A vendor schema change therefore surfaces as *"it quietly stopped catching things"*, on a machine nobody is watching. This is the finding the update channel and drift detection exist to close. |
 
 ---
 
@@ -522,6 +716,14 @@ enforced. Each risk below therefore gets a named mechanical guard rather than a 
 | **R13** | **The existing CI version check silently passes when `packages/wrapper/package.json` is absent**, because of a `2>/dev/null \|\| true`. It also never reads the *root* package's `optionalDependencies` and never checks the dependency *name set*, so dropping a triple from the build matrix would ship undetected. | Amend the check to read root's `optionalDependencies` and assert the expected triple names; add a single version-setting script used by both publish steps. |
 | **R14** | **Deleting `ensureBundle` along with the rest of `dev-hook.mjs`.** `dist/index.js` is still required for user policies to resolve `import ... from 'failproofai'`. Deleting it fails open all three committed policies in this repo, with a log line nobody reads. | **Move** it into daemon startup and the release health check. Do not delete it. |
 | **R15** | **Copilot's `bash` and `powershell` fields receive the same string today**, which works only because the current command has no shell-specific syntax. Adding a POSIX guard to both makes the guard itself the failure on Windows. | The command builder takes a shell parameter. The dogfood test already asserts the correct divergence; the production test must too. |
+
+### Introduced by auto-update and the dashboard split
+
+| # | Risk | Guard |
+|---|---|---|
+| **R16** | **Auto-update turns a bad release into a fleet event.** R12's partial publish breaks *new installs* today. With auto-update it breaks *every machine on the channel* within one check interval, and the failure mode is silent allow. Automation does not create this bug, it multiplies its blast radius. | Publish the update manifest only from the job that passed `verify-platform`. Roll out by cohort rather than to everyone at once. Health-gate the swap with automatic rollback, and treat "rolled back" as a reportable event, not a silent retry. |
+| **R17** | **Swapping the binary under in-flight requests.** With fail-closed as the default, a refused connection during the swap blocks the user's agent rather than losing a metric — an update that stutters is indistinguishable from an outage. | Drain and hand over the listener; the client retries once on a refused connection before applying the configured failure mode. A dedicated test asserts zero failed requests across a swap under load. |
+| **R18** | **The dashboard stays a second writer.** If reads move to the daemon but a Server Action still calls `writeHooksConfig` directly, the daemon's precedence rules and org locks are bypassed by a web form — and under `--system`, by an unauthenticated one. Partial migration is the likely outcome here, because reads are the fun part. | Fence it mechanically: an eslint `no-restricted-imports` rule forbidding anything under `app/` from importing the config writer or the parser modules at all. The rule is the test, and it fails the moment someone reintroduces a direct import. |
 
 ### Assets to protect
 
@@ -585,24 +787,33 @@ flowchart TB
     S1 --> S2["2 · request-scoped-env<br/>R4, R5"]
     S2 --> S3["3 · daemon-proto<br/>types + generated table"]
     S3 --> S4["4 · rust-workspace<br/>client is a no-op"]
-    S4 --> S5["5 · daemon-core<br/>differential test"]
+    S4 --> S4b["4b · dashboard-package<br/>leaves the main tarball"]
+    S4b --> S5["5 · daemon-core<br/>differential test"]
     S5 --> S6["6 · policy-realms<br/>R1, R3"]
     S6 --> S7["7 · daemon-default<br/>LAST REVERSIBLE STAGE"]
-    S7 --> S8["8 · stateful-policies<br/>require-tests-before-stop"]
+    S7 --> S7b["7b · self-update<br/>MAKES LATER STAGES<br/>RECOVERABLE"]
+    S7b --> S8["8 · stateful-policies<br/>require-tests-before-stop"]
     S8 --> S9["9 · shims-to-socket"]
     S9 --> S10["10 · spool<br/>posthog sink only"]
     S10 --> S11["11 · collector-mvp<br/>local sink, 12 CLIs"]
-    S11 --> S12["12 · collector-incremental"]
+    S11 --> S11b["11b · drift-detection<br/>parse / config / silence"]
+    S11b --> S12["12 · collector-incremental"]
     S12 --> S13["13 · timeline-join"]
-    S13 --> S14["14 · agenteye-sink<br/>POINT OF NO RETURN"]
+    S13 --> S13b["13b · dashboard-on-daemon<br/>one reader, one writer"]
+    S13b --> S14["14 · agenteye-sink<br/>POINT OF NO RETURN"]
     S14 --> S15["15 · system-mode<br/>root"]
     S15 --> S16["16 · collector-cutover"]
 
     style S1 fill:#1d3b2a,stroke:#4ade80,color:#fff
     style S7 fill:#3b3620,stroke:#facc15,color:#fff
+    style S7b fill:#1d3b2a,stroke:#4ade80,color:#fff
     style S14 fill:#3b1d1d,stroke:#e4587c,color:#fff
     style S15 fill:#3b1d1d,stroke:#e4587c,color:#fff
 ```
+
+The four lettered sub-stages are new since the first draft: they carry the dashboard
+re-architecture and the update system. They are lettered rather than renumbered so that the
+"point of no return is stage 14" landmark keeps its name.
 
 | # | Branch | Ships | Why here |
 |---|---|---|---|
@@ -612,15 +823,19 @@ flowchart TB
 | **2** | `request-scoped-env` | Replace module-load `homedir()` and the env latch; make `handleHookEvent` return bytes rather than write them. | R4 and R5. **Prove it with the existing e2e suite while there is still no daemon** — otherwise it silently breaks fixture isolation and the integration-suite oracle three PRs later. |
 | **3** | `daemon-proto` | Wire types, the `CollectedEvent` union, `eventId` derivation, schema parity between Rust and TS, and the generated response table. | Locks the contract. Pure types and pure functions; zero runtime change. |
 | **4** | `rust-workspace` | Cargo workspace, path-filtered Rust CI job, `packages/` scaffolding, release matrix, launcher with fallback to the JS path. **The Rust client does nothing but exec the JS path.** | Proves cross-compilation, npm `optionalDependencies`, provenance, and launcher fallback while the binary is behaviourally a no-op. If distribution is going to hurt, find out here. |
+| **4b** | `dashboard-package` | Move `.next/standalone/` out of the main tarball into `@failproofai/dashboard`. `failproofai dashboard` resolves it, installs on first use, and prints a hint when it is absent. | Rides with the packaging work in stage 4 rather than repeating it a release later. Shrinks the artifact that project scope pulls through `npx` on the hot path, and closes the launcher path-resolution question. |
 | **5** | `daemon-core` | Supervisor, IPC, worker pool, and the policy worker wrapping the existing engine. User mode only, behind a flag, default off. | **The differential test lands here and is the most important test in the project.** |
 | **6** | `policy-realms` | Fingerprint-keyed module cache, realm-scoped registry, hot reload, one worker per project realm. | R1 and R3. Required before the default flips. Worker-per-realm also fixes the module leak and the hung-policy problem — a Rust `SIGKILL` preempts a busy loop that an in-process `Promise.race` cannot. |
 | **7** | `daemon-default` | Client tries the daemon, falls back in-process, and the configured mode governs only if both fail. Single-writer activity store. `health` v1. | **Last fully reversible stage.** |
+| **7b** | `self-update` | The updater, channels, the signed manifest keyed to the `verify-platform` gate, health-gated swap with automatic rollback, drain-and-handover, `failproofai update`, and version/channel/last-check in `health`. | **A fleet you cannot move is a fleet you cannot fix.** This must exist before the installed base is large and well before stage 14, because after that a bad release is a data-leak release. It lands immediately after the last reversible stage on purpose: it is the mechanism that makes everything downstream recoverable. |
 | **8** | `stateful-policies` | The state API, the rewritten stop-gates, `require-tests-before-stop`, a velocity limit. | First capability only the daemon can deliver. It stops being an optimization and becomes a feature. |
 | **9** | `shims-to-socket` | Pi, OpenClaw, and OpenCode move to a zero-dependency client module. | Removes a process spawn per event in three already-long-lived hosts. |
 | **10** | `spool` | Durable queue and shipper, **telemetry sink only**. The hook path makes zero network calls. | **Proves the durability machinery against a low-stakes sink before any customer transcript touches it.** |
 | **11** | `collector-mvp` | Tailer, parser worker, discovery, cursors, backfill-once, generic parsing with id-based dedupe. **Local sink only** — no network, no key. | All twelve CLIs collected with zero adapter edits and zero privacy exposure. Everything after is a sink change. |
+| **11b** | `drift-detection` | Parse drift counted per CLI and vendor version instead of skipped silently; periodic re-read of the twelve vendors' settings files with self-heal; the silence signal — a growing session file with zero hook events. All surfaced in `health`, and in telemetry when it is enabled. | Needs the tailer from 11 and nothing later. Closes the other half of F9: the update channel fixes *"we shipped a fix and you did not get it"*, this fixes *"nobody knew a fix was needed."* The silence signal in particular is the runtime version of this project's characteristic bug class. |
 | **12** | `collector-incremental` | Byte-offset JSONL tailing, real WAL SQLite reads, `parseDelta` for the hot three. | Seconds rather than minutes, and CPU from O(all transcripts) to O(delta). |
 | **13** | `timeline-join` | Correlation buffer, blocked-outcome inference, `model_response` enrichment. | The unified timeline — the thing neither product could build alone. |
+| **13b** | `dashboard-on-daemon` | Dashboard reads move to a daemon timeline query; config mutation becomes a uid-bound RPC; live push replaces per-request filesystem reads; the eslint fence around `app/` lands. | Needs the timeline from 13 to have something to read. **Resolves open question 3** by making `rusqlite` the only SQLite reader in the product, and closes R18 mechanically rather than by review. |
 | **14** | `agenteye-sink` | Cloud sink, key handling, consent, redaction. Default off. | **POINT OF NO RETURN** |
 | **15** | `system-mode` | Root supervisor, privilege drop with post-drop assertions, service units, org-locked policies, the architecture tests. | Highest blast radius; a bug here is a privilege-escalation bug. **Most of the value lands without it.** |
 | **16** | `collector-cutover` | Deprecate the standalone collector for its three CLIs. Both run for one release; id dedupe absorbs the overlap. | |
@@ -692,6 +907,17 @@ The tests that actually de-risk this, in priority order:
 7. **Relay fuzz** over invalid UTF-8 and friends (R10), and **client stdout purity** under
    verbose logging, backtraces, and panics (R11).
 8. Worker crash mid-request, stale socket, timeout budget under every vendor timeout.
+9. **Update safety** (R16, R17) — a staged version that fails its health check is rolled back
+   and the machine keeps enforcing throughout; a swap under concurrent load loses zero
+   requests; a manifest missing any platform is refused; a package-managed install refuses to
+   self-replace. The rollback test matters most: it is the one that proves an update cannot
+   leave a machine unenforced.
+10. **Drift detection** — a transcript record of unrecognized shape degrades health instead of
+    being skipped; removing our entry from a vendor settings file is reported and self-healed;
+    a session file that grows while producing zero hook events raises the silence signal.
+11. **Dashboard fence** (R18) — the eslint rule fails on a reintroduced direct import of the
+    config writer or the parser modules, and a config change made through the dashboard is
+    visible to the daemon without a restart.
 
 **E2E isolation** uses a per-worker daemon with the endpoint derived from the fixture HOME.
 That deliberately exercises the top compatibility trap — a daemon serving a project whose HOME
@@ -716,13 +942,19 @@ deny found" — the former must be an error, never a failure.
    the one failure that cannot be debugged.
 2. **F8: the self-hosting claim versus a default vendor endpoint.** Needs a decision from
    outside engineering.
-3. **`node:sqlite` versus the declared Node floor.** WAL-aware reads need Node 22.5+, and the
-   current code silently degrades to a whole-file `sql.js` read otherwise. Rust fixes this for
-   the *collector*, but the dashboard and audit paths still use the TypeScript reader. Either
-   raise the floor or knowingly accept that four CLIs read stale data in the dashboard while
-   the collector reads them correctly.
-4. **The dashboard leaving the main tarball** breaks the launcher's path resolution. Bare
-   `failproofai` must either spawn the dashboard package or print an install hint.
+3. **`node:sqlite` versus the declared Node floor** — now narrower than it was. WAL-aware
+   reads need Node 22.5+, and the current code silently degrades to a whole-file `sql.js` read
+   otherwise. Stage 13b removes the *dashboard* from this problem by making `rusqlite` the only
+   SQLite reader. What remains is whether the TypeScript reader survives at all afterwards, or
+   whether the audit path follows the dashboard onto the daemon. Deciding "it survives" means
+   knowingly keeping two SQLite readers with different visibility semantics, which is the
+   duplication class this design keeps closing elsewhere.
+4. **What is the dashboard's multi-user model under `--system`?** One dashboard per user, on
+   that user's own socket, is the simple answer and the one this document assumes. The
+   alternative — one dashboard for the machine or the org, authenticating users itself — is a
+   real product request (a lead wanting a single view) and a much larger security surface,
+   because it means a service that legitimately reads several users' sessions. Decide before
+   13b rather than during it.
 5. **Deleting Pi's inline tool maps needs its own test first** — verify the shared
    canonicalization covers Pi's path key, or `block-env-files` and `block-secrets-write`
    silently no-op on Pi.
@@ -735,7 +967,17 @@ deny found" — the former must be an error, never a failure.
    mandate capture but may not mandate that the person being captured is unaware — a notice
    is unsuppressible, and `failproofai capture --explain` always shows what is read and where
    it goes. Worth an explicit decision.
-8. **Should a root daemon self-update from the network at all?** The proposed default is no —
-   defer to the OS package manager, with `update` as check-only unless an org opts in. A
-   network-triggered root-code-replacement channel on every customer box is strictly more
-   powerful than remote policy push.
+8. **Auto-update is now a decision rather than a question, and it reverses this document's
+   first draft** — which proposed deferring to the OS package manager, with `update` as
+   check-only. The daemon updates itself on the stable channel by default. Under `--user` the
+   blast radius is the user's own account and this is uncontroversial. Under `--system` it is a
+   network-triggered root-code-replacement channel on every machine in the org, which is
+   strictly more powerful than remote policy push — so two things still need sign-off:
+   **(a)** the signing key and its custody, since that key now authorizes root code on every
+   customer machine; **(b)** whether an org can be *prevented* from pinning. The answer to (b)
+   should be no. Note that if D2 is accepted, the install channel and the update channel share
+   one trust root, which is the only coherent version of this.
+9. **The signed data manifest for vendor schemas** — worth building, and where its line sits.
+   See the fork at the end of "Noticing drift". The recommendation is declarative only,
+   parsing and detection only, never the verdict path. This needs an explicit yes or no before
+   11b, because adding it later means retrofitting a trust boundary rather than designing one.

@@ -258,6 +258,7 @@ describe("ProjectList", () => {
       "Devin CLI",
       "Antigravity CLI",
       "Goose",
+      "AdaL",
     ]);
   });
 

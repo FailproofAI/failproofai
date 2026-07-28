@@ -27,12 +27,36 @@ describe("bin/failproofai.mjs CLI allowlist", () => {
     for (const cli of INTEGRATION_TYPES) {
       expect(block).toContain(`"${cli}"`);
     }
+
+    // Also assert the reverse direction: VALID_CLIS must not contain any
+    // entries beyond INTEGRATION_TYPES, so the two sets are exactly equal
+    // (no missing, no extra) rather than just a superset check.
+    const declaredClis = new Set([...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+    const expectedClis: Set<string> = new Set(INTEGRATION_TYPES);
+    for (const cli of declaredClis) {
+      expect(expectedClis.has(cli), `VALID_CLIS has unexpected extra entry: ${cli}`).toBe(true);
+    }
+    expect(declaredClis.size).toBe(expectedClis.size);
   });
 
   it("is consulted by every subcommand parser that accepts --cli", () => {
     // install, uninstall, and policy add/remove each guard with VALID_CLIS.has.
-    const uses = BIN_SOURCE.match(/VALID_CLIS\.has\(/g) ?? [];
-    expect(uses.length).toBeGreaterThanOrEqual(3);
+    // Slice the source by each parser's unique surrounding context so a
+    // missing guard in one parser can't be masked by extra guards elsewhere
+    // (a global count could pass even if one parser lost its check).
+    const installBlock = BIN_SOURCE.split("if (isInstall) {")[1]?.split("if (isUninstall) {")[0] ?? "";
+    const uninstallBlock = BIN_SOURCE.split("if (isUninstall) {")[1]?.split("// Default: list policies")[0] ?? "";
+    const policyBlock = BIN_SOURCE.split('if (args[0] === "policy") {')[1]?.split("// config — the interactive setup launcher")[0] ?? "";
+
+    const parserBlocks: Array<[string, string]> = [
+      ["install", installBlock],
+      ["uninstall", uninstallBlock],
+      ["policy add/remove", policyBlock],
+    ];
+    for (const [label, block] of parserBlocks) {
+      expect(block.length, `${label} parser slice not found`).toBeGreaterThan(0);
+      expect(block, `${label} parser is missing its own VALID_CLIS.has(...) guard`).toContain("VALID_CLIS.has(");
+    }
   });
 
   it("accepts adal in the --hook parser as well", () => {

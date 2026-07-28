@@ -676,7 +676,7 @@ function ActivityTab({
                     <React.Fragment key={`${item.timestamp}-${i}`}>
                       <tr
                         tabIndex={0}
-                        role="button"
+                        role="row"
                         aria-expanded={isExpanded}
                         onClick={() => toggleRow(i)}
                         onKeyDown={(e) => {

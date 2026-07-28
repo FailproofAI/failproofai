@@ -13,7 +13,7 @@ import { getCachedDevinSessionsByEncodedName } from "@/lib/devin-projects";
 import { getCachedAntigravitySessionsByEncodedName } from "@/lib/antigravity-projects";
 import { getCachedGooseSessionsByEncodedName } from "@/lib/goose-projects";
 import { logWarn } from "@/lib/logger";
-import { decodeFolderName } from "@/lib/paths";
+import { decodeFolderName, projectDisplayName, isSyntheticProjectPath } from "@/lib/paths";
 import { notFound } from "next/navigation";
 import { existsSync } from "fs";
 import { stat } from "fs/promises";
@@ -150,7 +150,17 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           back to projects
         </Link>
 
-        <h1 className="project-page-title">{canonicalRoot}</h1>
+        {/* Gateway projects carry a synthetic `hermes:profile:source` root; show
+            the same slash form the projects panel does, so the page you land on
+            is titled what you clicked. Everything else keeps the LITERAL cwd
+            recovered above — passing it through projectDisplayName would discard
+            it and re-derive a lossy name from the slug, turning a real
+            `/home/u/my-app` into `/home/u/my/app`. */}
+        <h1 className="project-page-title">
+          {isSyntheticProjectPath(canonicalRoot)
+            ? projectDisplayName(name, canonicalRoot)
+            : canonicalRoot}
+        </h1>
 
         <div className="project-page-meta">
           <span className="label">path</span>

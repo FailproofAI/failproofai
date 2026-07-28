@@ -12,12 +12,22 @@
  * `hermesRowsToLogEntries` pairs them (mirrors `lib/codex-sessions.ts`) and is a
  * PURE function of the message rows, so it is unit-testable without a DB.
  *
+ * PROFILES: Hermes profiles are separate home dirs, each with its OWN state.db
+ * (`~/.hermes/state.db` for the default, `~/.hermes/profiles/<name>/state.db`
+ * otherwise) — see lib/hermes-profiles.ts. So every read here fans out across
+ * profiles instead of assuming one DB.
+ *
  * DB path override: set `HERMES_DB_PATH` (used by tests and to point at a copied
- * or remote state.db).
+ * or remote state.db) — it collapses discovery to that single file. Set
+ * `HERMES_HOME` instead to audit a real multi-profile tree.
  */
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { openSqliteReadonly } from "./sqlite-reader";
+import {
+  listHermesProfiles,
+  hermesProjectPath,
+  HERMES_DEFAULT_PROFILE,
+} from "./hermes-profiles";
 import { runtimeCache } from "./runtime-cache";
 import {
   baseEntry,
@@ -32,9 +42,26 @@ import {
 } from "./log-entries";
 import { formatDuration } from "./format-duration";
 
-/** Absolute path to Hermes's SQLite DB (override with HERMES_DB_PATH). */
-export function hermesDbPath(): string {
-  return process.env.HERMES_DB_PATH || join(homedir(), ".hermes", "state.db");
+/** One Hermes state.db, tagged with the profile that owns it. */
+export interface HermesDb {
+  profile: string;
+  dbPath: string;
+}
+
+/**
+ * Every Hermes state.db to read — one per profile on disk.
+ *
+ * `HERMES_DB_PATH` still wins and collapses this to a single synthetic
+ * `default` profile, so pointing at a copied/remote state.db keeps working
+ * exactly as before.
+ */
+export function hermesDbPaths(): HermesDb[] {
+  const override = process.env.HERMES_DB_PATH;
+  if (override) return [{ profile: HERMES_DEFAULT_PROFILE, dbPath: override }];
+  return listHermesProfiles().map((p) => ({
+    profile: p.name,
+    dbPath: join(p.home, "state.db"),
+  }));
 }
 
 /** Coerce a Hermes epoch value (seconds or ms) to epoch ms. Hermes stores
@@ -210,6 +237,8 @@ export interface HermesSessionLogData {
   rawLines: Record<string, unknown>[];
   cwd?: string;
   filePath: string; // synthetic — hermes keeps sessions in a DB; we use hermes://<id>
+  /** Which profile's state.db the session was found in. */
+  profile: string;
 }
 
 interface HermesMessageRow {
@@ -223,14 +252,33 @@ interface HermesMessageRow {
 }
 
 /**
- * Load one session by ID from `state.db`. Returns `null` when the DB is
- * unavailable or the session doesn't exist.
+ * Load one session by ID, searching every profile's `state.db` and returning the
+ * first hit. Returns `null` when no profile has it.
+ *
+ * Searching beats encoding the profile into the path: session ids are
+ * `YYYYMMDD_HHMMSS_<hash>`, so a cross-profile collision is vanishingly
+ * unlikely, and `hermes://<id>` therefore stays a stable identifier — no
+ * migration for transcript paths already recorded in audit history, and no
+ * change to the download route or its id validator. Profile order from
+ * `hermesDbPaths()` is deterministic, so the tie-break is too.
  */
 export async function getHermesSessionLog(
   sessionId: string,
 ): Promise<HermesSessionLogData | null> {
   if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null;
-  const db = await openSqliteReadonly(hermesDbPath());
+  for (const { profile, dbPath } of hermesDbPaths()) {
+    const found = await loadFromDb(dbPath, profile, sessionId);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function loadFromDb(
+  dbPath: string,
+  profile: string,
+  sessionId: string,
+): Promise<HermesSessionLogData | null> {
+  const db = await openSqliteReadonly(dbPath);
   if (!db) return null;
   try {
     const sessionRows = db.query<{ source: string | null; cwd: string | null }>(
@@ -250,14 +298,21 @@ export async function getHermesSessionLog(
       msgRows as unknown as Record<string, unknown>[],
       "session",
     );
-    // Gateway sessions have no cwd → group by source (slack/telegram/cli/cron).
+    // Gateway sessions have no cwd → fall back to the same (profile, source)
+    // key the projects panel and the audit adapter group by, so an event's cwd
+    // and its projectName agree.
     const cwd =
-      realCwd && realCwd.length > 0 ? realCwd : source ? `hermes:${source}` : undefined;
+      realCwd && realCwd.length > 0
+        ? realCwd
+        : source
+          ? hermesProjectPath(profile, source)
+          : undefined;
     return {
       entries,
       rawLines: msgRows as unknown as Record<string, unknown>[],
       cwd,
       filePath: `hermes://${sessionId}`,
+      profile,
     };
   } catch {
     return null;

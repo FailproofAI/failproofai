@@ -6,7 +6,38 @@ vi.mock("os", () => ({
   homedir: vi.fn(() => "/mock/home"),
 }));
 
-import { decodeFolderName, getDefaultClaudeProjectsPath, getClaudeProjectsPath } from "@/lib/paths";
+import {
+  decodeFolderName,
+  projectDisplayName,
+  getDefaultClaudeProjectsPath,
+  getClaudeProjectsPath,
+} from "@/lib/paths";
+
+describe("projectDisplayName", () => {
+  it("decodes filesystem-backed project folder names as before", () => {
+    expect(projectDisplayName("-home-user-project", "/home/user/project")).toBe(
+      "/home/user/project",
+    );
+    expect(projectDisplayName("-home-user-project")).toBe("/home/user/project");
+  });
+
+  it("renders gateway projects from their path, keeping hyphens in the segments", () => {
+    // decodeFolderName would split the Hermes profile `my-bot` into `my/bot`.
+    expect(projectDisplayName("hermes-my-bot-cron", "hermes:my-bot:cron")).toBe(
+      "hermes/my-bot/cron",
+    );
+    expect(projectDisplayName("hermes-default-slack", "hermes:default:slack")).toBe(
+      "hermes/default/slack",
+    );
+    expect(projectDisplayName("openclaw-telegram", "openclaw:telegram")).toBe(
+      "openclaw/telegram",
+    );
+  });
+
+  it("does not mistake a lowercase Windows drive letter for a gateway path", () => {
+    expect(projectDisplayName("c--code-project", "c:/code/project")).toBe("c:/code/project");
+  });
+});
 
 describe("decodeFolderName", () => {
   it("decodes Windows drive-letter path: C--code-project", () => {

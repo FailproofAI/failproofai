@@ -107,7 +107,7 @@ describe("hermes SQLite integration (real sql.js + temp state.db)", () => {
     const { getHermesSessionLog } = await import("@/lib/hermes-sessions");
     const log = await getHermesSessionLog(PR_ID);
     expect(log).not.toBeNull();
-    expect(log!.cwd).toBe("hermes:slack"); // no cwd → grouped by source
+    expect(log!.cwd).toBe("hermes:default:slack"); // no cwd → grouped by (profile, source)
     const assistant = log!.entries.find((e) => e.type === "assistant");
     const toolUse =
       assistant?.type === "assistant"
@@ -117,12 +117,12 @@ describe("hermes SQLite integration (real sql.js + temp state.db)", () => {
     expect(toolUse && "result" in toolUse ? toolUse.result?.content : "").toContain("PR #287");
   });
 
-  it("adapter lists non-empty sessions with message_count as cache key + source grouping", async () => {
+  it("adapter lists non-empty sessions with message_count as cache key + (profile, source) grouping", async () => {
     const { listHermesTranscriptMetadata } = await import("@/src/audit/cli-adapters/hermes");
     const metas = await listHermesTranscriptMetadata();
     expect(metas.find((m) => m.sessionId === PR_ID)).toMatchObject({
       cli: "hermes",
-      projectName: "hermes:slack",
+      projectName: "hermes:default:slack",
       sizeBytes: 3,
     });
     expect(metas.some((m) => m.sessionId === EMPTY_ID)).toBe(false); // empty filtered out
@@ -139,7 +139,11 @@ describe("hermes SQLite integration (real sql.js + temp state.db)", () => {
       sizeBytes: 3,
     });
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ toolName: "Bash", rawToolName: "terminal", cwd: "hermes:slack" });
+    expect(events[0]).toMatchObject({
+      toolName: "Bash",
+      rawToolName: "terminal",
+      cwd: "hermes:default:slack",
+    });
   });
 
   it("returns null for a session that doesn't exist", async () => {

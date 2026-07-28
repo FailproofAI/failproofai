@@ -14,7 +14,7 @@ import {
   type HookScope,
   type IntegrationType,
 } from "./types";
-import { claudeCode, getIntegration } from "./integrations";
+import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
 import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig } from "./hooks-config";
 import type { HooksConfig } from "./policy-types";
@@ -261,12 +261,16 @@ async function installHooksImpl(
   const writtenSettingsPaths: { cli: IntegrationType; path: string }[] = [];
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
-    const settingsPath = integration.getSettingsPath(scope, cwd);
+    // Usually one path; Hermes returns one per profile (each is a separate home
+    // dir with its own config.yaml, and a missed one runs unhooked in silence).
+    const settingsPaths = settingsPathsFor(integration, scope, cwd);
     try {
-      const settings = integration.readSettings(settingsPath);
-      integration.writeHookEntries(settings, binaryPath, scope);
-      integration.writeSettings(settingsPath, settings);
-      writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+      for (const settingsPath of settingsPaths) {
+        const settings = integration.readSettings(settingsPath);
+        integration.writeHookEntries(settings, binaryPath, scope);
+        integration.writeSettings(settingsPath, settings);
+        writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+      }
     } catch (err) {
       const errorType = err instanceof Error && /EACCES|EPERM/.test(err.message)
         ? "permission_denied"
@@ -452,9 +456,11 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
           : [];
 
     for (const s of scopesToRemove) {
-      const settingsPath = integration.getSettingsPath(s, cwd);
+      // Usually one path; Hermes returns one per profile.
+      const settingsPaths = settingsPathsFor(integration, s, cwd);
+      const existing = settingsPaths.filter((p) => existsSync(p));
 
-      if (!existsSync(settingsPath)) {
+      if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {
           console.log("No settings file found. Nothing to remove.");
           nothingToReport = true;
@@ -462,18 +468,22 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         continue;
       }
 
-      const removed = integration.removeHooksFromFile(settingsPath);
-      if (removed === 0 && scope !== "all" && selectedClis.length === 1) {
+      let removedHere = 0;
+      for (const settingsPath of existing) {
+        const removed = integration.removeHooksFromFile(settingsPath);
+        removedHere += removed;
+        if (removed > 0 && scope !== "all") {
+          console.log(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
+          console.log(`Settings: ${settingsPath}`);
+        }
+      }
+
+      if (removedHere === 0 && scope !== "all" && selectedClis.length === 1) {
         console.log("No hooks found in settings. Nothing to remove.");
         nothingToReport = true;
         continue;
       }
-      totalRemoved += removed;
-
-      if (scope !== "all") {
-        console.log(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
-        console.log(`Settings: ${settingsPath}`);
-      }
+      totalRemoved += removedHere;
     }
   }
 
@@ -484,7 +494,9 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     for (const cliId of selectedClis) {
       const integration = getIntegration(cliId);
       for (const s of integration.scopes) {
-        console.log(`  ${integration.displayName} / ${s}: ${integration.getSettingsPath(s, cwd)}`);
+        for (const p of settingsPathsFor(integration, s, cwd)) {
+          console.log(`  ${integration.displayName} / ${s}: ${p}`);
+        }
       }
     }
   }

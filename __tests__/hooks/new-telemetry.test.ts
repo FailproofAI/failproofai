@@ -50,6 +50,14 @@ vi.mock("../../src/hooks/integrations", () => ({
     hooksInstalledInSettings: vi.fn(() => false),
   },
   listIntegrations: vi.fn(() => []),
+  // Mirrors the real helper: one path per integration unless it opts into
+  // multiple (Hermes, one config.yaml per profile).
+  settingsPathsFor: vi.fn(
+    (integration: { getSettingsPaths?: (s: string, c?: string) => string[]; getSettingsPath: (s: string, c?: string) => string }, scope: string, cwd?: string) => {
+      const paths = integration.getSettingsPaths?.(scope, cwd);
+      return paths && paths.length > 0 ? paths : [integration.getSettingsPath(scope, cwd)];
+    },
+  ),
 }));
 
 vi.mock("../../src/hooks/hooks-config", () => ({

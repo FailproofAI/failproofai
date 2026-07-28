@@ -28,6 +28,8 @@ import {
   goose,
   getIntegration,
   listIntegrations,
+  settingsPathsFor,
+  unhookedHermesProfiles,
 } from "../../src/hooks/integrations";
 import {
   CODEX_HOOK_EVENT_TYPES,
@@ -547,14 +549,28 @@ describe("Hermes integration", () => {
   // the per-test tempDir so getSettingsPath / hooksInstalledInSettings operate
   // on a throwaway file instead of the developer's real home.
   let origHome: string | undefined;
+  let origHermesHome: string | undefined;
   beforeEach(() => {
     origHome = process.env.HOME;
     process.env.HOME = tempDir;
+    // HERMES_HOME wins over HOME in profile discovery — clear it so a developer
+    // with a profile-scoped shell doesn't get their real config.yaml touched.
+    origHermesHome = process.env.HERMES_HOME;
+    delete process.env.HERMES_HOME;
   });
   afterEach(() => {
     if (origHome === undefined) delete process.env.HOME;
     else process.env.HOME = origHome;
+    if (origHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = origHermesHome;
   });
+
+  /** Create `~/.hermes/profiles/<name>/` for each name. */
+  function makeProfiles(...names: string[]): void {
+    for (const name of names) {
+      mkdirSync(resolve(tempDir, ".hermes", "profiles", name), { recursive: true });
+    }
+  }
 
   it("getSettingsPath is user-scope ~/.hermes/config.yaml regardless of scope/cwd", () => {
     expect(hermes.getSettingsPath("user")).toBe(resolve(tempDir, ".hermes", "config.yaml"));
@@ -676,6 +692,71 @@ describe("Hermes integration", () => {
     hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     hermes.writeSettings(path, settings);
     expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+  });
+
+  // ── Profiles ──
+  //
+  // Every Hermes profile is a separate home dir with its OWN config.yaml, so an
+  // install that writes only ~/.hermes/config.yaml leaves the others running
+  // unhooked — silently, since Hermes never reports a missing hook.
+
+  it("getSettingsPaths returns one config.yaml per profile, root first", () => {
+    makeProfiles("work", "my-bot");
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "my-bot", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "work", "config.yaml"),
+    ]);
+  });
+
+  it("settingsPathsFor falls back to the single path for non-profile integrations", () => {
+    expect(settingsPathsFor(claudeCode, "user")).toEqual([claudeCode.getSettingsPath("user")]);
+    expect(settingsPathsFor(hermes, "user")).toEqual(hermes.getSettingsPaths!("user"));
+  });
+
+  it("hooksInstalledInSettings is false until EVERY profile is hooked", () => {
+    makeProfiles("work");
+    const [rootPath, workPath] = settingsPathsFor(hermes, "user");
+
+    const rootSettings = hermes.readSettings(rootPath);
+    hermes.writeHookEntries(rootSettings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(rootPath, rootSettings);
+    // Root hooked, `work` still bare → the gateway is only partly enforced.
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(unhookedHermesProfiles()).toEqual(["work"]);
+
+    const workSettings = hermes.readSettings(workPath);
+    hermes.writeHookEntries(workSettings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(workPath, workSettings);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+    expect(unhookedHermesProfiles()).toEqual([]);
+  });
+
+  it("writes a real hooks block into a non-default profile's config.yaml", () => {
+    makeProfiles("work");
+    const workPath = resolve(tempDir, ".hermes", "profiles", "work", "config.yaml");
+    writeFileSync(workPath, "model: gpt-5\n");
+    const settings = hermes.readSettings(workPath);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(workPath, settings);
+
+    const parsed = parse(readFileSync(workPath, "utf-8")) as Record<string, unknown>;
+    const hooks = parsed.hooks as Record<string, { command: string }[]>;
+    expect(Object.keys(hooks).sort()).toEqual([...HERMES_HOOK_EVENT_TYPES].sort());
+    expect(hooks.pre_tool_call[0].command).toContain("--cli hermes");
+    expect(parsed.hooks_auto_accept).toBe(true);
+    expect(parsed.model).toBe("gpt-5"); // operator key preserved
+  });
+
+  it("HERMES_HOME pointing AT a profile still covers every sibling profile", () => {
+    // The per-profile alias wrapper exports HERMES_HOME=<root>/profiles/<name>.
+    makeProfiles("work", "coder");
+    process.env.HERMES_HOME = resolve(tempDir, ".hermes", "profiles", "work");
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "coder", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "work", "config.yaml"),
+    ]);
   });
 });
 

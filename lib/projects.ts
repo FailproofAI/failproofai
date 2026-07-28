@@ -29,6 +29,20 @@ export interface ProjectFolder {
    * the same cwd has transcripts from more than one CLI; rendered as badges.
    */
   cli: ProjectCli[];
+  /**
+   * How many sessions this project holds.
+   *
+   * Only the GATEWAY producers (Hermes, OpenClaw) fill this in, because only
+   * they render as a folder tree where a collapsed row has to say how much is
+   * underneath it — and for them the count is free, since their grouping loop
+   * already visits every session. The cwd-based CLIs leave it undefined and the
+   * UI renders nothing, rather than a `0` that would read as "empty".
+   *
+   * Deliberately NOT filled for Claude: counting there needs an extra readdir
+   * per project folder, and a number that exists for some CLIs and not others
+   * would sum to a wrong-but-plausible total on a merged row.
+   */
+  sessionCount?: number;
 }
 
 export interface SessionFile {
@@ -126,6 +140,14 @@ function mergeProjectFolders(...sources: ProjectFolder[][]): ProjectFolder[] {
         cli: mergedCli,
         lastModified: newer.lastModified,
         lastModifiedFormatted: newer.lastModifiedFormatted,
+        // Spreading `existing` alone would silently keep only the FIRST source's
+        // count for a name several CLIs contribute to, so sum explicitly. Stays
+        // undefined unless at least one side reported a count — `0` would claim
+        // "no sessions" for producers that simply don't count.
+        sessionCount:
+          existing.sessionCount === undefined && f.sessionCount === undefined
+            ? undefined
+            : (existing.sessionCount ?? 0) + (f.sessionCount ?? 0),
       });
     }
   }

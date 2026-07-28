@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { ProjectFolder } from "@/lib/projects";
 import { CliBadge } from "./cli-badge";
-import { decodeFolderName } from "@/lib/paths";
+import { projectDisplayName } from "@/lib/paths";
 import { formatDate } from "@/lib/format-date";
 import {
   FILTER_PRESETS,
@@ -24,7 +24,13 @@ import {
   pageToParam, paramToPage,
 } from "@/lib/url-filter-serializers";
 import { KNOWN_CLI_IDS, getCliLabel, isKnownCli, type CliId } from "@/lib/cli-registry";
-import { Folder, Search, X } from "lucide-react";
+import {
+  buildProjectTree,
+  visibleTreeRows,
+  collapsibleKeys,
+  type ProjectTreeNode,
+} from "@/lib/project-tree";
+import { ChevronDown, ChevronRight, Folder, Search, X } from "lucide-react";
 import Link from "next/link";
 import PaginationControls from "./pagination-controls";
 import DatePickerInput from "./date-picker-input";
@@ -42,6 +48,117 @@ function DateDisplay({ date, formatted }: { date: Date; formatted?: string }) {
 // and still match the encoded folder name (e.g. "-home-user").
 function normalizeKeywordForSearch(keyword: string): string {
   return keyword.trim().toLowerCase().replace(/\//g, "-");
+}
+
+/** Where collapsed folder rows are remembered between visits. */
+const COLLAPSED_STORAGE_KEY = "failproofai.projects.collapsed";
+
+function readCollapsed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === "string") : [];
+  } catch {
+    // Private mode / disabled storage / corrupt value — everything stays expanded.
+    return [];
+  }
+}
+
+function persistCollapsed(keys: Set<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Storage unavailable — collapsing still works for this session.
+  }
+}
+
+/**
+ * One row of the projects table — a leaf project, or a folder grouping the
+ * gateway CLIs' (profile/agent, channel) hierarchy.
+ *
+ * Both shapes render as a `<tr>` in the SAME table so the Path and Last
+ * Modified columns stay aligned down the page; depth becomes left padding on
+ * the name cell rather than a nested table.
+ */
+function ProjectRow({
+  node,
+  collapsed,
+  interactive,
+  onToggle,
+}: {
+  node: ProjectTreeNode;
+  collapsed: boolean;
+  /** False while a search force-expands the tree — see the folder branch below. */
+  interactive: boolean;
+  onToggle: (key: string) => void;
+}) {
+  const isFolder = node.children.length > 0;
+  const project = node.project;
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+
+  // Depth is indentation, capped so a deep gateway path can't push the name off
+  // a narrow screen.
+  const indent = { paddingLeft: `${Math.min(node.depth, 4) * 1.25}rem` };
+
+  return (
+    <tr className="border-b border-border hover:bg-muted/50 transition-colors">
+      <td className="px-4 py-3">
+        <Folder className={`w-5 h-5 ${isFolder ? "text-muted-foreground" : "text-primary"}`} />
+      </td>
+      <td className="px-4 py-3 max-w-md">
+        <div className="flex flex-wrap items-center gap-2" style={indent}>
+          {isFolder ? (
+            // While a search is active the tree is force-expanded, so a toggle
+            // could only flip hidden state: it would look interactive, do
+            // nothing on screen, and silently invert what gets remembered once
+            // the search is cleared. Render it inert instead.
+            interactive ? (
+              <button
+                type="button"
+                onClick={() => onToggle(node.key)}
+                aria-expanded={!collapsed}
+                aria-label={`${collapsed ? "Expand" : "Collapse"} ${node.label}`}
+                className="flex items-center gap-1 font-semibold text-foreground hover:text-primary transition-colors break-words break-all text-left"
+              >
+                <Chevron className="w-4 h-4 shrink-0" />
+                {node.label}
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 font-semibold text-foreground break-words break-all">
+                <Chevron className="w-4 h-4 shrink-0" />
+                {node.label}
+              </span>
+            )
+          ) : project ? (
+            <Link
+              href={`/project/${encodeURIComponent(project.name)}`}
+              className="font-semibold text-foreground hover:text-primary transition-colors break-words break-all inline-block max-w-full"
+            >
+              {/* Leaves of a gateway tree show only their own segment; a
+                  filesystem project keeps its full decoded path. */}
+              {node.depth > 0 ? node.label : projectDisplayName(project.name, project.path)}
+            </Link>
+          ) : (
+            <span className="font-semibold text-foreground">{node.label}</span>
+          )}
+          {node.cli.map((c) => (
+            <CliBadge key={c} cli={c} />
+          ))}
+          {isFolder && node.sessionCount !== undefined && (
+            <span className="text-xs text-muted-foreground">
+              {node.sessionCount} session{node.sessionCount === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-sm text-muted-foreground hidden md:table-cell truncate max-w-md">
+        {project ? project.path : ""}
+      </td>
+      <td className="px-4 py-3 text-sm text-muted-foreground">
+        <DateDisplay date={node.lastModified} formatted={node.lastModifiedFormatted} />
+      </td>
+    </tr>
+  );
 }
 
 export default function ProjectList({ folders }: ProjectListProps) {
@@ -127,13 +244,88 @@ export default function ProjectList({ folders }: ProjectListProps) {
     return filtered.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
   }, [normalizedFolders, filterPreset, dateRange, keywords, filterCli]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredFolders.length / ITEMS_PER_PAGE));
+  // ── Folder tree ──
+  //
+  // Built from ALL filtered projects, never from a page slice: a gateway root's
+  // channels are individual projects interleaved by recency, so slicing first
+  // would split one profile across two pages — rendering the root twice, each
+  // time rolling up only the sessions that happened to land on that page, with
+  // the true total shown nowhere. Grouping is pure presentation; project names,
+  // and therefore every /project/<name> link, are untouched.
+  const tree = useMemo(() => buildProjectTree(filteredFolders), [filteredFolders]);
+
+  // Pagination walks TOP-LEVEL rows. With no gateway CLIs every root is exactly
+  // one project, so the page size and the reported range are identical to the
+  // flat table's; a gateway CLI simply folds its channels into one entry.
+  const totalPages = Math.max(1, Math.ceil(tree.length / ITEMS_PER_PAGE));
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages, setCurrentPage]);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredFolders.length);
-  const paginatedFolders = filteredFolders.slice(startIndex, endIndex);
+  const rootStart = (currentPage - 1) * ITEMS_PER_PAGE;
+  const rootEnd = Math.min(rootStart + ITEMS_PER_PAGE, tree.length);
+  const pageRoots = useMemo(() => tree.slice(rootStart, rootEnd), [tree, rootStart, rootEnd]);
+
+  // The summary counts PROJECTS, so derive its range from the projects the
+  // displayed roots actually cover rather than from the row indices.
+  const projectsBefore = tree
+    .slice(0, rootStart)
+    .reduce((sum, node) => sum + node.projectCount, 0);
+  const projectsOnPage = pageRoots.reduce((sum, node) => sum + node.projectCount, 0);
+  const startIndex = projectsBefore;
+  const endIndex = projectsBefore + projectsOnPage;
+
+  // Collapsed (not expanded) is what we persist: a profile or agent appearing
+  // for the first time should be visible, not hidden behind a click nobody
+  // knows to make. Loaded in an effect, never during render — reading
+  // localStorage while rendering would desync the server-rendered HTML.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setCollapsed(new Set(readCollapsed()));
+  }, []);
+
+  const toggleCollapsed = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      persistCollapsed(next);
+      return next;
+    });
+  };
+
+  // A search that matched something must not leave the match hidden inside a
+  // collapsed folder, so an active search force-expands everything.
+  const searching = keywords.length > 0;
+  const visibleRows = useMemo(
+    () => visibleTreeRows(pageRoots, (key) => !searching && collapsed.has(key)),
+    [pageRoots, collapsed, searching],
+  );
+
+  // Keys the bulk toggle acts on: everything collapsible in the CURRENT view
+  // (this page, this filter). It must never be used to REPLACE the stored set —
+  // see toggleAll.
+  const pageCollapsibleKeys = useMemo(() => collapsibleKeys(pageRoots), [pageRoots]);
+  // The label, though, follows what is on SCREEN. Judging it by the whole page's
+  // keys would keep saying "Collapse all" after a root was collapsed, because
+  // its hidden descendants are still expanded — a button that then does nothing
+  // visible.
+  const visibleCollapsibleKeys = visibleRows.filter((n) => n.children.length > 0).map((n) => n.key);
+  const anyExpanded = visibleCollapsibleKeys.some((k) => !collapsed.has(k));
+
+  const toggleAll = () => {
+    setCollapsed((prev) => {
+      // MERGE, never replace: the stored set spans every page and filter, so
+      // assigning this view's keys wholesale would silently discard collapses
+      // the user made elsewhere.
+      const next = new Set(prev);
+      for (const key of pageCollapsibleKeys) {
+        if (anyExpanded) next.add(key);
+        else next.delete(key);
+      }
+      persistCollapsed(next);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -266,11 +458,20 @@ export default function ProjectList({ folders }: ProjectListProps) {
           </div>
 
           {/* Results Count */}
-          <div className="text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {pageCollapsibleKeys.length > 0 && !searching && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                {anyExpanded ? "Collapse all" : "Expand all"}
+              </button>
+            )}
             {filteredFolders.length === 0 ? (
-              <>No projects found</>
+              <span>No projects found</span>
             ) : (
-              <>
+              <span>
                 Showing {startIndex + 1}-{endIndex} of {filteredFolders.length} projects
                 {filteredFolders.length !== normalizedFolders.length && (
                   <span className="ml-1">
@@ -282,7 +483,7 @@ export default function ProjectList({ folders }: ProjectListProps) {
                     with {keywords.length} keyword{keywords.length !== 1 ? "s" : ""}
                   </span>
                 )}
-              </>
+              </span>
             )}
           </div>
         </div>
@@ -309,44 +510,21 @@ export default function ProjectList({ folders }: ProjectListProps) {
               </tr>
             </thead>
             <tbody>
-              {paginatedFolders.length === 0 ? (
+              {visibleRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
                     No projects found matching the selected filter.
                   </td>
                 </tr>
               ) : (
-                paginatedFolders.map((folder) => (
-                  <tr
-                    key={folder.name}
-                    className="border-b border-border hover:bg-muted/50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <Folder className="w-5 h-5 text-primary" />
-                    </td>
-                    <td className="px-4 py-3 max-w-md">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/project/${encodeURIComponent(folder.name)}`}
-                          className="font-semibold text-foreground hover:text-primary transition-colors break-words break-all inline-block max-w-full"
-                        >
-                          {decodeFolderName(folder.name)}
-                        </Link>
-                        {folder.cli.map((c) => (
-                          <CliBadge key={c} cli={c} />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground hidden md:table-cell truncate max-w-md">
-                      {folder.path}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      <DateDisplay
-                        date={folder.lastModified}
-                        formatted={folder.lastModifiedFormatted}
-                      />
-                    </td>
-                  </tr>
+                visibleRows.map((node) => (
+                  <ProjectRow
+                    key={node.key}
+                    node={node}
+                    collapsed={!searching && collapsed.has(node.key)}
+                    interactive={!searching}
+                    onToggle={toggleCollapsed}
+                  />
                 ))
               )}
             </tbody>

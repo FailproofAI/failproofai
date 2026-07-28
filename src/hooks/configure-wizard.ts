@@ -29,6 +29,8 @@ import {
 import {
   detectInstalledClis,
   getIntegration,
+  settingsPathsFor,
+  unhookedHermesProfiles,
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
@@ -126,12 +128,28 @@ export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<In
     } catch {
       installedHere = false;
     }
+    // Hermes reports installed only when EVERY profile is hooked, so a profile
+    // added after install flips it to false. Say which ones, otherwise a mostly
+    // configured gateway just reads as "not configured".
+    let partialHint: string | undefined;
+    if (id === "hermes" && !installedHere) {
+      try {
+        const unhooked = unhookedHermesProfiles();
+        if (unhooked.length > 0) {
+          partialHint = `${unhooked.length} unhooked profile(s): ${unhooked.join(", ")}`;
+        }
+      } catch {
+        // Profile discovery is best-effort — never block the wizard.
+      }
+    }
     return {
       label: integration.displayName,
       value: id,
       checked: isDetected || installedHere,
       section: isDetected ? "Detected" : "Not installed · set up ahead of time",
-      hint: installedHere ? "already configured" : isDetected ? undefined : "not on PATH",
+      hint: installedHere
+        ? "already configured"
+        : (partialHint ?? (isDetected ? undefined : "not on PATH")),
     };
   });
 }
@@ -322,7 +340,11 @@ export function reviewLines(state: {
   lines.push("  This will update:");
   for (const cli of clis) {
     const integration = getIntegration(cli);
-    lines.push(`    ${homeify(integration.getSettingsPath(scope, cwd))}   ${integration.displayName} hooks`);
+    // Usually one path; Hermes lists one per profile so the operator sees every
+    // home dir that is about to be written.
+    for (const p of settingsPathsFor(integration, scope, cwd)) {
+      lines.push(`    ${homeify(p)}   ${integration.displayName} hooks`);
+    }
   }
   lines.push(`    ${homeify(getConfigPathForScope(scope, cwd))}   ${policies.length} policies`);
   return lines;

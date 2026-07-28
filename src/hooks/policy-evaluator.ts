@@ -101,8 +101,9 @@ export async function evaluatePolicies(
       }
       ctx = { ...baseCtx, params: resolvedParams };
     } else {
-      // Custom hooks and policies without schema get empty params
-      ctx = { ...baseCtx, params: {} };
+      // Custom hooks and policies without schema get user-configured params if present
+      const userParams = getConfigParamsFor(config, policy.name) ?? {};
+      ctx = { ...baseCtx, params: userParams };
     }
 
     let result: Awaited<ReturnType<typeof policy.fn>>;

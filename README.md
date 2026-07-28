@@ -26,8 +26,9 @@ before they become incidents. Zero latency. Runs locally.
 ## Supported agent CLIs
 
 <!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
-     so the grid stays 2×6 at any window width (scrolling on very narrow screens
-     instead of collapsing into ragged orphan rows). -->
+     so the grid stays 6-per-row at any window width (scrolling on very narrow
+     screens instead of collapsing into ragged orphan rows). Rows are filled to
+     six before a new row is started. -->
 <table align="center">
   <tr>
     <td align="center" width="96">
@@ -114,6 +115,13 @@ before they become incidents. Zero latency. Runs locally.
           <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
           <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="96">
+      <a href="https://docs.sylph.ai" title="AdaL (@sylphai/adal-cli)">
+        <img src="assets/logos/adal.svg" alt="AdaL" width="56" height="56" />
       </a>
     </td>
   </tr>

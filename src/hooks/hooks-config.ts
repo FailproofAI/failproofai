@@ -90,6 +90,10 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
   const customPoliciesPath =
     project.customPoliciesPath ?? local.customPoliciesPath ?? global_.customPoliciesPath;
 
+  // customPoliciesEnabled: first scope wins
+  const customPoliciesEnabled =
+    project.customPoliciesEnabled ?? local.customPoliciesEnabled ?? global_.customPoliciesEnabled;
+
   // llm: first scope wins
   const llm = project.llm ?? local.llm ?? global_.llm;
 
@@ -97,6 +101,7 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
     enabledPolicies: [...enabledSet],
     ...(Object.keys(mergedParams).length > 0 ? { policyParams: mergedParams } : {}),
     ...(customPoliciesPath !== undefined ? { customPoliciesPath } : {}),
+    ...(customPoliciesEnabled !== undefined ? { customPoliciesEnabled } : {}),
     ...(llm !== undefined ? { llm } : {}),
   };
 }

@@ -185,6 +185,26 @@ describe("hooks/hooks-config", () => {
       expect(config.customPoliciesPath).toBe("/project/hooks.js");
     });
 
+    it("customPoliciesEnabled: first scope that defines it wins", async () => {
+      mockFiles({
+        [projectPath]: { enabledPolicies: [], customPoliciesEnabled: false },
+        [globalPath]: { enabledPolicies: [], customPoliciesEnabled: true },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const config = readMergedHooksConfig(CWD);
+      expect(config.customPoliciesEnabled).toBe(false);
+    });
+
+    it("customPoliciesEnabled: local scope wins over global when project is undefined", async () => {
+      mockFiles({
+        [localPath]: { enabledPolicies: [], customPoliciesEnabled: false },
+        [globalPath]: { enabledPolicies: [], customPoliciesEnabled: true },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const config = readMergedHooksConfig(CWD);
+      expect(config.customPoliciesEnabled).toBe(false);
+    });
+
     it("returns no policyParams key when no params configured", async () => {
       mockFiles({
         [globalPath]: { enabledPolicies: ["block-sudo"] },

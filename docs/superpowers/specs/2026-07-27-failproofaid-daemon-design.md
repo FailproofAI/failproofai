@@ -41,7 +41,10 @@ This document is for review and iteration. **No implementation is proposed for t
   how it is packaged once it is no longer part of the main tarball.
 - **Staying current** — the update channel, `failproofai update`, and runtime detection of
   vendor schema drift.
-- npm distribution of per-platform Rust binaries, and the CI/publish changes it needs.
+- **The full build, CI, and release migration** — all seven workflows, npm distribution of the
+  per-platform Rust binaries, the publish DAG and its gates, versioning across npm and Cargo,
+  signing and provenance, branch protection and required checks, and Dependabot coverage —
+  staged alongside the work rather than retrofitted at cutover.
 - A staged delivery sequence, with the point of no return named.
 - Security findings in the *current* codebase that this architecture would amplify.
 
@@ -55,6 +58,9 @@ This document is for review and iteration. **No implementation is proposed for t
   out as an open question.
 - Evaluations, audits, alerts, incidents — the analysis half of Observability.
 - Any change to what the twelve vendor CLIs themselves do.
+- The org's GitHub ruleset and required-check configuration *itself*. Those are repo settings,
+  not files this repo can commit. Every place one must change is named below, but landing it is
+  a human action outside the PR sequence.
 
 ---
 
@@ -608,7 +614,9 @@ flowchart TB
   disable entirely — "never move without us saying so" is a real enterprise requirement and
   must be expressible.
 - **A release becomes visible to updaters only after every platform artifact is verified.**
-  The manifest is published by the same job that passes the `verify-platform` gate from R12.
+  The manifest is published by the same job that passes the `verify-platform` gate from R12 —
+  see the publish DAG in the next section, and note that the gate does not exist today, which is
+  why stage 4c must land before 7b.
   Without that coupling, auto-update converts a partial publish from *"some new installs are
   broken"* into *"the fleet is broken within one check interval."* This is the single most
   important constraint in this section.
@@ -665,6 +673,174 @@ from being a remote code channel. If we do it: strictly declarative, schema-vali
 use, no ability to add or disable a policy, and it may only affect **parsing and detection —
 never a verdict**. Recommendation: yes for the collector and drift detection, never for the
 enforcement path.
+
+---
+
+## The build, CI, and release migration
+
+Today the repo publishes **one** pure-JavaScript npm package from **one** workflow, and the
+artifact users receive is built as a lifecycle side effect that nothing audits. The target
+publishes a wrapper, five platform binary packages, a dashboard package, fourteen alias
+packages, and a signed update manifest — with a hard gate between the platform packages and the
+wrapper, and a second between the wrapper and the manifest.
+
+That is a **different** pipeline, not a larger one. Stage 4 is too late to meet it for the first
+time, and the update channel in stage 7b turns every property of it into a fleet-wide property.
+
+### What exists today, verified
+
+| Workflow | Trigger | What it does | Fires on `1.0.0` today |
+|---|---|---|---|
+| `ci.yml` | push + PR on **`main`** | 5 jobs: `quality` (version-consistency, lint, `tsc`), `test` (3 env-config matrix), `build`, `docs` (`mintlify validate` + MDX parse), `test-e2e` | **no** |
+| `publish.yml` | `release: [published]`, dispatch | version from the tag, `npm publish --provenance`, 14 alias packages, then bumps the next dev version on `main` using a version-bot App token that bypasses the branch ruleset | n/a |
+| `integration-suite.yml` | daily 06:17 UTC, dispatch | 12 real vendor CLIs in Docker against this repo's HEAD; `stable` leg gates, `beta` leg advisory | n/a (cron) |
+| `osv-scanner.yml` | push + PR on **`main`**, weekly | dependency advisories | **no** |
+| `build-image.yml` | push on `main` (path-filtered), daily 08:00 | hook-sync container to GHCR, refreshing `claude-code@latest` + `failproofai@latest` | n/a |
+| `bump-platform-submodule.yml` | push on `main`, dispatch | submodule bump PRs | n/a |
+| `translate-docs.yml` | daily 05:35 UTC | 14-language doc translation, content-hash cached | n/a |
+| `.github/dependabot.yml` | weekly | `bun` and `github-actions` ecosystems **only** | — |
+
+CLAUDE.md documents *four* CI jobs; there are **five** — `docs` was added later and never made it
+back into the doc. Minor on its own, but the CI job inventory is exactly the thing that has to be
+right before it is forked into two transports and a Rust matrix.
+
+### Six properties of the current release that do not survive
+
+**P1 — The release build is an unaudited lifecycle side effect.** `publish.yml` has **no build
+step**. `npm publish` fires `prepare`, which is `bun run build`: `dist/index.js`, `dist/cli.mjs`,
+a full Next.js build, the static copy, and `prune-standalone.mjs`. The artifact that reaches
+users is produced by a lifecycle hook on the publish runner, retained nowhere, and compared
+against nothing. Cross-compiling five Rust targets inside `prepare` is not something anyone
+should attempt. It has to become an explicit build job whose **retained output is what gets
+published** — build once, `npm pack`, publish that tarball, and upload it as a workflow artifact
+so a bad release can be examined rather than reconstructed.
+
+**P2 — Publishing is not gated on CI.** `release: [published]` invokes `publish.yml` directly.
+Nothing re-runs quality, test, build, docs, or e2e against the tagged commit — the assumption is
+that CI passed on `main` earlier and the tag points somewhere sane. Today the cost of that
+assumption is a bad version sitting on npm until someone notices. After stage 7b it is a bad
+version **auto-applied to the fleet within one check interval**. R16 is written as though this
+gate exists; it does not.
+
+**P3 — A failed alias publish is a green release.** `publish-aliases.mjs` collects every failure
+into a `warnings` array and prints `::warning::`. It never exits non-zero. Two of those cases are
+genuinely benign — "already published at this version", and npm's similarity block, which is
+permanent and outside our control. Everything else is a real publish failure reported as a
+notice, on packages whose entire purpose is catching a user who typed the name wrong.
+
+**P4 — The version is derived from the git tag and written by `npm version` at publish time.**
+Adequate for one package. The target carries root, `packages/wrapper`, N platform packages,
+`@failproofai/dashboard`, 14 aliases, a Cargo workspace, and the update manifest — every one of
+which must agree. This is R13 generalized: **one script sets the version everywhere, and the CI
+consistency check asserts it**, including the dependency *name set*, not just the values.
+
+**P5 — `prepare` also runs on `npm install` from a git URL.** Installing the repo today builds
+Next.js. Once `crates/` exists, that silently becomes "installing from git requires a Rust
+toolchain" unless the build is split into a JS half and a native half.
+
+**P6 — The tarball's contents need an explicit inventory decision.** `files:` ships `bin/`,
+`src/`, `scripts/`, `lib/`, `pi-extension/`, `openclaw-plugin/`, **`.next/standalone/`**, `dist/`,
+and the README. Stage 4b removes the standalone tree. `src/` is the less obvious one:
+`bin/failproofai.mjs` lazy-imports `../src/**` at roughly ten call sites, but the published `bin`
+is the bundled `dist/cli.mjs`, which contains **zero** `../src/` references. Whether the raw
+TypeScript is load-bearing or vestigial is a measurable question, and project scope pulls
+whatever the answer is through `npx` on the hot path.
+
+### The target publish DAG
+
+```mermaid
+flowchart TB
+    TAG["release published"] --> GATE{"re-run full CI<br/>on the tagged sha"}
+    GATE -->|"fail"| STOP["ABORT — nothing published"]
+    GATE -->|"pass"| SETV["set-version<br/>ONE script: root, packages/*,<br/>crates/*, manifest"]
+    SETV --> BJS["build JS artifacts<br/>npm pack, retained tarball"]
+    SETV --> BRS["build Rust matrix<br/>5 targets, static musl"]
+    BRS --> VP{"verify-platform<br/>exec each artifact on a<br/>MATCHING runner"}
+    BJS --> VP
+    VP -->|"any target fails<br/>or is missing"| STOP
+    VP -->|"all pass"| PP["publish N platform packages"]
+    PP --> VR{"verify-from-registry<br/>install each platform pkg,<br/>exec the hook client"}
+    VR -->|"fail"| STOP
+    VR -->|"pass"| PW["publish wrapper (failproofai)"]
+    PW --> PD["publish @failproofai/dashboard"]
+    PW --> PA["publish 14 alias packages<br/>MUST fail the job on error"]
+    PD --> SMOKE{"post-publish smoke:<br/>npx failproofai doctor<br/>on every platform"}
+    PA --> SMOKE
+    SMOKE -->|"fail"| DEPRECATE["npm deprecate + report<br/>manifest NEVER published"]
+    SMOKE -->|"pass"| MAN["sign + publish update manifest<br/>ONLY reachable from here"]
+    MAN --> BUMP["bump next dev version"]
+
+    style STOP fill:#3b1d1d,stroke:#e4587c,color:#fff
+    style DEPRECATE fill:#3b3620,stroke:#facc15,color:#fff
+    style MAN fill:#1d3b2a,stroke:#4ade80,color:#fff
+```
+
+Four invariants that this DAG exists to enforce:
+
+- **Nothing is published until every platform artifact is verified by execution.** Not built —
+  *executed*, on a runner matching its triple. R9's exit-126 failure is invisible to a build.
+- **The wrapper publishes strictly after the platform packages it points at, and only after they
+  are confirmed installable from the registry.** Publishing a wrapper whose
+  `optionalDependencies` cannot resolve is R8 at fleet scale, and it is a *successful* install.
+- **The update manifest is reachable from exactly one place in the graph** — after the smoke
+  test, in the same job. This is the coupling R16 turns on: if the manifest can be published by
+  any other path, auto-update converts a partial publish into a fleet outage.
+- **Publish is idempotent and resumable.** A job that dies between the platform packages and the
+  wrapper must be re-runnable without hand-editing versions. Every publish step tolerates
+  "already published at this version" and nothing else.
+
+### Per-workflow migration
+
+| Workflow | Change | Lands in |
+|---|---|---|
+| `ci.yml` | Add `1.0.0` to both trigger lists — **the blocker below**. | **0** |
+| `ci.yml` | Amend the version-consistency check per R13: read root's `optionalDependencies`, assert the expected triple *names*, and fail rather than pass when `packages/wrapper/package.json` is absent-but-expected. | 4c |
+| `ci.yml` | Add a `rust` job — `cargo fmt --check`, `clippy -D warnings`, `cargo test` — **path-filtered** so a `src/hooks/` change never waits on it. | 4 |
+| `ci.yml` | Split `test-e2e` into `test-e2e-embedded` (default gate, Rust-free) and `test-e2e-daemon`. **Both job names change**, see required checks below. | 5 |
+| `ci.yml` | New guard tests as their own assertions: the pure-builtin import fence (0b), the `app/` eslint fence (13b). | 0b, 13b |
+| `publish.yml` | The whole DAG above: CI gate, `set-version`, explicit build, `verify-platform`, registry verification, hard-fail aliases, post-publish smoke, manifest. | 4c |
+| `publish.yml` | Sign the manifest in a **separate job** with a scoped, short-lived credential. The key authorizes root code on every customer machine — it must not sit in the same environment as `NPM_TOKEN`. See open question 8(a). | 7b |
+| `publish.yml` | The next-dev-version bump currently pushes to `main`. While `1.0.0` is the integration branch it must bump **`1.0.0`**, or every release re-forks the version lineage. | 4c |
+| `integration-suite.yml` | Add the "oracle log exists and is non-empty" precondition — today a broken oracle and broken enforcement both produce "no deny found". | 2 |
+| `integration-suite.yml` | Daemon lifecycle inside the sandbox, plus the **daemon-down probe**: stop the daemon, run one tool call, assert the CLI reports a block. Converts fail-closed from a claim into a daily live check across twelve vendors. | 7 |
+| `integration-suite.yml` | Becomes the natural oracle for drift detection — it already knows each vendor's version. Emit parse-drift and config-drift counts as suite output rather than only as local health. | 11b |
+| `osv-scanner.yml` | Add `1.0.0` to both trigger lists. Add `Cargo.lock` scanning once `crates/` exists — osv-scanner reads it natively, so this is a path addition, not a new tool. | 0, 4 |
+| `build-image.yml` | The hook-sync image installs `failproofai@latest` globally. Once the daemon is the default it must either run the daemon in-container or pin the no-daemon path explicitly — a container that silently falls back is a drift detector that has stopped detecting. | 7 |
+| `bump-platform-submodule.yml` | Triggers on `main` only. Decide whether it also serves `1.0.0`; if not, say so, because sixteen stages is long enough for the submodule to rot on the integration branch. | 0 |
+| `translate-docs.yml` | Exclude `docs/superpowers/specs/**` from translatable sources. This document is a working design doc; translating it 14 ways on a daily cron is pure token spend on text that changes every stage. | 0 |
+| `.github/dependabot.yml` | Add the `cargo` ecosystem when `crates/` lands, and `npm` for `packages/*` if they carry lockfiles. A Rust workspace that Dependabot cannot see is a supply chain nobody is watching. | 4 |
+
+### Branch protection and required checks
+
+Three settings-level changes, none of which can be committed from a PR:
+
+- **`1.0.0` needs the same protection `main` has.** Sixteen stage PRs land there and it merges to
+  `main` once, at v1.0.0. An unprotected integration branch means the release is only as reviewed
+  as its weakest stage.
+- **Required checks are matched by job name, and this migration renames jobs.** Splitting
+  `test-e2e` into two is the obvious case; adding `rust` as a path-filtered job is the subtle one,
+  because a required check that never runs blocks every PR that does not touch Rust. Use
+  `if: always()` skip-shims or GitHub's path-filter-aware required checks — decide which, once,
+  and write it down.
+- **The version-bot App is a bypass actor on the org ruleset.** It currently pushes version bumps
+  to `main`. Once it also publishes the update manifest, the same identity signs code and bypasses
+  review. Split the identity before stage 7b, not after.
+
+### Testing the pipeline itself
+
+The pipeline gets the same treatment as the daemon: the failure being guarded against is a green
+run that shipped nothing, or shipped something broken.
+
+- A **dry-run publish** into a local registry (Verdaccio) on every PR that touches
+  `publish.yml`, `set-version`, or `packages/`. Assert the full package set, the version
+  agreement, and the `optionalDependencies` name set.
+- A **deliberately missing platform artifact** must abort before any publish. This is the R12
+  test, and it is the one that matters most.
+- A **failed alias publish** must fail the job (P3), while "already published" and npm's
+  similarity block must not.
+- **Resume**: re-running publish after the platform packages succeeded must be a no-op on those
+  and proceed to the wrapper.
+- **`prepare` without a Rust toolchain** must still produce a working JS install (P5).
 
 ---
 
@@ -725,6 +901,17 @@ enforced. Each risk below therefore gets a named mechanical guard rather than a 
 | **R17** | **Swapping the binary under in-flight requests.** With fail-closed as the default, a refused connection during the swap blocks the user's agent rather than losing a metric — an update that stutters is indistinguishable from an outage. | Drain and hand over the listener; the client retries once on a refused connection before applying the configured failure mode. A dedicated test asserts zero failed requests across a swap under load. |
 | **R18** | **The dashboard stays a second writer.** If reads move to the daemon but a Server Action still calls `writeHooksConfig` directly, the daemon's precedence rules and org locks are bypassed by a web form — and under `--system`, by an unauthenticated one. Partial migration is the likely outcome here, because reads are the fun part. | Fence it mechanically: an eslint `no-restricted-imports` rule forbidding anything under `app/` from importing the config writer or the parser modules at all. The rule is the test, and it fails the moment someone reintroduces a direct import. |
 
+### Introduced by the release-pipeline migration
+
+| # | Risk | Guard |
+|---|---|---|
+| **R19** | **Publishing is not gated on CI.** `release: [published]` runs `publish.yml` with no re-verification of the tagged commit. Today that ships a bad version to npm; after stage 7b it auto-applies one to the fleet. R16's mitigation assumes a gate that does not exist. | `publish.yml` invokes the CI workflow on the tagged sha via `workflow_call` and refuses to proceed on anything but success. No dispatch override. |
+| **R20** | **A failed alias publish is a green release.** `publish-aliases.mjs` funnels every error into `::warning::` and always exits 0, so a broken typo-catch package looks identical to a healthy one. | Exit non-zero. Allowlist exactly two outcomes — "already published at this version" and npm's permanent similarity block — and assert the expected published count against the `ALIASES` array. |
+| **R21** | **The release build is a `prepare` side effect** (P1). Nothing retains, audits, or compares the artifact users receive, and adding a Rust cross-compile matrix to that model is not viable. | Explicit build job → `npm pack` → publish that tarball → upload it as a workflow artifact. The published bytes and the archived bytes are the same bytes. |
+| **R22** | **A renamed or path-filtered job silently stops being a required check.** This migration renames `test-e2e` and adds a path-filtered `rust` job. Required checks match by name; a required check that never fires blocks every PR, and a dropped one blocks nothing — and the second failure is invisible. | A committed manifest of required-check names asserted in CI against the workflow's job ids, plus a periodic `gh api` reconciliation against the live ruleset. Decide the path-filter convention once (skip-shim vs. filter-aware) and write it down. |
+| **R23** | **The version is written in more than one place.** Root, `packages/wrapper`, N platform packages, `@failproofai/dashboard`, 14 aliases, the Cargo workspace, and the update manifest all carry it; `publish.yml` currently sets it with a bare `npm version`. A drift here is a wrapper pointing at a platform package that does not exist — R8, arriving by arithmetic. | One `set-version` script used by every publish step, and R13's amended consistency check asserting both the values and the dependency *name set*. |
+| **R24** | **The signing identity is over-scoped.** The version-bot App already bypasses the branch ruleset to push version bumps. If the same job and the same environment also hold the manifest signing key, one compromised release workflow both authorizes root code on every customer machine and can push the commit that did it. | Sign in a separate job, in a separate GitHub Environment, with a short-lived credential; split the bump identity from the signing identity before 7b. Feeds open question 8(a). |
+
 ### Assets to protect
 
 - **`EvaluationResult` is already the wire contract.** `policy-evaluator.ts` already returns
@@ -782,13 +969,15 @@ all CI jobs green, with a CHANGELOG entry.
 
 ```mermaid
 flowchart TB
-    S0a["0a · hook-command-builder<br/>no behaviour change"] --> S0b["0b · security-hardening<br/>F1-F5"]
+    S0["0 · ci-foundation<br/>MUST LAND FIRST"] --> S0a["0a · hook-command-builder<br/>no behaviour change"]
+    S0a --> S0b["0b · security-hardening<br/>F1-F5"]
     S0b --> S1["1 · hot-path-diet<br/>PAYS FOR THE PROJECT"]
     S1 --> S2["2 · request-scoped-env<br/>R4, R5"]
     S2 --> S3["3 · daemon-proto<br/>types + generated table"]
     S3 --> S4["4 · rust-workspace<br/>client is a no-op"]
     S4 --> S4b["4b · dashboard-package<br/>leaves the main tarball"]
-    S4b --> S5["5 · daemon-core<br/>differential test"]
+    S4b --> S4c["4c · release-pipeline<br/>verify-platform gate<br/>GATES 7b"]
+    S4c --> S5["5 · daemon-core<br/>differential test"]
     S5 --> S6["6 · policy-realms<br/>R1, R3"]
     S6 --> S7["7 · daemon-default<br/>LAST REVERSIBLE STAGE"]
     S7 --> S7b["7b · self-update<br/>MAKES LATER STAGES<br/>RECOVERABLE"]
@@ -804,19 +993,23 @@ flowchart TB
     S14 --> S15["15 · system-mode<br/>root"]
     S15 --> S16["16 · collector-cutover"]
 
+    style S0 fill:#3b3620,stroke:#facc15,color:#fff
     style S1 fill:#1d3b2a,stroke:#4ade80,color:#fff
+    style S4c fill:#1d3b2a,stroke:#4ade80,color:#fff
     style S7 fill:#3b3620,stroke:#facc15,color:#fff
     style S7b fill:#1d3b2a,stroke:#4ade80,color:#fff
     style S14 fill:#3b1d1d,stroke:#e4587c,color:#fff
     style S15 fill:#3b1d1d,stroke:#e4587c,color:#fff
 ```
 
-The four lettered sub-stages are new since the first draft: they carry the dashboard
-re-architecture and the update system. They are lettered rather than renumbered so that the
-"point of no return is stage 14" landmark keeps its name.
+Stage **0** and the five lettered sub-stages are new since the first draft: they carry the CI
+foundation, the release pipeline, the dashboard re-architecture, and the update system. They are
+lettered rather than renumbered so that the "point of no return is stage 14" landmark keeps its
+name.
 
 | # | Branch | Ships | Why here |
 |---|---|---|---|
+| **0** | `ci-foundation` | Add `1.0.0` to `ci.yml` and `osv-scanner.yml` triggers. Protect `1.0.0` and take an inventory of required checks (R22). Decide `bump-platform-submodule`'s relationship to the integration branch. Exclude `docs/superpowers/specs/**` from `translate-docs`. **No source change at all.** | **Must land first, and the whole sequence is unverified until it does.** Every stage below assumes CI runs on its PR; today none of them would. Kept separate from 0a so that the fix is reviewable as a two-line trigger change rather than buried in a refactor. |
 | **0a** | `hook-command-builder` | Extract the command-string ternary — copy-pasted at nine sites in `integrations.ts`, plus a tenth hidden inside the OpenCode shim template — into one builder. Interpolate the tool maps from `types.ts` into the generated shims, killing three duplicate copies of one map and two of another. | Byte-identical output; the 24 existing literal assertions staying green *is* the proof. Turns a nine-site edit into a one-site edit and permanently closes the duplication class that caused the silent opencode no-op. |
 | **0b** | `security-hardening` | F1–F5. Pure/impure builtin split with a mechanical guard — a test asserting the pure module graph never imports `node:child_process`, `node:fs`, `node:net`, or `fetch`. Activity store and hook log to 0600. Dashboard to loopback. `.failproofai/**` into `isAgentSettingsFile`. Project-policy trust-on-first-use. Invert the config merge. | Every one is a present-tense vulnerability that the daemon amplifies. |
 | **1** | `hot-path-diet` | Content-addressed module temp files, killing six writes and six unlinks per event. Lazy-import the session libraries so `cli=claude` skips 75 KB. Detach the telemetry flush. **No Rust, no daemon.** | **The stage that pays for the project if everything after slips.** Every existing user gets a faster hook immediately, and it validates the module-identity fix in the short-lived process first. |
@@ -824,6 +1017,7 @@ re-architecture and the update system. They are lettered rather than renumbered 
 | **3** | `daemon-proto` | Wire types, the `CollectedEvent` union, `eventId` derivation, schema parity between Rust and TS, and the generated response table. | Locks the contract. Pure types and pure functions; zero runtime change. |
 | **4** | `rust-workspace` | Cargo workspace, path-filtered Rust CI job, `packages/` scaffolding, release matrix, launcher with fallback to the JS path. **The Rust client does nothing but exec the JS path.** | Proves cross-compilation, npm `optionalDependencies`, provenance, and launcher fallback while the binary is behaviourally a no-op. If distribution is going to hurt, find out here. |
 | **4b** | `dashboard-package` | Move `.next/standalone/` out of the main tarball into `@failproofai/dashboard`. `failproofai dashboard` resolves it, installs on first use, and prints a hint when it is absent. | Rides with the packaging work in stage 4 rather than repeating it a release later. Shrinks the artifact that project scope pulls through `npx` on the hot path, and closes the launcher path-resolution question. |
+| **4c** | `release-pipeline` | The publish DAG: a CI gate on the tagged sha, one `set-version` script, an explicit build job producing a retained tarball, `verify-platform` by execution on matching runners, registry verification before the wrapper, hard-failing alias publishes, a post-publish smoke, and the amended version-consistency check. The manifest step is scaffolded but publishes nothing yet. | R19–R23. **This gates 7b**: the update channel's central constraint is that the manifest is published only by the job that passed `verify-platform`, and that job does not exist until here. Landing it with the packaging work in 4/4b rather than a release later means the first multi-package publish is also the first *gated* one. |
 | **5** | `daemon-core` | Supervisor, IPC, worker pool, and the policy worker wrapping the existing engine. User mode only, behind a flag, default off. | **The differential test lands here and is the most important test in the project.** |
 | **6** | `policy-realms` | Fingerprint-keyed module cache, realm-scoped registry, hot reload, one worker per project realm. | R1 and R3. Required before the default flips. Worker-per-realm also fixes the module leak and the hung-policy problem — a Rust `SIGKILL` preempts a busy loop that an in-process `Promise.race` cannot. |
 | **7** | `daemon-default` | Client tries the daemon, falls back in-process, and the configured mode governs only if both fail. Single-writer activity store. `health` v1. | **Last fully reversible stage.** |
@@ -860,15 +1054,26 @@ every stage above lands as its own PR **targeting `1.0.0`**, and `1.0.0` merges 
 at release. The branch must be kept current with `main` continuously — over sixteen stages it
 will otherwise rot, and a stale base makes every subsequent diff noisy.
 
-> **Blocker — must land before the first stage PR.** `.github/workflows/ci.yml` triggers only
-> on `main`, for both `push` and `pull_request`. As written, **every PR into `1.0.0` would run
-> zero CI** — no lint, no type check, no tests, no build, no e2e — and would appear green.
-> Adding `1.0.0` to both trigger lists is a two-line change, but it must exist before any
-> stage PR does, or the whole sequence runs unverified. `integration-suite.yml` and
-> `osv-scanner.yml` need the same review.
+> **Blocker — this is stage 0, and nothing else may land before it.**
+> `.github/workflows/ci.yml` triggers only on `main`, for both `push` and `pull_request`. As
+> written, **every PR into `1.0.0` would run zero CI** — no lint, no type check, no tests, no
+> build, no docs validation, no e2e — and would appear green. Sixteen stages would land
+> unverified and the breakage would surface at the merge to `main`, all at once.
 >
-> This design PR deliberately changes **no** workflow file — it is documentation only — so
-> the fix belongs to the first implementation PR.
+> The full inventory, since `ci.yml` is not the only one:
+>
+> | File | Today | Needed |
+> |---|---|---|
+> | `ci.yml` | `push` + `pull_request` on `main` | add `1.0.0` to both — **the two lines that unblock everything** |
+> | `osv-scanner.yml` | `push` + `pull_request` on `main` | add `1.0.0` to both; otherwise the integration branch accrues advisories unscanned for the length of the project |
+> | `integration-suite.yml` | daily cron + dispatch, HEAD of the default branch | decide whether the daily vendor probe follows `1.0.0`. It is the only detector of vendor drift, and `1.0.0` is where the parsers will actually be changing |
+> | `bump-platform-submodule.yml` | `push` on `main` | decide explicitly. Sixteen stages is long enough for the submodule to rot on the integration branch |
+> | `translate-docs.yml` | daily cron | exclude `docs/superpowers/specs/**`; this document changes every stage and does not need fourteen translations of each draft |
+> | Branch protection | `main` only | protect `1.0.0`, and inventory required-check names before any job is renamed (R22) |
+>
+> This design PR deliberately changes **no** workflow file — it is documentation only. Stage 0
+> exists to carry exactly this, and it is deliberately scoped to trigger and settings changes so
+> it can be reviewed and merged in minutes rather than sitting behind a refactor.
 
 ---
 
@@ -918,6 +1123,12 @@ The tests that actually de-risk this, in priority order:
 11. **Dashboard fence** (R18) — the eslint rule fails on a reintroduced direct import of the
     config writer or the parser modules, and a config change made through the dashboard is
     visible to the daemon without a restart.
+12. **Release pipeline** (R19–R23) — a dry-run publish into a local registry asserting the full
+    package set, version agreement, and the `optionalDependencies` name set; a deliberately
+    missing platform artifact aborting before *any* publish; an alias failure failing the job
+    while "already published" does not; a resumed publish being a no-op on what already
+    succeeded; and `prepare` producing a working JS install with no Rust toolchain present. The
+    missing-artifact test is the one that matters — it is R12 and R16 in a single assertion.
 
 **E2E isolation** uses a per-worker daemon with the endpoint derived from the fixture HOME.
 That deliberately exercises the top compatibility trap — a daemon serving a project whose HOME
@@ -974,10 +1185,21 @@ deny found" — the former must be an error, never a failure.
    network-triggered root-code-replacement channel on every machine in the org, which is
    strictly more powerful than remote policy push — so two things still need sign-off:
    **(a)** the signing key and its custody, since that key now authorizes root code on every
-   customer machine; **(b)** whether an org can be *prevented* from pinning. The answer to (b)
+   customer machine — and note R24: it must not share a job or an environment with `NPM_TOKEN`,
+   nor an identity with the version-bot App that already bypasses the branch ruleset;
+   **(b)** whether an org can be *prevented* from pinning. The answer to (b)
    should be no. Note that if D2 is accepted, the install channel and the update channel share
    one trust root, which is the only coherent version of this.
-9. **The signed data manifest for vendor schemas** — worth building, and where its line sits.
+9. **Does anything publish from `1.0.0` before the merge to `main`?** `publish.yml` fires on
+   `release: [published]` and bumps the next dev version on `main`. Across sixteen stages the
+   options are: publish nothing until v1.0.0 (simple, but the Rust distribution work in stages
+   4/4b/4c is then never exercised against the real registry until the day it matters); publish
+   `beta` dist-tag releases from `1.0.0` (exercises the pipeline, at the price of two live
+   version lineages); or cut `main` releases in parallel from cherry-picked stages. The middle
+   option is the only one that de-risks R8, R12, and R19 before the release that depends on
+   them, and it is the reason 4c bumps `1.0.0` rather than `main`. Needs a decision at stage 0,
+   because it determines whether the branch is a merge target or a release branch.
+10. **The signed data manifest for vendor schemas** — worth building, and where its line sits.
    See the fork at the end of "Noticing drift". The recommendation is declarative only,
    parsing and detection only, never the verdict path. This needs an explicit yes or no before
    11b, because adding it later means retrofitting a trust boundary rather than designing one.

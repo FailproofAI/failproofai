@@ -1296,7 +1296,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
   if (!config) {
     return (
       <div className="flex items-center justify-center py-16">
-        <span className="text-sm text-muted-foreground">Loading\u2026</span>
+        <span className="text-sm text-muted-foreground">Loading{"\u2026"}</span>
       </div>
     );
   }

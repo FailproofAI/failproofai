@@ -63,6 +63,8 @@ vi.mock("../../src/hooks/integrations", () => ({
 vi.mock("../../src/hooks/hooks-config", () => ({
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
+  configuredCustomPolicyPaths: vi.fn((config: { customPoliciesPaths?: string[]; customPoliciesPath?: string }) =>
+    config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : [])),
   writeHooksConfig: vi.fn(),
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeScopedHooksConfig: vi.fn(),

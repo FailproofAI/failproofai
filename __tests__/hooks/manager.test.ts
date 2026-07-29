@@ -24,6 +24,10 @@ vi.mock("../../src/hooks/install-prompt", () => ({
 
 vi.mock("../../src/hooks/hooks-config", () => ({
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
+  // listHooks resolves the project root by walking up to the nearest
+  // `.failproofai` marker, the same way enforcement does. The real function
+  // hits the filesystem; for these tests the cwd IS the project root.
+  findProjectConfigDir: vi.fn((start: string) => start),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeHooksConfig: vi.fn(),
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),

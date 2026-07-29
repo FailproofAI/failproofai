@@ -6,6 +6,9 @@ import { join } from "node:path";
 
 vi.mock("@/src/hooks/hooks-config", () => ({
   readHooksConfig: () => ({ enabledPolicies: [] }),
+  // The action walks up to the project root like enforcement does; these tests
+  // point cwd straight at the project root, so identity is the right stub.
+  findProjectConfigDir: (start: string) => start,
 }));
 
 vi.mock("@/src/hooks/manager", () => ({

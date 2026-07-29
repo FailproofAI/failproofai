@@ -16,7 +16,7 @@ import {
 } from "./types";
 import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
-import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies } from "./hooks-config";
+import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
@@ -709,7 +709,11 @@ export async function listHooks(cwd?: string): Promise<void> {
   }
 
   // Convention Policies section (.failproofai/policies/*policies.{js,mjs,ts})
-  const base = cwd ? resolve(cwd) : process.cwd();
+  // Walk up to the project root like enforcement does
+  // (custom-hooks-loader -> findProjectConfigDir); resolving at the exact cwd
+  // meant running this from a subdirectory listed no project policies while the
+  // hook path was loading them.
+  const base = findProjectConfigDir(cwd ?? process.cwd());
   const projectDir = resolve(base, ".failproofai", "policies");
   const userDir = resolve(homedir(), ".failproofai", "policies");
   const sameDir = userDir === projectDir;

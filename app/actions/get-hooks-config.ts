@@ -8,6 +8,7 @@ import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
 import { getCliLabel } from "@/lib/cli-registry";
 import { discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
+import { findProjectConfigDir } from "@/src/hooks/hooks-config";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -91,7 +92,15 @@ export interface HooksConfigPayload {
  * degrades to "no policies listed" instead of taking the server down.
  */
 async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
-  const projectDir = resolve(process.cwd(), ".failproofai", "policies");
+  // Two corrections over a bare `process.cwd()`, both of which made real
+  // project policies invisible here while enforcement loaded them fine:
+  //   - the standalone server chdir()s into the package on startup, so the real
+  //     launch directory arrives via FAILPROOFAI_LAUNCH_CWD (scripts/launch.ts);
+  //   - enforcement resolves the project root by walking UP to the nearest
+  //     `.failproofai` marker (custom-hooks-loader -> findProjectConfigDir), so
+  //     resolving at the exact cwd disagrees with it from any subdirectory.
+  const launchCwd = process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd();
+  const projectDir = resolve(findProjectConfigDir(launchCwd), ".failproofai", "policies");
   const userDir = resolve(homedir(), ".failproofai", "policies");
 
   const dirs: { scope: "project" | "user"; dir: string }[] = [

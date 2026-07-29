@@ -347,6 +347,24 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       cwd: resolveCwd(e.cwd),
       hook_event_name: "PreToolUse",
     });
+    // `ToolCallEventResult` is `{block?, reason?}` (extensions/types.d.ts:766).
+    // agent-loop.ts branches on `beforeResult?.block`, so this is the shape that
+    // stops the tool. Do NOT put the user_bash full-replacement shape here — it
+    // has no `block` field, so the call would sail straight through.
+    if (decision.block) return { block: true, reason: decision.reason };
+    return undefined;
+  });
+
+  // user_bash → PreToolUse with synthesized toolName=Bash.
+  pi.on("user_bash", (event: unknown): unknown => {
+    const e = event as PiUserBashEvent;
+    const decision = callPolicy("user_bash", {
+      tool_name: "Bash",
+      tool_input: { command: e.command },
+      session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
+      cwd: resolveCwd(e.cwd),
+      hook_event_name: "PreToolUse",
+    });
     // `UserBashEventResult` is `{operations?, result?: BashResult}` — there is
     // no `block` field, so the `{block:true}` we used to return matched nothing
     // and the command ran anyway. The supported way to stop it is a FULL
@@ -363,20 +381,6 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
         },
       };
     }
-    return undefined;
-  });
-
-  // user_bash → PreToolUse with synthesized toolName=Bash.
-  pi.on("user_bash", (event: unknown): unknown => {
-    const e = event as PiUserBashEvent;
-    const decision = callPolicy("user_bash", {
-      tool_name: "Bash",
-      tool_input: { command: e.command },
-      session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
-      cwd: resolveCwd(e.cwd),
-      hook_event_name: "PreToolUse",
-    });
-    if (decision.block) return { block: true, reason: decision.reason };
     return undefined;
   });
 

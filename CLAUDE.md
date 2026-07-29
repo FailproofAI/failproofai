@@ -368,7 +368,7 @@ internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_ca
 | `on_session_start` | `SessionStart`                 | observation    | — |
 | `on_session_end`   | `SessionEnd`                   | observation    | — |
 | `subagent_stop`    | `SubagentStop`                 | observation    | **NOT a gate** — see the correction below. |
-| `pre_verify`       | `Stop`                         | ✅ block       | Turn-end gate; conditions below. |
+| `pre_verify`       | *(not installed)*              | ✅ block       | Real turn-end gate upstream — **we deliberately do not install it**; see below. |
 
 **Corrections (2026-07-29).** Three claims that stood here were wrong, each verified
 against upstream `hermes-agent` @ `5771a6e`. `agent/shell_hooks.py:567-621`
@@ -379,14 +379,19 @@ against upstream `hermes-agent` @ `5771a6e`. `agent/shell_hooks.py:567-621`
    returns a verdict for it, and the call site discards the return anyway
    (`tools/delegate_tool.py:2677`, a bare `invoke_hook(...)`). Any customer policy
    denying on SubagentStop had **zero** enforcement for as long as that row stood.
-2. **"Hermes has no turn-end `Stop` event" was false.** `pre_verify` is exactly that,
-   and we now install it. Upstream fires it once per turn when the agent has edited
-   code and is about to finish (`agent/conversation_loop.py:6754`); its parser accepts
-   our Claude Stop shape verbatim — `{decision:"block",reason}` reads as "block the
-   stop", i.e. keep going — and the reason is injected as a synthetic user message
-   before the loop re-enters (`conversation_loop.py:6774-6800`). The 5
-   `require-*-before-stop` builtins therefore **do** work on Hermes now, subject to:
-   it fires only on turns that landed `write_file`/`patch`
+2. **"Hermes has no turn-end `Stop` event" was false.** `pre_verify` is exactly that.
+   Upstream fires it once per turn when the agent has edited code and is about to
+   finish (`agent/conversation_loop.py:6754`); its parser accepts our Claude Stop
+   shape verbatim — `{decision:"block",reason}` reads as "block the stop", i.e. keep
+   going — and the reason is injected as a synthetic user message before the loop
+   re-enters (`conversation_loop.py:6774-6800`). Installing it is one entry in
+   `config.yaml`; it is a shell hook like the other five, no Python involved.
+
+   **We deliberately do not install it** (product decision, 2026-07-29). So
+   `HERMES_EVENT_MAP` emits no `Stop` and the 5 `require-*-before-stop` builtins
+   remain **inapplicable** on Hermes — but that is now a choice, not a platform
+   limit, and this is what it would buy if revisited. Three upstream conditions
+   would apply: it fires only on turns that landed `write_file`/`patch`
    (`agent/tool_result_classification.py:9` — a `terminal`-only turn does not qualify,
    so a chat-only gateway may never see it), it is capped at 3 nudges per turn
    (`agent/verify_hooks.py:21`, operator-overridable), and on Hermes older than

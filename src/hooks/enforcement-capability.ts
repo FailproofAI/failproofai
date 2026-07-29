@@ -168,7 +168,8 @@ export const ENFORCEMENT_CAPABILITY: Record<
     SubagentStop: "observe",       // OVERTURNED from CLAUDE.md's "✅ block". Not in _parse_response's gate, AND the call site (tools/delegate_tool.py) discards the return. Customers with a SubagentStop deny had ZERO enforcement
     SessionStart: "observe",       // on_session_start — not gated in
     SessionEnd: "observe",         // on_session_end — call site discards the return
-    Stop: "block",                 // pre_verify — a real turn-end gate we now install. _parse_response gates it in alongside pre_tool_call (shell_hooks.py:606-615) and accepts our Claude Stop shape verbatim; the reason is injected as a synthetic user message and the loop re-enters (conversation_loop.py:6774-6800). CAVEATS: fires ONLY on turns that landed write_file/patch (tool_result_classification.py:9 — a terminal-only turn does not qualify), capped at 3 nudges per turn (verify_hooks.py:21), and silently absent on Hermes older than ~2026-06-30 (unknown key warn-and-skipped, shell_hooks.py:325)
+    // Stop: NOT KEYED — `pre_verify` is a real turn-end gate upstream but we do
+    // not install it, so no canonical Stop event ever fires for hermes.
   },
 
   // ── openclaw ──────────────────────────────────────────────────────────────

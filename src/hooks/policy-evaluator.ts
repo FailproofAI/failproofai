@@ -251,24 +251,9 @@ export async function evaluatePolicies(
       // Only `pre_tool_call` and `pre_verify` are gated in upstream's
       // `_parse_response` (agent/shell_hooks.py:567-621); the shape is still
       // emitted for the other installed events, where it is read by nothing.
+      // We do not install `pre_verify` (see the note in types.ts), so Hermes
+      // has no canonical Stop event and no Stop branch is needed here.
       if (session?.cli === "hermes") {
-        // `pre_verify` (canonical Stop) is a real turn-end gate: upstream reads
-        // "block the stop" as "keep going" and injects `reason` as a synthetic
-        // user message before re-entering the loop. So the reason has to be the
-        // instruction we want the model to act on, not a refusal notice — same
-        // wording every other CLI's Stop branch uses, which is what makes the 5
-        // require-*-before-stop builtins work here.
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
         return {
           exitCode: 0,
           stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),

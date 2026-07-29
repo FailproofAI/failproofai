@@ -108,24 +108,31 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 // intercepts all platforms.
 //
 // `pre_verify` IS a turn-end gate — the earlier claim here that Hermes has none
-// was wrong, and it made the 5 `require-*-before-stop` builtins dead on Hermes
-// for as long as it stood. Upstream fires it once per turn when the agent has
-// edited code and is about to finish (`agent/conversation_loop.py:6754`), and
-// its parser accepts our Claude Stop shape verbatim — `{decision:"block",
-// reason}` means "block the stop", i.e. keep going (`agent/shell_hooks.py:606-615`).
-// The reason is injected as a synthetic user message and the loop re-enters
-// (`conversation_loop.py:6774-6800`).
+// was wrong. We deliberately do NOT install it (product decision, 2026-07-29);
+// this note records what it would buy so the choice can be revisited without
+// re-deriving it.
 //
-// Three limits, all upstream's:
-//   1. It only fires when the turn landed a file mutation, and that means
+// Upstream fires it once per turn when the agent has edited code and is about to
+// finish (`agent/conversation_loop.py:6754`), and its parser accepts our Claude
+// Stop shape verbatim — `{decision:"block", reason}` means "block the stop",
+// i.e. keep going (`agent/shell_hooks.py:606-615`). The reason is injected as a
+// synthetic user message and the loop re-enters
+// (`conversation_loop.py:6774-6800`). Installing it is one entry in
+// config.yaml — it is a shell hook like the other five, no Python involved.
+//
+// It would make the 5 `require-*-before-stop` builtins fire on Hermes, subject
+// to three upstream conditions:
+//   1. It fires ONLY on turns that landed a file mutation, and that means
 //      exactly `write_file` or `patch` (`agent/tool_result_classification.py:9`)
 //      — a turn that did its work through `terminal` (sed -i, rm, >) does not
 //      qualify, so a chat-only gateway may never see it.
 //   2. Capped at 3 nudges per turn (`DEFAULT_MAX_VERIFY_NUDGES`,
 //      `agent/verify_hooks.py:21`), operator-overridable; resets each turn.
 //   3. It landed upstream ~2026-06-30. Older Hermes fails the key against
-//      VALID_HOOKS and warn-and-skips it SILENTLY (`agent/shell_hooks.py:325`),
-//      so the hook simply never fires and nothing surfaces to the user.
+//      VALID_HOOKS and warn-and-skips it SILENTLY (`agent/shell_hooks.py:325`).
+//
+// Until it is installed, `HERMES_EVENT_MAP` emits no `Stop` and those 5
+// builtins remain inapplicable on Hermes.
 export const HERMES_HOOK_SCOPES = ["user"] as const;
 export type HermesHookScope = (typeof HERMES_HOOK_SCOPES)[number];
 
@@ -135,7 +142,6 @@ export const HERMES_HOOK_EVENT_TYPES = [
   "on_session_start",
   "on_session_end",
   "subagent_stop",
-  "pre_verify",
 ] as const;
 export type HermesHookEventType = (typeof HERMES_HOOK_EVENT_TYPES)[number];
 
@@ -145,8 +151,6 @@ export const HERMES_EVENT_MAP: Record<HermesHookEventType, HookEventType> = {
   on_session_start: "SessionStart",
   on_session_end: "SessionEnd",
   subagent_stop: "SubagentStop",
-  // Turn-end gate — accepts our Claude Stop shape verbatim. See the notes above.
-  pre_verify: "Stop",
 };
 
 // ── GitHub Copilot CLI ─────────────────────────────────────────────────────

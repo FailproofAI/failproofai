@@ -773,12 +773,14 @@ describe("HERMES_EVENT_MAP", () => {
     expect(HERMES_EVENT_MAP.subagent_stop).toBe("SubagentStop");
   });
 
-  // This test used to assert the opposite, pinning a claim that was simply
-  // never checked: upstream's `pre_verify` IS a turn-end gate, and while this
-  // stood the 5 require-*-before-stop builtins were dead on Hermes.
-  it("maps pre_verify to Stop — Hermes DOES have a turn-end gate", () => {
-    expect(Object.values(HERMES_EVENT_MAP)).toContain("Stop");
-    expect(HERMES_EVENT_MAP.pre_verify).toBe("Stop");
+  // Upstream DOES have a turn-end gate (`pre_verify`) — the long-standing claim
+  // that it has none was wrong. We deliberately do not install it, so no
+  // canonical Stop event fires for Hermes and the 5 require-*-before-stop
+  // builtins stay inapplicable there. This asserts the decision, not a
+  // limitation of the platform; see the note in src/hooks/types.ts.
+  it("emits no Stop mapping — pre_verify exists upstream but is not installed", () => {
+    expect(Object.values(HERMES_EVENT_MAP)).not.toContain("Stop");
+    expect(HERMES_HOOK_EVENT_TYPES).not.toContain("pre_verify");
   });
 
   it("HERMES_EVENT_MAP keys exactly match HERMES_HOOK_EVENT_TYPES", () => {
@@ -1797,22 +1799,3 @@ describe("claudeCode — WorktreeCreate is never registered", () => {
   });
 });
 
-// Hermes's turn-end gate. It must be installed, mapped to canonical Stop, and
-// carry the same command form as every other Hermes event.
-describe("hermes — pre_verify is installed and mapped to Stop", () => {
-  it("includes pre_verify in the installed events", () => {
-    expect(HERMES_HOOK_EVENT_TYPES).toContain("pre_verify");
-  });
-
-  it("maps pre_verify to canonical Stop", () => {
-    expect(HERMES_EVENT_MAP.pre_verify).toBe("Stop");
-  });
-
-  it("writes a pre_verify entry into config.yaml", () => {
-    const doc = hermes.readSettings("/tmp/does-not-exist-hermes.yaml");
-    hermes.writeHookEntries(doc, "/usr/bin/failproofai", "user");
-    const js = (doc as unknown as { toJS: () => { hooks?: Record<string, Array<{ command: string }>> } }).toJS();
-    expect(js.hooks?.pre_verify).toBeDefined();
-    expect(js.hooks?.pre_verify?.[0].command).toContain("--hook pre_verify --cli hermes");
-  });
-});

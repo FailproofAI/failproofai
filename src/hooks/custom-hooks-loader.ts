@@ -233,9 +233,9 @@ export async function loadAllCustomHooks(
   for (const customPoliciesPath of typeof customPoliciesPaths === "string"
     ? [customPoliciesPaths]
     : customPoliciesPaths ?? []) {
-    const absPath = isAbsolute(customPoliciesPath)
-      ? customPoliciesPath
-      : resolve(projectRoot, customPoliciesPath);
+    // resolve() also normalizes absolute paths, so aliases containing `.` or
+    // `..` share a dedup key with convention-discovered canonical paths.
+    const absPath = resolve(projectRoot, customPoliciesPath);
     if (existsSync(absPath)) {
       if (!loadedPaths.has(absPath)) {
         loadedPaths.add(absPath);

@@ -68,6 +68,17 @@ describe("loadAllCustomHooks deduplicates customPoliciesPath against convention 
     expect(result.hooks.filter((h) => h.name === "dedup-probe")).toHaveLength(1);
   });
 
+  it("normalizes absolute explicit paths before deduplicating convention files", async () => {
+    const file = join(project, ".failproofai", "policies", "shared-policies.mjs");
+    writeFileSync(file, SRC, "utf8");
+    const aliased = join(project, ".failproofai", "policies", "..", "policies", "shared-policies.mjs");
+
+    const result = await loadAllCustomHooks(aliased, { sessionCwd: project });
+
+    expect(result.hooks.filter((h) => h.name === "dedup-probe")).toHaveLength(1);
+    expect(result.conventionSources).toHaveLength(0);
+  });
+
   it("does not report it as a convention source once step 1 has loaded it", async () => {
     const file = join(project, ".failproofai", "policies", "shared-policies.mjs");
     writeFileSync(file, SRC, "utf8");

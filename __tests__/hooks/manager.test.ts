@@ -538,6 +538,27 @@ describe("hooks/manager", () => {
       );
     });
 
+    it("treats an empty custom policy path array as absent", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: ["block-sudo"],
+        customPoliciesPath: "/tmp/legacy.js",
+      });
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      const { installHooks } = await import("../../src/hooks/manager");
+
+      await installHooks(["block-sudo"], "user", undefined, false, undefined, []);
+
+      expect(loadCustomHooks).not.toHaveBeenCalled();
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPath: "/tmp/legacy.js" }),
+        "user",
+        undefined,
+      );
+    });
+
     it("clears customPoliciesPath when removeCustomHooks is true", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");

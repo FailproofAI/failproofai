@@ -3,7 +3,7 @@
 ## 0.0.15-beta.1 — 2026-07-29
 
 ### Features
-- Support multiple explicit custom policy files. Repeat `--custom <path>` during installation to configure an ordered list stored as `customPoliciesPaths`; runtime loading, CLI output, uninstall, and the dashboard now handle every file. Existing `customPoliciesPath` configurations remain supported.
+- Support multiple explicit custom policy files. Repeat `--custom <path>` during installation to configure an ordered list stored as `customPoliciesPaths`; runtime loading, CLI output, uninstall, and the dashboard now handle every file. Existing `customPoliciesPath` configurations remain supported. (#623)
 
 ## 0.0.15-beta.0 — 2026-07-23
 

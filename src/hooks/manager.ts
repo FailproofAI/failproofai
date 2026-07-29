@@ -218,7 +218,10 @@ async function installHooksImpl(
   if (removeCustomHooks) {
     delete configToWrite.customPoliciesPath;
     delete configToWrite.customPoliciesPaths;
-  } else if (customPoliciesPath) {
+  } else if (
+    customPoliciesPath &&
+    (typeof customPoliciesPath === "string" || customPoliciesPath.length > 0)
+  ) {
     const paths = (typeof customPoliciesPath === "string" ? [customPoliciesPath] : customPoliciesPath)
       .map((path) => resolve(path));
     configToWrite.customPoliciesPaths = [...new Set(paths)];

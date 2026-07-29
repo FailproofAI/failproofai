@@ -39,6 +39,7 @@ import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
+import { isDuplicateInvocation, recordInvocation } from "./dedup-invocation";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -221,6 +222,13 @@ export async function handleHookEvent(
       parsed.tool_input = canonicalInput;
     }
 
+    // Deduplicate duplicate hook handler invocations from multiple scopes
+    const { isDuplicate, exitCode: prevExitCode } = isDuplicateInvocation(cli, canonicalEventType, parsed);
+    if (isDuplicate) {
+      hookLogInfo(`deduplicated duplicate hook invocation from multiple scopes: event=${canonicalEventType} cli=${cli}`);
+      return prevExitCode;
+    }
+
     // Extract session metadata from payload
     const sessionId = parsed.session_id as string | undefined;
     const session: SessionMetadata = {
@@ -377,6 +385,7 @@ export async function handleHookEvent(
         // Telemetry is best-effort — never block the hook
       }
     }
+    recordInvocation(cli, canonicalEventType, parsed, result.exitCode);
     return result.exitCode;
   } finally {
     // Await any un-awaited (`void trackHookEvent(...)`) events fired during

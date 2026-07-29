@@ -104,7 +104,12 @@ async function loadSingleFile(
     tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex);
 
     const entryTmp = absPath + TMP_SUFFIX;
-    // Cache-bust the specifier. The temp path is deterministic, so a second
+    // Cache-bust the specifier. NOTE this works under Node but NOT under Bun,
+    // which caches by resolved path and ignores the query — and the shipped
+    // binary runs under Bun. It is kept because it makes repeat loads behave
+    // the same on both runtimes where it can, but nothing may DEPEND on a
+    // repeat load re-executing; callers dedupe paths instead (see above).
+    // The temp path is deterministic, so a second
     // load of the same file inside one process hit the ESM module cache, the
     // module body never re-ran, no `customPolicies.add` fired, and the caller
     // saw zero hooks — indistinguishable from a broken policy file. That is
@@ -248,9 +253,26 @@ export async function loadAllCustomHooks(
   }
 
   // 3. User convention: ~/.failproofai/policies/*policies.{js,mjs,ts}
+  //
+  // Skipped entirely when it resolves to the directory already loaded above —
+  // which happens whenever the project root IS the home directory, a normal
+  // setup for a gateway. Without this, every file is loaded a second time and
+  // `customPolicies.add` (an unconditional push) registers each hook twice, so
+  // every policy fires twice per event. For a counting policy that means the
+  // count doubles and its ceiling trips at half the real number.
+  //
+  // Today that is masked by the runtime rather than prevented: Bun caches
+  // dynamic imports by resolved path and IGNORES the `?v=` cache-buster below,
+  // so the second import is a no-op — but Node honours the query and would
+  // double-register. The binary runs under Bun and the tests under Node, so the
+  // bug is invisible from both sides. Do not rely on that; dedupe the paths.
   const userDir = resolve(homedir(), ".failproofai", "policies");
-  if (conventionEnabled) warnSkippedPolicyFiles(userDir, "user");
-  const userFiles = conventionEnabled ? discoverPolicyFiles(userDir) : [];
+  const alreadyLoaded = new Set(projectFiles);
+  if (conventionEnabled && userDir !== projectDir) warnSkippedPolicyFiles(userDir, "user");
+  const userFiles =
+    conventionEnabled && userDir !== projectDir
+      ? discoverPolicyFiles(userDir).filter((f) => !alreadyLoaded.has(f))
+      : [];
   for (const file of userFiles) {
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });

@@ -109,6 +109,10 @@ describe("getHooksConfigAction — convention policies", () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "fp-convention-"));
+    // The action prefers FAILPROOFAI_LAUNCH_CWD over process.cwd(); if it is
+    // set in the shell or the CI image, the cwd spy below is bypassed and every
+    // test here silently resolves against the wrong root.
+    vi.stubEnv("FAILPROOFAI_LAUNCH_CWD", "");
   });
 
   afterEach(() => {

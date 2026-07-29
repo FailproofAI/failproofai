@@ -112,13 +112,27 @@ async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
 
   const out: ConventionPolicyFile[] = [];
   for (const { scope, dir } of dirs) {
-    for (const filePath of discoverPolicyFiles(dir)) {
-      out.push({
-        scope,
-        file: basename(filePath),
-        path: filePath,
-        policies: await parseCustomPoliciesFromFile(filePath),
-      });
+    // Isolate per directory and per file. `parseCustomPoliciesFromFile` guards
+    // non-existence but `readFile` still throws on EACCES, a file deleted
+    // between listing and reading, or a directory entry — and that rejection
+    // propagates out of the action, where both callers swallow it, leaving the
+    // Configure Policies tab stuck on "Loading…" with no error. One unreadable
+    // file must cost that file's policy list, not the whole page.
+    let files: string[] = [];
+    try {
+      files = discoverPolicyFiles(dir);
+    } catch {
+      continue;
+    }
+    for (const filePath of files) {
+      let policies: CustomPolicyInfo[] = [];
+      try {
+        policies = await parseCustomPoliciesFromFile(filePath);
+      } catch {
+        // Still list the file — it IS installed and enforcing; we just cannot
+        // read its contents to name the policies.
+      }
+      out.push({ scope, file: basename(filePath), path: filePath, policies });
     }
   }
   return out;

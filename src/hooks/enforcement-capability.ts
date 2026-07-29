@@ -41,7 +41,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
 > = {
   // ── claude ────────────────────────────────────────────────────────────────
   // Closed source, but the shipped launcher embeds its minified JS as plaintext.
-  // Offsets are BYTE offsets into /home/chetan/.local/share/claude/versions/2.1.220.
+  // Offsets are BYTE offsets into the shipped claude 2.1.220 launcher bundle.
   // The hook RUNNER is event-agnostic (exit 2 -> blockingError @259223339); all
   // asymmetry lives in the ~29 call sites that read or ignore it.
   claude: {
@@ -117,7 +117,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
 
   // ── cursor ────────────────────────────────────────────────────────────────
   // Closed source; local install ships webpack-minified JS. Offsets are CHAR
-  // offsets into ~/.local/share/cursor-agent/versions/2026.07.16-899851b/*.js.
+  // offsets into the shipped cursor-agent 2026.07.16-899851b bundle.
   cursor: {
     PreToolUse: "block",           // 3143.index.js char 26967 permission==="deny" -> {type:"rejected"}; second MCP consumer char 42084
     Stop: "block",                 // 1931.index.js char 881820 followup_message queued as the next user message. CAPS: loop_limit default 5 (index.js char 4123300); consumed ONLY on the status:"completed" path — user-abort (char 870298) and turn-error (char 883549) discard it
@@ -187,7 +187,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
   },
 
   // ── factory (droid) ───────────────────────────────────────────────────────
-  // droid 0.175.1 (~/.local/bin/droid, ELF not stripped, embedded JS readable).
+  // droid 0.175.1 (the shipped droid binary, ELF not stripped, embedded JS readable).
   // Anchors below are unique grep-able strings in that bundle.
   factory: {
     PreToolUse: "block",           // grep `throwing ToolExecutionControlError`: exit 2 -> throw $SH(stderr); also hookSpecificOutput.permissionDecision==="deny" -> throw $SH, continue===false -> throw LSH, exit 3 -> AgentAbortError. We emit exit 2 + stderr

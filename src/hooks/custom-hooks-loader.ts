@@ -124,23 +124,26 @@ async function loadSingleFile(
  * Clears the registry, loads the file, returns registered hooks.
  */
 export async function loadCustomHooks(
-  customPoliciesPath: string | undefined,
+  customPoliciesPath: string | string[] | undefined,
   opts?: { strict?: boolean; sessionCwd?: string },
 ): Promise<CustomHook[]> {
   if (!customPoliciesPath) return [];
-
-  const absPath = isAbsolute(customPoliciesPath)
-    ? customPoliciesPath
-    : resolve(opts?.sessionCwd ?? process.cwd(), customPoliciesPath);
-
-  if (!existsSync(absPath)) {
-    if (opts?.strict) throw new Error(`Custom hooks file not found: ${absPath}`);
-    hookLogWarn(`customPoliciesPath not found: ${absPath}`);
-    return [];
-  }
+  const paths = Array.isArray(customPoliciesPath) ? customPoliciesPath : [customPoliciesPath];
+  if (paths.length === 0) return [];
 
   clearCustomHooks();
-  await loadSingleFile(absPath, opts);
+  const root = opts?.sessionCwd ?? process.cwd();
+
+  for (const path of paths) {
+    if (!path) continue;
+    const absPath = isAbsolute(path) ? path : resolve(root, path);
+    if (!existsSync(absPath)) {
+      if (opts?.strict) throw new Error(`Custom hooks file not found: ${absPath}`);
+      hookLogWarn(`customPoliciesPath not found: ${absPath}`);
+      continue;
+    }
+    await loadSingleFile(absPath, opts);
+  }
   return getCustomHooks();
 }
 
@@ -185,7 +188,7 @@ function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
 }
 
 export async function loadAllCustomHooks(
-  customPoliciesPath: string | undefined,
+  customPoliciesPath: string | string[] | undefined,
   opts?: { sessionCwd?: string; customPoliciesEnabled?: boolean },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
@@ -201,15 +204,17 @@ export async function loadAllCustomHooks(
   // purpose, so switching off *discovery* shouldn't silently drop it too.
   const conventionEnabled = opts?.customPoliciesEnabled !== false;
 
-  // 1. Explicit customPoliciesPath (existing behavior)
+  // 1. Explicit customPoliciesPath (supports single string or array of strings)
   if (customPoliciesPath) {
-    const absPath = isAbsolute(customPoliciesPath)
-      ? customPoliciesPath
-      : resolve(projectRoot, customPoliciesPath);
-    if (existsSync(absPath)) {
-      await loadSingleFile(absPath);
-    } else {
-      hookLogWarn(`customPoliciesPath not found: ${absPath}`);
+    const paths = Array.isArray(customPoliciesPath) ? customPoliciesPath : [customPoliciesPath];
+    for (const path of paths) {
+      if (!path) continue;
+      const absPath = isAbsolute(path) ? path : resolve(projectRoot, path);
+      if (existsSync(absPath)) {
+        await loadSingleFile(absPath);
+      } else {
+        hookLogWarn(`customPoliciesPath not found: ${absPath}`);
+      }
     }
   }
 

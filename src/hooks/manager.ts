@@ -109,7 +109,7 @@ export async function installHooks(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   options: InstallHooksOptions = {},
@@ -140,7 +140,7 @@ async function installHooksImpl(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   replace = false,
@@ -216,7 +216,9 @@ async function installHooksImpl(
   if (removeCustomHooks) {
     delete configToWrite.customPoliciesPath;
   } else if (customPoliciesPath) {
-    configToWrite.customPoliciesPath = resolve(customPoliciesPath);
+    configToWrite.customPoliciesPath = Array.isArray(customPoliciesPath)
+      ? customPoliciesPath.map((p) => resolve(p))
+      : resolve(customPoliciesPath);
     // Validate the file before committing it to config
     let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
     try {
@@ -232,6 +234,7 @@ async function installHooksImpl(
       console.error(`Error: ${msg}`);
       process.exit(1);
     }
+    const pathStr = Array.isArray(customPoliciesPath) ? customPoliciesPath.join(", ") : customPoliciesPath;
     if (validatedHooks.length === 0) {
       try {
         await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
@@ -240,7 +243,7 @@ async function installHooksImpl(
         });
       } catch {}
       console.error(
-        `Error: no hooks registered in ${customPoliciesPath}. ` +
+        `Error: no hooks registered in ${pathStr}. ` +
           `Make sure your file calls customPolicies.add(...) at least once.`,
       );
       process.exit(1);
@@ -254,7 +257,10 @@ async function installHooksImpl(
   if (removeCustomHooks) {
     console.log("Custom hooks path cleared.");
   } else if (configToWrite.customPoliciesPath) {
-    console.log(`Custom hooks path: ${configToWrite.customPoliciesPath}`);
+    const displayPath = Array.isArray(configToWrite.customPoliciesPath)
+      ? configToWrite.customPoliciesPath.join(", ")
+      : configToWrite.customPoliciesPath;
+    console.log(`Custom hooks path: ${displayPath}`);
   }
 
   // Write hooks for each selected CLI
@@ -678,17 +684,22 @@ export async function listHooks(cwd?: string): Promise<void> {
 
   // Custom Policies section
   if (config.customPoliciesPath) {
-    console.log(`\n  \u2500\u2500 Custom Policies (${config.customPoliciesPath}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
-    if (!existsSync(config.customPoliciesPath)) {
-      console.log(`  \x1B[31m\u2717 File not found: ${config.customPoliciesPath}\x1B[0m`);
-    } else {
-      const hooks = await loadCustomHooks(config.customPoliciesPath);
-      if (hooks.length === 0) {
-        console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
+    const customPaths = Array.isArray(config.customPoliciesPath)
+      ? config.customPoliciesPath
+      : [config.customPoliciesPath];
+    for (const customPath of customPaths) {
+      console.log(`\n  \u2500\u2500 Custom Policies (${customPath}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+      if (!existsSync(customPath)) {
+        console.log(`  \x1B[31m\u2717 File not found: ${customPath}\x1B[0m`);
       } else {
-        const descColWidth = nameColWidth;
-        for (const hook of hooks) {
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
+        const hooks = await loadCustomHooks(customPath);
+        if (hooks.length === 0) {
+          console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
+        } else {
+          const descColWidth = nameColWidth;
+          for (const hook of hooks) {
+            console.log(`  \x1B[32m\u2713\x1B[0m       ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
+          }
         }
       }
     }

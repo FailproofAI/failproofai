@@ -41,6 +41,20 @@ describe("hooks/custom-hooks-loader", () => {
     expect(result).toEqual([]);
   });
 
+  it("loads multiple custom policy files when customPoliciesPath is an array", async () => {
+    const { existsSync } = await import("node:fs");
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    const { rewriteFileTree } = await import("../../src/hooks/loader-utils");
+    vi.mocked(rewriteFileTree).mockResolvedValue([
+      { src: "/path/one.js", dst: "/path/one.__failproofai_tmp__.mjs" },
+    ]);
+
+    const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+    await loadCustomHooks(["/path/one.js", "/path/two.js"]);
+    expect(rewriteFileTree).toHaveBeenCalledTimes(2);
+  });
+
   it("logs warning and returns [] when file does not exist", async () => {
     const { existsSync } = await import("node:fs");
     vi.mocked(existsSync).mockReturnValue(false);

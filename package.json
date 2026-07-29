@@ -1,6 +1,6 @@
 {
   "name": "failproofai",
-  "version": "0.0.15-beta.2",
+  "version": "0.0.16-beta.0",
   "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously — for Claude Code & the Agents SDK",
   "bin": {
     "failproofai": "./dist/cli.mjs"

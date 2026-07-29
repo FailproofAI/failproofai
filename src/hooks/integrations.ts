@@ -231,18 +231,39 @@ export const claudeCode: Integration = {
     // situation `WorktreeCreate` created: registered, silent on allow, and
     // therefore breaking `claude --worktree` until hand-edited. Only OUR
     // marked entries are touched; anyone else's hooks on the same event stay.
+    //
+    // This walks EVERY key the file happens to carry, including ones
+    // failproofai has never written — a newer Claude event, another tool's
+    // entry, a typo. Their values are therefore unvalidated input, and a
+    // non-array one (`"Foo": {}` or `"Foo": "bar"`) makes the iteration below
+    // throw. That aborts the whole install AFTER the policies were recorded as
+    // enabled, so the user is left believing they are covered while no hook was
+    // written at all — the silent non-enforcement this file exists to prevent.
+    // Skip anything not shaped like a matcher list and leave it untouched.
     const installed = new Set<string>(CLAUDE_INSTALL_EVENT_TYPES);
     for (const eventType of Object.keys(s.hooks)) {
       if (installed.has(eventType)) continue;
-      const matchers: ClaudeHookMatcher[] = s.hooks[eventType] ?? [];
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
+      const matchers = s.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      // Drop a matcher group only when WE emptied it. A group we never touched
+      // (no `hooks` array, or one that held nothing of ours) is somebody else's
+      // and is written back exactly as found — pruning is for our own entries,
+      // not a cleanup pass over the user's file.
+      const kept: ClaudeHookMatcher[] = [];
+      for (const matcher of matchers as ClaudeHookMatcher[]) {
+        if (!matcher || !Array.isArray(matcher.hooks)) {
+          if (matcher) kept.push(matcher);
+          continue;
+        }
+        const before = matcher.hooks.length;
         matcher.hooks = matcher.hooks.filter(
           (h) => !isMarkedHook(h as Record<string, unknown>),
         );
+        const weEmptiedIt = matcher.hooks.length === 0 && before > 0;
+        if (!weEmptiedIt) kept.push(matcher);
       }
-      s.hooks[eventType] = matchers.filter((m) => (m.hooks?.length ?? 0) > 0);
-      if (s.hooks[eventType].length === 0) delete s.hooks[eventType];
+      s.hooks[eventType] = kept;
+      if (kept.length === 0) delete s.hooks[eventType];
     }
 
     for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {

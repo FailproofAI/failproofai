@@ -47,6 +47,20 @@ export interface HookActivityEntry {
   toolName: string | null;
   policyName: string | null;
   policyNames?: string[];
+  /**
+   * Every policy that MATCHED this event and ran, whichever way it decided.
+   *
+   * `policyName` only ever names the policy that *decided* — on a plain
+   * `allow()` it is null, so a row could not distinguish "no policy applies
+   * here" from "your policy ran and allowed". That is the whole reason a user
+   * cannot tell whether a policy fired, and why an observation-only event looks
+   * identical to an uncovered one.
+   *
+   * Optional because rows written before this existed have no such field; every
+   * consumer must tolerate `undefined` rather than render an empty list as
+   * "nothing ran".
+   */
+  matchedPolicies?: string[];
   decision: "allow" | "deny" | "instruct";
   reason: string | null;
   durationMs: number;

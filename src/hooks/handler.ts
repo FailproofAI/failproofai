@@ -29,7 +29,7 @@ import type { PolicyFunction, PolicyResult } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
-import { clearPolicies, registerPolicy } from "./policy-registry";
+import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
@@ -324,6 +324,16 @@ export async function handleHookEvent(
       process.stderr.write(result.stderr);
     }
 
+    // Which policies actually ran for this event, regardless of how they
+    // decided. `result.policyName` names only the decider — null on a plain
+    // allow — so without this a row cannot tell "your policy ran and allowed"
+    // from "no policy covers this event". The lookup is the same cached call
+    // the evaluator already made, so it costs nothing.
+    const matchedPolicies = getPoliciesForEvent(
+      canonicalEventType,
+      parsed.tool_name as string | undefined,
+    ).map((p) => p.name);
+
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {
       timestamp: Date.now(),
@@ -332,6 +342,7 @@ export async function handleHookEvent(
       toolName: (parsed.tool_name as string) ?? null,
       policyName: result.policyName,
       policyNames: result.policyNames,
+      matchedPolicies,
       decision: result.decision,
       reason: result.reason,
       durationMs,

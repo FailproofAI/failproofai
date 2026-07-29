@@ -48,6 +48,7 @@ import {
   ANTIGRAVITY_HOOK_EVENT_TYPES,
   GOOSE_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
+  CLAUDE_INSTALL_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
   type CursorHookEventType,
@@ -166,13 +167,16 @@ describe("Claude Code integration", () => {
     expect(entry.command).toBe("npx -y failproofai --hook PreToolUse");
   });
 
-  it("writeHookEntries adds a matcher per HOOK_EVENT_TYPES event", () => {
+  // Installed events are HOOK_EVENT_TYPES minus WorktreeCreate, which is a
+  // worktree-path provider rather than a gate — see the dedicated describe below.
+  it("writeHookEntries adds a matcher per installed event", () => {
     const settings: Record<string, unknown> = {};
     claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     const hooks = settings.hooks as Record<string, unknown[]>;
-    for (const eventType of HOOK_EVENT_TYPES) {
+    for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {
       expect(hooks[eventType]).toBeDefined();
     }
+    expect(Object.keys(hooks)).toHaveLength(CLAUDE_INSTALL_EVENT_TYPES.length);
   });
 
   it("re-running writeHookEntries is idempotent (replaces, doesn't duplicate)", () => {
@@ -191,7 +195,7 @@ describe("Claude Code integration", () => {
     claudeCode.writeSettings(settingsPath, settings);
 
     const removed = claudeCode.removeHooksFromFile(settingsPath);
-    expect(removed).toBe(HOOK_EVENT_TYPES.length);
+    expect(removed).toBe(CLAUDE_INSTALL_EVENT_TYPES.length);
 
     const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
     expect(after.hooks).toBeUndefined();
@@ -1723,5 +1727,68 @@ describe("Goose integration", () => {
     goose.writeSettings(settingsPath, settings);
 
     expect(goose.hooksInstalledInSettings("project", tempDir)).toBe(true);
+  });
+
+});
+
+// Claude's `WorktreeCreate` is not a permission gate — it is a worktree-PATH
+// PROVIDER. Claude takes the stdout of the first hook that succeeds as the
+// directory to create, and fails with "WorktreeCreate hook failed" when none
+// supplies one. failproofai writes nothing to stdout on allow, correctly, by
+// the contract every other event uses — so merely registering there broke
+// `claude --worktree` and `/worktree` for every user, whatever any policy
+// decided. No builtin matches the event (all 39 match only PreToolUse /
+// PostToolUse / PermissionRequest / Stop), so not registering costs nothing.
+describe("claudeCode — WorktreeCreate is never registered", () => {
+  it("omits WorktreeCreate from the events it installs", () => {
+    expect(claudeCode.eventTypes).not.toContain("WorktreeCreate");
+    // Sanity: the real gates are still installed.
+    expect(claudeCode.eventTypes).toContain("PreToolUse");
+    expect(claudeCode.eventTypes).toContain("Stop");
+  });
+
+  it("does not write a WorktreeCreate hook", () => {
+    const settings: Record<string, unknown> = {};
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, unknown>;
+    expect(hooks.WorktreeCreate).toBeUndefined();
+    expect(hooks.PreToolUse).toBeDefined();
+  });
+
+  it("prunes our stale WorktreeCreate entry on reinstall", () => {
+    // A machine installed before the fix. Reinstalling must repair it —
+    // otherwise the broken entry survives forever and worktrees stay broken.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        WorktreeCreate: [
+          { hooks: [{ type: "command", command: "old", __failproofai_hook__: true }] },
+        ],
+      },
+    };
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, unknown>;
+    expect(hooks.WorktreeCreate).toBeUndefined();
+  });
+
+  it("leaves someone else's WorktreeCreate hook alone", () => {
+    // We only own entries carrying our marker; a user's own worktree-path
+    // provider is the thing that makes the feature work and must survive.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        WorktreeCreate: [
+          {
+            hooks: [
+              { type: "command", command: "echo /tmp/wt" },
+              { type: "command", command: "old", __failproofai_hook__: true },
+            ],
+          },
+        ],
+      },
+    };
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>;
+    expect(hooks.WorktreeCreate).toHaveLength(1);
+    expect(hooks.WorktreeCreate[0].hooks).toHaveLength(1);
+    expect(hooks.WorktreeCreate[0].hooks[0].command).toBe("echo /tmp/wt");
   });
 });

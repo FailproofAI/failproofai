@@ -15,6 +15,7 @@ import { parseDocument, type Document } from "yaml";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import {
   HOOK_EVENT_TYPES,
+  CLAUDE_INSTALL_EVENT_TYPES,
   HOOK_SCOPES,
   CODEX_HOOK_EVENT_TYPES,
   CODEX_HOOK_SCOPES,
@@ -177,7 +178,7 @@ export const claudeCode: Integration = {
   id: "claude",
   displayName: "Claude Code",
   scopes: HOOK_SCOPES,
-  eventTypes: HOOK_EVENT_TYPES,
+  eventTypes: CLAUDE_INSTALL_EVENT_TYPES,
 
   getSettingsPath(scope, cwd) {
     const base = cwd ? resolve(cwd) : process.cwd();
@@ -224,7 +225,27 @@ export const claudeCode: Integration = {
     const s = settings as ClaudeSettings;
     if (!s.hooks) s.hooks = {};
 
-    for (const eventType of HOOK_EVENT_TYPES) {
+    // Drop our hook from any event we no longer install. Without this, an
+    // event removed from the list stays in settings.json forever on existing
+    // machines — reinstalling would not repair it — which is exactly the
+    // situation `WorktreeCreate` created: registered, silent on allow, and
+    // therefore breaking `claude --worktree` until hand-edited. Only OUR
+    // marked entries are touched; anyone else's hooks on the same event stay.
+    const installed = new Set<string>(CLAUDE_INSTALL_EVENT_TYPES);
+    for (const eventType of Object.keys(s.hooks)) {
+      if (installed.has(eventType)) continue;
+      const matchers: ClaudeHookMatcher[] = s.hooks[eventType] ?? [];
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        matcher.hooks = matcher.hooks.filter(
+          (h) => !isMarkedHook(h as Record<string, unknown>),
+        );
+      }
+      s.hooks[eventType] = matchers.filter((m) => (m.hooks?.length ?? 0) > 0);
+      if (s.hooks[eventType].length === 0) delete s.hooks[eventType];
+    }
+
+    for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {
       const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
       if (!s.hooks[eventType]) s.hooks[eventType] = [];
       const matchers: ClaudeHookMatcher[] = s.hooks[eventType];

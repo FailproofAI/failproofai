@@ -1002,7 +1002,29 @@ export const HOOK_EVENT_TYPES = [
   "Setup",
 ] as const;
 
+
+
 export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];
+
+/**
+ * Events failproofai actually INSTALLS a hook for on Claude Code.
+ *
+ * Everything in `HOOK_EVENT_TYPES` except `WorktreeCreate`, which is not a
+ * permission gate at all: Claude uses it as a worktree-PATH PROVIDER, taking
+ * the stdout of the first hook that succeeds as the directory to create and
+ * failing with "WorktreeCreate hook failed" when no hook supplies one. Our
+ * allow path writes nothing to stdout — correctly, by the contract every other
+ * event uses — so merely being registered there broke `claude --worktree` and
+ * `/worktree` for every user, whatever any policy decided.
+ *
+ * It stays in `HOOK_EVENT_TYPES` because that list is the canonical set a
+ * policy may subscribe to; this one governs what we write into settings.json.
+ * No builtin matches it (all 39 match only PreToolUse / PostToolUse /
+ * PermissionRequest / Stop), so nothing is lost by not registering.
+ */
+export const CLAUDE_INSTALL_EVENT_TYPES = HOOK_EVENT_TYPES.filter(
+  (e) => e !== "WorktreeCreate",
+) as readonly HookEventType[];
 
 export const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__" as const;
 

@@ -179,6 +179,21 @@ export async function evaluatePolicies(
             decision: "deny",
           };
         }
+        // `beforeSubmitPrompt` does NOT read `permission`. Its only block key
+        // is `continue: false` (+ an optional `user_message` shown to the
+        // user); an object carrying unknown keys validates and is dropped, so
+        // the flat deny below was inert and every prompt went through. Verified
+        // against cursor-agent 2026.07.16-899851b, 1931.index.js char 887883.
+        if (eventType === "UserPromptSubmit") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ continue: false, user_message: blockedMessage }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
         const response = {
           permission: "deny",
           user_message: blockedMessage,
@@ -420,6 +435,41 @@ export async function evaluatePolicies(
           reason,
           decision: "deny",
         };
+      }
+
+      // Copilot reads two shapes we were not sending, so a deny on either of
+      // these events was emitted, logged, counted as enforcement — and ignored.
+      // Both verified against the shipped @github/copilot-linux-x64 bundle.
+      // Note exit 2 is NEVER a deny channel on copilot for any event; it is
+      // logged as `Hook command exited with code 2 (warning)`.
+      if (session?.cli === "copilot") {
+        // `userPromptSubmit` gates the turn, but only on {decision:"block"} at
+        // exit 0 (consumer app.js@2823018). We were emitting exit 2 + stderr,
+        // which copilot warns about and then submits the prompt anyway.
+        if (eventType === "UserPromptSubmit") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        // Copilot consumes a FLAT {behavior, message} here (normalizer
+        // CMn@179042 -> mapper h4t@2686538). The Codex-shaped nested
+        // hookSpecificOutput.decision below normalizes to `{}` on copilot, so
+        // the permission prompt proceeded as if no policy existed.
+        if (eventType === "PermissionRequest") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ behavior: "deny", message: blockedMessage }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
       }
 
       if (eventType === "PermissionRequest") {

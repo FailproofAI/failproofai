@@ -347,7 +347,22 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       cwd: resolveCwd(e.cwd),
       hook_event_name: "PreToolUse",
     });
-    if (decision.block) return { block: true, reason: decision.reason };
+    // `UserBashEventResult` is `{operations?, result?: BashResult}` — there is
+    // no `block` field, so the `{block:true}` we used to return matched nothing
+    // and the command ran anyway. The supported way to stop it is a FULL
+    // REPLACEMENT result: the extension declares it handled execution, so Pi
+    // uses this instead of running the command. Verified against the installed
+    // pi-coding-agent d.ts (extensions/types.d.ts:772, core/bash-executor.d.ts:15).
+    if (decision.block) {
+      return {
+        result: {
+          output: decision.reason ?? "Blocked by failproofai",
+          exitCode: 1,
+          cancelled: false,
+          truncated: false,
+        },
+      };
+    }
     return undefined;
   });
 
@@ -365,8 +380,19 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     return undefined;
   });
 
-  // input → UserPromptSubmit. Honor block decisions if Pi accepts them
-  // (Pi's docs describe block on input but it's not exhaustively tested).
+  // input → UserPromptSubmit.
+  //
+  // `InputEventResult` is `{action:"continue"|"transform"|"handled"}`
+  // (extensions/types.d.ts:629) — there is NO `block` field, so the
+  // `{block:true}` we used to return matched neither branch and every prompt
+  // was submitted regardless of the verdict. `{action:"handled"}` is the only
+  // stop: it tells Pi an extension consumed the input, so nothing is sent to
+  // the model.
+  //
+  // Known UX limitation: `handled` drops the prompt silently — Pi shows the
+  // user nothing. We log the reason to stderr so it is at least recoverable
+  // from the session output. Pi has no first-class channel for explaining a
+  // refusal at this event; if one appears, prefer it over the silent drop.
   pi.on("input", (event: unknown): unknown => {
     const e = event as PiInputEvent;
     const decision = callPolicy("input", {
@@ -375,8 +401,11 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       cwd: resolveCwd(e.cwd),
       hook_event_name: "UserPromptSubmit",
     });
-    if (decision.block) return { block: true, reason: decision.reason };
-    return undefined;
+    if (decision.block) {
+      console.error(`[failproofai] prompt blocked: ${decision.reason ?? "blocked by policy"}`);
+      return { action: "handled" };
+    }
+    return { action: "continue" };
   });
 
   // session_start → SessionStart. Observe-only; we still forward so the

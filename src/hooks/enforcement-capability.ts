@@ -103,8 +103,8 @@ export const ENFORCEMENT_CAPABILITY: Record<
     PreToolUse: "block",           // 1.0.68 app.js@2878277 permissionDecision==="deny" -> resultType:"denied"; 1.0.71 moved to Rust, runtime.node@60059067 "Denied by preToolUse hook". Corroborated LIVE on 1.0.71 (session events success:false code:denied) + daily integration-suite probe
     Stop: "block",                 // 1.0.71 app.js@2855430 agentStop: decision==="block" && string reason -> enqueueUserMessage(reason). We emit exactly that shape
     SubagentStop: "block",         // 1.0.71 app.js@1074101 subagentStop: decision==="block" && reason -> `continue` re-runs the subagent turn. CAVEAT skipped entirely for isSidekick subagents
-    UserPromptSubmit: "observe",   // OVERTURNED from "block". The CLI DOES gate (V$t @2547438, consumer @2823018) but needs {decision:"block",reason} at exit 0; we emit exit 2 + stderr, which copilot logs as a warning. INERT — OURS TO FIX (§5.2)
-    PermissionRequest: "observe",  // OVERTURNED. CLI consumes FLAT {behavior,message,interrupt} (normalizer CMn @179042, mapper h4t @2686538); we emit the Codex NESTED hookSpecificOutput.decision -> CMn yields {}. INERT — OURS TO FIX
+    UserPromptSubmit: "block",     // FIXED: we now emit {decision:"block",reason} at exit 0 (gate V$t @2547438, consumer @2823018). Was inert — we sent exit 2 + stderr, which copilot logs as a warning for EVERY event and never treats as a deny
+    PermissionRequest: "block",    // FIXED: we now emit the FLAT {behavior,message} copilot parses (normalizer CMn @179042 -> mapper h4t @2686538). Was inert — the Codex-shaped nested hookSpecificOutput.decision normalized to {}
     PostToolUse: "observe",        // OVERTURNED. Gate vK @173853 needs top-level decision==="block"; we emit hookSpecificOutput.additionalContext. Post-hoc anyway (result-rewrite only). Vendor docs: "Can block? No"
     SessionStart: "observe",       // 1.0.71 app.js@2836633 reads ONLY additionalContext
     SessionEnd: "observe",         // 1.0.71 app.js@2627263 `.then(()=>{})` — return explicitly thrown away
@@ -121,7 +121,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
   cursor: {
     PreToolUse: "block",           // 3143.index.js char 26967 permission==="deny" -> {type:"rejected"}; second MCP consumer char 42084
     Stop: "block",                 // 1931.index.js char 881820 followup_message queued as the next user message. CAPS: loop_limit default 5 (index.js char 4123300); consumed ONLY on the status:"completed" path — user-abort (char 870298) and turn-error (char 883549) discard it
-    UserPromptSubmit: "observe",   // 1931.index.js char 887883 — the ONLY block key is continue===false. We emit {permission:"deny",...} (policy-evaluator.ts:181-184), which validates as an unknown-key object and is dropped. INERT — OURS TO FIX (§5.2)
+    UserPromptSubmit: "block",     // FIXED: we now emit {continue:false,user_message} (1931.index.js char 887883 — the only block key). Was inert: {permission:"deny"} validates as an unknown-key object and is dropped on this event
     PostToolUse: "observe",        // 3143.index.js char 26339 fireSuccessAsync reads only additional_context; validator accepts nothing else (index.js char 4126700)
     SessionStart: "observe",       // 1931.index.js char 731566 consumes only env + additional_context; `continue` never read even though Cursor's own q() builds it
     SessionEnd: "observe",         // 1931.index.js char 724540 — result assigned to nothing
@@ -151,8 +151,8 @@ export const ENFORCEMENT_CAPABILITY: Record<
   // @earendil-works/pi-coding-agent 0.80.10 installed (d.ts read directly);
   // source cross-read at repo cced6a2 (0.82.1). Identical result shapes.
   pi: {
-    PreToolUse: "block",           // tool_call: ToolCallEventResult{block,reason} (types.d.ts:766) -> runner.emitToolCall returns on result.block -> agent-loop.ts:626 `if(beforeResult?.block) return createErrorToolResult(...)`; tool never executes. ⚠ user_bash ALSO maps to PreToolUse and is INERT — see §5.2
-    UserPromptSubmit: "observe",   // input: InputEventResult is {action:"continue"|"transform"|"handled"} (types.d.ts:629) — there is NO `block` field. Our shim returns {block,reason} (pi-extension/index.ts:378), which matches neither branch at agent-session.ts:1143-1148, so the prompt is submitted. INERT — OURS TO FIX (§5.2)
+    PreToolUse: "block",           // tool_call: ToolCallEventResult{block,reason} (types.d.ts:766) -> runner.emitToolCall returns on result.block -> agent-loop.ts:626 `if(beforeResult?.block) return createErrorToolResult(...)`; tool never executes. user_bash also maps here and is now FIXED too: the shim returns a full-replacement {result:BashResult} (types.d.ts:772) so the command is not run — {block,reason} had no matching field
+    UserPromptSubmit: "block",     // FIXED: the shim now returns {action:"handled"} (InputEventResult, types.d.ts:629) so the prompt is never submitted. Was inert — {block,reason} matched no branch. CAVEAT: `handled` drops the prompt SILENTLY; Pi shows the user nothing, so the shim logs the reason to stderr
     PostToolUse: "observe",        // tool_result: ToolResultEventResult{content,details,isError,usage} (types.d.ts:778) — no block field; mutation only
     SessionStart: "observe",       // on(event:"session_start", ExtensionHandler<SessionStartEvent>) — NO Result type param (types.d.ts:842); runner.emit() only consumes returns for session_before_* (runner.ts:787-813)
     SessionEnd: "observe",         // session_shutdown: same — handler declared with no Result type (types.d.ts:848)

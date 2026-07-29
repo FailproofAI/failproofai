@@ -75,6 +75,8 @@ export interface HooksConfigPayload {
   /** Per-CLI install state at user scope, in `INTEGRATION_TYPES` order. */
   clis: CliInstallStatus[];
   policies: PolicyInfo[];
+  customPoliciesPaths?: string[];
+  /** Legacy singular path retained for older dashboard clients. */
   customPoliciesPath?: string;
   customPolicies?: CustomPolicyInfo[];
   /** Convention-discovered policy files, project scope first. */
@@ -195,9 +197,9 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     currentParams: p.params ? (config.policyParams?.[p.name] ?? {}) : undefined,
   }));
 
-  const customPolicies = config.customPoliciesPath
-    ? await parseCustomPoliciesFromFile(config.customPoliciesPath)
-    : undefined;
+  const customPoliciesPaths = config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
+  const parsedCustomPolicies = await Promise.all(customPoliciesPaths.map(parseCustomPoliciesFromFile));
+  const customPolicies = parsedCustomPolicies.flat();
 
   const conventionPolicies = await discoverConventionPolicies();
 
@@ -207,8 +209,9 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     settingsPath,
     clis,
     policies,
-    customPoliciesPath: config.customPoliciesPath,
-    customPolicies: customPolicies?.length ? customPolicies : undefined,
+    customPoliciesPaths: customPoliciesPaths.length ? customPoliciesPaths : undefined,
+    customPoliciesPath: customPoliciesPaths.length === 1 ? customPoliciesPaths[0] : undefined,
+    customPolicies: customPolicies.length ? customPolicies : undefined,
     conventionPolicies,
   };
 }

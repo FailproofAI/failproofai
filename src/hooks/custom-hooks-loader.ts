@@ -3,7 +3,7 @@
  * Supports transitive local imports and `import { ... } from 'failproofai'`.
  *
  * Two loading modes:
- * 1. Explicit: a single file via `customPoliciesPath` in policies-config.json
+ * 1. Explicit: files via `customPoliciesPaths` in policies-config.json
  * 2. Convention: auto-discovered *policies.{js,mjs,ts} files from
  *    .failproofai/policies/ at project and user level (git-hooks style)
  *
@@ -205,7 +205,7 @@ function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
 }
 
 export async function loadAllCustomHooks(
-  customPoliciesPath: string | undefined,
+  customPoliciesPaths: string | string[] | undefined,
   opts?: { sessionCwd?: string; customPoliciesEnabled?: boolean },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
@@ -228,16 +228,21 @@ export async function loadAllCustomHooks(
   // convention passes.
   const loadedPaths = new Set<string>();
 
-  // 1. Explicit customPoliciesPath (existing behavior)
-  if (customPoliciesPath) {
+  // 1. Explicit custom policy paths. Accept a string for callers/configs using
+  // the legacy singular form.
+  for (const customPoliciesPath of typeof customPoliciesPaths === "string"
+    ? [customPoliciesPaths]
+    : customPoliciesPaths ?? []) {
     const absPath = isAbsolute(customPoliciesPath)
       ? customPoliciesPath
       : resolve(projectRoot, customPoliciesPath);
     if (existsSync(absPath)) {
-      loadedPaths.add(absPath);
-      await loadSingleFile(absPath);
+      if (!loadedPaths.has(absPath)) {
+        loadedPaths.add(absPath);
+        await loadSingleFile(absPath);
+      }
     } else {
-      hookLogWarn(`customPoliciesPath not found: ${absPath}`);
+      hookLogWarn(`custom policy path not found: ${absPath}`);
     }
   }
 

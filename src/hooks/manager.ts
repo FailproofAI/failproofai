@@ -110,7 +110,7 @@ export async function installHooks(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   options: InstallHooksOptions = {},
@@ -141,7 +141,7 @@ async function installHooksImpl(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   replace = false,
@@ -212,50 +212,57 @@ async function installHooksImpl(
     selectedPolicies = await promptPolicySelection(preSelected, { includeBeta });
   }
 
-  // Preserve existing config fields (policyParams, customPoliciesPath, llm) when updating
+  // Preserve existing config fields when updating. New writes use the plural
+  // form, while reads continue to accept the legacy singular field.
   const configToWrite = { ...previousConfig, enabledPolicies: selectedPolicies };
   if (removeCustomHooks) {
     delete configToWrite.customPoliciesPath;
+    delete configToWrite.customPoliciesPaths;
   } else if (customPoliciesPath) {
-    configToWrite.customPoliciesPath = resolve(customPoliciesPath);
-    // Validate the file before committing it to config
-    let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
-    try {
-      validatedHooks = await loadCustomHooks(configToWrite.customPoliciesPath, { strict: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    const paths = (typeof customPoliciesPath === "string" ? [customPoliciesPath] : customPoliciesPath)
+      .map((path) => resolve(path));
+    configToWrite.customPoliciesPaths = [...new Set(paths)];
+    delete configToWrite.customPoliciesPath;
+    for (const path of configToWrite.customPoliciesPaths) {
+      let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
       try {
-        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
-          scope,
-          error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
-        });
-      } catch {}
-      console.error(`Error: ${msg}`);
-      process.exit(1);
-    }
-    if (validatedHooks.length === 0) {
-      try {
-        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
-          scope,
-          error_type: "no_hooks_registered",
-        });
-      } catch {}
-      console.error(
-        `Error: no hooks registered in ${customPoliciesPath}. ` +
-          `Make sure your file calls customPolicies.add(...) at least once.`,
+        validatedHooks = await loadCustomHooks(path, { strict: true });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        try {
+          await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+            scope,
+            error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
+          });
+        } catch {}
+        console.error(`Error: ${msg}`);
+        process.exit(1);
+      }
+      if (validatedHooks.length === 0) {
+        try {
+          await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+            scope,
+            error_type: "no_hooks_registered",
+          });
+        } catch {}
+        console.error(
+          `Error: no hooks registered in ${path}. ` +
+            `Make sure your file calls customPolicies.add(...) at least once.`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `\nValidated ${validatedHooks.length} custom hook(s) from ${path}: ${validatedHooks.map((h) => h.name).join(", ")}`,
       );
-      process.exit(1);
     }
-    console.log(
-      `\nValidated ${validatedHooks.length} custom hook(s): ${validatedHooks.map((h) => h.name).join(", ")}`,
-    );
   }
   writeScopedHooksConfig(configToWrite, scope, cwd);
   console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
   if (removeCustomHooks) {
     console.log("Custom hooks path cleared.");
-  } else if (configToWrite.customPoliciesPath) {
-    console.log(`Custom hooks path: ${configToWrite.customPoliciesPath}`);
+  } else if (configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath) {
+    const paths = configToWrite.customPoliciesPaths ?? [configToWrite.customPoliciesPath!];
+    console.log(`Custom hooks paths: ${paths.join(", ")}`);
   }
 
   // Write hooks for each selected CLI
@@ -308,7 +315,7 @@ async function installHooksImpl(
       arch: arch(),
       os_release: release(),
       hostname_hash: hashToId(hostname()),
-      has_custom_hooks_path: !!(configToWrite.customPoliciesPath),
+      has_custom_hooks_path: !!(configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath),
       has_policy_params: !!(configToWrite.policyParams && Object.keys(configToWrite.policyParams).length > 0),
       param_policy_names: configToWrite.policyParams ? Object.keys(configToWrite.policyParams) : [],
       command_format: scope === "project" ? "npx" : "absolute",
@@ -387,6 +394,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   if (opts?.removeCustomHooks) {
     const config = readScopedHooksConfig(configScope, cwd);
     delete config.customPoliciesPath;
+    delete config.customPoliciesPaths;
     writeScopedHooksConfig(config, configScope, cwd);
     console.log("Custom hooks path cleared.");
   }
@@ -526,14 +534,14 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     // Clear config across all three scopes
     for (const s of HOOK_SCOPES) {
       const existing = readScopedHooksConfig(s, cwd);
-      if (existing.enabledPolicies.length > 0 || existing.customPoliciesPath || existing.policyParams) {
-        const { customPoliciesPath: _drop, policyParams: _dropParams, ...rest } = existing;
+      if (existing.enabledPolicies.length > 0 || existing.customPoliciesPaths?.length || existing.customPoliciesPath || existing.policyParams) {
+        const { customPoliciesPath: _drop, customPoliciesPaths: _dropMany, policyParams: _dropParams, ...rest } = existing;
         writeScopedHooksConfig({ ...rest, enabledPolicies: [] }, s, cwd);
       }
     }
   } else if (!HOOK_SCOPES.some((s) => hooksInstalledInSettings(s, cwd))) {
     const existing = readScopedHooksConfig(configScope, cwd);
-    const { customPoliciesPath: _drop, policyParams: _dropParams, ...rest } = existing;
+    const { customPoliciesPath: _drop, customPoliciesPaths: _dropMany, policyParams: _dropParams, ...rest } = existing;
     writeScopedHooksConfig({ ...rest, enabledPolicies: [] }, configScope, cwd);
   }
 }
@@ -689,13 +697,17 @@ export async function listHooks(cwd?: string): Promise<void> {
     }
   }
 
-  // Custom Policies section
-  if (config.customPoliciesPath) {
-    console.log(`\n  \u2500\u2500 Custom Policies (${config.customPoliciesPath}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
-    if (!existsSync(config.customPoliciesPath)) {
-      console.log(`  \x1B[31m\u2717 File not found: ${config.customPoliciesPath}\x1B[0m`);
-    } else {
-      const hooks = await loadCustomHooks(config.customPoliciesPath);
+  // Explicit Custom Policies section
+  const explicitPaths = config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
+  if (explicitPaths.length > 0) {
+    console.log(`\n  \u2500\u2500 Custom Policies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    for (const path of explicitPaths) {
+      console.log(`  ${path}`);
+      if (!existsSync(path)) {
+        console.log(`  \x1B[31m\u2717 File not found: ${path}\x1B[0m`);
+        continue;
+      }
+      const hooks = await loadCustomHooks(path);
       if (hooks.length === 0) {
         console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
       } else {

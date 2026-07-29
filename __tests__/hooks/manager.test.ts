@@ -509,13 +509,33 @@ describe("hooks/manager", () => {
 
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          customPoliciesPath: resolve("/tmp/my-hooks.js"),
+          customPoliciesPaths: [resolve("/tmp/my-hooks.js")],
         }),
         "user",
         undefined,
       );
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && l.includes(resolve("/tmp/my-hooks.js")))).toBe(true);
+    });
+
+    it("validates and saves multiple explicit custom policy paths", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { installHooks } = await import("../../src/hooks/manager");
+      const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+
+      await installHooks(["block-sudo"], "user", undefined, false, undefined, ["/tmp/a.js", "/tmp/b.js"]);
+
+      expect(loadCustomHooks).toHaveBeenCalledTimes(2);
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPaths: [resolve("/tmp/a.js"), resolve("/tmp/b.js")] }),
+        "user",
+        undefined,
+      );
     });
 
     it("clears customPoliciesPath when removeCustomHooks is true", async () => {
@@ -533,6 +553,7 @@ describe("hooks/manager", () => {
 
       const [[written]] = vi.mocked(writeScopedHooksConfig).mock.calls;
       expect((written as unknown as Record<string, unknown>).customPoliciesPath).toBeUndefined();
+      expect((written as unknown as Record<string, unknown>).customPoliciesPaths).toBeUndefined();
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && l.includes("Custom hooks path cleared"))).toBe(true);
     });

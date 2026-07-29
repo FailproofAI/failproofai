@@ -16,6 +16,22 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 // ── Core mechanics ────────────────────────────────────────────────────────────
 
 describe("custom-hooks core mechanics", () => {
+  it("loads multiple explicit custom policy files", () => {
+    const env = createFixtureEnv();
+    const firstPath = env.writeHook("first.mjs", `
+      import { customPolicies, allow } from "failproofai";
+      customPolicies.add({ name: "first", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+    `);
+    const secondPath = env.writeHook("second.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "second", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked by second file") });
+    `);
+    env.writeConfig({ enabledPolicies: [], customPoliciesPaths: [firstPath, secondPath] });
+    const result = runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+    expect(result.stdout).toContain("blocked by second file");
+  });
+
   it("custom hook that calls deny() → deny decision", () => {
     const env = createFixtureEnv();
     const hookPath = env.writeHook("deny-all.mjs", `

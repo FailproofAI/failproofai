@@ -164,7 +164,7 @@ COMMANDS
     --scope user|project|local     Config scope to write to (default: user)
                                    (Codex / Copilot / Cursor / OpenCode / Pi support user|project only)
     --beta                         Include beta policies
-    --custom, -c <path>            Path to a JS file of custom policies
+    --custom, -c <path>            Custom policy file (repeat for multiple files)
 
   policies --uninstall, -u       Disable policies or remove hooks
     [names...]                     Specific policy names to disable
@@ -172,7 +172,7 @@ COMMANDS
                                    Agent CLI(s) to uninstall from
     --scope user|project|local|all Config scope to remove from (default: user)
     --beta                         Remove only beta policies
-    --custom, -c                   Clear the customPoliciesPath from config
+    --custom, -c                   Clear all explicit custom policy paths
 
   policies --help, -h            Show this help for the policies command
 
@@ -261,7 +261,7 @@ OPTIONS (install)
   --scope user|project|local     Config scope to write to (default: user)
                                  (Codex / Copilot / Cursor / OpenCode / Pi support user|project only)
   --beta                         Include beta policies
-  --custom, -c <path>            Path to a JS file of custom policies
+  --custom, -c <path>            Custom policy file (repeat for multiple files)
                                  (skips interactive prompt; validates file first)
 
 OPTIONS (uninstall)
@@ -270,7 +270,7 @@ OPTIONS (uninstall)
                                  Agent CLI(s) to uninstall from
   --scope user|project|local|all Config scope to remove from (default: user)
   --beta                         Remove only beta policies
-  --custom, -c                   Clear the customPoliciesPath from config
+  --custom, -c                   Clear all explicit custom policy paths
 
 EXAMPLES
   failproofai policies
@@ -285,6 +285,7 @@ EXAMPLES
   failproofai policies --install --cli devin --scope project
   failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
   failproofai policies --install --custom ./my-policies.js
+  failproofai policies --install --custom ./security.js --custom ./workflow.js
   failproofai policies -i -c ./my-policies.js
   failproofai policies --uninstall block-sudo
   failproofai policies --uninstall --cli codex
@@ -312,11 +313,11 @@ EXAMPLES
         throw new CliError(`Invalid scope: ${scope}. Valid values: user, project, local`);
       }
 
-      const customIdx = subArgs.includes("--custom") ? subArgs.indexOf("--custom")
-                      : subArgs.includes("-c")        ? subArgs.indexOf("-c")
-                      : -1;
-      const customPoliciesPath = customIdx >= 0 ? subArgs[customIdx + 1] : undefined;
-      if (customIdx >= 0 && (!customPoliciesPath || customPoliciesPath.startsWith("-"))) {
+      const customIdxs = subArgs
+        .map((arg, index) => (arg === "--custom" || arg === "-c" ? index : -1))
+        .filter((index) => index >= 0);
+      const customPoliciesPaths = customIdxs.map((index) => subArgs[index + 1]);
+      if (customPoliciesPaths.some((path) => !path || path.startsWith("-"))) {
         throw new CliError("Missing path after --custom/-c\nUsage: --custom <path>  (e.g. --custom ./my-policies.js)");
       }
 
@@ -352,7 +353,7 @@ EXAMPLES
       // so a policy named "user" isn't incorrectly dropped by the default scope).
       const consumedIdxs = new Set();
       if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
-      if (customIdx >= 0) consumedIdxs.add(customIdx + 1);
+      for (const customIdx of customIdxs) consumedIdxs.add(customIdx + 1);
       for (const i of cliConsumedIdxs) consumedIdxs.add(i);
       const flags = new Set(["--install", "-i", "--scope", "--beta", "--custom", "-c", "--cli"]);
       const unknownInstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
@@ -369,7 +370,7 @@ EXAMPLES
       // prompt — validation of the custom file happens inside installHooks.
       const policyNames =
         explicitPolicyNames.length > 0 ? explicitPolicyNames
-        : customPoliciesPath !== undefined ? []
+        : customPoliciesPaths.length > 0 ? []
         : undefined;
 
       const cli = await resolveTargetClis(
@@ -383,7 +384,7 @@ EXAMPLES
         undefined,
         includeBeta,
         undefined,
-        customPoliciesPath,
+        customPoliciesPaths.length > 0 ? customPoliciesPaths : undefined,
         false,
         cli,
       );
@@ -393,7 +394,7 @@ EXAMPLES
         cli_count: cli.length,
         explicit_policies: explicitPolicyNames.length > 0,
         include_beta: includeBeta,
-        has_custom_path: !!customPoliciesPath,
+        has_custom_path: customPoliciesPaths.length > 0,
       });
       process.exit(0);
     }

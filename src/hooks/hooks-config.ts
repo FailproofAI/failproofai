@@ -55,7 +55,7 @@ export function findProjectConfigDir(start: string): string {
  * Merge rules:
  *   enabledPolicies: union + dedup across all three
  *   policyParams:    per-policy key, first scope that defines it wins entirely
- *   customPoliciesPath: first scope that defines it wins
+ *   customPoliciesPaths/customPoliciesPath: first scope defining either wins
  *   llm:            first scope that defines it wins
  */
 export function readMergedHooksConfig(cwd?: string): HooksConfig {
@@ -86,9 +86,17 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
     }
   }
 
-  // customPoliciesPath: first scope wins
-  const customPoliciesPath =
-    project.customPoliciesPath ?? local.customPoliciesPath ?? global_.customPoliciesPath;
+  // Explicit custom policy paths: first scope defining either the current
+  // array form or the legacy singular form wins.
+  const customPoliciesPaths = [project, local, global_]
+    .map((scope) =>
+      scope.customPoliciesPaths !== undefined
+        ? scope.customPoliciesPaths
+        : scope.customPoliciesPath !== undefined
+          ? [scope.customPoliciesPath]
+          : undefined,
+    )
+    .find((paths) => paths !== undefined);
 
   // llm: first scope wins
   const llm = project.llm ?? local.llm ?? global_.llm;
@@ -96,7 +104,7 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
   return {
     enabledPolicies: [...enabledSet],
     ...(Object.keys(mergedParams).length > 0 ? { policyParams: mergedParams } : {}),
-    ...(customPoliciesPath !== undefined ? { customPoliciesPath } : {}),
+    ...(customPoliciesPaths !== undefined ? { customPoliciesPaths } : {}),
     ...(llm !== undefined ? { llm } : {}),
   };
 }

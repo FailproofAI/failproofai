@@ -46,9 +46,7 @@ describe("hooks/custom-hooks-loader", () => {
     vi.mocked(existsSync).mockReturnValue(true);
 
     const { rewriteFileTree } = await import("../../src/hooks/loader-utils");
-    vi.mocked(rewriteFileTree).mockResolvedValue([
-      { src: "/path/one.js", dst: "/path/one.__failproofai_tmp__.mjs" },
-    ]);
+    vi.mocked(rewriteFileTree).mockResolvedValue(["/path/one.__failproofai_tmp__.mjs"]);
 
     const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
     await loadCustomHooks(["/path/one.js", "/path/two.js"]);

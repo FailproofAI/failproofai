@@ -98,12 +98,21 @@ function ProjectRow({
 
   // Depth is indentation, capped so a deep gateway path can't push the name off
   // a narrow screen.
+  //
+  // Applied to the icon cell as well as the name, not just the name: the icon
+  // lives in its own <td>, so indenting only the name left every child's folder
+  // icon sitting at the same x as its parent's. The row then read as a flat
+  // list with ragged text rather than a hierarchy. Shifting both by the same
+  // amount moves icon and label together, so a child visibly starts to the
+  // right of its parent's icon.
   const indent = { paddingLeft: `${Math.min(node.depth, 4) * 1.25}rem` };
 
   return (
     <tr className="border-b border-border hover:bg-muted/50 transition-colors">
       <td className="px-4 py-3">
-        <Folder className={`w-5 h-5 ${isFolder ? "text-muted-foreground" : "text-primary"}`} />
+        <div style={indent}>
+          <Folder className={`w-5 h-5 ${isFolder ? "text-muted-foreground" : "text-primary"}`} />
+        </div>
       </td>
       <td className="px-4 py-3 max-w-md">
         <div className="flex flex-wrap items-center gap-2" style={indent}>

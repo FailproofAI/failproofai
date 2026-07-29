@@ -601,4 +601,42 @@ describe("ProjectList — gateway folder tree", () => {
       "hermes",
     ]);
   });
+
+  // The folder icon lives in its own <td>, so indenting only the name cell left
+  // every child's icon at the same x as its parent's — the rows read as a flat
+  // list with ragged text instead of a hierarchy. Icon and label must shift
+  // together, and each level must start further right than the one above it.
+  it("indents the icon and the label together, one step per depth", () => {
+    const folders: ProjectFolder[] = [
+      {
+        name: "hermes-default-slack",
+        path: "hermes:default:slack",
+        isDirectory: true,
+        lastModified: new Date("2026-07-20T00:00:00Z"),
+        lastModifiedFormatted: "Jul 20, 2026",
+        cli: ["hermes"],
+        sessionCount: 3,
+      },
+    ];
+    const { container } = render(<ProjectList folders={folders} />);
+
+    // hermes (depth 0) → default (depth 1) → slack (depth 2)
+    const padOf = (text: string) => {
+      const row = [...container.querySelectorAll("tr")].find((r) => r.textContent?.includes(text))!;
+      const cells = [...row.querySelectorAll("td")];
+      const iconPad = (cells[0].firstElementChild as HTMLElement).style.paddingLeft;
+      const namePad = (cells[1].firstElementChild as HTMLElement).style.paddingLeft;
+      // Icon and name must agree, or the row splits into two ragged columns.
+      expect(iconPad).toBe(namePad);
+      return parseFloat(iconPad || "0");
+    };
+
+    const root = padOf("hermes");
+    const profile = padOf("default");
+    const channel = padOf("slack");
+
+    expect(root).toBe(0);
+    expect(profile).toBeGreaterThan(root);
+    expect(channel).toBeGreaterThan(profile);
+  });
 });

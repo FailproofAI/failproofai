@@ -709,9 +709,17 @@ export async function listHooks(cwd?: string): Promise<void> {
 
   // Convention Policies section (.failproofai/policies/*policies.{js,mjs,ts})
   const base = cwd ? resolve(cwd) : process.cwd();
+  const projectDir = resolve(base, ".failproofai", "policies");
+  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const sameDir = userDir === projectDir;
   const conventionDirs: { label: string; dir: string }[] = [
-    { label: "Project", dir: resolve(base, ".failproofai", "policies") },
-    { label: "User", dir: resolve(homedir(), ".failproofai", "policies") },
+    { label: sameDir ? "Project + User" : "Project", dir: projectDir },
+    // Running from $HOME makes both paths identical. Listing the directory
+    // twice printed every file a second time as "failed to load" — the file was
+    // already imported by the first pass, so the module cache short-circuits
+    // `customPolicies.add` and `loadCustomHooks` legitimately returns 0 hooks.
+    // Nothing was wrong with the policy; the second listing was.
+    ...(sameDir ? [] : [{ label: "User", dir: userDir }]),
   ];
 
   for (const { label, dir } of conventionDirs) {

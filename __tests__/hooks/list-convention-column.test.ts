@@ -92,4 +92,44 @@ describe("listHooks — convention policy column width", () => {
     expect(columnOf(LONG_NAME)).toBeGreaterThan(0);
     expect(columnOf(SHORT_NAME)).toBe(columnOf(LONG_NAME));
   });
+
+  // Running `failproofai policies` from $HOME makes the project and user
+  // convention directories the SAME path. The listing walked both, so every
+  // file was printed twice — and the second pass rendered them all as
+  // "failed to load", because the first pass had already imported the module
+  // and the ESM cache short-circuits `customPolicies.add`, so
+  // `loadCustomHooks` legitimately returns 0 hooks. Reported from a live
+  // install where four working policies all showed ✗.
+  it("lists a shared project/user directory once, without a phantom load failure", async () => {
+    seed({ [SHORT_NAME]: policySource("team-rule") });
+    // cwd === HOME: both scopes resolve to <tmp>/.failproofai/policies.
+    vi.stubEnv("HOME", tmp);
+    vi.stubEnv("USERPROFILE", tmp);
+
+    await listHooks(tmp);
+
+    const headers = lines.filter((l) => l.includes("Convention Policies"));
+    expect(headers).toHaveLength(1);
+    expect(headers[0]).toContain("Project + User");
+
+    const rows = lines.filter((l) => l.includes(SHORT_NAME));
+    expect(rows).toHaveLength(1);
+    expect(rows.join("\n")).not.toContain("failed to load");
+  });
+
+  it("still lists both directories when they differ", async () => {
+    seed({ [SHORT_NAME]: policySource("team-rule") });
+    const otherHome = mkdtempSync(join(tmpdir(), "fp-list-other-"));
+    vi.stubEnv("HOME", otherHome);
+    vi.stubEnv("USERPROFILE", otherHome);
+    try {
+      await listHooks(tmp);
+      const headers = lines.filter((l) => l.includes("Convention Policies"));
+      expect(headers).toHaveLength(1);
+      expect(headers[0]).toContain("Project");
+      expect(headers[0]).not.toContain("Project + User");
+    } finally {
+      rmSync(otherHome, { recursive: true, force: true });
+    }
+  });
 });

@@ -769,11 +769,17 @@ export async function listHooks(cwd?: string): Promise<void> {
     console.log();
   }
 
-  // Mirror what was just listed into policies-config.json. Safe here because
+  // Mirror what was just listed into the USER config. Safe here because
   // `failproofai policies` is a one-shot command — never do this on the hook
   // path (see the HooksConfig.conventionPolicies doc comment).
+  //
+  // User scope only, deliberately. A project's `.failproofai/policies-config.json`
+  // is routinely committed (this repo tracks its own), so writing the record
+  // there would make a plain `failproofai policies` dirty the working tree and
+  // put a spurious diff in front of every contributor — a read command must not
+  // do that. `discovered.project` is still collected so the listing above can
+  // report it; it simply is not persisted.
   try {
-    syncConventionPolicies(discovered.project, "project", cwd);
     syncConventionPolicies(discovered.user, "user");
   } catch (err) {
     // Listing must never fail because the mirror could not be written.

@@ -136,4 +136,26 @@ describe("convention policies are mirrored into policies-config.json", () => {
 
     expect("conventionPolicies" in readConfig()).toBe(false);
   });
+
+  // `.failproofai/policies-config.json` is routinely committed — this repo
+  // tracks its own — so persisting the record at project scope would make a
+  // plain `failproofai policies` dirty the working tree and put a spurious diff
+  // in front of every contributor. A read command must not do that.
+  it("never writes the record into a project config", async () => {
+    const project = mkdtempSync(join(tmpdir(), "fp-proj-"));
+    try {
+      const dir = join(project, ".failproofai", "policies");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "proj-policies.mjs"), policySource("proj-rule"), "utf8");
+      const projConfig = join(project, ".failproofai", "policies-config.json");
+      const original = JSON.stringify({ enabledPolicies: ["block-sudo"] }, null, 2) + "\n";
+      writeFileSync(projConfig, original, "utf8");
+
+      await listHooks(project);
+
+      expect(readFileSync(projConfig, "utf8")).toBe(original);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
 });

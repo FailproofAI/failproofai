@@ -222,11 +222,39 @@ async function installHooksImpl(
     customPoliciesPath &&
     (typeof customPoliciesPath === "string" || customPoliciesPath.length > 0)
   ) {
-    const paths = (typeof customPoliciesPath === "string" ? [customPoliciesPath] : customPoliciesPath)
+    const incoming = (typeof customPoliciesPath === "string" ? [customPoliciesPath] : customPoliciesPath)
       .map((path) => resolve(path));
-    configToWrite.customPoliciesPaths = [...new Set(paths)];
+
+    // Additive by default, mirroring `enabledPolicies` directly above: a second
+    // `--custom` ADDS to what is configured rather than silently discarding it.
+    // Replacing was the surprising half of the old single-path field — running
+    // `-c a` then `-c b` left only `b`, with nothing printed to say `a` had
+    // stopped applying. `replace` (passed by the configure wizard) still makes
+    // the given set authoritative, exactly as it does for enabled policies.
+    //
+    // Carried-over paths are filtered by existence first: a file deleted after
+    // it was configured must not make every future install fail, which is what
+    // the strict validation below would do.
+    const carried = (
+      previousConfig.customPoliciesPaths ??
+      (previousConfig.customPoliciesPath ? [previousConfig.customPoliciesPath] : [])
+    )
+      .map((path) => resolve(path))
+      .filter((path) => {
+        if (existsSync(path)) return true;
+        console.log(`Dropping custom policies path (file no longer exists): ${path}`);
+        return false;
+      });
+
+    configToWrite.customPoliciesPaths = replace
+      ? [...new Set(incoming)]
+      : [...new Set([...carried, ...incoming])];
     delete configToWrite.customPoliciesPath;
-    for (const path of configToWrite.customPoliciesPaths) {
+
+    // Validate only what this invocation added. Carried-over paths were
+    // validated when they were added, and re-validating them here would let one
+    // stale file block an unrelated install.
+    for (const path of incoming) {
       let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
       try {
         validatedHooks = await loadCustomHooks(path, { strict: true });

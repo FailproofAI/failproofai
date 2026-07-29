@@ -719,20 +719,26 @@ export async function listHooks(cwd?: string): Promise<void> {
     if (files.length === 0) continue;
 
     console.log(`\n  \u2500\u2500 Convention Policies \u2014 ${label} (${dir}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    // `nameColWidth` is sized to the longest BUILTIN name, but a convention
+    // filename can be longer \u2014 `padEnd` is then a no-op and the hook count runs
+    // straight into the filename with no space
+    // (`enforce-bengaluru-event-links-policies.mjs1 hook(s)`). Widen to fit the
+    // files actually being printed, keeping a two-space gutter.
+    const colWidth = Math.max(nameColWidth, ...files.map((f) => basename(f).length + 2));
     for (const file of files) {
       try {
         const hooks = await loadCustomHooks(file);
         if (hooks.length === 0) {
           const filename = basename(file);
-          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(nameColWidth)}\x1B[31mfailed to load\x1B[0m`);
+          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
         } else {
           const filename = basename(file);
           const hookSummary = hooks.map((h) => h.name).join(", ");
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(nameColWidth)}${hooks.length} hook(s): ${hookSummary}`);
+          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
         }
       } catch {
         const filename = basename(file);
-        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(nameColWidth)}\x1B[31merror\x1B[0m`);
+        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31merror\x1B[0m`);
       }
     }
     console.log();

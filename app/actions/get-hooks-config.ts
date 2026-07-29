@@ -7,8 +7,11 @@ import { listIntegrations } from "@/src/hooks/integrations";
 import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
 import { getCliLabel } from "@/lib/cli-registry";
+import { discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, resolve } from "node:path";
 
 export interface PolicyParamSpec {
   type: string;
@@ -34,6 +37,25 @@ export interface CustomPolicyInfo {
   eventScope?: string;
 }
 
+/**
+ * One convention-discovered policy file (`.failproofai/policies/*policies.mjs`)
+ * and the policies it declares.
+ *
+ * These are registered by the filesystem, never by `policies-config.json` — the
+ * whole point of the convention is that dropping a file in works with no config
+ * at all. So the dashboard has to discover them the same way the hook path and
+ * `failproofai policies --list` do; reading config alone renders nothing and
+ * makes a working policy look absent.
+ */
+export interface ConventionPolicyFile {
+  scope: "project" | "user";
+  /** Basename, e.g. `security-policies.mjs`. */
+  file: string;
+  /** Absolute path, shown so the user knows which file to edit. */
+  path: string;
+  policies: CustomPolicyInfo[];
+}
+
 export interface CliInstallStatus {
   id: IntegrationType;
   label: string;
@@ -54,6 +76,43 @@ export interface HooksConfigPayload {
   policies: PolicyInfo[];
   customPoliciesPath?: string;
   customPolicies?: CustomPolicyInfo[];
+  /** Convention-discovered policy files, project scope first. */
+  conventionPolicies: ConventionPolicyFile[];
+}
+
+/**
+ * Discover `.failproofai/policies/*policies.{js,mjs,ts}` at project and user
+ * scope and statically parse each one.
+ *
+ * Deliberately parsed, never imported: `manager.ts` executes these files to
+ * list them, which is fine for a one-shot CLI but would run arbitrary user code
+ * inside the long-lived dashboard server on every page load.
+ * `parseCustomPoliciesFromFile` is a regex read, so a malformed policy file
+ * degrades to "no policies listed" instead of taking the server down.
+ */
+async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
+  const projectDir = resolve(process.cwd(), ".failproofai", "policies");
+  const userDir = resolve(homedir(), ".failproofai", "policies");
+
+  const dirs: { scope: "project" | "user"; dir: string }[] = [
+    { scope: "project", dir: projectDir },
+    // Running the dashboard from $HOME makes both paths identical; listing the
+    // same file twice would read as two separate installs.
+    ...(userDir === projectDir ? [] : [{ scope: "user" as const, dir: userDir }]),
+  ];
+
+  const out: ConventionPolicyFile[] = [];
+  for (const { scope, dir } of dirs) {
+    for (const filePath of discoverPolicyFiles(dir)) {
+      out.push({
+        scope,
+        file: basename(filePath),
+        path: filePath,
+        policies: await parseCustomPoliciesFromFile(filePath),
+      });
+    }
+  }
+  return out;
 }
 
 async function parseCustomPoliciesFromFile(filePath: string): Promise<CustomPolicyInfo[]> {
@@ -117,6 +176,8 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     ? await parseCustomPoliciesFromFile(config.customPoliciesPath)
     : undefined;
 
+  const conventionPolicies = await discoverConventionPolicies();
+
   return {
     enabledPolicies: config.enabledPolicies,
     installedScopes,
@@ -125,5 +186,6 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     policies,
     customPoliciesPath: config.customPoliciesPath,
     customPolicies: customPolicies?.length ? customPolicies : undefined,
+    conventionPolicies,
   };
 }

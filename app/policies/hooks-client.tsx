@@ -382,7 +382,7 @@ function DetailPanel({
       <td colSpan={11} className="px-0 py-0">
         <div className="activity-detail animate-expand text-xs">
           <span className="activity-detail-eyebrow">
-            <span aria-hidden="true">\u25be</span>
+            <span aria-hidden="true">{"\u25BE"}</span>
             event detail
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">

@@ -6,6 +6,9 @@
 - Support multiple explicit custom policy files. Repeat `--custom <path>` during installation to configure an ordered list stored as `customPoliciesPaths`; runtime loading, CLI output, uninstall, and the dashboard now handle every file. Existing `customPoliciesPath` configurations remain supported. (#623)
 - Add independent dashboard toggles for policies in every explicit and convention policy file. Off policies are excluded from runtime registration before event matching, while source-qualified IDs keep same-named policies in different files independently controllable. (#623)
 
+### Fixes
+- Show dashboard-disabled custom and convention policies as `OFF` in `failproofai policies` instead of rendering a green checkmark. Convention files containing both enabled and disabled policies are marked `MIXED`, with each disabled policy identified in the summary. (#623)
+
 ## 0.0.15-beta.0 — 2026-07-23
 
 ### Dependencies

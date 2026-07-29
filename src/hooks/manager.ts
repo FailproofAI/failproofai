@@ -19,7 +19,12 @@ import { promptPolicySelection } from "./install-prompt";
 import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
-import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
+import {
+  loadCustomHooks,
+  discoverPolicyFiles,
+  customPolicyId,
+  conventionPolicyId,
+} from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
@@ -592,6 +597,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
 export async function listHooks(cwd?: string): Promise<void> {
   const config = readMergedHooksConfig(cwd);
   const enabledSet = new Set(config.enabledPolicies);
+  const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
 
   // Determine which scopes have hooks installed (deduplicate when paths overlap, e.g. cwd === home)
   const uniqueScopes = deduplicateScopes(HOOK_SCOPES, cwd);
@@ -733,18 +739,24 @@ export async function listHooks(cwd?: string): Promise<void> {
   if (explicitPaths.length > 0) {
     console.log(`\n  \u2500\u2500 Custom Policies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     for (const path of explicitPaths) {
-      console.log(`  ${path}`);
-      if (!existsSync(path)) {
-        console.log(`  \x1B[31m\u2717 File not found: ${path}\x1B[0m`);
+      // Enforcement resolves configured paths from the project config root.
+      // Use the same canonical path here so the ID checked by the CLI exactly
+      // matches the ID written by the dashboard.
+      const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
+      console.log(`  ${absPath}`);
+      if (!existsSync(absPath)) {
+        console.log(`  \x1B[31m\u2717 File not found: ${absPath}\x1B[0m`);
         continue;
       }
-      const hooks = await loadCustomHooks(path);
+      const hooks = await loadCustomHooks(absPath);
       if (hooks.length === 0) {
         console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
       } else {
         const descColWidth = nameColWidth;
         for (const hook of hooks) {
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
+          const disabled = disabledCustomSet.has(customPolicyId(absPath, hook.name));
+          const status = disabled ? "\x1B[2m  OFF\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
+          console.log(`  ${status}    ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
         }
       }
     }
@@ -785,6 +797,9 @@ export async function listHooks(cwd?: string): Promise<void> {
     // its record is written to both scopes' config files.
     const targets: ("project" | "user")[] =
       dir === projectDir && dir === userDir ? ["project", "user"] : dir === projectDir ? ["project"] : ["user"];
+    // When both directories are the same, runtime discovery loads the file as
+    // project convention policy and skips the duplicate user pass.
+    const policyScope: "project" | "user" = dir === projectDir ? "project" : "user";
     const record = (file: string, hooks: string[]) => {
       for (const t of targets) discovered[t].push({ file, hooks });
     };
@@ -804,8 +819,20 @@ export async function listHooks(cwd?: string): Promise<void> {
         if (hooks.length === 0) {
           console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
         } else {
-          const hookSummary = hooks.map((h) => h.name).join(", ");
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
+          const hookStates = hooks.map((hook) => ({
+            hook,
+            disabled: disabledCustomSet.has(conventionPolicyId(policyScope, filename, hook.name)),
+          }));
+          const disabledCount = hookStates.filter((entry) => entry.disabled).length;
+          const status = disabledCount === 0
+            ? "\x1B[32m\u2713 ON\x1B[0m"
+            : disabledCount === hooks.length
+              ? "\x1B[2m  OFF\x1B[0m"
+              : "\x1B[33m\u25D0 MIXED\x1B[0m";
+          const hookSummary = hookStates
+            .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
+            .join(", ");
+          console.log(`  ${status}    ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
         }
       } catch {
         const filename = basename(file);

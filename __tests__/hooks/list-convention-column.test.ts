@@ -132,4 +132,47 @@ describe("listHooks — convention policy column width", () => {
       rmSync(otherHome, { recursive: true, force: true });
     }
   });
+
+  it("renders a dashboard-disabled explicit custom policy as OFF", async () => {
+    const policyPath = join(tmp, "custom.mjs");
+    writeFileSync(policyPath, policySource("custom-rule"), "utf8");
+    mkdirSync(join(tmp, ".failproofai"), { recursive: true });
+    writeFileSync(
+      join(tmp, ".failproofai", "policies-config.json"),
+      JSON.stringify({
+        enabledPolicies: [],
+        customPoliciesPaths: [policyPath],
+        disabledCustomPolicies: [`custom:${policyPath}:custom-rule`],
+      }),
+      "utf8",
+    );
+
+    await listHooks(tmp);
+
+    const row = lines.find((line) => line.includes("custom-rule"));
+    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).toContain("OFF");
+    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).not.toContain("✓");
+  });
+
+  it("renders disabled convention policies as OFF while leaving siblings enabled", async () => {
+    seed({
+      [SHORT_NAME]: `${policySource("enabled-rule")}\n${policySource("disabled-rule")}`,
+    });
+    writeFileSync(
+      join(tmp, ".failproofai", "policies-config.json"),
+      JSON.stringify({
+        enabledPolicies: [],
+        disabledCustomPolicies: [`convention:project:${SHORT_NAME}:disabled-rule`],
+      }),
+      "utf8",
+    );
+
+    await listHooks(tmp);
+
+    const row = lines.find((line) => line.includes(SHORT_NAME));
+    const plain = row?.replace(/\x1B\[[0-9;]*m/g, "");
+    expect(plain).toContain("MIXED");
+    expect(plain).toContain("enabled-rule");
+    expect(plain).toContain("disabled-rule (OFF)");
+  });
 });

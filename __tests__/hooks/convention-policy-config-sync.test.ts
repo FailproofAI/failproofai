@@ -158,4 +158,35 @@ describe("convention policies are mirrored into policies-config.json", () => {
       rmSync(project, { recursive: true, force: true });
     }
   });
+
+  // DATA LOSS GUARD. `readScopedHooksConfig` fails soft, returning
+  // {enabledPolicies: []} when the file will not parse — right for the hook
+  // path, fatal here. Writing that default back destroys everything the user
+  // had. One stray comma in a hand-edited config plus a `failproofai policies`
+  // run used to wipe every enabled policy, from a read-only command.
+  it("never overwrites a config file that does not parse", async () => {
+    seed({ "team-policies.mjs": policySource("team-rule") });
+    const malformed = '{\n  "enabledPolicies": ["block-sudo"],\n  OOPS\n}\n';
+    writeFileSync(configPath(), malformed, "utf8");
+
+    await listHooks(home);
+
+    expect(readFileSync(configPath(), "utf8")).toBe(malformed);
+  });
+
+  it("reports not-written for an unparseable config", () => {
+    const dir = mkdtempSync(join(tmpdir(), "fp-bad-"));
+    try {
+      mkdirSync(join(dir, ".failproofai"), { recursive: true });
+      writeFileSync(join(dir, ".failproofai", "policies-config.json"), "{ nope", "utf8");
+      const wrote = syncConventionPolicies(
+        [{ file: "x-policies.mjs", hooks: ["x"] }],
+        "project",
+        dir,
+      );
+      expect(wrote).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

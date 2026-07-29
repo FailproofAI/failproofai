@@ -197,6 +197,25 @@ export function syncConventionPolicies(
   // that would litter every directory the CLI is run from.
   if (!existsSync(configPath) && entries.length === 0) return false;
 
+  // NEVER write over a file we could not parse. `readScopedHooksConfig` fails
+  // soft, returning `{enabledPolicies: []}` on a syntax error — correct for the
+  // hook path, which must not die because a config is malformed, but fatal
+  // here: writing that default back silently DESTROYS the user's real settings.
+  // A hand-edited file with one stray comma would lose every enabled policy the
+  // moment someone ran `failproofai policies`, a read-only command. Bail and
+  // leave the file exactly as it is; the parse warning already surfaced.
+  if (existsSync(configPath)) {
+    try {
+      JSON.parse(readFileSync(configPath, "utf8"));
+    } catch {
+      hookLogWarn(
+        `not recording convention policies: ${configPath} is not valid JSON — ` +
+          `fix the syntax error and re-run. Nothing was written.`,
+      );
+      return false;
+    }
+  }
+
   const config = readScopedHooksConfig(scope, cwd);
   const sorted = [...entries].sort((a, b) => a.file.localeCompare(b.file));
   const next: HooksConfig = { ...config };

@@ -19,12 +19,7 @@ import { promptPolicySelection } from "./install-prompt";
 import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
-import {
-  loadCustomHooks,
-  discoverPolicyFiles,
-  customPolicyId,
-  conventionPolicyId,
-} from "./custom-hooks-loader";
+import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
@@ -754,7 +749,7 @@ export async function listHooks(cwd?: string): Promise<void> {
       } else {
         const descColWidth = nameColWidth;
         for (const hook of hooks) {
-          const disabled = disabledCustomSet.has(customPolicyId(absPath, hook.name));
+          const disabled = disabledCustomSet.has(`custom:${absPath}:${hook.name}`);
           const status = disabled ? "\x1B[2m  OFF\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
           console.log(`  ${status}    ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
         }
@@ -821,7 +816,7 @@ export async function listHooks(cwd?: string): Promise<void> {
         } else {
           const hookStates = hooks.map((hook) => ({
             hook,
-            disabled: disabledCustomSet.has(conventionPolicyId(policyScope, filename, hook.name)),
+            disabled: disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
           }));
           const disabledCount = hookStates.filter((entry) => entry.disabled).length;
           const status = disabledCount === 0

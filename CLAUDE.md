@@ -367,17 +367,43 @@ internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_ca
 | `post_tool_call`   | `PostToolUse`                  | observation    | Observe / sanitize. |
 | `on_session_start` | `SessionStart`                 | observation    | — |
 | `on_session_end`   | `SessionEnd`                   | observation    | — |
-| `subagent_stop`    | `SubagentStop`                 | ✅ block       | Subagent-return gate. |
+| `subagent_stop`    | `SubagentStop`                 | observation    | **NOT a gate** — see the correction below. |
+| `pre_verify`       | `Stop`                         | ✅ block       | Turn-end gate; conditions below. |
 
-**Limitations vs. Claude semantics.** Hermes has **no turn-end `Stop` event** — its
-lifecycle is session-oriented and it can't force another turn into a session that's
-ending — so `HERMES_EVENT_MAP` never emits `Stop` and the 5 `require-*-before-stop`
-builtins never fire for it (inapplicable, not broken). It also lacks `UserPromptSubmit`
-(only per-LLM-call `pre_llm_call`), `PreCompact`/`Notification`, etc. `instruct()`
-degrades to **allow + logged note** — Hermes has no additional-context channel, so the
-evaluator emits a non-blocking `{"decision":"allow", reason}` and surfaces the note on
-stderr. In exchange Hermes has capabilities others lack (`transform_tool_result`,
-`pre_gateway_dispatch`, `pre_llm_call`) — out of scope for now.
+**Corrections (2026-07-29).** Three claims that stood here were wrong, each verified
+against upstream `hermes-agent` @ `5771a6e`. `agent/shell_hooks.py:567-621`
+(`_parse_response`) is **event-gated**: it returns a verdict for `pre_tool_call` and
+`pre_verify` only, and falls through to `return None` for everything else. So:
+
+1. **`subagent_stop` was documented "✅ block" and is not one.** The parser never
+   returns a verdict for it, and the call site discards the return anyway
+   (`tools/delegate_tool.py:2677`, a bare `invoke_hook(...)`). Any customer policy
+   denying on SubagentStop had **zero** enforcement for as long as that row stood.
+2. **"Hermes has no turn-end `Stop` event" was false.** `pre_verify` is exactly that,
+   and we now install it. Upstream fires it once per turn when the agent has edited
+   code and is about to finish (`agent/conversation_loop.py:6754`); its parser accepts
+   our Claude Stop shape verbatim — `{decision:"block",reason}` reads as "block the
+   stop", i.e. keep going — and the reason is injected as a synthetic user message
+   before the loop re-enters (`conversation_loop.py:6774-6800`). The 5
+   `require-*-before-stop` builtins therefore **do** work on Hermes now, subject to:
+   it fires only on turns that landed `write_file`/`patch`
+   (`agent/tool_result_classification.py:9` — a `terminal`-only turn does not qualify,
+   so a chat-only gateway may never see it), it is capped at 3 nudges per turn
+   (`agent/verify_hooks.py:21`, operator-overridable), and on Hermes older than
+   ~2026-06-30 the config key fails `VALID_HOOKS` and is **warn-and-skipped silently**
+   (`agent/shell_hooks.py:325`).
+3. **"No additional-context channel" was false.** `pre_llm_call` consumes
+   `{"context": str}` via the parser's fallthrough (`shell_hooks.py:617-621`). We do
+   not install it, so `instruct()` still degrades to allow + a stderr note — but that
+   is now a gap we chose, not a limit of the platform.
+
+Hermes still lacks `UserPromptSubmit` (only per-LLM-call `pre_llm_call`),
+`PreCompact`/`Notification`, etc. In exchange it has capabilities others lack
+(`transform_tool_result`, `pre_gateway_dispatch`, `pre_llm_call`) — out of scope for now.
+
+The authoritative, machine-readable version of this table is now
+`src/hooks/enforcement-capability.ts`, which a test asserts against. Prefer it over this
+prose: this table is exactly the artifact that drifted.
 
 **Tool-input canonicalization.** `HERMES_TOOL_MAP` canonicalizes tool *names* and
 `HERMES_TOOL_INPUT_MAP` the *argument keys*. Verified against a live `~/.hermes/state.db`:

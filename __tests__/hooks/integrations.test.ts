@@ -773,8 +773,12 @@ describe("HERMES_EVENT_MAP", () => {
     expect(HERMES_EVENT_MAP.subagent_stop).toBe("SubagentStop");
   });
 
-  it("has NO Stop mapping — Hermes has no turn-end event", () => {
-    expect(Object.values(HERMES_EVENT_MAP)).not.toContain("Stop");
+  // This test used to assert the opposite, pinning a claim that was simply
+  // never checked: upstream's `pre_verify` IS a turn-end gate, and while this
+  // stood the 5 require-*-before-stop builtins were dead on Hermes.
+  it("maps pre_verify to Stop — Hermes DOES have a turn-end gate", () => {
+    expect(Object.values(HERMES_EVENT_MAP)).toContain("Stop");
+    expect(HERMES_EVENT_MAP.pre_verify).toBe("Stop");
   });
 
   it("HERMES_EVENT_MAP keys exactly match HERMES_HOOK_EVENT_TYPES", () => {
@@ -1790,5 +1794,25 @@ describe("claudeCode — WorktreeCreate is never registered", () => {
     expect(hooks.WorktreeCreate).toHaveLength(1);
     expect(hooks.WorktreeCreate[0].hooks).toHaveLength(1);
     expect(hooks.WorktreeCreate[0].hooks[0].command).toBe("echo /tmp/wt");
+  });
+});
+
+// Hermes's turn-end gate. It must be installed, mapped to canonical Stop, and
+// carry the same command form as every other Hermes event.
+describe("hermes — pre_verify is installed and mapped to Stop", () => {
+  it("includes pre_verify in the installed events", () => {
+    expect(HERMES_HOOK_EVENT_TYPES).toContain("pre_verify");
+  });
+
+  it("maps pre_verify to canonical Stop", () => {
+    expect(HERMES_EVENT_MAP.pre_verify).toBe("Stop");
+  });
+
+  it("writes a pre_verify entry into config.yaml", () => {
+    const doc = hermes.readSettings("/tmp/does-not-exist-hermes.yaml");
+    hermes.writeHookEntries(doc, "/usr/bin/failproofai", "user");
+    const js = (doc as unknown as { toJS: () => { hooks?: Record<string, Array<{ command: string }>> } }).toJS();
+    expect(js.hooks?.pre_verify).toBeDefined();
+    expect(js.hooks?.pre_verify?.[0].command).toContain("--hook pre_verify --cli hermes");
   });
 });

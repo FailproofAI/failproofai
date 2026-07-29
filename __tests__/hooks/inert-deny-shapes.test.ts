@@ -77,4 +77,24 @@ describe("deny shapes the CLI actually reads", () => {
     expect(stdout.decision).toBe("block");
     expect(stdout.reason).toContain("MANDATORY ACTION REQUIRED");
   });
+
+  // `pre_verify` is Hermes's turn-end gate — the event CLAUDE.md claimed did not
+  // exist, which made the 5 require-*-before-stop builtins dead there. Upstream
+  // reads {decision:"block"} as "block the stop", i.e. keep going, and injects
+  // `reason` as a synthetic user message. So the reason must be the instruction
+  // we want the model to act on, not a refusal notice.
+  it("hermes Stop (pre_verify) carries the MANDATORY-ACTION instruction", async () => {
+    const { result, stdout } = await denyOn("hermes", "Stop");
+    expect(result.exitCode).toBe(0);
+    expect(stdout.decision).toBe("block");
+    expect(stdout.reason).toContain("MANDATORY ACTION REQUIRED");
+    // Upstream requires a non-empty message or the continue is downgraded.
+    expect(stdout.reason.trim().length).toBeGreaterThan(0);
+  });
+
+  it("hermes non-Stop events keep the plain blocked message", async () => {
+    const { stdout } = await denyOn("hermes", "PreToolUse", { tool_name: "Bash" });
+    expect(stdout.decision).toBe("block");
+    expect(stdout.reason).not.toContain("MANDATORY ACTION REQUIRED");
+  });
 });

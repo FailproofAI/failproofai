@@ -42,7 +42,6 @@ describe("ENFORCEMENT_CAPABILITY", () => {
   // caller can stay silent. If lookup ever defaulted to a value, the UI would
   // assert a capability nobody established — the exact failure being fixed.
   it("returns undefined for an unverified pair rather than guessing", () => {
-    expect(enforcementFor("hermes", "Stop")).toBeUndefined();
     expect(enforcementFor("goose", "Stop")).toBeUndefined();
     expect(enforcementFor(undefined, "PreToolUse")).toBeUndefined();
     expect(enforcementFor("claude", undefined)).toBeUndefined();
@@ -57,7 +56,9 @@ describe("ENFORCEMENT_CAPABILITY", () => {
       if (pre !== undefined) expect(pre).toBe("block");
     }
 
-    // Hermes: only pre_tool_call is gated in upstream's _parse_response.
+    // Hermes: pre_tool_call and pre_verify (canonical Stop) are the two events
+    // upstream's _parse_response gates in; everything else is discarded.
+    expect(enforcementFor("hermes", "Stop")).toBe("block");
     expect(enforcementFor("hermes", "PreToolUse")).toBe("block");
     expect(enforcementFor("hermes", "SessionEnd")).toBe("observe");
     // Documented as a working gate for months; upstream discards the return.

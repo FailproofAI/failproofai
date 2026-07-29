@@ -29,6 +29,8 @@ vi.mock("../../src/hooks/hooks-config", () => ({
   // hits the filesystem; for these tests the cwd IS the project root.
   findProjectConfigDir: vi.fn((start: string) => start),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
+  configuredCustomPolicyPaths: vi.fn((config: { customPoliciesPaths?: string[]; customPoliciesPath?: string }) =>
+    config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : [])),
   writeHooksConfig: vi.fn(),
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeScopedHooksConfig: vi.fn(),
@@ -509,13 +511,155 @@ describe("hooks/manager", () => {
 
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          customPoliciesPath: resolve("/tmp/my-hooks.js"),
+          customPoliciesPaths: [resolve("/tmp/my-hooks.js")],
         }),
         "user",
         undefined,
       );
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && l.includes(resolve("/tmp/my-hooks.js")))).toBe(true);
+    });
+
+    // Installing with --custom is ADDITIVE, mirroring enabledPolicies in the
+    // same function. Replacing was the surprising half of the old single-path
+    // field: `-c a` then `-c b` left only `b`, and nothing said `a` had stopped
+    // applying — the policies just quietly went inert.
+    it("adds to the configured paths instead of replacing them", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: [],
+        customPoliciesPaths: [resolve("/tmp/a.js")],
+      });
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks([], "user", undefined, false, undefined, "/tmp/b.js");
+
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customPoliciesPaths: [resolve("/tmp/a.js"), resolve("/tmp/b.js")],
+        }),
+        "user",
+        undefined,
+      );
+    });
+
+    it("does not duplicate a path that is already configured", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: [],
+        customPoliciesPaths: [resolve("/tmp/a.js")],
+      });
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks([], "user", undefined, false, undefined, "/tmp/a.js");
+
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPaths: [resolve("/tmp/a.js")] }),
+        "user",
+        undefined,
+      );
+    });
+
+    // A carried-over path whose file was deleted must not make every future
+    // install fail — the strict validation below would exit(1) on it.
+    it("drops a carried-over path whose file no longer exists", async () => {
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      vi.mocked(existsSync).mockImplementation((p: unknown) => String(p) !== resolve("/tmp/gone.js"));
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: [],
+        customPoliciesPaths: [resolve("/tmp/gone.js")],
+      });
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks([], "user", undefined, false, undefined, "/tmp/b.js");
+
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPaths: [resolve("/tmp/b.js")] }),
+        "user",
+        undefined,
+      );
+    });
+
+    // The configure wizard passes replace=true so its selection is authoritative.
+    it("replaces rather than adds when replace is set", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: [],
+        customPoliciesPaths: [resolve("/tmp/a.js")],
+      });
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks([], "user", undefined, false, undefined, "/tmp/b.js", false, undefined, { replace: true });
+
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPaths: [resolve("/tmp/b.js")] }),
+        "user",
+        undefined,
+      );
+    });
+
+    it("validates and saves multiple explicit custom policy paths", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      vi.mocked(loadCustomHooks).mockResolvedValue([
+        { name: "test-hook", fn: async () => ({ decision: "allow" as const }) },
+      ]);
+      const { installHooks } = await import("../../src/hooks/manager");
+      const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+
+      await installHooks(["block-sudo"], "user", undefined, false, undefined, ["/tmp/a.js", "/tmp/b.js"]);
+
+      expect(loadCustomHooks).toHaveBeenCalledTimes(2);
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPaths: [resolve("/tmp/a.js"), resolve("/tmp/b.js")] }),
+        "user",
+        undefined,
+      );
+    });
+
+    it("treats an empty custom policy path array as absent", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: ["block-sudo"],
+        customPoliciesPath: "/tmp/legacy.js",
+      });
+      const { loadCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
+      const { installHooks } = await import("../../src/hooks/manager");
+
+      await installHooks(["block-sudo"], "user", undefined, false, undefined, []);
+
+      expect(loadCustomHooks).not.toHaveBeenCalled();
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customPoliciesPath: "/tmp/legacy.js" }),
+        "user",
+        undefined,
+      );
     });
 
     it("clears customPoliciesPath when removeCustomHooks is true", async () => {
@@ -533,6 +677,7 @@ describe("hooks/manager", () => {
 
       const [[written]] = vi.mocked(writeScopedHooksConfig).mock.calls;
       expect((written as unknown as Record<string, unknown>).customPoliciesPath).toBeUndefined();
+      expect((written as unknown as Record<string, unknown>).customPoliciesPaths).toBeUndefined();
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && l.includes("Custom hooks path cleared"))).toBe(true);
     });

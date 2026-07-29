@@ -16,6 +16,94 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 // ── Core mechanics ────────────────────────────────────────────────────────────
 
 describe("custom-hooks core mechanics", () => {
+  it("can disable one policy in an explicit custom policy file", () => {
+    const env = createFixtureEnv();
+    const hookPath = env.writeHook("mixed.mjs", `
+      import { customPolicies, allow, deny } from "failproofai";
+      customPolicies.add({ name: "disabled-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+      customPolicies.add({ name: "still-enabled", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+    `);
+    env.writeConfig({
+      enabledPolicies: [], customPoliciesPaths: [hookPath],
+      disabledCustomPolicies: [`custom:${hookPath}:disabled-deny`],
+    });
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
+  it("toggles duplicate policy names independently across explicit files", () => {
+    const env = createFixtureEnv();
+    const firstPath = env.writeHook("first.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "shared-name", match: { events: ["PreToolUse"] }, fn: async () => deny("first") });
+    `);
+    const secondPath = env.writeHook("second.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "shared-name", match: { events: ["PreToolUse"] }, fn: async () => deny("second") });
+    `);
+    env.writeConfig({
+      enabledPolicies: [], customPoliciesPaths: [firstPath, secondPath],
+      disabledCustomPolicies: [`custom:${firstPath}:shared-name`],
+    });
+    assertPreToolUseDeny(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+
+    env.writeConfig({
+      enabledPolicies: [], customPoliciesPaths: [firstPath, secondPath],
+      disabledCustomPolicies: [`custom:${firstPath}:shared-name`, `custom:${secondPath}:shared-name`],
+    });
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
+  it("honours a disabled custom policy ID inherited from another config scope", () => {
+    const env = createFixtureEnv();
+    const hookPath = env.writeHook("scoped.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "scoped-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+    `);
+    env.writeConfig({ enabledPolicies: [], customPoliciesPaths: [hookPath] }, "project");
+    env.writeConfig({
+      enabledPolicies: [], disabledCustomPolicies: [`custom:${hookPath}:scoped-deny`],
+    }, "global");
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
+  it("ignores stale disabled IDs without affecting active policies", () => {
+    const env = createFixtureEnv();
+    const hookPath = env.writeHook("active.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "active-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("active") });
+    `);
+    env.writeConfig({
+      enabledPolicies: [], customPoliciesPath: hookPath,
+      disabledCustomPolicies: ["custom:/deleted/file.mjs:old-policy"],
+    });
+    assertPreToolUseDeny(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
+  it("loads multiple explicit custom policy files", () => {
+    const env = createFixtureEnv();
+    const firstPath = env.writeHook("first.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "first", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked by first file") });
+    `);
+    const secondPath = env.writeHook("second.mjs", `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "second", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked by second file") });
+    `);
+    env.writeConfig({ enabledPolicies: [], customPoliciesPaths: [firstPath, secondPath] });
+    const result = runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+    expect(result.stdout).toContain("blocked by first file");
+
+    env.writeConfig({
+      enabledPolicies: [],
+      customPoliciesPaths: [firstPath, secondPath],
+      disabledCustomPolicies: [`custom:${firstPath}:first`],
+    });
+    const secondResult = runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(secondResult);
+    expect(secondResult.stdout).toContain("blocked by second file");
+  });
+
   it("custom hook that calls deny() → deny decision", () => {
     const env = createFixtureEnv();
     const hookPath = env.writeHook("deny-all.mjs", `
@@ -379,6 +467,44 @@ describe("custom-hooks — customPoliciesPath scope levels", () => {
 // ── Convention-based policies (.failproofai/policies/) ──────────────────────
 
 describe("convention-based policies (.failproofai/policies/)", () => {
+  it("can disable one convention policy without disabling its file", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({
+      enabledPolicies: [],
+      disabledCustomPolicies: ["convention:project:mixed-policies.mjs:disabled-deny"],
+    });
+    env.writePolicyFile("mixed-policies.mjs", `
+      import { customPolicies, allow, deny } from "failproofai";
+      customPolicies.add({ name: "disabled-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+      customPolicies.add({ name: "still-enabled", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+    `);
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
+  it("toggles same-named project and user convention policies independently", () => {
+    const env = createFixtureEnv();
+    const source = `
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "shared-convention", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+    `;
+    env.writePolicyFile("shared-policies.mjs", source, "project");
+    env.writePolicyFile("shared-policies.mjs", source, "global");
+    env.writeConfig({
+      enabledPolicies: [],
+      disabledCustomPolicies: ["convention:project:shared-policies.mjs:shared-convention"],
+    });
+    assertPreToolUseDeny(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+
+    env.writeConfig({
+      enabledPolicies: [],
+      disabledCustomPolicies: [
+        "convention:project:shared-policies.mjs:shared-convention",
+        "convention:user:shared-policies.mjs:shared-convention",
+      ],
+    });
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
   // ── Basic discovery and execution ─────────────────────────────────────────
 
   it("project convention policy fires: deny hook in .failproofai/policies/", () => {

@@ -1,13 +1,13 @@
 "use server";
 
-import { readHooksConfig } from "@/src/hooks/hooks-config";
+import { configuredCustomPolicyPaths, readMergedHooksConfig } from "@/src/hooks/hooks-config";
 import { hooksInstalledInSettings, getSettingsPath } from "@/src/hooks/manager";
 import { BUILTIN_POLICIES } from "@/src/hooks/builtin-policies";
 import { listIntegrations } from "@/src/hooks/integrations";
 import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
 import { getCliLabel } from "@/lib/cli-registry";
-import { discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
+import { customPolicyId, conventionPolicyId, discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
 import { findProjectConfigDir } from "@/src/hooks/hooks-config";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -36,6 +36,8 @@ export interface CustomPolicyInfo {
   name: string;
   description?: string;
   eventScope?: string;
+  id: string;
+  enabled: boolean;
 }
 
 /**
@@ -75,6 +77,8 @@ export interface HooksConfigPayload {
   /** Per-CLI install state at user scope, in `INTEGRATION_TYPES` order. */
   clis: CliInstallStatus[];
   policies: PolicyInfo[];
+  customPoliciesPaths?: string[];
+  /** Legacy singular path retained for older dashboard clients. */
   customPoliciesPath?: string;
   customPolicies?: CustomPolicyInfo[];
   /** Convention-discovered policy files, project scope first. */
@@ -91,7 +95,10 @@ export interface HooksConfigPayload {
  * `parseCustomPoliciesFromFile` is a regex read, so a malformed policy file
  * degrades to "no policies listed" instead of taking the server down.
  */
-async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
+async function discoverConventionPolicies(
+  disabled: Set<string>,
+  explicitPaths: Set<string>,
+): Promise<ConventionPolicyFile[]> {
   // Two corrections over a bare `process.cwd()`, both of which made real
   // project policies invisible here while enforcement loaded them fine:
   //   - the standalone server chdir()s into the package on startup, so the real
@@ -125,9 +132,13 @@ async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
       continue;
     }
     for (const filePath of files) {
+      if (explicitPaths.has(filePath)) continue;
       let policies: CustomPolicyInfo[] = [];
       try {
-        policies = await parseCustomPoliciesFromFile(filePath);
+        policies = (await parseCustomPoliciesFromFile(filePath)).map((policy) => {
+          const id = conventionPolicyId(scope, basename(filePath), policy.name);
+          return { ...policy, id, enabled: !disabled.has(id) };
+        });
       } catch {
         // Still list the file — it IS installed and enforcing; we just cannot
         // read its contents to name the policies.
@@ -152,7 +163,7 @@ async function parseCustomPoliciesFromFile(filePath: string): Promise<CustomPoli
     const eventScope = eventsMatch
       ? eventsMatch[1].replace(/["'`\s]/g, "").split(",").filter(Boolean).join(", ")
       : undefined;
-    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope });
+    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope, id: "", enabled: true });
   }
   return policies;
 }
@@ -164,8 +175,12 @@ function buildEventScope(match: { events?: string[]; toolNames?: string[] }): st
 }
 
 export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
-  const config = readHooksConfig();
+  const launchCwd = process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd();
+  // Match runtime enforcement: project, local, and user config all
+  // contribute to the effective policy state shown by the dashboard.
+  const config = readMergedHooksConfig(launchCwd);
   const enabledSet = new Set(config.enabledPolicies);
+  const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
 
   const installedScopes = HOOK_SCOPES.filter((s) => hooksInstalledInSettings(s));
   const primaryScope: HookScope = installedScopes[0] ?? "user";
@@ -195,11 +210,27 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     currentParams: p.params ? (config.policyParams?.[p.name] ?? {}) : undefined,
   }));
 
-  const customPolicies = config.customPoliciesPath
-    ? await parseCustomPoliciesFromFile(config.customPoliciesPath)
-    : undefined;
+  const customPoliciesPaths = configuredCustomPolicyPaths(config);
+  const launchRoot = findProjectConfigDir(launchCwd);
+  const resolvedCustomPaths = customPoliciesPaths.map((path) => resolve(launchRoot, path));
+  const parsedCustomPolicies = await Promise.all(resolvedCustomPaths.map(async (path) => {
+    try {
+      return (await parseCustomPoliciesFromFile(path)).map((policy) => {
+        const id = customPolicyId(path, policy.name);
+        return { ...policy, id, enabled: !disabledCustomPolicies.has(id) };
+      });
+    } catch {
+      // Keep the rest of the dashboard usable when one configured file is
+      // unreadable or disappears between existsSync and readFile.
+      return [];
+    }
+  }));
+  const customPolicies = parsedCustomPolicies.flat();
 
-  const conventionPolicies = await discoverConventionPolicies();
+  const conventionPolicies = await discoverConventionPolicies(
+    disabledCustomPolicies,
+    new Set(resolvedCustomPaths),
+  );
 
   return {
     enabledPolicies: config.enabledPolicies,
@@ -207,8 +238,9 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     settingsPath,
     clis,
     policies,
-    customPoliciesPath: config.customPoliciesPath,
-    customPolicies: customPolicies?.length ? customPolicies : undefined,
+    customPoliciesPaths: customPoliciesPaths.length ? customPoliciesPaths : undefined,
+    customPoliciesPath: customPoliciesPaths.length === 1 ? customPoliciesPaths[0] : undefined,
+    customPolicies: customPolicies.length ? customPolicies : undefined,
     conventionPolicies,
   };
 }

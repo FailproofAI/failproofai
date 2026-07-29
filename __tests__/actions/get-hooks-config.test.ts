@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 vi.mock("@/src/hooks/hooks-config", () => ({
-  readHooksConfig: () => ({ enabledPolicies: [] }),
+  readMergedHooksConfig: () => ({ enabledPolicies: [] }),
+  configuredCustomPolicyPaths: (config: { customPoliciesPaths?: string[]; customPoliciesPath?: string }) =>
+    config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []),
   // The action walks up to the project root like enforcement does; these tests
   // point cwd straight at the project root, so identity is the right stub.
   findProjectConfigDir: (start: string) => start,
@@ -154,6 +156,8 @@ describe("getHooksConfigAction — convention policies", () => {
           name: "enforce-formal-review",
           description: "Require a formal review",
           eventScope: "PreToolUse, Stop",
+          id: "convention:project:enforce-formal-review-policies.mjs:enforce-formal-review",
+          enabled: true,
         },
       ]);
     } finally {

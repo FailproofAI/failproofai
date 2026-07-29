@@ -3,7 +3,7 @@
  * Supports transitive local imports and `import { ... } from 'failproofai'`.
  *
  * Two loading modes:
- * 1. Explicit: a single file via `customPoliciesPath` in policies-config.json
+ * 1. Explicit: files via `customPoliciesPaths` in policies-config.json
  * 2. Convention: auto-discovered *policies.{js,mjs,ts} files from
  *    .failproofai/policies/ at project and user level (git-hooks style)
  *
@@ -177,6 +177,14 @@ export interface LoadAllResult {
   conventionSources: ConventionSource[];
 }
 
+export function customPolicyId(file: string, name: string): string {
+  return `custom:${file}:${name}`;
+}
+
+export function conventionPolicyId(scope: "project" | "user", file: string, name: string): string {
+  return `convention:${scope}:${file}:${name}`;
+}
+
 /**
  * Load ALL custom hooks: explicit customPoliciesPath + convention-discovered files.
  *
@@ -205,7 +213,7 @@ function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
 }
 
 export async function loadAllCustomHooks(
-  customPoliciesPath: string | undefined,
+  customPoliciesPaths: string | string[] | undefined,
   opts?: { sessionCwd?: string; customPoliciesEnabled?: boolean },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
@@ -228,16 +236,25 @@ export async function loadAllCustomHooks(
   // convention passes.
   const loadedPaths = new Set<string>();
 
-  // 1. Explicit customPoliciesPath (existing behavior)
-  if (customPoliciesPath) {
-    const absPath = isAbsolute(customPoliciesPath)
-      ? customPoliciesPath
-      : resolve(projectRoot, customPoliciesPath);
+  // 1. Explicit custom policy paths. Accept a string for callers/configs using
+  // the legacy singular form.
+  for (const customPoliciesPath of typeof customPoliciesPaths === "string"
+    ? [customPoliciesPaths]
+    : customPoliciesPaths ?? []) {
+    // resolve() also normalizes absolute paths, so aliases containing `.` or
+    // `..` share a dedup key with convention-discovered canonical paths.
+    const absPath = resolve(projectRoot, customPoliciesPath);
     if (existsSync(absPath)) {
-      loadedPaths.add(absPath);
-      await loadSingleFile(absPath);
+      if (!loadedPaths.has(absPath)) {
+        loadedPaths.add(absPath);
+        const hooksBefore = getCustomHooks().length;
+        await loadSingleFile(absPath);
+        for (const hook of getCustomHooks().slice(hooksBefore)) {
+          (hook as CustomHook & { __policyId?: string }).__policyId = customPolicyId(absPath, hook.name);
+        }
+      }
     } else {
-      hookLogWarn(`customPoliciesPath not found: ${absPath}`);
+      hookLogWarn(`custom policy path not found: ${absPath}`);
     }
   }
 
@@ -260,6 +277,9 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "project" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("project", basename(file), hook.name);
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "project",
@@ -294,6 +314,9 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "user",

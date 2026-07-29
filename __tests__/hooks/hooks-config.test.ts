@@ -172,7 +172,7 @@ describe("hooks/hooks-config", () => {
       });
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
       const config = readMergedHooksConfig(CWD);
-      expect(config.customPoliciesPath).toBe("/local/hooks.js");
+      expect(config.customPoliciesPaths).toEqual(["/local/hooks.js"]);
     });
 
     it("customPoliciesPath: project scope wins over local", async () => {
@@ -182,7 +182,45 @@ describe("hooks/hooks-config", () => {
       });
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
       const config = readMergedHooksConfig(CWD);
-      expect(config.customPoliciesPath).toBe("/project/hooks.js");
+      expect(config.customPoliciesPaths).toEqual(["/project/hooks.js"]);
+    });
+
+    it("normalizes a legacy customPoliciesPath to customPoliciesPaths", async () => {
+      mockFiles({
+        [globalPath]: { enabledPolicies: [], customPoliciesPath: "/global/hooks.js" },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const config = readMergedHooksConfig(CWD);
+      expect(config.customPoliciesPaths).toEqual(["/global/hooks.js"]);
+    });
+
+    it("customPoliciesPaths: preserves multiple paths from the highest defining scope", async () => {
+      mockFiles({
+        [projectPath]: { enabledPolicies: [], customPoliciesPaths: ["/project/a.js", "/project/b.js"] },
+        [globalPath]: { enabledPolicies: [], customPoliciesPaths: ["/global/hooks.js"] },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const config = readMergedHooksConfig(CWD);
+      expect(config.customPoliciesPaths).toEqual(["/project/a.js", "/project/b.js"]);
+    });
+
+    it("disabledCustomPolicies: unions and deduplicates IDs across scopes", async () => {
+      mockFiles({
+        [projectPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/a.js:rule"] },
+        [localPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/b.js:rule"] },
+        [globalPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/a.js:rule"] },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      expect(readMergedHooksConfig(CWD).disabledCustomPolicies).toEqual([
+        "custom:/a.js:rule",
+        "custom:/b.js:rule",
+      ]);
+    });
+
+    it("disabledCustomPolicies: omits an empty merged set", async () => {
+      mockFiles({ [globalPath]: { enabledPolicies: [], disabledCustomPolicies: [] } });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      expect(readMergedHooksConfig(CWD).disabledCustomPolicies).toBeUndefined();
     });
 
     it("returns no policyParams key when no params configured", async () => {

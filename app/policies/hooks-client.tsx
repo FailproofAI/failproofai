@@ -10,7 +10,7 @@ import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
-import { togglePolicyAction } from "@/app/actions/update-hooks-config";
+import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
@@ -382,7 +382,7 @@ function DetailPanel({
       <td colSpan={11} className="px-0 py-0">
         <div className="activity-detail animate-expand text-xs">
           <span className="activity-detail-eyebrow">
-            <span aria-hidden="true">\u25be</span>
+            <span aria-hidden="true">{"\u25BE"}</span>
             event detail
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">
@@ -1214,6 +1214,26 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     });
   };
 
+  const handleCustomToggle = (id: string, currentlyEnabled: boolean) => {
+    if (!config) return;
+    setConfig((prev) => prev ? {
+      ...prev,
+      customPolicies: prev.customPolicies?.map((p) => p.id === id ? { ...p, enabled: !currentlyEnabled } : p),
+      conventionPolicies: prev.conventionPolicies.map((entry) => ({
+        ...entry,
+        policies: entry.policies.map((p) => p.id === id ? { ...p, enabled: !currentlyEnabled } : p),
+      })),
+    } : prev);
+    startTransition(async () => {
+      try {
+        await toggleCustomPolicyAction(id, !currentlyEnabled);
+      } catch {
+        fireActionError("custom_policy_toggle", "Failed to save custom policy change.");
+        reload();
+      }
+    });
+  };
+
   const handleApply = () => {
     const { toInstall, toRemove } = pendingChanges;
     if (toInstall.length === 0 && toRemove.length === 0) return;
@@ -1276,7 +1296,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
   if (!config) {
     return (
       <div className="flex items-center justify-center py-16">
-        <span className="text-sm text-muted-foreground">Loading\u2026</span>
+        <span className="text-sm text-muted-foreground">Loading{"\u2026"}</span>
       </div>
     );
   }
@@ -1589,7 +1609,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       })}
 
       {/* Custom policies section */}
-      {config.customPoliciesPath && (
+      {(config.customPoliciesPaths?.length || config.customPoliciesPath) && (
         <div>
           {/* Section header — matches category header style */}
           <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-b border-border/50">
@@ -1600,26 +1620,28 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
               {config.customPolicies?.length ?? 0} detected
             </span>
           </div>
-          {/* File path row */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
-            <Code className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs font-mono text-muted-foreground truncate">{config.customPoliciesPath}</span>
-          </div>
+          {(config.customPoliciesPaths ?? [config.customPoliciesPath!]).map((path) => (
+            <div key={path} className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
+              <Code className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs font-mono text-muted-foreground truncate">{path}</span>
+            </div>
+          ))}
           {/* Reconfigure notice */}
           <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/20 bg-muted/10">
             <Shield className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mt-0.5" />
             <p className="text-[0.7rem] text-muted-foreground/70 leading-relaxed">
-              Custom policies are always active. To add, remove, or reorder them, edit the JS file above.
+              Re-run the install command to add, remove, or reorder files.
             </p>
           </div>
           {/* Rich policy rows — mirrors built-in layout without toggle */}
           {config.customPolicies?.map((policy) => (
             <div
-              key={policy.name}
+              key={policy.id}
               className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
             >
-              {/* Invisible spacer matching PolicyToggle dimensions (h-4 w-7) */}
-              <div className="h-4 w-7 shrink-0 mt-0.5" />
+              <div className="mt-0.5 shrink-0">
+                <PolicyToggle enabled={policy.enabled} onChange={() => handleCustomToggle(policy.id, policy.enabled)} disabled={isPending} />
+              </div>
               <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
                 <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
               </div>
@@ -1670,7 +1692,9 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
                 key={`${entry.path}:${policy.name}`}
                 className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
               >
-                <div className="h-4 w-7 shrink-0 mt-0.5" />
+                <div className="mt-0.5 shrink-0">
+                  <PolicyToggle enabled={policy.enabled} onChange={() => handleCustomToggle(policy.id, policy.enabled)} disabled={isPending} />
+                </div>
                 <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
                   <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
                 </div>

@@ -84,7 +84,12 @@ export interface HooksConfig {
   enabledPolicies: string[];
   llm?: LlmConfig;
   policyParams?: Record<string, Record<string, unknown>>;
+  /** Explicit custom policy files, loaded in array order. */
+  customPoliciesPaths?: string[];
+  /** @deprecated Use customPoliciesPaths. Kept for existing config files. */
   customPoliciesPath?: string;
+  /** Source-qualified custom policy IDs that should not be registered. */
+  disabledCustomPolicies?: string[];
   /**
    * Turn off convention-discovered custom policies (`.failproofai/policies/`)
    * without deleting or renaming the files. Absent means enabled — the default

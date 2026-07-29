@@ -16,7 +16,7 @@ import {
 } from "./types";
 import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
-import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
+import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
@@ -110,7 +110,7 @@ export async function installHooks(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   options: InstallHooksOptions = {},
@@ -141,7 +141,7 @@ async function installHooksImpl(
   cwd?: string,
   includeBeta = false,
   source?: string,
-  customPoliciesPath?: string,
+  customPoliciesPath?: string | string[],
   removeCustomHooks = false,
   cli?: IntegrationType[],
   replace = false,
@@ -212,50 +212,88 @@ async function installHooksImpl(
     selectedPolicies = await promptPolicySelection(preSelected, { includeBeta });
   }
 
-  // Preserve existing config fields (policyParams, customPoliciesPath, llm) when updating
+  // Preserve existing config fields when updating. New writes use the plural
+  // form, while reads continue to accept the legacy singular field.
   const configToWrite = { ...previousConfig, enabledPolicies: selectedPolicies };
   if (removeCustomHooks) {
     delete configToWrite.customPoliciesPath;
-  } else if (customPoliciesPath) {
-    configToWrite.customPoliciesPath = resolve(customPoliciesPath);
-    // Validate the file before committing it to config
-    let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
-    try {
-      validatedHooks = await loadCustomHooks(configToWrite.customPoliciesPath, { strict: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    delete configToWrite.customPoliciesPaths;
+  } else if (
+    customPoliciesPath &&
+    (typeof customPoliciesPath === "string" || customPoliciesPath.length > 0)
+  ) {
+    const incoming = (typeof customPoliciesPath === "string" ? [customPoliciesPath] : customPoliciesPath)
+      .map((path) => resolve(path));
+
+    // Additive by default, mirroring `enabledPolicies` directly above: a second
+    // `--custom` ADDS to what is configured rather than silently discarding it.
+    // Replacing was the surprising half of the old single-path field — running
+    // `-c a` then `-c b` left only `b`, with nothing printed to say `a` had
+    // stopped applying. `replace` (passed by the configure wizard) still makes
+    // the given set authoritative, exactly as it does for enabled policies.
+    //
+    // Carried-over paths are filtered by existence first: a file deleted after
+    // it was configured must not make every future install fail, which is what
+    // the strict validation below would do.
+    const carried = (
+      previousConfig.customPoliciesPaths ??
+      (previousConfig.customPoliciesPath ? [previousConfig.customPoliciesPath] : [])
+    )
+      .map((path) => resolve(path))
+      .filter((path) => {
+        if (existsSync(path)) return true;
+        console.log(`Dropping custom policies path (file no longer exists): ${path}`);
+        return false;
+      });
+
+    configToWrite.customPoliciesPaths = replace
+      ? [...new Set(incoming)]
+      : [...new Set([...carried, ...incoming])];
+    delete configToWrite.customPoliciesPath;
+
+    // Validate only what this invocation added. Carried-over paths were
+    // validated when they were added, and re-validating them here would let one
+    // stale file block an unrelated install.
+    for (const path of incoming) {
+      let validatedHooks: Awaited<ReturnType<typeof loadCustomHooks>> = [];
       try {
-        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
-          scope,
-          error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
-        });
-      } catch {}
-      console.error(`Error: ${msg}`);
-      process.exit(1);
-    }
-    if (validatedHooks.length === 0) {
-      try {
-        await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
-          scope,
-          error_type: "no_hooks_registered",
-        });
-      } catch {}
-      console.error(
-        `Error: no hooks registered in ${customPoliciesPath}. ` +
-          `Make sure your file calls customPolicies.add(...) at least once.`,
+        validatedHooks = await loadCustomHooks(path, { strict: true });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        try {
+          await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+            scope,
+            error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
+          });
+        } catch {}
+        console.error(`Error: ${msg}`);
+        process.exit(1);
+      }
+      if (validatedHooks.length === 0) {
+        try {
+          await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
+            scope,
+            error_type: "no_hooks_registered",
+          });
+        } catch {}
+        console.error(
+          `Error: no hooks registered in ${path}. ` +
+            `Make sure your file calls customPolicies.add(...) at least once.`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `\nValidated ${validatedHooks.length} custom hook(s) from ${path}: ${validatedHooks.map((h) => h.name).join(", ")}`,
       );
-      process.exit(1);
     }
-    console.log(
-      `\nValidated ${validatedHooks.length} custom hook(s): ${validatedHooks.map((h) => h.name).join(", ")}`,
-    );
   }
   writeScopedHooksConfig(configToWrite, scope, cwd);
   console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
   if (removeCustomHooks) {
     console.log("Custom hooks path cleared.");
-  } else if (configToWrite.customPoliciesPath) {
-    console.log(`Custom hooks path: ${configToWrite.customPoliciesPath}`);
+  } else if (configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath) {
+    const paths = configToWrite.customPoliciesPaths ?? [configToWrite.customPoliciesPath!];
+    console.log(`Custom hooks paths: ${paths.join(", ")}`);
   }
 
   // Write hooks for each selected CLI
@@ -308,7 +346,7 @@ async function installHooksImpl(
       arch: arch(),
       os_release: release(),
       hostname_hash: hashToId(hostname()),
-      has_custom_hooks_path: !!(configToWrite.customPoliciesPath),
+      has_custom_hooks_path: !!(configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath),
       has_policy_params: !!(configToWrite.policyParams && Object.keys(configToWrite.policyParams).length > 0),
       param_policy_names: configToWrite.policyParams ? Object.keys(configToWrite.policyParams) : [],
       command_format: scope === "project" ? "npx" : "absolute",
@@ -387,6 +425,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   if (opts?.removeCustomHooks) {
     const config = readScopedHooksConfig(configScope, cwd);
     delete config.customPoliciesPath;
+    delete config.customPoliciesPaths;
     writeScopedHooksConfig(config, configScope, cwd);
     console.log("Custom hooks path cleared.");
   }
@@ -526,14 +565,14 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     // Clear config across all three scopes
     for (const s of HOOK_SCOPES) {
       const existing = readScopedHooksConfig(s, cwd);
-      if (existing.enabledPolicies.length > 0 || existing.customPoliciesPath || existing.policyParams) {
-        const { customPoliciesPath: _drop, policyParams: _dropParams, ...rest } = existing;
+      if (existing.enabledPolicies.length > 0 || existing.customPoliciesPaths?.length || existing.customPoliciesPath || existing.policyParams) {
+        const { customPoliciesPath: _drop, customPoliciesPaths: _dropMany, policyParams: _dropParams, ...rest } = existing;
         writeScopedHooksConfig({ ...rest, enabledPolicies: [] }, s, cwd);
       }
     }
   } else if (!HOOK_SCOPES.some((s) => hooksInstalledInSettings(s, cwd))) {
     const existing = readScopedHooksConfig(configScope, cwd);
-    const { customPoliciesPath: _drop, policyParams: _dropParams, ...rest } = existing;
+    const { customPoliciesPath: _drop, customPoliciesPaths: _dropMany, policyParams: _dropParams, ...rest } = existing;
     writeScopedHooksConfig({ ...rest, enabledPolicies: [] }, configScope, cwd);
   }
 }
@@ -553,6 +592,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
 export async function listHooks(cwd?: string): Promise<void> {
   const config = readMergedHooksConfig(cwd);
   const enabledSet = new Set(config.enabledPolicies);
+  const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
 
   // Determine which scopes have hooks installed (deduplicate when paths overlap, e.g. cwd === home)
   const uniqueScopes = deduplicateScopes(HOOK_SCOPES, cwd);
@@ -689,19 +729,29 @@ export async function listHooks(cwd?: string): Promise<void> {
     }
   }
 
-  // Custom Policies section
-  if (config.customPoliciesPath) {
-    console.log(`\n  \u2500\u2500 Custom Policies (${config.customPoliciesPath}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
-    if (!existsSync(config.customPoliciesPath)) {
-      console.log(`  \x1B[31m\u2717 File not found: ${config.customPoliciesPath}\x1B[0m`);
-    } else {
-      const hooks = await loadCustomHooks(config.customPoliciesPath);
+  // Explicit Custom Policies section
+  const explicitPaths = configuredCustomPolicyPaths(config);
+  if (explicitPaths.length > 0) {
+    console.log(`\n  \u2500\u2500 Custom Policies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    for (const path of explicitPaths) {
+      // Enforcement resolves configured paths from the project config root.
+      // Use the same canonical path here so the ID checked by the CLI exactly
+      // matches the ID written by the dashboard.
+      const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
+      console.log(`  ${absPath}`);
+      if (!existsSync(absPath)) {
+        console.log(`  \x1B[31m\u2717 File not found: ${absPath}\x1B[0m`);
+        continue;
+      }
+      const hooks = await loadCustomHooks(absPath);
       if (hooks.length === 0) {
         console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
       } else {
         const descColWidth = nameColWidth;
         for (const hook of hooks) {
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
+          const disabled = disabledCustomSet.has(`custom:${absPath}:${hook.name}`);
+          const status = disabled ? "\x1B[2m  OFF\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
+          console.log(`  ${status}    ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
         }
       }
     }
@@ -742,6 +792,9 @@ export async function listHooks(cwd?: string): Promise<void> {
     // its record is written to both scopes' config files.
     const targets: ("project" | "user")[] =
       dir === projectDir && dir === userDir ? ["project", "user"] : dir === projectDir ? ["project"] : ["user"];
+    // When both directories are the same, runtime discovery loads the file as
+    // project convention policy and skips the duplicate user pass.
+    const policyScope: "project" | "user" = dir === projectDir ? "project" : "user";
     const record = (file: string, hooks: string[]) => {
       for (const t of targets) discovered[t].push({ file, hooks });
     };
@@ -761,8 +814,20 @@ export async function listHooks(cwd?: string): Promise<void> {
         if (hooks.length === 0) {
           console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
         } else {
-          const hookSummary = hooks.map((h) => h.name).join(", ");
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
+          const hookStates = hooks.map((hook) => ({
+            hook,
+            disabled: disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
+          }));
+          const disabledCount = hookStates.filter((entry) => entry.disabled).length;
+          const status = disabledCount === 0
+            ? "\x1B[32m\u2713 ON\x1B[0m"
+            : disabledCount === hooks.length
+              ? "\x1B[2m  OFF\x1B[0m"
+              : "\x1B[33m\u25D0 MIXED\x1B[0m";
+          const hookSummary = hookStates
+            .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
+            .join(", ");
+          console.log(`  ${status}    ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
         }
       } catch {
         const filename = basename(file);

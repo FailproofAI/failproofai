@@ -69,20 +69,29 @@ Convention policies are the easiest way to build a quality standard for your org
 # Install with a custom policies file
 failproofai policies --install --custom ./my-policies.js
 
-# Replace the policies file path
+# Replace the custom policy paths
 failproofai policies --install --custom ./new-policies.js
 
-# Remove the custom policies path from config
+# Configure multiple explicit files (loaded in flag order)
+failproofai policies --install --custom ./security.js --custom ./workflow.js
+
+# Remove all explicit custom policy paths from config
 failproofai policies --uninstall --custom
 ```
 
-The resolved absolute path is stored in `policies-config.json` as `customPoliciesPath`. The file is loaded fresh on every hook event - there is no caching between events.
+Resolved absolute paths are stored in `policies-config.json` as `customPoliciesPaths`. Repeat `--custom` to configure multiple files. Existing configs using the legacy `customPoliciesPath` field continue to work. Files are loaded fresh on every hook event - there is no caching between events.
+
+Each registered policy appears with its own toggle in the dashboard. Switching
+a policy off records its source-qualified ID in `disabledCustomPolicies`; the
+file and its other policies continue to load, while the disabled policy is
+excluded before event matching. Policy names duplicated across files have
+independent toggles.
 
 ### Using both together
 
-Convention policies and the explicit `--custom` file can coexist. Load order:
+Convention policies and the explicit `--custom` files can coexist. Load order:
 
-1. Explicit `customPoliciesPath` file (if configured)
+1. Explicit `customPoliciesPaths` files (in configured order)
 2. Project convention files (`{cwd}/.failproofai/policies/`, alphabetical)
 3. User convention files (`~/.failproofai/policies/`, alphabetical)
 

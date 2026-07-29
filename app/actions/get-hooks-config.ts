@@ -7,7 +7,7 @@ import { listIntegrations } from "@/src/hooks/integrations";
 import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
 import { getCliLabel } from "@/lib/cli-registry";
-import { discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
+import { customPolicyId, conventionPolicyId, discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
 import { findProjectConfigDir } from "@/src/hooks/hooks-config";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -36,6 +36,8 @@ export interface CustomPolicyInfo {
   name: string;
   description?: string;
   eventScope?: string;
+  id: string;
+  enabled: boolean;
 }
 
 /**
@@ -91,7 +93,10 @@ export interface HooksConfigPayload {
  * `parseCustomPoliciesFromFile` is a regex read, so a malformed policy file
  * degrades to "no policies listed" instead of taking the server down.
  */
-async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
+async function discoverConventionPolicies(
+  disabled: Set<string>,
+  customPoliciesPath?: string,
+): Promise<ConventionPolicyFile[]> {
   // Two corrections over a bare `process.cwd()`, both of which made real
   // project policies invisible here while enforcement loaded them fine:
   //   - the standalone server chdir()s into the package on startup, so the real
@@ -111,6 +116,9 @@ async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
   ];
 
   const out: ConventionPolicyFile[] = [];
+  const explicitPath = customPoliciesPath
+    ? resolve(findProjectConfigDir(launchCwd), customPoliciesPath)
+    : undefined;
   for (const { scope, dir } of dirs) {
     // Isolate per directory and per file. `parseCustomPoliciesFromFile` guards
     // non-existence but `readFile` still throws on EACCES, a file deleted
@@ -125,9 +133,16 @@ async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
       continue;
     }
     for (const filePath of files) {
+      // Runtime loads an explicitly configured file only once and treats it as
+      // explicit even when it also matches the convention. Mirror that here so
+      // the dashboard cannot show a second toggle that controls no runtime hook.
+      if (filePath === explicitPath) continue;
       let policies: CustomPolicyInfo[] = [];
       try {
-        policies = await parseCustomPoliciesFromFile(filePath);
+        policies = (await parseCustomPoliciesFromFile(filePath)).map((policy) => {
+          const id = conventionPolicyId(scope, basename(filePath), policy.name);
+          return { ...policy, id, enabled: !disabled.has(id) };
+        });
       } catch {
         // Still list the file — it IS installed and enforcing; we just cannot
         // read its contents to name the policies.
@@ -152,7 +167,7 @@ async function parseCustomPoliciesFromFile(filePath: string): Promise<CustomPoli
     const eventScope = eventsMatch
       ? eventsMatch[1].replace(/["'`\s]/g, "").split(",").filter(Boolean).join(", ")
       : undefined;
-    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope });
+    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope, id: "", enabled: true });
   }
   return policies;
 }
@@ -165,6 +180,7 @@ function buildEventScope(match: { events?: string[]; toolNames?: string[] }): st
 
 export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
   const config = readHooksConfig();
+  const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
   const enabledSet = new Set(config.enabledPolicies);
 
   const installedScopes = HOOK_SCOPES.filter((s) => hooksInstalledInSettings(s));
@@ -196,10 +212,16 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
   }));
 
   const customPolicies = config.customPoliciesPath
-    ? await parseCustomPoliciesFromFile(config.customPoliciesPath)
+    ? (await parseCustomPoliciesFromFile(config.customPoliciesPath)).map((policy) => {
+        const id = customPolicyId(policy.name);
+        return { ...policy, id, enabled: !disabledCustomPolicies.has(id) };
+      })
     : undefined;
 
-  const conventionPolicies = await discoverConventionPolicies();
+  const conventionPolicies = await discoverConventionPolicies(
+    disabledCustomPolicies,
+    config.customPoliciesPath,
+  );
 
   return {
     enabledPolicies: config.enabledPolicies,

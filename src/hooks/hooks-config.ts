@@ -90,6 +90,17 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
   const customPoliciesPath =
     project.customPoliciesPath ?? local.customPoliciesPath ?? global_.customPoliciesPath;
 
+  // Custom policies are default-on, so disabled IDs compose as a union across
+  // scopes just like enabled builtin policy IDs.
+  const disabledCustomPolicies = new Set<string>([
+    ...(project.disabledCustomPolicies ?? []),
+    ...(local.disabledCustomPolicies ?? []),
+    ...(global_.disabledCustomPolicies ?? []),
+  ]);
+
+  const customPoliciesEnabled =
+    project.customPoliciesEnabled ?? local.customPoliciesEnabled ?? global_.customPoliciesEnabled;
+
   // llm: first scope wins
   const llm = project.llm ?? local.llm ?? global_.llm;
 
@@ -97,6 +108,8 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
     enabledPolicies: [...enabledSet],
     ...(Object.keys(mergedParams).length > 0 ? { policyParams: mergedParams } : {}),
     ...(customPoliciesPath !== undefined ? { customPoliciesPath } : {}),
+    ...(disabledCustomPolicies.size > 0 ? { disabledCustomPolicies: [...disabledCustomPolicies] } : {}),
+    ...(customPoliciesEnabled !== undefined ? { customPoliciesEnabled } : {}),
     ...(llm !== undefined ? { llm } : {}),
   };
 }

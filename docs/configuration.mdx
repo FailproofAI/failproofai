@@ -51,6 +51,11 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← falls through to glo
 
 **`customPoliciesPath`** - first scope that defines it wins.
 
+**`disabledCustomPolicies`** - union across all scopes. The dashboard writes
+source-qualified policy IDs here when you switch off an individual policy from
+an explicit or convention policy file. Custom policies not listed here remain
+enabled by default.
+
 **`llm`** - first scope that defines it wins.
 
 ---

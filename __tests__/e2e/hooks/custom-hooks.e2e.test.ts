@@ -16,6 +16,21 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 // ── Core mechanics ────────────────────────────────────────────────────────────
 
 describe("custom-hooks core mechanics", () => {
+  it("can disable one policy in an explicit custom policy file", () => {
+    const env = createFixtureEnv();
+    const hookPath = env.writeHook("mixed.mjs", `
+      import { customPolicies, allow, deny } from "failproofai";
+      customPolicies.add({ name: "disabled-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+      customPolicies.add({ name: "still-enabled", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+    `);
+    env.writeConfig({
+      enabledPolicies: [],
+      customPoliciesPath: hookPath,
+      disabledCustomPolicies: ["custom:disabled-deny"],
+    });
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
   it("custom hook that calls deny() → deny decision", () => {
     const env = createFixtureEnv();
     const hookPath = env.writeHook("deny-all.mjs", `
@@ -379,6 +394,20 @@ describe("custom-hooks — customPoliciesPath scope levels", () => {
 // ── Convention-based policies (.failproofai/policies/) ──────────────────────
 
 describe("convention-based policies (.failproofai/policies/)", () => {
+  it("can disable one convention policy without disabling its file", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({
+      enabledPolicies: [],
+      disabledCustomPolicies: ["convention:project:mixed-policies.mjs:disabled-deny"],
+    });
+    env.writePolicyFile("mixed-policies.mjs", `
+      import { customPolicies, allow, deny } from "failproofai";
+      customPolicies.add({ name: "disabled-deny", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked") });
+      customPolicies.add({ name: "still-enabled", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+    `);
+    assertAllow(runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home }));
+  });
+
   // ── Basic discovery and execution ─────────────────────────────────────────
 
   it("project convention policy fires: deny hook in .failproofai/policies/", () => {

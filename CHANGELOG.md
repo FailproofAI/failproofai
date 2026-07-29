@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.15-beta.1 — 2026-07-29
+
+### Features
+- Add independent dashboard toggles for every policy registered by an explicit custom policy file or a convention policy file. Policies stay enabled by default; disabled policies are stored as source-qualified IDs so identically named policies in different files do not affect each other, and toggling one policy does not disable the other policies declared in the same file.
+
 ## 0.0.15-beta.0 — 2026-07-23
 
 ### Dependencies

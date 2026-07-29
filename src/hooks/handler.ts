@@ -248,9 +248,12 @@ export async function handleHookEvent(
       customPoliciesEnabled: config.customPoliciesEnabled,
     });
     const customHooksList = loadResult.hooks;
+    const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
     const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 
     for (const hook of customHooksList) {
+      const policyId = (hook as CustomHook & { __policyId?: string }).__policyId;
+      if (policyId && disabledCustomPolicies.has(policyId)) continue;
       const hookName = hook.name;
       const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
       const isConvention = !!conventionScope;

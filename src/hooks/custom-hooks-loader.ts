@@ -177,6 +177,15 @@ export interface LoadAllResult {
   conventionSources: ConventionSource[];
 }
 
+/** IDs used by config and the dashboard to address policies unambiguously. */
+export function customPolicyId(name: string): string {
+  return `custom:${name}`;
+}
+
+export function conventionPolicyId(scope: "project" | "user", file: string, name: string): string {
+  return `convention:${scope}:${file}:${name}`;
+}
+
 /**
  * Load ALL custom hooks: explicit customPoliciesPath + convention-discovered files.
  *
@@ -235,7 +244,11 @@ export async function loadAllCustomHooks(
       : resolve(projectRoot, customPoliciesPath);
     if (existsSync(absPath)) {
       loadedPaths.add(absPath);
+      const hooksBefore = getCustomHooks().length;
       await loadSingleFile(absPath);
+      for (const hook of getCustomHooks().slice(hooksBefore)) {
+        (hook as CustomHook & { __policyId?: string }).__policyId = customPolicyId(hook.name);
+      }
     } else {
       hookLogWarn(`customPoliciesPath not found: ${absPath}`);
     }
@@ -260,6 +273,11 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "project" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(
+        "project", basename(file), hook.name,
+      );
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "project",
@@ -294,6 +312,11 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(
+        "user", basename(file), hook.name,
+      );
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "user",

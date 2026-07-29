@@ -86,6 +86,11 @@ export interface HooksConfig {
   policyParams?: Record<string, Record<string, unknown>>;
   customPoliciesPath?: string;
   /**
+   * Stable source-qualified IDs for custom policies the user has switched off.
+   * Custom policies remain enabled by default, preserving drop-in behaviour.
+   */
+  disabledCustomPolicies?: string[];
+  /**
    * Turn off convention-discovered custom policies (`.failproofai/policies/`)
    * without deleting or renaming the files. Absent means enabled — the default
    * has to be "on" so that dropping a policy file in works with no config at

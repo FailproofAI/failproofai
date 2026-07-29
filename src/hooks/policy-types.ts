@@ -93,4 +93,30 @@ export interface HooksConfig {
    * Only ever written explicitly as `false`.
    */
   customPoliciesEnabled?: boolean;
+  /**
+   * Record of the convention policies (`.failproofai/policies/*policies.mjs`)
+   * discovered at this scope the last time a failproofai command ran.
+   *
+   * DESCRIPTIVE, NEVER AUTHORITATIVE. Enforcement always discovers from the
+   * filesystem (`loadAllCustomHooks`) and never reads this key — a policy file
+   * dropped in enforces on the very next tool call whether or not this list has
+   * caught up. Making the loader trust it would mean a freshly-copied policy
+   * silently doing nothing until some command refreshed the config, which is
+   * the exact silent-non-enforcement failure this project exists to remove.
+   *
+   * Refreshed wholesale (not merged) by `failproofai policies` and the setup
+   * wizard, so a deleted file disappears from the record on the next run. It is
+   * deliberately NOT written from the hook path: that runs on every tool call,
+   * and a read-modify-write from concurrent short-lived hook processes with no
+   * locking would corrupt the file that governs enforcement.
+   */
+  conventionPolicies?: ConventionPolicyRecord[];
+}
+
+/** One convention policy file and the hooks it registered, as last observed. */
+export interface ConventionPolicyRecord {
+  /** Basename, e.g. `hermes-guardrails.policies.mjs`. */
+  file: string;
+  /** Hook names the file registered, or `[]` if it failed to load. */
+  hooks: string[];
 }

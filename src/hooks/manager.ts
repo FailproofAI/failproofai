@@ -16,13 +16,14 @@ import {
 } from "./types";
 import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
-import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig } from "./hooks-config";
-import type { HooksConfig } from "./policy-types";
+import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies } from "./hooks-config";
+import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
+import { hookLogWarn } from "./hook-logger";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -722,9 +723,24 @@ export async function listHooks(cwd?: string): Promise<void> {
     ...(sameDir ? [] : [{ label: "User", dir: userDir }]),
   ];
 
+  // Record of what was found, mirrored into policies-config.json below so the
+  // config shows installed convention policies and not only enabled builtins.
+  const discovered: Record<"project" | "user", ConventionPolicyRecord[]> = {
+    project: [],
+    user: [],
+  };
+
   for (const { label, dir } of conventionDirs) {
     const files = discoverPolicyFiles(dir);
     if (files.length === 0) continue;
+
+    // A shared project/user directory is listed once but belongs to both, so
+    // its record is written to both scopes' config files.
+    const targets: ("project" | "user")[] =
+      dir === projectDir && dir === userDir ? ["project", "user"] : dir === projectDir ? ["project"] : ["user"];
+    const record = (file: string, hooks: string[]) => {
+      for (const t of targets) discovered[t].push({ file, hooks });
+    };
 
     console.log(`\n  \u2500\u2500 Convention Policies \u2014 ${label} (${dir}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     // `nameColWidth` is sized to the longest BUILTIN name, but a convention
@@ -736,19 +752,33 @@ export async function listHooks(cwd?: string): Promise<void> {
     for (const file of files) {
       try {
         const hooks = await loadCustomHooks(file);
+        const filename = basename(file);
+        record(filename, hooks.map((h) => h.name));
         if (hooks.length === 0) {
-          const filename = basename(file);
           console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
         } else {
-          const filename = basename(file);
           const hookSummary = hooks.map((h) => h.name).join(", ");
           console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
         }
       } catch {
         const filename = basename(file);
+        record(filename, []);
         console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31merror\x1B[0m`);
       }
     }
     console.log();
+  }
+
+  // Mirror what was just listed into policies-config.json. Safe here because
+  // `failproofai policies` is a one-shot command — never do this on the hook
+  // path (see the HooksConfig.conventionPolicies doc comment).
+  try {
+    syncConventionPolicies(discovered.project, "project", cwd);
+    syncConventionPolicies(discovered.user, "user");
+  } catch (err) {
+    // Listing must never fail because the mirror could not be written.
+    hookLogWarn(
+      `could not record convention policies in config: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }

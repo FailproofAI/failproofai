@@ -27,6 +27,14 @@ const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 /** Regex matching convention policy filenames: *policies.{js,mjs,ts} */
 const CONVENTION_FILE_RE = /policies\.(js|mjs|ts)$/;
 
+/**
+ * Monotonic counter used to cache-bust each dynamic import. Loading N files
+ * creates N module instances rather than reusing one; every caller here is
+ * either a one-shot CLI command or a short-lived hook process, so the
+ * lifetime cost is bounded by the process, not by uptime.
+ */
+let loadSequence = 0;
+
 /** Script extensions we could load, used to spot near-miss filenames. */
 const LOADABLE_EXT_RE = /\.(js|mjs|ts)$/;
 
@@ -96,7 +104,14 @@ async function loadSingleFile(
     tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex);
 
     const entryTmp = absPath + TMP_SUFFIX;
-    const fileUrl = pathToFileURL(entryTmp).href;
+    // Cache-bust the specifier. The temp path is deterministic, so a second
+    // load of the same file inside one process hit the ESM module cache, the
+    // module body never re-ran, no `customPolicies.add` fired, and the caller
+    // saw zero hooks — indistinguishable from a broken policy file. That is
+    // exactly what `failproofai policies` rendered as "failed to load" for
+    // every file when it walked a shared project/user directory twice.
+    // A distinct query string makes it a distinct module to the loader.
+    const fileUrl = `${pathToFileURL(entryTmp).href}?v=${++loadSequence}`;
     await import(/* webpackIgnore: true */ fileUrl);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

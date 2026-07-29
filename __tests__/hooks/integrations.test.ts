@@ -28,6 +28,8 @@ import {
   goose,
   getIntegration,
   listIntegrations,
+  settingsPathsFor,
+  unhookedHermesProfiles,
 } from "../../src/hooks/integrations";
 import {
   CODEX_HOOK_EVENT_TYPES,
@@ -46,6 +48,7 @@ import {
   ANTIGRAVITY_HOOK_EVENT_TYPES,
   GOOSE_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
+  CLAUDE_INSTALL_EVENT_TYPES,
   FAILPROOFAI_HOOK_MARKER,
   type CodexHookEventType,
   type CursorHookEventType,
@@ -164,13 +167,16 @@ describe("Claude Code integration", () => {
     expect(entry.command).toBe("npx -y failproofai --hook PreToolUse");
   });
 
-  it("writeHookEntries adds a matcher per HOOK_EVENT_TYPES event", () => {
+  // Installed events are HOOK_EVENT_TYPES minus WorktreeCreate, which is a
+  // worktree-path provider rather than a gate — see the dedicated describe below.
+  it("writeHookEntries adds a matcher per installed event", () => {
     const settings: Record<string, unknown> = {};
     claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     const hooks = settings.hooks as Record<string, unknown[]>;
-    for (const eventType of HOOK_EVENT_TYPES) {
+    for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {
       expect(hooks[eventType]).toBeDefined();
     }
+    expect(Object.keys(hooks)).toHaveLength(CLAUDE_INSTALL_EVENT_TYPES.length);
   });
 
   it("re-running writeHookEntries is idempotent (replaces, doesn't duplicate)", () => {
@@ -189,7 +195,7 @@ describe("Claude Code integration", () => {
     claudeCode.writeSettings(settingsPath, settings);
 
     const removed = claudeCode.removeHooksFromFile(settingsPath);
-    expect(removed).toBe(HOOK_EVENT_TYPES.length);
+    expect(removed).toBe(CLAUDE_INSTALL_EVENT_TYPES.length);
 
     const after = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
     expect(after.hooks).toBeUndefined();
@@ -547,14 +553,28 @@ describe("Hermes integration", () => {
   // the per-test tempDir so getSettingsPath / hooksInstalledInSettings operate
   // on a throwaway file instead of the developer's real home.
   let origHome: string | undefined;
+  let origHermesHome: string | undefined;
   beforeEach(() => {
     origHome = process.env.HOME;
     process.env.HOME = tempDir;
+    // HERMES_HOME wins over HOME in profile discovery — clear it so a developer
+    // with a profile-scoped shell doesn't get their real config.yaml touched.
+    origHermesHome = process.env.HERMES_HOME;
+    delete process.env.HERMES_HOME;
   });
   afterEach(() => {
     if (origHome === undefined) delete process.env.HOME;
     else process.env.HOME = origHome;
+    if (origHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = origHermesHome;
   });
+
+  /** Create `~/.hermes/profiles/<name>/` for each name. */
+  function makeProfiles(...names: string[]): void {
+    for (const name of names) {
+      mkdirSync(resolve(tempDir, ".hermes", "profiles", name), { recursive: true });
+    }
+  }
 
   it("getSettingsPath is user-scope ~/.hermes/config.yaml regardless of scope/cwd", () => {
     expect(hermes.getSettingsPath("user")).toBe(resolve(tempDir, ".hermes", "config.yaml"));
@@ -677,6 +697,71 @@ describe("Hermes integration", () => {
     hermes.writeSettings(path, settings);
     expect(hermes.hooksInstalledInSettings("user")).toBe(true);
   });
+
+  // ── Profiles ──
+  //
+  // Every Hermes profile is a separate home dir with its OWN config.yaml, so an
+  // install that writes only ~/.hermes/config.yaml leaves the others running
+  // unhooked — silently, since Hermes never reports a missing hook.
+
+  it("getSettingsPaths returns one config.yaml per profile, root first", () => {
+    makeProfiles("work", "my-bot");
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "my-bot", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "work", "config.yaml"),
+    ]);
+  });
+
+  it("settingsPathsFor falls back to the single path for non-profile integrations", () => {
+    expect(settingsPathsFor(claudeCode, "user")).toEqual([claudeCode.getSettingsPath("user")]);
+    expect(settingsPathsFor(hermes, "user")).toEqual(hermes.getSettingsPaths!("user"));
+  });
+
+  it("hooksInstalledInSettings is false until EVERY profile is hooked", () => {
+    makeProfiles("work");
+    const [rootPath, workPath] = settingsPathsFor(hermes, "user");
+
+    const rootSettings = hermes.readSettings(rootPath);
+    hermes.writeHookEntries(rootSettings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(rootPath, rootSettings);
+    // Root hooked, `work` still bare → the gateway is only partly enforced.
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(unhookedHermesProfiles()).toEqual(["work"]);
+
+    const workSettings = hermes.readSettings(workPath);
+    hermes.writeHookEntries(workSettings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(workPath, workSettings);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+    expect(unhookedHermesProfiles()).toEqual([]);
+  });
+
+  it("writes a real hooks block into a non-default profile's config.yaml", () => {
+    makeProfiles("work");
+    const workPath = resolve(tempDir, ".hermes", "profiles", "work", "config.yaml");
+    writeFileSync(workPath, "model: gpt-5\n");
+    const settings = hermes.readSettings(workPath);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(workPath, settings);
+
+    const parsed = parse(readFileSync(workPath, "utf-8")) as Record<string, unknown>;
+    const hooks = parsed.hooks as Record<string, { command: string }[]>;
+    expect(Object.keys(hooks).sort()).toEqual([...HERMES_HOOK_EVENT_TYPES].sort());
+    expect(hooks.pre_tool_call[0].command).toContain("--cli hermes");
+    expect(parsed.hooks_auto_accept).toBe(true);
+    expect(parsed.model).toBe("gpt-5"); // operator key preserved
+  });
+
+  it("HERMES_HOME pointing AT a profile still covers every sibling profile", () => {
+    // The per-profile alias wrapper exports HERMES_HOME=<root>/profiles/<name>.
+    makeProfiles("work", "coder");
+    process.env.HERMES_HOME = resolve(tempDir, ".hermes", "profiles", "work");
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "coder", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "work", "config.yaml"),
+    ]);
+  });
 });
 
 describe("HERMES_EVENT_MAP", () => {
@@ -688,8 +773,14 @@ describe("HERMES_EVENT_MAP", () => {
     expect(HERMES_EVENT_MAP.subagent_stop).toBe("SubagentStop");
   });
 
-  it("has NO Stop mapping — Hermes has no turn-end event", () => {
+  // Upstream DOES have a turn-end gate (`pre_verify`) — the long-standing claim
+  // that it has none was wrong. We deliberately do not install it, so no
+  // canonical Stop event fires for Hermes and the 5 require-*-before-stop
+  // builtins stay inapplicable there. This asserts the decision, not a
+  // limitation of the platform; see the note in src/hooks/types.ts.
+  it("emits no Stop mapping — pre_verify exists upstream but is not installed", () => {
     expect(Object.values(HERMES_EVENT_MAP)).not.toContain("Stop");
+    expect(HERMES_HOOK_EVENT_TYPES).not.toContain("pre_verify");
   });
 
   it("HERMES_EVENT_MAP keys exactly match HERMES_HOOK_EVENT_TYPES", () => {
@@ -1643,4 +1734,68 @@ describe("Goose integration", () => {
 
     expect(goose.hooksInstalledInSettings("project", tempDir)).toBe(true);
   });
+
 });
+
+// Claude's `WorktreeCreate` is not a permission gate — it is a worktree-PATH
+// PROVIDER. Claude takes the stdout of the first hook that succeeds as the
+// directory to create, and fails with "WorktreeCreate hook failed" when none
+// supplies one. failproofai writes nothing to stdout on allow, correctly, by
+// the contract every other event uses — so merely registering there broke
+// `claude --worktree` and `/worktree` for every user, whatever any policy
+// decided. No builtin matches the event (all 39 match only PreToolUse /
+// PostToolUse / PermissionRequest / Stop), so not registering costs nothing.
+describe("claudeCode — WorktreeCreate is never registered", () => {
+  it("omits WorktreeCreate from the events it installs", () => {
+    expect(claudeCode.eventTypes).not.toContain("WorktreeCreate");
+    // Sanity: the real gates are still installed.
+    expect(claudeCode.eventTypes).toContain("PreToolUse");
+    expect(claudeCode.eventTypes).toContain("Stop");
+  });
+
+  it("does not write a WorktreeCreate hook", () => {
+    const settings: Record<string, unknown> = {};
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, unknown>;
+    expect(hooks.WorktreeCreate).toBeUndefined();
+    expect(hooks.PreToolUse).toBeDefined();
+  });
+
+  it("prunes our stale WorktreeCreate entry on reinstall", () => {
+    // A machine installed before the fix. Reinstalling must repair it —
+    // otherwise the broken entry survives forever and worktrees stay broken.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        WorktreeCreate: [
+          { hooks: [{ type: "command", command: "old", __failproofai_hook__: true }] },
+        ],
+      },
+    };
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, unknown>;
+    expect(hooks.WorktreeCreate).toBeUndefined();
+  });
+
+  it("leaves someone else's WorktreeCreate hook alone", () => {
+    // We only own entries carrying our marker; a user's own worktree-path
+    // provider is the thing that makes the feature work and must survive.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        WorktreeCreate: [
+          {
+            hooks: [
+              { type: "command", command: "echo /tmp/wt" },
+              { type: "command", command: "old", __failproofai_hook__: true },
+            ],
+          },
+        ],
+      },
+    };
+    claudeCode.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    const hooks = settings.hooks as Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>;
+    expect(hooks.WorktreeCreate).toHaveLength(1);
+    expect(hooks.WorktreeCreate[0].hooks).toHaveLength(1);
+    expect(hooks.WorktreeCreate[0].hooks[0].command).toBe("echo /tmp/wt");
+  });
+});
+

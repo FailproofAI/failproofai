@@ -24,6 +24,9 @@ vi.mock("../../src/hooks/policy-evaluator", () => ({
 vi.mock("../../src/hooks/policy-registry", () => ({
   clearPolicies: vi.fn(),
   registerPolicy: vi.fn(),
+  // handler.ts reads this back after evaluation to record which policies
+  // actually ran (activity `matchedPolicies`), so the mock has to provide it.
+  getPoliciesForEvent: vi.fn(() => []),
 }));
 
 vi.mock("../../src/hooks/custom-hooks-loader", () => ({

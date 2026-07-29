@@ -3,18 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import {
-  ShieldCheck,
-  ShieldX,
-  ShieldAlert,
-  Shield,
-  ChevronDown,
-  Copy,
-  Check,
-  Settings,
-  Code,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert, X } from "lucide-react";
 import PaginationControls from "@/app/components/pagination-controls";
 import { getHookActivityAction, searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
@@ -29,6 +18,7 @@ import { usePostHog } from "@/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
 import { pageToParam, paramToPage } from "@/lib/url-filter-serializers";
 import { getCliLabel, getCliBadgeClasses, KNOWN_CLI_IDS, isKnownCli, type CliId } from "@/lib/cli-registry";
+import { enforcementFor } from "@/src/hooks/enforcement-capability";
 import { formatRelativeTime } from "@/lib/format-duration";
 import { Button } from "@/components/ui/button";
 
@@ -330,6 +320,58 @@ function StatsBar({ stats }: { stats: HookActivityPayload["stats"] }) {
 
 // -- Expandable Detail Panel --
 
+
+/**
+ * "Your policy ran, but this event cannot block on this CLI."
+ *
+ * Renders ONLY when the (cli, event) pair is a verified `observe`. A pair we
+ * have not traced returns undefined from `enforcementFor` and this renders
+ * nothing — a hedge ("capability unverified") would still be a claim, and
+ * unverified claims are the failure this whole matrix exists to prevent.
+ *
+ * The deny case matters more than the allow case: the row already says
+ * "denied", the activity store recorded a deny, and telemetry counted one — so
+ * without this note the UI actively reports enforcement that did not happen.
+ */
+function EnforcementNote({
+  item,
+}: {
+  item: HookActivityPayload["entries"][number];
+}) {
+  const capability = enforcementFor(
+    item.integration as IntegrationType | undefined,
+    item.eventType,
+  );
+  if (capability !== "observe") return null;
+
+  const ran = item.matchedPolicies ?? [];
+  // Rows written before matchedPolicies existed have no list; naming no policy
+  // is better than implying none ran.
+  if (ran.length === 0) return null;
+
+  const cli = item.integration ? getCliLabel(item.integration as IntegrationType) : "This CLI";
+  const names = ran.map((n) => n.replace(/^(custom|\.failproofai-(project|user))\//, ""));
+  const label = names.length === 1 ? names[0] : `${names.length} policies`;
+  const denied = item.decision === "deny";
+
+  return (
+    <div className="sm:col-span-2 lg:col-span-3 mt-1 flex items-start gap-2 rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-2">
+      <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-500/80 mt-0.5" aria-hidden="true" />
+      <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+        <span className="font-medium text-foreground">
+          {denied ? "Not enforced." : "Ran, but cannot enforce here."}
+        </span>{" "}
+        <span className="font-mono">{label}</span> ran on{" "}
+        <span className="font-mono">{item.eventType}</span>, but {cli} discards hook
+        verdicts for this event
+        {denied ? " — the action went ahead anyway." : ", so a policy cannot block here."}{" "}
+        Move the check to an event {cli} enforces on, such as{" "}
+        <span className="font-mono">PreToolUse</span>.
+      </p>
+    </div>
+  );
+}
+
 function DetailPanel({
   item,
 }: {
@@ -344,6 +386,7 @@ function DetailPanel({
             event detail
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">
+            <EnforcementNote item={item} />
             <div>
               <span className="text-muted-foreground">Session ID: </span>
               <span className="font-mono text-foreground">
@@ -1427,7 +1470,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
         <span className="text-xs text-muted-foreground">
           <span className="font-semibold text-foreground">{config.enabledPolicies.length}</span>
           {" / "}
-          {config.policies.length + (config.customPolicies?.length ?? 0)}{" "}
+          {config.policies.length + (config.customPolicies?.length ?? 0) + (config.conventionPolicies?.reduce((n, e) => n + e.policies.length, 0) ?? 0)}{" "}
           policies enabled
         </span>
         {installed && (
@@ -1596,6 +1639,58 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
           ))}
         </div>
       )}
+
+      {/* Convention policies — discovered from .failproofai/policies/, never
+          from config, so they are grouped by the file that declares them. */}
+      {config.conventionPolicies?.map((entry) => (
+        <div key={entry.path}>
+          <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-b border-border/50">
+            <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
+              Convention Policies — {entry.scope === "project" ? "Project" : "User"}
+            </span>
+            <span className="text-[0.7rem] text-muted-foreground">
+              {entry.policies.length} hook{entry.policies.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
+            <Code className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-mono text-muted-foreground truncate">{entry.path}</span>
+          </div>
+          {entry.policies.length === 0 ? (
+            <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/20 bg-muted/10">
+              <Shield className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mt-0.5" />
+              <p className="text-[0.7rem] text-muted-foreground/70 leading-relaxed">
+                No policies could be read from this file. It is still loaded at runtime —
+                run <span className="font-mono">failproofai policies</span> to see what it registers.
+              </p>
+            </div>
+          ) : (
+            entry.policies.map((policy) => (
+              <div
+                key={`${entry.path}:${policy.name}`}
+                className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
+              >
+                <div className="h-4 w-7 shrink-0 mt-0.5" />
+                <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
+                  <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  {policy.description && (
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      {policy.description}
+                    </span>
+                  )}
+                  {policy.eventScope && (
+                    <span className="block text-[0.65rem] text-muted-foreground/40 font-mono mt-0.5 hidden lg:block">
+                      {policy.eventScope}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ))}
     </div>
     </>
   );
@@ -1646,7 +1741,10 @@ export default function HooksClient({ initialTab = "activity" }: { initialTab?: 
         setHooksInstalled(cfg.clis.some((c) => c.installed));
         setPolicyCounts({
           enabled: cfg.enabledPolicies.length,
-          total: cfg.policies.length + (cfg.customPolicies?.length ?? 0),
+          total:
+            cfg.policies.length +
+            (cfg.customPolicies?.length ?? 0) +
+            (cfg.conventionPolicies?.reduce((n, e) => n + e.policies.length, 0) ?? 0),
         });
         setInstalledCliLabels(cfg.clis.filter((c) => c.installed).map((c) => c.label));
       })

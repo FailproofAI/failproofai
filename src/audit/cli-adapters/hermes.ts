@@ -8,9 +8,11 @@
  * `logEntriesToEvents` handles the rest.
  *
  * Gateway sessions have no `cwd` (Slack/Telegram runs aren't in a repo), so they
- * group by `source` (slack/telegram/cli/cron) instead of working directory.
+ * group by (profile, `source`) instead of working directory — a Hermes profile
+ * is a whole separate home dir with its own state.db (lib/hermes-profiles.ts).
  */
 import { getHermesSessions } from "../../../lib/hermes-projects";
+import { hermesProjectPath } from "../../../lib/hermes-profiles";
 import { getHermesSessionLog } from "../../../lib/hermes-sessions";
 import type { NormalizedToolEvent, TranscriptMetadata } from "../types";
 import type { ListOpts } from "./claude";
@@ -31,8 +33,9 @@ export async function listHermesTranscriptMetadata(
     if (s.messageCount <= 0 && !s.hasMessages) continue; // empty → no events (message_count can lag; trust real messages)
     out.push({
       cli: "hermes",
-      // Group by channel; gateway sessions are cwd-less.
-      projectName: s.source ? `hermes:${s.source}` : "hermes",
+      // Group by (profile, channel); gateway sessions are cwd-less, and each
+      // profile is a separate Hermes home with its own state.db.
+      projectName: s.source ? hermesProjectPath(s.profile, s.source) : `hermes:${s.profile}`,
       sessionId: s.sessionId,
       transcriptPath: `hermes://${s.sessionId}`,
       mtimeMs: s.mtimeMs,

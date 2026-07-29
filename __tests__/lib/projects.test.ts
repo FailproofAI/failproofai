@@ -53,6 +53,15 @@ vi.mock("@/lib/antigravity-projects", () => ({
   getAntigravityProjects: vi.fn(async () => []),
 }));
 
+// Same reason as Hermes/Antigravity above, and it was genuinely missing: the
+// `vi.mock("fs/promises")` at the top does NOT cover OpenClaw, which reads
+// ~/.openclaw with SYNC node:fs calls. This file only passed on machines with
+// no OpenClaw agents on disk — anyone with real sessions got extra merged rows
+// and every toHaveLength() assertion below failed.
+vi.mock("@/lib/openclaw-projects", () => ({
+  getOpenClawProjects: vi.fn(async () => []),
+}));
+
 import { readdir, stat } from "fs/promises";
 import { extractSessionId, getProjectFolders, getSessionFiles, type ProjectFolder } from "@/lib/projects";
 import { getCodexProjects } from "@/lib/codex-projects";
@@ -553,6 +562,65 @@ describe("getProjectFolders", () => {
     expect(result).toHaveLength(1);
     expect(result[0].cli).toEqual(["hermes"]);
     expect(result[0].path).toBe("hermes:slack");
+  });
+
+  it("sums sessionCount when two sources share a name, instead of keeping only the first", async () => {
+    // Regression guard: the merged row is built by spreading the FIRST source,
+    // so a new field is silently inherited from it and every later source's
+    // value dropped — with no type error and no other failing test.
+    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
+    mockReaddir.mockResolvedValueOnce([] as any);
+    mockGetCodexProjects.mockResolvedValueOnce([
+      {
+        name: "shared-row",
+        path: "/shared",
+        isDirectory: true,
+        lastModified: new Date("2026-01-01T00:00:00Z"),
+        cli: ["codex"],
+        sessionCount: 2,
+      } satisfies ProjectFolder,
+    ]);
+    mockGetHermesProjects.mockResolvedValueOnce([
+      {
+        name: "shared-row",
+        path: "/shared",
+        isDirectory: true,
+        lastModified: new Date("2026-02-01T00:00:00Z"),
+        cli: ["hermes"],
+        sessionCount: 5,
+      } satisfies ProjectFolder,
+    ]);
+
+    const result = await getProjectFolders();
+    expect(result).toHaveLength(1);
+    expect(result[0].sessionCount).toBe(7);
+  });
+
+  it("leaves sessionCount undefined when no source reported one", async () => {
+    // `0` would claim "no sessions" for producers that simply do not count.
+    mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
+    mockReaddir.mockResolvedValueOnce([] as any);
+    mockGetCodexProjects.mockResolvedValueOnce([
+      {
+        name: "uncounted",
+        path: "/uncounted",
+        isDirectory: true,
+        lastModified: new Date("2026-01-01T00:00:00Z"),
+        cli: ["codex"],
+      } satisfies ProjectFolder,
+    ]);
+    mockGetHermesProjects.mockResolvedValueOnce([
+      {
+        name: "uncounted",
+        path: "/uncounted",
+        isDirectory: true,
+        lastModified: new Date("2026-02-01T00:00:00Z"),
+        cli: ["hermes"],
+      } satisfies ProjectFolder,
+    ]);
+
+    const result = await getProjectFolders();
+    expect(result[0].sessionCount).toBeUndefined();
   });
 
   it("falls back gracefully when getCursorProjects rejects", async () => {

@@ -27,6 +27,14 @@ const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 /** Regex matching convention policy filenames: *policies.{js,mjs,ts} */
 const CONVENTION_FILE_RE = /policies\.(js|mjs|ts)$/;
 
+/**
+ * Monotonic counter used to cache-bust each dynamic import. Loading N files
+ * creates N module instances rather than reusing one; every caller here is
+ * either a one-shot CLI command or a short-lived hook process, so the
+ * lifetime cost is bounded by the process, not by uptime.
+ */
+let loadSequence = 0;
+
 /** Script extensions we could load, used to spot near-miss filenames. */
 const LOADABLE_EXT_RE = /\.(js|mjs|ts)$/;
 
@@ -96,7 +104,19 @@ async function loadSingleFile(
     tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex);
 
     const entryTmp = absPath + TMP_SUFFIX;
-    const fileUrl = pathToFileURL(entryTmp).href;
+    // Cache-bust the specifier. NOTE this works under Node but NOT under Bun,
+    // which caches by resolved path and ignores the query — and the shipped
+    // binary runs under Bun. It is kept because it makes repeat loads behave
+    // the same on both runtimes where it can, but nothing may DEPEND on a
+    // repeat load re-executing; callers dedupe paths instead (see above).
+    // The temp path is deterministic, so a second
+    // load of the same file inside one process hit the ESM module cache, the
+    // module body never re-ran, no `customPolicies.add` fired, and the caller
+    // saw zero hooks — indistinguishable from a broken policy file. That is
+    // exactly what `failproofai policies` rendered as "failed to load" for
+    // every file when it walked a shared project/user directory twice.
+    // A distinct query string makes it a distinct module to the loader.
+    const fileUrl = `${pathToFileURL(entryTmp).href}?v=${++loadSequence}`;
     await import(/* webpackIgnore: true */ fileUrl);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -201,12 +221,20 @@ export async function loadAllCustomHooks(
   // purpose, so switching off *discovery* shouldn't silently drop it too.
   const conventionEnabled = opts?.customPoliciesEnabled !== false;
 
+  // Every file already imported this call, by resolved absolute path. Loading
+  // one twice is never right: `customPolicies.add` is an unconditional push, so
+  // the second import registers every hook a second time and the policy runs
+  // twice per event. Seeded by the explicit path below and consulted by both
+  // convention passes.
+  const loadedPaths = new Set<string>();
+
   // 1. Explicit customPoliciesPath (existing behavior)
   if (customPoliciesPath) {
     const absPath = isAbsolute(customPoliciesPath)
       ? customPoliciesPath
       : resolve(projectRoot, customPoliciesPath);
     if (existsSync(absPath)) {
+      loadedPaths.add(absPath);
       await loadSingleFile(absPath);
     } else {
       hookLogWarn(`customPoliciesPath not found: ${absPath}`);
@@ -216,10 +244,19 @@ export async function loadAllCustomHooks(
   const hooksBeforeConvention = getCustomHooks().length;
 
   // 2. Project convention: {projectRoot}/.failproofai/policies/*policies.{js,mjs,ts}
+  //
+  // A `customPoliciesPath` pointing INTO this directory at a file whose name
+  // also matches the convention (`*policies.{js,mjs,ts}`) is an ordinary setup —
+  // `failproofai policies -i -c .failproofai/policies/my-policies.mjs` produces
+  // exactly that — and it is discovered here as well. Skip what step 1 loaded,
+  // or the file is imported twice and every hook in it fires twice per event.
   const projectDir = resolve(projectRoot, ".failproofai", "policies");
   if (conventionEnabled) warnSkippedPolicyFiles(projectDir, "project");
-  const projectFiles = conventionEnabled ? discoverPolicyFiles(projectDir) : [];
+  const projectFiles = conventionEnabled
+    ? discoverPolicyFiles(projectDir).filter((f) => !loadedPaths.has(f))
+    : [];
   for (const file of projectFiles) {
+    loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "project" });
     const newHooks = getCustomHooks().slice(hooksBefore);
@@ -233,10 +270,27 @@ export async function loadAllCustomHooks(
   }
 
   // 3. User convention: ~/.failproofai/policies/*policies.{js,mjs,ts}
+  //
+  // Skipped entirely when it resolves to the directory already loaded above —
+  // which happens whenever the project root IS the home directory, a normal
+  // setup for a gateway. Without this, every file is loaded a second time and
+  // `customPolicies.add` (an unconditional push) registers each hook twice, so
+  // every policy fires twice per event. For a counting policy that means the
+  // count doubles and its ceiling trips at half the real number.
+  //
+  // Today that is masked by the runtime rather than prevented: Bun caches
+  // dynamic imports by resolved path and IGNORES the `?v=` cache-buster below,
+  // so the second import is a no-op — but Node honours the query and would
+  // double-register. The binary runs under Bun and the tests under Node, so the
+  // bug is invisible from both sides. Do not rely on that; dedupe the paths.
   const userDir = resolve(homedir(), ".failproofai", "policies");
-  if (conventionEnabled) warnSkippedPolicyFiles(userDir, "user");
-  const userFiles = conventionEnabled ? discoverPolicyFiles(userDir) : [];
+  if (conventionEnabled && userDir !== projectDir) warnSkippedPolicyFiles(userDir, "user");
+  const userFiles =
+    conventionEnabled && userDir !== projectDir
+      ? discoverPolicyFiles(userDir).filter((f) => !loadedPaths.has(f))
+      : [];
   for (const file of userFiles) {
+    loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });
     const newHooks = getCustomHooks().slice(hooksBefore);

@@ -30,6 +30,42 @@ export function decodeFolderName(name: string): string {
 }
 
 /**
+ * Synthetic project path for gateway CLIs with no working directory —
+ * `hermes:<profile>:<source>`, `openclaw:<channel>`. Two or more leading letters
+ * so a Windows drive letter (`c:/code`) can never match.
+ */
+const SYNTHETIC_PROJECT_PATH = /^[a-z]{2,}:/;
+
+/**
+ * Whether a project `path` is a synthetic gateway path rather than a real
+ * filesystem path — `hermes:<profile>:<source>`, `openclaw:<agent>:<channel>`.
+ *
+ * These are the only projects with a meaningful segment hierarchy, so this is
+ * also what decides which rows the projects panel renders as a folder tree.
+ */
+export function isSyntheticProjectPath(path?: string): boolean {
+  return !!path && SYNTHETIC_PROJECT_PATH.test(path);
+}
+
+/** Segments of a synthetic gateway path, outermost first. `[]` for real paths. */
+export function syntheticPathSegments(path?: string): string[] {
+  return isSyntheticProjectPath(path) ? path!.split(":") : [];
+}
+
+/**
+ * Label to display for a project card.
+ *
+ * Filesystem-backed projects decode their folder name. Gateway projects must
+ * NOT: `decodeFolderName` turns every `-` into `/`, which splits a Hermes
+ * profile named `my-bot` into `my/bot`. Their `path` already carries the
+ * segments explicitly, so use it.
+ */
+export function projectDisplayName(name: string, path?: string): string {
+  if (isSyntheticProjectPath(path)) return path!.replace(/:/g, "/");
+  return decodeFolderName(name);
+}
+
+/**
  * Encodes a filesystem path into a Claude-compatible project folder name.
  * Inverse of `decodeFolderName`.
  */

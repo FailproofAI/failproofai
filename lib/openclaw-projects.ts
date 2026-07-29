@@ -2,7 +2,7 @@
  * OpenClaw (openclaw gateway) session enumeration — AUDIT-ONLY.
  *
  * Surfaces the on-disk transcripts (agents/<agentId>/sessions/<uuid>.jsonl) as
- * synthetic dashboard "projects" grouped by agentId. The per-agent
+ * synthetic dashboard "projects" grouped by (agentId, channel). The per-agent
  * `sessions.json` index maps sessionKey → {sessionId, timestamps}; we read it to
  * recover the sessionKey (which encodes the channel for gateway sessions) and a
  * reliable last-activity time. Verified live against openclaw v2026.7.1.
@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeCache } from "./runtime-cache";
-import { listOpenClawTranscripts, openclawHome } from "./openclaw-sessions";
+import { listOpenClawAgents, listOpenClawTranscripts, openclawHome } from "./openclaw-sessions";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { formatDate } from "./format-date";
 
@@ -26,6 +26,8 @@ export interface OpenClawSessionRef {
    *  gateway-metadata columns. */
   chatId?: string;
   chatType?: string;
+  /** Absolute path to the `<uuid>.jsonl` transcript this ref came from. */
+  transcriptPath: string;
   mtimeMs: number;
   sizeBytes: number;
 }
@@ -100,6 +102,7 @@ export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
       label: meta?.label,
       chatType: meta?.chatType,
       chatId: meta?.chatId,
+      transcriptPath: t.transcriptPath,
       mtimeMs: meta?.lastMs ?? t.mtimeMs,
       sizeBytes: t.sizeBytes,
     });
@@ -112,28 +115,95 @@ export const getCachedOpenClawSessions = runtimeCache(getOpenClawSessions, 2);
 
 // ── Dashboard history browser (projects list + project-detail sessions) ──
 
+/** Encoded project name for an (agent, channel) pair. */
+export function openClawProjectName(agentId: string, channel: string): string {
+  return `openclaw-${agentId}-${channel}`;
+}
+
+/** Machine-readable grouping key, shown under the project name. */
+export function openClawProjectPath(agentId: string, channel: string): string {
+  return `openclaw:${agentId}:${channel}`;
+}
+
+export interface OpenClawNameSplit {
+  agentId: string | null;
+  channel: string;
+}
+
 /**
- * Surface OpenClaw sessions as synthetic "projects" grouped by **channel**
- * (telegram/slack/…/local) — gateway sessions run per channel, not in a host
- * repo. Mirrors Hermes's group-by-source. One ProjectFolder per channel; its
- * `name` is `openclaw-<channel>`, reversed in `getOpenClawSessionsByEncodedName`.
+ * Every way `openclaw-<agentId>-<channel>` could split, best guess first.
+ *
+ * Both an agentId and a channel may contain `-`, so the slug is never split
+ * blindly: each candidate is an agent id that actually exists on disk, tried
+ * longest-first. That alone is not sufficient — with agents `main` and
+ * `main-bot` on disk, `openclaw-main-bot-telegram` could be `main-bot`+`telegram`
+ * OR `main`+`bot-telegram`, and length alone picks the wrong one whenever the
+ * shorter agent owns it. So callers walk the candidates and take the first that
+ * matches real sessions.
+ *
+ * The last candidate is always the legacy channel-only `openclaw-<channel>`
+ * form (`agentId: null`), so links shared before agents became part of the name
+ * keep resolving — to every agent on that channel, which is what they meant.
+ */
+export function openClawProjectNameCandidates(name: string): OpenClawNameSplit[] {
+  if (!name.startsWith("openclaw-")) return [];
+  const rest = name.slice("openclaw-".length);
+  if (!rest) return [];
+
+  const out: OpenClawNameSplit[] = [];
+  const agents = listOpenClawAgents().sort((a, b) => b.length - a.length);
+  for (const agentId of agents) {
+    const prefix = `${agentId}-`;
+    if (rest.startsWith(prefix) && rest.length > prefix.length) {
+      out.push({ agentId, channel: rest.slice(prefix.length) });
+    }
+  }
+  out.push({ agentId: null, channel: rest });
+  return out;
+}
+
+/** The best-guess split for a project name — `null` if it isn't an OpenClaw one. */
+export function parseOpenClawProjectName(name: string): OpenClawNameSplit | null {
+  return openClawProjectNameCandidates(name)[0] ?? null;
+}
+
+/**
+ * Surface OpenClaw sessions as synthetic "projects" grouped by **(agent,
+ * channel)** — gateway sessions have no host repo to group by.
+ *
+ * Agent is the OUTER axis because it is the stable one: `agentId` is a
+ * directory name, whereas `channel` is derived from the LAST channel a session
+ * used. Grouping by channel alone (as this did before) also collapsed two
+ * different agents that both talk on Telegram into one row with one mixed
+ * session list — and disagreed with the audit adapter, which grouped by agent.
  */
 export async function getOpenClawProjects(): Promise<ProjectFolder[]> {
   const sessions = await getOpenClawSessions();
-  const latestByChannel = new Map<string, number>();
+  const groups = new Map<
+    string,
+    { agentId: string; channel: string; latest: number; count: number }
+  >();
   for (const s of sessions) {
-    latestByChannel.set(s.channel, Math.max(latestByChannel.get(s.channel) ?? 0, s.mtimeMs));
+    const key = JSON.stringify([s.agentId, s.channel]);
+    const prev = groups.get(key);
+    if (prev) {
+      prev.latest = Math.max(prev.latest, s.mtimeMs);
+      prev.count += 1;
+    } else {
+      groups.set(key, { agentId: s.agentId, channel: s.channel, latest: s.mtimeMs, count: 1 });
+    }
   }
   const out: ProjectFolder[] = [];
-  for (const [channel, latest] of latestByChannel) {
+  for (const { agentId, channel, latest, count } of groups.values()) {
     const lastModified = new Date(latest);
     out.push({
-      name: `openclaw-${channel}`,
-      path: `openclaw:${channel}`,
+      name: openClawProjectName(agentId, channel),
+      path: openClawProjectPath(agentId, channel),
       isDirectory: true,
       lastModified,
       lastModifiedFormatted: formatDate(lastModified),
       cli: ["openclaw"],
+      sessionCount: count,
     });
   }
   out.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
@@ -146,18 +216,41 @@ export interface OpenClawProjectByName {
 }
 
 /** Resolve the OpenClaw sessions for a synthetic project name
- *  (`openclaw-<channel>`), for the project-detail page. Session names use the
- *  human-readable `origin.label` (e.g. "Chetan (@chhhee10) id:…") rather than
- *  the raw session key. */
+ *  (`openclaw-<agentId>-<channel>`), for the project-detail page. Session names
+ *  use the human-readable `origin.label` (e.g. "Chetan (@chhhee10) id:…")
+ *  rather than the raw session key. */
 export async function getOpenClawSessionsByEncodedName(
   name: string,
 ): Promise<OpenClawProjectByName> {
-  if (!name.startsWith("openclaw-")) return { cwd: null, sessions: [] };
-  const channel = name.slice("openclaw-".length);
+  const candidates = openClawProjectNameCandidates(name);
+  if (candidates.length === 0) return { cwd: null, sessions: [] };
+
   const sessions = await getOpenClawSessions();
-  const matched = sessions.filter((s) => s.channel === channel);
+  const matching = (split: OpenClawNameSplit) =>
+    sessions.filter(
+      (s) => s.channel === split.channel && (split.agentId === null || s.agentId === split.agentId),
+    );
+
+  // Take the first split that actually owns sessions — length alone picks the
+  // wrong agent when one id is a hyphen-prefix of another. Falling back to the
+  // best guess keeps the page's labelling sensible when nothing matches.
+  let chosen = candidates[0];
+  let matched = matching(chosen);
+  if (matched.length === 0) {
+    for (const candidate of candidates.slice(1)) {
+      const hits = matching(candidate);
+      if (hits.length > 0) {
+        chosen = candidate;
+        matched = hits;
+        break;
+      }
+    }
+  }
+  const { agentId, channel } = chosen;
   return {
-    cwd: `openclaw:${channel}`,
+    // Legacy channel-only names keep their old cwd label, since they really do
+    // span every agent on that channel.
+    cwd: agentId === null ? `openclaw:${channel}` : openClawProjectPath(agentId, channel),
     sessions: matched.map((s) => {
       const lastModified = new Date(s.mtimeMs);
       return {

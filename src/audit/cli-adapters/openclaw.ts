@@ -7,13 +7,13 @@
  * shared LogEntry[] shape, so `logEntriesToEvents` handles the rest.
  *
  * Gateway sessions run in the container workspace, not a host repo, so they
- * group by agentId (`openclaw:<agentId>`) and contribute nothing to a
- * cwd-scoped audit.
+ * group by (agentId, channel) — `openclaw:<agentId>:<channel>` — and contribute
+ * nothing to a cwd-scoped audit. That is the SAME key the dashboard groups by;
+ * the two used to disagree (adapter by agent, panel by channel), so a report and
+ * the projects panel sliced identical data on different axes.
  */
-import {
-  listOpenClawTranscripts,
-  getOpenClawSessionLog,
-} from "../../../lib/openclaw-sessions";
+import { getOpenClawSessions, openClawProjectPath } from "../../../lib/openclaw-projects";
+import { getOpenClawSessionLog } from "../../../lib/openclaw-sessions";
 import type { NormalizedToolEvent, TranscriptMetadata } from "../types";
 import type { ListOpts } from "./claude";
 import { logEntriesToEvents } from "./shared";
@@ -28,15 +28,19 @@ export async function listOpenClawTranscriptMetadata(
 
   const sinceMs = opts.sinceMs ?? 0;
   const out: TranscriptMetadata[] = [];
-  for (const t of listOpenClawTranscripts()) {
-    if (t.mtimeMs < sinceMs) continue;
+  // getOpenClawSessions layers the per-agent sessions.json index over the same
+  // transcript walk, which is what carries `channel`. It reads one small index
+  // file per AGENT (not per session) and is memoized, so grouping by channel
+  // costs no meaningful extra IO on the audit path.
+  for (const s of await getOpenClawSessions()) {
+    if (s.mtimeMs < sinceMs) continue;
     out.push({
       cli: "openclaw",
-      projectName: `openclaw:${t.agentId}`,
-      sessionId: t.sessionId,
-      transcriptPath: t.transcriptPath,
-      mtimeMs: t.mtimeMs,
-      sizeBytes: t.sizeBytes,
+      projectName: openClawProjectPath(s.agentId, s.channel),
+      sessionId: s.sessionId,
+      transcriptPath: s.transcriptPath,
+      mtimeMs: s.mtimeMs,
+      sizeBytes: s.sizeBytes,
     });
   }
   return out;

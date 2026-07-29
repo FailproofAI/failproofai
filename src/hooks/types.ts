@@ -105,8 +105,34 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 // (`~/.hermes/config.yaml`; Hermes has no project scope). `pre_tool_call` is the
 // core deny point — it fires for tool calls from every source
 // (slack/telegram/cli/cron) and internal subagents, so a single install
-// intercepts all platforms. Hermes has NO turn-end `Stop` event, so the
-// `require-*-before-stop` builtins never fire for it (see the audit plan).
+// intercepts all platforms.
+//
+// `pre_verify` IS a turn-end gate — the earlier claim here that Hermes has none
+// was wrong. We deliberately do NOT install it (product decision, 2026-07-29);
+// this note records what it would buy so the choice can be revisited without
+// re-deriving it.
+//
+// Upstream fires it once per turn when the agent has edited code and is about to
+// finish (`agent/conversation_loop.py:6754`), and its parser accepts our Claude
+// Stop shape verbatim — `{decision:"block", reason}` means "block the stop",
+// i.e. keep going (`agent/shell_hooks.py:606-615`). The reason is injected as a
+// synthetic user message and the loop re-enters
+// (`conversation_loop.py:6774-6800`). Installing it is one entry in
+// config.yaml — it is a shell hook like the other five, no Python involved.
+//
+// It would make the 5 `require-*-before-stop` builtins fire on Hermes, subject
+// to three upstream conditions:
+//   1. It fires ONLY on turns that landed a file mutation, and that means
+//      exactly `write_file` or `patch` (`agent/tool_result_classification.py:9`)
+//      — a turn that did its work through `terminal` (sed -i, rm, >) does not
+//      qualify, so a chat-only gateway may never see it.
+//   2. Capped at 3 nudges per turn (`DEFAULT_MAX_VERIFY_NUDGES`,
+//      `agent/verify_hooks.py:21`), operator-overridable; resets each turn.
+//   3. It landed upstream ~2026-06-30. Older Hermes fails the key against
+//      VALID_HOOKS and warn-and-skips it SILENTLY (`agent/shell_hooks.py:325`).
+//
+// Until it is installed, `HERMES_EVENT_MAP` emits no `Stop` and those 5
+// builtins remain inapplicable on Hermes.
 export const HERMES_HOOK_SCOPES = ["user"] as const;
 export type HermesHookScope = (typeof HERMES_HOOK_SCOPES)[number];
 
@@ -1002,7 +1028,29 @@ export const HOOK_EVENT_TYPES = [
   "Setup",
 ] as const;
 
+
+
 export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];
+
+/**
+ * Events failproofai actually INSTALLS a hook for on Claude Code.
+ *
+ * Everything in `HOOK_EVENT_TYPES` except `WorktreeCreate`, which is not a
+ * permission gate at all: Claude uses it as a worktree-PATH PROVIDER, taking
+ * the stdout of the first hook that succeeds as the directory to create and
+ * failing with "WorktreeCreate hook failed" when no hook supplies one. Our
+ * allow path writes nothing to stdout — correctly, by the contract every other
+ * event uses — so merely being registered there broke `claude --worktree` and
+ * `/worktree` for every user, whatever any policy decided.
+ *
+ * It stays in `HOOK_EVENT_TYPES` because that list is the canonical set a
+ * policy may subscribe to; this one governs what we write into settings.json.
+ * No builtin matches it (all 39 match only PreToolUse / PostToolUse /
+ * PermissionRequest / Stop), so nothing is lost by not registering.
+ */
+export const CLAUDE_INSTALL_EVENT_TYPES = HOOK_EVENT_TYPES.filter(
+  (e) => e !== "WorktreeCreate",
+) as readonly HookEventType[];
 
 export const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__" as const;
 

@@ -24,6 +24,10 @@ vi.mock("../../src/hooks/install-prompt", () => ({
 
 vi.mock("../../src/hooks/hooks-config", () => ({
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
+  // listHooks resolves the project root by walking up to the nearest
+  // `.failproofai` marker, the same way enforcement does. The real function
+  // hits the filesystem; for these tests the cwd IS the project root.
+  findProjectConfigDir: vi.fn((start: string) => start),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeHooksConfig: vi.fn(),
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
@@ -65,7 +69,10 @@ describe("hooks/manager", () => {
   });
 
   describe("installHooks", () => {
-    it("installs hooks for all 29 event types into empty settings", async () => {
+    // 28, not 29: WorktreeCreate is deliberately not installed — Claude uses it
+    // as a worktree-PATH PROVIDER (first hook's stdout becomes the directory),
+    // and our silent-on-allow contract broke `claude --worktree` for every user.
+    it("installs hooks for all 28 installed event types into empty settings", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");
 
@@ -77,7 +84,8 @@ describe("hooks/manager", () => {
       expect(path).toBe(USER_SETTINGS_PATH);
 
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(29);
+      expect(Object.keys(written.hooks)).toHaveLength(28);
+      expect(written.hooks.WorktreeCreate).toBeUndefined();
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         expect(matchers).toHaveLength(1);
@@ -231,7 +239,7 @@ describe("hooks/manager", () => {
       expect(writeFileSync).toHaveBeenCalledOnce();
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
-      expect(Object.keys(written.hooks)).toHaveLength(29);
+      expect(Object.keys(written.hooks)).toHaveLength(28);
     });
 
     it("uses 'where' on Windows and handles multi-line output", async () => {

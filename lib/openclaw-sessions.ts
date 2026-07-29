@@ -195,6 +195,26 @@ export interface OpenClawTranscriptFile {
   sizeBytes: number;
 }
 
+/**
+ * Agent ids configured under this OpenClaw home, in name order.
+ *
+ * An agentId is just a directory name (`main`, `weather-bot`) — OpenClaw
+ * validates nothing, so neither do we. Cheap on purpose: one readdir, no
+ * statting of transcripts, because the project-name parser calls this to
+ * longest-match an agent id out of a URL slug (agent ids may contain `-`, so
+ * splitting the slug is not an option).
+ */
+export function listOpenClawAgents(): string[] {
+  try {
+    return readdirSync(join(openclawHome(), "agents"), { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 /** Enumerate `agents/<agentId>/sessions/<uuid>.jsonl` transcripts, skipping the
  *  heavy `.trajectory.jsonl` OTel traces and pointer files. */
 export function listOpenClawTranscripts(): OpenClawTranscriptFile[] {

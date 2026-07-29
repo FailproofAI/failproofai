@@ -12,8 +12,10 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
+import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import {
   HOOK_EVENT_TYPES,
+  CLAUDE_INSTALL_EVENT_TYPES,
   HOOK_SCOPES,
   CODEX_HOOK_EVENT_TYPES,
   CODEX_HOOK_SCOPES,
@@ -118,6 +120,18 @@ export interface Integration {
   /** Resolve the per-scope settings/hooks file path. */
   getSettingsPath(scope: HookScope, cwd?: string): string;
 
+  /**
+   * Every settings file this integration must write for a scope.
+   *
+   * Optional — defaults to `[getSettingsPath(scope, cwd)]`, which is right for
+   * every CLI whose scope maps to exactly one file. Hermes overrides it because
+   * each of its PROFILES is a separate home dir with its own `config.yaml`:
+   * writing only `~/.hermes/config.yaml` would leave every other profile running
+   * unhooked, silently. Use `settingsPathsFor(integration, …)` at call sites
+   * rather than calling this directly.
+   */
+  getSettingsPaths?(scope: HookScope, cwd?: string): string[];
+
   /** Read the raw settings/hooks file (returns {} when missing). */
   readSettings(settingsPath: string): Record<string, unknown>;
 
@@ -143,13 +157,28 @@ export interface Integration {
   detectInstalled(): boolean;
 }
 
+/**
+ * Every settings file to write/remove for `(integration, scope)`.
+ *
+ * Single-file integrations (all but Hermes) return exactly one path, so callers
+ * can loop unconditionally.
+ */
+export function settingsPathsFor(
+  integration: Integration,
+  scope: HookScope,
+  cwd?: string,
+): string[] {
+  const paths = integration.getSettingsPaths?.(scope, cwd);
+  return paths && paths.length > 0 ? paths : [integration.getSettingsPath(scope, cwd)];
+}
+
 // ── Claude Code integration ─────────────────────────────────────────────────
 
 export const claudeCode: Integration = {
   id: "claude",
   displayName: "Claude Code",
   scopes: HOOK_SCOPES,
-  eventTypes: HOOK_EVENT_TYPES,
+  eventTypes: CLAUDE_INSTALL_EVENT_TYPES,
 
   getSettingsPath(scope, cwd) {
     const base = cwd ? resolve(cwd) : process.cwd();
@@ -196,7 +225,48 @@ export const claudeCode: Integration = {
     const s = settings as ClaudeSettings;
     if (!s.hooks) s.hooks = {};
 
-    for (const eventType of HOOK_EVENT_TYPES) {
+    // Drop our hook from any event we no longer install. Without this, an
+    // event removed from the list stays in settings.json forever on existing
+    // machines — reinstalling would not repair it — which is exactly the
+    // situation `WorktreeCreate` created: registered, silent on allow, and
+    // therefore breaking `claude --worktree` until hand-edited. Only OUR
+    // marked entries are touched; anyone else's hooks on the same event stay.
+    //
+    // This walks EVERY key the file happens to carry, including ones
+    // failproofai has never written — a newer Claude event, another tool's
+    // entry, a typo. Their values are therefore unvalidated input, and a
+    // non-array one (`"Foo": {}` or `"Foo": "bar"`) makes the iteration below
+    // throw. That aborts the whole install AFTER the policies were recorded as
+    // enabled, so the user is left believing they are covered while no hook was
+    // written at all — the silent non-enforcement this file exists to prevent.
+    // Skip anything not shaped like a matcher list and leave it untouched.
+    const installed = new Set<string>(CLAUDE_INSTALL_EVENT_TYPES);
+    for (const eventType of Object.keys(s.hooks)) {
+      if (installed.has(eventType)) continue;
+      const matchers = s.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      // Drop a matcher group only when WE emptied it. A group we never touched
+      // (no `hooks` array, or one that held nothing of ours) is somebody else's
+      // and is written back exactly as found — pruning is for our own entries,
+      // not a cleanup pass over the user's file.
+      const kept: ClaudeHookMatcher[] = [];
+      for (const matcher of matchers as ClaudeHookMatcher[]) {
+        if (!matcher || !Array.isArray(matcher.hooks)) {
+          if (matcher) kept.push(matcher);
+          continue;
+        }
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter(
+          (h) => !isMarkedHook(h as Record<string, unknown>),
+        );
+        const weEmptiedIt = matcher.hooks.length === 0 && before > 0;
+        if (!weEmptiedIt) kept.push(matcher);
+      }
+      s.hooks[eventType] = kept;
+      if (kept.length === 0) delete s.hooks[eventType];
+    }
+
+    for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {
       const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
       if (!s.hooks[eventType]) s.hooks[eventType] = [];
       const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
@@ -1315,10 +1385,19 @@ export const hermes: Integration = {
   scopes: HERMES_HOOK_SCOPES,
   eventTypes: HERMES_HOOK_EVENT_TYPES,
 
-  // Hermes config is USER-scope only (`~/.hermes/config.yaml`); there is no
-  // project/local file, so scope/cwd are irrelevant here.
+  // Hermes config is USER-scope only (`<HERMES_HOME>/config.yaml`); there is no
+  // project/local file, so scope/cwd are irrelevant here. This is the DEFAULT
+  // profile's config — see getSettingsPaths for the rest.
   getSettingsPath() {
-    return resolve(homedir(), ".hermes", "config.yaml");
+    return resolve(hermesRoot(), "config.yaml");
+  },
+
+  // Every profile is a separate Hermes home with its own config.yaml, so a
+  // single-file install would leave non-default profiles running unhooked —
+  // silently, since Hermes never reports a missing hook. Install/uninstall
+  // therefore cover them all.
+  getSettingsPaths() {
+    return listHermesProfiles().map((p) => resolve(p.home, "config.yaml"));
   },
 
   readSettings(settingsPath) {
@@ -1403,27 +1482,52 @@ export const hermes: Integration = {
     return removed;
   },
 
+  // "Installed" means EVERY profile is hooked, not just some. A profile created
+  // after install has no hooks, and reporting green there would hide exactly the
+  // silent-unenforcement gap this integration exists to close; reporting "not
+  // installed" instead prompts a re-install, which writes the missing profiles.
   hooksInstalledInSettings(scope, cwd) {
-    const settingsPath = this.getSettingsPath(scope, cwd);
-    if (!existsSync(settingsPath)) return false;
-    try {
-      const doc = readYamlDoc(settingsPath);
-      const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
-      const hooks = js.hooks;
-      if (!hooks || typeof hooks !== "object") return false;
-      for (const entries of Object.values(hooks)) {
-        if (Array.isArray(entries) && entries.some((h) => isMarkedHook(h))) return true;
-      }
-    } catch {
-      // Corrupt config — treat as not installed.
-    }
-    return false;
+    const paths = settingsPathsFor(this, scope, cwd);
+    return paths.length > 0 && paths.every((p) => hermesConfigHasHooks(p));
   },
 
   detectInstalled() {
     return binaryExists("hermes");
   },
 };
+
+function hermesConfigHasHooks(settingsPath: string): boolean {
+  if (!existsSync(settingsPath)) return false;
+  try {
+    const doc = readYamlDoc(settingsPath);
+    const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
+    const hooks = js.hooks;
+    if (!hooks || typeof hooks !== "object") return false;
+    for (const entries of Object.values(hooks)) {
+      if (Array.isArray(entries) && entries.some((h) => isMarkedHook(h))) return true;
+    }
+  } catch {
+    // Corrupt config — treat as not installed.
+  }
+  return false;
+}
+
+/**
+ * Profiles that exist but have no failproofai hooks — i.e. Hermes instances
+ * currently running unenforced. Empty when Hermes isn't installed at all.
+ *
+ * `listHermesProfiles()` always seeds a `default` entry so install has a path to
+ * write even on a fresh machine, so this filters to homes that actually exist —
+ * otherwise every machine WITHOUT Hermes would report one unhooked profile and
+ * the wizard would replace its accurate "not on PATH" hint with a phantom
+ * warning.
+ */
+export function unhookedHermesProfiles(): string[] {
+  return listHermesProfiles()
+    .filter((p) => existsSync(p.home))
+    .filter((p) => !hermesConfigHasHooks(resolve(p.home, "config.yaml")))
+    .map((p) => p.name);
+}
 
 // ── OpenClaw integration ────────────────────────────────────────────────────
 //

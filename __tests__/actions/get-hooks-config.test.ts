@@ -1,8 +1,14 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("@/src/hooks/hooks-config", () => ({
   readHooksConfig: () => ({ enabledPolicies: [] }),
+  // The action walks up to the project root like enforcement does; these tests
+  // point cwd straight at the project root, so identity is the right stub.
+  findProjectConfigDir: (start: string) => start,
 }));
 
 vi.mock("@/src/hooks/manager", () => ({
@@ -89,5 +95,116 @@ describe("getHooksConfigAction — clis payload", () => {
     const config = await getHooksConfigAction();
     expect(config.clis.find((c) => c.id === "claude")!.label).toBe("Claude Code");
     expect(config.clis.find((c) => c.id === "codex")!.label).toBe("OpenAI Codex");
+  });
+});
+
+// ── Convention policies ──────────────────────────────────────────────────────
+//
+// These are registered by the filesystem, never by policies-config.json, so a
+// dashboard that only reads config renders nothing and a working policy looks
+// absent. That was the reported bug: `failproofai policies` listed four
+// convention files while the dashboard's configure view showed none.
+describe("getHooksConfigAction — convention policies", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "fp-convention-"));
+    // The action prefers FAILPROOFAI_LAUNCH_CWD over process.cwd(); if it is
+    // set in the shell or the CI image, the cwd spy below is bypassed and every
+    // test here silently resolves against the wrong root.
+    vi.stubEnv("FAILPROOFAI_LAUNCH_CWD", "");
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+  });
+
+  function writePolicyDir(root: string, files: Record<string, string>) {
+    const dir = join(root, ".failproofai", "policies");
+    mkdirSync(dir, { recursive: true });
+    for (const [name, body] of Object.entries(files)) {
+      writeFileSync(join(dir, name), body, "utf8");
+    }
+    return dir;
+  }
+
+  const POLICY_SRC = `
+    import { customPolicies, allow } from "failproofai";
+    customPolicies.add({
+      name: "enforce-formal-review",
+      description: "Require a formal review",
+      match: { events: ["PreToolUse", "Stop"] },
+      fn: async () => allow(),
+    });
+  `;
+
+  it("discovers project-scope policy files and parses their hooks", async () => {
+    writePolicyDir(tmp, { "enforce-formal-review-policies.mjs": POLICY_SRC });
+    const spy = vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    try {
+      const config = await getHooksConfigAction();
+      const entry = config.conventionPolicies.find(
+        (e) => e.file === "enforce-formal-review-policies.mjs",
+      );
+      expect(entry).toBeDefined();
+      expect(entry!.scope).toBe("project");
+      expect(entry!.policies).toEqual([
+        {
+          name: "enforce-formal-review",
+          description: "Require a formal review",
+          eventScope: "PreToolUse, Stop",
+        },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("skips files that do not match the *policies.{js,mjs,ts} convention", async () => {
+    writePolicyDir(tmp, {
+      "enforce-formal-review-policies.mjs": POLICY_SRC,
+      // Silently skipped by the loader too — listing it would tell the user a
+      // file is active when it enforces nothing.
+      "block-foo.mjs": POLICY_SRC,
+    });
+    const spy = vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    try {
+      const config = await getHooksConfigAction();
+      const files = config.conventionPolicies.map((e) => e.file);
+      expect(files).toContain("enforce-formal-review-policies.mjs");
+      expect(files).not.toContain("block-foo.mjs");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("returns an empty list when no policy directory exists", async () => {
+    // HOME must be isolated too, or the developer's own user-scope policies
+    // leak into the assertion.
+    const emptyHome = mkdtempSync(join(tmpdir(), "fp-home-"));
+    const spy = vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    vi.stubEnv("HOME", emptyHome);
+    vi.stubEnv("USERPROFILE", emptyHome);
+    try {
+      const config = await getHooksConfigAction();
+      expect(config.conventionPolicies).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      rmSync(emptyHome, { recursive: true, force: true });
+    }
+  });
+
+  it("does not list the same file twice when cwd is the home directory", async () => {
+    writePolicyDir(tmp, { "team-policies.mjs": POLICY_SRC });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    vi.stubEnv("HOME", tmp);
+    try {
+      const config = await getHooksConfigAction();
+      const matching = config.conventionPolicies.filter((e) => e.file === "team-policies.mjs");
+      expect(matching).toHaveLength(1);
+    } finally {
+      cwdSpy.mockRestore();
+    }
   });
 });

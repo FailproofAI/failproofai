@@ -1,20 +1,32 @@
 /**
  * Hermes (hermes-agent) session enumeration — AUDIT-ONLY.
  *
- * Reads the `sessions` table directly from `~/.hermes/state.db` via the bundled
- * sql.js reader. All gateway users' sessions live in the one DB → "audit
- * everyone from one place". Because we query the table (not a text `sessions
- * list`), we get `source`/`cwd`/`message_count` up front — enough to group by
- * channel and to build a real per-transcript cache key.
+ * Reads the `sessions` table directly from every profile's `state.db` via the
+ * bundled sql.js reader. All of a profile's gateway users live in its one DB →
+ * "audit everyone from one place". Because we query the table (not a text
+ * `sessions list`), we get `source`/`cwd`/`message_count` up front — enough to
+ * group and to build a real per-transcript cache key.
+ *
+ * Sessions are grouped by (profile, source): a profile is a whole separate
+ * Hermes home (see lib/hermes-profiles.ts), so it is the outer scope, and
+ * `source` (slack/telegram/cli/cron) splits the channels within it.
  */
 import { openSqliteReadonly } from "./sqlite-reader";
-import { hermesDbPath, epochToMs } from "./hermes-sessions";
+import { hermesDbPaths, epochToMs } from "./hermes-sessions";
+import {
+  HERMES_DEFAULT_PROFILE,
+  hermesProjectName,
+  hermesProjectPath,
+  hermesProjectNameCandidates,
+} from "./hermes-profiles";
 import { runtimeCache } from "./runtime-cache";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { formatDate } from "./format-date";
 
 export interface HermesSessionRef {
   sessionId: string;
+  /** Which profile's state.db this row came from (`"default"` for `~/.hermes`). */
+  profile: string;
   source?: string;
   cwd?: string;
   title?: string;
@@ -52,11 +64,24 @@ interface SessionRow {
 }
 
 /**
- * List every Hermes session (all users). Returns `[]` when the DB is missing or
- * unreadable (fail-open — the audit just skips Hermes).
+ * List every Hermes session — every user, of every profile. A missing or
+ * unreadable profile DB is skipped rather than failing the batch (fail-open:
+ * the audit degrades to the profiles it can read instead of dropping Hermes).
  */
 export async function getHermesSessions(): Promise<HermesSessionRef[]> {
-  const db = await openSqliteReadonly(hermesDbPath());
+  const out: HermesSessionRef[] = [];
+  for (const { profile, dbPath } of hermesDbPaths()) {
+    out.push(...(await readSessionsFromDb(dbPath, profile)));
+  }
+  out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return out;
+}
+
+async function readSessionsFromDb(
+  dbPath: string,
+  profile: string,
+): Promise<HermesSessionRef[]> {
+  const db = await openSqliteReadonly(dbPath);
   if (!db) return [];
   try {
     const rows = db.query<SessionRow>(
@@ -69,6 +94,7 @@ export async function getHermesSessions(): Promise<HermesSessionRef[]> {
     );
     return rows.map((r) => ({
       sessionId: r.id,
+      profile,
       source: r.source ?? undefined,
       cwd: r.cwd ?? undefined,
       title: r.title ?? undefined,
@@ -92,29 +118,44 @@ export const getCachedHermesSessions = runtimeCache(getHermesSessions, 2);
 // ── Dashboard history browser (projects list + project-detail sessions) ──
 
 /**
- * Surface Hermes gateway sessions as synthetic "projects" grouped by `source`
- * (slack/telegram/cli/cron) — gateway sessions have no cwd to group by. One
- * ProjectFolder per source; its `name` is `hermes-<source>`, reversed in
- * `getHermesSessionsByEncodedName`.
+ * Surface Hermes gateway sessions as synthetic "projects" grouped by
+ * (profile, source) — gateway sessions have no cwd to group by. One
+ * ProjectFolder per pair, named by `hermesProjectName`.
  */
 export async function getHermesProjects(): Promise<ProjectFolder[]> {
   const sessions = await getHermesSessions();
-  const latestBySource = new Map<string, number>();
+  // key → { profile, source, latest }; keeps profile/source intact for naming
+  // (the key itself is not parseable back when a profile name contains "-").
+  const groups = new Map<
+    string,
+    { profile: string; source: string; latest: number; count: number }
+  >();
   for (const s of sessions) {
     if (s.messageCount <= 0 && !s.hasMessages) continue; // skip empty (message_count can lag; trust real messages)
-    const src = s.source ?? "unknown";
-    latestBySource.set(src, Math.max(latestBySource.get(src) ?? 0, s.mtimeMs));
+    const profile = s.profile || HERMES_DEFAULT_PROFILE;
+    const source = s.source ?? "unknown";
+    const key = JSON.stringify([profile, source]);
+    const prev = groups.get(key);
+    if (prev) {
+      prev.latest = Math.max(prev.latest, s.mtimeMs);
+      // Sessions, not messages — `messageCount` counts messages within one
+      // session and is documented as possibly lagging.
+      prev.count += 1;
+    } else {
+      groups.set(key, { profile, source, latest: s.mtimeMs, count: 1 });
+    }
   }
   const out: ProjectFolder[] = [];
-  for (const [src, latest] of latestBySource) {
+  for (const { profile, source, latest, count } of groups.values()) {
     const lastModified = new Date(latest);
     out.push({
-      name: `hermes-${src}`,
-      path: `hermes:${src}`,
+      name: hermesProjectName(profile, source),
+      path: hermesProjectPath(profile, source),
       isDirectory: true,
       lastModified,
       lastModifiedFormatted: formatDate(lastModified),
       cli: ["hermes"],
+      sessionCount: count,
     });
   }
   out.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
@@ -127,18 +168,43 @@ export interface HermesProjectByName {
 }
 
 /**
- * Resolve the Hermes sessions for a synthetic project name (`hermes-<source>`),
- * for the project-detail page. Non-Hermes names resolve to empty.
+ * Resolve the Hermes sessions for a synthetic project name
+ * (`hermes-<profile>-<source>`), for the project-detail page. Non-Hermes names
+ * resolve to empty.
  */
 export async function getHermesSessionsByEncodedName(
   name: string,
 ): Promise<HermesProjectByName> {
-  if (!name.startsWith("hermes-")) return { cwd: null, sessions: [] };
-  const source = name.slice("hermes-".length);
+  const candidates = hermesProjectNameCandidates(name);
+  if (candidates.length === 0) return { cwd: null, sessions: [] };
+
   const sessions = await getHermesSessions();
-  const matched = sessions.filter((s) => (s.messageCount > 0 || s.hasMessages) && (s.source ?? "unknown") === source);
+  const matching = (split: { profile: string; source: string }) =>
+    sessions.filter(
+      (s) =>
+        (s.messageCount > 0 || s.hasMessages) &&
+        (s.profile || HERMES_DEFAULT_PROFILE) === split.profile &&
+        (s.source ?? "unknown") === split.source,
+    );
+
+  // First split that actually owns sessions — longest-match alone picks the
+  // wrong profile when one name is a hyphen-prefix of another. Falling back to
+  // the best guess keeps the page labelled sensibly when nothing matches.
+  let chosen = candidates[0];
+  let matched = matching(chosen);
+  if (matched.length === 0) {
+    for (const candidate of candidates.slice(1)) {
+      const hits = matching(candidate);
+      if (hits.length > 0) {
+        chosen = candidate;
+        matched = hits;
+        break;
+      }
+    }
+  }
+  const { profile, source } = chosen;
   return {
-    cwd: `hermes:${source}`,
+    cwd: hermesProjectPath(profile, source),
     sessions: matched.map((s) => {
       const lastModified = new Date(s.mtimeMs);
       return {

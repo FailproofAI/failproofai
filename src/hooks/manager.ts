@@ -14,15 +14,16 @@ import {
   type HookScope,
   type IntegrationType,
 } from "./types";
-import { claudeCode, getIntegration } from "./integrations";
+import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
-import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig } from "./hooks-config";
-import type { HooksConfig } from "./policy-types";
+import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
+import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
+import { hookLogWarn } from "./hook-logger";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -261,12 +262,16 @@ async function installHooksImpl(
   const writtenSettingsPaths: { cli: IntegrationType; path: string }[] = [];
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
-    const settingsPath = integration.getSettingsPath(scope, cwd);
+    // Usually one path; Hermes returns one per profile (each is a separate home
+    // dir with its own config.yaml, and a missed one runs unhooked in silence).
+    const settingsPaths = settingsPathsFor(integration, scope, cwd);
     try {
-      const settings = integration.readSettings(settingsPath);
-      integration.writeHookEntries(settings, binaryPath, scope);
-      integration.writeSettings(settingsPath, settings);
-      writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+      for (const settingsPath of settingsPaths) {
+        const settings = integration.readSettings(settingsPath);
+        integration.writeHookEntries(settings, binaryPath, scope);
+        integration.writeSettings(settingsPath, settings);
+        writtenSettingsPaths.push({ cli: cliId, path: settingsPath });
+      }
     } catch (err) {
       const errorType = err instanceof Error && /EACCES|EPERM/.test(err.message)
         ? "permission_denied"
@@ -452,9 +457,11 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
           : [];
 
     for (const s of scopesToRemove) {
-      const settingsPath = integration.getSettingsPath(s, cwd);
+      // Usually one path; Hermes returns one per profile.
+      const settingsPaths = settingsPathsFor(integration, s, cwd);
+      const existing = settingsPaths.filter((p) => existsSync(p));
 
-      if (!existsSync(settingsPath)) {
+      if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {
           console.log("No settings file found. Nothing to remove.");
           nothingToReport = true;
@@ -462,18 +469,22 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         continue;
       }
 
-      const removed = integration.removeHooksFromFile(settingsPath);
-      if (removed === 0 && scope !== "all" && selectedClis.length === 1) {
+      let removedHere = 0;
+      for (const settingsPath of existing) {
+        const removed = integration.removeHooksFromFile(settingsPath);
+        removedHere += removed;
+        if (removed > 0 && scope !== "all") {
+          console.log(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
+          console.log(`Settings: ${settingsPath}`);
+        }
+      }
+
+      if (removedHere === 0 && scope !== "all" && selectedClis.length === 1) {
         console.log("No hooks found in settings. Nothing to remove.");
         nothingToReport = true;
         continue;
       }
-      totalRemoved += removed;
-
-      if (scope !== "all") {
-        console.log(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
-        console.log(`Settings: ${settingsPath}`);
-      }
+      totalRemoved += removedHere;
     }
   }
 
@@ -484,7 +495,9 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     for (const cliId of selectedClis) {
       const integration = getIntegration(cliId);
       for (const s of integration.scopes) {
-        console.log(`  ${integration.displayName} / ${s}: ${integration.getSettingsPath(s, cwd)}`);
+        for (const p of settingsPathsFor(integration, s, cwd)) {
+          console.log(`  ${integration.displayName} / ${s}: ${p}`);
+        }
       }
     }
   }
@@ -696,33 +709,86 @@ export async function listHooks(cwd?: string): Promise<void> {
   }
 
   // Convention Policies section (.failproofai/policies/*policies.{js,mjs,ts})
-  const base = cwd ? resolve(cwd) : process.cwd();
+  // Walk up to the project root like enforcement does
+  // (custom-hooks-loader -> findProjectConfigDir); resolving at the exact cwd
+  // meant running this from a subdirectory listed no project policies while the
+  // hook path was loading them.
+  const base = findProjectConfigDir(cwd ?? process.cwd());
+  const projectDir = resolve(base, ".failproofai", "policies");
+  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const sameDir = userDir === projectDir;
   const conventionDirs: { label: string; dir: string }[] = [
-    { label: "Project", dir: resolve(base, ".failproofai", "policies") },
-    { label: "User", dir: resolve(homedir(), ".failproofai", "policies") },
+    { label: sameDir ? "Project + User" : "Project", dir: projectDir },
+    // Running from $HOME makes both paths identical. Listing the directory
+    // twice printed every file a second time as "failed to load" — the file was
+    // already imported by the first pass, so the module cache short-circuits
+    // `customPolicies.add` and `loadCustomHooks` legitimately returns 0 hooks.
+    // Nothing was wrong with the policy; the second listing was.
+    ...(sameDir ? [] : [{ label: "User", dir: userDir }]),
   ];
+
+  // Record of what was found, mirrored into policies-config.json below so the
+  // config shows installed convention policies and not only enabled builtins.
+  const discovered: Record<"project" | "user", ConventionPolicyRecord[]> = {
+    project: [],
+    user: [],
+  };
 
   for (const { label, dir } of conventionDirs) {
     const files = discoverPolicyFiles(dir);
     if (files.length === 0) continue;
 
+    // A shared project/user directory is listed once but belongs to both, so
+    // its record is written to both scopes' config files.
+    const targets: ("project" | "user")[] =
+      dir === projectDir && dir === userDir ? ["project", "user"] : dir === projectDir ? ["project"] : ["user"];
+    const record = (file: string, hooks: string[]) => {
+      for (const t of targets) discovered[t].push({ file, hooks });
+    };
+
     console.log(`\n  \u2500\u2500 Convention Policies \u2014 ${label} (${dir}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    // `nameColWidth` is sized to the longest BUILTIN name, but a convention
+    // filename can be longer \u2014 `padEnd` is then a no-op and the hook count runs
+    // straight into the filename with no space
+    // (`enforce-bengaluru-event-links-policies.mjs1 hook(s)`). Widen to fit the
+    // files actually being printed, keeping a two-space gutter.
+    const colWidth = Math.max(nameColWidth, ...files.map((f) => basename(f).length + 2));
     for (const file of files) {
       try {
         const hooks = await loadCustomHooks(file);
+        const filename = basename(file);
+        record(filename, hooks.map((h) => h.name));
         if (hooks.length === 0) {
-          const filename = basename(file);
-          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(nameColWidth)}\x1B[31mfailed to load\x1B[0m`);
+          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
         } else {
-          const filename = basename(file);
           const hookSummary = hooks.map((h) => h.name).join(", ");
-          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(nameColWidth)}${hooks.length} hook(s): ${hookSummary}`);
+          console.log(`  \x1B[32m\u2713\x1B[0m       ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
         }
       } catch {
         const filename = basename(file);
-        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(nameColWidth)}\x1B[31merror\x1B[0m`);
+        record(filename, []);
+        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31merror\x1B[0m`);
       }
     }
     console.log();
+  }
+
+  // Mirror what was just listed into the USER config. Safe here because
+  // `failproofai policies` is a one-shot command — never do this on the hook
+  // path (see the HooksConfig.conventionPolicies doc comment).
+  //
+  // User scope only, deliberately. A project's `.failproofai/policies-config.json`
+  // is routinely committed (this repo tracks its own), so writing the record
+  // there would make a plain `failproofai policies` dirty the working tree and
+  // put a spurious diff in front of every contributor — a read command must not
+  // do that. `discovered.project` is still collected so the listing above can
+  // report it; it simply is not persisted.
+  try {
+    syncConventionPolicies(discovered.user, "user");
+  } catch (err) {
+    // Listing must never fail because the mirror could not be written.
+    hookLogWarn(
+      `could not record convention policies in config: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }

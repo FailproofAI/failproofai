@@ -89,6 +89,13 @@ export function launch(mode: "dev" | "start"): void {
     stdio: filterLogs ? ["inherit", "pipe", "pipe"] : "inherit",
     env: {
       ...process.env,
+      // `.next/standalone/server.js` does `process.chdir(__dirname)` on its
+      // first line, so by the time a server action runs, `process.cwd()` is the
+      // PACKAGE directory, not the directory the user launched from. Anything
+      // resolving project-scope paths from cwd would look inside the installed
+      // package and find nothing. Capture the real cwd here, before the child
+      // starts, the same way FAILPROOFAI_PACKAGE_ROOT is threaded through.
+      FAILPROOFAI_LAUNCH_CWD: process.env.FAILPROOFAI_LAUNCH_CWD ?? process.cwd(),
       ...(filterLogs ? { FORCE_COLOR: process.env.FORCE_COLOR ?? "1" } : {}),
       ...(loggingLevel ? { FAILPROOFAI_LOG_LEVEL: loggingLevel } : {}),
       ...(disableTelemetry ? { FAILPROOFAI_TELEMETRY_DISABLED: "1" } : {}),

@@ -240,18 +240,6 @@
         ]
       }
     ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node \"$CLAUDE_PROJECT_DIR/scripts/dev-hook.mjs\" --hook WorktreeCreate",
-            "timeout": 60,
-            "__failproofai_hook__": true
-          }
-        ]
-      }
-    ],
     "WorktreeRemove": [
       {
         "hooks": [

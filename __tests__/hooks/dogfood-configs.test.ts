@@ -15,6 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { CLAUDE_INSTALL_EVENT_TYPES } from "@/src/hooks/types";
 
 const ROOT = process.cwd();
 const LAUNCHER = "scripts/dev-hook.mjs";
@@ -55,7 +56,7 @@ function commandsIn(file: string): string[] {
 const STOP_CLASS = new Set(["Stop", "StopFailure", "SubagentStop", "stop", "subagentStop"]);
 
 const CONFIGS = [
-  { file: ".claude/settings.json", cli: null, count: 26 },
+  { file: ".claude/settings.json", cli: null, count: 25 },
   { file: ".codex/hooks.json", cli: "codex", count: 6 },
   { file: ".github/hooks/failproofai.json", cli: "copilot", count: 12 }, // 6 events × bash+powershell
   { file: ".cursor/hooks.json", cli: "cursor", count: 6 },
@@ -182,5 +183,28 @@ describe("repo-wide invariants", () => {
     // require-*-before-stop policies driving its auto-PR never fire.
     const dockerfile = readFileSync(resolve(ROOT, "docker-hook-sync/Dockerfile"), "utf8");
     expect(dockerfile).toMatch(/bun/i);
+  });
+});
+
+// A bare event COUNT cannot catch the failure that matters: registering an
+// event failproofai no longer installs. `WorktreeCreate` sat in this file after
+// it was dropped from CLAUDE_INSTALL_EVENT_TYPES, so `claude --worktree` was
+// broken in this repo while the count assertion stayed green — Claude uses that
+// event as a worktree-PATH PROVIDER and our silent-on-allow hook makes it abort.
+describe("dogfood .claude/settings.json only registers installable events", () => {
+  it("registers no event outside CLAUDE_INSTALL_EVENT_TYPES", () => {
+    const settings = JSON.parse(
+      readFileSync(resolve(ROOT, ".claude/settings.json"), "utf-8"),
+    ) as { hooks: Record<string, unknown> };
+    const installable = new Set<string>(CLAUDE_INSTALL_EVENT_TYPES);
+    const extra = Object.keys(settings.hooks).filter((e) => !installable.has(e));
+    expect(extra).toEqual([]);
+  });
+
+  it("never registers WorktreeCreate", () => {
+    const settings = JSON.parse(
+      readFileSync(resolve(ROOT, ".claude/settings.json"), "utf-8"),
+    ) as { hooks: Record<string, unknown> };
+    expect(settings.hooks.WorktreeCreate).toBeUndefined();
   });
 });

@@ -16,7 +16,7 @@ import {
 } from "./types";
 import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
-import { readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
+import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
@@ -730,7 +730,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   }
 
   // Explicit Custom Policies section
-  const explicitPaths = config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
+  const explicitPaths = configuredCustomPolicyPaths(config);
   if (explicitPaths.length > 0) {
     console.log(`\n  \u2500\u2500 Custom Policies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     for (const path of explicitPaths) {

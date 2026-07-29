@@ -1,6 +1,6 @@
 "use server";
 
-import { readHooksConfig } from "@/src/hooks/hooks-config";
+import { configuredCustomPolicyPaths, readMergedHooksConfig } from "@/src/hooks/hooks-config";
 import { hooksInstalledInSettings, getSettingsPath } from "@/src/hooks/manager";
 import { BUILTIN_POLICIES } from "@/src/hooks/builtin-policies";
 import { listIntegrations } from "@/src/hooks/integrations";
@@ -175,7 +175,10 @@ function buildEventScope(match: { events?: string[]; toolNames?: string[] }): st
 }
 
 export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
-  const config = readHooksConfig();
+  const launchCwd = process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd();
+  // Match runtime enforcement: project, local, and user config all
+  // contribute to the effective policy state shown by the dashboard.
+  const config = readMergedHooksConfig(launchCwd);
   const enabledSet = new Set(config.enabledPolicies);
   const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
 
@@ -207,15 +210,21 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     currentParams: p.params ? (config.policyParams?.[p.name] ?? {}) : undefined,
   }));
 
-  const customPoliciesPaths = config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
-  const launchRoot = findProjectConfigDir(process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd());
+  const customPoliciesPaths = configuredCustomPolicyPaths(config);
+  const launchRoot = findProjectConfigDir(launchCwd);
   const resolvedCustomPaths = customPoliciesPaths.map((path) => resolve(launchRoot, path));
-  const parsedCustomPolicies = await Promise.all(resolvedCustomPaths.map(async (path) =>
-    (await parseCustomPoliciesFromFile(path)).map((policy) => {
-      const id = customPolicyId(path, policy.name);
-      return { ...policy, id, enabled: !disabledCustomPolicies.has(id) };
-    })
-  ));
+  const parsedCustomPolicies = await Promise.all(resolvedCustomPaths.map(async (path) => {
+    try {
+      return (await parseCustomPoliciesFromFile(path)).map((policy) => {
+        const id = customPolicyId(path, policy.name);
+        return { ...policy, id, enabled: !disabledCustomPolicies.has(id) };
+      });
+    } catch {
+      // Keep the rest of the dashboard usable when one configured file is
+      // unreadable or disappears between existsSync and readFile.
+      return [];
+    }
+  }));
   const customPolicies = parsedCustomPolicies.flat();
 
   const conventionPolicies = await discoverConventionPolicies(

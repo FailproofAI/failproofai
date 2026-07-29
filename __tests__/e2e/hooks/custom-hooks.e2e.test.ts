@@ -82,8 +82,8 @@ describe("custom-hooks core mechanics", () => {
   it("loads multiple explicit custom policy files", () => {
     const env = createFixtureEnv();
     const firstPath = env.writeHook("first.mjs", `
-      import { customPolicies, allow } from "failproofai";
-      customPolicies.add({ name: "first", match: { events: ["PreToolUse"] }, fn: async () => allow() });
+      import { customPolicies, deny } from "failproofai";
+      customPolicies.add({ name: "first", match: { events: ["PreToolUse"] }, fn: async () => deny("blocked by first file") });
     `);
     const secondPath = env.writeHook("second.mjs", `
       import { customPolicies, deny } from "failproofai";
@@ -92,7 +92,16 @@ describe("custom-hooks core mechanics", () => {
     env.writeConfig({ enabledPolicies: [], customPoliciesPaths: [firstPath, secondPath] });
     const result = runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home });
     assertPreToolUseDeny(result);
-    expect(result.stdout).toContain("blocked by second file");
+    expect(result.stdout).toContain("blocked by first file");
+
+    env.writeConfig({
+      enabledPolicies: [],
+      customPoliciesPaths: [firstPath, secondPath],
+      disabledCustomPolicies: [`custom:${firstPath}:first`],
+    });
+    const secondResult = runHook("PreToolUse", Payloads.preToolUse.bash("ls", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(secondResult);
+    expect(secondResult.stdout).toContain("blocked by second file");
   });
 
   it("custom hook that calls deny() → deny decision", () => {

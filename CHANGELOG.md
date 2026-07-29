@@ -9,6 +9,7 @@
 ### Fixes
 - Show dashboard-disabled custom and convention policies as `OFF` in `failproofai policies` instead of rendering a green checkmark. Convention files containing both enabled and disabled policies are marked `MIXED`, with each disabled policy identified in the summary. (#623)
 - Render the event-detail disclosure glyph on the Policies dashboard instead of displaying the literal Unicode escape text `\u25BE`. (#623)
+- Make dashboard toggle state follow the same project/local/user config merge as runtime enforcement, remove an enabled policy's opt-out from every contributing scope, and isolate unreadable explicit policy files so one bad file cannot leave the Configure tab loading forever. (#623)
 
 ## 0.0.15-beta.0 — 2026-07-23
 

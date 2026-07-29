@@ -8,6 +8,13 @@ import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import type { HookScope } from "./types";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 
+/** Normalize plural and legacy singular explicit policy paths for consumers. */
+export function configuredCustomPolicyPaths(
+  config: Pick<HooksConfig, "customPoliciesPaths" | "customPoliciesPath">,
+): string[] {
+  return config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
+}
+
 function readConfigAt(path: string): Partial<HooksConfig> {
   if (!existsSync(path)) return {};
   try {

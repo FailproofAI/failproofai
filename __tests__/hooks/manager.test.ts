@@ -29,6 +29,8 @@ vi.mock("../../src/hooks/hooks-config", () => ({
   // hits the filesystem; for these tests the cwd IS the project root.
   findProjectConfigDir: vi.fn((start: string) => start),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
+  configuredCustomPolicyPaths: vi.fn((config: { customPoliciesPaths?: string[]; customPoliciesPath?: string }) =>
+    config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : [])),
   writeHooksConfig: vi.fn(),
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeScopedHooksConfig: vi.fn(),

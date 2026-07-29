@@ -154,6 +154,8 @@ describe("getHooksConfigAction — convention policies", () => {
           name: "enforce-formal-review",
           description: "Require a formal review",
           eventScope: "PreToolUse, Stop",
+          id: "convention:project:enforce-formal-review-policies.mjs:enforce-formal-review",
+          enabled: true,
         },
       ]);
     } finally {

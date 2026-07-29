@@ -177,6 +177,14 @@ export interface LoadAllResult {
   conventionSources: ConventionSource[];
 }
 
+export function customPolicyId(file: string, name: string): string {
+  return `custom:${file}:${name}`;
+}
+
+export function conventionPolicyId(scope: "project" | "user", file: string, name: string): string {
+  return `convention:${scope}:${file}:${name}`;
+}
+
 /**
  * Load ALL custom hooks: explicit customPoliciesPath + convention-discovered files.
  *
@@ -239,7 +247,11 @@ export async function loadAllCustomHooks(
     if (existsSync(absPath)) {
       if (!loadedPaths.has(absPath)) {
         loadedPaths.add(absPath);
+        const hooksBefore = getCustomHooks().length;
         await loadSingleFile(absPath);
+        for (const hook of getCustomHooks().slice(hooksBefore)) {
+          (hook as CustomHook & { __policyId?: string }).__policyId = customPolicyId(absPath, hook.name);
+        }
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
@@ -265,6 +277,9 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "project" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("project", basename(file), hook.name);
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "project",
@@ -299,6 +314,9 @@ export async function loadAllCustomHooks(
     const hooksBefore = getCustomHooks().length;
     await loadSingleFile(file, { conventionScope: "user" });
     const newHooks = getCustomHooks().slice(hooksBefore);
+    for (const hook of newHooks) {
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);
+    }
     if (newHooks.length > 0) {
       conventionSources.push({
         scope: "user",

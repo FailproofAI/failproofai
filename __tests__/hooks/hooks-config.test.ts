@@ -204,6 +204,25 @@ describe("hooks/hooks-config", () => {
       expect(config.customPoliciesPaths).toEqual(["/project/a.js", "/project/b.js"]);
     });
 
+    it("disabledCustomPolicies: unions and deduplicates IDs across scopes", async () => {
+      mockFiles({
+        [projectPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/a.js:rule"] },
+        [localPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/b.js:rule"] },
+        [globalPath]: { enabledPolicies: [], disabledCustomPolicies: ["custom:/a.js:rule"] },
+      });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      expect(readMergedHooksConfig(CWD).disabledCustomPolicies).toEqual([
+        "custom:/a.js:rule",
+        "custom:/b.js:rule",
+      ]);
+    });
+
+    it("disabledCustomPolicies: omits an empty merged set", async () => {
+      mockFiles({ [globalPath]: { enabledPolicies: [], disabledCustomPolicies: [] } });
+      const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      expect(readMergedHooksConfig(CWD).disabledCustomPolicies).toBeUndefined();
+    });
+
     it("returns no policyParams key when no params configured", async () => {
       mockFiles({
         [globalPath]: { enabledPolicies: ["block-sudo"] },

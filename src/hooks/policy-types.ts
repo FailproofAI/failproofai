@@ -88,6 +88,8 @@ export interface HooksConfig {
   customPoliciesPaths?: string[];
   /** @deprecated Use customPoliciesPaths. Kept for existing config files. */
   customPoliciesPath?: string;
+  /** Source-qualified custom policy IDs that should not be registered. */
+  disabledCustomPolicies?: string[];
   /**
    * Turn off convention-discovered custom policies (`.failproofai/policies/`)
    * without deleting or renaming the files. Absent means enabled — the default

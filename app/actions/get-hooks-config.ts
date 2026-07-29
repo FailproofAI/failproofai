@@ -7,7 +7,7 @@ import { listIntegrations } from "@/src/hooks/integrations";
 import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
 import { getCliLabel } from "@/lib/cli-registry";
-import { discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
+import { customPolicyId, conventionPolicyId, discoverPolicyFiles } from "@/src/hooks/custom-hooks-loader";
 import { findProjectConfigDir } from "@/src/hooks/hooks-config";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -36,6 +36,8 @@ export interface CustomPolicyInfo {
   name: string;
   description?: string;
   eventScope?: string;
+  id: string;
+  enabled: boolean;
 }
 
 /**
@@ -93,7 +95,10 @@ export interface HooksConfigPayload {
  * `parseCustomPoliciesFromFile` is a regex read, so a malformed policy file
  * degrades to "no policies listed" instead of taking the server down.
  */
-async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
+async function discoverConventionPolicies(
+  disabled: Set<string>,
+  explicitPaths: Set<string>,
+): Promise<ConventionPolicyFile[]> {
   // Two corrections over a bare `process.cwd()`, both of which made real
   // project policies invisible here while enforcement loaded them fine:
   //   - the standalone server chdir()s into the package on startup, so the real
@@ -127,9 +132,13 @@ async function discoverConventionPolicies(): Promise<ConventionPolicyFile[]> {
       continue;
     }
     for (const filePath of files) {
+      if (explicitPaths.has(filePath)) continue;
       let policies: CustomPolicyInfo[] = [];
       try {
-        policies = await parseCustomPoliciesFromFile(filePath);
+        policies = (await parseCustomPoliciesFromFile(filePath)).map((policy) => {
+          const id = conventionPolicyId(scope, basename(filePath), policy.name);
+          return { ...policy, id, enabled: !disabled.has(id) };
+        });
       } catch {
         // Still list the file — it IS installed and enforcing; we just cannot
         // read its contents to name the policies.
@@ -154,7 +163,7 @@ async function parseCustomPoliciesFromFile(filePath: string): Promise<CustomPoli
     const eventScope = eventsMatch
       ? eventsMatch[1].replace(/["'`\s]/g, "").split(",").filter(Boolean).join(", ")
       : undefined;
-    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope });
+    policies.push({ name: nameMatch[1], description: descMatch?.[1], eventScope, id: "", enabled: true });
   }
   return policies;
 }
@@ -168,6 +177,7 @@ function buildEventScope(match: { events?: string[]; toolNames?: string[] }): st
 export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
   const config = readHooksConfig();
   const enabledSet = new Set(config.enabledPolicies);
+  const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
 
   const installedScopes = HOOK_SCOPES.filter((s) => hooksInstalledInSettings(s));
   const primaryScope: HookScope = installedScopes[0] ?? "user";
@@ -198,10 +208,20 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
   }));
 
   const customPoliciesPaths = config.customPoliciesPaths ?? (config.customPoliciesPath ? [config.customPoliciesPath] : []);
-  const parsedCustomPolicies = await Promise.all(customPoliciesPaths.map(parseCustomPoliciesFromFile));
+  const launchRoot = findProjectConfigDir(process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd());
+  const resolvedCustomPaths = customPoliciesPaths.map((path) => resolve(launchRoot, path));
+  const parsedCustomPolicies = await Promise.all(resolvedCustomPaths.map(async (path) =>
+    (await parseCustomPoliciesFromFile(path)).map((policy) => {
+      const id = customPolicyId(path, policy.name);
+      return { ...policy, id, enabled: !disabledCustomPolicies.has(id) };
+    })
+  ));
   const customPolicies = parsedCustomPolicies.flat();
 
-  const conventionPolicies = await discoverConventionPolicies();
+  const conventionPolicies = await discoverConventionPolicies(
+    disabledCustomPolicies,
+    new Set(resolvedCustomPaths),
+  );
 
   return {
     enabledPolicies: config.enabledPolicies,

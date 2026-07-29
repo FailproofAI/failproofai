@@ -81,6 +81,12 @@ failproofai policies --uninstall --custom
 
 Resolved absolute paths are stored in `policies-config.json` as `customPoliciesPaths`. Repeat `--custom` to configure multiple files. Existing configs using the legacy `customPoliciesPath` field continue to work. Files are loaded fresh on every hook event - there is no caching between events.
 
+Each registered policy appears with its own toggle in the dashboard. Switching
+a policy off records its source-qualified ID in `disabledCustomPolicies`; the
+file and its other policies continue to load, while the disabled policy is
+excluded before event matching. Policy names duplicated across files have
+independent toggles.
+
 ### Using both together
 
 Convention policies and the explicit `--custom` files can coexist. Load order:

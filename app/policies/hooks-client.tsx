@@ -10,7 +10,7 @@ import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
-import { togglePolicyAction } from "@/app/actions/update-hooks-config";
+import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
@@ -1214,6 +1214,26 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     });
   };
 
+  const handleCustomToggle = (id: string, currentlyEnabled: boolean) => {
+    if (!config) return;
+    setConfig((prev) => prev ? {
+      ...prev,
+      customPolicies: prev.customPolicies?.map((p) => p.id === id ? { ...p, enabled: !currentlyEnabled } : p),
+      conventionPolicies: prev.conventionPolicies.map((entry) => ({
+        ...entry,
+        policies: entry.policies.map((p) => p.id === id ? { ...p, enabled: !currentlyEnabled } : p),
+      })),
+    } : prev);
+    startTransition(async () => {
+      try {
+        await toggleCustomPolicyAction(id, !currentlyEnabled);
+      } catch {
+        fireActionError("custom_policy_toggle", "Failed to save custom policy change.");
+        reload();
+      }
+    });
+  };
+
   const handleApply = () => {
     const { toInstall, toRemove } = pendingChanges;
     if (toInstall.length === 0 && toRemove.length === 0) return;
@@ -1610,17 +1630,18 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
           <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/20 bg-muted/10">
             <Shield className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mt-0.5" />
             <p className="text-[0.7rem] text-muted-foreground/70 leading-relaxed">
-              Custom policies are always active. Re-run the install command to add, remove, or reorder files.
+              Re-run the install command to add, remove, or reorder files.
             </p>
           </div>
           {/* Rich policy rows — mirrors built-in layout without toggle */}
           {config.customPolicies?.map((policy) => (
             <div
-              key={policy.name}
+              key={policy.id}
               className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
             >
-              {/* Invisible spacer matching PolicyToggle dimensions (h-4 w-7) */}
-              <div className="h-4 w-7 shrink-0 mt-0.5" />
+              <div className="mt-0.5 shrink-0">
+                <PolicyToggle enabled={policy.enabled} onChange={() => handleCustomToggle(policy.id, policy.enabled)} disabled={isPending} />
+              </div>
               <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
                 <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
               </div>
@@ -1671,7 +1692,9 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
                 key={`${entry.path}:${policy.name}`}
                 className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
               >
-                <div className="h-4 w-7 shrink-0 mt-0.5" />
+                <div className="mt-0.5 shrink-0">
+                  <PolicyToggle enabled={policy.enabled} onChange={() => handleCustomToggle(policy.id, policy.enabled)} disabled={isPending} />
+                </div>
                 <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
                   <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
                 </div>

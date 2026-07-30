@@ -1,4 +1,4 @@
-# Cloud policy management
+# Cloud policy management and decision evolution
 
 ## Purpose
 
@@ -12,7 +12,32 @@ The FailproofAI cloud is the management plane for a fleet of local `failproofaid
 6. an authorized user promotes the same immutable revision to enforce mode;
 7. the assignment can expand, pause, expire, narrow, or roll back.
 
-Cloud availability is never required for an individual hook decision.
+Cloud availability is not required for locally evaluated policy. Assignments configured for cloud or hybrid evaluation use the cloud as a synchronous decision plane through `failproofaid`.
+
+## Configurable decision plane
+
+The product supports three evaluation locations:
+
+1. **Local** — the cloud may create, assign, and measure policy, while the daemon downloads verified state and evaluates it locally.
+2. **Cloud** — the daemon sends a synchronous, bounded request to the decision service. This supports policy using current AgentEye analysis, organization-wide state, centrally operated models, or data not copied into every local artifact.
+3. **Hybrid** — mandatory or latency-sensitive policy evaluates locally and is combined with a cloud decision under configured rules.
+
+Cloud evaluation does not make harnesses cloud clients. Agent harnesses continue talking only to the local daemon, which owns authentication, canonicalization, privacy filtering, deadlines, fallback, and decision evidence.
+
+The organization configures permitted locations and a default. Each assignment declares `evaluation_location: local | cloud | hybrid`; an omitted value uses that organization default. Only authorized roles can override it. A cloud assignment additionally declares:
+
+- required canonical input fields and whether sensitive content can be sent;
+- maximum decision budget within the harness deadline;
+- unavailable-service and timeout behavior;
+- whether any response is cacheable and its exact cache key/TTL contract;
+- regional/data-residency endpoint requirements;
+- the local fallback policy revision, when one exists.
+
+The cloud decision request carries organization, machine, agent, session, event, policy/assignment revision, request ID, remaining deadline, and only the policy-declared event fields. Its authenticated response carries a stable decision ID, result, safe explanation, revision evidence, and service timing.
+
+Hybrid mode supports local baseline enforcement plus cloud context. Combination rules are part of the immutable assignment; a late cloud response is discarded and cannot change an action already returned to the harness.
+
+Changing location, timeout, disclosed fields, fallback, region, or cache policy creates a new assignment revision. The dashboard previews these settings and their operational/privacy consequences before activation.
 
 ## Identity and targeting
 
@@ -69,9 +94,11 @@ All unsuppressed matching policies run. Result severity is `deny`, then `instruc
 
 Every result records policy revision, assignment ID and scope, generation, target context and identity provenance, observe/enforce effect, policy result, effective harness action, and timing. This lets AgentEye attribute a decision to the exact rollout that produced it.
 
-## Offline and expiry
+## Offline, timeout, and expiry
 
-The daemon persists the last verified generation. Before expiry it continues enforcement offline and reports increasing staleness. After expiry, each assignment declares whether to continue enforcement, fall back to observe, or fail closed for a narrowly defined mandatory control.
+The daemon persists the last verified assignment generation. Local policy continues to evaluate from that state. Before assignment expiry it reports increasing management staleness; after expiry, each assignment declares whether to continue local enforcement, fall back to observe, or fail closed for a narrowly defined mandatory control.
+
+Cloud/hybrid evaluation separately declares behavior when the synchronous decision service is slow or unreachable. Management-plane freshness and decision-plane availability are distinct health signals: a machine can have current assignments while its decision region is unavailable, or an available decision service while assignment reconciliation is stale.
 
 Ordinary organization policy defaults to continuing last known-good enforcement rather than silently removing guardrails. A machine that has never synchronized uses local policy only.
 
@@ -92,4 +119,5 @@ AI-generated policy never bypasses authorization. Organizations define who may c
 - Cloud policy has declared limited capabilities and no ambient host authority.
 - Targeting labels are minimized and treated as customer data.
 - Prompt, transcript, and tool-result content is not required merely to resolve an assignment.
+- Cloud decision requests disclose only policy-declared fields, honor regional routing, and produce auditable disclosure metadata.
 - Credential rotation, machine revocation, publisher-key rotation, and emergency policy revocation have explicit protocols.

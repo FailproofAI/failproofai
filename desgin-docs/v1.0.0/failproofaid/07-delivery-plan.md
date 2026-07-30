@@ -21,20 +21,27 @@
 - Migrate pending state and checkpoints from `~/.agenteye/`.
 - Prove single ownership, delivery health, and rollback before removing the old service.
 
-## Phase 3: cloud enforcement
+## Phase 3: configured local enforcement
 
 - Add signed immutable policy releases and atomic desired-state generations.
 - Launch observe-only narrow cohorts first.
 - Add approval, staged promotion, pause, expiry, rollback, and rollout-halting telemetry.
-- Enable enforcement only after attribution and offline behavior pass end-to-end tests.
+- Enable locally evaluated cloud-assigned enforcement only after attribution and offline behavior pass end-to-end tests.
 
-## Phase 4: managed updates
+## Phase 4: configured cloud and hybrid enforcement
+
+- Add the bounded authenticated daemon-to-cloud decision client behind assignment-level opt-in.
+- Validate privacy field selection, regional routing, latency, timeout, caching restrictions, and every unavailable-service fallback.
+- Launch hybrid observe mode before any cloud decision can block an agent.
+- Enable cloud-enforced cohorts only when their harness deadline and availability SLO are proven.
+
+## Phase 5: managed updates
 
 - Begin with manual check and explicit activation.
 - Add automatic staging, then opt-in automatic activation.
 - Default stable standalone installs to automatic activation only after rollback drills pass on every supported platform.
 
-## Phase 5: v1 default
+## Phase 6: default rollout
 
 - Install `failproofaid` during setup and route harnesses to it by default.
 - Retain legacy evaluator and collector rollback paths for a defined window.
@@ -48,6 +55,7 @@
 - Every harness produces the same canonical and native result for golden fixtures.
 - Cloud targeting resolves deterministically without crossing organization/machine boundaries.
 - Cloud outage and daemon restart preserve last known-good enforcement.
+- Cloud decision mode stays within the original harness deadline and applies the exact assignment fallback on timeout/unavailability.
 - Invalid or partial generations never activate.
 - AgentEye attributes each decision to exact policy and assignment revisions.
 - Collector crash/replay tests prove durable, idempotent delivery.
@@ -70,3 +78,5 @@
 13. Whether narrower scope may disable organization policy and which controls are mandatory.
 14. Propagation SLO and maximum policy staleness for ordinary/emergency changes.
 15. Targeting attributes permitted to leave a machine.
+16. Which policy classes default to local, cloud, or hybrid evaluation.
+17. Cloud decision latency/availability SLOs, regions, and data-residency guarantees.

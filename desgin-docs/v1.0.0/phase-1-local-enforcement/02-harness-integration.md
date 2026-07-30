@@ -43,7 +43,7 @@ Each harness adapter declares a versioned capability descriptor:
 - maximum safe response time and timeout semantics;
 - behavior of stop-class nonzero responses, including whether they retry;
 - configuration scopes and files used to register the adapter.
-- registration protection (`protected`, `detectable`, or `cooperative`), its bypass paths, and the evidence used to verify continued attachment.
+- registration attachment level (`detectable` or `cooperative` in this release; `protected` only under a deferred scope), its bypass paths, and the evidence used to verify continued attachment.
 
 Capability descriptors are code and test data, not prose-only documentation. `failproofaid` records the descriptor version used for every decision so FailproofAI can distinguish a policy allow from a harness that could not enforce the result.
 
@@ -71,23 +71,27 @@ The shim contains only vendor adaptation. Policy evaluation remains in the daemo
 
 Some runtimes expose events only inside a gateway process or require a wrapper around invocation. The adapter runs at that boundary and forwards events to the daemon. Setup must clearly disclose when enforcement depends on using the configured gateway/wrapper rather than every possible way of launching the agent.
 
-## Tamper-resistant attachment
+## Attachment and repair
 
-A privileged `failproofaid` and a policy store the agent cannot write protect the decision plane, but enforcement also depends on the harness continuing to call it. The preferred adapter uses a machine-level configuration or mandatory plugin owned by the service account or root. A managed gateway or wrapper is equivalent only when OS or fleet controls prevent direct launch of the underlying agent binary.
+Enforcement depends on the harness continuing to call FailproofAI, and in this release every harness settings file involved belongs to the user whose agent is being governed. There is no registration an agent with that user's authority cannot edit, so **no adapter is labeled `protected`** — the strongest level reachable is `detectable`, and some are only `cooperative`.
 
-When a harness exposes only user-writable configuration, the adapter cannot promise prevention against an agent with that user's file authority. The daemon fingerprints the expected registration, checks it when filesystem events arrive and through periodic reconciliation, records changes, and automatically restores missing or altered FailproofAI entries. It also detects missing event heartbeats relative to known sessions where the harness provides enough evidence. These installations are labeled `detectable`, not `protected`.
+What the daemon does with a user-writable registration is still worth doing. It fingerprints the expected registration, checks it when filesystem events arrive and through periodic reconciliation, records changes, and automatically restores missing or altered FailproofAI entries. That repairs the two failures that actually happen — a harness upgrade that rewrites its settings file and drops unrecognized hooks, and a hand edit that removes the wrong line — and it makes a deliberate removal *visible* in health rather than silent. It does not prevent removal, and describing repair as prevention is forbidden.
+
+`protected` becomes reachable only with a registration the governed user cannot write: a machine-level hook or mandatory plugin owned by another account, or a gateway or wrapper backed by OS or fleet controls that prevent direct launch of the agent binary. All of those require a [deferred scope](./04-service-and-updates.md#deferred-scopes), so the label is unused in this release rather than aspirational.
+
+The daemon also detects missing event heartbeats relative to known sessions where the harness provides enough evidence, which catches an agent launched by a path that bypasses the registration entirely.
 
 ### Hook settings reconciliation
 
-Every enabled adapter stores a desired registration owned by the service account or root. `failproofaid` watches the harness settings file and its parent directory so atomic replacement, rename, deletion, and recreation are all observed. Filesystem notification is an optimization; a bounded periodic scan is the correctness backstop after daemon downtime, queue overflow, or missed events.
+Every enabled adapter stores a desired registration in the daemon's own state, which is what reconciliation compares against rather than the harness file's previous contents. `failproofaid` watches the harness settings file and its parent directory so atomic replacement, rename, deletion, and recreation are all observed. Filesystem notification is an optimization; a bounded periodic scan is the correctness backstop after daemon downtime, queue overflow, or missed events.
 
 Reconciliation parses the harness's native configuration and compares normalized FailproofAI entries rather than raw file bytes. If an entry is missing or changed, the daemon performs an adapter-aware merge that restores only FailproofAI-owned keys and preserves unrelated hooks, ordering where meaningful, comments where the format supports them, permissions, and ownership. It validates file type, owner, parent path, and symlink policy before writing, takes an adapter-specific lock, re-reads after acquiring it, writes a same-directory temporary file, fsyncs it, atomically renames it, fsyncs the directory, and verifies the resulting registration. Compare-and-swap metadata or bounded retry prevents overwriting a concurrent legitimate edit.
 
 The daemon suppresses its own watcher event, debounces editor write bursts, and rate-limits repeated repair loops. Each repair records old/new registration identities, user, harness, reason, and result without logging unrelated settings or secrets. Persistent tampering degrades health and raises a local alert. Repair remains enabled by default while the integration is enabled; `harness disable` first removes the desired registration so intentional uninstall is not repaired.
 
-The hook client, service definition, protected policy store, pinned policy runtime, and active schema catalog are root-owned and read-only to both enrolled users and the service account the daemon runs as. Every component of the path to each of them is owned by root or that account — including the socket's parent directory, which is service-account-owned so the daemon can create the socket but no enrolled user can unlink it and bind an impostor endpoint that answers `allow`. The daemon accepts evaluation requests from enrolled users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
+The daemon authorizes every request from operating-system peer credentials rather than a bearer token exposed to the agent environment, and it serves exactly one UID: its owner. A peer that is not the owner is refused. On a shared machine several users may each be running their own daemon, and this is what keeps one user's socket from answering another user's events — a routing and isolation rule between users, not a privilege boundary within one.
 
-The client authenticates the daemon as well. It verifies the peer credentials of the socket it connected to and refuses to translate a response from an endpoint that is not the expected service account. A verdict from an unverified peer is treated as daemon-unavailable, not as `allow`.
+The client applies the mirror-image check. It confirms the socket it connected to is owned by the identity recorded at install time and refuses to translate a response from anything else. A verdict from an unverified peer is treated as daemon-unavailable, not as `allow` — so a stray or stale socket costs a fallback to in-process evaluation rather than a silent allow.
 
 ## Request envelope
 
@@ -118,9 +122,9 @@ The client sends a length-prefixed request over a Unix domain socket. The implem
 }
 ```
 
-`host.home` is `null` on the wire and always will be: the daemon derives the home from the peer credential, and a client that asserts one is rejected as a protocol error rather than corrected, because a home widens what path policies allow. `cwd`, the project directory, and a closed set of environment facts cannot be derived and therefore ride as client-asserted, which is what makes some decisions `sealed_unattested` — [derived and asserted context](./03-daemon-architecture.md#derived-and-asserted-context) has the argument.
+`host.home` is `null` on the wire and always will be: the daemon derives the home from the peer credential, and a client that asserts one is rejected as a protocol error rather than corrected. The daemon can get this field right on its own and the client cannot be relied on to, and a wrong home *widens* what path policies allow — a silently wrong verdict rather than a visible failure. `cwd`, the project directory, and a closed set of environment facts cannot be derived and therefore ride as client-asserted, which is what makes some decisions `sealed_unattested` — [derived and asserted context](./03-daemon-architecture.md#derived-and-asserted-context) has the argument.
 
-Native payload at the wire boundary is the intended end state, so adapter fixes can be made centrally in the daemon without requiring every hook registration to change. The shipped envelope has not reached it. While the hook client is still the TypeScript one, the payload it sends is **already canonicalized** — tool names and tool-input keys mapped, per-CLI normalizations applied — and the daemon trusts it rather than re-deriving it. Re-derivation is not implementable from that envelope, because it needs the raw vendor payload and only the canonical one is sent. The cost is bounded and worth stating exactly rather than papering over: the client runs as the user whose events these are, every field it can distort it could equally distort before canonicalization, and the fields that would be dangerous to accept — `home` above all — are the ones the daemon derives itself. It is a missing defence-in-depth layer, not an open door, and it closes when canonicalization moves daemon-side with the native client. The client still enforces a fixed input-size limit before allocating or sending data, matched by the daemon's own frame cap so a payload the legacy path would have discarded cannot become a daemon-path exhaustion instead.
+Native payload at the wire boundary is the intended end state, so adapter fixes can be made centrally in the daemon without requiring every hook registration to change. The shipped envelope has not reached it. While the hook client is still the TypeScript one, the payload it sends is **already canonicalized** — tool names and tool-input keys mapped, per-CLI normalizations applied — and the daemon trusts it rather than re-deriving it. Re-derivation is not implementable from that envelope, because it needs the raw vendor payload and only the canonical one is sent. What that costs is a *correctness* check rather than a trust boundary: both ends run as the same user, so the value of re-deriving canonicalization is catching a client that got a vendor's payload shape wrong, which is exactly the class of bug the twelve adapters produce. It closes when canonicalization moves daemon-side with the native client, and until then the parity corpus is what catches the same class. The client still enforces a fixed input-size limit before allocating or sending data, matched by the daemon's own frame cap so a payload the legacy path would have discarded cannot become a daemon-path exhaustion instead.
 
 The client supplies an absolute monotonic deadline. The daemon never invents a longer one. Time reserved for response translation and process exit is excluded before the request is sent. This deadline covers local queueing and policy evaluation.
 
@@ -138,7 +142,7 @@ The daemon canonicalizes the request into a common event containing:
 
 Canonicalization must preserve evidence about absent or uncertain fields. An inferred session ID is not represented as vendor-provided. A session-scoped match never broadens when session identity is unavailable.
 
-Provenance is part of that evidence, not a separate concern. The working directory, project directory, and environment facts are recorded as asserted by the client, because the daemon has no way to check them; the home directory is derived from the peer credential and never accepted from the client at all. A decision inherits the weakest provenance any deciding policy read, which is what the response's attestation reports.
+Provenance is part of that evidence, not a separate concern. The working directory, project directory, and environment facts are recorded as asserted by the client, because the daemon has no way to check them; the home directory is derived from the peer credential and never accepted from the client at all. A decision inherits the weakest provenance any deciding policy read, which is what the response's attestation reports — evidence about what a verdict depended on, so a surprising decision can be traced to the input that produced it.
 
 ## Session lifecycle
 
@@ -165,7 +169,7 @@ The daemon returns a canonical response:
 }
 ```
 
-`attestation` is `sealed`, `sealed_unattested`, or `user_context`. The adapter does not translate it — it is evidence rather than a harness-visible result — but it is what the decision record and `policies explain` report, and it is the field that keeps a `user-context` contribution from being presented as an unforgeable verdict.
+`attestation` is `sealed`, `sealed_unattested`, or `user_context`. The adapter does not translate it — it is evidence rather than a harness-visible result — but it is what the decision record and `policies explain` report. It records where a decision was computed and whether it depended on a value the client asserted. In this release that is diagnostic provenance; under a [deferred scope](./04-service-and-updates.md#deferred-scopes) the same field becomes an integrity claim, which is why it is carried now.
 
 The harness adapter translates it according to declared capability:
 
@@ -181,9 +185,11 @@ The daemon records both the policy result and effective harness action. Reportin
 
 Every adapter has a tested total time budget. Connection, daemon admission, policy evaluation, and response translation each consume that one budget.
 
-During the v1 migration, the native client may invoke a packaged compatibility evaluator when the daemon endpoint is absent or protocol-incompatible. This is a bounded migration mechanism, not a permanent second architecture. As it is actually built, that evaluator is not a package the client invokes but the untouched remainder of the code path the client is already executing, which is why it costs nothing to keep: there is no second artifact to hold in sync. Every daemon-side outcome other than a verdict — an unreachable socket, a version-handshake mismatch, a rejected envelope, a missed deadline — returns the client to it, and none of them fails the hook.
+The client evaluates in process whenever the daemon endpoint is absent or protocol-incompatible. As it is actually built, that evaluator is not a package the client invokes but the untouched remainder of the code path the client is already executing, which is why it costs nothing to keep: there is no second artifact to hold in sync. Every daemon-side outcome other than a verdict — an unreachable socket, a version-handshake mismatch, a rejected envelope, a missed deadline — returns the client to it, and none of them fails the hook.
 
-After fallback deprecation, unavailable-daemon behavior is explicit per integration and policy class:
+Because the daemon and the in-process evaluator run as the same user with the same authority over the same configuration, this is not a degraded security posture — it is the same decision computed more slowly, without the sandbox and without the enforced deadline. That is what makes it a reasonable permanent default rather than a migration crutch, and it is why an unsupervised or crashed daemon is a health degradation rather than an enforcement gap.
+
+A later release may make unavailable-daemon behavior explicit per integration and policy class:
 
 - fail open and record degradation;
 - fail closed using the native blocking contract;

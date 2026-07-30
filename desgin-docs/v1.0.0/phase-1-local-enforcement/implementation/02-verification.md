@@ -10,7 +10,8 @@ Seven layers. The full-stack Docker gate is the primary acceptance evidence; eve
 
 - **Framing** (`fpai-ipc`) — length-prefix round-trip, truncation, oversize rejection, version-mismatch handshake.
 - **Canonicalization** (`fpai-canon`) — every per-CLI event map is total over `HOOK_EVENT_TYPES`.
-- **The combination lattice** (`fpai-policy`) — `deny` over `instruct` over `allow` is associative, commutative, and idempotent; the combined result equals the maximum under that ordering; and **adding any number of `user-context` results never lowers a `sealed` deny**. That last property is the formal statement of the entire two-tier security argument and deserves a property test rather than three examples.
+- **The combination lattice** (`fpai-policy`) — `deny` over `instruct` over `allow` is associative, commutative, and idempotent; the combined result equals the maximum under that ordering; and **adding any number of `user-context` results never lowers a `sealed` deny**. That last property is the formal statement of the product's decision semantics — adding a policy can only tighten — and it deserves a property test rather than three examples. Attestation combines the same way, as a maximum under `sealed < sealed_unattested < user_context`, so a decision is never reported as depending on less than it did.
+- **The watchdog** (`fpai-policy`) — a policy body that loops or backtracks past its deadline is interrupted, reported as a deadline miss, and distinguishable from a policy that threw. `block-curl-pipe-sh` against 80 KB of repeated `curl ` prefix is the fixture, because it is real, default-enabled, and took 30 seconds against a 200 ms deadline before the watchdog existed.
 
 ## L1 — TypeScript unit tests
 

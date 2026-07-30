@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock hooks-config before importing llm-client
-vi.mock("../../src/hooks/hooks-config", () => ({
+vi.mock("../../src/hooks/hooks-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hooks-config")>()),
   readLlmConfig: vi.fn(),
 }));
 

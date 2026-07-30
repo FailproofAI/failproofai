@@ -22,7 +22,8 @@ vi.mock("../../src/hooks/install-prompt", () => ({
   ),
 }));
 
-vi.mock("../../src/hooks/hooks-config", () => ({
+vi.mock("../../src/hooks/hooks-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hooks-config")>()),
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   // listHooks resolves the project root by walking up to the nearest
   // `.failproofai` marker, the same way enforcement does. The real function

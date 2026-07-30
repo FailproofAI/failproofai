@@ -284,6 +284,11 @@ function fmt(n: number, dp = 1): string {
   return n.toFixed(dp);
 }
 
+/** Render a delta with an explicit sign — `+-13.82` is not a number. */
+function signed(n: number, dp = 2): string {
+  return `${n >= 0 ? "+" : "\u2212"}${Math.abs(n).toFixed(dp)}`;
+}
+
 // ── Matrix derivation (nothing below hardcodes 12) ─────────────────────────
 
 interface Cell {
@@ -801,7 +806,54 @@ interface CellResult {
   samples: Sample[];
 }
 
-function measureCell(
+/**
+ * Measure every variant of one cell, **interleaved**, and return one result per
+ * variant.
+ *
+ * The interleaving is the whole reason this function exists instead of a plain
+ * per-variant loop, and it is a correctness fix rather than an optimization.
+ * Measuring the entire matrix in the `default` variant and *then* the entire
+ * matrix in the `custom` variant puts roughly half an hour between the two
+ * halves of every comparison — so any drift in machine load lands entirely on
+ * one side. The second attempt at this baseline did exactly that and reported a
+ * `custom` end-to-end p50 **17 ms faster** than `default`, which is not a
+ * property of custom policies; it is a property of the machine getting quieter.
+ *
+ * Interleaving at the iteration level makes the with/without-custom-policy
+ * delta a genuine paired comparison: both members of each pair run within
+ * milliseconds of each other, under the same load, on the same core. The order
+ * within each pair alternates so neither variant systematically occupies the
+ * "first spawn after a gap" slot.
+ */
+function measureCellInterleaved(
+  cell: Cell,
+  sandboxes: Record<string, Sandbox>,
+  variants: readonly string[],
+  nodeBin: string,
+  iterations: number,
+  warmup: number,
+): Record<string, CellResult | null> {
+  const collected: Record<string, Sample[]> = {};
+  for (const v of variants) collected[v] = [];
+
+  for (let i = 0; i < warmup; i++) {
+    for (const v of variants) runOnce(cell, sandboxes[v]!, nodeBin);
+  }
+  for (let i = 0; i < iterations; i++) {
+    const order = i % 2 === 0 ? variants : [...variants].reverse();
+    for (const v of order) {
+      const s = runOnce(cell, sandboxes[v]!, nodeBin);
+      if (s) collected[v]!.push(s);
+    }
+  }
+
+  const out: Record<string, CellResult | null> = {};
+  for (const v of variants) out[v] = summarize(collected[v]!);
+  return out;
+}
+
+/** Single-variant measurement — used only by the repeatability probe. */
+function measureCellSingle(
   cell: Cell,
   sandbox: Sandbox,
   nodeBin: string,
@@ -814,6 +866,10 @@ function measureCell(
     const s = runOnce(cell, sandbox, nodeBin);
     if (s) samples.push(s);
   }
+  return summarize(samples);
+}
+
+function summarize(samples: Sample[]): CellResult | null {
   if (samples.length === 0) return null;
   const e2e = samples.map((s) => s.e2e);
   const phases = {} as PhaseTriples;
@@ -925,6 +981,48 @@ function buildWorkerBundle(bunBin: string): void {
     `process.stdout.write("${MARKER}" + JSON.stringify({t: performance.timeOrigin + performance.now()}) + "\\n");\n`,
     "utf8",
   );
+}
+
+/** How many times the harness had to be rebuilt mid-run. Reported. */
+let harnessRepairs = 0;
+
+/**
+ * Verify — cheaply, between cells — that everything the measurement depends on
+ * still exists, and rebuild it if not.
+ *
+ * `.bench-hook-tmp/` is an untracked directory inside a repo that other people
+ * and other agents are actively working in, and a `git clean` or an
+ * over-eager rm will take it out from under a run that still has half an hour
+ * to go. That is not hypothetical: the second attempt at this baseline lost its
+ * working directory near the end, and every subsequent spawn failed with
+ * `status undefined` and empty stderr (ENOENT), silently poisoning the last
+ * 636 iterations and two calibration rows.
+ *
+ * Three `existsSync` calls per cell is nothing next to a hundred process
+ * spawns, and repairing is strictly better than continuing to record failures.
+ * Every repair is counted, because a run that had to rebuild itself is a run
+ * whose numbers deserve a second look.
+ */
+function ensureHarnessIntact(
+  bunBin: string,
+  allowBuild: boolean,
+  sandboxes: Record<string, Sandbox>,
+  policySet: string[],
+): void {
+  const harnessOk = existsSync(WORKER_BUNDLE) && existsSync(SNAPSHOT_CLI) && existsSync(NOOP_SCRIPT);
+  const sandboxesOk = Object.values(sandboxes).every((s) => existsSync(s.project) && existsSync(s.home));
+  if (harnessOk && sandboxesOk) return;
+  harnessRepairs += 1;
+  process.stderr.write(
+    `\n[bench] harness went missing mid-run (repair #${harnessRepairs}) — rebuilding\n`,
+  );
+  if (!harnessOk) {
+    ensureDistFresh(bunBin, allowBuild);
+    buildWorkerBundle(bunBin);
+  }
+  for (const variant of Object.keys(sandboxes)) {
+    sandboxes[variant] = makeSandbox(variant as Variant, policySet);
+  }
 }
 
 // ── Machine context ────────────────────────────────────────────────────────
@@ -1050,6 +1148,7 @@ interface Baseline {
     totalIterations: number;
     failedIterations: number;
     failureRate: number;
+    harnessRepairs: number;
     failureSamples: string[];
     clampedOtherSamples: number;
   };
@@ -1260,11 +1359,11 @@ function renderMarkdown(b: Baseline): string {
           ["`config+load`, one custom policy", fmt(cus.configLoad[0], 2), fmt(cus.configLoad[1], 2), fmt(cus.configLoad[2], 2)],
           [
             "**delta**",
-            `**+${fmt(b.customPolicyDelta.configLoadP50, 2)}**`,
-            `**+${fmt(b.customPolicyDelta.configLoadP95, 2)}**`,
-            `**+${fmt(b.customPolicyDelta.configLoadP99, 2)}**`,
+            `**${signed(b.customPolicyDelta.configLoadP50)}**`,
+            `**${signed(b.customPolicyDelta.configLoadP95)}**`,
+            `**${signed(b.customPolicyDelta.configLoadP99)}**`,
           ],
-          ["end-to-end delta", `+${fmt(b.customPolicyDelta.e2eP50, 2)}`, "—", "—"],
+          ["end-to-end delta", signed(b.customPolicyDelta.e2eP50), "—", "—"],
         ],
       ),
     );
@@ -1273,6 +1372,18 @@ function renderMarkdown(b: Baseline): string {
       `Temp files written per hook invocation, custom variant: ` +
         `**${b.customPolicyDelta.tempFilesWrittenPerInvocation}** ` +
         `(one rewritten policy copy + one ESM shim).`,
+    );
+    out.push("");
+    out.push(
+      "Note the end-to-end delta is **much smaller than the `config+load` delta**, and can even " +
+        "come out slightly negative. That is not the loader being free. `(other)` is a " +
+        "**residual** — wall clock minus the four measured phases — so it absorbs every " +
+        "cross-phase effect: scheduler placement, page-fault timing, and the fact that a " +
+        "process which has already done four milliseconds of filesystem work tears down " +
+        "differently from one that has not. **Read the `config+load` row, not the end-to-end " +
+        "row, for the loader's cost.** `config+load` is measured directly with two " +
+        "`performance.now()` calls around the real calls; the end-to-end delta at this " +
+        "magnitude is inside the residual's noise.",
     );
     out.push("");
   }
@@ -1392,7 +1503,7 @@ function renderMarkdown(b: Baseline): string {
         `\`${r.event}\``,
         fmt(r.harnessE2e[0], 2),
         fmt(r.realCliE2e[0], 2),
-        `+${fmt(r.deltaP50, 2)}`,
+        signed(r.deltaP50),
       ]),
     ),
   );
@@ -1423,8 +1534,9 @@ function renderMarkdown(b: Baseline): string {
       "of noise reverses that.",
   );
   out.push(
-    "- The **with-vs-without-custom-policy delta**, which is a paired comparison measured " +
-      "under identical conditions in the same run.",
+    "- The **with-vs-without-custom-policy delta**, which is a genuinely paired comparison: " +
+      "the two variants are measured **interleaved**, one iteration each, alternating order, " +
+      "so both members of every pair see the same machine load.",
   );
   out.push("- A **same-machine** regression check, via `--check`.");
   out.push("");
@@ -1474,6 +1586,7 @@ function renderMarkdown(b: Baseline): string {
           "samples where the four phases summed above wall clock (clamped)",
           String(b.diagnostics.clampedOtherSamples),
         ],
+        ["harness rebuilds forced mid-run", String(b.diagnostics.harnessRepairs)],
       ],
     ),
   );
@@ -1532,6 +1645,13 @@ function renderMarkdown(b: Baseline): string {
   out.push(
     "- **Strictly serial.** Running spawns concurrently would cut wall time and destroy the " +
       "latency distribution.",
+  );
+  out.push(
+    "- **Variants are interleaved per cell, not run as two passes over the matrix.** Two " +
+      "sequential passes put half an hour between the two halves of every comparison, so load " +
+      "drift lands entirely on one side. An earlier attempt did exactly that and reported the " +
+      "custom-policy variant as **17 ms faster** end-to-end — a property of the machine going " +
+      "quiet, not of custom policies.",
   );
   out.push(
     "- **Isolated sandbox.** Each variant gets its own `HOME` and its own project directory " +
@@ -1767,19 +1887,30 @@ async function main(): Promise<void> {
   const probeCells = cells.filter((c) => c.event === "PreToolUse").slice(0, 12);
   const probeKeys = new Set(probeCells.map(cellKey));
 
+  // Variants are measured INTERLEAVED within each cell, not as two sequential
+  // passes over the matrix — see `measureCellInterleaved` for why that is a
+  // correctness requirement and not a micro-optimization.
+  for (const variant of opts.variants) results[variant] = {};
   let done = 0;
-  const totalCells = cells.length * opts.variants.length;
-  for (const variant of opts.variants) {
-    results[variant] = {};
-    for (const cell of cells) {
-      progress(done, totalCells, `${variant} ${cellKey(cell)}`);
-      const res = measureCell(cell, sandboxes[variant]!, nodeBin, opts.iterations, opts.warmup);
-      done += 1;
+  for (const cell of cells) {
+    progress(done, cells.length, cellKey(cell));
+    ensureHarnessIntact(bunBin, opts.allowBuild, sandboxes, policySet);
+    const paired = measureCellInterleaved(
+      cell,
+      sandboxes,
+      opts.variants,
+      nodeBin,
+      opts.iterations,
+      opts.warmup,
+    );
+    done += 1;
+    for (const [variant, res] of Object.entries(paired)) {
       if (!res) continue;
       results[variant]![cellKey(cell)] = res;
-      if (variant === opts.variants[0] && probeKeys.has(cellKey(cell))) {
-        firstProbe.set(cellKey(cell), res.phases.e2e[0]);
-      }
+    }
+    const primaryRes = paired[opts.variants[0]!];
+    if (primaryRes && probeKeys.has(cellKey(cell))) {
+      firstProbe.set(cellKey(cell), primaryRes.phases.e2e[0]);
     }
   }
   process.stderr.write("\n");
@@ -1788,8 +1919,20 @@ async function main(): Promise<void> {
   // repo. If a meaningful slice of iterations failed, the percentiles below are
   // computed over a biased survivor set — refuse to write an artifact that
   // looks authoritative and is not.
-  const failureRate = totalIterations === 0 ? 1 : failedIterations / totalIterations;
-  if (failureRate > MAX_FAILURE_RATE) {
+  //
+  // Evaluated as a function rather than captured once, and checked again after
+  // every phase has run. The first version of this guard computed the rate here
+  // and reused that value in the artifact — but calibration and the
+  // repeatability probe run *below* this point and share the same counters, so
+  // a run whose matrix was clean and whose later phases failed 636 times
+  // reported `failedIterations: 636` beside `failureRate: 0` and exited 0. A
+  // stale rate next to a live count is worse than either alone: it reads as
+  // reassurance while contradicting itself.
+  const currentFailureRate = (): number =>
+    totalIterations === 0 ? 1 : failedIterations / totalIterations;
+
+  if (currentFailureRate() > MAX_FAILURE_RATE) {
+    const failureRate = currentFailureRate();
     process.stderr.write(
       `\n[bench] ABORT: ${failedIterations}/${totalIterations} iterations failed ` +
         `(${fmt(failureRate * 100, 1)}%, limit ${fmt(MAX_FAILURE_RATE * 100, 1)}%).\n` +
@@ -1839,7 +1982,8 @@ async function main(): Promise<void> {
   for (const cell of opts.check ? [] : probeCells) {
     const first = firstProbe.get(cellKey(cell));
     if (first === undefined) continue;
-    const again = measureCell(cell, calSandbox, nodeBin, opts.iterations, opts.warmup);
+    ensureHarnessIntact(bunBin, opts.allowBuild, sandboxes, policySet);
+    const again = measureCellSingle(cell, calSandbox, nodeBin, opts.iterations, opts.warmup);
     if (!again) continue;
     const second = again.phases.e2e[0];
     repeatRows.push({
@@ -1852,6 +1996,20 @@ async function main(): Promise<void> {
   }
 
   machine.loadAvgAfter = loadavg().map((x) => round(x));
+
+  // Re-check now that calibration and the repeatability probe have also run.
+  // These phases share the iteration counters, so a matrix that was clean says
+  // nothing about the run as a whole.
+  if (currentFailureRate() > MAX_FAILURE_RATE) {
+    process.stderr.write(
+      `\n[bench] ABORT after calibration: ${failedIterations}/${totalIterations} iterations ` +
+        `failed (${fmt(currentFailureRate() * 100, 1)}%, limit ${fmt(MAX_FAILURE_RATE * 100, 1)}%).\n` +
+        `[bench] Nothing was written. First failures:\n` +
+        failureSamples.map((m) => `  - ${m}\n`).join(""),
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   // ── Aggregate ──
   const aggregate: Record<string, PhaseTriples> = {};
@@ -1958,7 +2116,11 @@ async function main(): Promise<void> {
     diagnostics: {
       totalIterations,
       failedIterations,
-      failureRate: round(failureRate, 5),
+      // Recomputed here, from the final counters. Reusing the value the
+      // pre-calibration guard computed is what produced a committed artifact
+      // reading `failedIterations: 636, failureRate: 0`.
+      failureRate: round(currentFailureRate(), 5),
+      harnessRepairs,
       failureSamples,
       clampedOtherSamples: clampedOtherCount,
     },
@@ -1969,6 +2131,35 @@ async function main(): Promise<void> {
 
   if (opts.check) {
     process.exitCode = runCheck(baseline, jsonPath, opts.tolerance);
+    return;
+  }
+
+  // The authoritative gate. The earlier check fails fast before the machine
+  // spends minutes on calibration, but only this one has seen every phase —
+  // and a run whose matrix was clean and whose later phases collapsed is
+  // exactly the shape that slipped through before.
+  if (currentFailureRate() > MAX_FAILURE_RATE) {
+    process.stderr.write(
+      `\n[bench] ABORT: ${failedIterations}/${totalIterations} iterations failed across all ` +
+        `phases (${fmt(currentFailureRate() * 100, 1)}%, limit ${fmt(MAX_FAILURE_RATE * 100, 1)}%).\n` +
+        `[bench] Nothing was written. First failures:\n` +
+        failureSamples.map((m) => `  - ${m}\n`).join("") +
+        `[bench] The usual cause is something else in the repo rebuilding while this ran.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  // An empty repeatability probe means that phase produced no usable samples,
+  // and its zeros would otherwise be presented as a measured result of "no
+  // drift". Refuse rather than publish a reassuring zero.
+  if (repeatRows.length === 0) {
+    process.stderr.write(
+      `\n[bench] ABORT: the repeatability probe produced no rows, so run-to-run noise is\n` +
+        `[bench] unmeasured. Its zeros would read as "no drift observed" rather than\n` +
+        `[bench] "nothing was observed". Nothing was written.\n`,
+    );
+    process.exitCode = 1;
     return;
   }
 

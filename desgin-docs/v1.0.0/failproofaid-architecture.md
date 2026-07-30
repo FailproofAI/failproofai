@@ -11,11 +11,15 @@ Last updated: 2026-07-30
 - `failproofaid` is implemented in Rust.
 - It is installed as a per-user operating-system service by default.
 - Enforcement remains local and synchronous; collection and delivery remain asynchronous.
+- The FailproofAI cloud is the management plane for centrally assigned policies; `failproofaid` is the local enforcement plane.
+- Cloud policy assignments may target an organization, machine, agent, or session, but the resulting hook decision is evaluated locally.
 - Automatic update activation is performed outside the running daemon so a daemon never replaces or terminates itself mid-update.
 
 ## Summary
 
-failproofai v1.0.0 introduces `failproofaid`, a per-user background service that starts at login and remains running. It becomes the local control plane for FailproofAI: agent hooks send enforcement requests to it, it performs expensive policy work from warm state, and it incorporates the full AgentEye collector pipeline for session capture and reliable event delivery.
+failproofai v1.0.0 introduces `failproofaid`, a per-user background service that starts at login and remains running. It becomes the local enforcement plane for FailproofAI: agent hooks send enforcement requests to it, it performs expensive policy work from warm state, and it incorporates the full AgentEye collector pipeline for session capture and reliable event delivery.
+
+Over time, the FailproofAI cloud becomes the management plane for this fleet. Teams use AgentEye data and analysis to identify risky behavior, create or select a policy, assign it to an organization, machine, agent, or individual session, and observe its effect. `failproofaid` continuously reconciles those assignments into a verified local policy snapshot and enforces that snapshot without placing the cloud on the synchronous hook path.
 
 The existing `failproofai` command remains the user-facing CLI. Agent integrations continue to use the hook mechanisms supported by each agent, but the installed hooks become small clients of `failproofaid` instead of loading policies and doing all work in a new process for every event.
 
@@ -27,13 +31,19 @@ Today each hook invocation starts the FailproofAI runtime, reads configuration, 
 
 Separately, the AgentEye collector already runs as a Rust daemon. It watches event spools and agent session sources, derives events, uploads them with bounded concurrency and retry, reports health, performs backfills, installs itself as a service, and supports updates. Running enforcement and collection as unrelated local services duplicates lifecycle, configuration, diagnostics, filesystem watching, release, and update machinery.
 
-`failproofaid` unifies those responsibilities while keeping the enforcement path isolated from asynchronous background load.
+The larger motivation is policy operations. AgentEye already supplies the evidence needed to understand what agents are doing. Today there is no continuous path from that evidence to centrally deploying a guardrail across a fleet, narrowing it to one agent or machine, or applying it to a specific session. A persistent authenticated daemon supplies that missing local enforcement endpoint.
+
+`failproofaid` unifies collection and enforcement, closes the loop between AgentEye analysis and policy deployment, and keeps the enforcement path isolated from asynchronous background load and cloud availability.
 
 ## Goals
 
 - Keep policy decisions local and return them within an explicit hook deadline.
 - Avoid repeated policy/configuration startup work by maintaining warm, reloadable state.
 - Preserve existing builtin and JavaScript/TypeScript custom-policy behavior.
+- Reconcile centrally managed policy definitions and assignments from the FailproofAI cloud.
+- Target policies at organization, machine, agent, and session scope with deterministic precedence.
+- Let users move from an AgentEye finding or analysis to a staged policy rollout and measure its effect.
+- Continue enforcing an explicit last known-good cloud policy snapshot while offline.
 - Support all collector capabilities in one service:
   - watch and sweep SDK event spools;
   - capture supported agent session sources;
@@ -48,6 +58,8 @@ Separately, the AgentEye collector already runs as a Rust daemon. It watches eve
 
 - Replacing agent vendors' hook protocols with a proxy or gateway.
 - Moving enforcement decisions to a remote service.
+- Requiring cloud connectivity for every hook decision.
+- Allowing the cloud to execute unsigned arbitrary code on a machine.
 - Running one system-wide daemon for every operating-system user.
 - Allowing arbitrary local users to access another user's daemon or captured sessions.
 - Rewriting the public policy authoring API solely to fit the daemon implementation.
@@ -79,14 +91,17 @@ Separately, the AgentEye collector already runs as a Rust daemon. It watches eve
 |  SDK events, Codex, Claude,                                   backend|
 |  OpenClaw, Hermes, future sources                                    |
 |                                                                     |
-|  config watcher | checkpoints | health | metrics | update discovery |
+|  config watcher | cloud reconciler | checkpoints | health | updates |
 +---------------------------------------------------------------------+
-                              |
-                     staged release metadata
-                              v
-              OS-triggered failproofai updater helper
-                 verify -> stop -> swap -> start
-                          -> probe -> rollback
+          ^                   |                         |
+          | signed desired    | activity and health     | staged release
+          | policy state      v                         v
+          +---------- FailproofAI cloud       OS-triggered updater
+                   (AgentEye analysis,            helper
+                    policy management)
+                                                    |
+                                         verify -> stop -> swap -> start
+                                                  -> probe -> rollback
 ```
 
 ### Process model
@@ -99,6 +114,7 @@ The daemon has independently bounded execution lanes:
 2. **Collection lane** — file watching, transcript parsing, checkpointing, and backfill.
 3. **Delivery lane** — batching, uploads, retry, and quarantine.
 4. **Maintenance lane** — configuration reload, health snapshots, cleanup, and update discovery.
+5. **Management lane** — cloud authentication, desired-state reconciliation, policy-bundle verification, assignment acknowledgement, and rollout telemetry.
 
 Every lane has its own queue and concurrency limits. Background lanes cannot borrow the enforcement lane's reserved workers or exhaust its memory budget.
 
@@ -109,6 +125,120 @@ Every lane has its own queue and concurrency limits. Background lanes cannot bor
 Existing custom policies are JavaScript or TypeScript and may use local/transitive imports. v1.0.0 must not silently narrow that contract. Policy execution therefore lives behind an internal policy-runtime interface. The first implementation should use a supervised, long-lived JavaScript worker shipped with the same release, allowing current policy loading and evaluation code to move with minimal semantic change. The daemon communicates with that worker over a private framed channel and restarts it on failure.
 
 This is still one product service from the user's perspective: the worker is a child owned, versioned, monitored, and terminated by `failproofaid`; it is not independently installed or configured. A future embedded runtime is possible only after compatibility tests prove it supports the existing policy contract.
+
+## Cloud policy management
+
+### Management plane and enforcement plane
+
+The architecture separates two responsibilities:
+
+- The **FailproofAI cloud management plane** stores policy definitions, targeting rules, rollout state, approvals, and desired policy assignments. AgentEye findings and analysis can propose or create policies there.
+- The **local `failproofaid` enforcement plane** authenticates the machine, downloads desired state, verifies it, resolves the policies applicable to the current hook context, and evaluates them locally.
+
+The cloud never sits between an agent hook and its decision. A cloud outage, slow network, or control-plane deploy cannot add latency to an in-flight tool call. It can delay a policy change from reaching a machine, which is reported as policy freshness, but it cannot stop an already-delivered policy from running.
+
+### Identity and targeting model
+
+Every daemon installation has a stable, non-secret `machine_id` and a rotatable machine credential bound to an organization. A hook request contributes the remaining targeting context:
+
+- organization and environment;
+- machine ID and optional administrator-defined machine labels;
+- integration/vendor;
+- canonical agent ID and optional agent labels;
+- project/workspace identity where available;
+- session ID;
+- canonical event and tool.
+
+The cloud compiles user intent into explicit assignments. The initial scope hierarchy is:
+
+```text
+organization -> environment -> machine -> agent -> session
+```
+
+Narrower scopes add constraints; they do not implicitly erase broader safety policies. An assignment carries an explicit effect:
+
+- `enforce`: evaluate and apply the result;
+- `observe`: evaluate and record what would have happened without changing agent behavior;
+- `disabled`: suppress a specifically identified inherited assignment when the actor has permission to do so.
+
+The server must send resolved assignment IDs and precedence metadata rather than relying on the daemon to reproduce an evolving cloud query language. The daemon still validates that the received assignment is applicable to its authenticated organization and machine.
+
+Session targeting uses the vendor session identifier when stable. Where a vendor exposes no session ID, `failproofaid` creates a local session identity from the strongest available lifecycle signals and records its provenance. Session-scoped policy must not silently broaden to agent or machine scope when identity is unavailable; it remains unapplied and reports why.
+
+### Policy artifact model
+
+A cloud-delivered policy release is immutable and content-addressed. It contains:
+
+- policy ID and policy revision;
+- executable or declarative policy artifact;
+- required policy-runtime/API version;
+- declared events, tools, capabilities, and resource limits;
+- human-readable description and provenance, including the AgentEye analysis or finding from which it was created;
+- artifact digest and publisher signature.
+
+Desired state references immutable releases and adds assignment metadata: target, effect, priority, rollout cohort, activation/expiry times, emergency status, and assignment revision.
+
+The long-term preferred format is a deterministic, capability-limited policy representation that the Rust daemon can validate and execute without granting arbitrary host access. Existing JavaScript/TypeScript custom policies remain supported as local user-authored policies. Cloud distribution of arbitrary JavaScript is not enabled merely because the legacy local runtime can execute it; that requires a separate sandbox and threat-model decision.
+
+### Reconciliation
+
+The management lane maintains a monotonically versioned desired-state snapshot:
+
+1. authenticate using the machine credential;
+2. send machine capabilities, current snapshot revision, policy-runtime version, and non-sensitive targeting labels;
+3. receive a full snapshot or delta plus immutable missing artifacts;
+4. verify organization binding, signatures, hashes, compatibility, validity window, and resource limits;
+5. construct and validate a candidate policy generation away from the active one;
+6. atomically activate the complete generation;
+7. acknowledge the active revision and report rejected assignments with structured reasons.
+
+Partial activation is forbidden. If one required artifact is absent, invalid, or incompatible, the daemon retains the last known-good cloud generation. Emergency revocations are represented as a new signed desired-state revision and use a fast reconciliation channel, but still pass verification and atomic activation.
+
+Polling with jitter is the correctness baseline. A server-sent notification channel may reduce propagation delay, but it only prompts an authenticated reconciliation fetch; notifications themselves never contain trusted executable state.
+
+### Precedence and conflict resolution
+
+The effective policy set is the deterministic merge of:
+
+1. product-mandatory policies that cannot be disabled locally;
+2. centrally managed organization/environment/machine/agent/session assignments;
+3. locally configured builtin policies;
+4. local custom and convention policies.
+
+This ordering describes administrative authority, not decision severity. Unless an authorized `disabled` assignment explicitly suppresses an inherited assignment, all matching policies run and the safest result wins: `deny` over `instruct` over `allow`. Stable policy and assignment IDs prevent same-named policies from colliding.
+
+Every decision records the policy revision, assignment ID and scope, configuration generation, target context, effect (`enforce` or `observe`), result, and timing. This makes it possible to answer which central change affected a session and to compare observed versus enforced outcomes in AgentEye.
+
+### AgentEye-to-enforcement workflow
+
+The intended product loop is:
+
+1. AgentEye data or analysis identifies a repeated risky behavior or failed outcome.
+2. A user creates a policy from that evidence, or accepts an AI-generated draft.
+3. The cloud validates the policy and shows its expected match set against historical data where possible.
+4. The user assigns it first in `observe` mode to a narrow cohort, such as one agent or machine.
+5. AgentEye reports matches, would-deny decisions, latency, false-positive feedback, and outcome change.
+6. After approval, the user promotes the same immutable policy revision to `enforce` and expands the rollout.
+7. The cloud can pause, roll back, expire, or narrow the assignment without changing the policy artifact.
+
+Creating a policy from analysis does not bypass human authorization. Approval requirements are an organization setting, and high-impact actions such as fleet-wide enforcement or disabling mandatory policy require stronger permission and an audit reason.
+
+### Offline and stale state
+
+The daemon persists the last known-good verified cloud generation and loads it before accepting hook traffic after restart. Desired state carries both an expiry policy and a freshness objective:
+
+- before expiry, the daemon continues local enforcement while offline and reports increasing staleness;
+- after expiry, behavior is explicit per assignment: continue enforcement, stop enforcing but observe, or fail closed for a narrowly defined mandatory policy;
+- the default for ordinary organization policy is to continue the last known-good enforcement and report degraded management health rather than silently remove guardrails;
+- a machine that has never obtained a valid cloud generation uses only its locally configured policies.
+
+The UI and `failproofai health` distinguish `connected`, `stale`, `expired`, `rejected`, and `never_synced`. Local clocks are not trusted blindly for security-critical expiry; reconciliation records server time and bounded clock skew.
+
+### Rollout safety
+
+Central policy deployment supports staged cohorts, observe-before-enforce, activation times, expiry, pause, rollback to a prior assignment revision, and a machine-local emergency disable with tightly controlled authorization and an audit trail.
+
+The control plane monitors acknowledgement, policy freshness, evaluation errors, timeouts, and decision volume by revision. Automatic rollout halts must be possible when error rate, latency, or unexpected match volume crosses a configured threshold. A rollback changes desired assignment state; it never mutates an immutable policy release.
 
 ## Enforcement request path
 
@@ -179,7 +309,7 @@ A reload builds a candidate generation away from the active one:
 4. run a bounded initialization check;
 5. atomically publish the generation.
 
-Custom policy code is untrusted with respect to availability even though it executes with the user's authority. Each evaluation gets a time budget. Repeated timeouts or worker crashes trip a circuit breaker for the offending policy generation, retain diagnostic evidence, and apply the configured failure behavior. Memory and process limits should be applied where supported.
+Custom policy code is untrusted with respect to availability even though locally authored code executes with the user's authority. Each evaluation gets a time budget. Repeated timeouts or worker crashes trip a circuit breaker for the offending policy generation, retain diagnostic evidence, and apply the configured failure behavior. Memory and process limits should be applied where supported. Cloud-authored policies use a more restrictive capability model and do not inherit the authority of local custom code.
 
 Project policy discovery introduces a cache-cardinality risk because one daemon serves many working directories. The cache must be bounded by entry count and memory, keyed by resolved configuration inputs, and evicted by recency. File changes invalidate every affected entry.
 
@@ -224,6 +354,7 @@ The canonical user state root is `~/.failproofai/` (overridable for tests and ma
   policies/                   # user convention policies
   state/
     checkpoints/              # source cursors
+    policy-generations/       # verified cloud desired state and artifacts
     activity/                 # local enforcement history
     spool/                    # pending durable delivery
     failed/                   # quarantined records
@@ -303,6 +434,10 @@ State migrations must be backward-readable by the retained rollback release or u
 - Remote policy execution is out of scope. Policy bundles loaded from disk retain the user's authority and are identified by content hash in activity records.
 - All network destinations require TLS. Redirect and proxy behavior must be explicit to avoid credential forwarding to an unexpected host.
 - Update keys are separate from backend/API credentials. Key rotation is represented in the signed manifest trust policy.
+- Machine control-plane credentials are separate from event-ingest and release-update credentials and are independently rotatable/revocable.
+- Cloud policy artifacts and desired-state snapshots are signed, organization-bound, content-addressed, and checked for replay/downgrade.
+- Cloud-created policy runs with declared, limited capabilities; it does not gain arbitrary filesystem, process, environment, or network access.
+- Machine and session labels sent for targeting are treated as customer data and minimized; transcript or prompt content is never required merely to resolve an assignment.
 - The dashboard and CLI receive only the administrative IPC operations they require; exposing a local endpoint does not imply unrestricted filesystem or policy-runtime access.
 
 ## Health and observability
@@ -312,6 +447,7 @@ Health is a structured snapshot with independent subsystem states:
 - service/IPC readiness and daemon uptime;
 - enforcement queue depth, latency percentiles, timeouts, and active policy generation;
 - policy reload success/failure and last known-good age;
+- cloud connection, desired/active/acknowledged revisions, policy freshness, rejected assignments, and targeting identity quality;
 - each capture source's last successful scan, checkpoint progress, and error;
 - spool depth/bytes/oldest age by logical queue;
 - upload success, retry, quarantine, and last acknowledged delivery;
@@ -330,6 +466,9 @@ The CLI renders a concise diagnosis and remediation. `--json` exposes a stable, 
 | Transcript parser fails | Quarantine or checkpoint safely for that source; other sources and enforcement continue. |
 | Spool reaches quota | Report degraded health and apply explicit per-queue shedding/backpressure rules; never block enforcement on the network. |
 | Configuration reload invalid | Reject candidate generation and keep last known-good generation active. |
+| Cloud unavailable | Continue the last known-good verified generation and report increasing staleness; never add network latency to hook evaluation. |
+| Cloud policy snapshot invalid | Reject the entire candidate generation, retain the active generation, and report structured rejection reasons. |
+| Session identity unavailable | Do not broaden a session assignment; report it as unapplied. |
 | Daemon restarts/crashes | Service manager restarts it; sweeper and checkpoints recover missed work. |
 | Update activation fails | External updater rolls back and suppresses the failed release. |
 | IPC protocol mismatch | Negotiate supported version; client uses migration fallback or emits an actionable error. |
@@ -342,12 +481,14 @@ The CLI renders a concise diagnosis and remediation. `--json` exposes a stable, 
 - Record current hook latency distributions and startup cost.
 - Turn collector source and delivery behavior into reusable conformance tests.
 - Define the IPC schema, failure matrix, state schema, and signed release manifest.
+- Define machine identity, cloud desired-state, policy artifact, assignment, acknowledgement, and decision-provenance contracts.
 
 ### Phase 1: daemon-assisted enforcement
 
 - Ship the service and hook IPC client behind an opt-in flag.
 - Keep the current in-process evaluator as fallback.
 - Compare decisions in shadow mode without allowing the shadow result to affect agents.
+- Reconcile a test cloud assignment in observe mode and prove organization/machine/agent/session targeting and offline behavior.
 - Gate broader rollout on decision parity, deadline success, restart recovery, and resource use.
 
 ### Phase 2: collector convergence
@@ -374,6 +515,10 @@ The CLI renders a concise diagnosis and remediation. `--json` exposes a stable, 
 - A warm builtin-policy hook request meets the agreed p95/p99 local latency budget under simultaneous backfill and upload load.
 - Every current supported integration produces the same canonical decision and vendor response as the pre-daemon implementation for golden fixtures.
 - JavaScript/TypeScript custom policies, including transitive local imports and package imports supported today, retain behavior.
+- Signed cloud assignments resolve deterministically at organization, machine, agent, and session scope, and cannot cross organization or machine identity boundaries.
+- A complete cloud generation activates atomically; a missing, incompatible, tampered, replayed, or partially downloaded generation leaves the last known-good generation active.
+- Enforcement continues from the persisted last known-good generation through cloud outage and daemon restart.
+- AgentEye can attribute an observed or enforced decision to the exact immutable policy revision and assignment scope that produced it.
 - Killing the daemon, policy worker, uploader, or network independently demonstrates the failure behavior in this document.
 - Collector conformance tests cover every migrated source, checkpoint, backfill, retry, quarantine, and health behavior.
 - No acknowledged spool record is lost across process crash or machine reboot; replay is idempotent.
@@ -394,3 +539,8 @@ The CLI renders a concise diagnosis and remediation. `--json` exposes a stable, 
 8. What idle-window and maximum-deferral policy should automatic activation use?
 9. How long must the old evaluator, old collector state, and previous release remain available for rollback?
 10. Does Windows v1.0.0 require a native Windows service, or is a scheduled task acceptable for the first release?
+11. What declarative or sandboxed artifact format should cloud-created policies use in the Rust enforcement plane?
+12. Which roles may assign, enforce, disable, or emergency-override policies at each target scope?
+13. Can a narrower assignment disable a broader organization policy, or must some policies be structurally mandatory?
+14. What are the propagation SLO and maximum acceptable policy-staleness window for ordinary and emergency changes?
+15. Which machine, agent, project, and session attributes may be sent to the cloud for targeting without exposing unnecessary customer data?

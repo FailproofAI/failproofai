@@ -96,7 +96,37 @@ Runtime enforcement is the second, independent mechanism. The `sealed` context i
 
 The `sealed` tier covers more than it first appears. Canonical tool name, command string, file path, and old/new content already arrive in the request envelope, so payload-only builtins evaluate there and produce verdicts an agent cannot forge even with full authority over its own user. A `user-context` policy remains useful because results combine as `deny` over `instruct` over `allow`: it can only tighten, so a forged `allow` from it changes nothing, and a forged `deny` harms only the user who forged it.
 
-Which mechanism launches the `user-context` worker — a per-user service started by that user's own service manager, a helper, or the hook client — is an operational choice, not a security one. Every option terminates in a process the requesting user can already `ptrace`, so the integrity properties are identical and the decision should be made on supervision and cold-start latency.
+### The per-user agent
+
+`user-context` evaluation is not the only work that must happen at the requesting user's UID. Session capture must too, and for a harder reason: the daemon is not root and cannot `setuid`, and every capture source resolves under a user's home — `~/.codex/sessions`, `~/.factory`, `~/.openclaw`, `~/.gemini/antigravity-cli`, `~/.local/share/{devin,goose}` — where homes are `0700` or `0750` and transcripts are typically `0600`. A service account cannot traverse them, cannot `inotify` them (watching a directory requires read permission on it, so there are no events to miss slowly — there are none at all), and for the SQLite-backed sources cannot attach to a live WAL database, which requires creating `-shm`/`-wal` beside it and therefore *write* access to the user's directory.
+
+Granting that access at enrollment was considered and rejected. It is mechanically possible — setup runs as root and knows the enrolling user, so a POSIX ACL could give the service account traverse on the home and read on each source root, with default ACLs for new subdirectories. It fails on three counts. Any `chmod` by the harness rewrites the ACL mask and silently caps the named-user entry to nothing, which is exactly what a CLI storing prompt content tends to do to its own transcripts. The SQLite sources need write rather than read, inverting the trust direction. And it would make a daemon compromise a read of every enrolled developer's transcripts — pasted credentials, source, internal URLs — which is a richer prize than the policy store the boundary exists to protect, while buying no tamper-resistance, since the user still owns those files and can truncate or falsify them.
+
+Both jobs therefore run in **one per-user agent**: the same shipped binary in a different mode, started by that user's own service manager (a systemd user service or LaunchAgent), connected to the same socket, where peer credentials already establish which UID it speaks for.
+
+One agent rather than two, because both jobs want exactly the same thing — that UID's file access and a connection to the daemon — and because residency is already required. Enforcement runs under a hard deadline, so spawning a policy runtime per hook event would not meet it; once the process is warm for that, the capture watcher is free.
+
+The agent is a delegate, never an authority:
+
+| | Daemon (`_failproofai`) | Per-user agent (requesting UID) |
+|---|---|---|
+| Protected policy store and admission | ✅ | — |
+| `sealed` evaluation | ✅ | — |
+| Combining results, returning the verdict | ✅ | — |
+| Spool, delivery, the `events:add` key | ✅ | — |
+| Hook reconciliation, schema catalog | ✅ | — |
+| `user-context` evaluation | — | ✅ |
+| Session-source watching and parsing | — | ✅ |
+
+That asymmetry is what makes it safe rather than a second brain. Its verdicts can only tighten and can never relax a `sealed` result; its capture output is observational; it holds no credential, so no user can aim the machine's delivery key anywhere. Fully compromised by the user who owns it, it can weaken nothing — which is why it must be supervised but need not be trusted.
+
+It is **conditional, not mandatory**. A user with only payload-only builtins in `sealed` and no capture enabled needs no agent at all; one appears when that user has a `user-context` policy admitted or a capture source enabled. On a shared machine the count is one daemon plus one agent per enrolled user who needs one, not a fixed pair.
+
+Its failure is bounded in both directions. If the agent is absent, stopped, or unresponsive, `sealed` enforcement continues unaffected, `user-context` policies apply the configured per-integration failure mode within the same deadline, and capture resumes from its checkpoint when the agent returns. If it misbehaves, per-UID queues and quotas keep it from consuming another user's capacity or the enforcement lane's.
+
+The hook client remains a third process at the user's UID and is unchanged: transient, spawned per event by the harness, holding no state.
+
+**An alternative that removes the resident process** is worth recording, because it suits deployments that forbid per-user services. The hook client already runs as the user and already connects to the socket, so it could pass an open file descriptor for the session transcript via `SCM_RIGHTS`: authority is resolved at `open()` by the user's own process, and the daemon never needs a path it can traverse. It covers the JSONL sources and needs nothing resident, but it cannot backfill historical sessions, cannot serve the four SQLite-backed sources (the shared-memory problem survives fd passing), misses any harness running with hooks disabled, and does nothing for `user-context` evaluation. It is a supplement, not a replacement.
 
 ### Pinned policy runtime
 

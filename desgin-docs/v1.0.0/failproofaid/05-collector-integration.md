@@ -34,7 +34,7 @@ Delivery follows a crash-durable state machine:
 
 1. write the pending record and `fsync` its contents and containing directory before it becomes eligible for upload;
 2. send the stable record/batch ID and require a durable backend acknowledgement for that ID;
-3. after acknowledgement, write and `fsync` a local acknowledged tombstone/state transition before removing pending payload bytes;
+3. after acknowledgement, write and `fsync` a local acknowledged tombstone/state transition and `fsync` its containing directory (or commit an equivalent durable transaction) before removing pending payload bytes;
 4. remove the pending payload, then `fsync` its containing directory;
 5. compact acknowledged tombstones only after their retention/reconciliation rule proves they are no longer needed.
 

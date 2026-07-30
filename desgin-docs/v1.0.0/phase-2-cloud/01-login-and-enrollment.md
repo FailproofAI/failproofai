@@ -63,7 +63,7 @@ Setup never leaves an apparently active cloud machine with no healthy local serv
 Connected automation adds enrollment explicitly to the Phase 1 command:
 
 ```sh
-sudo failproofai setup \
+failproofai setup \
   --non-interactive \
   --mode login \
   --enrollment-token "$TOKEN" \
@@ -78,7 +78,9 @@ sudo failproofai setup \
 
 The one-time enrollment token is exchanged for a rotatable machine credential and then discarded. Secrets must not appear in generated service definitions or process arguments after enrollment.
 
-The credential belongs to the machine, not to the user who ran setup. It is stored where the daemon's service account can read it and enrolled users cannot — inside the privileged state tree, never under `~`. It uses the operating-system credential store where practical, with an owner-only file as the portability fallback.
+The credential belongs to the installation. Phase 1 ships user scope, so an installation is one user's, and the credential lives in that user's own configuration alongside the delivery key — using the operating-system credential store where practical, with an owner-only file as the portability fallback. It never appears in a service definition, a process argument, or a log.
+
+What that means for the fleet model has to be said rather than assumed: an enrolled identity is a *user's installation on a host*, not the host. Two developers on one workstation enrol twice. A fleet that needs one identity per machine, held where the machines' own users cannot read it, needs the [`managed` scope](../phase-1-local-enforcement/04-service-and-updates.md#deferred-scopes) first, and Phase 2 should not attempt to simulate one on top of user scope.
 
 This is the machine's third credential and it is deliberately distinct from the other two. It is not the user's `failproofai auth login` token, and not the collector's `events:add` key for a self-hosted observability server; the control plane, the user session, and event ingest are separately scoped, so compromising any one of them confers neither of the others. Enrolling does not replace or rotate the collector's key, and does not change where captured data goes.
 
@@ -139,7 +141,7 @@ Cloud data and organization policy are not deleted by uninstalling one machine.
 - An ambiguous activation response is resolved by status lookup before any retry or compensation.
 - Setup failure restores prior service and harness configuration and leaves no orphaned pending or activated machine identity.
 - No credential appears in a service definition, process argument, or log.
-- The machine credential is unreadable by enrolled users and never stored under a user's home.
+- The machine credential is never stored in a service definition, process argument, or log, and enrolling a second user on one host creates a second identity rather than sharing one.
 - Uninstall leaves no credential on disk, including when performed offline.
 - Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - On a standalone install, every cloud health check reports `not_configured` rather than a warning.

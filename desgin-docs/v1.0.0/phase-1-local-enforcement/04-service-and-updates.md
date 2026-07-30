@@ -62,7 +62,7 @@ Adding either one reintroduces per-scope qualification wherever a verdict-integr
 
 Phase 1 does not download, replace, or restart `failproofai` or `failproofaid` automatically. There is no updater helper, version-pointer activation protocol, or background native release channel. Native upgrades are explicit customer actions through the npm setup path.
 
-This keeps the privileged service stable while solving the faster-moving compatibility problem independently: agent harnesses auto-update and frequently change their hook configuration schemas.
+This keeps the installed binaries stable while solving the faster-moving compatibility problem independently: agent harnesses auto-update and frequently change their hook configuration schemas, at a cadence no binary-replacement mechanism should be asked to track.
 
 ## Signed harness schema catalog
 

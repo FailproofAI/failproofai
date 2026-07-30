@@ -156,7 +156,7 @@ System scope must never turn user-authored JavaScript or TypeScript policy into 
 
 Only one service endpoint handles a given user's harness hooks. Setup detects an existing opposite-scope installation and offers an explicit transactional switch; it does not register duplicate hooks or let user and system daemons race. Installing the system daemon does not automatically rewrite every user's harness configuration. Each user or an administrator-managed deployment explicitly enrolls the intended harnesses.
 
-The final review reports each harness as `protected`, `detectable`, or `cooperative`. If the harness stores hooks in a user-writable file, setup explains that a privileged daemon cannot prevent removal of that hook; it enables monitoring and optional repair but does not claim prevention. Full protection requires a root-owned machine hook, mandatory plugin, managed gateway, or enforced launcher path.
+The final review reports each harness as `protected`, `detectable`, or `cooperative`. If the harness stores hooks in a user-writable file, setup explains that a privileged daemon cannot prevent removal of that hook; it continuously watches the settings file and automatically restores missing or altered FailproofAI entries, but does not mislabel repair as prevention. Full protection requires a root-owned machine hook, mandatory plugin, managed gateway, or enforced launcher path.
 
 ## Standalone OSS use
 
@@ -233,6 +233,7 @@ The default health view reports independently:
 - active local policy generation and, when configured, cloud assignment generation;
 - cloud state as `not_configured`, `connected`, `stale`, `expired`, `rejected`, or `never_synced`;
 - enabled harnesses and their last event;
+- hook registration state, last verification/repair, and persistent tamper alerts;
 - enabled capture sources and checkpoint progress;
 - pending, retrying, and quarantined delivery data;
 - disk or memory pressure;
@@ -303,6 +304,7 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 - Interactive setup recommends and preselects system scope; choosing user scope requires acknowledging its weaker protection.
 - Users can identify the exact policy revision and assignment responsible for a decision.
 - System scope prevents non-root daemon/policy administration and reports the true attachment protection level for every harness.
+- Removing or altering an enabled FailproofAI hook is detected and semantically repaired without overwriting unrelated harness settings; explicit disable/uninstall is not repaired.
 - Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - Collection consent names each enabled source and can be revoked independently.
 - Update failure returns to the previous healthy release without manual repair.

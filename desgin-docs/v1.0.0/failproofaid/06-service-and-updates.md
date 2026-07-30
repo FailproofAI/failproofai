@@ -22,10 +22,10 @@ One user is bound to one endpoint. Setup detects user/system conflicts and trans
 Daemon elevation alone cannot protect a hook stored in a user-writable harness file. Each adapter therefore declares its registration protection:
 
 - `protected`: the harness supports a root-owned machine configuration, mandatory plugin, managed gateway, or OS-enforced launcher that the agent cannot bypass;
-- `detectable`: the registration is user-writable, but the daemon continuously verifies it and reports/optionally repairs tampering; enforcement can still be bypassed between removal and repair;
+- `detectable`: the registration is user-writable, but the daemon continuously verifies and automatically repairs FailproofAI entries; enforcement can still be bypassed between removal and repair;
 - `cooperative`: no protected or reliably monitored integration point exists.
 
-Setup uses the strongest available registration, records its exact coverage, and never reports `tamper-resistant` unless both the daemon/policy plane and the harness invocation boundary are protected. A wrapper is protected only when users cannot invoke the underlying agent outside it. Missing expected heartbeats or hook events raise a local and, when connected, Failproof Cloud alert, but detection is not described as prevention.
+Setup uses the strongest available registration, records its exact coverage, and never reports `tamper-resistant` unless both the daemon/policy plane and the harness invocation boundary are protected. A wrapper is protected only when users cannot invoke the underlying agent outside it. Missing or altered registrations are repaired automatically while the integration remains enabled. Missing expected heartbeats or repeated repair raise a local and, when connected, Failproof Cloud alert, but detection and repair are not described as prevention.
 
 Windows is explicitly outside the v1.0.0 service and updater scope. Its service model, named-pipe transport, executable activation, packaging, and rollback design belong to the next iteration.
 

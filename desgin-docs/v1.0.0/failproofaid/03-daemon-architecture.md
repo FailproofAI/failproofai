@@ -5,6 +5,7 @@
 `failproofaid` is the Rust local enforcement plane. It owns:
 
 - local IPC and request admission;
+- desired hook registration, settings-file watching, and automatic reconciliation;
 - event canonicalization and policy evaluation coordination;
 - immutable local policy generations and optional connected-tier cloud assignment generations;
 - collector source workers, checkpoints, spooling, and delivery;
@@ -23,6 +24,8 @@ The daemon separates work into independently bounded lanes:
 3. **Delivery** — batching, upload, retry, and quarantine.
 4. **Management** — when connected, cloud authentication, desired-state reconciliation, verification, and acknowledgement; otherwise dormant.
 5. **Maintenance** — configuration reload, health snapshots, cleanup, and update discovery.
+
+Maintenance includes one adapter-aware hook reconciler per enabled harness. Watcher activity and repair work have bounded queues and cannot consume enforcement capacity. The persisted desired registration, not the current mutable harness file, is authoritative until an explicit disable or uninstall commits a new desired state.
 
 Each lane has its own queue, concurrency, memory, and time limits. Background work cannot consume enforcement's reserved capacity. Overload is reported per lane rather than causing unbounded queue growth.
 

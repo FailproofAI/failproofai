@@ -12,8 +12,8 @@
 - Ship service and native hook client behind opt-in setup.
 - Keep the current evaluator as a bounded migration fallback.
 - Compare daemon and legacy decisions in shadow mode.
-- Reconcile cloud assignments in observe mode and test organization/machine/agent/session targeting.
-- Gate expansion on parity, deadline success, crash recovery, and resource use.
+- Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows without authentication.
+- Gate expansion on compatibility, deadline success, crash recovery, and resource use.
 
 ## Phase 2: collector convergence
 
@@ -27,6 +27,7 @@
 - Launch observe-only narrow cohorts first.
 - Add approval, staged promotion, pause, expiry, rollback, and rollout-halting telemetry.
 - Enable cloud-assigned, locally evaluated enforcement only after attribution and offline behavior pass end-to-end tests.
+- Verify connecting and disconnecting the tier does not alter local policy behavior.
 
 ## Phase 4: managed updates
 
@@ -43,11 +44,13 @@
 ## Product acceptance criteria
 
 - One setup command reaches a healthy daemon and enforced synthetic event.
+- Standalone setup and every current policy workflow require no account or cloud connection.
 - Warm policy evaluation meets agreed p95/p99 latency under simultaneous capture, backfill, upload, and sync load.
 - Existing builtin and JS/TS local policies preserve behavior.
 - Every harness produces the same canonical and native result for golden fixtures.
 - Cloud targeting resolves deterministically without crossing organization/machine boundaries.
 - Cloud outage and daemon restart preserve last known-good enforcement.
+- Local policy behavior is identical before, during, and after optional cloud enrollment.
 - Invalid or partial generations never activate.
 - AgentEye attributes each decision to exact policy and assignment revisions.
 - Collector crash/replay tests prove durable, idempotent delivery.

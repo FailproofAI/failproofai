@@ -1,8 +1,10 @@
-# Cloud policy management
+# Optional cloud policy tier
 
 ## Purpose
 
-The FailproofAI cloud is the management plane for a fleet of local `failproofaid` enforcement planes. AgentEye data closes the loop between observing agent behavior and deploying a guardrail:
+FailproofAI OSS remains a complete standalone policy system. Users author and run builtin or custom policy locally without an account, machine enrollment, organization, or cloud service.
+
+The optional cloud tier adds centralized management for fleets of `failproofaid` enforcement planes. It does not replace, gate, or remove local policy authoring. AgentEye data closes the loop between observing agent behavior and deploying an additional centrally managed guardrail:
 
 1. analysis identifies risky behavior or a failed outcome;
 2. a user creates or accepts a policy draft from that evidence;
@@ -12,7 +14,7 @@ The FailproofAI cloud is the management plane for a fleet of local `failproofaid
 6. an authorized user promotes the same immutable revision to enforce mode;
 7. the assignment can expand, pause, expire, narrow, or roll back.
 
-Cloud availability is not required for an individual v1.0.0 hook decision because synchronized policy is evaluated locally.
+Cloud availability is not required for standalone operation or an individual v1.0.0 hook decision because policy is evaluated locally.
 
 ## Future direction: cloud evaluation
 
@@ -22,7 +24,7 @@ The v1.0.0 boundary is chosen so harnesses will not need reintegration: they alw
 
 ## Identity and targeting
 
-Each daemon installation has a stable non-secret machine ID and a rotatable credential bound to an organization. Effective targeting context may include:
+Only a connected daemon installation has a cloud machine ID and rotatable credential bound to an organization. A standalone installation creates neither. Connected targeting context may include:
 
 ```text
 organization -> environment -> machine -> agent -> session
@@ -62,16 +64,16 @@ Polling with jitter is the baseline. A push notification may prompt an immediate
 
 Partial activation is forbidden. Missing, invalid, incompatible, replayed, or tampered state leaves the last known-good generation active.
 
-## Precedence and decisions
+## Coexistence with local policy
 
-Administrative authority is evaluated in this order:
+The effective policy set on a connected machine is additive:
 
-1. product-mandatory policy;
-2. cloud organization/environment/machine/agent/session assignments;
-3. locally configured builtin policy;
-4. local custom and convention policy.
+1. locally configured builtin policy;
+2. local explicit custom policy;
+3. local project/user convention policy;
+4. cloud organization/environment/machine/agent/session assignments.
 
-All unsuppressed matching policies run. Result severity is `deny`, then `instruct`, then `allow`. Stable policy and assignment IDs prevent name collisions.
+All matching policies run. Result severity is `deny`, then `instruct`, then `allow`. Stable source-qualified policy and assignment IDs prevent name collisions. A cloud `disabled` assignment can suppress a specifically inherited cloud assignment when authorized; it cannot disable a user's local policy. Local policy can be disabled only through the existing local configuration and file workflows.
 
 Every result records policy revision, assignment ID and scope, generation, target context and identity provenance, observe/enforce effect, policy result, effective harness action, and timing. This lets AgentEye attribute a decision to the exact rollout that produced it.
 
@@ -79,7 +81,7 @@ Every result records policy revision, assignment ID and scope, generation, targe
 
 The daemon persists the last verified assignment generation. Policy continues to evaluate locally from that state. Before assignment expiry it reports increasing management staleness; after expiry, each assignment declares whether to continue local enforcement, fall back to observe, or fail closed for a narrowly defined mandatory control.
 
-Ordinary organization policy defaults to continuing last known-good enforcement rather than silently removing guardrails. A machine that has never synchronized uses local policy only.
+Ordinary organization policy defaults to continuing last-known-good enforcement rather than silently removing guardrails. Local policy continues independently. A standalone machine has no cloud synchronization state at all.
 
 Health distinguishes `connected`, `stale`, `expired`, `rejected`, and `never_synced`. Server time and bounded clock-skew evidence support expiry decisions.
 
@@ -97,5 +99,6 @@ AI-generated policy never bypasses authorization. Organizations define who may c
 - Policy releases and desired-state snapshots are signed, organization-bound, content-addressed, and replay-resistant.
 - Cloud policy has declared limited capabilities and no ambient host authority.
 - Targeting labels are minimized and treated as customer data.
+- Standalone operation creates no cloud machine identity and sends no policy, configuration, activity, or targeting data to FailproofAI.
 - Prompt, transcript, and tool-result content is not required merely to resolve an assignment.
 - Credential rotation, machine revocation, publisher-key rotation, and emergency policy revocation have explicit protocols.

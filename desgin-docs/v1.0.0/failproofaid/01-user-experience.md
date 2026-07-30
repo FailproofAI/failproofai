@@ -6,13 +6,32 @@ A user installs FailproofAI once on a machine. From then on:
 
 - `failproofaid` starts automatically when the user logs in;
 - supported agent harnesses send events to the local daemon;
-- policies are synchronized from the cloud and evaluated locally by the daemon;
+- builtin and user-authored policies work locally with no account or cloud connection;
+- connected cloud-tier installations may additionally synchronize centrally assigned policies;
 - AgentEye session data is captured and delivered when enabled;
-- centrally assigned policies arrive automatically and keep working while offline;
-- service and policy health are visible locally and in the cloud;
+- service and policy health are always visible locally and, when connected, in the cloud;
 - stable releases update automatically with rollback on failure.
 
 The user should not need to understand hooks, service managers, sockets, transcript formats, or collector processes.
+
+## Compatibility promise
+
+v1.0.0 is an architectural upgrade, not a cloud-only product rewrite. Everything a user can do with the current OSS release remains possible without signing in:
+
+- enable and configure builtin policies;
+- author JavaScript/TypeScript custom policies using the existing public API;
+- load one or more explicit custom policy files;
+- discover `*policies.{js,mjs,ts}` files from project and user `.failproofai/policies/` directories;
+- use user, project, and local configuration scopes supported by each harness;
+- install, list, enable, disable, and uninstall policies from the CLI;
+- enforce across every currently supported agent harness with the same observable result contract;
+- retain transitive local imports and supported package imports in custom policy files;
+- inspect local activity, sessions, policy state, and the local dashboard;
+- run local audits and use the product offline.
+
+These behaviors need compatibility fixtures before the daemon becomes the default. A feature is not considered migrated merely because an equivalent cloud workflow exists.
+
+The cloud tier is additive. It adds enrollment, centralized assignment, fleet health, AgentEye analysis, staged rollout, and organization audit. Connecting a machine does not disable local policy authoring.
 
 ## Installation
 
@@ -37,24 +56,35 @@ The default installation is unprivileged and per-user. It must not require `sudo
 `failproofai setup` performs these steps:
 
 1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing AgentEye collector.
-2. **Sign in** — authenticate the user and enroll this daemon installation into an organization. Browser-based sign-in is preferred; a device-code path supports headless machines.
-3. **Name the machine** — propose the host name, let the user choose a recognizable display name, and create a stable machine identity.
-4. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
-5. **Choose observability** — explain which local session sources can be captured and require explicit selection before transcript capture is enabled.
-6. **Preview policy state** — show centrally assigned and local policies that will be active, including whether each starts in observe or enforce mode.
-7. **Install the service** — write owner-only configuration and credentials, register the service, start it, and wait for IPC readiness.
-8. **Verify end to end** — run a harmless synthetic hook request, confirm policy evaluation, verify enabled collectors, and confirm cloud acknowledgement when online.
-9. **Report completion** — show machine identity, enabled harnesses and sources, active policy revision, service health, and the relevant dashboard link.
+2. **Choose use mode** — offer **Standalone OSS** with no sign-in, or **Connect cloud tier**. Standalone is a complete product path, not a limited trial.
+3. **Optional sign-in** — only for the connected path, authenticate and enroll the installation into an organization. Browser sign-in is preferred; device code supports headless machines.
+4. **Optional machine identity** — only for the connected path, propose a display name and create a stable cloud machine identity.
+5. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
+6. **Choose policies** — preserve current builtin selection and custom/convention policy discovery. On a connected machine, show cloud assignments as an additional source.
+7. **Choose observability** — explain which local session sources can be captured and where their data goes. Require explicit selection before transcript capture is enabled.
+8. **Install the service** — write configuration and any optional credentials, register the service, start it, and wait for IPC readiness.
+9. **Verify end to end** — run a harmless synthetic hook request and verify enabled local capabilities. Confirm cloud acknowledgement only when connected.
+10. **Report completion** — show enabled harnesses, local policy state, service health, and local dashboard; add organization/machine/dashboard links only when connected.
 
 Setup is transactional. If a later step fails, it restores the previous harness configuration and service state. It never leaves half-installed hooks pointing at a missing daemon.
 
 ### Non-interactive and managed installation
 
-Automation uses the same operation with structured inputs:
+Standalone automation uses the same operation with structured inputs and no credential:
 
 ```sh
 failproofai setup \
   --non-interactive \
+  --mode standalone \
+  --harness claude --harness codex
+```
+
+Connected automation adds enrollment explicitly:
+
+```sh
+failproofai setup \
+  --non-interactive \
+  --mode connected \
   --enrollment-token "$TOKEN" \
   --machine-name build-runner-07 \
   --harness claude --harness codex \
@@ -65,9 +95,22 @@ Secrets must not appear in generated service definitions or process arguments af
 
 The command returns machine-readable failure codes and supports `--json`. Re-running it converges the installation to the requested state instead of creating duplicate services, identities, or hooks.
 
-## Normal use
+## Standalone OSS use
 
-Most users interact with the cloud dashboard, not the daemon:
+Standalone users keep the current authoring workflow:
+
+```sh
+failproofai policies --install block-sudo --scope user
+failproofai policies --install --custom ./company-policies.mjs
+```
+
+They may also place convention policies in `.failproofai/policies/` at project or user scope. The daemon watches and atomically reloads them, while invalid changes retain the last known-good generation and appear in local health.
+
+No account, API key, machine enrollment, or AgentEye backend is required. Policy source code, configuration, activity, and local dashboard data remain on the machine unless the user deliberately connects an external destination.
+
+## Connected cloud-tier use
+
+Connected users gain an additional cloud workflow:
 
 1. inspect AgentEye sessions, findings, or analysis;
 2. create or select a policy;
@@ -79,7 +122,7 @@ Most users interact with the cloud dashboard, not the daemon:
 
 The local daemon reconciles these changes automatically. A user does not run a sync command after a cloud change. All v1.0.0 policy evaluation happens locally after the assignment and policy artifact have synchronized.
 
-Local policy files and builtin policies remain usable for individual developers and offline projects. The CLI clearly labels policy source and authority:
+Local policy files, builtin policies, and convention discovery remain active on a connected machine. The CLI labels every source and scope:
 
 ```text
 SOURCE       SCOPE             MODE       POLICY
@@ -115,6 +158,8 @@ failproofai doctor
 
 `doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, cloud freshness, and update state. Any repair that changes harness configuration or deletes data requires an explicit flag or confirmation.
 
+On a standalone installation cloud checks report `not_configured`, not a warning or failure.
+
 ## Status and health
 
 `status` answers whether the service manager believes the daemon is installed and running. `health` answers whether the product is working.
@@ -122,8 +167,8 @@ failproofai doctor
 The default health view reports independently:
 
 - daemon and IPC readiness;
-- active local and cloud policy generations;
-- cloud state as `connected`, `stale`, `expired`, `rejected`, or `never_synced`;
+- active local policy generation and, when configured, cloud assignment generation;
+- cloud state as `not_configured`, `connected`, `stale`, `expired`, `rejected`, or `never_synced`;
 - enabled harnesses and their last event;
 - enabled capture sources and checkpoint progress;
 - pending, retrying, and quarantined delivery data;
@@ -134,11 +179,11 @@ A process can be running while policy sync or event delivery is unhealthy. The U
 
 ## Offline behavior
 
-The daemon loads the last verified policy generation before accepting events and continues enforcing it while the cloud management plane is unavailable. Hook decisions do not make a network request in v1.0.0.
+The daemon loads verified local policy before accepting events. Standalone operation has no management-plane dependency. On a connected machine it additionally loads the last verified cloud assignment generation and continues enforcing it while the cloud is unavailable. Hook decisions do not make a network request in v1.0.0.
 
 Policy status shows the active revision, its last successful synchronization time, and whether cloud management state is current, stale, expired, rejected, or never synchronized.
 
-The user sees the age and expiry state of cloud policy. Ordinary organization policy continues from last known-good state by default rather than silently disappearing. Policies with different post-expiry behavior must show that behavior before deployment.
+Connected users see the age and expiry state of cloud policy. Ordinary organization policy continues from last-known-good state by default rather than silently disappearing. Local policies are unaffected by cloud expiry.
 
 Collection continues into a bounded durable spool while offline. Delivery resumes automatically. Enforcement never waits for the spool or backend.
 
@@ -175,7 +220,7 @@ The daemon-unavailable behavior is explicit. During migration the hook client ma
 
 1. disables installed harness integrations;
 2. stops and removes the user service;
-3. revokes the machine credential when online or records revocation for the next connection;
+3. revokes the machine credential when the installation is connected, or records revocation for its next connection;
 4. removes installed executables and update state;
 5. preserves local policy files, logs, pending events, and configuration by default.
 
@@ -185,7 +230,9 @@ Migration from the standalone AgentEye collector preserves pending and failed ba
 
 ## UX acceptance criteria
 
-- A new user can reach a healthy daemon and one enforced synthetic hook through one setup command.
+- A standalone user can reach a healthy daemon and one enforced synthetic hook through one setup command without an account or network connection.
+- Every current OSS policy authoring, discovery, scope, CLI, harness, activity, dashboard, and audit behavior has a compatibility test and remains available.
+- Connecting the cloud tier does not disable or subordinate user-authored local policy.
 - Re-running setup is idempotent.
 - Setup failure restores prior service and harness configuration.
 - No default per-user installation requires elevation.

@@ -6,9 +6,9 @@
 
 - local IPC and request admission;
 - event canonicalization and policy evaluation coordination;
-- immutable local and cloud policy generations;
+- immutable local policy generations and optional connected-tier cloud assignment generations;
 - collector source workers, checkpoints, spooling, and delivery;
-- cloud desired-state reconciliation;
+- optional cloud desired-state reconciliation;
 - health, diagnostics, logs, and resource limits;
 - update discovery and staging, but not activation.
 
@@ -21,7 +21,7 @@ The daemon separates work into independently bounded lanes:
 1. **Enforcement** — reserved workers, strict deadlines, and no network dependency.
 2. **Collection** — source watching, transcript parsing, checkpointing, and backfill.
 3. **Delivery** — batching, upload, retry, and quarantine.
-4. **Management** — cloud authentication, desired-state reconciliation, verification, and acknowledgement.
+4. **Management** — when connected, cloud authentication, desired-state reconciliation, verification, and acknowledgement; otherwise dormant.
 5. **Maintenance** — configuration reload, health snapshots, cleanup, and update discovery.
 
 Each lane has its own queue, concurrency, memory, and time limits. Background work cannot consume enforcement's reserved capacity. Overload is reported per lane rather than causing unbounded queue growth.
@@ -41,7 +41,7 @@ Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, and `Flush`. 
 
 The daemon evaluates each request against an immutable generation. A generation contains resolved configuration, policy artifacts, assignment metadata, runtime compatibility, and content identity.
 
-A reload or cloud reconciliation constructs a candidate away from the active generation:
+A local reload or optional cloud reconciliation constructs a candidate away from the active generation:
 
 1. resolve inputs and immutable artifacts;
 2. verify schema, signature, digest, compatibility, and target binding;
@@ -56,6 +56,8 @@ In-flight requests finish on the generation with which they started. A failed ca
 Rust is the authoritative implementation language for the daemon and new core subsystems.
 
 Existing local custom policies are JavaScript or TypeScript and may use transitive local and package imports. v1 cannot silently narrow that contract. A supervised, long-lived policy worker behind an internal runtime interface is the migration design. It is shipped, versioned, monitored, and terminated with the daemon; users do not manage it as a separate service.
+
+Standalone OSS policy is a first-class source, not a fallback for a missing cloud connection. Builtins, explicit custom files, project/user convention directories, and existing configuration scopes produce the active local generation without authentication or enrollment.
 
 Cloud-created policy requires a deterministic, capability-limited representation or sandbox. The existence of a legacy JavaScript worker does not authorize the cloud to send arbitrary JavaScript with the user's filesystem, environment, process, or network authority.
 
@@ -122,6 +124,6 @@ Configuration is schema-versioned and written transactionally. File notification
 
 ## Health
 
-Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, policy generation and reload state, cloud freshness, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and update state.
+Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, optional cloud freshness, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and update state. Cloud health is `not_configured` for standalone OSS installs.
 
 Logs are structured, correlated by request/batch/update ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.

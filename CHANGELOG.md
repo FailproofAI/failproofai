@@ -4,6 +4,7 @@
 
 ### Docs
 - Add a versioned home for the failproofai v1.0.0 design documents. (#625)
+- Draft the `failproofaid` architecture for unified local enforcement, AgentEye collection, and rollback-safe automatic updates. (#625)
 
 ## 0.0.15-beta.1 — 2026-07-29
 

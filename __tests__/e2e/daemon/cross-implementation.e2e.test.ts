@@ -46,9 +46,17 @@ const SOCKET = resolvePath(SCRATCH, "failproofaid.sock");
 const INSTALL_JSON = resolvePath(SCRATCH, "install.json");
 
 /**
- * The set the daemon enables in Stage 1 (`DEFAULT_SEALED_POLICIES` in
- * `server.rs`). The legacy side must be given the same set or the comparison
- * would be measuring configuration, not implementation.
+ * The enabled set sent to both sides.
+ *
+ * The daemon has no policy list of its own — it evaluates whatever the client
+ * sends, which is the fix for the defect where it enforced 11 builtin defaults
+ * regardless of the user's 30 enabled policies. So this list is the *client's*
+ * resolved set, handed identically to the daemon and to the legacy evaluator;
+ * anything else would make the comparison measure configuration rather than
+ * implementation.
+ *
+ * It happens to be the default-enabled set, which keeps the comparison
+ * representative of a stock install.
  */
 const DAEMON_POLICY_SET = [
   "sanitize-jwt",
@@ -193,6 +201,7 @@ describe("TypeScript client ↔ Rust daemon", () => {
     const viaDaemon = await tryDaemonEvaluate(
       envelopeFor("claude", "PreToolUse", payload),
       5000,
+      DAEMON_POLICY_SET,
     );
     expect(viaDaemon, "the daemon must answer, not fall back").not.toBeNull();
 
@@ -238,7 +247,7 @@ describe("TypeScript client ↔ Rust daemon", () => {
       if (!available) return;
       process.env.FAILPROOFAI_DAEMON_MODE = "enforce";
 
-      const viaDaemon = await tryDaemonEvaluate(envelopeFor(c.cli, c.event, c.payload), 5000);
+      const viaDaemon = await tryDaemonEvaluate(envelopeFor(c.cli, c.event, c.payload), 5000, DAEMON_POLICY_SET);
       expect(viaDaemon, `${c.name}: daemon fell back instead of answering`).not.toBeNull();
 
       const viaLegacy = await legacyAnswer(c.cli, c.event, c.payload);
@@ -269,6 +278,7 @@ describe("TypeScript client ↔ Rust daemon", () => {
         tool_input: { command: "sudo id" },
       }),
       5000,
+      DAEMON_POLICY_SET,
     );
     expect(result).toBeNull();
   });
@@ -282,6 +292,7 @@ describe("TypeScript client ↔ Rust daemon", () => {
         tool_input: { command: "sudo id" },
       }),
       5000,
+      DAEMON_POLICY_SET,
     );
     expect(result).toBeNull();
   });
@@ -298,6 +309,7 @@ describe("TypeScript client ↔ Rust daemon", () => {
           tool_input: { command: "sudo id" },
         }),
         5000,
+      DAEMON_POLICY_SET,
       );
       expect(result).toBeNull();
     } finally {
@@ -312,10 +324,10 @@ describe("TypeScript client ↔ Rust daemon", () => {
       tool_name: "Bash",
       tool_input: { command: "cat /etc/passwd /etc/shadow" },
     });
-    const first = await tryDaemonEvaluate(envelope, 5000);
+    const first = await tryDaemonEvaluate(envelope, 5000, DAEMON_POLICY_SET);
     expect(first).not.toBeNull();
     for (let i = 0; i < 100; i++) {
-      const again = await tryDaemonEvaluate(envelope, 5000);
+      const again = await tryDaemonEvaluate(envelope, 5000, DAEMON_POLICY_SET);
       expect(again, `diverged at round trip ${i}`).toEqual(first);
     }
   }, 60_000);

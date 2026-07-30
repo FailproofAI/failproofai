@@ -73,6 +73,18 @@ function header(length: number): Buffer {
   return buf;
 }
 
+/**
+ * A non-empty resolved enabled set, as every real caller now supplies.
+ *
+ * `tryDaemonEvaluate` refuses an empty set before opening a socket: the daemon
+ * rejects it (there is nothing to evaluate, and backfilling its own defaults
+ * would enforce a set the user never configured), and a caller that forgot to
+ * pass one would otherwise get a confident `allow` built from evaluating
+ * nothing. These tests are about transport and framing rather than policy, so
+ * the contents do not matter — only that it is non-empty and real.
+ */
+const ENABLED = ["block-sudo", "block-env-files"] as const;
+
 const HELLO_ACK = {
   hello_ack: { protocol_version: 1, daemon_version: "0.0.16-beta.0", generation_id: "gen-abc" },
 };
@@ -245,7 +257,7 @@ describe("hooks/daemon-client", () => {
       const server = await serve(respondWith(evaluatedResult()));
       delete process.env.FAILPROOFAI_DAEMON_MODE;
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
 
       // The point of the assertion: not "null was returned", but "the socket
       // was never opened". Returning null *after* connecting would still be a
@@ -257,7 +269,7 @@ describe("hooks/daemon-client", () => {
       const server = await serve(respondWith(evaluatedResult()));
       process.env.FAILPROOFAI_DAEMON_MODE = "off";
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(0);
     });
 
@@ -265,7 +277,7 @@ describe("hooks/daemon-client", () => {
       const server = await serve(respondWith(evaluatedResult()));
       process.env.FAILPROOFAI_DAEMON_MODE = "shadow";
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(0);
     });
 
@@ -273,7 +285,7 @@ describe("hooks/daemon-client", () => {
       const server = await serve(respondWith(evaluatedResult()));
       process.env.FAILPROOFAI_DAEMON_MODE = "ENFORCE"; // wrong case, not a mode
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(0);
     });
   });
@@ -288,7 +300,7 @@ describe("hooks/daemon-client", () => {
     it("returns the daemon's EvaluationResult exactly", async () => {
       await serve(respondWith(evaluatedResult()));
 
-      const result = await tryDaemonEvaluate(makeRequest(), 1000);
+      const result = await tryDaemonEvaluate(makeRequest(), 1000, ENABLED);
 
       // Byte-for-byte the fields `EvaluationResult` already has. `policy_names`
       // was null, so `policyNames` is absent rather than present-and-undefined.
@@ -316,7 +328,7 @@ describe("hooks/daemon-client", () => {
         ),
       );
 
-      const result = await tryDaemonEvaluate(makeRequest(), 1000);
+      const result = await tryDaemonEvaluate(makeRequest(), 1000, ENABLED);
 
       expect(result?.policyNames).toEqual(["failproofai/a", "failproofai/b"]);
       expect(result?.decision).toBe("instruct");
@@ -327,7 +339,7 @@ describe("hooks/daemon-client", () => {
     it("sends host.home as null even though the envelope carries a real home", async () => {
       const server = await serve(respondWith(evaluatedResult()));
 
-      await tryDaemonEvaluate(makeRequest(), 1000);
+      await tryDaemonEvaluate(makeRequest(), 1000, ENABLED);
 
       const op = server.received[1].op as { evaluate_hook: Record<string, unknown> };
       const host = op.evaluate_hook.host as Record<string, unknown>;
@@ -342,7 +354,7 @@ describe("hooks/daemon-client", () => {
       const server = await serve(respondWith(evaluatedResult()));
       const request = makeRequest();
 
-      await tryDaemonEvaluate(request, 1000);
+      await tryDaemonEvaluate(request, 1000, ENABLED);
 
       const op = server.received[1].op as { evaluate_hook: Record<string, unknown> };
       const host = op.evaluate_hook.host as Record<string, unknown>;
@@ -357,7 +369,7 @@ describe("hooks/daemon-client", () => {
     it("sends the canonicalized payload and session verbatim, plus a positive deadline", async () => {
       const server = await serve(respondWith(evaluatedResult()));
 
-      await tryDaemonEvaluate(makeRequest(), 1000);
+      await tryDaemonEvaluate(makeRequest(), 1000, ENABLED);
 
       expect(server.received[0]).toEqual({
         hello: {
@@ -398,7 +410,7 @@ describe("hooks/daemon-client", () => {
         });
       });
 
-      expect(await tryDaemonEvaluate(makeRequest(), 1000)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 1000, ENABLED)).toBeNull();
     });
 
     // ── failure modes: every one of them falls back ────────────────────────
@@ -407,7 +419,7 @@ describe("hooks/daemon-client", () => {
       writeInstallJson(process.getuid?.() ?? 0);
       process.env.FAILPROOFAI_DAEMON_SOCKET = join(dir, "absent.sock");
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it("returns null when the connection is refused (path is not a live socket)", async () => {
@@ -416,13 +428,13 @@ describe("hooks/daemon-client", () => {
       writeInstallJson(process.getuid?.() ?? 0);
       process.env.FAILPROOFAI_DAEMON_SOCKET = path;
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it("returns null when the server closes immediately after accepting", async () => {
       const server = await serve((socket) => socket.destroy());
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(1);
     });
 
@@ -431,7 +443,7 @@ describe("hooks/daemon-client", () => {
         socket.write(frame({ version_mismatch: { supported: [1], received: 2 } }));
       });
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
 
       // Never guess, never retry with a different version, never fail the hook
       // — and above all never submit the event to a daemon whose contract we do
@@ -446,7 +458,7 @@ describe("hooks/daemon-client", () => {
         socket.write(frame({ hello_ack: { protocol_version: 2, daemon_version: "9.9.9" } }));
       });
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       await vi.waitFor(() => expect(server.received).toHaveLength(1));
     });
 
@@ -457,7 +469,7 @@ describe("hooks/daemon-client", () => {
       });
 
       const startedAt = performance.now();
-      const result = await tryDaemonEvaluate(makeRequest(), 200);
+      const result = await tryDaemonEvaluate(makeRequest(), 200, ENABLED);
       const elapsed = performance.now() - startedAt;
 
       expect(result).toBeNull();
@@ -478,7 +490,7 @@ describe("hooks/daemon-client", () => {
       });
 
       const startedAt = performance.now();
-      const result = await tryDaemonEvaluate(makeRequest(), 5000);
+      const result = await tryDaemonEvaluate(makeRequest(), 5000, ENABLED);
       const elapsed = performance.now() - startedAt;
 
       expect(result).toBeNull();
@@ -498,7 +510,7 @@ describe("hooks/daemon-client", () => {
       });
 
       // A short read is a framing error, never a zero-filled frame.
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it("returns null on a body that is not valid JSON", async () => {
@@ -509,7 +521,7 @@ describe("hooks/daemon-client", () => {
         });
       });
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it("returns null when the daemon answers with an error result", async () => {
@@ -532,7 +544,7 @@ describe("hooks/daemon-client", () => {
       );
 
       // Every error is a client fallback to legacy, never a failed hook.
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it("returns null when needs_user_context is non-empty", async () => {
@@ -542,7 +554,7 @@ describe("hooks/daemon-client", () => {
 
       // Accepting this would silently drop enforcement for a user's mutable
       // policies — precisely the failure this product exists to prevent.
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     it.each([
@@ -556,7 +568,7 @@ describe("hooks/daemon-client", () => {
       ["needs_user_context is not an array", { needs_user_context: "none" }],
     ])("returns null when %s", async (_label, overrides) => {
       await serve(respondWith(evaluatedResult(overrides)));
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
     });
 
     // ── peer verification ─────────────────────────────────────────────────
@@ -567,7 +579,7 @@ describe("hooks/daemon-client", () => {
       process.env.FAILPROOFAI_DAEMON_SOCKET = server.path;
       process.env.FAILPROOFAI_INSTALL_JSON = join(dir, "no-such-install.json");
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
 
       // Unverified is never "proceed anyway": no socket is opened at all.
       expect(server.connections).toBe(0);
@@ -581,7 +593,7 @@ describe("hooks/daemon-client", () => {
       writeFileSync(path, JSON.stringify({ version: "1.0.0" }), "utf8");
       process.env.FAILPROOFAI_INSTALL_JSON = path;
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(0);
     });
 
@@ -592,7 +604,7 @@ describe("hooks/daemon-client", () => {
       // The socket is owned by whoever runs the test; claim a different UID.
       writeInstallJson((process.getuid?.() ?? 0) + 4242);
 
-      expect(await tryDaemonEvaluate(makeRequest(), 500)).toBeNull();
+      expect(await tryDaemonEvaluate(makeRequest(), 500, ENABLED)).toBeNull();
       expect(server.connections).toBe(0);
     });
   });
@@ -686,15 +698,24 @@ describe("handleHookEvent × daemon-client", () => {
     const { handleHookEvent } = await import("../../src/hooks/handler");
     const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
     const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+    const { loadAllCustomHooks } = await import("../../src/hooks/custom-hooks-loader");
     const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
     const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
 
     mockStdin(DENY_PAYLOAD);
     const exitCode = await handleHookEvent("PreToolUse");
 
-    // The legacy work below the insertion point was skipped entirely — that is
-    // the whole point of putting the branch above `readMergedHooksConfig`.
-    expect(readMergedHooksConfig).not.toHaveBeenCalled();
+    // `readMergedHooksConfig` DOES run on the daemon path, and must: the daemon
+    // evaluates the client's resolved enabled set, so the client has to resolve
+    // it. When the daemon supplied its own set instead, a user with 30 policies
+    // enabled silently got the 11 builtin defaults.
+    //
+    // What the daemon actually removes is everything below it. The expensive
+    // half is `loadAllCustomHooks`, which writes `.__failproofai_tmp__.mjs`
+    // files next to the user's source on every tool call; the config read is a
+    // few JSON reads by comparison.
+    expect(readMergedHooksConfig).toHaveBeenCalledTimes(1);
+    expect(loadAllCustomHooks).not.toHaveBeenCalled();
     expect(evaluatePolicies).not.toHaveBeenCalled();
 
     // …and everything the handler does with a result still happens, once.

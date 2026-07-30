@@ -300,6 +300,29 @@ pub struct EvaluateHook {
     /// The **remaining** end-to-end budget, not a per-hop timeout. The daemon
     /// converts it to a monotonic instant on receipt.
     pub deadline_ms: u64,
+    /// The policy names the client resolved for this event, from its merged
+    /// project/local/user configuration.
+    ///
+    /// **The daemon must evaluate this set, not a set of its own.** An earlier
+    /// revision had the daemon supply its own default list, which meant a user
+    /// who had enabled 30 policies got the 11 builtin defaults and nothing
+    /// else — 19 builtins plus every custom and convention policy silently
+    /// stopped enforcing the moment the daemon answered. It also made the
+    /// [`Evaluated::needs_user_context`] fallback unreachable: the worker
+    /// computes it by partitioning the list it was given, so a
+    /// daemon-supplied, all-sealed-by-construction list always partitioned to
+    /// empty and the client never fell back.
+    ///
+    /// Sending the client's real set is what makes that fallback mean
+    /// something. Anything in here the sealed tier cannot run comes back in
+    /// `needs_user_context`, and the client falls back to legacy rather than
+    /// enforcing a subset.
+    ///
+    /// Stage 3 moves the authoritative enabled set into a root-owned
+    /// `machine.json` so it stops being client-asserted at all; until then this
+    /// carries the same trust as the file the legacy path already reads.
+    #[serde(default)]
+    pub enabled_policies: Vec<String>,
     /// `true` means "evaluate sealed-only, do not run anything with side
     /// effects, the caller is discarding your answer".
     #[serde(default)]

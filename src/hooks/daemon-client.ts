@@ -139,6 +139,7 @@ function socketOwnerMatchesService(socketPath: string, serviceUid: number): bool
 function toEvaluateHookOp(
   request: EvaluationRequest,
   deadlineMs: number,
+  enabledPolicies: readonly string[],
 ): Record<string, unknown> {
   const envFacts: Record<string, string | null> = {};
   for (const key of ENV_FACT_KEYS) {
@@ -162,6 +163,13 @@ function toEvaluateHookOp(
       env_facts: envFacts,
     },
     deadline_ms: deadlineMs,
+    // The caller's resolved enabled set. The daemon evaluates THIS, not a set
+    // of its own: when it supplied its own default list, a user with 30
+    // policies enabled got the 11 builtin defaults and 19 builtins silently
+    // stopped enforcing. It also made the `needs_user_context` fallback below
+    // unreachable, since the worker partitions the list it was handed and a
+    // daemon-supplied list is all-sealed by construction.
+    enabled_policies: [...enabledPolicies],
     // Stage 1 `enforce` only. `shadow: true` is Stage 2, where the caller
     // discards the answer and the daemon must not run anything with side
     // effects (running both paths would double `warn-repeated-tool-calls`'
@@ -266,6 +274,7 @@ function encodeFrame(body: unknown): Buffer {
 export async function tryDaemonEvaluate(
   request: EvaluationRequest,
   deadlineMs: number = DEFAULT_DAEMON_DEADLINE_MS,
+  enabledPolicies: readonly string[] = [],
 ): Promise<EvaluationResult | null> {
   // ── Kill switch, first, before anything else is read or opened ──────────
   const mode = process.env.FAILPROOFAI_DAEMON_MODE;
@@ -276,6 +285,13 @@ export async function tryDaemonEvaluate(
     // is treated as `off` rather than silently behaving like `enforce`.
     return null;
   }
+  // An empty enabled set is a fallback, not a request. The daemon refuses it —
+  // there is nothing to evaluate, and backfilling its own defaults would
+  // enforce a set the user never configured — so the round trip could only end
+  // in an error. More to the point, a caller that forgot to pass its resolved
+  // set would otherwise get a confident allow built from evaluating nothing.
+  if (enabledPolicies.length === 0) return null;
+
   // Anything other than an understood mode falls back too: an unrecognized
   // value must never be more permissive than `off`.
   if (mode !== "enforce") return null;
@@ -287,7 +303,7 @@ export async function tryDaemonEvaluate(
     if (serviceUid === null) return null;
     if (!socketOwnerMatchesService(socketPath, serviceUid)) return null;
 
-    return await roundTrip(socketPath, request, deadlineMs);
+    return await roundTrip(socketPath, request, deadlineMs, enabledPolicies);
   } catch {
     return null;
   }
@@ -303,6 +319,7 @@ function roundTrip(
   socketPath: string,
   request: EvaluationRequest,
   deadlineMs: number,
+  enabledPolicies: readonly string[],
 ): Promise<EvaluationResult | null> {
   return new Promise<EvaluationResult | null>((resolve) => {
     const startedAt = performance.now();
@@ -404,7 +421,7 @@ function roundTrip(
               finish(null);
               return;
             }
-            if (!send({ request_id: requestId, op: { evaluate_hook: toEvaluateHookOp(request, remainingMs) } })) {
+            if (!send({ request_id: requestId, op: { evaluate_hook: toEvaluateHookOp(request, remainingMs, enabledPolicies) } })) {
               finish(null);
             }
             continue;

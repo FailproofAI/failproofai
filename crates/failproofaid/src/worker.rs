@@ -32,8 +32,8 @@
 //! substitute for the other — the interrupt cannot stop a single allocation
 //! that is too large, and the memory limit cannot stop a tight loop.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use rquickjs::{Context, Function, Promise, Runtime};
@@ -99,6 +99,106 @@ pub struct SealedWorker {
     interrupt: Arc<AtomicBool>,
     /// Monotonically increasing count of completed evaluations, for health.
     evaluations: Arc<AtomicU64>,
+    /// Arms and disarms the deadline watchdog. See [`Watchdog`].
+    watchdog: Watchdog,
+}
+
+/// The thread that actually enforces the enforcement deadline.
+///
+/// **Why this has to be a separate thread.** QuickJS polls the interrupt
+/// handler during execution and unwinds when it returns `true` — but *something
+/// has to set the flag*, and the only other thing the worker thread does while
+/// a policy runs is nothing: a policy body is synchronous JavaScript, so the
+/// microtask-pump loop in [`SealedWorker::evaluate`] does not get another turn
+/// until the call returns. Checking the deadline there enforces it only
+/// *between* microtasks, which is to say not at all for the case that matters.
+///
+/// The case that matters is real and default-enabled. `CURL_PIPE_SH_RE` in
+/// `block-curl-pipe-sh` is `/(?:curl|wget)\s.*\|\s*(?:sh|bash|…)\b/` — the `.*`
+/// backtracks quadratically, and `"curl ".repeat(n)` drives it. Measured on the
+/// worker with a 200 ms deadline and no watchdog: 40 KB of command took 7.1 s
+/// and 80 KB took 30 s, both returning `Ok`, never `DeadlineExceeded`. The
+/// frame cap is 1 MiB, so a *legal* request extrapolates past an hour. One such
+/// request permanently wedges the single enforcement lane for every user on the
+/// machine. `protect-env-vars` and `block-failproofai-commands` have the same
+/// regex shape and are also default-enabled.
+///
+/// One long-lived thread rather than one per evaluation: spawning is ~20–50 µs
+/// against a ~1 ms evaluation, which is a real fraction of the hot path this
+/// daemon exists to make faster.
+struct Watchdog {
+    /// `Some(deadline)` while an evaluation is in flight.
+    armed: Arc<(Mutex<Option<Instant>>, Condvar)>,
+    /// Set at drop so the thread exits instead of leaking at shutdown.
+    stop: Arc<AtomicBool>,
+}
+
+impl Watchdog {
+    fn spawn(interrupt: Arc<AtomicBool>) -> Self {
+        let armed: Arc<(Mutex<Option<Instant>>, Condvar)> =
+            Arc::new((Mutex::new(None), Condvar::new()));
+        let stop = Arc::new(AtomicBool::new(false));
+
+        {
+            let armed = Arc::clone(&armed);
+            let stop = Arc::clone(&stop);
+            // Detached deliberately: it holds no state anything else reads, and
+            // joining it at shutdown would mean waiting out a deadline.
+            std::thread::Builder::new()
+                .name("fpai-watchdog".into())
+                .spawn(move || {
+                    let (lock, cvar) = &*armed;
+                    let mut slot = lock.lock().unwrap_or_else(|e| e.into_inner());
+                    while !stop.load(Ordering::Relaxed) {
+                        match *slot {
+                            // Disarmed: sleep until someone arms or stops us.
+                            None => {
+                                let (next, _) = cvar
+                                    .wait_timeout(slot, Duration::from_millis(250))
+                                    .unwrap_or_else(|e| e.into_inner());
+                                slot = next;
+                            }
+                            Some(deadline) => {
+                                let now = Instant::now();
+                                if now >= deadline {
+                                    // Fire. The evaluation loop clears the flag
+                                    // and disarms once it has unwound.
+                                    interrupt.store(true, Ordering::Relaxed);
+                                    *slot = None;
+                                } else {
+                                    let (next, _) = cvar
+                                        .wait_timeout(slot, deadline - now)
+                                        .unwrap_or_else(|e| e.into_inner());
+                                    slot = next;
+                                }
+                            }
+                        }
+                    }
+                })
+                .expect("watchdog thread must start");
+        }
+
+        Self { armed, stop }
+    }
+
+    fn arm(&self, deadline: Instant) {
+        let (lock, cvar) = &*self.armed;
+        *lock.lock().unwrap_or_else(|e| e.into_inner()) = Some(deadline);
+        cvar.notify_all();
+    }
+
+    fn disarm(&self) {
+        let (lock, cvar) = &*self.armed;
+        *lock.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        cvar.notify_all();
+    }
+}
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.armed.1.notify_all();
+    }
 }
 
 impl SealedWorker {
@@ -149,11 +249,14 @@ impl SealedWorker {
             Ok(())
         })?;
 
+        let watchdog = Watchdog::spawn(Arc::clone(&interrupt));
+
         Ok(Self {
             runtime,
             context,
             interrupt,
             evaluations: Arc::new(AtomicU64::new(0)),
+            watchdog,
         })
     }
 
@@ -180,15 +283,35 @@ impl SealedWorker {
         let started = Instant::now();
         self.interrupt.store(false, Ordering::Relaxed);
 
+        // Arm the watchdog BEFORE entering QuickJS. Everything below this line
+        // may be a single synchronous call that does not return for minutes;
+        // the watchdog is the only thing that can interrupt it. See [`Watchdog`]
+        // for the measured case that makes this load-bearing rather than
+        // defensive.
+        self.watchdog.arm(started + deadline);
+
         let result = self.context.with(|ctx| -> Result<String, WorkerError> {
             let f: Function = ctx
                 .globals()
                 .get("__fpai_sealed_evaluate")
                 .map_err(|e| WorkerError::Protocol(e.to_string()))?;
 
-            let promise: Promise = f
-                .call((request_json,))
-                .map_err(|e| WorkerError::Evaluation(describe_js_error(&ctx, e)))?;
+            let promise: Promise = match f.call((request_json,)) {
+                Ok(p) => p,
+                Err(e) => {
+                    // An interrupt unwinds as an ordinary exception, so a call
+                    // that failed *after* the watchdog fired is a deadline
+                    // miss, not a policy crash. Reporting it as the latter
+                    // would send a circuit breaker after a policy that was
+                    // merely slow.
+                    if self.interrupt.load(Ordering::Relaxed) {
+                        return Err(WorkerError::DeadlineExceeded {
+                            elapsed: started.elapsed(),
+                        });
+                    }
+                    return Err(WorkerError::Evaluation(describe_js_error(&ctx, e)));
+                }
+            };
 
             // Drive the microtask queue by hand rather than handing control to
             // an async runtime. The enforcement lane is synchronous and
@@ -224,11 +347,22 @@ impl SealedWorker {
                             )));
                         }
                     }
-                    Err(e) => return Err(WorkerError::Evaluation(describe_js_error(&ctx, e))),
+                    Err(e) => {
+                        if self.interrupt.load(Ordering::Relaxed) {
+                            return Err(WorkerError::DeadlineExceeded {
+                                elapsed: started.elapsed(),
+                            });
+                        }
+                        return Err(WorkerError::Evaluation(describe_js_error(&ctx, e)));
+                    }
                 }
             }
         });
 
+        // Disarm before clearing the flag, so a watchdog that is mid-fire
+        // cannot set it again after the clear and interrupt the *next*
+        // evaluation for a deadline that has already passed.
+        self.watchdog.disarm();
         self.interrupt.store(false, Ordering::Relaxed);
         if result.is_ok() {
             self.evaluations.fetch_add(1, Ordering::Relaxed);
@@ -446,6 +580,101 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&baseline).unwrap();
         assert_eq!(v["result"]["decision"], "deny");
         assert_eq!(w.evaluation_count(), 1001);
+    }
+
+    #[test]
+    fn a_catastrophically_backtracking_regex_hits_the_deadline() {
+        // The regression test for the defect the previous version of this file
+        // did not have. `block-curl-pipe-sh` is default-enabled and sealed, and
+        // its `/(?:curl|wget)\s.*\|\s*(?:sh|bash|…)\b/` backtracks
+        // quadratically on `"curl ".repeat(n)`. Without a watchdog thread this
+        // returned `Ok` after 30 s against a 200 ms deadline — the deadline
+        // check lived in the microtask pump, which cannot run while a
+        // synchronous policy body is executing, so nothing ever set the
+        // interrupt flag.
+        //
+        // Deliberately does NOT pre-arm the interrupt. That is exactly what
+        // made the neighbouring test pass while the daemon was wedgeable: it
+        // proved the handler works, not that anything arms it.
+        let w = worker();
+        let payload = "curl ".repeat(16_000); // ~80 KB, well under the 1 MiB frame cap
+        let req = request(
+            "PreToolUse",
+            serde_json::json!({"tool_name": "Bash", "tool_input": {"command": payload}}),
+            &["block-curl-pipe-sh"],
+        );
+
+        let started = Instant::now();
+        let outcome = w.evaluate(&req, Duration::from_millis(200));
+        let elapsed = started.elapsed();
+
+        assert!(
+            matches!(outcome, Err(WorkerError::DeadlineExceeded { .. })),
+            "expected DeadlineExceeded, got {outcome:?} after {elapsed:?}"
+        );
+        // Generous bound: the watchdog fires at 200 ms and QuickJS then has to
+        // reach its next interrupt poll. Anything under a second proves the
+        // mechanism; without it this took 30 s.
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "the watchdog did not interrupt promptly: {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn the_lane_still_works_after_a_deadline_miss() {
+        // The escalation that made the original defect fatal rather than
+        // merely slow: one runaway request wedged the single enforcement lane
+        // for every client on the machine, permanently. Recovery is the
+        // property that turns it back into an isolated failure.
+        let w = worker();
+        let payload = "curl ".repeat(16_000);
+        let _ = w.evaluate(
+            &request(
+                "PreToolUse",
+                serde_json::json!({"tool_name": "Bash", "tool_input": {"command": payload}}),
+                &["block-curl-pipe-sh"],
+            ),
+            Duration::from_millis(200),
+        );
+
+        let started = Instant::now();
+        let raw = w
+            .evaluate(
+                &request(
+                    "PreToolUse",
+                    serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "sudo id"}}),
+                    &["block-sudo"],
+                ),
+                DEADLINE,
+            )
+            .expect("the lane must recover after a deadline miss");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["result"]["decision"], "deny");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the next request was still blocked behind the runaway one"
+        );
+    }
+
+    #[test]
+    fn a_deadline_miss_is_not_reported_as_a_policy_crash() {
+        // An interrupt unwinds as an ordinary JS exception. Classifying it as
+        // an evaluation failure would trip the circuit breaker for a policy
+        // that was merely slow, and permanently disable it.
+        let w = worker();
+        let outcome = w.evaluate(
+            &request(
+                "PreToolUse",
+                serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "curl ".repeat(16_000)}}),
+                &["block-curl-pipe-sh"],
+            ),
+            Duration::from_millis(150),
+        );
+        match outcome {
+            Err(WorkerError::DeadlineExceeded { .. }) => {}
+            other => panic!("expected DeadlineExceeded, got {other:?}"),
+        }
     }
 
     #[test]

@@ -159,7 +159,8 @@ proptest! {
                     project_dir: None,
                     env_facts: EnvFacts::with_claude_project_dir(Some(text.clone())),
                 },
-                deadline_ms: n,
+                enabled_policies: vec![String::from("block-sudo")],
+            deadline_ms: n,
                 shadow: flag,
             })),
         };

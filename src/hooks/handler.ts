@@ -270,23 +270,39 @@ export async function handleHookEvent(
     // of this function.
     //
     // `tryDaemonEvaluate` returns null before opening a socket unless
-    // FAILPROOFAI_DAEMON_MODE is set, so with the variable unset this line is
-    // one function call and one env-var read, and the rest of the handler
-    // behaves exactly as it does on main. It never throws.
-    const daemonResult = await tryDaemonEvaluate(request, DEFAULT_DAEMON_DEADLINE_MS);
+    // FAILPROOFAI_DAEMON_MODE is set, so with the variable unset this costs one
+    // env-var read and the rest of the handler behaves exactly as it does on
+    // main. It never throws.
+    //
+    // The config read moved *above* the daemon call, and that ordering is
+    // load-bearing. The daemon must evaluate the user's resolved enabled set;
+    // when it supplied its own instead, a user with 30 policies enabled got the
+    // 11 builtin defaults and 19 builtins silently stopped enforcing the moment
+    // the daemon answered. Reading the config first costs the cheap half of the
+    // legacy work (a few JSON reads) and keeps the expensive half — the custom
+    // hook load, which writes temp files next to the user's source on every
+    // tool call — on the fallback path only.
+    //
+    // Custom and convention policies are never sealed-eligible, so rather than
+    // load them just to discover that, a configured custom-policy path skips
+    // the daemon outright. Enforcing a subset would be worse than not using the
+    // daemon at all: it is the silent-drop this product exists to prevent.
+    let config: HooksConfig | undefined = readMergedHooksConfig(session.cwd);
+    const hasCustomPolicies =
+      config.customPoliciesEnabled !== false &&
+      ((config.customPoliciesPaths?.length ?? 0) > 0 || !!config.customPoliciesPath);
+
+    const daemonResult = hasCustomPolicies
+      ? null
+      : await tryDaemonEvaluate(request, DEFAULT_DAEMON_DEADLINE_MS, config.enabledPolicies);
     const evaluator: "daemon" | "legacy" = daemonResult ? "daemon" : "legacy";
 
-    // `config` is only read on the legacy path — the daemon owns policy loading
-    // on its side — so it stays undefined when the daemon answered.
-    let config: HooksConfig | undefined;
     let result: EvaluationResult;
 
     if (daemonResult) {
       result = daemonResult;
       hookLogInfo(`event=${canonicalEventType} cli=${cli} evaluator=daemon`);
     } else {
-      // Load enabled policies (merge across project/local/global scopes)
-      config = readMergedHooksConfig(session.cwd);
       clearPolicies();
       registerBuiltinPolicies(config.enabledPolicies);
 

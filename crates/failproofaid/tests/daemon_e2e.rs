@@ -99,6 +99,16 @@ impl Conn {
 }
 
 fn evaluate_request(command: &str) -> serde_json::Value {
+    evaluate_request_with(command, &["block-sudo", "block-read-outside-cwd"])
+}
+
+fn evaluate_request_with(command: &str, enabled: &[&str]) -> serde_json::Value {
+    let mut req = evaluate_request_base(command);
+    req["op"]["evaluate_hook"]["enabled_policies"] = serde_json::json!(enabled);
+    req
+}
+
+fn evaluate_request_base(command: &str) -> serde_json::Value {
     serde_json::json!({
         "request_id": "11111111-2222-3333-4444-555555555555",
         "op": { "evaluate_hook": {
@@ -118,6 +128,7 @@ fn evaluate_request(command: &str) -> serde_json::Value {
                 "project_dir": null,
                 "env_facts": { "CLAUDE_PROJECT_DIR": null }
             },
+            "enabled_policies": ["block-sudo"],
             "deadline_ms": 2000,
             "shadow": false
         }}
@@ -208,6 +219,75 @@ fn a_decision_reading_cwd_is_reported_sealed_unattested() {
     assert_eq!(
         res["result"]["evaluated"]["attestation"],
         "sealed_unattested"
+    );
+}
+
+#[test]
+fn the_daemon_evaluates_the_clients_policy_set_not_its_own() {
+    // The regression test for the worst defect this daemon has had. It used to
+    // evaluate a hardcoded list of the 11 default-enabled builtins and ignore
+    // what the client sent, so a user with `block-rm-rf` enabled got `allow`
+    // for `rm -rf /` the moment the daemon answered.
+    let h = Harness::start("client-set");
+    let mut c = h.connect();
+    c.handshake();
+
+    // `block-rm-rf` is NOT default-enabled. Under the old behaviour this
+    // allowed; it must now deny, because the client asked for it.
+    c.send(&evaluate_request_with("rm -rf /", &["block-rm-rf"]));
+    let res = c.recv();
+    assert_eq!(
+        res["result"]["evaluated"]["decision"], "deny",
+        "the daemon ignored the client's enabled set: {res}"
+    );
+    assert_eq!(
+        res["result"]["evaluated"]["policy_name"],
+        "failproofai/block-rm-rf"
+    );
+}
+
+#[test]
+fn a_policy_the_sealed_tier_cannot_run_comes_back_as_needs_user_context() {
+    // The other half of the same defect: this list is how the client learns it
+    // must fall back to legacy. It was permanently empty while the daemon
+    // partitioned its own all-sealed list, which made the documented fallback
+    // unreachable.
+    let h = Harness::start("needs-user-context");
+    let mut c = h.connect();
+    c.handshake();
+
+    c.send(&evaluate_request_with(
+        "sudo id",
+        &[
+            "block-sudo",
+            "require-commit-before-stop",
+            "custom/my-policy",
+        ],
+    ));
+    let res = c.recv();
+    let pending = &res["result"]["evaluated"]["needs_user_context"];
+    assert_eq!(
+        pending,
+        &serde_json::json!(["require-commit-before-stop", "custom/my-policy"]),
+        "a host-access builtin and a custom policy must both be reported, not silently dropped"
+    );
+}
+
+#[test]
+fn a_request_with_no_enabled_policies_is_refused() {
+    // Neither "enforce nothing" nor "backfill the defaults" is a safe reading.
+    // The first turns a client bug into a silent allow; the second enforces a
+    // set the user never configured, which is the original defect.
+    let h = Harness::start("empty-set");
+    let mut c = h.connect();
+    c.handshake();
+
+    c.send(&evaluate_request_with("sudo id", &[]));
+    let res = c.recv();
+    assert_eq!(res["result"]["error"]["code"], "malformed_frame");
+    assert!(
+        res["result"]["evaluated"].is_null(),
+        "a refused request must not produce a verdict"
     );
 }
 

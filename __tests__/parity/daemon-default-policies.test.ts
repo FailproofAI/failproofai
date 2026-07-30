@@ -1,26 +1,40 @@
 /**
- * The daemon's default policy set must equal the TypeScript one.
+ * The daemon must never enforce a policy set the user did not configure.
  *
- * `crates/failproofaid/src/server.rs` hardcodes `DEFAULT_SEALED_POLICIES` — the
- * set the daemon enables in Stage 1. It is hardcoded deliberately: reading the
- * user's `policies-config.json` would make the sealed tier's enabled set come
- * from a user-writable file, so an agent could delete `block-sudo` from a JSON
- * array and the unforgeable verdict would simply never run. That is the exact
- * hole the plan's third settled decision (root-owned `machine.json`) exists to
- * close, and until it lands the safe placeholder is a compiled-in list.
+ * This started as a drift tripwire over a `DEFAULT_SEALED_POLICIES` constant
+ * hardcoded in `crates/failproofaid/src/server.rs`. That constant is gone, and
+ * this file now asserts the property that made it necessary — which is the
+ * better outcome: the duplication was removed rather than tested.
  *
- * But a compiled-in list is a second copy, and a second copy drifts. The drift
- * would be invisible in the worst way: the cross-implementation test
- * (`__tests__/e2e/daemon/cross-implementation.e2e.test.ts`) feeds *the same*
- * policy list to both the daemon and the legacy evaluator, so it compares
- * encoders, not enabled sets. If someone adds a default-enabled builtin in
- * TypeScript and does not touch `server.rs`, every existing test still passes
- * and the daemon quietly enforces one policy fewer than the legacy path — which
- * is a silent allow, on the exact upgrade path this project exists to protect.
+ * ## The defect this exists to prevent
  *
- * So: assert it here, by reading the Rust source. Same tripwire philosophy as
- * `__tests__/hooks/dogfood-configs.test.ts`, which reads the committed hook
- * configs rather than trusting that they were regenerated.
+ * The daemon used to supply its own enabled set (the 11 `defaultEnabled`
+ * builtins) and evaluate that, ignoring what the client had resolved from the
+ * user's merged configuration. Reproduced against this repo's own
+ * `.failproofai/policies-config.json`, which enables 30 policies:
+ *
+ * ```
+ * rm -rf /          daemon: allow   legacy: deny (failproofai/block-rm-rf)
+ * cat /etc/passwd   daemon: allow   legacy: deny (failproofai/block-read-outside-cwd)
+ * ```
+ *
+ * 19 of 30 enabled builtins, plus 100% of custom and convention policies,
+ * stopped enforcing the moment the daemon answered. The documented safety net
+ * could not fire: the sealed worker computes `needsUserContext` by partitioning
+ * the list *it was handed*, and a daemon-supplied list is all-sealed by
+ * construction, so it was always empty and the client never fell back.
+ *
+ * ## What is asserted now
+ *
+ * Three independent things, because the fix has three moving parts and any one
+ * of them regressing restores the silent drop:
+ *
+ * 1. The Rust side no longer carries its own policy list at all.
+ * 2. The client sends its resolved set, and refuses to call the daemon with an
+ *    empty one — a caller that forgot would otherwise get a confident `allow`
+ *    built from evaluating nothing.
+ * 3. The handler skips the daemon outright when custom policies are configured,
+ *    since those can never be sealed-eligible.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
@@ -28,77 +42,82 @@ import { resolve as resolvePath } from "node:path";
 import { BUILTIN_POLICIES } from "../../src/hooks/builtin-policies";
 import { PAYLOAD_ONLY_POLICIES } from "../../src/hooks/builtin/payload-only";
 
-const SERVER_RS = resolvePath(__dirname, "..", "..", "crates/failproofaid/src/server.rs");
+const REPO_ROOT = resolvePath(__dirname, "..", "..");
+const SERVER_RS = resolvePath(REPO_ROOT, "crates/failproofaid/src/server.rs");
+const DAEMON_CLIENT = resolvePath(REPO_ROOT, "src/hooks/daemon-client.ts");
+const HANDLER = resolvePath(REPO_ROOT, "src/hooks/handler.ts");
 
-/**
- * Pull the string literals out of the `DEFAULT_SEALED_POLICIES` slice.
- *
- * Parsed rather than imported because there is no way to import a Rust `const`
- * from vitest, and shelling out to `cargo` for one list would make this suite
- * depend on a Rust toolchain being installed. The parse is narrow — it anchors
- * on the exact declaration and stops at the closing bracket — so a
- * restructuring that breaks it fails loudly rather than matching nothing.
- */
-function parseDefaultSealedPolicies(source: string): string[] {
-  const marker = "const DEFAULT_SEALED_POLICIES: &[&str] = &[";
-  const start = source.indexOf(marker);
-  if (start === -1) {
-    throw new Error(
-      `could not find '${marker}' in server.rs. If the declaration was renamed or ` +
-        `restructured, update this test — do not delete it.`,
-    );
-  }
-  const end = source.indexOf("];", start);
-  if (end === -1) throw new Error("DEFAULT_SEALED_POLICIES is not terminated by '];'");
-
-  const body = source.slice(start + marker.length, end);
-  return [...body.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-}
-
-describe("daemon default policy set", () => {
-  // Skipped rather than failed when the crate is absent, so a checkout without
-  // the Rust tree (or a future move of the file) is a visible skip and not a
-  // red suite for the wrong reason.
+describe("the daemon evaluates the client's policy set, not its own", () => {
   const available = existsSync(SERVER_RS);
 
   it("server.rs exists (otherwise everything below is vacuous)", () => {
     expect(available, `${SERVER_RS} is missing`).toBe(true);
   });
 
-  it("matches the TypeScript default-enabled builtins, in the same order", () => {
+  it("the daemon carries no policy list of its own", () => {
     if (!available) return;
-    const fromRust = parseDefaultSealedPolicies(readFileSync(SERVER_RS, "utf8"));
-    const fromTypeScript = BUILTIN_POLICIES.filter((p) => p.defaultEnabled).map((p) => p.name);
-
-    // Order matters as well as membership: evaluation is ordered, and a deny
-    // short-circuits, so `policyName` on a payload matching two policies
-    // depends on which one is registered first.
-    expect(fromRust).toEqual(fromTypeScript);
+    const source = readFileSync(SERVER_RS, "utf8");
+    // A reintroduced hardcoded list is the exact regression. If one is ever
+    // genuinely needed, it must come from generated data with a drift gate —
+    // not from a literal that silently diverges from `BUILTIN_POLICIES`.
+    expect(source).not.toMatch(/DEFAULT_SEALED_POLICIES/);
+    expect(source).toContain('"config": { "enabledPolicies": hook.enabled_policies }');
   });
 
-  it("parses a non-empty list (guards against the regex matching nothing)", () => {
+  it("the daemon refuses a request that carries no enabled policies", () => {
     if (!available) return;
-    expect(parseDefaultSealedPolicies(readFileSync(SERVER_RS, "utf8")).length).toBeGreaterThan(0);
+    // Backfilling defaults here would re-create the defect in one line, and
+    // treating it as "enforce nothing" would turn a client bug into a silent
+    // allow. Refusal is the only safe reading.
+    expect(readFileSync(SERVER_RS, "utf8")).toContain("hook.enabled_policies.is_empty()");
   });
 
-  it("enables only policies the sealed tier can actually run", () => {
-    if (!available) return;
-    // A host-access policy in this list would be routed straight back out as
-    // `needs_user_context` on every single event, which the Stage-1 client
-    // treats as "fall back to legacy" — so the daemon would silently never
-    // answer anything.
-    const fromRust = parseDefaultSealedPolicies(readFileSync(SERVER_RS, "utf8"));
-    const sealedEligible = new Set(PAYLOAD_ONLY_POLICIES.map((p) => p.name));
-    const notEligible = fromRust.filter((name) => !sealedEligible.has(name));
-    expect(notEligible).toEqual([]);
+  it("the client sends its resolved set and will not call the daemon without one", () => {
+    const source = readFileSync(DAEMON_CLIENT, "utf8");
+    expect(source).toContain("enabled_policies: [...enabledPolicies]");
+    expect(source).toContain("if (enabledPolicies.length === 0) return null;");
   });
 
-  it("names only policies that exist", () => {
-    if (!available) return;
-    const known = new Set(BUILTIN_POLICIES.map((p) => p.name));
-    const unknown = parseDefaultSealedPolicies(readFileSync(SERVER_RS, "utf8")).filter(
-      (name) => !known.has(name),
-    );
-    expect(unknown).toEqual([]);
+  it("the handler reads config before the daemon call, not after", () => {
+    // Ordering is the fix. If `readMergedHooksConfig` moves back below
+    // `tryDaemonEvaluate`, the client has nothing to send and the daemon is
+    // back to inventing a set.
+    const source = readFileSync(HANDLER, "utf8");
+    const configAt = source.indexOf("readMergedHooksConfig(session.cwd)");
+    const daemonAt = source.indexOf("tryDaemonEvaluate(");
+    expect(configAt).toBeGreaterThan(-1);
+    expect(daemonAt).toBeGreaterThan(-1);
+    expect(configAt).toBeLessThan(daemonAt);
+  });
+
+  it("the handler skips the daemon entirely when custom policies are configured", () => {
+    // Custom and convention policies are never sealed-eligible. Loading them
+    // just to discover that would pay the expensive half of the legacy work —
+    // the temp files written next to the user's source on every tool call —
+    // for nothing.
+    const source = readFileSync(HANDLER, "utf8");
+    expect(source).toContain("hasCustomPolicies");
+    expect(source).toMatch(/hasCustomPolicies\s*\?\s*null/);
+  });
+});
+
+describe("sealed eligibility is still a strict subset", () => {
+  it("every default-enabled builtin the sealed tier claims is genuinely payload-only", () => {
+    // Not a statement about the daemon's list (there isn't one) but about the
+    // tier itself: if a host-access policy ever became default-enabled AND
+    // sealed-eligible, the sealed worker would try to spawn `git`.
+    const sealed = new Set(PAYLOAD_ONLY_POLICIES.map((p) => p.name));
+    const defaultEnabled = BUILTIN_POLICIES.filter((p) => p.defaultEnabled).map((p) => p.name);
+
+    // Every default-enabled policy is currently payload-only; if that changes,
+    // the daemon will correctly report it in `needs_user_context` and the
+    // client will fall back — so this is documentation of today's state, not a
+    // requirement. Asserted so the change is deliberate.
+    const hostAccessDefaults = defaultEnabled.filter((n) => !sealed.has(n));
+    expect(hostAccessDefaults).toEqual([]);
+  });
+
+  it("names a non-empty sealed set (guards against a vacuous subset check)", () => {
+    expect(PAYLOAD_ONLY_POLICIES.length).toBe(32);
   });
 });

@@ -160,6 +160,7 @@ service manager's readiness check is independent of policy state.
         "project_dir": null,
         "env_facts": { "CLAUDE_PROJECT_DIR": null }
       },
+      "enabled_policies": ["block-sudo", "block-env-files"],
       "deadline_ms": 800,
       "shadow": false
     }
@@ -189,9 +190,44 @@ Field notes, in decreasing order of how badly getting them wrong would hurt:
   under the agent's control) cannot become an injection channel.
 - `payload` is **already canonicalized by the client** for Stage 1: tool names
   and tool-input keys have been mapped, and the per-CLI payload normalizations
-  applied. `fpai-canon` re-derives and asserts equality rather than trusting
-  this; a mismatch is a `canonicalization_mismatch` protocol error. Stage 2
-  moves canonicalization fully daemon-side.
+  applied. **The daemon trusts this at Stage 1 and does not re-derive it.**
+
+  An earlier revision of this document claimed `fpai-canon` re-derived
+  canonicalization and rejected a mismatch as `canonicalization_mismatch`. That
+  was never true, and it is not implementable from this envelope: re-deriving
+  requires the *raw* vendor payload, and only the canonicalized one is sent.
+  Believing the claim would have been worse than not making it — it describes a
+  check a reviewer would reasonably assume was catching a hostile or buggy
+  client, and nothing was.
+
+  What it costs today is bounded. The client runs as the user whose events
+  these are, and every field it can distort is one it could equally distort
+  before canonicalization; the fields that *would* be dangerous to accept —
+  `home` above all — are the ones the daemon derives itself. So this is a
+  missing defence-in-depth layer, not an open door. `canonicalization_mismatch`
+  stays in the error enum because Stage 2 moves canonicalization fully
+  daemon-side, which is where the check becomes both possible and meaningful.
+
+- `enabled_policies` is the client's **resolved** enabled set, from its merged
+  project/local/user configuration. The daemon evaluates *this*, never a set of
+  its own.
+
+  This is load-bearing and was learned the hard way. When the daemon supplied
+  its own default list, a user with 30 policies enabled got the 11 builtin
+  defaults — 19 builtins plus every custom and convention policy silently
+  stopped enforcing the moment the daemon answered. It also made
+  `needs_user_context` unreachable, because the sealed worker computes that list
+  by partitioning the set it was handed, and a daemon-supplied set is
+  all-sealed by construction.
+
+  An empty list is a **protocol error**, not "evaluate nothing" and not "use
+  the defaults". The first turns a client bug into a silent allow; the second
+  reinstates the defect.
+
+  Stage 3 moves the authoritative enabled set into a root-owned `machine.json`,
+  at which point it stops being client-asserted at all. Until then it carries
+  exactly the trust the file the legacy path already reads carries — no more,
+  and no less.
 - `deadline_ms` is the **remaining** end-to-end budget, not a per-hop timeout.
   The daemon converts it to a monotonic instant on receipt. If it cannot answer
   within it, it returns `deadline_exceeded` and the client falls back to legacy

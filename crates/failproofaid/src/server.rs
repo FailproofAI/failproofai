@@ -54,6 +54,15 @@ const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// property of the lane being shared, not of any one request.
 const MAX_DEADLINE: Duration = Duration::from_secs(5);
 
+/// How long past its own deadline a request will wait for the shared lane.
+///
+/// The lane is single-threaded, so a request's wall-clock wait is its own
+/// evaluation *plus* everything queued ahead of it. This is the allowance for
+/// that queue. Past it, the connection thread stops waiting and reports lane
+/// pressure — the client gave up long ago and fell back to legacy, so
+/// continuing to wait accomplishes nothing and costs a parked thread.
+const LANE_QUEUE_GRACE: Duration = Duration::from_secs(5);
+
 /// What the worker thread accepts.
 struct Job {
     request_json: String,
@@ -115,12 +124,33 @@ impl Lane {
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Evaluation("enforcement lane is not running".into()))?;
-        // The worker enforces the deadline itself and always replies, so a
-        // recv error here means the thread died — which is a daemon bug, not a
-        // slow policy, and must not be reported as a timeout.
-        reply_rx
-            .recv()
-            .map_err(|_| WorkerError::Evaluation("worker thread died mid-evaluation".into()))?
+
+        // `recv_timeout`, never a bare `recv`. The lane is shared and requests
+        // queue, so this call waits for however long everything ahead of it
+        // takes — not just for this request's own deadline. A bare `recv` parks
+        // the connection thread with no upper bound, and since the client has
+        // already given up at its own (shorter) budget and fallen back to
+        // legacy, that thread is waiting for an answer nobody will read.
+        //
+        // Measured before this: one runaway request left one permanently
+        // blocked thread per subsequent hook event, growing without limit.
+        // `serve()` propagates a failed `accept` or `spawn`, so the first
+        // EMFILE/EAGAIN returned `Err` out of the listener and the daemon
+        // exited — escalating "no daemon answers" into "the daemon is gone".
+        //
+        // The bound is the queue budget, not the deadline: `LANE_QUEUE_GRACE`
+        // past this request's own deadline covers a reasonable amount of work
+        // ahead of it, and anything beyond that is reported as lane pressure
+        // rather than waited on.
+        match reply_rx.recv_timeout(deadline + LANE_QUEUE_GRACE) {
+            Ok(outcome) => outcome,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(WorkerError::DeadlineExceeded {
+                elapsed: deadline + LANE_QUEUE_GRACE,
+            }),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(WorkerError::Evaluation(
+                "worker thread died mid-evaluation".into(),
+            )),
+        }
     }
 }
 
@@ -392,6 +422,18 @@ fn handle_evaluate(hook: EvaluateHook, request_id: &str, uid: u32, lane: &Lane) 
         }
     };
 
+    // An empty enabled set is refused rather than treated as "enforce
+    // nothing" or quietly backfilled with the builtin defaults. Both of those
+    // answer a question the client did not ask, and one of them enforces a
+    // policy set the user never configured.
+    if hook.enabled_policies.is_empty() {
+        return Response::error(
+            request_id,
+            ErrorCode::MalformedFrame,
+            "evaluate_hook carried no enabled_policies; the client must send its resolved set",
+        );
+    }
+
     let deadline = Duration::from_millis(hook.deadline_ms).min(MAX_DEADLINE);
 
     // The sealed worker speaks the shape in `src/policy-runtime/sealed-entry.ts`.
@@ -408,12 +450,18 @@ fn handle_evaluate(hook: EvaluateHook, request_id: &str, uid: u32, lane: &Lane) 
             "projectDir": hook.host.project_dir,
             "home": home,
         },
-        // Stage 1 evaluates the builtin default set. Resolving a user's own
-        // enabled set into an immutable generation is Stage 3 work, gated on
-        // the root-owned machine.json that makes protected enablement
-        // unforgeable — putting it here would read enablement from a
-        // user-writable file and quietly void the tamper-proof claim.
-        "config": { "enabledPolicies": DEFAULT_SEALED_POLICIES },
+        // The client's resolved enabled set, not a set of the daemon's own.
+        // See `EvaluateHook::enabled_policies` for why that distinction is the
+        // difference between the daemon enforcing what the user configured and
+        // it silently enforcing eleven builtins. The worker partitions this and
+        // reports anything it cannot run as `needs_user_context`; the client
+        // treats a non-empty list as "fall back to legacy".
+        //
+        // An empty list means the client sent nothing to evaluate, which is a
+        // client bug rather than "enforce nothing" — falling back to the
+        // builtin defaults would enforce a set the user never chose, so it is
+        // refused above instead.
+        "config": { "enabledPolicies": hook.enabled_policies },
     });
 
     let raw = match lane.submit(sealed_request.to_string(), deadline) {
@@ -498,26 +546,6 @@ fn handle_evaluate(hook: EvaluateHook, request_id: &str, uid: u32, lane: &Lane) 
         })),
     }
 }
-
-/// The builtin policies enabled by default, mirroring `policy-presets.ts`.
-///
-/// Stage 1 hardcodes this because the alternative — reading the user's
-/// `policies-config.json` — would make the sealed tier's enabled set come from
-/// a user-writable file, so an agent could delete `block-sudo` from a JSON array
-/// and the unforgeable verdict would simply never run.
-const DEFAULT_SEALED_POLICIES: &[&str] = &[
-    "sanitize-jwt",
-    "sanitize-api-keys",
-    "sanitize-connection-strings",
-    "sanitize-private-key-content",
-    "sanitize-bearer-tokens",
-    "protect-env-vars",
-    "block-env-files",
-    "block-sudo",
-    "block-curl-pipe-sh",
-    "block-failproofai-commands",
-    "block-push-master",
-];
 
 /// The sealed worker's reply shape. Mirrors `SealedResponse` / `SealedError` in
 /// `src/policy-runtime/sealed-entry.ts`.

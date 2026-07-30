@@ -3,8 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, not only those targeting `main`.
+  #
+  # The `branches: [main]` filter that used to be here meant a **stacked** PR —
+  # one opened against another feature branch — ran no CI at all. Not a reduced
+  # set: none. Quality, test, build, docs, test-e2e and rust-quality were all
+  # silently skipped, and the PR still showed a green checkmark from the
+  # third-party checks that did run, which is the worst possible presentation of
+  # "nothing was verified".
+  #
+  # Found while landing Phase 1 Stage 0/1, whose PR is stacked on the design-doc
+  # branch: several thousand tests, three new Rust crates and a daemon had been
+  # pushed without CI executing once. Retargeting that PR at `main` would have
+  # dragged 22 unrelated commits into its diff, so the filter is the thing that
+  # needed fixing, not the PR.
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}

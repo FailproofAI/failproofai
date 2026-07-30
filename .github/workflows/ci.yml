@@ -116,6 +116,29 @@ jobs:
           timeout_minutes: 5
           command: bun install --frozen-lockfile
 
+      # `dist/index.js` must exist before the unit suite runs, and this step is
+      # what replaced the mechanism that used to guarantee it.
+      #
+      # The custom-policy loader writes a `.__failproofai_tmp__.mjs` shim beside
+      # each policy file and dynamically imports it; that shim resolves the bare
+      # specifier `failproofai` through `findDistIndex()`, which looks for
+      # `dist/index.js`. Without it, every convention and custom policy fails to
+      # load with `Cannot find package 'failproofai'`, and four suites fail on
+      # empty results rather than on anything that names the cause.
+      #
+      # `"prepare": "bun run build"` used to make this true as a side effect of
+      # `bun install`. Removing it was correct — it was also the only thing
+      # populating `dist/` before `npm publish`, so a lifecycle script was
+      # silently load-bearing in two unrelated places. This makes the second one
+      # explicit, matching the `Build E2E fixtures` step the `test-e2e` job has
+      # had all along.
+      #
+      # Only `src/index.ts` is built, not the full `bun run build`: the unit
+      # suite needs the public-API bundle and nothing else, and the Next.js
+      # build would add minutes per matrix leg for no coverage.
+      - name: Build the public API bundle
+        run: bun build src/index.ts --outdir dist --target node --format cjs
+
       - name: Test (${{ matrix.env-config.name }})
         uses: nick-fields/retry@v4
         env: ${{ matrix.env-config.env }}

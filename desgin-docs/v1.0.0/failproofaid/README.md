@@ -21,8 +21,8 @@ Target: failproofai v1.0.0
 
 - `failproofaid` is implemented in Rust.
 - It is a per-user operating-system service by default.
-- Agent hook decisions are synchronous and support configurable `local`, `cloud`, or `hybrid` evaluation.
+- Agent hook decisions are synchronous and evaluated locally in v1.0.0.
 - Collection, delivery, cloud reconciliation, and update discovery are asynchronous.
-- The FailproofAI cloud is the management plane and an optional decision plane; `failproofaid` remains the machine-local enforcement gateway.
+- The FailproofAI cloud is the v1.0.0 policy management plane; a later version may move evaluation into the cloud without changing harness integrations.
 - Cloud policy can target organization, environment, machine, agent, and session scope.
 - The running daemon never replaces or terminates itself to activate an update.

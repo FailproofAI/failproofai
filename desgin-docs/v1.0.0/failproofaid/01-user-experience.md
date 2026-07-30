@@ -6,7 +6,7 @@ A user installs FailproofAI once on a machine. From then on:
 
 - `failproofaid` starts automatically when the user logs in;
 - supported agent harnesses send events to the local daemon;
-- each policy can be configured for local, cloud, or hybrid evaluation, mediated by the daemon with an explicit deadline and fallback contract;
+- policies are synchronized from the cloud and evaluated locally by the daemon;
 - AgentEye session data is captured and delivered when enabled;
 - centrally assigned policies arrive automatically and keep working while offline;
 - service and policy health are visible locally and in the cloud;
@@ -77,7 +77,7 @@ Most users interact with the cloud dashboard, not the daemon:
 6. promote the same policy revision to enforce mode;
 7. expand, pause, expire, or roll back the assignment.
 
-The local daemon reconciles these changes automatically. A user does not run a sync command after a cloud change. Each assignment states whether evaluation happens locally, in the cloud, or in hybrid mode; the harness integration is identical in every case.
+The local daemon reconciles these changes automatically. A user does not run a sync command after a cloud change. All v1.0.0 policy evaluation happens locally after the assignment and policy artifact have synchronized.
 
 Local policy files and builtin policies remain usable for individual developers and offline projects. The CLI clearly labels policy source and authority:
 
@@ -132,32 +132,11 @@ The default health view reports independently:
 
 A process can be running while policy sync or event delivery is unhealthy. The UI must never collapse these into one green status.
 
-## Decision location and offline behavior
+## Offline behavior
 
-The health and policy views identify where each policy is evaluated:
+The daemon loads the last verified policy generation before accepting events and continues enforcing it while the cloud management plane is unavailable. Hook decisions do not make a network request in v1.0.0.
 
-- `local` — the daemon evaluates a verified local artifact;
-- `cloud` — the daemon sends a bounded decision request to the FailproofAI cloud;
-- `hybrid` — mandatory/local policy runs first and cloud policy contributes when reachable.
-
-The organization administrator chooses the allowed default, and an authorized policy assignment can select `local`, `cloud`, or `hybrid`. A machine user can choose only within organization policy and cannot move a centrally mandated cloud or local control to another location. The CLI shows the effective configured location and its source.
-
-Example assignment configuration:
-
-```json
-{
-  "evaluation_location": "cloud",
-  "decision_timeout_ms": 1200,
-  "on_unavailable": {
-    "action": "local_fallback",
-    "policy_revision": "pol_123:17"
-  }
-}
-```
-
-For cloud/hybrid policy, the assignment states what happens when the decision service is unavailable or misses its deadline: use a permitted last-known/cached decision, fall back to a named local policy, fail open, or fail closed. The user sees this behavior before deployment; it is never an implicit network-error default.
-
-The daemon loads the last verified local policy generation before accepting events and continues enforcing it while the management plane is unavailable. This remains the offline behavior for local policy even after cloud evaluation exists.
+Policy status shows the active revision, its last successful synchronization time, and whether cloud management state is current, stale, expired, rejected, or never synchronized.
 
 The user sees the age and expiry state of cloud policy. Ordinary organization policy continues from last known-good state by default rather than silently disappearing. Policies with different post-expiry behavior must show that behavior before deployment.
 
@@ -211,8 +190,7 @@ Migration from the standalone AgentEye collector preserves pending and failed ba
 - Setup failure restores prior service and harness configuration.
 - No default per-user installation requires elevation.
 - Users can identify the exact policy revision and assignment responsible for a decision.
-- Cloud outage does not prevent local-policy decisions and is visible as freshness or decision-service degradation.
-- Every assignment displays its configured evaluation location; cloud/hybrid assignments also display decision deadline, data disclosure, and unavailable-service behavior before activation.
+- Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - Collection consent names each enabled source and can be revoked independently.
 - Update failure returns to the previous healthy release without manual repair.
 - Uninstall never silently deletes undelivered or user-authored data.

@@ -18,7 +18,7 @@ The user-facing `failproofai` CLI is a client of the daemon and service manager.
 
 The daemon separates work into independently bounded lanes:
 
-1. **Enforcement** — reserved workers and strict deadlines across configurable local, cloud, and hybrid evaluators.
+1. **Enforcement** — reserved workers, strict deadlines, and no network dependency.
 2. **Collection** — source watching, transcript parsing, checkpointing, and backfill.
 3. **Delivery** — batching, upload, retry, and quarantine.
 4. **Management** — cloud authentication, desired-state reconciliation, verification, and acknowledgement.
@@ -70,26 +70,18 @@ For an accepted hook request, the daemon:
 3. resolves machine, agent, project, session, event, and tool targeting context;
 4. selects an immutable active generation;
 5. finds all matching policies and assignment effects;
-6. routes each assignment to its declared local, cloud, or hybrid evaluator and evaluates it within the remaining deadline;
+6. evaluates matching policy locally within the remaining deadline;
 7. combines results deterministically (`deny` over `instruct` over `allow`, absent an authorized suppression);
 8. writes decision evidence asynchronously to the durable activity spool;
 9. returns a canonical result and decision ID.
 
-Cloud evaluation may wait for a decision service, but only inside the hook's original absolute deadline. The response never waits for asynchronous policy acknowledgement, event upload, transcript processing, or update work.
+The response never waits for cloud acknowledgement, event upload, transcript processing, or update work.
 
-### Decision routing evolution
+### Future cloud evaluation compatibility
 
-The internal evaluator interface supports three configured locations:
+Cloud evaluation is not implemented or user-configurable in v1.0.0. A later version is expected to move some or all policy evaluation into the FailproofAI cloud.
 
-- `local`: evaluate a verified artifact in the daemon policy runtime;
-- `cloud`: send canonical, policy-scoped inputs to the decision service and use its authenticated response;
-- `hybrid`: evaluate local mandatory/fallback policy and combine it with a cloud result under assignment rules.
-
-Evaluation location is resolved from the active assignment generation. Organization policy defines permitted modes and defaults; a narrower assignment may override the default only when authorized. Location changes create a new immutable assignment revision and are visible in decision evidence.
-
-The cloud client maintains a warm authenticated HTTP/2 or equivalent connection, enforces request/response size limits, sends only fields declared by the policy, and consumes no more than the remaining hook budget. It returns decision ID, policy and assignment revisions, result, explanation, and timing so local activity and AgentEye records retain end-to-end attribution.
-
-Cloud timeout and transport failure are policy states, not generic exceptions. Each cloud/hybrid assignment declares an unavailable-service action: named local fallback, explicitly safe cached result, fail open, or fail closed. Caching is allowed only for policies whose inputs and validity contract make reuse safe; arbitrary prior decisions are never replayed merely because the cloud is unavailable.
+To keep that migration possible, the harness contract terminates at `failproofaid`, policy decisions use a location-independent canonical request/result model, deadlines are end-to-end, and decision evidence carries stable request, policy, assignment, and session identity. No v1.0.0 configuration, cloud-decision client, fallback mode, or user interface is added for the future design.
 
 ## Configuration and state
 
@@ -122,7 +114,6 @@ Configuration is schema-versioned and written transactionally. File notification
 | Policy worker crashes | Restart it, retain verified generation data, apply configured event failure behavior, keep collection running. |
 | Policy hangs | Enforce deadline, trip its circuit breaker after repeated failures, keep IPC responsive. |
 | Cloud management unavailable | Continue last known-good policy assignments; report staleness. |
-| Cloud decision service unavailable | Apply the assignment's explicit bounded fallback and record the effective action. |
 | Backend unavailable | Continue enforcement; spool delivery data and retry. |
 | One source parser fails | Degrade that source without stopping other sources or enforcement. |
 | Invalid configuration | Reject candidate and retain active generation. |

@@ -28,7 +28,7 @@ canonical allow / deny / instruct response
 harness-specific stdout, exit code, callback, or plugin response
 ```
 
-The harness-facing client must stay small and bounded. It reads one event, makes one local request, writes one response, and exits or returns control. It does not load policies, scan transcripts, contact the cloud directly, upload events, check for updates, or start the dashboard. `failproofaid` may route evaluation to the cloud in a later decision mode while preserving this harness boundary.
+The harness-facing client must stay small and bounded. It reads one event, makes one local request, writes one response, and exits or returns control. It does not load policies, scan transcripts, contact the cloud, upload events, check for updates, or start the dashboard.
 
 ## Harness adapter contract
 
@@ -95,7 +95,7 @@ The client sends a length-prefixed request over a Unix domain socket or Windows 
 
 The payload remains native at the wire boundary so adapter fixes can be made centrally in the daemon without requiring every hook registration to change. The client still enforces a fixed input-size limit before allocating or sending data.
 
-The client supplies an absolute monotonic deadline. The daemon never invents a longer one. Time reserved for response translation and process exit is excluded before the request is sent. This deadline covers local queueing and the configured local, cloud, or hybrid evaluation.
+The client supplies an absolute monotonic deadline. The daemon never invents a longer one. Time reserved for response translation and process exit is excluded before the request is sent. This deadline covers local queueing and policy evaluation.
 
 ## Canonical event model
 
@@ -200,7 +200,7 @@ A new harness integration is complete only when it provides:
 
 ## Harness acceptance criteria
 
-- The thin client makes no direct cloud request and performs no policy-loading work; configured cloud evaluation is owned by the daemon.
+- The thin client makes no cloud request and performs no policy-loading work.
 - Golden fixtures preserve current canonical decisions and native response contracts.
 - Every event is labeled block, observe, or context-capable from verified evidence.
 - A harness upgrade that changes payload or response behavior fails conformance visibly rather than silently allowing.

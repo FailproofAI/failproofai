@@ -96,8 +96,8 @@ describe("the sealed context is deprived", () => {
     const ctx = newSealedContext();
     // The prelude defines `process.env` as a frozen empty object so a legacy
     // lambda cannot ReferenceError. It must stay empty: a policy reading the
-    // daemon's environment would see the service account's PATH and, later,
-    // the delivery key.
+    // daemon's environment would see the daemon's own PATH and, later, the
+    // delivery key — neither of which is part of the evaluation request.
     const env = vm.runInContext("JSON.stringify(process.env)", ctx as object);
     expect(env).toBe("{}");
     expect(vm.runInContext("Object.isFrozen(process.env)", ctx as object)).toBe(true);

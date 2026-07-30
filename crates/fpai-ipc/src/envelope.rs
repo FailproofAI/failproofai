@@ -318,9 +318,11 @@ pub struct EvaluateHook {
     /// `needs_user_context`, and the client falls back to legacy rather than
     /// enforcing a subset.
     ///
-    /// Stage 3 moves the authoritative enabled set into a root-owned
-    /// `machine.json` so it stops being client-asserted at all; until then this
-    /// carries the same trust as the file the legacy path already reads.
+    /// This carries the same trust as the file the legacy path already reads,
+    /// and in user scope that is all it can carry: the enabled set lives in a
+    /// file this user owns, so an authoritative source the agent cannot edit
+    /// would have to sit outside the user's home and require elevation to
+    /// write. That is the deferred managed scope, not v1.0.0.
     #[serde(default)]
     pub enabled_policies: Vec<String>,
     /// `true` means "evaluate sealed-only, do not run anything with side
@@ -332,8 +334,10 @@ pub struct EvaluateHook {
 /// Session metadata, resolved client-side.
 ///
 /// Resolution moved to the client deliberately: `resolveCodexMode` line-scans an
-/// entire Codex transcript under `~/.codex/sessions`, which is both unreadable
-/// by a service account and an unbounded read on the enforcement deadline path.
+/// entire Codex transcript under `~/.codex/sessions`, an unbounded read on the
+/// enforcement deadline path. The client has already paid for that walk on its
+/// own schedule; the daemon must be handed the answer, never sent looking for
+/// it while a tool call waits.
 ///
 /// Every field is nullable because not every harness supplies every one; an
 /// absent key deserializes the same as an explicit `null`.
@@ -386,8 +390,8 @@ impl HostContext {
     /// This is not pedantry, and the choice of *reject* over *overwrite* is the
     /// substance of it. `isAgentInternalPath` and `block-read-outside-cwd` both
     /// **widen** the allow set: a client asserting `home: "/"` would make every
-    /// path on the machine "agent internal" and relax a verdict that the sealed
-    /// tier exists to make unforgeable. Silently overwriting the field would
+    /// path on the machine "agent internal" and relax a verdict that nothing
+    /// downstream would flag as relaxed. Silently overwriting the field would
     /// make that attack a no-op, but it would leave the protocol *looking* like
     /// it accepts the field — so the next reader of the wire format, the next
     /// client implementation, and the next reviewer would all reasonably
@@ -550,7 +554,14 @@ pub struct Evaluated {
     pub needs_user_context: Vec<String>,
 }
 
-/// How much of a verdict is unforgeable.
+/// How much of a verdict rests on inputs the evaluator derived rather than the
+/// caller supplied.
+///
+/// This is a provenance claim, not an integrity one — in user scope there is no
+/// privilege boundary between the caller and the evaluator, so `Sealed` means
+/// "no client-asserted host field decided this", never "this could not have
+/// been forged". Reporting it is still what keeps a decision that read a
+/// client-asserted `cwd` from being presented as if it had not.
 ///
 /// The variants are **ordered**, from most attested to least:
 ///

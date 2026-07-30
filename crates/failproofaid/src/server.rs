@@ -20,11 +20,18 @@
 //!
 //! `home` is derived here, from `getpwuid_r(peer_uid)`, where `peer_uid` comes
 //! from the kernel via `SO_PEERCRED`. Nothing a client sends can influence it,
-//! and a client that tries is rejected rather than corrected. That asymmetry is
-//! the whole reason the boundary is a socket with peer credentials and not, say,
-//! an argument: `isAgentInternalPath` and `block-read-outside-cwd` both widen
-//! the allow set, so a forged home would relax a sealed verdict, and "we
-//! overwrite it anyway" is a weaker guarantee than "it is not accepted".
+//! and a client that tries is rejected rather than corrected.
+//!
+//! In user scope this is no longer a privilege boundary — the daemon, the hook
+//! client, and the agent being governed are all the same user — and it is not
+//! claimed as one. It is narrower and still worth having.
+//! `isAgentInternalPath` and `block-read-outside-cwd` both *widen* the allow
+//! set, so a `home` that is wrong in either direction relaxes a verdict
+//! silently; deriving it from the kernel's view of the peer means a buggy
+//! client, a stale environment, or a second implementation that guessed cannot
+//! produce that. And "it is not accepted" stays the contract rather than "we
+//! overwrite it anyway", because the second one leaves the field looking
+//! supported to the next client author.
 
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -213,24 +220,44 @@ pub struct Daemon {
 impl Daemon {
     /// Bind `socket_path` and start the enforcement lane.
     ///
-    /// A stale socket file from a previous run is removed first. That is safe
-    /// *here* and would not be in the installed layout: `/run/failproofai` is
-    /// owned by the service account or root, so no enrolled user can place a
-    /// file at that path for the daemon to unlink, nor unlink the real socket
-    /// and bind an impostor. Delete and rename permission come from the parent
-    /// directory, which is exactly why the layout puts the socket directory
-    /// outside every user-owned root.
+    /// The parent directory is created if it is missing. That is not
+    /// convenience: in user scope nothing else creates it. The managed design
+    /// had a privileged installer lay down `/run/failproofai` before the
+    /// service ever started, and dropping that installer left
+    /// `~/.failproofai/run/` — and `$XDG_RUNTIME_DIR/failproofai/`, which the
+    /// runtime directory does not contain either — with no owner. A daemon that
+    /// only bound would fail `ENOENT` on every first start on every machine.
+    ///
+    /// A stale socket file from a previous run is removed first. In user scope
+    /// that is not the guarded operation it would have been under a service
+    /// account: the directory belongs to this user, so this user can already
+    /// unlink the socket and bind an impostor, and no mode on the file changes
+    /// that. It is unlinked because a crashed predecessor otherwise makes every
+    /// subsequent start fail `EADDRINUSE`, and for no stronger reason than
+    /// that.
     pub fn bind(socket_path: impl AsRef<Path>) -> io::Result<Self> {
         let socket_path = socket_path.as_ref().to_path_buf();
+        if let Some(parent) = socket_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+            // 0o700 on the directory, set after the fact so it applies whether
+            // or not `create_dir_all` had anything to do — an existing
+            // group-readable directory from an older build is tightened rather
+            // than trusted. Only this user should be able to reach the socket.
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        }
         if socket_path.exists() {
             std::fs::remove_file(&socket_path)?;
         }
         let listener = UnixListener::bind(&socket_path)?;
 
-        // 0o660: reachable by enrolled users via the socket's group, not
-        // world-writable. The directory above it is what actually prevents
-        // substitution; this is defence in depth on the file itself.
-        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o660))?;
+        // 0o600, not 0o660. The group bit existed for a managed install where
+        // enrolled users reached a service account's socket through a shared
+        // group; in user scope the daemon serves exactly one user, and the
+        // group here is that user's primary group, which on several
+        // distributions contains other people.
+        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
 
         let (lane, _handle) = Lane::start().map_err(|e| io::Error::other(e.to_string()))?;
 

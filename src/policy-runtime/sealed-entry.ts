@@ -13,10 +13,19 @@
  *
  * ## What it is for
  *
- * The daemon runs as `_failproofai`, a service account the enrolled user cannot
- * administer. A verdict computed here is therefore one the agent being governed
- * cannot forge, even with full authority over its own user — which is the whole
- * point of the tier. See
+ * **Not verdict integrity, in v1.0.0.** That argument needed the daemon to run
+ * as a UID the governed agent could not administer; user scope makes them the
+ * same user, so the agent can `ptrace` the daemon, preload into it, or replace
+ * the binary. Any sentence here claiming a verdict computed in this file cannot
+ * be forged would be false, so there isn't one. `crates/PROTOCOL.md` states the
+ * scope; the managed install that would restore the claim is deferred.
+ *
+ * What the tier buys instead is real and is a different thing: a warm evaluator
+ * rather than a fresh interpreter per event, no `.__failproofai_tmp__.mjs`
+ * written beside the user's own source on every tool call, a deadline a
+ * watchdog actually enforces, and a deny-by-default context that contains a
+ * *buggy or over-reaching* policy — protection against mistakes, not against an
+ * adversary who is already this user. See
  * [03-daemon-architecture.md](../../desgin-docs/v1.0.0/phase-1-local-enforcement/03-daemon-architecture.md#execution-tiers).
  *
  * ## Why it reuses `evaluateVerdicts` / `encodeResponse` rather than reimplementing
@@ -128,10 +137,12 @@ export async function evaluate(request: SealedRequest): Promise<SealedResponse |
     clearPolicies();
     registerBuiltinPolicies(sealed);
 
-    // Host context comes from the request, never from this process: the daemon
-    // runs as the service account, so its own homedir belongs to `_failproofai`
-    // and would whitelist the wrong tree. `home` was derived by the daemon from
-    // `getpwuid_r(peer_uid)`; a client-asserted one is rejected at the socket.
+    // Host context comes from the request, never from this process: the worker
+    // is resident and answers for sessions it did not start, so any ambient
+    // home it could read would be the launching environment's rather than the
+    // request's — and it would be that for every session at once. `home` was
+    // derived by the daemon from `getpwuid_r(peer_uid)`; a client-asserted one
+    // is rejected at the socket.
     // The fallback is inert so a missing value fails closed rather than
     // silently borrowing the worker's environment.
     setHostContextFallback({

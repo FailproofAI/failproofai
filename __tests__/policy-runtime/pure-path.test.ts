@@ -121,9 +121,9 @@ describe("pure-path matches node:path.posix", () => {
 describe("the sealed cwd fallback", () => {
   it("resolves a wholly relative path against / rather than a real cwd", () => {
     // Node would use process.cwd() here. The sealed context has no process,
-    // and using the daemon's own cwd would be the service account's — wrong for
-    // the user being enforced. "/" is chosen so the result is still a
-    // well-formed absolute path.
+    // and the daemon's own cwd is wherever it was launched — wrong for the
+    // session being enforced, and wrong the same way for all of them. "/" is
+    // chosen so the result is still a well-formed absolute path.
     expect(resolve("a", "b")).toBe("/a/b");
     expect(resolve(".")).toBe("/");
     expect(resolve("")).toBe("/");

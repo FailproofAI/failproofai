@@ -113,8 +113,8 @@ proptest! {
         prop_assert_eq!(outcome.decision(), Decision::Deny);
 
         // And the deny is still reported as sealed: a user-context verdict that
-        // merely echoed it did not decide it, so the daemon can still stand
-        // behind the verdict as unforgeable.
+        // merely echoed it did not decide it, so the daemon can still report
+        // that no host-reading policy was what decided this.
         prop_assert!(!outcome.decided_by_user_context());
         prop_assert_eq!(outcome.attestation_ceiling(), Attestation::Sealed);
 

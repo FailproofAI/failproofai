@@ -209,8 +209,10 @@ fn allows_a_benign_command() {
 #[test]
 fn a_decision_reading_cwd_is_reported_sealed_unattested() {
     // `cwd` is client-asserted and cannot be derived, so a decision that saw it
-    // must not claim full attestation. Reporting it honestly is the difference
-    // between "unforgeable" being true and being marketing.
+    // must not claim full attestation. The attestation says which inputs the
+    // evaluator derived, not that the verdict could not have been forged —
+    // collapsing those two is how a provenance record becomes a security claim
+    // it does not support.
     let h = Harness::start("attest");
     let mut c = h.connect();
     c.handshake();
@@ -401,9 +403,10 @@ fn home_is_derived_from_the_peer_uid_not_the_request() {
     c.send(&req);
 
     let res = c.recv();
-    // Allowed because it is under the *derived* home's agent directory. If the
-    // daemon had used the service account's home, or an empty one, this would
-    // deny.
+    // Allowed because it is under the *derived* home's agent directory. If
+    // `getpwuid_r(peer_uid)` were skipped and the field arrived empty — the
+    // shape of every regression here, since `home` is `Option` on the wire and
+    // an absent one deserializes silently — this would deny.
     assert_eq!(res["result"]["evaluated"]["decision"], "allow");
 }
 

@@ -86,8 +86,10 @@ import {
  *
  * In the daemon neither fallback is installed — `home` is derived from
  * `getpwuid_r(peer_uid)` at the socket boundary and travels as request data,
- * because the daemon's own `homedir()` belongs to the service account, not to
- * the user being enforced. See ./builtin/host-context.
+ * because the daemon is a resident process that may have been started from a
+ * different environment than the session it is answering for, and because a
+ * value that *widens* the allow set must come from the enforcer rather than
+ * from ambient state. See ./builtin/host-context.
  */
 setPolicyWarnSink(hookLogWarn);
 setHostContextFallback({

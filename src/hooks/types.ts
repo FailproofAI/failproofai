@@ -1073,9 +1073,10 @@ export interface SessionMetadata {
   /** The requesting user's home directory (Stage 0 / P2).
    *
    *  Carried as request data rather than read from `os.homedir()` inside a
-   *  policy, for two reasons. The daemon evaluates on behalf of another UID, so
-   *  its own homedir belongs to the service account and would whitelist the
-   *  wrong tree. And `isAgentInternalPath` / `block-read-outside-cwd` both
+   *  policy, for two reasons. The daemon is a resident process answering for
+   *  sessions it did not start, so its own ambient `$HOME` is not reliably the
+   *  one the request belongs to and would whitelist the wrong tree. And
+   *  `isAgentInternalPath` / `block-read-outside-cwd` both
    *  *widen* the allow set, so this value can only ever be trusted when the
    *  enforcer derived it — in the daemon that means `getpwuid_r(peer_uid)`, and
    *  a client-supplied `home` is a protocol error. Left undefined on the legacy

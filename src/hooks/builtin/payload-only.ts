@@ -3,8 +3,8 @@
  *
  * Every policy here decides from the hook payload alone. None spawns a
  * process, opens a file, or reads ambient host identity, which is what makes
- * them eligible for the `sealed` execution tier: a fresh interpreter context
- * per evaluation, running as the service account, with no bindings registered.
+ * them eligible for the `sealed` execution tier: a warm interpreter context
+ * with no bindings registered, reset per evaluation.
  *
  * **The import list is a security boundary, not a style choice.** Execution
  * tiers are derived from a policy's *resolved import graph*, so one
@@ -49,9 +49,10 @@ import { policyWarn } from "./warn";
  *   • ~/.opencode/          — legacy fallback path
  *
  * `home` is passed in rather than read from `os.homedir()` (Stage 0 / P2).
- * The daemon evaluates on behalf of another UID, so its own homedir is the
- * service account's — and because this predicate *widens* the allow set, a
- * wrong or forged home would whitelist the wrong tree. See `./host-context`.
+ * The daemon is resident and answers for sessions it did not start, so its own
+ * ambient homedir is not reliably the request's — and because this predicate
+ * *widens* the allow set, a wrong or forged home would whitelist the wrong
+ * tree. See `./host-context`.
  */
 function isAgentInternalPath(resolved: string, home: string): boolean {
   // Normalize backslashes to forward slashes so the same `startsWith` check

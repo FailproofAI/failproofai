@@ -8,7 +8,7 @@
  *
  * | Replaced | Why it cannot run in the sealed tier |
  * |---|---|
- * | `hook-logger.ts` | appends to a rotating file under `~/.failproofai/logs/`. No filesystem, and the home it would resolve is the service account's. |
+ * | `hook-logger.ts` | appends to a rotating file under `~/.failproofai/logs/`. The sealed context has no filesystem, and the home it would resolve is the daemon's launch environment rather than the request's. |
  * | `hook-telemetry.ts` | `fetch()`s PostHog. Enforcement runs under a hard deadline and performs no unbounded I/O — a synchronous network call inside a hook makes a third party's availability a precondition for the user running a command. |
  * | `lib/telemetry-id.ts` | reads `~/.failproofai/instance-id`, and shells out via `execSync` for a platform machine ID. |
  *

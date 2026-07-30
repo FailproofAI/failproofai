@@ -8,7 +8,7 @@
  * Today that is masked: `bin/failproofai.mjs` calls `process.exit()` the moment
  * `handleHookEvent` returns, which takes the timer with it. It stops being
  * masked the moment anything evaluates in a process that outlives one event —
- * the resident sealed worker, the per-user agent, or a bench harness. It was
+ * the resident sealed worker, the daemon itself, or a bench harness. It was
  * found by one: a harness that re-enacted the handler's call sequence without
  * the hard exit measured a 10,088 ms p95 for hooks that had already decided in
  * under a millisecond.

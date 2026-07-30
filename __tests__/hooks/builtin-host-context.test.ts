@@ -11,11 +11,13 @@
  * nothing else covers: when the session DOES carry `home` / `projectDir`, the
  * policies use those and ignore the host entirely.
  *
- * Why that matters concretely: the daemon evaluates on behalf of another UID,
- * so its own `homedir()` is `_failproofai`'s. A sealed `block-read-outside-cwd`
- * reading the ambient home would whitelist `/var/lib/failproofai/.claude`
- * instead of the requesting user's `~/.claude` — quietly wrong in both
- * directions at once. And because `isAgentInternalPath` *widens* the allow set,
+ * Why that matters concretely: the daemon is a resident process answering for
+ * sessions it did not start, so its own `homedir()` is whatever its launch
+ * environment said — a systemd user unit with a minimal `Environment=`, a
+ * container entrypoint, a test harness. A sealed `block-read-outside-cwd`
+ * reading that ambient home would whitelist the wrong `~/.claude`, for every
+ * session at once, and would be quietly wrong in both directions while doing
+ * it. And because `isAgentInternalPath` *widens* the allow set,
  * getting it wrong relaxes a verdict rather than tightening one, which is the
  * failure mode that does not announce itself.
  */

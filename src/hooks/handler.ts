@@ -228,10 +228,10 @@ export async function handleHookEvent(
     // Extract session metadata from payload, then seal it into the canonical
     // evaluation-request envelope (Phase 1 / Stage 0, P4). The three resolvers
     // stay *here*, in the client, on purpose: resolving a transcript path or a
-    // Codex permission mode means walking ~/.codex/sessions and friends — trees
-    // a service account cannot read and whose size is unbounded on the
-    // enforcement deadline path. The daemon must be handed the answers, never
-    // sent looking for them.
+    // Codex permission mode means walking ~/.codex/sessions and friends — a
+    // read whose size is unbounded, on the enforcement deadline path. The
+    // daemon must be handed the answers, never sent looking for them while a
+    // tool call waits.
     //
     // `session` is derived FROM the envelope rather than built alongside it, so
     // there is exactly one source of truth for session identity. Every field a
@@ -335,8 +335,8 @@ export async function handleHookEvent(
           // `process.exit()` the moment `handleHookEvent` returns, which kills
           // the timer along with everything else. It stops being invisible the
           // moment anything evaluates in a process that outlives one event —
-          // the resident sealed worker, the per-user agent, or a test harness
-          // — where it becomes ten seconds of retained closure per hook.
+          // the resident sealed worker, the daemon itself, or a test harness —
+          // where it becomes ten seconds of retained closure per hook.
           // Measured at a 10,088 ms p95 in a bench harness that did not
           // replicate the hard exit.
           let timer: ReturnType<typeof setTimeout> | undefined;

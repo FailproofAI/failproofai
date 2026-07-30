@@ -95,10 +95,16 @@ function installJsonPath(): string {
 }
 
 /**
- * The service account UID recorded by the privileged installer, or `null` when
- * the manifest is missing, unreadable, or does not carry one.
+ * The UID `setup` recorded the daemon as running as, or `null` when the
+ * manifest is missing, unreadable, or does not carry one.
  *
- * `null` is never "proceed unverified" — the caller falls back to legacy.
+ * In user scope that is the invoking user's own UID; the field keeps its
+ * `service_uid` name because it names the UID the *service* runs as, which is
+ * all it ever meant on the wire.
+ *
+ * `null` is never "proceed unverified" — the caller falls back to legacy. That
+ * is also what makes an absent `install.json` the default-off state: with no
+ * manifest there is nothing to check the socket against, so nothing connects.
  */
 function readServiceUid(): number | null {
   try {

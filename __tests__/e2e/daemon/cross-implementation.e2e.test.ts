@@ -102,10 +102,11 @@ beforeAll(async () => {
   rmSync(SCRATCH, { recursive: true, force: true });
   mkdirSync(SCRATCH, { recursive: true });
 
-  // The client verifies the socket's owner against `service_uid`. In the real
-  // install that is the `_failproofai` account; here the daemon runs as us, so
-  // the honest value is our own uid. Writing anything else would make the test
-  // pass for the wrong reason.
+  // The client verifies the socket's owner against `service_uid`. v1.0.0 runs
+  // in user scope, so in a real install that is the invoking user's own uid —
+  // which is what this writes, and what the daemon spawned below will own the
+  // socket as. Writing anything else would make the test pass for the wrong
+  // reason.
   writeFileSync(
     INSTALL_JSON,
     JSON.stringify({ service_uid: userInfo().uid, version: "test" }, null, 2),

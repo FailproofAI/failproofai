@@ -10,10 +10,11 @@
  *
  * Reading them from `os.homedir()` and `process.env` inside the policy has two
  * problems. The obvious one is the import graph: `node:os` disqualifies the
- * whole module from the sealed tier. The load-bearing one is that the daemon
- * evaluates on behalf of *another* UID, so the daemon's own `homedir()` is the
- * service account's, not the requesting user's — a sealed policy reading it
- * would whitelist the wrong tree.
+ * whole module from the sealed tier. The load-bearing one is that the daemon is
+ * resident and answers for sessions it did not start, so its own ambient
+ * `homedir()` and `$CLAUDE_PROJECT_DIR` belong to whatever environment it was
+ * launched from — a sealed policy reading them would whitelist the wrong tree,
+ * and would do it for every session on the machine at once.
  *
  * So both values arrive as request data on `SessionMetadata`, and this module
  * resolves them with an injectable fallback for the legacy in-process path.

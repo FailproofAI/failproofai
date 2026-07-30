@@ -32,6 +32,9 @@ pub mod paths;
 pub mod server;
 pub mod worker;
 
-pub use paths::{agenteye_root, default_socket_path, failproofai_root, install_manifest_path};
+pub use paths::{
+    agenteye_root, default_agenteye_root, default_failproofai_root, default_install_manifest_path,
+    default_socket_path, failproofai_root, install_manifest_path, socket_path,
+};
 pub use server::{Daemon, Lane};
 pub use worker::{SealedWorker, WorkerError};

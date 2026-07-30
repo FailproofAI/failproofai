@@ -3,13 +3,16 @@
 //! Stage 1 usage:
 //!
 //! ```text
-//! failproofaid --socket /run/failproofai/failproofaid.sock
+//! failproofaid                                    # resolves its own socket
+//! failproofaid --socket /path/to/failproofaid.sock # explicit, for tests
 //! ```
 //!
-//! The privileged install that creates that directory, registers the service,
-//! and creates the `_failproofai` account is Stage 3. Until then the binary is
-//! run directly with an explicit socket path, which is how the test suite and
-//! the parity harness drive it.
+//! v1.0.0 runs in user scope: the daemon is started as the invoking user and
+//! resolves its socket under that user's own runtime directory, so there is no
+//! install step it depends on and nothing to elevate. `--socket` stays because
+//! the test suite and the parity harness need each run on its own path.
+//! Registering it with a service manager is Stage 3; until then it is run
+//! directly.
 
 use std::process::ExitCode;
 

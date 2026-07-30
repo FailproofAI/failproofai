@@ -523,7 +523,8 @@ mod tests {
     fn process_env_is_present_but_empty() {
         // The prelude defines it so a legacy lambda cannot ReferenceError. It
         // must never carry the daemon's real environment — that would hand a
-        // policy the service account's PATH and, later, the delivery key.
+        // policy the daemon's own PATH and, later, the delivery key, neither of
+        // which is part of the evaluation request.
         let w = worker();
         w.context.with(|ctx| {
             let json: String = ctx.eval("JSON.stringify(process.env)").unwrap();

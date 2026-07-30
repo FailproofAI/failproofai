@@ -22,16 +22,18 @@
  *     path on the machine "agent internal" — a forged input relaxing a sealed
  *     verdict. A client-asserted `home` is therefore a **protocol error**
  *     ({@link EnvelopeProtocolError}), not a degraded input. On the in-process
- *     legacy path there is no peer to derive from and no privilege boundary to
- *     cross, so the value comes from `os.homedir()` and is labeled `"local"`.
+ *     legacy path there is no peer to derive from — the reader and the subject
+ *     are the same process — so the value comes from `os.homedir()` and is
+ *     labeled `"local"`.
  *
  *   • `cwd`, `projectDir`, and `envFacts` genuinely cannot be derived —
  *     `/proc/<pid>/cwd` is TOCTOU-prone and unavailable on macOS to a
  *     non-matching UID — so they ride as `"client-asserted"` with explicit
  *     provenance. A decision whose deciding policy read one of them is
  *     `sealed_unattested` (see {@link sealedUnattested}); Stage 1+ records that
- *     in decision evidence and `policies explain` reports it. That is the
- *     honest version of "unforgeable".
+ *     in decision evidence and `policies explain` reports it. Provenance is
+ *     what this records — which inputs the enforcer derived — and not verdict
+ *     integrity, which v1.0.0's user scope does not claim.
  *
  * ## Import purity
  *
@@ -89,10 +91,10 @@ export function selectEnvFacts(env: Readonly<Record<string, string | undefined>>
  * Where a host field's value came from.
  *
  *   • `daemon-derived` — the daemon computed it from the OS view of the peer
- *     (`getpwuid_r(peer_uid)`). Unforgeable by the client.
+ *     (`getpwuid_r(peer_uid)`). Nothing the client sent could influence it.
  *   • `local`          — the in-process legacy path read it from its own
- *     process. Equally unforgeable, because there is no boundary: the reader
- *     and the subject are the same process and the same UID.
+ *     process. Equally underived-from-the-request, because there is no
+ *     boundary: the reader and the subject are the same process.
  *   • `client-asserted` — the requester supplied it and nothing verified it.
  */
 export type HostFieldProvenance = "daemon-derived" | "local" | "client-asserted";
@@ -203,9 +205,10 @@ export function sealedUnattested(
  *
  * `transcriptPath` and `permissionMode` are the P4 headline: resolving them
  * means walking `~/.codex/sessions`, `~/.copilot/session-state`, and friends —
- * trees a service account cannot read (`ProtectHome=yes`) and whose size is
- * unbounded on the enforcement deadline path. The client, which already runs as
- * the user, resolves them once and ships the answers.
+ * trees whose size is unbounded, on the enforcement deadline path. The client
+ * is already walking them for the legacy path, so it resolves them once and
+ * ships the answers rather than making the daemon repeat the walk while a tool
+ * call waits.
  */
 export interface EnvelopeSession {
   readonly sessionId?: string;

@@ -98,11 +98,16 @@ pub fn combine_all<I: IntoIterator<Item = Decision>>(decisions: I) -> Decision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Tier {
-    /// The daemon's pinned runtime, running as the service account. No
-    /// filesystem, subprocess, or network access; verdict is unforgeable.
+    /// The daemon's pinned runtime. No filesystem, subprocess, or network
+    /// access, so the verdict rests on the request payload and nothing else.
+    ///
+    /// In v1.0.0's user scope this says what the evaluator could *reach*, not
+    /// who it could resist: the daemon runs as the same user as the agent it
+    /// governs, so the verdict is not unforgeable and is not claimed to be.
+    /// See `crates/PROTOCOL.md`.
     Sealed,
-    /// A worker running as the requesting UID. Full access, bounded by that
-    /// user's own authority; verdict is forgeable *by that user*.
+    /// A worker with host access, running as the requesting UID. Bounded only
+    /// by that user's own authority.
     UserContext,
 }
 
@@ -126,7 +131,7 @@ impl TieredDecision {
         }
     }
 
-    /// A verdict from a per-user agent.
+    /// A verdict from a host-access worker running as the requesting UID.
     #[must_use]
     pub const fn user_context(decision: Decision) -> Self {
         Self {

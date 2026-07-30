@@ -30,7 +30,8 @@
  *
  * Node uses `process.cwd()` here. The sealed context has no process, and more
  * to the point it *must* not have one: a cwd read from the daemon's own process
- * would be the service account's, not the requesting user's. Every call site in
+ * would be wherever the daemon was launched, not where the request came from —
+ * and it would be that for every session on the machine. Every call site in
  * the builtins passes an absolute `cwd` as the first argument, so this fallback
  * is unreachable in practice — `/` is chosen so that if it ever is reached the
  * result is a well-formed absolute path that matches nothing rather than a

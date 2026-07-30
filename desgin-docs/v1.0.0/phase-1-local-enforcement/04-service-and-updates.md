@@ -10,13 +10,17 @@ Phase 1 installs one service scope, `managed`. There is nothing to select:
 
 One installation supports multiple explicitly enrolled users. Creating the `_failproofai` account and registering the service require `sudo` once; after that the daemon holds no root privilege, so a defect in it does not yield a root compromise.
 
+The two service managers are not symmetric, and one asymmetry reaches the on-disk layout rather than only the unit file. systemd's `RuntimeDirectory=failproofai` creates `/run/failproofai` with the daemon's owner and mode on every start and removes it on stop — it has to, because `/run` is a tmpfs that does not survive a boot. launchd declares no runtime directory and offers no equivalent, so on macOS the socket directory is created by the privileged installer and persists. Describing it as one thing is how a macOS install ends up expecting a directory nobody created, so the daemon asserts existence, ownership, and mode before binding on both platforms and creates the directory when it is missing: the same check, satisfied by a different mechanism on each side.
+
+macOS adds a second obligation the service model cannot satisfy on its own. macOS 15 terminates an unsigned `failproofaid` registered as a LaunchDaemon rather than running it, and `codesign --verify` fails on a fleet whose configuration profile requires a Developer ID identity — so the LaunchDaemon leg of this table depends on the release being signed, notarized, and stapled. That is a release-pipeline obligation, specified in [code signing and notarization](./07-release-and-packaging.md#code-signing-and-notarization).
+
 Ownership is split by **writer**, so the service account the daemon runs as is not the account that can modify what the daemon enforces:
 
 | Artifact | Owner | Daemon's access | Written by |
 |---|---|---|---|
 | executables, pinned runtime | root | read + execute | privileged installer |
 | protected policy store, active schema catalog | root | read | privileged installer |
-| machine configuration, service definition | root | read | privileged installer |
+| machine configuration, pinned enabled set, installation record, service definition | root | read | privileged installer |
 | spool, checkpoints, activity, per-user state, health, logs, socket directory | `_failproofai` | read + write | the daemon |
 
 Ownership alone would not have been enough: a store owned by the same account the daemon runs as is writable by any process holding that UID, including a compromised daemon, which would let it rewrite the sealed policies it is supposed to evaluate. Making the protected surface root-owned and read-only bounds a daemon compromise to corrupting its own telemetry. Every mutation of the protected surface goes through an elevated CLI operation and produces an audit record.
@@ -29,6 +33,8 @@ Protected policies are compiled into a root-owned immutable content-addressed st
 
 Within policy administration, **adding is unprivileged and removing is not**. Installation itself is a separate matter — creating the service account, installing the release, and registering the service all require `sudo`, as does every mutation of the protected surface above. What needs no elevation is a user adding a `mutable` policy of their own: results combine as `deny` over `instruct` over `allow` with no unauthorized suppression, so such a policy can only tighten enforcement and can never weaken, cancel, or shadow a protected one. Convention discovery therefore continues to work without elevation, while removing, disabling, or altering an *admitted* revision stays privileged.
 
+Enablement sits on the privileged side of that line for the same reason removal does: a protected policy a user can switch off is not protected, and switching it off needs no forgery at all. The pinned enabled set is a root-owned `machine.json` in machine configuration, so disabling a pinned policy or changing its parameters is an elevated operation that produces an audit record; a user's own configuration stays unprivileged and becomes additive-only, able to enable policies the machine set does not name and parameterize the ones it enabled itself. [Protected enablement](./03-daemon-architecture.md#protected-enablement) states what this replaces and that it does not ship yet.
+
 The daemon is a supervisor, not an execution context for user code, and it cannot `setuid` to an enrolled user. Unix-socket peer credentials select a per-UID policy/session context. Policies admitted to the `sealed` tier evaluate inside the daemon's pinned runtime as the service account in a context that exposes no filesystem, subprocess, or network bindings at all; policies whose resolved import graph needs any of those are admitted to the `user-context` tier and evaluate in a worker running as the requesting UID with that user's own authority, reduced groups and environment, resource limits, and platform sandboxing. Per-user queues, storage quotas, and authorization prevent cross-user reads or resource starvation. Only administrator-owned machine policy may be assigned machine-wide.
 
 One user is bound to one endpoint. A single system service means there is one endpoint per machine, so the case setup must handle is a *previous* evaluator rather than a competing scope: it detects an existing installation or a legacy hook-only one and transactionally switches its registrations rather than letting both answer. Installation does not rewrite all users' harness files implicitly.
@@ -38,6 +44,8 @@ Harness attachment is reported as `protected`, `detectable`, or `cooperative`. S
 Windows is outside Phase 1. Its service model, named-pipe transport, and packaging belong to a later iteration.
 
 The service definition contains executable and state paths but no secrets — the observability delivery key lives in privileged machine configuration the service account reads, never in the unit file or a process argument — and sets a fixed `PATH` so nothing the daemon spawns resolves through a user-controlled search path. Mutations of the protected surface require `sudo`; no sudo password is stored.
+
+Its hardening is chosen against what the pinned runtime needs rather than copied off a checklist, because one entry on every such checklist is incompatible with a whole class of runtime. `MemoryDenyWriteExecute=yes` refuses the writable-executable mapping a JIT depends on, so a V8-based policy runtime dies at its first compile under it — the same constraint that makes `com.apple.security.cs.allow-jit` a macOS signing requirement for the identical artifact. A bytecode interpreter needs neither relaxation. Which way the setting goes therefore follows from [open decision #3](./06-delivery-plan.md#open-decisions) and is recorded with it, not decided per platform.
 
 ### Deferred scopes
 
@@ -118,6 +126,9 @@ Catalog updates do not restart the daemon or interrupt enforcement. If a schema 
 - The daemon holds no root capability at runtime, and no protected artifact is reachable by renaming a directory an enrolled user owns.
 - An enrolled user cannot substitute the daemon endpoint, the pinned runtime, or an admitted policy artifact.
 - The daemon's own UID cannot write its executables, pinned runtime, protected policy store, active schema catalog, or machine configuration.
+- The socket directory has the expected owner and mode after a reboot on both platforms — recreated by `RuntimeDirectory=` on systemd, persisted from installation on launchd — and the daemon refuses to bind rather than proceeding when it does not.
+- A non-root peer cannot disable or reparameterize a pinned policy, and the refusal produces an audit record.
+- The macOS service starts from a signed, notarized, and stapled release on a machine that has been offline since installation.
 - A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier; a forged verdict from that tier cannot relax a `sealed` result, and a policy that under-declares fails inside `sealed` rather than escaping it.
 - A catalog whose version-detection rule falls outside the execution grammar is rejected rather than warned about, and a detection failure yields "version unknown" instead of an alternate command.
 - Interrupting catalog activation at any step leaves the pointer on a complete signed generation, and startup recovery re-reconciles any harness whose registration is unconfirmed.

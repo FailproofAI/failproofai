@@ -9,6 +9,8 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 - Extract the existing collector's source and delivery conformance tests before touching its code.
 - Define the IPC, decision-evidence, spool, state, and signed-release contracts.
 - Establish the canonical request/result model, per-lane bounds, and versioned health snapshot that Phase 2 extends rather than reshapes.
+- Resolve which runtime is pinned for the `user-context` tier (open decision #3). It is here rather than with the runtime work because the release manifest schema, the SBOM, and the macOS entitlements file are all downstream of it, and entitlements are an input to signing.
+- Start the signing and notarization identities — release trust root, Developer ID certificate, and `notarytool` credentials. They gate release rather than development, which is exactly why they are begun in parallel with engineering instead of discovered at the release gate.
 
 ## Stage 1: daemon-assisted enforcement
 
@@ -16,7 +18,7 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 - Keep the current evaluator as a bounded migration fallback.
 - Compare daemon and legacy decisions in shadow mode.
 - Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows, including the dashboard's move from a fixed port to a CLI-spawned, token-gated, TTL-bounded listener.
-- Prove the privileged install layout end to end: service-account creation, root-owned protected surface, `sealed` and `user-context` routing derived from resolved import graphs, and preflight refusal on a machine that cannot host the boundary.
+- Prove the privileged install layout end to end: service-account creation, root-owned protected surface, the root-owned pinned enabled set, `sealed` and `user-context` routing derived from resolved import graphs, and preflight refusal on a machine that cannot host the boundary.
 - Gate expansion on compatibility, deadline success, crash recovery, and resource use.
 
 ## Stage 2: collector convergence
@@ -48,7 +50,8 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 - Every harness produces the same canonical and native result for golden fixtures.
 - Daemon restart preserves last known-good enforcement.
 - Invalid or partial generations never activate.
-- Each decision is attributable to an exact policy revision, generation, and execution tier.
+- Each decision is attributable to an exact policy revision, generation, execution tier, and attestation, and a decision that read a client-asserted host field is never reported as fully attested.
+- A pinned policy cannot be disabled or reparameterized without elevation, and a user's own configuration can still enable and parameterize policies of its own.
 - Collector crash/replay tests prove durable, idempotent delivery, and replay creates no duplicate events.
 - Every source resumes from a crash-safe checkpoint, and backfill cannot starve enforcement or recent delivery.
 - Old and new collectors never own the same source concurrently; migration rollback restores a functional standalone collector with its undelivered state.
@@ -59,11 +62,11 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 
 1. Enforcement p95/p99 targets and per-harness maximum deadlines.
 2. Default behavior after migration when the daemon is unavailable.
-3. Which runtime is pinned and shipped for the `sealed` tier, and its patch cadence. A runtime that is also a bundler removes a separate toolchain from admission.
+3. Which runtime is pinned and shipped for the `user-context` tier, and its patch cadence. The `sealed` engine is settled and shipped — QuickJS-ng linked into the daemon with its bundle embedded at compile time — so what is open is the runtime that executes policies with real imports at the requesting UID. **This one sits on the release critical path, not the evaluation one**, earlier than its position in this list suggests: the runtime's version and digest are fields of the release manifest and entries in the SBOM, and whether it JITs determines the macOS entitlements file and whether the systemd unit can set `MemoryDenyWriteExecute=yes` — so the manifest schema, [signing, and notarization](./07-release-and-packaging.md#code-signing-and-notarization) all wait on it. It belongs with the Stage 0 contracts. A runtime that is also a bundler removes a separate toolchain from admission.
 4. Collector sources required for release day, and which are enabled by default.
 5. Default observability consent and capture choices.
 6. Spool quotas, queue priority, and the shedding rule when a quota is reached.
-7. Application-release signing and trust-root rotation.
+7. Application-release signing and trust-root rotation, including custody of the Apple Developer ID identity and `notarytool` credentials that [code signing and notarization](./07-release-and-packaging.md#code-signing-and-notarization) requires. Enrollment and certificate issuance are long-lead non-code items that gate the macOS half of the target matrix.
 8. Catalog refresh cadence, retention, and locally pinned catalog policy.
 9. Retention window for the legacy evaluator, legacy collector state, and the previous release.
 10. Which mechanism launches the `user-context` worker — a per-user service in that user's own service manager, a privileged spawn helper, or the hook client. All three end in a process the requesting user can already `ptrace`, so this is an operational choice about supervision and cold-start latency against the enforcement deadline, not a security one.

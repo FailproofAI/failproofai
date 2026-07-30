@@ -91,7 +91,7 @@ The client authenticates the daemon as well. It verifies the peer credentials of
 
 ## Request envelope
 
-The client sends a length-prefixed request over a Unix domain socket. A conceptual request is:
+The client sends a length-prefixed request over a Unix domain socket. The implemented wire contract — framing, version handshake, field-by-field encoding rules, and the error enum — is [`crates/PROTOCOL.md`](../../../crates/PROTOCOL.md); what follows is its conceptual shape:
 
 ```json
 {
@@ -105,6 +105,12 @@ The client sends a length-prefixed request over a Unix domain socket. A conceptu
     "harness_version": "...",
     "adapter_version": 3
   },
+  "host": {
+    "home": null,
+    "cwd": "/home/u/project",
+    "project_dir": null,
+    "env_facts": { "CLAUDE_PROJECT_DIR": null }
+  },
   "event": {
     "native_name": "...",
     "payload": {}
@@ -112,7 +118,9 @@ The client sends a length-prefixed request over a Unix domain socket. A conceptu
 }
 ```
 
-The payload remains native at the wire boundary so adapter fixes can be made centrally in the daemon without requiring every hook registration to change. The client still enforces a fixed input-size limit before allocating or sending data.
+`host.home` is `null` on the wire and always will be: the daemon derives the home from the peer credential, and a client that asserts one is rejected as a protocol error rather than corrected, because a home widens what path policies allow. `cwd`, the project directory, and a closed set of environment facts cannot be derived and therefore ride as client-asserted, which is what makes some decisions `sealed_unattested` — [derived and asserted context](./03-daemon-architecture.md#derived-and-asserted-context) has the argument.
+
+Native payload at the wire boundary is the intended end state, so adapter fixes can be made centrally in the daemon without requiring every hook registration to change. The shipped envelope has not reached it. While the hook client is still the TypeScript one, the payload it sends is **already canonicalized** — tool names and tool-input keys mapped, per-CLI normalizations applied — and the daemon trusts it rather than re-deriving it. Re-derivation is not implementable from that envelope, because it needs the raw vendor payload and only the canonical one is sent. The cost is bounded and worth stating exactly rather than papering over: the client runs as the user whose events these are, every field it can distort it could equally distort before canonicalization, and the fields that would be dangerous to accept — `home` above all — are the ones the daemon derives itself. It is a missing defence-in-depth layer, not an open door, and it closes when canonicalization moves daemon-side with the native client. The client still enforces a fixed input-size limit before allocating or sending data, matched by the daemon's own frame cap so a payload the legacy path would have discarded cannot become a daemon-path exhaustion instead.
 
 The client supplies an absolute monotonic deadline. The daemon never invents a longer one. Time reserved for response translation and process exit is excluded before the request is sent. This deadline covers local queueing and policy evaluation.
 
@@ -129,6 +137,8 @@ The daemon canonicalizes the request into a common event containing:
 - enforcement capability for this event/harness version.
 
 Canonicalization must preserve evidence about absent or uncertain fields. An inferred session ID is not represented as vendor-provided. A session-scoped match never broadens when session identity is unavailable.
+
+Provenance is part of that evidence, not a separate concern. The working directory, project directory, and environment facts are recorded as asserted by the client, because the daemon has no way to check them; the home directory is derived from the peer credential and never accepted from the client at all. A decision inherits the weakest provenance any deciding policy read, which is what the response's attestation reports.
 
 ## Session lifecycle
 
@@ -150,9 +160,12 @@ The daemon returns a canonical response:
   "message": "Policy explanation safe to show to the agent",
   "context": null,
   "decision_id": "018f...",
+  "attestation": "sealed",
   "deadline_status": "within_budget"
 }
 ```
+
+`attestation` is `sealed`, `sealed_unattested`, or `user_context`. The adapter does not translate it — it is evidence rather than a harness-visible result — but it is what the decision record and `policies explain` report, and it is the field that keeps a `user-context` contribution from being presented as an unforgeable verdict.
 
 The harness adapter translates it according to declared capability:
 
@@ -168,7 +181,7 @@ The daemon records both the policy result and effective harness action. Reportin
 
 Every adapter has a tested total time budget. Connection, daemon admission, policy evaluation, and response translation each consume that one budget.
 
-During the v1 migration, the native client may invoke a packaged compatibility evaluator when the daemon endpoint is absent or protocol-incompatible. This is a bounded migration mechanism, not a permanent second architecture.
+During the v1 migration, the native client may invoke a packaged compatibility evaluator when the daemon endpoint is absent or protocol-incompatible. This is a bounded migration mechanism, not a permanent second architecture. As it is actually built, that evaluator is not a package the client invokes but the untouched remainder of the code path the client is already executing, which is why it costs nothing to keep: there is no second artifact to hold in sync. Every daemon-side outcome other than a verdict — an unreachable socket, a version-handshake mismatch, a rejected envelope, a missed deadline — returns the client to it, and none of them fails the hook.
 
 After fallback deprecation, unavailable-daemon behavior is explicit per integration and policy class:
 

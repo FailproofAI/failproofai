@@ -68,7 +68,7 @@ Shipping one scope has an explicit cost: **Phase 1 cannot be installed without o
 `failproofai setup` performs these steps:
 
 1. **Preflight** — detect the OS, architecture, administrator access, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing `agenteye-collector` installation. Missing administrator access or service manager stops here, before any machine change.
-2. **Disclose the enforcement boundary** — explain the managed scope before requesting anything: which users it affects, which paths it creates, what hook protection it can and cannot promise for each detected harness, which service manager will own it, and that it needs `sudo` once and never at runtime. Nothing is selected here. The step exists so the privilege boundary is understood rather than discovered later, and it is where the two deferred scopes are named as planned rather than silently absent.
+2. **Disclose the enforcement boundary** — explain the managed scope before requesting anything: which users it affects, which paths it creates, which single part of it stays under the user's own control, what hook protection it can and cannot promise for each detected harness, which service manager will own it, and that it needs `sudo` once and never at runtime. Nothing is selected here. The step exists so the privilege boundary is understood rather than discovered later, and it is where the two deferred scopes are named as planned rather than silently absent.
 3. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
 4. **Choose policies** — preserve current builtin selection and custom/convention policy discovery.
 5. **Choose observability** — explain which session sources can be captured and exactly where their data goes: on-machine only, or also delivered to a self-hosted observability server the user names along with its `events:add` key. Require explicit selection before any transcript is read, and default to capturing nothing.
@@ -102,6 +102,8 @@ The boundary-disclosure step should read approximately:
   Affects      you now; other local users only when you enroll them
   Creates      the _failproofai account, /opt/failproofai,
                /var/lib/failproofai, /run/failproofai
+  Yours        the per-user agent's own service definition, in your
+               home — you can edit or remove it; it can only tighten
   Hook safety  claude, codex protected · cursor detectable
   Service      systemd system service, starts at machine boot
   Privileges   sudo once, now — never while it runs
@@ -146,6 +148,8 @@ Ownership alone does not protect a directory inside a user's home. Delete and re
 
 Every protected artifact therefore lives on a path whose components are all owned by root or the service account — configuration, the policy store, per-user protected state, the runtime socket directory, and any co-installed AgentEye state. Nothing enforcement depends on is reachable by a rename in the user's home. This also closes the endpoint-substitution attack: with the socket directory owned by the service account, an agent can connect to the daemon but cannot unlink the socket and bind an impostor that answers `allow`.
 
+There is exactly one exception, and it is stated rather than smoothed over. The per-user agent that evaluates `user-context` policies and reads that user's transcripts is started by the user's *own* service manager, so its service definition necessarily lives under `~/.config/systemd/user/` or `~/Library/LaunchAgents/` — user-writable by construction, because that is what a user service manager is. The user can edit it, point it elsewhere, or delete it. That is safe for the same reason the agent itself is: its verdicts can only tighten, it holds no credential, and substituting its binary buys the user nothing they could not already do with their own authority. What would not be safe is implying otherwise, so setup discloses it and health reports a missing agent as a degradation rather than letting `user-context` enforcement disappear quietly. [The per-user agent](./03-daemon-architecture.md#the-per-user-agent) has the full argument.
+
 #### Adding a policy is unprivileged; removing one is not
 
 This is a statement about policy administration, not about installation — creating the service account, installing the release, and registering the service all require `sudo`.
@@ -156,6 +160,8 @@ Convention discovery keeps working exactly as it does today. Files under project
 
 These user-owned sources are **additive, non-authoritative inputs**. They never join the protected generation, always route to the `user-context` tier, and can only tighten a result. A user replacing the directory they live in therefore changes only their own additional restrictions; it cannot alter, disable, or weaken anything in the protected store.
 
+Enablement follows the same split, and it has to: a protected policy a user can switch off is not protected. Which policies are on comes from a root-owned `machine.json` alongside machine configuration, so disabling a pinned policy or changing its parameters is a privileged operation that produces an audit record, exactly like removing an admitted revision. The user's own `.failproofai/policies-config.json` keeps working with no elevation but becomes **additive-only** — it may enable policies the machine set does not name and parameterize the ones it enabled itself, and it may not disable, weaken, or reparameterize a pinned entry. [Protected enablement](./03-daemon-architecture.md#protected-enablement) records why, and that it does not ship yet.
+
 #### Where policies execute
 
 The daemon may not turn user-authored JavaScript or TypeScript into service-account code, and a verdict computed in a process running as the requesting user cannot be trusted by the daemon — that user can `ptrace` it, preload into it, or replace the interpreter. Evaluation is therefore split into two tiers:
@@ -165,7 +171,9 @@ The daemon may not turn user-authored JavaScript or TypeScript into service-acco
 | `sealed` | the service account, in the pinned runtime | unavailable | unforgeable |
 | `user-context` | the requesting UID | granted, bounded by that user's own authority | forgeable by that user |
 
-Most policies never touch the filesystem. Tool name, command, file path, and old/new content already arrive in the hook payload, so builtins such as `block-sudo`, `block-env-files`, and `block-secrets-write` evaluate in the `sealed` tier and are genuinely tamper-proof. A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier instead — it keeps working, and because it can only tighten, a forged `allow` from it is worthless.
+Most policies never touch the filesystem. Tool name, command, file path, and old/new content already arrive in the hook payload, so 32 of the 39 builtins — `block-sudo`, `block-env-files`, and `block-secrets-write` among them — evaluate in the `sealed` tier, where an agent holding its own user's full authority cannot forge the verdict. The seven that cannot are `warn-repeated-tool-calls`, `block-work-on-main`, and the five `require-*-before-stop` policies, each of which reads the repository or runs `git`. A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier instead — it keeps working, and because it can only tighten, a forged `allow` from it is worthless.
+
+An unforgeable verdict is only as strong as the decision to compute it at all, and that decision does not live in the tier. Which policies are enabled comes from `.failproofai/policies-config.json`, which the user — and therefore the user's agent — can write, so an agent that cannot forge a `sealed` deny can still delete the policy's name from a JSON array and the deny is never reached. A root-owned pinned enabled set is what closes that, and it does not ship yet; see [protected enablement](./03-daemon-architecture.md#protected-enablement). Until it does, the `sealed` tier's guarantee is about evaluation and not yet about selection, and nothing in the product may describe it as tamper-proof.
 
 **A policy's own declaration is not the trust boundary.** An author controls what their policy declares, so under-declaring would otherwise be a way into the `sealed` tier. Two independent mechanisms prevent that. Admission derives the requirement itself, from the policy's resolved import graph rather than its manifest, and routes on what it finds. And the `sealed` runtime is deny-by-default at the boundary: the context exposes no filesystem, process, or network bindings at all, so a policy that under-declares does not escape the tier — it fails inside it, visibly, and trips the circuit breaker for its artifact. The declaration is a routing hint and a diagnostic, never a grant. Native addons are refused from `sealed` outright for the same reason: a pinned digest prevents substitution but does nothing to constrain what native code does once loaded.
 
@@ -227,7 +235,9 @@ failproofai dashboard status
 failproofai doctor
 ```
 
-`policies explain` is an important trust feature. It shows the effective policies for a target, their source and scope, the precedence calculation, active revision, declared capabilities, execution tier, and why an expected policy did or did not apply. A policy that landed in the `user-context` tier says which resolved import put it there, so an administrator expecting a tamper-proof verdict finds out at install time rather than after an incident.
+`policies explain` is an important trust feature. It shows the effective policies for a target, their source and scope, the precedence calculation, active revision, declared capabilities, execution tier, and why an expected policy did or did not apply. A policy that landed in the `user-context` tier says which resolved import put it there, so an administrator expecting an unforgeable verdict finds out at install time rather than after an incident.
+
+It also reports the decision's attestation, which is not the same thing as its tier. A policy that ran `sealed` but read the working directory, the project directory, or an environment fact took a value the daemon cannot derive and the client asserts, so its decision is reported `sealed_unattested` rather than `sealed`. [Derived and asserted context](./03-daemon-architecture.md#derived-and-asserted-context) explains which fields those are and why the distinction is not cosmetic.
 
 `doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, and harness/schema compatibility. Any repair beyond automatic restoration of enabled FailproofAI hook entries requires an explicit flag or confirmation.
 
@@ -272,7 +282,8 @@ The default health view reports independently:
 
 - daemon and IPC readiness, including the account the service runs as;
 - active local policy generation and last reload result;
-- policy counts by execution tier, so an installation can see how much of its enforcement is unforgeable;
+- policy counts by execution tier, and how many of those are pinned by machine configuration rather than selected by a user-writable file, so an installation can see how much of its enforcement is genuinely unforgeable rather than merely evaluated in the `sealed` tier;
+- whether each enrolled user's per-user agent is attached, since `user-context` enforcement and capture both depend on it;
 - enabled harnesses and their last event;
 - hook registration state, last verification/repair, and persistent tamper alerts;
 - enabled capture sources and checkpoint progress;
@@ -346,6 +357,9 @@ Migration from the standalone collector preserves pending and failed batches unt
 - Native addons are refused from the `sealed` tier.
 - User-owned convention policies are additive and non-authoritative, and replacing the directory containing them cannot weaken a protected policy.
 - A user-added policy can tighten enforcement and can never weaken, cancel, or shadow a protected one.
+- The pinned enabled set is root-owned: a user's own configuration can enable additional policies and parameterize the ones it enabled itself, and cannot disable, weaken, or reparameterize a pinned entry.
+- A decision whose deciding policy read a client-asserted working directory, project directory, or environment fact is reported `sealed_unattested` rather than `sealed`, and a request that asserts a home directory is rejected rather than silently corrected.
+- Setup discloses that the per-user agent's service definition lives in the user's home and is user-writable, and health reports a missing agent instead of silently dropping `user-context` enforcement.
 - Promotion into the protected store yields one digest covering the policy and every dependency, and evaluation resolves nothing from a mutable path.
 - The dashboard runs as the invoking user, is reachable only on loopback with a capability token and matching `Origin`, and shows one user only their own data on a multi-user machine.
 - The dashboard performs no privileged mutation; a protected policy change produces a command to run, not an applied change.
@@ -356,4 +370,5 @@ Migration from the standalone collector preserves pending and failed batches unt
 - A bad harness schema returns to the previous valid schema and registration without replacing or restarting the daemon.
 - Old and new collectors never own the same source concurrently, and migration rollback restores a functional standalone collector with its undelivered state.
 - Uninstall erases the delivery key even when performed offline, and never silently deletes undelivered or user-authored data.
+- A macOS installation runs a Developer ID signed, notarized, and stapled release, and its LaunchDaemon starts on a machine that has been offline since installation.
 - Linux and macOS pass the complete setup, service lifecycle, enforcement, schema refresh/rollback, and uninstall acceptance suite; Windows is not represented as a Phase 1 supported target.

@@ -263,7 +263,14 @@ const binaryBuilt = existsSync(BINARY);
 describe.skipIf(!binaryBuilt)("the built failproofaid resolves the same socket path", () => {
   /** `failproofaid --help`'s `Resolved for this environment:` line. */
   function resolvedByBinary(env: Record<string, string>): string | null {
-    const run = spawnSync(BINARY, ["--help"], { encoding: "utf8", env, timeout: 30_000 });
+    const run = spawnSync(BINARY, ["--help"], {
+      encoding: "utf8",
+      // `NODE_ENV` is required by this repo's `ProcessEnv` augmentation and is
+      // not one of the three variables `default_socket_path()` reads, so it
+      // cannot affect the answer. Everything else is deliberately absent.
+      env: { NODE_ENV: "test", ...env },
+      timeout: 30_000,
+    });
     if (run.status !== 0) {
       throw new Error(`failproofaid --help exited ${run.status}: ${run.stderr}`);
     }

@@ -45,7 +45,9 @@ npx failproofai@latest setup
 
 The npm package acts as a portable bootstrapper during the v1 migration. It downloads the signed native release for the current operating system and architecture, verifies it, installs the user-facing `failproofai` CLI and `failproofaid` daemon, and then hands control to the native setup flow.
 
-Additional distribution paths may include Homebrew, a shell installer, and a signed Windows installer. Every path installs the same signed release layout and invokes the same setup protocol; package-specific behavior must not create different daemon semantics.
+Additional v1.0.0 distribution paths may include Homebrew and a shell installer. Every path installs the same signed Linux/macOS release layout and invokes the same setup protocol; package-specific behavior must not create different daemon semantics.
+
+Windows is not a v1.0.0 daemon target. The bootstrapper detects Windows before downloading or modifying anything, explains that Windows support is planned for the next iteration, and points users to the last compatible current-version workflow where applicable.
 
 The complete artifact, package-manager, and download design is in [Release and package distribution](./08-release-and-packaging.md).
 
@@ -241,3 +243,4 @@ Migration from the standalone AgentEye collector preserves pending and failed ba
 - Collection consent names each enabled source and can be revoked independently.
 - Update failure returns to the previous healthy release without manual repair.
 - Uninstall never silently deletes undelivered or user-authored data.
+- Linux and macOS pass the complete setup, service lifecycle, enforcement, update, rollback, and uninstall acceptance suite; Windows is not represented as a v1.0.0 supported target.

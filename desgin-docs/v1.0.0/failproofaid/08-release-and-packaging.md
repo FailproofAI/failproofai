@@ -33,9 +33,8 @@ Initial native artifacts should cover:
 | Linux, glibc | aarch64 | `.tar.gz` |
 | macOS | x86_64 | `.tar.gz` |
 | macOS | aarch64 | `.tar.gz` |
-| Windows | x86_64 | `.zip` and signed installer when available |
 
-Linux musl, Windows ARM64, and additional packaging formats are added only with CI and support ownership. An unsupported platform fails before modifying the machine and links to the supported matrix.
+Linux musl and additional packaging formats are added only with CI and support ownership. Windows is deferred in full to the next iteration. An unsupported platform fails before modifying the machine and links to the supported matrix.
 
 Archive names are deterministic:
 
@@ -44,7 +43,6 @@ failproofai-v1.0.0-linux-x86_64.tar.gz
 failproofai-v1.0.0-linux-aarch64.tar.gz
 failproofai-v1.0.0-darwin-x86_64.tar.gz
 failproofai-v1.0.0-darwin-aarch64.tar.gz
-failproofai-v1.0.0-windows-x86_64.zip
 ```
 
 Each archive has the same logical layout so installation behavior does not depend on the download source.
@@ -53,7 +51,7 @@ Each archive has the same logical layout so installation behavior does not depen
 
 ### npm bootstrapper
 
-Primary migration and cross-platform command:
+Primary Linux/macOS migration command:
 
 ```sh
 npx failproofai@latest setup
@@ -92,12 +90,6 @@ failproofai setup
 ```
 
 The formula points at the same immutable macOS/Linux archives and hashes from the release manifest. Homebrew owns executable upgrades; by default the daemon updater reports availability but does not overwrite Homebrew-managed files. Setup records package ownership so this is unambiguous.
-
-### Windows installer/package manager
-
-A signed Windows installer registers the binaries, user service/task, PATH entry, uninstall metadata, and package ownership. A WinGet package may reference that exact installer.
-
-The package manager owns executable upgrades unless a user explicitly converts the install to standalone update ownership. The updater never attempts an in-place overwrite of a running `.exe`.
 
 ### Direct archive
 
@@ -146,12 +138,12 @@ Standalone user installs use versioned, immutable directories:
   current -> versions/1.0.0
 ```
 
-Platform-appropriate equivalents are used on macOS and Windows. A small PATH entry or stable shim points to `current/bin/failproofai`. Service registration points through an activation-safe stable path or is updated atomically with the version switch.
+The platform-appropriate macOS equivalent uses the same logical layout. A small PATH entry or stable shim points to `current/bin/failproofai`. Service registration points through an activation-safe stable path or is updated atomically with the version switch.
 
 Installation metadata records:
 
 - installed release and source revision;
-- package source (`npm-bootstrap`, `shell`, `homebrew`, `winget`, `direct`, `container`, or managed);
+- package source (`npm-bootstrap`, `shell`, `homebrew`, `direct`, `container`, or managed);
 - update owner (`standalone-updater`, package manager, orchestrator, or administrator);
 - selected channel and version pin;
 - manifest identity and trust root.
@@ -274,10 +266,11 @@ Channel pointers only move forward under normal automation. Downgrade requires a
 ## Release acceptance criteria
 
 - Every supported target installs and reaches daemon readiness from a clean machine.
-- npm, shell, Homebrew, Windows, direct, and container paths resolve to the same native product release.
+- npm, shell, Homebrew, direct, and container paths resolve to the same native Linux/macOS product release.
 - A customer can verify manifest signature, digest, SBOM, provenance, and source revision offline.
 - Beta-to-stable promotion changes pointers/metadata without rebuilding binaries.
 - Package-manager installations are never silently overwritten by the standalone updater.
 - Previous-version upgrade and forced-failure rollback pass on every target.
 - A tampered archive, manifest, package payload, or container is rejected.
 - Air-gapped installation works from a complete mirrored bundle without public-network fallback.
+- Windows artifacts, package metadata, and support claims are absent from v1.0.0 release channels rather than published as experimental placeholders.

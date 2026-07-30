@@ -72,7 +72,7 @@ Some runtimes expose events only inside a gateway process or require a wrapper a
 
 ## Request envelope
 
-The client sends a length-prefixed request over a Unix domain socket or Windows named pipe. A conceptual request is:
+The client sends a length-prefixed request over a Unix domain socket. A conceptual request is:
 
 ```json
 {
@@ -208,3 +208,5 @@ A new harness integration is complete only when it provides:
 - Enforcement and collector records for one session share stable identity.
 - Missing session identity never broadens a session-targeted assignment.
 - Timeout and daemon-unavailable behavior is tested separately for every harness, especially stop-class events.
+
+The envelope and framing remain transport-neutral so a later Windows implementation can add a named-pipe transport without changing harness semantics.

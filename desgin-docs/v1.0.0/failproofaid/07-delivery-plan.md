@@ -68,8 +68,7 @@
 8. Policy release and application release signing/trust-root rotation.
 9. Automatic activation idle window and maximum deferral.
 10. Retention window for legacy evaluator, collector state, and previous release.
-11. Native Windows service versus scheduled task for initial v1.
-12. Roles allowed to create, approve, assign, disable, and emergency-override policy.
-13. Whether narrower scope may disable organization policy and which controls are mandatory.
-14. Propagation SLO and maximum policy staleness for ordinary/emergency changes.
-15. Targeting attributes permitted to leave a machine.
+11. Roles allowed to create, approve, assign, disable, and emergency-override policy.
+12. Whether narrower scope may disable organization policy and which controls are mandatory.
+13. Propagation SLO and maximum policy staleness for ordinary/emergency changes.
+14. Targeting attributes permitted to leave a machine.

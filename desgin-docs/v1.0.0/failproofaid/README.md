@@ -21,6 +21,7 @@ Target: failproofai v1.0.0
 
 - `failproofaid` is implemented in Rust.
 - It is a per-user operating-system service by default.
+- v1.0.0 supports Linux and macOS; Windows service, packaging, and daemon support are deferred to the next iteration.
 - The OSS product remains fully usable without an account, organization, AgentEye, or network connection.
 - All current builtin, custom, explicit-file, convention-file, scope, harness, activity, and local-dashboard behavior remains available.
 - Agent hook decisions are synchronous and evaluated locally in v1.0.0.

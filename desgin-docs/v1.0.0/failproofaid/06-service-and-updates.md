@@ -6,8 +6,9 @@ The default is one service per OS user because agent configuration, transcript s
 
 - Linux: systemd user service.
 - macOS: launchd LaunchAgent.
-- Windows: native per-user service or scheduled-task wrapper, pending final platform choice.
 - Containers: foreground daemon managed and replaced by the orchestrator.
+
+Windows is explicitly outside the v1.0.0 service and updater scope. Its service model, named-pipe transport, executable activation, packaging, and rollback design belong to the next iteration.
 
 Service configuration contains executable and state paths but no secrets. Installation, status, restart, and uninstall use native service-manager APIs or carefully bounded commands.
 
@@ -49,7 +50,6 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 ## Platform policy
 
 - Standalone Linux/macOS installations can auto-activate signed releases.
-- Windows switches a versioned service path rather than overwriting a running executable.
 - Containers never self-update; status reports an available image version.
 - Package-manager-owned files are not overwritten unless the installation explicitly converts to standalone update ownership.
 - Managed environments may pin versions, disable network checks, or provide an internal signed channel.
@@ -62,3 +62,4 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 - Failed readiness or health automatically restores the prior healthy release.
 - A suppressed failed version is not retried until manual action or a newer release.
 - The installed service reports active, staged, available, previous, and rolled-back versions.
+- The full acceptance suite passes independently for systemd user services and launchd LaunchAgents.

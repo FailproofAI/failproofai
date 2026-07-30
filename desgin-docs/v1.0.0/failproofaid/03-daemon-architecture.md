@@ -29,11 +29,12 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 ## Local IPC
 
 - Linux and macOS use an owner-only Unix domain socket under the user's runtime directory.
-- Windows uses a named pipe restricted to the installing user's security identifier.
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
 - Peer identity is verified where supported.
 - Hook and administrative operations are distinct protocol operations.
+
+Windows transport and service integration are deferred beyond v1.0.0. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
 
 Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, and `Flush`. Administrative calls can gain stronger authorization later without changing the hook request.
 

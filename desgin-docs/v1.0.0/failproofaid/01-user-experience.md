@@ -37,19 +37,17 @@ The cloud tier is additive. It adds enrollment, centralized assignment, fleet he
 
 ### Primary path
 
-The primary interactive entry point remains:
+The single supported v1.0.0 installation entry point remains:
 
 ```sh
-npx failproofai@1.0.0 setup
+npx failproofai@latest setup
 ```
 
-Release documentation substitutes the current exact stable version; it does not ask users to execute a mutable `@latest` bootstrap. The signed/provenance-verified npm package acts as a portable bootstrapper during the v1 migration. It downloads the signed native release for the current operating system and architecture, verifies it, installs the user-facing `failproofai` CLI and `failproofaid` daemon, and then hands control to the native setup flow. Clients that cannot authenticate the npm package before execution use the verified direct-download or Homebrew path.
+The npm package uses npm integrity and trusted-publishing provenance for bootstrap trust. It downloads and independently verifies the signed native release, installs `failproofai` and `failproofaid` into a stable per-user directory, and hands control to the native setup flow. It declares no install lifecycle script; all machine changes occur during explicit `setup`.
 
-Additional v1.0.0 distribution paths may include Homebrew and a shell installer. Every path installs the same signed Linux/macOS release layout and invokes the same setup protocol; package-specific behavior must not create different daemon semantics.
+Homebrew, shell installers, direct-download installation, containers, mirrors, and offline bundles are outside v1.0.0 distribution scope. Windows is also not a v1.0.0 daemon target. The npm bootstrapper detects it before downloading or modifying anything and explains that support is planned for the next iteration.
 
-Windows is not a v1.0.0 daemon target. The bootstrapper detects Windows before downloading or modifying anything, explains that Windows support is planned for the next iteration, and points users to the last compatible current-version workflow where applicable.
-
-The complete artifact, package-manager, and download design is in [Release and package distribution](./08-release-and-packaging.md).
+The npm bootstrap and native artifact design is in [npm release and distribution](./08-release-and-packaging.md).
 
 The default installation is unprivileged and per-user. It must not require `sudo` to install a user service or write credentials. A separately designed system-wide installation may be offered for managed fleet images.
 
@@ -228,7 +226,7 @@ The user can choose:
 - notify only;
 - a pinned version for managed environments.
 
-The status view reports what will happen before an update. A failed health check rolls back automatically and suppresses the failed release. Container and package-manager-owned installations follow their owning update mechanism unless explicitly converted to standalone management.
+The status view reports what will happen before an update. A failed health check rolls back automatically and suppresses the failed release. npm owns only the bootstrap invocation; FailproofAI's updater owns the installed native release.
 
 ## Failure experience
 

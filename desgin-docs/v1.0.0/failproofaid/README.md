@@ -15,7 +15,7 @@ Target: failproofai v1.0.0
 5. [Collector integration](./05-collector-integration.md) — session capture, durable spooling, delivery, and migration from AgentEye collector.
 6. [Service and automatic updates](./06-service-and-updates.md) — operating-system services, signed releases, activation, health checks, and rollback.
 7. [Delivery plan](./07-delivery-plan.md) — rollout phases, acceptance criteria, and unresolved decisions.
-8. [Release and package distribution](./08-release-and-packaging.md) — build pipeline, signed artifacts, package managers, customer download paths, and channel promotion.
+8. [npm release and distribution](./08-release-and-packaging.md) — the single v1 npm bootstrap path, native artifact pipeline, signing, and channel promotion.
 
 ## Settled decisions
 

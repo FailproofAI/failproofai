@@ -1,141 +1,89 @@
-# Release and package distribution
+# npm release and distribution
 
-## Goals
+## Scope
 
-- Build one coherent FailproofAI release containing every component that must remain protocol-compatible.
-- Give customers familiar installation choices without creating different product behavior per package manager.
-- Make every downloaded byte attributable to a signed release and reproducible source revision.
-- Promote the exact tested artifacts from beta to stable without rebuilding them.
-- Define who owns future updates for every installation path.
-- Support interactive developer installs, managed fleets, air-gapped environments, and containers.
+v1.0.0 has one supported installation and distribution path:
 
-## Release contents
+```sh
+npx failproofai@latest setup
+```
 
-One semantic FailproofAI version identifies the compatible release set:
+The goal is to make the existing npm experience work end to end for Linux and macOS. Homebrew, shell installers, direct-download installation, containers, mirrored registries, and air-gapped bundles are explicitly deferred. The release pipeline may use internal native archives, but they are implementation artifacts consumed by the npm bootstrapper rather than separate customer installation products.
 
-- `failproofai` — native user CLI and thin hook client;
-- `failproofaid` — Rust daemon;
-- `failproofai-updater` — external activation helper, unless implemented as a safe mode of the native CLI;
-- legacy JS/TS policy worker and its runtime, if required by the selected policy-runtime design;
-- service-manager templates or installation metadata;
-- schema and compatibility metadata;
-- license, notices, SBOM, provenance, and checksums.
+## Customer experience
 
-These components are tested and published together. They do not acquire independent user-facing versions in v1. Internal protocol versions remain separate so rolling update compatibility is explicit.
+The user needs Node/npm only for bootstrap. Running the command:
+
+1. resolves the current `failproofai` package from npm;
+2. starts the existing branded CLI;
+3. detects Linux/macOS and architecture before modifying the machine;
+4. downloads the matching signed native v1 release;
+5. verifies the signed release manifest and artifact digest;
+6. installs the native `failproofai` CLI and `failproofaid` service into a versioned per-user location;
+7. continues directly into the Login/OSS setup wizard;
+8. verifies service readiness and reports completion.
+
+There is no separate installer command to discover, no system package repository to add, and no `sudo` requirement.
+
+The bootstrapper rejects unsupported operating systems or architectures before downloading a native artifact or editing configuration. Windows receives a clear next-iteration message.
+
+## npm package responsibilities
+
+The public `failproofai` npm package is a small bootstrap and compatibility package, not the long-running daemon. It contains:
+
+- the current JavaScript CLI needed to launch setup and support migration;
+- platform detection and release-manifest verification;
+- native download, versioned installation, and handoff logic;
+- repair/uninstall discovery for native installations;
+- the existing public JS/TS policy API needed by user-authored policies during compatibility migration;
+- no daemon implementation and no bundled native artifact for every platform.
+
+The npm package must have no install lifecycle script. npm 12, bun, pnpm, and modern Yarn may block lifecycle scripts, so downloading or starting the daemon from `postinstall` would silently produce incomplete installations. All state-changing work happens only after the user explicitly runs `setup`.
+
+`npx` may use a temporary package cache. The native installation therefore must not point its service definition at the transient npx directory. Setup copies the verified native release to its stable versioned location before registering the service.
+
+## Bootstrap trust
+
+Initial bootstrap relies on npm's package-integrity and publisher-provenance trust model. The package is published through npm trusted publishing with provenance tied to the release workflow and source commit. Release automation verifies the packed tarball before publication and records its npm integrity digest in the release evidence.
+
+After bootstrap starts, the npm package does not extend that trust transitively to native code. It verifies the independently signed FailproofAI release manifest and native artifact digest before execution or installation.
+
+This design does not claim that native signature verification protects against a compromised bootstrap package; these are two trust layers:
+
+1. npm registry integrity and package provenance authenticate the bootstrapper;
+2. the FailproofAI signed manifest authenticates the native release.
+
+The exact `@latest` command is the supported convenience interface. npm resolves it to an immutable package version and integrity digest for that execution. Setup records the resolved bootstrap version, integrity when exposed by npm, native manifest identity, and source revision for diagnostics.
+
+## Native release contents
+
+One FailproofAI version identifies a compatible release set:
+
+- native `failproofai` CLI and hook client;
+- Rust `failproofaid` daemon;
+- external updater helper, unless implemented as a safe CLI mode;
+- legacy policy worker/runtime if required;
+- service-manager metadata;
+- schemas, license, notices, SBOM, provenance, and checksums.
+
+All components are tested and published together. Internal protocol/schema versions remain separate so rolling compatibility is explicit.
 
 ## Target matrix
 
-Initial native artifacts should cover:
-
-| OS | Architecture | Archive |
+| OS | Architecture | Internal native artifact |
 |---|---|---|
 | Linux, glibc | x86_64 | `.tar.gz` |
 | Linux, glibc | aarch64 | `.tar.gz` |
 | macOS | x86_64 | `.tar.gz` |
 | macOS | aarch64 | `.tar.gz` |
 
-Linux musl and additional packaging formats are added only with CI and support ownership. Windows is deferred in full to the next iteration. An unsupported platform fails before modifying the machine and links to the supported matrix.
-
-Archive names are deterministic:
-
-```text
-failproofai-v1.0.0-linux-x86_64.tar.gz
-failproofai-v1.0.0-linux-aarch64.tar.gz
-failproofai-v1.0.0-darwin-x86_64.tar.gz
-failproofai-v1.0.0-darwin-aarch64.tar.gz
-```
-
-Each archive has the same logical layout so installation behavior does not depend on the download source.
-
-## Customer installation paths
-
-### npm bootstrapper
-
-Exact-version npm bootstrap command:
-
-```sh
-npx failproofai@1.0.0 setup
-```
-
-The mutable `@latest` form is not the authenticated bootstrap contract. Release documentation resolves the stable channel to an exact package version and publisher identity before presenting the command.
-
-The npm package is a small bootstrapper, not the long-running daemon implementation. It:
-
-1. detects OS and architecture;
-2. obtains the signed release manifest for its selected channel/version;
-3. downloads the matching native archive;
-4. verifies manifest signature and archive digest;
-5. extracts to a versioned user directory;
-6. executes the native `failproofai setup` from that release.
-
-The npm package must not run a privileged install script. `npx` makes the installation action explicit and works with package managers that block lifecycle scripts.
-
-The npm package itself is signed and published with build provenance. The supported bootstrap path requires an npm client or wrapper that verifies the registry signature, package integrity, and expected FailproofAI publisher/provenance identity **before** executing its entry point. If the installed npm client cannot enforce those checks before execution, setup directs the user to Homebrew or the verified direct-download flow; it does not claim that verifying only the subsequently downloaded native archive closes the bootstrap trust gap.
-
-The bootstrapper version maps to the native version it installs by default. A compatibility table permits a newer bootstrapper to install or repair older pinned native releases.
-
-### Shell installer
-
-For machines without Node, use download, verify, then execute:
-
-```sh
-curl -fSLO https://releases.befailproof.ai/v1.0.0/failproofai-installer
-curl -fSLO https://releases.befailproof.ai/v1.0.0/failproofai-installer.minisig
-minisign -Vm failproofai-installer -P '<pinned FailproofAI installer public key>'
-chmod +x failproofai-installer
-./failproofai-installer setup
-```
-
-The installer is an immutable, versioned release artifact signed by a key whose fingerprint is pinned in the repository, package metadata, and documentation. It only detects platform, downloads the native archive and signed manifest, verifies them, and runs native setup. Redirects, signature-key substitution, and unversioned installer URLs are rejected.
-
-`curl | sh` is not a supported installation path because it executes mutable network content before signature verification. Documentation includes inspection and cleanup steps for the verified download flow.
-
-### Homebrew
-
-```sh
-brew install failproofai/tap/failproofai
-failproofai setup
-```
-
-The formula points at the same immutable macOS/Linux archives and hashes from the release manifest. Homebrew owns executable upgrades; by default the daemon updater reports availability but does not overwrite Homebrew-managed files. Setup records package ownership so this is unambiguous.
-
-### Direct archive
-
-Every native archive, signed manifest, signature, checksum, SBOM, and provenance file is available from the release page and stable download endpoint. This supports internal packaging and audit without using npm or a shell pipeline.
-
-After extraction:
-
-```sh
-./failproofai setup
-```
-
-Direct archives default to standalone update ownership.
-
-### Container
-
-Published OCI images use immutable version and digest tags:
-
-```text
-ghcr.io/failproofai/failproofaid:1.0.0
-ghcr.io/failproofai/failproofaid:1.0
-ghcr.io/failproofai/failproofaid:stable
-ghcr.io/failproofai/failproofaid@sha256:...
-```
-
-Production documentation recommends an immutable version or digest. Containers do not self-update; the orchestrator pulls and replaces the image. Image signatures, SBOM, and provenance are published alongside native artifacts.
-
-### Managed and air-gapped fleets
-
-Enterprises may mirror archives, manifests, signatures, and container images into an internal registry. The installer accepts an explicit trusted mirror and additional organization trust root without silently falling back to the public internet.
-
-An offline bundle contains a complete release set for selected targets, signatures, trust metadata, and installation instructions. Enrollment and cloud policy synchronization remain separate concerns from binary installation.
+These artifacts have deterministic names and layouts. They are fetched only by the npm bootstrapper/updater in v1.0.0.
 
 ## Installation layout and ownership
 
-Standalone user installs use versioned, immutable directories:
-
 ```text
 ~/.local/share/failproofai/
+  install.json
   versions/
     1.0.0/
       bin/failproofai
@@ -146,139 +94,76 @@ Standalone user installs use versioned, immutable directories:
   current -> versions/1.0.0
 ```
 
-The platform-appropriate macOS equivalent uses the same logical layout. A small PATH entry or stable shim points to `current/bin/failproofai`. Service registration points through an activation-safe stable path or is updated atomically with the version switch.
+macOS uses the platform-appropriate user data root with the same logical layout.
 
-Installation metadata records:
+Ownership is intentionally split:
 
-- installed release and source revision;
-- package source (`npm-bootstrap`, `shell`, `homebrew`, `direct`, `container`, or managed);
-- update owner (`standalone-updater`, package manager, orchestrator, or administrator);
-- selected channel and version pin;
-- manifest identity and trust root.
+- npm owns only the bootstrap package used for that invocation;
+- FailproofAI's standalone updater owns the installed native release;
+- the service always points at the stable native installation, never npm's global tree or npx cache.
 
-No updater guesses ownership from paths alone.
+Updating or removing a global npm package does not silently remove a running native service. `failproofai uninstall` removes the service/native installation explicitly; npm cache/global cleanup remains npm's responsibility.
 
-## Signed release manifest
+## Release manifest
 
-The release manifest is canonical JSON or another deterministic encoding and includes:
+The signed canonical manifest includes:
 
-- product version, release ID, source commit, build timestamp, and channel eligibility;
-- every artifact name, target, size, SHA-256 digest, and media type;
+- product version, release ID, source commit, and build timestamp;
+- every target artifact's name, size, SHA-256 digest, and media type;
 - component and IPC/state/policy-runtime compatibility ranges;
-- minimum installer/updater versions;
-- SBOM and provenance artifact references;
-- release notes and required manual migration warnings;
+- minimum bootstrapper/updater versions;
+- SBOM and provenance references;
+- release notes and required migration warnings;
 - publisher key ID and signature metadata.
 
-The manifest is signed separately from hosting. Clients ship a trust root and support signed key rotation. Serving a modified artifact and modified checksum from the same compromised host is insufficient because the attacker cannot create a valid manifest signature.
+Clients ship the release trust root and support signed rotation. A modified artifact plus modified checksum is rejected because the attacker cannot produce the manifest signature.
 
 ## Release pipeline
 
-### 1. Prepare
+### Build and test
 
 - A release PR sets the version and dated changelog section.
-- CI verifies workspace version consistency, protocol compatibility declarations, clean generated artifacts, and release notes.
-- The source commit is tagged only after required review and CI pass.
+- Build each Linux/macOS target from one source commit in pinned isolated workers.
+- Build the policy worker from the same revision when required.
+- Run unit, integration, harness-contract, collector-conformance, setup, update, and rollback tests.
+- Smoke-test each executable's side-effect-free version/protocol command on its target OS.
+- Generate SBOMs and provenance and scan source, dependencies, archives, and package contents.
 
-### 2. Build
+### Assemble and sign
 
-- Build each target in pinned, isolated workers.
-- Compile Rust with locked dependencies.
-- Build/package the policy worker from the same source revision if required.
-- Strip nondeterministic metadata where possible.
-- Run unit, integration, harness-contract, collector-conformance, and update tests.
-- Execute each native artifact's side-effect-free `--version` and protocol probe on its target OS.
+- Stage native artifacts immutably.
+- Assemble and sign the native release manifest with protected release identity.
+- Build `npm pack --ignore-scripts` from the same version/source revision.
+- Inspect the tarball allowlist, unpack and execute its CLI in a clean npm environment, and prove it downloads/verifies the staged native release.
+- Attach npm trusted-publishing provenance to publication.
 
-Artifacts are uploaded to an immutable pipeline staging area. A target build cannot publish directly to a customer channel.
+Build jobs do not receive long-lived signing or npm credentials. Signing and publishing are separate protected jobs over already-built digests.
 
-### 3. Analyze
+### Publish beta
 
-- Generate per-artifact and aggregate SBOMs.
-- Scan source, dependencies, archives, and container layers.
-- Generate SLSA-style provenance linking artifact digest to source commit and build workflow identity.
-- Verify license/notice completeness.
-- Reject unexpected files, secrets, debug credentials, dynamic-library dependencies, or size regressions beyond policy.
+- Publish immutable native prerelease artifacts and signed manifest.
+- Publish the npm package under the `beta` dist-tag.
+- From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, update, rollback, and uninstall.
 
-### 4. Assemble and sign
+### Promote stable
 
-- Assemble the release manifest from staged artifact digests.
-- Sign provenance and artifacts where platform conventions require it.
-- Sign the canonical release manifest using the protected release identity.
-- Verify the complete release from a clean consumer environment using only public/mirrored artifacts and trust roots.
+Stable promotion does not rebuild native binaries. It verifies the tested beta manifest digest, promotes the exact native release, and moves npm's `latest` dist-tag to the already-published package version.
 
-Signing occurs after build and analysis. Build jobs receive no long-lived signing credential.
+If npm requires a distinct stable version rather than moving a prerelease package, its package must embed/reference the exact promoted native manifest digest and contain no rebuilt product binary.
 
-### 5. Publish beta
+### Observe and revoke
 
-- Create an immutable prerelease and upload all artifacts.
-- Publish the matching npm prerelease tag and package-manager candidate metadata.
-- Publish container images by immutable version/digest.
-- Move the signed `beta` channel pointer to the release manifest.
-- Exercise install, service start, policy evaluation, collection, update-from-previous, and rollback on clean target machines.
+Release health tracks bootstrap download/verification, setup completion, daemon readiness, update rollback, crash, and protocol mismatch without collecting policy or transcript content.
 
-### 6. Promote stable
+A bad release is removed from `latest` and the native stable channel. Immutable evidence remains. A signed revocation prevents new activation and directs installed updaters to a known-good release.
 
-Stable promotion does not rebuild. It:
+## npm acceptance criteria
 
-- verifies the beta release digest and promotion requirements;
-- marks the existing release stable;
-- updates signed stable channel metadata;
-- promotes npm/package-manager/container aliases to the same artifact digests;
-- records approver, source beta, and promotion time.
-
-If any ecosystem cannot promote without rebuilding, it must package the already-built signed payload and prove its embedded digest rather than recompiling product binaries.
-
-### 7. Observe and revoke
-
-The release system monitors download/install success, service readiness, automatic rollback, crash, protocol mismatch, and update suppression rates without collecting sensitive payload data.
-
-A bad release is removed from moving channel pointers but immutable evidence remains. A signed revocation can prevent new activation and direct installed updaters to a known-good release. Revocation authority is separated from ordinary publishing where practical.
-
-## Repository and workspace structure
-
-The Rust daemon and native CLI should live in one Cargo workspace so shared protocol, identity, manifest, and state types do not drift:
-
-```text
-crates/
-  failproofai-cli/
-  failproofaid/
-  failproofai-protocol/
-  failproofai-policy/
-  failproofai-collector/
-  failproofai-update/
-```
-
-The existing AgentEye collector code is imported with history or otherwise preserved in a reviewable migration. Collector public installer assets are retired or redirected only after the unified package reaches parity and existing installations have a supported migration path.
-
-The npm bootstrapper remains in the JavaScript workspace but contains no independent policy or collector implementation.
-
-## Channels and versioning
-
-- `stable` is the default for normal setup and automatic updates.
-- `beta` is explicit and may contain prerelease versions.
-- exact version pins bypass moving channel pointers but still require valid signatures.
-- internal/managed channels use separate signed metadata and explicit trust configuration.
-
-Channel pointers only move forward under normal automation. Downgrade requires an exact version or signed rollback/revocation instruction. Release version, manifest revision, channel revision, IPC version, and state schema version are distinct fields.
-
-## Package-manager rules
-
-- One installation has exactly one update owner.
-- The native updater never overwrites package-manager-owned executables by default.
-- Package recipes reference immutable URLs and hashes.
-- npm lifecycle scripts do not install or start the daemon.
-- Package publication happens only after native release verification.
-- Unpublishing an ecosystem package does not invalidate already-signed native artifacts.
-- Package metadata exposes the same license, source repository, version, and release notes.
-
-## Release acceptance criteria
-
-- Every supported target installs and reaches daemon readiness from a clean machine.
-- npm, shell, Homebrew, direct, and container paths resolve to the same native Linux/macOS product release.
-- A customer can verify manifest signature, digest, SBOM, provenance, and source revision offline.
-- Beta-to-stable promotion changes pointers/metadata without rebuilding binaries.
-- Package-manager installations are never silently overwritten by the standalone updater.
-- Previous-version upgrade and forced-failure rollback pass on every target.
-- A tampered archive, manifest, package payload, or container is rejected.
-- Air-gapped installation works from a complete mirrored bundle without public-network fallback.
-- Windows artifacts, package metadata, and support claims are absent from v1.0.0 release channels rather than published as experimental placeholders.
+- `npx failproofai@latest setup` works on clean supported Linux and macOS machines.
+- No npm lifecycle script is required or declared.
+- The npx cache can disappear immediately after setup without affecting the service.
+- The bootstrapper never executes an unverified native artifact.
+- The npm package provenance and packed-file allowlist map to the release source commit.
+- beta-to-stable promotion does not rebuild native binaries.
+- setup, update from the previous version, forced rollback, repair, and uninstall pass on every target.
+- Windows and unsupported architectures fail before machine mutation.

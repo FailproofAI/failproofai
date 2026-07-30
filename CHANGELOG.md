@@ -4,7 +4,7 @@
 
 ### Docs
 - Add a versioned home for the failproofai v1.0.0 design documents. (#625)
-- Draft the Linux/macOS Rust `failproofaid` design, preserving standalone OSS while adding an optional Login tier, AgentEye collection, rollback-safe updates, and signed distribution; define Login/OSS setup in the existing branded CLI and defer Windows. (#625)
+- Draft the Linux/macOS Rust `failproofaid` design, preserving OSS and adding Login, AgentEye collection, rollback-safe updates, and a single npm bootstrap/distribution path; retain the branded Login/OSS setup and defer Windows. (#625)
 
 ## 0.0.15-beta.1 — 2026-07-29
 

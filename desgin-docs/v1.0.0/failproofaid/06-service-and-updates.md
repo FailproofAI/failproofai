@@ -6,7 +6,6 @@ The default is one service per OS user because agent configuration, transcript s
 
 - Linux: systemd user service.
 - macOS: launchd LaunchAgent.
-- Containers: foreground daemon managed and replaced by the orchestrator.
 
 Windows is explicitly outside the v1.0.0 service and updater scope. Its service model, named-pipe transport, executable activation, packaging, and rollback design belong to the next iteration.
 
@@ -64,9 +63,7 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 ## Platform policy
 
 - Standalone Linux/macOS installations can auto-activate signed releases.
-- Containers never self-update; status reports an available image version.
-- Package-manager-owned files are not overwritten unless the installation explicitly converts to standalone update ownership.
-- Managed environments may pin versions, disable network checks, or provide an internal signed channel.
+- npm owns the bootstrap package only; the standalone updater owns the stable native installation created by setup.
 
 ## Update acceptance criteria
 

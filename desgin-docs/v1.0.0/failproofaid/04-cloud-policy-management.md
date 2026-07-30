@@ -1,16 +1,16 @@
-# Optional cloud policy tier
+# Failproof Cloud policy management
 
 ## Purpose
 
 FailproofAI OSS remains a complete standalone policy system. Users author and run builtin or custom policy locally without an account, machine enrollment, organization, or cloud service.
 
-The optional cloud tier adds centralized management for fleets of `failproofaid` enforcement planes. It does not replace, gate, or remove local policy authoring. AgentEye data closes the loop between observing agent behavior and deploying an additional centrally managed guardrail:
+Failproof Cloud adds centralized management for fleets of `failproofaid` enforcement planes. It does not replace, gate, or remove local policy authoring. FailproofAI observability data closes the loop between observing agent behavior and deploying an additional centrally managed guardrail:
 
 1. analysis identifies risky behavior or a failed outcome;
 2. a user creates or accepts a policy draft from that evidence;
 3. historical data estimates its match set where possible;
 4. the policy is assigned in observe mode to a narrow cohort;
-5. AgentEye reports matches, would-deny results, latency, and outcome changes;
+5. Failproof Cloud reports matches, would-deny results, latency, and outcome changes;
 6. an authorized user promotes the same immutable revision to enforce mode;
 7. the assignment can expand, pause, expire, narrow, or roll back.
 
@@ -75,7 +75,7 @@ The effective policy set on a connected machine is additive:
 
 All matching policies run. Result severity is `deny`, then `instruct`, then `allow`. Stable source-qualified policy and assignment IDs prevent name collisions. A cloud `disabled` assignment can suppress a specifically inherited cloud assignment when authorized; it cannot disable a user's local policy. Local policy can be disabled only through the existing local configuration and file workflows.
 
-Every result records policy revision, assignment ID and scope, generation, target context and identity provenance, observe/enforce effect, policy result, effective harness action, and timing. This lets AgentEye attribute a decision to the exact rollout that produced it.
+Every result records policy revision, assignment ID and scope, generation, target context and identity provenance, observe/enforce effect, policy result, effective harness action, and timing. This lets Failproof Cloud attribute a decision to the exact rollout that produced it.
 
 ## Offline and expiry
 

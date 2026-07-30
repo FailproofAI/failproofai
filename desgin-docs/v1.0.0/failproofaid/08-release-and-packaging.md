@@ -19,11 +19,11 @@ The user needs Node/npm only for bootstrap. Running the command:
 3. detects Linux/macOS and architecture before modifying the machine;
 4. downloads the matching signed native v1 release;
 5. verifies the signed release manifest and artifact digest;
-6. installs the native `failproofai` CLI and `failproofaid` service into a versioned per-user location;
+6. installs the native `failproofai` CLI and `failproofaid` service into a versioned location for the chosen service scope;
 7. continues directly into the Login/OSS setup wizard;
 8. verifies service readiness and reports completion.
 
-There is no separate installer command to discover, no system package repository to add, and no `sudo` requirement.
+There is no separate installer command or system package repository to discover. User scope requires no `sudo`; choosing system scope explicitly requires it when setup applies the reviewed machine-wide changes.
 
 The bootstrapper rejects unsupported operating systems or architectures before downloading a native artifact or editing configuration. Windows receives a clear next-iteration message.
 
@@ -96,6 +96,8 @@ These artifacts have deterministic names and layouts. They are fetched only by t
 
 macOS uses the platform-appropriate user data root with the same logical layout.
 
+For `--service-scope system`, the same versioned layout lives in a root-owned platform system data root. Configuration, state, logs, runtime sockets, and service definitions use platform system locations. The bootstrap downloads and verifies without elevation where possible, then requests `sudo` only for the bounded install and registration phase. It never copies unverified bytes into a privileged location.
+
 Ownership is intentionally split:
 
 - npm owns only the bootstrap package used for that invocation;
@@ -159,7 +161,7 @@ A bad release is removed from `latest` and the native stable channel. Immutable 
 
 ## npm acceptance criteria
 
-- `npx failproofai@latest setup` works on clean supported Linux and macOS machines.
+- `npx failproofai@latest setup` works in both user and explicitly elevated system scope on clean supported Linux and macOS machines.
 - No npm lifecycle script is required or declared.
 - The npx cache can disappear immediately after setup without affecting the service.
 - The bootstrapper never executes an unverified native artifact.

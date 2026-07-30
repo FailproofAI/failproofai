@@ -7,8 +7,8 @@ A user installs FailproofAI once on a machine. From then on:
 - `failproofaid` starts automatically when the user logs in;
 - supported agent harnesses send events to the local daemon;
 - builtin and user-authored policies work locally with no account or cloud connection;
-- connected cloud-tier installations may additionally synchronize centrally assigned policies;
-- AgentEye session data is captured and delivered when enabled;
+- installations connected to Failproof Cloud may additionally synchronize centrally assigned policies;
+- FailproofAI session data is captured and delivered when enabled;
 - service and policy health are always visible locally and, when connected, in the cloud;
 - stable releases update automatically with rollback on failure.
 
@@ -31,7 +31,7 @@ v1.0.0 is an architectural upgrade, not a cloud-only product rewrite. Everything
 
 These behaviors need compatibility fixtures before the daemon becomes the default. A feature is not considered migrated merely because an equivalent cloud workflow exists.
 
-The cloud tier is additive. It adds enrollment, centralized assignment, fleet health, AgentEye analysis, staged rollout, and organization audit. Connecting a machine does not disable local policy authoring.
+Failproof Cloud is additive. It adds enrollment, centralized assignment, fleet health, analysis, staged rollout, and organization audit. Connecting a machine does not disable local policy authoring.
 
 ## Installation
 
@@ -43,28 +43,29 @@ The single supported v1.0.0 installation entry point remains:
 npx failproofai@latest setup
 ```
 
-The npm package uses npm integrity and trusted-publishing provenance for bootstrap trust. It downloads and independently verifies the signed native release, installs `failproofai` and `failproofaid` into a stable per-user directory, and hands control to the native setup flow. It declares no install lifecycle script; all machine changes occur during explicit `setup`.
+The npm package uses npm integrity and trusted-publishing provenance for bootstrap trust. It downloads and independently verifies the signed native release, installs `failproofai` and `failproofaid` into a stable directory for the selected service scope, and hands control to the native setup flow. It declares no install lifecycle script; all machine changes occur during explicit `setup`.
 
 Homebrew, shell installers, direct-download installation, containers, mirrors, and offline bundles are outside v1.0.0 distribution scope. Windows is also not a v1.0.0 daemon target. The npm bootstrapper detects it before downloading or modifying anything and explains that support is planned for the next iteration.
 
 The npm bootstrap and native artifact design is in [npm release and distribution](./08-release-and-packaging.md).
 
-The default installation is unprivileged and per-user. It must not require `sudo` to install a user service or write credentials. A separately designed system-wide installation may be offered for managed fleet images.
+Setup supports both service scopes. `user` is the default and does not require elevation. `system` is an explicit option for shared machines, managed fleets, system agents, and integrations that must run before login or need machine-level access; installing or changing it requires `sudo`.
 
 ### Setup flow
 
 `failproofai setup` performs these steps:
 
-1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing AgentEye collector.
-2. **Choose Login or OSS** — show the two choices in the existing branded CLI selector. **Login** is selected by default, but the user can move to **OSS** before continuing.
-3. **Optional sign-in** — only after choosing Login, authenticate and create a time-bounded pending enrollment. Browser sign-in is preferred; device code supports headless machines.
-4. **Optional machine identity** — only after choosing Login, propose a display name and reserve a pending cloud machine identity. It is not activated yet.
-5. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
-6. **Choose policies** — preserve current builtin selection and custom/convention policy discovery. On a connected machine, show cloud assignments as an additional source.
-7. **Choose observability** — explain which local session sources can be captured and where their data goes. Require explicit selection before transcript capture is enabled.
-8. **Install the service** — write configuration and any optional credentials, register the service, start it, and wait for IPC readiness.
-9. **Verify end to end** — run a harmless synthetic hook request and verify enabled local capabilities. For Login, exchange the pending enrollment for the machine credential, acknowledge the machine, and activate its identity only after local verification succeeds. Enrollment, credential exchange, activation, status lookup, and deactivation all use one stable setup-transaction idempotency key.
-10. **Report completion** — show enabled harnesses, local policy state, service health, and local dashboard; add organization/machine/dashboard links only after connected activation succeeds.
+1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing FailproofAI collector.
+2. **Choose service scope** — show **User** by default and **System** as the elevated machine-wide option. Explain affected users, paths, service manager, and required privileges before continuing.
+3. **Choose Login or OSS** — show the two choices in the existing branded CLI selector. **Login** is selected by default, but the user can move to **OSS** before continuing.
+4. **Optional sign-in** — only after choosing Login, authenticate and create a time-bounded pending enrollment. Browser sign-in is preferred; device code supports headless machines.
+5. **Optional machine identity** — only after choosing Login, propose a display name and reserve a pending Failproof Cloud machine identity. It is not activated yet.
+6. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
+7. **Choose policies** — preserve current builtin selection and custom/convention policy discovery. On a connected machine, show Failproof Cloud assignments as an additional source.
+8. **Choose observability** — explain which local session sources can be captured and where their data goes. Require explicit selection before transcript capture is enabled.
+9. **Install the service** — write configuration and any optional credentials, register the selected service scope, start it, and wait for IPC readiness.
+10. **Verify end to end** — run a harmless synthetic hook request and verify enabled local capabilities. For Login, exchange the pending enrollment for the machine credential, acknowledge the machine, and activate its identity only after local verification succeeds. Enrollment, credential exchange, activation, status lookup, and deactivation all use one stable setup-transaction idempotency key.
+11. **Report completion** — show service scope, enabled harnesses, local policy state, service health, and local dashboard; add organization/machine/dashboard links only after connected activation succeeds.
 
 Setup is transactional across local and cloud effects. If a later step fails, it restores the previous harness configuration and service state, revokes any issued machine credential, and idempotently cancels a pending identity or deactivates an already-activated identity using the stable setup transaction key. An ambiguous activation response is resolved by querying activation status with that same key before retrying or compensating; activation retries cannot create a second machine. Pending enrollments expire server-side if the client disappears before compensation, and activated-but-uncommitted identities are marked by the server for expiry unless setup durably commits. Re-running setup resumes or replaces the same transaction rather than creating duplicates. It never leaves half-installed hooks pointing at a missing daemon or an apparently active cloud machine with no healthy service.
 
@@ -73,7 +74,7 @@ The mode step should read approximately:
 ```text
 ◆ How do you want to use FailproofAI?
 
-  ❯ Login   Local policies + AgentEye, centralized policy management,
+  ❯ Login   Local policies + Failproof Cloud, centralized policy management,
             machine/agent/session targeting, fleet health, and cloud sync.
 
     OSS     No account or cloud required. Builtin and custom policies,
@@ -96,6 +97,20 @@ The new setup steps reuse the current polished `failproofai config` wizard rathe
 
 After the user selects a mode, the completed step stays visible as `Login · <organization>` or `OSS · local only`. Returning to the step and changing the choice updates the remaining flow before anything is applied.
 
+The service-scope step should read approximately:
+
+```text
+◆ Where should FailproofAI run?
+
+  ❯ User     Runs for this user after login. No sudo required.
+             Uses this user's policies, credentials, activity, and agent hooks.
+
+    System   Runs for the whole machine, including before user login.
+             Requires sudo and supports system agents and multiple users.
+```
+
+Selecting System triggers a second confirmation naming the root-owned service and state locations. Setup requests elevation only when ready to apply the reviewed plan; exploring or cancelling the wizard never invokes `sudo`.
+
 ### Non-interactive and managed installation
 
 Standalone automation uses the same operation with structured inputs and no credential:
@@ -103,6 +118,7 @@ Standalone automation uses the same operation with structured inputs and no cred
 ```sh
 failproofai setup \
   --non-interactive \
+  --service-scope user \
   --mode oss \
   --harness claude --harness codex
 ```
@@ -110,8 +126,9 @@ failproofai setup \
 Connected automation adds enrollment explicitly:
 
 ```sh
-failproofai setup \
+sudo failproofai setup \
   --non-interactive \
+  --service-scope system \
   --mode login \
   --enrollment-token "$TOKEN" \
   --machine-name build-runner-07 \
@@ -122,6 +139,20 @@ failproofai setup \
 Secrets must not appear in generated service definitions or process arguments after enrollment. The one-time enrollment token is exchanged for a rotatable machine credential and then discarded.
 
 The command returns machine-readable failure codes and supports `--json`. Re-running it converges the installation to the requested state instead of creating duplicate services, identities, or hooks.
+
+`--service-scope user|system` is required in non-interactive mode so automation never crosses a privilege boundary accidentally. Interactive setup defaults to `user`. A system-scoped run without sufficient privilege prints the exact `sudo` command to rerun; it never silently falls back to user scope.
+
+### Service-scope behavior
+
+User scope installs a systemd user service on Linux or a LaunchAgent on macOS. Its executable, configuration, credentials, logs, policy state, and socket are owned by that user. It manages only harness configuration selected by that user and normally starts at login.
+
+System scope installs a systemd system service on Linux or a LaunchDaemon on macOS. Its executable, service definition, machine configuration, credentials, update state, and shared data are root-owned. It can start at boot and serve system agents and explicitly enrolled local users. Installing, updating, repairing, or uninstalling this scope requires `sudo`; normal hook evaluation does not.
+
+A system daemon authenticates every Unix-socket client using operating-system peer credentials and maintains separate per-user policy generations, session indexes, spools, quotas, and access control. A user can inspect only their own data unless an explicit administrator operation is used. Root-owned machine policies may apply to every user; user and project policies remain owned and scoped to their user.
+
+System scope must never turn user-authored JavaScript or TypeScript policy into root code. The daemon launches the legacy policy worker with the requesting user's UID/GID, restricted groups, environment and filesystem access, resource limits, and platform sandbox controls. Root-owned machine policies use the constrained native policy representation or an equivalently restricted worker. Policy provenance and execution identity are recorded with every decision.
+
+Only one service endpoint handles a given user's harness hooks. Setup detects an existing opposite-scope installation and offers an explicit transactional switch; it does not register duplicate hooks or let user and system daemons race. Installing the system daemon does not automatically rewrite every user's harness configuration. Each user or an administrator-managed deployment explicitly enrolls the intended harnesses.
 
 ## Standalone OSS use
 
@@ -134,13 +165,13 @@ failproofai policies --install --custom ./company-policies.mjs
 
 They may also place convention policies in `.failproofai/policies/` at project or user scope. The daemon watches and atomically reloads them, while invalid changes retain the last known-good generation and appear in local health.
 
-No account, API key, machine enrollment, or AgentEye backend is required. Policy source code, configuration, activity, and local dashboard data remain on the machine unless the user deliberately connects an external destination.
+No account, API key, machine enrollment, or Failproof Cloud connection is required. Policy source code, configuration, activity, and local dashboard data remain on the machine unless the user deliberately connects an external destination.
 
-## Connected cloud-tier use
+## Failproof Cloud use
 
 Connected users gain an additional cloud workflow:
 
-1. inspect AgentEye sessions, findings, or analysis;
+1. inspect FailproofAI sessions, findings, or analysis;
 2. create or select a policy;
 3. choose organization, environment, machine, agent, or session targets;
 4. deploy in observe mode;
@@ -153,11 +184,11 @@ The local daemon reconciles these changes automatically. A user does not run a s
 Local policy files, builtin policies, and convention discovery remain active on a connected machine. The CLI labels every source and scope:
 
 ```text
-SOURCE       SCOPE             MODE       POLICY
-Cloud        organization      enforce    block-secret-exfiltration
-Cloud        agent:codex       observe    require-tests-before-stop
-Local        user              enforce    block-sudo
-Local        project           enforce    repository-boundary
+SOURCE           SCOPE          MODE       POLICY
+Failproof Cloud  organization   enforce    block-secret-exfiltration
+Failproof Cloud  agent:codex    observe    require-tests-before-stop
+Local            user           enforce    block-sudo
+Local            project        enforce    repository-boundary
 ```
 
 ## Local CLI
@@ -244,26 +275,28 @@ The daemon-unavailable behavior is explicit. During migration the hook client ma
 
 ## Uninstall and data ownership
 
-`failproofai uninstall`:
+`failproofai uninstall --service-scope user` or `sudo failproofai uninstall --service-scope system`:
 
 1. disables installed harness integrations;
-2. stops and removes the user service;
+2. stops and removes the selected service scope;
 3. revokes the machine credential when the installation is connected, or records revocation for its next connection;
 4. removes installed executables and update state;
 5. preserves local policy files, logs, pending events, and configuration by default.
 
 `--purge` additionally removes retained local state after showing exactly which directories and undelivered records will be deleted. Cloud data and organization policy are not deleted by uninstalling one machine.
 
-Migration from the standalone AgentEye collector preserves pending and failed batches until `failproofaid` proves ownership and delivery health. Uninstall during the rollback window must be able to restore the old collector rather than strand its data.
+System-scope uninstall removes the root-owned service and machine installation but preserves per-user policy and undelivered state by default. It does not delete another user's files. Purging shared or per-user state requires explicit administrator selection of each target.
+
+Migration from the standalone FailproofAI collector preserves pending and failed batches until `failproofaid` proves ownership and delivery health. Uninstall during the rollback window must be able to restore the old collector rather than strand its data.
 
 ## UX acceptance criteria
 
 - A standalone user can reach a healthy daemon and one enforced synthetic hook through one setup command without an account or network connection.
 - Every current OSS policy authoring, discovery, scope, CLI, harness, activity, dashboard, and audit behavior has a compatibility test and remains available.
-- Connecting the cloud tier does not disable or subordinate user-authored local policy.
+- Connecting Failproof Cloud does not disable or subordinate user-authored local policy.
 - Re-running setup is idempotent.
 - Setup failure restores prior service and harness configuration.
-- No default per-user installation requires elevation.
+- Interactive setup defaults to user scope without elevation; system scope is explicit, requires `sudo`, and passes the same lifecycle suite.
 - Users can identify the exact policy revision and assignment responsible for a decision.
 - Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - Collection consent names each enabled source and can be revoked independently.

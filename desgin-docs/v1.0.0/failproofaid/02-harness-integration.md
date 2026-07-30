@@ -44,7 +44,7 @@ Each harness adapter declares a versioned capability descriptor:
 - behavior of stop-class nonzero responses, including whether they retry;
 - configuration scopes and files used to register the adapter.
 
-Capability descriptors are code and test data, not prose-only documentation. `failproofaid` records the descriptor version used for every decision so AgentEye can distinguish a policy allow from a harness that could not enforce the result.
+Capability descriptors are code and test data, not prose-only documentation. `failproofaid` records the descriptor version used for every decision so FailproofAI can distinguish a policy allow from a harness that could not enforce the result.
 
 ## Registration strategies
 
@@ -113,7 +113,7 @@ Canonicalization must preserve evidence about absent or uncertain fields. An inf
 
 ## Session lifecycle
 
-Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by cloud assignments and AgentEye.
+Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by Failproof Cloud assignments and observability.
 
 When explicit lifecycle events do not exist, the daemon derives a session boundary from documented identifiers and activity. The adapter descriptor records this identity quality. Session-scoped enforcement is enabled only when the identity is strong enough to avoid applying a policy to the wrong run.
 

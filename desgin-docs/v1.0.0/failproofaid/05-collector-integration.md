@@ -2,7 +2,7 @@
 
 ## Goal
 
-`failproofaid` replaces the standalone AgentEye collector without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
+`failproofaid` replaces the standalone FailproofAI collector without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
 
 ## Capabilities to preserve
 
@@ -54,7 +54,7 @@ Health reports pending count/bytes, oldest age, last acknowledged delivery, retr
 
 ## State migration
 
-Migration from `~/.agenteye/` is explicit and resumable:
+Migration from the legacy collector state directory is explicit and resumable:
 
 1. discover the old service, configuration, credentials, pending/failed files, and checkpoints;
 2. acquire an ownership lock so old and new collectors cannot process the same source simultaneously;

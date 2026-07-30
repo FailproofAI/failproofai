@@ -28,10 +28,10 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 
 ## Local IPC
 
-- Linux and macOS use an owner-only Unix domain socket under the user's runtime directory.
+- User scope uses an owner-only Unix domain socket under the user's runtime directory. System scope uses a root-owned socket reachable by enrolled users and authorizes every request from operating-system peer credentials.
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
-- Peer identity is verified where supported.
+- Peer identity is mandatory. System scope maps it to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
 - Hook and administrative operations are distinct protocol operations.
 
 Windows transport and service integration are deferred beyond v1.0.0. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
@@ -91,7 +91,7 @@ To keep that migration possible, the harness contract terminates at `failproofai
 
 ## Configuration and state
 
-The canonical user root is `~/.failproofai/`, overridable for tests and managed deployments:
+The canonical user root is `~/.failproofai/`, overridable for tests:
 
 ```text
 ~/.failproofai/
@@ -110,6 +110,8 @@ The canonical user root is `~/.failproofai/`, overridable for tests and managed 
 ```
 
 Credentials use the operating-system credential store where practical; an owner-only file is the portability fallback. Secrets never appear in service definitions or routine process arguments.
+
+System scope uses platform system locations: root-owned configuration under `/etc/failproofai` and mutable state under `/var/lib/failproofai` on Linux, with platform-appropriate `/Library` locations on macOS. Per-user material beneath system state is keyed by numeric UID, never an untrusted username, and remains inaccessible to other users. Exact paths are part of the platform packaging contract.
 
 Configuration is schema-versioned and written transactionally. File notifications prompt reload, while periodic reconciliation is the correctness backstop. Project policy caches are bounded by memory and entry count and invalidated by resolved input changes.
 

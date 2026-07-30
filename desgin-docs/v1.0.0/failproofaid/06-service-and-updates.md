@@ -2,14 +2,22 @@
 
 ## Service model
 
-The default is one service per OS user because agent configuration, transcript stores, policy files, and credentials belong to that user.
+Setup selects one explicit service scope:
 
-- Linux: systemd user service.
-- macOS: launchd LaunchAgent.
+| Scope | Linux | macOS | Starts | Privilege to manage |
+|---|---|---|---|---|
+| `user` (default) | systemd user service | LaunchAgent | user login | none |
+| `system` | systemd system service | LaunchDaemon | machine boot | `sudo`/root |
+
+User scope owns only that user's configuration, credentials, policies, transcripts, activity, and socket. System scope supports system agents and multiple explicitly enrolled users. Its service files, machine credentials, shared state, executable activation, and update metadata are root-owned.
+
+System scope is a privileged supervisor, not a blanket root execution context. Unix-socket peer credentials select a per-UID policy/session context. User-authored policy workers run with that user's UID/GID, reduced groups and environment, resource limits, and platform sandboxing. Per-user queues, storage quotas, and authorization prevent cross-user reads or resource starvation. Only administrator-owned machine policy may be assigned machine-wide.
+
+One user is bound to one endpoint. Setup detects user/system conflicts and transactionally switches hook registrations; both services may exist on a machine only when their enrolled user sets do not overlap. A system installation does not rewrite all users' harness files implicitly.
 
 Windows is explicitly outside the v1.0.0 service and updater scope. Its service model, named-pipe transport, executable activation, packaging, and rollback design belong to the next iteration.
 
-Service configuration contains executable and state paths but no secrets. Installation, status, restart, and uninstall use native service-manager APIs or carefully bounded commands.
+Service configuration contains executable and state paths but no secrets. Installation, status, restart, and uninstall use native service-manager APIs or carefully bounded commands. User-scope operations never request elevation. System-scope mutations require `sudo`; the running system service and its updater already possess the authority needed for unattended activation and never store a sudo password.
 
 ## Update ownership
 
@@ -62,7 +70,7 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 
 ## Platform policy
 
-- Standalone Linux/macOS installations can auto-activate signed releases.
+- User- and system-scoped Linux/macOS installations can auto-activate signed releases within their own ownership boundary.
 - npm owns the bootstrap package only; the standalone updater owns the stable native installation created by setup.
 
 ## Update acceptance criteria
@@ -74,4 +82,5 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 - Failed readiness or health automatically restores the prior healthy release.
 - A suppressed failed version is not retried until manual action or a newer release.
 - The installed service reports active, staged, available, previous, and rolled-back versions.
-- The full acceptance suite passes independently for systemd user services and launchd LaunchAgents.
+- The full acceptance suite passes independently for systemd user services, systemd system services, LaunchAgents, and LaunchDaemons.
+- System-scope tests prove peer isolation, per-user quotas, privilege dropping, and that user policy code cannot execute with root authority.

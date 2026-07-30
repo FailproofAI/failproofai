@@ -18,7 +18,7 @@
 ## Phase 2: collector convergence
 
 - Move collector modules into the daemon with conformance behavior intact.
-- Migrate pending state and checkpoints from `~/.agenteye/`.
+- Migrate pending state and checkpoints from the legacy collector state directory.
 - Prove single ownership, delivery health, and rollback before removing the old service.
 
 ## Phase 3: cloud-managed local enforcement
@@ -52,7 +52,7 @@
 - Cloud outage and daemon restart preserve last known-good enforcement.
 - Local policy behavior is identical before, during, and after optional cloud enrollment.
 - Invalid or partial generations never activate.
-- AgentEye attributes each decision to exact policy and assignment revisions.
+- Failproof Cloud attributes each decision to exact policy and assignment revisions.
 - Collector crash/replay tests prove durable, idempotent delivery.
 - Broken updates roll back automatically on every supported platform.
 

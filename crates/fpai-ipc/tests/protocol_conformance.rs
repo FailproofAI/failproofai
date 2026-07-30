@@ -61,6 +61,7 @@ const EVALUATE_HOOK_OP: &str = r#"{
         "project_dir": null,
         "env_facts": { "CLAUDE_PROJECT_DIR": null }
       },
+      "enabled_policies": ["block-sudo", "block-env-files"],
       "deadline_ms": 800,
       "shadow": false
     }

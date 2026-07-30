@@ -24,34 +24,56 @@ import type { EvaluationRequest } from "../../src/hooks/request-envelope";
 // ── handler-level mocks (used only by the last describe block) ─────────────
 // Hoisted file-wide by vitest. None of them is reachable from daemon-client.ts,
 // which imports `EvaluationResult` from policy-evaluator as a *type* only.
-vi.mock("../../src/hooks/hooks-config", () => ({
+// Every one spreads the real module first. A factory that returns only the
+// exports this file names *replaces* the module — every other export becomes
+// undefined for anything that resolves it while this mock is registered.
+//
+// That is not theoretical. The first version of this file stubbed
+// `hooks-config` with `readMergedHooksConfig` alone, which deleted its other
+// nine exports including `syncConventionPolicies`. Locally nothing noticed;
+// in CI, where the worker-to-file grouping differs with the core count, four
+// unrelated convention-policy suites failed with
+// `No "syncConventionPolicies" export is defined on the mock`. The bug was in
+// this file and the symptom was in theirs — which is the expensive kind.
+//
+// Spreading costs nothing and makes a partial mock actually partial.
+vi.mock("../../src/hooks/hooks-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hooks-config")>()),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: ["block-sudo"] })),
 }));
-vi.mock("../../src/hooks/builtin-policies", () => ({
+vi.mock("../../src/hooks/builtin-policies", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/builtin-policies")>()),
   registerBuiltinPolicies: vi.fn(),
 }));
-vi.mock("../../src/hooks/policy-evaluator", () => ({
+vi.mock("../../src/hooks/policy-evaluator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/policy-evaluator")>()),
   evaluatePolicies: vi.fn(),
 }));
-vi.mock("../../src/hooks/policy-registry", () => ({
+vi.mock("../../src/hooks/policy-registry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/policy-registry")>()),
   clearPolicies: vi.fn(),
   registerPolicy: vi.fn(),
   getPoliciesForEvent: vi.fn(() => []),
 }));
-vi.mock("../../src/hooks/custom-hooks-loader", () => ({
+vi.mock("../../src/hooks/custom-hooks-loader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/custom-hooks-loader")>()),
   loadAllCustomHooks: vi.fn(() => Promise.resolve({ hooks: [], conventionSources: [] })),
 }));
-vi.mock("../../src/hooks/hook-activity-store", () => ({
+vi.mock("../../src/hooks/hook-activity-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-activity-store")>()),
   persistHookActivity: vi.fn(),
 }));
-vi.mock("../../src/hooks/hook-telemetry", () => ({
+vi.mock("../../src/hooks/hook-telemetry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-telemetry")>()),
   trackHookEvent: vi.fn(() => Promise.resolve()),
   flushHookTelemetry: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("../../lib/telemetry-id", () => ({
+vi.mock("../../lib/telemetry-id", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/telemetry-id")>()),
   getInstanceId: vi.fn(() => "test-instance-id"),
 }));
-vi.mock("../../src/hooks/hook-logger", () => ({
+vi.mock("../../src/hooks/hook-logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-logger")>()),
   hookLogInfo: vi.fn(),
   hookLogWarn: vi.fn(),
   hookLogError: vi.fn(),

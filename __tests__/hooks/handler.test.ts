@@ -2,15 +2,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleHookEvent } from "../../src/hooks/handler";
 
-vi.mock("../../src/hooks/hooks-config", () => ({
+vi.mock("../../src/hooks/hooks-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hooks-config")>()),
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: ["block-sudo"] })),
 }));
 
-vi.mock("../../src/hooks/builtin-policies", () => ({
+vi.mock("../../src/hooks/builtin-policies", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/builtin-policies")>()),
   registerBuiltinPolicies: vi.fn(),
 }));
 
-vi.mock("../../src/hooks/policy-evaluator", () => ({
+vi.mock("../../src/hooks/policy-evaluator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/policy-evaluator")>()),
   evaluatePolicies: vi.fn(() => ({
     exitCode: 0,
     stdout: "",
@@ -21,7 +24,8 @@ vi.mock("../../src/hooks/policy-evaluator", () => ({
   })),
 }));
 
-vi.mock("../../src/hooks/policy-registry", () => ({
+vi.mock("../../src/hooks/policy-registry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/policy-registry")>()),
   clearPolicies: vi.fn(),
   registerPolicy: vi.fn(),
   // handler.ts reads this back after evaluation to record which policies
@@ -29,24 +33,29 @@ vi.mock("../../src/hooks/policy-registry", () => ({
   getPoliciesForEvent: vi.fn(() => []),
 }));
 
-vi.mock("../../src/hooks/custom-hooks-loader", () => ({
+vi.mock("../../src/hooks/custom-hooks-loader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/custom-hooks-loader")>()),
   loadAllCustomHooks: vi.fn(() => Promise.resolve({ hooks: [], conventionSources: [] })),
 }));
 
-vi.mock("../../src/hooks/hook-activity-store", () => ({
+vi.mock("../../src/hooks/hook-activity-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-activity-store")>()),
   persistHookActivity: vi.fn(),
 }));
 
-vi.mock("../../src/hooks/hook-telemetry", () => ({
+vi.mock("../../src/hooks/hook-telemetry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-telemetry")>()),
   trackHookEvent: vi.fn(() => Promise.resolve()),
   flushHookTelemetry: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("../../lib/telemetry-id", () => ({
+vi.mock("../../lib/telemetry-id", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/telemetry-id")>()),
   getInstanceId: vi.fn(() => "test-instance-id"),
 }));
 
-vi.mock("../../src/hooks/hook-logger", () => ({
+vi.mock("../../src/hooks/hook-logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/hook-logger")>()),
   hookLogInfo: vi.fn(),
   hookLogWarn: vi.fn(),
   hookLogError: vi.fn(),

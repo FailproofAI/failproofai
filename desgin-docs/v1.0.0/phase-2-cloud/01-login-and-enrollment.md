@@ -20,7 +20,7 @@ The daemon reconciles these changes automatically. A user does not run a sync co
 
 ## Setup
 
-Phase 2 inserts steps into the Phase 1 setup flow rather than replacing it. The Phase 1 steps — preflight, boundary disclosure, integrations, policies, observability, install, verify, report — stay in the same order and keep the same meaning.
+Phase 2 inserts steps into the Phase 1 setup flow rather than replacing it. The Phase 1 steps — preflight, integrations, policies, observability, install, verify, report — stay in the same order and keep the same meaning.
 
 The mode choice comes first, because it determines whether the enrollment steps run at all:
 

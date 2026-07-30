@@ -237,7 +237,9 @@ A stale socket from a killed daemon is unlinked and rebound after the daemon con
 
 ### What the state directory is and is not
 
-The state directory is the daemon's working memory: generations, activity, health, checkpoints, catalog state, and admitted artifacts. It is the user's, like everything else, and the design does not pretend otherwise — the sentence "protected artifacts live outside the user's home" has been removed from these documents rather than weakened, because in this release there are no protected artifacts.
+The state directory is the daemon's working memory: generations, activity, health, checkpoints, catalog state, and admitted artifacts. It is the user's, like everything else.
+
+Earlier drafts of this design put artifacts a decision depends on on paths whose every component was owned by root or a service account, on the argument that delete and rename permission come from the parent directory — so a user who owns `~` can rename an unwritable subdirectory aside and substitute their own, whatever its mode. That argument is still correct, and it is why the [`managed` layout](./04-service-and-updates.md#deferred-scopes) looks the way it does. This release simply has no artifact for it to apply to: everything here is the user's by design, and no claim is made that any of it is not.
 
 What it still needs is **integrity against crashes**, which is a different problem and one that is entirely solvable here. Generations publish atomically; a failed candidate never partially replaces active state; catalog activation is crash-consistent in the ordering [04](./04-service-and-updates.md#catalog-update-transaction) specifies; the spool's state machine survives power loss. Configuration is schema-versioned and written transactionally. File notifications prompt reload, while periodic reconciliation is the correctness backstop. Project policy caches are bounded by memory and entry count and invalidated by resolved input changes.
 

@@ -125,7 +125,7 @@ The final review should read approximately:
     Cancel
 ```
 
-Nothing in this flow requests elevation, and nothing it writes is outside the two directories it names.
+Nothing in this flow requests elevation, and the review names every place it writes: the two directories, the harness settings files, and the service definition in the user's own service-manager directory.
 
 ### Non-interactive installation
 

@@ -3,7 +3,7 @@
 ## 0.0.16-beta.0 — 2026-07-30
 
 ### Docs
-- Add a versioned home for the failproofai v1.0.0 design documents.
+- Add a versioned home for the failproofai v1.0.0 design documents. (#625)
 
 ## 0.0.15-beta.1 — 2026-07-29
 

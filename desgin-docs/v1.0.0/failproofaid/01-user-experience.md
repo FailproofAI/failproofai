@@ -49,7 +49,7 @@ Homebrew, shell installers, direct-download installation, containers, mirrors, a
 
 The npm bootstrap and native artifact design is in [npm release and distribution](./08-release-and-packaging.md).
 
-Setup supports three service scopes. `managed` is recommended and preselected: its daemon runs as a dedicated `_failproofai` service account, and its configuration, policy store, and state live outside both root and the agent user's authority. Installing or changing it requires `sudo` once; nothing runs as root afterwards. `system` remains available for fleet-managed machines that require root-owned `/etc` configuration or must serve agents running as root. `user` remains available without elevation, with an explicit cooperative-enforcement warning.
+Setup supports three service scopes. `managed` is recommended and preselected: its daemon runs as a dedicated `_failproofai` service account, and its configuration, policy store, and state live outside the agent user's authority. Root remains fully authoritative over all of it — the boundary this buys is against the enrolled user whose agent is being governed, not against an administrator. Installing or changing it requires `sudo` once; nothing runs as root afterwards. `system` remains available for fleet-managed machines that require root-owned `/etc` configuration or must serve agents running as root. `user` remains available without elevation, with an explicit cooperative-enforcement warning.
 
 ### Setup flow
 
@@ -150,36 +150,48 @@ The command returns machine-readable failure codes and supports `--json`. Re-run
 
 User scope installs a systemd user service on Linux or a LaunchAgent on macOS. Its executable, configuration, credentials, logs, policy state, and socket are owned by that user. It manages only harness configuration selected by that user and normally starts at login.
 
-Managed scope installs a systemd system service on Linux or a LaunchDaemon on macOS that runs as a dedicated `_failproofai` service account rather than as root. Its configuration, credentials, policy store, schema-catalog state, spool, and socket are owned by that account; its executables are root-owned and world-executable so a compromised daemon cannot rewrite itself. It starts at boot and serves explicitly enrolled local users. Creating the account, installing, explicitly upgrading, repairing, or uninstalling this scope requires `sudo` once; the running service never holds root, and normal hook evaluation requires no elevation.
+Managed scope installs a systemd system service on Linux or a LaunchDaemon on macOS that runs as a dedicated `_failproofai` service account rather than as root. It starts at boot and serves explicitly enrolled local users. Creating the account, installing, explicitly upgrading, repairing, or uninstalling this scope requires `sudo` once; the running service never holds root, and normal hook evaluation requires no elevation.
+
+Ownership inside a managed install is split so the daemon cannot rewrite what it is supposed to enforce. Executables, the pinned runtime, the protected policy store, and the active schema catalog are root-owned and read-only to the service account; only the privileged installer writes them, during an elevated operation. The service account owns just the mutable runtime surface — spool, caches, per-user state, health, logs, and the socket directory. A compromised daemon can therefore corrupt its own telemetry, but cannot replace the binary it restarts from or the policy revision it evaluates.
 
 System scope is the same service running as root with configuration in root-owned `/etc`. It exists for fleet-managed machines whose configuration management owns `/etc`, and for serving agents that themselves run as root. It is not more tamper-resistant than managed scope against an ordinary agent, and it has a strictly larger blast radius if the daemon is compromised, so managed is preferred wherever both apply.
 
-Managed and system scope are the choices for tamper-resistant enforcement. Setup imports protected policies into an immutable content-addressed store owned by the service account, and restricts daemon administration to that account and `sudo`. User scope remains fully functional but is explicitly described as cooperative: an agent running with the user's authority may be able to change user-owned policy, hooks, or service state.
+Managed and system scope are the choices for tamper-resistant enforcement. Setup imports protected policies into a root-owned immutable content-addressed store and restricts daemon administration to root and `sudo`. User scope remains fully functional but is explicitly described as cooperative: an agent running with the user's authority may be able to change user-owned policy, hooks, or service state.
 
 #### Protected state lives outside the user's home
 
 Ownership alone does not protect a directory inside a user's home. Delete and rename permission come from the parent directory, so a user who owns `~` can rename `~/.failproofai` aside and create a replacement they own, regardless of who owned the original. A sticky bit on `~` does not help, because the user can remove it.
 
-Managed and system scope therefore keep every protected artifact on a path whose components are all owned by the service account or root — configuration, the policy store, per-user protected state, the runtime socket directory, and any co-installed AgentEye state. Nothing enforcement depends on is reachable by a rename in the user's home. This also removes the substitution attack that user scope cannot close: with the socket directory owned by the service account, an agent can connect to the daemon but cannot unlink the socket and bind an impostor that answers `allow`.
+Managed and system scope therefore keep every protected artifact on a path whose components are all owned by root or the service account — configuration, the policy store, per-user protected state, the runtime socket directory, and any co-installed AgentEye state. Nothing enforcement depends on is reachable by a rename in the user's home. This also removes the substitution attack that user scope cannot close: with the socket directory owned by the service account, an agent can connect to the daemon but cannot unlink the socket and bind an impostor that answers `allow`.
 
 User scope keeps its `~/.failproofai/` layout unchanged. It cannot make this guarantee and does not claim to.
 
-#### Only removal needs to be privileged
+#### Adding a policy is unprivileged; removing one is not
 
-Results combine as `deny` over `instruct` over `allow` with no suppression absent an authorized override, so a policy a user adds can only make enforcement stricter. It cannot weaken, cancel, or shadow a protected policy. The privileged boundary therefore covers removing, disabling, or altering an admitted policy — not authoring or discovering one.
+This is a statement about policy administration, not about installation — creating the service account, installing the release, and registering the service all require `sudo`.
+
+Results combine as `deny` over `instruct` over `allow` with no suppression absent an authorized override, so a policy a user adds can only make enforcement stricter. It cannot weaken, cancel, or shadow a protected policy. Within policy administration, the privileged boundary therefore covers removing, disabling, or altering an *admitted* policy — a committed revision in the protected store — and not authoring or discovering a `mutable` one.
 
 Convention discovery keeps working exactly as it does today in every scope. Files under project and user `.failproofai/policies/` remain user-owned, are labeled `mutable`, and take effect without elevation. Only promotion into the protected store requires `sudo`.
 
+In managed and system scope these user-owned sources are **additive, non-authoritative inputs**. They never join the protected generation, always route to the `user-context` tier, and can only tighten a result. A user replacing the directory they live in therefore changes only their own additional restrictions; it cannot alter, disable, or weaken anything in the protected store.
+
 #### Where policies execute
 
-Neither managed nor system scope may turn user-authored JavaScript or TypeScript into service-account or root code, and a verdict computed in a process running as the requesting user cannot be trusted by the daemon — that user can `ptrace` it, preload into it, or replace the interpreter. Evaluation is therefore split into two tiers, **derived from the capabilities a policy declares rather than chosen by its author**:
+Neither managed nor system scope may turn user-authored JavaScript or TypeScript into service-account or root code, and a verdict computed in a process running as the requesting user cannot be trusted by the daemon — that user can `ptrace` it, preload into it, or replace the interpreter. Evaluation is therefore split into two tiers:
 
-| Tier | Runs as | May read user files | Verdict |
-|---|---|---|---|
-| `sealed` | the service account, in the daemon's pinned runtime | no | unforgeable |
-| `user-context` | the requesting UID | yes | forgeable by that user |
+| Tier | Runs as | Filesystem, subprocess, network | Verdict | Available in |
+|---|---|---|---|---|
+| `sealed` | the service account, in the pinned runtime | unavailable | unforgeable | managed and system scope |
+| `user-context` | the requesting UID | granted, bounded by that user's own authority | forgeable by that user | every scope |
 
-Most policies never touch the filesystem. Tool name, command, file path, and old/new content already arrive in the hook payload, so builtins such as `block-sudo`, `block-env-files`, and `block-secrets-write` evaluate in the `sealed` tier and are genuinely tamper-proof. A policy that declares filesystem, subprocess, or network access is admitted to the `user-context` tier instead — it keeps working, and because it can only tighten, a forged `allow` from it is worthless. Policy provenance, declared capabilities, and execution tier are recorded with every decision, and `policies explain` reports the tier so nobody has to infer it.
+Most policies never touch the filesystem. Tool name, command, file path, and old/new content already arrive in the hook payload, so builtins such as `block-sudo`, `block-env-files`, and `block-secrets-write` evaluate in the `sealed` tier and are genuinely tamper-proof. A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier instead — it keeps working, and because it can only tighten, a forged `allow` from it is worthless.
+
+**A policy's own declaration is not the trust boundary.** An author controls what their policy declares, so under-declaring would otherwise be a way into the `sealed` tier. Two independent mechanisms prevent that. Admission derives the requirement itself, from the policy's resolved import graph rather than its manifest, and routes on what it finds. And the `sealed` runtime is deny-by-default at the boundary: the context exposes no filesystem, process, or network bindings at all, so a policy that under-declares does not escape the tier — it fails inside it, visibly, and trips the circuit breaker for its artifact. The declaration is a routing hint and a diagnostic, never a grant. Native addons are refused from `sealed` outright for the same reason: a pinned digest prevents substitution but does nothing to constrain what native code does once loaded.
+
+`sealed` exists only where the runtime and policy store are outside the agent's authority, which means managed and system scope. In user scope every policy evaluates with the user's own authority, and no verdict-integrity claim is made or displayed.
+
+Policy provenance, resolved capabilities, and execution tier are recorded with every decision, and `policies explain` reports the tier so nobody has to infer it.
 
 #### Endpoint and attachment
 
@@ -319,7 +331,10 @@ The daemon-unavailable behavior is explicit. During migration the hook client ma
 2. stops and removes the selected service scope;
 3. revokes the machine credential when the installation is connected, or records revocation for its next connection;
 4. removes installed executables, the pinned policy runtime, and harness schema-catalog state;
-5. preserves local policy files, logs, pending events, and configuration by default.
+5. securely erases the local machine credential and any cached token, retaining only a non-secret revocation tombstone when revocation could not be delivered;
+6. preserves local policy files, logs, pending events, and non-secret configuration by default.
+
+Credentials are never part of preserved state. An uninstall performed offline must leave nothing on disk that could still authenticate, which is why step 5 is unconditional rather than a consequence of a successful revocation call.
 
 `--purge` additionally removes retained local state after showing exactly which directories and undelivered records will be deleted. Cloud data and organization policy are not deleted by uninstalling one machine.
 
@@ -329,7 +344,7 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 
 ## UX acceptance criteria
 
-- A standalone user can reach a healthy daemon and one enforced synthetic hook through one setup command without an account or network connection.
+- A standalone user can reach a healthy daemon and one enforced synthetic hook through one setup command without an account, and can then operate entirely offline. Installation itself requires network access in v1.0.0, since npm bootstrap is the only supported distribution path.
 - Every current OSS policy authoring, discovery, scope, CLI, harness, activity, dashboard, and audit behavior has a compatibility test and remains available.
 - Connecting Failproof Cloud does not disable or subordinate user-authored local policy.
 - Re-running setup is idempotent.
@@ -338,8 +353,12 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 - Users can identify the exact policy revision, assignment, declared capabilities, and execution tier responsible for a decision.
 - Managed and system scope prevent unprivileged daemon/policy administration and report the true attachment protection level for every harness.
 - No protected artifact in managed or system scope is reachable by renaming a directory the user owns.
-- A managed-scope daemon holds no root privilege at runtime and never executes an interpreter or dependency from a user-writable path.
-- A policy declaring filesystem, subprocess, or network access is admitted to the `user-context` tier and labeled as such; tier is derived from declared capabilities and cannot be overridden by the author.
+- A managed-scope daemon holds no root privilege at runtime, never executes an interpreter or dependency from a user-writable path, and cannot write its own executables, pinned runtime, protected policy store, or schema catalog.
+- A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier and labeled as such. Tier is derived from the resolved import graph, not from the policy's own declaration, and a policy that under-declares fails inside `sealed` rather than escaping it.
+- The `sealed` tier is offered only in managed and system scope; user scope makes no verdict-integrity claim.
+- Native addons are refused from the `sealed` tier.
+- User-owned convention policies are additive and non-authoritative in managed and system scope, and replacing the directory containing them cannot weaken a protected policy.
+- Uninstall leaves no credential on disk, including when performed offline.
 - A user-added policy can tighten enforcement and can never weaken, cancel, or shadow a protected one.
 - Promotion into the protected store yields one digest covering the policy and every dependency, and evaluation resolves nothing from a mutable path.
 - Removing or altering an enabled FailproofAI hook is detected and semantically repaired without overwriting unrelated harness settings; explicit disable/uninstall is not repaired.

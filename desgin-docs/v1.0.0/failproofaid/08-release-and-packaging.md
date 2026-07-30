@@ -8,7 +8,7 @@ v1.0.0 has one supported installation and distribution path:
 npx failproofai@latest setup
 ```
 
-The goal is to make the existing npm experience work end to end for Linux and macOS. Homebrew, shell installers, direct-download installation, containers, mirrored registries, and air-gapped bundles are explicitly deferred. The release pipeline may use internal native archives, but they are implementation artifacts consumed by the npm bootstrapper rather than separate customer installation products.
+The goal is to make the existing npm experience work end to end for Linux and macOS. Homebrew, shell installers, direct-download installation, containers, mirrored registries, and air-gapped bundles are explicitly deferred. Installation therefore requires network access to npm and the native release channel; the offline guarantee elsewhere in this design covers operation after installation, not installation itself. The release pipeline may use internal native archives, but they are implementation artifacts consumed by the npm bootstrapper rather than separate customer installation products.
 
 ## Customer experience
 
@@ -70,7 +70,9 @@ All components are tested and published together. Internal protocol/schema versi
 
 ### Pinned policy runtime
 
-The `sealed` execution tier must not run an interpreter an enrolled user can write to, and a runtime resolved through `PATH` commonly lands in a version manager's directory under that user's home. The release therefore ships its own runtime, installed root-owned beside the binaries and referenced by an absolute path recorded at install time.
+The `sealed` execution tier must not run an interpreter an enrolled user can write to, and a runtime resolved through `PATH` commonly lands in a version manager's directory under that user's home. The release therefore ships its own runtime, referenced by an absolute path recorded at install time rather than resolved at spawn.
+
+Its protection is a property of the install layout, not of the artifact. In managed and system scope it installs root-owned and read-only to the service account, which is what lets the `sealed` tier claim verdict integrity. In user scope it installs inside the user's own `~/.local/share/failproofai/versions/<version>/` tree like every other component, so it gives determinism and reproducibility but no protection against the user who owns it — user scope therefore has no `sealed` tier, and the protected-runtime guarantee is scoped accordingly wherever it is stated.
 
 Because promotion into the protected store compiles a policy and its import graph into one artifact, a runtime that is also a bundler removes a separate toolchain from the release. Shipping a runtime means owning its patch cadence: its version, digest, and upstream advisories are part of the release manifest and the SBOM, and a runtime-only security fix is a normal explicit upgrade through the same npm setup path.
 
@@ -102,9 +104,9 @@ These artifacts have deterministic names and layouts. They are fetched only by t
 
 macOS uses the platform-appropriate user data root with the same logical layout.
 
-For `--service-scope managed` and `--service-scope system`, the same versioned layout installs root-owned under a platform system location (`/opt/failproofai/` on Linux), while configuration, state, logs, and the runtime socket directory live under service-account-owned system paths (`/var/lib/failproofai/`, `/run/failproofai/`); system scope additionally uses root-owned `/etc/failproofai`. The bootstrap downloads and verifies without elevation where possible, then requests `sudo` only for the bounded phase that creates the service account, installs the release, and registers the service. It never copies unverified bytes into a privileged location.
+For `--service-scope managed` and `--service-scope system`, the same versioned layout installs root-owned under a platform system location (`/opt/failproofai/` on Linux). Machine configuration and the content-addressed policy store are root-owned under `/var/lib/failproofai/` (system scope additionally uses `/etc/failproofai`), while mutable runtime state, logs, and the socket directory (`/run/failproofai/`) belong to the service account. The bootstrap downloads and verifies without elevation where possible, then requests `sudo` only for the bounded phase that creates the service account, installs the release, and registers the service. It never copies unverified bytes into a privileged location.
 
-Ownership within a privileged install is deliberately split again: executables and the pinned runtime are root-owned and world-executable, while everything mutable belongs to the service account. The daemon can therefore read its policy store and write its state without being able to modify the binary it will be restarted from. No path to any of it passes through a directory an enrolled user owns, because rename and delete permission come from the parent.
+Ownership within a privileged install is deliberately split by writer: everything a decision's integrity depends on — executables, the pinned runtime, the policy store, the schema catalog, machine configuration — is root-owned and read-only to the service account, written only by the privileged installer. The service account owns only what the daemon must write while running. The daemon can therefore read its policy store and write its state without being able to modify the binary it will be restarted from, the runtime it evaluates in, or the revision it evaluates. No path to any of it passes through a directory an enrolled user owns, because rename and delete permission come from the parent.
 
 Ownership is intentionally split:
 
@@ -154,6 +156,7 @@ Build jobs do not receive long-lived signing or npm credentials. Signing and pub
 - Publish immutable native prerelease artifacts and signed manifest.
 - Publish the npm package under the `beta` dist-tag.
 - From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, schema refresh/rollback, explicit binary upgrade, and uninstall.
+- Run the same sequence end to end inside a clean container that mimics a real user install — native download and signature verification, `setup` in each service scope, service readiness, an enforced synthetic hook, and `uninstall` — so the gate exercises a machine with no developer toolchain, no prior FailproofAI state, and no repository checkout.
 
 ### Promote stable
 
@@ -170,8 +173,9 @@ A bad release is removed from `latest` and the native download channel. Immutabl
 ## npm acceptance criteria
 
 - `npx failproofai@latest setup` works in user scope and in explicitly elevated managed and system scope on clean supported Linux and macOS machines.
-- A privileged install creates the service account idempotently, leaves executables root-owned and mutable state service-account-owned, and places nothing enforcement depends on inside a user's home.
+- A privileged install creates the service account idempotently, leaves the protected surface root-owned and read-only to that account, and places nothing enforcement depends on inside a user's home.
 - The pinned runtime's version and digest appear in the release manifest and SBOM, and the daemon never executes an interpreter outside the installed release.
+- The release gate includes a clean-container run covering download, verification, `setup`, service readiness, an enforced synthetic hook, and `uninstall`.
 - No npm lifecycle script is required or declared.
 - The npx cache can disappear immediately after setup without affecting the service.
 - The bootstrapper never executes an unverified native artifact.

@@ -20,7 +20,7 @@ Phase 2 is the genuinely new management plane: machine enrollment into Failproof
 6. [Delivery plan](./06-delivery-plan.md) — stages, acceptance criteria, and unresolved decisions.
 7. [npm release and distribution](./07-release-and-packaging.md) — the single npm bootstrap path, native artifact pipeline, signing, and channel promotion.
 
-The [implementation plan](./implementation/) says how this gets built: the Rust/TypeScript boundary, six sequenced stages with entry and exit gates, the verification strategy including a full-stack Docker acceptance gate, and six amendments these documents need.
+The [implementation plan](./implementation/) says how this gets built: the Rust/TypeScript boundary, six sequenced stages with entry and exit gates, the verification strategy including a full-stack Docker acceptance gate, and the record of six amendments since folded into these documents.
 
 ## Settled decisions
 

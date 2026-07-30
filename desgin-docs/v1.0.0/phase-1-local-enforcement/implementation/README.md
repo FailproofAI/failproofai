@@ -10,7 +10,7 @@ The design documents one directory up say *what* Phase 1 is and *why*. These say
 
 1. [Stages](./01-stages.md) — the six stages, each with entry and exit gates.
 2. [Verification](./02-verification.md) — the test strategy per layer, and the full-stack Docker acceptance gate.
-3. [Risks and design-doc amendments](./03-risks-and-amendments.md) — what can go wrong, and six places the design docs are incomplete or wrong.
+3. [Risks and design-doc amendments](./03-risks-and-amendments.md) — what can go wrong, and the record of six corrections since folded into the design documents.
 
 ## What problem the sequencing solves
 
@@ -26,7 +26,7 @@ Phase 1 moves enforcement behind a boundary the agent cannot administer. The ris
 |---|---|---|
 | Sealed JS engine | **QuickJS-ng via `rquickjs`**, gated by a Stage-0 spike | ~1 MB against V8's +30–45 MB on each of four tarballs `npx` downloads. Deny-by-default is structural rather than a syscall filter, and a fresh context per evaluation costs microseconds, so no state crosses evaluations. |
 | Builtins ported to Rust? | **No.** All 39 stay JavaScript, inside the sealed engine | The boundary is the process, UID, and absent bindings — not the language. Porting buys no security, does nothing for user-authored policies (the actual compatibility promise), and the `regex` crate cannot express the lookbehind in `extractAbsolutePaths`. |
-| Protected policy enablement | **Root-owned `machine.json`** | Enablement currently lives in a user-writable file, so an agent deletes `block-sudo` from a JSON array and the unforgeable verdict never runs. Disabling a pinned policy now needs `sudo`. |
+| Protected policy enablement | **Root-owned `machine.json`** | Enablement currently lives in a user-writable file, so an agent deletes `block-sudo` from a JSON array and the unforgeable verdict never runs. Disabling a pinned policy will need `sudo`. Not built yet — it lands with the privileged install at Stage 3, and until then the daemon evaluates the client's resolved enabled set. |
 | Distribution | **npm bootstrapper + independently-signed tarballs** | `optionalDependencies` platform packages collapse the two trust layers into one, move a ~40 MB download from `setup` to dependency resolution, and reproduce the esbuild silent-missing-binary failure under `--omit=optional`. `packages/` is never created. |
 | Native response rendering | JS in the sealed worker first; catalog data at Stage 4 | Same endpoint, sequenced by risk. `policy-evaluator.ts` is preserved byte-for-byte until parity is proven. |
 | Rust location | This repo, Cargo workspace at the root | Both implementations must consume the same fixture bytes. A second repository makes that a permanent submodule-sync problem. |

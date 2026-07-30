@@ -95,7 +95,7 @@ A verdict computed in a process owned by the requesting user cannot be trusted b
 
 | Tier | Process | Filesystem, subprocess, network | Verdict integrity |
 |---|---|---|---|
-| `sealed` | the daemon's pinned runtime, running as the service account | denied | unforgeable |
+| `sealed` | the daemon's own sealed runtime, running as the service account | denied | unforgeable |
 | `user-context` | a worker running as the requesting UID | granted, bounded by that user's own authority | forgeable by that user |
 
 The tier is derived at admission and cannot be overridden by an author or by configuration. This is a statement about what is physically achievable, not a configuration knob.

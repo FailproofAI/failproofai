@@ -12,6 +12,9 @@
 - Render the Policies dashboard loading ellipsis instead of displaying the literal Unicode escape text `\u2026`. (#623)
 - Make dashboard toggle state follow the same project/local/user config merge as runtime enforcement, remove an enabled policy's opt-out from every contributing scope, and isolate unreadable explicit policy files so one bad file cannot leave the Configure tab loading forever. (#623)
 
+### Docs
+- Explain the AgentEye CLI device-login approval flow, including matching-email sign-in, short-code verification, scoped approval, and why the link alone cannot authorize a device. (#626)
+
 ## 0.0.15-beta.0 — 2026-07-23
 
 ### Dependencies

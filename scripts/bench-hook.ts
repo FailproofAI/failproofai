@@ -113,6 +113,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -166,7 +167,27 @@ const DIST_DIR = resolve(REPO_ROOT, "dist");
 const DIST_CLI = resolve(DIST_DIR, "cli.mjs");
 const DIST_INDEX = resolve(DIST_DIR, "index.js");
 
+/**
+ * A private snapshot of `dist/`, taken once at startup and used for every
+ * iteration thereafter (`FAILPROOFAI_DIST_PATH` and the calibration binary both
+ * point here, not at the shared `dist/`).
+ *
+ * This is not paranoia. A full capture is tens of thousands of cold processes
+ * over the better part of an hour, and `dist/` is a shared, gitignored build
+ * output that any other `bun run build:cli` in the repo rewrites in place. The
+ * first attempt at this baseline lost 27,345 of 36,888 iterations to exactly
+ * that: a concurrent rebuild landed mid-run and every worker after it failed.
+ * The snapshot makes the measurement depend on nothing that can change while it
+ * runs. It lives inside WORK_DIR, which is inside the repo, so node still
+ * resolves the `--external` packages from the repo's own `node_modules`.
+ */
+const SNAPSHOT_DIST_DIR = resolve(WORK_DIR, "dist");
+const SNAPSHOT_CLI = resolve(SNAPSHOT_DIST_DIR, "cli.mjs");
+
 const MARKER = "##FPAI-BENCH##";
+
+/** Fraction of failed iterations above which the run is not trustworthy. */
+const MAX_FAILURE_RATE = 0.01;
 
 // ── Phases ─────────────────────────────────────────────────────────────────
 
@@ -457,13 +478,12 @@ function assertHandlerShape(): void {
  * `process.exit()` the moment `handleHookEvent` returns.
  *
  * That hard exit is load-bearing, not tidiness — and this benchmark is how we
- * found out. `handler.ts` wraps every custom hook in
- * `Promise.race([hook.fn(ctx), new Promise((_, reject) => setTimeout(reject, 10_000))])`
- * and never clears the timer when the hook wins the race. The pending timer
- * keeps Node's event loop alive, so a process that merely *returns* sits idle
- * for a further ten seconds. Only `bin/failproofai.mjs`'s unconditional
- * `process.exit()` masks it today. Without this mirror, the custom-policy
- * variant's p95 was 10,088 ms.
+ * found out: a hook process that merely *returns* stays alive for as long as
+ * anything is still pending on the event loop. `handler.ts` races every custom
+ * hook against a `setTimeout(…, 10_000)`, and on the first attempt at this
+ * baseline the custom-policy variant reported a 10,088 ms p95 — it was timing a
+ * pending timer, not a hook. Mirroring the shipping client's exit is the only
+ * way this harness measures what the shipping client measures.
  *
  * `writeSync(1, …)` rather than `process.stdout.write` because stdout to a pipe
  * is asynchronous in Node, and `process.exit()` would truncate it.
@@ -694,7 +714,7 @@ function workerEnv(sandbox: Sandbox): NodeJS.ProcessEnv {
   // milliseconds of unrelated variance. Both the worker and the calibration run
   // of the real binary set this, so they stay comparable.
   env.FAILPROOFAI_TELEMETRY_DISABLED = "1";
-  env.FAILPROOFAI_DIST_PATH = DIST_DIR;
+  env.FAILPROOFAI_DIST_PATH = SNAPSHOT_DIST_DIR;
   env.HOME = sandbox.home;
   env.CLAUDE_PROJECT_DIR = sandbox.project;
   delete env.FAILPROOFAI_LOG_LEVEL;
@@ -717,6 +737,8 @@ interface Sample {
 
 let clampedOtherCount = 0;
 let failedIterations = 0;
+let totalIterations = 0;
+const failureSamples: string[] = [];
 
 function runOnce(cell: Cell, sandbox: Sandbox, nodeBin: string): Sample | null {
   const payload = JSON.stringify(buildPayload(cell, sandbox.project, "/dev/null"));
@@ -732,15 +754,17 @@ function runOnce(cell: Cell, sandbox: Sandbox, nodeBin: string): Sample | null {
   });
   const e2e = nowEpochMs() - t0;
 
+  totalIterations += 1;
   const out = r.stdout ?? "";
   const idx = out.lastIndexOf(MARKER);
   if (r.status !== 0 || idx < 0) {
     failedIterations += 1;
-    if (failedIterations <= 3) {
-      process.stderr.write(
-        `\n[bench] worker failed for ${cellKey(cell)} (status ${String(r.status)}):\n` +
-          `${(r.stderr ?? "").slice(0, 2000)}\n`,
-      );
+    if (failureSamples.length < 5) {
+      const msg =
+        `worker failed for ${cellKey(cell)} (status ${String(r.status)}): ` +
+        (r.stderr ?? "").slice(0, 600).replace(/\s+/g, " ").trim();
+      failureSamples.push(msg);
+      process.stderr.write(`\n[bench] ${msg}\n`);
     }
     return null;
   }
@@ -892,6 +916,10 @@ function buildWorkerBundle(bunBin: string): void {
     { cwd: REPO_ROOT, stdio: "inherit" },
   );
   if (r.status !== 0) throw new Error("bundling the bench worker failed");
+  // Freeze `dist/` for the duration of the run — see SNAPSHOT_DIST_DIR.
+  mkdirSync(SNAPSHOT_DIST_DIR, { recursive: true });
+  cpSync(DIST_CLI, SNAPSHOT_CLI);
+  cpSync(DIST_INDEX, resolve(SNAPSHOT_DIST_DIR, "index.js"));
   writeFileSync(
     NOOP_SCRIPT,
     `process.stdout.write("${MARKER}" + JSON.stringify({t: performance.timeOrigin + performance.now()}) + "\\n");\n`,
@@ -1019,7 +1047,10 @@ interface Baseline {
     maxRelDelta: number;
   };
   diagnostics: {
+    totalIterations: number;
     failedIterations: number;
+    failureRate: number;
+    failureSamples: string[];
     clampedOtherSamples: number;
   };
 }
@@ -1434,7 +1465,11 @@ function renderMarkdown(b: Baseline): string {
         ],
         ["iterations per cell", String(b.config.iterations)],
         ["discarded warmup iterations per cell", String(b.config.warmup)],
-        ["failed iterations (excluded)", String(b.diagnostics.failedIterations)],
+        [
+          "iterations attempted / failed",
+          `${b.diagnostics.totalIterations} / ${b.diagnostics.failedIterations} ` +
+            `(${fmt(b.diagnostics.failureRate * 100, 2)}%)`,
+        ],
         [
           "samples where the four phases summed above wall clock (clamped)",
           String(b.diagnostics.clampedOtherSamples),
@@ -1523,12 +1558,11 @@ function renderMarkdown(b: Baseline): string {
   );
   out.push(
     "- **The harness hard-exits after emitting its report**, mirroring " +
-      "`bin/failproofai.mjs`, which calls `process.exit()` the moment " +
-      "`handleHookEvent` returns. This matters: `handler.ts` races every custom hook against " +
-      "a `setTimeout(..., 10_000)` it never clears, so a hook process that merely *returns* " +
-      "keeps Node's event loop alive for a further ten seconds. Only that unconditional " +
-      "`process.exit()` masks it. Before the harness mirrored it, the custom-policy variant's " +
-      "p95 was 10,088 ms.",
+      "`bin/failproofai.mjs`, which calls `process.exit()` the moment `handleHookEvent` " +
+      "returns. That is not cosmetic: a hook process that merely *returns* stays alive as " +
+      "long as anything is still pending on the event loop, so without the mirror the " +
+      "custom-policy variant measured a 10,088 ms p95 on the first attempt at this baseline " +
+      "\u2014 it was timing a pending `setTimeout`, not a hook.",
   );
   out.push(
     "- **`transcript_path` is `/dev/null`** and the sandbox `HOME` is empty, so " +
@@ -1750,6 +1784,23 @@ async function main(): Promise<void> {
   }
   process.stderr.write("\n");
 
+  // A capture this long shares a machine with whatever else is running in the
+  // repo. If a meaningful slice of iterations failed, the percentiles below are
+  // computed over a biased survivor set — refuse to write an artifact that
+  // looks authoritative and is not.
+  const failureRate = totalIterations === 0 ? 1 : failedIterations / totalIterations;
+  if (failureRate > MAX_FAILURE_RATE) {
+    process.stderr.write(
+      `\n[bench] ABORT: ${failedIterations}/${totalIterations} iterations failed ` +
+        `(${fmt(failureRate * 100, 1)}%, limit ${fmt(MAX_FAILURE_RATE * 100, 1)}%).\n` +
+        `[bench] Nothing was written. First failures:\n` +
+        failureSamples.map((m) => `  - ${m}\n`).join("") +
+        `[bench] The usual cause is something else in the repo rebuilding while this ran.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   // ── Calibration against the real client ──
   // Skipped under --check: neither the calibration nor the repeat probe feeds
   // the regression comparison, and a check that takes as long as a full capture
@@ -1763,7 +1814,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < opts.calibrationIterations + opts.warmup; i++) {
       const payload = JSON.stringify(buildPayload(cell, calSandbox.project, "/dev/null"));
       const t0 = nowEpochMs();
-      spawnSync(nodeBin, [DIST_CLI, "--hook", nativeEventName(cell.cli, cell.event), "--cli", cell.cli], {
+      spawnSync(nodeBin, [SNAPSHOT_CLI, "--hook", nativeEventName(cell.cli, cell.event), "--cli", cell.cli], {
         input: payload,
         cwd: calSandbox.project,
         env: workerEnv(calSandbox),
@@ -1905,7 +1956,10 @@ async function main(): Promise<void> {
       maxRelDelta: repeatRows.length === 0 ? 0 : round(Math.max(...repeatRows.map((r) => r.relDelta)), 4),
     },
     diagnostics: {
+      totalIterations,
       failedIterations,
+      failureRate: round(failureRate, 5),
+      failureSamples,
       clampedOtherSamples: clampedOtherCount,
     },
   };

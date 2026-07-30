@@ -107,3 +107,7 @@ COMMIT_MSG.tmp
 /canary.env
 /integration-suite-state.json
 /cli-integration-state.json
+
+# Scratch from scripts/bench-hook.ts. It snapshots dist/ here at startup so a
+# concurrent build cannot corrupt an in-flight measurement run.
+/.bench-hook-tmp/

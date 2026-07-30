@@ -4,7 +4,7 @@
 
 ### Docs
 - Add a versioned home for the failproofai v1.0.0 design documents. (#625)
-- Draft the Rust `failproofaid` architecture for unified local enforcement, centrally managed machine/agent/session policy assignments, AgentEye collection, and rollback-safe automatic updates. (#625)
+- Draft the Rust `failproofaid` design as focused documents covering installation and use, agent-harness integration, local enforcement, centrally managed policy, AgentEye collection, rollback-safe updates, and signed multi-channel package distribution. (#625)
 
 ## 0.0.15-beta.1 — 2026-07-29
 

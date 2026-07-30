@@ -4,4 +4,4 @@ This directory contains checked-in design documents for the next major version o
 
 ## Documents
 
-- [failproofaid architecture](./failproofaid-architecture.md) — unified background service for enforcement, collection, and updates.
+- [`failproofaid` design](./failproofaid/) — user experience, harness integration, daemon architecture, cloud policy management, collector convergence, updates, and delivery plan.

@@ -61,7 +61,7 @@
 
 1. Enforcement p95/p99 targets and per-harness maximum deadlines.
 2. Default behavior after migration when the daemon is unavailable.
-3. Runtime used for legacy local JavaScript/TypeScript policy.
+3. Which runtime is pinned and shipped for the `sealed` tier, and its patch cadence. A runtime that is also a bundler removes a separate toolchain from admission.
 4. Sandboxed/declarative format for cloud-created policy in the Rust plane.
 5. Collector sources required for v1 release day.
 6. Default observability consent and capture choices.
@@ -73,3 +73,8 @@
 12. Whether narrower scope may disable organization policy and which controls are mandatory.
 13. Propagation SLO and maximum policy staleness for ordinary/emergency changes.
 14. Targeting attributes permitted to leave a machine.
+15. Which mechanism launches the `user-context` worker — a per-user service in that user's own service manager, a privileged spawn helper, or the hook client. All three end in a process the requesting user can already `ptrace`, so this is an operational choice about supervision and cold-start latency against the enforcement deadline, not a security one.
+16. Whether `managed` scope supersedes `system` scope entirely. System scope currently earns its place only through root-owned `/etc` configuration for fleet tooling and serving agents that run as root; if neither materializes with customers, the third option should be removed rather than maintained.
+17. Credential model for protected policies that need remote state. A `sealed` policy cannot read the developer's `~/.config/gh` and needs its own machine credential or a brokered token.
+18. Freshness bounds and staleness semantics for the collection-lane cache that policies read instead of performing their own I/O.
+19. Capability vocabulary a policy declares at admission, and how an existing custom policy's requirements are inferred when it declares nothing.

@@ -20,8 +20,14 @@ Target: failproofai v1.0.0
 ## Settled decisions
 
 - `failproofaid` is implemented in Rust.
-- Setup explicitly selects a `system` or `user` service scope; `system` is recommended and preselected because it places enforcement outside the agent's authority.
-- System scope is the tamper-resistant enforcement boundary: agents cannot administer the daemon or modify protected policy revisions with their own user authority.
+- Setup explicitly selects a `managed`, `system`, or `user` service scope; `managed` is recommended and preselected because it places enforcement outside the agent's authority without running anything as root.
+- Managed scope is the tamper-resistant enforcement boundary: the daemon runs as a dedicated `_failproofai` service account, and agents cannot administer it or modify protected policy revisions with their own user authority. System scope is the same service running as root, retained for fleet-managed machines and root-owned agents.
+- Protected artifacts never live inside a user's home. Rename and delete permission come from the parent directory, so ownership alone cannot protect a path under `~`.
+- Only removal is privileged. Because results combine `deny` over `instruct` over `allow`, a user-added policy can only tighten enforcement, so convention discovery and unprivileged authoring continue to work in every scope.
+- Policy evaluation is split into a `sealed` tier running as the service account with no filesystem, subprocess, or network access, and a `user-context` tier running as the requesting UID. The tier is derived from a policy's declared capabilities and cannot be chosen by its author.
+- The release ships a pinned policy runtime. The daemon never executes an interpreter or dependency resolved from a user-writable path, and constructs worker environments rather than inheriting them.
+- Promotion into the protected store compiles a policy and its full import graph into one content-addressed artifact; authoring and dependency management stay unprivileged and unchanged.
+- Enforcement performs no unbounded I/O. Policies needing remote state read a cache the collection lane refreshes on its own schedule.
 - v1.0.0 supports Linux and macOS; Windows service, packaging, and daemon support are deferred to the next iteration.
 - The OSS product remains fully usable without an account, organization, Failproof Cloud, or network connection.
 - All current builtin, custom, explicit-file, convention-file, scope, harness, activity, and local-dashboard behavior remains available.

@@ -31,10 +31,10 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 
 ## Local IPC
 
-- User scope uses an owner-only Unix domain socket under the user's runtime directory. System scope uses a root-owned socket reachable by enrolled users and authorizes every request from operating-system peer credentials.
+- User scope uses an owner-only Unix domain socket under the user's runtime directory. Managed and system scope use a socket reachable by enrolled users whose parent directory is owned by the service account or root, so no enrolled user can unlink it and bind a substitute; every request is authorized from operating-system peer credentials.
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
-- Peer identity is mandatory. System scope maps it to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
+- Peer identity is mandatory. Managed and system scope map it to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
 - Hook and administrative operations are distinct protocol operations.
 
 Windows transport and service integration are deferred beyond v1.0.0. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
@@ -70,6 +70,41 @@ Cloud-created policy requires a deterministic, capability-limited representation
 
 Each evaluation has a deadline and resource budget. Repeated timeout, crash, or memory failure trips a circuit breaker for the offending generation or artifact and records structured diagnostics.
 
+### Execution tiers
+
+A verdict computed in a process owned by the requesting user cannot be trusted by a privileged daemon: that user can `ptrace` the process, preload into it, or substitute the interpreter. But a policy that inspects the repository, the diff, or the transcript must run with that user's file access. The two requirements are irreconcilable in one process, so evaluation is split by **declared capability**, not by who authored the policy:
+
+| Tier | Process | Filesystem, subprocess, network | Verdict integrity |
+|---|---|---|---|
+| `sealed` | the daemon's pinned runtime, running as the service account | denied | unforgeable |
+| `user-context` | a worker running as the requesting UID | granted, bounded by that user's own authority | forgeable by that user |
+
+The tier is derived at admission from the capabilities a policy declares and cannot be overridden by its author or by an assignment. This is a statement about what is physically achievable, not a configuration knob.
+
+The `sealed` tier covers more than it first appears. Canonical tool name, command string, file path, and old/new content already arrive in the request envelope, so payload-only builtins evaluate there and produce verdicts an agent cannot forge even with full authority over its own user. A `user-context` policy remains useful because results combine as `deny` over `instruct` over `allow`: it can only tighten, so a forged `allow` from it changes nothing, and a forged `deny` harms only the user who forged it.
+
+Which mechanism launches the `user-context` worker — a per-user service started by that user's own service manager, a helper, or the hook client — is an operational choice, not a security one. Every option terminates in a process the requesting user can already `ptrace`, so the integrity properties are identical and the decision should be made on supervision and cold-start latency.
+
+### Pinned policy runtime
+
+The `sealed` tier must never execute an interpreter the requesting user can write to. Node commonly resolves through nvm, fnm, or volta into a path under the user's home, which is both user-writable and frequently unreadable by a service account; executing it would silently forfeit every guarantee the tier exists to provide.
+
+The daemon therefore uses a runtime shipped with the native release and installed root-owned alongside the binaries, referenced by an absolute path recorded at install time. It resolves nothing through `PATH`. Because promotion into the protected store already compiles policies, a runtime that is also a bundler removes a separate toolchain from the release.
+
+Environment is constructed, never inherited. The hook client's environment originates in the agent's process, which makes `NODE_OPTIONS`, `NODE_PATH`, preload flags, and library-search variables user-controlled injection vectors into anything the daemon spawns. The service definition sets a fixed `PATH`, and worker spawn passes an explicit allowlisted environment.
+
+### Dependencies and admission
+
+Protected policies are compiled, not copied. Admission resolves the full import graph and inlines it into a single content-addressed artifact, so one digest covers the policy and every dependency, nothing is resolved from a mutable path at evaluation time, and the audit record identifies exactly what ran. Native addons cannot be inlined; admission refuses them or stores them alongside with pinned digests.
+
+Authoring is unprivileged and unconstrained — the ordinary package-manager workflow, iterated in the `user-context` tier. Promotion is the privileged step, and it is where the graph is frozen.
+
+### Enforcement performs no unbounded I/O
+
+A policy that needs remote state — pull-request status, CI results, an organization directory — must not fetch it during evaluation. Enforcement runs under a hard monotonic deadline, and a synchronous network call inside a hook makes a third party's availability a precondition for the user running a command.
+
+Remote state is fetched by the collection lane on its own schedule into a local cache with an explicit freshness bound, and the policy reads that cache synchronously. A policy reading stale or absent cached state must be able to distinguish it from a negative result, and the freshness bound is recorded with the decision.
+
 ## Evaluation path
 
 For an accepted hook request, the daemon:
@@ -79,8 +114,8 @@ For an accepted hook request, the daemon:
 3. resolves machine, agent, project, session, event, and tool targeting context;
 4. selects an immutable active generation;
 5. finds all matching policies and assignment effects;
-6. evaluates matching policy locally within the remaining deadline;
-7. combines results deterministically (`deny` over `instruct` over `allow`, absent an authorized suppression);
+6. evaluates matching policy locally within the remaining deadline, routing each one to its admitted execution tier;
+7. combines results deterministically (`deny` over `instruct` over `allow`, absent an authorized suppression), so a `user-context` result can tighten the outcome but never relax a `sealed` one;
 8. writes decision evidence asynchronously to the durable activity spool;
 9. returns a canonical result and decision ID.
 
@@ -114,7 +149,11 @@ The canonical user root is `~/.failproofai/`, overridable for tests:
 
 Credentials use the operating-system credential store where practical; an owner-only file is the portability fallback. Secrets never appear in service definitions or routine process arguments.
 
-System scope uses platform system locations: root-owned configuration under `/etc/failproofai` and mutable state under `/var/lib/failproofai` on Linux, with platform-appropriate `/Library` locations on macOS. Per-user material beneath system state is keyed by numeric UID, never an untrusted username, and remains inaccessible to other users. Exact paths are part of the platform packaging contract.
+Managed and system scope use platform system locations. On Linux, executables and the pinned runtime install root-owned under `/opt/failproofai/versions/<version>/`; configuration, the content-addressed policy store, and mutable state live under `/var/lib/failproofai/`; the runtime socket directory is `/run/failproofai/`. System scope additionally places root-owned configuration under `/etc/failproofai`. macOS uses platform-appropriate `/Library` locations with the same logical layout. Everything except the executables is owned by the service account in managed scope and by root in system scope; the executables are root-owned in both, so a compromised daemon cannot rewrite the binary it will be restarted from.
+
+Per-user material beneath managed or system state is keyed by numeric UID, never an untrusted username, and remains inaccessible to other users. Exact paths are part of the platform packaging contract.
+
+The canonical `~/.failproofai/` root above is the user-scope layout and the location of user-authored source policies in every scope. It is deliberately **not** where managed or system scope keeps anything enforcement depends on. Delete and rename permission derive from the parent directory, so a user who owns their home can rename an unwritable `~/.failproofai` aside and supply a replacement they own — ownership and mode on the directory itself prevent nothing, and a sticky bit on the home directory is removable by the same user. Protected artifacts are therefore reachable only through paths whose every component is owned by the service account or root.
 
 Configuration is schema-versioned and written transactionally. File notifications prompt reload, while periodic reconciliation is the correctness backstop. Project policy caches are bounded by memory and entry count and invalidated by resolved input changes.
 

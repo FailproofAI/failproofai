@@ -276,6 +276,47 @@ fn a_policy_the_sealed_tier_cannot_run_comes_back_as_needs_user_context() {
 }
 
 #[test]
+fn a_peer_whose_uid_matches_is_served() {
+    // The positive half of the peer-UID check. Without it, a check that refused
+    // *everyone* would pass every negative test in this file and the daemon
+    // would answer nothing — which is exactly the shape of failure a
+    // negative-only test cannot see.
+    let h = Harness::start("peer-uid-ok");
+    let mut c = h.connect();
+    let ack = c.handshake();
+    assert_eq!(
+        ack["hello_ack"]["protocol_version"], 1,
+        "a connection from the daemon's own uid must be served"
+    );
+}
+
+#[test]
+fn the_daemon_serves_only_its_own_uid() {
+    // The check itself is a `peer.uid != current_uid()` comparison in
+    // `serve_connection`. Actually connecting as a *different* uid needs a
+    // second account and privilege to become it, which a unit test does not
+    // have — so this asserts the mechanism is wired rather than simulating the
+    // attacker.
+    //
+    // Worth being explicit about why this is not merely ceremony: the check was
+    // documented before it existed. An earlier revision read peer credentials
+    // and used the uid only to derive `home`, while the protocol document
+    // described it as keeping other users out. The source assertion below is
+    // what stops that regressing to a comment again; the live cross-uid case
+    // belongs in the service-lifecycle suite, which has two real accounts.
+    let source = include_str!("../src/server.rs");
+    assert!(
+        source.contains("peer.uid != daemon_uid"),
+        "serve_connection no longer compares the peer uid against the daemon's own; \
+         peer credentials are being read and then not used as a check"
+    );
+    assert!(
+        source.contains("fpai_ipc::current_uid()"),
+        "the daemon's own uid must come from the kernel, not from configuration"
+    );
+}
+
+#[test]
 fn a_request_with_no_enabled_policies_is_refused() {
     // Neither "enforce nothing" nor "backfill the defaults" is a safe reading.
     // The first turns a client bug into a silent allow; the second enforces a

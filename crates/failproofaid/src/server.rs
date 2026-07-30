@@ -339,6 +339,36 @@ fn serve_connection(
     // client's own claims is trusted for anything.
     let peer = peer_credentials(stream)?;
 
+    // And then actually *use* them to refuse a stranger.
+    //
+    // This check was documented before it existed. An earlier revision read the
+    // peer UID and used it only to derive `home`, while `PROTOCOL.md` and the
+    // commit that introduced it both described peer credentials as a "this
+    // connection is mine" check that keeps other users out. It did not: a peer
+    // of any UID was served, with *their* home derived, and the only thing
+    // actually keeping them out was the socket's file mode.
+    //
+    // Defence in depth is the point. `0600` on the socket and `0700` on its
+    // directory are the first line and are enough on a correctly-created
+    // install — but they are filesystem state, and filesystem state drifts: a
+    // permissive umask at creation, a directory restored from a backup, a
+    // `chmod` by a well-meaning script, a future code path that creates the
+    // socket somewhere else. This check does not drift, because it compares two
+    // numbers the kernel supplies.
+    //
+    // v1.0.0 is user scope, so the daemon serves exactly one UID: its own. This
+    // is not a privilege boundary — the owning user can stop the daemon, edit
+    // its config, or `ptrace` it — it is an isolation rule between *different*
+    // users on a shared machine.
+    let daemon_uid = fpai_ipc::current_uid();
+    if peer.uid != daemon_uid {
+        eprintln!(
+            "[failproofaid] refusing connection from uid {} (this daemon serves uid {} only)",
+            peer.uid, daemon_uid
+        );
+        return Ok(());
+    }
+
     let mut reader = stream;
     let mut writer = stream;
 

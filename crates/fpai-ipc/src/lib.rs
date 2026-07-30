@@ -53,4 +53,4 @@ pub use framing::{FrameError, MAX_FRAME_BODY, read_frame, write_frame};
 #[cfg(feature = "tokio")]
 pub use framing::{read_frame_async, write_frame_async};
 #[cfg(unix)]
-pub use peer::{PeerCred, home_for_uid, peer_credentials};
+pub use peer::{PeerCred, current_uid, home_for_uid, peer_credentials};

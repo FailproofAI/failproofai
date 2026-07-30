@@ -39,6 +39,20 @@ pub struct PeerCred {
     pub pid: Option<i32>,
 }
 
+/// This process's own real user ID.
+///
+/// Exists so a listener can compare [`PeerCred::uid`] against itself and refuse
+/// a connection from anyone else. That comparison is the whole reason to read
+/// peer credentials at all in a single-user daemon — without it, reading them
+/// and then using the UID only to look something up is not a check, however it
+/// is described.
+///
+/// `getuid` cannot fail and takes no arguments, so this is total.
+#[must_use]
+pub fn current_uid() -> u32 {
+    Uid::current().as_raw()
+}
+
 /// Read the peer's credentials from the kernel.
 ///
 /// # Errors

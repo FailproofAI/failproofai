@@ -190,12 +190,23 @@ Field notes, in decreasing order of how badly getting them wrong would hurt:
 - **`host.home` MUST be `null`.** The daemon derives it from
   `getpwuid_r(peer_uid)`. A non-null `home` is a **protocol error**
   (`client_asserted_home`) and the request is rejected — not ignored, not
-  overwritten. This is not pedantry: `isAgentInternalPath` and
-  `block-read-outside-cwd` both *widen* the allow set, so a client asserting
-  `home: "/"` would make every path "agent internal" and relax a sealed
-  verdict. Silently overwriting would make the attack a no-op but leave the
-  protocol looking like it accepts the field; rejecting makes a client that
-  tries it fail loudly and visibly.
+  overwritten.
+
+  The reason is correctness rather than defence, and saying so keeps the rule
+  from looking like theatre now that the client and the daemon are the same
+  user. `isAgentInternalPath` and `block-read-outside-cwd` both *widen* the
+  allow set: a `home` of `/` makes every path on the machine "agent internal",
+  so of every host field this is the one where a wrong value silently permits
+  instead of silently denying. The daemon is also resident and answers for
+  sessions it did not start, so a per-request `home` is the only one that can
+  be right at all. Deriving it removes a field that can be wrong; the threat
+  being defended against is a buggy client, and a buggy client is the one that
+  actually happens.
+
+  Rejecting rather than overwriting is deliberate. Overwriting makes a
+  wrong value harmless but leaves the protocol *looking* like it accepts the
+  field, so the next client implementation sets it and the next reviewer
+  believes it means something.
 - **`host.cwd`, `host.project_dir`, `host.env_facts` are client-asserted** and
   cannot be derived. `/proc/<pid>/cwd` is TOCTOU-prone and, on macOS,
   unreadable for a non-matching UID. Any decision whose deciding policy read
@@ -241,10 +252,11 @@ Field notes, in decreasing order of how badly getting them wrong would hurt:
   the defaults". The first turns a client bug into a silent allow; the second
   reinstates the defect.
 
-  Stage 3 moves the authoritative enabled set into a root-owned `machine.json`,
-  at which point it stops being client-asserted at all. Until then it carries
-  exactly the trust the file the legacy path already reads carries — no more,
-  and no less.
+  It stays client-asserted, and in user scope that is not a compromise awaiting
+  a fix: the daemon and the client are the same user, so a set resolved by the
+  client carries exactly the authority a set resolved by the daemon would. The
+  root-owned `machine.json` that would make it unforgeable belongs to the
+  deferred `managed` scope, along with the reason anyone would want it.
 - `deadline_ms` is the **remaining** end-to-end budget, not a per-hop timeout.
   The daemon converts it to a monotonic instant on receipt. If it cannot answer
   within it, it returns `deadline_exceeded` and the client falls back to legacy
@@ -292,12 +304,26 @@ assertion rather than a shape check.
 | `sealed_unattested` | ran sealed, but a deciding policy read `cwd`, `project_dir`, or an env fact |
 | `user_context` | a `user-context` policy contributed to the decision |
 
-`needs_user_context` lists policy names that matched but could not be evaluated
-because no per-user agent was attached. **Stage 1 always returns it empty** and
-the daemon evaluates sealed-only; the one-shot continuation path lands at
-Stage 4. Until then a client seeing a non-empty list must fall back to legacy,
-because otherwise upgrading would silently drop enforcement for a user's
-mutable policies — precisely the failure this product exists to prevent.
+`needs_user_context` lists policy names that matched but that the sealed worker
+cannot run — the seven host-access builtins that spawn `git` or `gh`, and every
+custom or convention policy. **Stage 1 evaluates sealed-only**, so a non-empty
+list means the daemon could not answer the whole question.
+
+A client seeing a non-empty list **must fall back to legacy**, and this is the
+single most important client obligation in the document. Enforcing the subset
+the daemon *could* evaluate would silently drop every policy it could not —
+which is not a degraded answer, it is a wrong one, and it is exactly the
+failure this product exists to prevent. The field was briefly unable to be
+non-empty (the daemon partitioned a list it had supplied itself, which was
+all-sealed by construction) and that made this obligation unreachable; it is
+reachable now because the list comes from the client.
+
+The field's meaning changed with the scope decision and is worth stating
+precisely. It once meant "no per-user agent was attached", because a
+service-account daemon could not reach a user's files and needed a second
+resident process to do it. There is no per-user agent: the daemon runs as the
+user and can spawn `git` itself. Running these policies in the daemon rather
+than returning them is a later stage's work, not a missing process.
 
 ### Errors
 

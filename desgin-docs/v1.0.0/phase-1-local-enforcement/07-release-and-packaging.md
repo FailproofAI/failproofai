@@ -19,11 +19,11 @@ The user needs Node/npm only for bootstrap. Running the command:
 3. detects Linux/macOS and architecture before modifying the machine;
 4. downloads the matching signed native v1 release;
 5. verifies the signed release manifest and artifact digest;
-6. installs the native `failproofai` CLI and `failproofaid` service into a versioned privileged location;
+6. installs the native `failproofai` CLI and `failproofaid` daemon into a versioned directory under `~/.failproofai/`;
 7. continues directly into the setup wizard;
 8. verifies service readiness and reports completion.
 
-There is no separate installer command or system package repository to discover. Because Phase 1 installs one privileged scope, `sudo` is unconditional: the bootstrapper requests it when setup applies the reviewed machine-wide changes, including creating the `_failproofai` service account, and preflight refuses rather than degrading when administrator access or a service manager is unavailable.
+There is no separate installer command and no system package repository to discover, and there is no elevation step at any point. The whole sequence writes inside the user's own tree, so it works identically for a user with root and a user who has never had it. A missing service manager degrades the daemon to `unsupervised` rather than refusing the install.
 
 The bootstrapper rejects unsupported operating systems or architectures before downloading a native artifact or editing configuration. Windows receives a clear next-iteration message.
 
@@ -70,13 +70,13 @@ All components are tested and published together. Internal protocol/schema versi
 
 ### Pinned policy runtime
 
-The `sealed` execution tier must not run an interpreter an enrolled user can write to, and a runtime resolved through `PATH` commonly lands in a version manager's directory under that user's home. The release therefore ships its own runtime, referenced by an absolute path recorded at install time rather than resolved at spawn.
+Evaluation must not depend on whichever interpreter `PATH` happens to expose. A runtime resolved at spawn commonly lands in nvm's, fnm's, or volta's directory and changes when the user switches Node versions, which makes two machines with identical configuration produce different decisions for reasons nobody can see. The release therefore ships its own runtime, referenced by an absolute path recorded at install time.
 
-The `sealed` tier no longer needs that file at all: its engine is QuickJS-ng linked into the `failproofaid` binary, evaluating a bundle embedded at compile time, so the evaluator is part of the signed artifact and there is no path to substitute. The runtime shipped on disk is what the `user-context` tier runs, where real imports and the requesting user's own authority are the point. Everything below therefore describes that one, and it is the subject of [open decision #3](./06-delivery-plan.md#open-decisions).
+The `sealed` tier does not need that file at all: its engine is QuickJS-ng linked into the `failproofaid` binary, evaluating a bundle embedded at compile time, so the evaluator is part of the signed artifact rather than something read back from a state directory that a crash could leave half-written. The runtime shipped on disk is what the `user-context` tier runs, where real imports are the point. Everything below therefore describes that one, and it is the subject of [open decision #3](./06-delivery-plan.md#open-decisions).
 
-Its protection is a property of the install layout, not of the artifact. It installs root-owned and read-only to the service account, which is what lets the `sealed` tier claim verdict integrity. Shipped into a user-owned tree instead, the same artifact would still give determinism and reproducibility but no protection against the user who owns it — which is why the deferred unprivileged scope has no `sealed` tier.
+What shipping it buys is determinism, reproducibility, and an answer to "which runtime decided this" — not protection. It installs into the user's own tree like everything else, and the user who owns it can replace it. That is a property of the scope this version ships, and [deferred scopes](./04-service-and-updates.md#deferred-scopes) is where the layout that would change it is recorded.
 
-Because promotion into the protected store compiles a policy and its import graph into one artifact, a runtime that is also a bundler removes a separate toolchain from the release. Shipping a runtime means owning its patch cadence: its version, digest, and upstream advisories are part of the release manifest and the SBOM, and a runtime-only security fix is a normal explicit upgrade through the same npm setup path.
+Because admission compiles a policy and its import graph into one artifact, a runtime that is also a bundler removes a separate toolchain from the release. Shipping a runtime means owning its patch cadence: its version, digest, and upstream advisories are part of the release manifest and the SBOM, and a runtime-only security fix is a normal explicit upgrade through the same npm setup path.
 
 ## Target matrix
 
@@ -91,7 +91,7 @@ These artifacts have deterministic names and layouts. They are fetched only by t
 
 ## Code signing and notarization
 
-Two of the four rows above are unshippable without this, so it is a release requirement on the critical path rather than a finishing touch. On macOS 15 an unsigned `failproofaid` registered as a LaunchDaemon is terminated rather than run, and `codesign --verify` fails on any MDM-managed fleet whose configuration profile requires a Developer ID identity. The second failure is the quieter and worse one, because it appears on a customer's machine rather than in the release pipeline.
+Two of the four rows above are unshippable without this, so it is a release requirement on the critical path rather than a finishing touch. Running as a LaunchAgent rather than a LaunchDaemon does not relax it. `codesign --verify` fails on any MDM-managed fleet whose configuration profile requires a Developer ID identity, Gatekeeper assesses a downloaded binary on first launch regardless of how it is registered, and an unstapled ticket makes that assessment a network call on a machine this design promises can be offline. The MDM failure is the quietest and worst of the three, because it appears on a customer's machine rather than in the release pipeline. (The sharper failure — macOS 15 terminating an unsigned `failproofaid` outright — belongs to the LaunchDaemon a [deferred scope](./04-service-and-updates.md#deferred-scopes) would register, which is where this requirement was first found.)
 
 Every Mach-O in a macOS artifact is signed with the release Developer ID identity — not only the two executables FailproofAI writes. The `failproofai` CLI, the `failproofaid` daemon, **and the vendored policy runtime**, including any dynamic library it ships, are each signed with `--options runtime` and `--timestamp`, inner binaries before the enclosing archive. The hardened runtime is what notarization requires. The secure timestamp is what keeps an already-shipped signature valid after the signing certificate expires, which matters here more than it does for most products: Phase 1 never replaces a binary automatically, so an installation is expected to keep starting its daemon for years after the release that produced it.
 
@@ -99,14 +99,14 @@ The hardened runtime is also where the pinned runtime's execution model becomes 
 
 Notarization is a separate step from signing, and the release is not shippable until it completes: `notarytool submit --wait` on the signed archive, then `stapler staple` on the artifact. Stapling is not optional here. Without a stapled ticket Gatekeeper resolves the notarization online at first launch, and a machine that installs FailproofAI and then goes offline — the exact operating profile the rest of this design promises — gets an assessment failure instead of a running daemon. Stapling also rewrites the artifact, so its digest must be computed *after* the ticket is attached; a manifest recording the pre-staple digest fails verification on every customer machine while passing every check in the pipeline that produced it.
 
-The installer then strips the quarantine attribute from the extracted tree with `xattr -dr com.apple.quarantine`, defensively. The bootstrapper fetches over its own HTTP client, which does not set the attribute, so this is not the normal path; it exists because an archive that reaches the machine any other way — a proxy that re-archives, a user who downloads the tarball and hands it to setup — carries it, and the resulting failure is a LaunchDaemon that never starts with nothing in the diagnostic pointing at an extended attribute.
+The installer then strips the quarantine attribute from the extracted tree with `xattr -dr com.apple.quarantine`, defensively. The bootstrapper fetches over its own HTTP client, which does not set the attribute, so this is not the normal path; it exists because an archive that reaches the machine any other way — a proxy that re-archives, a user who downloads the tarball and hands it to setup — carries it, and the resulting failure is a LaunchAgent that never starts with nothing in the diagnostic pointing at an extended attribute.
 
 Custody of the signing identity follows the same rule as the release signing key: build jobs never hold it, and signing and notarization run as separate protected jobs over already-built artifacts. It is also a long-lead non-code item — an Apple Developer Program enrollment, a Developer ID certificate, and an App Store Connect API key for `notarytool` — so it is started alongside engineering rather than discovered at the release gate.
 
-## Installation layout and ownership
+## Installation layout
 
 ```text
-/opt/failproofai/
+~/.failproofai/
   versions/
     1.0.0/
       bin/failproofai
@@ -115,15 +115,20 @@ Custody of the signing identity follows the same rule as the release signing key
       harness-schemas/
       release.json
   current -> versions/1.0.0
+  install.json
+  artifacts/
+  state/
+  logs/
+  run/
 ```
 
-macOS uses the platform-appropriate `/Library` root with the same logical layout.
+The same layout on both platforms. Capture state — checkpoints, the spool, the delivery key, and the observability destination — stays in `~/.agenteye/`, where the collector already writes it; see [collector integration](./05-collector-integration.md#state-stays-where-it-already-is).
 
-`install.json` — the record of what a particular `setup` run did on this machine, including the `service_uid` a client checks the socket's owner against before speaking to it — deliberately does not live in that tree. It belongs with machine configuration under `/var/lib/failproofai/`, because the two have different writers: `/opt` is written once per release, while `install.json` is written once per installation, and putting a per-installation record inside a per-release directory means an upgrade either loses it or has to copy it forward. It is root-owned and read-only to the service account for the same reason as everything else there — a `service_uid` an enrolled user could rewrite would defeat the check that reads it.
+`install.json` records what a particular `setup` run did on this machine, including the UID a client checks the socket's owner against before speaking to it. It sits beside `versions/` rather than inside one, because the two have different writers: a version directory is written once per release, while `install.json` is written once per installation, and putting a per-installation record inside a per-release directory means an upgrade either loses it or has to copy it forward.
 
-Everything above is root-owned. Machine configuration, the installation record, the pinned enabled set, and the content-addressed policy store are root-owned under `/var/lib/failproofai/`, while mutable runtime state, logs, and the socket directory (`/run/failproofai/`) belong to the service account. That socket directory is created by systemd's `RuntimeDirectory=` on Linux and by the installer on macOS, where launchd has no equivalent — see [the service model](./04-service-and-updates.md#service-model), because it is the one path whose creation is not the same on both platforms. The bootstrap downloads and verifies without elevation, then requests `sudo` only for the bounded phase that creates the service account, installs the release, and registers the service. It never copies unverified bytes into a privileged location.
+`current` is a symlink so activating a new release is one atomic rename. A partially downloaded or unverified release never becomes `current`, and rolling back to the previous version is repointing the symlink at a directory that was never removed.
 
-Ownership within a privileged install is deliberately split by writer: everything a decision's integrity depends on — executables, the pinned runtime, the policy store, the schema catalog, machine configuration — is root-owned and read-only to the service account, written only by the privileged installer. The service account owns only what the daemon must write while running. The daemon can therefore read its policy store and write its state without being able to modify the binary it will be restarted from, the runtime it evaluates in, or the revision it evaluates. No path to any of it passes through a directory an enrolled user owns, because rename and delete permission come from the parent.
+Nothing is written under `/opt`, `/var/lib`, `/etc`, or `/Library`, and the release gate asserts that with a filesystem diff rather than trusting the installer's own report. The bootstrap downloads and verifies before it writes anything into `versions/`, so an unverified artifact never gets a directory of its own to be found in later.
 
 Ownership is intentionally split:
 
@@ -174,7 +179,8 @@ Build jobs do not receive long-lived signing or npm credentials. Signing and pub
 - Publish immutable native prerelease artifacts and signed manifest.
 - Publish the npm package under the `beta` dist-tag.
 - From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, schema refresh/rollback, explicit binary upgrade, and uninstall.
-- Run the same sequence end to end inside a clean container that mimics a real user install — native download and signature verification, `setup`, service readiness, an enforced synthetic hook, and `uninstall` — so the gate exercises a machine with no developer toolchain, no prior FailproofAI state, and no repository checkout. Because the only shipped scope registers a system service, that container needs a real init running as PID 1; a container without one is a preflight refusal, and the gate must assert that refusal separately rather than skipping the case.
+- Run the same sequence end to end inside a clean container that mimics a real user install — native download and signature verification, `setup`, service readiness, an enforced synthetic hook, and `uninstall` — so the gate exercises a machine with no developer toolchain, no prior FailproofAI state, and no repository checkout. The container runs as an ordinary unprivileged user with no `sudo` installed, which is the strongest available proof that nothing in the install path needs it.
+- Run one leg with a systemd user session so the unit file, `RuntimeDirectory=`, and restart behavior are exercised, and one leg with no service manager at all, asserting that setup still completes, the daemon runs, health reports `unsupervised`, and killing the daemon degrades to in-process evaluation rather than losing the deny.
 
 ### Promote stable
 
@@ -190,11 +196,12 @@ A bad release is removed from `latest` and the native download channel. Immutabl
 
 ## npm acceptance criteria
 
-- `npx failproofai@latest setup` works on clean supported Linux and macOS machines when explicitly elevated, and refuses in preflight when it cannot be.
-- The install creates the service account idempotently, leaves the protected surface root-owned and read-only to that account, and places nothing enforcement depends on inside a user's home.
+- `npx failproofai@latest setup` works on clean supported Linux and macOS machines as an unprivileged user, on an image with no `sudo` installed.
+- The install writes only under `~/.failproofai/`, `~/.agenteye/`, the user's service-manager directory, and the harness settings files it was asked to change, asserted by a before/after filesystem diff that includes the absence of anything under `/opt`, `/var/lib`, `/etc`, and `/Library`.
+- Activating a release is an atomic `current` symlink move, and an interrupted install leaves the previous `current` intact.
 - The pinned runtime's version and digest appear in the release manifest and SBOM, and the daemon never executes an interpreter outside the installed release.
 - Every Mach-O in a macOS artifact, the vendored policy runtime included, is Developer ID signed with the hardened runtime and a secure timestamp; `codesign --verify --deep --strict` and a Gatekeeper assessment both pass on a clean machine.
-- Each macOS artifact is notarized and stapled, its manifest digest is computed after stapling, and its LaunchDaemon starts on a machine that has had no network access since installation.
+- Each macOS artifact is notarized and stapled, its manifest digest is computed after stapling, and its LaunchAgent starts on a machine that has had no network access since installation.
 - The entitlements file matches what the pinned runtime actually requires, and the Linux unit's `MemoryDenyWriteExecute` setting agrees with it.
 - The release gate includes a clean-container run covering download, verification, `setup`, service readiness, an enforced synthetic hook, and `uninstall`.
 - No npm lifecycle script is required or declared.

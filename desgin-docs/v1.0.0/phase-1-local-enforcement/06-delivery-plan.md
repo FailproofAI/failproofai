@@ -17,15 +17,15 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 - Ship the service and native hook client behind opt-in setup.
 - Keep the current evaluator as a bounded migration fallback.
 - Compare daemon and legacy decisions in shadow mode.
-- Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows, including the dashboard's move from a fixed port to a CLI-spawned, token-gated, TTL-bounded listener.
-- Prove the privileged install layout end to end: service-account creation, root-owned protected surface, the root-owned pinned enabled set, `sealed` and `user-context` routing derived from resolved import graphs, and preflight refusal on a machine that cannot host the boundary.
+- Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows, including the dashboard's move from a fixed port to a token-gated, TTL-bounded listener inside the CLI.
+- Prove the user-scope install end to end: no elevation, nothing written outside the user's tree, `sealed` and `user-context` routing derived from resolved import graphs, and the watchdog interrupting a policy that runs past its deadline.
 - Gate expansion on compatibility, deadline success, crash recovery, and resource use.
 
-## Stage 2: collector convergence
+## Stage 2: the daemon does capture
 
 - Move collector modules into the daemon with conformance behavior intact, behind explicit per-source consent.
 - Align captured session identity with enforcement identity so a decision and a session from one harness run join on stable identifiers.
-- Migrate pending state and checkpoints from the legacy collector state directory under an ownership lock.
+- Adopt the collector's existing `~/.agenteye/` state in place, under an ownership lock, with no relocation.
 - Prove single ownership, delivery health, and rollback before removing the old service.
 
 ## Stage 3: harness schema catalog
@@ -51,12 +51,14 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 - Daemon restart preserves last known-good enforcement.
 - Invalid or partial generations never activate.
 - Each decision is attributable to an exact policy revision, generation, execution tier, and attestation, and a decision that read a client-asserted host field is never reported as fully attested.
-- A pinned policy cannot be disabled or reparameterized without elevation, and a user's own configuration can still enable and parameterize policies of its own.
+- Enabling, disabling, and parameterizing any policy works with no elevation, and the daemon's answer equals the answer the same merged configuration produces in process.
+- A policy that runs past its deadline is interrupted out of band and reported distinctly from an evaluation failure.
 - Collector crash/replay tests prove durable, idempotent delivery, and replay creates no duplicate events.
 - Every source resumes from a crash-safe checkpoint, and backfill cannot starve enforcement or recent delivery.
-- Old and new collectors never own the same source concurrently; migration rollback restores a functional standalone collector with its undelivered state.
+- The old collector and the daemon never own the same source concurrently; rollback restores a functional standalone collector in front of the same undelivered state.
 - Broken harness schemas roll back automatically on every supported platform without replacing the daemon.
-- A machine without administrator access or a supported service manager is refused in preflight rather than partially installed.
+- Setup completes with no elevation on a machine with no `sudo`, and completes with the daemon reported `unsupervised` on a machine with no service manager.
+- No shipped user-visible string claims tamper resistance, unforgeability, or protection from the user's own agent.
 
 ## Open decisions
 
@@ -69,14 +71,18 @@ Stages are numbered independently of the Phase 1 / Phase 2 product split. All fi
 7. Application-release signing and trust-root rotation, including custody of the Apple Developer ID identity and `notarytool` credentials that [code signing and notarization](./07-release-and-packaging.md#code-signing-and-notarization) requires. Enrollment and certificate issuance are long-lead non-code items that gate the macOS half of the target matrix.
 8. Catalog refresh cadence, retention, and locally pinned catalog policy.
 9. Retention window for the legacy evaluator, legacy collector state, and the previous release.
-10. Which mechanism launches the `user-context` worker — a per-user service in that user's own service manager, a privileged spawn helper, or the hook client. All three end in a process the requesting user can already `ptrace`, so this is an operational choice about supervision and cold-start latency against the enforcement deadline, not a security one.
-11. Credential model for protected policies that need remote state. A `sealed` policy cannot read the developer's `~/.config/gh` and needs its own machine credential or a brokered token.
-12. Freshness bounds and staleness semantics for the collection-lane cache that policies read instead of performing their own I/O.
-13. Capability vocabulary a policy declares at admission, and how an existing custom policy's requirements are inferred when it declares nothing.
-14. Whether a dashboard toggle of a `mutable` policy writes the user's configuration file directly or goes through a daemon operation. The file is what happens today and needs no new protocol, but #623 already had dashboard toggle state diverge from the runtime project/local/user merge once, and a filesystem write path keeps that logic in two implementations.
-15. Default dashboard TTL, and whether an administrator UI for protected revisions is ever warranted beyond the copyable `sudo` command — an ephemeral `--admin` instance and in-place elevation via polkit / Authorization Services are the two candidates if it is.
-16. Whether the observability delivery key rotates in place, and how a key rejected mid-spool is surfaced without stalling capture.
+10. Worker lifetime for the `user-context` tier — one warm worker per daemon, one per generation, or one spawned per event — traded off against cold-start latency inside the enforcement deadline and against the state-leakage hazard a resident worker introduces.
+11. Freshness bounds and staleness semantics for the collection-lane cache that policies read instead of performing their own I/O.
+12. Capability vocabulary a policy declares at admission, and how an existing custom policy's requirements are inferred when it declares nothing.
+13. Whether a dashboard toggle writes the user's configuration file directly or goes through a daemon operation. The file is what happens today and needs no new protocol, but #623 already had dashboard toggle state diverge from the runtime project/local/user merge once, and a filesystem write path keeps that logic in two implementations.
+14. Default dashboard TTL.
+15. Whether the observability delivery key rotates in place, and how a key rejected mid-spool is surfaced without stalling capture.
+16. Whether setup should offer to run `loginctl enable-linger`, or only report that the daemon will not be running outside a login session.
 
 ## Resolved
 
-**Which service scopes ship: one, `managed`.** A root-owned `system` scope and an unprivileged `user` scope are designed and deferred until a customer needs them, recorded in [deferred scopes](./04-service-and-updates.md#deferred-scopes). Shipping one removes a privilege decision from setup and lets every guarantee in these documents be stated unconditionally instead of qualified three ways. It costs the ability to install without administrator access, which preflight refuses explicitly rather than working around.
+**Which scope ships: one, `user`.** Everything runs as the invoking user, out of `~/.failproofai/` and `~/.agenteye/`, with no service account, no privileged install, and no `sudo`. A `managed` service-account scope and a root `system` scope are designed and deferred until a customer needs them, recorded in [deferred scopes](./04-service-and-updates.md#deferred-scopes). What this costs is the verdict-integrity claim: the `sealed` tier is a warm sandbox with an enforceable deadline, not a boundary the governed agent cannot cross, and no product surface may imply otherwise. What it buys is that the product installs anywhere its user can write, with no privilege decision in setup and no privileged surface to get wrong.
+
+**Where the `user-context` worker comes from.** The daemon spawns it, because the daemon is already the user. What was previously a choice between a per-user service, a privileged spawn helper, and the hook client had only one honest answer once the daemon stopped being a different account.
+
+**Credentials for policies that need remote state.** There is no separate credential model. A `user-context` policy runs as the developer and reads the developer's own `~/.config/gh`, `~/.netrc`, or environment token. Only the freshness rule survives: the fetch belongs to the collection lane, not to the enforcement deadline.

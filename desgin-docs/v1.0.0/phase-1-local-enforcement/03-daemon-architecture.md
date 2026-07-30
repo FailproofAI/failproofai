@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-`failproofaid` is the Rust local enforcement plane. It owns:
+`failproofaid` is the Rust local enforcement plane. It runs as the user whose agents it governs, and it owns:
 
 - local IPC and request admission;
 - desired hook registration, settings-file watching, and automatic reconciliation;
@@ -12,7 +12,9 @@
 - health, diagnostics, logs, and resource limits;
 - signed harness schema-catalog refresh and atomic activation.
 
-The user-facing `failproofai` CLI is a client of the daemon and service manager. Agent harnesses use the smaller hook client described in [Agent harness integration](./02-harness-integration.md).
+One daemon serves one user. There is no per-user agent, no privileged helper, and nothing the daemon delegates to a second resident process — running as the user is what removes the need for any of them, because every file the daemon must read is a file it can already open.
+
+The user-facing `failproofai` CLI is a client of the daemon and service manager. Agent harnesses invoke the same CLI as the smaller hook client described in [Agent harness integration](./02-harness-integration.md).
 
 ## Execution lanes
 
@@ -31,23 +33,27 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 
 ## Local IPC
 
-- The daemon listens on a Unix domain socket reachable by enrolled users, whose parent directory is owned by the service account or root, so no enrolled user can unlink it and bind a substitute; every request is authorized from operating-system peer credentials.
+- The daemon listens on a Unix domain socket in the user's own runtime directory, and every request is authorized from operating-system peer credentials.
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
-- Peer identity is mandatory, and maps to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
-- Hook, query, and administrative operations are distinct protocol operation classes, each with its own authorization rule.
+- Peer identity is mandatory. The daemon serves exactly one UID — its owner — and closes a connection from any other peer.
+- Hook, query, and administrative operations remain distinct protocol operation classes, so a later scope can attach different authorization to each without a wire change.
+
+The peer check is not a privilege boundary; the owner is the only party who could gain anything by connecting, and they already own the daemon. It is an isolation rule for a shared machine, where several users may each be running their own daemon and one user's socket must never answer another user's events. It also rejects the ordinary misconfiguration — a stale `FAILPROOFAI_DAEMON_SOCKET` pointing at somebody else's endpoint — as an error rather than as somebody else's policy set.
 
 Windows transport and service integration are deferred beyond Phase 1. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
 
-Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, `Flush`, and the `Query` set. `Ping` and `EvaluateHook` are implemented; the rest land with the stages that need them, as new operation variants rather than wire changes. Administrative calls can gain stronger authorization later without changing the hook request. The framing, handshake, and envelope as implemented are specified in [`crates/PROTOCOL.md`](../../../crates/PROTOCOL.md), which the daemon, the `fpai-ipc` crate, and the TypeScript hook client are each written against independently — so anything left ambiguous there becomes a silent interoperability bug rather than a loud one.
+Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, `Flush`, and the `Query` set. `Ping` and `EvaluateHook` are implemented; the rest land with the stages that need them, as new operation variants rather than wire changes. The framing, handshake, and envelope as implemented are specified in [`crates/PROTOCOL.md`](../../../crates/PROTOCOL.md), which the daemon, the `fpai-ipc` crate, and the TypeScript hook client are each written against independently — so anything left ambiguous there becomes a silent interoperability bug rather than a loud one.
 
 | Class | Operations | Authorized for |
 |---|---|---|
-| Hook | `EvaluateHook` | any enrolled UID, evaluated in its own context |
-| Query | activity, sessions, transcript access, policy list with source/tier/revision, health, generation identity | any enrolled UID, **results filtered to that UID by peer credential** |
-| Administrative | admit or remove protected revisions, stop, reconfigure, mutate the active protected generation | root peer, or an OS-backed administrator authorization |
+| Hook | `EvaluateHook` | the owning UID |
+| Query | activity, sessions, transcript access, policy list with source/tier/revision, health, generation identity | the owning UID |
+| Administrative | admit or remove artifacts, stop, reconfigure, mutate the active generation | the owning UID |
 
-`Query` exists because the local dashboard and CLI need read access that is scoped without inventing a second identity mechanism. Filtering happens in the daemon from the peer credential, never from a field the caller supplies, so a client cannot widen its own view by asking differently. The daemon does not distinguish a dashboard client from any other — see [Local dashboard](./01-user-experience.md#local-dashboard) for why the dashboard is spawned by the CLI as the requesting user rather than by the daemon.
+The three classes stay separate even though one identity satisfies all of them today. Collapsing them would make adding a [deferred scope](./04-service-and-updates.md#deferred-scopes) — where the administrative class is exactly what needs different authorization — a protocol change rather than an authorization change.
+
+`Query` exists because the local dashboard and CLI need read access without inventing a second identity mechanism. The daemon does not distinguish a dashboard client from any other — see [Local dashboard](./01-user-experience.md#local-dashboard) for why the dashboard is the CLI in a mode rather than a process the daemon spawns.
 
 ## Policy generations
 
@@ -65,15 +71,13 @@ Every Phase 1 input is locally authored — builtin, explicit, or convention —
 
 In-flight requests finish on the generation with which they started. A failed candidate never partially replaces active state. The last known-good generation is persisted and loaded before accepting hook traffic after restart.
 
-### Protected enablement
+### The enabled set is the user's configuration
 
-A policy that is admitted but not enabled never runs, so the enabled set is part of the protected surface or none of the rest of it matters. Enablement in the current product lives in the merge of `.failproofai/policies-config.json` across project, local, and user scope — every one of them user-writable. If the protected generation took its enabled set from there, an agent holding its user's authority would delete `block-sudo` from a JSON array and the unforgeable verdict would simply never be computed. No tier boundary is crossed and nothing is forged; the policy is not reached.
+Which policies run comes from `.failproofai/policies-config.json`, merged across project, local, and user scope exactly as the current product merges it. That merge is authoritative, and it belongs to the user.
 
-The pinned enabled set therefore comes from a root-owned `machine.json` beside machine configuration, read-only to the service account and written only by an elevated CLI operation. Disabling a pinned policy or changing its parameters requires `sudo` and produces an audit record, exactly as removing an admitted revision does.
+The client resolves it and sends it in the request; the daemon evaluates that set and never a set of its own. This is deliberate and was learned the hard way. When the daemon supplied its own default list, a user with 30 policies enabled got the 11 builtin defaults — 19 builtins plus every custom and convention policy silently stopped enforcing the moment the daemon answered. A client-resolved set makes the daemon's answer equal to the answer the same configuration produces in process, which is the property the parity corpus asserts and the only one that matters when both ends are the same user.
 
-The user's own configuration survives unchanged and still needs no elevation, but it becomes **additive-only**: it may enable policies `machine.json` does not name, and set parameters for policies it itself enabled; it may not disable, weaken, or reparameterize a pinned entry. That is the same shape as every other user-owned input here — it can tighten and cannot relax — which is what lets convention discovery and unprivileged authoring keep working while the pinned set stays outside the agent's reach.
-
-**This does not ship yet.** The daemon evaluates the enabled set the client resolves from its merged configuration and sends in the request, so today that set is client-asserted, carrying exactly the trust the file the legacy path already reads carries — no more, and no less. It is deliberately the client's set rather than a default list of the daemon's own: a daemon-supplied list silently dropped every custom, convention, and non-default builtin policy the moment the daemon answered, which is a far worse failure than the one `machine.json` fixes. Until `machine.json` lands with the privileged install, the `sealed` tier's claim covers *evaluation* — the verdict cannot be forged — and not yet *selection*, which an agent can still change, and health, `policies explain`, and setup must not present the stronger claim before it is true.
+An empty set is a protocol error rather than "evaluate nothing" or "use the defaults". The first turns a client bug into a silent allow; the second reinstates the defect above.
 
 ## Policy runtime boundary
 
@@ -87,88 +91,65 @@ The existence of this JavaScript worker is not a general licence to execute poli
 
 Each evaluation has a deadline and resource budget. Repeated timeout, crash, or memory failure trips a circuit breaker for the offending generation or artifact and records structured diagnostics.
 
-**A deadline does not enforce itself.** A policy body is synchronous JavaScript: once the runtime enters it, nothing else on that thread runs, so a deadline checked between microtasks is checked exactly never for the case that matters. The case is neither hypothetical nor exotic — `block-curl-pipe-sh` is default-enabled and sealed, and its regex backtracks quadratically on a repeated `curl ` prefix. Measured against a 200 ms deadline with no out-of-band interrupt, 40 KB of command took 7.1 seconds and 80 KB took 30, each returning a verdict rather than a deadline miss, and a request at the frame cap extrapolates past an hour — one such request wedges the single enforcement lane for every user on the machine, and two other default-enabled policies have the same regex shape. Enforcement therefore requires a watchdog that arms before the runtime is entered and disarms after it returns, setting a flag the runtime polls and unwinds on. Because that unwind arrives as an ordinary exception, the catch sites must tell it apart from a policy that genuinely threw; otherwise a merely slow policy trips the circuit breaker meant for a broken one. The same reasoning applies to the memory ceiling, which is the mechanism the interrupt cannot substitute for: an interrupt cannot stop a single allocation that is too large, and a ceiling cannot stop a tight loop.
+**A deadline does not enforce itself.** A policy body is synchronous JavaScript: once the runtime enters it, nothing else on that thread runs, so a deadline checked between microtasks is checked exactly never for the case that matters. The case is neither hypothetical nor exotic — `block-curl-pipe-sh` is default-enabled and sealed, and its regex backtracks quadratically on a repeated `curl ` prefix. Measured against a 200 ms deadline with no out-of-band interrupt, 40 KB of command took 7.1 seconds and 80 KB took 30, each returning a verdict rather than a deadline miss, and a request at the frame cap extrapolates past an hour — one such request wedges the single enforcement lane, and two other default-enabled policies have the same regex shape. Enforcement therefore requires a watchdog that arms before the runtime is entered and disarms after it returns, setting a flag the runtime polls and unwinds on. Because that unwind arrives as an ordinary exception, the catch sites must tell it apart from a policy that genuinely threw; otherwise a merely slow policy trips the circuit breaker meant for a broken one. The same reasoning applies to the memory ceiling, which is the mechanism the interrupt cannot substitute for: an interrupt cannot stop a single allocation that is too large, and a ceiling cannot stop a tight loop.
+
+This is the clearest example of what the resident architecture buys. In the per-event process model the same regex hangs one hook until the harness's own timeout fires, with no diagnosis and no record. Here it is interrupted, reported as a deadline miss distinct from an evaluation failure, and attributed to a named policy.
 
 ### Execution tiers
 
-A verdict computed in a process owned by the requesting user cannot be trusted by a privileged daemon: that user can `ptrace` the process, preload into it, or substitute the interpreter. But a policy that inspects the repository, the diff, or the transcript must run with that user's file access. The two requirements are irreconcilable in one process, so evaluation is split by **declared capability**, not by who authored the policy:
+A policy that inspects the repository, the diff, or the transcript must be able to open files and run `git`. A policy that only reads the tool payload needs none of that, and is better off unable to reach it at all. Evaluation is therefore split by **resolved capability**:
 
-| Tier | Process | Filesystem, subprocess, network | Verdict integrity |
-|---|---|---|---|
-| `sealed` | the daemon's own sealed runtime, running as the service account | denied | unforgeable |
-| `user-context` | a worker running as the requesting UID | granted, bounded by that user's own authority | forgeable by that user |
-
-The tier is derived at admission and cannot be overridden by an author or by configuration. This is a statement about what is physically achievable, not a configuration knob.
-
-It is derived from the policy's **resolved import graph**, not from a manifest the author writes. A self-declared capability set is not a trust boundary, because the party declaring it is the party the boundary exists to constrain. Declaration remains useful as a routing hint and as diagnostic output, and a mismatch between it and the resolved graph is itself an admission finding — but it never grants anything.
-
-Runtime enforcement is the second, independent mechanism. The `sealed` context is deny-by-default: it exposes no filesystem, process, or network bindings, so a policy that under-declares does not escape into a privileged tier, it fails inside the tier it was routed to. Repeated failures trip the circuit breaker for that artifact and surface in health rather than degrading silently to an allow.
-
-`sealed` requires a runtime and policy store outside the requesting user's authority, which the managed install always provides, so the tier is unconditional in Phase 1. The deferred unprivileged scope is the one place it would disappear — see [deferred scopes](./04-service-and-updates.md#deferred-scopes).
-
-The `sealed` tier covers more than it first appears. Canonical tool name, command string, file path, and old/new content already arrive in the request envelope, so payload-only builtins evaluate there and produce verdicts an agent cannot forge even with full authority over its own user. Resolved against the real import graph, that is 32 of the 39 builtins; the seven that route to `user-context` are `warn-repeated-tool-calls`, `block-work-on-main`, and the five `require-*-before-stop` policies, each of which reads the repository or shells out to `git`. The split is a property of the modules those policies transitively import, which is why they had to be separated into distinct modules before derivation could produce anything but an empty `sealed` tier — a single shared module importing `child_process` routes all 39 to `user-context` and leaves an architecture that looks implemented and delivers no verdict integrity at all. A `user-context` policy remains useful because results combine as `deny` over `instruct` over `allow`: it can only tighten, so a forged `allow` from it changes nothing, and a forged `deny` harms only the user who forged it.
-
-### The per-user agent
-
-`user-context` evaluation is not the only work that must happen at the requesting user's UID. Session capture must too, and for a harder reason: the daemon is not root and cannot `setuid`, and every capture source resolves under a user's home — `~/.codex/sessions`, `~/.factory`, `~/.openclaw`, `~/.gemini/antigravity-cli`, `~/.local/share/{devin,goose}` — where homes are `0700` or `0750` and transcripts are typically `0600`. A service account cannot traverse them, cannot `inotify` them (watching a directory requires read permission on it, so there are no events to miss slowly — there are none at all), and for the SQLite-backed sources cannot attach to a live WAL database, which requires creating `-shm`/`-wal` beside it and therefore *write* access to the user's directory.
-
-Granting that access at enrollment was considered and rejected. It is mechanically possible — setup runs as root and knows the enrolling user, so a POSIX ACL could give the service account traverse on the home and read on each source root, with default ACLs for new subdirectories. It fails on three counts. Any `chmod` by the harness rewrites the ACL mask and silently caps the named-user entry to nothing, which is exactly what a CLI storing prompt content tends to do to its own transcripts. The SQLite sources need write rather than read, inverting the trust direction. And it would make a daemon compromise a read of every enrolled developer's transcripts — pasted credentials, source, internal URLs — which is a richer prize than the policy store the boundary exists to protect, while buying no tamper-resistance, since the user still owns those files and can truncate or falsify them.
-
-Both jobs therefore run in **one per-user agent**: the same shipped binary in a different mode, started by that user's own service manager (a systemd user service or LaunchAgent), connected to the same socket, where peer credentials already establish which UID it speaks for.
-
-One agent rather than two, because both jobs want exactly the same thing — that UID's file access and a connection to the daemon — and because residency is already required. Enforcement runs under a hard deadline, so spawning a policy runtime per hook event would not meet it; once the process is warm for that, the capture watcher is free.
-
-The agent is a delegate, never an authority:
-
-| | Daemon (`_failproofai`) | Per-user agent (requesting UID) |
+| Tier | Where it runs | Filesystem, subprocess, network |
 |---|---|---|
-| Protected policy store and admission | ✅ | — |
-| `sealed` evaluation | ✅ | — |
-| Combining results, returning the verdict | ✅ | — |
-| Spool, delivery, the `events:add` key | ✅ | — |
-| Hook reconciliation, schema catalog | ✅ | — |
-| `user-context` evaluation | — | ✅ |
-| Session-source watching and parsing | — | ✅ |
+| `sealed` | the daemon's own embedded engine | absent — no bindings registered |
+| `user-context` | a worker the daemon spawns | granted, with the user's own authority |
 
-That asymmetry is what makes it safe rather than a second brain. Its verdicts can only tighten and can never relax a `sealed` result; its capture output is observational; it holds no credential, so no user can aim the machine's delivery key anywhere. Fully compromised by the user who owns it, it can weaken nothing — which is why it must be supervised but need not be trusted.
+The names describe capability, not identity. Both tiers run as the user, in a process tree the user owns, and the daemon never needs to change UID for either.
 
-It is **conditional, not mandatory**. A user with only payload-only builtins in `sealed` and no capture enabled needs no agent at all; one appears when that user has a `user-context` policy admitted or a capture source enabled. On a shared machine the count is one daemon plus one agent per enrolled user who needs one, not a fixed pair.
+**The split makes no verdict-integrity claim, and this release does not have one to make.** The governed agent and the daemon are the same user: it can `ptrace` the daemon, preload into it, replace `failproofaid` on disk, rewrite `policies-config.json`, or `systemctl --user stop failproofaid`. Nothing built out of processes owned by a single user changes that, and no document, health field, or CLI string in this release may suggest otherwise. What would change it is a daemon running as a different account, which is exactly what [deferred scopes](./04-service-and-updates.md#deferred-scopes) describes and exactly what it would buy.
 
-**Its service definition lives in the user's home, and that is a documented exception** to the rule that nothing enforcement depends on sits beneath a user-owned root. A systemd user service is read from `~/.config/systemd/user/`; a LaunchAgent from `~/Library/LaunchAgents/`. Both are user-writable by construction — being user-writable is what makes them a *user* service manager — so the definition of the process that runs on the user's behalf is a file that user can edit, redirect, or delete, and setup must drop privileges to write it in the first place, since a root-owned file there breaks every subsequent `systemctl --user` they run.
+What the `sealed` tier does buy is the difference between a resident sandbox and a per-event dynamic import:
 
-The exception is safe, for the same three reasons the agent itself is a delegate: its verdicts can only tighten and can never relax a `sealed` result, its capture output is observational, and it holds no credential, so substituting its binary buys the user nothing they could not already do with their own authority. What is not acceptable is presenting it as tamper-resistant. Setup states it during boundary disclosure, an absent or stopped agent is a degradation health reports rather than a quiet loss of `user-context` enforcement, and the enforcement path is designed so that a missing agent falls back to a one-shot evaluation at the user's UID instead of skipping those policies — the failure this product exists to prevent is enforcement disappearing without anyone noticing.
+- **Residency.** The engine and the compiled builtins are loaded before the event arrives, instead of a fresh interpreter re-importing every policy file per tool call.
+- **No side effects on the user's tree.** The current loader writes a `.__failproofai_tmp__.mjs` beside the policy source on *every* evaluation. The sealed loader is a lookup into a compiled module map and touches no path at all.
+- **An enforceable deadline.** The watchdog above is only possible because evaluation happens inside a runtime the daemon controls and can interrupt.
+- **Containment of mistakes.** A payload-only policy that unexpectedly reaches for `node:fs` gets a `ReferenceError` and trips its circuit breaker, rather than reading or writing something its author did not intend on a developer's machine. This bounds *errors and over-reach*, not an adversary — an author who wants host access simply writes a `user-context` policy and gets it.
 
-Its failure is bounded in both directions. If the agent is absent, stopped, or unresponsive, `sealed` enforcement continues unaffected, `user-context` policies apply the configured per-integration failure mode within the same deadline, and capture resumes from its checkpoint when the agent returns. If it misbehaves, per-UID queues and quotas keep it from consuming another user's capacity or the enforcement lane's.
+The tier is derived at admission from the policy's **resolved import graph**, never from a manifest the author writes, and cannot be overridden by configuration. That is not a trust argument here; it is an accuracy one. A declaration is the author's belief about their own dependencies, and the resolved graph is the fact — routing on the belief would put a policy in a context where it fails at evaluation time rather than at install time. The declaration remains useful as a diagnostic, and a mismatch between it and the resolved graph is an admission finding.
 
-The hook client remains a third process at the user's UID and is unchanged: transient, spawned per event by the harness, holding no state.
+Runtime behavior is the second, independent mechanism. The `sealed` context is deny-by-default: it exposes no filesystem, process, or network bindings, so a policy that under-declares does not silently acquire them, it fails inside the tier it was routed to. Repeated failures trip the circuit breaker for that artifact and surface in health rather than degrading silently to an allow.
 
-**An alternative that removes the resident process** is worth recording, because it suits deployments that forbid per-user services. The hook client already runs as the user and already connects to the socket, so it could pass an open file descriptor for the session transcript via `SCM_RIGHTS`: authority is resolved at `open()` by the user's own process, and the daemon never needs a path it can traverse. It covers the JSONL sources and needs nothing resident, but it cannot backfill historical sessions, cannot serve the four SQLite-backed sources (the shared-memory problem survives fd passing), misses any harness running with hooks disabled, and does nothing for `user-context` evaluation. It is a supplement, not a replacement.
+The `sealed` tier covers more than it first appears. Canonical tool name, command string, file path, and old/new content already arrive in the request envelope, so payload-only builtins evaluate there. Resolved against the real import graph, that is 32 of the 39 builtins; the seven that route to `user-context` are `warn-repeated-tool-calls`, `block-work-on-main`, and the five `require-*-before-stop` policies, each of which reads the repository or shells out to `git`. The split is a property of the modules those policies transitively import, which is why they had to be separated into distinct modules first — a single shared module importing `child_process` routes all 39 to `user-context`, and the resident sandbox then contains nothing at all.
+
+Results combine as `deny` over `instruct` over `allow`, so a `user-context` policy can tighten a `sealed` result and never relax it. That is the product's decision semantics, and it holds independently of who owns which process.
 
 ### Pinned policy runtime
 
-The `sealed` tier must never execute an interpreter the requesting user can write to. Node commonly resolves through nvm, fnm, or volta into a path under the user's home, which is both user-writable and frequently unreadable by a service account; executing it would silently forfeit every guarantee the tier exists to provide.
+The daemon evaluates against a runtime shipped with the native release rather than whichever interpreter `PATH` happens to expose. Node commonly resolves through nvm, fnm, or volta into a path that changes when the user switches versions, and a policy runtime that changes underneath an installation produces decisions that differ between two machines with identical configuration.
 
-The daemon therefore uses a runtime shipped with the native release and installed root-owned — read-only to the service account it runs as — alongside the binaries, referenced by an absolute path recorded at install time. It resolves nothing through `PATH`. Because promotion into the protected store already compiles policies, a runtime that is also a bundler removes a separate toolchain from the release.
+The runtime therefore installs alongside the binaries in the versioned release directory, is referenced by an absolute path recorded at install time, and resolves nothing through `PATH`. Its version and digest are release-manifest and SBOM entries, so "which runtime decided this" is answerable. Because admission already compiles policies, a runtime that is also a bundler removes a separate toolchain from the release.
 
-This guarantee is a property of the privileged install layout, not of the daemon or of the shipped artifact.
+The `sealed` tier goes one level further, and does so as shipped: its engine is QuickJS-ng linked into the daemon binary, evaluating a bundle embedded at compile time in a context created with **no bindings registered at all** — no `require`, no module loader, no `process`, no `fetch`, no filesystem. Not blocked: absent. A policy reaching for one gets a `ReferenceError`, which is an evaluation failure that trips a circuit breaker rather than a silent allow, and that is what makes the deny-by-default boundary structural instead of a syscall filter someone has to keep current. Embedding the bundle rather than reading it from disk also makes the evaluator part of the signed artifact, so a corrupted or partially written state directory cannot produce a subtly different evaluator. The runtime installed on disk is what the `user-context` tier runs, where real imports are the entire point; [open decision #3](./06-delivery-plan.md#open-decisions) is about that one.
 
-The `sealed` tier goes one level further than an absolute path, and does so as shipped: its engine is QuickJS-ng linked into the daemon binary, evaluating a bundle embedded at compile time in a context created with **no bindings registered at all** — no `require`, no module loader, no `process`, no `fetch`, no filesystem. Not blocked: absent. A policy reaching for one gets a `ReferenceError`, which is an evaluation failure that trips a circuit breaker rather than a silent allow, and that is what makes the deny-by-default boundary structural instead of a syscall filter someone has to keep current. Embedding the bundle rather than reading it from disk is the same argument as the absolute path applied one level deeper — a bundle loaded at startup is a bundle that write access to the state directory could replace with one that allows everything — and it makes the evaluator part of the signed artifact. The runtime installed on disk is what the `user-context` tier runs, where real imports and the requesting user's own authority are the entire point; [open decision #3](./06-delivery-plan.md#open-decisions) is about that one.
-
-Environment is constructed, never inherited. The hook client's environment originates in the agent's process, which makes `NODE_OPTIONS`, `NODE_PATH`, preload flags, and library-search variables user-controlled injection vectors into anything the daemon spawns. The service definition sets a fixed `PATH`, and worker spawn passes an explicit allowlisted environment.
+Environment is constructed, never inherited. The hook client's environment originates in the agent's process, which makes `NODE_OPTIONS`, `NODE_PATH`, preload flags, and library-search variables inputs that reach anything the daemon spawns. Inheriting them would make evaluation depend on whatever the agent's shell happened to export — a policy behaving differently under one harness than another for reasons nobody can see. The service definition sets a fixed `PATH`, and worker spawn passes an explicit allowlisted environment.
 
 ### Dependencies and admission
 
-Protected policies are compiled, not copied. Admission resolves the full import graph and inlines it into a single content-addressed artifact, so one digest covers the policy and every dependency, nothing is resolved from a mutable path at evaluation time, and the audit record identifies exactly what ran. That same resolved graph is what determines the execution tier.
+Policies are compiled, not copied. Admission resolves the full import graph and inlines it into a single content-addressed artifact, so one digest covers the policy and every dependency, nothing is resolved from a mutable path at evaluation time, and the decision record identifies exactly what ran. That same resolved graph is what determines the execution tier.
 
-Native addons are refused from the `sealed` tier outright. They cannot be inlined, and pinning a digest only prevents substitution — it places no constraint on what the loaded native code then does with the service account's file, process, and network access, which would contradict the tier's denied capabilities and void its verdict claim. A policy requiring a native addon is admitted to `user-context`, where it runs with the requesting user's authority and its verdict carries no integrity claim to begin with.
+Three things follow, and none of them require privilege. Evaluation stops depending on `node_modules` being in the state the author last left it. A decision names a digest instead of a path. And the sealed loader becomes a map lookup rather than a resolver, which is what lets the sealed context have no filesystem binding at all.
 
-Authoring is unprivileged and unconstrained — the ordinary package-manager workflow, iterated in the `user-context` tier. Promotion is the privileged step, and it is where the graph is frozen.
+Native addons cannot be inlined, so a policy requiring one is admitted to `user-context`, where imports resolve normally. Its `.node` files are copied alongside the artifact with their digests pinned, so the artifact still identifies what ran.
+
+Admission runs in the CLI, as the user, with no elevation — like everything else in this release.
 
 ### Enforcement performs no unbounded I/O
 
 A policy that needs remote state — pull-request status, CI results, an organization directory — must not fetch it during evaluation. Enforcement runs under a hard monotonic deadline, and a synchronous network call inside a hook makes a third party's availability a precondition for the user running a command.
 
 Remote state is fetched by the collection lane on its own schedule into a local cache with an explicit freshness bound, and the policy reads that cache synchronously. A policy reading stale or absent cached state must be able to distinguish it from a negative result, and the freshness bound is recorded with the decision. The rule is a property of the enforcement deadline, not of where the data comes from, so it holds identically for any lane added later.
+
+Because the daemon runs as the user, a `user-context` policy that needs a credential for that fetch can use the user's own — `~/.config/gh`, `~/.netrc`, an environment token — rather than needing one issued to a service. That removes a whole credential-brokering problem this design previously had to carry.
 
 ## Evaluation path
 
@@ -180,7 +161,7 @@ For an accepted hook request, the daemon:
 4. selects an immutable active generation;
 5. finds all matching policies and their effects;
 6. evaluates matching policy locally within the remaining deadline, routing each one to its admitted execution tier;
-7. combines results deterministically (`deny` over `instruct` over `allow`, absent an authorized suppression), so a `user-context` result can tighten the outcome but never relax a `sealed` one;
+7. combines results deterministically (`deny` over `instruct` over `allow`), so a `user-context` result can tighten the outcome but never relax a `sealed` one;
 8. writes decision evidence asynchronously to the durable activity spool;
 9. returns a canonical result and decision ID.
 
@@ -188,56 +169,77 @@ The response never waits for event upload, transcript processing, or catalog ref
 
 ### Derived and asserted context
 
-Request context is not uniform, and treating it as though it were is how a forged input relaxes an unforgeable verdict. Step 3 above resolves fields with two different provenances, and the difference is load-bearing enough to be part of the protocol rather than a convention.
+Request context is not uniform, and treating it as though it were produces wrong verdicts that look like right ones. Step 3 above resolves fields with two different provenances, and the difference is load-bearing enough to be part of the protocol rather than a convention.
 
-`home` is **derived by the daemon** from the peer credential, with `getpwuid_r(peer_uid)`, and a client that asserts one is rejected as a protocol error rather than corrected. The daemon evaluates on behalf of another UID, so its own home is the service account's and useless; more importantly, `isAgentInternalPath` and `block-read-outside-cwd` both use the home to *widen* the set of paths they allow, so a client asserting `home: "/"` would make every path agent-internal — a forged input relaxing a sealed verdict, which is the one direction that does not announce itself. Silently overwriting the field would make the attack a no-op while leaving the protocol looking as though it accepted the field; rejecting makes a client that tries it fail loudly. A `getpwuid_r` miss is an error, never a fallback to a default home. This is implemented and enforced.
+`home` is **derived by the daemon** from the peer credential, with `getpwuid_r(peer_uid)`, and a client that asserts one is rejected as a protocol error rather than corrected. Two reasons, and neither depends on an adversary. The daemon can compute this field correctly from the connection itself, so accepting it from the client adds a way to be wrong and no way to be right. And `isAgentInternalPath` and `block-read-outside-cwd` both use the home to *widen* the set of paths they allow, so a wrong value does not fail — it quietly permits more, which is the one direction that does not announce itself. Silently overwriting the field would leave the protocol looking as though it accepted it; rejecting makes a client that sends one fail loudly and get fixed. A `getpwuid_r` miss is an error, never a fallback to a default home. This is implemented and enforced.
 
-`cwd`, the project directory, and environment facts genuinely cannot be derived: `/proc/<pid>/cwd` is TOCTOU-prone and, on macOS, unreadable for a non-matching UID. They therefore travel as **client-asserted** values with explicit provenance. Environment facts are a closed set — `CLAUDE_PROJECT_DIR` alone today — and an unknown key is rejected by name rather than passed through, because the hook client's environment originates in the agent's own process and would otherwise be an injection channel straight into evaluation.
+`cwd`, the project directory, and environment facts genuinely cannot be derived: `/proc/<pid>/cwd` is TOCTOU-prone and, on macOS, unreadable for a non-matching UID. They therefore travel as **client-asserted** values with explicit provenance. Environment facts are a closed set — `CLAUDE_PROJECT_DIR` alone today — and an unknown key is rejected by name rather than passed through, so the set of environment variables that can reach evaluation stays something a reader of this document can enumerate.
 
-The consequence is a third attestation rather than a weakened claim. A decision every one of whose deciding policies ran `sealed` and read none of these is `sealed`; one that ran `sealed` but read a client-asserted field is `sealed_unattested`; one a `user-context` policy contributed to is `user_context`. Attestations combine as a maximum under `sealed < sealed_unattested < user_context`, so a combined result can never be reported as more attested than its weakest input — the inverse would launder a `user-context` contribution into a `sealed` claim, which is the exact property the two-tier split exists to provide. The attestation is carried in decision evidence and reported by `policies explain`. It is the honest version of "unforgeable", and it is better than a claim that quietly is not true.
+The consequence is a third attestation rather than a weakened claim. A decision every one of whose deciding policies ran `sealed` and read none of these is `sealed`; one that ran `sealed` but read a client-asserted field is `sealed_unattested`; one a `user-context` policy contributed to is `user_context`. Attestations combine as a maximum under `sealed < sealed_unattested < user_context`, so a combined result is never reported as more attested than its weakest input.
+
+In this release the attestation is **provenance, not integrity**: it answers "what did this decision depend on, and where was it computed", which is what makes an unexpected verdict diagnosable and what tells an author their payload-only policy is quietly reading an asserted `cwd`. Under a [deferred scope](./04-service-and-updates.md#deferred-scopes) the same three values become an integrity claim without a protocol change, which is why they are carried and computed now.
 
 ### Forward compatibility
 
-Two later changes are anticipated and neither may require harnesses to be reintegrated: Phase 2 adds centrally assigned policy evaluated locally, and a version after it may move some or all evaluation off the machine.
+Three later changes are anticipated and none may require harnesses to be reintegrated: a deferred scope may move the daemon to another account, Phase 2 adds centrally assigned policy evaluated locally, and a version after it may move some or all evaluation off the machine.
 
-What Phase 1 does to keep both open is limited to contract shape, not mechanism. The harness contract terminates at `failproofaid`. Policy decisions use a location-independent canonical request/result model, so the same request is answerable by a local worker or by something further away. Deadlines are end-to-end rather than per-hop. Decision evidence carries stable request, policy, generation, and session identity, so a decision remains attributable to what produced it once more than one source exists.
+What Phase 1 does to keep them open is limited to contract shape, not mechanism. The harness contract terminates at `failproofaid`. Policy decisions use a location-independent canonical request/result model, so the same request is answerable by a local worker or by something further away. Deadlines are end-to-end rather than per-hop. Decision evidence carries stable request, policy, generation, and session identity, plus the attestation that becomes meaningful the moment the daemon stops being the same user as the agent.
 
-No Phase 1 configuration key, remote-decision client, fallback mode, or user-visible setting is added for either. A seam is a shape the contract already has; it is not a dormant feature.
+No Phase 1 configuration key, remote-decision client, fallback mode, or user-visible setting is added for any of them. A seam is a shape the contract already has; it is not a dormant feature.
 
 ## Configuration and state
 
-The canonical user root is `~/.failproofai/`, overridable for tests:
+Everything lives under two user-owned roots, and neither is new. `~/.failproofai/` is where the product already keeps configuration and policies; `~/.agenteye/` is where the collector already keeps capture state. Nothing is relocated between them, and nothing is written outside them apart from the service definition and the harness settings files the user asked to change.
 
 ```text
 ~/.failproofai/
   config.json
+  policies-config.json
   policies/
+  versions/<version>/            executables, pinned policy runtime, baseline catalog
+  current -> versions/<version>
+  install.json
+  artifacts/                     content-addressed admitted policy artifacts
   state/
     policy-generations/
-    checkpoints/
     activity/
-    spool/
-    failed/
     health.json
     harness-schemas/
   logs/
+  run/                           socket directory, when XDG_RUNTIME_DIR is unset
+
+~/.agenteye/
+  <the standalone collector's existing layout>
+    configuration, including the observability destination and its events:add key
+    per-source checkpoints
+    the durable spool, failed and quarantined batches
 ```
 
-The one secret Phase 1 handles is the observability server's `events:add` key. It belongs to the machine's delivery lane rather than to a user, so it lives in privileged machine configuration where the service account can read it and enrolled users cannot — never in this tree, never in the service definition, and never in a process argument. It uses the operating-system credential store where practical, with an owner-only file as the portability fallback.
+The `~/.agenteye/` tree is deliberately described by reference rather than redefined. It is the collector's own layout, the daemon adopts it in place, and [collector integration](./05-collector-integration.md) is where that is stated as a compatibility requirement. A layout redesign is exactly the kind of migration nobody asked for.
 
-Machine state uses platform system locations. On Linux, executables and the pinned runtime install root-owned under `/opt/failproofai/versions/<version>/`; configuration, the pinned enabled set, the installation record, the content-addressed policy store, and mutable state live under `/var/lib/failproofai/`; the runtime socket directory is `/run/failproofai/`. macOS uses platform-appropriate `/Library` locations with the same logical layout.
+The one secret Phase 1 handles is the observability server's `events:add` key. It lives in the collector's configuration under `~/.agenteye/`, readable by the user, which is what the standalone collector already does. It uses the operating-system credential store where practical, with an owner-only file as the portability fallback, and it is never in the service definition, never in a process argument, and never in a log. It is erased unconditionally on uninstall, including offline, because that is a property of credentials rather than of who can read them.
 
-The socket directory is the one path whose *logical* layout is identical and whose *creation* is not, so it is worth naming rather than folding into "the same layout". On Linux systemd's `RuntimeDirectory=` recreates it with the correct owner and mode on every start, which it must, because `/run` is a tmpfs that does not survive a boot. launchd has no equivalent, so on macOS it is created by the privileged installer and persists. The daemon consequently asserts the directory's existence, ownership, and mode before binding on both platforms and creates it when it is missing, rather than assuming the service manager produced it — one check satisfied by a different mechanism on each side. [The service model](./04-service-and-updates.md#service-model) records the difference from the service manager's end.
+### The socket directory
 
-Ownership within that layout is split by writer. Anything whose integrity a decision depends on — executables, the pinned runtime, the protected policy store, the active schema catalog, and machine configuration, including the pinned enabled set and the installation record whose `service_uid` a client verifies the socket's owner against — is root-owned and read-only to the service account, written only by the privileged installer during an elevated operation. The service account owns only what the daemon must write at runtime: spool, checkpoints, activity, per-user state, health, logs, and the socket directory. The daemon consequently cannot rewrite the binary it restarts from, the runtime it evaluates in, or the policy revision it evaluates — a compromised daemon can corrupt its own telemetry and nothing above it.
+The socket is the one path whose location depends on the platform and the session rather than on a choice:
 
-Per-user material beneath machine state is keyed by numeric UID, never an untrusted username, and remains inaccessible to other users. Exact paths are part of the platform packaging contract.
+| Condition | Socket directory |
+|---|---|
+| Linux with `XDG_RUNTIME_DIR` set | `$XDG_RUNTIME_DIR/failproofai/` |
+| Linux without it | `~/.failproofai/run/` |
+| macOS | `~/.failproofai/run/` |
 
-The `~/.failproofai/` root above is where a user authors and discovers their own policies. Those sources are **additive, non-authoritative inputs**: they never enter the protected generation, always route to the `user-context` tier, and can only tighten a result. Replacing the directory therefore changes only that user's own additional restrictions — it cannot alter, disable, or weaken a protected revision, and the protected generation loads identically whether the directory is present, absent, or substituted. The enablement this tree records is bounded the same way: it can add to the pinned enabled set and never subtract from it, which is what [protected enablement](#protected-enablement) requires and what does not ship yet.
+The fallback is not defensive boilerplate. `XDG_RUNTIME_DIR` is set by `pam_systemd` for a login session and is **absent over a plain `ssh` invocation on several distributions** — precisely the shape of a remotely driven agent run, which is a case this product is used in. A daemon that only knows the first row simply fails to start there.
 
-That is why the installation keeps nothing it *depends* on beneath a user-owned root, with the one exception recorded in [the per-user agent](#the-per-user-agent). Delete and rename permission derive from the parent directory, so a user who owns their home can rename an unwritable `~/.failproofai` aside and supply a replacement they own — ownership and mode on the directory itself prevent nothing, and a sticky bit on the home directory is removable by the same user. Protected artifacts are therefore reachable only through paths whose every component is owned by the service account or root.
+On Linux a systemd user unit's `RuntimeDirectory=failproofai` creates the directory with the right owner and mode on every start and removes it on stop, which it must, because `$XDG_RUNTIME_DIR` is a tmpfs that does not survive a reboot. launchd has no equivalent, so on macOS the directory is created once and persists under the user's home. The daemon therefore asserts existence, ownership, and mode before binding on both platforms and creates the directory when it is missing, rather than assuming the service manager produced it — one check satisfied by a different mechanism on each side. [The service model](./04-service-and-updates.md#service-model) records the difference from the service manager's end.
 
-Configuration is schema-versioned and written transactionally. File notifications prompt reload, while periodic reconciliation is the correctness backstop. Project policy caches are bounded by memory and entry count and invalidated by resolved input changes.
+A stale socket from a killed daemon is unlinked and rebound after the daemon confirms nothing is listening on it, and the client's owner check plus the version handshake mean a socket it cannot identify costs a fallback rather than a wrong answer.
+
+### What the state directory is and is not
+
+The state directory is the daemon's working memory: generations, activity, health, checkpoints, catalog state, and admitted artifacts. It is the user's, like everything else, and the design does not pretend otherwise — the sentence "protected artifacts live outside the user's home" has been removed from these documents rather than weakened, because in this release there are no protected artifacts.
+
+What it still needs is **integrity against crashes**, which is a different problem and one that is entirely solvable here. Generations publish atomically; a failed candidate never partially replaces active state; catalog activation is crash-consistent in the ordering [04](./04-service-and-updates.md#catalog-update-transaction) specifies; the spool's state machine survives power loss. Configuration is schema-versioned and written transactionally. File notifications prompt reload, while periodic reconciliation is the correctness backstop. Project policy caches are bounded by memory and entry count and invalidated by resolved input changes.
 
 ## Failure isolation
 
@@ -249,10 +251,13 @@ Configuration is schema-versioned and written transactionally. File notification
 | Invalid configuration | Reject candidate and retain active generation. |
 | Observability server unavailable | Continue enforcement and capture; spool delivery data and retry with bounded backoff. |
 | Spool reaches quota | Report degradation and apply explicit queue policy; never wait on network in enforcement. |
-| Daemon crashes | Service manager restarts it; persisted generations, checkpoints, and spool recover work. |
+| Daemon crashes | The service manager restarts it; persisted generations, checkpoints, and spool recover work. In-flight hooks fall back to in-process evaluation, so the crash costs latency rather than a decision. |
+| No service manager present | Health reports `unsupervised`; the daemon runs until it exits and hooks fall back in process afterwards. |
 
 ## Health
 
-Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and harness/schema compatibility state. Delivery health is `not_configured` when no destination is set. The snapshot is versioned so Phase 2 adds subsystems to it rather than reshaping it.
+Health is a structured, versioned snapshot covering IPC readiness, supervision state, enforcement latency and queue depth, local policy generation and reload state, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and harness/schema compatibility state. Delivery health is `not_configured` when no destination is set. The snapshot is versioned so Phase 2 adds subsystems to it rather than reshaping it.
+
+Health reports execution-tier counts as a description of where evaluation happens. It carries no field asserting tamper resistance or verdict integrity, and adding one would be a bug.
 
 Logs are structured, correlated by request/batch/catalog-generation ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.

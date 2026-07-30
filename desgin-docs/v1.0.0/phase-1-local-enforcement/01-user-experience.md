@@ -273,7 +273,7 @@ The dashboard is on-demand — a UI people open occasionally should not be an id
 
 Reads use the daemon's `Query` operations and return the caller's activity, sessions, transcripts, and policy state.
 
-Writes are ordinary. Toggles and parameters change the user's own configuration directly, with no elevation and no second class of policy, because there is no privileged policy surface for the dashboard to gate. Whether a toggle writes the configuration file directly or goes through a daemon operation is [open decision #14](./06-delivery-plan.md#open-decisions) — a correctness question about keeping one merge implementation, not a permission question.
+Writes are ordinary. Toggles and parameters change the user's own configuration directly, with no elevation and no second class of policy, because there is no privileged policy surface for the dashboard to gate. Whether a toggle writes the configuration file directly or goes through a daemon operation is [open decision #13](./06-delivery-plan.md#open-decisions) — a correctness question about keeping one merge implementation, not a permission question.
 
 ## Status and health
 

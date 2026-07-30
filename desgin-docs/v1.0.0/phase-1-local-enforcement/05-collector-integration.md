@@ -2,13 +2,25 @@
 
 ## Goal
 
-`failproofaid` replaces the standalone `agenteye-collector` without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
+**The daemon does capture.** `failproofaid` absorbs the standalone `agenteye-collector`'s work into its collection and delivery lanes, so a machine runs one resident process instead of two. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
 
 Everything the collector ships today is Phase 1 scope — capture, backfill, durable spooling, and delivery — because it is shipped behavior, and Phase 1's promise is that nothing a user can do today stops working. Owning capture without delivery would be the worst of both: two processes reading the same transcripts, and data stranded in whichever spool nobody is watching.
+
+Running as the user is what makes this straightforward rather than architectural. Every capture source resolves under a home directory — `~/.codex/sessions`, `~/.factory`, `~/.openclaw`, `~/.gemini/antigravity-cli`, `~/.local/share/{devin,goose}` — where homes are `0700` or `0750` and transcripts are typically `0600`. The daemon opens them, `inotify`s them, and attaches to the SQLite-backed ones in WAL mode (which needs to create `-shm`/`-wal` siblings, and therefore *write* access to the user's directory) with no ACL grants, no delegated agent, and no privilege at all. The design that needed a second process to reach these files needed it only because the daemon was a different account.
 
 Delivery does not pull an account into Phase 1. The collector authenticates to the customer's **own self-hosted** Failproof AI Observability server with an operator-issued API key holding `events:add` — not a FailproofAI cloud login, and not a machine identity. That key is configuration the customer already provides, so it carries over unchanged. Machine enrollment into Failproof Cloud is a different credential for a different purpose and stays in [Phase 2](../phase-2-cloud/01-login-and-enrollment.md).
 
 Capture is off until enabled, and stays that way: the destination server, its key, and each capture source are explicit choices, and a machine with none of them configured spools nothing and delivers nowhere.
+
+## State stays where it already is
+
+Capture state lives in **`~/.agenteye/`**, in the layout the standalone collector already uses: its configuration, the observability destination and its `events:add` key, per-source checkpoints, the durable spool, and failed and quarantined batches. The daemon adopts that tree in place.
+
+This is a compatibility requirement, not a preference. The state is a user's undelivered data and their resume points; relocating it means a migration that can fail, a rollback that has to reverse it, and a window where two layouts both look authoritative — all to satisfy a tidiness argument nobody made. Nothing moves into `~/.failproofai/`, and no path under `/var/lib`, `/opt`, or `/Library` appears.
+
+The exact subpaths are the collector's, not this document's. `agenteye-collector` is a separate repository, so **confirming and vendoring its on-disk layout alongside its conformance corpus is an explicit prerequisite** of the stage that does this work, and the daemon's reader/writer is asserted against the real thing rather than against a description of it.
+
+The delivery key is the only secret Phase 1 handles. It stays where the collector keeps it, readable by the user whose data it delivers, using the operating-system credential store where practical with an owner-only file as the portability fallback. It never appears in the service definition, in a process argument, or in a log, and it is erased unconditionally on uninstall — including an uninstall performed offline, because leaving a working credential on disk is a property of the key rather than of who can read it.
 
 ## Capabilities to preserve
 
@@ -58,27 +70,28 @@ Logical queues have separate quotas and priority. A historical transcript backfi
 
 Health reports pending count/bytes, oldest age, last acknowledged delivery, retries, quarantined/poison records, and per-source checkpoint progress. Process liveness alone is not collector health.
 
-## State migration
+## Taking over from a running collector
 
-Migration from the legacy collector state directory is explicit and resumable:
+A machine that already runs `agenteye-collector` has one thing that genuinely must be sequenced: two processes must never watch one source at the same time. The takeover is explicit and resumable:
 
-1. discover the old service, configuration, credentials, pending/failed files, and checkpoints;
-2. acquire an ownership lock so old and new collectors cannot process the same source simultaneously;
+1. discover the old service, its configuration, credentials, pending/failed files, and checkpoints;
+2. acquire an ownership lock so the old collector and the daemon cannot process the same source simultaneously;
 3. stop but do not remove the old service;
-4. import or reference pending state without changing stable delivery identity;
+4. adopt the existing state **in place** — same directory, same stable delivery identity, no copy and no rewrite;
 5. start `failproofaid` and verify source progress and delivery health;
-6. retain rollback metadata and old state through the rollback window;
+6. retain rollback metadata through the rollback window;
 7. remove old service artifacts only after successful convergence.
 
-Failure restores old ownership and service state. Migration never deletes unacknowledged files merely because they were copied.
+Step 4 is the one that changed shape. Because the daemon reads and writes the collector's own `~/.agenteye/` layout, there is no import step to get wrong and nothing to reconcile between two copies; rollback is putting the old service back in front of state it never stopped understanding. Failure restores old ownership and service state, and no unacknowledged file is deleted because something else read it.
 
 ## Collector acceptance criteria
 
-- Existing collector conformance behavior passes against daemon-integrated modules.
+- Existing collector conformance behavior passes against daemon-integrated modules, reading and writing the collector's existing `~/.agenteye/` layout unchanged.
+- No capture, spool, checkpoint, or delivery state is relocated, and setup performs no state migration.
 - Killing the daemon at every spool/delivery transition loses no acknowledged data.
 - Power-loss tests at every pending, acknowledged, tombstone, deletion, and directory-fsync boundary recover by idempotent replay or completed cleanup.
 - Replay does not create duplicate backend events.
 - Every source resumes from a crash-safe checkpoint.
 - Backfill load cannot starve enforcement or recent delivery.
-- Old and new collectors can never own the same source concurrently.
-- Migration rollback restores a functional standalone collector with its undelivered state.
+- The old collector and the daemon can never own the same source concurrently.
+- Rollback restores a functional standalone collector in front of the same undelivered state.

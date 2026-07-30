@@ -4,7 +4,7 @@ Status: Draft
 
 Target: failproofai v1.0.0
 
-`failproofaid` is the Rust background service for FailproofAI. It preserves the complete standalone OSS policy experience, incorporates collector behavior, optionally synchronizes centrally managed policy assignments from Failproof Cloud, and updates safely through an external updater.
+`failproofaid` is the Rust background service for FailproofAI. It preserves the complete standalone OSS policy experience, incorporates collector behavior, optionally synchronizes centrally managed policy assignments from Failproof Cloud, and keeps harness hooks compatible through a signed schema catalog.
 
 ## Documents
 
@@ -13,7 +13,7 @@ Target: failproofai v1.0.0
 3. [Daemon architecture](./03-daemon-architecture.md) — Rust process model, IPC, policy runtime, failure isolation, and local state.
 4. [Failproof Cloud policy management](./04-cloud-policy-management.md) — additive centralized assignments and the observability-to-enforcement loop without replacing OSS policy authoring.
 5. [Collector integration](./05-collector-integration.md) — session capture, durable spooling, delivery, and migration from the existing collector.
-6. [Service and automatic updates](./06-service-and-updates.md) — operating-system services, signed releases, activation, health checks, and rollback.
+6. [Service and harness schema updates](./06-service-and-updates.md) — operating-system services and signed, version-aware hook schema reconciliation without automatic binary replacement.
 7. [Delivery plan](./07-delivery-plan.md) — rollout phases, acceptance criteria, and unresolved decisions.
 8. [npm release and distribution](./08-release-and-packaging.md) — the single v1 npm bootstrap path, native artifact pipeline, signing, and channel promotion.
 
@@ -26,8 +26,8 @@ Target: failproofai v1.0.0
 - The OSS product remains fully usable without an account, organization, Failproof Cloud, or network connection.
 - All current builtin, custom, explicit-file, convention-file, scope, harness, activity, and local-dashboard behavior remains available.
 - Agent hook decisions are synchronous and evaluated locally in v1.0.0.
-- Collection, delivery, optional cloud reconciliation, and update discovery are asynchronous.
+- Collection, delivery, optional cloud reconciliation, and harness schema-catalog refresh are asynchronous.
 - Failproof Cloud adds centralized management and observability-driven workflows; it does not replace local policy authoring or enforcement.
 - Connected cloud policy can target organization, environment, machine, agent, and session scope.
 - A later version may move evaluation into the cloud without changing harness integrations.
-- The running daemon never replaces or terminates itself to activate an update.
+- v1 does not automatically update native binaries; customers upgrade them explicitly through npm setup.

@@ -29,11 +29,12 @@
 - Enable cloud-assigned, locally evaluated enforcement only after attribution and offline behavior pass end-to-end tests.
 - Verify connecting and disconnecting the tier does not alter local policy behavior.
 
-## Phase 4: managed updates
+## Phase 4: harness schema catalog
 
-- Begin with manual check and explicit activation.
-- Add automatic staging, then opt-in automatic activation.
-- Default stable standalone installs to automatic activation only after rollback drills pass on every supported platform.
+- Extract harness-version detection and declarative hook schemas into a signed data-only catalog.
+- Ship a bundled offline baseline, then add automatic signed catalog refresh.
+- Prove version selection, semantic hook migration, atomic activation, rejection, and catalog/schema rollback.
+- Keep native binary upgrades explicit through the npm setup path.
 
 ## Phase 5: v1 default
 
@@ -54,7 +55,7 @@
 - Invalid or partial generations never activate.
 - Failproof Cloud attributes each decision to exact policy and assignment revisions.
 - Collector crash/replay tests prove durable, idempotent delivery.
-- Broken updates roll back automatically on every supported platform.
+- Broken harness schemas roll back automatically on every supported platform without replacing the daemon.
 
 ## Open decisions
 
@@ -66,7 +67,7 @@
 6. Default observability consent and capture choices.
 7. Spool quotas and queue priority.
 8. Policy release and application release signing/trust-root rotation.
-9. Automatic activation idle window and maximum deferral.
+9. Catalog refresh cadence, retention, and locally pinned catalog policy.
 10. Retention window for legacy evaluator, collector state, and previous release.
 11. Roles allowed to create, approve, assign, disable, and emergency-override policy.
 12. Whether narrower scope may disable organization policy and which controls are mandatory.

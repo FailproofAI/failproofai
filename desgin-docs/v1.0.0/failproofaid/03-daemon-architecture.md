@@ -11,7 +11,7 @@
 - collector source workers, checkpoints, spooling, and delivery;
 - optional cloud desired-state reconciliation;
 - health, diagnostics, logs, and resource limits;
-- update discovery and staging, but not activation.
+- signed harness schema-catalog refresh and atomic activation.
 
 The user-facing `failproofai` CLI is a client of the daemon and service manager. Agent harnesses use the smaller hook client described in [Agent harness integration](./02-harness-integration.md).
 
@@ -23,7 +23,7 @@ The daemon separates work into independently bounded lanes:
 2. **Collection** — source watching, transcript parsing, checkpointing, and backfill.
 3. **Delivery** — batching, upload, retry, and quarantine.
 4. **Management** — when connected, cloud authentication, desired-state reconciliation, verification, and acknowledgement; otherwise dormant.
-5. **Maintenance** — configuration reload, health snapshots, cleanup, and update discovery.
+5. **Maintenance** — configuration reload, health snapshots, cleanup, and harness schema-catalog refresh.
 
 Maintenance includes one adapter-aware hook reconciler per enabled harness. Watcher activity and repair work have bounded queues and cannot consume enforcement capacity. The persisted desired registration, not the current mutable harness file, is authoritative until an explicit disable or uninstall commits a new desired state.
 
@@ -84,7 +84,7 @@ For an accepted hook request, the daemon:
 8. writes decision evidence asynchronously to the durable activity spool;
 9. returns a canonical result and decision ID.
 
-The response never waits for cloud acknowledgement, event upload, transcript processing, or update work.
+The response never waits for cloud acknowledgement, event upload, transcript processing, or catalog refresh.
 
 ### Future cloud evaluation compatibility
 
@@ -108,7 +108,7 @@ The canonical user root is `~/.failproofai/`, overridable for tests:
     spool/
     failed/
     health.json
-    updates/
+    harness-schemas/
   logs/
 ```
 
@@ -133,6 +133,6 @@ Configuration is schema-versioned and written transactionally. File notification
 
 ## Health
 
-Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, optional cloud freshness, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and update state. Cloud health is `not_configured` for standalone OSS installs.
+Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, optional cloud freshness, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and harness/schema compatibility state. Cloud health is `not_configured` for standalone OSS installs.
 
-Logs are structured, correlated by request/batch/update ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.
+Logs are structured, correlated by request/batch/catalog-generation ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.

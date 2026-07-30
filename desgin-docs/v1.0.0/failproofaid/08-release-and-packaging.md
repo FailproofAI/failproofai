@@ -61,7 +61,7 @@ One FailproofAI version identifies a compatible release set:
 
 - native `failproofai` CLI and hook client;
 - Rust `failproofaid` daemon;
-- external updater helper, unless implemented as a safe CLI mode;
+- bundled baseline harness schema catalog and its trust root;
 - legacy policy worker/runtime if required;
 - service-manager metadata;
 - schemas, license, notices, SBOM, provenance, and checksums.
@@ -77,7 +77,7 @@ All components are tested and published together. Internal protocol/schema versi
 | macOS | x86_64 | `.tar.gz` |
 | macOS | aarch64 | `.tar.gz` |
 
-These artifacts have deterministic names and layouts. They are fetched only by the npm bootstrapper/updater in v1.0.0.
+These artifacts have deterministic names and layouts. They are fetched only by the npm bootstrapper in v1.0.0.
 
 ## Installation layout and ownership
 
@@ -88,8 +88,8 @@ These artifacts have deterministic names and layouts. They are fetched only by t
     1.0.0/
       bin/failproofai
       bin/failproofaid
-      bin/failproofai-updater
       policy-runtime/
+      harness-schemas/
       release.json
   current -> versions/1.0.0
 ```
@@ -101,7 +101,7 @@ For `--service-scope system`, the same versioned layout lives in a root-owned pl
 Ownership is intentionally split:
 
 - npm owns only the bootstrap package used for that invocation;
-- FailproofAI's standalone updater owns the installed native release;
+- explicit npm setup/upgrade operations own the installed native release;
 - the service always points at the stable native installation, never npm's global tree or npx cache.
 
 Updating or removing a global npm package does not silently remove a running native service. `failproofai uninstall` removes the service/native installation explicitly; npm cache/global cleanup remains npm's responsibility.
@@ -113,7 +113,7 @@ The signed canonical manifest includes:
 - product version, release ID, source commit, and build timestamp;
 - every target artifact's name, size, SHA-256 digest, and media type;
 - component and IPC/state/policy-runtime compatibility ranges;
-- minimum bootstrapper/updater versions;
+- minimum bootstrapper and schema-catalog format versions;
 - SBOM and provenance references;
 - release notes and required migration warnings;
 - publisher key ID and signature metadata.
@@ -127,7 +127,7 @@ Clients ship the release trust root and support signed rotation. A modified arti
 - A release PR sets the version and dated changelog section.
 - Build each Linux/macOS target from one source commit in pinned isolated workers.
 - Build the policy worker from the same revision when required.
-- Run unit, integration, harness-contract, collector-conformance, setup, update, and rollback tests.
+- Run unit, integration, harness-contract, collector-conformance, setup/upgrade, schema-catalog rollback, and uninstall tests.
 - Smoke-test each executable's side-effect-free version/protocol command on its target OS.
 - Generate SBOMs and provenance and scan source, dependencies, archives, and package contents.
 
@@ -145,7 +145,7 @@ Build jobs do not receive long-lived signing or npm credentials. Signing and pub
 
 - Publish immutable native prerelease artifacts and signed manifest.
 - Publish the npm package under the `beta` dist-tag.
-- From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, update, rollback, and uninstall.
+- From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, schema refresh/rollback, explicit binary upgrade, and uninstall.
 
 ### Promote stable
 
@@ -155,9 +155,9 @@ If npm requires a distinct stable version rather than moving a prerelease packag
 
 ### Observe and revoke
 
-Release health tracks bootstrap download/verification, setup completion, daemon readiness, update rollback, crash, and protocol mismatch without collecting policy or transcript content.
+Release health tracks bootstrap download/verification, setup completion, daemon readiness, schema rollback, crash, and protocol mismatch without collecting policy or transcript content.
 
-A bad release is removed from `latest` and the native stable channel. Immutable evidence remains. A signed revocation prevents new activation and directs installed updaters to a known-good release.
+A bad release is removed from `latest` and the native download channel. Immutable evidence remains. Existing installations are not changed automatically; affected users receive an explicit upgrade advisory.
 
 ## npm acceptance criteria
 
@@ -167,5 +167,5 @@ A bad release is removed from `latest` and the native stable channel. Immutable 
 - The bootstrapper never executes an unverified native artifact.
 - The npm package provenance and packed-file allowlist map to the release source commit.
 - beta-to-stable promotion does not rebuild native binaries.
-- setup, update from the previous version, forced rollback, repair, and uninstall pass on every target.
+- setup, explicit upgrade from the previous version, schema rollback, repair, and uninstall pass on every target.
 - Windows and unsupported architectures fail before machine mutation.

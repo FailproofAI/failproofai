@@ -1,4 +1,4 @@
-# Service and automatic updates
+# Service and harness schema updates
 
 ## Service model
 
@@ -9,90 +9,72 @@ Setup selects one explicit service scope:
 | `system` (recommended) | systemd system service | LaunchDaemon | machine boot | `sudo`/root |
 | `user` | systemd user service | LaunchAgent | user login | none |
 
-User scope owns only that user's configuration, credentials, policies, transcripts, activity, and socket. System scope supports system agents and multiple explicitly enrolled users. Its service files, machine credentials, shared state, executable activation, and update metadata are root-owned.
+User scope owns only that user's configuration, credentials, policies, transcripts, activity, and socket. System scope supports system agents and multiple explicitly enrolled users. Its service files, machine credentials, shared state, executable, and schema-catalog state are root-owned.
 
-The scopes provide different security guarantees. User scope is convenient and complete, but an agent with the same OS permissions as its user can stop that service or modify user-owned configuration; it is cooperative enforcement. System scope is the tamper-resistant option. Only root-authorized administrative requests may stop, reconfigure, update, or remove the daemon, register protected policy, or mutate its active protected generation. Non-root clients can submit hook events and read their authorized status, but cannot call administrative operations.
+User scope is convenient and complete, but an agent with the same OS permissions can stop it or modify user-owned configuration; it is cooperative enforcement. System scope is the tamper-resistant option. Only root-authorized administrative requests may stop, reconfigure, replace, or remove the daemon, register protected policy, or mutate its active protected generation. Non-root clients can submit hook events and read their authorized status, but cannot call administrative operations.
 
-Protected policies are copied or compiled into an immutable root-owned content-addressed store during an elevated install operation. The daemon evaluates a committed revision, not a mutable user source path. Changing, disabling, or deleting that revision requires an explicit privileged CLI operation and produces an audit record. Editable user/project policies may still be loaded for development, but status labels them `mutable` and never presents them as tamper-resistant.
+Protected policies are copied or compiled into an immutable root-owned content-addressed store during an elevated install operation. The daemon evaluates a committed revision, not a mutable user source path. Changing, disabling, or deleting that revision requires an explicit privileged CLI operation and produces an audit record. Editable user/project policies remain available but are labeled `mutable` rather than tamper-resistant.
 
 System scope is a privileged supervisor, not a blanket root execution context. Unix-socket peer credentials select a per-UID policy/session context. User-authored policy workers run with that user's UID/GID, reduced groups and environment, resource limits, and platform sandboxing. Per-user queues, storage quotas, and authorization prevent cross-user reads or resource starvation. Only administrator-owned machine policy may be assigned machine-wide.
 
-One user is bound to one endpoint. Setup detects user/system conflicts and transactionally switches hook registrations; both services may exist on a machine only when their enrolled user sets do not overlap. A system installation does not rewrite all users' harness files implicitly.
+One user is bound to one endpoint. Setup detects user/system conflicts and transactionally switches hook registrations; both services may exist only when their enrolled user sets do not overlap. A system installation does not rewrite all users' harness files implicitly.
 
-Daemon elevation alone cannot protect a hook stored in a user-writable harness file. Each adapter therefore declares its registration protection:
+Harness attachment is reported as `protected`, `detectable`, or `cooperative`. Setup uses the strongest available registration and never reports tamper resistance unless both the daemon/policy plane and harness invocation boundary are protected. Missing or altered registrations are automatically repaired while enabled. Missing expected heartbeats or repeated repair raises a local and, when connected, Failproof Cloud alert.
 
-- `protected`: the harness supports a root-owned machine configuration, mandatory plugin, managed gateway, or OS-enforced launcher that the agent cannot bypass;
-- `detectable`: the registration is user-writable, but the daemon continuously verifies and automatically repairs FailproofAI entries; enforcement can still be bypassed between removal and repair;
-- `cooperative`: no protected or reliably monitored integration point exists.
+Windows is outside the v1.0.0 service scope. Its service model, named-pipe transport, and packaging belong to the next iteration.
 
-Setup uses the strongest available registration, records its exact coverage, and never reports `tamper-resistant` unless both the daemon/policy plane and the harness invocation boundary are protected. A wrapper is protected only when users cannot invoke the underlying agent outside it. Missing or altered registrations are repaired automatically while the integration remains enabled. Missing expected heartbeats or repeated repair raise a local and, when connected, Failproof Cloud alert, but detection and repair are not described as prevention.
+Service configuration contains executable and state paths but no secrets. User-scope operations never request elevation. System-scope mutations require `sudo`; no sudo password is stored.
 
-Windows is explicitly outside the v1.0.0 service and updater scope. Its service model, named-pipe transport, executable activation, packaging, and rollback design belong to the next iteration.
+## No automatic binary replacement
 
-Service configuration contains executable and state paths but no secrets. Installation, status, restart, and uninstall use native service-manager APIs or carefully bounded commands. User-scope operations never request elevation. System-scope mutations require `sudo`; the running system service and its updater already possess the authority needed for unattended activation and never store a sudo password.
+v1.0.0 does not download, replace, or restart `failproofai` or `failproofaid` automatically. There is no updater helper, version-pointer activation protocol, or background native release channel. Native upgrades are explicit customer actions through the npm setup path.
 
-## Update ownership
+This keeps the privileged service stable while solving the faster-moving compatibility problem independently: agent harnesses auto-update and frequently change their hook configuration schemas.
 
-The running daemon may discover, download, verify, and stage a release. It must not replace its own executable and invoke the restart that kills it mid-operation.
+## Signed harness schema catalog
 
-Activation belongs to a separately invoked updater controlled by the service manager. Its lifetime and result do not depend on the old daemon remaining alive.
+FailproofAI publishes a signed, versioned catalog containing declarative adapter data:
 
-## Release layout
+- harness identity and executable/version detection rules;
+- supported exact versions or version ranges;
+- settings locations and configuration scope;
+- hook event names, matcher structure, command representation, and response capabilities;
+- semantic merge and validation rules;
+- registration protection and known bypass limitations;
+- minimum catalog format and daemon/client capability versions.
 
-A release is a signed manifest plus versioned platform artifacts. The manifest covers the daemon, native CLI/hook client, any policy worker, schemas, and compatibility metadata.
+The catalog contains data only—no executable code, scripts, dynamic library, policy, or unrestricted template language. Schema validation rejects unknown operations, paths outside the adapter's declared settings locations, commands other than the installed FailproofAI hook client, and catalog entries requiring unsupported daemon capabilities.
 
-An update must be authentic, complete, compatible, atomic, recoverable, externally activated, and observable. A SHA-256 list served beside an artifact detects corruption but is insufficient publisher authentication; the manifest itself is signed by a trusted release key.
+The catalog is maintained in the FailproofAI repository, reviewed like code, built reproducibly, and published as an immutable signed artifact. The daemon ships a baseline catalog so fresh installation and offline operation work without a network connection. Standalone OSS users may also pin or provide a locally verified catalog without Failproof Cloud.
 
-Native installations use versioned directories and an atomic `current` pointer or service-path switch. The previous complete release remains available for rollback.
+## Version selection and reconciliation
 
-### Crash-consistent activation
+For each enabled harness, the daemon:
 
-Activation is an on-disk transaction owned by the external updater:
+1. detects the installed executable and obtains its version using a bounded side-effect-free adapter rule;
+2. selects the most specific compatible schema: exact version before the narrowest matching range;
+3. rejects ambiguous matches and never guesses across an unsupported major version;
+4. compares the desired registration with the parsed settings file;
+5. atomically merges and verifies the FailproofAI-owned entries;
+6. records harness version, schema ID, catalog generation, and resulting registration identity.
 
-1. fully extract into a new version directory that is not reachable through `current`;
-2. verify every file, write a signed-manifest identity and `complete` marker, then `fsync` files and the version directory;
-3. write and `fsync` an activation journal containing transaction ID, previous release, candidate release, and phase;
-4. stop the daemon only after the candidate and journal are durable;
-5. create a temporary pointer to the complete candidate, `fsync` it where applicable, atomically rename it over `current`, and `fsync` the parent directory;
-6. update and `fsync` the journal phase, start the daemon, and perform readiness/health probes;
-7. on success mark the transaction committed durably; on failure perform the same pointer-switch sequence back to the previous complete release.
+Harness executable/version changes, settings-file changes, and a periodic scan all trigger reconciliation. If the detected version has no compatible schema, the daemon retains the last known registration only when its compatibility rule permits it; otherwise health becomes `unsupported_harness_version` and the user is told enforcement coverage is not assured.
 
-Neither `current` nor the journal may reference a release lacking its verified `complete` marker. The updater/service startup recovery path runs before daemon launch: it validates `current`, journal, candidate, and previous release; completes an unambiguous durable switch or restores the last complete release; then starts the daemon. Corrupt or incomplete candidates are quarantined rather than selected.
+## Catalog update transaction
 
-## Update flow
+Catalog refresh runs with jitter and can also be requested manually. It downloads a size-bounded candidate, verifies the publisher signature and content digest, checks monotonic generation/replay rules and format compatibility, then fully validates every applicable adapter away from active state.
 
-1. Check the selected stable/beta channel on a jittered interval.
-2. Download into a versioned staging directory with size and time bounds.
-3. Verify manifest signature, artifact hashes, OS/architecture, compatibility, updater version, and disk space.
-4. Smoke-test staged executables using side-effect-free version/protocol commands.
-5. Ask the external updater to activate in an idle window.
-6. Stop the daemon and atomically switch the complete release.
-7. Start it and probe IPC readiness and deeper subsystem health.
-8. On failure restore the prior release, restart it, record evidence, and suppress the bad version.
+The daemon persists the candidate and previous catalog, fsyncs them, atomically changes the active catalog pointer, and reconciles affected harnesses. If parsing, registration validation, or a synthetic adapter check fails, it restores the previous catalog and previous hook registration. A rejected generation is suppressed until a newer generation or explicit administrator retry.
 
-Activation is serialized by a lock. It may defer while enforcement requests are active, up to a maximum deferral. Hook clients use their documented daemon-unavailable behavior during the short restart window.
+Catalog updates do not restart the daemon or interrupt enforcement. If a schema needs behavior unavailable in the installed daemon/hook client, it is not activated and status reports `binary_update_required`. The user then explicitly reruns the supported npm setup command; the catalog never attempts that upgrade itself.
 
-## State compatibility
+## Acceptance criteria
 
-Every release declares readable/writable state schema ranges and IPC protocol ranges. State migration is copy-on-write or backward-readable by the retained release.
-
-An irreversible migration cannot be activated unattended because rollback would restore an executable unable to read its state.
-
-Old/new hook clients and daemons must interoperate during rolling activation. An incompatible staged release is rejected before the active pointer changes.
-
-## Platform policy
-
-- User- and system-scoped Linux/macOS installations can auto-activate signed releases within their own ownership boundary.
-- npm owns the bootstrap package only; the standalone updater owns the stable native installation created by setup.
-
-## Update acceptance criteria
-
-- Tampered manifest or artifact is rejected without changing the active release.
-- Wrong architecture and incompatible protocol/state versions are rejected before activation.
-- Power loss during staging or pointer switch leaves one complete bootable release.
-- Fault-injection tests cut power after every file write, marker/journal fsync, daemon stop, pointer creation/rename, directory fsync, start, probe, commit, and rollback step; startup always selects a verified complete release.
-- Failed readiness or health automatically restores the prior healthy release.
-- A suppressed failed version is not retried until manual action or a newer release.
-- The installed service reports active, staged, available, previous, and rolled-back versions.
-- The full acceptance suite passes independently for systemd user services, systemd system services, LaunchAgents, and LaunchDaemons.
-- System-scope tests prove peer isolation, per-user quotas, privilege dropping, and that user policy code cannot execute with root authority.
+- System and user services pass lifecycle tests on systemd and launchd.
+- System scope proves peer isolation, privilege dropping, and root-only administration.
+- A harness version change selects the correct exact/range schema and repairs its hook registration.
+- Ambiguous, unsupported, tampered, replayed, executable, or capability-incompatible catalog data is rejected.
+- Power loss during catalog persistence leaves either the previous or candidate complete signed generation active.
+- A bad schema restores both the previous catalog and valid hook registration without restarting the daemon.
+- Offline installs use the bundled baseline catalog.
+- No background path downloads or activates a native executable.

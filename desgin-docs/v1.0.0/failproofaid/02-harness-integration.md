@@ -85,7 +85,7 @@ Reconciliation parses the harness's native configuration and compares normalized
 
 The daemon suppresses its own watcher event, debounces editor write bursts, and rate-limits repeated repair loops. Each repair records old/new registration identities, user, harness, reason, and result without logging unrelated settings or secrets. Persistent tampering degrades health and raises a local and, when connected, Failproof Cloud alert. Repair remains enabled by default while the integration is enabled; `harness disable` first removes the desired registration so intentional uninstall is not repaired.
 
-The hook client, system socket, service definition, protected policy store, and updater are root-owned and not writable by enrolled users. The system daemon accepts evaluation requests from those users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
+The hook client, system socket, service definition, protected policy store, and active schema catalog are root-owned and not writable by enrolled users. The system daemon accepts evaluation requests from those users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
 
 ## Request envelope
 
@@ -198,7 +198,7 @@ The client and daemon negotiate a protocol version before evaluation or use a ca
 - policy runtime/API range;
 - minimum compatible client and daemon versions.
 
-Rolling updates must tolerate the old client talking to the new daemon and the new client talking briefly to the old daemon. Incompatible versions fail with an actionable diagnostic and use the documented migration fallback where available.
+Explicit binary upgrades must tolerate the old client talking to the new daemon and the new client talking briefly to the old daemon during setup. Incompatible versions fail with an actionable diagnostic and use the documented migration fallback where available.
 
 ## Adding a harness
 

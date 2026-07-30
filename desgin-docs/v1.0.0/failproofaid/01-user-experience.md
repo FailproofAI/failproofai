@@ -10,7 +10,7 @@ A user installs FailproofAI once on a machine. From then on:
 - installations connected to Failproof Cloud may additionally synchronize centrally assigned policies;
 - FailproofAI session data is captured and delivered when enabled;
 - service and policy health are always visible locally and, when connected, in the cloud;
-- stable releases update automatically with rollback on failure.
+- hook registrations automatically track supported harness schema changes without replacing the daemon binary.
 
 The user should not need to understand hooks, service managers, sockets, transcript formats, or collector processes.
 
@@ -146,7 +146,7 @@ The command returns machine-readable failure codes and supports `--json`. Re-run
 
 User scope installs a systemd user service on Linux or a LaunchAgent on macOS. Its executable, configuration, credentials, logs, policy state, and socket are owned by that user. It manages only harness configuration selected by that user and normally starts at login.
 
-System scope installs a systemd system service on Linux or a LaunchDaemon on macOS. Its executable, service definition, machine configuration, credentials, update state, and shared data are root-owned. It can start at boot and serve system agents and explicitly enrolled local users. Installing, updating, repairing, or uninstalling this scope requires `sudo`; normal hook evaluation does not.
+System scope installs a systemd system service on Linux or a LaunchDaemon on macOS. Its executable, service definition, machine configuration, credentials, schema-catalog state, and shared data are root-owned. It can start at boot and serve system agents and explicitly enrolled local users. Installing, explicitly upgrading, repairing, or uninstalling this scope requires `sudo`; normal hook evaluation does not.
 
 System scope is the choice for tamper-resistant enforcement. Setup imports protected policies into a root-owned immutable store and makes daemon administration root-only. User scope remains fully functional but is explicitly described as cooperative: an agent running with the user's authority may be able to change user-owned policy, hooks, or service state.
 
@@ -212,14 +212,14 @@ failproofai policies reload
 failproofai policies explain --session <id>
 failproofai collector status
 failproofai collector flush
-failproofai update --check
-failproofai update --rollback
+failproofai harness schemas status
+failproofai harness schemas refresh
 failproofai doctor
 ```
 
 `policies explain` is an important trust feature. It shows the effective policies for a target, their source and assignment scope, the precedence calculation, active revision, and why an expected policy did or did not apply.
 
-`doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, cloud freshness, and update state. Any repair that changes harness configuration or deletes data requires an explicit flag or confirmation.
+`doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, cloud freshness, and harness/schema compatibility. Any repair beyond automatic restoration of enabled FailproofAI hook entries requires an explicit flag or confirmation.
 
 On a standalone installation cloud checks report `not_configured`, not a warning or failure.
 
@@ -237,7 +237,7 @@ The default health view reports independently:
 - enabled capture sources and checkpoint progress;
 - pending, retrying, and quarantined delivery data;
 - disk or memory pressure;
-- installed, available, staged, or rolled-back update versions.
+- detected harness versions, active schema generation, and unsupported or binary-update-required adapters.
 
 A process can be running while policy sync or event delivery is unhealthy. The UI must never collapse these into one green status.
 
@@ -251,18 +251,11 @@ Connected users see the age and expiry state of cloud policy. Ordinary organizat
 
 Collection continues into a bounded durable spool while offline. Delivery resumes automatically. Enforcement never waits for the spool or backend.
 
-## Updates
+## Harness compatibility updates
 
-Stable standalone installations check for updates automatically with jitter. Downloads and verification happen in the background. Activation occurs in an idle window through the external updater and service manager, not by the running daemon replacing itself.
+The daemon refreshes a signed declarative harness schema catalog with jitter. It detects each installed harness version, selects the most specific compatible hook schema, and automatically reconciles the settings file. A bad catalog generation or failed hook validation restores the previous schema and registration.
 
-The user can choose:
-
-- automatic stable activation;
-- download automatically but ask before activation;
-- notify only;
-- a pinned version for managed environments.
-
-The status view reports what will happen before an update. A failed health check rolls back automatically and suppresses the failed release. npm owns only the bootstrap invocation; FailproofAI's updater owns the installed native release.
+The catalog cannot contain executable code or replace native binaries. When a schema requires capabilities missing from the installed daemon or hook client, health reports `binary_update_required`; the user explicitly reruns `npx failproofai@latest setup`. Offline installations continue using their bundled or pinned catalog.
 
 ## Failure experience
 
@@ -273,7 +266,7 @@ Enforcement: healthy — generation 184 active
 Cloud sync: degraded — offline for 18m; generation 184 remains enforced
 Codex capture: degraded — transcript path is not readable
 Delivery: retrying — 23 batches pending; oldest 4m
-Update: rolled back — 1.0.3 failed readiness; running 1.0.2
+Codex hooks: repaired — schema codex/1.4 for harness 1.2.3
 ```
 
 The daemon-unavailable behavior is explicit. During migration the hook client may use the legacy evaluator. Later releases apply the configured per-integration failure mode and explain whether the event was allowed, blocked, or not enforceable. Stop-class integrations receive special handling to prevent retry loops.
@@ -285,7 +278,7 @@ The daemon-unavailable behavior is explicit. During migration the hook client ma
 1. disables installed harness integrations;
 2. stops and removes the selected service scope;
 3. revokes the machine credential when the installation is connected, or records revocation for its next connection;
-4. removes installed executables and update state;
+4. removes installed executables and harness schema-catalog state;
 5. preserves local policy files, logs, pending events, and configuration by default.
 
 `--purge` additionally removes retained local state after showing exactly which directories and undelivered records will be deleted. Cloud data and organization policy are not deleted by uninstalling one machine.
@@ -307,6 +300,6 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 - Removing or altering an enabled FailproofAI hook is detected and semantically repaired without overwriting unrelated harness settings; explicit disable/uninstall is not repaired.
 - Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - Collection consent names each enabled source and can be revoked independently.
-- Update failure returns to the previous healthy release without manual repair.
+- A bad harness schema returns to the previous valid schema and registration without replacing or restarting the daemon.
 - Uninstall never silently deletes undelivered or user-authored data.
-- Linux and macOS pass the complete setup, service lifecycle, enforcement, update, rollback, and uninstall acceptance suite; Windows is not represented as a v1.0.0 supported target.
+- Linux and macOS pass the complete setup, service lifecycle, enforcement, schema refresh/rollback, and uninstall acceptance suite; Windows is not represented as a v1.0.0 supported target.

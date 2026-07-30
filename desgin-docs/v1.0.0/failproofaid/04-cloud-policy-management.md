@@ -95,7 +95,7 @@ AI-generated policy never bypasses authorization. Organizations define who may c
 
 ## Security requirements
 
-- Machine control-plane credentials are separate from event-ingest and update credentials.
+- Machine control-plane credentials are separate from event-ingest and harness-catalog retrieval credentials.
 - Policy releases and desired-state snapshots are signed, organization-bound, content-addressed, and replay-resistant.
 - Cloud policy has declared limited capabilities and no ambient host authority.
 - Targeting labels are minimized and treated as customer data.

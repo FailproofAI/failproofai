@@ -33,6 +33,17 @@ agenteye keys create ci --add events:add     # a key that can only push events, 
 
 One habit to know: global options like `--json` go before the command. `agenteye --json sessions` is right; `agenteye sessions --json` is not.
 
+## Approve a login from another device
+
+When a terminal cannot receive an emailed code directly, start device login there and open the displayed link in a browser. Sign in to AgentEye with the email shown by the CLI, verify that the browser displays the same short code, review the requested access, and approve it. The terminal then receives its own scoped session.
+
+```bash
+agenteye login --device --no-wait   # print the approval link and return
+agenteye login --device --wait      # claim the approved session
+```
+
+The link is only a way to reach the approval screen. Copying or forwarding it cannot approve a login by itself: approval always requires an active AgentEye sign-in for the matching email. If the email or code is unexpected, deny the request.
+
 ## Script it, wire it into CI
 
 Every command takes `--json`, and that changes everything. Clean JSON goes to stdout while human status and warnings go to stderr, so a `--json` capture pipes straight into `jq` with no stray line to strip. That is what makes the CLI equally good for you at a prompt and for a coding agent parsing output:

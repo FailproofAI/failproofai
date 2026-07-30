@@ -8,7 +8,7 @@
 - desired hook registration, settings-file watching, and automatic reconciliation;
 - event canonicalization and policy evaluation coordination;
 - immutable local policy generations;
-- local session-source indexing, checkpoints, and activity evidence;
+- collector source workers, checkpoints, spooling, and delivery;
 - health, diagnostics, logs, and resource limits;
 - signed harness schema-catalog refresh and atomic activation.
 
@@ -19,10 +19,11 @@ The user-facing `failproofai` CLI is a client of the daemon and service manager.
 The daemon separates work into independently bounded lanes:
 
 1. **Enforcement** — reserved workers, strict deadlines, and no network dependency.
-2. **Indexing** — local session-source watching, transcript parsing, and checkpointing for activity, audits, and the dashboard.
-3. **Maintenance** — configuration reload, health snapshots, cleanup, and harness schema-catalog refresh.
+2. **Collection** — source watching, transcript parsing, checkpointing, and backfill.
+3. **Delivery** — batching, upload, retry, and quarantine.
+4. **Maintenance** — configuration reload, health snapshots, cleanup, and harness schema-catalog refresh.
 
-Phase 2 adds delivery and management lanes under the same per-lane bounds. The lane structure exists now so that adding them is a registration rather than a re-architecture, and so nothing in Phase 1 assumes it is the only background work.
+Phase 2 adds one more lane — management, for cloud desired-state reconciliation — under the same per-lane bounds. The lane structure exists now so adding it is a registration rather than a re-architecture.
 
 Maintenance includes one adapter-aware hook reconciler per enabled harness. Watcher activity and repair work have bounded queues and cannot consume enforcement capacity. The persisted desired registration, not the current mutable harness file, is authoritative until an explicit disable or uninstall commits a new desired state.
 
@@ -33,12 +34,12 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 - The daemon listens on a Unix domain socket reachable by enrolled users, whose parent directory is owned by the service account or root, so no enrolled user can unlink it and bind a substitute; every request is authorized from operating-system peer credentials.
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
-- Peer identity is mandatory, and maps to an isolated per-UID policy, session, activity, quota, and administrative-authorization context.
+- Peer identity is mandatory, and maps to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
 - Hook, query, and administrative operations are distinct protocol operation classes, each with its own authorization rule.
 
 Windows transport and service integration are deferred beyond Phase 1. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
 
-Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, and the `Query` set. Administrative calls can gain stronger authorization later without changing the hook request.
+Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, `Flush`, and the `Query` set. Administrative calls can gain stronger authorization later without changing the hook request.
 
 | Class | Operations | Authorized for |
 |---|---|---|
@@ -119,7 +120,7 @@ Authoring is unprivileged and unconstrained — the ordinary package-manager wor
 
 A policy that needs remote state — pull-request status, CI results, an organization directory — must not fetch it during evaluation. Enforcement runs under a hard monotonic deadline, and a synchronous network call inside a hook makes a third party's availability a precondition for the user running a command.
 
-Remote state is fetched by the maintenance lane on its own schedule into a local cache with an explicit freshness bound, and the policy reads that cache synchronously. A policy reading stale or absent cached state must be able to distinguish it from a negative result, and the freshness bound is recorded with the decision. The rule is a property of the enforcement deadline, not of where the data comes from, so it holds identically for any lane added later.
+Remote state is fetched by the collection lane on its own schedule into a local cache with an explicit freshness bound, and the policy reads that cache synchronously. A policy reading stale or absent cached state must be able to distinguish it from a negative result, and the freshness bound is recorded with the decision. The rule is a property of the enforcement deadline, not of where the data comes from, so it holds identically for any lane added later.
 
 ## Evaluation path
 
@@ -132,10 +133,10 @@ For an accepted hook request, the daemon:
 5. finds all matching policies and their effects;
 6. evaluates matching policy locally within the remaining deadline, routing each one to its admitted execution tier;
 7. combines results deterministically (`deny` over `instruct` over `allow`, absent an authorized suppression), so a `user-context` result can tighten the outcome but never relax a `sealed` one;
-8. writes decision evidence asynchronously to the durable local activity store;
+8. writes decision evidence asynchronously to the durable activity spool;
 9. returns a canonical result and decision ID.
 
-The response never waits for evidence persistence, transcript indexing, or catalog refresh.
+The response never waits for event upload, transcript processing, or catalog refresh.
 
 ### Forward compatibility
 
@@ -157,16 +158,18 @@ The canonical user root is `~/.failproofai/`, overridable for tests:
     policy-generations/
     checkpoints/
     activity/
+    spool/
+    failed/
     health.json
     harness-schemas/
   logs/
 ```
 
-Phase 1 stores no secret anywhere in this tree, because nothing in it authenticates to a remote service.
+The one secret Phase 1 handles is the observability server's `events:add` key. It belongs to the machine's delivery lane rather than to a user, so it lives in privileged machine configuration where the service account can read it and enrolled users cannot — never in this tree, never in the service definition, and never in a process argument. It uses the operating-system credential store where practical, with an owner-only file as the portability fallback.
 
 Machine state uses platform system locations. On Linux, executables and the pinned runtime install root-owned under `/opt/failproofai/versions/<version>/`; configuration, the content-addressed policy store, and mutable state live under `/var/lib/failproofai/`; the runtime socket directory is `/run/failproofai/`. macOS uses platform-appropriate `/Library` locations with the same logical layout.
 
-Ownership within that layout is split by writer. Anything whose integrity a decision depends on — executables, the pinned runtime, the protected policy store, the active schema catalog, and machine configuration — is root-owned and read-only to the service account, written only by the privileged installer during an elevated operation. The service account owns only what the daemon must write at runtime: checkpoints, activity, per-user state, health, logs, and the socket directory. The daemon consequently cannot rewrite the binary it restarts from, the runtime it evaluates in, or the policy revision it evaluates — a compromised daemon can corrupt its own telemetry and nothing above it.
+Ownership within that layout is split by writer. Anything whose integrity a decision depends on — executables, the pinned runtime, the protected policy store, the active schema catalog, and machine configuration — is root-owned and read-only to the service account, written only by the privileged installer during an elevated operation. The service account owns only what the daemon must write at runtime: spool, checkpoints, activity, per-user state, health, logs, and the socket directory. The daemon consequently cannot rewrite the binary it restarts from, the runtime it evaluates in, or the policy revision it evaluates — a compromised daemon can corrupt its own telemetry and nothing above it.
 
 Per-user material beneath machine state is keyed by numeric UID, never an untrusted username, and remains inaccessible to other users. Exact paths are part of the platform packaging contract.
 
@@ -180,15 +183,16 @@ Configuration is schema-versioned and written transactionally. File notification
 
 | Failure | Required behavior |
 |---|---|
-| Policy worker crashes | Restart it, retain verified generation data, apply configured event failure behavior, keep indexing running. |
+| Policy worker crashes | Restart it, retain verified generation data, apply configured event failure behavior, keep collection running. |
 | Policy hangs | Enforce deadline, trip its circuit breaker after repeated failures, keep IPC responsive. |
 | One source parser fails | Degrade that source without stopping other sources or enforcement. |
 | Invalid configuration | Reject candidate and retain active generation. |
-| Activity store reaches quota | Report degradation and apply an explicit retention rule; never block a decision on it. |
-| Daemon crashes | Service manager restarts it; persisted generations, checkpoints, and activity records recover work. |
+| Observability server unavailable | Continue enforcement and capture; spool delivery data and retry with bounded backoff. |
+| Spool reaches quota | Report degradation and apply explicit queue policy; never wait on network in enforcement. |
+| Daemon crashes | Service manager restarts it; persisted generations, checkpoints, and spool recover work. |
 
 ## Health
 
-Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, session-source progress, activity-store age and size, resource pressure, and harness/schema compatibility state. The snapshot is versioned so Phase 2 adds subsystems to it rather than reshaping it.
+Health is a structured, versioned snapshot covering IPC readiness, enforcement latency and queue depth, local policy generation and reload state, source progress, spool age and size, delivery acknowledgements, quarantined data, resource pressure, and harness/schema compatibility state. Delivery health is `not_configured` when no destination is set. The snapshot is versioned so Phase 2 adds subsystems to it rather than reshaping it.
 
-Logs are structured, correlated by request/catalog-generation ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.
+Logs are structured, correlated by request/batch/catalog-generation ID, rotated, and size-bounded. Sensitive hook payloads and transcript contents are excluded by default.

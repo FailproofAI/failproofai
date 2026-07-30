@@ -137,7 +137,7 @@ Clients ship the release trust root and support signed rotation. A modified arti
 - A release PR sets the version and dated changelog section.
 - Build each Linux/macOS target from one source commit in pinned isolated workers.
 - Build the policy worker from the same revision when required.
-- Run unit, integration, harness-contract, setup/upgrade, schema-catalog rollback, and uninstall tests.
+- Run unit, integration, harness-contract, collector-conformance, setup/upgrade, schema-catalog rollback, and uninstall tests.
 - Smoke-test each executable's side-effect-free version/protocol command on its target OS.
 - Generate SBOMs and provenance and scan source, dependencies, archives, and package contents.
 
@@ -155,7 +155,7 @@ Build jobs do not receive long-lived signing or npm credentials. Signing and pub
 
 - Publish immutable native prerelease artifacts and signed manifest.
 - Publish the npm package under the `beta` dist-tag.
-- From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, session indexing, schema refresh/rollback, explicit binary upgrade, and uninstall.
+- From clean Linux and macOS machines, run `npx failproofai@beta setup` and verify install, service start, policy evaluation, collector behavior, schema refresh/rollback, explicit binary upgrade, and uninstall.
 - Run the same sequence end to end inside a clean container that mimics a real user install — native download and signature verification, `setup`, service readiness, an enforced synthetic hook, and `uninstall` — so the gate exercises a machine with no developer toolchain, no prior FailproofAI state, and no repository checkout. Because the only shipped scope registers a system service, that container needs a real init running as PID 1; a container without one is a preflight refusal, and the gate must assert that refusal separately rather than skipping the case.
 
 ### Promote stable

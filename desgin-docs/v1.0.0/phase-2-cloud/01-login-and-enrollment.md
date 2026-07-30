@@ -1,10 +1,10 @@
 # Login, machine identity, and enrollment
 
-Phase 1 has no account. This document adds one, and nothing here may change how a Phase 1 machine behaves until its owner deliberately signs in.
+Phase 1 needs no FailproofAI organization and no machine identity. This document adds both, and nothing here may change how a Phase 1 machine behaves until its owner deliberately enrolls it.
 
 ## What connecting adds
 
-Signing in adds enrollment, centrally assigned policy, fleet health, analysis, staged rollout, and organization audit. It does not remove or subordinate anything: builtin policies, explicit custom files, convention discovery, local scopes, the local dashboard, and local audits all keep working exactly as they did, and a connected machine still evaluates every decision locally.
+Enrolling adds centrally assigned policy, fleet health, analysis, staged rollout, and organization audit. It does not remove or subordinate anything: builtin policies, explicit custom files, convention discovery, local scopes, the local dashboard, local audits, and the machine's existing capture and delivery configuration all keep working exactly as they did, and a connected machine still evaluates every decision locally.
 
 The connected workflow is:
 
@@ -20,7 +20,7 @@ The daemon reconciles these changes automatically. A user does not run a sync co
 
 ## Setup
 
-Phase 2 inserts steps into the Phase 1 setup flow rather than replacing it. The Phase 1 steps — preflight, boundary disclosure, integrations, policies, session sources, install, verify, report — stay in the same order and keep the same meaning.
+Phase 2 inserts steps into the Phase 1 setup flow rather than replacing it. The Phase 1 steps — preflight, boundary disclosure, integrations, policies, observability, install, verify, report — stay in the same order and keep the same meaning.
 
 The mode choice comes first, because it determines whether the enrollment steps run at all:
 
@@ -30,11 +30,12 @@ The mode choice comes first, because it determines whether the enrollment steps 
   ❯ Login   Local policies + Failproof Cloud, centralized policy management,
             machine/agent/session targeting, fleet health, and cloud sync.
 
-    OSS     No account or cloud required. Builtin and custom policies,
-            convention discovery, local activity/dashboard, audits, and offline use.
+    OSS     No organization or cloud required. Builtin and custom policies,
+            convention discovery, session capture, local activity/dashboard,
+            audits, and offline use.
 ```
 
-**Login** is selected by default, but the user can move to **OSS** before continuing. The one-liners are product explanations, not license warnings. Login retains every OSS capability and adds connected functionality. OSS remains a complete supported path rather than a trial or degraded mode — it is exactly the Phase 1 product.
+**Login** is selected by default, but the user can move to **OSS** before continuing. The one-liners are product explanations, not license warnings. Login retains every OSS capability and adds connected functionality. OSS remains a complete supported path rather than a trial or degraded mode — it is exactly the Phase 1 product, capture and delivery included.
 
 After the user selects a mode, the completed step stays visible as `Login · <organization>` or `OSS · local only`. Returning to the step and changing the choice updates the remaining flow before anything is applied.
 
@@ -79,19 +80,18 @@ The one-time enrollment token is exchanged for a rotatable machine credential an
 
 The credential belongs to the machine, not to the user who ran setup. It is stored where the daemon's service account can read it and enrolled users cannot — inside the privileged state tree, never under `~`. It uses the operating-system credential store where practical, with an owner-only file as the portability fallback.
 
-Machine control-plane credentials are separate from event-ingest credentials, so compromising one does not confer the other.
+This is the machine's third credential and it is deliberately distinct from the other two. It is not the user's `failproofai auth login` token, and not the collector's `events:add` key for a self-hosted observability server; the control plane, the user session, and event ingest are separately scoped, so compromising any one of them confers neither of the others. Enrolling does not replace or rotate the collector's key, and does not change where captured data goes.
 
 ## Health
 
 Connected installations add cloud subsystems to the Phase 1 health snapshot. Because that snapshot is versioned, this is an extension rather than a reshape:
 
 - cloud state as `not_configured`, `connected`, `stale`, `expired`, `rejected`, or `never_synced`;
-- cloud assignment generation alongside the local policy generation;
-- pending, retrying, and quarantined delivery data.
+- cloud assignment generation alongside the local policy generation.
 
-On a standalone installation every cloud check reports `not_configured` — not a warning and not a failure.
+Capture and delivery health are already in the Phase 1 snapshot and are not restated here. On a standalone installation every cloud check reports `not_configured` — not a warning and not a failure.
 
-A process can be running while policy sync or event delivery is unhealthy. The UI must never collapse these into one green status.
+A process can be running while policy sync is unhealthy. The UI must never collapse these into one green status.
 
 ## Offline behavior
 
@@ -104,7 +104,6 @@ Errors name the affected capability and the current safety behavior:
 ```text
 Enforcement: healthy — generation 184 active
 Cloud sync:  degraded — offline for 18m; generation 184 remains enforced
-Delivery:    retrying — 23 batches pending; oldest 4m
 ```
 
 ## Source labelling
@@ -134,7 +133,7 @@ Cloud data and organization policy are not deleted by uninstalling one machine.
 
 ## Acceptance criteria
 
-- A standalone Phase 1 machine that never signs in behaves identically before and after Phase 2 ships.
+- A standalone Phase 1 machine that never enrolls behaves identically before and after Phase 2 ships, including which sources it captures and where their data goes.
 - Connecting Failproof Cloud does not disable or subordinate user-authored local policy, and local policy behavior is identical before, during, and after enrollment.
 - Re-running connected setup is idempotent; activation retries cannot create a second machine.
 - An ambiguous activation response is resolved by status lookup before any retry or compensation.

@@ -132,11 +132,11 @@ Canonicalization must preserve evidence about absent or uncertain fields. An inf
 
 ## Session lifecycle
 
-Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by policy matching, local activity, and decision evidence.
+Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by policy matching, captured sessions, and decision evidence.
 
 When explicit lifecycle events do not exist, the daemon derives a session boundary from documented identifiers and activity. The adapter descriptor records this identity quality. Session-scoped enforcement is enabled only when the identity is strong enough to avoid applying a policy to the wrong run.
 
-Agent and session identity must align with the local session index. An enforcement decision and an indexed session from the same harness run must join on stable identifiers, without heuristic after-the-fact matching. This is also what keeps a later delivery lane from having to reconstruct the join.
+Agent and session identity must align with collector output. An enforcement decision and a captured session from the same harness run must join on stable identifiers, so neither the local dashboard nor the observability server has to reconstruct the join heuristically after the fact.
 
 ## Response model
 
@@ -211,7 +211,7 @@ A new harness integration is complete only when it provides:
 3. install, upgrade, disable, and uninstall configuration transforms;
 4. fixture-backed canonicalization tests for every supported native event;
 5. response-contract tests proving allow, deny, instruct, timeout, and daemon-unavailable behavior;
-6. session/agent identity tests aligned with its local session source;
+6. session/agent identity tests aligned with its collector source;
 7. enforcement-capability evidence traced to the harness call site or vendor contract;
 8. an end-to-end test against the real harness or a version-pinned conformance probe;
 9. health and diagnostics output;
@@ -224,7 +224,7 @@ A new harness integration is complete only when it provides:
 - Every event is labeled block, observe, or context-capable from verified evidence.
 - A harness upgrade that changes payload or response behavior fails conformance visibly rather than silently allowing.
 - Hook installation is idempotent and uninstall preserves unrelated configuration.
-- Enforcement and indexed session records for one session share stable identity.
+- Enforcement and collector records for one session share stable identity.
 - Missing session identity never broadens a session-scoped match.
 - Timeout and daemon-unavailable behavior is tested separately for every harness, especially stop-class events.
 

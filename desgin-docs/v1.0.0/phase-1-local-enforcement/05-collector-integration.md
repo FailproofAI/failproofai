@@ -1,10 +1,14 @@
-# Collector convergence and delivery
+# Collector integration
 
 ## Goal
 
-`failproofaid` replaces the standalone FailproofAI collector without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
+`failproofaid` replaces the standalone `agenteye-collector` without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
 
-This is Phase 2 work rather than Phase 1 work for one reason: taking over delivery means taking over the credential that authorizes it. Until that lands, Phase 1 leaves the standalone collector running and delivering untouched, and indexes local sessions only for on-machine activity, audits, and the dashboard. A half-migration that owns capture but not delivery would strand data in exactly the place nobody is watching.
+Everything the collector ships today is Phase 1 scope — capture, backfill, durable spooling, and delivery — because it is shipped behavior, and Phase 1's promise is that nothing a user can do today stops working. Owning capture without delivery would be the worst of both: two processes reading the same transcripts, and data stranded in whichever spool nobody is watching.
+
+Delivery does not pull an account into Phase 1. The collector authenticates to the customer's **own self-hosted** Failproof AI Observability server with an operator-issued API key holding `events:add` — not a FailproofAI cloud login, and not a machine identity. That key is configuration the customer already provides, so it carries over unchanged. Machine enrollment into Failproof Cloud is a different credential for a different purpose and stays in [Phase 2](../phase-2-cloud/01-login-and-enrollment.md).
+
+Capture is off until enabled, and stays that way: the destination server, its key, and each capture source are explicit choices, and a machine with none of them configured spools nothing and delivers nowhere.
 
 ## Capabilities to preserve
 

@@ -7,13 +7,15 @@ A user installs FailproofAI once on a machine. From then on:
 - `failproofaid` starts automatically when the machine boots;
 - supported agent harnesses send events to the local daemon;
 - builtin and user-authored policies work locally with no account or network connection;
-- local session data is indexed and visible in local activity, audits, and the local dashboard;
-- service and policy health are always visible locally;
+- session data is captured and delivered to the configured observability server when enabled, and is visible in local activity, audits, and the local dashboard;
+- service, policy, capture, and delivery health are always visible locally;
 - hook registrations automatically track supported harness schema changes without replacing the daemon binary.
 
-The user should not need to understand hooks, service managers, sockets, transcript formats, or service accounts.
+The user should not need to understand hooks, service managers, sockets, transcript formats, collector processes, or service accounts.
 
-Phase 1 is complete and shippable on its own. It has no account, organization, sign-in, machine identity, or cloud dependency anywhere in its design — not a dormant one, not a disabled one. Everything requiring an account is Phase 2, described in [the Phase 2 documents](../phase-2-cloud/README.md) and absent from this one.
+Phase 1 is complete and shippable on its own: it is the product as it ships today, re-architected around the daemon. Nothing here needs a FailproofAI account or organization, and no policy decision depends on a network service. Where the current product already has credentials they are carried over unchanged, not reinvented — `failproofai auth login` keeps working as it does now, and capture delivers to the customer's own self-hosted observability server with the operator-issued `events:add` key it already uses.
+
+Phase 2 is the genuinely new management plane — machine enrollment into Failproof Cloud, centrally assigned policy, targeting, fleet health, and staged rollout. It is described in [the Phase 2 documents](../phase-2-cloud/README.md) and absent from this one.
 
 ## Compatibility promise
 
@@ -28,13 +30,14 @@ Phase 1 is an architectural upgrade, not a rewrite. Everything a user can do wit
 - enforce across every currently supported agent harness with the same observable result contract;
 - retain transitive local imports and supported package imports in custom policy files;
 - inspect local activity, sessions, policy state, and the local dashboard;
+- capture Codex, OpenClaw, Hermes, and Claude Code sessions and deliver them to a self-hosted observability server, with backfill, exactly-once delivery across restarts, and `health`;
 - run local audits and use the product offline.
 
 These behaviors need compatibility fixtures before the daemon becomes the default. A feature is not considered migrated merely because a different workflow reaches a similar result.
 
 The promise covers capability, not the absence of elevation. Phase 1 installs a privileged service, so installation needs one-time administrator access even though no authoring, discovery, scope, CLI, or evaluation workflow does. A developer who cannot obtain it on a given machine keeps using the current release until the deferred unprivileged scope ships.
 
-The existing standalone FailproofAI collector is out of Phase 1 scope and is left running exactly as it is. Converging it into the daemon needs the credential that authorizes its delivery, so it moves with Phase 2 rather than being half-migrated here.
+The standalone `agenteye-collector` converges into the daemon here rather than later, because it is shipped behavior and this promise covers it. [Collector integration](./05-collector-integration.md) describes the migration, which preserves pending and failed batches until `failproofaid` proves ownership and delivery health, and which is reversible for a defined window.
 
 ## Installation
 
@@ -50,7 +53,7 @@ The npm package uses npm integrity and trusted-publishing provenance for bootstr
 
 Homebrew, shell installers, direct-download installation, containers, mirrors, and offline bundles are outside distribution scope. Windows is also not a Phase 1 daemon target. The npm bootstrapper detects it before downloading or modifying anything and explains that support is planned for a later iteration.
 
-The npm bootstrap and native artifact design is in [npm release and distribution](./06-release-and-packaging.md).
+The npm bootstrap and native artifact design is in [npm release and distribution](./07-release-and-packaging.md).
 
 ### One service scope
 
@@ -64,16 +67,16 @@ Shipping one scope has an explicit cost: **Phase 1 cannot be installed without o
 
 `failproofai setup` performs these steps:
 
-1. **Preflight** — detect the OS, architecture, administrator access, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing FailproofAI collector. Missing administrator access or service manager stops here, before any machine change.
+1. **Preflight** — detect the OS, architecture, administrator access, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing `agenteye-collector` installation. Missing administrator access or service manager stops here, before any machine change.
 2. **Disclose the enforcement boundary** — explain the managed scope before requesting anything: which users it affects, which paths it creates, what hook protection it can and cannot promise for each detected harness, which service manager will own it, and that it needs `sudo` once and never at runtime. Nothing is selected here. The step exists so the privilege boundary is understood rather than discovered later, and it is where the two deferred scopes are named as planned rather than silently absent.
 3. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
 4. **Choose policies** — preserve current builtin selection and custom/convention policy discovery.
-5. **Choose local session sources** — explain which local session sources can be indexed for activity, audits, and the dashboard, and that their contents stay on the machine. Require explicit selection before any transcript is read.
-6. **Install the service** — create the service account, write configuration, register the service, start it, and wait for IPC readiness.
-7. **Verify end to end** — run a harmless synthetic hook request and verify every enabled capability.
-8. **Report completion** — show the service account, enabled harnesses, local policy state, service health, and how to open the local dashboard.
+5. **Choose observability** — explain which session sources can be captured and exactly where their data goes: on-machine only, or also delivered to a self-hosted observability server the user names along with its `events:add` key. Require explicit selection before any transcript is read, and default to capturing nothing.
+6. **Install the service** — create the service account, write configuration and the delivery key, register the service, start it, and wait for IPC readiness. An existing `agenteye-collector` is migrated rather than duplicated.
+7. **Verify end to end** — run a harmless synthetic hook request and verify every enabled capability, including source progress and, when a destination is configured, a delivery round trip.
+8. **Report completion** — show the service account, enabled harnesses, local policy state, capture sources, delivery health, and how to open the local dashboard.
 
-Setup is transactional. If a later step fails, it restores the previous harness configuration and service state. Re-running setup converges the same installation rather than creating a second service, a duplicate hook, or a second service account. It never leaves half-installed hooks pointing at a missing daemon.
+Setup is transactional. If a later step fails, it restores the previous harness configuration, collector ownership, and service state. Re-running setup converges the same installation rather than creating a second service, a duplicate hook, or a second service account. It never leaves half-installed hooks pointing at a missing daemon, and never leaves two collectors owning one source.
 
 ### CLI presentation
 
@@ -84,7 +87,7 @@ The new setup steps reuse the current polished `failproofai config` wizard rathe
 - descriptions aligned beside or beneath each choice;
 - a persistent step spine and compact summaries for completed steps;
 - terminal-width-aware wrapping and the existing ANSI fallback;
-- a final review showing the exact service, harness files, policy configuration, and session sources that will change;
+- a final review showing the exact service, harness files, policy configuration, capture sources, and delivery destination that will change;
 - Enter to confirm and a clear cancellation path that writes nothing.
 
 The boundary-disclosure step should read approximately:
@@ -120,10 +123,12 @@ Automation uses the same operation with structured inputs:
 sudo failproofai setup \
   --non-interactive \
   --harness claude --harness codex \
-  --capture codex
+  --capture codex \
+  --observability-url https://agenteye.internal \
+  --observability-key "$EVENTS_ADD_KEY"
 ```
 
-The command returns machine-readable failure codes and supports `--json`. Re-running it converges the installation to the requested state instead of creating duplicate services or hooks.
+The command returns machine-readable failure codes and supports `--json`. Re-running it converges the installation to the requested state instead of creating duplicate services, hooks, or collectors. The delivery key is read from the environment or a file, written to privileged configuration, and never appears in the generated service definition or in process arguments.
 
 `--service-scope` remains accepted and optional, with `managed` as its only valid value. It exists so automation written now keeps working unchanged when a deferred scope ships, and so a script that states its intent explicitly is not silently reinterpreted later. Passing `system` or `user` is a hard error naming them as deferred, never a downgrade. Insufficient privilege prints the exact `sudo` command to rerun; setup never falls back to an unprivileged install.
 
@@ -212,6 +217,8 @@ failproofai harness disable <name>
 failproofai policies list
 failproofai policies reload
 failproofai policies explain --session <id>
+failproofai collector status
+failproofai collector flush
 failproofai harness schemas status
 failproofai harness schemas refresh
 failproofai dashboard start [--ttl <duration>]
@@ -222,7 +229,7 @@ failproofai doctor
 
 `policies explain` is an important trust feature. It shows the effective policies for a target, their source and scope, the precedence calculation, active revision, declared capabilities, execution tier, and why an expected policy did or did not apply. A policy that landed in the `user-context` tier says which resolved import put it there, so an administrator expecting a tamper-proof verdict finds out at install time rather than after an incident.
 
-`doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, and harness/schema compatibility. Any repair beyond automatic restoration of enabled FailproofAI hook entries requires an explicit flag or confirmation.
+`doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, and harness/schema compatibility. Any repair beyond automatic restoration of enabled FailproofAI hook entries requires an explicit flag or confirmation.
 
 ## Local dashboard
 
@@ -268,17 +275,20 @@ The default health view reports independently:
 - policy counts by execution tier, so an installation can see how much of its enforcement is unforgeable;
 - enabled harnesses and their last event;
 - hook registration state, last verification/repair, and persistent tamper alerts;
-- enabled session sources and indexing progress;
+- enabled capture sources and checkpoint progress;
+- pending, retrying, and quarantined delivery data, and the age of the oldest unacknowledged batch;
 - disk or memory pressure;
 - detected harness versions, active schema generation, and unsupported or binary-update-required adapters.
 
-A process can be running while policy reload or session indexing is unhealthy. The UI must never collapse these into one green status.
+A process can be running while policy reload, capture, or delivery is unhealthy. The UI must never collapse these into one green status. Delivery reports `not_configured` when no destination is set, which is a state rather than a warning.
 
 ## Offline behavior
 
-The daemon loads verified local policy before accepting events, and hook decisions make no network request. Once installed, the product has no management-plane dependency and runs indefinitely offline; the only network activity is the periodic signed harness schema-catalog refresh, whose failure degrades nothing but catalog freshness.
+The daemon loads verified local policy before accepting events, and hook decisions make no network request. Once installed, the product has no management-plane dependency and enforces indefinitely offline. The only network activity is the periodic signed harness schema-catalog refresh, whose failure degrades nothing but catalog freshness, and delivery to the configured observability server when one is set.
 
 Policy status shows the active revision and its last successful reload.
+
+Capture continues into a bounded durable spool while the destination is unreachable. Delivery resumes automatically, and enforcement never waits for the spool or the server.
 
 ## Harness compatibility updates
 
@@ -293,7 +303,8 @@ Errors should name the affected capability and current safety behavior:
 ```text
 Enforcement:    healthy — generation 184 active
 Policy reload:  failed — company-policies.mjs:12; generation 184 remains enforced
-Codex sessions: degraded — transcript path is not readable
+Codex capture:  degraded — transcript path is not readable
+Delivery:       retrying — 23 batches pending; oldest 4m
 Codex hooks:    repaired — schema codex/1.4 for harness 1.2.3
 ```
 
@@ -306,16 +317,22 @@ The daemon-unavailable behavior is explicit. During migration the hook client ma
 1. disables installed harness integrations;
 2. stops and removes the service;
 3. removes installed executables, the pinned policy runtime, and harness schema-catalog state;
-4. preserves local policy files, logs, activity, and non-secret configuration by default.
+4. securely erases the configured delivery key;
+5. preserves local policy files, logs, activity, pending events, and non-secret configuration by default.
+
+Step 4 is unconditional and separate from step 5, because a delivery key is a credential rather than configuration: an uninstall performed offline must leave nothing on disk that could still authenticate to the observability server.
 
 Removing the `_failproofai` service account is a separate, explicitly confirmed step, because orphaned state on disk still belongs to that UID. Uninstall does not delete another user's files.
 
-`--purge` additionally removes retained local state after showing exactly which directories and records will be deleted. Purging shared or per-user state requires explicit administrator selection of each target.
+`--purge` additionally removes retained local state after showing exactly which directories and undelivered records will be deleted. Purging shared or per-user state requires explicit administrator selection of each target.
+
+Migration from the standalone collector preserves pending and failed batches until `failproofaid` proves ownership and delivery health. Uninstall during the rollback window must be able to restore the old collector rather than strand its data.
 
 ## UX acceptance criteria
 
-- A user can reach a healthy daemon and one enforced synthetic hook through one setup command without an account, and can then operate entirely offline. Installation itself requires network access, since npm bootstrap is the only supported distribution path.
-- Nothing in Phase 1 asks for, stores, or transmits an account credential, and no code path requires a network service to make a policy decision.
+- A user can reach a healthy daemon and one enforced synthetic hook through one setup command without a FailproofAI account, and can then enforce entirely offline. Installation itself requires network access, since npm bootstrap is the only supported distribution path.
+- No policy decision depends on a network service, and a machine with no observability destination configured spools nothing and delivers nowhere.
+- Every capability the standalone `agenteye-collector` ships today — capture across its supported sources, one-time backfill, exactly-once delivery across restarts, quarantine, and `health` — is available from the daemon and covered by the collector's own conformance tests.
 - Every current OSS policy authoring, discovery, scope, CLI, harness, activity, dashboard, and audit behavior has a compatibility test and remains available.
 - Re-running setup is idempotent, including service-account creation.
 - Setup failure restores prior service and harness configuration.
@@ -335,8 +352,8 @@ Removing the `_failproofai` service account is a separate, explicitly confirmed 
 - A dashboard stops on explicit `stop`, terminal exit, and TTL expiry, and leaves no pidfile claiming a server that is gone.
 - Two enrolled users can run dashboards simultaneously without a port conflict.
 - Removing or altering an enabled FailproofAI hook is detected and semantically repaired without overwriting unrelated harness settings; explicit disable/uninstall is not repaired.
-- Local session-source consent names each enabled source and can be revoked independently.
+- Collection consent names each enabled source and its destination, and can be revoked independently.
 - A bad harness schema returns to the previous valid schema and registration without replacing or restarting the daemon.
-- Installing Phase 1 leaves an existing standalone collector running and delivering unchanged.
-- Uninstall never silently deletes user-authored data.
+- Old and new collectors never own the same source concurrently, and migration rollback restores a functional standalone collector with its undelivered state.
+- Uninstall erases the delivery key even when performed offline, and never silently deletes undelivered or user-authored data.
 - Linux and macOS pass the complete setup, service lifecycle, enforcement, schema refresh/rollback, and uninstall acceptance suite; Windows is not represented as a Phase 1 supported target.

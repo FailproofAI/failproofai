@@ -17,7 +17,7 @@ Ownership is split by **writer**, so the service account the daemon runs as is n
 | executables, pinned runtime | root | read + execute | privileged installer |
 | protected policy store, active schema catalog | root | read | privileged installer |
 | machine configuration, service definition | root | read | privileged installer |
-| checkpoints, activity, per-user state, health, logs, socket directory | `_failproofai` | read + write | the daemon |
+| spool, checkpoints, activity, per-user state, health, logs, socket directory | `_failproofai` | read + write | the daemon |
 
 Ownership alone would not have been enough: a store owned by the same account the daemon runs as is writable by any process holding that UID, including a compromised daemon, which would let it rewrite the sealed policies it is supposed to evaluate. Making the protected surface root-owned and read-only bounds a daemon compromise to corrupting its own telemetry. Every mutation of the protected surface goes through an elevated CLI operation and produces an audit record.
 
@@ -37,7 +37,7 @@ Harness attachment is reported as `protected`, `detectable`, or `cooperative`. S
 
 Windows is outside Phase 1. Its service model, named-pipe transport, and packaging belong to a later iteration.
 
-Service configuration contains executable and state paths but no secrets, and sets a fixed `PATH` so nothing the daemon spawns resolves through a user-controlled search path. Mutations of the protected surface require `sudo`; no sudo password is stored.
+The service definition contains executable and state paths but no secrets — the observability delivery key lives in privileged machine configuration the service account reads, never in the unit file or a process argument — and sets a fixed `PATH` so nothing the daemon spawns resolves through a user-controlled search path. Mutations of the protected surface require `sudo`; no sudo password is stored.
 
 ### Deferred scopes
 
@@ -50,7 +50,7 @@ Two further scopes are designed and deliberately unshipped. Recording them here 
 
 **`system`** is the same service running as root, with machine configuration under root-owned `/etc/failproofai`. It exists for fleet-managed machines whose configuration management owns `/etc`, and for serving agents that themselves run as root. It changes no guarantee stated in these documents: against an ordinary agent it is no more tamper-resistant than `managed`, and it has a strictly larger blast radius if the daemon is compromised, which is why `managed` ships first. It should be added when a customer's configuration management requires `/etc`, or when agents genuinely run as root, and not otherwise.
 
-**`user`** installs everything — executables, pinned runtime, configuration, policies, activity, and socket — inside the user's own tree with no elevation, and starts at login. It is what makes the product installable on a machine where administrator access is unavailable, which is the one thing `managed` cannot do. It gives up the boundary in exchange:
+**`user`** installs everything — executables, pinned runtime, configuration, policies, spool, and socket — inside the user's own tree with no elevation, and starts at login. It is what makes the product installable on a machine where administrator access is unavailable, which is the one thing `managed` cannot do. It gives up the boundary in exchange:
 
 - an agent holding the user's authority can stop the service, edit its configuration, or replace its policy state, so enforcement is **cooperative**, not tamper-resistant;
 - protected placement is impossible, because rename and delete permission on every path come from a parent the user owns, and the socket can be unlinked and rebound by an impostor answering `allow`;

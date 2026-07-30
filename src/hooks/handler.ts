@@ -25,10 +25,12 @@ import {
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
-import type { PolicyFunction, PolicyResult } from "./policy-types";
+import type { HooksConfig, PolicyFunction, PolicyResult } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
+import type { EvaluationResult } from "./policy-evaluator";
+import { tryDaemonEvaluate, DEFAULT_DAEMON_DEADLINE_MS } from "./daemon-client";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
@@ -37,6 +39,8 @@ import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
+import { buildLocalEnvelope, envelopeToSessionMetadata } from "./request-envelope";
+import { readLocalHostFacts } from "./local-host";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 
@@ -221,105 +225,170 @@ export async function handleHookEvent(
       parsed.tool_input = canonicalInput;
     }
 
-    // Extract session metadata from payload
+    // Extract session metadata from payload, then seal it into the canonical
+    // evaluation-request envelope (Phase 1 / Stage 0, P4). The three resolvers
+    // stay *here*, in the client, on purpose: resolving a transcript path or a
+    // Codex permission mode means walking ~/.codex/sessions and friends — trees
+    // a service account cannot read and whose size is unbounded on the
+    // enforcement deadline path. The daemon must be handed the answers, never
+    // sent looking for them.
+    //
+    // `session` is derived FROM the envelope rather than built alongside it, so
+    // there is exactly one source of truth for session identity. Every field a
+    // policy sees is byte-identical to before — this is preparation, not a
+    // behavior change.
     const sessionId = parsed.session_id as string | undefined;
-    const session: SessionMetadata = {
+    const request = buildLocalEnvelope({
+      cli,
+      eventType: canonicalEventType,
+      // Preserve the raw CLI-side event name (eventType arg) before
+      // canonicalization. Response shapes that round-trip the agent-emitted
+      // event name prefer this over the canonicalized form when stdin omits
+      // hook_event_name.
+      rawEventType: eventType,
+      payload: parsed,
       sessionId,
       transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
       cwd: resolveCwd(cli, parsed),
       permissionMode: resolvePermissionMode(cli, parsed, sessionId),
       hookEventName: parsed.hook_event_name as string | undefined,
-      // Preserve the raw CLI-side event name (eventType arg) before
-      // canonicalization. Response shapes that round-trip the agent-emitted
-      // event name prefer this over the canonicalized form when stdin omits
-      // hook_event_name.
-      rawHookEventName: eventType,
-      cli,
-    };
+      host: readLocalHostFacts(),
+    });
+    const session: SessionMetadata = envelopeToSessionMetadata(request);
 
-    // Load enabled policies (merge across project/local/global scopes)
-    const config = readMergedHooksConfig(session.cwd);
-    clearPolicies();
-    registerBuiltinPolicies(config.enabledPolicies);
+    // ── Daemon fast path (Phase 1 / Stage 1) ────────────────────────────────
+    //
+    // This is the insertion point, and it is the only structural change in this
+    // file. It sits *after* the envelope is built and *before*
+    // `readMergedHooksConfig` because those two facts bracket exactly the right
+    // slice: everything above produces the canonicalized request the daemon is
+    // contractually handed (PROTOCOL.md: "`payload` is already canonicalized by
+    // the client"), and `readMergedHooksConfig` is the first line of the legacy
+    // work — the per-invocation config read and policy load the daemon exists to
+    // remove. Everything from there through `evaluatePolicies` therefore *is*
+    // the legacy fallback: not a copy kept in sync, just the untouched remainder
+    // of this function.
+    //
+    // `tryDaemonEvaluate` returns null before opening a socket unless
+    // FAILPROOFAI_DAEMON_MODE is set, so with the variable unset this line is
+    // one function call and one env-var read, and the rest of the handler
+    // behaves exactly as it does on main. It never throws.
+    const daemonResult = await tryDaemonEvaluate(request, DEFAULT_DAEMON_DEADLINE_MS);
+    const evaluator: "daemon" | "legacy" = daemonResult ? "daemon" : "legacy";
 
-    // Load and register custom hooks (layer 2, after builtins)
-    const loadResult = await loadAllCustomHooks(
-      config.customPoliciesPaths ?? config.customPoliciesPath,
-      {
-      sessionCwd: session.cwd,
-      customPoliciesEnabled: config.customPoliciesEnabled,
-      },
-    );
-    const customHooksList = loadResult.hooks;
-    const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
-    const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
+    // `config` is only read on the legacy path — the daemon owns policy loading
+    // on its side — so it stays undefined when the daemon answered.
+    let config: HooksConfig | undefined;
+    let result: EvaluationResult;
 
-    for (const hook of customHooksList) {
-      const policyId = (hook as CustomHook & { __policyId?: string }).__policyId;
-      if (policyId && disabledCustomPolicies.has(policyId)) continue;
-      const hookName = hook.name;
-      const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
-      const isConvention = !!conventionScope;
-      const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
-      const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
-        try {
-          const result = await Promise.race([
-            hook.fn(ctx),
-            new Promise<PolicyResult>((_, reject) =>
-              setTimeout(() => reject(new Error("timeout")), 10_000),
-            ),
-          ]);
-          return result;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const isTimeout = msg === "timeout";
-          hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
-          void trackHookEvent(getInstanceId(), "custom_hook_error", {
-            hook_name: hookName,
-            error_type: isTimeout ? "timeout" : "exception",
-            event_type: eventType,
-            cli,
-            is_convention_policy: isConvention,
-            convention_scope: conventionScope ?? null,
-          });
-          return { decision: "allow" };
-        }
-      };
-      registerPolicy(
-        `${prefix}/${hookName}`,
-        hook.description ?? "",
-        fn,
-        hook.match ?? {},
-        -1, // Custom hooks run after builtins (priority 0)
+    if (daemonResult) {
+      result = daemonResult;
+      hookLogInfo(`event=${canonicalEventType} cli=${cli} evaluator=daemon`);
+    } else {
+      // Load enabled policies (merge across project/local/global scopes)
+      config = readMergedHooksConfig(session.cwd);
+      clearPolicies();
+      registerBuiltinPolicies(config.enabledPolicies);
+
+      // Load and register custom hooks (layer 2, after builtins)
+      const loadResult = await loadAllCustomHooks(
+        config.customPoliciesPaths ?? config.customPoliciesPath,
+        {
+        sessionCwd: session.cwd,
+        customPoliciesEnabled: config.customPoliciesEnabled,
+        },
       );
+      const customHooksList = loadResult.hooks;
+      const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
+      const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
+
+      for (const hook of customHooksList) {
+        const policyId = (hook as CustomHook & { __policyId?: string }).__policyId;
+        if (policyId && disabledCustomPolicies.has(policyId)) continue;
+        const hookName = hook.name;
+        const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
+        const isConvention = !!conventionScope;
+        const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
+        const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
+          // The timeout handle is captured and cleared. Without that, a custom
+          // hook that simply *returns* leaves a 10-second timer pending, and a
+          // pending timer keeps Node's event loop alive — so the hook process
+          // sits idle for ten seconds after it has already decided.
+          //
+          // Today that is invisible: `bin/failproofai.mjs` calls
+          // `process.exit()` the moment `handleHookEvent` returns, which kills
+          // the timer along with everything else. It stops being invisible the
+          // moment anything evaluates in a process that outlives one event —
+          // the resident sealed worker, the per-user agent, or a test harness
+          // — where it becomes ten seconds of retained closure per hook.
+          // Measured at a 10,088 ms p95 in a bench harness that did not
+          // replicate the hard exit.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const result = await Promise.race([
+              hook.fn(ctx),
+              new Promise<PolicyResult>((_, reject) => {
+                timer = setTimeout(() => reject(new Error("timeout")), 10_000);
+              }),
+            ]);
+            return result;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const isTimeout = msg === "timeout";
+            hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
+            void trackHookEvent(getInstanceId(), "custom_hook_error", {
+              hook_name: hookName,
+              error_type: isTimeout ? "timeout" : "exception",
+              event_type: eventType,
+              cli,
+              is_convention_policy: isConvention,
+              convention_scope: conventionScope ?? null,
+            });
+            return { decision: "allow" };
+          } finally {
+            // Runs on the success path, the timeout path, and the throw path.
+            // Clearing an already-fired timer is a no-op, so no branch is
+            // needed.
+            if (timer !== undefined) clearTimeout(timer);
+          }
+        };
+        registerPolicy(
+          `${prefix}/${hookName}`,
+          hook.description ?? "",
+          fn,
+          hook.match ?? {},
+          -1, // Custom hooks run after builtins (priority 0)
+        );
+      }
+
+      // Fire telemetry once per invocation for custom hook loads
+      if (customHooksList.length > 0) {
+        void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
+          cli,
+          custom_hooks_count: customHooksList.length,
+          custom_hook_names: customHooksList.map((h) => h.name),
+          event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
+        });
+      }
+
+      // Fire telemetry for convention-based policy discovery
+      if (loadResult.conventionSources.length > 0) {
+        void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
+          event_type: canonicalEventType,
+          cli,
+          project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
+          user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
+          convention_hook_count: conventionHookNames.size,
+          convention_hook_names: [...conventionHookNames],
+        });
+      }
+
+      hookLogInfo(`event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`);
+
+      // Evaluate policies (use canonical PascalCase event type)
+      result = await evaluatePolicies(canonicalEventType, parsed, session, config);
     }
 
-    // Fire telemetry once per invocation for custom hook loads
-    if (customHooksList.length > 0) {
-      void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
-        cli,
-        custom_hooks_count: customHooksList.length,
-        custom_hook_names: customHooksList.map((h) => h.name),
-        event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
-      });
-    }
-
-    // Fire telemetry for convention-based policy discovery
-    if (loadResult.conventionSources.length > 0) {
-      void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
-        event_type: canonicalEventType,
-        cli,
-        project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
-        user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
-        convention_hook_count: conventionHookNames.size,
-        convention_hook_names: [...conventionHookNames],
-      });
-    }
-
-    hookLogInfo(`event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`);
-
-    // Evaluate policies (use canonical PascalCase event type)
-    const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
@@ -335,10 +404,19 @@ export async function handleHookEvent(
     // allow — so without this a row cannot tell "your policy ran and allowed"
     // from "no policy covers this event". The lookup is the same cached call
     // the evaluator already made, so it costs nothing.
-    const matchedPolicies = getPoliciesForEvent(
-      canonicalEventType,
-      parsed.tool_name as string | undefined,
-    ).map((p) => p.name);
+    //
+    // Left `undefined` on the daemon path: nothing was registered in *this*
+    // process, so the local registry would report an empty list — a stronger
+    // and wrong claim than "unknown". The response frame does carry
+    // `matched_policies`, but `EvaluationResult` has no field to put it in and
+    // this stage does not widen that type; Stage 2's shadow differ is where it
+    // is actually needed. Every consumer already tolerates `undefined` here.
+    const matchedPolicies = daemonResult
+      ? undefined
+      : getPoliciesForEvent(
+          canonicalEventType,
+          parsed.tool_name as string | undefined,
+        ).map((p) => p.name);
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {
@@ -349,6 +427,12 @@ export async function handleHookEvent(
       policyName: result.policyName,
       policyNames: result.policyNames,
       matchedPolicies,
+      // Which evaluator produced this verdict. A separate field rather than a
+      // reused one on purpose: Stage 2's shadow-mode diff and the acceptance
+      // suite both need to partition rows by evaluator, and overloading an
+      // existing field would make "legacy" and "daemon" rows indistinguishable
+      // in exactly the data set that has to prove they are identical.
+      evaluator,
       decision: result.decision,
       reason: result.reason,
       durationMs,
@@ -372,11 +456,15 @@ export async function handleHookEvent(
         const conventionScope = isConventionPolicy
           ? result.policyName!.match(/^\.failproofai-(project|user)\//)?.[1] ?? null
           : null;
-        const hasCustomParams =
-          !isCustomHook && !isConventionPolicy && !!(result.policyName && config.policyParams?.[result.policyName]);
-        const paramKeysOverridden = hasCustomParams
-          ? Object.keys(config.policyParams![result.policyName!])
-          : [];
+        // `config` is undefined on the daemon path (no local config read), so
+        // the override lookup is resolved once and reused rather than asserted
+        // twice. Semantics on the legacy path are unchanged.
+        const paramOverrides =
+          !isCustomHook && !isConventionPolicy && result.policyName
+            ? config?.policyParams?.[result.policyName]
+            : undefined;
+        const hasCustomParams = !!paramOverrides;
+        const paramKeysOverridden = paramOverrides ? Object.keys(paramOverrides) : [];
         const distinctId = getInstanceId();
         await trackHookEvent(distinctId, "hook_policy_triggered", {
           event_type: canonicalEventType,

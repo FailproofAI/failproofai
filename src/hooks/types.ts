@@ -1070,6 +1070,25 @@ export interface SessionMetadata {
   transcriptPath?: string;
   cwd?: string;
   permissionMode?: string;
+  /** The requesting user's home directory (Stage 0 / P2).
+   *
+   *  Carried as request data rather than read from `os.homedir()` inside a
+   *  policy, for two reasons. The daemon evaluates on behalf of another UID, so
+   *  its own homedir belongs to the service account and would whitelist the
+   *  wrong tree. And `isAgentInternalPath` / `block-read-outside-cwd` both
+   *  *widen* the allow set, so this value can only ever be trusted when the
+   *  enforcer derived it — in the daemon that means `getpwuid_r(peer_uid)`, and
+   *  a client-supplied `home` is a protocol error. Left undefined on the legacy
+   *  in-process path, where the host fallback in `builtin-policies.ts`
+   *  supplies it. */
+  home?: string;
+  /** The stable project root — `$CLAUDE_PROJECT_DIR` on the legacy path
+   *  (Stage 0 / P2). Preferred over `cwd`, which tracks the live shell working
+   *  directory and drifts whenever the agent `cd`s into a subdirectory. Unlike
+   *  `home` this genuinely cannot be derived by the enforcer, so it rides as
+   *  client-asserted provenance and any decision that reads it is recorded
+   *  `sealed_unattested`. */
+  projectDir?: string;
   /** Read from the stdin payload's `hook_event_name` field. Carries the raw
    *  agent-emitted event name (e.g. Cursor's `preToolUse`, Pi's `tool_call`).
    *  May be undefined when stdin omits it. */

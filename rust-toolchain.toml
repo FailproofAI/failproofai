@@ -1,0 +1,8 @@
+# Pinned so `cargo fmt`/`cargo clippy` produce the same verdict on every machine
+# and in CI. rustfmt and clippy are not in the default profile for a bare
+# `rustup toolchain install`, so they are requested explicitly — without them the
+# `rust-quality` job fails on "error: no such command: `fmt`".
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

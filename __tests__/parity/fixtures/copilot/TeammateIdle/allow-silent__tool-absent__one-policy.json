@@ -1,0 +1,43 @@
+{
+  "case": "allow-silent__tool-absent__one-policy",
+  "cli": "copilot",
+  "decision_kind": "allow-silent",
+  "event": "TeammateIdle",
+  "input": {
+    "event_type": "TeammateIdle",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "TeammateIdle",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": null
+      }
+    ],
+    "session": {
+      "cli": "copilot",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "TeammateIdle",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": null,
+    "policyNames": null,
+    "reason": null,
+    "stderr": "",
+    "stdout": ""
+  },
+  "policy_count": 1,
+  "tool": "tool-absent"
+}

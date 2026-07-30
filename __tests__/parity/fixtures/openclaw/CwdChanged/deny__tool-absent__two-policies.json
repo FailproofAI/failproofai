@@ -1,0 +1,48 @@
+{
+  "case": "deny__tool-absent__two-policies",
+  "cli": "openclaw",
+  "decision_kind": "deny",
+  "event": "CwdChanged",
+  "input": {
+    "event_type": "CwdChanged",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "CwdChanged",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "deny",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "deny",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "openclaw",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "CwdChanged",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "deny",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": null,
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "",
+    "stdout": "{\"permission\":\"deny\",\"reason\":\"Blocked operation by failproofai because: parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend, as per the policy configured by the user\"}"
+  },
+  "policy_count": 2,
+  "tool": "tool-absent"
+}

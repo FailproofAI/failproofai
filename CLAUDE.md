@@ -867,12 +867,14 @@ Resolve any conflicts, then continue. Never push a branch that is missing commit
 After every `git push`, run `gh run watch` or poll `gh run list --limit 3` until all checks
 finish. If any job fails, **stop and fix it before continuing**. Never leave a red CI.
 
-The CI runs four jobs — all must pass:
+The CI runs six jobs — all must pass:
 | Job | Command |
 |-----|---------|
-| quality | lint + tsc + version-consistency check |
-| test | `bun run test:run` (unit, 4 env configs) |
-| build | `bun run build` (Next.js + dist/index.js) |
+| quality | `node scripts/check-versions.mjs` + `node scripts/check-pack-allowlist.mjs` + `bun run lint` + `bunx tsc --noEmit` |
+| test | `bun run test:run` (unit, 3 env configs: default, log-debug, hook-log-file) |
+| build | `bun run build` (Next.js + dist/index.js) + the pack-allowlist check against the built tree |
+| rust-quality | `cargo fmt --all -- --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo test --workspace` (the last three are skipped while `crates/` holds no crate; the workspace manifest is validated either way) |
+| docs | `mintlify validate` + `bun run validate:mdx` |
 | test-e2e | `bun run test:e2e` |
 
 ### Always add unit tests for new behaviour

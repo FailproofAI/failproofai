@@ -1,0 +1,71 @@
+{
+  "corpus_sha256": "fb5ec9284d7f5f573643612e51fbc2aba212fbc19864824abf120066747bd41b",
+  "description": "Byte-exact response-encoding oracle for the failproofai hook pipeline. Each fixture records the synthetic input and the exact exitCode/stdout/stderr the TypeScript reference produced. A reimplementation is diffed against these bytes.",
+  "dimensions": {
+    "clis": [
+      "claude",
+      "codex",
+      "copilot",
+      "cursor",
+      "opencode",
+      "pi",
+      "hermes",
+      "openclaw",
+      "factory",
+      "devin",
+      "antigravity",
+      "goose"
+    ],
+    "decision_kinds": [
+      "deny",
+      "instruct",
+      "allow-with-reason",
+      "allow-silent"
+    ],
+    "events": [
+      "SessionStart",
+      "SessionEnd",
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PermissionRequest",
+      "PermissionDenied",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "Notification",
+      "SubagentStart",
+      "SubagentStop",
+      "TaskCreated",
+      "TaskCompleted",
+      "Stop",
+      "StopFailure",
+      "TeammateIdle",
+      "InstructionsLoaded",
+      "ConfigChange",
+      "CwdChanged",
+      "FileChanged",
+      "WorktreeCreate",
+      "WorktreeRemove",
+      "PreCompact",
+      "PostCompact",
+      "Elicitation",
+      "ElicitationResult",
+      "UserPromptExpansion",
+      "PostToolBatch",
+      "Setup"
+    ],
+    "policy_counts": [
+      1,
+      2
+    ],
+    "tool_presence": [
+      "tool-present",
+      "tool-absent"
+    ]
+  },
+  "fixture_count": 5568,
+  "fixture_count_formula": "clis × events × decision_kinds × tool_presence × policy_counts",
+  "generated_by": "scripts/gen-parity-corpus.mjs",
+  "layout": "fixtures/<cli>/<event>/<decision>__<tool-state>__<policy-count>.json",
+  "regenerate_with": "bun scripts/gen-parity-corpus.mjs",
+  "schema_version": 1
+}

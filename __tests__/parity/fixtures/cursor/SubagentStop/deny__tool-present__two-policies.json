@@ -1,0 +1,52 @@
+{
+  "case": "deny__tool-present__two-policies",
+  "cli": "cursor",
+  "decision_kind": "deny",
+  "event": "SubagentStop",
+  "input": {
+    "event_type": "SubagentStop",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "SubagentStop",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "deny",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "deny",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "cursor",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "SubagentStop",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "deny",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": null,
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "",
+    "stdout": "{\"followup_message\":\"MANDATORY ACTION REQUIRED from failproofai (policy: parity/policy-1): parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\"}"
+  },
+  "policy_count": 2,
+  "tool": "tool-present"
+}

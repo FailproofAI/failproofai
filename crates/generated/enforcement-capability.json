@@ -1,0 +1,197 @@
+{
+  "absent_means": "NOT VERIFIED. Never assume \"block\" — a hedge rendered in a UI is still a claim, and an unverified claim is what the source file exists to prevent.",
+  "clis": {
+    "antigravity": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "Stop": "block",
+        "UserPromptSubmit": "observe"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "claude": {
+      "capabilities": {
+        "ConfigChange": "block",
+        "CwdChanged": "observe",
+        "Elicitation": "block",
+        "ElicitationResult": "block",
+        "FileChanged": "observe",
+        "InstructionsLoaded": "observe",
+        "Notification": "observe",
+        "PermissionDenied": "observe",
+        "PermissionRequest": "block",
+        "PostCompact": "observe",
+        "PostToolBatch": "block",
+        "PostToolUse": "observe",
+        "PostToolUseFailure": "observe",
+        "PreCompact": "block",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Setup": "observe",
+        "Stop": "block",
+        "StopFailure": "observe",
+        "SubagentStart": "observe",
+        "SubagentStop": "block",
+        "TaskCompleted": "block",
+        "TaskCreated": "block",
+        "TeammateIdle": "block",
+        "UserPromptExpansion": "block",
+        "UserPromptSubmit": "block",
+        "WorktreeRemove": "observe"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": [
+        "WorktreeCreate"
+      ]
+    },
+    "codex": {
+      "capabilities": {
+        "PermissionRequest": "block",
+        "PostCompact": "observe",
+        "PostToolUse": "observe",
+        "PreCompact": "observe",
+        "PreToolUse": "block",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "SubagentStart": "observe",
+        "SubagentStop": "block",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "copilot": {
+      "capabilities": {
+        "Notification": "observe",
+        "PermissionRequest": "block",
+        "PostToolUse": "observe",
+        "PostToolUseFailure": "observe",
+        "PreCompact": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "SubagentStop": "block",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "cursor": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": [
+        "SubagentStop"
+      ]
+    },
+    "devin": {
+      "capabilities": {
+        "PermissionRequest": "block",
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "factory": {
+      "capabilities": {
+        "Notification": "observe",
+        "PostToolUse": "observe",
+        "PreCompact": "block",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "SubagentStop": "observe",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "goose": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "UserPromptSubmit": "observe"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "hermes": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "SubagentStop": "observe"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "openclaw": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreCompact": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "block",
+        "SubagentStop": "observe",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    },
+    "opencode": {
+      "capabilities": {
+        "PermissionRequest": "observe",
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "UserPromptSubmit": "observe"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": [
+        "Stop"
+      ]
+    },
+    "pi": {
+      "capabilities": {
+        "PostToolUse": "observe",
+        "PreToolUse": "block",
+        "SessionEnd": "observe",
+        "SessionStart": "observe",
+        "Stop": "observe",
+        "UserPromptSubmit": "block"
+      },
+      "capabilities_outside_reachable_events": [],
+      "unverified_events": []
+    }
+  },
+  "description": "Does a policy DENY on this (cli, canonical event) pair actually change the agent's behaviour, given the wire shape failproofai emits today? Consumed by the Rust adapter descriptor, which is asserted against this table. src/hooks/enforcement-capability.ts is the single source of truth; do not hand-edit.",
+  "generated_by": "scripts/gen-canon-tables.ts",
+  "generated_from": "src/hooks/enforcement-capability.ts",
+  "labels": [
+    "block",
+    "observe"
+  ],
+  "regenerate_with": "bun scripts/gen-canon-tables.ts",
+  "schema_version": 1
+}

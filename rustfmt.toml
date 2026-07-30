@@ -1,0 +1,6 @@
+# Pin the edition rustfmt assumes. Invoked through `cargo fmt` it inherits the
+# manifest's edition, but editors and rust-analyzer shell out to `rustfmt`
+# directly, where the default is edition 2015 — so without this the formatting a
+# contributor sees on save can differ from what `rust-quality` enforces.
+edition = "2024"
+max_width = 100

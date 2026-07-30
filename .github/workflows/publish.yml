@@ -11,6 +11,9 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    env:
+      FAILPROOFAI_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       # Token for the version-bot GitHub App — a bypass actor on the org-level
       # `failproofai-rules` ruleset (PR + 1 review required on main). The default
@@ -38,7 +41,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -103,8 +106,38 @@ jobs:
           npm version "${{ steps.version.outputs.publish_version }}" --no-git-tag-version
           echo "Updated package.json to ${{ steps.version.outputs.publish_version }}"
 
+      # LOAD-BEARING. `dist/` and `.next/standalone/` are gitignored but sit in
+      # package.json's `files` allowlist, so the tarball is only non-empty
+      # because something built them first. That something used to be the
+      # `prepare` lifecycle script, which `bun install --frozen-lockfile` above
+      # ran implicitly; `prepare` is gone (see scripts/check-versions.mjs, which
+      # now fails the build if any lifecycle script comes back), so this step is
+      # the ONLY thing standing between this workflow and publishing an empty
+      # package. It runs after the version bump above because `build:cli`
+      # inlines package.json's `version` into dist/cli.mjs — building earlier
+      # would ship a binary that reports the previous version.
+      - name: Build publishable artifacts
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          command: bun run build
+
+      - name: Verify build output is present
+        run: |
+          set -euo pipefail
+          for f in dist/cli.mjs dist/index.js .next/standalone/server.js; do
+            if [ ! -s "$f" ]; then
+              echo "::error file=$f::Missing or empty after \`bun run build\` — refusing to publish an incomplete package"
+              exit 1
+            fi
+            echo "ok: $f ($(wc -c < "$f") bytes)"
+          done
+
+      # `--ignore-scripts` so a re-added lifecycle script can never silently
+      # re-enter the publish path. The build above is explicit and verified.
       - name: Publish
-        run: npm publish --provenance --tag ${{ steps.version.outputs.dist_tag }}
+        run: npm publish --provenance --ignore-scripts --tag ${{ steps.version.outputs.dist_tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

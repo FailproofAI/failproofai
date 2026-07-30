@@ -1,0 +1,49 @@
+{
+  "case": "allow-with-reason__tool-present__one-policy",
+  "cli": "hermes",
+  "decision_kind": "allow-with-reason",
+  "event": "UserPromptExpansion",
+  "input": {
+    "event_type": "UserPromptExpansion",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "UserPromptExpansion",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "hermes",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "UserPromptExpansion",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": [
+      "parity/policy-1"
+    ],
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "[failproofai] parity/policy-1: parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\n",
+    "stdout": ""
+  },
+  "policy_count": 1,
+  "tool": "tool-present"
+}

@@ -19,6 +19,13 @@
 /build
 /dist
 
+# rust
+# `Cargo.lock` is deliberately NOT ignored: this workspace will hold binaries
+# (failproofaid, failproofai-cli), and a binary workspace should commit its lock
+# file so a release builds from the same dependency graph that CI tested. There
+# are no crates yet, so cargo produces no lock file to commit.
+/target
+
 # misc
 .DS_Store
 *.pem

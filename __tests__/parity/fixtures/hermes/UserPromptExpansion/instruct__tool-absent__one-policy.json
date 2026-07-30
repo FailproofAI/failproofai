@@ -1,0 +1,45 @@
+{
+  "case": "instruct__tool-absent__one-policy",
+  "cli": "hermes",
+  "decision_kind": "instruct",
+  "event": "UserPromptExpansion",
+  "input": {
+    "event_type": "UserPromptExpansion",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "UserPromptExpansion",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "instruct",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "hermes",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "UserPromptExpansion",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "instruct",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": [
+      "parity/policy-1"
+    ],
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "[failproofai] parity/policy-1: parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\n",
+    "stdout": "{\"decision\":\"allow\",\"reason\":\"Instruction from failproofai: parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\"}"
+  },
+  "policy_count": 1,
+  "tool": "tool-absent"
+}

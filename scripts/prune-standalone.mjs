@@ -96,11 +96,21 @@ if (exists(NM)) prune(NM);
 // node_modules/, package.json, public/, and the compiled app code — the rest
 // is source/dev/docs that the runtime never reads.
 const STANDALONE_ROOT_PRUNE = [
-  // Doc / dev directories
-  "docs", "examples", "design-docs", "__tests__",
+  // Doc / dev directories.
+  //
+  // BOTH spellings of the design-doc tree are listed on purpose. The directory
+  // on disk is `desgin-docs` — a typo in the repo that is deliberately NOT being
+  // renamed (every design doc cross-links it). This list carried only the
+  // correctly-spelled `design-docs`, so it matched nothing and the whole tree
+  // shipped inside `.next/standalone/` on every publish. Keep both entries so
+  // the pruning survives an eventual rename in either direction.
+  "docs", "examples", "design-docs", "desgin-docs", "__tests__",
   ".claude", ".failproofai", ".github", ".vscode", ".idea",
   // Failproofai CLI artifacts — the dashboard never loads these
   "bin", "dist", "scripts", "src",
+  // Rust workspace — source and build output, neither of which the Next server
+  // reads. `target/` in particular is gigabytes once a crate exists.
+  "crates", "target",
 ];
 const STANDALONE_ROOT_PRUNE_FILES = [
   // Top-level markdown / licenses / docs
@@ -109,6 +119,9 @@ const STANDALONE_ROOT_PRUNE_FILES = [
   // Build / lint / test config (applied at build time, not runtime)
   "tsconfig.json", "eslint.config.mjs", "tailwind.config.ts", "components.json",
   "vitest.config.mts", "vitest.config.e2e.mts",
+  // Rust workspace config. NFT traces these into the standalone root the same
+  // way it does every other repo-root file; verified by unpacking the tarball.
+  "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml",
   // Lockfiles
   "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock",
 ];

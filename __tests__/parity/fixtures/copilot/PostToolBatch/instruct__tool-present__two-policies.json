@@ -1,0 +1,55 @@
+{
+  "case": "instruct__tool-present__two-policies",
+  "cli": "copilot",
+  "decision_kind": "instruct",
+  "event": "PostToolBatch",
+  "input": {
+    "event_type": "PostToolBatch",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PostToolBatch",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "instruct",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "instruct",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "copilot",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PostToolBatch",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "instruct",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": [
+      "parity/policy-1",
+      "parity/policy-2"
+    ],
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\nparity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "",
+    "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolBatch\",\"additionalContext\":\"Instruction from failproofai: parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\\nparity reason 2: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\"}}"
+  },
+  "policy_count": 2,
+  "tool": "tool-present"
+}

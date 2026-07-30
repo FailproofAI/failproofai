@@ -1,0 +1,43 @@
+{
+  "case": "allow-silent__tool-absent__one-policy",
+  "cli": "factory",
+  "decision_kind": "allow-silent",
+  "event": "PreCompact",
+  "input": {
+    "event_type": "PreCompact",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PreCompact",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": null
+      }
+    ],
+    "session": {
+      "cli": "factory",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PreCompact",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": null,
+    "policyNames": null,
+    "reason": null,
+    "stderr": "",
+    "stdout": ""
+  },
+  "policy_count": 1,
+  "tool": "tool-absent"
+}

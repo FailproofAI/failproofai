@@ -1,0 +1,52 @@
+{
+  "case": "allow-silent__tool-present__two-policies",
+  "cli": "claude",
+  "decision_kind": "allow-silent",
+  "event": "Setup",
+  "input": {
+    "event_type": "Setup",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "Setup",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": null
+      },
+      {
+        "decision": "allow",
+        "name": "parity/policy-2",
+        "reason": null
+      }
+    ],
+    "session": {
+      "cli": "claude",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "Setup",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": null,
+    "policyNames": null,
+    "reason": null,
+    "stderr": "",
+    "stdout": ""
+  },
+  "policy_count": 2,
+  "tool": "tool-present"
+}

@@ -25,7 +25,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -35,31 +35,40 @@ jobs:
           timeout_minutes: 5
           command: bun install --frozen-lockfile
 
+      # Replaces the inline shell that used to live here. That shell only ever
+      # looked at `packages/*/package.json` and `packages/wrapper/package.json`,
+      # neither of which exists in this repository, so it passed vacuously from
+      # the initial import onward. The script keeps those semantics and adds the
+      # Cargo workspace version, crate version inheritance, and a ban on npm
+      # lifecycle scripts (see scripts/check-versions.mjs). Unit-tested in
+      # __tests__/scripts/check-versions.test.ts.
       - name: Check version consistency
+        run: node scripts/check-versions.mjs
+
+      # Tripwire on the published tarball's top-level shape, so a new directory
+      # can neither silently ship nor silently fail to ship. This job does not
+      # build, so the two gitignored build outputs (`dist`, `.next`) are skipped
+      # with a notice here and enforced in the `build` job below, which runs the
+      # same check against a real build.
+      - name: Check pack allowlist
+        run: node scripts/check-pack-allowlist.mjs
+
+      # The sealed worker bundle is committed under crates/generated/ and
+      # embedded into the daemon binary with include_str!. If it drifts from
+      # src/policy-runtime/, the daemon evaluates policy source that no longer
+      # exists in the tree — a divergence that produces a *wrong verdict*
+      # rather than an error, and that no other test would notice.
+      - name: Check sealed worker bundle is current
+        run: bun scripts/build-sealed-bundle.ts --check
+
+      # Same contract for the canonicalization tables, which are generated from
+      # src/hooks/types.ts and likewise compiled into the daemon.
+      - name: Check canonicalization tables are current
         run: |
-          ROOT_VERSION=$(jq -r .version package.json)
-          echo "Root version: $ROOT_VERSION"
-          MISMATCH=0
-          for pkg in packages/*/package.json; do
-            [ -f "$pkg" ] || continue
-            PKG_VERSION=$(jq -r .version "$pkg")
-            if [ "$PKG_VERSION" != "$ROOT_VERSION" ]; then
-              echo "::error file=$pkg::Version mismatch: $pkg has $PKG_VERSION, expected $ROOT_VERSION"
-              MISMATCH=1
-            fi
-          done
-          # Check optionalDependencies in wrapper
-          for dep_version in $(jq -r '.optionalDependencies // {} | values[]' packages/wrapper/package.json 2>/dev/null || true); do
-            if [ "$dep_version" != "$ROOT_VERSION" ]; then
-              echo "::error file=packages/wrapper/package.json::Dependency version mismatch: $dep_version, expected $ROOT_VERSION"
-              MISMATCH=1
-            fi
-          done
-          if [ "$MISMATCH" -eq 1 ]; then
-            echo "::error::Version mismatch detected across package.json files"
-            exit 1
-          fi
-          echo "All versions match: $ROOT_VERSION"
+          bun scripts/gen-canon-tables.ts
+          git diff --exit-code -- crates/generated/canonicalization-tables.json \
+                                   crates/generated/enforcement-capability.json \
+            || { echo "::error::crates/generated/*.json is stale. Regenerate: bun scripts/gen-canon-tables.ts"; exit 1; }
 
       - name: Lint
         uses: nick-fields/retry@v4
@@ -97,7 +106,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -130,7 +139,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -147,6 +156,80 @@ jobs:
           timeout_minutes: 10
           command: bun run build
 
+      # Same check the quality job runs, but against a built tree — so the
+      # "would NOT be published" direction is fatal here. This is what stands
+      # between `publish.yml` and shipping a package with an empty `dist/`.
+      - name: Check pack allowlist (built tree)
+        run: node scripts/check-pack-allowlist.mjs
+
+  rust-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # rust-toolchain.toml pins the channel and asks for rustfmt + clippy, so a
+      # bare `rustup toolchain install` (no argument) reads the file and installs
+      # exactly that. Doing it explicitly keeps the download out of the timing of
+      # the checks, and asserting both component versions here means a toolchain
+      # that installed without them fails on this step rather than several steps
+      # later with "no such command: `fmt`".
+      - name: Install pinned toolchain
+        run: |
+          set -euxo pipefail
+          rustup toolchain install
+          rustup show active-toolchain
+          rustc --version
+          cargo fmt --version
+          cargo clippy --version
+
+      # Plain actions/cache rather than Swatinem/rust-cache: that action derives
+      # its key from `cargo metadata` plus a lockfile, and this workspace has
+      # zero members and therefore no Cargo.lock, which is not a case it is
+      # documented to handle. The requirement here is that the job be green from
+      # the first commit, so the cache is kept dumb. Revisit once crates exist.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # The workspace is deliberately empty for now (Stage 0 lands the plumbing
+      # before the first crate). Verified against cargo 1.97.1: `cargo metadata`
+      # succeeds on a zero-member workspace, but `cargo fmt --all` exits 1 with
+      # "Failed to find targets" and `cargo clippy`/`cargo test` exit 101 with
+      # "the manifest is virtual, and the workspace has no members". So the three
+      # checks are gated on a crate actually existing, and the manifest itself is
+      # validated unconditionally. The gate turns itself on with the first crate.
+      - name: Detect crates
+        id: crates
+        run: |
+          if ls crates/*/Cargo.toml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Crates found — running fmt, clippy and test."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No crates under crates/ yet — validating the workspace manifest only."
+          fi
+
+      - name: Validate workspace manifest
+        run: cargo metadata --no-deps --format-version 1 > /dev/null
+
+      - name: cargo fmt
+        if: steps.crates.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        if: steps.crates.outputs.present == 'true'
+        run: cargo test --workspace
+
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -159,7 +242,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -204,7 +287,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies

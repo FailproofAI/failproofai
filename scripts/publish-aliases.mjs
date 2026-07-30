@@ -65,7 +65,10 @@ for (const name of ALIASES) {
 
   console.log(`Publishing ${name}@${VERSION}...`);
   try {
-    execSync(`npm publish --tag ${DIST_TAG}`, { cwd: tmpDir, stdio: 'pipe' });
+    // --ignore-scripts for the same reason the main publish step uses it: the
+    // generated alias package must never gain a lifecycle script that runs on
+    // the publisher's machine (or, transitively, on every installer's).
+    execSync(`npm publish --ignore-scripts --tag ${DIST_TAG}`, { cwd: tmpDir, stdio: 'pipe' });
     console.log(`Done: ${name}`);
   } catch (err) {
     const output = (err.stdout?.toString() ?? '') + (err.stderr?.toString() ?? '');

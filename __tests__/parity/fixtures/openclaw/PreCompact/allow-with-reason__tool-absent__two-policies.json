@@ -1,0 +1,51 @@
+{
+  "case": "allow-with-reason__tool-absent__two-policies",
+  "cli": "openclaw",
+  "decision_kind": "allow-with-reason",
+  "event": "PreCompact",
+  "input": {
+    "event_type": "PreCompact",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PreCompact",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "allow",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "openclaw",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PreCompact",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": [
+      "parity/policy-1",
+      "parity/policy-2"
+    ],
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\nparity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "[failproofai] parity/policy-1: parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\n[failproofai] parity/policy-2: parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend\n",
+    "stdout": "{\"permission\":\"allow\",\"reason\":\"Note from failproofai: parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\\nparity reason 2: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend\"}"
+  },
+  "policy_count": 2,
+  "tool": "tool-absent"
+}

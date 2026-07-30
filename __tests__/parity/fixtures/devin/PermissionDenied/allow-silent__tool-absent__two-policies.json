@@ -1,0 +1,48 @@
+{
+  "case": "allow-silent__tool-absent__two-policies",
+  "cli": "devin",
+  "decision_kind": "allow-silent",
+  "event": "PermissionDenied",
+  "input": {
+    "event_type": "PermissionDenied",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PermissionDenied",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": null
+      },
+      {
+        "decision": "allow",
+        "name": "parity/policy-2",
+        "reason": null
+      }
+    ],
+    "session": {
+      "cli": "devin",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PermissionDenied",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": null,
+    "policyNames": null,
+    "reason": null,
+    "stderr": "",
+    "stdout": ""
+  },
+  "policy_count": 2,
+  "tool": "tool-absent"
+}

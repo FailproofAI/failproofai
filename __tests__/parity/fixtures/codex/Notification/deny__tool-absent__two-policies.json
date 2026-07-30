@@ -1,0 +1,48 @@
+{
+  "case": "deny__tool-absent__two-policies",
+  "cli": "codex",
+  "decision_kind": "deny",
+  "event": "Notification",
+  "input": {
+    "event_type": "Notification",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "Notification",
+      "session_id": "sess-fixture-1",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "deny",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "deny",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "codex",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "Notification",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "deny",
+    "exitCode": 2,
+    "policyName": "parity/policy-1",
+    "policyNames": null,
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stdout": ""
+  },
+  "policy_count": 2,
+  "tool": "tool-absent"
+}

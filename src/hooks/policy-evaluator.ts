@@ -55,12 +55,36 @@ function getConfigParamsFor(
   return config.policyParams[canonicalName.slice(defaultPrefix.length)];
 }
 
-export async function evaluatePolicies(
+/**
+ * The raw outcome of running the policy loop for one event, before any
+ * per-CLI response encoding. `evaluateVerdicts` produces it and
+ * `encodeResponse` consumes it; splitting the two lets a caller that
+ * evaluates policies in more than one place merge verdict sets before a
+ * single response is encoded.
+ */
+export interface VerdictSet {
+  /** First deny encountered. The policy loop short-circuits on it. */
+  deny: { policyName: string; reason: string } | null;
+  /** Every instruct result, in policy order (instruct does not short-circuit). */
+  instructEntries: Array<{ policyName: string; reason: string }>;
+  /** Informational messages from allow decisions, in policy order. */
+  allowEntries: Array<{ policyName: string; reason: string }>;
+  /** How many policies matched this event — 0 means nothing ran. */
+  matchedCount: number;
+  /** `payload.tool_name`, carried through so the deny noun can be picked. */
+  toolName?: string;
+}
+
+/**
+ * Runs the policies registered for an event and accumulates their verdicts.
+ * No response encoding happens here — see `encodeResponse`.
+ */
+export async function evaluateVerdicts(
   eventType: HookEventType,
   payload: Record<string, unknown>,
   session?: SessionMetadata,
   config?: HooksConfig,
-): Promise<EvaluationResult> {
+): Promise<VerdictSet> {
   const toolName = payload.tool_name as string | undefined;
   const toolInput = payload.tool_input as Record<string, unknown> | undefined;
 
@@ -69,7 +93,7 @@ export async function evaluatePolicies(
   hookLogInfo(`evaluating ${policies.length} policies for ${eventType}`);
 
   if (policies.length === 0) {
-    return { exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow" };
+    return { deny: null, instructEntries: [], allowEntries: [], matchedCount: 0, toolName };
   }
 
   const baseCtx: PolicyContext = {
@@ -132,427 +156,12 @@ export async function evaluatePolicies(
         getConfigParamsFor(config, policy.name)?.hint,
       );
       hookLogInfo(`deny by "${policy.name}": ${reason}`);
-
-      // Pick a noun for the deny message that fits the event type. Tool events
-      // get the tool name; non-tool events (UserPromptSubmit, SessionStart,
-      // SessionEnd, Stop, …) use an event-appropriate label so we don't emit
-      // the misleading "Blocked unknown tool by failproofai because: ...".
-      let displayTool: string;
-      if (ctx.toolName) {
-        displayTool = ctx.toolName;
-      } else if (eventType === "UserPromptSubmit") {
-        displayTool = "prompt";
-      } else if (eventType === "SessionStart") {
-        displayTool = "session start";
-      } else if (eventType === "SessionEnd") {
-        displayTool = "session end";
-      } else if (eventType === "Stop") {
-        displayTool = "stop";
-      } else {
-        displayTool = "operation";
-      }
-      const blockedMessage = `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
-
-      // Cursor's hook protocol expects a flat `{permission, user_message,
-      // agent_message}` shape for any blocking decision, regardless of which
-      // event triggered it. Branch ahead of the per-event handlers below so
-      // PreToolUse / PostToolUse / PermissionRequest all flow through the
-      // Cursor-shaped response.
-      // Ref: https://cursor.com/docs/hooks (Stdout Response Format).
-      if (session?.cli === "cursor") {
-        // Cursor's `stop` / `subagentStop` hooks ignore `{permission: "deny"}`
-        // — that shape is only honored on tool events. The only force-retry
-        // channel for Stop/SubagentStop is `{followup_message}` on stdout
-        // (exit 0); Cursor auto-submits the text as the next user message
-        // (capped at `loop_limit`, default 5). Mirrors the Copilot Stop branch.
-        // Without this branch, the 5 `require-*-before-stop` builtins were
-        // observation-only on Cursor — the deny was logged but the agent
-        // stopped cleanly. Ref: https://cursor.com/docs/hooks
-        if (eventType === "Stop" || eventType === "SubagentStop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ followup_message: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        // `beforeSubmitPrompt` does NOT read `permission`. Its only block key
-        // is `continue: false` (+ an optional `user_message` shown to the
-        // user); an object carrying unknown keys validates and is dropped, so
-        // the flat deny below was inert and every prompt went through. Verified
-        // against cursor-agent 2026.07.16-899851b, 1931.index.js char 887883.
-        if (eventType === "UserPromptSubmit") {
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ continue: false, user_message: blockedMessage }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        const response = {
-          permission: "deny",
-          user_message: blockedMessage,
-          agent_message: blockedMessage,
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Pi's shim parses a flat `{permission, reason}` JSON shape from stdout
-      // and translates `permission === "deny"` into a `{block: true, reason}`
-      // return value from its `pi.on("tool_call", ...)` handler. Pi has no
-      // event-specific decision wrappers, so all events flow through the
-      // same flat shape — except Stop, where we emit the MANDATORY ACTION
-      // wording so the shim can re-inject it as a system-prompt suffix on
-      // the next before_agent_start (Pi cannot veto agent_end directly).
-      // Mirrors the Cursor/Copilot/OpenCode Stop branches above.
-      if (session?.cli === "pi") {
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        const response = {
-          permission: "deny",
-          reason: blockedMessage,
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Hermes: the block contract is `{"decision":"block","reason"}` on stdout;
-      // Hermes IGNORES exit codes, so the JSON is the only channel. A block on
-      // PreToolUse stops the tool before it runs, regardless of the originating
-      // platform (slack/telegram/cli/cron) or subagent.
-      //
-      // Only `pre_tool_call` and `pre_verify` are gated in upstream's
-      // `_parse_response` (agent/shell_hooks.py:567-621); the shape is still
-      // emitted for the other installed events, where it is read by nothing.
-      // We do not install `pre_verify` (see the note in types.ts), so Hermes
-      // has no canonical Stop event and no Stop branch is needed here.
-      if (session?.cli === "hermes") {
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // OpenClaw: the shipped openclaw-plugin parses a flat {permission, reason}
-      // verdict and maps it per plugin-hook — before_tool_call → {block:true,
-      // blockReason}; before_agent_run → {outcome:"block", reason};
-      // before_agent_finalize (Stop) → {action:"revise", reason}. For Stop we
-      // emit the MANDATORY ACTION wording so the revise loop carries the
-      // directive. Observation hooks (after_tool_call / session_* /
-      // subagent_ended / before_compaction) ignore stdout, so the flat deny is
-      // logged but cannot veto — a documented limitation. Mirrors the Pi branch.
-      if (session?.cli === "openclaw") {
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ permission: "deny", reason: blockedMessage }),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // OpenCode: `session.idle` is a notification-only bus event — by the
-      // time the plugin handler fires, OpenCode has already gone idle and
-      // throwing from the handler does not force-retry. The only working
-      // channel is the shim's `client.session.prompt(...)` SDK call, which
-      // submits a new user message that re-triggers the agent loop. The
-      // shim already routes `hookSpecificOutput.additionalContext` through
-      // that path (see buildOpenCodePluginShim's applyDecision), so we emit
-      // the deny reason as additionalContext instead of exit-2. Mirrors the
-      // Cursor `followup_message` and Copilot `{decision:"block"}` Stop
-      // branches. SubagentStop is widened in for forward
-      // compat — OpenCode doesn't yet expose subagent boundaries to plugins.
-      if (session?.cli === "opencode") {
-        if (eventType === "Stop" || eventType === "SubagentStop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: reasonText } }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        // Non-Stop opencode events keep the generic Claude shape — the
-        // shim's applyDecision already handles permissionDecision: "deny"
-        // for tool events.
-      }
-
-      // Factory droid: droid drives tool blocking off EXIT CODE 2 (it ignores a
-      // JSON `{decision:…}` on tool events — verified live against droid
-      // v0.171.0: `Hook returned exit code 2, throwing ToolExecutionControlError`).
-      // The one exception is `Stop`, where droid does NOT honor exit-2
-      // force-retry; there it reads `{decision:"block", reason}` on stdout at
-      // exit 0 ("if decision is block, Droid does not stop"). So: Stop → JSON
-      // block; every other event (PreToolUse / PostToolUse / UserPromptSubmit /
-      // SubagentStop / …) → exit 2 + the blocked message on stderr.
-      if (session?.cli === "factory") {
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        return {
-          exitCode: 2,
-          stdout: "",
-          stderr: blockedMessage + "\n",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Devin CLI: a pure Claude-clone that honors `{decision:"block", reason}`
-      // on stdout at exit 0 for EVERY event (verified live against devin
-      // v3000.1.27 — the block overrode `--permission-mode dangerous`). On Stop
-      // the reason carries the MANDATORY-ACTION force-retry wording; on other
-      // events it's the plain blocked message. One branch covers all events.
-      if (session?.cli === "devin") {
-        const reasonText =
-          eventType === "Stop"
-            ? `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`
-            : blockedMessage;
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Antigravity CLI: its OWN response shapes (NOT Claude's) — verified live
-      // against agy v1.1.2. Tool/prompt events honor `{decision:"deny", reason}`
-      // on stdout at exit 0 (hard block). The Stop event has no exit-2 retry;
-      // instead `{decision:"continue", reason}` re-enters the loop and injects
-      // the reason as a system message — that is how the 5 require-*-before-stop
-      // builtins enforce on Antigravity.
-      if (session?.cli === "antigravity") {
-        if (eventType === "Stop") {
-          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "continue", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Goose: the deny contract is `{"decision":"block","reason"}` on stdout at
-      // exit 0, honored on PreToolUse ONLY (shipped goose ≥ v1.37.0, PR
-      // block/goose#9304; exit 2 also blocks but JSON carries the reason
-      // cleanly). Goose has NO Stop event (the 5 require-*-before-stop builtins
-      // never fire for it — see CLAUDE.md) and does NOT honor deny on
-      // UserPromptSubmit/PostToolUse (observation) — a block emitted on those
-      // events is ignored (fail-open), a documented limitation. PreToolUse fires
-      // for the shell tool AND inside delegated subagents, so this one branch
-      // covers the entire enforceable surface. Mirrors the Hermes branch (no
-      // turn-end event to special-case). Verified live against goose v1.43.0.
-      if (session?.cli === "goose") {
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      if (eventType === "PreToolUse") {
-        const response = {
-          hookSpecificOutput: {
-            hookEventName: eventType,
-            permissionDecision: "deny",
-            permissionDecisionReason: blockedMessage,
-          },
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Copilot reads two shapes we were not sending, so a deny on either of
-      // these events was emitted, logged, counted as enforcement — and ignored.
-      // Both verified against the shipped @github/copilot-linux-x64 bundle.
-      // Note exit 2 is NEVER a deny channel on copilot for any event; it is
-      // logged as `Hook command exited with code 2 (warning)`.
-      if (session?.cli === "copilot") {
-        // `userPromptSubmit` gates the turn, but only on {decision:"block"} at
-        // exit 0 (consumer app.js@2823018). We were emitting exit 2 + stderr,
-        // which copilot warns about and then submits the prompt anyway.
-        if (eventType === "UserPromptSubmit") {
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        // Copilot consumes a FLAT {behavior, message} here (normalizer
-        // CMn@179042 -> mapper h4t@2686538). The Codex-shaped nested
-        // hookSpecificOutput.decision below normalizes to `{}` on copilot, so
-        // the permission prompt proceeded as if no policy existed.
-        if (eventType === "PermissionRequest") {
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ behavior: "deny", message: blockedMessage }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-      }
-
-      if (eventType === "PermissionRequest") {
-        // Codex-only: hookSpecificOutput.decision.behavior = "allow" | "deny"
-        // (per https://developers.openai.com/codex/hooks#permissionrequest).
-        const response = {
-          hookSpecificOutput: {
-            hookEventName: eventType,
-            decision: {
-              behavior: "deny",
-              message: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
-            },
-          },
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      if (eventType === "PostToolUse") {
-        const response = {
-          hookSpecificOutput: {
-            hookEventName: eventType,
-            additionalContext: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
-          },
-        };
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(response),
-          stderr: "",
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      if (eventType === "Stop" || eventType === "SubagentStop") {
-        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
-        // Copilot CLI: `agentStop` and `subagentStop` both honor
-        // `{decision: "block", reason}` JSON on stdout — the reason becomes the
-        // next-turn prompt and the agent (or subagent) retries. Exit-2 is logged
-        // as `[WARNING] Hook warning: ...` (verified empirically against Copilot
-        // CLI 1.0.41 events.jsonl) but does NOT trigger retry. We branch on both
-        // event types so that custom policies matching SubagentStop also enforce
-        // on Copilot subagent boundaries; the 5 builtin require-*-before-stop
-        // policies still match Stop only by design — they are session-completion
-        // gates (commit/push/PR/conflicts/CI), not subagent-return gates.
-        // Ref: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
-        if (session?.cli === "copilot") {
-          return {
-            exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
-            stderr: "",
-            policyName: policy.name,
-            reason,
-            decision: "deny",
-          };
-        }
-        return {
-          exitCode: 2,
-          stdout: "",
-          stderr: reasonText,
-          policyName: policy.name,
-          reason,
-          decision: "deny",
-        };
-      }
-
-      // Other event types (Cursor case already handled above): exit 2
       return {
-        exitCode: 2,
-        stdout: "",
-        stderr: reason,
-        policyName: policy.name,
-        reason,
-        decision: "deny",
+        deny: { policyName: policy.name, reason },
+        instructEntries,
+        allowEntries,
+        matchedCount: policies.length,
+        toolName,
       };
     }
 
@@ -570,6 +179,451 @@ export async function evaluatePolicies(
     if (result.decision === "allow" && result.reason) {
       allowEntries.push({ policyName: policy.name, reason: result.reason });
     }
+  }
+
+  return { deny: null, instructEntries, allowEntries, matchedCount: policies.length, toolName };
+}
+
+/**
+ * Encodes an accumulated `VerdictSet` into the native response shape the
+ * target CLI actually reads. Every branch below is a separately verified
+ * vendor contract — see the per-branch comments.
+ */
+export function encodeResponse(
+  verdicts: VerdictSet,
+  eventType: HookEventType,
+  session?: SessionMetadata,
+): EvaluationResult {
+  const { instructEntries, allowEntries } = verdicts;
+
+  if (verdicts.matchedCount === 0) {
+    return { exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow" };
+  }
+
+  if (verdicts.deny) {
+    const { policyName, reason } = verdicts.deny;
+
+    // Pick a noun for the deny message that fits the event type. Tool events
+    // get the tool name; non-tool events (UserPromptSubmit, SessionStart,
+    // SessionEnd, Stop, …) use an event-appropriate label so we don't emit
+    // the misleading "Blocked unknown tool by failproofai because: ...".
+    let displayTool: string;
+    if (verdicts.toolName) {
+      displayTool = verdicts.toolName;
+    } else if (eventType === "UserPromptSubmit") {
+      displayTool = "prompt";
+    } else if (eventType === "SessionStart") {
+      displayTool = "session start";
+    } else if (eventType === "SessionEnd") {
+      displayTool = "session end";
+    } else if (eventType === "Stop") {
+      displayTool = "stop";
+    } else {
+      displayTool = "operation";
+    }
+    const blockedMessage = `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
+
+    // Cursor's hook protocol expects a flat `{permission, user_message,
+    // agent_message}` shape for any blocking decision, regardless of which
+    // event triggered it. Branch ahead of the per-event handlers below so
+    // PreToolUse / PostToolUse / PermissionRequest all flow through the
+    // Cursor-shaped response.
+    // Ref: https://cursor.com/docs/hooks (Stdout Response Format).
+    if (session?.cli === "cursor") {
+      // Cursor's `stop` / `subagentStop` hooks ignore `{permission: "deny"}`
+      // — that shape is only honored on tool events. The only force-retry
+      // channel for Stop/SubagentStop is `{followup_message}` on stdout
+      // (exit 0); Cursor auto-submits the text as the next user message
+      // (capped at `loop_limit`, default 5). Mirrors the Copilot Stop branch.
+      // Without this branch, the 5 `require-*-before-stop` builtins were
+      // observation-only on Cursor — the deny was logged but the agent
+      // stopped cleanly. Ref: https://cursor.com/docs/hooks
+      if (eventType === "Stop" || eventType === "SubagentStop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ followup_message: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      // `beforeSubmitPrompt` does NOT read `permission`. Its only block key
+      // is `continue: false` (+ an optional `user_message` shown to the
+      // user); an object carrying unknown keys validates and is dropped, so
+      // the flat deny below was inert and every prompt went through. Verified
+      // against cursor-agent 2026.07.16-899851b, 1931.index.js char 887883.
+      if (eventType === "UserPromptSubmit") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ continue: false, user_message: blockedMessage }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      const response = {
+        permission: "deny",
+        user_message: blockedMessage,
+        agent_message: blockedMessage,
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Pi's shim parses a flat `{permission, reason}` JSON shape from stdout
+    // and translates `permission === "deny"` into a `{block: true, reason}`
+    // return value from its `pi.on("tool_call", ...)` handler. Pi has no
+    // event-specific decision wrappers, so all events flow through the
+    // same flat shape — except Stop, where we emit the MANDATORY ACTION
+    // wording so the shim can re-inject it as a system-prompt suffix on
+    // the next before_agent_start (Pi cannot veto agent_end directly).
+    // Mirrors the Cursor/Copilot/OpenCode Stop branches above.
+    if (session?.cli === "pi") {
+      if (eventType === "Stop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      const response = {
+        permission: "deny",
+        reason: blockedMessage,
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Hermes: the block contract is `{"decision":"block","reason"}` on stdout;
+    // Hermes IGNORES exit codes, so the JSON is the only channel. A block on
+    // PreToolUse stops the tool before it runs, regardless of the originating
+    // platform (slack/telegram/cli/cron) or subagent.
+    //
+    // Only `pre_tool_call` and `pre_verify` are gated in upstream's
+    // `_parse_response` (agent/shell_hooks.py:567-621); the shape is still
+    // emitted for the other installed events, where it is read by nothing.
+    // We do not install `pre_verify` (see the note in types.ts), so Hermes
+    // has no canonical Stop event and no Stop branch is needed here.
+    if (session?.cli === "hermes") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // OpenClaw: the shipped openclaw-plugin parses a flat {permission, reason}
+    // verdict and maps it per plugin-hook — before_tool_call → {block:true,
+    // blockReason}; before_agent_run → {outcome:"block", reason};
+    // before_agent_finalize (Stop) → {action:"revise", reason}. For Stop we
+    // emit the MANDATORY ACTION wording so the revise loop carries the
+    // directive. Observation hooks (after_tool_call / session_* /
+    // subagent_ended / before_compaction) ignore stdout, so the flat deny is
+    // logged but cannot veto — a documented limitation. Mirrors the Pi branch.
+    if (session?.cli === "openclaw") {
+      if (eventType === "Stop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ permission: "deny", reason: blockedMessage }),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // OpenCode: `session.idle` is a notification-only bus event — by the
+    // time the plugin handler fires, OpenCode has already gone idle and
+    // throwing from the handler does not force-retry. The only working
+    // channel is the shim's `client.session.prompt(...)` SDK call, which
+    // submits a new user message that re-triggers the agent loop. The
+    // shim already routes `hookSpecificOutput.additionalContext` through
+    // that path (see buildOpenCodePluginShim's applyDecision), so we emit
+    // the deny reason as additionalContext instead of exit-2. Mirrors the
+    // Cursor `followup_message` and Copilot `{decision:"block"}` Stop
+    // branches. SubagentStop is widened in for forward
+    // compat — OpenCode doesn't yet expose subagent boundaries to plugins.
+    if (session?.cli === "opencode") {
+      if (eventType === "Stop" || eventType === "SubagentStop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: reasonText } }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      // Non-Stop opencode events keep the generic Claude shape — the
+      // shim's applyDecision already handles permissionDecision: "deny"
+      // for tool events.
+    }
+
+    // Factory droid: droid drives tool blocking off EXIT CODE 2 (it ignores a
+    // JSON `{decision:…}` on tool events — verified live against droid
+    // v0.171.0: `Hook returned exit code 2, throwing ToolExecutionControlError`).
+    // The one exception is `Stop`, where droid does NOT honor exit-2
+    // force-retry; there it reads `{decision:"block", reason}` on stdout at
+    // exit 0 ("if decision is block, Droid does not stop"). So: Stop → JSON
+    // block; every other event (PreToolUse / PostToolUse / UserPromptSubmit /
+    // SubagentStop / …) → exit 2 + the blocked message on stderr.
+    if (session?.cli === "factory") {
+      if (eventType === "Stop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      return {
+        exitCode: 2,
+        stdout: "",
+        stderr: blockedMessage + "\n",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Devin CLI: a pure Claude-clone that honors `{decision:"block", reason}`
+    // on stdout at exit 0 for EVERY event (verified live against devin
+    // v3000.1.27 — the block overrode `--permission-mode dangerous`). On Stop
+    // the reason carries the MANDATORY-ACTION force-retry wording; on other
+    // events it's the plain blocked message. One branch covers all events.
+    if (session?.cli === "devin") {
+      const reasonText =
+        eventType === "Stop"
+          ? `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`
+          : blockedMessage;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Antigravity CLI: its OWN response shapes (NOT Claude's) — verified live
+    // against agy v1.1.2. Tool/prompt events honor `{decision:"deny", reason}`
+    // on stdout at exit 0 (hard block). The Stop event has no exit-2 retry;
+    // instead `{decision:"continue", reason}` re-enters the loop and injects
+    // the reason as a system message — that is how the 5 require-*-before-stop
+    // builtins enforce on Antigravity.
+    if (session?.cli === "antigravity") {
+      if (eventType === "Stop") {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "continue", reason: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Goose: the deny contract is `{"decision":"block","reason"}` on stdout at
+    // exit 0, honored on PreToolUse ONLY (shipped goose ≥ v1.37.0, PR
+    // block/goose#9304; exit 2 also blocks but JSON carries the reason
+    // cleanly). Goose has NO Stop event (the 5 require-*-before-stop builtins
+    // never fire for it — see CLAUDE.md) and does NOT honor deny on
+    // UserPromptSubmit/PostToolUse (observation) — a block emitted on those
+    // events is ignored (fail-open), a documented limitation. PreToolUse fires
+    // for the shell tool AND inside delegated subagents, so this one branch
+    // covers the entire enforceable surface. Mirrors the Hermes branch (no
+    // turn-end event to special-case). Verified live against goose v1.43.0.
+    if (session?.cli === "goose") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    if (eventType === "PreToolUse") {
+      const response = {
+        hookSpecificOutput: {
+          hookEventName: eventType,
+          permissionDecision: "deny",
+          permissionDecisionReason: blockedMessage,
+        },
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Copilot reads two shapes we were not sending, so a deny on either of
+    // these events was emitted, logged, counted as enforcement — and ignored.
+    // Both verified against the shipped @github/copilot-linux-x64 bundle.
+    // Note exit 2 is NEVER a deny channel on copilot for any event; it is
+    // logged as `Hook command exited with code 2 (warning)`.
+    if (session?.cli === "copilot") {
+      // `userPromptSubmit` gates the turn, but only on {decision:"block"} at
+      // exit 0 (consumer app.js@2823018). We were emitting exit 2 + stderr,
+      // which copilot warns about and then submits the prompt anyway.
+      if (eventType === "UserPromptSubmit") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      // Copilot consumes a FLAT {behavior, message} here (normalizer
+      // CMn@179042 -> mapper h4t@2686538). The Codex-shaped nested
+      // hookSpecificOutput.decision below normalizes to `{}` on copilot, so
+      // the permission prompt proceeded as if no policy existed.
+      if (eventType === "PermissionRequest") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ behavior: "deny", message: blockedMessage }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+    }
+
+    if (eventType === "PermissionRequest") {
+      // Codex-only: hookSpecificOutput.decision.behavior = "allow" | "deny"
+      // (per https://developers.openai.com/codex/hooks#permissionrequest).
+      const response = {
+        hookSpecificOutput: {
+          hookEventName: eventType,
+          decision: {
+            behavior: "deny",
+            message: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
+          },
+        },
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    if (eventType === "PostToolUse") {
+      const response = {
+        hookSpecificOutput: {
+          hookEventName: eventType,
+          additionalContext: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
+        },
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(response),
+        stderr: "",
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    if (eventType === "Stop" || eventType === "SubagentStop") {
+      const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policyName}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+      // Copilot CLI: `agentStop` and `subagentStop` both honor
+      // `{decision: "block", reason}` JSON on stdout — the reason becomes the
+      // next-turn prompt and the agent (or subagent) retries. Exit-2 is logged
+      // as `[WARNING] Hook warning: ...` (verified empirically against Copilot
+      // CLI 1.0.41 events.jsonl) but does NOT trigger retry. We branch on both
+      // event types so that custom policies matching SubagentStop also enforce
+      // on Copilot subagent boundaries; the 5 builtin require-*-before-stop
+      // policies still match Stop only by design — they are session-completion
+      // gates (commit/push/PR/conflicts/CI), not subagent-return gates.
+      // Ref: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
+      if (session?.cli === "copilot") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName,
+          reason,
+          decision: "deny",
+        };
+      }
+      return {
+        exitCode: 2,
+        stdout: "",
+        stderr: reasonText,
+        policyName,
+        reason,
+        decision: "deny",
+      };
+    }
+
+    // Other event types (Cursor case already handled above): exit 2
+    return {
+      exitCode: 2,
+      stdout: "",
+      stderr: reason,
+      policyName,
+      reason,
+      decision: "deny",
+    };
   }
 
   // No deny — check if we accumulated any instructs
@@ -1002,4 +1056,13 @@ export async function evaluatePolicies(
     return { exitCode: 0, stdout: "", stderr: stderrMsg + "\n", policyName: policyNames[0], policyNames, reason: combined, decision: "allow" };
   }
   return { exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow" };
+}
+
+export async function evaluatePolicies(
+  eventType: HookEventType,
+  payload: Record<string, unknown>,
+  session?: SessionMetadata,
+  config?: HooksConfig,
+): Promise<EvaluationResult> {
+  return encodeResponse(await evaluateVerdicts(eventType, payload, session, config), eventType, session);
 }

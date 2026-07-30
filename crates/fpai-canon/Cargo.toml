@@ -1,0 +1,17 @@
+[package]
+name = "fpai-canon"
+description = "Event, tool, and payload canonicalization for failproofaid, generated from src/hooks/types.ts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]

@@ -1,0 +1,55 @@
+{
+  "case": "allow-with-reason__tool-present__two-policies",
+  "cli": "codex",
+  "decision_kind": "allow-with-reason",
+  "event": "SessionStart",
+  "input": {
+    "event_type": "SessionStart",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "SessionStart",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      },
+      {
+        "decision": "allow",
+        "name": "parity/policy-2",
+        "reason": "parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "codex",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "SessionStart",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": [
+      "parity/policy-1",
+      "parity/policy-2"
+    ],
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\nparity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "[failproofai] parity/policy-1: parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend\n[failproofai] parity/policy-2: parity reason 2: \"q\" \\ /s/ <t>&a\né𝄞\tend\n",
+    "stdout": ""
+  },
+  "policy_count": 2,
+  "tool": "tool-present"
+}

@@ -1,0 +1,25 @@
+# Top-level entries in the tarball `npm publish` would upload, one per line.
+#
+# Compared by scripts/check-pack-allowlist.mjs against the first path segment
+# of every file in `npm pack --dry-run --json`. Granularity is deliberate: the
+# tarball has ~1,700 files, nearly all under .next/standalone/node_modules, and
+# a file-level manifest would churn on every dependency bump.
+#
+# If this check fails, the tarball's shape changed. Decide whether that was
+# intended, then regenerate with:
+#
+#   bun run build && node scripts/check-pack-allowlist.mjs --write
+#
+# `.next` and `dist` are gitignored build output and only appear after a build.
+
+.next
+LICENSE
+README.md
+bin
+dist
+lib
+openclaw-plugin
+package.json
+pi-extension
+scripts
+src

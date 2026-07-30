@@ -1,0 +1,50 @@
+# Root of the (currently empty) Rust workspace.
+#
+# Stage 0 of the Phase 1 plan creates this plumbing *before* there is anything to
+# break, so the `rust-quality` CI job is green from the first commit and the
+# first real crate lands against a working gate rather than establishing one.
+#
+# `members = ["crates/*"]` is a glob over DIRECTORIES, and cargo demands a
+# `Cargo.toml` in every one it matches. Verified against cargo 1.97.1:
+#
+#   crates/ absent                  ->  hard error, "failed to read
+#                                       `crates/*/Cargo.toml`", exit 101.
+#   crates/ with no subdirectory    ->  glob resolves to zero members; every
+#                                       cargo command that only reads the
+#                                       manifest succeeds.
+#   crates/<dir> with no Cargo.toml ->  hard error, same as above, naming the
+#                                       directory — which is why `crates/generated`
+#                                       is excluded below.
+#
+# So `crates/.gitkeep` is NOT redundant even though `crates/generated/` is now
+# tracked: git records no directory of its own, only the files inside one, and
+# every file under `crates/generated/` could be moved or removed by the crate
+# that consumes it. The `.gitkeep` guarantees a fresh clone has a `crates/`
+# regardless, which is the difference between the glob resolving to zero members
+# and cargo refusing to read the workspace at all.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# `crates/generated` holds data files (canonicalization tables emitted by
+# scripts/gen-canon-tables.ts) that a future `fpai-canon` crate will `include!`.
+# It is deliberately not a crate, so it has no manifest and must be kept out of
+# the members glob.
+exclude = ["node_modules", ".next", "integration-suite", "crates/generated"]
+
+# Every crate inherits from here with `version.workspace = true` etc.
+# `scripts/check-versions.mjs` asserts (a) this version equals the root
+# package.json version and (b) no crate declares a literal `version = "..."`.
+[workspace.package]
+version = "0.0.16-beta.0"
+edition = "2024"
+license = "SEE LICENSE IN LICENSE"
+repository = "https://github.com/FailproofAI/failproofai.git"
+rust-version = "1.90"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

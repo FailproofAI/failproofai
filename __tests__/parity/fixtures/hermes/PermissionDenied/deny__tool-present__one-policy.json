@@ -1,0 +1,47 @@
+{
+  "case": "deny__tool-present__one-policy",
+  "cli": "hermes",
+  "decision_kind": "deny",
+  "event": "PermissionDenied",
+  "input": {
+    "event_type": "PermissionDenied",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PermissionDenied",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "deny",
+        "name": "parity/policy-1",
+        "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend"
+      }
+    ],
+    "session": {
+      "cli": "hermes",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PermissionDenied",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "deny",
+    "exitCode": 0,
+    "policyName": "parity/policy-1",
+    "policyNames": null,
+    "reason": "parity reason 1: \"q\" \\ /s/ <t>&a\né𝄞\tend",
+    "stderr": "",
+    "stdout": "{\"decision\":\"block\",\"reason\":\"Blocked Bash by failproofai because: parity reason 1: \\\"q\\\" \\\\ /s/ <t>&a\\né𝄞\\tend, as per the policy configured by the user\"}"
+  },
+  "policy_count": 1,
+  "tool": "tool-present"
+}

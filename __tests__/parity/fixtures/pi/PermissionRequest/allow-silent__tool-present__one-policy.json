@@ -1,0 +1,47 @@
+{
+  "case": "allow-silent__tool-present__one-policy",
+  "cli": "pi",
+  "decision_kind": "allow-silent",
+  "event": "PermissionRequest",
+  "input": {
+    "event_type": "PermissionRequest",
+    "payload": {
+      "cwd": "/home/u/project",
+      "hook_event_name": "PermissionRequest",
+      "session_id": "sess-fixture-1",
+      "tool_input": {
+        "command": "git status --short"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/home/u/project/.fixture/transcript.jsonl"
+    },
+    "policies": [
+      {
+        "decision": "allow",
+        "name": "parity/policy-1",
+        "reason": null
+      }
+    ],
+    "session": {
+      "cli": "pi",
+      "cwd": "/home/u/project",
+      "home": "/home/u",
+      "hookEventName": "PermissionRequest",
+      "permissionMode": "default",
+      "projectDir": "/home/u/project",
+      "sessionId": "sess-fixture-1",
+      "transcriptPath": "/home/u/project/.fixture/transcript.jsonl"
+    }
+  },
+  "output": {
+    "decision": "allow",
+    "exitCode": 0,
+    "policyName": null,
+    "policyNames": null,
+    "reason": null,
+    "stderr": "",
+    "stdout": ""
+  },
+  "policy_count": 1,
+  "tool": "tool-present"
+}

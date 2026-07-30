@@ -1,0 +1,951 @@
+{
+  "canonical_event_types": [
+    "ConfigChange",
+    "CwdChanged",
+    "Elicitation",
+    "ElicitationResult",
+    "FileChanged",
+    "InstructionsLoaded",
+    "Notification",
+    "PermissionDenied",
+    "PermissionRequest",
+    "PostCompact",
+    "PostToolBatch",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreCompact",
+    "PreToolUse",
+    "SessionEnd",
+    "SessionStart",
+    "Setup",
+    "Stop",
+    "StopFailure",
+    "SubagentStart",
+    "SubagentStop",
+    "TaskCompleted",
+    "TaskCreated",
+    "TeammateIdle",
+    "UserPromptExpansion",
+    "UserPromptSubmit",
+    "WorktreeCreate",
+    "WorktreeRemove"
+  ],
+  "canonical_tool_names": [
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "LS",
+    "Read",
+    "Task",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "Write"
+  ],
+  "clis": {
+    "antigravity": {
+      "event_map": {
+        "PostToolUse": "PostToolUse",
+        "PreInvocation": "UserPromptSubmit",
+        "PreToolUse": "PreToolUse",
+        "Stop": "Stop"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "PostToolUse",
+        "PreInvocation",
+        "PreToolUse",
+        "Stop"
+      ],
+      "event_types_source": "ANTIGRAVITY_HOOK_EVENT_TYPES",
+      "payload_normalizations": [
+        {
+          "from": [
+            "toolCall",
+            "name"
+          ],
+          "require_type": "defined",
+          "source": "src/hooks/handler.ts",
+          "to": "tool_name",
+          "when": "always"
+        },
+        {
+          "from": [
+            "toolCall",
+            "args"
+          ],
+          "require_type": "defined",
+          "source": "src/hooks/handler.ts",
+          "to": "tool_input",
+          "when": "always"
+        },
+        {
+          "from": [
+            "conversationId"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "session_id",
+          "when": "always"
+        },
+        {
+          "from": [
+            "workspacePaths",
+            0
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "cwd",
+          "when": "always"
+        },
+        {
+          "from": [
+            "transcriptPath"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "transcript_path",
+          "when": "always"
+        }
+      ],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreToolUse",
+        "Stop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "ANTIGRAVITY_HOOK_SCOPES",
+      "tool_input_map": {
+        "Bash": {
+          "CommandLine": "command",
+          "Cwd": "cwd"
+        },
+        "Edit": {
+          "TargetFile": "file_path"
+        },
+        "Read": {
+          "AbsolutePath": "file_path",
+          "File": "file_path",
+          "TargetFile": "file_path"
+        },
+        "Write": {
+          "CodeContent": "content",
+          "TargetFile": "file_path"
+        }
+      },
+      "tool_input_map_source": "ANTIGRAVITY_TOOL_INPUT_MAP",
+      "tool_map": {
+        "edit_file": "Edit",
+        "find_by_name": "Glob",
+        "grep_search": "Grep",
+        "list_dir": "LS",
+        "read_file": "Read",
+        "read_url_content": "WebFetch",
+        "replace_file_content": "Edit",
+        "run_command": "Bash",
+        "search_web": "WebSearch",
+        "view_file": "Read",
+        "write_to_file": "Write"
+      },
+      "tool_map_source": "ANTIGRAVITY_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "claude": {
+      "event_map": {
+        "ConfigChange": "ConfigChange",
+        "CwdChanged": "CwdChanged",
+        "Elicitation": "Elicitation",
+        "ElicitationResult": "ElicitationResult",
+        "FileChanged": "FileChanged",
+        "InstructionsLoaded": "InstructionsLoaded",
+        "Notification": "Notification",
+        "PermissionDenied": "PermissionDenied",
+        "PermissionRequest": "PermissionRequest",
+        "PostCompact": "PostCompact",
+        "PostToolBatch": "PostToolBatch",
+        "PostToolUse": "PostToolUse",
+        "PostToolUseFailure": "PostToolUseFailure",
+        "PreCompact": "PreCompact",
+        "PreToolUse": "PreToolUse",
+        "SessionEnd": "SessionEnd",
+        "SessionStart": "SessionStart",
+        "Setup": "Setup",
+        "Stop": "Stop",
+        "StopFailure": "StopFailure",
+        "SubagentStart": "SubagentStart",
+        "SubagentStop": "SubagentStop",
+        "TaskCompleted": "TaskCompleted",
+        "TaskCreated": "TaskCreated",
+        "TeammateIdle": "TeammateIdle",
+        "UserPromptExpansion": "UserPromptExpansion",
+        "UserPromptSubmit": "UserPromptSubmit",
+        "WorktreeCreate": "WorktreeCreate",
+        "WorktreeRemove": "WorktreeRemove"
+      },
+      "event_names_are_canonical": true,
+      "event_types": [
+        "ConfigChange",
+        "CwdChanged",
+        "Elicitation",
+        "ElicitationResult",
+        "FileChanged",
+        "InstructionsLoaded",
+        "Notification",
+        "PermissionDenied",
+        "PermissionRequest",
+        "PostCompact",
+        "PostToolBatch",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Setup",
+        "Stop",
+        "StopFailure",
+        "SubagentStart",
+        "SubagentStop",
+        "TaskCompleted",
+        "TaskCreated",
+        "TeammateIdle",
+        "UserPromptExpansion",
+        "UserPromptSubmit",
+        "WorktreeCreate",
+        "WorktreeRemove"
+      ],
+      "event_types_source": "HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "ConfigChange",
+        "CwdChanged",
+        "Elicitation",
+        "ElicitationResult",
+        "FileChanged",
+        "InstructionsLoaded",
+        "Notification",
+        "PermissionDenied",
+        "PermissionRequest",
+        "PostCompact",
+        "PostToolBatch",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Setup",
+        "Stop",
+        "StopFailure",
+        "SubagentStart",
+        "SubagentStop",
+        "TaskCompleted",
+        "TaskCreated",
+        "TeammateIdle",
+        "UserPromptExpansion",
+        "UserPromptSubmit",
+        "WorktreeCreate",
+        "WorktreeRemove"
+      ],
+      "scopes": [
+        "local",
+        "project",
+        "user"
+      ],
+      "scopes_source": "HOOK_SCOPES",
+      "tool_input_map": {},
+      "tool_input_map_source": null,
+      "tool_map": {},
+      "tool_map_source": null,
+      "unmapped_event_types": []
+    },
+    "codex": {
+      "event_map": {
+        "permission_request": "PermissionRequest",
+        "post_compact": "PostCompact",
+        "post_tool_use": "PostToolUse",
+        "pre_compact": "PreCompact",
+        "pre_tool_use": "PreToolUse",
+        "session_start": "SessionStart",
+        "stop": "Stop",
+        "subagent_start": "SubagentStart",
+        "subagent_stop": "SubagentStop",
+        "user_prompt_submit": "UserPromptSubmit"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "permission_request",
+        "post_compact",
+        "post_tool_use",
+        "pre_compact",
+        "pre_tool_use",
+        "session_start",
+        "stop",
+        "subagent_start",
+        "subagent_stop",
+        "user_prompt_submit"
+      ],
+      "event_types_source": "CODEX_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PermissionRequest",
+        "PostCompact",
+        "PostToolUse",
+        "PreCompact",
+        "PreToolUse",
+        "SessionStart",
+        "Stop",
+        "SubagentStart",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "CODEX_HOOK_SCOPES",
+      "tool_input_map": {},
+      "tool_input_map_source": null,
+      "tool_map": {
+        "apply_patch": "Edit",
+        "write_stdin": "Bash"
+      },
+      "tool_map_source": "CODEX_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "copilot": {
+      "event_map": {
+        "Notification": "Notification",
+        "PermissionRequest": "PermissionRequest",
+        "PostToolUse": "PostToolUse",
+        "PostToolUseFailure": "PostToolUseFailure",
+        "PreCompact": "PreCompact",
+        "PreToolUse": "PreToolUse",
+        "SessionEnd": "SessionEnd",
+        "SessionStart": "SessionStart",
+        "Stop": "Stop",
+        "SubagentStop": "SubagentStop",
+        "UserPromptSubmit": "UserPromptSubmit"
+      },
+      "event_names_are_canonical": true,
+      "event_types": [
+        "ErrorOccurred",
+        "Notification",
+        "PermissionRequest",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "event_types_source": "COPILOT_HOOK_EVENT_TYPES",
+      "payload_normalizations": [
+        {
+          "from": [
+            "toolName"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "tool_name",
+          "when": "target_undefined"
+        },
+        {
+          "from": [
+            "toolInput"
+          ],
+          "require_type": "defined",
+          "source": "src/hooks/handler.ts",
+          "to": "tool_input",
+          "when": "target_undefined"
+        },
+        {
+          "from": [
+            "sessionId"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "session_id",
+          "when": "target_undefined"
+        }
+      ],
+      "reachable_canonical_events": [
+        "Notification",
+        "PermissionRequest",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "COPILOT_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "new_str": "new_string",
+          "old_str": "old_string",
+          "path": "file_path"
+        },
+        "Read": {
+          "path": "file_path"
+        },
+        "Write": {
+          "file_text": "content",
+          "path": "file_path"
+        }
+      },
+      "tool_input_map_source": "COPILOT_TOOL_INPUT_MAP",
+      "tool_map": {
+        "apply_patch": "Edit",
+        "bash": "Bash",
+        "create": "Write",
+        "edit": "Edit",
+        "glob": "Glob",
+        "grep": "Grep",
+        "list_bash": "Bash",
+        "list_powershell": "Bash",
+        "ls": "LS",
+        "powershell": "Bash",
+        "read": "Read",
+        "read_bash": "Bash",
+        "read_powershell": "Bash",
+        "rg": "Grep",
+        "show_file": "Read",
+        "stop_bash": "Bash",
+        "stop_powershell": "Bash",
+        "str_replace_editor": "Edit",
+        "view": "Read",
+        "web_fetch": "WebFetch",
+        "write": "Write",
+        "write_bash": "Bash",
+        "write_powershell": "Bash"
+      },
+      "tool_map_source": "COPILOT_TOOL_MAP",
+      "unmapped_event_types": [
+        "ErrorOccurred"
+      ]
+    },
+    "cursor": {
+      "event_map": {
+        "beforeSubmitPrompt": "UserPromptSubmit",
+        "postToolUse": "PostToolUse",
+        "preToolUse": "PreToolUse",
+        "sessionEnd": "SessionEnd",
+        "sessionStart": "SessionStart",
+        "stop": "Stop",
+        "subagentStop": "SubagentStop"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "beforeSubmitPrompt",
+        "postToolUse",
+        "preToolUse",
+        "sessionEnd",
+        "sessionStart",
+        "stop",
+        "subagentStop"
+      ],
+      "event_types_source": "CURSOR_HOOK_EVENT_TYPES",
+      "payload_normalizations": [
+        {
+          "from": [
+            "workspace_roots",
+            0
+          ],
+          "require_type": "non_empty_string",
+          "source": "src/hooks/resolve-cwd.ts",
+          "to": "cwd",
+          "when": "target_missing_or_empty"
+        }
+      ],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "CURSOR_HOOK_SCOPES",
+      "tool_input_map": {},
+      "tool_input_map_source": null,
+      "tool_map": {
+        "Shell": "Bash"
+      },
+      "tool_map_source": "CURSOR_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "devin": {
+      "event_map": {
+        "PermissionRequest": "PermissionRequest",
+        "PostToolUse": "PostToolUse",
+        "PreToolUse": "PreToolUse",
+        "SessionEnd": "SessionEnd",
+        "SessionStart": "SessionStart",
+        "Stop": "Stop",
+        "UserPromptSubmit": "UserPromptSubmit"
+      },
+      "event_names_are_canonical": true,
+      "event_types": [
+        "PermissionRequest",
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit"
+      ],
+      "event_types_source": "DEVIN_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PermissionRequest",
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "DEVIN_HOOK_SCOPES",
+      "tool_input_map": {},
+      "tool_input_map_source": null,
+      "tool_map": {
+        "exec": "Bash"
+      },
+      "tool_map_source": "DEVIN_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "factory": {
+      "event_map": {
+        "Notification": "Notification",
+        "PostToolUse": "PostToolUse",
+        "PreCompact": "PreCompact",
+        "PreToolUse": "PreToolUse",
+        "SessionEnd": "SessionEnd",
+        "SessionStart": "SessionStart",
+        "Stop": "Stop",
+        "SubagentStop": "SubagentStop",
+        "UserPromptSubmit": "UserPromptSubmit"
+      },
+      "event_names_are_canonical": true,
+      "event_types": [
+        "Notification",
+        "PostToolUse",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "event_types_source": "FACTORY_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "Notification",
+        "PostToolUse",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "FACTORY_HOOK_SCOPES",
+      "tool_input_map": {},
+      "tool_input_map_source": null,
+      "tool_map": {
+        "Create": "Write",
+        "Edit": "Edit",
+        "Execute": "Bash",
+        "FetchUrl": "WebFetch",
+        "Glob": "Glob",
+        "Grep": "Grep",
+        "LS": "LS",
+        "Read": "Read",
+        "Task": "Task",
+        "TodoWrite": "TodoWrite",
+        "WebSearch": "WebSearch"
+      },
+      "tool_map_source": "FACTORY_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "goose": {
+      "event_map": {
+        "PostToolUse": "PostToolUse",
+        "PreToolUse": "PreToolUse",
+        "SessionEnd": "SessionEnd",
+        "SessionStart": "SessionStart",
+        "UserPromptSubmit": "UserPromptSubmit"
+      },
+      "event_names_are_canonical": true,
+      "event_types": [
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "UserPromptSubmit"
+      ],
+      "event_types_source": "GOOSE_HOOK_EVENT_TYPES",
+      "payload_normalizations": [
+        {
+          "from": [
+            "working_dir"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "cwd",
+          "when": "always"
+        },
+        {
+          "from": [
+            "event"
+          ],
+          "require_type": "string",
+          "source": "src/hooks/handler.ts",
+          "to": "hook_event_name",
+          "when": "target_undefined"
+        }
+      ],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "GOOSE_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "path": "file_path"
+        },
+        "LS": {
+          "path": "file_path"
+        },
+        "Read": {
+          "path": "file_path",
+          "source": "file_path"
+        },
+        "Write": {
+          "path": "file_path"
+        }
+      },
+      "tool_input_map_source": "GOOSE_TOOL_INPUT_MAP",
+      "tool_map": {
+        "delegate": "Task",
+        "edit": "Edit",
+        "glob": "Glob",
+        "grep": "Grep",
+        "read_image": "Read",
+        "shell": "Bash",
+        "todo__todo_write": "TodoWrite",
+        "tree": "LS",
+        "view": "Read",
+        "write": "Write"
+      },
+      "tool_map_source": "GOOSE_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "hermes": {
+      "event_map": {
+        "on_session_end": "SessionEnd",
+        "on_session_start": "SessionStart",
+        "post_tool_call": "PostToolUse",
+        "pre_tool_call": "PreToolUse",
+        "subagent_stop": "SubagentStop"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "on_session_end",
+        "on_session_start",
+        "post_tool_call",
+        "pre_tool_call",
+        "subagent_stop"
+      ],
+      "event_types_source": "HERMES_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "SubagentStop"
+      ],
+      "scopes": [
+        "user"
+      ],
+      "scopes_source": "HERMES_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "path": "file_path"
+        },
+        "Read": {
+          "path": "file_path"
+        },
+        "Write": {
+          "path": "file_path"
+        }
+      },
+      "tool_input_map_source": "HERMES_TOOL_INPUT_MAP",
+      "tool_map": {
+        "bash": "Bash",
+        "patch": "Edit",
+        "read_file": "Read",
+        "search_files": "Grep",
+        "terminal": "Bash",
+        "todo": "TodoWrite",
+        "web_extract": "WebFetch",
+        "web_search": "WebSearch",
+        "write_file": "Write"
+      },
+      "tool_map_source": "HERMES_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "openclaw": {
+      "event_map": {
+        "after_tool_call": "PostToolUse",
+        "before_agent_finalize": "Stop",
+        "before_agent_run": "UserPromptSubmit",
+        "before_compaction": "PreCompact",
+        "before_tool_call": "PreToolUse",
+        "session_end": "SessionEnd",
+        "session_start": "SessionStart",
+        "subagent_ended": "SubagentStop"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "after_tool_call",
+        "before_agent_finalize",
+        "before_agent_run",
+        "before_compaction",
+        "before_tool_call",
+        "session_end",
+        "session_start",
+        "subagent_ended"
+      ],
+      "event_types_source": "OPENCLAW_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "SubagentStop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "user"
+      ],
+      "scopes_source": "OPENCLAW_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "path": "file_path"
+        },
+        "Read": {
+          "path": "file_path"
+        },
+        "Write": {
+          "path": "file_path"
+        }
+      },
+      "tool_input_map_source": "OPENCLAW_TOOL_INPUT_MAP",
+      "tool_map": {
+        "edit": "Edit",
+        "exec": "Bash",
+        "glob": "Glob",
+        "grep": "Grep",
+        "read": "Read",
+        "web_fetch": "WebFetch",
+        "web_search": "WebSearch",
+        "write": "Write"
+      },
+      "tool_map_source": "OPENCLAW_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "opencode": {
+      "event_map": {
+        "message.updated": "UserPromptSubmit",
+        "permission.ask": "PermissionRequest",
+        "session.created": "SessionStart",
+        "session.deleted": "SessionEnd",
+        "session.idle": "Stop",
+        "tool.execute.after": "PostToolUse",
+        "tool.execute.before": "PreToolUse"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "message.updated",
+        "permission.ask",
+        "session.created",
+        "session.deleted",
+        "session.idle",
+        "tool.execute.after",
+        "tool.execute.before"
+      ],
+      "event_types_source": "OPENCODE_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PermissionRequest",
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "OPENCODE_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "filePath": "file_path",
+          "newString": "new_string",
+          "oldString": "old_string",
+          "replaceAll": "replace_all"
+        },
+        "Read": {
+          "filePath": "file_path"
+        },
+        "Write": {
+          "filePath": "file_path"
+        }
+      },
+      "tool_input_map_source": "OPENCODE_TOOL_INPUT_MAP",
+      "tool_map": {
+        "apply_patch": "Edit",
+        "bash": "Bash",
+        "edit": "Edit",
+        "glob": "Glob",
+        "grep": "Grep",
+        "list": "LS",
+        "read": "Read",
+        "todoread": "TodoRead",
+        "todowrite": "TodoWrite",
+        "webfetch": "WebFetch",
+        "websearch": "WebSearch",
+        "write": "Write"
+      },
+      "tool_map_source": "OPENCODE_TOOL_MAP",
+      "unmapped_event_types": []
+    },
+    "pi": {
+      "event_map": {
+        "agent_end": "Stop",
+        "input": "UserPromptSubmit",
+        "session_shutdown": "SessionEnd",
+        "session_start": "SessionStart",
+        "tool_call": "PreToolUse",
+        "tool_result": "PostToolUse",
+        "user_bash": "PreToolUse"
+      },
+      "event_names_are_canonical": false,
+      "event_types": [
+        "agent_end",
+        "input",
+        "session_shutdown",
+        "session_start",
+        "tool_call",
+        "tool_result",
+        "user_bash"
+      ],
+      "event_types_source": "PI_HOOK_EVENT_TYPES",
+      "payload_normalizations": [],
+      "reachable_canonical_events": [
+        "PostToolUse",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit"
+      ],
+      "scopes": [
+        "project",
+        "user"
+      ],
+      "scopes_source": "PI_HOOK_SCOPES",
+      "tool_input_map": {
+        "Edit": {
+          "path": "file_path"
+        },
+        "Read": {
+          "path": "file_path"
+        },
+        "Write": {
+          "path": "file_path"
+        }
+      },
+      "tool_input_map_source": "PI_TOOL_INPUT_MAP",
+      "tool_map": {
+        "bash": "Bash",
+        "edit": "Edit",
+        "glob": "Glob",
+        "grep": "Grep",
+        "read": "Read",
+        "write": "Write"
+      },
+      "tool_map_source": "PI_TOOL_MAP",
+      "unmapped_event_types": []
+    }
+  },
+  "description": "Per-CLI canonicalization tables for the failproofai hook pipeline. Consumed by the Rust fpai-canon crate. src/hooks/types.ts is the single source of truth; do not hand-edit.",
+  "generated_by": "scripts/gen-canon-tables.ts",
+  "generated_from": "src/hooks/types.ts",
+  "payload_normalization_vocabulary": {
+    "require_type": [
+      "defined",
+      "non_empty_string",
+      "string"
+    ],
+    "when": [
+      "always",
+      "target_missing_or_empty",
+      "target_undefined"
+    ]
+  },
+  "pipeline": [
+    "payload_normalizations",
+    "event_map",
+    "tool_map",
+    "tool_input_map"
+  ],
+  "regenerate_with": "bun scripts/gen-canon-tables.ts",
+  "schema_version": 1
+}

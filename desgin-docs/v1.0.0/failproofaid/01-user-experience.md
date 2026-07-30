@@ -58,9 +58,9 @@ The default installation is unprivileged and per-user. It must not require `sudo
 `failproofai setup` performs these steps:
 
 1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing AgentEye collector.
-2. **Choose use mode** — offer **Standalone OSS** with no sign-in, or **Connect cloud tier**. Standalone is a complete product path, not a limited trial.
-3. **Optional sign-in** — only for the connected path, authenticate and enroll the installation into an organization. Browser sign-in is preferred; device code supports headless machines.
-4. **Optional machine identity** — only for the connected path, propose a display name and create a stable cloud machine identity.
+2. **Choose Login or OSS** — show the two choices in the existing branded CLI selector. **Login** is selected by default, but the user can move to **OSS** before continuing.
+3. **Optional sign-in** — only after choosing Login, authenticate and enroll the installation into an organization. Browser sign-in is preferred; device code supports headless machines.
+4. **Optional machine identity** — only after choosing Login, propose a display name and create a stable cloud machine identity.
 5. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
 6. **Choose policies** — preserve current builtin selection and custom/convention policy discovery. On a connected machine, show cloud assignments as an additional source.
 7. **Choose observability** — explain which local session sources can be captured and where their data goes. Require explicit selection before transcript capture is enabled.
@@ -70,6 +70,34 @@ The default installation is unprivileged and per-user. It must not require `sudo
 
 Setup is transactional. If a later step fails, it restores the previous harness configuration and service state. It never leaves half-installed hooks pointing at a missing daemon.
 
+The mode step should read approximately:
+
+```text
+◆ How do you want to use FailproofAI?
+
+  ❯ Login   Local policies + AgentEye, centralized policy management,
+            machine/agent/session targeting, fleet health, and cloud sync.
+
+    OSS     No account or cloud required. Builtin and custom policies,
+            convention discovery, local activity/dashboard, audits, and offline use.
+```
+
+The one-liners are product explanations, not license warnings. Login retains every OSS capability and adds connected functionality. OSS remains a complete supported path rather than a trial or degraded mode.
+
+### CLI presentation
+
+The new setup steps reuse the current polished `failproofai config` wizard rather than introducing a second installer UI:
+
+- the existing FailproofAI logomark and pink/teal palette;
+- keyboard navigation with a visible `❯` active row;
+- descriptions aligned beside or beneath each choice;
+- a persistent step spine and compact summaries for completed steps;
+- terminal-width-aware wrapping and the existing ANSI fallback;
+- a final review showing the exact service, harness files, policy configuration, capture sources, and optional cloud enrollment that will change;
+- Enter to confirm and a clear cancellation path that writes nothing.
+
+After the user selects a mode, the completed step stays visible as `Login · <organization>` or `OSS · local only`. Returning to the step and changing the choice updates the remaining flow before anything is applied.
+
 ### Non-interactive and managed installation
 
 Standalone automation uses the same operation with structured inputs and no credential:
@@ -77,7 +105,7 @@ Standalone automation uses the same operation with structured inputs and no cred
 ```sh
 failproofai setup \
   --non-interactive \
-  --mode standalone \
+  --mode oss \
   --harness claude --harness codex
 ```
 
@@ -86,7 +114,7 @@ Connected automation adds enrollment explicitly:
 ```sh
 failproofai setup \
   --non-interactive \
-  --mode connected \
+  --mode login \
   --enrollment-token "$TOKEN" \
   --machine-name build-runner-07 \
   --harness claude --harness codex \

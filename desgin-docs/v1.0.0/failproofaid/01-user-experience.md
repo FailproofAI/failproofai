@@ -265,6 +265,9 @@ failproofai collector status
 failproofai collector flush
 failproofai harness schemas status
 failproofai harness schemas refresh
+failproofai dashboard start [--ttl <duration>]
+failproofai dashboard stop
+failproofai dashboard status
 failproofai doctor
 ```
 
@@ -273,6 +276,39 @@ failproofai doctor
 `doctor` performs read-only checks by default: executable layout, service registration, endpoint ownership, protocol compatibility, policy generation, source permissions, spool health, cloud freshness, and harness/schema compatibility. Any repair beyond automatic restoration of enabled FailproofAI hook entries requires an explicit flag or confirmation.
 
 On a standalone installation cloud checks report `not_configured`, not a warning or failure.
+
+## Local dashboard
+
+The local dashboard survives unchanged as a product surface, but it needs an explicit access model, because a browser cannot speak the daemon's Unix socket and a TCP listener carries no peer credentials.
+
+**The CLI spawns it, not the daemon.** `failproofai dashboard start` already runs as the invoking user, so it starts the bundled web server as that user and the daemon is only a data source reached over the existing socket. Peer credentials then scope every read to the caller with no new mechanism: the daemon cannot tell a dashboard request from any other client, and does not need to. This also keeps the web stack out of the privileged process and avoids inventing a spawn path the daemon could not use anyway — a managed daemon runs as `_failproofai` and cannot `setuid` to the requesting user, exactly as with policy workers.
+
+The daemon therefore has no dashboard concept at all. A pidfile in the user's runtime directory records the running instance, its port, and its expiry, which is what `stop` and `status` read and what makes a second `start` reattach instead of binding a second server.
+
+### Listener
+
+The listener binds loopback only, on an ephemeral port rather than a fixed one — a fixed port collides the moment two enrolled users are logged into a managed machine. `start` prints the URL and opens it.
+
+Access requires a capability token minted at launch, carried in a request header or a `SameSite=Strict` cookie rather than the query string, where it would leak through `Referer`. Requests are rejected unless `Origin` and `Host` match the bound listener, and no endpoint changes state on `GET`. Both rules exist because any page the user visits can issue requests to a localhost port; neither the token nor loopback binding is sufficient alone.
+
+An agent running as the user can read that token, and this is acceptable: it already holds that user's authority, and the daemon refuses protected mutations to a non-root peer regardless of what the dashboard asks.
+
+### Lifetime
+
+The dashboard is on-demand, not a supervised service — a UI people open occasionally should not be an idle listener. It stops on `failproofai dashboard stop`, when its terminal exits, and when its TTL expires, default 30 minutes and overridable with `--ttl`. Expiry closes the listener and invalidates the token; the pidfile is removed on every path, including expiry, so `status` never reports a server that is gone.
+
+### Reads and writes
+
+Reads use the daemon's `Query` operations and return only the caller's own activity, sessions, transcripts, and policy state.
+
+Writes split by tier, so the dashboard gates exactly what matters and leaves the common case alone:
+
+| Policy | Dashboard behavior |
+|---|---|
+| `mutable` (the user's own explicit and convention policies) | Toggles and parameters change directly, no elevation — these are additive-only and cannot weaken a protected policy. |
+| Protected revisions | Display-only, showing source, tier, and revision. The UI composes a copyable `sudo failproofai policies disable <name> --revision <digest>` for the user to run. |
+
+The dashboard never performs a privileged mutation itself. Protected policy changes stay on the elevated CLI path that already produces an audit record, which removes any need for the dashboard to hold, request, or broker elevation.
 
 ## Status and health
 
@@ -359,6 +395,10 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 - Native addons are refused from the `sealed` tier.
 - User-owned convention policies are additive and non-authoritative in managed and system scope, and replacing the directory containing them cannot weaken a protected policy.
 - Uninstall leaves no credential on disk, including when performed offline.
+- The dashboard runs as the invoking user, is reachable only on loopback with a capability token and matching `Origin`, and shows one user only their own data on a multi-user machine.
+- The dashboard performs no privileged mutation; a protected policy change produces a command to run, not an applied change.
+- A dashboard stops on explicit `stop`, terminal exit, and TTL expiry, and leaves no pidfile claiming a server that is gone.
+- Two enrolled users can run dashboards simultaneously without a port conflict.
 - A user-added policy can tighten enforcement and can never weaken, cancel, or shadow a protected one.
 - Promotion into the protected store yields one digest covering the policy and every dependency, and evaluation resolves nothing from a mutable path.
 - Removing or altering an enabled FailproofAI hook is detected and semantically repaired without overwriting unrelated harness settings; explicit disable/uninstall is not repaired.

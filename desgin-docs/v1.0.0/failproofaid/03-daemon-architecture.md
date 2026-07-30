@@ -35,11 +35,19 @@ Each lane has its own queue, concurrency, memory, and time limits. Background wo
 - The daemon does not expose its control protocol over TCP, including loopback.
 - Messages are length-prefixed and versioned rather than newline-delimited.
 - Peer identity is mandatory. Managed and system scope map it to an isolated per-UID policy, session, spool, quota, and administrative-authorization context.
-- Hook and administrative operations are distinct protocol operations.
+- Hook, query, and administrative operations are distinct protocol operation classes, each with its own authorization rule.
 
 Windows transport and service integration are deferred beyond v1.0.0. The framed protocol remains transport-independent so a later named-pipe implementation does not change request semantics.
 
-Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, and `Flush`. Administrative calls can gain stronger authorization later without changing the hook request.
+Initial operations are `Ping`, `EvaluateHook`, `Status`, `Reload`, `Flush`, and the `Query` set. Administrative calls can gain stronger authorization later without changing the hook request.
+
+| Class | Operations | Authorized for |
+|---|---|---|
+| Hook | `EvaluateHook` | any enrolled UID, evaluated in its own context |
+| Query | activity, sessions, transcript access, policy list with source/tier/revision, health, generation identity | any enrolled UID, **results filtered to that UID by peer credential** |
+| Administrative | admit or remove protected revisions, stop, reconfigure, mutate the active protected generation | root peer, or an OS-backed administrator authorization |
+
+`Query` exists because the local dashboard and CLI need read access that is scoped without inventing a second identity mechanism. Filtering happens in the daemon from the peer credential, never from a field the caller supplies, so a client cannot widen its own view by asking differently. The daemon does not distinguish a dashboard client from any other — see [Local dashboard](./01-user-experience.md#local-dashboard) for why the dashboard is spawned by the CLI as the requesting user rather than by the daemon.
 
 ## Policy generations
 

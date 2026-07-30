@@ -12,7 +12,7 @@
 - Ship service and native hook client behind opt-in setup.
 - Keep the current evaluator as a bounded migration fallback.
 - Compare daemon and legacy decisions in shadow mode.
-- Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows without authentication.
+- Prove parity for all current OSS builtin, custom, convention, scope, harness, activity, dashboard, and audit workflows without authentication, including the dashboard's move from a fixed port to a CLI-spawned, token-gated, TTL-bounded listener.
 - Gate expansion on compatibility, deadline success, crash recovery, and resource use.
 
 ## Phase 2: collector convergence
@@ -78,3 +78,5 @@
 17. Credential model for protected policies that need remote state. A `sealed` policy cannot read the developer's `~/.config/gh` and needs its own machine credential or a brokered token.
 18. Freshness bounds and staleness semantics for the collection-lane cache that policies read instead of performing their own I/O.
 19. Capability vocabulary a policy declares at admission, and how an existing custom policy's requirements are inferred when it declares nothing.
+20. Whether a dashboard toggle of a `mutable` policy writes the user's configuration file directly or goes through a daemon operation. The file is what happens today and needs no new protocol, but #623 already had dashboard toggle state diverge from the runtime project/local/user merge once, and a filesystem write path keeps that logic in two implementations.
+21. Default dashboard TTL, and whether an administrator UI for protected revisions is ever warranted beyond the copyable `sudo` command — an ephemeral `--admin` instance and in-place elevation via polkit / Authorization Services are the two candidates if it is.

@@ -29,6 +29,7 @@ Target: failproofai v1.0.0
 - The release ships a pinned policy runtime. The daemon never executes an interpreter or dependency resolved from a user-writable path, and constructs worker environments rather than inheriting them.
 - Promotion into the protected store compiles a policy and its full import graph into one content-addressed artifact; authoring and dependency management stay unprivileged and unchanged.
 - Enforcement performs no unbounded I/O. Policies needing remote state read a cache the collection lane refreshes on its own schedule.
+- The local dashboard is spawned by the CLI as the invoking user and reads through the daemon's `Query` operations, so peer credentials scope it with no second identity mechanism. It is loopback-only, token-gated, TTL-bounded, and performs no privileged mutation — a protected policy change produces a `sudo` command to run rather than an applied change.
 - v1.0.0 supports Linux and macOS; Windows service, packaging, and daemon support are deferred to the next iteration.
 - The OSS product remains fully usable without an account, organization, or Failproof Cloud. Operation is fully offline once installed; v1.0.0 installation itself requires network access, since npm bootstrap is the only supported path and air-gapped distribution is deferred.
 - All current builtin, custom, explicit-file, convention-file, scope, harness, activity, and local-dashboard behavior remains available.

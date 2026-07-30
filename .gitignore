@@ -111,3 +111,7 @@ COMMIT_MSG.tmp
 # Scratch from scripts/bench-hook.ts. It snapshots dist/ here at startup so a
 # concurrent build cannot corrupt an in-flight measurement run.
 /.bench-hook-tmp/
+
+# Mutual-exclusion lock held by scripts/bench-hook.ts for the duration of a
+# capture. Two captures share one working directory and destroy each other.
+/.bench-hook.lock

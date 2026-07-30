@@ -182,6 +182,8 @@ const DIST_INDEX = resolve(DIST_DIR, "index.js");
  * resolves the `--external` packages from the repo's own `node_modules`.
  */
 const SNAPSHOT_DIST_DIR = resolve(WORK_DIR, "dist");
+/** Held for the duration of a capture — see `acquireLock`. */
+const LOCK_FILE = resolve(REPO_ROOT, ".bench-hook.lock");
 const SNAPSHOT_CLI = resolve(SNAPSHOT_DIST_DIR, "cli.mjs");
 
 const MARKER = "##FPAI-BENCH##";
@@ -1787,7 +1789,63 @@ function runCheck(fresh: Baseline, baselinePath: string, tolerance: number): num
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
+/**
+ * Refuse to run two captures at once.
+ *
+ * Both runs would share `WORK_DIR` — the worker bundle, the `dist/` snapshot,
+ * and both sandboxes — so the second one's `buildWorkerBundle` rewrites the
+ * first one's harness underneath it, and whichever exits first deletes the
+ * directory the other is still spawning out of. That is not a theoretical race:
+ * the third attempt at this baseline died at exit 144 when a second invocation
+ * started while it was running, and neither produced an artifact.
+ *
+ * A stale lock (holder no longer alive) is taken over rather than honored, so a
+ * killed run does not require manual cleanup.
+ */
+function acquireLock(): boolean {
+  const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+  try {
+    writeFileSync(LOCK_FILE, payload, { encoding: "utf8", flag: "wx" });
+    return true;
+  } catch {
+    /* someone holds it — decide whether they are still alive */
+  }
+  let holder: { pid?: number; startedAt?: string } = {};
+  try {
+    holder = JSON.parse(readFileSync(LOCK_FILE, "utf8")) as typeof holder;
+  } catch {
+    /* unreadable lock — treat as stale */
+  }
+  const alive = ((): boolean => {
+    if (typeof holder.pid !== "number") return false;
+    try {
+      // Signal 0 tests for existence without delivering anything.
+      process.kill(holder.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (alive) {
+    process.stderr.write(
+      `[bench] another capture is already running (pid ${holder.pid}, started ` +
+        `${holder.startedAt ?? "unknown"}).\n` +
+        `[bench] Two captures share ${WORK_DIR} and would destroy each other. ` +
+        `Wait for it, or kill it and delete ${LOCK_FILE}.\n`,
+    );
+    return false;
+  }
+  process.stderr.write(`[bench] taking over a stale lock from pid ${String(holder.pid)}\n`);
+  writeFileSync(LOCK_FILE, payload, "utf8");
+  return true;
+}
+
 function cleanup(): void {
+  try {
+    rmSync(LOCK_FILE, { force: true });
+  } catch {
+    /* best effort */
+  }
   try {
     rmSync(WORK_DIR, { recursive: true, force: true });
   } catch {
@@ -1828,6 +1886,12 @@ async function main(): Promise<void> {
   const cliCount = opts.cliFilter ? [...opts.cliFilter].length : INTEGRATION_TYPES.length;
   const eventCount = opts.eventFilter ? [...opts.eventFilter].length : HOOK_EVENT_TYPES.length;
 
+  // Acquire BEFORE registering cleanup: a run that was refused the lock must
+  // never delete the working directory of the run that holds it.
+  if (!acquireLock()) {
+    process.exitCode = 1;
+    return;
+  }
   process.on("exit", cleanup);
   process.on("SIGINT", () => {
     cleanup();

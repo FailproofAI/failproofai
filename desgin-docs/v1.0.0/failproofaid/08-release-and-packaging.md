@@ -51,11 +51,13 @@ Each archive has the same logical layout so installation behavior does not depen
 
 ### npm bootstrapper
 
-Primary Linux/macOS migration command:
+Exact-version npm bootstrap command:
 
 ```sh
-npx failproofai@latest setup
+npx failproofai@1.0.0 setup
 ```
+
+The mutable `@latest` form is not the authenticated bootstrap contract. Release documentation resolves the stable channel to an exact package version and publisher identity before presenting the command.
 
 The npm package is a small bootstrapper, not the long-running daemon implementation. It:
 
@@ -68,19 +70,25 @@ The npm package is a small bootstrapper, not the long-running daemon implementat
 
 The npm package must not run a privileged install script. `npx` makes the installation action explicit and works with package managers that block lifecycle scripts.
 
+The npm package itself is signed and published with build provenance. The supported bootstrap path requires an npm client or wrapper that verifies the registry signature, package integrity, and expected FailproofAI publisher/provenance identity **before** executing its entry point. If the installed npm client cannot enforce those checks before execution, setup directs the user to Homebrew or the verified direct-download flow; it does not claim that verifying only the subsequently downloaded native archive closes the bootstrap trust gap.
+
 The bootstrapper version maps to the native version it installs by default. A compatibility table permits a newer bootstrapper to install or repair older pinned native releases.
 
 ### Shell installer
 
-For machines without Node:
+For machines without Node, use download, verify, then execute:
 
 ```sh
-curl -fsSL https://install.befailproof.ai | sh
+curl -fSLO https://releases.befailproof.ai/v1.0.0/failproofai-installer
+curl -fSLO https://releases.befailproof.ai/v1.0.0/failproofai-installer.minisig
+minisign -Vm failproofai-installer -P '<pinned FailproofAI installer public key>'
+chmod +x failproofai-installer
+./failproofai-installer setup
 ```
 
-The short script only detects platform, downloads a versioned bootstrap binary or archive plus signed manifest, verifies it, and runs native setup. The hosted script is public, minimal, versioned in source, and contains no secrets.
+The installer is an immutable, versioned release artifact signed by a key whose fingerprint is pinned in the repository, package metadata, and documentation. It only detects platform, downloads the native archive and signed manifest, verifies them, and runs native setup. Redirects, signature-key substitution, and unversioned installer URLs are rejected.
 
-For stronger change control, documentation also provides a two-step download-and-inspect flow rather than requiring `curl | sh`.
+`curl | sh` is not a supported installation path because it executes mutable network content before signature verification. Documentation includes inspection and cleanup steps for the verified download flow.
 
 ### Homebrew
 

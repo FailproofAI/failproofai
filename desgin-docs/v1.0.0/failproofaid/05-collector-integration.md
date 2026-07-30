@@ -30,11 +30,21 @@ SDK events, captured sessions, enforcement activity selected for upload, and del
 
 Records carry schema version, source, stable ID, creation time, destination, and attempt state. Writes use temp-file plus atomic rename or a crash-safe transactional store. Backend ingestion uses stable IDs for idempotent replay.
 
+Delivery follows a crash-durable state machine:
+
+1. write the pending record and `fsync` its contents and containing directory before it becomes eligible for upload;
+2. send the stable record/batch ID and require a durable backend acknowledgement for that ID;
+3. after acknowledgement, write and `fsync` a local acknowledged tombstone/state transition before removing pending payload bytes;
+4. remove the pending payload, then `fsync` its containing directory;
+5. compact acknowledged tombstones only after their retention/reconciliation rule proves they are no longer needed.
+
+A crash before the durable local acknowledgement is ambiguous even if the backend already committed the record. Recovery therefore replays the pending record with the same stable ID; backend idempotency returns the same durable acknowledgement. A crash after the tombstone but before payload deletion resumes cleanup without reclassifying the record as unsent. No transition relies on atomic rename alone for power-loss durability.
+
 Logical queues have separate quotas and priority. A historical transcript backfill cannot consume space reserved for recent enforcement evidence. Quota exhaustion is visible and follows a documented shedding/backpressure rule; undelivered data is never silently removed.
 
 ## Delivery behavior
 
-- Successful acknowledgement removes the durable pending record.
+- Durable backend acknowledgement moves the record through the fsynced acknowledged/tombstone state before payload removal.
 - Permanent client rejection moves it to a diagnosable quarantine.
 - Network and server errors retry with bounded exponential backoff and jitter.
 - Concurrent delivery shares one configured semaphore and in-flight identity set.
@@ -60,6 +70,7 @@ Failure restores old ownership and service state. Migration never deletes unackn
 
 - Existing collector conformance behavior passes against daemon-integrated modules.
 - Killing the daemon at every spool/delivery transition loses no acknowledged data.
+- Power-loss tests at every pending, acknowledged, tombstone, deletion, and directory-fsync boundary recover by idempotent replay or completed cleanup.
 - Replay does not create duplicate backend events.
 - Every source resumes from a crash-safe checkpoint.
 - Backfill load cannot starve enforcement or recent delivery.

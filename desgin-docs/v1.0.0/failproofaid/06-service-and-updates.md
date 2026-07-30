@@ -26,6 +26,20 @@ An update must be authentic, complete, compatible, atomic, recoverable, external
 
 Native installations use versioned directories and an atomic `current` pointer or service-path switch. The previous complete release remains available for rollback.
 
+### Crash-consistent activation
+
+Activation is an on-disk transaction owned by the external updater:
+
+1. fully extract into a new version directory that is not reachable through `current`;
+2. verify every file, write a signed-manifest identity and `complete` marker, then `fsync` files and the version directory;
+3. write and `fsync` an activation journal containing transaction ID, previous release, candidate release, and phase;
+4. stop the daemon only after the candidate and journal are durable;
+5. create a temporary pointer to the complete candidate, `fsync` it where applicable, atomically rename it over `current`, and `fsync` the parent directory;
+6. update and `fsync` the journal phase, start the daemon, and perform readiness/health probes;
+7. on success mark the transaction committed durably; on failure perform the same pointer-switch sequence back to the previous complete release.
+
+Neither `current` nor the journal may reference a release lacking its verified `complete` marker. The updater/service startup recovery path runs before daemon launch: it validates `current`, journal, candidate, and previous release; completes an unambiguous durable switch or restores the last complete release; then starts the daemon. Corrupt or incomplete candidates are quarantined rather than selected.
+
 ## Update flow
 
 1. Check the selected stable/beta channel on a jittered interval.
@@ -59,6 +73,7 @@ Old/new hook clients and daemons must interoperate during rolling activation. An
 - Tampered manifest or artifact is rejected without changing the active release.
 - Wrong architecture and incompatible protocol/state versions are rejected before activation.
 - Power loss during staging or pointer switch leaves one complete bootable release.
+- Fault-injection tests cut power after every file write, marker/journal fsync, daemon stop, pointer creation/rename, directory fsync, start, probe, commit, and rollback step; startup always selects a verified complete release.
 - Failed readiness or health automatically restores the prior healthy release.
 - A suppressed failed version is not retried until manual action or a newer release.
 - The installed service reports active, staged, available, previous, and rolled-back versions.

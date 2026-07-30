@@ -40,10 +40,10 @@ The cloud tier is additive. It adds enrollment, centralized assignment, fleet he
 The primary interactive entry point remains:
 
 ```sh
-npx failproofai@latest setup
+npx failproofai@1.0.0 setup
 ```
 
-The npm package acts as a portable bootstrapper during the v1 migration. It downloads the signed native release for the current operating system and architecture, verifies it, installs the user-facing `failproofai` CLI and `failproofaid` daemon, and then hands control to the native setup flow.
+Release documentation substitutes the current exact stable version; it does not ask users to execute a mutable `@latest` bootstrap. The signed/provenance-verified npm package acts as a portable bootstrapper during the v1 migration. It downloads the signed native release for the current operating system and architecture, verifies it, installs the user-facing `failproofai` CLI and `failproofaid` daemon, and then hands control to the native setup flow. Clients that cannot authenticate the npm package before execution use the verified direct-download or Homebrew path.
 
 Additional v1.0.0 distribution paths may include Homebrew and a shell installer. Every path installs the same signed Linux/macOS release layout and invokes the same setup protocol; package-specific behavior must not create different daemon semantics.
 
@@ -59,16 +59,16 @@ The default installation is unprivileged and per-user. It must not require `sudo
 
 1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing AgentEye collector.
 2. **Choose Login or OSS** — show the two choices in the existing branded CLI selector. **Login** is selected by default, but the user can move to **OSS** before continuing.
-3. **Optional sign-in** — only after choosing Login, authenticate and enroll the installation into an organization. Browser sign-in is preferred; device code supports headless machines.
-4. **Optional machine identity** — only after choosing Login, propose a display name and create a stable cloud machine identity.
+3. **Optional sign-in** — only after choosing Login, authenticate and create a time-bounded pending enrollment. Browser sign-in is preferred; device code supports headless machines.
+4. **Optional machine identity** — only after choosing Login, propose a display name and reserve a pending cloud machine identity. It is not activated yet.
 5. **Choose integrations** — show detected harnesses and let the user enable enforcement for each one. Existing hooks are migrated rather than duplicated.
 6. **Choose policies** — preserve current builtin selection and custom/convention policy discovery. On a connected machine, show cloud assignments as an additional source.
 7. **Choose observability** — explain which local session sources can be captured and where their data goes. Require explicit selection before transcript capture is enabled.
 8. **Install the service** — write configuration and any optional credentials, register the service, start it, and wait for IPC readiness.
-9. **Verify end to end** — run a harmless synthetic hook request and verify enabled local capabilities. Confirm cloud acknowledgement only when connected.
-10. **Report completion** — show enabled harnesses, local policy state, service health, and local dashboard; add organization/machine/dashboard links only when connected.
+9. **Verify end to end** — run a harmless synthetic hook request and verify enabled local capabilities. For Login, exchange the pending enrollment for the machine credential, acknowledge the machine, and activate its identity only after local verification succeeds.
+10. **Report completion** — show enabled harnesses, local policy state, service health, and local dashboard; add organization/machine/dashboard links only after connected activation succeeds.
 
-Setup is transactional. If a later step fails, it restores the previous harness configuration and service state. It never leaves half-installed hooks pointing at a missing daemon.
+Setup is transactional across local and cloud effects. If a later step fails, it restores the previous harness configuration and service state, revokes any issued machine credential, and idempotently cancels or marks the pending cloud identity as incomplete. Pending enrollments expire server-side if the client disappears before compensation. Re-running setup resumes or replaces the same pending identity rather than creating duplicates. It never leaves half-installed hooks pointing at a missing daemon or an apparently active cloud machine with no healthy service.
 
 The mode step should read approximately:
 

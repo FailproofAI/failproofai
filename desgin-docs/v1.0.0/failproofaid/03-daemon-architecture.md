@@ -45,10 +45,13 @@ The daemon evaluates each request against an immutable generation. A generation 
 A local reload or optional cloud reconciliation constructs a candidate away from the active generation:
 
 1. resolve inputs and immutable artifacts;
-2. verify schema, signature, digest, compatibility, and target binding;
-3. load and initialize policies within bounds;
-4. reject duplicates and invalid registrations;
-5. atomically publish the complete generation.
+2. verify schema, digest, runtime compatibility, and local-policy target/scope for every source;
+3. for cloud-provenance inputs only, additionally verify publisher signature, organization/machine binding, assignment validity, and replay protection;
+4. load and initialize policies within bounds;
+5. reject duplicates and invalid registrations;
+6. atomically publish the complete generation.
+
+User-authored local, explicit, and convention policies do not require a cloud signature or organization enrollment. Their content digest identifies the generation for cache invalidation and decision evidence; it is not treated as publisher authentication.
 
 In-flight requests finish on the generation with which they started. A failed candidate never partially replaces active state. The last known-good generation is persisted and loaded before accepting hook traffic after restart.
 

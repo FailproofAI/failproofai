@@ -49,25 +49,63 @@ const CLIENT_NAME = "failproofai-hook";
 const MAX_FRAME_BYTES = 1_048_576;
 
 /**
- * The socket path, in preference order, when `$FAILPROOFAI_DAEMON_SOCKET` is
- * unset.
+ * Resolve the socket path from explicit inputs — the mirror of `socket_path()`
+ * in `crates/failproofaid/src/paths.rs`.
  *
- * v1.0.0 runs in user scope, so the socket lives in the user's own runtime
- * directory rather than under `/run`. `$XDG_RUNTIME_DIR` is preferred because
- * it is cleared between boots; `~/.failproofai/run/` is the fallback because
- * `XDG_RUNTIME_DIR` is unset over a plain `ssh` session on several
- * distributions and on macOS generally — which is exactly where an agent CLI
- * runs, so the fallback is the common path rather than the exotic one.
+ * Preference order:
  *
- * Must stay in step with `crates/failproofaid/src/paths.rs`. A client and a
- * daemon that disagree about the socket path do not fail loudly: the client
- * finds nothing, returns `null`, and every hook silently takes the legacy path
- * forever. `__tests__/hooks/daemon-client.test.ts` asserts the two agree.
+ * 1. `explicit` — `$FAILPROOFAI_DAEMON_SOCKET`.
+ * 2. `runtimeDir` — `$XDG_RUNTIME_DIR/failproofai/`, preferred because a
+ *    runtime directory is cleared between boots.
+ * 3. `home` — `~/.failproofai/run/`, the fallback, and the *common* case rather
+ *    than the exotic one: `XDG_RUNTIME_DIR` is unset over a plain `ssh` session
+ *    on several distributions and on macOS generally, which is exactly where an
+ *    agent CLI runs.
+ *
+ * Empty strings count as unset at every level, matching the Rust.
+ *
+ * **Pure, and taking its environment as arguments, for the same reason the Rust
+ * does.** The whole risk this function carries is that it drifts from the
+ * daemon's copy, and a drift does not fail loudly: the client finds no socket,
+ * returns `null`, and every hook silently takes the legacy path forever. A pure
+ * resolver is one a test can drive through every case without mutating process
+ * state — see `__tests__/hooks/daemon-paths.test.ts`, which asserts this and
+ * `paths.rs` agree case for case.
  */
-function defaultSocketPath(): string {
-  const runtimeDir = process.env.XDG_RUNTIME_DIR;
+export function socketPath(
+  explicit: string | undefined,
+  runtimeDir: string | undefined,
+  home: string | undefined,
+): string | null {
+  if (explicit) return explicit;
   if (runtimeDir) return join(runtimeDir, "failproofai", "failproofaid.sock");
-  return join(homedir(), ".failproofai", "run", "failproofaid.sock");
+  if (home) return join(home, ".failproofai", "run", "failproofaid.sock");
+  return null;
+}
+
+/**
+ * The invoking user's home directory.
+ *
+ * `$HOME` is named explicitly rather than left to `homedir()` alone so that the
+ * input the Rust reads is the input this reads. `homedir()` remains as the
+ * fallback for a process started without an environment, where it consults the
+ * passwd database; the daemon refuses to start at all in that case, so the two
+ * cannot disagree about a socket that exists.
+ */
+function resolveHome(): string {
+  return process.env.HOME || homedir();
+}
+
+/**
+ * {@link socketPath} with the process environment supplied — the mirror of
+ * `default_socket_path()`.
+ */
+export function defaultSocketPath(): string | null {
+  return socketPath(
+    process.env.FAILPROOFAI_DAEMON_SOCKET,
+    process.env.XDG_RUNTIME_DIR,
+    resolveHome(),
+  );
 }
 
 /**
@@ -82,16 +120,29 @@ function defaultSocketPath(): string {
 export const DEFAULT_DAEMON_DEADLINE_MS = 800;
 
 /**
- * The installation manifest, which records the UID the daemon runs as.
+ * Resolve the installation manifest from explicit inputs — the mirror of
+ * `install_manifest_path()` in `crates/failproofaid/src/paths.rs`.
  *
- * `~/.failproofai/install.json` in user scope — it records what a particular
+ * `~/.failproofai/install.json` in user scope: it records what a particular
  * `setup` run did on this machine, so it sits with the rest of that user's
- * state. `$FAILPROOFAI_INSTALL_JSON` wins so tests can point at their own copy.
+ * state. `explicit` (`$FAILPROOFAI_INSTALL_JSON`) wins so tests can point at
+ * their own copy.
  */
-function installJsonPath(): string {
-  const override = process.env.FAILPROOFAI_INSTALL_JSON;
-  if (override) return override;
-  return join(homedir(), ".failproofai", "install.json");
+export function installManifestPath(
+  explicit: string | undefined,
+  home: string | undefined,
+): string | null {
+  if (explicit) return explicit;
+  if (home) return join(home, ".failproofai", "install.json");
+  return null;
+}
+
+/**
+ * {@link installManifestPath} with the process environment supplied — the
+ * mirror of `default_install_manifest_path()`.
+ */
+export function installJsonPath(): string | null {
+  return installManifestPath(process.env.FAILPROOFAI_INSTALL_JSON, resolveHome());
 }
 
 /**
@@ -108,7 +159,9 @@ function installJsonPath(): string {
  */
 function readServiceUid(): number | null {
   try {
-    const raw = readFileSync(installJsonPath(), "utf8");
+    const manifest = installJsonPath();
+    if (manifest === null) return null;
+    const raw = readFileSync(manifest, "utf8");
     const parsed = JSON.parse(raw) as { service_uid?: unknown };
     const uid = parsed.service_uid;
     return typeof uid === "number" && Number.isInteger(uid) && uid >= 0 ? uid : null;
@@ -328,13 +381,17 @@ export async function tryDaemonEvaluate(
   if (mode !== "enforce") return null;
 
   try {
-    const socketPath = process.env.FAILPROOFAI_DAEMON_SOCKET || defaultSocketPath();
+    // `null` means neither $XDG_RUNTIME_DIR nor $HOME resolved, which is the
+    // same broken environment the daemon refuses to start in. Fall back rather
+    // than invent a path in the filesystem root.
+    const resolvedSocket = defaultSocketPath();
+    if (resolvedSocket === null) return null;
 
     const serviceUid = readServiceUid();
     if (serviceUid === null) return null;
-    if (!socketOwnerMatchesService(socketPath, serviceUid)) return null;
+    if (!socketOwnerMatchesService(resolvedSocket, serviceUid)) return null;
 
-    return await roundTrip(socketPath, request, deadlineMs, enabledPolicies);
+    return await roundTrip(resolvedSocket, request, deadlineMs, enabledPolicies);
   } catch {
     return null;
   }

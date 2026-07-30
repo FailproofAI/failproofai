@@ -49,14 +49,14 @@ Homebrew, shell installers, direct-download installation, containers, mirrors, a
 
 The npm bootstrap and native artifact design is in [npm release and distribution](./08-release-and-packaging.md).
 
-Setup supports both service scopes. `user` is the default and does not require elevation. `system` is an explicit option for shared machines, managed fleets, system agents, and integrations that must run before login or need machine-level access; installing or changing it requires `sudo`.
+Setup supports both service scopes. `system` is recommended and preselected because its daemon, protected policies, and supported machine-level hooks live outside the agent user's authority; installing or changing it requires `sudo`. `user` remains available without elevation, with an explicit cooperative-enforcement warning.
 
 ### Setup flow
 
 `failproofai setup` performs these steps:
 
 1. **Preflight** — detect the OS, architecture, service-manager availability, supported agent harnesses, existing FailproofAI hooks, and an existing FailproofAI collector.
-2. **Choose service scope** — show **User** by default and **System** as the elevated machine-wide option. Explain affected users, paths, service manager, and required privileges before continuing.
+2. **Choose service scope** — show **System** as the recommended, preselected tamper-resistant option and **User** as the unprivileged cooperative option. Explain affected users, paths, hook protection, service manager, and required privileges before continuing.
 3. **Choose Login or OSS** — show the two choices in the existing branded CLI selector. **Login** is selected by default, but the user can move to **OSS** before continuing.
 4. **Optional sign-in** — only after choosing Login, authenticate and create a time-bounded pending enrollment. Browser sign-in is preferred; device code supports headless machines.
 5. **Optional machine identity** — only after choosing Login, propose a display name and reserve a pending Failproof Cloud machine identity. It is not activated yet.
@@ -102,11 +102,11 @@ The service-scope step should read approximately:
 ```text
 ◆ Where should FailproofAI run?
 
-  ❯ User     Runs for this user after login. No sudo required.
-             Uses this user's policies, credentials, activity, and agent hooks.
+  ❯ System   Recommended. Keeps the daemon and protected policies outside
+             the agent's authority. Requires sudo; starts at machine boot.
 
-    System   Runs for the whole machine, including before user login.
-             Requires sudo and supports system agents and multiple users.
+    User     No sudo required. Runs after login, but an agent with this
+             user's permissions may be able to disable hooks or policy.
 ```
 
 Selecting System triggers a second confirmation naming the root-owned service and state locations. Setup requests elevation only when ready to apply the reviewed plan; exploring or cancelling the wizard never invokes `sudo`.
@@ -140,7 +140,7 @@ Secrets must not appear in generated service definitions or process arguments af
 
 The command returns machine-readable failure codes and supports `--json`. Re-running it converges the installation to the requested state instead of creating duplicate services, identities, or hooks.
 
-`--service-scope user|system` is required in non-interactive mode so automation never crosses a privilege boundary accidentally. Interactive setup defaults to `user`. A system-scoped run without sufficient privilege prints the exact `sudo` command to rerun; it never silently falls back to user scope.
+`--service-scope user|system` is required in non-interactive mode so automation never crosses a privilege boundary accidentally. Interactive setup recommends and preselects `system`, but requests elevation only after final confirmation. A system-scoped run without sufficient privilege prints the exact `sudo` command to rerun; it never silently falls back to user scope.
 
 ### Service-scope behavior
 
@@ -148,11 +148,15 @@ User scope installs a systemd user service on Linux or a LaunchAgent on macOS. I
 
 System scope installs a systemd system service on Linux or a LaunchDaemon on macOS. Its executable, service definition, machine configuration, credentials, update state, and shared data are root-owned. It can start at boot and serve system agents and explicitly enrolled local users. Installing, updating, repairing, or uninstalling this scope requires `sudo`; normal hook evaluation does not.
 
+System scope is the choice for tamper-resistant enforcement. Setup imports protected policies into a root-owned immutable store and makes daemon administration root-only. User scope remains fully functional but is explicitly described as cooperative: an agent running with the user's authority may be able to change user-owned policy, hooks, or service state.
+
 A system daemon authenticates every Unix-socket client using operating-system peer credentials and maintains separate per-user policy generations, session indexes, spools, quotas, and access control. A user can inspect only their own data unless an explicit administrator operation is used. Root-owned machine policies may apply to every user; user and project policies remain owned and scoped to their user.
 
 System scope must never turn user-authored JavaScript or TypeScript policy into root code. The daemon launches the legacy policy worker with the requesting user's UID/GID, restricted groups, environment and filesystem access, resource limits, and platform sandbox controls. Root-owned machine policies use the constrained native policy representation or an equivalently restricted worker. Policy provenance and execution identity are recorded with every decision.
 
 Only one service endpoint handles a given user's harness hooks. Setup detects an existing opposite-scope installation and offers an explicit transactional switch; it does not register duplicate hooks or let user and system daemons race. Installing the system daemon does not automatically rewrite every user's harness configuration. Each user or an administrator-managed deployment explicitly enrolls the intended harnesses.
+
+The final review reports each harness as `protected`, `detectable`, or `cooperative`. If the harness stores hooks in a user-writable file, setup explains that a privileged daemon cannot prevent removal of that hook; it enables monitoring and optional repair but does not claim prevention. Full protection requires a root-owned machine hook, mandatory plugin, managed gateway, or enforced launcher path.
 
 ## Standalone OSS use
 
@@ -296,8 +300,9 @@ Migration from the standalone FailproofAI collector preserves pending and failed
 - Connecting Failproof Cloud does not disable or subordinate user-authored local policy.
 - Re-running setup is idempotent.
 - Setup failure restores prior service and harness configuration.
-- Interactive setup defaults to user scope without elevation; system scope is explicit, requires `sudo`, and passes the same lifecycle suite.
+- Interactive setup recommends and preselects system scope; choosing user scope requires acknowledging its weaker protection.
 - Users can identify the exact policy revision and assignment responsible for a decision.
+- System scope prevents non-root daemon/policy administration and reports the true attachment protection level for every harness.
 - Cloud outage does not prevent policy decisions and is visible as management-state freshness degradation.
 - Collection consent names each enabled source and can be revoked independently.
 - Update failure returns to the previous healthy release without manual repair.

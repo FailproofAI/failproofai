@@ -43,6 +43,7 @@ Each harness adapter declares a versioned capability descriptor:
 - maximum safe response time and timeout semantics;
 - behavior of stop-class nonzero responses, including whether they retry;
 - configuration scopes and files used to register the adapter.
+- registration protection (`protected`, `detectable`, or `cooperative`), its bypass paths, and the evidence used to verify continued attachment.
 
 Capability descriptors are code and test data, not prose-only documentation. `failproofaid` records the descriptor version used for every decision so FailproofAI can distinguish a policy allow from a harness that could not enforce the result.
 
@@ -69,6 +70,14 @@ The shim contains only vendor adaptation. Policy evaluation and cloud logic rema
 ### Gateway or wrapper adapter
 
 Some runtimes expose events only inside a gateway process or require a wrapper around invocation. The adapter runs at that boundary and forwards events to the daemon. Setup must clearly disclose when enforcement depends on using the configured gateway/wrapper rather than every possible way of launching the agent.
+
+## Tamper-resistant attachment
+
+System-scoped `failproofaid` and root-owned policy state protect the decision plane, but enforcement also depends on the harness continuing to call it. The preferred adapter uses a machine-level configuration or mandatory plugin owned by root. A managed gateway or wrapper is equivalent only when OS or fleet controls prevent direct launch of the underlying agent binary.
+
+When a harness exposes only user-writable configuration, the adapter cannot promise prevention against an agent with that user's file authority. The daemon fingerprints the expected registration, checks it periodically and when filesystem events arrive, records changes, and can restore it when the administrator enabled repair. It also detects missing event heartbeats relative to known sessions where the harness provides enough evidence. These installations are labeled `detectable`, not `protected`.
+
+The hook client, system socket, service definition, protected policy store, and updater are root-owned and not writable by enrolled users. The system daemon accepts evaluation requests from those users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
 
 ## Request envelope
 

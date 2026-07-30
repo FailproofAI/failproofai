@@ -20,7 +20,8 @@ Target: failproofai v1.0.0
 ## Settled decisions
 
 - `failproofaid` is implemented in Rust.
-- Setup explicitly selects a `user` or `system` service scope; `user` is the default.
+- Setup explicitly selects a `system` or `user` service scope; `system` is recommended and preselected because it places enforcement outside the agent's authority.
+- System scope is the tamper-resistant enforcement boundary: agents cannot administer the daemon or modify protected policy revisions with their own user authority.
 - v1.0.0 supports Linux and macOS; Windows service, packaging, and daemon support are deferred to the next iteration.
 - The OSS product remains fully usable without an account, organization, Failproof Cloud, or network connection.
 - All current builtin, custom, explicit-file, convention-file, scope, harness, activity, and local-dashboard behavior remains available.

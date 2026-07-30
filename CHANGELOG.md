@@ -4,7 +4,7 @@
 
 ### Docs
 - Add a versioned home for the failproofai v1.0.0 design documents. (#625)
-- Draft the Linux/macOS Rust `failproofaid` design, preserving OSS and adding Login, Failproof Cloud, integrated collection, user/system service scopes, rollback-safe updates, and a single npm bootstrap/distribution path; retain the branded Login/OSS setup and defer Windows. (#625)
+- Draft the Linux/macOS Rust `failproofaid` design, preserving OSS and adding Login, Failproof Cloud, integrated collection, recommended tamper-resistant system scope plus cooperative user scope, rollback-safe updates, and a single npm bootstrap/distribution path; retain the branded Login/OSS setup and defer Windows. (#625)
 
 ## 0.0.15-beta.1 — 2026-07-29
 

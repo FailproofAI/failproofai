@@ -22,6 +22,8 @@ The exact subpaths are the collector's, not this document's. `agenteye-collector
 
 The delivery key is the only secret Phase 1 handles. It stays where the collector keeps it, readable by the user whose data it delivers, using the operating-system credential store where practical with an owner-only file as the portability fallback. It never appears in the service definition, in a process argument, or in a log, and it is erased unconditionally on uninstall — including an uninstall performed offline, because leaving a working credential on disk is a property of the key rather than of who can read it.
 
+**An agent running as that user can read it**, and this is worth stating rather than leaving to be discovered. It is an `events:add` key, so what it grants is the ability to write events to the destination the user already sends events to — not to read anything back, and not to reach any other machine's data. The operator-side mitigation is the one that was always correct for this key: issue it per machine, scope it to `events:add` alone, and rotate it. It is the same exposure the standalone collector has today, unchanged; a key an agent could not reach would need the daemon to run as an account the agent is not, which is [deferred](./04-service-and-updates.md#deferred-scopes).
+
 ## Capabilities to preserve
 
 - atomic SDK event-spool watching;

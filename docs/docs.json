@@ -65,6 +65,7 @@
                   "agenteye/python-sdk",
                   "agenteye/python-sdk-skill",
                   "agenteye/codex-capture",
+                  "agenteye/claude-capture",
                   "agenteye/openclaw-capture",
                   "agenteye/hermes-capture",
                   "agenteye/cli",

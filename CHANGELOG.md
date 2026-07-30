@@ -14,6 +14,7 @@
 
 ### Docs
 - Explain the AgentEye CLI device-login approval flow, including matching-email sign-in, short-code verification, scoped approval, and why the link alone cannot authorize a device. (#626)
+- Document Claude Code session capture, including local CLI, headless and IDE coverage, child subagents, setup, backfill, and the no-redaction privacy boundary. (#626)
 
 ## 0.0.15-beta.0 — 2026-07-23
 

@@ -1,0 +1,55 @@
+---
+title: "Claude Code session capture"
+description: "Bring your team's local Claude Code sessions and subagents into AgentEye as ordinary sessions and events — with no change to how they run Claude Code."
+---
+
+Your engineers already run Claude Code every day. Claude Code session capture brings those coding sessions into AgentEye as ordinary sessions and events, so you can search, replay, and evaluate them next to everything else you observe. It complements the [Python SDK](/agenteye/python-sdk): the SDK instruments agents you write, while this captures the Claude Code work your team already does — with no change to how they run it.
+
+A small background collector reads Claude Code's local session transcripts as they are written and ships them to AgentEye. One collector per machine captures the terminal CLI, headless `claude -p` runs, and IDE integrations backed by local Claude Code — there is no per-surface setup.
+
+The same collector captures other agents too — see [Codex](/agenteye/codex-capture), [OpenClaw](/agenteye/openclaw-capture), and [Hermes](/agenteye/hermes-capture). Enable each one you run; a single collector can capture several at once.
+
+---
+
+## What it captures
+
+Each Claude Code session becomes an AgentEye [session](/agenteye/sessions). Its user and assistant turns, tool calls and results, token usage and context fill, hook runs, compaction boundaries, and failures become the matching [events](/agenteye/event-stream).
+
+This includes failed turns, API errors, and tool failures, so sessions remain useful when you are investigating what went wrong. Claude Code's reasoning text is not captured because its local transcripts do not contain that content.
+
+### Subagents become child sessions
+
+When Claude Code starts a task subagent, the subagent appears as its own session with its own transcript, tool activity, and usage. AgentEye links it to the parent session, so you can follow the full delegation flow without mixing the subagent's work into the main transcript.
+
+---
+
+## Turn it on
+
+Capture is off until you enable it. Install the collector with an API key that has the `events:add` permission (see [API keys](/agenteye/api-keys)), and turn on Claude Code capture:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- --key <YOUR_API_KEY> --claude-enabled
+```
+
+That installs the collector, registers it as a background service, and starts capturing. Confirm it is running:
+
+```bash
+agenteye-collector health
+```
+
+Capturing more than one agent on the same machine? Add each one's flag to the same command — for example `--claude-enabled --codex-enabled`.
+
+On first run, Claude Code sessions still available on the machine are backfilled and new activity then streams as it is written. Claude Code's own files are only ever read — never modified, moved, or deleted.
+
+---
+
+## Where it shows up
+
+Captured sessions appear in **Sessions**, and their events in the **Events** stream, the same as any other agent you observe — so [session replay](/agenteye/sessions), [search](/agenteye/queries), [evaluations](/agenteye/evaluations), and [alerts](/agenteye/alerts) all work on them. Filter by the Claude agent to see them on their own.
+
+---
+
+## Privacy
+
+Claude Code transcripts can contain raw command output, file contents, command arguments, and secrets. Captured content is shipped as-is without redaction, so enable capture only on machines and for teams where centralizing that content in AgentEye is appropriate, and give the collector a key scoped to `events:add` only. See [Security](/agenteye/security) for how your data is kept isolated.

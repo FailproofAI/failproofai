@@ -168,7 +168,7 @@ The daemon may not turn user-authored JavaScript or TypeScript into service-acco
 
 | Tier | Runs as | Filesystem, subprocess, network | Verdict |
 |---|---|---|---|
-| `sealed` | the service account, in the pinned runtime | unavailable | unforgeable |
+| `sealed` | the service account, in the daemon's own sealed runtime | unavailable | unforgeable |
 | `user-context` | the requesting UID | granted, bounded by that user's own authority | forgeable by that user |
 
 Most policies never touch the filesystem. Tool name, command, file path, and old/new content already arrive in the hook payload, so 32 of the 39 builtins — `block-sudo`, `block-env-files`, and `block-secrets-write` among them — evaluate in the `sealed` tier, where an agent holding its own user's full authority cannot forge the verdict. The seven that cannot are `warn-repeated-tool-calls`, `block-work-on-main`, and the five `require-*-before-stop` policies, each of which reads the repository or runs `git`. A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier instead — it keeps working, and because it can only tighten, a forged `allow` from it is worthless.

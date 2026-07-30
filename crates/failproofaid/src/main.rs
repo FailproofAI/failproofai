@@ -21,24 +21,17 @@ use failproofaid::server::Daemon;
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
-    // User scope: $XDG_RUNTIME_DIR/failproofai/ when set, else
-    // ~/.failproofai/run/. Nothing under /run, /opt or /var/lib — see
-    // failproofaid::paths.
-    let mut socket = match default_socket_path() {
-        Some(path) => path.to_string_lossy().into_owned(),
-        None => {
-            eprintln!(
-                "[failproofaid] cannot locate a socket directory: neither $XDG_RUNTIME_DIR \
-                 nor $HOME is set. Pass --socket explicitly."
-            );
-            return ExitCode::from(2);
-        }
-    };
+    // Arguments are parsed BEFORE the socket is resolved, and the resolution
+    // failure is deferred to the point of actually needing one. Resolving first
+    // made `--help` and `--version` exit 2 in exactly the environment where a
+    // user would reach for them — an unset $HOME and $XDG_RUNTIME_DIR — and it
+    // made the `<neither … is set>` arm of the help text below unreachable.
+    let mut socket: Option<String> = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--socket" => match args.next() {
-                Some(path) => socket = path,
+                Some(path) => socket = Some(path),
                 None => {
                     eprintln!("--socket requires a path");
                     return ExitCode::from(2);
@@ -73,6 +66,23 @@ fn main() -> ExitCode {
             }
         }
     }
+
+    // User scope: $FAILPROOFAI_DAEMON_SOCKET, else $XDG_RUNTIME_DIR/failproofai/,
+    // else ~/.failproofai/run/. Nothing under /run, /opt or /var/lib — see
+    // failproofaid::paths. `Daemon::bind` creates the directory; in user scope
+    // no installer has been there first.
+    let socket = match socket
+        .or_else(|| default_socket_path().map(|path| path.to_string_lossy().into_owned()))
+    {
+        Some(path) => path,
+        None => {
+            eprintln!(
+                "[failproofaid] cannot locate a socket directory: neither $XDG_RUNTIME_DIR \
+                 nor $HOME is set. Pass --socket explicitly."
+            );
+            return ExitCode::from(2);
+        }
+    };
 
     // Binding returns only once the sealed bundle has loaded, so a failure here
     // is a failed start rather than a daemon that accepts traffic it cannot

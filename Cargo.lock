@@ -148,6 +148,7 @@ name = "failproofaid"
 version = "0.0.16-beta.0"
 dependencies = [
  "fpai-ipc",
+ "libc",
  "rquickjs",
  "serde",
  "serde_json",

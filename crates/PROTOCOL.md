@@ -15,12 +15,29 @@ silent interop bug.
 
 ## Transport
 
-A Unix domain stream socket at `$FAILPROOFAI_DAEMON_SOCKET`, or
-`/run/failproofai/failproofaid.sock` by default.
+A Unix domain stream socket at `$FAILPROOFAI_DAEMON_SOCKET`, or, in order:
 
-No TCP, including loopback. The parent directory is owned by the service
-account or root so no enrolled user can unlink the socket and bind a
-substitute.
+| Preference | Path |
+|---|---|
+| 1 | `$XDG_RUNTIME_DIR/failproofai/failproofaid.sock` |
+| 2 | `~/.failproofai/run/failproofaid.sock` |
+
+The fallback is not defensive padding. `XDG_RUNTIME_DIR` is unset over a plain
+`ssh` session on several distributions and on macOS generally, which is exactly
+the environment an agent CLI runs in.
+
+No TCP, including loopback.
+
+**v1.0.0 runs entirely in user scope**, so the socket lives in the user's own
+runtime directory and is owned by that user. It is created `0600`: on a shared
+machine several users may each run their own daemon, and a socket another user
+could connect to would let them submit events into — and read verdicts from —
+someone else's evaluator.
+
+What this does *not* do is defend against the user who owns it. That user can
+unlink the socket, bind a substitute, `ptrace` the daemon, or replace its
+binary, because it is their process running under their UID. See
+[what the sealed tier does and does not claim](#what-the-sealed-tier-claims).
 
 ## Framing
 
@@ -305,33 +322,60 @@ governing rule for the whole Stage-1 client is in
 `tryDaemonEvaluate` returns `null` on *any* failure, and the caller keeps
 executing the same function it executes today.
 
+## What the sealed tier claims
+
+v1.0.0 ships **user scope only**: the daemon runs as the invoking user, its
+state lives under `~/.failproofai/` and `~/.agenteye/`, and nothing is
+installed with elevated privilege. That is a deliberate simplification for this
+version, and it changes what the sealed tier is allowed to claim.
+
+**It does not make a verdict unforgeable.** That argument required the daemon
+to run as a UID the governed agent could not administer. Here they are the same
+user, so an agent with its own authority can `ptrace` the daemon, preload into
+it, replace its binary, edit `~/.failproofai`, or simply stop it. Any statement
+that a verdict cannot be forged, or that the tier is tamper-resistant, is false
+in this version and must not be made.
+
+What the tier does buy is worth having and is not the same thing:
+
+- **A warm resident evaluator** instead of a fresh interpreter per hook event.
+- **No temp files next to the user's source.** The legacy loader writes
+  `.__failproofai_tmp__.mjs` beside the policy on every tool call; measured at
+  3.49 ms of added `config+load` per event.
+- **A bounded deadline that is actually enforced** — a watchdog thread
+  interrupts a runaway policy. Before it existed, a default-enabled policy's
+  backtracking regex ran 30 s against a 200 ms budget.
+- **Deny-by-default capabilities.** No `require`, no filesystem, no network in
+  the sealed context. This contains a policy that is *buggy or over-reaching*.
+  It does not contain an adversary who is already this user.
+
+The distinction between "protects against mistakes" and "protects against an
+adversary" is the whole of it, and collapsing the two is how a security claim
+becomes marketing. The managed and system scopes that would restore the
+integrity claim are designed and deliberately deferred.
+
 ## `install.json`
 
-The client verifies the socket's owner before speaking to it. `service_uid` is
-read from a root-owned `install.json`, and a missing or unreadable file means
-the client falls back to legacy rather than proceeding unverified.
+The client verifies the socket's owner before speaking to it. A missing or
+unreadable file means the client falls back to legacy rather than proceeding
+unverified.
 
 | Source | Path |
 |---|---|
-| `$FAILPROOFAI_INSTALL_JSON` | wins over everything; used by tests and non-standard installs |
-| Linux | `/var/lib/failproofai/install.json` |
-| macOS | `/Library/Application Support/failproofai/install.json` |
+| `$FAILPROOFAI_INSTALL_JSON` | wins over everything; used by tests |
+| default | `~/.failproofai/install.json` |
 
-It lives with **mutable machine state**, not with the executables under
-`/opt/failproofai/`, because the two have different writers: `/opt` is written
-once per release, while `install.json` records what a particular `setup` run
-did on this machine. `07-release-and-packaging.md` places it under `/opt`; that
-document predates the ownership split in
-[03-daemon-architecture.md](../desgin-docs/v1.0.0/phase-1-local-enforcement/03-daemon-architecture.md#configuration-and-state)
-and is the one that needs amending. Either way the file is root-owned and
-read-only to the service account — a `service_uid` an enrolled user could
-rewrite would defeat the check entirely.
+It records what a particular `setup` run did on this machine, so it sits beside
+the rest of that user's state rather than anywhere privileged. `service_uid` is
+the UID the daemon runs as, which in user scope is the user's own.
 
 **Node cannot read peer credentials of a Unix socket**, so the TypeScript
-client compares `stat(socket).uid` against `service_uid` instead. That is
-strictly weaker than `SO_PEERCRED` and is honest about what it defends: a stray
-or impostor socket, not a local attacker who already has root. The daemon's own
-side of the check — which is the one that matters — uses real peer credentials.
+client compares `stat(socket).uid` against `service_uid` instead. Be precise
+about what that is worth in this version: it catches a stray socket, a leftover
+from another user on a shared machine, or a misconfigured path. It is not a
+defence against the owning user, who can write both the socket and the file.
+The daemon's own `SO_PEERCRED` check is the stronger of the two and is what
+keeps *other* users out.
 
 ## Peer credentials
 
@@ -342,10 +386,24 @@ Mandatory, and read from the kernel — never from a field the caller supplies.
 | Linux | `getsockopt(SOL_SOCKET, SO_PEERCRED)` → `struct ucred { pid, uid, gid }` |
 | macOS | `getpeereid(2)` → `(uid, gid)` |
 
-The UID is the authorization context for the request and the key for per-UID
-policy, quota, and (later) spool state. `home` is resolved from it with
-`getpwuid_r`. A `getpwuid_r` miss is an `internal` error, not a fallback to a
+The UID is the authorization context for the request. `home` is resolved from
+it with `getpwuid_r`; a miss is an `internal` error, never a fallback to a
 default home.
+
+**Both survive the move to user scope, for a narrower reason than before.** The
+daemon serves exactly one user, so peer credentials are no longer a privilege
+boundary — they are a "this connection is mine" check. That still matters on a
+shared machine, where several users may each run their own daemon and a
+misrouted or leftover socket path would otherwise let one user's events reach
+another's evaluator. The daemon refuses any peer whose UID is not its own.
+
+Deriving `home` rather than accepting it likewise stays, and is not merely
+inertia. `isAgentInternalPath` and `block-read-outside-cwd` both *widen* the
+allow set, so `home` is the one host field where a wrong value quietly relaxes
+a verdict instead of tightening it. Deriving it costs one `getpwuid_r` and
+removes a field that could be wrong, which is worth keeping even when the
+client and the daemon are the same user — a bug in the client is now the threat
+model, and a bug is exactly what this catches.
 
 ## Client-side kill switch
 

@@ -13,14 +13,24 @@
 
 use std::process::ExitCode;
 
+use failproofaid::paths::default_socket_path;
 use failproofaid::server::Daemon;
-
-const DEFAULT_SOCKET: &str = "/run/failproofai/failproofaid.sock";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
-    let mut socket =
-        std::env::var("FAILPROOFAI_DAEMON_SOCKET").unwrap_or_else(|_| DEFAULT_SOCKET.into());
+    // User scope: $XDG_RUNTIME_DIR/failproofai/ when set, else
+    // ~/.failproofai/run/. Nothing under /run, /opt or /var/lib — see
+    // failproofaid::paths.
+    let mut socket = match default_socket_path() {
+        Some(path) => path.to_string_lossy().into_owned(),
+        None => {
+            eprintln!(
+                "[failproofaid] cannot locate a socket directory: neither $XDG_RUNTIME_DIR \
+                 nor $HOME is set. Pass --socket explicitly."
+            );
+            return ExitCode::from(2);
+        }
+    };
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -40,9 +50,17 @@ fn main() -> ExitCode {
                     "failproofaid {}\n\n\
                      USAGE\n  \
                      failproofaid [--socket <path>]\n\n\
-                     The socket path also reads from $FAILPROOFAI_DAEMON_SOCKET.\n\
-                     Default: {DEFAULT_SOCKET}",
-                    env!("CARGO_PKG_VERSION")
+                     Runs as the invoking user. State lives in ~/.failproofai/ and\n\
+                     ~/.agenteye/; nothing is installed with elevated privilege.\n\n\
+                     SOCKET, in preference order\n  \
+                     $FAILPROOFAI_DAEMON_SOCKET\n  \
+                     $XDG_RUNTIME_DIR/failproofai/failproofaid.sock\n  \
+                     ~/.failproofai/run/failproofaid.sock\n\n\
+                     Resolved for this environment: {}",
+                    env!("CARGO_PKG_VERSION"),
+                    default_socket_path()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "<neither $XDG_RUNTIME_DIR nor $HOME is set>".into()),
                 );
                 return ExitCode::SUCCESS;
             }

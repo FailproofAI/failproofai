@@ -25,6 +25,8 @@
  */
 import net from "node:net";
 import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { version } from "../../package.json";
 import { ENV_FACT_KEYS, type EvaluationRequest } from "./request-envelope";
@@ -46,8 +48,27 @@ const CLIENT_NAME = "failproofai-hook";
  */
 const MAX_FRAME_BYTES = 1_048_576;
 
-/** Default socket path when `$FAILPROOFAI_DAEMON_SOCKET` is unset. */
-const DEFAULT_SOCKET_PATH = "/run/failproofai/failproofaid.sock";
+/**
+ * The socket path, in preference order, when `$FAILPROOFAI_DAEMON_SOCKET` is
+ * unset.
+ *
+ * v1.0.0 runs in user scope, so the socket lives in the user's own runtime
+ * directory rather than under `/run`. `$XDG_RUNTIME_DIR` is preferred because
+ * it is cleared between boots; `~/.failproofai/run/` is the fallback because
+ * `XDG_RUNTIME_DIR` is unset over a plain `ssh` session on several
+ * distributions and on macOS generally — which is exactly where an agent CLI
+ * runs, so the fallback is the common path rather than the exotic one.
+ *
+ * Must stay in step with `crates/failproofaid/src/paths.rs`. A client and a
+ * daemon that disagree about the socket path do not fail loudly: the client
+ * finds nothing, returns `null`, and every hook silently takes the legacy path
+ * forever. `__tests__/hooks/daemon-client.test.ts` asserts the two agree.
+ */
+function defaultSocketPath(): string {
+  const runtimeDir = process.env.XDG_RUNTIME_DIR;
+  if (runtimeDir) return join(runtimeDir, "failproofai", "failproofaid.sock");
+  return join(homedir(), ".failproofai", "run", "failproofaid.sock");
+}
 
 /**
  * The end-to-end budget handed to the daemon, in milliseconds.
@@ -61,17 +82,16 @@ const DEFAULT_SOCKET_PATH = "/run/failproofai/failproofaid.sock";
 export const DEFAULT_DAEMON_DEADLINE_MS = 800;
 
 /**
- * Root-owned installation manifest, which records the service account's UID.
+ * The installation manifest, which records the UID the daemon runs as.
  *
- * `$FAILPROOFAI_INSTALL_JSON` wins so tests and non-standard installs can point
- * at their own copy; the platform defaults follow.
+ * `~/.failproofai/install.json` in user scope — it records what a particular
+ * `setup` run did on this machine, so it sits with the rest of that user's
+ * state. `$FAILPROOFAI_INSTALL_JSON` wins so tests can point at their own copy.
  */
 function installJsonPath(): string {
   const override = process.env.FAILPROOFAI_INSTALL_JSON;
   if (override) return override;
-  return process.platform === "darwin"
-    ? "/Library/Application Support/failproofai/install.json"
-    : "/var/lib/failproofai/install.json";
+  return join(homedir(), ".failproofai", "install.json");
 }
 
 /**
@@ -94,17 +114,22 @@ function readServiceUid(): number | null {
 /**
  * Verify the peer before speaking to it.
  *
- * **This is weaker than `SO_PEERCRED`.** Node exposes no way to read the peer
- * credentials of a connected Unix socket, so we compare the *socket file's*
- * owner against the `service_uid` in root-owned `install.json` instead of
- * asking the kernel who is on the other end. That is a defence against a stray
- * or stale socket — a daemon from a different install, a leftover path, a file
- * some unprivileged process bound. It is **not** a defence against a local
- * attacker who already has root, who could simply chown the socket, nor against
- * a TOCTOU race between this `stat` and the `connect` below. The real check
- * runs on the daemon side, which reads `SO_PEERCRED`/`getpeereid` for the
- * authorization context of every request; Stage 4's native client is where the
- * client side gets the equivalent.
+ * **This is weaker than `SO_PEERCRED`, and in user scope it is weaker still.**
+ * Node exposes no way to read the peer credentials of a connected Unix socket,
+ * so we compare the *socket file's* owner against the `service_uid` in
+ * `install.json` rather than asking the kernel who is on the other end.
+ *
+ * What that catches: a stray or stale socket — a daemon from a different
+ * install, a leftover path, another user's socket reached through a
+ * misconfigured `$FAILPROOFAI_DAEMON_SOCKET` on a shared machine.
+ *
+ * What it does not: the owning user. v1.0.0 runs in user scope, so the daemon,
+ * this client, and the agent being governed are all the same UID — that user
+ * can write both the socket and `install.json`, so this check cannot be a
+ * boundary against them and is not claimed as one. Nor does it close the TOCTOU
+ * gap between this `stat` and the `connect` below. The daemon's own
+ * `SO_PEERCRED`/`getpeereid` check is the stronger half and is what keeps
+ * *other* users out.
  */
 function socketOwnerMatchesService(socketPath: string, serviceUid: number): boolean {
   try {
@@ -297,7 +322,7 @@ export async function tryDaemonEvaluate(
   if (mode !== "enforce") return null;
 
   try {
-    const socketPath = process.env.FAILPROOFAI_DAEMON_SOCKET || DEFAULT_SOCKET_PATH;
+    const socketPath = process.env.FAILPROOFAI_DAEMON_SOCKET || defaultSocketPath();
 
     const serviceUid = readServiceUid();
     if (serviceUid === null) return null;

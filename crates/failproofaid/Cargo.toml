@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 fpai-ipc = { path = "../fpai-ipc" }
+libc = "0.2"
 rquickjs = { version = "0.12", default-features = false, features = ["bindgen"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -28,7 +28,7 @@ canonical allow / deny / instruct response
 harness-specific stdout, exit code, callback, or plugin response
 ```
 
-The harness-facing client must stay small and bounded. It reads one event, makes one local request, writes one response, and exits or returns control. It does not load policies, scan transcripts, contact the cloud, upload events, check for updates, or start the dashboard.
+The harness-facing client must stay small and bounded. It reads one event, makes one local request, writes one response, and exits or returns control. It does not load policies, scan transcripts, contact any network service, check for updates, or start the dashboard.
 
 ## Harness adapter contract
 
@@ -65,7 +65,7 @@ The native client reads stdin and returns the required stdout and exit status. T
 
 Some harnesses expose JavaScript/TypeScript, Python, or another plugin API rather than a command hook. A minimal versioned shim invokes the same native client or local IPC protocol and returns the harness callback result.
 
-The shim contains only vendor adaptation. Policy evaluation and cloud logic remain in the daemon. A shim failure is visible and follows the integration's configured failure behavior.
+The shim contains only vendor adaptation. Policy evaluation remains in the daemon. A shim failure is visible and follows the integration's configured failure behavior.
 
 ### Gateway or wrapper adapter
 
@@ -79,13 +79,13 @@ When a harness exposes only user-writable configuration, the adapter cannot prom
 
 ### Hook settings reconciliation
 
-Every enabled adapter stores a desired registration owned by the service account or root in managed and system scope, or an owner-only desired registration in user scope. `failproofaid` watches the harness settings file and its parent directory so atomic replacement, rename, deletion, and recreation are all observed. Filesystem notification is an optimization; a bounded periodic scan is the correctness backstop after daemon downtime, queue overflow, or missed events.
+Every enabled adapter stores a desired registration owned by the service account or root. `failproofaid` watches the harness settings file and its parent directory so atomic replacement, rename, deletion, and recreation are all observed. Filesystem notification is an optimization; a bounded periodic scan is the correctness backstop after daemon downtime, queue overflow, or missed events.
 
 Reconciliation parses the harness's native configuration and compares normalized FailproofAI entries rather than raw file bytes. If an entry is missing or changed, the daemon performs an adapter-aware merge that restores only FailproofAI-owned keys and preserves unrelated hooks, ordering where meaningful, comments where the format supports them, permissions, and ownership. It validates file type, owner, parent path, and symlink policy before writing, takes an adapter-specific lock, re-reads after acquiring it, writes a same-directory temporary file, fsyncs it, atomically renames it, fsyncs the directory, and verifies the resulting registration. Compare-and-swap metadata or bounded retry prevents overwriting a concurrent legitimate edit.
 
-The daemon suppresses its own watcher event, debounces editor write bursts, and rate-limits repeated repair loops. Each repair records old/new registration identities, user, harness, reason, and result without logging unrelated settings or secrets. Persistent tampering degrades health and raises a local and, when connected, Failproof Cloud alert. Repair remains enabled by default while the integration is enabled; `harness disable` first removes the desired registration so intentional uninstall is not repaired.
+The daemon suppresses its own watcher event, debounces editor write bursts, and rate-limits repeated repair loops. Each repair records old/new registration identities, user, harness, reason, and result without logging unrelated settings or secrets. Persistent tampering degrades health and raises a local alert. Repair remains enabled by default while the integration is enabled; `harness disable` first removes the desired registration so intentional uninstall is not repaired.
 
-In managed and system scope the hook client, service definition, protected policy store, pinned policy runtime, and active schema catalog are root-owned and read-only to both enrolled users and the service account the daemon runs as. Every component of the path to each of them is owned by root or that account — including the socket's parent directory, which is service-account-owned so the daemon can create the socket but no enrolled user can unlink it and bind an impostor endpoint that answers `allow`. The daemon accepts evaluation requests from enrolled users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
+The hook client, service definition, protected policy store, pinned policy runtime, and active schema catalog are root-owned and read-only to both enrolled users and the service account the daemon runs as. Every component of the path to each of them is owned by root or that account — including the socket's parent directory, which is service-account-owned so the daemon can create the socket but no enrolled user can unlink it and bind an impostor endpoint that answers `allow`. The daemon accepts evaluation requests from enrolled users but rejects administrative operations unless the peer is root or holds an OS-backed administrator authorization. Authentication is based on peer credentials, not a bearer token exposed to the agent environment.
 
 The client authenticates the daemon as well. It verifies the peer credentials of the socket it connected to and refuses to translate a response from an endpoint that is not the expected service account. A verdict from an unverified peer is treated as daemon-unavailable, not as `allow`.
 
@@ -128,15 +128,15 @@ The daemon canonicalizes the request into a common event containing:
 - raw payload retained only for policy fields that require it and within size limits;
 - enforcement capability for this event/harness version.
 
-Canonicalization must preserve evidence about absent or uncertain fields. An inferred session ID is not represented as vendor-provided. A session-targeted cloud assignment never broadens when session identity is unavailable.
+Canonicalization must preserve evidence about absent or uncertain fields. An inferred session ID is not represented as vendor-provided. A session-scoped match never broadens when session identity is unavailable.
 
 ## Session lifecycle
 
-Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by Failproof Cloud assignments and observability.
+Harness adapters should report explicit session start, resume, compact, subagent start, and end events where available. The daemon uses them to maintain a local session registry that maps native IDs to the stable targeting identity used by policy matching, local activity, and decision evidence.
 
 When explicit lifecycle events do not exist, the daemon derives a session boundary from documented identifiers and activity. The adapter descriptor records this identity quality. Session-scoped enforcement is enabled only when the identity is strong enough to avoid applying a policy to the wrong run.
 
-Agent and session identity must align with collector output. An enforcement decision and captured session from the same harness run must join on stable identifiers without heuristic cloud-side matching.
+Agent and session identity must align with the local session index. An enforcement decision and an indexed session from the same harness run must join on stable identifiers, without heuristic after-the-fact matching. This is also what keeps a later delivery lane from having to reconstruct the join.
 
 ## Response model
 
@@ -211,7 +211,7 @@ A new harness integration is complete only when it provides:
 3. install, upgrade, disable, and uninstall configuration transforms;
 4. fixture-backed canonicalization tests for every supported native event;
 5. response-contract tests proving allow, deny, instruct, timeout, and daemon-unavailable behavior;
-6. session/agent identity tests aligned with its collector source;
+6. session/agent identity tests aligned with its local session source;
 7. enforcement-capability evidence traced to the harness call site or vendor contract;
 8. an end-to-end test against the real harness or a version-pinned conformance probe;
 9. health and diagnostics output;
@@ -219,13 +219,13 @@ A new harness integration is complete only when it provides:
 
 ## Harness acceptance criteria
 
-- The thin client makes no cloud request and performs no policy-loading work.
+- The thin client makes no network request and performs no policy-loading work.
 - Golden fixtures preserve current canonical decisions and native response contracts.
 - Every event is labeled block, observe, or context-capable from verified evidence.
 - A harness upgrade that changes payload or response behavior fails conformance visibly rather than silently allowing.
 - Hook installation is idempotent and uninstall preserves unrelated configuration.
-- Enforcement and collector records for one session share stable identity.
-- Missing session identity never broadens a session-targeted assignment.
+- Enforcement and indexed session records for one session share stable identity.
+- Missing session identity never broadens a session-scoped match.
 - Timeout and daemon-unavailable behavior is tested separately for every harness, especially stop-class events.
 
 The envelope and framing remain transport-neutral so a later Windows implementation can add a named-pipe transport without changing harness semantics.

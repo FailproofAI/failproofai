@@ -2,50 +2,65 @@
 
 ## Service model
 
-Setup selects one explicit service scope:
+Phase 1 installs one service scope, `managed`. There is nothing to select:
 
 | Scope | Linux | macOS | Runs as | Starts | Privilege to manage |
 |---|---|---|---|---|---|
-| `managed` (recommended) | systemd system service | LaunchDaemon | `_failproofai` | machine boot | `sudo` at install; none at runtime |
-| `system` | systemd system service | LaunchDaemon | `root` | machine boot | `sudo`/root |
-| `user` | systemd user service | LaunchAgent | the user | user login | none |
+| `managed` | systemd system service | LaunchDaemon | `_failproofai` | machine boot | `sudo` at install; none at runtime |
 
-User scope owns only that user's configuration, credentials, policies, transcripts, activity, and socket. Managed and system scope support multiple explicitly enrolled users.
+One installation supports multiple explicitly enrolled users. Creating the `_failproofai` account and registering the service require `sudo` once; after that the daemon holds no root privilege, so a defect in it does not yield a root compromise.
 
-Ownership in a privileged install is split by **writer**, so the service account the daemon runs as is not the account that can modify what the daemon enforces:
+Ownership is split by **writer**, so the service account the daemon runs as is not the account that can modify what the daemon enforces:
 
 | Artifact | Owner | Daemon's access | Written by |
 |---|---|---|---|
 | executables, pinned runtime | root | read + execute | privileged installer |
 | protected policy store, active schema catalog | root | read | privileged installer |
 | machine configuration, service definition | root | read | privileged installer |
-| spool, checkpoints, activity, per-user state, health, logs, socket directory | `_failproofai` | read + write | the daemon |
+| checkpoints, activity, per-user state, health, logs, socket directory | `_failproofai` | read + write | the daemon |
 
 Ownership alone would not have been enough: a store owned by the same account the daemon runs as is writable by any process holding that UID, including a compromised daemon, which would let it rewrite the sealed policies it is supposed to evaluate. Making the protected surface root-owned and read-only bounds a daemon compromise to corrupting its own telemetry. Every mutation of the protected surface goes through an elevated CLI operation and produces an audit record.
 
-Managed scope is the recommended tamper-resistant option. Creating the `_failproofai` account and registering the service require `sudo` once; after that the daemon holds no root privilege, so a defect in it does not yield a root compromise. System scope is the same service running as root, retained for fleet-managed machines whose configuration management owns `/etc` and for serving agents that themselves run as root. Against an ordinary agent it is no more tamper-resistant than managed scope and has a larger blast radius, so managed is preferred wherever both apply.
+Only root-authorized administrative requests may stop, reconfigure, replace, or remove the daemon, register protected policy, or mutate its active protected generation — the service account can run the daemon but cannot administer it. Enrolled clients can submit hook events and read their authorized status, but cannot call administrative operations.
 
-User scope is convenient and complete, but an agent with the same OS permissions can stop it or modify user-owned configuration; it is cooperative enforcement. In managed and system scope, only root-authorized administrative requests may stop, reconfigure, replace, or remove the daemon, register protected policy, or mutate its active protected generation — the service account can run the daemon but cannot administer it. Enrolled clients can submit hook events and read their authorized status, but cannot call administrative operations.
-
-Protected placement must survive the filesystem, not just the permission bits. Delete and rename permission derive from the parent directory, so protected artifacts cannot live inside a user's home at any mode — the owner of `~` can rename an unwritable subdirectory aside and substitute their own. Managed and system scope keep configuration, the policy store, per-user protected state, and the socket directory on paths whose every component is owned by the service account or root.
+Protected placement must survive the filesystem, not just the permission bits. Delete and rename permission derive from the parent directory, so protected artifacts cannot live inside a user's home at any mode — the owner of `~` can rename an unwritable subdirectory aside and substitute their own. Configuration, the policy store, per-user protected state, and the socket directory therefore live on paths whose every component is owned by the service account or root.
 
 Protected policies are compiled into a root-owned immutable content-addressed store during an elevated install operation, with one digest covering the policy and every inlined dependency. The daemon evaluates a committed revision, not a mutable user source path. Changing, disabling, or deleting that revision requires an explicit privileged CLI operation and produces an audit record. Editable user/project policies remain available but are labeled `mutable` rather than tamper-resistant.
 
-Within policy administration, **adding is unprivileged and removing is not**. Installation itself is a separate matter — creating the service account, installing the release, and registering the service all require `sudo`, as does every mutation of the protected surface above. What needs no elevation is a user adding a `mutable` policy of their own: results combine as `deny` over `instruct` over `allow` with no unauthorized suppression, so such a policy can only tighten enforcement and can never weaken, cancel, or shadow a protected one. Convention discovery therefore continues to work without elevation in every scope, while removing, disabling, or altering an *admitted* revision stays privileged.
+Within policy administration, **adding is unprivileged and removing is not**. Installation itself is a separate matter — creating the service account, installing the release, and registering the service all require `sudo`, as does every mutation of the protected surface above. What needs no elevation is a user adding a `mutable` policy of their own: results combine as `deny` over `instruct` over `allow` with no unauthorized suppression, so such a policy can only tighten enforcement and can never weaken, cancel, or shadow a protected one. Convention discovery therefore continues to work without elevation, while removing, disabling, or altering an *admitted* revision stays privileged.
 
-Managed scope is a supervisor, not an execution context for user code, and it cannot `setuid` to an enrolled user. Unix-socket peer credentials select a per-UID policy/session context. Policies admitted to the `sealed` tier evaluate inside the daemon's pinned runtime as the service account in a context that exposes no filesystem, subprocess, or network bindings at all; policies whose resolved import graph needs any of those are admitted to the `user-context` tier and evaluate in a worker running as the requesting UID with that user's own authority, reduced groups and environment, resource limits, and platform sandboxing. Per-user queues, storage quotas, and authorization prevent cross-user reads or resource starvation. Only administrator-owned machine policy may be assigned machine-wide.
+The daemon is a supervisor, not an execution context for user code, and it cannot `setuid` to an enrolled user. Unix-socket peer credentials select a per-UID policy/session context. Policies admitted to the `sealed` tier evaluate inside the daemon's pinned runtime as the service account in a context that exposes no filesystem, subprocess, or network bindings at all; policies whose resolved import graph needs any of those are admitted to the `user-context` tier and evaluate in a worker running as the requesting UID with that user's own authority, reduced groups and environment, resource limits, and platform sandboxing. Per-user queues, storage quotas, and authorization prevent cross-user reads or resource starvation. Only administrator-owned machine policy may be assigned machine-wide.
 
-One user is bound to one endpoint. Setup detects conflicts between scopes and transactionally switches hook registrations; two services may exist only when their enrolled user sets do not overlap. A managed or system installation does not rewrite all users' harness files implicitly.
+One user is bound to one endpoint. A single system service means there is one endpoint per machine, so the case setup must handle is a *previous* evaluator rather than a competing scope: it detects an existing installation or a legacy hook-only one and transactionally switches its registrations rather than letting both answer. Installation does not rewrite all users' harness files implicitly.
 
-Harness attachment is reported as `protected`, `detectable`, or `cooperative`. Setup uses the strongest available registration and never reports tamper resistance unless both the daemon/policy plane and harness invocation boundary are protected. Missing or altered registrations are automatically repaired while enabled. Missing expected heartbeats or repeated repair raises a local and, when connected, Failproof Cloud alert.
+Harness attachment is reported as `protected`, `detectable`, or `cooperative`. Setup uses the strongest available registration and never reports tamper resistance unless both the daemon/policy plane and harness invocation boundary are protected. Missing or altered registrations are automatically repaired while enabled. Missing expected heartbeats or repeated repair degrades local health and raises a local alert.
 
-Windows is outside the v1.0.0 service scope. Its service model, named-pipe transport, and packaging belong to the next iteration.
+Windows is outside Phase 1. Its service model, named-pipe transport, and packaging belong to a later iteration.
 
-Service configuration contains executable and state paths but no secrets, and sets a fixed `PATH` so nothing the daemon spawns resolves through a user-controlled search path. User-scope operations never request elevation. Managed- and system-scope mutations require `sudo`; no sudo password is stored.
+Service configuration contains executable and state paths but no secrets, and sets a fixed `PATH` so nothing the daemon spawns resolves through a user-controlled search path. Mutations of the protected surface require `sudo`; no sudo password is stored.
+
+### Deferred scopes
+
+Two further scopes are designed and deliberately unshipped. Recording them here is what makes adding one later a packaging and service-registration change rather than a redesign, and it keeps the rest of these documents free of per-scope qualification.
+
+| Scope | Linux | macOS | Runs as | Starts | Privilege to manage |
+|---|---|---|---|---|---|
+| `system` | systemd system service | LaunchDaemon | `root` | machine boot | `sudo`/root |
+| `user` | systemd user service | LaunchAgent | the user | user login | none |
+
+**`system`** is the same service running as root, with machine configuration under root-owned `/etc/failproofai`. It exists for fleet-managed machines whose configuration management owns `/etc`, and for serving agents that themselves run as root. It changes no guarantee stated in these documents: against an ordinary agent it is no more tamper-resistant than `managed`, and it has a strictly larger blast radius if the daemon is compromised, which is why `managed` ships first. It should be added when a customer's configuration management requires `/etc`, or when agents genuinely run as root, and not otherwise.
+
+**`user`** installs everything — executables, pinned runtime, configuration, policies, activity, and socket — inside the user's own tree with no elevation, and starts at login. It is what makes the product installable on a machine where administrator access is unavailable, which is the one thing `managed` cannot do. It gives up the boundary in exchange:
+
+- an agent holding the user's authority can stop the service, edit its configuration, or replace its policy state, so enforcement is **cooperative**, not tamper-resistant;
+- protected placement is impossible, because rename and delete permission on every path come from a parent the user owns, and the socket can be unlinked and rebound by an impostor answering `allow`;
+- there is **no `sealed` tier** — the pinned runtime and policy store are user-writable, so every policy evaluates with the user's own authority and no verdict-integrity claim can be made, displayed, or implied in health output.
+
+Adding it therefore reintroduces per-scope qualification wherever a verdict-integrity or protected-placement claim appears, and its UI must state the weaker guarantee rather than presenting the two as interchangeable. It must never be reachable as an automatic fallback when a privileged install fails; a user who wants cooperative enforcement asks for it.
 
 ## No automatic binary replacement
 
-v1.0.0 does not download, replace, or restart `failproofai` or `failproofaid` automatically. There is no updater helper, version-pointer activation protocol, or background native release channel. Native upgrades are explicit customer actions through the npm setup path.
+Phase 1 does not download, replace, or restart `failproofai` or `failproofaid` automatically. There is no updater helper, version-pointer activation protocol, or background native release channel. Native upgrades are explicit customer actions through the npm setup path.
 
 This keeps the privileged service stable while solving the faster-moving compatibility problem independently: agent harnesses auto-update and frequently change their hook configuration schemas.
 
@@ -71,7 +86,7 @@ A detection rule names an executable by one of a fixed set of resolution strateg
 
 Anything a catalog asks for outside this grammar is a validation failure that rejects the generation, not a warning. A detection rule that times out, exceeds its output cap, or exits nonzero yields "version unknown" and the compatibility path for that harness — it never falls back to executing something else.
 
-The catalog is maintained in the FailproofAI repository, reviewed like code, built reproducibly, and published as an immutable signed artifact. The daemon ships a baseline catalog so fresh installation and offline operation work without a network connection. Standalone OSS users may also pin or provide a locally verified catalog without Failproof Cloud.
+The catalog is maintained in the FailproofAI repository, reviewed like code, built reproducibly, and published as an immutable signed artifact. The daemon ships a baseline catalog so fresh installation and offline operation work without a network connection. Refresh is an unauthenticated fetch of a signed artifact and needs no account; a user may also pin the bundled catalog or supply a locally verified one instead.
 
 ## Version selection and reconciliation
 
@@ -98,9 +113,9 @@ Catalog updates do not restart the daemon or interrupt enforcement. If a schema 
 
 ## Acceptance criteria
 
-- Managed, system, and user services pass lifecycle tests on systemd and launchd.
-- Managed and system scope prove peer isolation, per-UID context selection, and privileged-only administration.
-- A managed-scope daemon holds no root capability at runtime, and no protected artifact is reachable by renaming a directory an enrolled user owns.
+- The managed service passes lifecycle tests on systemd and launchd.
+- The installation proves peer isolation, per-UID context selection, and privileged-only administration.
+- The daemon holds no root capability at runtime, and no protected artifact is reachable by renaming a directory an enrolled user owns.
 - An enrolled user cannot substitute the daemon endpoint, the pinned runtime, or an admitted policy artifact.
 - The daemon's own UID cannot write its executables, pinned runtime, protected policy store, active schema catalog, or machine configuration.
 - A policy needing filesystem, subprocess, or network access is admitted to the `user-context` tier; a forged verdict from that tier cannot relax a `sealed` result, and a policy that under-declares fails inside `sealed` rather than escaping it.

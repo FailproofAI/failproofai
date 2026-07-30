@@ -1,8 +1,10 @@
-# Collector integration
+# Collector convergence and delivery
 
 ## Goal
 
 `failproofaid` replaces the standalone FailproofAI collector without losing its behavior. The initial Rust integration should preserve proven modules and conformance tests before refactoring them into shared daemon subsystems.
+
+This is Phase 2 work rather than Phase 1 work for one reason: taking over delivery means taking over the credential that authorizes it. Until that lands, Phase 1 leaves the standalone collector running and delivering untouched, and indexes local sessions only for on-machine activity, audits, and the dashboard. A half-migration that owns capture but not delivery would strand data in exactly the place nobody is watching.
 
 ## Capabilities to preserve
 

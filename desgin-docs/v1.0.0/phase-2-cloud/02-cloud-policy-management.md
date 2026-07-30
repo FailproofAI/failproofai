@@ -2,7 +2,7 @@
 
 ## Purpose
 
-FailproofAI OSS remains a complete standalone policy system. Users author and run builtin or custom policy locally without an account, machine enrollment, organization, or cloud service.
+The Phase 1 product remains a complete standalone policy system. Users author and run builtin or custom policy locally without an account, machine enrollment, organization, or cloud service, and that path is not degraded by anything here. Sign-in and machine identity are in [login and enrollment](./01-login-and-enrollment.md).
 
 Failproof Cloud adds centralized management for fleets of `failproofaid` enforcement planes. It does not replace, gate, or remove local policy authoring. FailproofAI observability data closes the loop between observing agent behavior and deploying an additional centrally managed guardrail:
 
@@ -14,13 +14,13 @@ Failproof Cloud adds centralized management for fleets of `failproofaid` enforce
 6. an authorized user promotes the same immutable revision to enforce mode;
 7. the assignment can expand, pause, expire, narrow, or roll back.
 
-Cloud availability is not required for standalone operation or an individual v1.0.0 hook decision because policy is evaluated locally.
+Cloud availability is not required for standalone operation or for an individual hook decision, because every Phase 2 decision is still evaluated locally.
 
 ## Future direction: cloud evaluation
 
-Moving synchronous policy evaluation into the cloud is a planned later iteration, not part of the v1.0.0 implementation or user experience.
+Moving synchronous policy evaluation off the machine is a possible later iteration, not part of Phase 2's implementation or user experience.
 
-The v1.0.0 boundary is chosen so harnesses will not need reintegration: they always call the local daemon using a canonical request and receive a canonical result. A future design must separately specify cloud latency, availability, privacy, data residency, caching, and outage behavior before implementation. Those controls are deliberately absent from the current configuration schema.
+The boundary Phase 1 chose is what keeps it open without committing to it: harnesses always call the local daemon with a canonical request and receive a canonical result, so they would not need reintegration. A future design must separately specify latency, availability, privacy, data residency, caching, and outage behavior before implementation. Those controls are deliberately absent from the configuration schema.
 
 ## Identity and targeting
 

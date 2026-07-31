@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-beta.2 — 2026-07-31
+
+### Fixes
+- Ask for the daemon first, and prompt for sudo in-process instead of telling people to run the CLI under sudo. `sudo failproofai config` was the advice 1.0.0-beta.1 printed when it could not elevate, and it is actively wrong: under sudo `homedir()` is `/root`, so the hooks land in root's settings, `daemonConfigured` is set for root, the binary downloads to `/root/.failproofai/bin`, and the generated unit carries `User=root` — the whole point of a user-scope daemon, undone silently, on the one path a user follows when something already went wrong. The wizard now refuses to run under `sudo` at all when `SUDO_USER` says a real user is behind it, naming the account to re-run as (a genuinely root-only environment, with no `SUDO_USER`, still works). Service installation moves to **step 0**, before any other question: it is the only step that needs a password, and asking there means `sudo -v` prompts on a clean terminal rather than firing from underneath a drawn TUI screen where the prompt is invisible and the typed characters land in a redrawn frame. That one prompt caches the credential for the run, so the install itself stays non-interactive. The daemon is also no longer inferred from the scope — it is machine-level, one service for every project, so step 0 is where the user consents to it, and a project-scope setup can have one too. Declining, or failing to authenticate, never costs the rest of the setup: the wizard says so and applies everything else, exactly as a machine with no daemon behaved before. (#632)
+
 ## 1.0.0-beta.1 — 2026-07-31
 
 ### Fixes

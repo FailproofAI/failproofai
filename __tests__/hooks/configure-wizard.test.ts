@@ -27,6 +27,9 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     isDaemonSupportedPlatform: vi.fn(() => false),
     installDaemonService: vi.fn(async () => ({ installed: false, reason: "mocked" })),
     daemonServiceFilePath: vi.fn(() => null),
+    // Step 0 primes sudo before anything is drawn. Mocked true by default so
+    // no test can block on a real password prompt.
+    primeElevation: vi.fn(() => true),
   };
 });
 // The wizard kicks off the audit pipeline after a completed apply; stub it so
@@ -41,7 +44,11 @@ vi.mock("../../src/hooks/integrations", async (importOriginal) => {
 
 import { selectOne, multiSelect, outro, type TTYIn, type TTYOut } from "../../src/hooks/tui";
 import { installHooks } from "../../src/hooks/manager";
-import { isDaemonSupportedPlatform, installDaemonService } from "../../src/hooks/daemon-service";
+import {
+  isDaemonSupportedPlatform,
+  installDaemonService,
+  primeElevation,
+} from "../../src/hooks/daemon-service";
 import {
   buildScopeChoices,
   buildAgentChoices,
@@ -96,6 +103,9 @@ beforeEach(() => {
   vi.mocked(installDaemonService)
     .mockReset()
     .mockResolvedValue({ installed: false, reason: "mocked" });
+  // Reset too, or call counts leak across tests and "was never asked for sudo"
+  // silently passes on history from an earlier one.
+  vi.mocked(primeElevation).mockReset().mockReturnValue(true);
 });
 
 describe("configure-wizard pure builders", () => {
@@ -411,10 +421,13 @@ describe("configure-wizard daemon integration", () => {
     rmSync(globalConfigPath(), { force: true });
   });
 
-  it("installs the daemon and marks it configured when scope is user and the platform is supported", async () => {
+  it("installs the daemon and marks it configured when step 0 asks for it", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
-    vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install") // 0 — daemon
+      .mockResolvedValueOnce("user") // scope
+      .mockResolvedValueOnce("apply"); // review
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
     await runConfigureWizard(ttyIO());
@@ -423,19 +436,82 @@ describe("configure-wizard daemon integration", () => {
     expect(readGlobalConfig().daemonConfigured).toBe(true);
   });
 
-  it("never attempts daemon install when scope is project, even on a supported platform", async () => {
+  it("primes sudo at step 0, before any other question is asked", async () => {
+    // Ordering is the whole point: sudo must prompt on a clean terminal. Once
+    // a TUI screen has been drawn, the password prompt is invisible and the
+    // typed characters land in a redrawn frame.
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
-    vi.mocked(selectOne).mockResolvedValueOnce("project").mockResolvedValueOnce("apply");
+    vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
+    const order: string[] = [];
+    vi.mocked(primeElevation).mockImplementation(() => {
+      order.push("sudo");
+      return true;
+    });
+    const answers = ["install", "user", "apply"];
+    vi.mocked(selectOne).mockImplementation(async () => {
+      order.push("prompt");
+      return answers[order.filter((o) => o === "prompt").length - 1] as never;
+    });
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
     await runConfigureWizard(ttyIO());
 
+    expect(order[0]).toBe("prompt"); // the daemon question itself
+    expect(order[1]).toBe("sudo"); // then the password, before anything else
+  });
+
+  it("carries on without a daemon when sudo cannot be obtained", async () => {
+    // A refused password must not cost the user the rest of their setup.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(primeElevation).mockReturnValue(false);
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install")
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(installHooks).toHaveBeenCalledTimes(1);
     expect(installDaemonService).not.toHaveBeenCalled();
     expect(readGlobalConfig().daemonConfigured).toBeUndefined();
   });
 
+  it("never attempts daemon install when step 0 is declined", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("skip") // 0 — daemon: not now
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
+
+    await runConfigureWizard(ttyIO());
+
+    expect(primeElevation).not.toHaveBeenCalled();
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+  });
+
+  it("installs the daemon at project scope too — it is machine-level, not per-project", async () => {
+    // Deliberately NOT gated on the scope any more: one daemon serves every
+    // project on the machine, and step 0 is where the user consents to it.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install")
+      .mockResolvedValueOnce("project")
+      .mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
+
+    await runConfigureWizard(ttyIO());
+
+    expect(installDaemonService).toHaveBeenCalledTimes(1);
+  });
+
   it("never attempts daemon install when the platform is unsupported, even at user scope", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
+    // No step 0 on an unsupported platform — the daemon question never renders.
     vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -455,7 +531,10 @@ describe("configure-wizard daemon integration", () => {
       installed: false,
       reason: "EACCES: permission denied, open '/home/somebody/.config/systemd/user/failproofaid.service'",
     });
-    vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install")
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
     await runConfigureWizard(ttyIO());
@@ -515,7 +594,10 @@ describe("configure-wizard daemon integration", () => {
       installed: false,
       reason: "no failproofaid binary found",
     });
-    vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install")
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
     const result = await runConfigureWizard(ttyIO());
@@ -530,7 +612,10 @@ describe("configure-wizard daemon integration", () => {
   it("mentions the background daemon in the outro message only on a successful install", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
-    vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("install")
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
     await runConfigureWizard(ttyIO());
@@ -539,24 +624,27 @@ describe("configure-wizard daemon integration", () => {
     expect(message).toContain("background daemon enabled");
   });
 
-  it("reviewLines shows the daemon line only at user scope on a supported platform", () => {
+  it("reviewLines shows the daemon line only when step 0 asked for it", () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     const withDaemon = reviewLines({
       scope: "user",
       clis: ["claude"],
       policies: ["block-sudo"],
       cwd: "/tmp/proj",
+      installDaemon: true,
     }).join("\n");
     expect(withDaemon).toContain("Daemon");
     expect(withDaemon).toContain("failproofaid");
 
-    const projectScope = reviewLines({
-      scope: "project",
+    // Promising a service the apply will not install is the failure mode here.
+    const declined = reviewLines({
+      scope: "user",
       clis: ["claude"],
       policies: ["block-sudo"],
       cwd: "/tmp/proj",
+      installDaemon: false,
     }).join("\n");
-    expect(projectScope).not.toContain("Daemon");
+    expect(declined).not.toContain("Daemon");
 
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
     const unsupported = reviewLines({

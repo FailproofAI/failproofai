@@ -43,6 +43,7 @@ import {
   isDaemonSupportedPlatform,
   installDaemonService,
   daemonServiceFilePath,
+  primeElevation,
   setDaemonConfigured,
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
@@ -350,8 +351,14 @@ export function reviewLines(state: {
   cwd: string;
   /** The Custom checkbox. `undefined` = nothing to toggle, leave as-is. */
   customEnabled?: boolean;
+  /**
+   * Step 0's answer. The daemon is machine-level, so this is a decision the
+   * user made explicitly rather than something inferred from the scope —
+   * showing it any other way would promise a service the apply won't install.
+   */
+  installDaemon?: boolean;
 }): string[] {
-  const { scope, clis, policies, cwd, customEnabled } = state;
+  const { scope, clis, policies, cwd, customEnabled, installDaemon } = state;
   const where =
     scope === "project" ? `This project (${homeify(cwd)})` : "Everywhere (global)";
   const lines: string[] = [];
@@ -359,9 +366,9 @@ export function reviewLines(state: {
   lines.push(`  Where      : ${where}`);
   lines.push(`  Assistants : ${assistantNames.length ? summarize(assistantNames, "assistants") : "(none)"}`);
   lines.push(`  Policies   : ${policies.length} enabled`);
-  if (scope === "user" && isDaemonSupportedPlatform()) {
+  if (installDaemon && isDaemonSupportedPlatform()) {
     lines.push(
-      `  Daemon     : failproofaid will be installed/started as a background service`,
+      `  Daemon     : failproofaid, installed as a system service running as you`,
     );
   }
 
@@ -389,9 +396,9 @@ export function reviewLines(state: {
     }
   }
   lines.push(`    ${homeify(getConfigPathForScope(scope, cwd))}   ${policies.length} policies`);
-  if (scope === "user" && isDaemonSupportedPlatform()) {
+  if (installDaemon && isDaemonSupportedPlatform()) {
     const servicePath = daemonServiceFilePath();
-    if (servicePath) lines.push(`    ${homeify(servicePath)}   failproofaid service`);
+    if (servicePath) lines.push(`    ${homeify(servicePath)}   failproofaid service (needs root)`);
   }
   return lines;
 }
@@ -500,6 +507,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     return { applied: false };
   }
 
+  // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
+  // does it silently: homedir() becomes /root, so the hooks land in root's
+  // settings, `daemonConfigured` is set for root, the daemon binary downloads
+  // to /root/.failproofai/bin, and the unit is generated with User=root —
+  // exactly the elevation the design exists to avoid. SUDO_USER is set only
+  // when a real user sudo'd here, which distinguishes this mistake from a
+  // legitimately root-only environment (a container that has no other user).
+  if (typeof process.getuid === "function" && process.getuid() === 0 && process.env.SUDO_USER) {
+    stdout.write(
+      `Run failproofai config as ${process.env.SUDO_USER}, not under sudo.\n` +
+        "Everything it configures is per-user — hooks, policies and the daemon's own\n" +
+        "account — so under sudo it would set all of that up for root instead of you.\n" +
+        "The one step that needs root (installing the service) asks for your password\n" +
+        "on its own.\n",
+    );
+    return { applied: false };
+  }
+
   // Fire-and-forget: never block the wizard's first paint on telemetry.
   void emit("configure_started", {});
   intro("let's set up your safety net", stdout);
@@ -508,6 +533,55 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     outro("Cancelled — nothing was changed.", { ok: false }, stdout);
     return { applied: false };
   };
+
+  // 0 — The background daemon, before anything else.
+  //
+  // First because it is the only step that needs a password: asking here
+  // means sudo prompts on a clean terminal, before any question has drawn a
+  // screen, instead of firing from underneath a rendered TUI where the prompt
+  // is invisible and the typed password lands in a redrawn frame. `sudo -v`
+  // caches the credential for the rest of the run, so the actual install at
+  // apply time stays non-interactive.
+  //
+  // Machine-level, so it is deliberately NOT gated on the scope chosen in the
+  // next step: one daemon serves every project on this machine.
+  let daemonWanted = false;
+  let elevated = false;
+  if (isDaemonSupportedPlatform()) {
+    const choice = await selectOne<"install" | "skip">({
+      message: "Install the failproofaid background daemon?",
+      choices: [
+        {
+          label: "Yes — keep policy evaluation warm",
+          value: "install",
+          hint: "a system service, started at boot, running as you · needs your password once",
+        },
+        {
+          label: "Not now",
+          value: "skip",
+          hint: "policies still enforce, evaluated per hook call",
+        },
+      ],
+      stdin,
+      stdout,
+    });
+    if (choice === null) return cancel();
+    daemonWanted = choice === "install";
+
+    if (daemonWanted) {
+      stdout.write("\nInstalling the failproofaid service needs root. Your password stays with sudo.\n");
+      elevated = primeElevation();
+      if (!elevated) {
+        // Never fatal: the rest of setup is worth applying, and a machine with
+        // no daemon is exactly the machine every release before this one had.
+        stdout.write(
+          "Could not get sudo — carrying on without the daemon.\n" +
+            "Everything else still applies, and policies still enforce in-process.\n\n",
+        );
+        daemonWanted = false;
+      }
+    }
+  }
 
   // 1 — Where?
   const scope = await selectOne<HookScope>({
@@ -579,7 +653,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // 4 — Review & apply
   const decision = await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
-    body: reviewLines({ scope, clis, policies, cwd, customEnabled }),
+    body: reviewLines({ scope, clis, policies, cwd, customEnabled, installDaemon: daemonWanted }),
     choices: [
       { label: "Yes, apply now", value: "apply", hint: "write the config" },
       { label: "Cancel", value: "cancel", hint: "quit, no changes" },
@@ -615,14 +689,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   );
   setCustomPoliciesEnabled(scope, cwd, customEnabled);
 
-  // Daemon setup — unconditional on Linux/macOS whenever the global scope
-  // was chosen (a daemon is per-machine, not per-project), no separate
-  // opt-in step or command. A failure here (binary not found, no service
-  // manager, ...) never fails the wizard — the rest of setup already
-  // applied, and this machine simply stays on the in-process path exactly
-  // as before, since `daemonConfigured` is only set on success.
+  // Daemon setup — driven by step 0's answer, with the sudo credential it
+  // already primed, so nothing here can stop to ask a question. A failure
+  // (binary download blocked, no service manager, a daemon that won't stay
+  // up) never fails the wizard: the rest of setup already applied, and this
+  // machine simply stays on the in-process path, since `daemonConfigured` is
+  // only set on success.
   let daemonInstalled = false;
-  if (scope === "user" && isDaemonSupportedPlatform()) {
+  if (daemonWanted) {
     const daemonResult = await installDaemonService();
     if (daemonResult.installed) {
       setDaemonConfigured(true);

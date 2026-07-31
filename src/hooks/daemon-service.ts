@@ -46,6 +46,14 @@ const SERVICE_START_POLL_MS = 100;
 const SERVICE_SETTLE_MS = 750;
 
 /**
+ * How long `sudo -v` may sit at its password prompt. Unlike every other
+ * timeout here, this one is waiting on a human typing, not on a service
+ * manager — three attempts at a password is well inside two minutes, and
+ * sudo gives up on its own long before that.
+ */
+const SUDO_PROMPT_TIMEOUT_MS = 120_000;
+
+/**
  * Writes (or clears) the machine-wide `daemonConfigured` marker in
  * `~/.failproofai/policies-config.json`.
  *
@@ -256,6 +264,37 @@ export function daemonStatusCommand(): string | null {
   return process.platform === "linux"
     ? `systemctl status ${systemdUnitName()}`
     : `sudo launchctl print system/${LAUNCHD_LABEL}`;
+}
+
+/**
+ * Acquires sudo credentials up front, prompting in the terminal if needed.
+ *
+ * `sudo -v` refreshes the user's sudo timestamp and returns; every later
+ * `sudo -n` in this run then succeeds against that cached credential. Doing it
+ * here, once, at a known point in the wizard is what makes the rest of the
+ * install non-interactive — the alternative, an interactive sudo firing from
+ * underneath a half-drawn TUI screen, is a password prompt the user cannot
+ * see.
+ *
+ * NOT the same as running the whole CLI under sudo, which is actively wrong:
+ * `homedir()` would become /root, so the hooks, the policy config, the
+ * downloaded binary and the unit's own `User=` would all be root's rather
+ * than the user's, quietly configuring the wrong account.
+ *
+ * `stdio: "inherit"` so the prompt and the typed password go straight to the
+ * real terminal. The timeout is generous because a human is typing.
+ */
+export function primeElevation(): boolean {
+  if (typeof process.getuid === "function" && process.getuid() === 0) return true;
+  if (canElevate()) return true; // NOPASSWD, or already primed
+  try {
+    execFileSync("sudo", ["-v"], { stdio: "inherit", timeout: SUDO_PROMPT_TIMEOUT_MS });
+    return canElevate();
+  } catch {
+    // Wrong password, no sudo rights, or the user pressed ctrl-C. All of them
+    // mean the same thing here: carry on without a daemon.
+    return false;
+  }
 }
 
 /** True when privileged commands can run without prompting for a password. */
@@ -471,8 +510,10 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     return {
       installed: false,
       reason:
-        "root privileges are required to install the failproofaid system service, and sudo is not available without a password. " +
-        `Run: sudo failproofai config  (or install manually: ${daemonInstallCommands(binaryPath, workerCmd).join(" && ")})`,
+        "root privileges are required to install the failproofaid system service, and sudo credentials were not available. " +
+        "Re-run `failproofai config` and approve the sudo prompt — do NOT run the CLI itself under sudo, which would " +
+        "configure root's account instead of yours. To install by hand: " +
+        daemonInstallCommands(binaryPath, workerCmd).join(" && "),
     };
   }
 

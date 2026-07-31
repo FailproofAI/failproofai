@@ -13,7 +13,7 @@
 - Make dashboard toggle state follow the same project/local/user config merge as runtime enforcement, remove an enabled policy's opt-out from every contributing scope, and isolate unreadable explicit policy files so one bad file cannot leave the Configure tab loading forever. (#623)
 
 ### Docs
-- Document AgentEye's native framework instrumentation and the explicit `RunnableConfig` handoff required by LangGraph async nodes on Python 3.10. (#TBD)
+- Document AgentEye's native framework instrumentation and the explicit `RunnableConfig` handoff required by LangGraph async nodes on Python 3.10. (#631)
 
 ## 0.0.15-beta.0 — 2026-07-23
 

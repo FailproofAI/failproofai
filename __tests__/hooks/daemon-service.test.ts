@@ -17,6 +17,7 @@ describe("hooks/daemon-service", () => {
   const originalPackageRootEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
   const originalWorkerCmdEnv = process.env.FAILPROOFAI_WORKER_CMD;
   const originalHome = process.env.HOME;
+  const originalNoDownload = process.env.FAILPROOFAI_NO_DOWNLOAD;
   // The download channel installs under `$HOME/.failproofai/bin`, so these
   // tests point HOME at a scratch dir: a developer machine that really has a
   // daemon installed would otherwise turn "resolves to null" into a flake.
@@ -44,12 +45,20 @@ describe("hooks/daemon-service", () => {
   beforeEach(() => {
     vi.resetModules();
     home = "";
+    // No test in this file may reach the network. installDaemonService()
+    // downloads the daemon when nothing is resolvable, so without this a
+    // test asserting "no binary" quietly fetches one from the real release
+    // — which is what broke CI while passing locally. The download path
+    // itself is covered in daemon-download.test.ts against a local server.
+    process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
   });
 
   afterEach(() => {
     if (home) rmSync(home, { recursive: true, force: true });
     if (originalHome !== undefined) process.env.HOME = originalHome;
     else delete process.env.HOME;
+    if (originalNoDownload !== undefined) process.env.FAILPROOFAI_NO_DOWNLOAD = originalNoDownload;
+    else delete process.env.FAILPROOFAI_NO_DOWNLOAD;
     Object.defineProperty(process, "platform", { value: originalPlatform });
     Object.defineProperty(process, "arch", { value: originalArch });
     if (originalBinaryEnv !== undefined) process.env.FAILPROOFAI_DAEMON_BINARY = originalBinaryEnv;
@@ -88,6 +97,10 @@ describe("hooks/daemon-service", () => {
     });
 
     it("returns null on win32 with nothing else configured", async () => {
+      // Scratch HOME: a machine that really has a daemon installed (a CI
+      // runner that just ran the lifecycle tests, a developer laptop) would
+      // otherwise resolve that binary and turn this into a flake.
+      useScratchHome();
       delete process.env.FAILPROOFAI_DAEMON_BINARY;
       delete process.env.FAILPROOFAI_PACKAGE_ROOT;
       setPlatform("win32");
@@ -452,6 +465,12 @@ describe("hooks/daemon-service", () => {
       }, 20_000);
 
       it("installDaemonService fails cleanly when the binary cannot be resolved", async () => {
+        // Scratch HOME + downloads off, or "cannot be resolved" is a lie:
+        // install would reach ensureFailproofaidBinary, fetch the real
+        // release asset over the network, and succeed. It did exactly that
+        // on CI — passing locally only because this sandbox has no network
+        // access in the test environment.
+        useScratchHome();
         delete process.env.FAILPROOFAI_DAEMON_BINARY;
         delete process.env.FAILPROOFAI_PACKAGE_ROOT;
         setPlatform("linux");

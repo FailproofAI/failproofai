@@ -31,6 +31,7 @@ import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
 import type { EvaluationResult } from "./policy-evaluator";
 import { tryDaemonEvaluate, DEFAULT_DAEMON_DEADLINE_MS } from "./daemon-client";
+import { hasConventionPolicyFiles } from "./handler-gate";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
@@ -288,13 +289,40 @@ export async function handleHookEvent(
     // the daemon outright. Enforcing a subset would be worse than not using the
     // daemon at all: it is the silent-drop this product exists to prevent.
     let config: HooksConfig | undefined = readMergedHooksConfig(session.cwd);
-    const hasCustomPolicies =
+
+    // What the daemon cannot answer for. Each entry is a policy source the
+    // sealed tier will not run, and every one of them has to send us down the
+    // legacy path — enforcing the subset the daemon *can* evaluate is not a
+    // degraded answer, it is a wrong one.
+    //
+    // The first version of this gate read only `customPoliciesPaths` and
+    // `customPoliciesPath`, which is a config-key test. Convention policies are
+    // discovered from the *filesystem* — `.failproofai/policies/*policies.mjs`
+    // in the project and in the user's home — and appear in neither key, so a
+    // team that keeps its policies there had them silently stop enforcing the
+    // moment the daemon answered. The `needs_user_context` net could not catch
+    // it either: the worker partitions the `enabled_policies` list it is handed,
+    // and a convention policy is never in that list because it self-registers at
+    // load. Reproduced end-to-end before the fix — a convention policy denying a
+    // deploy denied with the daemon off and allowed with it on.
+    //
+    // `policyParams` is here for the same reason. The daemon evaluates with
+    // schema defaults, so a user who set `protectedBranches` or `allowPaths`
+    // would get the *default* set: under-blocking for some policies and
+    // over-blocking for others, and either way not what they configured. The
+    // params belong on the wire; until they are, this keeps the answer correct.
+    const explicitCustomPolicies =
       config.customPoliciesEnabled !== false &&
       ((config.customPoliciesPaths?.length ?? 0) > 0 || !!config.customPoliciesPath);
+    const conventionPolicies =
+      config.customPoliciesEnabled !== false && hasConventionPolicyFiles(session.cwd);
+    const hasPolicyParams = Object.keys(config.policyParams ?? {}).length > 0;
 
-    const daemonResult = hasCustomPolicies
-      ? null
-      : await tryDaemonEvaluate(request, DEFAULT_DAEMON_DEADLINE_MS, config.enabledPolicies);
+    const daemonCanAnswer = !explicitCustomPolicies && !conventionPolicies && !hasPolicyParams;
+
+    const daemonResult = daemonCanAnswer
+      ? await tryDaemonEvaluate(request, DEFAULT_DAEMON_DEADLINE_MS, config.enabledPolicies)
+      : null;
     const evaluator: "daemon" | "legacy" = daemonResult ? "daemon" : "legacy";
 
     let result: EvaluationResult;

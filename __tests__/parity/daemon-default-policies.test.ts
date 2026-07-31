@@ -90,14 +90,38 @@ describe("the daemon evaluates the client's policy set, not its own", () => {
     expect(configAt).toBeLessThan(daemonAt);
   });
 
-  it("the handler skips the daemon entirely when custom policies are configured", () => {
-    // Custom and convention policies are never sealed-eligible. Loading them
-    // just to discover that would pay the expensive half of the legacy work —
-    // the temp files written next to the user's source on every tool call —
-    // for nothing.
+  it("the handler consults the gate before deciding the daemon can answer", () => {
+    // Deliberately NOT a grep for the gate's variable names. The previous
+    // version of this test asserted `source.toContain("hasCustomPolicies")`
+    // and a regex on the ternary — which told us a symbol existed and nothing
+    // about what it covered. It passed while the gate checked configuration
+    // keys only, so a convention policy in `.failproofai/policies/` silently
+    // stopped enforcing the moment the daemon answered. The file's own header
+    // says it exists to prevent exactly that.
+    //
+    // The behavioural coverage lives in `handler-gate.test.ts`, which drives
+    // the real filesystem. What is left here is the structural half that a
+    // behavioural test cannot see: that the handler asks the gate at all.
     const source = readFileSync(HANDLER, "utf8");
-    expect(source).toContain("hasCustomPolicies");
-    expect(source).toMatch(/hasCustomPolicies\s*\?\s*null/);
+    expect(source).toContain("hasConventionPolicyFiles(session.cwd)");
+    expect(source).toMatch(/daemonCanAnswer\s*$|daemonCanAnswer\s*\n?\s*\?/m);
+  });
+
+  it("the gate covers every policy source the sealed tier cannot run", () => {
+    // The three that must send an event down the legacy path, each learned the
+    // hard way:
+    //   • explicit custom policy files  — never sealed-eligible
+    //   • convention policy files       — invisible to any config-key check
+    //   • policyParams                  — not on the wire, so the daemon would
+    //                                     evaluate with schema defaults and
+    //                                     both under- and over-block
+    const source = readFileSync(HANDLER, "utf8");
+    for (const clause of ["explicitCustomPolicies", "conventionPolicies", "hasPolicyParams"]) {
+      expect(source, `the daemon gate no longer accounts for ${clause}`).toContain(clause);
+    }
+    expect(source).toMatch(
+      /daemonCanAnswer\s*=\s*!explicitCustomPolicies\s*&&\s*!conventionPolicies\s*&&\s*!hasPolicyParams/,
+    );
   });
 });
 

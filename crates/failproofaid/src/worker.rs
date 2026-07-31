@@ -93,6 +93,18 @@ impl std::error::Error for WorkerError {}
 /// thread that created them, which is why the daemon runs exactly one worker
 /// thread and talks to it over a channel rather than sharing it.
 pub struct SealedWorker {
+    /// Held to keep the QuickJS runtime alive for as long as `context` exists.
+    ///
+    /// Never read, and that is the point: every call now goes through
+    /// `Ctx::execute_pending_job` from inside `Context::with`, because
+    /// `Runtime::execute_pending_job` re-borrows a `RefCell` that `with`
+    /// already holds and panics. Dropping this field to satisfy the lint would
+    /// drop the runtime out from under the context; the correct reading of
+    /// "never read" here is "ownership anchor", not "unused".
+    #[allow(
+        dead_code,
+        reason = "keeps the runtime alive for `context`; all job pumping goes through Ctx"
+    )]
     runtime: Runtime,
     context: Context,
     /// Set by the deadline watchdog; read by the interrupt handler.
@@ -317,6 +329,22 @@ impl SealedWorker {
             // an async runtime. The enforcement lane is synchronous and
             // deadline-bounded, and pumping jobs here is what lets the deadline
             // be checked between them — an executor would take that away.
+            //
+            // **`ctx.execute_pending_job()`, never `self.runtime`'s.** We are
+            // inside `Context::with`, which holds the runtime's `SafeRef` borrow
+            // for the whole closure; `Runtime::execute_pending_job` re-borrows
+            // the same `RefCell` and panics with "RefCell already borrowed".
+            //
+            // That panic was reachable from ordinary input on the shipped
+            // defaults. It needs two things at once: a promise that has not
+            // settled by the time the deadline passes (so this branch runs at
+            // all) and more than one enabled policy (with exactly one, the
+            // interrupt lands in the initial `f.call` and never reaches here).
+            // Every deadline test in this file used a single policy, so all of
+            // them passed while an 80 KB command against the default eleven
+            // killed the worker thread — and because `Ping` is answered by the
+            // *connection* thread, the daemon went on reporting healthy while
+            // its lane was gone.
             loop {
                 match promise.clone().finish::<String>() {
                     Ok(s) => return Ok(s),
@@ -326,25 +354,23 @@ impl SealedWorker {
                             // in a tight loop only stops because the interrupt
                             // handler says so.
                             self.interrupt.store(true, Ordering::Relaxed);
-                            let _ = self.runtime.execute_pending_job();
+                            let _ = ctx.execute_pending_job();
                             return Err(WorkerError::DeadlineExceeded {
                                 elapsed: started.elapsed(),
                             });
                         }
-                        if !self.runtime.is_job_pending() {
+                        // Returns whether a job ran, so "nothing left to run" is
+                        // the same call rather than a second `is_job_pending`
+                        // borrow. A microtask that throws rejects the promise
+                        // rather than surfacing here, and the rejection is
+                        // reported by the `Err(e)` arm below — which is where it
+                        // belongs, since that arm already distinguishes a
+                        // genuine throw from an interrupt unwind.
+                        if !ctx.execute_pending_job() {
                             return Err(WorkerError::Protocol(
                                 "sealed evaluation promise never settled and no jobs remain"
                                     .to_string(),
                             ));
-                        }
-                        // A `JobException` carries the failing job's own error
-                        // value rather than an `rquickjs::Error`, so it is
-                        // reported directly instead of through the context's
-                        // pending-exception slot.
-                        if let Err(job_err) = self.runtime.execute_pending_job() {
-                            return Err(WorkerError::Evaluation(format!(
-                                "a microtask threw during sealed evaluation: {job_err:?}"
-                            )));
                         }
                     }
                     Err(e) => {
@@ -620,6 +646,57 @@ mod tests {
             elapsed < Duration::from_secs(3),
             "the watchdog did not interrupt promptly: {elapsed:?}"
         );
+    }
+
+    #[test]
+    fn a_deadline_miss_with_several_policies_does_not_kill_the_worker() {
+        // The regression test for a panic that every existing deadline test
+        // missed by construction. `Runtime::execute_pending_job` re-borrows a
+        // `RefCell` that `Context::with` already holds, so the microtask-pump
+        // branch panicked with "RefCell already borrowed" — but only when that
+        // branch was reached at all, which needs the promise still pending at
+        // the deadline AND more than one enabled policy. With exactly one, the
+        // interrupt lands in the initial `f.call` and returns cleanly.
+        //
+        // Every deadline test in this file used one policy. The shipped default
+        // is eleven.
+        let w = worker();
+        let payload = "curl ".repeat(16_000);
+        let outcome = w.evaluate(
+            &request(
+                "PreToolUse",
+                serde_json::json!({"tool_name": "Bash", "tool_input": {"command": payload}}),
+                &[
+                    "block-curl-pipe-sh",
+                    "block-sudo",
+                    "block-env-files",
+                    "protect-env-vars",
+                ],
+            ),
+            Duration::from_millis(200),
+        );
+
+        assert!(
+            matches!(outcome, Err(WorkerError::DeadlineExceeded { .. })),
+            "expected DeadlineExceeded, got {outcome:?}"
+        );
+
+        // The worker must still be alive. A panic here would have poisoned the
+        // thread, and the daemon would have gone on answering Ping from its
+        // connection threads while the lane was gone — healthy-looking and
+        // permanently useless.
+        let raw = w
+            .evaluate(
+                &request(
+                    "PreToolUse",
+                    serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "sudo id"}}),
+                    &["block-sudo", "block-env-files"],
+                ),
+                DEADLINE,
+            )
+            .expect("the worker must survive a multi-policy deadline miss");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["result"]["decision"], "deny");
     }
 
     #[test]

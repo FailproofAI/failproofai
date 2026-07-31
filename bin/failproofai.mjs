@@ -94,6 +94,47 @@ if (hookIdx >= 0) {
       ? cliArg
       : "claude";
   try {
+    // Daemon-aware path — inert (and this whole block skipped) on every
+    // machine until `failproofai config` has installed failproofaid AND
+    // written the daemonConfigured marker (Stage 4). Until then this is
+    // byte-for-byte the same handleHookEvent(...) call below.
+    const { isDaemonConfigured, tryDaemonHook } = await import("../src/hooks/daemon-client");
+    if (isDaemonConfigured()) {
+      const { readStdinPayload } = await import("../src/hooks/read-stdin");
+      const { evaluateHookEvent } = await import("../src/hooks/handler");
+      const stdinRead = await readStdinPayload();
+
+      const daemonResult = await tryDaemonHook({
+        hookEvent: eventType,
+        cli,
+        stdin: stdinRead.payload,
+        // The client's own cwd IS the originating CLI session's cwd — this
+        // process is spawned fresh, at that location, by the calling agent
+        // CLI's own hook mechanism. See daemon-client.ts / PROTOCOL.md.
+        cwd: process.cwd(),
+      });
+
+      // No silent fallback to in-process evaluation here: this machine was
+      // explicitly configured to run through the daemon, so an unreachable
+      // daemon fails closed instead — a loud, correctly-shaped deny (real
+      // per-CLI response shaping, not a generic denial) rather than a
+      // silent downgrade. See the plan's "Confirmed scope decisions".
+      const result =
+        daemonResult ??
+        (await evaluateHookEvent(eventType, cli, stdinRead.payload, {
+          forceDecision: {
+            decision: "deny",
+            reason:
+              "failproofaid could not be reached. This machine is configured to run hooks through it " +
+              "— check the daemon (see `failproofai config`) rather than retrying blindly.",
+          },
+        }));
+
+      if (result.stdout) process.stdout.write(result.stdout);
+      if (result.stderr) process.stderr.write(result.stderr);
+      process.exit(result.exitCode);
+    }
+
     const { handleHookEvent } = await import("../src/hooks/handler");
     const exitCode = await handleHookEvent(eventType, cli);
     // handleHookEvent already flushes its own telemetry before returning; this

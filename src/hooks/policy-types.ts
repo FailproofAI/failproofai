@@ -116,6 +116,21 @@ export interface HooksConfig {
    * locking would corrupt the file that governs enforcement.
    */
   conventionPolicies?: ConventionPolicyRecord[];
+  /**
+   * `true` once `failproofai config` has installed and started the
+   * failproofaid background daemon for this machine. Global scope ONLY —
+   * whether *this specific machine* has a running daemon is not something a
+   * committed project config should be able to assert on a teammate's
+   * behalf, so `readMergedHooksConfig` does not merge this key across
+   * scopes the way `enabledPolicies` merges. See `daemon-client.ts`.
+   *
+   * Governs the fail-closed/in-process split entirely: unset (or `false`)
+   * means this machine has never been daemon-configured, so hooks run the
+   * same full in-process evaluation they always have, with no socket
+   * attempt at all. Once `true`, an unreachable daemon fails closed instead
+   * of silently falling back — see the plan's "Confirmed scope decisions".
+   */
+  daemonConfigured?: boolean;
 }
 
 /** One convention policy file and the hooks it registered, as last observed. */

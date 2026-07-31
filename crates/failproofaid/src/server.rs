@@ -1,12 +1,12 @@
 //! The Unix-socket server: bind, accept, verify the peer, dispatch one
 //! request per connection.
 //!
-//! Stage 2 scope only — `Hook` requests get an `Error` response saying so.
-//! Wiring `Hook` up to a real warm Node/Bun worker is Stage 3's job (see
-//! the plan's suggested implementation sequence); this stage proves the
-//! socket, the framing, the protocol-version handshake, and peer
-//! verification end to end with nothing downstream to depend on yet.
+//! `Hook` requests are relayed to the warm worker (see `worker.rs`); `Ping`
+//! is answered directly. Any failure to reach/use the worker becomes a
+//! client-facing `Error` response — never a hang, never a crash of the
+//! connection-handling thread.
 
+use crate::worker::Worker;
 use fpai_ipc::{ClientMessage, PROTOCOL_VERSION, ServerMessage, peer, read_message, write_message};
 use std::fs;
 use std::io;
@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Server {
     listener: UnixListener,
     socket_path: PathBuf,
+    worker: Arc<Worker>,
 }
 
 impl Server {
@@ -27,7 +28,7 @@ impl Server {
     /// daemon is never listening on a leftover file — the singleton lock in
     /// `lock.rs` is what actually prevents two daemons; this only clears
     /// the debris of one that's already gone).
-    pub fn bind(socket_path: &Path) -> io::Result<Self> {
+    pub fn bind(socket_path: &Path, worker: Arc<Worker>) -> io::Result<Self> {
         if socket_path.exists() {
             fs::remove_file(socket_path)?;
         }
@@ -36,6 +37,7 @@ impl Server {
         Ok(Server {
             listener,
             socket_path: socket_path.to_path_buf(),
+            worker,
         })
     }
 
@@ -49,8 +51,9 @@ impl Server {
         while !shutdown.load(Ordering::Relaxed) {
             match self.listener.accept() {
                 Ok((stream, _addr)) => {
+                    let worker = self.worker.clone();
                     std::thread::spawn(move || {
-                        if let Err(err) = handle_connection(stream) {
+                        if let Err(err) = handle_connection(stream, &worker) {
                             log_connection_error(&err);
                         }
                     });
@@ -78,7 +81,7 @@ fn log_connection_error(err: &io::Error) {
 /// Handles exactly one request on `stream`: verify the peer is the same OS
 /// user, read one framed [`ClientMessage`], dispatch it, write back one
 /// framed [`ServerMessage`], then let the connection close.
-pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
+pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> {
     match peer::is_same_user(&stream) {
         Ok(true) => {}
         Ok(false) => {
@@ -99,12 +102,12 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
         Err(_) => return Ok(()), // malformed frame: nothing to respond to, nothing to act on
     };
 
-    let response = dispatch(request);
+    let response = dispatch(request, worker);
     write_message(&mut writer, &response)
         .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
 }
 
-fn dispatch(request: ClientMessage) -> ServerMessage {
+fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
     if request.protocol_version() != PROTOCOL_VERSION {
         return ServerMessage::Error {
             protocol_version: PROTOCOL_VERSION,
@@ -119,9 +122,23 @@ fn dispatch(request: ClientMessage) -> ServerMessage {
         ClientMessage::Ping { .. } => ServerMessage::Pong {
             protocol_version: PROTOCOL_VERSION,
         },
-        ClientMessage::Hook { .. } => ServerMessage::Error {
-            protocol_version: PROTOCOL_VERSION,
-            message: "hook evaluation is not wired up in this daemon build yet".to_string(),
+        ClientMessage::Hook {
+            hook_event,
+            cli,
+            stdin,
+            cwd,
+            ..
+        } => match worker.call(&hook_event, &cli, &stdin, cwd.as_deref()) {
+            Ok(outcome) => ServerMessage::HookResult {
+                protocol_version: PROTOCOL_VERSION,
+                exit_code: outcome.exit_code,
+                stdout: outcome.stdout,
+                stderr: outcome.stderr,
+            },
+            Err(err) => ServerMessage::Error {
+                protocol_version: PROTOCOL_VERSION,
+                message: format!("worker call failed: {err}"),
+            },
         },
     }
 }
@@ -129,6 +146,7 @@ fn dispatch(request: ClientMessage) -> ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::worker::WorkerCommand;
     use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
@@ -151,11 +169,48 @@ mod tests {
             .as_nanos() as u64
     }
 
-    fn start_test_server(socket_path: PathBuf) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {
+    /// A `WorkerCommand` that never produces a working worker — for tests
+    /// that don't care about Hook responses and just need *a* command
+    /// (Ping never touches the worker at all).
+    fn broken_worker_cmd() -> WorkerCommand {
+        WorkerCommand::shell("true")
+    }
+
+    /// Owns a running test server + the worker it supervises. Shuts the
+    /// server down and joins its thread on drop — including during an
+    /// unwind from a failed `assert!`/`.unwrap()` — so a failing test
+    /// cleans up its spawned worker process (via `Worker::drop`'s
+    /// process-group kill, see worker.rs) exactly as reliably as a passing
+    /// one. Before this guard existed, a panic between `start_test_server`
+    /// and the manual `shutdown.store` + `handle.join()` at the end of a
+    /// test permanently orphaned the server thread and its live `bun`
+    /// worker subprocess — reproduced live: three orphaned
+    /// `failproofai-worker.mjs` processes were still running, minutes
+    /// later, from earlier iterations of this very test file.
+    struct TestServerGuard {
+        shutdown: Arc<AtomicBool>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Drop for TestServerGuard {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn start_test_server_with_worker(
+        socket_path: PathBuf,
+        worker_cmd: WorkerCommand,
+    ) -> TestServerGuard {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
+        let worker_socket_path = temp_socket_path("worker-internal");
         let handle = std::thread::spawn(move || {
-            let server = Server::bind(&socket_path).expect("bind should succeed");
+            let worker = Arc::new(crate::worker::Worker::new(worker_socket_path, worker_cmd));
+            let server = Server::bind(&socket_path, worker).expect("bind should succeed");
             server
                 .run_until(shutdown_clone)
                 .expect("run_until should not error");
@@ -163,13 +218,20 @@ mod tests {
         // Give the background thread a moment to actually bind before the
         // test tries to connect.
         std::thread::sleep(Duration::from_millis(50));
-        (shutdown, handle)
+        TestServerGuard {
+            shutdown,
+            handle: Some(handle),
+        }
+    }
+
+    fn start_test_server(socket_path: PathBuf) -> TestServerGuard {
+        start_test_server_with_worker(socket_path, broken_worker_cmd())
     }
 
     #[test]
     fn ping_gets_pong() {
         let socket_path = temp_socket_path("ping");
-        let (shutdown, handle) = start_test_server(socket_path.clone());
+        let _guard = start_test_server(socket_path.clone());
 
         let mut stream = UnixStream::connect(&socket_path).unwrap();
         write_message(
@@ -186,15 +248,12 @@ mod tests {
                 protocol_version: PROTOCOL_VERSION
             }
         );
-
-        shutdown.store(true, Ordering::Relaxed);
-        handle.join().unwrap();
     }
 
     #[test]
-    fn hook_request_gets_a_not_yet_implemented_error_in_this_stage() {
-        let socket_path = temp_socket_path("hook-stub");
-        let (shutdown, handle) = start_test_server(socket_path.clone());
+    fn hook_request_gets_an_error_when_the_worker_cannot_be_reached() {
+        let socket_path = temp_socket_path("hook-broken-worker");
+        let _guard = start_test_server(socket_path.clone());
 
         let mut stream = UnixStream::connect(&socket_path).unwrap();
         write_message(
@@ -213,15 +272,94 @@ mod tests {
             ServerMessage::Error { .. } => {}
             other => panic!("expected Error, got {other:?}"),
         }
+    }
 
-        shutdown.store(true, Ordering::Relaxed);
-        handle.join().unwrap();
+    /// The real end-to-end path: a real `failproofaid` server relaying a
+    /// real Hook request to the real TypeScript worker (spawned via `bun`
+    /// against this repo's own `bin/failproofai-worker.mjs`), which runs
+    /// the actual, unmodified policy-evaluation engine. Proves Rust and TS
+    /// sides of the wire protocol actually agree, not just that each side's
+    /// own unit tests pass in isolation.
+    #[test]
+    fn relays_a_hook_request_to_the_real_typescript_worker_end_to_end() {
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("crates/failproofaid should be two levels under the repo root")
+            .to_path_buf();
+        let worker_script = repo_root.join("bin").join("failproofai-worker.mjs");
+        assert!(
+            worker_script.exists(),
+            "expected {worker_script:?} to exist"
+        );
+
+        // A real project dir with block-sudo enabled, so the response
+        // proves real policy evaluation ran, not just that SOME response
+        // came back.
+        let project_dir = std::env::temp_dir().join(format!(
+            "failproofaid-e2e-project-{}-{}",
+            std::process::id(),
+            fastrand_ish()
+        ));
+        std::fs::create_dir_all(project_dir.join(".failproofai")).unwrap();
+        std::fs::write(
+            project_dir
+                .join(".failproofai")
+                .join("policies-config.json"),
+            r#"{"enabledPolicies":["block-sudo"]}"#,
+        )
+        .unwrap();
+
+        let socket_path = temp_socket_path("hook-real-worker");
+        let worker_cmd = WorkerCommand::shell(format!("bun {}", worker_script.display()));
+        let _guard = start_test_server_with_worker(socket_path.clone(), worker_cmd);
+
+        let stdin = serde_json::json!({
+            "cwd": project_dir.to_string_lossy(),
+            "tool_name": "Bash",
+            "tool_input": { "command": "sudo rm -rf /" },
+        })
+        .to_string();
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Hook {
+                protocol_version: PROTOCOL_VERSION,
+                hook_event: "PreToolUse".to_string(),
+                cli: "claude".to_string(),
+                stdin,
+                cwd: Some(project_dir.to_string_lossy().to_string()),
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::HookResult {
+                exit_code, stdout, ..
+            } => {
+                // Claude's PreToolUse deny contract is JSON on stdout at
+                // exit 0 (hookSpecificOutput.permissionDecision), not a
+                // nonzero exit code.
+                assert_eq!(exit_code, 0);
+                assert!(
+                    stdout.contains("\"permissionDecision\":\"deny\""),
+                    "expected a real deny from block-sudo, got stdout: {stdout}"
+                );
+            }
+            other => panic!("expected HookResult, got {other:?}"),
+        }
+
+        std::fs::remove_dir_all(&project_dir).ok();
     }
 
     #[test]
     fn mismatched_protocol_version_gets_an_explicit_error() {
         let socket_path = temp_socket_path("version-mismatch");
-        let (shutdown, handle) = start_test_server(socket_path.clone());
+        let _guard = start_test_server(socket_path.clone());
 
         let mut stream = UnixStream::connect(&socket_path).unwrap();
         write_message(
@@ -238,9 +376,6 @@ mod tests {
             }
             other => panic!("expected Error, got {other:?}"),
         }
-
-        shutdown.store(true, Ordering::Relaxed);
-        handle.join().unwrap();
     }
 
     #[test]
@@ -250,7 +385,11 @@ mod tests {
         // socket, just a regular file at that path.
         std::fs::write(&socket_path, b"not a socket").unwrap();
 
-        let server = Server::bind(&socket_path).expect("bind should clear the stale file");
+        let worker = Arc::new(crate::worker::Worker::new(
+            temp_socket_path("stale-worker"),
+            broken_worker_cmd(),
+        ));
+        let server = Server::bind(&socket_path, worker).expect("bind should clear the stale file");
         drop(server);
         assert!(
             !socket_path.exists(),
@@ -261,7 +400,11 @@ mod tests {
     #[test]
     fn bound_socket_file_is_owner_only() {
         let socket_path = temp_socket_path("perms");
-        let server = Server::bind(&socket_path).unwrap();
+        let worker = Arc::new(crate::worker::Worker::new(
+            temp_socket_path("perms-worker"),
+            broken_worker_cmd(),
+        ));
+        let server = Server::bind(&socket_path, worker).unwrap();
         let mode = std::fs::metadata(&socket_path)
             .unwrap()
             .permissions()
@@ -274,7 +417,7 @@ mod tests {
     #[test]
     fn multiple_concurrent_pings_all_get_answered() {
         let socket_path = temp_socket_path("concurrent");
-        let (shutdown, handle) = start_test_server(socket_path.clone());
+        let _guard = start_test_server(socket_path.clone());
 
         let clients: Vec<_> = (0..8)
             .map(|_| {
@@ -301,8 +444,5 @@ mod tests {
         for c in clients {
             c.join().unwrap();
         }
-
-        shutdown.store(true, Ordering::Relaxed);
-        handle.join().unwrap();
     }
 }

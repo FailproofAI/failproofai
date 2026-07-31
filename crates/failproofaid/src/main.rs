@@ -1,6 +1,7 @@
 mod lock;
 mod paths;
 mod server;
+mod worker;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,7 +25,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _singleton = lock::acquire(&lock_path)?;
 
     let socket_path = paths::socket_path()?;
-    let srv = server::Server::bind(&socket_path)?;
+    let worker_socket_path = paths::worker_socket_path()?;
+    let worker = Arc::new(worker::Worker::new(
+        worker_socket_path,
+        worker::WorkerCommand::from_env(),
+    ));
+    let srv = server::Server::bind(&socket_path, worker)?;
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 
     let shutdown = Arc::new(AtomicBool::new(false));

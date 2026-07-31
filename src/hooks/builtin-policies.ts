@@ -2,6 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join } from "node:path";
+import { statSync } from "node:fs";
 import { readFile, writeFile, stat, open } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -240,22 +241,45 @@ const HELM_RE = /(?:^|[;\n]|&&|\|\|?|&)\s*helm(?:\s|$)/;
 // failproofai's own workflow policies depend on them.
 const GH_PIPELINE_RE = /(?:^|[;\n]|&&|\|\|?|&)\s*gh\s+(?:workflow\s+(?:run|enable|disable)|run\s+(?:rerun|cancel)|pr\s+merge|release\s+(?:create|delete)|cache\s+delete|secret\s+(?:set|delete))\b/;
 
-// Caches the current branch per cwd to avoid repeated execSync calls.
-// Trade-off: if the user switches branches externally mid-session, the cache serves
-// the stale value until the process restarts. This is acceptable since branch switches
-// during an active Claude session are rare.
-const gitBranchCache = new Map<string, string>();
+// Caches the current branch per cwd to avoid repeated execSync calls, gated
+// on .git/HEAD's mtime rather than reused unconditionally for the life of
+// the process. In the one-shot-process model that unconditional reuse cost
+// nothing (the cache never outlived a single hook call), but the daemon's
+// warm worker keeps this Map alive across many calls and potentially many
+// different projects' cwds — reusing a branch name forever would silently
+// deny/allow a Stop based on a branch the user checked out an hour ago.
+// git updates .git/HEAD's mtime on every checkout/switch, so a cheap local
+// statSync (no subprocess) is a real, precise invalidation signal. Falls
+// back to always re-fetching (no caching) when .git/HEAD can't be stat'd
+// (worktrees/submodules), matching today's behavior for that case. Bounded
+// at 500 entries so a warm worker touching many projects over its lifetime
+// doesn't grow this unboundedly.
+const gitBranchCache = new Map<string, { branch: string; headMtimeMs: number }>();
+const GIT_BRANCH_CACHE_MAX_ENTRIES = 500;
+
+function statGitHeadMtimeMs(cwd: string): number | null {
+  try {
+    return statSync(join(cwd, ".git", "HEAD")).mtimeMs;
+  } catch {
+    return null;
+  }
+}
 
 function getCurrentBranch(cwd: string): string | null {
   try {
-    let branch = gitBranchCache.get(cwd);
-    if (branch === undefined) {
-      branch = execSync("git rev-parse --abbrev-ref HEAD", {
-        cwd,
-        encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
-        timeout: 3000,
-      }).trim();
-      gitBranchCache.set(cwd, branch);
+    const headMtimeMs = statGitHeadMtimeMs(cwd);
+    const cached = gitBranchCache.get(cwd);
+    if (cached && headMtimeMs !== null && cached.headMtimeMs === headMtimeMs) {
+      return cached.branch || null;
+    }
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd,
+      encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      timeout: 3000,
+    }).trim();
+    if (headMtimeMs !== null) {
+      if (gitBranchCache.size >= GIT_BRANCH_CACHE_MAX_ENTRIES) gitBranchCache.clear();
+      gitBranchCache.set(cwd, { branch, headMtimeMs });
     }
     return branch || null;
   } catch {

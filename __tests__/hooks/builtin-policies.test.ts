@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { readFile } from "node:fs/promises";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { execSync, execFileSync } from "node:child_process";
 import { BUILTIN_POLICIES, registerBuiltinPolicies, clearGitBranchCache } from "../../src/hooks/builtin-policies";
 import { getPoliciesForEvent, clearPolicies } from "../../src/hooks/policy-registry";
@@ -3093,6 +3096,99 @@ describe("hooks/builtin-policies", () => {
       const result = await policy.fn(ctx);
       expect(result.decision).toBe("allow");
       expect(result.reason).toContain("origin/develop");
+    });
+  });
+
+  describe("getCurrentBranch mtime-gated caching (via require-pr-before-stop)", () => {
+    // Exercises the internal, unexported getCurrentBranch through a real
+    // policy — this is specifically testing the new .git/HEAD-mtime cache
+    // invalidation added for the daemon's warm worker (see builtin-policies.ts):
+    // a branch name must never be served stale once .git/HEAD's mtime changes,
+    // and must be reused (no extra execSync call) while it hasn't.
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "require-pr-before-stop")!;
+    let tmpCwd: string;
+    let headPath: string;
+
+    beforeEach(() => {
+      tmpCwd = mkdtempSync(join(tmpdir(), "fpai-branch-cache-test-"));
+      mkdirSync(join(tmpCwd, ".git"), { recursive: true });
+      headPath = join(tmpCwd, ".git", "HEAD");
+      writeFileSync(headPath, "ref: refs/heads/main\n");
+    });
+
+    afterEach(() => {
+      vi.mocked(execSync).mockReset();
+      vi.mocked(execFileSync).mockReset();
+      clearGitBranchCache();
+      rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    function mockBranch(branch: string) {
+      vi.mocked(execSync).mockImplementation((cmd: string) => {
+        if (typeof cmd === "string" && cmd.includes("gh --version")) return "/usr/bin/gh\n";
+        if (typeof cmd === "string" && cmd.includes("rev-parse --abbrev-ref")) return `${branch}\n`;
+        if (typeof cmd === "string" && cmd.includes("gh pr view")) throw new Error("no pull requests found");
+        return "";
+      });
+      vi.mocked(execFileSync).mockImplementation((_cmd: string, args?: readonly string[]) => {
+        const joined = args?.join(" ") ?? "";
+        if (joined.includes("log") && joined.includes("..HEAD")) return "abc123 some commit\n";
+        if (joined.includes("diff") && joined.includes("--stat")) return " src/index.ts | 2 +-\n";
+        return "";
+      });
+    }
+
+    it("reuses the cached branch across calls while .git/HEAD's mtime is unchanged", async () => {
+      mockBranch("first-branch");
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: tmpCwd } });
+      const first = await policy.fn(ctx);
+      expect(first.decision).toBe("deny");
+      expect(first.reason).toContain('"first-branch"');
+
+      // Change what execSync would report WITHOUT touching .git/HEAD's mtime —
+      // a correct cache must still serve the first call's branch.
+      mockBranch("second-branch");
+      const second = await policy.fn(ctx);
+      expect(second.reason).toContain('"first-branch"');
+      expect(second.reason).not.toContain('"second-branch"');
+    });
+
+    it("re-fetches the branch once .git/HEAD's mtime changes", async () => {
+      mockBranch("first-branch");
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: tmpCwd } });
+      const first = await policy.fn(ctx);
+      expect(first.reason).toContain('"first-branch"');
+
+      // A real checkout/switch updates .git/HEAD's mtime — simulate that
+      // directly rather than relying on wall-clock drift between two fast
+      // calls, which could land within the filesystem's mtime resolution.
+      writeFileSync(headPath, "ref: refs/heads/second-branch\n");
+      const bumped = new Date(Date.now() + 5000);
+      utimesSync(headPath, bumped, bumped);
+
+      mockBranch("second-branch");
+      const second = await policy.fn(ctx);
+      expect(second.reason).toContain('"second-branch"');
+      expect(second.reason).not.toContain('"first-branch"');
+    });
+
+    it("does not cache when .git/HEAD cannot be stat'd (e.g. a worktree/submodule layout)", async () => {
+      // No .git directory at all under this cwd.
+      const noGitCwd = mkdtempSync(join(tmpdir(), "fpai-branch-cache-nogit-"));
+      try {
+        mockBranch("first-branch");
+        const ctx = makeCtx({ eventType: "Stop", session: { cwd: noGitCwd } });
+        const first = await policy.fn(ctx);
+        expect(first.reason).toContain('"first-branch"');
+
+        mockBranch("second-branch");
+        const second = await policy.fn(ctx);
+        // Without a stat-able .git/HEAD, every call must re-fetch — matching
+        // today's behavior for this case rather than caching indefinitely.
+        expect(second.reason).toContain('"second-branch"');
+      } finally {
+        rmSync(noGitCwd, { recursive: true, force: true });
+      }
     });
   });
 

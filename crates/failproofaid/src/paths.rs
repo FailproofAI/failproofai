@@ -37,6 +37,18 @@ pub fn lock_path() -> io::Result<PathBuf> {
     Ok(run_dir()?.join("failproofaid.lock"))
 }
 
+/// Where the daemon tells the worker subprocess to listen — a second
+/// socket, distinct from `socket_path()`, that only this process ever
+/// connects to. Overridable via `FAILPROOFAI_WORKER_SOCKET` for local dev
+/// (mirrors `FAILPROOFAI_DAEMON_SOCKET`'s override for the client-facing
+/// socket).
+pub fn worker_socket_path() -> io::Result<PathBuf> {
+    if let Some(socket_override) = std::env::var_os("FAILPROOFAI_WORKER_SOCKET") {
+        return Ok(PathBuf::from(socket_override));
+    }
+    Ok(run_dir()?.join("worker.sock"))
+}
+
 /// Creates the run directory (`0700`) if it doesn't exist yet. This
 /// directory holds a socket that evaluates security-relevant decisions, so
 /// a freshly created one is always locked to owner-only.

@@ -868,10 +868,11 @@ After every `git push`, run `gh run watch` or poll `gh run list --limit 3` until
 finish. If any job fails, **stop and fix it before continuing**. Never leave a red CI.
 
 `.github/workflows/ci.yml` runs these jobs on every push — all must pass:
+
 | Job | Command |
 |-----|---------|
 | quality | lint + tsc + version-consistency check (now also covers `Cargo.toml`'s workspace version and the `packages/*/package.json`/`optionalDependencies` versions against root `package.json`) |
-| rust-quality | `cargo fmt --check` + `cargo clippy` + `cargo test --workspace` — gated no-op (green with no real steps) until `crates/*/Cargo.toml` exists |
+| rust-quality | `cargo fmt --check` + `cargo clippy` + `cargo test --workspace`. `cargo test` spawns the real TS worker via `bun`, so the job installs bun too. (The steps stay gated on `crates/*/Cargo.toml` existing — a zero-member workspace hard-errors — but both crates are present now, so they all run for real.) |
 | test | `bun run test:run` (unit, 3 env configs) |
 | build | `bun run build` (Next.js + `dist/index.js` + `dist/cli.mjs` + `dist/worker.mjs`) |
 | test-e2e | `bun run test:e2e` |
@@ -971,16 +972,32 @@ src/hooks/
                               stdout wrapper called by both bin/failproofai.mjs and tests)
   worker-server.ts           Listens on the daemon-spawned worker's Unix socket, serializes
                               concurrent evaluateHookEvent() calls through one async queue
-  daemon-client.ts           isDaemonConfigured() + tryDaemonHook(); the ~150ms
-                              fail-closed budget for a healthy *warm* daemon — see the
-                              worker pre-warming note in worker.rs below for why that
-                              budget only holds once the worker is warm, and the
-                              awaitTelemetryFlush note in handler.ts for a bug class
-                              that silently blew through it even when warm
+  daemon-client.ts           isDaemonConfigured() + tryDaemonHook(). TWO budgets, not
+                              one: ~150ms to CONNECT (the "is anything listening" probe
+                              — a dead daemon must never add latency to a hook) and 30s
+                              for the RESPONSE once connected, matching worker.rs's own
+                              read timeout. They are separate because a timeout here is
+                              a DENY on a daemon-configured machine, and one 150ms
+                              budget over the whole roundtrip made a slow-but-correct
+                              evaluation (handler.ts allows 10s per custom policy;
+                              worker-server.ts serializes) indistinguishable from a dead
+                              daemon. See also the worker pre-warming note in worker.rs
+                              below, and the awaitTelemetryFlush note in handler.ts for
+                              a bug class that silently blew through the budget even
+                              when warm
   daemon-service.ts          installDaemonService()/uninstallDaemonService()/
-                              daemonServiceStatus() — systemd --user unit / launchd
-                              LaunchAgent generation; called directly by configure-wizard.ts,
-                              no public `failproofai daemon` subcommand
+                              daemonServiceStatus()/setDaemonConfigured() — systemd
+                              --user unit / launchd LaunchAgent generation; called
+                              directly by configure-wizard.ts, no public
+                              `failproofai daemon` subcommand. install waits for the
+                              service to reach AND HOLD a running state before
+                              reporting success (a Type=simple unit reports active the
+                              moment it forks, so one reading passes a daemon that died
+                              at startup), and uninstall clears daemonConfigured first
+                              and unconditionally — leaving that flag set with no daemon
+                              to reach denies every hook event on the machine, across
+                              all 11 CLIs, recoverable only by hand-editing
+                              ~/.failproofai/policies-config.json
   manager.ts                 policies --install / --uninstall / list
 src/index.ts                 Public API entry point → compiled to dist/index.js
 dist/index.js                CJS bundle (built by `bun run build`; shipped in npm pkg)

@@ -17,11 +17,18 @@ vi.mock("../../src/hooks/manager", () => ({ installHooks: vi.fn(async () => {}) 
 // below drive the wizard with scope "user", which is exactly the condition
 // that triggers it. Mocked so an ordinary unit test run never touches this
 // machine's real systemd/launchd state.
-vi.mock("../../src/hooks/daemon-service", () => ({
-  isDaemonSupportedPlatform: vi.fn(() => false),
-  installDaemonService: vi.fn(async () => ({ installed: false, reason: "mocked" })),
-  daemonServiceFilePath: vi.fn(() => null),
-}));
+// Only the three that shell out are stubbed; setDaemonConfigured stays real
+// so the `daemonConfigured` assertions below test the actual marker write
+// (against this file's isolated HOME), not a mock of it.
+vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/daemon-service")>();
+  return {
+    ...actual,
+    isDaemonSupportedPlatform: vi.fn(() => false),
+    installDaemonService: vi.fn(async () => ({ installed: false, reason: "mocked" })),
+    daemonServiceFilePath: vi.fn(() => null),
+  };
+});
 // The wizard kicks off the audit pipeline after a completed apply; stub it so
 // tests never scan real history.
 vi.mock("../../src/audit/cli", () => ({ runPostSetupAudit: vi.fn(async () => {}) }));
@@ -46,11 +53,13 @@ import {
   maybeFirstRunConfigure,
   hasSeenLauncher,
   markLauncherSeen,
+  classifyDaemonInstallFailure,
 } from "../../src/hooks/configure-wizard";
 import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
+import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
 const mkTtyStdout = (): TTYOut =>
@@ -434,6 +443,49 @@ describe("configure-wizard daemon integration", () => {
 
     expect(installDaemonService).not.toHaveBeenCalled();
     expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+  });
+
+  it("sends a classification, never the raw reason, in the daemon-install telemetry", async () => {
+    // The raw reason is an errno message built from homedir()-derived paths
+    // ("EACCES: permission denied, open '/home/<user>/.config/systemd/...'"),
+    // so it carries the OS username and the local filesystem layout. Only a
+    // bounded code may leave the machine; the full text stays in the local log.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(installDaemonService).mockResolvedValue({
+      installed: false,
+      reason: "EACCES: permission denied, open '/home/somebody/.config/systemd/user/failproofaid.service'",
+    });
+    vi.mocked(selectOne).mockResolvedValueOnce("user").mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
+
+    await runConfigureWizard(ttyIO());
+
+    // Last, not first: mock calls accumulate across the tests in this block.
+    const call = vi
+      .mocked(trackHookEvent)
+      .mock.calls.filter(([, event]) => event === "configure_daemon_install")
+      .at(-1);
+    expect(call).toBeDefined();
+    const props = call![2] as Record<string, unknown>;
+    expect(props.installed).toBe(false);
+    expect(props.reason).toBe("service_manager_error");
+    expect(JSON.stringify(props)).not.toContain("somebody");
+  });
+
+  it("classifies each daemon-install failure mode into a fixed set of codes", () => {
+    expect(classifyDaemonInstallFailure("failproofaid is not supported on win32 yet")).toBe(
+      "unsupported_platform",
+    );
+    expect(
+      classifyDaemonInstallFailure("failproofaid binary not found for this platform (no matching …)"),
+    ).toBe("binary_not_found");
+    expect(
+      classifyDaemonInstallFailure("failproofaid was installed but did not reach a running state within 5000ms"),
+    ).toBe("did_not_start");
+    expect(classifyDaemonInstallFailure("ENOSPC: no space left on device, write")).toBe(
+      "service_manager_error",
+    );
+    expect(classifyDaemonInstallFailure(undefined)).toBe("unknown");
   });
 
   it("does not fail the wizard or mark daemonConfigured when daemon install fails", async () => {

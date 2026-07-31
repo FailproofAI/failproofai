@@ -21,16 +21,29 @@ import { readHooksConfig } from "./hooks-config";
 const PROTOCOL_VERSION = 1;
 
 /**
- * Generous for a healthy warm daemon over a local Unix socket (sub-
- * millisecond connect, no network) — if a healthy daemon needs anywhere
- * near this, something is already wrong and falling through to the
- * caller's fail-closed/in-process path is the correct response. Covers
- * connect + roundtrip as a single budget rather than two separately
- * tracked sub-timeouts: a slow connect and a slow roundtrip are correlated
- * symptoms of the same "daemon unhealthy" state, so splitting them buys
- * little in practice.
+ * Reaching the daemon and getting an answer out of it are two different
+ * questions, and the caller's fail-closed policy makes conflating them
+ * expensive: on a daemon-configured machine a timeout here is a *deny*, not
+ * a fallback.
+ *
+ * `CONNECT` is the "is anything listening?" budget. Generous for a local
+ * Unix socket (sub-millisecond, no network); a daemon that can't answer an
+ * accept inside this is unhealthy, and failing fast is exactly right — this
+ * is the budget that keeps a dead daemon from adding latency to every hook.
+ *
+ * `RESPONSE` starts once the connection is established, and must cover the
+ * whole evaluation the daemon runs on our behalf: `handler.ts` allows each
+ * custom policy up to 10s, `worker-server.ts` serializes requests so one
+ * can queue behind another, and a project with many convention policies
+ * pays real file I/O on its first evaluation. Budgeting those at connect
+ * speed turned a slow-but-correct evaluation into an intermittent denial of
+ * a legitimate tool call. Matched to the daemon's own ceiling for the same
+ * roundtrip (`worker.rs` sets a 30s read timeout on the worker socket), so
+ * this side never gives up on a request the daemon is still honestly
+ * working on.
  */
-const DAEMON_ATTEMPT_TIMEOUT_MS = 150;
+const DAEMON_CONNECT_TIMEOUT_MS = 150;
+const DAEMON_RESPONSE_TIMEOUT_MS = 30_000;
 
 const MAX_FRAME_LEN = 16 * 1024 * 1024;
 
@@ -96,6 +109,16 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
 
   return new Promise<DaemonHookResponse | null>((resolvePromise) => {
     let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = (ms: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => finish(null), ms);
+      // Don't let this timer alone keep the process alive if everything else
+      // has already finished — it's always cleared on the success/failure
+      // paths below, this just avoids it being the sole reason a --hook
+      // process lingers if something upstream forgets to await us.
+      timer.unref?.();
+    };
     const finish = (result: DaemonHookResponse | null) => {
       if (settled) return;
       settled = true;
@@ -106,18 +129,15 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
     };
 
     const socket = createConnection({ path: socketPath() });
-
-    const timer = setTimeout(() => finish(null), DAEMON_ATTEMPT_TIMEOUT_MS);
-    // Don't let this timer alone keep the process alive if everything else
-    // has already finished — it's always cleared on the success/failure
-    // paths above, this just avoids it being the sole reason a --hook
-    // process lingers if something upstream forgets to await us.
-    timer.unref?.();
+    arm(DAEMON_CONNECT_TIMEOUT_MS);
 
     let recvBuf = Buffer.alloc(0);
     let declaredLen: number | null = null;
 
     socket.on("connect", () => {
+      // Connected: the daemon is demonstrably reachable, so the question is
+      // no longer "is it there" but "how long does this evaluation take".
+      arm(DAEMON_RESPONSE_TIMEOUT_MS);
       socket.write(
         encodeFrame({
           type: "hook",

@@ -72,56 +72,64 @@ function handleConnection(socket: Socket): void {
   socket.on("data", (chunk: Buffer) => {
     recvBuf = Buffer.concat([recvBuf, chunk]);
 
-    if (declaredLen === null) {
-      if (recvBuf.length < 4) return;
-      declaredLen = recvBuf.readUInt32BE(0);
-      if (declaredLen > MAX_FRAME_LEN) {
-        socket.destroy();
-        return;
+    // Drain every *complete* frame this read made available, not just the
+    // first. Two requests written back-to-back on one persistent connection
+    // routinely coalesce into a single `data` event; decoding one and
+    // leaving the rest in `recvBuf` would strand the second request until
+    // some later write happened to arrive, and the caller would meanwhile
+    // hit its own fail-closed timeout on a daemon that was working fine.
+    for (;;) {
+      if (declaredLen === null) {
+        if (recvBuf.length < 4) return;
+        declaredLen = recvBuf.readUInt32BE(0);
+        if (declaredLen > MAX_FRAME_LEN) {
+          socket.destroy();
+          return;
+        }
+        recvBuf = recvBuf.subarray(4);
       }
-      recvBuf = recvBuf.subarray(4);
-    }
 
-    if (recvBuf.length < declaredLen) return;
+      if (recvBuf.length < declaredLen) return;
 
-    const body = recvBuf.subarray(0, declaredLen);
-    recvBuf = recvBuf.subarray(declaredLen);
-    declaredLen = null;
+      const body = recvBuf.subarray(0, declaredLen);
+      recvBuf = recvBuf.subarray(declaredLen);
+      declaredLen = null;
 
-    let message: unknown;
-    try {
-      message = JSON.parse(body.toString("utf8"));
-    } catch {
-      socket.write(encodeFrame({ type: "error", message: "malformed request frame" }));
-      return;
-    }
-
-    if (!isWorkerHookRequest(message)) {
-      socket.write(encodeFrame({ type: "error", message: "unrecognized request shape" }));
-      return;
-    }
-    const request = message;
-
-    enqueue(async () => {
+      let message: unknown;
       try {
-        const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
-          awaitTelemetryFlush: false,
-          fallbackCwd: request.cwd,
-        });
-        socket.write(
-          encodeFrame({
-            type: "hookResult",
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }),
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
-        socket.write(encodeFrame({ type: "error", message: msg }));
+        message = JSON.parse(body.toString("utf8"));
+      } catch {
+        socket.write(encodeFrame({ type: "error", message: "malformed request frame" }));
+        continue;
       }
-    });
+
+      if (!isWorkerHookRequest(message)) {
+        socket.write(encodeFrame({ type: "error", message: "unrecognized request shape" }));
+        continue;
+      }
+      const request = message;
+
+      enqueue(async () => {
+        try {
+          const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
+            awaitTelemetryFlush: false,
+            fallbackCwd: request.cwd,
+          });
+          socket.write(
+            encodeFrame({
+              type: "hookResult",
+              exitCode: result.exitCode,
+              stdout: result.stdout,
+              stderr: result.stderr,
+            }),
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
+          socket.write(encodeFrame({ type: "error", message: msg }));
+        }
+      });
+    }
   });
 
   socket.on("error", () => {

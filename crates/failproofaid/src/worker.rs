@@ -41,6 +41,7 @@ impl std::fmt::Display for WorkerError {
 
 impl std::error::Error for WorkerError {}
 
+#[derive(Debug)]
 pub struct HookOutcome {
     pub exit_code: i32,
     pub stdout: String,
@@ -101,9 +102,13 @@ impl WorkerCommand {
             // harness, `cargo test | tail`, a shell capturing output), that
             // pipe never sees EOF as long as the worker — however it exits
             // — still holds a copy open. Piped fds belong to this process
-            // alone and close cleanly when the worker does. The worker's
-            // own startup line is a single short write, well within a
-            // pipe's OS buffer, so leaving these unread never blocks it.
+            // alone and close cleanly when the worker does. Both pipes are
+            // drained below: the worker outlives the daemon's whole
+            // lifetime running real policy code, so any `console.log` from
+            // a user's custom policy accumulates, and an undrained pipe
+            // would eventually fill its OS buffer and block the worker
+            // mid-write — every later hook call would then fail closed
+            // until the daemon restarted.
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // New session + process group leader: `sh -c "<cmd>"` is not
@@ -113,7 +118,24 @@ impl WorkerCommand {
             // Killing the whole group (see `kill_process_group`) reaches it
             // either way.
             .process_group(0);
-        command.spawn()
+        let mut child = command.spawn()?;
+        if let Some(out) = child.stdout.take() {
+            std::thread::spawn(move || forward_worker_output("stdout", out));
+        }
+        if let Some(err) = child.stderr.take() {
+            std::thread::spawn(move || forward_worker_output("stderr", err));
+        }
+        Ok(child)
+    }
+}
+
+/// Drains one of the worker's output pipes for its whole life, relaying it
+/// to the daemon's own stderr (which systemd/launchd already capture into
+/// the service log). Ends on EOF when the worker exits.
+fn forward_worker_output(label: &'static str, pipe: impl io::Read) {
+    use std::io::BufRead;
+    for line in io::BufReader::new(pipe).lines().map_while(Result::ok) {
+        eprintln!("[failproofaid] worker {label}: {line}");
     }
 }
 
@@ -144,9 +166,20 @@ impl Worker {
     }
 
     /// Spawns the worker if it isn't already running (or has died since the
-    /// last check), then waits for its socket file to appear — failing fast
-    /// (rather than waiting out the full startup deadline) if the process
-    /// exits before ever creating one, e.g. a broken FAILPROOFAI_WORKER_CMD.
+    /// last check), then waits for it to actually accept connections —
+    /// failing fast (rather than waiting out the full startup deadline) if
+    /// the process exits before ever getting there, e.g. a broken
+    /// FAILPROOFAI_WORKER_CMD.
+    ///
+    /// Readiness is a real `connect()`, not `socket_path.exists()`: a Unix
+    /// socket file outlives the process that bound it, so a dead worker
+    /// always leaves one behind. `exists()` would see the *previous*
+    /// worker's leftover file the instant this one is spawned, break out of
+    /// the wait immediately, and hand `call()` a socket nothing is
+    /// listening on — `ECONNREFUSED` on every request until the daemon
+    /// restarted, which is exactly the crash-recovery path this loop is
+    /// here to provide. The stale file is removed first for the same
+    /// reason.
     fn ensure_started(&self) -> Result<(), WorkerError> {
         let mut guard = self.child.lock().unwrap();
         let needs_spawn = match guard.as_mut() {
@@ -154,10 +187,11 @@ impl Worker {
             None => true,
         };
         if needs_spawn {
+            let _ = std::fs::remove_file(&self.socket_path);
             let mut child = self.cmd.spawn(&self.socket_path).map_err(WorkerError::Io)?;
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
-                if self.socket_path.exists() {
+                if UnixStream::connect(&self.socket_path).is_ok() {
                     break;
                 }
                 if let Ok(Some(status)) = child.try_wait() {
@@ -167,6 +201,7 @@ impl Worker {
                 }
                 if Instant::now() >= deadline {
                     kill_process_group(&mut child);
+                    let _ = std::fs::remove_file(&self.socket_path);
                     return Err(WorkerError::StartupTimedOut);
                 }
                 std::thread::sleep(Duration::from_millis(20));
@@ -269,6 +304,97 @@ impl Drop for Worker {
             && let Some(mut child) = guard.take()
         {
             kill_process_group(&mut child);
+            // The worker's socket file survives the process that bound it,
+            // so a clean shutdown has to clear it too — otherwise the next
+            // daemon inherits debris that looks, to anything checking the
+            // filesystem, like a live worker.
+            let _ = std::fs::remove_file(&self.socket_path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    fn temp_socket_path(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "failproofaid-worker-test-{}-{}-{}",
+            std::process::id(),
+            name,
+            nanos
+        ))
+    }
+
+    /// The restart-on-crash path: a worker that died left its socket file
+    /// behind, and the supervisor must not read that file's mere existence
+    /// as "a worker is listening". Before the readiness probe became a real
+    /// `connect()`, this returned `Ok(())` immediately and every later
+    /// request hit `ECONNREFUSED` on a dead socket.
+    #[test]
+    fn a_stale_socket_file_is_not_mistaken_for_a_live_worker() {
+        let socket_path = temp_socket_path("stale");
+        // Exactly the debris a dead worker leaves: std does not unlink the
+        // path when the listener is dropped.
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        drop(listener);
+        assert!(
+            socket_path.exists(),
+            "premise: a bound-then-dropped socket file outlives its listener"
+        );
+
+        // A "worker" that exits without ever binding. The stale file is the
+        // only thing on disk that could be mistaken for readiness.
+        let worker = Worker::new(socket_path.clone(), WorkerCommand::shell("exit 0"));
+        let err = worker
+            .call("PreToolUse", "claude", "{}", None)
+            .expect_err("a worker that never bound must not report ready");
+        assert!(
+            err.to_string()
+                .contains("exited before creating its socket"),
+            "got: {err}"
+        );
+
+        std::fs::remove_file(&socket_path).ok();
+    }
+
+    /// Readiness against the real worker, over a socket path that already
+    /// holds a stale file — the exact shape of a restart after an unclean
+    /// exit. `ensure_started` must clear the debris, wait for the new
+    /// worker to genuinely accept connections, and `Drop` must leave the
+    /// path clean again so the next daemon starts from a blank slate.
+    #[test]
+    fn restarts_over_a_stale_socket_file_and_cleans_up_on_drop() {
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("crates/failproofaid should be two levels under the repo root")
+            .to_path_buf();
+        let worker_script = repo_root.join("bin").join("failproofai-worker.mjs");
+
+        let socket_path = temp_socket_path("restart-over-stale");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        drop(listener);
+
+        let worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell(format!("bun {}", worker_script.display())),
+        );
+        worker
+            .ensure_started()
+            .expect("the worker should start over the stale file");
+        // Ready means *connectable*, not merely "a file is there".
+        UnixStream::connect(&socket_path).expect("a ready worker accepts connections");
+
+        drop(worker);
+        assert!(
+            !socket_path.exists(),
+            "Drop should remove the worker socket file"
+        );
     }
 }

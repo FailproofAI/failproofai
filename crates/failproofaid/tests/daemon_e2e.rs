@@ -4,9 +4,11 @@
 //! in-process unit tests in `src/server.rs` are.
 
 use fpai_ipc::{ClientMessage, PROTOCOL_VERSION, ServerMessage, read_message, write_message};
+use std::io::BufRead;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn binary_path() -> &'static str {
@@ -35,22 +37,94 @@ fn unique_socket_path(name: &str) -> PathBuf {
         .join("failproofaid.sock")
 }
 
-fn spawn_daemon(socket_path: &PathBuf) -> Child {
-    let child = Command::new(binary_path())
+/// Owns a spawned daemon subprocess and guarantees it is killed and reaped
+/// on scope exit — including during an unwind from a failed assertion.
+/// Without this, any panic between `spawn_daemon` and a test's explicit
+/// SIGTERM orphaned a live daemon (and the worker process group under it)
+/// for the rest of the machine's uptime.
+struct DaemonGuard {
+    child: Option<Child>,
+    /// Everything the daemon has written to stderr so far, drained
+    /// continuously on a background thread. Drained rather than merely
+    /// piped: an unread pipe fills at ~64 KiB and blocks the daemon
+    /// mid-write, hanging these tests. Kept so a failure can report what
+    /// the daemon itself said, which is the part actually worth reading.
+    stderr: Arc<Mutex<String>>,
+}
+
+impl DaemonGuard {
+    fn stderr(&self) -> String {
+        self.stderr.lock().unwrap().clone()
+    }
+
+    /// SIGTERM, then wait — the clean-shutdown path a systemd `stop` /
+    /// launchd unload takes. Consumes the child, so `Drop` becomes a no-op.
+    fn terminate(&mut self) -> ExitStatus {
+        let mut child = self.child.take().expect("daemon already reaped");
+        unsafe {
+            libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
+        }
+        child.wait().expect("daemon should exit after SIGTERM")
+    }
+}
+
+impl Drop for DaemonGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            child.kill().ok();
+            child.wait().ok();
+        }
+    }
+}
+
+fn spawn_daemon(socket_path: &PathBuf) -> DaemonGuard {
+    let mut child = Command::new(binary_path())
         .env("FAILPROOFAI_DAEMON_SOCKET", socket_path)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn failproofaid binary");
 
+    let stderr_log = Arc::new(Mutex::new(String::new()));
+    if let Some(pipe) = child.stderr.take() {
+        let sink = stderr_log.clone();
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(pipe).lines().map_while(Result::ok) {
+                sink.lock().unwrap().push_str(&line);
+                sink.lock().unwrap().push('\n');
+            }
+        });
+    }
+    let mut guard = DaemonGuard {
+        child: Some(child),
+        stderr: stderr_log,
+    };
+
     let deadline = Instant::now() + Duration::from_secs(5);
     while !socket_path.exists() {
+        // A daemon that died during startup should report *why* rather than
+        // burn the full deadline and then panic with no diagnosis.
+        if let Some(status) = guard
+            .child
+            .as_mut()
+            .expect("daemon still owned here")
+            .try_wait()
+            .expect("try_wait should not fail")
+        {
+            panic!(
+                "daemon exited before creating its socket ({status}). stderr:\n{}",
+                guard.stderr()
+            );
+        }
         if Instant::now() > deadline {
-            panic!("daemon never created its socket file within 5s");
+            panic!(
+                "daemon never created its socket file within 5s. stderr:\n{}",
+                guard.stderr()
+            );
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    child
+    guard
 }
 
 #[test]
@@ -67,7 +141,7 @@ fn version_flag_prints_a_version_and_exits_without_binding_a_socket() {
 #[test]
 fn real_binary_answers_ping_over_a_real_socket() {
     let socket_path = unique_socket_path("ping");
-    let mut child = spawn_daemon(&socket_path);
+    let mut daemon = spawn_daemon(&socket_path);
 
     let mut stream = UnixStream::connect(&socket_path).expect("connect should succeed");
     write_message(
@@ -85,10 +159,7 @@ fn real_binary_answers_ping_over_a_real_socket() {
         }
     );
 
-    unsafe {
-        libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
-    }
-    let status = child.wait().expect("daemon should exit after SIGTERM");
+    let status = daemon.terminate();
     assert!(
         status.success(),
         "daemon should exit 0 on SIGTERM, got {status:?}"
@@ -136,10 +207,7 @@ fn a_second_daemon_on_the_same_socket_refuses_to_start() {
         }
     );
 
-    unsafe {
-        libc::kill(first.id() as libc::pid_t, libc::SIGTERM);
-    }
-    first.wait().ok();
+    first.terminate();
 }
 
 #[test]
@@ -147,10 +215,7 @@ fn a_fresh_daemon_can_bind_again_after_the_previous_one_shut_down_cleanly() {
     let socket_path = unique_socket_path("restart");
 
     let mut first = spawn_daemon(&socket_path);
-    unsafe {
-        libc::kill(first.id() as libc::pid_t, libc::SIGTERM);
-    }
-    let status = first.wait().unwrap();
+    let status = first.terminate();
     assert!(status.success());
 
     // The lock is released by the kernel when the process exits, so a
@@ -172,8 +237,5 @@ fn a_fresh_daemon_can_bind_again_after_the_previous_one_shut_down_cleanly() {
         }
     );
 
-    unsafe {
-        libc::kill(second.id() as libc::pid_t, libc::SIGTERM);
-    }
-    second.wait().ok();
+    second.terminate();
 }

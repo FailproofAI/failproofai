@@ -14,12 +14,40 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+/// Bounds how long a single connection may hold its handler thread waiting
+/// on the peer. A client that connects and then sends nothing would
+/// otherwise park a thread for the daemon's entire lifetime, and those
+/// accumulate — the opposite of the "never a hang" promise above. Generous
+/// for a real client (which writes its request immediately after connect,
+/// over a local socket) and still bounded.
+const CONNECTION_IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Hard ceiling on connection-handling threads alive at once. The worker
+/// serializes evaluation anyway, so more than a handful in flight already
+/// means the daemon is badly backed up; refusing past this point turns
+/// "spawn threads until the process dies" into a bounded, logged overload
+/// that the client sees as an unreachable daemon (i.e. its own fail-closed
+/// path), which is the correct outcome for a daemon in that state.
+const MAX_INFLIGHT_CONNECTIONS: usize = 64;
 
 pub struct Server {
     listener: UnixListener,
     socket_path: PathBuf,
     worker: Arc<Worker>,
+}
+
+/// Decrements the in-flight connection count on scope exit, including
+/// during an unwind — a leaked count would permanently shrink the budget in
+/// [`MAX_INFLIGHT_CONNECTIONS`] and eventually wedge the daemon.
+struct InflightGuard(Arc<AtomicUsize>);
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 impl Server {
@@ -48,11 +76,22 @@ impl Server {
     /// blocked thread for the rest of the test process's life.
     pub fn run_until(&self, shutdown: Arc<AtomicBool>) -> io::Result<()> {
         self.listener.set_nonblocking(true)?;
+        let inflight = Arc::new(AtomicUsize::new(0));
         while !shutdown.load(Ordering::Relaxed) {
             match self.listener.accept() {
                 Ok((stream, _addr)) => {
+                    if inflight.load(Ordering::Relaxed) >= MAX_INFLIGHT_CONNECTIONS {
+                        log_connection_error(&io::Error::other(format!(
+                            "refusing connection: {MAX_INFLIGHT_CONNECTIONS} handlers already in flight"
+                        )));
+                        drop(stream);
+                        continue;
+                    }
+                    inflight.fetch_add(1, Ordering::Relaxed);
+                    let guard = InflightGuard(inflight.clone());
                     let worker = self.worker.clone();
                     std::thread::spawn(move || {
+                        let _guard = guard;
                         if let Err(err) = handle_connection(stream, &worker) {
                             log_connection_error(&err);
                         }
@@ -93,6 +132,21 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
         }
         Err(err) => return Err(err),
     }
+
+    // `run_until` puts the *listener* in non-blocking mode. On Linux that
+    // doesn't reach accepted sockets (std uses `accept4`), but on
+    // BSD-derived systems — macOS, which this daemon supports via launchd —
+    // the accepted socket inherits `O_NONBLOCK` from the listener. Left
+    // inherited, `read_message` below returns `WouldBlock` the instant the
+    // client's bytes haven't landed yet, which this function would treat as
+    // a malformed frame and answer with silence: every hook call on macOS
+    // would fail closed. Set the mode explicitly rather than relying on
+    // per-platform accept semantics.
+    stream.set_nonblocking(false)?;
+    // Bound the peer's share of this thread's life in both directions (see
+    // CONNECTION_IO_TIMEOUT).
+    stream.set_read_timeout(Some(CONNECTION_IO_TIMEOUT))?;
+    stream.set_write_timeout(Some(CONNECTION_IO_TIMEOUT))?;
 
     let mut reader = stream.try_clone()?;
     let mut writer = stream;

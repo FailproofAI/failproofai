@@ -8,14 +8,77 @@
  * `configure-wizard.ts` calls the functions here directly, the same
  * relationship it already has with `manager.ts`'s `installHooks()`.
  */
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { hookLogWarn } from "./hook-logger";
+import { getConfigPathForScope } from "./hooks-config";
 
 const requireFromHere = createRequire(import.meta.url);
+
+/**
+ * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
+ * per-user session bus or to launchd, and a wedged session makes an
+ * unbounded `execFileSync` block forever — inside the interactive wizard
+ * that reads as a hang with no output at all (`stdio: "ignore"`), right
+ * after the user pressed "apply". A timeout throws instead, which the
+ * existing `catch` already turns into a clean `{ installed: false, reason }`.
+ */
+const SERVICE_CMD_TIMEOUT_MS = 10_000;
+
+/**
+ * How long to wait for the service manager to actually get the daemon into
+ * a running state after `enable --now` / `load -w`. Both commands return as
+ * soon as the job is accepted, which is well before the process has proven
+ * it can stay up.
+ */
+const SERVICE_START_TIMEOUT_MS = 5_000;
+const SERVICE_START_POLL_MS = 100;
+/**
+ * How long a unit has to still be running after it first reports running.
+ * `systemctl --user is-active` calls a `Type=simple` unit active the moment
+ * it forks, so a daemon that dies immediately still reports active once —
+ * a single check would wave through exactly the crash-at-startup case this
+ * is here to catch. Comfortably longer than the unit's `RestartSec=2`
+ * head start, so a daemon that already died reads as
+ * `activating (auto-restart)` by the time of the re-check.
+ */
+const SERVICE_SETTLE_MS = 750;
+
+/**
+ * Writes (or clears) the machine-wide `daemonConfigured` marker in
+ * `~/.failproofai/policies-config.json`.
+ *
+ * This flag is what makes `bin/failproofai.mjs` fail *closed* — deny every
+ * hook event rather than fall back to in-process evaluation — so it has to
+ * track "this machine has a daemon", not "a service manager once accepted a
+ * job". Install only sets it after the daemon is verified running; uninstall
+ * clears it, so removing the service restores the in-process path instead of
+ * leaving the machine denying every tool call across all 11 CLIs against a
+ * socket that no longer exists.
+ *
+ * Global scope only: whether *this machine* runs a daemon is not a
+ * per-project setting.
+ */
+export function setDaemonConfigured(value: boolean): void {
+  const path = getConfigPathForScope("user");
+  let config: Record<string, unknown> = {};
+  try {
+    if (existsSync(path)) config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  } catch {
+    return; // a malformed global config is the install path's problem, not ours
+  }
+  if (value) config.daemonConfigured = true;
+  else delete config.daemonConfigured;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
+  } catch {
+    /* best-effort: never fail a completed setup (or uninstall) over this flag */
+  }
+}
 
 export type DaemonServiceStatus = "running" | "stopped" | "not-installed" | "unsupported-platform";
 
@@ -210,8 +273,14 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       const unitPath = systemdUnitPath();
       mkdirSync(dirname(unitPath), { recursive: true });
       writeFileSync(unitPath, systemdUnitContents(binaryPath, workerCmd), "utf8");
-      execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
-      execFileSync("systemctl", ["--user", "enable", "--now", "failproofaid.service"], { stdio: "ignore" });
+      execFileSync("systemctl", ["--user", "daemon-reload"], {
+        stdio: "ignore",
+        timeout: SERVICE_CMD_TIMEOUT_MS,
+      });
+      execFileSync("systemctl", ["--user", "enable", "--now", "failproofaid.service"], {
+        stdio: "ignore",
+        timeout: SERVICE_CMD_TIMEOUT_MS,
+      });
     } else {
       const plistPath = launchdPlistPath();
       const logDir = resolve(homedir(), ".failproofai", "logs");
@@ -222,41 +291,96 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       // binary path (e.g. after an upgrade) is a no-op under plain `load`
       // if launchd thinks the label is already loaded.
       try {
-        execFileSync("launchctl", ["unload", plistPath], { stdio: "ignore" });
+        execFileSync("launchctl", ["unload", plistPath], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
       } catch {
         // Wasn't loaded — fine, this is the common case on a fresh install.
       }
-      execFileSync("launchctl", ["load", "-w", plistPath], { stdio: "ignore" });
+      execFileSync("launchctl", ["load", "-w", plistPath], {
+        stdio: "ignore",
+        timeout: SERVICE_CMD_TIMEOUT_MS,
+      });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     hookLogWarn(`daemon service install failed: ${msg}`);
     return { installed: false, reason: msg };
   }
+
+  // `enable --now` / `load -w` returning 0 only means the job was accepted.
+  // A daemon that dies at startup (missing shared library, a crash-looping
+  // worker, a binary the service manager can't execute) still gets a clean
+  // exit status here — and the caller would then set `daemonConfigured`,
+  // which makes every hook event on this machine fail closed against a
+  // daemon that isn't there. Confirm it actually reached a running state
+  // before reporting success.
+  if (!(await waitForDaemonRunning())) {
+    const reason = `failproofaid was installed but did not reach a running state within ${SERVICE_START_TIMEOUT_MS}ms (status: ${daemonServiceStatus()})`;
+    hookLogWarn(`daemon service install failed: ${reason}`);
+    return { installed: false, reason };
+  }
   return { installed: true };
 }
 
-/** Stops and removes the service. Best-effort: never throws. */
+/**
+ * Waits for the service to report running, then re-checks after a settle
+ * window (see `SERVICE_SETTLE_MS`) so a daemon that dies at startup doesn't
+ * pass on the strength of one optimistic reading.
+ */
+async function waitForDaemonRunning(): Promise<boolean> {
+  const deadline = Date.now() + SERVICE_START_TIMEOUT_MS;
+  for (;;) {
+    if (daemonServiceStatus() === "running") break;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, SERVICE_START_POLL_MS));
+  }
+  await new Promise((r) => setTimeout(r, SERVICE_SETTLE_MS));
+  return daemonServiceStatus() === "running";
+}
+
+/**
+ * Stops and removes the service, and clears the `daemonConfigured` marker
+ * so this machine goes back to in-process evaluation. Best-effort: never
+ * throws.
+ *
+ * The flag is cleared **first and unconditionally**: leaving it set with no
+ * daemon to reach is strictly worse than any failure this function can hit,
+ * because `bin/failproofai.mjs` fails closed on it and would deny every hook
+ * event on the machine with no recovery short of hand-editing
+ * `~/.failproofai/policies-config.json`.
+ */
 export async function uninstallDaemonService(): Promise<void> {
+  setDaemonConfigured(false);
   if (!isDaemonSupportedPlatform()) return;
   try {
     if (process.platform === "linux") {
       try {
-        execFileSync("systemctl", ["--user", "disable", "--now", "failproofaid.service"], { stdio: "ignore" });
+        execFileSync("systemctl", ["--user", "disable", "--now", "failproofaid.service"], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
       } catch {
         // Already stopped/not installed — fine.
       }
       const unitPath = systemdUnitPath();
       if (existsSync(unitPath)) unlinkSync(unitPath);
       try {
-        execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
+        execFileSync("systemctl", ["--user", "daemon-reload"], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
       } catch {
         // Best-effort.
       }
     } else {
       const plistPath = launchdPlistPath();
       try {
-        execFileSync("launchctl", ["unload", "-w", plistPath], { stdio: "ignore" });
+        execFileSync("launchctl", ["unload", "-w", plistPath], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
       } catch {
         // Already unloaded/not installed — fine.
       }
@@ -280,6 +404,7 @@ export function daemonServiceStatus(): DaemonServiceStatus {
     try {
       const out = execFileSync("systemctl", ["--user", "is-active", "failproofaid.service"], {
         stdio: ["ignore", "pipe", "ignore"],
+        timeout: SERVICE_CMD_TIMEOUT_MS,
       })
         .toString()
         .trim();
@@ -297,7 +422,10 @@ export function daemonServiceStatus(): DaemonServiceStatus {
   const plistPath = launchdPlistPath();
   if (!existsSync(plistPath)) return "not-installed";
   try {
-    const out = execFileSync("launchctl", ["list"], { stdio: ["ignore", "pipe", "ignore"] }).toString();
+    const out = execFileSync("launchctl", ["list"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: SERVICE_CMD_TIMEOUT_MS,
+    }).toString();
     return out.includes("ai.failproof.failproofaid") ? "running" : "stopped";
   } catch {
     return "stopped";

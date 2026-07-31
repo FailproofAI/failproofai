@@ -62,6 +62,32 @@ async function track(name, props) {
   } catch {}
 }
 
+/**
+ * Exits only once stdout/stderr have actually been flushed.
+ *
+ * Under every agent CLI a hook's stdout is a pipe, and pipe writes in Node
+ * are asynchronous — `process.exit()` terminates without draining what's
+ * still buffered. That stdout carries the decision payload, so a truncated
+ * write silently changes the decision the CLI observes; on the fail-closed
+ * path it would drop the deny reason entirely and leave the CLI with a bare
+ * exit code and no explanation.
+ */
+async function exitAfterFlush(code) {
+  const drain = (stream) =>
+    new Promise((resolveDrain) => {
+      // A zero-length write's callback still queues behind everything
+      // already buffered, so this resolves after the real output lands.
+      if (stream.writableLength === 0 || stream.destroyed) resolveDrain();
+      else stream.write("", () => resolveDrain());
+    });
+  try {
+    await Promise.all([drain(process.stdout), drain(process.stderr)]);
+  } catch {
+    // Never let a flush problem swallow the exit code itself.
+  }
+  process.exit(code);
+}
+
 // --hook <event> [--cli <name>] — called by an agent CLI hook; fast path, outside
 // runCli() because it has its own exit code contract with the calling agent.
 const hookIdx = args.indexOf("--hook");
@@ -132,14 +158,14 @@ if (hookIdx >= 0) {
 
       if (result.stdout) process.stdout.write(result.stdout);
       if (result.stderr) process.stderr.write(result.stderr);
-      process.exit(result.exitCode);
+      await exitAfterFlush(result.exitCode);
     }
 
     const { handleHookEvent } = await import("../src/hooks/handler");
     const exitCode = await handleHookEvent(eventType, cli);
     // handleHookEvent already flushes its own telemetry before returning; this
     // is the normal, reliable exit.
-    process.exit(exitCode);
+    await exitAfterFlush(exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await track("hook_dispatch_error", {

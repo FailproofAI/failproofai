@@ -169,20 +169,50 @@ describe("hooks/daemon-client", () => {
     expect(elapsedMs).toBeLessThan(100);
   });
 
-  it("returns null and does not hang when the server never responds", async () => {
+  it("waits out a slow evaluation on a connected daemon rather than denying it", async () => {
+    // The connect budget answers "is anything listening"; once connected,
+    // the budget has to cover the daemon's whole evaluation. On a
+    // daemon-configured machine a timeout here is a DENY, not a fallback —
+    // so budgeting an evaluation at connect speed turned a slow-but-correct
+    // verdict into an intermittent block of a legitimate tool call.
     await startServer(async (socket) => {
       await readFrame(socket);
-      // Deliberately never write a response.
+      setTimeout(() => {
+        socket.end(
+          encodeFrame({ type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "ok", stderr: "" }),
+        );
+      }, 600);
     });
 
     const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
     const start = Date.now();
     const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
-    const elapsedMs = Date.now() - start;
-    expect(result).toBeNull();
-    // Must hit (roughly) the attempt timeout, not hang indefinitely.
-    expect(elapsedMs).toBeGreaterThanOrEqual(140);
-    expect(elapsedMs).toBeLessThan(2000);
+    expect(result).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
+    expect(Date.now() - start).toBeGreaterThanOrEqual(500);
+  });
+
+  it("does not resolve at the connect budget when the server is connected but silent", async () => {
+    let serverSocket: Socket | null = null;
+    await startServer(async (socket) => {
+      serverSocket = socket;
+      await readFrame(socket);
+      // Deliberately never write a response.
+    });
+
+    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
+    let settled = false;
+    const pending = tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" }).then((r) => {
+      settled = true;
+      return r;
+    });
+
+    await new Promise((r) => setTimeout(r, 800));
+    expect(settled).toBe(false);
+
+    // A severed connection is a different signal from a slow one, and still
+    // resolves immediately — the client never hangs on a daemon that went away.
+    (serverSocket as Socket | null)?.destroy();
+    await expect(pending).resolves.toBeNull();
   });
 
   it("returns null on a garbage (non-JSON) frame body", async () => {

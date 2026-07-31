@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -209,12 +209,58 @@ describe("hooks/daemon-service", () => {
 
         process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
         await installDaemonService();
-        expect(readFileSync(unitPath, "utf8")).toContain("/usr/bin/sleep infinity");
+        expect(readFileSync(unitPath, "utf8")).toContain("ExecStart=/usr/bin/sleep infinity");
 
-        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity ";
+        // A *genuinely* different command. Re-installing with a trailing-space
+        // variant of the first one proves nothing: the assertion's needle is
+        // still a substring of the original unit, so the test would pass even
+        // if the second install were a no-op.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep 3600";
         await installDaemonService();
-        expect(readFileSync(unitPath, "utf8")).toContain("/usr/bin/sleep infinity");
+        const rewritten = readFileSync(unitPath, "utf8");
+        expect(rewritten).toContain("ExecStart=/usr/bin/sleep 3600");
+        expect(rewritten).not.toContain("infinity");
       });
+
+      it("does not report installed when the service never stays running", async () => {
+        // A "daemon" that exits the moment it starts: systemd accepts the
+        // job and `enable --now` exits 0, but nothing is left running.
+        // Reporting success here is what lets the wizard set
+        // `daemonConfigured`, after which every hook event on the machine
+        // fails closed against a daemon that does not exist.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep 0";
+        setPlatform("linux");
+        const { installDaemonService } = await import("../../src/hooks/daemon-service");
+
+        const result = await installDaemonService();
+        expect(result.installed).toBe(false);
+        expect(result.reason).toContain("did not reach a running state");
+      }, 20_000);
+
+      it("uninstall clears the daemonConfigured marker", async () => {
+        setPlatform("linux");
+        const { installDaemonService, uninstallDaemonService, setDaemonConfigured } = await import(
+          "../../src/hooks/daemon-service"
+        );
+        const { getConfigPathForScope } = await import("../../src/hooks/hooks-config");
+        const configPath = getConfigPathForScope("user");
+        const preexisting = existsSync(configPath) ? readFileSync(configPath, "utf8") : null;
+
+        try {
+          process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+          expect((await installDaemonService()).installed).toBe(true);
+          setDaemonConfigured(true);
+          expect(JSON.parse(readFileSync(configPath, "utf8")).daemonConfigured).toBe(true);
+
+          // Without this, removing the service leaves the machine failing
+          // closed forever against a socket that is gone.
+          await uninstallDaemonService();
+          expect(JSON.parse(readFileSync(configPath, "utf8")).daemonConfigured).toBeUndefined();
+        } finally {
+          if (preexisting !== null) writeFileSync(configPath, preexisting, "utf8");
+          else rmSync(configPath, { force: true });
+        }
+      }, 20_000);
 
       it("installDaemonService fails cleanly when the binary cannot be resolved", async () => {
         delete process.env.FAILPROOFAI_DAEMON_BINARY;

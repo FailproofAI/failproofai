@@ -39,7 +39,12 @@ import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-prese
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
-import { isDaemonSupportedPlatform, installDaemonService, daemonServiceFilePath } from "./daemon-service";
+import {
+  isDaemonSupportedPlatform,
+  installDaemonService,
+  daemonServiceFilePath,
+  setDaemonConfigured,
+} from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
 
 export interface WizardIO {
@@ -266,26 +271,20 @@ export function setCustomPoliciesEnabled(
 }
 
 /**
- * Records that this machine's failproofaid service was installed —
- * global scope ONLY (see `HooksConfig.daemonConfigured`'s doc comment):
- * whether *this machine* has a running daemon isn't a per-project setting,
- * so this always writes `~/.failproofai/policies-config.json` regardless of
- * which scope the rest of the wizard's answers applied to.
+ * Maps a daemon-install failure to one of a fixed set of codes, safe to
+ * send off the machine.
+ *
+ * `installDaemonService`'s `reason` is a diagnostic for the local log, not a
+ * telemetry field: on most failure paths it is an errno message naming an
+ * absolute path under `homedir()`, which carries the OS username. Only the
+ * classification travels.
  */
-function markDaemonConfigured(): void {
-  const path = getConfigPathForScope("user");
-  let config: Record<string, unknown> = {};
-  try {
-    if (existsSync(path)) config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return; // a malformed global config is the install path's problem, not ours
-  }
-  config.daemonConfigured = true;
-  try {
-    writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
-  } catch {
-    /* best-effort: never fail a completed setup over this flag */
-  }
+export function classifyDaemonInstallFailure(reason: string | undefined): string {
+  if (!reason) return "unknown";
+  if (/not supported on/.test(reason)) return "unsupported_platform";
+  if (/binary not found/.test(reason)) return "binary_not_found";
+  if (/did not reach a running state/.test(reason)) return "did_not_start";
+  return "service_manager_error";
 }
 
 /**
@@ -613,14 +612,20 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   if (scope === "user" && isDaemonSupportedPlatform()) {
     const daemonResult = await installDaemonService();
     if (daemonResult.installed) {
-      markDaemonConfigured();
+      setDaemonConfigured(true);
       daemonInstalled = true;
     } else {
       hookLogWarn(`failproofaid was not installed as a service: ${daemonResult.reason}`);
     }
     void emit("configure_daemon_install", {
       installed: daemonResult.installed,
-      reason: daemonResult.installed ? null : (daemonResult.reason ?? null),
+      // A bounded classification, never the raw reason: on the failure path
+      // that string is an errno message from writeFileSync/execFileSync
+      // against a homedir()-derived path, so it routinely carries the OS
+      // username and the local filesystem layout ("/home/<user>/.config/
+      // systemd/user/failproofaid.service"). The full text stays local via
+      // the hookLogWarn above.
+      reason: daemonResult.installed ? null : classifyDaemonInstallFailure(daemonResult.reason),
       platform: process.platform,
     });
   }

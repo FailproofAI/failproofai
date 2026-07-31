@@ -97,6 +97,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # This job runs `cargo clippy`/`cargo test` over the full
+          # dependency tree, executing third-party build scripts. The
+          # default (`true`) would leave GITHUB_TOKEN in .git/config where
+          # any of them could read it; nothing here needs push access.
+          persist-credentials: false
 
       # Stage 1 lands an empty Cargo workspace (zero crates/*/Cargo.toml) so
       # the CI plumbing itself can go green before any Rust code exists.

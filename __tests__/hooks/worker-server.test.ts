@@ -204,4 +204,53 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
     const response = await sendRequest(workerSocketPath, { type: "ping" });
     expect(response.type).toBe("error");
   });
+
+  it("answers both requests when two frames arrive coalesced in one read", async () => {
+    // Two requests written back-to-back on one connection routinely land in
+    // a single `data` event. Decoding only the first leaves the second
+    // stranded in the receive buffer until some *later* write happens to
+    // arrive — meanwhile the caller sees no response and hits its own
+    // fail-closed timeout against a daemon that is working fine.
+    const frame = (command: string) =>
+      encodeFrame({
+        type: "hook",
+        hookEvent: "PreToolUse",
+        cli: "claude",
+        stdin: JSON.stringify({ cwd: projectDir, tool_name: "Bash", tool_input: { command } }),
+      });
+
+    const responses = await new Promise<Record<string, unknown>[]>((resolvePromise, reject) => {
+      const socket = createConnection({ path: workerSocketPath }, () => {
+        // One write, both frames — the coalesced case, deterministically.
+        socket.write(Buffer.concat([frame("sudo rm -rf /"), frame("echo hi")]));
+      });
+      const collected: Record<string, unknown>[] = [];
+      let buf = Buffer.alloc(0);
+      let declaredLen: number | null = null;
+      socket.on("data", (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        for (;;) {
+          if (declaredLen === null) {
+            if (buf.length < 4) return;
+            declaredLen = buf.readUInt32BE(0);
+            buf = buf.subarray(4);
+          }
+          if (buf.length < declaredLen) return;
+          collected.push(JSON.parse(buf.subarray(0, declaredLen).toString("utf8")));
+          buf = buf.subarray(declaredLen);
+          declaredLen = null;
+          if (collected.length === 2) {
+            socket.end();
+            resolvePromise(collected);
+            return;
+          }
+        }
+      });
+      socket.on("error", reject);
+    });
+
+    expect(responses.map((r) => r.type)).toEqual(["hookResult", "hookResult"]);
+    expect(permissionDecisionOf(responses[0])).toBe("deny"); // sudo
+    expect(permissionDecisionOf(responses[1])).toBeUndefined(); // echo
+  });
 });

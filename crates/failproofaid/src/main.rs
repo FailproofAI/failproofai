@@ -1,3 +1,4 @@
+pub mod cloud_policies;
 mod lock;
 mod paths;
 mod server;
@@ -5,6 +6,7 @@ mod worker;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -46,8 +48,30 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown = Arc::new(AtomicBool::new(false));
     install_signal_handler(shutdown.clone());
 
+    // Cloud policy integrity is a maintenance-lane responsibility, never a
+    // hook-path operation. The monitor is useful before cloud transport lands:
+    // it keeps the active generation and content-addressed artifact cache in
+    // agreement and reports when both verified copies have been lost.
+    let cloud_policy_store = cloud_policies::PolicyStore::new(paths::cloud_managed_policy_dir()?);
+    let cloud_monitor = cloud_policies::spawn_integrity_monitor(
+        cloud_policy_store,
+        shutdown.clone(),
+        cloud_policy_reconcile_interval(),
+    );
+
     srv.run_until(shutdown)?;
+    let _ = cloud_monitor.join();
     Ok(())
+}
+
+fn cloud_policy_reconcile_interval() -> Duration {
+    const DEFAULT_MS: u64 = 30_000;
+    const MINIMUM_MS: u64 = 100;
+    let configured = std::env::var("FAILPROOFAI_CLOUD_POLICY_RECONCILE_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_MS);
+    Duration::from_millis(configured.max(MINIMUM_MS))
 }
 
 /// Requests a clean shutdown (socket file removal, lock release via Drop)

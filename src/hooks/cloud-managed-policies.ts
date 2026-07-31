@@ -1,0 +1,119 @@
+/**
+ * Reads the daemon-owned active cloud policy generation for the TypeScript
+ * evaluator. The Rust reconciler is responsible for downloading and repairing
+ * artifacts; this boundary independently verifies the digest immediately
+ * before import so the worker never knowingly executes modified bytes.
+ */
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, relative, resolve } from "node:path";
+
+const ACTIVE_SCHEMA_VERSION = 1;
+const SHA256_RE = /^[a-f0-9]{64}$/;
+const POLICY_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
+export interface CloudManagedPolicyArtifact {
+  id: string;
+  revision: number;
+  sha256: string;
+  path: string;
+  generation: number;
+}
+
+interface ActiveManifest {
+  schemaVersion: number;
+  generation: number;
+  policies: Array<{
+    id: string;
+    revision: number;
+    sha256: string;
+    path: string;
+  }>;
+}
+
+export function cloudManagedPolicyRoot(): string {
+  return (
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR ??
+    resolve(homedir(), ".failproofai", "policies", "cloud-managed")
+  );
+}
+
+function parseManifest(value: unknown): ActiveManifest {
+  if (!value || typeof value !== "object") throw new Error("active manifest is not an object");
+  const manifest = value as Partial<ActiveManifest>;
+  if (manifest.schemaVersion !== ACTIVE_SCHEMA_VERSION) {
+    throw new Error(`unsupported active manifest schema ${String(manifest.schemaVersion)}`);
+  }
+  if (!Number.isSafeInteger(manifest.generation) || (manifest.generation ?? -1) < 0) {
+    throw new Error("active manifest generation is invalid");
+  }
+  if (!Array.isArray(manifest.policies)) throw new Error("active manifest policies is not an array");
+  return manifest as ActiveManifest;
+}
+
+function resolveManagedPath(root: string, candidate: string): string {
+  if (!candidate || isAbsolute(candidate)) throw new Error(`unsafe managed policy path ${JSON.stringify(candidate)}`);
+  const absolute = resolve(root, candidate);
+  const lexicalRelative = relative(root, absolute);
+  if (lexicalRelative.startsWith("..") || isAbsolute(lexicalRelative)) {
+    throw new Error(`managed policy path escapes its root: ${JSON.stringify(candidate)}`);
+  }
+
+  // Reject a symlinked artifact or generation directory escaping the managed
+  // root. The current daemon is same-user, but following an arbitrary path is
+  // still unnecessary ambient authority and becomes dangerous if its service
+  // identity is hardened later.
+  const realRoot = realpathSync(root);
+  const realFile = realpathSync(absolute);
+  const physicalRelative = relative(realRoot, realFile);
+  if (physicalRelative.startsWith("..") || isAbsolute(physicalRelative)) {
+    throw new Error(`managed policy symlink escapes its root: ${JSON.stringify(candidate)}`);
+  }
+  return realFile;
+}
+
+export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
+  const root = cloudManagedPolicyRoot();
+  const activePath = resolve(root, "active.json");
+  if (!existsSync(activePath)) return [];
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(activePath, "utf8"));
+  } catch (err) {
+    throw new Error(`failed to read cloud-managed active manifest: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const manifest = parseManifest(raw);
+  const seen = new Set<string>();
+
+  return manifest.policies.map((policy) => {
+    if (!POLICY_ID_RE.test(policy.id) || policy.id === "." || policy.id === "..") {
+      throw new Error(`unsafe cloud-managed policy id ${JSON.stringify(policy.id)}`);
+    }
+    if (!Number.isSafeInteger(policy.revision) || policy.revision < 0) {
+      throw new Error(`invalid revision for cloud-managed policy ${policy.id}`);
+    }
+    if (!SHA256_RE.test(policy.sha256)) {
+      throw new Error(`invalid SHA-256 for cloud-managed policy ${policy.id}`);
+    }
+    if (seen.has(policy.id)) throw new Error(`duplicate cloud-managed policy id ${policy.id}`);
+    seen.add(policy.id);
+
+    const path = resolveManagedPath(root, policy.path);
+    const bytes = readFileSync(path);
+    const actual = createHash("sha256").update(bytes).digest("hex");
+    if (actual !== policy.sha256) {
+      throw new Error(
+        `cloud-managed policy ${policy.id} failed integrity verification: expected ${policy.sha256}, got ${actual}`,
+      );
+    }
+    return {
+      id: policy.id,
+      revision: policy.revision,
+      sha256: policy.sha256,
+      path,
+      generation: manifest.generation,
+    };
+  });
+}

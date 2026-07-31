@@ -12,28 +12,39 @@
  */
 import { resolve, isAbsolute, basename } from "node:path";
 import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
-import { getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
+import { customPolicies, getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
 import { findDistIndex, rewriteFileTree, TMP_SUFFIX, cleanupTmpFiles } from "./loader-utils";
 import { findProjectConfigDir } from "./hooks-config";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import type { CustomHook } from "./policy-types";
+import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
 /** Regex matching convention policy filenames: *policies.{js,mjs,ts} */
 const CONVENTION_FILE_RE = /policies\.(js|mjs|ts)$/;
 
-/**
- * Monotonic counter used to cache-bust each dynamic import. Loading N files
- * creates N module instances rather than reusing one; every caller here is
- * either a one-shot CLI command or a short-lived hook process, so the
- * lifetime cost is bounded by the process, not by uptime.
- */
+/** Monotonic suffix for physically distinct temporary module trees. Bun
+ * ignores URL query strings when caching imports, so a query-only cache
+ * buster silently drops custom policies after the first request in the warm
+ * daemon worker. A unique filename is honored by both Bun and Node. */
 let loadSequence = 0;
+
+interface CachedPolicyModule {
+  fingerprint: string;
+  hooks: CustomHook[];
+}
+
+/** One retained module instance per source entry. Reusing its registered hook
+ * functions prevents an unbounded ESM module-cache leak in the resident worker.
+ * A source-tree change replaces this entry and imports one new module. */
+const policyModuleCache = new Map<string, CachedPolicyModule>();
 
 /** Script extensions we could load, used to spot near-miss filenames. */
 const LOADABLE_EXT_RE = /\.(js|mjs|ts)$/;
@@ -101,23 +112,27 @@ async function loadSingleFile(
     const distIndex = await findDistIndex();
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
 
-    tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex);
+    const sequence = ++loadSequence;
+    const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.mjs`;
+    tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex, tmpSuffix);
 
-    const entryTmp = absPath + TMP_SUFFIX;
-    // Cache-bust the specifier. NOTE this works under Node but NOT under Bun,
-    // which caches by resolved path and ignores the query — and the shipped
-    // binary runs under Bun. It is kept because it makes repeat loads behave
-    // the same on both runtimes where it can, but nothing may DEPEND on a
-    // repeat load re-executing; callers dedupe paths instead (see above).
-    // The temp path is deterministic, so a second
-    // load of the same file inside one process hit the ESM module cache, the
-    // module body never re-ran, no `customPolicies.add` fired, and the caller
-    // saw zero hooks — indistinguishable from a broken policy file. That is
-    // exactly what `failproofai policies` rendered as "failed to load" for
-    // every file when it walked a shared project/user directory twice.
-    // A distinct query string makes it a distinct module to the loader.
-    const fileUrl = `${pathToFileURL(entryTmp).href}?v=${++loadSequence}`;
+    const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
+    const cached = policyModuleCache.get(absPath);
+    if (cached?.fingerprint === fingerprint) {
+      for (const hook of cached.hooks) customPolicies.add({ ...hook });
+      return;
+    }
+
+    const entryTmp = absPath + tmpSuffix;
+    const fileUrl = pathToFileURL(entryTmp).href;
+    const hooksBefore = getCustomHooks().length;
     await import(/* webpackIgnore: true */ fileUrl);
+    policyModuleCache.set(absPath, {
+      fingerprint,
+      hooks: getCustomHooks()
+        .slice(hooksBefore)
+        .map((hook) => ({ ...hook })),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
@@ -137,6 +152,18 @@ async function loadSingleFile(
     g[LOADING_KEY] = false;
     await cleanupTmpFiles(tmpFiles);
   }
+}
+
+async function fingerprintTemporaryTree(tmpFiles: string[], tmpSuffix: string): Promise<string> {
+  const hash = createHash("sha256");
+  for (const tmpFile of [...tmpFiles].sort()) {
+    // The generated filenames change per load. Normalize both the logical path
+    // and rewritten import specifiers so identical source graphs hash equally.
+    hash.update(tmpFile.replaceAll(tmpSuffix, TMP_SUFFIX));
+    const contents = await readFile(tmpFile, "utf8");
+    hash.update(contents.replaceAll(tmpSuffix, TMP_SUFFIX));
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -214,7 +241,11 @@ function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
 
 export async function loadAllCustomHooks(
   customPoliciesPaths: string | string[] | undefined,
-  opts?: { sessionCwd?: string; customPoliciesEnabled?: boolean },
+  opts?: {
+    sessionCwd?: string;
+    customPoliciesEnabled?: boolean;
+    cloudManagedPolicies?: CloudManagedPolicyArtifact[];
+  },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
 
@@ -235,6 +266,9 @@ export async function loadAllCustomHooks(
   // twice per event. Seeded by the explicit path below and consulted by both
   // convention passes.
   const loadedPaths = new Set<string>();
+  const cloudManagedByPath = new Map(
+    (opts?.cloudManagedPolicies ?? []).map((policy) => [resolve(policy.path), policy]),
+  );
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using
   // the legacy singular form.
@@ -250,7 +284,17 @@ export async function loadAllCustomHooks(
         const hooksBefore = getCustomHooks().length;
         await loadSingleFile(absPath);
         for (const hook of getCustomHooks().slice(hooksBefore)) {
-          (hook as CustomHook & { __policyId?: string }).__policyId = customPolicyId(absPath, hook.name);
+          const cloudManaged = cloudManagedByPath.get(absPath);
+          const tagged = hook as CustomHook & {
+            __policyId?: string;
+            __cloudManaged?: CloudManagedPolicyArtifact;
+          };
+          if (cloudManaged) {
+            tagged.__cloudManaged = cloudManaged;
+            tagged.__policyId = `cloud:${cloudManaged.id}@${cloudManaged.revision}:${hook.name}`;
+          } else {
+            tagged.__policyId = customPolicyId(absPath, hook.name);
+          }
         }
       }
     } else {

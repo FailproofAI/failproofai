@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createConnection, type Socket } from "node:net";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,6 +98,8 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
 
   afterEach(async () => {
     await new Promise<void>((r) => server.close(() => r()));
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    delete (globalThis as Record<string, unknown>).__fpaiRepeatLoadCount;
     rmSync(projectDir, { recursive: true, force: true });
   });
 
@@ -155,6 +158,100 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
     expect(permissionDecisionOf(results[0])).toBe("deny"); // sudo -> deny
     expect(permissionDecisionOf(results[1])).toBeUndefined(); // echo -> allow
     expect(permissionDecisionOf(results[2])).toBe("deny"); // sudo -> deny
+  });
+
+  it("re-executes an explicit custom policy on every warm-worker request", async () => {
+    const policyPath = join(projectDir, "custom-policy.mjs");
+    writeFileSync(
+      policyPath,
+      `import { customPolicies, allow, deny } from "failproofai";
+globalThis.__fpaiRepeatLoadCount = (globalThis.__fpaiRepeatLoadCount ?? 0) + 1;
+const moduleLoadCount = globalThis.__fpaiRepeatLoadCount;
+customPolicies.add({
+  name: "repeat-load",
+  description: "must survive warm worker reloads",
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) => String(ctx.toolInput?.command ?? "").includes("blocked-custom")
+    ? deny("custom policy blocked the command at module-load-" + moduleLoadCount)
+    : allow(),
+});\n`,
+    );
+    writeFileSync(
+      join(projectDir, ".failproofai", "policies-config.json"),
+      JSON.stringify({ enabledPolicies: [], customPoliciesPaths: [policyPath] }),
+    );
+
+    for (let requestNumber = 0; requestNumber < 3; requestNumber++) {
+      const response = await sendRequest(workerSocketPath, {
+        type: "hook",
+        hookEvent: "PreToolUse",
+        cli: "claude",
+        stdin: JSON.stringify({
+          cwd: projectDir,
+          tool_name: "Bash",
+          tool_input: { command: `echo blocked-custom-${requestNumber}` },
+        }),
+      });
+      expect(permissionDecisionOf(response), `warm request ${requestNumber + 1}`).toBe("deny");
+      expect(response.stdout).toContain("custom policy blocked the command at module-load-1");
+    }
+  });
+
+  it("loads a hash-verified active cloud policy with a cloud-qualified identity", async () => {
+    const managedRoot = join(projectDir, "cloud-managed");
+    const generationDir = join(managedRoot, "generations", "42");
+    mkdirSync(generationDir, { recursive: true });
+    const policyPath = join(generationDir, "org-guard.mjs");
+    const policyBytes = `import { customPolicies, deny } from "failproofai";
+customPolicies.add({
+  name: "org-guard",
+  description: "cloud managed test guard",
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async () => deny("cloud-managed policy blocked the command"),
+});\n`;
+    writeFileSync(policyPath, policyBytes);
+    const sha256 = createHash("sha256").update(policyBytes).digest("hex");
+    writeFileSync(
+      join(managedRoot, "active.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        generation: 42,
+        policies: [
+          {
+            id: "org-guard",
+            revision: 8,
+            sha256,
+            path: "generations/42/org-guard.mjs",
+          },
+        ],
+      }),
+    );
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = managedRoot;
+
+    // A local disabledCustomPolicies entry with the generated cloud ID must
+    // not override a centrally assigned policy.
+    writeFileSync(
+      join(projectDir, ".failproofai", "policies-config.json"),
+      JSON.stringify({
+        enabledPolicies: [],
+        disabledCustomPolicies: ["cloud:org-guard@8:org-guard"],
+      }),
+    );
+
+    for (let requestNumber = 0; requestNumber < 2; requestNumber++) {
+      const response = await sendRequest(workerSocketPath, {
+        type: "hook",
+        hookEvent: "PreToolUse",
+        cli: "claude",
+        stdin: JSON.stringify({
+          cwd: projectDir,
+          tool_name: "Bash",
+          tool_input: { command: `echo cloud-request-${requestNumber}` },
+        }),
+      });
+      expect(permissionDecisionOf(response)).toBe("deny");
+      expect(response.stdout).toContain("cloud-managed policy blocked the command");
+    }
   });
 
   it("uses fallbackCwd when the stdin payload carries no cwd at all", async () => {

@@ -77,8 +77,9 @@ export async function resolveLocalImport(
 export async function createEsmShim(
   distIndex: string,
   distUrl: string,
+  tmpSuffix = TMP_SUFFIX,
 ): Promise<{ shimPath: string; shimUrl: string }> {
-  const shimPath = distIndex + ".__failproofai_esm_shim__.mjs";
+  const shimPath = `${distIndex}${tmpSuffix}.shim.mjs`;
   const shimCode = [
     `import _cjs from '${distUrl}';`,
     `export const customPolicies = _cjs.customPolicies;`,
@@ -101,6 +102,7 @@ export async function rewriteFileTree(
   entryPath: string,
   distUrl: string | null,
   distIndex: string | null,
+  tmpSuffix = TMP_SUFFIX,
 ): Promise<string[]> {
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
@@ -108,7 +110,7 @@ export async function rewriteFileTree(
 
   let esmShimUrl: string | null = null;
   if (distIndex && distUrl) {
-    const shim = await createEsmShim(distIndex, distUrl);
+    const shim = await createEsmShim(distIndex, distUrl, tmpSuffix);
     tmpFiles.push(shim.shimPath);
     esmShimUrl = shim.shimUrl;
   }
@@ -148,7 +150,7 @@ export async function rewriteFileTree(
         if (!visited.has(resolved) && !queue.includes(resolved)) {
           queue.push(resolved);
         }
-        let relPath = relative(dir, resolved + TMP_SUFFIX).split("\\").join("/");
+        let relPath = relative(dir, resolved + tmpSuffix).split("\\").join("/");
         if (!relPath.startsWith(".")) relPath = "./" + relPath;
         rewrites.set(specifier, relPath);
       }
@@ -163,7 +165,7 @@ export async function rewriteFileTree(
       code = code.replace(new RegExp(`"${escaped}"`, "g"), `"${replacement}"`);
     }
 
-    const tmpPath = filePath + TMP_SUFFIX;
+    const tmpPath = filePath + tmpSuffix;
     await writeFile(tmpPath, code, "utf-8");
     tmpFiles.push(tmpPath);
   }

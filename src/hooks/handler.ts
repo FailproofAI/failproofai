@@ -41,6 +41,7 @@ import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
+import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -230,22 +231,47 @@ export async function evaluateHookEvent(
       clearPolicies();
       registerBuiltinPolicies(config.enabledPolicies);
 
+      // Cloud-managed policies are daemon-reconciled artifacts, but they use
+      // the same public JS policy API as local custom policies. Verify and add
+      // only the paths referenced by the atomically active generation.
+      const cloudManagedPolicies = readActiveCloudManagedPolicies();
+      const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
+      const allExplicitPaths =
+        cloudManagedPolicies.length === 0
+          ? configuredCustomPaths
+          : [
+              ...(typeof configuredCustomPaths === "string" ? [configuredCustomPaths] : configuredCustomPaths ?? []),
+              ...cloudManagedPolicies.map((policy) => policy.path),
+            ];
+
       // Load and register custom hooks (layer 2, after builtins)
-      const loadResult = await loadAllCustomHooks(config.customPoliciesPaths ?? config.customPoliciesPath, {
+      const loadResult = await loadAllCustomHooks(allExplicitPaths, {
         sessionCwd: session.cwd,
         customPoliciesEnabled: config.customPoliciesEnabled,
+        ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
       });
       customHooksList = loadResult.hooks;
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
       conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 
       for (const hook of customHooksList) {
-        const policyId = (hook as CustomHook & { __policyId?: string }).__policyId;
-        if (policyId && disabledCustomPolicies.has(policyId)) continue;
+        const taggedHook = hook as CustomHook & {
+          __policyId?: string;
+          __cloudManaged?: CloudManagedPolicyArtifact;
+        };
+        const policyId = taggedHook.__policyId;
+        const cloudManaged = taggedHook.__cloudManaged;
+        // Local config cannot disable a centrally assigned policy merely by
+        // copying its generated ID into disabledCustomPolicies.
+        if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
-        const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
+        const prefix = cloudManaged
+          ? `cloud/${cloudManaged.id}@${cloudManaged.revision}`
+          : isConvention
+            ? `.failproofai-${conventionScope}`
+            : "custom";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
           try {
             const result = await Promise.race([

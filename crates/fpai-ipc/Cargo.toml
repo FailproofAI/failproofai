@@ -1,0 +1,16 @@
+[package]
+name = "fpai-ipc"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Wire protocol (framing + envelope + peer verification) shared by failproofaid and its tests"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+
+[dev-dependencies]
+proptest = "1"

@@ -871,7 +871,7 @@ finish. If any job fails, **stop and fix it before continuing**. Never leave a r
 
 | Job | Command |
 |-----|---------|
-| quality | lint + tsc + version-consistency check (now also covers `Cargo.toml`'s workspace version and the `packages/*/package.json`/`optionalDependencies` versions against root `package.json`) |
+| quality | lint + tsc + version-consistency check (now also covers `Cargo.toml`'s workspace version against root `package.json` — the release tag the CLI builds its daemon download URL from is the npm version, and the binary at that URL reports the Cargo one) |
 | rust-quality | `cargo fmt --check` + `cargo clippy` + `cargo test --workspace`. `cargo test` spawns the real TS worker via `bun`, so the job installs bun too. (The steps stay gated on `crates/*/Cargo.toml` existing — a zero-member workspace hard-errors — but both crates are present now, so they all run for real.) |
 | test | `bun run test:run` (unit, 3 env configs) |
 | build | `bun run build` (Next.js + `dist/index.js` + `dist/cli.mjs` + `dist/worker.mjs`) |
@@ -879,13 +879,45 @@ finish. If any job fails, **stop and fix it before continuing**. Never leave a r
 | docs | docs build/validation |
 
 A separate `.github/workflows/build-daemon.yml` ("Build failproofaid") cross-compiles the
-4 real `failproofaid` release binaries (linux-x64/arm64, darwin-x64/arm64) and stages them
-into `packages/failproofaid-*/bin/` — path-filtered to `crates/**`/`Cargo.*`/
-`rust-toolchain.toml` changes, so it doesn't run on every PR, but is unconditional on a
-GitHub release (feeds `publish.yml`) and can be triggered manually via
-`workflow_dispatch`. It's slower than `rust-quality` (real cross-compiles across 4
-matrix legs, two of them real macOS runners) — don't expect it to finish inside a quick
-`gh run watch` poll; check back or use a longer timeout.
+4 real `failproofaid` release binaries (linux-x64/arm64, darwin-x64/arm64), gzips each one
+and uploads it as an artifact — path-filtered to `crates/**`/`Cargo.*`/
+`rust-toolchain.toml` changes, so it doesn't run on every PR. It is a **reusable
+workflow**: `publish.yml` calls it and downloads those artifacts in the same run, which is
+how a release gets binaries built from the exact commit being published. It can also be
+triggered manually via `workflow_dispatch`. It's slower than `rust-quality` (real
+cross-compiles across 4 matrix legs, two of them real macOS runners) — don't expect it to
+finish inside a quick `gh run watch` poll; check back or use a longer timeout.
+
+### How the daemon binary reaches users
+
+The npm package ships **no binary** — one tarball serves every platform. The four
+cross-compiled binaries are **GitHub Release assets** (`failproofaid-<os>-<arch>.gz` plus a
+`SHA256SUMS` manifest), and `src/hooks/daemon-download.ts` fetches the one matching this
+CLI's own version into `~/.failproofai/bin/failproofaid-<version>`, verifying the SHA-256
+**before** decompressing and installing via an atomic rename (a versioned filename avoids
+`ETXTBSY` against a running daemon, and stops an upgrade from repointing a live service
+unit at a binary built from different source).
+
+The URL is *constructed* from `package.json`'s version, never discovered — no API call, no
+`releases/latest` redirect, no rate limit, and no way to end up with a daemon built from
+different source than the CLI talking to it. `publish.yml` therefore attaches the assets
+**before** it publishes to npm; reverse that and the package ships pointing at a tag whose
+binaries do not exist yet.
+
+Only the install path (`failproofai config`, global scope) downloads.
+`resolveFailproofaidBinaryPath()` is a pure disk check — env override →
+`~/.failproofai/bin/failproofaid-<version>` → a locally-built `target/{release,debug}`
+binary — so the hook path can never block on the network. Two escape hatches:
+`FAILPROOFAI_NO_DOWNLOAD=1` (air-gapped: fail with a reason instead of reaching out, while
+an already-installed binary keeps working) and `FAILPROOFAI_DAEMON_BASE_URL` (an internal
+mirror, and what the tests point at a local HTTP server).
+
+An earlier design shipped `@failproofai/failproofaid-<os>-<arch>` optional platform
+packages instead. It was removed before release: the four packages were declared as
+`optionalDependencies` but nothing ever published them (the daemon PR never touched
+`publish.yml`), so every install resolved four 404s — and the release assets have to exist
+for standalone installs regardless, so npm would have been a second channel to keep in
+sync with the first.
 
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
@@ -961,7 +993,9 @@ After any change to `src/hooks/`, verify these scenarios don't regress:
 ```
 bin/failproofai.mjs          Entry point (bun shebang); sets FAILPROOFAI_DIST_PATH
 bin/failproofai-worker.mjs   Warm-worker entrypoint; spawned by the Rust daemon, not a user
-bin/failproofaid-shim.mjs    `failproofaid` bin entry; execs the resolved platform binary
+bin/failproofaid-shim.mjs    `failproofaid` bin entry; execs the downloaded binary at
+                              ~/.failproofai/bin/failproofaid-<version> (hand invocation
+                              only — service units point at the binary directly)
 src/hooks/
   custom-hooks-loader.ts     Orchestrates temp-file creation + dynamic import
   loader-utils.ts            findDistIndex(), createEsmShim(), rewriteFileTree()
@@ -985,6 +1019,11 @@ src/hooks/
                               below, and the awaitTelemetryFlush note in handler.ts for
                               a bug class that silently blew through the budget even
                               when warm
+  daemon-download.ts         Fetches the release asset for this version into
+                              ~/.failproofai/bin, SHA-256 verified before it is
+                              decompressed and atomically renamed into place. Never
+                              throws; FAILPROOFAI_NO_DOWNLOAD / FAILPROOFAI_DAEMON_BASE_URL
+                              opt out or redirect it
   daemon-service.ts          installDaemonService()/uninstallDaemonService()/
                               daemonServiceStatus()/setDaemonConfigured() — systemd
                               --user unit / launchd LaunchAgent generation; called
@@ -1018,9 +1057,8 @@ crates/failproofaid/           The daemon binary — socket server + service lif
   src/server.rs                Unix socket accept loop, relays Hook requests to the worker
   src/paths.rs                  ~/.failproofai/run/ layout (socket, worker socket, lock)
   src/lock.rs                    Non-blocking flock() singleton guard
-packages/failproofaid-*/       Per-platform npm packages (os/cpu-gated), each just
-                              bin/failproofaid — the compiled binary. Never committed (see
-                              .gitignore); staged by .github/workflows/build-daemon.yml
+                              (the four compiled binaries are GitHub Release assets, not
+                              npm packages — see "How the daemon binary reaches users")
 __tests__/                   Unit + e2e tests (vitest)
 examples/                    Sample custom policy files
 ```

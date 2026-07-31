@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
@@ -16,6 +16,11 @@ describe("hooks/daemon-service", () => {
   const originalBinaryEnv = process.env.FAILPROOFAI_DAEMON_BINARY;
   const originalPackageRootEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
   const originalWorkerCmdEnv = process.env.FAILPROOFAI_WORKER_CMD;
+  const originalHome = process.env.HOME;
+  // The download channel installs under `$HOME/.failproofai/bin`, so these
+  // tests point HOME at a scratch dir: a developer machine that really has a
+  // daemon installed would otherwise turn "resolves to null" into a flake.
+  let home: string;
 
   function setPlatform(platform: string) {
     Object.defineProperty(process, "platform", { value: platform });
@@ -24,11 +29,27 @@ describe("hooks/daemon-service", () => {
     Object.defineProperty(process, "arch", { value: arch });
   }
 
+  /**
+   * Points HOME at a scratch dir for the tests that exercise binary
+   * resolution. Deliberately opt-in per test rather than a blanket
+   * `beforeEach`: the real-systemd lifecycle tests further down install an
+   * actual user unit, which only works under the session's real HOME.
+   */
+  function useScratchHome(): string {
+    home = mkdtempSync(resolve(tmpdir(), "fpai-daemon-service-"));
+    process.env.HOME = home;
+    return home;
+  }
+
   beforeEach(() => {
     vi.resetModules();
+    home = "";
   });
 
   afterEach(() => {
+    if (home) rmSync(home, { recursive: true, force: true });
+    if (originalHome !== undefined) process.env.HOME = originalHome;
+    else delete process.env.HOME;
     Object.defineProperty(process, "platform", { value: originalPlatform });
     Object.defineProperty(process, "arch", { value: originalArch });
     if (originalBinaryEnv !== undefined) process.env.FAILPROOFAI_DAEMON_BINARY = originalBinaryEnv;
@@ -74,13 +95,41 @@ describe("hooks/daemon-service", () => {
       expect(resolveFailproofaidBinaryPath()).toBeNull();
     });
 
-    it("returns null when no platform package and no dev build are present", async () => {
+    it("returns null when nothing has been downloaded and no dev build is present", async () => {
+      useScratchHome();
       delete process.env.FAILPROOFAI_DAEMON_BINARY;
       process.env.FAILPROOFAI_PACKAGE_ROOT = "/nonexistent/package/root";
       setPlatform("linux");
       setArch("x64");
       const { resolveFailproofaidBinaryPath } = await import("../../src/hooks/daemon-service");
       expect(resolveFailproofaidBinaryPath()).toBeNull();
+    });
+
+    it("finds the binary downloaded for this version under ~/.failproofai/bin", async () => {
+      useScratchHome();
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+      setPlatform("linux");
+      setArch("x64");
+      const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+      mkdirSync(resolve(home, ".failproofai", "bin"), { recursive: true });
+      writeFileSync(installedBinaryPath(), "#!/bin/sh\n");
+
+      const { resolveFailproofaidBinaryPath } = await import("../../src/hooks/daemon-service");
+      expect(resolveFailproofaidBinaryPath()).toBe(installedBinaryPath());
+    });
+
+    it("never fetches — resolution is a disk check, so the hook path cannot block on the network", async () => {
+      useScratchHome();
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+      setPlatform("linux");
+      setArch("x64");
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const { resolveFailproofaidBinaryPath } = await import("../../src/hooks/daemon-service");
+      expect(resolveFailproofaidBinaryPath()).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
     });
 
     it("finds a locally-built dev binary under target/release relative to the package root", async () => {
@@ -99,6 +148,47 @@ describe("hooks/daemon-service", () => {
       if (result !== null) {
         expect(existsSync(result)).toBe(true);
         expect(result).toContain("failproofaid");
+      }
+    });
+  });
+
+  describe("ensureFailproofaidBinary", () => {
+    it("returns an already-resolved binary without downloading", async () => {
+      process.env.FAILPROOFAI_DAEMON_BINARY = "/opt/failproofaid";
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+
+      await expect(ensureFailproofaidBinary()).resolves.toEqual({ path: "/opt/failproofaid" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it("reports an unsupported architecture rather than attempting a download", async () => {
+      useScratchHome();
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+      setPlatform("linux");
+      setArch("ppc64");
+      const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+
+      const result = await ensureFailproofaidBinary();
+      expect(result.path).toBeUndefined();
+      expect(result.reason).toContain("no prebuilt binary");
+    });
+
+    it("surfaces the download failure verbatim for the local log", async () => {
+      useScratchHome();
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+      setPlatform("linux");
+      setArch("x64");
+      process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+      try {
+        const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+        const result = await ensureFailproofaidBinary();
+        expect(result.reason).toContain("downloads are disabled");
+      } finally {
+        delete process.env.FAILPROOFAI_NO_DOWNLOAD;
       }
     });
   });

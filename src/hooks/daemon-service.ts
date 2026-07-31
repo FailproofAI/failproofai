@@ -12,11 +12,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { hookLogWarn } from "./hook-logger";
 import { getConfigPathForScope } from "./hooks-config";
-
-const requireFromHere = createRequire(import.meta.url);
+import { downloadFailproofaidBinary, installedBinaryPath } from "./daemon-download";
 
 /**
  * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
@@ -87,7 +85,7 @@ export function isDaemonSupportedPlatform(): boolean {
   return process.platform === "linux" || process.platform === "darwin";
 }
 
-type PlatformKey = "linux-x64" | "linux-arm64" | "darwin-x64" | "darwin-arm64";
+export type PlatformKey = "linux-x64" | "linux-arm64" | "darwin-x64" | "darwin-arm64";
 
 function platformKey(): PlatformKey | null {
   const os = process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : null;
@@ -102,27 +100,22 @@ function platformKey(): PlatformKey | null {
  * `failproofaid` by hand. A service manager needs a direct path to the
  * actual native binary, not a wrapper it would have to keep alive itself.
  *
- * Resolution order: an explicit test/dev override, the installed
- * per-platform npm package (`@failproofai/failproofaid-<os>-<arch>`, see
- * the npm packaging design), then a locally-built dev binary under
- * `target/{release,debug}/failproofaid` relative to the package root —
- * so this works when driving the wizard from a source checkout (`bun run
- * daemon:dev`-style flows) without needing the npm packages installed at
- * all.
+ * Resolution order: an explicit test/dev override, the binary downloaded
+ * from this version's GitHub Release (see `daemon-download.ts`), then a
+ * locally-built dev binary under `target/{release,debug}/failproofaid`
+ * relative to the package root — so this works when driving the wizard from
+ * a source checkout (`bun run daemon:dev`-style flows) with nothing
+ * downloaded at all.
+ *
+ * Read-only by design: it reports what is already on disk and never fetches.
+ * `ensureFailproofaidBinary` is the one that may reach the network, so the
+ * hook path — which calls this — can never block on a download.
  */
 export function resolveFailproofaidBinaryPath(): string | null {
   if (process.env.FAILPROOFAI_DAEMON_BINARY) return process.env.FAILPROOFAI_DAEMON_BINARY;
 
-  const key = platformKey();
-  if (key) {
-    try {
-      const pkgJsonPath = requireFromHere.resolve(`@failproofai/failproofaid-${key}/package.json`);
-      const candidate = resolve(dirname(pkgJsonPath), "bin", "failproofaid");
-      if (existsSync(candidate)) return candidate;
-    } catch {
-      // Optional platform package not installed — fall through.
-    }
-  }
+  const downloaded = installedBinaryPath();
+  if (existsSync(downloaded)) return downloaded;
 
   const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
   if (packageRoot) {
@@ -133,6 +126,29 @@ export function resolveFailproofaidBinaryPath(): string | null {
   }
 
   return null;
+}
+
+/**
+ * Resolves the binary, downloading it from this version's release if it is
+ * not already on disk.
+ *
+ * Only the install path calls this. The npm package ships no binary — it is
+ * one CLI tarball for every platform — so `failproofai config` choosing the
+ * global scope is the moment a machine that opted into a daemon actually
+ * acquires one.
+ */
+export async function ensureFailproofaidBinary(): Promise<{ path?: string; reason?: string }> {
+  const existing = resolveFailproofaidBinaryPath();
+  if (existing) return { path: existing };
+
+  const key = platformKey();
+  if (!key) {
+    return { reason: `failproofaid has no prebuilt binary for ${process.platform}/${process.arch}` };
+  }
+
+  const result = await downloadFailproofaidBinary(key);
+  if (result.path) return { path: result.path };
+  return { reason: result.error ?? "failproofaid binary could not be downloaded" };
 }
 
 /**
@@ -252,12 +268,12 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     return { installed: false, reason: `failproofaid is not supported on ${process.platform} yet` };
   }
 
-  const binaryPath = resolveFailproofaidBinaryPath();
+  // May reach the network: the npm package carries no binary, so this is
+  // where a machine opting into the daemon fetches the one built for its
+  // platform from this version's release.
+  const { path: binaryPath, reason: binaryReason } = await ensureFailproofaidBinary();
   if (!binaryPath) {
-    return {
-      installed: false,
-      reason: "failproofaid binary not found for this platform (no matching @failproofai/failproofaid-* package)",
-    };
+    return { installed: false, reason: binaryReason ?? "failproofaid binary not found for this platform" };
   }
   // Best-effort, not required: a null workerCmd just leaves the daemon to
   // its own built-in (relative-path) fallback, which only works when the

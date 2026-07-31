@@ -282,7 +282,16 @@ export function setCustomPoliciesEnabled(
 export function classifyDaemonInstallFailure(reason: string | undefined): string {
   if (!reason) return "unknown";
   if (/not supported on/.test(reason)) return "unsupported_platform";
+  if (/no prebuilt binary for/.test(reason)) return "unsupported_platform";
   if (/binary not found/.test(reason)) return "binary_not_found";
+  // The download path is where a machine acquires the daemon at all, so its
+  // failures need to be distinguishable: a checksum mismatch is a supply-chain
+  // signal, "disabled" is a deliberate air-gapped opt-out, and a plain fetch
+  // failure is usually a proxy or an offline box — three very different
+  // stories that would otherwise all land in `service_manager_error`.
+  if (/checksum mismatch|has no entry for/.test(reason)) return "checksum_mismatch";
+  if (/downloads are disabled/.test(reason)) return "downloads_disabled";
+  if (/failed to download/.test(reason)) return "download_failed";
   if (/did not reach a running state/.test(reason)) return "did_not_start";
   return "service_manager_error";
 }

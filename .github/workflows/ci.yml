@@ -55,16 +55,11 @@ jobs:
               MISMATCH=1
             fi
           done
-          # Check the root package's own optionalDependencies — the
-          # @failproofai/failproofaid-<os>-<arch> platform binary packages —
-          # against root version. These are what npm actually installs, so
-          # this is the check that matters for the daemon's packaging.
-          for dep_version in $(jq -r '.optionalDependencies // {} | to_entries[] | select(.key | startswith("@failproofai/failproofaid-")) | .value' package.json); do
-            if [ "$dep_version" != "$ROOT_VERSION" ]; then
-              echo "::error file=package.json::optionalDependencies version mismatch: $dep_version, expected $ROOT_VERSION"
-              MISMATCH=1
-            fi
-          done
+          # The daemon binaries ship as GitHub Release assets rather than npm
+          # platform packages, so there are no optionalDependencies to keep in
+          # step — but the Cargo version still has to match, because the
+          # release tag the CLI builds its download URL from is the npm
+          # version, and the binary at that URL reports the Cargo one.
           # Check the Cargo workspace version (failproofaid) against root package.json
           if [ -f Cargo.toml ]; then
             CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')

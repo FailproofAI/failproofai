@@ -1,3 +1,4 @@
+mod cloud_client;
 pub mod cloud_policies;
 mod lock;
 mod paths;
@@ -53,11 +54,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // it keeps the active generation and content-addressed artifact cache in
     // agreement and reports when both verified copies have been lost.
     let cloud_policy_store = cloud_policies::PolicyStore::new(paths::cloud_managed_policy_dir()?);
-    let cloud_monitor = cloud_policies::spawn_integrity_monitor(
-        cloud_policy_store,
-        shutdown.clone(),
-        cloud_policy_reconcile_interval(),
-    );
+    let cloud_monitor = match cloud_client::CloudClient::from_env()? {
+        Some(cloud) => {
+            eprintln!("[failproofaid] cloud-managed policy polling enabled");
+            cloud_client::spawn_cloud_manager(
+                cloud_policy_store,
+                cloud,
+                shutdown.clone(),
+                cloud_client::poll_interval_from_env(),
+            )
+        }
+        None => cloud_policies::spawn_integrity_monitor(
+            cloud_policy_store,
+            shutdown.clone(),
+            cloud_policy_reconcile_interval(),
+        ),
+    };
 
     srv.run_until(shutdown)?;
     let _ = cloud_monitor.join();

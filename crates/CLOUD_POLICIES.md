@@ -1,8 +1,8 @@
 # Cloud-managed policy generations
 
-This is the local contract between a future Failproof Cloud transport and the
-`failproofaid` policy worker. Network authentication and assignment APIs are
-deliberately outside this first slice.
+This is the contract between the Failproof Cloud HTTP transport and the
+`failproofaid` policy worker. Polling and integrity maintenance run outside the
+hook path; hooks evaluate only the last verified local generation.
 
 ## Layout
 
@@ -49,6 +49,25 @@ The artifact URL is opaque to the store. A cloud client supplies downloaded
 bytes through `ArtifactFetcher`; the reconciler trusts none of those bytes
 until their SHA-256 matches the desired state.
 
+## Cloud transport
+
+Set all three variables to enable polling:
+
+```text
+FAILPROOFAI_CLOUD_URL=https://be.failproof.ai
+FAILPROOFAI_CLOUD_TOKEN=<org-scoped policies:pull key>
+FAILPROOFAI_MACHINE_ID=<deployment machine id>
+```
+
+`FAILPROOFAI_CLOUD_POLICY_POLL_MS` controls the interval (30 seconds by
+default, clamped to at least 100 ms). The client sends Bearer authentication
+to both desired-state and artifact endpoints. Relative artifact locators are
+resolved against the configured base URL; cross-origin locators are rejected
+before the token is sent.
+
+An HTTP failure, invalid desired-state response, bad digest, or incomplete
+generation leaves the previous generation active.
+
 ## Activation transaction
 
 1. Validate schema, policy IDs, unique IDs, digests, and monotonic generation.
@@ -71,17 +90,19 @@ other verified copy. If both are gone, it retains the active manifest and
 reports that a cloud re-fetch is required.
 
 `FAILPROOFAI_CLOUD_POLICY_DIR` overrides the root for tests and development.
-`FAILPROOFAI_CLOUD_POLICY_RECONCILE_MS` overrides the interval, clamped to at
-least 100 ms.
+When cloud polling is disabled, `FAILPROOFAI_CLOUD_POLICY_RECONCILE_MS`
+overrides the standalone integrity interval, clamped to at least 100 ms. With
+cloud polling enabled, integrity repair runs on each poll.
 
 ## Current security boundary
 
 PR #632 runs the daemon as the same OS user as the governed agent. This layer
 provides deterministic deployment, drift detection, and self-healing, but it
 does not make policies tamper-proof against that user. The user can stop the
-service or delete both verified copies. Publisher signatures, machine
-credentials, cloud polling, acknowledgement, and a stronger service identity
-are separate follow-up layers.
+service or delete both verified copies. Publisher signatures, deployment
+acknowledgement, and a stronger service identity are separate follow-up layers.
+The current machine credential is an org-scoped Bearer key transported over
+HTTPS.
 
 Downloaded JavaScript executes in the existing TypeScript policy worker with
 the user's authority. Cloud authorization must therefore treat assigning an

@@ -8,7 +8,15 @@
  * `configure-wizard.ts` calls the functions here directly, the same
  * relationship it already has with `manager.ts`'s `installHooks()`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  rmSync,
+} from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -183,6 +191,14 @@ export function resolveWorkerCommand(): string | null {
   if (!packageRoot) return null;
   const workerScript = resolve(packageRoot, "dist", "worker.mjs");
   if (!existsSync(workerScript)) return null;
+  // Both paths are shell-quoted: the daemon runs this value through `sh -c`
+  // (`WorkerCommand::Shell` in crates/failproofaid/src/worker.rs), so an
+  // unquoted path splits on its spaces and the worker never starts. Not
+  // hypothetical on macOS, where `/Users/First Last/...` is ordinary — and
+  // more exposed since execPath replaced a bare `node`, because execPath is
+  // home-derived. systemd's own `Environment="..."` quoting does not help
+  // here; that protects the unit parse, not the later shell split.
+  //
   // `process.execPath`, not a bare `node`. A system-scope service does not
   // inherit a login environment, so its PATH is the system default — and the
   // single most common way to install Node is nvm, which puts it under
@@ -191,7 +207,13 @@ export function resolveWorkerCommand(): string | null {
   // silently, on exactly the machines least likely to notice. execPath is
   // whatever runtime is executing this CLI right now (node for the published
   // bin, bun in a source checkout), absolute either way.
-  return `${process.execPath} ${workerScript}`;
+  return `${shellQuote(process.execPath)} ${shellQuote(workerScript)}`;
+}
+
+/** POSIX single-quoting: everything is literal inside '…', and a literal
+ *  quote is closed, escaped and reopened. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
@@ -232,15 +254,33 @@ function legacySystemdUserUnitPath(): string {
   return resolve(homedir(), ".config", "systemd", "user", "failproofaid.service");
 }
 
-const LAUNCHD_LABEL = "ai.failproof.failproofaid";
-
-function launchdPlistPath(): string {
-  return `/Library/LaunchDaemons/${LAUNCHD_LABEL}.plist`;
+/**
+ * Per user, for the same reason the systemd unit is: a LaunchDaemon's
+ * contents are entirely user-specific — `UserName`, the ExecStart path under
+ * that user's `~/.failproofai/bin`, the log paths under that user's home — so
+ * one shared label means the second user's install silently overwrites the
+ * first's daemon, and their uninstall deletes it.
+ */
+function launchdLabel(user: string = serviceUser()): string {
+  return `ai.failproof.failproofaid.${user}`;
 }
 
-/** The pre-1.0.0-beta.1 LaunchAgent — same migration problem as above. */
+function launchdPlistPath(user: string = serviceUser()): string {
+  return `/Library/LaunchDaemons/${launchdLabel(user)}.plist`;
+}
+
+/** The pre-1.0.0-beta.1 LaunchAgent. */
 function legacyLaunchAgentPlistPath(): string {
-  return resolve(homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
+  return resolve(homedir(), "Library", "LaunchAgents", "ai.failproof.failproofaid.plist");
+}
+
+/**
+ * The 1.0.0-beta.1 LaunchDaemon, before the label was namespaced. Removed on
+ * install like the LaunchAgent is: it holds the same singleton flock, so
+ * leaving it would leave two daemons racing for one socket.
+ */
+function legacySharedLaunchDaemonPath(): string {
+  return "/Library/LaunchDaemons/ai.failproof.failproofaid.plist";
 }
 
 /**
@@ -263,7 +303,7 @@ export function daemonStatusCommand(): string | null {
   if (!isDaemonSupportedPlatform()) return null;
   return process.platform === "linux"
     ? `systemctl status ${systemdUnitName()}`
-    : `sudo launchctl print system/${LAUNCHD_LABEL}`;
+    : `sudo launchctl print system/${launchdLabel()}`;
 }
 
 /**
@@ -328,12 +368,19 @@ function runPrivileged(command: string, args: string[]): void {
  * mode in the same step, so the file is never briefly world-writable.
  */
 function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
-  const staging = resolve(tmpdir(), `failproofaid-${process.pid}-${Date.now()}.tmp`);
+  // mkdtempSync, not a name built from pid + timestamp in the shared tmpdir.
+  // That name is guessable, and `writeFileSync` follows a symlink already
+  // sitting at the path — so on a multi-user box another local user could
+  // pre-create it and have `install` copy content they control into
+  // /etc/systemd/system as root. mkdtemp gives a 0700 directory with a name
+  // they cannot predict, so there is nothing to pre-create.
+  const stagingDir = mkdtempSync(resolve(tmpdir(), "failproofaid-stage-"));
+  const staging = resolve(stagingDir, "service-definition");
   try {
     writeFileSync(staging, contents, "utf8");
     runPrivileged("install", ["-m", mode, staging, destination]);
   } finally {
-    rmSync(staging, { force: true });
+    rmSync(stagingDir, { recursive: true, force: true });
   }
 }
 
@@ -365,17 +412,30 @@ function removeLegacyUserService(): void {
         /* best-effort */
       }
     } else {
-      const legacy = legacyLaunchAgentPlistPath();
-      if (!existsSync(legacy)) return;
-      try {
-        execFileSync("launchctl", ["unload", "-w", legacy], {
-          stdio: "ignore",
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        });
-      } catch {
-        /* not loaded */
+      const legacyAgent = legacyLaunchAgentPlistPath();
+      if (existsSync(legacyAgent)) {
+        try {
+          execFileSync("launchctl", ["unload", "-w", legacyAgent], {
+            stdio: "ignore",
+            timeout: SERVICE_CMD_TIMEOUT_MS,
+          });
+        } catch {
+          /* not loaded */
+        }
+        unlinkSync(legacyAgent);
       }
-      unlinkSync(legacy);
+
+      // The 1.0.0-beta.1 daemon, before the label was per-user. Privileged,
+      // and only reachable on a path that has already elevated.
+      const legacyDaemon = legacySharedLaunchDaemonPath();
+      if (existsSync(legacyDaemon)) {
+        try {
+          runPrivileged("launchctl", ["unload", "-w", legacyDaemon]);
+        } catch {
+          /* not loaded */
+        }
+        runPrivileged("rm", ["-f", legacyDaemon]);
+      }
     }
   } catch (err) {
     hookLogWarn(`could not remove the legacy user-scope daemon: ${err instanceof Error ? err.message : String(err)}`);
@@ -429,7 +489,7 @@ function launchdPlistContents(binaryPath: string, logDir: string, workerCmd: str
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${LAUNCHD_LABEL}</string>
+    <string>${escapeXml(launchdLabel())}</string>
     <key>ProgramArguments</key>
     <array>
         <string>${escapeXml(binaryPath)}</string>
@@ -672,7 +732,7 @@ export function daemonServiceStatus(): DaemonServiceStatus {
     // `launchctl list` cannot see — unlike systemd, reading the state needs
     // the same elevation installing it did.
     const root = typeof process.getuid === "function" && process.getuid() === 0;
-    const args = ["print", `system/${LAUNCHD_LABEL}`];
+    const args = ["print", `system/${launchdLabel()}`];
     const out = root
       ? execFileSync("launchctl", args, {
           stdio: ["ignore", "pipe", "ignore"],

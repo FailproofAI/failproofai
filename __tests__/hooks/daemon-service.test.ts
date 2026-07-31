@@ -216,6 +216,20 @@ describe("hooks/daemon-service", () => {
       expect(daemonStatusCommand()).toBe(`systemctl status failproofaid@${user}.service`);
     });
 
+    it("namespaces the launchd label per user too — a plist is just as user-specific", async () => {
+      // A shared label meant the second Mac user's install overwrote the
+      // first's daemon (UserName, ExecStart under their ~/.failproofai/bin,
+      // their log paths) and their uninstall deleted it.
+      setPlatform("darwin");
+      const { daemonServiceFilePath, daemonStatusCommand } = await import("../../src/hooks/daemon-service");
+      const user = userInfo().username;
+
+      expect(daemonServiceFilePath()).toBe(
+        `/Library/LaunchDaemons/ai.failproof.failproofaid.${user}.plist`,
+      );
+      expect(daemonStatusCommand()).toContain(`system/ai.failproof.failproofaid.${user}`);
+    });
+
     it("writes a unit that runs as the user, starts at boot, and knows where HOME is", async () => {
       useScratchHome();
       setPlatform("linux");
@@ -247,8 +261,13 @@ describe("hooks/daemon-service", () => {
 
       const workerCmd = resolveWorkerCommand();
       if (workerCmd) {
-        expect(workerCmd.startsWith(process.execPath)).toBe(true);
+        expect(workerCmd).toContain(process.execPath);
         expect(workerCmd).not.toMatch(/^node /);
+        // Shell-quoted, because the daemon runs this through `sh -c`: an
+        // unquoted `/Users/First Last/...` splits on its space and the worker
+        // never starts. Ordinary on macOS, and more likely since execPath
+        // (home-derived) replaced a bare `node`.
+        expect(workerCmd).toBe(`'${process.execPath}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT!, "dist", "worker.mjs")}'`);
         // Environment= values containing a space must be quoted or systemd
         // rejects the unit — and this value always contains one.
         expect(systemdUnitContents("/opt/failproofaid", workerCmd)).toContain(

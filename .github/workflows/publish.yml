@@ -60,11 +60,14 @@ jobs:
         id: version
         env:
           DIST_TAG_INPUT: ${{ inputs.dist_tag || 'auto' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
 
           # Determine the publish version
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ "$EVENT_NAME" == "release" ]]; then
             TAG_VERSION="${GITHUB_REF_NAME#v}"
             PUBLISH_VERSION="$TAG_VERSION"
           else
@@ -84,9 +87,9 @@ jobs:
           # is not on main, and the next beta cut from main would then move it
           # BACKWARDS — an upgrade that is really a downgrade for anyone
           # tracking `failproofai@beta`.
-          if [[ "$DIST_TAG_INPUT" != "auto" && "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "$DIST_TAG_INPUT" != "auto" && "$EVENT_NAME" == "workflow_dispatch" ]]; then
             DIST_TAG="$DIST_TAG_INPUT"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.ref_name }}" != "main" ]]; then
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$REF_NAME" != "main" ]]; then
             DIST_TAG="next"
           elif [[ "$IS_PRERELEASE" == "true" ]]; then
             DIST_TAG="beta"
@@ -96,8 +99,8 @@ jobs:
 
           # `latest` is what a bare `npm install failproofai` resolves to, so it
           # may only ever come from main or from a published release.
-          if [[ "$DIST_TAG" == "latest" && "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.ref_name }}" != "main" ]]; then
-            echo "::error::Refusing to publish dist-tag 'latest' from ref '${{ github.ref_name }}'. Dispatch from main, or cut a release."
+          if [[ "$DIST_TAG" == "latest" && "$EVENT_NAME" == "workflow_dispatch" && "$REF_NAME" != "main" ]]; then
+            echo "::error::Refusing to publish dist-tag 'latest' from ref '$REF_NAME'. Dispatch from main, or cut a release."
             exit 1
           fi
 
@@ -127,7 +130,7 @@ jobs:
           echo "Publishing: $PUBLISH_VERSION (tag: $DIST_TAG)"
           echo "Release tag: v$PUBLISH_VERSION (prerelease: $IS_PRERELEASE)"
           echo "Next version: $NEXT_VERSION"
-          echo "Dry run: ${{ inputs.dry_run && 'true' || 'false' }}"
+          echo "Dry run: $DRY_RUN"
 
       # A ref without the Rust workspace (main, until the daemon lands) skips
       # the whole binary half of the pipeline and publishes exactly as before.
@@ -194,11 +197,12 @@ jobs:
       - name: Attach assets to the release
         if: ${{ !inputs.dry_run }}
         env:
+          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.preflight.outputs.tag }}
           PRERELEASE: ${{ needs.preflight.outputs.is_prerelease }}
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ "$EVENT_NAME" == "release" ]]; then
             gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
           elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
@@ -214,7 +218,9 @@ jobs:
 
       - name: Report dry run
         if: ${{ inputs.dry_run }}
-        run: echo "::notice::Dry run — built and checksummed 4 binaries, attached nothing to ${{ needs.preflight.outputs.tag }}."
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: echo "::notice::Dry run — built and checksummed 4 binaries, attached nothing to $TAG."
 
   publish:
     needs: [preflight, daemon, release-assets]
@@ -277,29 +283,35 @@ jobs:
 
       - name: Set publish version in package.json
         if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
         run: |
-          npm version "${{ needs.preflight.outputs.publish_version }}" --no-git-tag-version
-          echo "Updated package.json to ${{ needs.preflight.outputs.publish_version }}"
+          npm version "$PUBLISH_VERSION" --no-git-tag-version
+          echo "Updated package.json to $PUBLISH_VERSION"
 
       - name: Publish
+        env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [[ "${{ needs.preflight.outputs.dry_run }}" == "true" ]]; then
+          if [[ "$DRY_RUN" == "true" ]]; then
             # --provenance is dropped here on purpose: attestation is a
             # registry-side write that has nothing to validate in a dry run.
-            npm publish --dry-run --tag "${{ needs.preflight.outputs.dist_tag }}"
+            npm publish --dry-run --tag "$DIST_TAG"
           else
-            npm publish --provenance --tag "${{ needs.preflight.outputs.dist_tag }}"
+            npm publish --provenance --tag "$DIST_TAG"
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish alias packages
-        run: |
-          ARGS=(--dist-tag "${{ needs.preflight.outputs.dist_tag }}")
-          if [[ "${{ needs.preflight.outputs.dry_run }}" == "true" ]]; then ARGS+=(--dry-run); fi
-          node scripts/publish-aliases.mjs "${ARGS[@]}"
         env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          ARGS=(--dist-tag "$DIST_TAG")
+          if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
+          node scripts/publish-aliases.mjs "${ARGS[@]}"
 
       # The bump targets main unconditionally — it checks main out and pushes to
       # it — so it must never run for a build that did not come from main. A
@@ -316,6 +328,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # The publish-version step may have left package.json modified.
+          git checkout -- package.json
           git fetch origin main
           git checkout main
 
@@ -333,5 +347,8 @@ jobs:
           needs.preflight.outputs.next_version != '' &&
           (needs.preflight.outputs.dry_run == 'true' ||
            (github.event_name != 'release' && github.ref_name != 'main'))
+        env:
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "::notice::Left main's version untouched (ref '${{ github.ref_name }}', dry_run=${{ needs.preflight.outputs.dry_run }}). Main is bumped only by a release or a dispatch from main."
+          echo "::notice::Left main's version untouched (ref '$REF_NAME', dry_run=$DRY_RUN). Main is bumped only by a release or a dispatch from main."

@@ -103,6 +103,38 @@ Here is what those events look like once they reach the dashboard, colour-coded 
 
 ---
 
+## Framework instrumentation
+
+AgentEye can instrument LangChain and LangGraph, CrewAI, LlamaIndex, and
+Pydantic AI without changing each model and tool call. Import your framework
+first, then enable instrumentation once at startup:
+
+```python
+import agenteye
+from langgraph.graph import StateGraph
+
+agenteye.configure(environment="production")
+agenteye.instrument()
+```
+
+You can also name one framework explicitly, for example
+`agenteye.instrument("langchain")` for LangChain or LangGraph.
+
+On Python 3.10, LangGraph async nodes must pass their `RunnableConfig` into
+child `ainvoke()` calls so model and tool activity stays attached to the graph:
+
+```python
+from langchain_core.runnables import RunnableConfig
+
+async def plan(state, config: RunnableConfig):
+    reply = await model.ainvoke(state["messages"], config=config)
+    return {"messages": [reply]}
+```
+
+Python 3.11 and later propagate that context automatically.
+
+---
+
 ## configure()
 
 ```python

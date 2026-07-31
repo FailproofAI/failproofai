@@ -15,6 +15,7 @@ describe("hooks/daemon-service", () => {
   const originalArch = process.arch;
   const originalBinaryEnv = process.env.FAILPROOFAI_DAEMON_BINARY;
   const originalPackageRootEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  const originalWorkerCmdEnv = process.env.FAILPROOFAI_WORKER_CMD;
 
   function setPlatform(platform: string) {
     Object.defineProperty(process, "platform", { value: platform });
@@ -34,6 +35,8 @@ describe("hooks/daemon-service", () => {
     else delete process.env.FAILPROOFAI_DAEMON_BINARY;
     if (originalPackageRootEnv !== undefined) process.env.FAILPROOFAI_PACKAGE_ROOT = originalPackageRootEnv;
     else delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+    if (originalWorkerCmdEnv !== undefined) process.env.FAILPROOFAI_WORKER_CMD = originalWorkerCmdEnv;
+    else delete process.env.FAILPROOFAI_WORKER_CMD;
   });
 
   describe("isDaemonSupportedPlatform", () => {
@@ -173,6 +176,31 @@ describe("hooks/daemon-service", () => {
         await uninstallDaemonService();
         expect(existsSync(unitPath)).toBe(false);
         expect(daemonServiceStatus()).toBe("not-installed");
+      });
+
+      it("writes FAILPROOFAI_WORKER_CMD into the unit's environment and systemd still accepts it", async () => {
+        // Caught by a real Docker clean-install run: the daemon's own
+        // built-in worker fallback is a *relative* path (dist/worker.mjs),
+        // which only resolves when the daemon happens to be started from
+        // the npm package's own directory — never true for a real
+        // service-managed daemon, which systemd starts from an arbitrary
+        // cwd. This is the fix: an absolute worker command threaded through
+        // as an environment line in the unit itself. The real assertion
+        // here isn't just string content — it's that `systemctl --user
+        // enable --now` (called by installDaemonService) doesn't choke on
+        // the quoted Environment= syntax.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+        process.env.FAILPROOFAI_WORKER_CMD = "node /some/absolute/path/worker.mjs";
+        setPlatform("linux");
+        const { installDaemonService, daemonServiceStatus } = await import("../../src/hooks/daemon-service");
+
+        const result = await installDaemonService();
+        expect(result).toEqual({ installed: true });
+        const contents = readFileSync(unitPath, "utf8");
+        expect(contents).toContain('Environment="FAILPROOFAI_WORKER_CMD=node /some/absolute/path/worker.mjs"');
+
+        await new Promise((r) => setTimeout(r, 300));
+        expect(daemonServiceStatus()).toBe("running");
       });
 
       it("re-installing replaces the unit file with a new binary path", async () => {

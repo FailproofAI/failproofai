@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleHookEvent } from "../../src/hooks/handler";
+import { handleHookEvent, evaluateHookEvent } from "../../src/hooks/handler";
 
 vi.mock("../../src/hooks/hooks-config", () => ({
   readMergedHooksConfig: vi.fn(() => ({ enabledPolicies: ["block-sudo"] })),
@@ -261,6 +261,49 @@ describe("hooks/handler", () => {
           param_keys_overridden: [],
         },
       );
+    });
+
+    it("does not block a deny decision on the telemetry POST when awaitTelemetryFlush is false (regression: warm-worker deny latency)", async () => {
+      // Caught via a real Docker daemon test: this call used to be
+      // unconditionally awaited regardless of opts.awaitTelemetryFlush, so
+      // every deny/instruct decision through the warm worker paid a live
+      // network round-trip (hundreds of ms, up to sendEvent's 5s abort
+      // timeout when PostHog is unreachable) before returning — blowing
+      // through daemon-client.ts's 150ms fail-closed budget on nearly every
+      // real block. A slow/never-resolving trackHookEvent must not delay
+      // evaluateHookEvent's return when the caller opts out via
+      // awaitTelemetryFlush:false (exactly what worker-server.ts passes).
+      const { evaluatePolicies } = await import("../../src/hooks/policy-evaluator");
+      vi.mocked(evaluatePolicies).mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '{"hookSpecificOutput":{"permissionDecision":"deny"}}',
+        stderr: "",
+        policyName: "block-sudo",
+        reason: "sudo blocked",
+        decision: "deny",
+      });
+      const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
+      let releaseTelemetry: () => void = () => {};
+      vi.mocked(trackHookEvent).mockReturnValueOnce(
+        new Promise((resolve) => {
+          releaseTelemetry = () => resolve(undefined);
+        }),
+      );
+
+      const outcomePromise = evaluateHookEvent(
+        "PreToolUse",
+        "claude",
+        JSON.stringify({ tool_name: "Bash" }),
+        { awaitTelemetryFlush: false },
+      );
+      const raced = await Promise.race([
+        outcomePromise.then(() => "resolved"),
+        new Promise((resolve) => setTimeout(() => resolve("timed-out"), 50)),
+      ]);
+      expect(raced).toBe("resolved");
+
+      releaseTelemetry();
+      await outcomePromise;
     });
 
     it("tags telemetry with cli=copilot when invoked with --cli copilot", async () => {

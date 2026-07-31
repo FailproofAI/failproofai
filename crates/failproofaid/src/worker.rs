@@ -176,6 +176,25 @@ impl Worker {
         Ok(())
     }
 
+    /// Spawns the worker eagerly and blocks until it's ready, without
+    /// running a hook through it. Called once from `main.rs` right after
+    /// startup so the worker's ~hundreds-of-ms cold start (process spawn +
+    /// module load) happens before any real request arrives, not on the
+    /// critical path of the first one. The client's fail-closed budget
+    /// (`DAEMON_ATTEMPT_TIMEOUT_MS` in `daemon-client.ts`) is deliberately
+    /// tight for a *healthy warm* daemon and is not meant to also cover a
+    /// cold worker spawn — without this, the very first hook call after
+    /// every daemon (re)start would fail closed even though the daemon
+    /// itself is up, which defeats the point of keeping evaluation warm.
+    /// Errors are logged, not propagated: a failed warm-up isn't fatal to
+    /// the daemon itself, since `call()` retries `ensure_started` on the
+    /// next real request anyway.
+    pub fn warm(&self) {
+        if let Err(err) = self.ensure_started() {
+            eprintln!("[failproofaid] worker warm-up failed (will retry on first request): {err}");
+        }
+    }
+
     /// Relays one hook evaluation to the worker and returns its verdict.
     /// `ensure_started` is called first so a worker that crashed since the
     /// last request gets one restart attempt before this request fails —

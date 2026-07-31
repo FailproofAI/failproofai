@@ -356,7 +356,7 @@ export async function evaluateHookEvent(
           !!(result.policyName && config.policyParams?.[result.policyName]);
         const paramKeysOverridden = hasCustomParams ? Object.keys(config.policyParams![result.policyName!]) : [];
         const distinctId = getInstanceId();
-        await trackHookEvent(distinctId, "hook_policy_triggered", {
+        const trackPromise = trackHookEvent(distinctId, "hook_policy_triggered", {
           event_type: canonicalEventType,
           cli,
           tool_name: (parsed.tool_name as string) ?? null,
@@ -368,6 +368,21 @@ export async function evaluateHookEvent(
           has_custom_params: hasCustomParams,
           param_keys_overridden: paramKeysOverridden,
         });
+        // Deny/instruct is exactly the response the daemon's warm worker
+        // needs to return fast — a live network POST to PostHog on this path
+        // (previously always awaited here, regardless of opts.awaitTelemetryFlush)
+        // made every deny/instruct decision pay a real network round-trip
+        // (hundreds of ms, up to sendEvent's 5s abort timeout when PostHog is
+        // unreachable) before the result could return. Caught by a real
+        // Docker daemon test: a `sudo` deny took ~700ms even against an
+        // already-warm worker and blew through the client's 150ms
+        // fail-closed budget every time. Same opt-out this file already
+        // grants `flushHookTelemetry()` below — the worker passes
+        // awaitTelemetryFlush:false and never calls that flush either, so
+        // this becomes true fire-and-forget for it.
+        if (opts?.awaitTelemetryFlush ?? true) {
+          await trackPromise;
+        }
       } catch {
         // Telemetry is best-effort — never block the hook
       }

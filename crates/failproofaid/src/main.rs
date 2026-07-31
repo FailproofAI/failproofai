@@ -30,6 +30,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         worker_socket_path,
         worker::WorkerCommand::from_env(),
     ));
+    // Pre-warm off the startup path: the socket must be accepting
+    // connections promptly (a service manager / health check shouldn't wait
+    // on a Node cold start), but a request that arrives before warm-up
+    // finishes still gets a correct, just slightly slower, answer — `call()`
+    // -> `ensure_started()` shares the same lock and simply waits for
+    // whichever spawn (this one or its own) is already in flight.
+    {
+        let warm_worker = worker.clone();
+        std::thread::spawn(move || warm_worker.warm());
+    }
     let srv = server::Server::bind(&socket_path, worker)?;
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 

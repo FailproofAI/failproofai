@@ -36,6 +36,12 @@
         "typescript": "6.0.3",
         "vitest": "^4.1.9",
       },
+      "optionalDependencies": {
+        "@failproofai/failproofaid-darwin-arm64": "1.0.0-beta.0",
+        "@failproofai/failproofaid-darwin-x64": "1.0.0-beta.0",
+        "@failproofai/failproofaid-linux-arm64": "1.0.0-beta.0",
+        "@failproofai/failproofaid-linux-x64": "1.0.0-beta.0",
+      },
     },
   },
   "overrides": {

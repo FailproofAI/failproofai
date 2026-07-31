@@ -103,3 +103,10 @@ COMMIT_MSG.tmp
 /canary.env
 /integration-suite-state.json
 /cli-integration-state.json
+
+# failproofaid per-platform binaries — staged into packages/*/bin/ by
+# .github/workflows/build-daemon.yml (or a local `cargo build --release` for
+# manual Docker verification), never committed. Same for npm-pack tarballs
+# produced anywhere in the repo during local packaging tests.
+/packages/*/bin/
+*.tgz

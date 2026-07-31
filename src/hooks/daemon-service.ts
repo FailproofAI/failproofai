@@ -72,6 +72,33 @@ export function resolveFailproofaidBinaryPath(): string | null {
   return null;
 }
 
+/**
+ * Resolves the command the daemon should use to spawn its warm worker,
+ * passed through as `FAILPROOFAI_WORKER_CMD` in the service's own
+ * environment.
+ *
+ * This is NOT optional the way it might look — `crates/failproofaid`'s
+ * built-in fallback (`node dist/worker.mjs`, used only when
+ * `FAILPROOFAI_WORKER_CMD` is unset) is a *relative* path, correct only
+ * when the daemon happens to be spawned with the npm package's own
+ * directory as its cwd. A service manager spawns processes from an
+ * arbitrary cwd (typically `/` or the user's home), so that fallback
+ * would silently fail to find the bundled worker in every real service
+ * install — caught by actually starting the installed service in a clean
+ * container rather than by reasoning about it. Resolving an absolute path
+ * here, once, at install time, and handing it to the daemon via the
+ * environment closes that gap entirely.
+ */
+function resolveWorkerCommand(): string | null {
+  if (process.env.FAILPROOFAI_WORKER_CMD) return process.env.FAILPROOFAI_WORKER_CMD;
+
+  const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (!packageRoot) return null;
+  const workerScript = resolve(packageRoot, "dist", "worker.mjs");
+  if (!existsSync(workerScript)) return null;
+  return `node ${workerScript}`;
+}
+
 function systemdUnitPath(): string {
   return resolve(homedir(), ".config", "systemd", "user", "failproofaid.service");
 }
@@ -91,14 +118,18 @@ export function daemonServiceFilePath(): string | null {
   return process.platform === "linux" ? systemdUnitPath() : launchdPlistPath();
 }
 
-function systemdUnitContents(binaryPath: string): string {
+function systemdUnitContents(binaryPath: string, workerCmd: string | null): string {
+  // Quoted because FAILPROOFAI_WORKER_CMD's value ("node /abs/path/worker.mjs")
+  // contains a space — systemd's Environment= requires quoting whenever the
+  // value does.
+  const envLine = workerCmd ? `Environment="FAILPROOFAI_WORKER_CMD=${workerCmd}"\n` : "";
   return `[Unit]
 Description=failproofai background daemon (failproofaid)
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${binaryPath}
+${envLine}ExecStart=${binaryPath}
 Restart=on-failure
 RestartSec=2
 
@@ -111,7 +142,15 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function launchdPlistContents(binaryPath: string, logDir: string): string {
+function launchdPlistContents(binaryPath: string, logDir: string, workerCmd: string | null): string {
+  const envBlock = workerCmd
+    ? `    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FAILPROOFAI_WORKER_CMD</key>
+        <string>${escapeXml(workerCmd)}</string>
+    </dict>
+`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -126,7 +165,7 @@ function launchdPlistContents(binaryPath: string, logDir: string): string {
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
+${envBlock}    <key>StandardOutPath</key>
     <string>${escapeXml(resolve(logDir, "failproofaid.log"))}</string>
     <key>StandardErrorPath</key>
     <string>${escapeXml(resolve(logDir, "failproofaid.err.log"))}</string>
@@ -157,12 +196,20 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       reason: "failproofaid binary not found for this platform (no matching @failproofai/failproofaid-* package)",
     };
   }
+  // Best-effort, not required: a null workerCmd just leaves the daemon to
+  // its own built-in (relative-path) fallback, which only works when the
+  // daemon happens to be started from the npm package's own directory.
+  // Resolving it here — where FAILPROOFAI_PACKAGE_ROOT is reliably set —
+  // and threading it through as an absolute path in the service's
+  // environment is what makes a *service-managed* daemon actually find its
+  // worker regardless of what cwd the service manager starts it from.
+  const workerCmd = resolveWorkerCommand();
 
   try {
     if (process.platform === "linux") {
       const unitPath = systemdUnitPath();
       mkdirSync(dirname(unitPath), { recursive: true });
-      writeFileSync(unitPath, systemdUnitContents(binaryPath), "utf8");
+      writeFileSync(unitPath, systemdUnitContents(binaryPath, workerCmd), "utf8");
       execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
       execFileSync("systemctl", ["--user", "enable", "--now", "failproofaid.service"], { stdio: "ignore" });
     } else {
@@ -170,7 +217,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       const logDir = resolve(homedir(), ".failproofai", "logs");
       mkdirSync(dirname(plistPath), { recursive: true });
       mkdirSync(logDir, { recursive: true });
-      writeFileSync(plistPath, launchdPlistContents(binaryPath, logDir), "utf8");
+      writeFileSync(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd), "utf8");
       // Unload any previously-loaded copy first — reloading with a changed
       // binary path (e.g. after an upgrade) is a no-op under plain `load`
       // if launchd thinks the label is already loaded.

@@ -1,9 +1,10 @@
 {
   "name": "failproofai",
-  "version": "0.0.16-beta.0",
+  "version": "1.0.0-beta.0",
   "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously — for Claude Code & the Agents SDK",
   "bin": {
-    "failproofai": "./dist/cli.mjs"
+    "failproofai": "./dist/cli.mjs",
+    "failproofaid": "./bin/failproofaid-shim.mjs"
   },
   "files": [
     "bin/",
@@ -24,7 +25,8 @@
     "predev": "bun run build:cli && bun link",
     "dev": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
     "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
-    "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
+    "build:worker": "bun build --target=node --format=esm --outfile=dist/worker.mjs bin/failproofai-worker.mjs --external posthog-node --external sql.js",
+    "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun run build:worker && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
     "prestart": "bun run build:cli && bun link",
     "start": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
     "test": "vitest",
@@ -101,6 +103,12 @@
     "posthog-node": "^5.37.1",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0"
+  },
+  "optionalDependencies": {
+    "@failproofai/failproofaid-linux-x64": "1.0.0-beta.0",
+    "@failproofai/failproofaid-linux-arm64": "1.0.0-beta.0",
+    "@failproofai/failproofaid-darwin-x64": "1.0.0-beta.0",
+    "@failproofai/failproofaid-darwin-arm64": "1.0.0-beta.0"
   },
   "overrides": {
     "postcss": "8.5.23",

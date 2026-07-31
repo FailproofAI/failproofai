@@ -39,6 +39,8 @@ import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-prese
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
+import { isDaemonSupportedPlatform, installDaemonService, daemonServiceFilePath } from "./daemon-service";
+import { hookLogWarn } from "./hook-logger";
 
 export interface WizardIO {
   stdin?: TTYIn;
@@ -264,6 +266,29 @@ export function setCustomPoliciesEnabled(
 }
 
 /**
+ * Records that this machine's failproofaid service was installed —
+ * global scope ONLY (see `HooksConfig.daemonConfigured`'s doc comment):
+ * whether *this machine* has a running daemon isn't a per-project setting,
+ * so this always writes `~/.failproofai/policies-config.json` regardless of
+ * which scope the rest of the wizard's answers applied to.
+ */
+function markDaemonConfigured(): void {
+  const path = getConfigPathForScope("user");
+  let config: Record<string, unknown> = {};
+  try {
+    if (existsSync(path)) config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  } catch {
+    return; // a malformed global config is the install path's problem, not ours
+  }
+  config.daemonConfigured = true;
+  try {
+    writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
+  } catch {
+    /* best-effort: never fail a completed setup over this flag */
+  }
+}
+
+/**
  * Summarise the custom policy files on disk, for the review screen.
  *
  * Only lists files — it deliberately does NOT load them. Loading executes
@@ -322,6 +347,11 @@ export function reviewLines(state: {
   lines.push(`  Where      : ${where}`);
   lines.push(`  Assistants : ${assistantNames.length ? summarize(assistantNames, "assistants") : "(none)"}`);
   lines.push(`  Policies   : ${policies.length} enabled`);
+  if (scope === "user" && isDaemonSupportedPlatform()) {
+    lines.push(
+      `  Daemon     : failproofaid will be installed/started as a background service`,
+    );
+  }
 
   // Reflect the Custom decision, not just what is on disk. Reporting
   // "1 file (project) (auto-loaded)" after the user had just unticked the row
@@ -347,6 +377,10 @@ export function reviewLines(state: {
     }
   }
   lines.push(`    ${homeify(getConfigPathForScope(scope, cwd))}   ${policies.length} policies`);
+  if (scope === "user" && isDaemonSupportedPlatform()) {
+    const servicePath = daemonServiceFilePath();
+    if (servicePath) lines.push(`    ${homeify(servicePath)}   failproofaid service`);
+  }
   return lines;
 }
 
@@ -568,6 +602,29 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     { replace: true, quiet: true },
   );
   setCustomPoliciesEnabled(scope, cwd, customEnabled);
+
+  // Daemon setup — unconditional on Linux/macOS whenever the global scope
+  // was chosen (a daemon is per-machine, not per-project), no separate
+  // opt-in step or command. A failure here (binary not found, no service
+  // manager, ...) never fails the wizard — the rest of setup already
+  // applied, and this machine simply stays on the in-process path exactly
+  // as before, since `daemonConfigured` is only set on success.
+  let daemonInstalled = false;
+  if (scope === "user" && isDaemonSupportedPlatform()) {
+    const daemonResult = await installDaemonService();
+    if (daemonResult.installed) {
+      markDaemonConfigured();
+      daemonInstalled = true;
+    } else {
+      hookLogWarn(`failproofaid was not installed as a service: ${daemonResult.reason}`);
+    }
+    void emit("configure_daemon_install", {
+      installed: daemonResult.installed,
+      reason: daemonResult.installed ? null : (daemonResult.reason ?? null),
+      platform: process.platform,
+    });
+  }
+
   await applied;
   // Only now — a completed apply — is the launcher considered "seen", so the
   // first-run bare invocation stops redirecting here and opens the dashboard.
@@ -584,9 +641,10 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       : customEnabled === false
         ? " · custom policies DISABLED"
         : "";
+  const daemonNote = daemonInstalled ? " · background daemon enabled" : "";
   const assistants = `${clis.length} assistant${clis.length === 1 ? "" : "s"}`;
   outro(
-    `Setup complete — ${policies.length} policies${customNote} · ${assistants}`,
+    `Setup complete — ${policies.length} policies${customNote} · ${assistants}${daemonNote}`,
     { ok: true },
     stdout,
   );

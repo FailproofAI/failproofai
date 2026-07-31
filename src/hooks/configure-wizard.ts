@@ -289,6 +289,10 @@ export function classifyDaemonInstallFailure(reason: string | undefined): string
   // signal, "disabled" is a deliberate air-gapped opt-out, and a plain fetch
   // failure is usually a proxy or an offline box — three very different
   // stories that would otherwise all land in `service_manager_error`.
+  // The service is installed system-wide now, so "couldn't become root" is a
+  // first-class outcome with a specific remedy (re-run under sudo) rather
+  // than an opaque service_manager_error.
+  if (/root privileges are required/.test(reason)) return "needs_root";
   if (/checksum mismatch|has no entry for/.test(reason)) return "checksum_mismatch";
   if (/downloads are disabled/.test(reason)) return "downloads_disabled";
   if (/failed to download/.test(reason)) return "download_failed";

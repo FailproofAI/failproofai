@@ -488,6 +488,27 @@ describe("configure-wizard daemon integration", () => {
     expect(classifyDaemonInstallFailure(undefined)).toBe("unknown");
   });
 
+  it("classifies the download and elevation failure modes distinctly", () => {
+    // These three have different remedies — retry the network, re-run under
+    // sudo, or treat a bad digest as a supply-chain signal — so collapsing
+    // them into service_manager_error would make the telemetry useless for
+    // telling an offline laptop from a tampered artifact.
+    expect(
+      classifyDaemonInstallFailure(
+        "root privileges are required to install the failproofaid system service, and sudo is not available without a password. Run: sudo failproofai config",
+      ),
+    ).toBe("needs_root");
+    expect(
+      classifyDaemonInstallFailure("checksum mismatch for failproofaid-linux-x64.gz (expected ab…, got cd…)"),
+    ).toBe("checksum_mismatch");
+    expect(classifyDaemonInstallFailure("daemon downloads are disabled (FAILPROOFAI_NO_DOWNLOAD)")).toBe(
+      "downloads_disabled",
+    );
+    expect(
+      classifyDaemonInstallFailure("failed to download failproofaid v1.0.0 for linux-x64: fetch failed"),
+    ).toBe("download_failed");
+  });
+
   it("does not fail the wizard or mark daemonConfigured when daemon install fails", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({

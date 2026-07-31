@@ -888,6 +888,38 @@ triggered manually via `workflow_dispatch`. It's slower than `rust-quality` (rea
 cross-compiles across 4 matrix legs, two of them real macOS runners) — don't expect it to
 finish inside a quick `gh run watch` poll; check back or use a longer timeout.
 
+### How the daemon is supervised
+
+The service is **system-scope, user-run**: `/etc/systemd/system/failproofaid@<user>.service`
+with `User=<user>` and `WantedBy=multi-user.target` (macOS: a `/Library/LaunchDaemons`
+plist with `UserName`). It starts at boot, needs no login, and survives logout.
+
+It was a systemd `--user` unit through 1.0.0-beta.0, and that is what forced the change: a
+user manager does not start at boot without `loginctl enable-linger` and stops with the
+last session, so the daemon died on logout — and because a daemon-configured machine
+**fails closed**, anything running without a login session (detached tmux, cron, a CI
+runner) then hit denials.
+
+Three consequences, all handled explicitly rather than assumed:
+
+- **Install needs root.** `canElevate()` checks `sudo -n` (or uid 0) *before* writing
+  anything; when it fails, the install writes nothing and returns the exact commands to
+  run, classified as `needs_root`. `sudo -n`, never interactive — a password prompt fired
+  from under the wizard's TUI is unreadable.
+- **A system unit has no login environment.** `resolveWorkerCommand()` uses
+  `process.execPath`, not a bare `node`: the single most common Node install is nvm, whose
+  binary lives under `~/.nvm/versions/node/*/bin` and is on no system PATH. A bare `node`
+  resolves when the wizard runs it and then fails inside the service, silently.
+- **The old user unit must go first.** `removeLegacyUserService()` runs on every install
+  and uninstall. It holds the same flock the new service needs, so leaving one behind means
+  the system unit starts, loses the singleton race, and the machine sits fail-closed
+  against a daemon that never came up.
+
+The unit is named per user (`failproofaid@alice`) so a second person on the same box cannot
+silently steal the first's service — every field in it is user-specific anyway (ExecStart
+under that user's `~/.failproofai/bin`, HOME, the worker command). Reading status needs no
+privileges: `systemctl status failproofaid@<user>`, exposed as `daemonStatusCommand()`.
+
 ### How the daemon binary reaches users
 
 The npm package ships **no binary** — one tarball serves every platform. The four
@@ -1025,8 +1057,11 @@ src/hooks/
                               throws; FAILPROOFAI_NO_DOWNLOAD / FAILPROOFAI_DAEMON_BASE_URL
                               opt out or redirect it
   daemon-service.ts          installDaemonService()/uninstallDaemonService()/
-                              daemonServiceStatus()/setDaemonConfigured() — systemd
-                              --user unit / launchd LaunchAgent generation; called
+                              daemonServiceStatus()/setDaemonConfigured() — SYSTEM-scope
+                              systemd unit (/etc/systemd/system/failproofaid@<user>
+                              .service, User=<user>, WantedBy=multi-user.target) /
+                              launchd LaunchDaemon with UserName; root-installed via
+                              `sudo -n`, never root-run. Called
                               directly by configure-wizard.ts, no public
                               `failproofai daemon` subcommand. install waits for the
                               service to reach AND HOLD a running state before

@@ -60,10 +60,19 @@ jobs:
           # architectures (including a native arm64 runner) rather than
           # `cross`/Docker cross-compilation — a real linker for the target
           # triple, no QEMU emulation overhead.
-          - target: x86_64-unknown-linux-gnu
+          #
+          # musl, NOT gnu: a glibc build links against the runner's own libc,
+          # and `ubuntu-latest` is 24.04 (glibc 2.39), so the 1.0.0-beta.0
+          # binaries refused to start on Ubuntu 22.04, Debian 12, RHEL 9 and
+          # Amazon Linux 2023 with `version GLIBC_2.39 not found` — measured,
+          # not predicted. Pinning an older runner would only move the floor
+          # (22.04 is glibc 2.35, still above RHEL 9's 2.34); a static musl
+          # binary has no floor at all. The daemon is a socket supervisor with
+          # no NSS or dlopen use, which is what makes static linking safe here.
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             platform: linux-x64
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
             platform: linux-arm64
           # macOS cannot be cross-compiled reliably from Linux (system
@@ -89,6 +98,14 @@ jobs:
           persist-credentials: false
 
       - run: rustup target add ${{ matrix.target }}
+
+      # `rustup target add` ships the musl std library but not a musl linker;
+      # without musl-tools the leg fails at link time with
+      # `linker 'musl-gcc' not found`. Both Linux runners are native to their
+      # own target, so the distro package is the right linker for the triple.
+      - name: Install the musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
 
       # Split restore/save rather than `actions/cache@v6`, which does both.
       # This job runs on `pull_request` AND on the release path (via
@@ -139,6 +156,18 @@ jobs:
         run: |
           BIN="target/${{ matrix.target }}/release/failproofaid"
           "$BIN" --version
+          # A dynamically linked "static" build would reintroduce the glibc
+          # floor silently — the binary still runs here, on the runner that
+          # built it, and only fails on the users' older distros. Assert the
+          # property on the artifact itself.
+          if [[ "${{ matrix.target }}" == *musl* ]]; then
+            file "$BIN"
+            if ldd "$BIN" 2>&1 | grep -qv "not a dynamic executable\|statically linked"; then
+              echo "::error::${{ matrix.platform }} is not statically linked — it would inherit the runner's glibc floor"
+              ldd "$BIN" || true
+              exit 1
+            fi
+          fi
           gzip -9 -c "$BIN" > "failproofaid-${{ matrix.platform }}.gz"
           ls -l "failproofaid-${{ matrix.platform }}.gz"
 

@@ -8,8 +8,8 @@
  * `configure-wizard.ts` calls the functions here directly, the same
  * relationship it already has with `manager.ts`'s `installHooks()`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
@@ -168,22 +168,71 @@ export async function ensureFailproofaidBinary(): Promise<{ path?: string; reaso
  * here, once, at install time, and handing it to the daemon via the
  * environment closes that gap entirely.
  */
-function resolveWorkerCommand(): string | null {
+export function resolveWorkerCommand(): string | null {
   if (process.env.FAILPROOFAI_WORKER_CMD) return process.env.FAILPROOFAI_WORKER_CMD;
 
   const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
   if (!packageRoot) return null;
   const workerScript = resolve(packageRoot, "dist", "worker.mjs");
   if (!existsSync(workerScript)) return null;
-  return `node ${workerScript}`;
+  // `process.execPath`, not a bare `node`. A system-scope service does not
+  // inherit a login environment, so its PATH is the system default — and the
+  // single most common way to install Node is nvm, which puts it under
+  // ~/.nvm/versions/node/*/bin and nowhere on that PATH. A bare `node` would
+  // resolve fine when the wizard runs it and then fail inside the service,
+  // silently, on exactly the machines least likely to notice. execPath is
+  // whatever runtime is executing this CLI right now (node for the published
+  // bin, bun in a source checkout), absolute either way.
+  return `${process.execPath} ${workerScript}`;
 }
 
-function systemdUnitPath(): string {
+/**
+ * The account the daemon runs as. The service is root-*installed* but never
+ * root-*run*: everything it touches (the socket, the lock, the policy config)
+ * lives in one user's home and is peer-checked against that user's uid.
+ */
+function serviceUser(): string {
+  return userInfo().username;
+}
+
+/**
+ * `/etc/systemd/system/failproofaid@<user>.service`.
+ *
+ * The `@<user>` suffix is systemd's convention for a per-user instance, but
+ * this is a concrete unit file rather than an instance of a template: every
+ * field that matters is user-specific (the ExecStart path is under the user's
+ * own ~/.failproofai/bin, so is HOME, so is the worker command), so a shared
+ * template would need a per-instance drop-in for all of them and buy nothing.
+ * Naming it per-user is what keeps a second user's install from silently
+ * stealing the first's unit — a single `failproofaid.service` would.
+ */
+function systemdUnitName(user: string = serviceUser()): string {
+  return `failproofaid@${user}.service`;
+}
+
+function systemdUnitPath(user: string = serviceUser()): string {
+  return resolve("/etc/systemd/system", systemdUnitName(user));
+}
+
+/**
+ * The pre-1.0.0-beta.1 user-scope unit. Still removed on install and
+ * uninstall: it holds the same flock the new service needs, so leaving one
+ * behind means the system unit starts, loses the singleton race, and the
+ * machine sits fail-closed against a daemon that never came up.
+ */
+function legacySystemdUserUnitPath(): string {
   return resolve(homedir(), ".config", "systemd", "user", "failproofaid.service");
 }
 
+const LAUNCHD_LABEL = "ai.failproof.failproofaid";
+
 function launchdPlistPath(): string {
-  return resolve(homedir(), "Library", "LaunchAgents", "ai.failproof.failproofaid.plist");
+  return `/Library/LaunchDaemons/${LAUNCHD_LABEL}.plist`;
+}
+
+/** The pre-1.0.0-beta.1 LaunchAgent — same migration problem as above. */
+function legacyLaunchAgentPlistPath(): string {
+  return resolve(homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
 }
 
 /**
@@ -197,23 +246,129 @@ export function daemonServiceFilePath(): string | null {
   return process.platform === "linux" ? systemdUnitPath() : launchdPlistPath();
 }
 
-function systemdUnitContents(binaryPath: string, workerCmd: string | null): string {
-  // Quoted because FAILPROOFAI_WORKER_CMD's value ("node /abs/path/worker.mjs")
-  // contains a space — systemd's Environment= requires quoting whenever the
-  // value does.
+/**
+ * The command a user runs to inspect their own daemon — surfaced so the
+ * wizard can print it instead of leaving people to discover which service
+ * manager, and which scope, is involved.
+ */
+export function daemonStatusCommand(): string | null {
+  if (!isDaemonSupportedPlatform()) return null;
+  return process.platform === "linux"
+    ? `systemctl status ${systemdUnitName()}`
+    : `sudo launchctl print system/${LAUNCHD_LABEL}`;
+}
+
+/** True when privileged commands can run without prompting for a password. */
+function canElevate(): boolean {
+  if (typeof process.getuid === "function" && process.getuid() === 0) return true;
+  try {
+    execFileSync("sudo", ["-n", "true"], { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs one privileged command, non-interactively.
+ *
+ * `sudo -n` on purpose: the wizard owns the terminal, and a sudo password
+ * prompt fired from underneath a TUI is unreadable at best. A machine that
+ * cannot elevate silently gets a clear reason and the manual commands
+ * instead — it keeps working exactly as it did, on the in-process path.
+ */
+function runPrivileged(command: string, args: string[]): void {
+  const root = typeof process.getuid === "function" && process.getuid() === 0;
+  const [cmd, argv] = root ? [command, args] : ["sudo", ["-n", command, ...args]];
+  execFileSync(cmd, argv, { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
+}
+
+/**
+ * Installs a file into a root-owned location via a temp file, because the
+ * caller is not root and cannot write there directly. `install -m` sets the
+ * mode in the same step, so the file is never briefly world-writable.
+ */
+function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
+  const staging = resolve(tmpdir(), `failproofaid-${process.pid}-${Date.now()}.tmp`);
+  try {
+    writeFileSync(staging, contents, "utf8");
+    runPrivileged("install", ["-m", mode, staging, destination]);
+  } finally {
+    rmSync(staging, { force: true });
+  }
+}
+
+/**
+ * Removes a daemon installed by an earlier version into the user's own
+ * session scope. Best-effort and never privileged — these paths are all
+ * inside the user's home.
+ */
+function removeLegacyUserService(): void {
+  try {
+    if (process.platform === "linux") {
+      const legacy = legacySystemdUserUnitPath();
+      if (!existsSync(legacy)) return;
+      try {
+        execFileSync("systemctl", ["--user", "disable", "--now", "failproofaid.service"], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
+      } catch {
+        // Not loaded — removing the file is still the point.
+      }
+      unlinkSync(legacy);
+      try {
+        execFileSync("systemctl", ["--user", "daemon-reload"], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
+      } catch {
+        /* best-effort */
+      }
+    } else {
+      const legacy = legacyLaunchAgentPlistPath();
+      if (!existsSync(legacy)) return;
+      try {
+        execFileSync("launchctl", ["unload", "-w", legacy], {
+          stdio: "ignore",
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        });
+      } catch {
+        /* not loaded */
+      }
+      unlinkSync(legacy);
+    }
+  } catch (err) {
+    hookLogWarn(`could not remove the legacy user-scope daemon: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export function systemdUnitContents(binaryPath: string, workerCmd: string | null): string {
+  // Quoted because both values contain a space or a path — systemd's
+  // Environment= requires quoting whenever the value does.
   const envLine = workerCmd ? `Environment="FAILPROOFAI_WORKER_CMD=${workerCmd}"\n` : "";
+  const user = serviceUser();
   return `[Unit]
-Description=failproofai background daemon (failproofaid)
+Description=failproofai background daemon (failproofaid) for ${user}
 After=network.target
 
 [Service]
 Type=simple
+User=${user}
+# Set explicitly rather than relying on systemd deriving it from User=:
+# failproofaid is user-scope by construction and refuses to start without
+# HOME ("HOME is not set; failproofaid is user-scope only"), so the one
+# variable it cannot do without is not left to a version-dependent default.
+Environment="HOME=${homedir()}"
 ${envLine}ExecStart=${binaryPath}
 Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+# multi-user.target, not default.target: this is the whole point of a
+# system unit — it starts at boot, with no login and no lingering, and
+# keeps running after the installing user logs out.
+WantedBy=multi-user.target
 `;
 }
 
@@ -235,7 +390,7 @@ function launchdPlistContents(binaryPath: string, logDir: string, workerCmd: str
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>ai.failproof.failproofaid</string>
+    <string>${LAUNCHD_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
         <string>${escapeXml(binaryPath)}</string>
@@ -244,6 +399,12 @@ function launchdPlistContents(binaryPath: string, logDir: string, workerCmd: str
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <!-- A LaunchDaemon runs as root unless told otherwise. This is the
+         launchd half of the systemd unit's User=: loaded at boot by the
+         system, executed as the one user whose home, socket and lock it
+         is allowed to touch. -->
+    <key>UserName</key>
+    <string>${escapeXml(serviceUser())}</string>
 ${envBlock}    <key>StandardOutPath</key>
     <string>${escapeXml(resolve(logDir, "failproofaid.log"))}</string>
     <key>StandardErrorPath</key>
@@ -256,6 +417,25 @@ ${envBlock}    <key>StandardOutPath</key>
 export interface DaemonInstallResult {
   installed: boolean;
   reason?: string;
+}
+
+/**
+ * The privileged commands an install performs — returned verbatim so a
+ * machine that cannot elevate can be told exactly what to run rather than
+ * just that something failed.
+ */
+function daemonInstallCommands(binaryPath: string, workerCmd: string | null): string[] {
+  if (process.platform === "linux") {
+    return [
+      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(binaryPath, workerCmd)}EOF`,
+      "sudo systemctl daemon-reload",
+      `sudo systemctl enable --now ${systemdUnitName()}`,
+    ];
+  }
+  return [
+    `sudo tee ${launchdPlistPath()} < the plist failproofai config would write`,
+    `sudo launchctl load -w ${launchdPlistPath()}`,
+  ];
 }
 
 /**
@@ -284,40 +464,43 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
   // worker regardless of what cwd the service manager starts it from.
   const workerCmd = resolveWorkerCommand();
 
+  // The service is installed system-wide, which needs root. Check before
+  // writing anything, so a machine that cannot elevate gets the exact
+  // commands to run instead of a half-installed service.
+  if (!canElevate()) {
+    return {
+      installed: false,
+      reason:
+        "root privileges are required to install the failproofaid system service, and sudo is not available without a password. " +
+        `Run: sudo failproofai config  (or install manually: ${daemonInstallCommands(binaryPath, workerCmd).join(" && ")})`,
+    };
+  }
+
+  // A daemon left over from a pre-1.0.0-beta.1 install holds the same
+  // singleton lock the new one needs, so the system unit would start, lose
+  // the flock race, and leave the machine fail-closed against a daemon that
+  // never came up. Clear it first, every time.
+  removeLegacyUserService();
+
   try {
     if (process.platform === "linux") {
-      const unitPath = systemdUnitPath();
-      mkdirSync(dirname(unitPath), { recursive: true });
-      writeFileSync(unitPath, systemdUnitContents(binaryPath, workerCmd), "utf8");
-      execFileSync("systemctl", ["--user", "daemon-reload"], {
-        stdio: "ignore",
-        timeout: SERVICE_CMD_TIMEOUT_MS,
-      });
-      execFileSync("systemctl", ["--user", "enable", "--now", "failproofaid.service"], {
-        stdio: "ignore",
-        timeout: SERVICE_CMD_TIMEOUT_MS,
-      });
+      writePrivilegedFile(systemdUnitPath(), systemdUnitContents(binaryPath, workerCmd));
+      runPrivileged("systemctl", ["daemon-reload"]);
+      runPrivileged("systemctl", ["enable", "--now", systemdUnitName()]);
     } else {
       const plistPath = launchdPlistPath();
       const logDir = resolve(homedir(), ".failproofai", "logs");
-      mkdirSync(dirname(plistPath), { recursive: true });
       mkdirSync(logDir, { recursive: true });
-      writeFileSync(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd), "utf8");
       // Unload any previously-loaded copy first — reloading with a changed
       // binary path (e.g. after an upgrade) is a no-op under plain `load`
       // if launchd thinks the label is already loaded.
       try {
-        execFileSync("launchctl", ["unload", plistPath], {
-          stdio: "ignore",
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        });
+        runPrivileged("launchctl", ["unload", plistPath]);
       } catch {
         // Wasn't loaded — fine, this is the common case on a fresh install.
       }
-      execFileSync("launchctl", ["load", "-w", plistPath], {
-        stdio: "ignore",
-        timeout: SERVICE_CMD_TIMEOUT_MS,
-      });
+      writePrivilegedFile(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd));
+      runPrivileged("launchctl", ["load", "-w", plistPath]);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -370,40 +553,44 @@ async function waitForDaemonRunning(): Promise<boolean> {
 export async function uninstallDaemonService(): Promise<void> {
   setDaemonConfigured(false);
   if (!isDaemonSupportedPlatform()) return;
+
+  // Always attempted, and never privileged: a legacy user-scope daemon is
+  // the one thing this can still clean up on a machine that cannot elevate.
+  removeLegacyUserService();
+
   try {
     if (process.platform === "linux") {
-      try {
-        execFileSync("systemctl", ["--user", "disable", "--now", "failproofaid.service"], {
-          stdio: "ignore",
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        });
-      } catch {
-        // Already stopped/not installed — fine.
-      }
       const unitPath = systemdUnitPath();
-      if (existsSync(unitPath)) unlinkSync(unitPath);
+      if (!existsSync(unitPath)) return;
       try {
-        execFileSync("systemctl", ["--user", "daemon-reload"], {
-          stdio: "ignore",
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        });
+        runPrivileged("systemctl", ["disable", "--now", systemdUnitName()]);
+      } catch {
+        // Already stopped/not enabled — removing the unit is still the point.
+      }
+      runPrivileged("rm", ["-f", unitPath]);
+      try {
+        runPrivileged("systemctl", ["daemon-reload"]);
       } catch {
         // Best-effort.
       }
     } else {
       const plistPath = launchdPlistPath();
+      if (!existsSync(plistPath)) return;
       try {
-        execFileSync("launchctl", ["unload", "-w", plistPath], {
-          stdio: "ignore",
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        });
+        runPrivileged("launchctl", ["unload", "-w", plistPath]);
       } catch {
-        // Already unloaded/not installed — fine.
+        // Already unloaded — fine.
       }
-      if (existsSync(plistPath)) unlinkSync(plistPath);
+      runPrivileged("rm", ["-f", plistPath]);
     }
   } catch (err) {
-    hookLogWarn(`daemon service uninstall failed: ${err instanceof Error ? err.message : String(err)}`);
+    // `daemonConfigured` is already cleared above, so a machine that cannot
+    // elevate is back on the in-process path even though the unit file
+    // survives — it fails open, not closed.
+    hookLogWarn(
+      `daemon service uninstall failed (the service may need removing by hand: ${daemonStatusCommand()}): ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -418,7 +605,9 @@ export function daemonServiceStatus(): DaemonServiceStatus {
   if (process.platform === "linux") {
     if (!existsSync(systemdUnitPath())) return "not-installed";
     try {
-      const out = execFileSync("systemctl", ["--user", "is-active", "failproofaid.service"], {
+      // Unprivileged on purpose: reading a system unit's state needs no
+      // root, so status works for the owning user with no sudo at all.
+      const out = execFileSync("systemctl", ["is-active", systemdUnitName()], {
         stdio: ["ignore", "pipe", "ignore"],
         timeout: SERVICE_CMD_TIMEOUT_MS,
       })
@@ -438,11 +627,23 @@ export function daemonServiceStatus(): DaemonServiceStatus {
   const plistPath = launchdPlistPath();
   if (!existsSync(plistPath)) return "not-installed";
   try {
-    const out = execFileSync("launchctl", ["list"], {
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: SERVICE_CMD_TIMEOUT_MS,
-    }).toString();
-    return out.includes("ai.failproof.failproofaid") ? "running" : "stopped";
+    // A LaunchDaemon lives in launchd's system domain, which an unprivileged
+    // `launchctl list` cannot see — unlike systemd, reading the state needs
+    // the same elevation installing it did.
+    const root = typeof process.getuid === "function" && process.getuid() === 0;
+    const args = ["print", `system/${LAUNCHD_LABEL}`];
+    const out = root
+      ? execFileSync("launchctl", args, {
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        }).toString()
+      : execFileSync("sudo", ["-n", "launchctl", ...args], {
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: SERVICE_CMD_TIMEOUT_MS,
+        }).toString();
+    // `state = running` is launchd's own wording; a loaded-but-dead job
+    // prints `state = not running` and must not read as healthy.
+    return /state\s*=\s*running/.test(out) ? "running" : "stopped";
   } catch {
     return "stopped";
   }

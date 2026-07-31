@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
@@ -193,6 +193,91 @@ describe("hooks/daemon-service", () => {
     });
   });
 
+  describe("system-scope service definition", () => {
+    it("names the unit per user so a second install cannot steal the first's service", async () => {
+      setPlatform("linux");
+      const { daemonServiceFilePath, daemonStatusCommand } = await import("../../src/hooks/daemon-service");
+      const user = userInfo().username;
+
+      expect(daemonServiceFilePath()).toBe(`/etc/systemd/system/failproofaid@${user}.service`);
+      expect(daemonStatusCommand()).toBe(`systemctl status failproofaid@${user}.service`);
+    });
+
+    it("writes a unit that runs as the user, starts at boot, and knows where HOME is", async () => {
+      useScratchHome();
+      setPlatform("linux");
+      const { systemdUnitContents } = await import("../../src/hooks/daemon-service");
+      const unit = systemdUnitContents("/opt/failproofaid", null);
+
+      expect(unit).toContain(`User=${userInfo().username}`);
+      expect(unit).toContain("ExecStart=/opt/failproofaid");
+      // WantedBy=multi-user.target is the whole point of the system unit:
+      // default.target only starts with a user session, which is what made
+      // the daemon die on logout and never come back after a reboot.
+      expect(unit).toContain("WantedBy=multi-user.target");
+      // The daemon refuses to start without HOME, and a system unit gets no
+      // login environment, so this must be explicit rather than inherited.
+      expect(unit).toContain(`Environment="HOME=${process.env.HOME}"`);
+    });
+
+    it("bakes an absolute runtime into the worker command", async () => {
+      // A bare `node` resolves for the wizard and then fails inside a system
+      // unit whose PATH never includes ~/.nvm/versions/node/*/bin — silently,
+      // and only on the machines least likely to notice.
+      useScratchHome();
+      delete process.env.FAILPROOFAI_WORKER_CMD;
+      // The repo's own dist/worker.mjs — built by `bun run build`, which the
+      // test job runs before this suite.
+      process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "..", "..");
+      setPlatform("linux");
+      const { resolveWorkerCommand, systemdUnitContents } = await import("../../src/hooks/daemon-service");
+
+      const workerCmd = resolveWorkerCommand();
+      if (workerCmd) {
+        expect(workerCmd.startsWith(process.execPath)).toBe(true);
+        expect(workerCmd).not.toMatch(/^node /);
+        // Environment= values containing a space must be quoted or systemd
+        // rejects the unit — and this value always contains one.
+        expect(systemdUnitContents("/opt/failproofaid", workerCmd)).toContain(
+          `Environment="FAILPROOFAI_WORKER_CMD=${workerCmd}"`,
+        );
+      }
+    });
+
+    // Meaningless as root, where elevation always succeeds.
+    it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
+      "refuses to half-install when it cannot elevate, and says exactly what to run",
+      async () => {
+        useScratchHome();
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/opt/failproofaid";
+        setPlatform("linux");
+        // Every privileged command fails the way a machine without
+        // passwordless sudo fails. Nothing may be written, and the reason
+        // has to be actionable rather than an errno.
+        vi.doMock("node:child_process", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("node:child_process")>()),
+          execFileSync: (cmd: string) => {
+            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
+          },
+        }));
+        try {
+          vi.resetModules();
+          const { installDaemonService } = await import("../../src/hooks/daemon-service");
+          const result = await installDaemonService();
+
+          expect(result.installed).toBe(false);
+          expect(result.reason).toContain("root privileges are required");
+          expect(result.reason).toContain("systemctl enable --now");
+          expect(existsSync(`/etc/systemd/system/failproofaid@${userInfo().username}.service`)).toBe(false);
+        } finally {
+          vi.doUnmock("node:child_process");
+          vi.resetModules();
+        }
+      },
+    );
+  });
+
   describe("daemonServiceStatus", () => {
     it("is unsupported-platform on win32", async () => {
       setPlatform("win32");
@@ -201,24 +286,37 @@ describe("hooks/daemon-service", () => {
     });
   });
 
-  // Real systemd --user integration — only runs where a real user session
-  // exists (this sandbox has one; a barebones container often won't).
-  // Skips loudly rather than silently passing when it can't run, per the
-  // plan's "no silent caps" verification guidance.
-  const hasRealSystemdUserSession = (() => {
+  // Real systemd integration — the service is system-scope now, so this
+  // needs root or passwordless sudo (CI runners have it; a locked-down
+  // laptop may not). Skips loudly rather than silently passing when it
+  // can't run, per the plan's "no silent caps" verification guidance.
+  const canInstallSystemService = (() => {
     if (process.platform !== "linux") return false;
     try {
-      execFileSync("systemctl", ["--user", "status"], { stdio: "ignore" });
+      execFileSync("systemctl", ["--version"], { stdio: "ignore" });
+    } catch {
+      return false;
+    }
+    if (typeof process.getuid === "function" && process.getuid() === 0) return true;
+    try {
+      execFileSync("sudo", ["-n", "true"], { stdio: "ignore" });
       return true;
     } catch {
       return false;
     }
   })();
 
-  (hasRealSystemdUserSession ? describe : describe.skip)(
-    "real systemd --user lifecycle (linux only, requires a real user session)",
+  const sudoPrefix = typeof process.getuid === "function" && process.getuid() === 0 ? [] : ["sudo", "-n"];
+  const run = (args: string[]) =>
+    execFileSync(sudoPrefix[0] ?? args[0], sudoPrefix.length ? [...sudoPrefix.slice(1), ...args] : args.slice(1), {
+      stdio: "ignore",
+    });
+
+  (canInstallSystemService ? describe : describe.skip)(
+    "real systemd system-scope lifecycle (linux only, requires root or passwordless sudo)",
     () => {
-      const unitPath = resolve(homedir(), ".config", "systemd", "user", "failproofaid.service");
+      const unitName = `failproofaid@${userInfo().username}.service`;
+      const unitPath = resolve("/etc/systemd/system", unitName);
       let preexistingUnit: string | null = null;
 
       beforeEach(() => {
@@ -233,14 +331,15 @@ describe("hooks/daemon-service", () => {
         const { uninstallDaemonService } = await import("../../src/hooks/daemon-service");
         await uninstallDaemonService();
         if (preexistingUnit !== null) {
-          const { mkdirSync, writeFileSync } = await import("node:fs");
-          mkdirSync(resolve(homedir(), ".config", "systemd", "user"), { recursive: true });
-          writeFileSync(unitPath, preexistingUnit, "utf8");
+          const staging = resolve(tmpdir(), `failproofaid-restore-${process.pid}`);
+          writeFileSync(staging, preexistingUnit, "utf8");
           try {
-            execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
+            run(["install", "-m", "0644", staging, unitPath]);
+            run(["systemctl", "daemon-reload"]);
           } catch {
             /* best-effort restore */
           }
+          rmSync(staging, { force: true });
         }
       });
 
@@ -276,9 +375,9 @@ describe("hooks/daemon-service", () => {
         // service-managed daemon, which systemd starts from an arbitrary
         // cwd. This is the fix: an absolute worker command threaded through
         // as an environment line in the unit itself. The real assertion
-        // here isn't just string content — it's that `systemctl --user
-        // enable --now` (called by installDaemonService) doesn't choke on
-        // the quoted Environment= syntax.
+        // here isn't just string content — it's that `systemctl enable
+        // --now` (called by installDaemonService) doesn't choke on the
+        // quoted Environment= syntax.
         process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
         process.env.FAILPROOFAI_WORKER_CMD = "node /some/absolute/path/worker.mjs";
         setPlatform("linux");

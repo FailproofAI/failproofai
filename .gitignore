@@ -77,6 +77,9 @@ packages/*/assets/
 # closed-source platform (cloned separately)
 /platform
 
+# rust
+/target
+
 # WSL/Windows alternate data streams
 *:Zone.Identifier
 .dev.log

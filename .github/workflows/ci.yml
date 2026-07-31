@@ -55,6 +55,14 @@ jobs:
               MISMATCH=1
             fi
           done
+          # Check the Cargo workspace version (failproofaid) against root package.json
+          if [ -f Cargo.toml ]; then
+            CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+            if [ "$CARGO_VERSION" != "$ROOT_VERSION" ]; then
+              echo "::error file=Cargo.toml::Version mismatch: Cargo.toml has $CARGO_VERSION, expected $ROOT_VERSION"
+              MISMATCH=1
+            fi
+          fi
           if [ "$MISMATCH" -eq 1 ]; then
             echo "::error::Version mismatch detected across package.json files"
             exit 1
@@ -74,6 +82,53 @@ jobs:
           max_attempts: 3
           timeout_minutes: 5
           command: bunx tsc --noEmit
+
+  rust-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Stage 1 lands an empty Cargo workspace (zero crates/*/Cargo.toml) so
+      # the CI plumbing itself can go green before any Rust code exists.
+      # `cargo build/clippy/test --workspace` (and even `cargo fmt --all`)
+      # all hard-error on a zero-member workspace ("the workspace has no
+      # members"), so every real step below is gated on at least one crate
+      # being present rather than relying on any of them to no-op cleanly.
+      - name: Detect crates
+        id: crates
+        run: |
+          if ls crates/*/Cargo.toml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No crates/*/Cargo.toml yet — rust-quality has nothing to check."
+          fi
+
+      - if: steps.crates.outputs.present == 'true'
+        run: rustup show
+
+      - if: steps.crates.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: cargo fmt --check
+        if: steps.crates.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        if: steps.crates.outputs.present == 'true'
+        run: cargo test --workspace
 
   test:
     runs-on: ubuntu-latest

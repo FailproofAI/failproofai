@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.16-beta.0"
+edition = "2024"
+license-file = "LICENSE"
+repository = "https://github.com/FailproofAI/failproofai"

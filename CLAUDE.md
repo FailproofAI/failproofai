@@ -867,13 +867,24 @@ Resolve any conflicts, then continue. Never push a branch that is missing commit
 After every `git push`, run `gh run watch` or poll `gh run list --limit 3` until all checks
 finish. If any job fails, **stop and fix it before continuing**. Never leave a red CI.
 
-The CI runs four jobs — all must pass:
+`.github/workflows/ci.yml` runs these jobs on every push — all must pass:
 | Job | Command |
 |-----|---------|
-| quality | lint + tsc + version-consistency check |
-| test | `bun run test:run` (unit, 4 env configs) |
-| build | `bun run build` (Next.js + dist/index.js) |
+| quality | lint + tsc + version-consistency check (now also covers `Cargo.toml`'s workspace version and the `packages/*/package.json`/`optionalDependencies` versions against root `package.json`) |
+| rust-quality | `cargo fmt --check` + `cargo clippy` + `cargo test --workspace` — gated no-op (green with no real steps) until `crates/*/Cargo.toml` exists |
+| test | `bun run test:run` (unit, 3 env configs) |
+| build | `bun run build` (Next.js + `dist/index.js` + `dist/cli.mjs` + `dist/worker.mjs`) |
 | test-e2e | `bun run test:e2e` |
+| docs | docs build/validation |
+
+A separate `.github/workflows/build-daemon.yml` ("Build failproofaid") cross-compiles the
+4 real `failproofaid` release binaries (linux-x64/arm64, darwin-x64/arm64) and stages them
+into `packages/failproofaid-*/bin/` — path-filtered to `crates/**`/`Cargo.*`/
+`rust-toolchain.toml` changes, so it doesn't run on every PR, but is unconditional on a
+GitHub release (feeds `publish.yml`) and can be triggered manually via
+`workflow_dispatch`. It's slower than `rust-quality` (real cross-compiles across 4
+matrix legs, two of them real macOS runners) — don't expect it to finish inside a quick
+`gh run watch` poll; check back or use a longer timeout.
 
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
@@ -948,18 +959,64 @@ After any change to `src/hooks/`, verify these scenarios don't regress:
 
 ```
 bin/failproofai.mjs          Entry point (bun shebang); sets FAILPROOFAI_DIST_PATH
+bin/failproofai-worker.mjs   Warm-worker entrypoint; spawned by the Rust daemon, not a user
+bin/failproofaid-shim.mjs    `failproofaid` bin entry; execs the resolved platform binary
 src/hooks/
   custom-hooks-loader.ts     Orchestrates temp-file creation + dynamic import
   loader-utils.ts            findDistIndex(), createEsmShim(), rewriteFileTree()
   custom-hooks-registry.ts   globalThis registry shared between loader and handler
   policy-helpers.ts          allow() / deny() / instruct()
-  handler.ts                 Called by Claude Code --hook events
+  handler.ts                 canonicalizeEventType() + evaluateHookEvent() (core logic,
+                              param-in/return-out) + handleHookEvent() (one-shot stdin/
+                              stdout wrapper called by both bin/failproofai.mjs and tests)
+  worker-server.ts           Listens on the daemon-spawned worker's Unix socket, serializes
+                              concurrent evaluateHookEvent() calls through one async queue
+  daemon-client.ts           isDaemonConfigured() + tryDaemonHook(); the ~150ms
+                              fail-closed budget for a healthy *warm* daemon — see the
+                              worker pre-warming note in worker.rs below for why that
+                              budget only holds once the worker is warm, and the
+                              awaitTelemetryFlush note in handler.ts for a bug class
+                              that silently blew through it even when warm
+  daemon-service.ts          installDaemonService()/uninstallDaemonService()/
+                              daemonServiceStatus() — systemd --user unit / launchd
+                              LaunchAgent generation; called directly by configure-wizard.ts,
+                              no public `failproofai daemon` subcommand
   manager.ts                 policies --install / --uninstall / list
 src/index.ts                 Public API entry point → compiled to dist/index.js
 dist/index.js                CJS bundle (built by `bun run build`; shipped in npm pkg)
+dist/cli.mjs                 Bundled bin/failproofai.mjs (bun run build:cli)
+dist/worker.mjs              Bundled bin/failproofai-worker.mjs (bun run build:worker) —
+                              plain Node can't resolve raw .ts specifiers, so the warm
+                              worker needs this bundle just like the CLI does
+Cargo.toml                   Rust workspace root (resolver "3", shared [workspace.package])
+crates/fpai-ipc/              Wire protocol shared by the daemon and its tests: length-
+                              prefixed JSON framing, protocolVersion envelope, peer-
+                              credential checks (see crates/PROTOCOL.md)
+crates/failproofaid/           The daemon binary — socket server + service lifecycle +
+                              worker supervision, zero policy logic
+  src/worker.rs               Spawns/supervises the warm worker subprocess; Worker::warm()
+                              pre-starts it off the accept-loop path right after the daemon
+                              binds its socket (main.rs) so the ~700ms Node cold start never
+                              lands on the critical path of a real hook call
+  src/server.rs                Unix socket accept loop, relays Hook requests to the worker
+  src/paths.rs                  ~/.failproofai/run/ layout (socket, worker socket, lock)
+  src/lock.rs                    Non-blocking flock() singleton guard
+packages/failproofaid-*/       Per-platform npm packages (os/cpu-gated), each just
+                              bin/failproofaid — the compiled binary. Never committed (see
+                              .gitignore); staged by .github/workflows/build-daemon.yml
 __tests__/                   Unit + e2e tests (vitest)
 examples/                    Sample custom policy files
 ```
+
+**This repo's own dogfood hook configs (`.claude/settings.json`,
+`.codex/hooks.json`, etc.) deliberately stay on the in-process path, never
+daemon-configured** — `scripts/dev-hook.mjs` already exists specifically to
+avoid a self-reference conflict between this repo's own dogfood hooks and the
+package being developed inside it; a locally-running daemon (with its
+fail-closed-on-down behavior) in that same loop would multiply that exact
+risk class, and a flaky dev daemon could start blocking this repo's own
+contributors' tool calls. This is a deliberate, standing decision — don't
+wire a daemon into the dogfood configs without revisiting it explicitly.
 
 ## Changelog
 

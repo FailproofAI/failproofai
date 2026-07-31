@@ -1,0 +1,149 @@
+name: Build failproofaid
+
+# Builds the real per-platform failproofaid binaries. Separate from ci.yml's
+# cheap rust-quality job (lint/clippy/test on one native runner) because
+# this is a slow 4-way cross-compile matrix — path-filtered so ordinary PRs
+# that never touch the Rust workspace don't pay for it.
+#
+# `workflow_call` is how a release actually gets its binaries: publish.yml
+# calls this workflow and then downloads the artifacts below in the same run,
+# so the assets it uploads are built from the exact commit being published.
+# There is deliberately NO `release: published` trigger — publish.yml owns
+# that path now, and a standalone trigger would build the whole matrix twice
+# per release.
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/build-daemon.yml"
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  # The Rust workspace does not exist on every ref this workflow can run
+  # against: `main` carries no `Cargo.toml` until the daemon lands, and the
+  # path filter above matches this file itself, so a PR that only edits the
+  # workflow would otherwise run `cargo build` against a checkout with no
+  # crates in it and fail. Detect the workspace and skip the matrix cleanly —
+  # a skipped job is also what lets publish.yml call this from a ref that has
+  # no daemon at all.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_crates: ${{ steps.check.outputs.has_crates }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for the Rust workspace
+        id: check
+        run: |
+          if [ -f Cargo.toml ] && [ -d crates ]; then
+            echo "has_crates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_crates=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Rust workspace on this ref — skipping the failproofaid build matrix."
+          fi
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.has_crates == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux legs use GitHub-hosted native runners for both
+          # architectures (including a native arm64 runner) rather than
+          # `cross`/Docker cross-compilation — a real linker for the target
+          # triple, no QEMU emulation overhead.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            platform: linux-x64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            platform: linux-arm64
+          # macOS cannot be cross-compiled reliably from Linux (system
+          # framework linking), so both legs use real Apple Silicon / Intel
+          # runners. `macos-15-intel` rather than `macos-13`: GitHub retired
+          # the macOS 13 images, and an unknown runner label doesn't degrade
+          # — the leg never gets a runner at all.
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            platform: darwin-x64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            platform: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Nothing here pushes, and everything here runs third-party crate
+          # build scripts (`cargo build` on the full dependency tree). The
+          # default leaves GITHUB_TOKEN sitting in .git/config for the rest
+          # of the job, readable by any of them — and this job publishes a
+          # release binary.
+          persist-credentials: false
+
+      - run: rustup target add ${{ matrix.target }}
+
+      # Split restore/save rather than `actions/cache@v6`, which does both.
+      # This job runs on `pull_request` AND on the release path (via
+      # `workflow_call` from publish.yml, where `github.event_name` is the
+      # caller's `release`/`workflow_dispatch`), and the cache key is shared
+      # between them: a PR branch could otherwise write a poisoned `target/`
+      # entry that a later release run restores straight into a published
+      # binary. PR runs read the cache; only release / manual runs write it.
+      - uses: actions/cache/restore@v6
+        id: cargo-cache
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-build-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: cargo-build-${{ matrix.target }}-
+
+      # --locked: this job's output is the binary users install, so it must be
+      # built from the dependency versions committed in Cargo.lock. Without it
+      # Cargo is free to resolve something newer and silently rewrite the
+      # lockfile in the runner, making the published artifact unreproducible
+      # from the commit it claims to come from.
+      - name: cargo build --release
+        run: cargo build --locked --release --target ${{ matrix.target }} -p failproofaid
+
+      - uses: actions/cache/save@v6
+        if: github.event_name != 'pull_request' && steps.cargo-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-build-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+
+      # Plain gzip, not tar: the CLI decompresses this with `node:zlib` and no
+      # dependency, and a single-file stream needs no archive format. It also
+      # sidesteps `upload-artifact` dropping the executable bit — a compressed
+      # blob carries no mode to lose, and both consumers (the CLI downloader
+      # and install.sh) chmod after decompressing anyway.
+      #
+      # Every leg runs on a runner native to its own target, so executing the
+      # freshly built binary here is a real smoke test that the artifact is
+      # not a broken build.
+      - name: Compress the binary for release
+        run: |
+          BIN="target/${{ matrix.target }}/release/failproofaid"
+          "$BIN" --version
+          gzip -9 -c "$BIN" > "failproofaid-${{ matrix.platform }}.gz"
+          ls -l "failproofaid-${{ matrix.platform }}.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: failproofaid-${{ matrix.platform }}
+          path: failproofaid-${{ matrix.platform }}.gz
+          if-no-files-found: error

@@ -1,12 +1,240 @@
 name: Publish to npm
 
+# Two entry points, one pipeline:
+#   * `release: published` — the normal path. Cuts `latest` (or `beta` for a
+#     prerelease tag) and bumps `main` to the next development version.
+#   * `workflow_dispatch` — a manual build from any ref, including an unmerged
+#     feature branch. Note that GitHub runs the workflow file FROM THE SELECTED
+#     REF, so a fix to this file only applies to a branch dispatch once the
+#     branch carries it.
+#
+# The jobs run in a deliberate order: build the daemon binaries, attach them to
+# the GitHub Release, and only then publish to npm. The published CLI downloads
+# its `failproofaid` binary from that release tag at `failproofai config` time,
+# so the assets have to exist before the package that looks for them does.
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: "npm dist-tag (auto: next from a branch, beta for a prerelease on main, else latest)"
+        type: choice
+        options:
+          - auto
+          - next
+          - beta
+          - latest
+        default: auto
+      dry_run:
+        description: "Build and validate everything, but publish nothing"
+        type: boolean
+        default: false
 
 jobs:
+  # Everything cheap and fail-fast lives here: version resolution, the npm
+  # credential check (so a bad token costs seconds rather than a 20-minute
+  # cross-compile matrix), and whether this ref even carries the daemon.
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      publish_version: ${{ steps.version.outputs.publish_version }}
+      pkg_version: ${{ steps.version.outputs.pkg_version }}
+      dist_tag: ${{ steps.version.outputs.dist_tag }}
+      next_version: ${{ steps.version.outputs.next_version }}
+      tag: ${{ steps.version.outputs.tag }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      has_daemon: ${{ steps.daemon.outputs.has_daemon }}
+      dry_run: ${{ inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve version and dist-tag
+        id: version
+        env:
+          DIST_TAG_INPUT: ${{ inputs.dist_tag || 'auto' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          # Determine the publish version
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            PUBLISH_VERSION="$TAG_VERSION"
+          else
+            PUBLISH_VERSION="$PKG_VERSION"
+          fi
+
+          if [[ "$PUBLISH_VERSION" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          # Determine dist-tag. An explicit input always wins; `auto` keeps the
+          # historical rule (prerelease -> beta, stable -> latest) EXCEPT on a
+          # dispatch from a ref other than main, where it resolves to `next`.
+          # A branch build published at `beta` would move that tag to code that
+          # is not on main, and the next beta cut from main would then move it
+          # BACKWARDS — an upgrade that is really a downgrade for anyone
+          # tracking `failproofai@beta`.
+          if [[ "$DIST_TAG_INPUT" != "auto" && "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            DIST_TAG="$DIST_TAG_INPUT"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$REF_NAME" != "main" ]]; then
+            DIST_TAG="next"
+          elif [[ "$IS_PRERELEASE" == "true" ]]; then
+            DIST_TAG="beta"
+          else
+            DIST_TAG="latest"
+          fi
+
+          # `latest` is what a bare `npm install failproofai` resolves to, so it
+          # may only ever come from main or from a published release.
+          if [[ "$DIST_TAG" == "latest" && "$EVENT_NAME" == "workflow_dispatch" && "$REF_NAME" != "main" ]]; then
+            echo "::error::Refusing to publish dist-tag 'latest' from ref '$REF_NAME'. Dispatch from main, or cut a release."
+            exit 1
+          fi
+
+          # Compute the next development version
+          if [[ "$PUBLISH_VERSION" == *-beta.* ]]; then
+            BASE="${PUBLISH_VERSION%-beta.*}"
+            BETA_NUM="${PUBLISH_VERSION##*-beta.}"
+            NEXT_BETA=$((BETA_NUM + 1))
+            NEXT_VERSION="${BASE}-beta.${NEXT_BETA}"
+          elif [[ "$PUBLISH_VERSION" == *-* ]]; then
+            echo "::warning::Non-beta prerelease '$PUBLISH_VERSION' — skipping auto-bump"
+            NEXT_VERSION=""
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$PUBLISH_VERSION"
+            NEXT_PATCH=$((PATCH + 1))
+            NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-beta.0"
+          fi
+
+          echo "publish_version=$PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+          echo "Package.json version: $PKG_VERSION"
+          echo "Publishing: $PUBLISH_VERSION (tag: $DIST_TAG)"
+          echo "Release tag: v$PUBLISH_VERSION (prerelease: $IS_PRERELEASE)"
+          echo "Next version: $NEXT_VERSION"
+          echo "Dry run: $DRY_RUN"
+
+      # A ref without the Rust workspace (main, until the daemon lands) skips
+      # the whole binary half of the pipeline and publishes exactly as before.
+      - name: Detect the daemon workspace
+        id: daemon
+        run: |
+          if [ -f Cargo.toml ] && [ -d crates ]; then
+            echo "has_daemon=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_daemon=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Rust workspace on this ref — publishing the npm package only."
+          fi
+
+      # Both publish steps below authenticate with this token; checking it here
+      # turns a bad or expired secret into a 10-second failure instead of one
+      # that lands after the cross-compile matrix has already run.
+      - name: Verify npm credentials
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if ! WHO=$(npm whoami 2>&1); then
+            echo "::error::NPM_TOKEN cannot authenticate with the registry: $WHO"
+            exit 1
+          fi
+          echo "Authenticated to npm as $WHO"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Builds the four platform binaries from this exact commit. Skipped entirely
+  # on a ref with no Rust workspace.
+  daemon:
+    needs: preflight
+    if: needs.preflight.outputs.has_daemon == 'true'
+    uses: ./.github/workflows/build-daemon.yml
+
+  # Attaches the binaries + their checksums to the GitHub Release BEFORE npm
+  # publishes, because that release is where the installed CLI fetches its
+  # daemon from.
+  release-assets:
+    needs: [preflight, daemon]
+    if: needs.preflight.outputs.has_daemon == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: failproofaid-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Assemble SHA256SUMS
+        working-directory: release-assets
+        run: |
+          sha256sum failproofaid-*.gz > SHA256SUMS
+          cat SHA256SUMS
+          # The CLI refuses to install a binary it cannot match to a checksum,
+          # so a short list here is a broken release, not a partial one.
+          COUNT=$(grep -c . SHA256SUMS)
+          if [ "$COUNT" -ne 4 ]; then
+            echo "::error::Expected 4 platform binaries, found $COUNT"
+            exit 1
+          fi
+
+      - name: Attach assets to the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          PRERELEASE: ${{ needs.preflight.outputs.is_prerelease }}
+        run: |
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            # A dispatch from an unmerged branch creates its own tag at the
+            # dispatched commit — that tag is what makes the download URLs the
+            # CLI builds resolvable.
+            FLAGS=(--target "$GITHUB_SHA" --title "$TAG" --repo "$GITHUB_REPOSITORY")
+            if [[ "$PRERELEASE" == "true" ]]; then FLAGS+=(--prerelease); fi
+            gh release create "$TAG" release-assets/* "${FLAGS[@]}" \
+              --notes "Automated build of \`$TAG\` from \`$GITHUB_SHA\` (run $GITHUB_RUN_ID)."
+          fi
+
+      - name: Report dry run
+        if: ${{ inputs.dry_run }}
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: echo "::notice::Dry run — built and checksummed 4 binaries, attached nothing to $TAG."
+
   publish:
+    needs: [preflight, daemon, release-assets]
+    # Both daemon jobs are skipped on a ref with no Rust workspace, which must
+    # not block the npm publish. A FAILURE in either one must, though — and
+    # that is why `daemon` is checked explicitly rather than relied on through
+    # release-assets: a failed dependency leaves the dependent job `skipped`,
+    # which would otherwise read here as "nothing to do" and publish a package
+    # whose daemon binaries were never built.
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      (needs.daemon.result == 'success' || needs.daemon.result == 'skipped') &&
+      (needs.release-assets.result == 'success' || needs.release-assets.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,7 +266,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
@@ -53,74 +281,55 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Resolve version and dist-tag
-        id: version
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-
-          # Determine the publish version
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            TAG_VERSION="${GITHUB_REF_NAME#v}"
-            PUBLISH_VERSION="$TAG_VERSION"
-          else
-            PUBLISH_VERSION="$PKG_VERSION"
-          fi
-
-          # Determine dist-tag
-          if [[ "$PUBLISH_VERSION" == *-* ]]; then
-            DIST_TAG="beta"
-          else
-            DIST_TAG="latest"
-          fi
-
-          # Compute the next development version
-          if [[ "$PUBLISH_VERSION" == *-beta.* ]]; then
-            BASE="${PUBLISH_VERSION%-beta.*}"
-            BETA_NUM="${PUBLISH_VERSION##*-beta.}"
-            NEXT_BETA=$((BETA_NUM + 1))
-            NEXT_VERSION="${BASE}-beta.${NEXT_BETA}"
-          elif [[ "$PUBLISH_VERSION" == *-* ]]; then
-            echo "::warning::Non-beta prerelease '$PUBLISH_VERSION' — skipping auto-bump"
-            NEXT_VERSION=""
-          else
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$PUBLISH_VERSION"
-            NEXT_PATCH=$((PATCH + 1))
-            NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-beta.0"
-          fi
-
-          echo "publish_version=$PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
-          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "pkg_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
-
-          echo "Package.json version: $PKG_VERSION"
-          echo "Publishing: $PUBLISH_VERSION (tag: $DIST_TAG)"
-          echo "Next version: $NEXT_VERSION"
-
       - name: Set publish version in package.json
-        if: steps.version.outputs.publish_version != steps.version.outputs.pkg_version
+        if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
         run: |
-          npm version "${{ steps.version.outputs.publish_version }}" --no-git-tag-version
-          echo "Updated package.json to ${{ steps.version.outputs.publish_version }}"
+          npm version "$PUBLISH_VERSION" --no-git-tag-version
+          echo "Updated package.json to $PUBLISH_VERSION"
 
       - name: Publish
-        run: npm publish --provenance --tag ${{ steps.version.outputs.dist_tag }}
         env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "$DRY_RUN" == "true" ]]; then
+            # --provenance is dropped here on purpose: attestation is a
+            # registry-side write that has nothing to validate in a dry run.
+            npm publish --dry-run --tag "$DIST_TAG"
+          else
+            npm publish --provenance --tag "$DIST_TAG"
+          fi
 
       - name: Publish alias packages
-        run: node scripts/publish-aliases.mjs --dist-tag ${{ steps.version.outputs.dist_tag }}
         env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          ARGS=(--dist-tag "$DIST_TAG")
+          if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
+          node scripts/publish-aliases.mjs "${ARGS[@]}"
 
+      # The bump targets main unconditionally — it checks main out and pushes to
+      # it — so it must never run for a build that did not come from main. A
+      # dispatch from a feature branch would otherwise rewrite main's version
+      # line to whatever that branch happens to carry.
       - name: Bump version for next development cycle
-        if: steps.version.outputs.next_version != ''
+        if: >-
+          needs.preflight.outputs.next_version != '' &&
+          needs.preflight.outputs.dry_run != 'true' &&
+          (github.event_name == 'release' || github.ref_name == 'main')
         env:
-          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # The publish-version step may have left package.json modified.
+          git checkout -- package.json
           git fetch origin main
           git checkout main
 
@@ -132,3 +341,14 @@ jobs:
           # Authenticated as the version-bot App (persisted by the checkout above),
           # which bypasses the ruleset's pull-request requirement on main.
           git push origin main
+
+      - name: Note skipped bump
+        if: >-
+          needs.preflight.outputs.next_version != '' &&
+          (needs.preflight.outputs.dry_run == 'true' ||
+           (github.event_name != 'release' && github.ref_name != 'main'))
+        env:
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo "::notice::Left main's version untouched (ref '$REF_NAME', dry_run=$DRY_RUN). Main is bumped only by a release or a dispatch from main."

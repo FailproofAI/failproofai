@@ -107,6 +107,14 @@ jobs:
       - if: steps.crates.outputs.present == 'true'
         run: rustup show
 
+      # cargo test spawns the real TS worker via `bun bin/failproofai-worker.mjs`
+      # (crates/failproofaid/src/server.rs's live end-to-end test) — bun has to
+      # be on PATH for that test, not just for the TS-side jobs.
+      - if: steps.crates.outputs.present == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - if: steps.crates.outputs.present == 'true'
         uses: actions/cache@v6
         with:

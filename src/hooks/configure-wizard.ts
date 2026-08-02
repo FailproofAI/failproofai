@@ -365,7 +365,14 @@ export function reviewLines(state: {
   const assistantNames = clis.map((c) => getIntegration(c).displayName);
   lines.push(`  Where      : ${where}`);
   lines.push(`  Assistants : ${assistantNames.length ? summarize(assistantNames, "assistants") : "(none)"}`);
-  lines.push(`  Policies   : ${policies.length} enabled`);
+  // Zero is a deliberate answer, not a failed step — say so, and say where to
+  // change it, so the review screen doesn't read like the wizard lost the
+  // selection. Hooks still install; only the builtin set is empty.
+  lines.push(
+    policies.length === 0
+      ? "  Policies   : none enabled (add later: failproofai policies --install)"
+      : `  Policies   : ${policies.length} enabled`,
+  );
   if (installDaemon && isDaemonSupportedPlatform()) {
     lines.push(
       `  Daemon     : failproofaid, installed as a system service running as you`,
@@ -635,12 +642,23 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   const presetChoices = buildPresetChoices(cwd, customEnabledBefore);
   const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
 
+  // No minimum. Ticking nothing is a real answer — someone who only wants their
+  // own custom policies, or who intends to pick bundles later from the
+  // dashboard, was previously stuck on this step with no way forward and no
+  // explanation beyond "Select at least 1". An empty set is already supported
+  // end to end: `installHooksImpl` documents its explicit-array path as "may be
+  // empty", `replace: true` makes it the full enabled set, and `summarize([])`
+  // renders "none". Hooks still install, so enforcement can be switched on
+  // later without re-running setup.
+  //
+  // The assistants step above keeps its minimum deliberately: an empty CLI list
+  // does NOT mean "no assistants" there — `installHooksImpl` falls back to
+  // ["claude"], so letting it through would silently install for Claude.
   const presets = await multiSelect<string>({
     message: "What should we guard against?",
     choices: presetChoices,
-    minSelected: 1,
     summaryNoun: "bundles",
-    hint: "space toggles · combine presets · ↵ confirm",
+    hint: "space toggles · combine presets · ↵ confirm · none is fine",
     stdin,
     stdout,
   });

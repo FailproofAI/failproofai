@@ -183,6 +183,20 @@ describe("configure-wizard pure builders", () => {
     expect(lines).toContain("policies-config.json");
     expect(lines).toContain("settings.json");
   });
+
+  it("reviewLines reports an empty policy set as a choice, not a count of zero", () => {
+    const lines = reviewLines({
+      scope: "user",
+      clis: ["claude"],
+      policies: [],
+      cwd: "/tmp/proj",
+    }).join("\n");
+    expect(lines).toContain("none enabled");
+    expect(lines).not.toContain("0 enabled");
+    // Tell the user where to change their mind, so an intentional "none" does
+    // not read like the wizard dropped the selection.
+    expect(lines).toContain("failproofai policies --install");
+  });
 });
 
 describe("configure-wizard orchestration", () => {
@@ -219,6 +233,46 @@ describe("configure-wizard orchestration", () => {
     await runConfigureWizard(ttyIO());
     const call = vi.mocked(installHooks).mock.calls[0];
     expect(call[7]).toEqual([...INTEGRATION_TYPES]); // all CLIs, regardless of detection
+  });
+
+  it("accepts an empty policy selection and still installs the hooks", async () => {
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("user") // scope
+      .mockResolvedValueOnce("apply"); // review
+    vi.mocked(multiSelect)
+      .mockResolvedValueOnce(["claude"]) // assistants
+      .mockResolvedValueOnce([]); // policy sources → nothing ticked
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    // The whole point: setup completes. Hooks are installed for the chosen
+    // assistant with an empty enabled set, so enforcement can be switched on
+    // later without re-running the wizard.
+    expect(installHooks).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(installHooks).mock.calls[0];
+    expect(call[0]).toEqual([]); // no builtins enabled
+    expect(call[7]).toEqual(["claude"]); // assistants unaffected
+    expect(call[8]).toEqual({ replace: true, quiet: true }); // empty set REPLACES
+  });
+
+  it("does not impose a minimum on the policy step, but keeps one on assistants", async () => {
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect)
+      .mockResolvedValueOnce(["claude"])
+      .mockResolvedValueOnce([]);
+
+    await runConfigureWizard(ttyIO());
+
+    const [assistantsOpts] = vi.mocked(multiSelect).mock.calls[0];
+    const [policyOpts] = vi.mocked(multiSelect).mock.calls[1];
+    // Asymmetric on purpose: an empty CLI list does NOT mean "no assistants" —
+    // installHooksImpl falls back to ["claude"] — so that step must keep its
+    // minimum or it would silently install for a CLI nobody picked.
+    expect(assistantsOpts.minSelected).toBe(1);
+    expect(policyOpts.minSelected).toBeUndefined();
   });
 
   it("cancelling at the review step makes no changes", async () => {

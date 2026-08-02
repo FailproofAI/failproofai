@@ -56,6 +56,12 @@ describe("prefer-edit-over-read-cat", () => {
   it("matches `head -50 bar.py`", () => {
     expect(preferEditOverReadCat.detect(bash("head -50 bar.py"), {})).not.toBeNull();
   });
+  it("matches `head -n 50 file.py` (flag with separate numeric arg)", () => {
+    expect(preferEditOverReadCat.detect(bash("head -n 50 file.py"), {})).not.toBeNull();
+  });
+  it("matches `tail -c 20 app.ts` (flag with separate numeric arg)", () => {
+    expect(preferEditOverReadCat.detect(bash("tail -c 20 app.ts"), {})).not.toBeNull();
+  });
   it("does not match `cat .env`", () => {
     expect(preferEditOverReadCat.detect(bash("cat .env"), {})).toBeNull();
   });

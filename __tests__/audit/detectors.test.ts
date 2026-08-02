@@ -62,6 +62,9 @@ describe("prefer-edit-over-read-cat", () => {
   it("matches `tail -c 20 app.ts` (flag with separate numeric arg)", () => {
     expect(preferEditOverReadCat.detect(bash("tail -c 20 app.ts"), {})).not.toBeNull();
   });
+  it("matches `tail -n +50 app.ts` (GNU signed offset arg)", () => {
+    expect(preferEditOverReadCat.detect(bash("tail -n +50 app.ts"), {})).not.toBeNull();
+  });
   it("does not match `cat .env`", () => {
     expect(preferEditOverReadCat.detect(bash("cat .env"), {})).toBeNull();
   });

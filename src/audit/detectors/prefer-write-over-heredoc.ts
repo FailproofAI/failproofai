@@ -31,6 +31,14 @@ export const preferWriteOverHeredoc: Detector = {
       const summary = cmd.replace(/\s+/g, " ").trim().slice(0, 160);
       return { example: summary };
     }
+    // `printf "a\nb\n" > file`. printf always interprets \n escapes into real
+    // newlines, so a format string whose \n has more content after it is
+    // multi-line content headed for a file. A \n only at the very end
+    // (`printf "%s\n" ...`) is a single line, so it is left alone.
+    if (/(?:^|\s|;|&&|\|\|)printf\s+["'][^"']*\\n[^"'][^"']*["']\s*>\s*\S/.test(cmd)) {
+      const summary = cmd.replace(/\s+/g, " ").trim().slice(0, 160);
+      return { example: summary };
+    }
     return null;
   },
 };

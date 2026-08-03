@@ -139,10 +139,21 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
                 return Ok(());
             }
             match poll_once(&spec, &mut cursors).await {
-                Ok(false) => break,   // nothing more waiting
-                Ok(true) => continue, // hit the row limit; drain rather than trickle
+                Ok((events, more)) => {
+                    crate::health::report_poll(
+                        spec.format.kind,
+                        spec.db_path.exists(),
+                        events,
+                        cursors.len() as u64,
+                    );
+                    if !more {
+                        break; // nothing more waiting
+                    }
+                    // Hit the row limit — drain rather than trickle.
+                }
                 Err(err) => {
                     tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
+                    crate::health::report_error(spec.format.kind, &err.to_string());
                     break;
                 }
             }
@@ -153,11 +164,11 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
     }
 }
 
-/// One pass. Returns whether more rows are waiting.
-async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<bool, TaskError> {
+/// One pass. Returns `(events spooled, more rows waiting)`.
+async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool), TaskError> {
     if !spec.db_path.exists() {
         // Normal: the agent simply is not installed.
-        return Ok(false);
+        return Ok((0, false));
     }
 
     // The cursor store is keyed on (dev, inode) for file tailers. A database is
@@ -195,7 +206,7 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<bool, TaskE
         if outcome.watermark > watermark {
             store_watermark(cursors, spec, outcome.watermark)?;
         }
-        return Ok(outcome.more);
+        return Ok((0, outcome.more));
     }
 
     let mut writer = SpoolWriter::new(
@@ -204,6 +215,7 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<bool, TaskE
         spec.format.kind,
         spec.format.kind,
     );
+    let emitted = outcome.events.len() as u64;
     for event in outcome.events {
         writer.push(event).await.map_err(io_err)?;
     }
@@ -212,7 +224,7 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<bool, TaskE
     writer.flush().await.map_err(io_err)?;
     store_watermark(cursors, spec, outcome.watermark)?;
 
-    Ok(outcome.more)
+    Ok((emitted, outcome.more))
 }
 
 fn store_watermark(

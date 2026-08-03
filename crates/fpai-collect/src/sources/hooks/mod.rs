@@ -102,7 +102,7 @@ pub async fn run(
     );
 
     loop {
-        if let Err(err) = poll_once(
+        match poll_once(
             &store_dir,
             &spool_dir,
             &mut cursors,
@@ -111,10 +111,19 @@ pub async fn run(
         )
         .await
         {
-            // Logged and retried on the next tick rather than returned: one
-            // unreadable page must not restart the source and re-scan
-            // everything.
-            tracing::warn!(%err, "hook-activity poll failed; retrying next tick");
+            Ok(events) => crate::health::report_poll(
+                "hooks",
+                store_dir.exists(),
+                events,
+                cursors.len() as u64,
+            ),
+            Err(err) => {
+                // Logged and retried on the next tick rather than returned: one
+                // unreadable page must not restart the source and re-scan
+                // everything.
+                tracing::warn!(%err, "hook-activity poll failed; retrying next tick");
+                crate::health::report_error("hooks", &err.to_string());
+            }
         }
         if !sd.sleep(POLL_INTERVAL).await {
             return Ok(());
@@ -129,10 +138,10 @@ async fn poll_once(
     cursors: &mut CursorStore,
     verbosity: HooksVerbosity,
     environment: &str,
-) -> Result<(), TaskError> {
+) -> Result<u64, TaskError> {
     let files = list_pages(store_dir).await;
     if files.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
 
     let mut writer = SpoolWriter::new(
@@ -145,6 +154,7 @@ async fn poll_once(
     // files still emits once.
     let mut buckets: BTreeMap<(String, String, Option<String>, i64), AllowBucket> = BTreeMap::new();
     let mut advanced: Vec<FileCursor> = Vec::new();
+    let mut emitted = 0u64;
 
     for path in files {
         let Ok(meta) = tokio::fs::metadata(&path).await else {
@@ -218,6 +228,7 @@ async fn poll_once(
 
             for event in transform::to_events(&row, this_offset, environment) {
                 writer.push(event).await.map_err(io_err)?;
+                emitted += 1;
             }
         }
 
@@ -237,6 +248,7 @@ async fn poll_once(
     for bucket in buckets.values() {
         if let Some(event) = bucket.to_event(environment) {
             writer.push(event).await.map_err(io_err)?;
+            emitted += 1;
         }
     }
 
@@ -250,7 +262,7 @@ async fn poll_once(
     }
     cursors.retain_existing();
     cursors.save().map_err(io_err)?;
-    Ok(())
+    Ok(emitted)
 }
 
 fn io_err(e: std::io::Error) -> TaskError {

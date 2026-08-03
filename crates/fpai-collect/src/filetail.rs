@@ -170,8 +170,17 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
     );
 
     loop {
-        if let Err(err) = poll_once(&spec, &mut cursors).await {
-            tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
+        match poll_once(&spec, &mut cursors).await {
+            Ok(events) => crate::health::report_poll(
+                spec.format.kind,
+                spec.roots.iter().any(|r| r.exists()),
+                events,
+                cursors.len() as u64,
+            ),
+            Err(err) => {
+                tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
+                crate::health::report_error(spec.format.kind, &err.to_string());
+            }
         }
         if !sd.sleep(spec.poll_interval).await {
             return Ok(());
@@ -179,24 +188,28 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
     }
 }
 
-async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(), TaskError> {
+/// One pass. Returns how many events were spooled, for the health record.
+async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<u64, TaskError> {
     let files = discover(&spec.roots, spec.format.is_source_file).await;
+    let mut events = 0u64;
     for path in files {
-        if let Err(err) = process_file(spec, cursors, &path).await {
+        match process_file(spec, cursors, &path).await {
+            Ok(n) => events += n,
             // Per-file, so one malformed transcript cannot stop the others.
-            tracing::warn!(file = %path.display(), %err, "could not process file");
+            Err(err) => tracing::warn!(file = %path.display(), %err, "could not process file"),
         }
     }
     cursors.retain_existing();
     cursors.save().map_err(io_err)?;
-    Ok(())
+    Ok(events)
 }
 
+/// Tail one file. Returns how many events it spooled, for the health record.
 async fn process_file(
     spec: &Spec,
     cursors: &mut CursorStore,
     path: &Path,
-) -> Result<(), TaskError> {
+) -> Result<u64, TaskError> {
     let meta = tokio::fs::metadata(path).await.map_err(io_err)?;
     let (dev, inode) = identity(&meta);
     let size = meta.len();
@@ -205,7 +218,7 @@ async fn process_file(
         Some(c) => c.clone(),
         None => match new_cursor(spec, path, dev, inode, &meta).await? {
             Some(c) => c,
-            None => return Ok(()), // outside the backfill window
+            None => return Ok(0), // outside the backfill window
         },
     };
     cursor.path = path.to_path_buf();
@@ -236,6 +249,7 @@ async fn process_file(
         spec.format.kind,
         &ctx.session_id,
     );
+    let mut emitted = 0u64;
 
     // A session with no start event never appears in the product, so retry it
     // on every poll until it succeeds rather than only at discovery.
@@ -243,6 +257,7 @@ async fn process_file(
         let header = read_header(path).await.unwrap_or_default();
         if let Some((event, ts)) = (spec.format.agent_start)(&header, &ctx, 0) {
             writer.push(event).await.map_err(io_err)?;
+            emitted += 1;
             cursor.agent_start_emitted = true;
             if cursor.last_ts.is_none() {
                 cursor.last_ts = ts;
@@ -284,6 +299,7 @@ async fn process_file(
                 }
                 for e in events {
                     writer.push(e).await.map_err(io_err)?;
+                    emitted += 1;
                 }
             }
             consumed = usable.len() as u64;
@@ -313,7 +329,7 @@ async fn process_file(
     cursor.offset += consumed;
     cursor.size_seen = size;
     cursors.set(cursor);
-    Ok(())
+    Ok(emitted)
 }
 
 /// Build a cursor for a newly discovered file, or `None` to skip it.

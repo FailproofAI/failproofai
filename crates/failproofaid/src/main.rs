@@ -189,6 +189,23 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
 
     let mut tasks = Vec::new();
 
+    // Install the process health registry BEFORE any source starts, so no poll
+    // reports into a registry that does not exist yet. The writer publishes it
+    // on an interval and deletes it on clean shutdown — absence means "no
+    // daemon", where a stale file makes a stopped daemon look like a running
+    // one whose sources all went quiet.
+    let health = std::sync::Arc::new(fpai_collect::Health::new());
+    fpai_collect::health::install(health.clone());
+    let health_file = fpai_collect::health_path(&home);
+    tasks.push(fpai_collect::TaskSpec::new("health", move |sd| {
+        fpai_collect::health::writer_task(
+            health.clone(),
+            health_file.clone(),
+            fpai_collect::health::WRITE_INTERVAL,
+            sd,
+        )
+    }));
+
     if cfg.settings.hooks {
         // Hook activity: one source covering every CLI failproofai is
         // installed in, because the store is CLI-agnostic — each row names its
@@ -212,36 +229,107 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     }
 
     if cfg.settings.sessions {
-        // Claude Code transcripts. Gated on the `sessions` opt-in because
-        // unlike hook activity these carry prompts, file contents and whatever
-        // was pasted into a terminal.
-        let roots = vec![claude_projects_root()];
-        let spool_dir = cfg.own_spool_dir.clone();
-        let state_dir = home.join("cursors").join("claude");
-        let environment = cfg.settings.environment.clone();
-        tasks.push(fpai_collect::TaskSpec::new("claude-sessions", move |sd| {
-            fpai_collect::filetail::run(
-                fpai_collect::filetail::Spec {
-                    format: fpai_collect::sources::claude::FORMAT,
-                    roots: roots.clone(),
-                    spool_dir: spool_dir.clone(),
-                    state_dir: state_dir.clone(),
-                    poll_interval: std::time::Duration::from_secs(2),
-                    params: fpai_collect::filetail::Params {
-                        agent_id: fpai_collect::sources::claude::DEFAULT_AGENT_ID.into(),
-                        environment: environment.clone(),
-                        end_idle_mins: 10,
-                        max_read_bytes: 32 * 1024 * 1024,
-                        max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
-                        // Never the whole history by default: this machine has
-                        // 548 MB of Claude transcripts, and shipping all of it
-                        // on first start is not a reasonable default.
-                        since_days: Some(7),
-                    },
-                },
-                sd,
-            )
-        }));
+        // Session transcripts, gated on the `sessions` opt-in because — unlike
+        // hook activity — these carry prompts, file contents and whatever was
+        // pasted into a terminal.
+        //
+        // Every source is registered the same way regardless of which engine it
+        // uses, so adding one is a row here plus its own module.
+        let spool = cfg.own_spool_dir.clone();
+        let env = cfg.settings.environment.clone();
+        let cursors = home.join("cursors");
+
+        use fpai_collect::sources::{claude, codex, copilot, openclaw, pi};
+        file_source(
+            &mut tasks,
+            "claude",
+            claude::FORMAT,
+            vec![claude_projects_root()],
+            claude::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
+        file_source(
+            &mut tasks,
+            "codex",
+            codex::FORMAT,
+            vec![codex_sessions_root()],
+            codex::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
+        file_source(
+            &mut tasks,
+            "copilot",
+            copilot::FORMAT,
+            vec![copilot::session_state_root()],
+            copilot::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
+        file_source(
+            &mut tasks,
+            "openclaw",
+            openclaw::FORMAT,
+            openclaw::default_roots(),
+            openclaw::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
+        file_source(
+            &mut tasks,
+            "pi",
+            pi::FORMAT,
+            vec![pi::sessions_root()],
+            pi::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
+
+        use fpai_collect::sources::{goose, hermes, opencode};
+        sqlite_source(
+            &mut tasks,
+            "goose",
+            goose::FORMAT,
+            goose::db_path(),
+            goose::DEFAULT_AGENT_ID,
+            &spool,
+            cursors.join("goose"),
+            &env,
+        );
+        sqlite_source(
+            &mut tasks,
+            "opencode",
+            opencode::FORMAT,
+            opencode::default_db_path(),
+            opencode::DEFAULT_AGENT_ID,
+            &spool,
+            cursors.join("opencode"),
+            &env,
+        );
+
+        // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
+        // cursor on a fixed synthetic id — so two profiles sharing one state
+        // directory would clobber each other's watermark and each would re-read
+        // from zero after every restart. Each database gets its own.
+        for (i, db) in hermes::default_db_paths().into_iter().enumerate() {
+            let state = cursors.join("hermes").join(profile_dir_name(&db, i));
+            sqlite_source(
+                &mut tasks,
+                "hermes",
+                hermes::FORMAT,
+                db,
+                hermes::DEFAULT_AGENT_ID,
+                &spool,
+                state,
+                &env,
+            );
+        }
     }
 
     tasks.extend([
@@ -278,6 +366,117 @@ fn claude_projects_root() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     home.join(".claude").join("projects")
+}
+
+/// Register one file-tailing source.
+#[allow(clippy::too_many_arguments)]
+fn file_source(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    name: &'static str,
+    format: fpai_collect::filetail::Format,
+    roots: Vec<std::path::PathBuf>,
+    default_agent_id: &'static str,
+    spool_dir: &std::path::Path,
+    cursor_root: &std::path::Path,
+    environment: &str,
+) {
+    let spool_dir = spool_dir.to_path_buf();
+    // One cursor store per source, never shared: the store writes its whole map
+    // atomically, so two sources sharing a file would clobber each other and the
+    // loser would re-read from zero after every restart.
+    let state_dir = cursor_root.join(name);
+    let environment = environment.to_string();
+    tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
+        fpai_collect::filetail::run(
+            fpai_collect::filetail::Spec {
+                format,
+                roots: roots.clone(),
+                spool_dir: spool_dir.clone(),
+                state_dir: state_dir.clone(),
+                poll_interval: std::time::Duration::from_secs(2),
+                params: fpai_collect::filetail::Params {
+                    agent_id: default_agent_id.to_string(),
+                    environment: environment.clone(),
+                    end_idle_mins: 10,
+                    max_read_bytes: 32 * 1024 * 1024,
+                    max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
+                    // Never the whole history by default. A normal machine holds
+                    // hundreds of megabytes of transcripts, and shipping all of
+                    // it on first start is not a reasonable default.
+                    since_days: Some(7),
+                },
+            },
+            sd,
+        )
+    }));
+}
+
+/// Register one SQLite-polling source.
+#[allow(clippy::too_many_arguments)]
+fn sqlite_source(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    name: &'static str,
+    format: fpai_collect::sqlitepoll::SqliteFormat,
+    db_path: std::path::PathBuf,
+    default_agent_id: &'static str,
+    spool_dir: &std::path::Path,
+    state_dir: std::path::PathBuf,
+    environment: &str,
+) {
+    let spool_dir = spool_dir.to_path_buf();
+    let environment = environment.to_string();
+    tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
+        fpai_collect::sqlitepoll::run(
+            fpai_collect::sqlitepoll::Spec {
+                format,
+                db_path: db_path.clone(),
+                spool_dir: spool_dir.clone(),
+                state_dir: state_dir.clone(),
+                poll_interval: std::time::Duration::from_secs(5),
+                params: fpai_collect::sqlitepoll::Params {
+                    agent_id: default_agent_id.to_string(),
+                    environment: environment.clone(),
+                    max_rows_per_poll: 2000,
+                    max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
+                    max_drain_passes: 20,
+                },
+            },
+            sd,
+        )
+    }));
+}
+
+/// A stable, filesystem-safe directory name for one Hermes profile database.
+///
+/// Derived from the profile directory rather than an index alone, so adding a
+/// profile cannot renumber an existing one and silently reset its watermark.
+fn profile_dir_name(db: &std::path::Path, index: usize) -> String {
+    let name = db
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("default");
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .take(32)
+        .collect();
+    if safe.trim_matches('-').is_empty() {
+        format!("profile-{index}")
+    } else {
+        safe
+    }
+}
+
+/// Where OpenAI Codex keeps its rollout logs.
+fn codex_sessions_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("CODEX_HOME") {
+        return std::path::PathBuf::from(p).join("sessions");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".codex").join("sessions")
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

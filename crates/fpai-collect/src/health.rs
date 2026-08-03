@@ -140,6 +140,38 @@ impl Health {
     }
 }
 
+/// The process-wide health registry.
+///
+/// A global rather than a field on every `Spec`, for the same reason `tracing`
+/// is: health is process-scoped telemetry that every engine touches, and
+/// threading it through each source's configuration would add a parameter to
+/// nine call sites and every test that builds one, to carry a value none of
+/// them vary. Unset until the daemon installs one, and every method on the
+/// returned handle is a no-op in that state — so a source reports health
+/// unconditionally and a test that never installs one pays nothing.
+static GLOBAL: std::sync::OnceLock<std::sync::Arc<Health>> = std::sync::OnceLock::new();
+
+/// Install the process health registry. The first call wins; later ones are
+/// ignored, so a stray second install cannot silently orphan the record the
+/// writer task is publishing.
+pub fn install(health: std::sync::Arc<Health>) {
+    let _ = GLOBAL.set(health);
+}
+
+/// Report a successful poll to the process registry, if one is installed.
+pub fn report_poll(source: &str, root_present: bool, events: u64, cursor: u64) {
+    if let Some(h) = GLOBAL.get() {
+        h.record_poll(source, root_present, events, cursor);
+    }
+}
+
+/// Report a failed poll to the process registry, if one is installed.
+pub fn report_error(source: &str, error: &str) {
+    if let Some(h) = GLOBAL.get() {
+        h.record_error(source, error);
+    }
+}
+
 /// Where the record lives.
 pub fn health_path(home: &Path) -> PathBuf {
     home.join("collector-health.json")

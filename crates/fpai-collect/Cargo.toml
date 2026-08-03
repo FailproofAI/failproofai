@@ -1,0 +1,43 @@
+[package]
+name = "fpai-collect"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Session-log and hook-activity collection for failproofaid: fault-isolated supervisor, spool, and uploader. Carries no policy logic and never shares fate with the enforcement socket."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The collector is the only async part of the daemon. `failproofaid`'s socket
+# server stays blocking std threads on purpose (see supervisor.rs), so this
+# runtime is created here and never leaks into the enforcement path.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "sync", "io-util"] }
+tracing = "0.1"
+# `rustls-tls` rather than the default native-tls: the daemon cross-compiles to
+# four targets and pulling OpenSSL onto each of them is the kind of build
+# dependency that only breaks on the leg nobody tests. `failproofaid` already
+# depends on reqwest with the same TLS backend, so this adds no new C code.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# inotify on Linux, FSEvents on macOS. Only ever a latency optimisation — the
+# sweeper is what guarantees delivery, so a watcher that fails to register
+# degrades to interval-only rather than losing anything.
+notify = "8"
+# Epoch-millis to RFC3339 with microseconds. Hand-rolling civil date maths is
+# a silent-failure risk — a leap-year slip would put every event on the wrong
+# day with nothing to notice it — and this pulls no C code onto any of the
+# four cross-compiled targets.
+# `bundled` vendors libsqlite3 rather than linking the host's, so the four
+# cross-compiled release binaries do not depend on whatever sqlite the target
+# happens to ship. It compiles C, which `ring` already does on every leg.
+#
+# A real libsqlite3 is not optional here: goose's sessions.db main file contains
+# ZERO tables, with all 1.25 MB of schema and rows in an uncheckpointed -wal.
+# Anything that parses the main file directly reads an empty database.
+rusqlite = { version = "0.40", features = ["bundled"] }
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+wiremock = "0.6"

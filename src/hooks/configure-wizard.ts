@@ -19,6 +19,7 @@ import { resolve, sep } from "node:path";
 import {
   selectOne,
   multiSelect,
+  promptText,
   intro,
   outro,
   summarize,
@@ -26,6 +27,12 @@ import {
   type TTYIn,
   type TTYOut,
 } from "./tui";
+import {
+  DEFAULT_INGEST_URL,
+  validateIngestKey,
+  writeIngestCredential,
+  writeCollectorSettings,
+} from "./collector-config";
 import {
   detectInstalledClis,
   getIntegration,
@@ -668,7 +675,109 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // locked-unchecked and must not write a disabling flag.
   const customEnabled = hasCustomFiles ? presets.includes(CUSTOM) : undefined;
 
-  // 4 — Review & apply
+  // 4 — Send data to AgentEye? Last, and only when a daemon was asked for,
+  // since the daemon is what runs the collector.
+  //
+  // Deliberately AFTER the enforcement questions rather than beside the daemon
+  // one: by this point the user has decided what to protect, so "and would you
+  // like to see it in a dashboard?" follows naturally, where asking up front
+  // interrupts setup with a question about a product they may not have.
+  //
+  // Defaults to NO, and the transcript choice is a SEPARATE question from the
+  // key, because a transcript carries prompts, file contents and whatever was
+  // pasted into a terminal. Configuring ingest must never silently send those.
+  let collector: { cred: { url: string; key: string }; sessions: boolean } | null = null;
+  if (daemonWanted) {
+    const send = await selectOne<"yes" | "no">({
+      message: "Send session and hook data to AgentEye?",
+      choices: [
+        {
+          label: "Not now",
+          value: "no",
+          hint: "nothing leaves this machine",
+        },
+        {
+          label: "Yes — connect to a dashboard",
+          value: "yes",
+          hint: "needs an events:add API key",
+        },
+      ],
+      stdin,
+      stdout,
+    });
+    if (send === null) return cancel();
+
+    if (send === "yes") {
+      const url = await promptText({
+        message: "Ingest endpoint",
+        defaultValue: DEFAULT_INGEST_URL,
+        hint: "Enter for the hosted endpoint",
+        validate: (v) => (/^https?:\/\//.test(v) ? null : "must be an http(s) URL"),
+        stdin,
+        stdout,
+      });
+      if (url === null) return cancel();
+
+      const key = await promptText({
+        message: "events:add API key",
+        // Masked: setup is routinely run while screen-sharing, and a pasted key
+        // would otherwise sit in the scrollback of every recording.
+        mask: true,
+        validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
+        stdin,
+        stdout,
+      });
+      if (key === null) return cancel();
+
+      // Check BEFORE writing anything. A typo'd key is otherwise only
+      // discovered later as a silent pile of 401s parked in failed/, which
+      // reads like a server problem rather than a typo.
+      stdout.write("\nChecking the key… ");
+      const check = await validateIngestKey({ url, key });
+      if (!check.ok) {
+        stdout.write(`\nThat did not work: ${check.reason}\n`);
+        const retry = await selectOne<"skip" | "anyway">({
+          message: "Carry on without sending data?",
+          choices: [
+            { label: "Yes, skip it", value: "skip", hint: "re-run failproofai config later" },
+            { label: "Save it anyway", value: "anyway", hint: "if you know the server is just down" },
+          ],
+          stdin,
+          stdout,
+        });
+        if (retry === null) return cancel();
+        if (retry === "skip") {
+          stdout.write("Skipping data collection. Everything else still applies.\n\n");
+        } else {
+          collector = { cred: { url, key }, sessions: false };
+        }
+      } else {
+        stdout.write("looks good.\n");
+        const sessions = await selectOne<"hooks" | "both">({
+          message: "What should it send?",
+          choices: [
+            {
+              label: "Policy decisions only",
+              value: "hooks",
+              hint: "which hooks fired and what they decided \u00b7 no file contents",
+            },
+            {
+              label: "Decisions and full session transcripts",
+              value: "both",
+              hint: "includes prompts, file contents and command output",
+            },
+          ],
+          stdin,
+          stdout,
+        });
+        if (sessions === null) return cancel();
+        collector = { cred: { url, key }, sessions: sessions === "both" };
+      }
+    }
+  }
+
+
+  // 5 — Review & apply
   const decision = await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
     body: reviewLines({ scope, clis, policies, cwd, customEnabled, installDaemon: daemonWanted }),
@@ -733,6 +842,32 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       reason: daemonResult.installed ? null : classifyDaemonInstallFailure(daemonResult.reason),
       platform: process.platform,
     });
+  }
+
+  // Collector config, written only when the daemon actually came up: the
+  // daemon is what runs the collector, so writing a credential for a service
+  // that failed to install would leave a key on disk doing nothing.
+  if (collector && daemonInstalled) {
+    try {
+      writeIngestCredential(collector.cred);
+      writeCollectorSettings({
+        sessions: collector.sessions,
+        hooks: true,
+        hooksVerbosity: "decisions",
+        redact: "minimal",
+      });
+      // Never the key, the URL, or the count — only that it happened and what
+      // shape of data the user agreed to send.
+      void emit("configure_collector", { sessions: collector.sessions });
+    } catch (err) {
+      // Non-fatal, like the daemon: the rest of setup is worth keeping, and a
+      // machine with no collector behaves exactly as every release before this.
+      hookLogWarn(
+        `collector configuration was not written: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  } else if (collector && !daemonInstalled) {
+    hookLogWarn("skipped collector configuration because the daemon was not installed");
   }
 
   await applied;

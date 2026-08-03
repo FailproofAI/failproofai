@@ -152,7 +152,7 @@ async fn poll_once(
     );
     // Allow rows are rolled up across the whole pass, so a bucket spanning two
     // files still emits once.
-    let mut buckets: BTreeMap<(String, String, Option<String>, i64), AllowBucket> = BTreeMap::new();
+    let mut buckets: BTreeMap<transform::BucketKey, AllowBucket> = BTreeMap::new();
     let mut advanced: Vec<FileCursor> = Vec::new();
     let mut emitted = 0u64;
 
@@ -206,7 +206,12 @@ async fn poll_once(
                 continue;
             };
 
-            let aggregate = verbosity == HooksVerbosity::Decisions && row.is_allow();
+            // An observe-mode row is an `allow` by construction — the verdict
+            // was evaluated and discarded — so the roll-up would sweep it up
+            // and erase the would-be verdict, which is the entire measurement
+            // a trial exists to produce. Emit those exactly.
+            let aggregate =
+                verbosity == HooksVerbosity::Decisions && row.is_allow() && !row.has_observation();
             if aggregate {
                 if let Some(key) = bucket_key(&row) {
                     buckets
@@ -220,6 +225,7 @@ async fn poll_once(
                             count: 0,
                             total_duration_ms: 0.0,
                             max_duration_ms: 0.0,
+                            attribution: key.4.clone(),
                         })
                         .add(&row);
                 }

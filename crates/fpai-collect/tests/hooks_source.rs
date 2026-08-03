@@ -425,3 +425,197 @@ async fn a_malformed_row_does_not_stop_the_rest_of_the_file() {
     fs::remove_dir_all(&state).ok();
     fs::remove_dir_all(&spool).ok();
 }
+
+// ---------------------------------------------------------------------------
+// Decision attribution
+//
+// These fields were added to the activity store (#632) after this source was
+// written (#640), so nothing carried them across. The server reads
+// `payload.policy_source` and `payload.paused` directly; without them every
+// real row arrives unattributed and the guardrails view can only report that
+// no policy decided anything.
+// ---------------------------------------------------------------------------
+
+/// A cloud-decided deny on a managed, currently-paused machine.
+fn attributed_deny_row() -> String {
+    serde_json::json!({
+        "timestamp": 1785740912184i64,
+        "eventType": "PreToolUse",
+        "integration": "claude",
+        "toolName": "Bash",
+        "policyName": "cloud/org-blocks-curl@3/no-curl",
+        "decision": "deny",
+        "reason": "curl is blocked by your organisation",
+        "durationMs": 4,
+        "sessionId": "3ee9c788-8772-4f92-be0b-a80ede7ac48e",
+        "cwd": "/home/sidd/work/failproofai",
+        "policySource": "cloud",
+        "cloudPolicyId": "org-blocks-curl",
+        "cloudRevision": 3,
+        "cloudGeneration": 8,
+        "pausedBy": "session",
+        "pauseExpiresAt": 1785742712184i64
+    })
+    .to_string()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_decision_carries_its_attribution_to_the_server() {
+    let store = tmpdir("attr-store");
+    let state = tmpdir("attr-state");
+    let spool = tmpdir("attr-spool");
+
+    fs::write(store.join("current.jsonl"), attributed_deny_row() + "\n").unwrap();
+    run_once(&store, &state, &spool, HooksVerbosity::All).await;
+
+    let events = spooled(&spool);
+    let end = events
+        .iter()
+        .find(|e| e["type"] == "hook_completed")
+        .expect("a completed leg");
+
+    // Exactly the keys the server's queries extract.
+    assert_eq!(end["policy_source"], "cloud");
+    assert_eq!(end["cloud_policy_id"], "org-blocks-curl");
+    assert_eq!(end["cloud_revision"], 3);
+    assert_eq!(end["cloud_generation"], 8);
+    assert_eq!(end["paused"], true, "must be a bool, not a string");
+    assert_eq!(end["paused_by"], "session");
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unattributed_row_says_so_rather_than_claiming_a_source() {
+    let store = tmpdir("noattr-store");
+    let state = tmpdir("noattr-state");
+    let spool = tmpdir("noattr-spool");
+
+    // The pre-attribution shape, still on disk on any machine that has not
+    // rotated its store. Guessing a source for it would put a count behind a
+    // rollout that did not produce it.
+    fs::write(store.join("current.jsonl"), deny_row() + "\n").unwrap();
+    run_once(&store, &state, &spool, HooksVerbosity::All).await;
+
+    let events = spooled(&spool);
+    let end = events
+        .iter()
+        .find(|e| e["type"] == "hook_completed")
+        .unwrap();
+
+    assert!(end.get("policy_source").is_none());
+    assert!(end.get("cloud_policy_id").is_none());
+    // `paused` is the exception: absent and false must not be distinguishable
+    // to a reader counting unenforced calls.
+    assert_eq!(end["paused"], false);
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_allow_rollup_never_mixes_two_policy_sources() {
+    let store = tmpdir("mix-store");
+    let state = tmpdir("mix-state");
+    let spool = tmpdir("mix-spool");
+
+    // Same session, event, tool and minute — everything the old key grouped
+    // on. Only the attribution differs, so with attribution outside the key
+    // these collapse into one event whose source is wrong for half of them.
+    let cloud_allow = serde_json::json!({
+        "timestamp": 1785740912000i64, "eventType": "PreToolUse", "integration": "claude",
+        "toolName": "Bash", "decision": "allow", "durationMs": 2,
+        "sessionId": "s1", "cwd": "/w", "policySource": "cloud",
+        "cloudPolicyId": "org-guard", "cloudRevision": 2, "cloudGeneration": 8
+    })
+    .to_string();
+    let plain_allow = serde_json::json!({
+        "timestamp": 1785740912100i64, "eventType": "PreToolUse", "integration": "claude",
+        "toolName": "Bash", "decision": "allow", "durationMs": 2,
+        "sessionId": "s1", "cwd": "/w"
+    })
+    .to_string();
+
+    fs::write(
+        store.join("current.jsonl"),
+        format!("{cloud_allow}\n{plain_allow}\n"),
+    )
+    .unwrap();
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "one bucket per source, not one merged");
+
+    let cloud = events
+        .iter()
+        .find(|e| e["policy_source"] == "cloud")
+        .expect("the cloud-decided allow keeps its source");
+    assert_eq!(cloud["failproofai_allow_count"], 1);
+
+    let plain = events
+        .iter()
+        .find(|e| e.get("policy_source").is_none())
+        .expect("the unattributed allow stays unattributed");
+    assert_eq!(plain["failproofai_allow_count"], 1);
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_observed_verdict_survives_the_allow_rollup() {
+    let store = tmpdir("obs-store");
+    let state = tmpdir("obs-state");
+    let spool = tmpdir("obs-spool");
+
+    // Observe mode evaluates a policy and DISCARDS the verdict, so the row is
+    // an allow. Rolled up with the other allows, the would-be verdict — the
+    // only thing a trial produces — disappears into a count.
+    let observed = serde_json::json!({
+        "timestamp": 1785740912000i64, "eventType": "PreToolUse", "integration": "claude",
+        "toolName": "Bash", "decision": "allow", "durationMs": 3,
+        "sessionId": "s1", "cwd": "/w", "cloudGeneration": 8,
+        "observed": [{"policyId": "org-trials-git-push", "revision": 1, "decision": "deny"}]
+    })
+    .to_string();
+    let ordinary = serde_json::json!({
+        "timestamp": 1785740912100i64, "eventType": "PreToolUse", "integration": "claude",
+        "toolName": "Bash", "decision": "allow", "durationMs": 1,
+        "sessionId": "s1", "cwd": "/w", "cloudGeneration": 8
+    })
+    .to_string();
+
+    fs::write(
+        store.join("current.jsonl"),
+        format!("{observed}\n{ordinary}\n"),
+    )
+    .unwrap();
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    let trial = events
+        .iter()
+        .find(|e| e.get("failproofai_observed").is_some())
+        .expect("the observed verdict must reach the server intact");
+    assert_eq!(trial["failproofai_observed"][0]["decision"], "deny");
+    assert_eq!(
+        trial["failproofai_observed"][0]["policyId"],
+        "org-trials-git-push"
+    );
+
+    // The ordinary allow still rolls up — the exemption is narrow.
+    assert!(
+        events
+            .iter()
+            .any(|e| e.get("failproofai_allow_count").is_some()),
+        "non-observed allows must still aggregate"
+    );
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}

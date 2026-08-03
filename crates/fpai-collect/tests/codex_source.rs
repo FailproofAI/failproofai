@@ -642,14 +642,13 @@ fn the_derived_agent_id_matches_the_scheme_the_hook_source_uses() {
         event_type: Some("PreToolUse".into()),
         integration: Some("codex".into()),
         tool_name: Some("Bash".into()),
-        policy_name: None,
-        matched_policies: None,
         decision: Some("allow".into()),
-        reason: None,
-        duration_ms: None,
         session_id: Some(UUID.into()),
         cwd: Some(cwd.into()),
-        permission_mode: None,
+        // The agent id is derived from cwd and integration alone; the rest is
+        // irrelevant to it, and spelling it out invites this to break on every
+        // field the store gains.
+        ..Default::default()
     });
     assert_eq!(from_rollout, from_hooks);
     assert_eq!(from_rollout, "codex-openclaw-local");

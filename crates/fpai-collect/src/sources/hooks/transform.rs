@@ -29,7 +29,10 @@ use serde_json::{Map, Value, json};
 /// field except the timestamp is optional here even where TypeScript declares
 /// it required: this parses rows written by older versions, and a row that
 /// fails to deserialize is a row that never reaches the dashboard.
-#[derive(Debug, Clone, Deserialize)]
+/// `Default` is derived so test literals can use `..Default::default()`. The
+/// store gains fields as the product does, and every construction site
+/// enumerating all of them turns each addition into unrelated breakage.
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct HookRow {
     /// Epoch milliseconds.
     pub timestamp: i64,
@@ -53,11 +56,109 @@ pub struct HookRow {
     pub cwd: Option<String>,
     #[serde(rename = "permissionMode")]
     pub permission_mode: Option<String>,
+
+    // ---- Decision attribution -------------------------------------------
+    // Which policy decided, and under what deployment. Without these the
+    // dashboard can group decisions only by the policy's display NAME, which
+    // is exactly the substring-parsing this data was added to replace: every
+    // row arrives unattributed, so "how much is my org's policy actually
+    // doing" has no answer.
+    /// `builtin` | `custom` | `convention` | `cloud`. Absent on rows written
+    /// before attribution existed, which is meaningful — see the note in
+    /// `hook-activity-store.ts` about not guessing a bucket.
+    #[serde(rename = "policySource")]
+    pub policy_source: Option<String>,
+    #[serde(rename = "cloudPolicyId")]
+    pub cloud_policy_id: Option<String>,
+    #[serde(rename = "cloudRevision")]
+    pub cloud_revision: Option<i64>,
+    /// Present on EVERY row of a managed machine, not just cloud-decided ones:
+    /// "what was deployed here" is a different question from "what decided",
+    /// and only the former separates a rollout that changed no outcomes from
+    /// one that never reached the machine.
+    #[serde(rename = "cloudGeneration")]
+    pub cloud_generation: Option<i64>,
+
+    // ---- Suspension ------------------------------------------------------
+    /// Set while `failproofai config --pause` is in effect. An `allow` on such
+    /// a row proves nothing, so shipping it without this would assert a clean
+    /// window over exactly the window that was not enforced.
+    #[serde(rename = "pausedBy")]
+    pub paused_by: Option<String>,
+    #[serde(rename = "pauseExpiresAt")]
+    pub pause_expires_at: Option<i64>,
+
+    /// Verdicts from observe-mode policies: evaluated, then discarded. The
+    /// whole measurement a trial exists to produce.
+    pub observed: Option<Value>,
+}
+
+/// The attribution facts for one row.
+///
+/// This is both what gets emitted AND part of the aggregation key. Those have
+/// to be the same set: an aggregate that mixed two policy sources could carry
+/// no honest attribution at all, so anything emitted here must be something
+/// rows were grouped by.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Attribution {
+    pub policy_source: Option<String>,
+    pub cloud_policy_id: Option<String>,
+    pub cloud_revision: Option<i64>,
+    pub cloud_generation: Option<i64>,
+    pub paused: bool,
+}
+
+impl Attribution {
+    pub fn of(row: &HookRow) -> Self {
+        Self {
+            policy_source: row.policy_source.clone(),
+            cloud_policy_id: row.cloud_policy_id.clone(),
+            cloud_revision: row.cloud_revision,
+            cloud_generation: row.cloud_generation,
+            paused: row.paused_by.is_some(),
+        }
+    }
+
+    /// Write the attribution onto an outgoing event.
+    ///
+    /// Names are snake_case to match every other payload key the server reads.
+    /// `paused` is emitted as a real boolean because the server tests it with
+    /// `JSONExtractBool`, which a string would fail.
+    fn apply(&self, m: &mut Map<String, Value>) {
+        if let Some(s) = &self.policy_source {
+            m.insert("policy_source".into(), json!(s));
+        }
+        if let Some(id) = &self.cloud_policy_id {
+            m.insert("cloud_policy_id".into(), json!(id));
+        }
+        if let Some(r) = self.cloud_revision {
+            m.insert("cloud_revision".into(), json!(r));
+        }
+        if let Some(g) = self.cloud_generation {
+            m.insert("cloud_generation".into(), json!(g));
+        }
+        // Always emitted, never conditionally: an absent key and `false` must
+        // not be distinguishable to a reader counting unenforced calls.
+        m.insert("paused".into(), json!(self.paused));
+    }
 }
 
 impl HookRow {
     pub fn decision_str(&self) -> &str {
         self.decision.as_deref().unwrap_or("allow")
+    }
+
+    /// True when observe-mode policies recorded a would-be verdict.
+    ///
+    /// Such a row is an `allow` by construction — the verdict was discarded —
+    /// so it would otherwise be swept into an allow aggregate and the trial's
+    /// only measurement would be erased by the roll-up.
+    pub fn has_observation(&self) -> bool {
+        match &self.observed {
+            Some(Value::Array(a)) => !a.is_empty(),
+            Some(Value::Null) | None => false,
+            Some(_) => true,
+        }
     }
 
     /// True for the 99.1% of rows that are plain no-ops.
@@ -208,6 +309,24 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     if let Some(t) = &row.tool_name {
         end.insert("tool_name".into(), json!(t));
     }
+    // Attribution rides the END leg only: it is a property of the decision,
+    // and the start leg is emitted before one exists.
+    Attribution::of(row).apply(&mut end);
+    if let Some(by) = &row.paused_by {
+        end.insert("paused_by".into(), json!(by));
+    }
+    if let Some(exp) = row.pause_expires_at {
+        end.insert("pause_expires_at".into(), json!(exp));
+    }
+    if row.has_observation() {
+        // Carried whole rather than flattened: a row can observe several
+        // policies at once, and the id/revision/decision only mean anything
+        // together.
+        end.insert(
+            "failproofai_observed".into(),
+            row.observed.clone().unwrap_or(Value::Null),
+        );
+    }
     if !row.is_allow() {
         // The server's `is_error` is a truthiness check, so this must never be
         // an empty string — a deny with no reason would otherwise render as a
@@ -244,14 +363,32 @@ pub struct AllowBucket {
     pub count: u64,
     pub total_duration_ms: f64,
     pub max_duration_ms: f64,
+    /// Shared by every row in the bucket — see `BucketKey`.
+    pub attribution: Attribution,
 }
 
-/// The key rows are grouped under: same session, event, tool and minute.
-pub fn bucket_key(row: &HookRow) -> Option<(String, String, Option<String>, i64)> {
+/// The key rows are grouped under: same session, event, tool, minute — and the
+/// same attribution.
+///
+/// Attribution is part of the key rather than a field sampled from the first
+/// row because a bucket is emitted as ONE event carrying ONE set of facts. Group
+/// a cloud-decided allow with an unattributed one and whichever attribution is
+/// emitted is wrong for the rest, which is worse than no attribution: it moves
+/// a count into a bucket someone is using to judge a rollout. Splitting instead
+/// costs extra events only when a minute genuinely mixed sources.
+pub type BucketKey = (String, String, Option<String>, i64, Attribution);
+
+pub fn bucket_key(row: &HookRow) -> Option<BucketKey> {
     let session = row.session_id.clone().filter(|s| !s.is_empty())?;
     let event = row.event_type.clone().unwrap_or_else(|| "Hook".into());
     let minute = row.timestamp - row.timestamp.rem_euclid(60_000);
-    Some((session, event, row.tool_name.clone(), minute))
+    Some((
+        session,
+        event,
+        row.tool_name.clone(),
+        minute,
+        Attribution::of(row),
+    ))
 }
 
 impl AllowBucket {
@@ -303,6 +440,9 @@ impl AllowBucket {
         if let Some(t) = &self.tool_name {
             m.insert("tool_name".into(), json!(t));
         }
+        // Honest by construction: every row in this bucket was grouped BY this
+        // attribution, so it describes all of them.
+        self.attribution.apply(&mut m);
         Some(Value::Object(m))
     }
 }

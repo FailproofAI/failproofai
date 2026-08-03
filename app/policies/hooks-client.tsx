@@ -7,6 +7,9 @@ import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCh
 import PaginationControls from "@/app/components/pagination-controls";
 import { getHookActivityAction, searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
+import { getActivePausesAction } from "@/app/actions/get-active-pauses";
+import type { ActivePause } from "@/src/hooks/session-pause";
+import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
@@ -386,6 +389,7 @@ function DetailPanel({
             event detail
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">
+            <PausedNote item={item} />
             <EnforcementNote item={item} />
             <div>
               <span className="text-muted-foreground">Session ID: </span>
@@ -443,6 +447,7 @@ function ActivityTab({
 
   const [page, setPage] = useState(() => paramToPage(url.get("page")));
   const [data, setData] = useState<HookActivityPayload | null>(null);
+  const [activePauses, setActivePauses] = useState<ActivePause[]>([]);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   const [filterDecision, setFilterDecision] = useState<"" | "allow" | "deny" | "instruct">(() => {
@@ -511,6 +516,22 @@ function ActivityTab({
     return () => clearInterval(id);
   }, [page, fetchData, intervalSec]);
 
+  // Pause state is polled independently of the activity page: it is live
+  // machine state, not a property of whichever rows are on screen, and it must
+  // keep updating while the user sits on page 3 of history.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      getActivePausesAction()
+        .then((p) => { if (!cancelled) setActivePauses(p); })
+        .catch(() => { /* non-critical: the banner simply stays hidden */ });
+    };
+    load();
+    const ms = intervalSec > 0 ? intervalSec * 1000 : 5000;
+    const id = setInterval(load, ms);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [intervalSec]);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -565,6 +586,10 @@ function ActivityTab({
 
   return (
     <>
+      {/* Above the stats, deliberately: a paused machine is the most important
+          thing on this screen, and the numbers below it are being produced with
+          local enforcement switched off. */}
+      <PausedBanner pauses={activePauses} />
       {data?.stats && data.stats.totalEvents > 0 && (
         <div style={{ marginBottom: 18 }}>
           <StatsBar stats={data.stats} />
@@ -744,6 +769,7 @@ function ActivityTab({
                         </td>
                         <td className="px-3 py-2">
                           <DecisionBadge decision={item.decision} />
+                          {item.pausedBy && <PausedPill />}
                         </td>
                         <td className="px-3 py-2">
                           <EventTypeBadge eventType={item.eventType} />

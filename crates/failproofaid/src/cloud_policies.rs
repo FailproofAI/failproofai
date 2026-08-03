@@ -23,8 +23,14 @@ pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 1;
 const MANAGED_FILE_MODE: u32 = 0o600;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// NOT `deny_unknown_fields`, deliberately, unlike the locally-authored
+/// manifest below. This is parsed from a SERVER response, and daemons update on
+/// their own schedule — so strictness here means the first field cloud adds
+/// makes every older daemon reject desired-state and silently stop pulling,
+/// stranding fleets on whatever generation they happened to hold. Strictness
+/// belongs on files we write ourselves, not on a remote payload.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct DesiredState {
     pub schema_version: u32,
     pub generation: u64,
@@ -32,13 +38,32 @@ pub struct DesiredState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct DesiredPolicy {
     pub id: String,
     pub revision: u64,
     pub sha256: String,
     /// Opaque locator interpreted only by the cloud transport implementation.
     pub artifact_url: String,
+    /// Defaults to `enforce` so a server that predates observe mode, or omits
+    /// the field, keeps behaving exactly as before. The safe default is the
+    /// one that keeps enforcing.
+    #[serde(default)]
+    pub effect: PolicyEffect,
+}
+
+/// What an assignment does when it matches.
+///
+/// `observe` is the design's observe-before-enforce step: the policy is
+/// downloaded, verified and EVALUATED exactly like any other, but its verdict
+/// never changes what the agent is allowed to do. It exists so a rollout can be
+/// measured on real traffic before it can break anyone's work.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PolicyEffect {
+    #[default]
+    Enforce,
+    Observe,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,6 +82,10 @@ pub struct ActivePolicy {
     pub sha256: String,
     /// Relative to the cloud-managed root. Never supplied by the server.
     pub path: String,
+    /// Carried through from the desired state so the evaluator does not have to
+    /// re-consult cloud to know whether a policy may act.
+    #[serde(default)]
+    pub effect: PolicyEffect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,6 +296,7 @@ impl PolicyStore {
             active_policies.push(ActivePolicy {
                 id: policy.id.clone(),
                 revision: policy.revision,
+                effect: policy.effect,
                 sha256: policy.sha256.clone(),
                 path: relative_path,
             });
@@ -519,6 +549,69 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ReconcileError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desired_state_tolerates_fields_this_daemon_does_not_know() {
+        // Daemons update on their own schedule. If this struct rejected unknown
+        // fields, the first thing cloud added would make every older daemon
+        // fail to parse desired-state and silently stop pulling — a fleet
+        // stranded on whatever generation it happened to hold, with no error
+        // anyone would look for.
+        let json = r#"{"schemaVersion":1,"generation":4,"policies":[
+            {"id":"guard","revision":2,"sha256":"aa","artifactUrl":"/a","effect":"observe",
+             "someFutureField":{"nested":true}}
+        ],"anotherFutureField":42}"#;
+        let parsed: DesiredState = serde_json::from_str(json).expect("must parse");
+        assert_eq!(parsed.generation, 4);
+        assert_eq!(parsed.policies[0].effect, PolicyEffect::Observe);
+    }
+
+    #[test]
+    fn a_policy_with_no_effect_enforces() {
+        // The default has to be the one that keeps enforcing: a server that
+        // predates observe mode must not silently downgrade a fleet to
+        // observation.
+        let json = r#"{"schemaVersion":1,"generation":1,"policies":[
+            {"id":"g","revision":1,"sha256":"aa","artifactUrl":"/a"}]}"#;
+        let parsed: DesiredState = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.policies[0].effect, PolicyEffect::Enforce);
+    }
+
+    #[test]
+    fn an_unreadable_effect_is_rejected_rather_than_guessed() {
+        // Guessing would mean choosing between enforcing something cloud did
+        // not ask to enforce, or observing something it wanted enforced. Both
+        // are worse than refusing the generation.
+        let json = r#"{"schemaVersion":1,"generation":1,"policies":[
+            {"id":"g","revision":1,"sha256":"aa","artifactUrl":"/a","effect":"maybe"}]}"#;
+        assert!(serde_json::from_str::<DesiredState>(json).is_err());
+    }
+
+    #[test]
+    fn the_active_manifest_records_the_effect_it_activated() {
+        // active.json is what the evaluator reads. If the effect were not
+        // carried here, an observe-mode policy would enforce the moment the
+        // daemon restarted and re-read its own manifest.
+        let manifest = ActiveGeneration {
+            schema_version: 1,
+            generation: 9,
+            policies: vec![ActivePolicy {
+                id: "g".into(),
+                revision: 1,
+                sha256: "aa".into(),
+                path: "generations/9/g.mjs".into(),
+                effect: PolicyEffect::Observe,
+            }],
+        };
+        let round_tripped: ActiveGeneration =
+            serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
+        assert_eq!(round_tripped.policies[0].effect, PolicyEffect::Observe);
+        assert!(
+            serde_json::to_string(&manifest)
+                .unwrap()
+                .contains("\"effect\":\"observe\"")
+        );
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn temp_store(name: &str) -> PolicyStore {
@@ -539,6 +632,7 @@ mod tests {
                 revision: generation,
                 sha256: sha256_hex(bytes),
                 artifact_url: format!("https://cloud.invalid/{id}/{generation}"),
+                effect: PolicyEffect::Enforce,
             }],
         }
     }

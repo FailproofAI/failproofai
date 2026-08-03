@@ -36,6 +36,7 @@ import { loadAllCustomHooks } from "../../src/hooks/custom-hooks-loader";
 import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
 import { persistHookActivity } from "../../src/hooks/hook-activity-store";
 import { evaluatePolicies } from "../../src/hooks/policy-evaluator";
+import { registerPolicy } from "../../src/hooks/policy-registry";
 
 const hook = (name: string, extra: Record<string, unknown> = {}) =>
   Object.assign(
@@ -157,5 +158,71 @@ describe("filtering by source", () => {
       _resetForTest();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("observe mode", () => {
+  const OBSERVED = { ...CLOUD, effect: "observe" as const };
+
+  /** The fn the handler actually registered for a given policy name. */
+  async function registeredFn(namePart: string) {
+    const call = vi.mocked(registerPolicy).mock.calls.find(([n]) => String(n).includes(namePart));
+    expect(call, `no policy registered matching ${namePart}`).toBeDefined();
+    return call![2] as (ctx: unknown) => Promise<{ decision: string }>;
+  }
+
+  it("runs the policy for real but discards its verdict", async () => {
+    // Evaluating and discarding IS the feature. A policy that did not actually
+    // run would measure nothing about the rollout being trialled.
+    let ran = false;
+    vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([OBSERVED] as never);
+    vi.mocked(loadAllCustomHooks).mockResolvedValue({
+      hooks: [{
+        name: "org-guard", description: "", match: {},
+        fn: async () => { ran = true; return { decision: "deny", reason: "would block" }; },
+        __cloudManaged: OBSERVED,
+      }],
+      conventionSources: [],
+    } as never);
+
+    await evaluateHookEvent("PreToolUse", "claude", stdin);
+    const result = await (await registeredFn("org-guard"))({});
+
+    expect(ran).toBe(true);
+    expect(result.decision).toBe("allow");
+  });
+
+  it("still lets an ENFORCING cloud policy act", async () => {
+    vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([CLOUD] as never);
+    vi.mocked(loadAllCustomHooks).mockResolvedValue({
+      hooks: [{
+        name: "org-guard", description: "", match: {},
+        fn: async () => ({ decision: "deny", reason: "blocked" }),
+        __cloudManaged: { ...CLOUD, effect: "enforce" },
+      }],
+      conventionSources: [],
+    } as never);
+
+    await evaluateHookEvent("PreToolUse", "claude", stdin);
+    const result = await (await registeredFn("org-guard"))({});
+    expect(result.decision).toBe("deny");
+  });
+
+  it("records an observed deny as allow when the policy throws", async () => {
+    // A policy that times out or throws is an ALLOW in enforce mode, so observe
+    // mode must record it as one — not as a would-deny that never was.
+    vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([OBSERVED] as never);
+    vi.mocked(loadAllCustomHooks).mockResolvedValue({
+      hooks: [{
+        name: "org-guard", description: "", match: {},
+        fn: async () => { throw new Error("boom"); },
+        __cloudManaged: OBSERVED,
+      }],
+      conventionSources: [],
+    } as never);
+
+    await evaluateHookEvent("PreToolUse", "claude", stdin);
+    const result = await (await registeredFn("org-guard"))({});
+    expect(result.decision).toBe("allow");
   });
 });

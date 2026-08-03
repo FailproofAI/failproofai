@@ -270,6 +270,8 @@ fn wait_until_shutdown(shutdown: &AtomicBool, interval: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the fixtures construct an effect explicitly.
+    use crate::cloud_policies::PolicyEffect;
 
     // std::env::set_var is process-global, so these must not interleave with
     // each other or with anything else reading the same variables.
@@ -475,6 +477,7 @@ mod tests {
             revision: 1,
             sha256: "0".repeat(64),
             artifact_url: "https://evil.example/artifact".into(),
+            effect: PolicyEffect::Enforce,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }

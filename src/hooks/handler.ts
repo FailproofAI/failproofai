@@ -137,6 +137,37 @@ export interface EvaluateHookEventOptions {
 }
 
 /**
+ * Runs an observe-mode policy under the same timeout and error handling as an
+ * enforcing one, so what gets measured is what would actually have happened —
+ * including a policy that times out, which in enforce mode is an allow and must
+ * be recorded as one rather than as a would-deny.
+ */
+async function runObserved(
+  hook: CustomHook,
+  ctx: Parameters<CustomHook["fn"]>[0],
+  hookName: string,
+  eventType: string,
+  cli: IntegrationType,
+): Promise<PolicyResult> {
+  try {
+    return await Promise.race([
+      hook.fn(ctx),
+      new Promise<PolicyResult>((_, reject) => setTimeout(() => reject(new Error("timeout")), 10_000)),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    void trackHookEvent(getInstanceId(), "custom_hook_error", {
+      hook_name: hookName,
+      error_type: msg === "timeout" ? "timeout" : "exception",
+      event_type: eventType,
+      cli,
+      is_observe_mode: true,
+    });
+    return { decision: "allow" };
+  }
+}
+
+/**
  * The core hook-evaluation logic, decoupled from process stdin/stdout so it
  * can be called repeatedly inside a long-lived process (the daemon's warm
  * worker) as well as from the one-shot `handleHookEvent` wrapper below.
@@ -218,6 +249,13 @@ export async function evaluateHookEvent(
       { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudRevision?: number }
     >();
     let cloudGeneration: number | undefined;
+    /** What observe-mode policies WOULD have done, had they been enforcing. */
+    const observedResults: Array<{
+      policyId: string;
+      revision: number;
+      decision: "deny" | "instruct";
+      reason: string | null;
+    }> = [];
 
     if (opts?.forceDecision) {
       // Fail-closed: no config/custom-hook loading at all — a daemon that
@@ -293,7 +331,24 @@ export async function evaluateHookEvent(
           : isConvention
             ? `.failproofai-${conventionScope}`
             : "custom";
+        // Observe mode: run it for real, record what it decided, then hand back
+        // an allow. Evaluating and discarding is the whole point — a rollout is
+        // measured against real traffic before it can break anyone's work, and
+        // a policy that did not actually run would measure nothing.
+        const observeOnly = cloudManaged?.effect === "observe";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
+          if (observeOnly) {
+            const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
+            if (shadow.decision !== "allow") {
+              observedResults.push({
+                policyId: cloudManaged!.id,
+                revision: cloudManaged!.revision,
+                decision: shadow.decision,
+                reason: shadow.reason ?? null,
+              });
+            }
+            return { decision: "allow" };
+          }
           try {
             const result = await Promise.race([
               hook.fn(ctx),
@@ -408,6 +463,10 @@ export async function evaluateHookEvent(
           })()
         : {}),
       ...(cloudGeneration !== undefined ? { cloudGeneration } : {}),
+      // The point of observe mode is this record. Without it the rollout is
+      // unmeasurable and the row is indistinguishable from one where the policy
+      // never matched at all.
+      ...(observedResults.length > 0 ? { observed: observedResults } : {}),
       // Without these, a row logged during a pause is indistinguishable from
       // one where every policy ran and allowed — the log would assert a clean
       // window over exactly the window that was not enforced.

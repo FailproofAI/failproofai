@@ -13,9 +13,20 @@ const ACTIVE_SCHEMA_VERSION = 1;
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const POLICY_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
+/** What an assignment may do. See PolicyEffect in cloud_policies.rs. */
+export type PolicyEffect = "enforce" | "observe";
+
 export interface CloudManagedPolicyArtifact {
   id: string;
   revision: number;
+  /**
+   * `observe` policies are evaluated exactly like any other and then have their
+   * verdict discarded, so a rollout can be measured against real traffic before
+   * it can break anyone's work. Absent means `enforce`: the default has to be
+   * the one that keeps enforcing, or a manifest written before observe mode
+   * would silently downgrade a machine to observation.
+   */
+  effect: PolicyEffect;
   sha256: string;
   path: string;
   generation: number;
@@ -27,6 +38,7 @@ interface ActiveManifest {
   policies: Array<{
     id: string;
     revision: number;
+    effect?: string;
     sha256: string;
     path: string;
   }>;
@@ -108,9 +120,16 @@ export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
         `cloud-managed policy ${policy.id} failed integrity verification: expected ${policy.sha256}, got ${actual}`,
       );
     }
+    if (policy.effect !== undefined && policy.effect !== "enforce" && policy.effect !== "observe") {
+      // Guessing would mean either enforcing something cloud did not ask to
+      // enforce, or observing something it wanted enforced. Both are worse than
+      // refusing the generation.
+      throw new Error(`unknown effect ${JSON.stringify(policy.effect)} for cloud-managed policy ${policy.id}`);
+    }
     return {
       id: policy.id,
       revision: policy.revision,
+      effect: (policy.effect as PolicyEffect | undefined) ?? "enforce",
       sha256: policy.sha256,
       path,
       generation: manifest.generation,

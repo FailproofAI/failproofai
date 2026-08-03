@@ -96,6 +96,18 @@ export interface HookActivityEntry {
    * arrived.
    */
   cloudGeneration?: number;
+  /**
+   * What observe-mode policies WOULD have done, had they been enforcing. This
+   * record is the entire point of observe mode: without it the row is
+   * indistinguishable from one where the policy never matched, and the rollout
+   * being trialled is unmeasurable.
+   */
+  observed?: Array<{
+    policyId: string;
+    revision: number;
+    decision: "deny" | "instruct";
+    reason: string | null;
+  }>;
 }
 
 export interface HookActivityFilters {

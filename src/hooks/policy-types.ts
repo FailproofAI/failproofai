@@ -80,8 +80,36 @@ export interface LlmConfig {
   model?: string;
 }
 
+/**
+ * The collector's non-secret settings. The ingest credential deliberately does
+ * NOT live here: this file is written with a bare `writeFileSync`, so it
+ * inherits the umask and lands at 0664 inside a 0775 `~/.failproofai/` — an API
+ * key here would be readable by every local user. It lives in
+ * `~/.failproofai/ingest.json` at 0600 instead.
+ *
+ * Read by the Rust daemon (`crates/fpai-collect/src/config.rs`); the field
+ * names must stay in step with the `Settings` struct there.
+ */
+export interface CollectorConfig {
+  /**
+   * Ship agent session transcripts. Defaults to false and is a SEPARATE opt-in
+   * from configuring a key, because transcripts carry prompts, file contents
+   * and whatever was pasted into a terminal.
+   */
+  sessions?: boolean;
+  /** Ship hook activity. Carries decisions and tool names, never file contents. */
+  hooks?: boolean;
+  /** `decisions` keeps every deny/instruct exact and aggregates the ~99% allows. */
+  hooksVerbosity?: "all" | "decisions" | "off";
+  redact?: "minimal" | "off";
+  /** Label stamped on every event. Must not contain a comma — ingest skips those lines. */
+  environment?: string;
+}
+
 export interface HooksConfig {
   enabledPolicies: string[];
+  /** Collector settings; see {@link CollectorConfig}. Absent means unconfigured. */
+  collector?: CollectorConfig;
   llm?: LlmConfig;
   policyParams?: Record<string, Record<string, unknown>>;
   /** Explicit custom policy files, loaded in array order. */

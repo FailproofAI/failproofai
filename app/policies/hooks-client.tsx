@@ -10,6 +10,9 @@ import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
 import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
+import { EnforcementTimeline } from "@/app/components/enforcement-timeline";
+import { getActivityTimelineAction } from "@/app/actions/get-activity-timeline";
+import type { ActivityBucket } from "@/src/hooks/activity-timeline";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
@@ -467,6 +470,7 @@ function ActivityTab({
   const [page, setPage] = useState(() => paramToPage(url.get("page")));
   const [data, setData] = useState<HookActivityPayload | null>(null);
   const [activePauses, setActivePauses] = useState<ActivePause[]>([]);
+  const [timeline, setTimeline] = useState<ActivityBucket[]>([]);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   const [filterDecision, setFilterDecision] = useState<"" | "allow" | "deny" | "instruct">(() => {
@@ -551,9 +555,15 @@ function ActivityTab({
         .then((p) => { if (!cancelled) setActivePauses(p); })
         .catch(() => { /* non-critical: the banner simply stays hidden */ });
     };
+    const loadTimeline = () => {
+      getActivityTimelineAction()
+        .then((b) => { if (!cancelled) setTimeline(b); })
+        .catch(() => { /* non-critical: the chart simply stays empty */ });
+    };
     load();
+    loadTimeline();
     const ms = intervalSec > 0 ? intervalSec * 1000 : 5000;
-    const id = setInterval(load, ms);
+    const id = setInterval(() => { load(); loadTimeline(); }, ms);
     return () => { cancelled = true; clearInterval(id); };
   }, [intervalSec]);
 
@@ -618,6 +628,9 @@ function ActivityTab({
       {data?.stats && data.stats.totalEvents > 0 && (
         <div style={{ marginBottom: 18 }}>
           <StatsBar stats={data.stats} />
+          {/* Under the totals, because it answers the question they cannot: a
+              deny spike and an all-day trickle give identical totals. */}
+          {timeline.length > 0 && <EnforcementTimeline buckets={timeline} />}
         </div>
       )}
       <div>

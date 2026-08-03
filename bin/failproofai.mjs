@@ -769,11 +769,65 @@ WHAT IT DOES
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
+PAUSING ENFORCEMENT (one session, always time-boxed)
+  failproofai config --pause         Pause this directory's newest agent session (30m)
+  failproofai config --pause 10m     Pause for a given time (max 8h; s/m/h, bare = minutes)
+  failproofai config --resume        End the pause early
+  failproofai config --status        Show what is paused and when it lifts
+    --session <id>                     Target a specific session
+    --all                              With --resume, end every active pause
+
+  A pause suspends builtin, custom and convention policies for that session
+  only, and always expires on its own. Cloud-managed policies keep enforcing.
+
   Prefer flags? See \`failproofai policies --help\`.
 `.trimStart());
       process.exit(0);
     }
     lastSubcommand = "config";
+
+    // --pause / --resume / --status are non-interactive session actions that
+    // share `config`'s surface but not the wizard. They write session state,
+    // never the config file — a pause that reached policies-config.json would
+    // be committed and outlive the session that asked for it.
+    const pauseIdx = args.indexOf("--pause");
+    const wantsResume = args.includes("--resume");
+    const wantsStatus = args.includes("--status");
+    if (pauseIdx >= 0 || wantsResume || wantsStatus) {
+      const chosen = [pauseIdx >= 0 && "--pause", wantsResume && "--resume", wantsStatus && "--status"].filter(Boolean);
+      if (chosen.length > 1) {
+        throw new CliError(`${chosen.join(" and ")} cannot be combined.`);
+      }
+      const sessionIdx = args.indexOf("--session");
+      if (sessionIdx >= 0 && !args[sessionIdx + 1]) {
+        throw new CliError("Missing session id after --session.");
+      }
+      // A bare `--pause` takes the default duration, so only treat the next
+      // token as a duration when it isn't another flag.
+      const next = pauseIdx >= 0 ? args[pauseIdx + 1] : undefined;
+      const duration = next && !next.startsWith("-") ? next : undefined;
+
+      const { runPauseCommand } = await import("../src/hooks/session-pause-cli");
+      const result = runPauseCommand({
+        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        duration,
+        sessionId: sessionIdx >= 0 ? args[sessionIdx + 1] : undefined,
+        all: args.includes("--all"),
+        cwd: process.cwd(),
+      });
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_pause_invoked", {
+        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        ok: result.exitCode === 0,
+        affected: result.affected,
+      });
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
     const result = await runConfigureWizard();
     await track("cli_configure_invoked", {

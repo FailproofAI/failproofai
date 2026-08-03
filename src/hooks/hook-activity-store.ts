@@ -69,6 +69,15 @@ export interface HookActivityEntry {
   cwd?: string;
   permissionMode?: string;
   hookEventName?: string;
+  /**
+   * Set only on events evaluated while a session pause was active. Absent on
+   * every ordinary row and on every row written before pausing existed, so —
+   * like `matchedPolicies` — consumers must treat `undefined` as "not paused"
+   * rather than rendering it as unknown.
+   */
+  pausedBy?: string;
+  /** Epoch ms the pause lifts. Present iff `pausedBy` is. */
+  pauseExpiresAt?: number;
 }
 
 export interface HookActivityFilters {

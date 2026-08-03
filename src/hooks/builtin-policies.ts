@@ -170,6 +170,14 @@ const RUNAS_RE = /(?:^|;|&&|\|\|)\s*runas\s/i;
 
 // blockCurlPipeSh
 const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|fish|ash)\b/;
+/**
+ * `failproofai config --pause` in any of its reachable spellings — direct, via
+ * `npx`/`bunx`, or through the `configure`/`setup` aliases the CLI normalizes.
+ * Only `--pause` matches: `--resume` and `--status` restore or merely report
+ * enforcement, so an agent running either is harmless.
+ */
+const SELF_PAUSE_RE =
+  /\bfailproofai\b(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s--pause\b/;
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
@@ -575,6 +583,39 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
   // Windows: runas command
   if (RUNAS_RE.test(cmd)) {
     return deny("runas elevation is blocked");
+  }
+  return allow();
+}
+
+/**
+ * A pause the agent can issue is not a guardrail.
+ *
+ * `failproofai config --pause` is a human affordance: you watched the agent get
+ * blocked, you judged the block wrong, you suspended enforcement for a bit. An
+ * agent that can run it turns every other policy advisory — it need only shell
+ * out once to switch them all off, and the pause even survives into later turns.
+ *
+ * This raises the bar rather than closing the class: an agent can still reach
+ * the same state obfuscated (base64, a wrapper script, an alias). Closing it
+ * properly means the pause cannot originate from a tool call at all — a
+ * dashboard action, or a daemon that accepts it only from a TTY. Until then,
+ * the honest description of this policy is "stops the obvious attempt".
+ *
+ * It is deliberately NOT redundant with `block-failproofai-commands`, which
+ * blocks the CLI far more broadly. That one anchors on a command boundary
+ * (`FAILPROOFAI_CLI_RE`), so `npx -y failproofai config --pause` does not match
+ * it — and being broad, it is a policy people plausibly switch off so agents
+ * can run `failproofai audit`. Neither gap should leave pausing reachable, so
+ * this stays narrow, matches the runner forms, and survives that one being off.
+ */
+function blockSelfPause(ctx: PolicyContext): PolicyResult {
+  if (ctx.toolName !== "Bash") return allow();
+  const cmd = getCommand(ctx);
+  if (SELF_PAUSE_RE.test(cmd)) {
+    return deny(
+      "Pausing failproofai enforcement is a human action, not an agent one. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
   }
   return allow();
 }
@@ -1751,6 +1792,16 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
         default: [],
       },
     } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-self-pause",
+    displayTitle: "Tried to pause failproofai enforcement",
+    impact: "An agent that can pause enforcement can switch off every other policy.",
+    description: "Block agents from pausing failproofai enforcement",
+    fn: blockSelfPause,
+    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    defaultEnabled: true,
+    category: "Dangerous Commands",
   },
   {
     name: "block-sudo",

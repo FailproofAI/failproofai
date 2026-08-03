@@ -14,7 +14,7 @@ Policies are grouped into categories:
 
 | Category | Policies | Hook type |
 |----------|----------|-----------|
-| [Dangerous commands](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands | PreToolUse |
+| [Dangerous commands](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
 | [Infra commands](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
 | [Secrets (sanitizers)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
 | [Environment](#environment) | block-env-files, protect-env-vars | PreToolUse |
@@ -136,6 +136,19 @@ No parameters.
 
 **Event:** PreToolUse (Bash)  
 **Default:** Denies commands that would uninstall or disable failproofai itself (e.g. `npm uninstall failproofai`, `failproofai policies --uninstall`).
+
+No parameters.
+
+---
+
+### `block-self-pause`
+
+**Event:** PreToolUse (Bash)  
+**Default:** Denies `failproofai config --pause`, which suspends enforcement for a session. Pausing is a human decision — an agent able to run it could switch off every other policy with a single command.
+
+Narrower than [`block-failproofai-commands`](#block-failproofai-commands) on purpose, and not covered by it: that policy anchors on a command boundary, so `npx -y failproofai config --pause` does not match it, and being broad it is often switched off so agents can run `failproofai audit`. `--resume` and `--status` are allowed — neither removes enforcement.
+
+This stops the direct attempt, not the whole class: an agent can still reach the same state through an alias or a wrapper script. Closing it fully requires the pause to be unreachable from a tool call at all.
 
 No parameters.
 

@@ -37,13 +37,13 @@ describe("hooks/builtin-policies", () => {
   });
 
   describe("BUILTIN_POLICIES", () => {
-    it("has 39 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+    it("has 40 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(40);
     });
 
-    it("has 11 default-enabled policies", () => {
+    it("has 12 default-enabled policies", () => {
       const defaults = BUILTIN_POLICIES.filter((p) => p.defaultEnabled);
-      expect(defaults).toHaveLength(11);
+      expect(defaults).toHaveLength(12);
     });
   });
 
@@ -506,6 +506,45 @@ describe("hooks/builtin-policies", () => {
     it("allows non-sudo commands", async () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "ls -la" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+  });
+
+  describe("block-self-pause", () => {
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "block-self-pause")!;
+    const decide = async (command: string) =>
+      (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command } }))).decision;
+
+    it("blocks the agent pausing enforcement", async () => {
+      expect(await decide("failproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai config --pause 8h")).toBe("deny");
+    });
+
+    it("blocks it through the aliases and package runners the CLI accepts", async () => {
+      // `configure` and `setup` are normalized to `config` by the entrypoint, so
+      // matching only the canonical spelling would leave two open doors.
+      expect(await decide("failproofai configure --pause")).toBe("deny");
+      expect(await decide("failproofai setup --pause")).toBe("deny");
+      expect(await decide("npx -y failproofai config --pause")).toBe("deny");
+      expect(await decide("bunx failproofai config --pause 30m")).toBe("deny");
+    });
+
+    it("blocks it mid-command, not just at the start", async () => {
+      expect(await decide("cd /tmp && failproofai config --pause")).toBe("deny");
+    });
+
+    it("allows resume and status — neither removes enforcement", async () => {
+      expect(await decide("failproofai config --resume")).toBe("allow");
+      expect(await decide("failproofai config --status")).toBe("allow");
+    });
+
+    it("allows ordinary failproofai use and unrelated commands", async () => {
+      expect(await decide("failproofai config")).toBe("allow");
+      expect(await decide("failproofai policies --install block-sudo")).toBe("allow");
+      expect(await decide("git commit -m 'pause the rollout'")).toBe("allow");
+    });
+
+    it("is on by default — an opt-in guardrail here protects nobody", async () => {
+      expect(policy.defaultEnabled).toBe(true);
     });
   });
 

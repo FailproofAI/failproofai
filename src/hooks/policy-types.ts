@@ -99,6 +99,13 @@ export interface HooksConfig {
    */
   customPoliciesEnabled?: boolean;
   /**
+   * Upper bound, in ms, on how long `failproofai config --pause` may suspend
+   * enforcement. Only ever LOWERS the built-in 8h ceiling — a value above it is
+   * clamped back down, because a ceiling a project can raise is not a ceiling.
+   * Absent means the built-in ceiling applies.
+   */
+  maxPauseMs?: number;
+  /**
    * Record of the convention policies (`.failproofai/policies/*policies.mjs`)
    * discovered at this scope the last time a failproofai command ran.
    *

@@ -42,6 +42,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { readActivePause, type ActivePause } from "./session-pause";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -210,6 +211,7 @@ export async function evaluateHookEvent(
     let config: HooksConfig;
     let customHooksList: CustomHook[] = [];
     let conventionHookNames = new Set<string>();
+    let activePause: ActivePause | null = null;
 
     if (opts?.forceDecision) {
       // Fail-closed: no config/custom-hook loading at all — a daemon that
@@ -229,7 +231,13 @@ export async function evaluateHookEvent(
       // Load enabled policies (merge across project/local/global scopes)
       config = readMergedHooksConfig(session.cwd);
       clearPolicies();
-      registerBuiltinPolicies(config.enabledPolicies);
+
+      // A session pause suspends LOCAL policy only, for a bounded time. Cloud
+      // assignments are exempt below for the same reason `disabledCustomPolicies`
+      // already exempts them: a locally-issued command that could switch off a
+      // centrally assigned policy would make cloud enforcement decorative.
+      activePause = readActivePause(session.sessionId);
+      registerBuiltinPolicies(activePause ? [] : config.enabledPolicies);
 
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add
@@ -264,6 +272,8 @@ export async function evaluateHookEvent(
         // Local config cannot disable a centrally assigned policy merely by
         // copying its generated ID into disabledCustomPolicies.
         if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
+        // Same rule for a session pause — it suspends local policy, never cloud.
+        if (!cloudManaged && activePause) continue;
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
@@ -361,6 +371,12 @@ export async function evaluateHookEvent(
       cwd: session.cwd,
       permissionMode: session.permissionMode,
       hookEventName: session.hookEventName,
+      // Without these, a row logged during a pause is indistinguishable from
+      // one where every policy ran and allowed — the log would assert a clean
+      // window over exactly the window that was not enforced.
+      ...(activePause
+        ? { pausedBy: activePause.setBy, pauseExpiresAt: activePause.expiresAt }
+        : {}),
     };
     try {
       persistHookActivity(activityEntry);

@@ -538,6 +538,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install") // 0 — daemon
       .mockResolvedValueOnce("user") // scope
+      .mockResolvedValueOnce("no") // 4 — send data to AgentEye? (declined)
       .mockResolvedValueOnce("apply"); // review
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -558,7 +559,10 @@ describe("configure-wizard daemon integration", () => {
       order.push("sudo");
       return true;
     });
-    const answers = ["install", "user", "apply"];
+    // Question order: daemon → scope → (assistants, policies are multiSelect)
+    // → send-data → review. "no" declines the collector, which is its default
+    // and keeps these daemon-focused tests to one subject.
+    const answers = ["install", "user", "no", "apply"];
     vi.mocked(selectOne).mockImplementation(async () => {
       order.push("prompt");
       return answers[order.filter((o) => o === "prompt").length - 1] as never;
@@ -578,6 +582,9 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install")
       .mockResolvedValueOnce("user")
+      // No send-data answer here on purpose: sudo fails, so daemonWanted goes
+      // false and the collector question is never asked. Adding one would
+      // desync this chain — which is exactly the gating this test proves.
       .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -612,6 +619,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install")
       .mockResolvedValueOnce("project")
+      .mockResolvedValueOnce("no") // 4 — send data to AgentEye? (declined)
       .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -645,6 +653,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install")
       .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("no") // 4 — send data to AgentEye? (declined)
       .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -708,6 +717,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install")
       .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("no") // 4 — send data to AgentEye? (declined)
       .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 
@@ -726,6 +736,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(selectOne)
       .mockResolvedValueOnce("install")
       .mockResolvedValueOnce("user")
+      .mockResolvedValueOnce("no") // 4 — send data to AgentEye? (declined)
       .mockResolvedValueOnce("apply");
     vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]).mockResolvedValueOnce(["git"]);
 

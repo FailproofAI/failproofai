@@ -13,12 +13,13 @@
  * install/uninstall manager and the existing searchable policy picker.
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { resolve, sep } from "node:path";
 
 import {
   selectOne,
   multiSelect,
+  promptText,
   intro,
   outro,
   summarize,
@@ -26,6 +27,12 @@ import {
   type TTYIn,
   type TTYOut,
 } from "./tui";
+import {
+  DEFAULT_INGEST_URL,
+  validateIngestKey,
+  writeIngestCredential,
+  writeCollectorSettings,
+} from "./collector-config";
 import {
   detectInstalledClis,
   getIntegration,
@@ -47,6 +54,12 @@ import {
   setDaemonConfigured,
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
+import {
+  readCloudCredentials,
+  verifyCloudCredentials,
+  writeCloudCredentials,
+} from "./cloud-enrollment";
+import { cloudBaseFor, ingestUrlFor } from "./cloud-connection";
 
 export interface WizardIO {
   stdin?: TTYIn;
@@ -668,7 +681,166 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // locked-unchecked and must not write a disabling flag.
   const customEnabled = hasCustomFiles ? presets.includes(CUSTOM) : undefined;
 
-  // 4 — Review & apply
+  // 4 — Send data to AgentEye? Last, and only when a daemon was asked for,
+  // since the daemon is what runs the collector.
+  //
+  // Deliberately AFTER the enforcement questions rather than beside the daemon
+  // one: by this point the user has decided what to protect, so "and would you
+  // like to see it in a dashboard?" follows naturally, where asking up front
+  // interrupts setup with a question about a product they may not have.
+  //
+  // Defaults to NO, and the transcript choice is a SEPARATE question from the
+  // key, because a transcript carries prompts, file contents and whatever was
+  // pasted into a terminal. Configuring ingest must never silently send those.
+  let collector: { cred: { url: string; key: string }; sessions: boolean } | null = null;
+  if (daemonWanted) {
+    const send = await selectOne<"yes" | "no">({
+      message: "Send session and hook data to AgentEye?",
+      choices: [
+        {
+          label: "Not now",
+          value: "no",
+          hint: "nothing leaves this machine",
+        },
+        {
+          label: "Yes — connect to a dashboard",
+          value: "yes",
+          hint: "needs an events:add API key",
+        },
+      ],
+      stdin,
+      stdout,
+    });
+    if (send === null) return cancel();
+
+    if (send === "yes") {
+      // If this machine is ALREADY enrolled with Failproof Cloud, it has a URL
+      // and a token that usually work for both capabilities. Asking for them
+      // again is the seam that made connecting feel like two products: someone
+      // runs `--connect`, sees an empty dashboard, and has no reason to think a
+      // second credential exists. Offer what we already know, and let it be
+      // overridden.
+      const existing = readCloudCredentials();
+      let url: string | null = null;
+      let key: string | null = null;
+
+      if (existing) {
+        const reuse = await selectOne<"reuse" | "other">({
+          message: `Use this machine's existing connection to ${existing.url}?`,
+          choices: [
+            {
+              label: `Yes — reuse it`,
+              value: "reuse",
+              hint: `as ${existing.machineId}, same token`,
+            },
+            { label: "No — use a different endpoint and key", value: "other", hint: "" },
+          ],
+          stdin,
+          stdout,
+        });
+        if (reuse === null) return cancel();
+        if (reuse === "reuse") {
+          url = ingestUrlFor(existing.url);
+          key = existing.token;
+        }
+      }
+
+      if (url === null) {
+        const entered = await promptText({
+          message: "Failproof Cloud URL",
+          defaultValue: cloudBaseFor(DEFAULT_INGEST_URL),
+          hint: "Enter for the hosted endpoint",
+          validate: (v) => (/^https?:\/\//.test(v) ? null : "must be an http(s) URL"),
+          stdin,
+          stdout,
+        });
+        if (entered === null) return cancel();
+        // Asked for as a base and derived, so this and `--connect` take the
+        // same thing. Someone pasting the older `/events` endpoint still works.
+        url = ingestUrlFor(cloudBaseFor(entered));
+      }
+
+      if (key === null) {
+        key = await promptText({
+          message: "API key",
+          hint: "needs events:add",
+          // Masked: setup is routinely run while screen-sharing, and a pasted key
+          // would otherwise sit in the scrollback of every recording.
+          mask: true,
+          validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
+          stdin,
+          stdout,
+        });
+        if (key === null) return cancel();
+      }
+
+      // Check BEFORE writing anything. A typo'd key is otherwise only
+      // discovered later as a silent pile of 401s parked in failed/, which
+      // reads like a server problem rather than a typo.
+      stdout.write("\nChecking the key… ");
+      const check = await validateIngestKey({ url, key });
+      if (!check.ok) {
+        stdout.write(`\nThat did not work: ${check.reason}\n`);
+        const retry = await selectOne<"skip" | "anyway">({
+          message: "Carry on without sending data?",
+          choices: [
+            { label: "Yes, skip it", value: "skip", hint: "re-run failproofai config later" },
+            { label: "Save it anyway", value: "anyway", hint: "if you know the server is just down" },
+          ],
+          stdin,
+          stdout,
+        });
+        if (retry === null) return cancel();
+        if (retry === "skip") {
+          stdout.write("Skipping data collection. Everything else still applies.\n\n");
+        } else {
+          collector = { cred: { url, key }, sessions: false };
+        }
+      } else {
+        stdout.write("looks good.\n");
+        const sessions = await selectOne<"hooks" | "both">({
+          message: "What should it send?",
+          choices: [
+            {
+              label: "Policy decisions only",
+              value: "hooks",
+              hint: "which hooks fired and what they decided \u00b7 no file contents",
+            },
+            {
+              label: "Decisions and full session transcripts",
+              value: "both",
+              hint: "includes prompts, file contents and command output",
+            },
+          ],
+          stdin,
+          stdout,
+        });
+        if (sessions === null) return cancel();
+        collector = { cred: { url, key }, sessions: sessions === "both" };
+
+        // The other half of the same connection. If this machine is not
+        // enrolled for policy and the key turns out to carry `policies:pull`,
+        // enrol it here rather than making the user discover a second command.
+        // Silent when the key lacks the permission — an events-only key is a
+        // perfectly reasonable thing to have, and a warning about a capability
+        // nobody asked for is noise.
+        if (!readCloudCredentials()) {
+          const base = cloudBaseFor(url);
+          const machineId = hostname();
+          const enrol = await verifyCloudCredentials({ url: base, machineId, token: key });
+          if (enrol.ok) {
+            writeCloudCredentials({ url: base, machineId, token: key });
+            stdout.write(
+              `Also connected for cloud-managed policy (${enrol.policyCount} assigned, generation ${enrol.generation}).\n`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+
+  // 5 — Review & apply
   const decision = await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
     body: reviewLines({ scope, clis, policies, cwd, customEnabled, installDaemon: daemonWanted }),
@@ -733,6 +905,32 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       reason: daemonResult.installed ? null : classifyDaemonInstallFailure(daemonResult.reason),
       platform: process.platform,
     });
+  }
+
+  // Collector config, written only when the daemon actually came up: the
+  // daemon is what runs the collector, so writing a credential for a service
+  // that failed to install would leave a key on disk doing nothing.
+  if (collector && daemonInstalled) {
+    try {
+      writeIngestCredential(collector.cred);
+      writeCollectorSettings({
+        sessions: collector.sessions,
+        hooks: true,
+        hooksVerbosity: "decisions",
+        redact: "minimal",
+      });
+      // Never the key, the URL, or the count — only that it happened and what
+      // shape of data the user agreed to send.
+      void emit("configure_collector", { sessions: collector.sessions });
+    } catch (err) {
+      // Non-fatal, like the daemon: the rest of setup is worth keeping, and a
+      // machine with no collector behaves exactly as every release before this.
+      hookLogWarn(
+        `collector configuration was not written: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  } else if (collector && !daemonInstalled) {
+    hookLogWarn("skipped collector configuration because the daemon was not installed");
   }
 
   await applied;

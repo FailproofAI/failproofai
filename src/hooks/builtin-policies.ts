@@ -249,9 +249,16 @@ function decodeAnsiC(body: string): string {
  * rest of the daemon-side redesign.
  */
 function stripShellQuoting(command: string): string {
-  // `$'...'` first, honoring `\'` inside the body, so its own escapes decode
+  // Line continuation FIRST. A shell deletes a backslash-newline pair entirely
+  // and rejoins the fragments, so `fail\<newline>proofai` runs the real binary.
+  // The generic `\(.)` strip below cannot catch it — JS `.` excludes newline —
+  // so it has to be removed before that pass, or the fragments never join.
+  // (A third red-team round rode exactly this in.) `\r?\n` also covers a
+  // CRLF-joined line.
+  const joined = command.replace(/\\\r?\n/g, "");
+  // `$'...'` next, honoring `\'` inside the body, so its own escapes decode
   // before the generic backslash-strip can mangle them.
-  const ansiDecoded = command.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_, body: string) =>
+  const ansiDecoded = joined.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_, body: string) =>
     decodeAnsiC(body),
   );
   return ansiDecoded.replace(/\\(.)/g, "$1").replace(/['"]/g, "");

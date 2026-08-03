@@ -28,6 +28,14 @@ notify = "8"
 # a silent-failure risk — a leap-year slip would put every event on the wrong
 # day with nothing to notice it — and this pulls no C code onto any of the
 # four cross-compiled targets.
+# `bundled` vendors libsqlite3 rather than linking the host's, so the four
+# cross-compiled release binaries do not depend on whatever sqlite the target
+# happens to ship. It compiles C, which `ring` already does on every leg.
+#
+# A real libsqlite3 is not optional here: goose's sessions.db main file contains
+# ZERO tables, with all 1.25 MB of schema and rows in an uncheckpointed -wal.
+# Anything that parses the main file directly reads an empty database.
+rusqlite = { version = "0.40", features = ["bundled"] }
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]

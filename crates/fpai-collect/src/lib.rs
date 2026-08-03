@@ -15,14 +15,17 @@ pub mod config;
 pub mod cursor;
 pub mod delivery;
 pub mod filetail;
+pub mod health;
 pub mod redact;
 pub mod sources;
 pub mod spool;
+pub mod sqlitepoll;
 pub mod supervisor;
 pub mod uploader;
 
 pub use config::{CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings};
 pub use delivery::Delivery;
+pub use health::{Health, HealthFile, SourceHealth, health_path};
 pub use spool::SpoolWriter;
 pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,

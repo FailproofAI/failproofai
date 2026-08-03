@@ -103,11 +103,47 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 /// The collector tasks to supervise for this process.
 ///
-/// Empty until the ingest configuration lands, which is what keeps the
-/// collector inert on every machine for now: an empty list means no thread and
-/// no runtime, so an un-opted-in install pays nothing at all for this code
-/// path existing.
+/// Returns an empty list — and therefore starts no thread and no runtime —
+/// unless an ingest credential is configured AND at least one stream is
+/// enabled. That is the normal state, so an install that has not opted in
+/// pays nothing for this code path existing.
+///
+/// A configuration error is logged and treated as "off" rather than being
+/// propagated: collection failing to start must never stop the daemon from
+/// serving the socket, because the CLI fails closed and a daemon that refused
+/// to boot over a malformed `ingest.json` would deny every tool call on the
+/// machine. The error is loud so it is fixable, not silent.
 fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
+    let home = match paths::failproofai_home() {
+        Ok(home) => home,
+        Err(err) => {
+            eprintln!("[failproofaid] collector disabled: {err}");
+            return Vec::new();
+        }
+    };
+
+    let cfg = match fpai_collect::config::load(&home) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[failproofaid] collector disabled: {err}");
+            return Vec::new();
+        }
+    };
+
+    if !cfg.is_enabled() {
+        return Vec::new();
+    }
+
+    eprintln!(
+        "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
+        cfg.settings.sessions,
+        cfg.settings.hooks,
+        cfg.settings.hooks_verbosity,
+        cfg.ingest.as_ref().map(|i| i.url.as_str()).unwrap_or("-"),
+    );
+
+    // Sources land in the phases that follow; the credential, spool layout and
+    // supervision they all depend on are what this stage establishes.
     Vec::new()
 }
 

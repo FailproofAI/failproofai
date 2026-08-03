@@ -64,6 +64,20 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
         .join("cloud-managed"))
 }
 
+/// `~/.failproofai` — the root the collector reads its configuration from.
+///
+/// `FAILPROOFAI_HOME` overrides it so tests and development runs never touch a
+/// real user's config, and so a containerised daemon can be pointed at a
+/// mounted volume.
+pub fn failproofai_home() -> io::Result<PathBuf> {
+    if let Some(path) = std::env::var_os("FAILPROOFAI_HOME") {
+        return Ok(PathBuf::from(path));
+    }
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| io::Error::other("HOME is not set; cannot resolve the failproofai home"))?;
+    Ok(PathBuf::from(home).join(".failproofai"))
+}
+
 /// Creates the run directory (`0700`) if it doesn't exist yet. This
 /// directory holds a socket that evaluates security-relevant decisions, so
 /// a freshly created one is always locked to owner-only.

@@ -11,8 +11,12 @@
 //! [`supervisor::spawn_supervised`], which hands back a handle it joins during
 //! shutdown. Everything else is internal.
 
+pub mod config;
+pub mod spool;
 pub mod supervisor;
 
+pub use config::{CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings};
+pub use spool::SpoolWriter;
 pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,
     spawn_supervised,

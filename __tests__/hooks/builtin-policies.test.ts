@@ -583,6 +583,16 @@ describe("hooks/builtin-policies", () => {
       ); // the whole name in hex
     });
 
+    it("blocks backslash-newline line continuation, the last lexical class", async () => {
+      // A shell deletes a backslash+newline pair and rejoins the fragments.
+      // The name can be split at any position, repeatedly, or the gap between
+      // tokens — all reconstruct the real `failproofai config --pause`.
+      expect(await decide("fail\\\nproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai con\\\nfig --pause")).toBe("deny");
+      expect(await decide("f\\\na\\\ni\\\nl\\\nproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai config\\\n --pause")).toBe("deny");
+    });
+
     it("does NOT claim to block the indirection class — that is honestly out of scope", async () => {
       // When the binary name is BUILT from fragments so the literal never
       // appears contiguously, a regex over the pre-exec string cannot see it;

@@ -68,9 +68,63 @@ describe("collector credential storage", () => {
 describe("ingest key validation", () => {
   const cred = { url: "https://example.test/events", key: "k" };
 
-  it("accepts a key the server answers 2xx for", async () => {
-    const fake = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+  it("accepts a key the ingest endpoint answers with an ingest response", async () => {
+    // The real endpoint answers `{"accepted":N,"skipped":M}` for an empty body.
+    // A bare 2xx is deliberately NOT enough — see the two tests below.
+    const fake = (async () =>
+      new Response(JSON.stringify({ accepted: 0, skipped: 0 }), {
+        status: 200,
+      })) as unknown as typeof fetch;
     expect(await validateIngestKey(cred, fake)).toEqual({ ok: true });
+  });
+
+  it("refuses a URL that REDIRECTS instead of accepting events", async () => {
+    // The dashboard sits on another port of the same host and is printed right
+    // beside the API during setup, so typing :3000 for :8080 is the likeliest
+    // mistake available. It answers POST /events with a 307 to its login page,
+    // which returns 200 — and `fetch` follows redirects by default, so this
+    // used to read as a valid ingest endpoint. The credential was written, the
+    // CLI reported success, and every batch afterwards was POSTed into a login
+    // form and silently lost.
+    const fake = (async () =>
+      new Response("", {
+        status: 307,
+        headers: { location: "/login?next=%2Fevents" },
+      })) as unknown as typeof fetch;
+    const res = await validateIngestKey(cred, fake);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toContain("redirects");
+  });
+
+  it("refuses a 200 that is not an ingest response", async () => {
+    // A proxy, a static host or a catch-all router will happily 200 anything.
+    // Requiring the response SHAPE is what proves this is the endpoint the
+    // uploader will actually be talking to.
+    const fake = (async () =>
+      new Response("<html>hello</html>", { status: 200 })) as unknown as typeof fetch;
+    const res = await validateIngestKey(cred, fake);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toContain("not the events endpoint");
+  });
+
+  it("refuses a 200 whose JSON lacks an accepted count", async () => {
+    const fake = (async () =>
+      new Response(JSON.stringify({ status: "ok" }), { status: 200 })) as unknown as typeof fetch;
+    const res = await validateIngestKey(cred, fake);
+    expect(res.ok).toBe(false);
+  });
+
+  it("does not follow redirects at all", async () => {
+    // Belt and braces: the shape check above would also catch a followed
+    // redirect, but only if the login page happened not to return ingest-shaped
+    // JSON. Not following is the part that makes it unconditional.
+    let seenInit: RequestInit | undefined;
+    const fake = (async (_u: string, init: RequestInit) => {
+      seenInit = init;
+      return new Response(JSON.stringify({ accepted: 0, skipped: 0 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await validateIngestKey(cred, fake);
+    expect(seenInit?.redirect).toBe("manual");
   });
 
   it("names a rejected key rather than reporting a generic failure", async () => {

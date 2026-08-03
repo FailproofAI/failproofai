@@ -532,6 +532,42 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("cd /tmp && failproofai config --pause")).toBe("deny");
     });
 
+    // Every line below walked straight through the first version of this
+    // policy, each for one of two reasons: `\bfailproofai\b` could not absorb
+    // the character after the name, and `\s--pause` matched exactly one space.
+    // An agent that reaches any of them suspends every other local guardrail
+    // for 30 minutes, so these are the cases that decide whether the policy is
+    // worth having at all.
+    it("blocks a version-pinned or @latest package runner invocation", async () => {
+      expect(await decide("npx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("npx -y failproofai@0.0.16 config --pause 8h")).toBe("deny");
+      expect(await decide("bunx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("pnpm dlx failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it when the binary is named by path", async () => {
+      expect(
+        await decide("node /usr/lib/node_modules/failproofai/bin/failproofai.mjs config --pause"),
+      ).toBe("deny");
+      expect(await decide("/usr/local/bin/failproofai config --pause")).toBe("deny");
+      expect(await decide("./node_modules/.bin/failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it regardless of how the whitespace falls", async () => {
+      expect(await decide("failproofai config  --pause")).toBe("deny");
+      expect(await decide("failproofai  config   --pause  30m")).toBe("deny");
+      expect(await decide("npx  -y  failproofai  config  --pause")).toBe("deny");
+    });
+
+    it("still allows resume and status in those same spellings", async () => {
+      // The widened match must not start denying the two commands that restore
+      // or merely report enforcement — that would make the policy costly to
+      // keep on, and a policy people switch off protects nobody.
+      expect(await decide("npx failproofai@latest config --resume")).toBe("allow");
+      expect(await decide("/usr/local/bin/failproofai config  --status")).toBe("allow");
+      expect(await decide("node /path/to/failproofai.mjs config --resume")).toBe("allow");
+    });
+
     it("allows resume and status — neither removes enforcement", async () => {
       expect(await decide("failproofai config --resume")).toBe("allow");
       expect(await decide("failproofai config --status")).toBe("allow");

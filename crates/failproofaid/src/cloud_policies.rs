@@ -174,11 +174,38 @@ where
 #[derive(Debug, Clone)]
 pub struct PolicyStore {
     root: PathBuf,
+    /// Highest generation this process has seen the SERVER offer.
+    ///
+    /// The rollback guard used to compare against `active.json`'s generation.
+    /// That file is a derived local pointer owned by the user — which this
+    /// module's own comment says — so on the product's stated threat model (a
+    /// rogue agent running as the user) it was an attacker-controlled veto over
+    /// the control plane: write a high number, and every real deployment is
+    /// refused for good. Combined with corrupting the artifacts it points at,
+    /// the machine cannot repair locally, cannot accept the server, and fails
+    /// closed on every tool call — a permanent denial of service costing one
+    /// file write.
+    ///
+    /// Anchoring on what the server said instead keeps the guard where it
+    /// actually means something (a replayed or out-of-order response inside one
+    /// session, which is the realistic transport failure) and gives up only
+    /// cross-restart rollback protection — which is already carried by TLS, a
+    /// bearer token and SHA-256 pinning of every artifact. Tampering now costs
+    /// an attacker nothing more than a delay until the next poll.
+    ///
+    /// `Arc` rather than a bare atomic because `PolicyStore` is `Clone` and the
+    /// maintenance lane holds its own handle: a per-clone counter would reset
+    /// the floor to zero for whichever clone happened to be asked, quietly
+    /// removing the guard it exists to provide.
+    server_high_water: Arc<AtomicU64>,
 }
 
 impl PolicyStore {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            server_high_water: Arc::new(AtomicU64::new(0)),
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -230,13 +257,31 @@ impl PolicyStore {
             Err(ReconcileError::Json(_)) => None,
             Err(err) => return Err(err),
         };
-        if let Some(active) = &previous
-            && desired.generation < active.generation
-        {
+        // Rollback guard, anchored on what the SERVER has said this session —
+        // never on the local pointer. See `server_high_water`.
+        let floor = self.server_high_water.load(Ordering::Relaxed);
+        if desired.generation < floor {
             return Err(ReconcileError::InvalidDesiredState(format!(
                 "generation rollback from {} to {} is not allowed",
-                active.generation, desired.generation
+                floor, desired.generation
             )));
+        }
+        // Recorded before the work below so a mid-reconcile failure cannot let
+        // an immediately-following lower generation through.
+        self.server_high_water
+            .fetch_max(desired.generation, Ordering::Relaxed);
+
+        // A local pointer AHEAD of the server is not authority, but it is worth
+        // saying out loud: it means either a restored/re-registered control
+        // plane, or that something edited this machine's state.
+        if let Some(active) = &previous
+            && active.generation > desired.generation
+        {
+            eprintln!(
+                "[failproofaid] local active generation {} is ahead of the server's {}; \
+                 taking the server's state (the local pointer is not authority)",
+                active.generation, desired.generation
+            );
         }
 
         fs::create_dir_all(self.root.join("artifacts"))?;
@@ -794,6 +839,56 @@ mod tests {
             )),
             Err(ReconcileError::InvalidDesiredState(_))
         ));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A tampered local generation must not be able to veto the control plane.
+    ///
+    /// The guard used to compare against `active.json`, a 0600 file owned by
+    /// the very user the product's threat model treats as compromised. Writing
+    /// one large number there made every subsequent real deployment fail
+    /// validation for good; corrupt the artifacts it points at as well and the
+    /// machine can neither repair locally nor accept the server, and fails
+    /// closed on every tool call. A permanent denial of service for one file
+    /// write.
+    #[test]
+    fn a_tampered_local_generation_cannot_permanently_veto_the_server() {
+        let store = temp_store("tampered-generation");
+        let bytes = b"policy";
+
+        store
+            .reconcile(&desired(5, "guard", bytes), &|_: &DesiredPolicy| {
+                Ok(bytes.to_vec())
+            })
+            .unwrap();
+
+        // The attack: one edit to a user-owned file.
+        let manifest = store.active_manifest_path();
+        let raw = fs::read_to_string(&manifest).unwrap();
+        let mut active: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        active["generation"] = serde_json::json!(u64::MAX);
+        fs::write(&manifest, serde_json::to_vec(&active).unwrap()).unwrap();
+
+        // A fresh process, as after any restart. It must take the server's
+        // state rather than treating the local number as authority.
+        let restarted = PolicyStore::new(store.root().to_path_buf());
+        let outcome = restarted
+            .reconcile(&desired(6, "guard", bytes), &|_: &DesiredPolicy| {
+                Ok(bytes.to_vec())
+            })
+            .expect("the server's state must win over a local pointer");
+        assert!(outcome.activated);
+        assert_eq!(restarted.read_active().unwrap().unwrap().generation, 6);
+
+        // And replay protection still holds WITHIN the session, which is the
+        // transport failure the guard actually exists for.
+        assert!(matches!(
+            restarted.reconcile(&desired(5, "guard", bytes), &|_: &DesiredPolicy| Ok(
+                bytes.to_vec()
+            )),
+            Err(ReconcileError::InvalidDesiredState(_))
+        ));
+
         fs::remove_dir_all(store.root()).ok();
     }
 

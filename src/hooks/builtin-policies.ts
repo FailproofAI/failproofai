@@ -172,12 +172,28 @@ const RUNAS_RE = /(?:^|;|&&|\|\|)\s*runas\s/i;
 const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|fish|ash)\b/;
 /**
  * `failproofai config --pause` in any of its reachable spellings — direct, via
- * `npx`/`bunx`, or through the `configure`/`setup` aliases the CLI normalizes.
- * Only `--pause` matches: `--resume` and `--status` restore or merely report
- * enforcement, so an agent running either is harmless.
+ * `npx`/`bunx`/`pnpm dlx`, by absolute path, or through the `configure`/`setup`
+ * aliases the CLI normalizes. Only `--pause` matches: `--resume` and `--status`
+ * restore or merely report enforcement, so an agent running either is harmless.
+ *
+ * Two details carry the whole policy, and an earlier version got both wrong:
+ *
+ * `failproofai[^\s]*` rather than `\bfailproofai\b`. A word boundary stops at
+ * the character after the name, so every ordinary way of pinning or pathing the
+ * binary walked straight through: `npx failproofai@latest`, `npx -y
+ * failproofai@0.0.16`, `bunx failproofai@latest`, and
+ * `node /usr/lib/node_modules/failproofai/bin/failproofai.mjs`. The suffix has
+ * to be absorbed by the same token.
+ *
+ * `\s+--pause` rather than `\s--pause`. With a single `\s`, two spaces before
+ * the flag — which no shell cares about and any agent may emit — did not match.
+ *
+ * This still raises the bar rather than closing the class: base64, a wrapper
+ * script, an alias or a shell variable all still reach the same state. Closing
+ * it properly means a pause cannot originate from a tool call at all.
  */
 const SELF_PAUSE_RE =
-  /\bfailproofai\b(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s--pause\b/;
+  /failproofai[^\s]*(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s+--pause\b/;
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush

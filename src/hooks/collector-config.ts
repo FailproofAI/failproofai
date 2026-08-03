@@ -164,16 +164,57 @@ export async function validateIngestKey(
         "Content-Type": "application/x-ndjson",
       },
       body: "",
+      // Never follow a redirect. `fetch` follows by default, and the dashboard
+      // (which sits on a different port of the same host, and is printed during
+      // setup right beside the API) answers POST /events with a 307 to its
+      // login page — which then returns 200. So `res.ok` was true for an
+      // endpoint that authenticates nothing and stores nothing: the credential
+      // was written, setup reported success, and every batch afterwards was
+      // POSTed into a login form and lost. Confusing the two URLs is the most
+      // likely mistake available here.
+      redirect: "manual",
       signal: controller.signal,
     });
-    if (res.ok) return { ok: true };
+    if (res.status >= 300 && res.status < 400) {
+      return {
+        ok: false,
+        reason:
+          "that URL redirects rather than accepting events — it looks like the dashboard, not the ingest API",
+      };
+    }
     if (res.status === 401 || res.status === 403) {
       return { ok: false, reason: `the server rejected that key (${res.status})` };
     }
     if (res.status === 404) {
       return { ok: false, reason: `no ingest endpoint at that URL (404)` };
     }
-    return { ok: false, reason: `the server answered ${res.status}` };
+    if (!res.ok) {
+      return { ok: false, reason: `the server answered ${res.status}` };
+    }
+    // A 2xx is not enough either. Ingest answers `{"accepted":N,"skipped":M}`;
+    // anything else returning 200 (a proxy, a static host, a catch-all router)
+    // would otherwise pass. Requiring the shape is what actually proves this is
+    // the endpoint the uploader will be talking to.
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      return {
+        ok: false,
+        reason: "that URL answered without an ingest response — it is not the events endpoint",
+      };
+    }
+    const shaped =
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as { accepted?: unknown }).accepted === "number";
+    if (!shaped) {
+      return {
+        ok: false,
+        reason: "that URL answered, but not with an ingest response — it is not the events endpoint",
+      };
+    }
+    return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // Deliberately does not echo the URL back: it may contain a hostname the

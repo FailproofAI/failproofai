@@ -22,7 +22,27 @@ fn main() {
     }
 }
 
+/// Install a log subscriber, or the collector's diagnostics go nowhere.
+///
+/// `tracing` drops every event when no subscriber is registered, silently. The
+/// uploader reports "the server accepted the request but stored NONE of its
+/// events" through it — the single most important signal that a transform is
+/// systematically malformed — so without this that failure is invisible.
+///
+/// Writes to stderr, which is where the daemon's existing `eprintln!` output
+/// already goes and what systemd/launchd capture. `RUST_LOG` overrides the
+/// default level.
+fn init_logging() {
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    init_logging();
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
@@ -167,7 +187,31 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     let sweep_dirs = cfg.spool_dirs.clone();
     let failed_dir = cfg.failed_dir.clone();
 
-    vec![
+    let mut tasks = Vec::new();
+
+    if cfg.settings.hooks {
+        // Hook activity: one source covering every CLI failproofai is
+        // installed in, because the store is CLI-agnostic — each row names its
+        // own integration. Reads the same store the dashboard's activity tab
+        // does, and never writes to it.
+        let store_dir = home.join("cache").join("hook-activity");
+        let state_dir = home.join("cursors").join("hooks");
+        let spool_dir = cfg.own_spool_dir.clone();
+        let verbosity = cfg.settings.hooks_verbosity;
+        let environment = cfg.settings.environment.clone();
+        tasks.push(fpai_collect::TaskSpec::new("hook-activity", move |sd| {
+            fpai_collect::sources::hooks::run(
+                store_dir.clone(),
+                state_dir.clone(),
+                spool_dir.clone(),
+                verbosity,
+                environment.clone(),
+                sd,
+            )
+        }));
+    }
+
+    tasks.extend([
         // Latency: delivers a batch within milliseconds of it being published.
         fpai_collect::TaskSpec::new("spool-watcher", move |sd| {
             fpai_collect::delivery::watch(watch_delivery.clone(), watch_dirs.clone(), sd)
@@ -183,7 +227,9 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 sd,
             )
         }),
-    ]
+    ]);
+
+    tasks
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

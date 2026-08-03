@@ -24,6 +24,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # sweeper is what guarantees delivery, so a watcher that fails to register
 # degrades to interval-only rather than losing anything.
 notify = "8"
+# Epoch-millis to RFC3339 with microseconds. Hand-rolling civil date maths is
+# a silent-failure risk — a leap-year slip would put every event on the wrong
+# day with nothing to notice it — and this pulls no C code onto any of the
+# four cross-compiled targets.
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }

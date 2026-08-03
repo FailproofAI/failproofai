@@ -12,7 +12,9 @@
 //! shutdown. Everything else is internal.
 
 pub mod config;
+pub mod cursor;
 pub mod delivery;
+pub mod sources;
 pub mod spool;
 pub mod supervisor;
 pub mod uploader;

@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import { homedir } from "node:os";
 import type { IntegrationType } from "./types";
 import { readHooksConfig } from "./hooks-config";
+import { existsSync } from "node:fs";
 
 const PROTOCOL_VERSION = 1;
 
@@ -64,6 +65,23 @@ export interface DaemonHookResponse {
   exitCode: number;
   stdout: string;
   stderr: string;
+}
+
+/**
+ * Whether a daemon is listening, regardless of how it was started.
+ *
+ * Distinct from `daemonServiceStatus()`, which asks the service manager. A
+ * daemon run by hand — during development, or from a container — is invisible
+ * to that check but is very much running and pulling policy, so reporting "not
+ * installed, so nothing will be pulled" at someone whose machine is actively
+ * enforcing is simply false.
+ */
+export function daemonSocketPresent(): boolean {
+  try {
+    return existsSync(socketPath());
+  } catch {
+    return false;
+  }
 }
 
 function socketPath(): string {

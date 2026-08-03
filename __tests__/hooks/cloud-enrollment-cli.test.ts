@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -124,5 +124,37 @@ describe("status", () => {
     const out = connectionStatusLines(() => "running").join("\n");
     expect(out).toMatch(/configured by environment \(https:\/\/from-env\)/);
     expect(out).not.toMatch(/from-file/);
+  });
+});
+
+describe("a daemon running outside the service manager", () => {
+  it("does not claim nothing will be pulled when one is demonstrably running", async () => {
+    // daemonServiceStatus() asks systemd/launchd only, so a hand-run daemon —
+    // exactly what a developer testing locally has — read as absent and the
+    // command told them policy was not being pulled while it was.
+    const sockDir = mkdtempSync(resolve(tmpdir(), "fpai-sock-"));
+    const sock = resolve(sockDir, "failproofaid.sock");
+    writeFileSync(sock, "");
+    process.env.FAILPROOFAI_DAEMON_SOCKET = sock;
+    try {
+      const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "not-installed" as const });
+      const out = r.lines.join("\n");
+      expect(out).toMatch(/running outside the service manager/);
+      expect(out).not.toMatch(/nothing will be pulled/);
+      expect(out).toMatch(/survive reboot and logout/);
+    } finally {
+      delete process.env.FAILPROOFAI_DAEMON_SOCKET;
+      rmSync(sockDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still warns plainly when there is no daemon at all", async () => {
+    process.env.FAILPROOFAI_DAEMON_SOCKET = resolve(dir, "definitely-absent.sock");
+    try {
+      const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "not-installed" as const });
+      expect(r.lines.join("\n")).toMatch(/not installed as a service, so nothing will be pulled/);
+    } finally {
+      delete process.env.FAILPROOFAI_DAEMON_SOCKET;
+    }
   });
 });

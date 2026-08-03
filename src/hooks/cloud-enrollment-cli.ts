@@ -12,6 +12,7 @@ import {
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import { daemonServiceStatus } from "./daemon-service";
+import { daemonSocketPresent } from "./daemon-client";
 
 export interface ConnectOptions {
   url?: string;
@@ -39,6 +40,17 @@ export interface CommandResult {
  */
 function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[] {
   if (status === "running") return [];
+  // A daemon started by hand is invisible to the service manager but is
+  // running and pulling. Telling someone whose machine is actively enforcing
+  // that "nothing will be pulled" is false, and it is exactly the state a
+  // developer testing locally is in.
+  if (daemonSocketPresent()) {
+    return [
+      "",
+      "  A daemon is running outside the service manager, so policy is being pulled.",
+      "  Install it as a service to survive reboot and logout: failproofai config",
+    ];
+  }
   if (status === "unsupported-platform") {
     return [
       "",

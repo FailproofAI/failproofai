@@ -195,6 +195,247 @@ fn a_metadata_line_is_skipped_without_needing_a_type_allowlist() {
     assert!(ev.is_empty());
 }
 
+// ── thinking blocks ──────────────────────────────────────────────────────
+
+/// The shape every thinking block on this machine has: empty text, opaque
+/// signature. 7,687 of 7,687.
+fn thinking_line(ts: &str, msg_id: &str, thinking: &str) -> String {
+    json!({"type":"assistant","timestamp":ts,
+      "message":{"model":"claude-opus-4-8","id":msg_id,"role":"assistant",
+        "content":[{"type":"thinking","thinking":thinking,"signature":"CAIS0pen4queblob"}],
+        "usage":{"input_tokens":2,"output_tokens":3223}}})
+    .to_string()
+}
+
+#[test]
+fn an_empty_thinking_block_produces_no_event_at_all() {
+    // Measured: 7,687 of 7,687 blocks on this machine carry `"thinking": ""`
+    // and nothing but a signature. One event each would be 7,687 blank rows.
+    let mut st = TailState::default();
+    let (ts, ev) = transform::transform_line(
+        &thinking_line("2026-07-18T09:42:05.000Z", "msg_T", ""),
+        &ctx(),
+        0,
+        &mut st,
+    );
+    assert_eq!(ts.as_deref(), Some("2026-07-18T09:42:05.000Z"));
+    assert!(ev.is_empty(), "an empty thinking block must ship nothing");
+}
+
+#[test]
+fn a_thinking_block_that_does_carry_text_is_shipped() {
+    // The arm exists so a future Claude that populates the field arrives as
+    // data rather than as a silent gap. Costs nothing while they are all empty.
+    let mut st = TailState::default();
+    let (_, ev) = transform::transform_line(
+        &thinking_line("2026-07-18T09:42:05.000Z", "msg_T", "let me reconsider"),
+        &ctx(),
+        0,
+        &mut st,
+    );
+    assert_eq!(ev.len(), 1);
+    assert_eq!(ev[0]["type"], "model_response");
+    assert_eq!(ev[0]["claude_kind"], "thinking");
+    assert_eq!(ev[0]["content"], "let me reconsider");
+}
+
+#[test]
+fn a_thinking_only_line_does_not_swallow_its_message_groups_tokens() {
+    // Claude writes the thinking block as its own line at the HEAD of a
+    // message-id group. Claiming the group on sight of the id would bill a line
+    // that emits nothing, and the group's tokens would vanish — 7,699 of 11,213
+    // groups on this machine begin with such a line, worth 8.4M of 10.3M output
+    // tokens. The claim belongs to the first line that actually emits.
+    let mut st = TailState::default();
+    let c = ctx();
+
+    // `msg_01` is also the id `assistant_tool_use` writes — the same group.
+    let (_, none) = transform::transform_line(
+        &thinking_line("2026-07-18T09:42:05.000Z", "msg_01", ""),
+        &c,
+        0,
+        &mut st,
+    );
+    assert!(none.is_empty());
+
+    // Same message id, the line that carries the visible turn.
+    let (_, ev) = transform::transform_line(
+        &assistant_tool_use("2026-07-18T09:42:05.100Z", "toolu_9", "Bash"),
+        &c,
+        200,
+        &mut st,
+    );
+    assert_eq!(
+        ev[0]["output_tokens"], 91,
+        "the group's tokens must land on the line that emits"
+    );
+}
+
+// ── compact boundaries ───────────────────────────────────────────────────
+
+fn compact_boundary(ts: &str) -> String {
+    json!({"type":"system","subtype":"compact_boundary","content":"Conversation compacted",
+      "level":"info","timestamp":ts,"cwd":"/home/u/repo",
+      "compactMetadata":{"trigger":"auto","preTokens":1000616,"postTokens":15316,
+        "cumulativeDroppedTokens":985300,"durationMs":128718,
+        "preservedMessages":{"uuids":["a","b","c"]}}})
+    .to_string()
+}
+
+#[test]
+fn a_compact_boundary_records_the_context_reset_with_its_metadata() {
+    // The only on-disk record that the context was thrown away. Without it a
+    // session shows a prompt answered from a summary that is nowhere visible.
+    let mut st = TailState {
+        last_model: Some("claude-opus-4-8".into()),
+        ..Default::default()
+    };
+    let (ts, ev) = transform::transform_line(&compact_boundary(COMPACT_TS), &ctx(), 42, &mut st);
+    assert_eq!(ts.as_deref(), Some(COMPACT_TS));
+    assert_eq!(ev.len(), 1);
+    assert_eq!(ev[0]["type"], "model_request");
+    assert_eq!(ev[0]["claude_kind"], "compact_boundary");
+    assert_eq!(ev[0]["claude_compact_trigger"], "auto");
+    assert_eq!(ev[0]["claude_compact_pre_tokens"], 1_000_616u64);
+    assert_eq!(ev[0]["claude_compact_post_tokens"], 15_316u64);
+    assert_eq!(ev[0]["claude_compact_dropped_tokens"], 985_300u64);
+    assert_eq!(ev[0]["duration_ms"], 128_718u64);
+    // The server builds a model_request's summary from the model alone, so this
+    // row would otherwise render blank.
+    assert_eq!(ev[0]["model"], "claude-opus-4-8");
+    assert_eq!(ev[0]["claude_line_offset"], 42);
+    // A uuid index that grows with the preserved window: volume, no signal.
+    assert!(ev[0].get("preservedMessages").is_none());
+}
+
+const COMPACT_TS: &str = "2026-07-18T09:50:00.000Z";
+
+#[test]
+fn other_system_subtypes_ship_nothing() {
+    // Six other subtypes occur on this machine. Modelling them all would turn
+    // turn_duration alone (659 lines) into pure volume.
+    let mut st = TailState::default();
+    let line = json!({"type":"system","subtype":"turn_duration","durationMs":135759,
+                      "messageCount":71,"timestamp":COMPACT_TS})
+    .to_string();
+    let (ts, ev) = transform::transform_line(&line, &ctx(), 0, &mut st);
+    assert_eq!(
+        ts.as_deref(),
+        Some(COMPACT_TS),
+        "the line is still consumed"
+    );
+    assert!(ev.is_empty());
+}
+
+// ── synthetic / failed assistant turns ───────────────────────────────────
+
+#[test]
+fn an_aborted_turn_becomes_an_error_with_a_non_empty_message() {
+    // The server's is_error is a truthiness check on the message, so an empty
+    // one would render a failed turn as a success.
+    let mut st = TailState::default();
+    let line = json!({"type":"assistant","timestamp":"2026-07-18T09:42:05.000Z",
+      "isAbortedMidStream":true,
+      "message":{"model":"claude-opus-4-8","id":"msg_A","role":"assistant",
+        "content":[{"type":"text","text":"Let me read the exact redaction sec"}],
+        "usage":{"input_tokens":2,"output_tokens":5}}})
+    .to_string();
+    let (_, ev) = transform::transform_line(&line, &ctx(), 0, &mut st);
+    assert_eq!(ev.len(), 1, "the failure replaces the turn, got {ev:?}");
+    assert_eq!(ev[0]["type"], "error");
+    assert_eq!(ev[0]["error_type"], "claude_aborted");
+    assert!(!ev[0]["message"].as_str().unwrap().is_empty());
+    // Deliberately unbilled: a failed turn's usage is not a served response.
+    assert!(ev[0].get("input_tokens").is_none());
+    assert!(ev[0].get("output_tokens").is_none());
+}
+
+#[test]
+fn an_api_error_turn_with_no_content_still_says_something() {
+    // A failed turn is precisely the one with no content, so a
+    // "only if non-empty" guard would drop exactly the rows that matter.
+    let mut st = TailState::default();
+    let line = json!({"type":"assistant","timestamp":"2026-07-18T09:42:05.000Z",
+      "isApiErrorMessage":true,
+      "message":{"model":"claude-opus-4-8","id":"msg_E","role":"assistant","content":[]}})
+    .to_string();
+    let (_, ev) = transform::transform_line(&line, &ctx(), 0, &mut st);
+    assert_eq!(ev[0]["type"], "error");
+    assert_eq!(ev[0]["error_type"], "claude_api_error");
+    assert!(!ev[0]["message"].as_str().unwrap().is_empty());
+}
+
+#[test]
+fn claude_codes_own_error_label_wins_over_the_derived_one() {
+    // `"server_error"` is the string an operator can group on; the marker names
+    // are only what is left when Claude Code wrote no label.
+    let mut st = TailState::default();
+    let line = json!({"type":"assistant","timestamp":"2026-07-18T09:42:05.000Z",
+      "isApiErrorMessage":true,"error":"server_error",
+      "message":{"model":"<synthetic>","id":"m","role":"assistant",
+        "content":[{"type":"text","text":"API Error: Connection closed."}]}})
+    .to_string();
+    let (_, ev) = transform::transform_line(&line, &ctx(), 0, &mut st);
+    assert_eq!(ev[0]["error_type"], "server_error");
+    assert_eq!(ev[0]["message"], "API Error: Connection closed.");
+}
+
+#[test]
+fn a_synthetic_model_never_leaks_into_the_next_user_turn() {
+    // `<synthetic>` is a placeholder, not a model anyone served. Letting it into
+    // carried state would stamp it as the model on every later prompt and send
+    // the context-window lookup after an id that can never resolve.
+    let mut st = TailState::default();
+    let c = ctx();
+    transform::transform_line(
+        &assistant_tool_use("2026-07-18T09:42:05.000Z", "t1", "Bash"),
+        &c,
+        0,
+        &mut st,
+    );
+    let synthetic = json!({"type":"assistant","timestamp":"2026-07-18T09:42:06.000Z",
+      "message":{"model":"<synthetic>","id":"m2","role":"assistant","stop_reason":"stop_sequence",
+        "content":[{"type":"text","text":"No response requested."}],
+        "usage":{"input_tokens":0,"output_tokens":0}}})
+    .to_string();
+    let (_, ev) = transform::transform_line(&synthetic, &c, 100, &mut st);
+    assert_eq!(ev[0]["type"], "error");
+    assert_eq!(ev[0]["error_type"], "claude_synthetic");
+
+    let (_, prompt) = transform::transform_line(
+        &user_prompt("2026-07-18T09:42:07.000Z", "next"),
+        &c,
+        200,
+        &mut st,
+    );
+    assert_eq!(
+        prompt[0]["model"], "claude-opus-4-8",
+        "the real model must survive the synthetic turn"
+    );
+}
+
+#[test]
+fn a_synthetic_turn_does_not_claim_the_real_responses_token_group() {
+    // A synthetic line is interleaved INSIDE a real message-id group and its
+    // usage object is all zeros. Letting it claim the group would zero out the
+    // real response's tokens.
+    let mut st = TailState::default();
+    let c = ctx();
+    let synthetic = json!({"type":"assistant","timestamp":"2026-07-18T09:42:06.000Z",
+      "message":{"model":"<synthetic>","id":"msg_01","role":"assistant",
+        "content":[{"type":"text","text":"No response requested."}],
+        "usage":{"input_tokens":0,"output_tokens":0}}})
+    .to_string();
+    transform::transform_line(&synthetic, &c, 0, &mut st);
+    let (_, ev) = transform::transform_line(
+        &assistant_tool_use("2026-07-18T09:42:07.000Z", "t1", "Bash"),
+        &c,
+        100,
+        &mut st,
+    );
+    assert_eq!(ev[0]["output_tokens"], 91, "the real turn must still bill");
+}
+
 #[test]
 fn two_identical_lines_at_different_offsets_produce_different_events() {
     // The offset is the dedup discriminator. Without it the server would

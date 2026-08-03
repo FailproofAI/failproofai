@@ -245,6 +245,21 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
         );
+        // Subagent transcripts live under the SAME root, claimed by a second
+        // format. A separate source, not a second predicate: `is_source_file`
+        // is a bare fn, and each source needs its own cursor store — one store
+        // writes its whole map atomically, so two sharing a file would clobber
+        // each other and the loser would re-ship from zero after every restart.
+        file_source(
+            &mut tasks,
+            "claude-subagent",
+            claude::SUBAGENT_FORMAT,
+            vec![claude_projects_root()],
+            claude::SUBAGENT_DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+        );
         file_source(
             &mut tasks,
             "codex",

@@ -13,6 +13,37 @@ vi.mock("../../src/hooks/tui", async (importOriginal) => {
   return { ...actual, selectOne: vi.fn(), multiSelect: vi.fn(), intro: vi.fn(), outro: vi.fn() };
 });
 vi.mock("../../src/hooks/manager", () => ({ installHooks: vi.fn(async () => {}) }));
+// The wizard's apply path writes `customPoliciesEnabled` to the config for the
+// CHOSEN SCOPE, and project scope resolves from `process.cwd()` — which, in a
+// test, is this repository. So every applied project-scope run wrote
+// `"customPoliciesEnabled": false` into the committed dogfood config, and the
+// next `git add -A` committed it: custom policies silently off for everyone who
+// pulled. Isolating HOME (below) could never catch this, because project scope
+// never consults HOME.
+//
+// Redirect the resolved path rather than stubbing the write, so the real
+// setCustomPoliciesEnabled still runs and stays under test — just against a
+// temp file. `WIZARD_TEST_CONFIG_DIR` is recomputed identically outside the
+// factory so afterAll can clean it up.
+vi.mock("../../src/hooks/hooks-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/hooks-config")>();
+  const { mkdirSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { resolve: join } = await import("node:path");
+  const dir = join(tmpdir(), `fpai-wizard-cfg-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  return {
+    ...actual,
+    // Only the cwd-derived scopes are redirected. User scope already resolves
+    // from HOME, which this file isolates, and the daemon tests depend on that
+    // real path — redirecting it too would move `daemonConfigured` out from
+    // under them.
+    getConfigPathForScope: (scope: string, cwd?: string) =>
+      scope === "user"
+        ? actual.getConfigPathForScope("user", cwd)
+        : join(dir, scope === "local" ? "policies-config.local.json" : "policies-config.json"),
+  };
+});
 // installDaemonService shells out to real systemctl/launchctl — several tests
 // below drive the wizard with scope "user", which is exactly the condition
 // that triggers it. Mocked so an ordinary unit test run never touches this
@@ -78,6 +109,8 @@ const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
 // touches the developer's real config.
 let fileHome: string;
 let realHome: string | undefined;
+/** Must match the path built inside the hooks-config mock factory above. */
+const WIZARD_TEST_CONFIG_DIR = resolve(tmpdir(), `fpai-wizard-cfg-${process.pid}`);
 beforeAll(() => {
   realHome = process.env.HOME;
   fileHome = mkdtempSync(resolve(tmpdir(), "fpai-cfg-"));
@@ -88,6 +121,11 @@ afterAll(() => {
   else process.env.HOME = realHome;
   try {
     rmSync(fileHome, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+  try {
+    rmSync(WIZARD_TEST_CONFIG_DIR, { recursive: true, force: true });
   } catch {
     /* ignore */
   }
@@ -273,6 +311,25 @@ describe("configure-wizard orchestration", () => {
     // minimum or it would silently install for a CLI nobody picked.
     expect(assistantsOpts.minSelected).toBe(1);
     expect(policyOpts.minSelected).toBeUndefined();
+  });
+
+  it("never writes into the repository's own config when applying at project scope", async () => {
+    // The defect this pins: project scope resolves its config from
+    // process.cwd(), which under test is this repo, so an applied run wrote
+    // `customPoliciesEnabled: false` into the tracked dogfood config — and the
+    // next `git add -A` committed custom policies switched off for everyone.
+    // Isolating HOME did not help, because project scope never reads HOME.
+    const repoConfig = resolve(process.cwd(), ".failproofai", "policies-config.json");
+    const before = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
+
+    vi.mocked(selectOne).mockResolvedValueOnce("project").mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect)
+      .mockResolvedValueOnce(["claude"])
+      .mockResolvedValueOnce(["git"]); // Custom deliberately unticked — the write that leaked
+    await runConfigureWizard(ttyIO());
+
+    const after = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
+    expect(after).toBe(before);
   });
 
   it("cancelling at the review step makes no changes", async () => {

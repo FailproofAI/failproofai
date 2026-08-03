@@ -32,6 +32,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 
+use crate::config::Redact;
+
 /// Longest single string field kept intact. One oversized tool output must not
 /// be able to push a whole batch past the body cap.
 const MAX_FIELD_BYTES: usize = 1024 * 1024;
@@ -52,6 +54,8 @@ pub struct SpoolWriter {
     seq: u64,
     buf: String,
     buf_bytes: u64,
+    redact: Redact,
+    redacted: u64,
 }
 
 impl SpoolWriter {
@@ -76,7 +80,25 @@ impl SpoolWriter {
             seq: 0,
             buf: String::new(),
             buf_bytes: 0,
+            // Default ON. A source that forgets to opt in still gets scrubbed,
+            // which is the safe direction for the mistake to fall.
+            redact: Redact::Minimal,
+            redacted: 0,
         }
+    }
+
+    /// Override the redaction mode. Only `Redact::Off` changes anything —
+    /// scrubbing is on by default so a new source cannot ship secrets by
+    /// omission.
+    pub fn with_redact(mut self, mode: Redact) -> Self {
+        self.redact = mode;
+        self
+    }
+
+    /// How many string leaves have been scrubbed. Reported without ever
+    /// logging what was removed.
+    pub fn redacted_count(&self) -> u64 {
+        self.redacted
     }
 
     /// Events buffered but not yet written. Used by callers that must flush
@@ -87,6 +109,14 @@ impl SpoolWriter {
 
     /// Append one event, rolling to a new batch first if it would not fit.
     pub async fn push(&mut self, mut event: Value) -> std::io::Result<()> {
+        // The single choke point every event passes through, which is why
+        // redaction happens here rather than in each transform: a source
+        // cannot forget it, and a new source inherits it for free. It runs
+        // BEFORE serialization, so what gets hashed, spooled and uploaded is
+        // the scrubbed form — there is no window where the raw value exists on
+        // disk.
+        self.redacted += crate::redact::scrub_value(&mut event, self.redact) as u64;
+
         let mut line = serialize(&event)?;
 
         if line.len() as u64 > self.max_batch_bytes {
@@ -369,6 +399,52 @@ mod tests {
         let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "hooks", "s");
         w.flush().await.unwrap();
         assert!(batches(&dir).is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn secrets_are_scrubbed_before_anything_touches_disk() {
+        // The choke-point guarantee: a source that never thinks about
+        // redaction still cannot write a credential into the spool.
+        let dir = tmpdir("redact");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s");
+        w.push(json!({
+            "type": "tool_use",
+            "input": {"command": "curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123'"}
+        }))
+        .await
+        .unwrap();
+        w.flush().await.unwrap();
+
+        let name = batches(&dir).remove(0);
+        let body = std::fs::read_to_string(dir.join(&name)).unwrap();
+        assert!(
+            !body.contains("ghp_abcdefghij"),
+            "a credential reached disk: {body}"
+        );
+        assert!(
+            body.contains("[redacted:"),
+            "redaction marker missing: {body}"
+        );
+        assert!(w.redacted_count() >= 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn redaction_can_be_turned_off() {
+        let dir = tmpdir("redact-off");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_redact(Redact::Off);
+        w.push(json!({"output": "ghp_abcdefghijklmnopqrstuvwxyz0123"}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        assert!(
+            std::fs::read_to_string(dir.join(&name))
+                .unwrap()
+                .contains("ghp_abcdefghij")
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

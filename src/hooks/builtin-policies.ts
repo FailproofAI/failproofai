@@ -172,12 +172,90 @@ const RUNAS_RE = /(?:^|;|&&|\|\|)\s*runas\s/i;
 const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|fish|ash)\b/;
 /**
  * `failproofai config --pause` in any of its reachable spellings — direct, via
- * `npx`/`bunx`, or through the `configure`/`setup` aliases the CLI normalizes.
- * Only `--pause` matches: `--resume` and `--status` restore or merely report
- * enforcement, so an agent running either is harmless.
+ * `npx`/`bunx`/`pnpm dlx`, by absolute path, or through the `configure`/`setup`
+ * aliases the CLI normalizes. Only `--pause` matches: `--resume` and `--status`
+ * restore or merely report enforcement, so an agent running either is harmless.
+ *
+ * Two details carry the whole policy, and an earlier version got both wrong:
+ *
+ * `failproofai[^\s]*` rather than `\bfailproofai\b`. A word boundary stops at
+ * the character after the name, so every ordinary way of pinning or pathing the
+ * binary walked straight through: `npx failproofai@latest`, `npx -y
+ * failproofai@0.0.16`, `bunx failproofai@latest`, and
+ * `node /usr/lib/node_modules/failproofai/bin/failproofai.mjs`. The suffix has
+ * to be absorbed by the same token.
+ *
+ * `\s+--pause` rather than `\s--pause`. With a single `\s`, two spaces before
+ * the flag — which no shell cares about and any agent may emit — did not match.
+ *
+ * This still raises the bar rather than closing the class: base64, a wrapper
+ * script, an alias or a shell variable all still reach the same state. Closing
+ * it properly means a pause cannot originate from a tool call at all.
+ *
+ * Matched against BOTH the raw command and its shell-unescaped form (see
+ * `stripShellQuoting`), because a shell reconstructs the binary name from
+ * fragments a regex over the raw string cannot see.
  */
 const SELF_PAUSE_RE =
-  /\bfailproofai\b(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s--pause\b/;
+  /failproofai[^\s]*(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s+--pause\b/;
+
+/**
+ * Decode one ANSI-C `$'...'` body (the text between the quotes) to the bytes a
+ * shell would produce. Covers the escape forms that can reconstruct an ASCII
+ * identifier: `\xHH`, octal `\NNN`, `\uHHHH`, `\UHHHHHHHH`, and the named
+ * controls. An out-of-range or malformed sequence is left as-is rather than
+ * throwing — this runs on adversarial input and must never crash the hook.
+ */
+function decodeAnsiC(body: string): string {
+  return body.replace(
+    /\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|.)/g,
+    (_, seq: string) => {
+      try {
+        if (seq[0] === "x") return String.fromCharCode(parseInt(seq.slice(1), 16));
+        if (seq[0] === "u" || seq[0] === "U") return String.fromCodePoint(parseInt(seq.slice(1), 16));
+        if (/^[0-7]+$/.test(seq)) return String.fromCharCode(parseInt(seq, 8));
+      } catch {
+        return seq;
+      }
+      const named: Record<string, string> = {
+        a: "\x07", b: "\b", e: "\x1b", f: "\f", n: "\n",
+        r: "\r", t: "\t", v: "\v", "\\": "\\", "'": "'", '"': '"', "?": "?",
+      };
+      return named[seq] ?? seq;
+    },
+  );
+}
+
+/**
+ * Collapse the quoting a POSIX shell resolves LEXICALLY — before it execs a
+ * command — so a literal matcher sees roughly what will actually run.
+ *
+ * Two adversarial red-team rounds defeated the pattern above by reassembling
+ * the binary name from fragments the regex could not see: first backslash and
+ * quote splitting (`fail\proofai`, `fail"proof"ai`, `f\a\i\l\p\r\o\o\f\a\i`),
+ * then ANSI-C quoting (`$'fail\x70roofai'`, octal `\160`, unicode `p`).
+ * Each executes the real pause. This now normalizes all three lexical forms:
+ * ANSI-C `$'...'` bodies are decoded first (the generic backslash pass below
+ * would otherwise turn `\x70` into `x70`), then surrounding single/double
+ * quotes and lone backslash-escapes are removed.
+ *
+ * The boundary is principled, not arbitrary: everything handled here is pure
+ * shell LEXING. What remains — a variable (`f=failproofai; $f …`), command
+ * substitution (`$(printf failproofai)`), `eval`, an alias, a base64 pipe —
+ * requires the shell to EXECUTE something to reconstruct the name, which no
+ * PreToolUse hook inspecting a command string can follow. That class is the one
+ * the header comment above calls out, and the only real closure is to make the
+ * pause ACTION itself refuse to originate from a tool call — deferred with the
+ * rest of the daemon-side redesign.
+ */
+function stripShellQuoting(command: string): string {
+  // `$'...'` first, honoring `\'` inside the body, so its own escapes decode
+  // before the generic backslash-strip can mangle them.
+  const ansiDecoded = command.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_, body: string) =>
+    decodeAnsiC(body),
+  );
+  return ansiDecoded.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
+}
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
@@ -611,7 +689,10 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
 function blockSelfPause(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
-  if (SELF_PAUSE_RE.test(cmd)) {
+  // The raw command AND its shell-unescaped form: a shell strips quotes and
+  // backslashes before running the binary, so `fail\proofai config --pause`
+  // reaches the pause CLI even though the literal name is broken.
+  if (SELF_PAUSE_RE.test(cmd) || SELF_PAUSE_RE.test(stripShellQuoting(cmd))) {
     return deny(
       "Pausing failproofai enforcement is a human action, not an agent one. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",

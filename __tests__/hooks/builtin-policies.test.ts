@@ -532,6 +532,80 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("cd /tmp && failproofai config --pause")).toBe("deny");
     });
 
+    // Every line below walked straight through the first version of this
+    // policy, each for one of two reasons: `\bfailproofai\b` could not absorb
+    // the character after the name, and `\s--pause` matched exactly one space.
+    // An agent that reaches any of them suspends every other local guardrail
+    // for 30 minutes, so these are the cases that decide whether the policy is
+    // worth having at all.
+    it("blocks a version-pinned or @latest package runner invocation", async () => {
+      expect(await decide("npx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("npx -y failproofai@0.0.16 config --pause 8h")).toBe("deny");
+      expect(await decide("bunx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("pnpm dlx failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it when the binary is named by path", async () => {
+      expect(
+        await decide("node /usr/lib/node_modules/failproofai/bin/failproofai.mjs config --pause"),
+      ).toBe("deny");
+      expect(await decide("/usr/local/bin/failproofai config --pause")).toBe("deny");
+      expect(await decide("./node_modules/.bin/failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it regardless of how the whitespace falls", async () => {
+      expect(await decide("failproofai config  --pause")).toBe("deny");
+      expect(await decide("failproofai  config   --pause  30m")).toBe("deny");
+      expect(await decide("npx  -y  failproofai  config  --pause")).toBe("deny");
+    });
+
+    it("blocks the shell-escape spellings a red-team used to reconstruct the name", async () => {
+      // A shell removes these before it execs, so each runs the REAL binary and
+      // writes a real pause while presenting a broken literal to the matcher.
+      // All five slipped through the regex-only version.
+      expect(await decide("fail\\proofai config --pause")).toBe("deny");
+      expect(await decide('fail"proof"ai config --pause')).toBe("deny");
+      expect(await decide("fail'proof'ai config --pause")).toBe("deny");
+      expect(await decide("f\\a\\i\\l\\p\\r\\o\\o\\f\\a\\i config --pause")).toBe("deny");
+      expect(await decide("failproof\\ai config --pause --session s1")).toBe("deny");
+    });
+
+    it("blocks ANSI-C quoting, the second lexical class a red-team used", async () => {
+      // $'...' is resolved by the shell purely lexically, like backslash and
+      // quotes — so it belongs on the closed side of the boundary. Each of
+      // these reconstructs `failproofai` and writes a real pause; all three
+      // slipped past the backslash/quote-only normalizer.
+      expect(await decide("$'fail\\x70roofai' config --pause")).toBe("deny"); // hex p
+      expect(await decide("$'fail\\160roofai' config --pause")).toBe("deny"); // octal p
+      expect(await decide("$'fail\\u0070roofai' config --pause")).toBe("deny"); // unicode p
+      expect(await decide("$'\\x66\\x61\\x69\\x6c\\x70\\x72\\x6f\\x6f\\x66\\x61\\x69' config --pause")).toBe(
+        "deny",
+      ); // the whole name in hex
+    });
+
+    it("does NOT claim to block the indirection class — that is honestly out of scope", async () => {
+      // When the binary name is BUILT from fragments so the literal never
+      // appears contiguously, a regex over the pre-exec string cannot see it;
+      // the shell reconstructs `failproofai` and runs the pause. The policy
+      // allows these, the doc comment says so, and the real fix is
+      // action-gating, deferred. Asserting the current (permissive) behaviour
+      // keeps the limitation documented rather than mistaken for coverage.
+      // (Spellings where the literal name DOES appear somewhere — e.g. a
+      //  variable assigned the whole word, or `$(printf failproofai)` — are
+      //  denied coincidentally, so they are not the interesting case.)
+      expect(await decide("a=fail; b=proofai; $a$b config --pause")).toBe("allow");
+      expect(await decide("p=proof; failp${p}ai config --pause")).toBe("allow");
+    });
+
+    it("still allows resume and status in those same spellings", async () => {
+      // The widened match must not start denying the two commands that restore
+      // or merely report enforcement — that would make the policy costly to
+      // keep on, and a policy people switch off protects nobody.
+      expect(await decide("npx failproofai@latest config --resume")).toBe("allow");
+      expect(await decide("/usr/local/bin/failproofai config  --status")).toBe("allow");
+      expect(await decide("node /path/to/failproofai.mjs config --resume")).toBe("allow");
+    });
+
     it("allows resume and status — neither removes enforcement", async () => {
       expect(await decide("failproofai config --resume")).toBe("allow");
       expect(await decide("failproofai config --status")).toBe("allow");

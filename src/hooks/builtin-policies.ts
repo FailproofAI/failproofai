@@ -191,9 +191,36 @@ const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|
  * This still raises the bar rather than closing the class: base64, a wrapper
  * script, an alias or a shell variable all still reach the same state. Closing
  * it properly means a pause cannot originate from a tool call at all.
+ *
+ * Matched against BOTH the raw command and its shell-unescaped form (see
+ * `stripShellQuoting`), because a shell reconstructs the binary name from
+ * fragments a regex over the raw string cannot see.
  */
 const SELF_PAUSE_RE =
   /failproofai[^\s]*(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s+--pause\b/;
+
+/**
+ * Collapse the quoting and backslash-escapes a POSIX shell removes before it
+ * execs a command, so a literal matcher sees roughly what will actually run.
+ *
+ * An adversarial red-team defeated the pattern above with five one-liners that
+ * a shell reassembles into the real binary name: `fail\proofai config --pause`,
+ * `fail"proof"ai …`, `fail'proof'ai …`, `f\a\i\l\p\r\o\o\f\a\i …`. Each writes
+ * a real pause and each slipped past the regex, which only ever saw the broken
+ * spelling.
+ *
+ * This handles exactly the two splittings a shell resolves purely lexically —
+ * an escaping backslash and surrounding single/double quotes. It is a
+ * MITIGATION, not a closure: `$(printf failproofai)`, a variable
+ * (`f=failproofai; $f config --pause`), `eval`, an alias, or a base64 pipe all
+ * reconstruct the command downstream of anything a PreToolUse hook can inspect
+ * — the class the header comment above already calls out. The only real fix is
+ * to make the pause action itself refuse to originate from a tool call, which
+ * is deferred with the rest of the daemon-side redesign.
+ */
+function stripShellQuoting(command: string): string {
+  return command.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
+}
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
@@ -627,7 +654,10 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
 function blockSelfPause(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
-  if (SELF_PAUSE_RE.test(cmd)) {
+  // The raw command AND its shell-unescaped form: a shell strips quotes and
+  // backslashes before running the binary, so `fail\proofai config --pause`
+  // reaches the pause CLI even though the literal name is broken.
+  if (SELF_PAUSE_RE.test(cmd) || SELF_PAUSE_RE.test(stripShellQuoting(cmd))) {
     return deny(
       "Pausing failproofai enforcement is a human action, not an agent one. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",

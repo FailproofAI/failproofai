@@ -559,6 +559,31 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("npx  -y  failproofai  config  --pause")).toBe("deny");
     });
 
+    it("blocks the shell-escape spellings a red-team used to reconstruct the name", async () => {
+      // A shell removes these before it execs, so each runs the REAL binary and
+      // writes a real pause while presenting a broken literal to the matcher.
+      // All five slipped through the regex-only version.
+      expect(await decide("fail\\proofai config --pause")).toBe("deny");
+      expect(await decide('fail"proof"ai config --pause')).toBe("deny");
+      expect(await decide("fail'proof'ai config --pause")).toBe("deny");
+      expect(await decide("f\\a\\i\\l\\p\\r\\o\\o\\f\\a\\i config --pause")).toBe("deny");
+      expect(await decide("failproof\\ai config --pause --session s1")).toBe("deny");
+    });
+
+    it("does NOT claim to block the indirection class — that is honestly out of scope", async () => {
+      // When the binary name is BUILT from fragments so the literal never
+      // appears contiguously, a regex over the pre-exec string cannot see it;
+      // the shell reconstructs `failproofai` and runs the pause. The policy
+      // allows these, the doc comment says so, and the real fix is
+      // action-gating, deferred. Asserting the current (permissive) behaviour
+      // keeps the limitation documented rather than mistaken for coverage.
+      // (Spellings where the literal name DOES appear somewhere — e.g. a
+      //  variable assigned the whole word, or `$(printf failproofai)` — are
+      //  denied coincidentally, so they are not the interesting case.)
+      expect(await decide("a=fail; b=proofai; $a$b config --pause")).toBe("allow");
+      expect(await decide("p=proof; failp${p}ai config --pause")).toBe("allow");
+    });
+
     it("still allows resume and status in those same spellings", async () => {
       // The widened match must not start denying the two commands that restore
       // or merely report enforcement — that would make the policy costly to

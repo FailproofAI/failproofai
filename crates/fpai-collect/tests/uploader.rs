@@ -389,3 +389,118 @@ async fn a_batch_written_by_the_spool_writer_is_delivered_end_to_end() {
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
 }
+
+// ---------------------------------------------------------------------------
+// Redirect / non-ack hardening
+//
+// An adversarial red-team pointed a live daemon at a dashboard-lookalike
+// (POST /events -> 307 -> /login -> 200 text/html). reqwest followed the
+// redirect, re-POSTed the batch to the login page, parsed the HTML as a
+// default ack, and DELETED the spool file. Cross-host, the same follow shipped
+// full event payloads to an attacker. These pin the fix.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_redirect_is_parked_not_followed() {
+    // The exfiltration vector: a 3xx must never be followed, or the batch (and
+    // its prompts/command text) is re-POSTed to wherever Location points.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/login?next=%2Fevents"))
+        .expect(1) // exactly one POST — the redirect is NOT followed to /login
+        .mount(&server)
+        .await;
+    // If the client followed the redirect it would hit this; it must not.
+    Mock::given(method("POST"))
+        .and(path("/login"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<html>login</html>"))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redir-spool");
+    let failed = tmpdir("redir-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 3);
+
+    let up = uploader(&server, &failed);
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(format!("{err}").contains("307"), "got {err}");
+
+    let files = parked(&failed);
+    assert_eq!(
+        files.len(),
+        1,
+        "the batch must be parked, not lost: {files:?}"
+    );
+    assert!(
+        files[0].contains(".c307"),
+        "the redirect status must be recorded: {files:?}"
+    );
+    assert!(
+        !batch.exists(),
+        "the batch moved to failed/, it was not deleted as delivered"
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_200_that_is_not_an_ingest_ack_is_parked_not_deleted() {
+    // A login page, a proxy or a static host can answer 200. Without a numeric
+    // `accepted` it is not delivery, and treating it as such deletes the only
+    // copy of the data.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<html>hello</html>"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("noack-spool");
+    let failed = tmpdir("noack-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 3);
+
+    let up = uploader(&server, &failed);
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(format!("{err}").contains("200"), "got {err}");
+
+    let files = parked(&failed);
+    assert_eq!(files.len(), 1, "a non-ack 200 must be parked: {files:?}");
+    assert!(
+        !batch.exists(),
+        "the batch moved to failed/ rather than vanishing"
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_200_whose_json_lacks_accepted_is_parked() {
+    // `{"status":"ok"}` parses as JSON but is not an ingest ack. The required
+    // `accepted` field is what rejects it.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_string(r#"{"status":"ok"}"#),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("badack-spool");
+    let failed = tmpdir("badack-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 2);
+
+    let up = uploader(&server, &failed);
+    assert!(up.upload_file(&batch).await.is_err());
+    assert_eq!(parked(&failed).len(), 1, "must be parked");
+    assert!(!batch.exists());
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}

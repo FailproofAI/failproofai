@@ -100,7 +100,14 @@ impl From<std::io::Error> for UploadError {
 /// to store; those are gone, and nothing retries them.
 #[derive(Debug, Default, Deserialize)]
 struct IngestAck {
-    #[serde(default)]
+    // REQUIRED — no serde default. This is what proves the 2xx came from the
+    // ingest endpoint and not a login page, a proxy or a static host that
+    // happens to answer 200. An adversarial red-team pointed a live daemon at a
+    // dashboard-lookalike (POST /events -> 307 -> /login -> 200 text/html); the
+    // old `resp.json().unwrap_or_default()` turned that HTML into a default ack,
+    // reported the batch delivered, and DELETED the spool file — silent, total
+    // data loss. A body without a numeric `accepted` now fails to parse and the
+    // batch is parked instead.
     accepted: u64,
     #[serde(default)]
     skipped: u64,
@@ -139,6 +146,15 @@ impl Uploader {
             // Backstop only — see the module docs. Large multiple of the read
             // timeout so it catches a stuck request, never a slow one.
             .timeout(DEFAULT_READ_TIMEOUT.saturating_mul(10))
+            // NEVER follow a redirect. reqwest follows by default, and a
+            // misconfigured or hostile ingest URL that 307s to another host
+            // then re-POSTs the batch there — verified live, an attacker server
+            // received full event payloads (prompts, command text) while the
+            // spool file was deleted as "delivered". With no following, a 3xx
+            // surfaces as a status that post_batch parks as a client error.
+            // reqwest already strips the bearer token across hosts; this stops
+            // the body from leaving too.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| format!("could not build the HTTP client: {e}"))?;
 
@@ -222,9 +238,23 @@ impl Uploader {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
-                        let ack: IngestAck = resp.json().await.unwrap_or_default();
-                        self.record_ack(path, &ack);
-                        return Ok(());
+                        // A 2xx is necessary but NOT sufficient. Require the body
+                        // to actually be an ingest ack (a numeric `accepted`);
+                        // otherwise this "success" is a login page or a proxy,
+                        // and returning Ok here deletes the spool file behind it.
+                        // Park instead, non-retryable — it will parse-fail
+                        // identically until the URL is fixed.
+                        match resp.json::<IngestAck>().await {
+                            Ok(ack) => {
+                                self.record_ack(path, &ack);
+                                return Ok(());
+                            }
+                            Err(_) => {
+                                let code = status.as_u16();
+                                self.park(path, Some(code), attempt).await;
+                                return Err(UploadError::Client { status: code });
+                            }
+                        }
                     }
 
                     let code = status.as_u16();

@@ -211,7 +211,10 @@ mod tests {
             "fpai-health-{}-{}-{}",
             name,
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -241,7 +244,10 @@ mod tests {
 
         h.record_poll("codex", true, 3, 900);
         let s = &h.snapshot().sources["codex"];
-        assert!(s.last_error.is_none(), "a recovered source must clear its error");
+        assert!(
+            s.last_error.is_none(),
+            "a recovered source must clear its error"
+        );
         assert_eq!(s.errors, 1, "but the fact it happened must survive");
     }
 
@@ -260,7 +266,11 @@ mod tests {
         assert_eq!(s.cursor, 20);
 
         h.record_poll("claude", true, 2, 30);
-        assert_eq!(h.snapshot().sources["claude"].events, 7, "events accumulate");
+        assert_eq!(
+            h.snapshot().sources["claude"].events,
+            7,
+            "events accumulate"
+        );
     }
 
     #[test]

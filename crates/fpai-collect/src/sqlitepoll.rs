@@ -139,7 +139,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
                 return Ok(());
             }
             match poll_once(&spec, &mut cursors).await {
-                Ok(false) => break, // nothing more waiting
+                Ok(false) => break,   // nothing more waiting
                 Ok(true) => continue, // hit the row limit; drain rather than trickle
                 Err(err) => {
                     tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
@@ -215,7 +215,11 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<bool, TaskE
     Ok(outcome.more)
 }
 
-fn store_watermark(cursors: &mut CursorStore, spec: &Spec, watermark: i64) -> Result<(), TaskError> {
+fn store_watermark(
+    cursors: &mut CursorStore,
+    spec: &Spec,
+    watermark: i64,
+) -> Result<(), TaskError> {
     cursors.set(FileCursor {
         path: spec.db_path.clone(),
         dev: 0,
@@ -285,11 +289,19 @@ mod tests {
         let db = dir.join("t.db");
         {
             let c = Connection::open(&db).unwrap();
-            c.execute_batch("CREATE TABLE t(a); INSERT INTO t VALUES (1);").unwrap();
+            c.execute_batch("CREATE TABLE t(a); INSERT INTO t VALUES (1);")
+                .unwrap();
         }
         let ro = open_readonly(&db).unwrap();
-        assert_eq!(ro.query_row("SELECT count(*) FROM t", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
-        assert!(ro.execute("INSERT INTO t VALUES (2)", []).is_err(), "a read-only handle must refuse writes");
+        assert_eq!(
+            ro.query_row("SELECT count(*) FROM t", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert!(
+            ro.execute("INSERT INTO t VALUES (2)", []).is_err(),
+            "a read-only handle must refuse writes"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -303,13 +315,22 @@ mod tests {
         let db = dir.join("wal.db");
         let writer = Connection::open(&db).unwrap();
         writer.pragma_update(None, "journal_mode", "WAL").unwrap();
-        writer.execute_batch("CREATE TABLE m(id INTEGER PRIMARY KEY, v TEXT);").unwrap();
-        writer.execute("INSERT INTO m(v) VALUES ('in-wal')", []).unwrap();
+        writer
+            .execute_batch("CREATE TABLE m(id INTEGER PRIMARY KEY, v TEXT);")
+            .unwrap();
+        writer
+            .execute("INSERT INTO m(v) VALUES ('in-wal')", [])
+            .unwrap();
         // Deliberately NOT checkpointed and NOT closed — this is goose's state.
 
         let ro = open_readonly(&db).unwrap();
-        let n: i64 = ro.query_row("SELECT count(*) FROM m", [], |r| r.get(0)).unwrap();
-        assert_eq!(n, 1, "the WAL contents must be visible to a read-only reader");
+        let n: i64 = ro
+            .query_row("SELECT count(*) FROM m", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            n, 1,
+            "the WAL contents must be visible to a read-only reader"
+        );
 
         drop(writer);
         std::fs::remove_dir_all(&dir).ok();
@@ -324,13 +345,23 @@ mod tests {
         let db = dir.join("busy.db");
         let writer = Connection::open(&db).unwrap();
         writer.pragma_update(None, "journal_mode", "WAL").unwrap();
-        writer.execute_batch("CREATE TABLE m(id INTEGER PRIMARY KEY, v TEXT);").unwrap();
+        writer
+            .execute_batch("CREATE TABLE m(id INTEGER PRIMARY KEY, v TEXT);")
+            .unwrap();
 
         let ro = open_readonly(&db).unwrap();
         for i in 0..20 {
-            writer.execute("INSERT INTO m(v) VALUES (?1)", [format!("row{i}")]).unwrap();
-            let n: i64 = ro.query_row("SELECT count(*) FROM m", [], |r| r.get(0)).unwrap();
-            assert_eq!(n, i + 1, "a concurrent reader must see committed rows immediately");
+            writer
+                .execute("INSERT INTO m(v) VALUES (?1)", [format!("row{i}")])
+                .unwrap();
+            let n: i64 = ro
+                .query_row("SELECT count(*) FROM m", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(
+                n,
+                i + 1,
+                "a concurrent reader must see committed rows immediately"
+            );
         }
         drop(writer);
         std::fs::remove_dir_all(&dir).ok();

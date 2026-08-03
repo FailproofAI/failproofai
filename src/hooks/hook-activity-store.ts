@@ -78,6 +78,24 @@ export interface HookActivityEntry {
   pausedBy?: string;
   /** Epoch ms the pause lifts. Present iff `pausedBy` is. */
   pauseExpiresAt?: number;
+  /**
+   * Where the policy that DECIDED came from. Absent when nothing decided (a
+   * plain allow) and on rows written before this existed — so, like
+   * `matchedPolicies`, `undefined` means "unknown", not "builtin".
+   */
+  policySource?: "builtin" | "custom" | "convention" | "cloud";
+  /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
+  cloudPolicyId?: string;
+  /** Immutable revision of that policy — the half of attribution that identifies WHICH version ran. */
+  cloudRevision?: number;
+  /**
+   * The cloud generation active when this event was evaluated, recorded on
+   * every row of a managed machine regardless of what decided. "What was
+   * deployed here" is a different question from "what decided", and only this
+   * distinguishes a rollout that changed no outcomes from one that never
+   * arrived.
+   */
+  cloudGeneration?: number;
 }
 
 export interface HookActivityFilters {
@@ -86,6 +104,12 @@ export interface HookActivityFilters {
   policyName?: string;
   sessionId?: string;
   integration?: IntegrationType;
+  /**
+   * Filter by where the deciding policy came from. "Show me everything my
+   * organization's policies decided" is the question cloud rollout reporting
+   * is built on, and it is unanswerable without this.
+   */
+  source?: "builtin" | "custom" | "convention" | "cloud";
 }
 
 export interface HookActivityStats {
@@ -307,6 +331,11 @@ export function searchHookActivity(
       return false;
     }
     if (filters.integration && entry.integration !== filters.integration) return false;
+    // Rows written before attribution existed have no policySource. They are
+    // excluded from every source filter rather than guessed at — a wrong
+    // attribution is worse than a missing one when the point is proving which
+    // rollout decided something.
+    if (filters.source && entry.policySource !== filters.source) return false;
     return true;
   });
 

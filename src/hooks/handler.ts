@@ -212,6 +212,12 @@ export async function evaluateHookEvent(
     let customHooksList: CustomHook[] = [];
     let conventionHookNames = new Set<string>();
     let activePause: ActivePause | null = null;
+    /** Registered policy name → where it came from. See the set() below. */
+    const policyAttribution = new Map<
+      string,
+      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudRevision?: number }
+    >();
+    let cloudGeneration: number | undefined;
 
     if (opts?.forceDecision) {
       // Fail-closed: no config/custom-hook loading at all — a daemon that
@@ -243,6 +249,11 @@ export async function evaluateHookEvent(
       // the same public JS policy API as local custom policies. Verify and add
       // only the paths referenced by the atomically active generation.
       const cloudManagedPolicies = readActiveCloudManagedPolicies();
+      // Recorded on every row once a machine is managed, whether or not a cloud
+      // policy decided this event: "what was deployed here at the time" is a
+      // separate question from "what decided", and only the former can tell a
+      // rollout that changed nothing from one that never reached the machine.
+      cloudGeneration = cloudManagedPolicies[0]?.generation;
       const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
       const allExplicitPaths =
         cloudManagedPolicies.length === 0
@@ -304,8 +315,18 @@ export async function evaluateHookEvent(
             return { decision: "allow" };
           }
         };
+        const registeredName = `${prefix}/${hookName}`;
+        // Record where this policy came from as structured data, keyed by the
+        // exact name the evaluator will report back. The display name already
+        // encodes it ("cloud/org-guard@7/…"), but only as a string — so the one
+        // question cloud attribution has to answer, "which rollout produced
+        // this decision", could only be answered by re-parsing our own label.
+        policyAttribution.set(registeredName, {
+          source: cloudManaged ? "cloud" : isConvention ? "convention" : "custom",
+          ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudRevision: cloudManaged.revision } : {}),
+        });
         registerPolicy(
-          `${prefix}/${hookName}`,
+          registeredName,
           hook.description ?? "",
           fn,
           hook.match ?? {},
@@ -371,6 +392,22 @@ export async function evaluateHookEvent(
       cwd: session.cwd,
       permissionMode: session.permissionMode,
       hookEventName: session.hookEventName,
+      // Attribution. A builtin is anything registered that is not in the map,
+      // so its absence is meaningful rather than missing — but only when a
+      // policy actually decided; a plain allow names nobody.
+      ...(result.policyName
+        ? (() => {
+            const attribution = policyAttribution.get(result.policyName);
+            return {
+              policySource: attribution?.source ?? ("builtin" as const),
+              ...(attribution?.cloudPolicyId ? { cloudPolicyId: attribution.cloudPolicyId } : {}),
+              ...(attribution?.cloudRevision !== undefined
+                ? { cloudRevision: attribution.cloudRevision }
+                : {}),
+            };
+          })()
+        : {}),
+      ...(cloudGeneration !== undefined ? { cloudGeneration } : {}),
       // Without these, a row logged during a pause is indistinguishable from
       // one where every policy ran and allowed — the log would assert a clean
       // window over exactly the window that was not enforced.

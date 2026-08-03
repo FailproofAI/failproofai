@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { AssistantEntry, ContentBlock, ToolUseBlock } from "@/lib/log-entries";
 
 const SAFE_UUID = "00000000-0000-4000-8000-000000000001";
 const SECOND_UUID = "00000000-0000-4000-8000-000000000002";
@@ -203,6 +204,144 @@ describe("lib/pi-sessions", () => {
 
     it("returns null for path-traversal attempts", () => {
       expect(mod.readPiTranscriptSync("../etc/passwd")).toBeNull();
+    });
+  });
+
+  // Record shapes below are verbatim from a live pi capture (0.73.1 and
+  // 0.83.0, driven against a real provider). Before this, `toolCall` blocks
+  // fell through to the generic "system" branch, so every tool event pi
+  // emitted was dropped — the parser looked correct because nothing asserted
+  // on a tool-using transcript.
+  describe("tool calls", () => {
+    const CALL_A = "toolu_bdrk_01AWG5F1T6gf9BGKRb2h21bP";
+    const CALL_B = "toolu_bdrk_01QoT5TiSRRs8mfJzcMSMPAe";
+
+    function assistantContent(entries: Array<{ type: string }>): ContentBlock[] {
+      const assistant = entries.find((e) => e.type === "assistant") as AssistantEntry | undefined;
+      expect(assistant).toBeDefined();
+      return assistant!.message.content;
+    }
+
+
+    function toolCallRecord(ts: string): string {
+      return JSON.stringify({
+        type: "message",
+        id: "81470a2e",
+        timestamp: ts,
+        message: {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: CALL_A, name: "bash", arguments: { command: "ls -la /tmp/probe-pi" } },
+            { type: "toolCall", id: CALL_B, name: "read", arguments: { path: "/tmp/probe-pi/README.md" } },
+          ],
+          stopReason: "toolUse",
+        },
+      });
+    }
+
+    function toolResultRecord(callId: string, toolName: string, text: string, ts: string): string {
+      return JSON.stringify({
+        type: "message",
+        id: "fe29ac29",
+        parentId: "81470a2e",
+        timestamp: ts,
+        message: {
+          role: "toolResult",
+          toolCallId: callId,
+          toolName,
+          content: [{ type: "text", text }],
+          isError: false,
+          timestamp: Date.parse(ts),
+        },
+      });
+    }
+
+    it("parses toolCall blocks into tool_use blocks with their arguments", async () => {
+      writeSession(SAFE_UUID, "/home/u/repo", [toolCallRecord("2026-05-01T20:36:30.000Z")]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const tools = assistantContent(result!.entries).filter(
+        (b): b is ToolUseBlock => b.type === "tool_use",
+      );
+      expect(tools).toHaveLength(2);
+      expect(tools[0]).toMatchObject({ id: CALL_A, name: "bash", input: { command: "ls -la /tmp/probe-pi" } });
+      expect(tools[1]).toMatchObject({ id: CALL_B, name: "read", input: { path: "/tmp/probe-pi/README.md" } });
+    });
+
+    it("attaches a toolResult to its call by id, not by position", async () => {
+      // Results deliberately out of call order: pairing by position would put
+      // the `read` output on the `bash` call and neither would be detectably
+      // wrong from the shape alone.
+      writeSession(SAFE_UUID, "/home/u/repo", [
+        toolCallRecord("2026-05-01T20:36:30.000Z"),
+        toolResultRecord(CALL_B, "read", "# Probe Pi", "2026-05-01T20:36:31.000Z"),
+        toolResultRecord(CALL_A, "bash", "total 144", "2026-05-01T20:36:32.000Z"),
+      ]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const tools = assistantContent(result!.entries).filter(
+        (b): b is ToolUseBlock => b.type === "tool_use",
+      );
+
+      expect(tools.find((t) => t.id === CALL_A)!.result!.content).toBe("total 144");
+      expect(tools.find((t) => t.id === CALL_B)!.result!.content).toBe("# Probe Pi");
+    });
+
+    it("derives a duration from the call/result gap, since pi records none", async () => {
+      writeSession(SAFE_UUID, "/home/u/repo", [
+        toolCallRecord("2026-05-01T20:36:30.000Z"),
+        toolResultRecord(CALL_A, "bash", "total 144", "2026-05-01T20:36:32.500Z"),
+      ]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const tool = assistantContent(result!.entries).find(
+        (b): b is ToolUseBlock => b.type === "tool_use" && b.id === CALL_A,
+      );
+      expect(tool!.result!.durationMs).toBe(2500);
+    });
+
+    it("keeps an orphan toolResult as a system entry rather than dropping it", async () => {
+      // A result whose call is not in this file (truncated, or a resumed
+      // session split across files) must still be preserved.
+      writeSession(SAFE_UUID, "/home/u/repo", [
+        toolResultRecord("toolu_never_seen", "bash", "orphaned", "2026-05-01T20:36:31.000Z"),
+      ]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const system = result!.entries.filter((e) => e.type === "system");
+      expect(system).toHaveLength(1);
+    });
+
+    it("handles 0.83.0's mixed text+toolCall assistant content", async () => {
+      // 0.73.1 emitted ["toolCall","toolCall"]; 0.83.0 adds leading prose.
+      // Assistant content must not be assumed homogeneous.
+      const mixed = JSON.stringify({
+        type: "message",
+        id: "abc",
+        timestamp: "2026-05-01T20:36:30.000Z",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me look at that." },
+            { type: "toolCall", id: CALL_A, name: "bash", arguments: { command: "ls" } },
+          ],
+          stopReason: "toolUse",
+        },
+      });
+      writeSession(SAFE_UUID, "/home/u/repo", [mixed]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const content = assistantContent(result!.entries);
+      expect(content.map((b) => b.type)).toEqual(["text", "tool_use"]);
+    });
+
+    it("gives a toolCall with no id a synthetic one so it still renders", async () => {
+      const noId = JSON.stringify({
+        type: "message",
+        id: "abc",
+        timestamp: "2026-05-01T20:36:30.000Z",
+        message: { role: "assistant", content: [{ type: "toolCall", name: "bash", arguments: { command: "ls" } }] },
+      });
+      writeSession(SAFE_UUID, "/home/u/repo", [noId]);
+      const result = await mod.getPiSessionLog(SAFE_UUID);
+      const content = assistantContent(result!.entries);
+      expect(content[0].type).toBe("tool_use");
+      expect((content[0] as ToolUseBlock).id).toBeTruthy();
     });
   });
 });

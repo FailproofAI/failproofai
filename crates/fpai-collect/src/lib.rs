@@ -14,6 +14,7 @@
 pub mod config;
 pub mod spool;
 pub mod supervisor;
+pub mod uploader;
 
 pub use config::{CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings};
 pub use spool::SpoolWriter;
@@ -21,3 +22,4 @@ pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,
     spawn_supervised,
 };
+pub use uploader::{UploadError, UploadMetrics, Uploader};

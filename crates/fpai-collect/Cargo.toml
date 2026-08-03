@@ -15,6 +15,12 @@ serde_json = "1"
 # runtime is created here and never leaks into the enforcement path.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "sync", "io-util"] }
 tracing = "0.1"
+# `rustls-tls` rather than the default native-tls: the daemon cross-compiles to
+# four targets and pulling OpenSSL onto each of them is the kind of build
+# dependency that only breaks on the leg nobody tests. `failproofaid` already
+# depends on reqwest with the same TLS backend, so this adds no new C code.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+wiremock = "0.6"

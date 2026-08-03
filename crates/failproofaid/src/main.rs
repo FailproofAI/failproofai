@@ -54,22 +54,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // it keeps the active generation and content-addressed artifact cache in
     // agreement and reports when both verified copies have been lost.
     let cloud_policy_store = cloud_policies::PolicyStore::new(paths::cloud_managed_policy_dir()?);
-    let cloud_monitor = match cloud_client::CloudClient::from_env()? {
-        Some(cloud) => {
-            eprintln!("[failproofaid] cloud-managed policy polling enabled");
-            cloud_client::spawn_cloud_manager(
-                cloud_policy_store,
-                cloud,
-                shutdown.clone(),
-                cloud_client::poll_interval_from_env(),
-            )
-        }
-        None => cloud_policies::spawn_integrity_monitor(
-            cloud_policy_store,
-            shutdown.clone(),
-            cloud_policy_reconcile_interval(),
-        ),
-    };
+    // One lane, resolving enrolment per tick rather than once at startup.
+    // `failproofai config --connect` writes its credential file without root,
+    // and this is a SYSTEM unit — so noticing it only on restart would put
+    // `sudo systemctl restart` back into a flow built to avoid it. The lane
+    // also does integrity repair whether or not the machine is enrolled.
+    let cloud_monitor = cloud_client::spawn_maintenance(
+        cloud_policy_store,
+        shutdown.clone(),
+        cloud_client::poll_interval_from_env(),
+        cloud_policy_reconcile_interval(),
+    );
 
     srv.run_until(shutdown)?;
     let _ = cloud_monitor.join();

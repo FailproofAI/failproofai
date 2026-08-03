@@ -51,12 +51,38 @@ until their SHA-256 matches the desired state.
 
 ## Cloud transport
 
-Set all three variables to enable polling:
+Enrol with the CLI:
+
+```bash
+failproofai config --connect https://be.failproof.ai \
+  --token <org-scoped policies:pull key> \
+  --machine-id prod-runner-01     # defaults to this host's name
+```
+
+That verifies the credentials against the server before storing anything, then
+writes `~/.failproofai/cloud.json` (mode 0600). `--disconnect` removes it,
+`--status` reports the connection with the token masked.
+
+**The credential must not go in the service unit.** `daemon-service.ts` installs
+`/etc/systemd/system/failproofaid@<user>.service` at mode 0644 — root-owned and
+world-readable — and the launchd plist likewise. An
+`Environment="FAILPROOFAI_CLOUD_TOKEN=…"` line there hands an organization-scoped
+key to every local user, and `systemctl show` prints it back with no privilege
+at all. Keeping it in a file also means enrolment, rotation and disconnect need
+no root, and an already-installed daemon can be connected without reinstalling.
+
+The daemon re-resolves enrolment on **every poll**, not at startup, so all three
+take effect within one interval with nothing to restart — which matters because
+restarting a system unit needs root, the very thing this avoids.
+
+Environment variables still take precedence over the file, for CI, containers
+and tests:
 
 ```text
 FAILPROOFAI_CLOUD_URL=https://be.failproof.ai
 FAILPROOFAI_CLOUD_TOKEN=<org-scoped policies:pull key>
 FAILPROOFAI_MACHINE_ID=<deployment machine id>
+FAILPROOFAI_CLOUD_CREDENTIALS=<path>   # overrides ~/.failproofai/cloud.json
 ```
 
 `FAILPROOFAI_CLOUD_POLICY_POLL_MS` controls the interval (30 seconds by

@@ -769,6 +769,17 @@ WHAT IT DOES
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
+FAILPROOF CLOUD
+  failproofai config --connect <url> --token <key> [--machine-id <id>]
+                                    Connect this machine to Failproof Cloud
+  failproofai config --disconnect   Stop pulling cloud-managed policies
+  failproofai config --status       Show connection and pause state
+
+  The token is stored owner-only in ~/.failproofai/cloud.json, never in the
+  service unit — that file is world-readable. Connecting needs no sudo, and
+  the machine id defaults to this host's name. Credentials are checked
+  against the server before anything is written.
+
 PAUSING ENFORCEMENT (one session, always time-boxed)
   failproofai config --pause         Pause this directory's newest agent session (30m)
   failproofai config --pause 10m     Pause for a given time (max 8h; s/m/h, bare = minutes)
@@ -790,6 +801,50 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     // share `config`'s surface but not the wizard. They write session state,
     // never the config file — a pause that reached policies-config.json would
     // be committed and outlive the session that asked for it.
+    // Cloud enrolment. Deliberately writes a credential file the daemon reads
+    // rather than an Environment= line in the service unit: that unit is
+    // installed world-readable (0644, /etc/systemd/system), so a token there
+    // would be readable by every local user. Keeping it out also means no
+    // sudo, and lets an already-installed daemon be connected.
+    const connectIdx = args.indexOf("--connect");
+    const wantsDisconnect = args.includes("--disconnect");
+    if (connectIdx >= 0 || wantsDisconnect) {
+      if (connectIdx >= 0 && wantsDisconnect) {
+        throw new CliError("--connect and --disconnect cannot be combined.");
+      }
+      const valueAfter = (flag) => {
+        const i = args.indexOf(flag);
+        if (i < 0) return undefined;
+        const v = args[i + 1];
+        if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+        return v;
+      };
+      let result;
+      if (wantsDisconnect) {
+        const { runDisconnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = runDisconnectCommand();
+      } else {
+        const { hostname } = await import("node:os");
+        const { runConnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = await runConnectCommand({
+          url: valueAfter("--connect"),
+          token: valueAfter("--token"),
+          machineId: valueAfter("--machine-id"),
+          defaultMachineId: hostname(),
+        });
+      }
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_cloud_enrollment", {
+        action: wantsDisconnect ? "disconnect" : "connect",
+        ok: result.exitCode === 0,
+      });
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
     const pauseIdx = args.indexOf("--pause");
     const wantsResume = args.includes("--resume");
     const wantsStatus = args.includes("--status");
@@ -815,6 +870,13 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         all: args.includes("--all"),
         cwd: process.cwd(),
       });
+      // `--status` answers "what is this machine's state?", which is both
+      // halves: whether enforcement is paused AND whether cloud is connected.
+      if (wantsStatus) {
+        const { connectionStatusLines } = await import("../src/hooks/cloud-enrollment-cli");
+        for (const line of connectionStatusLines()) console.log(line);
+        console.log("");
+      }
       for (const line of result.lines) {
         if (result.exitCode === 0) console.log(line);
         else console.error(line);

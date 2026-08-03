@@ -12,8 +12,22 @@
 //!            content is a STRING for a prompt, or an ARRAY containing
 //!            {type:"tool_result", tool_use_id, content, is_error}
 //! assistant  {type:"assistant", timestamp, message:{model, id, content:[
-//!              {type:"text"|"tool_use", ...}], usage}}
+//!              {type:"text"|"tool_use"|"thinking", ...}], usage}}
+//!            a failed turn is flagged by isApiErrorMessage / isAbortedMidStream
+//!            / message.model == "<synthetic>"
+//! system     {type:"system", subtype, timestamp, ...}
+//!            only subtype "compact_boundary" is modelled
 //! ```
+//!
+//! # `thinking` blocks emit nothing, and that is a decision
+//!
+//! Measured over every transcript on this machine: **7,687 of 7,687 thinking
+//! blocks carry `"thinking": ""`**, with the entire payload in an opaque
+//! `signature` attestation. Emitting one event per block would add 7,687
+//! contentless rows against 27,521 assistant lines. The explicit arm in
+//! [`assistant_events`] emits only a block that actually carries text, so a
+//! future Claude that starts populating the field shows up as data arriving
+//! rather than as a silent gap — and costs nothing until then.
 
 use serde_json::{Map, Value, json};
 
@@ -22,6 +36,11 @@ use crate::filetail::Ctx;
 
 /// Longest derived id component.
 const MAX_ID_PART: usize = 48;
+
+/// The placeholder `message.model` on a turn Claude Code fabricated rather than
+/// served. Never a real model, so it must not reach `model` columns or
+/// [`TailState::last_model`].
+const SYNTHETIC_MODEL: &str = "<synthetic>";
 
 /// Make a derived id component safe and bounded.
 pub fn sanitize_id_part(s: &str) -> String {
@@ -161,6 +180,37 @@ pub fn agent_start(header: &[String], ctx: &Ctx, offset: u64) -> Option<(Value, 
     Some((Value::Object(m), Some(ts)))
 }
 
+/// [`agent_start`] plus the parent link a subagent transcript needs.
+///
+/// ⚠️ The fields are `claude_parent_session_id` and `claude_agent_id`, and the
+/// names are load-bearing. `parent_id` is the one name that must NOT be used:
+/// the dashboard matches it against an **`agent_id`**, not a session id, so a
+/// session UUID there resolves to nothing and every subagent link is silently
+/// dropped.
+///
+/// Both are derived from `ctx.session_id`, which the format built from the path
+/// — so this stays pure and agrees with the id the cursor is keyed on. Split
+/// from the right because an agent id never contains `:` while a hypothetical
+/// parent directory might.
+///
+/// Nested subagents (spawn depth 2, 9 of 122 here) name the ROOT session, not
+/// their spawning sibling: the immediate parent is only in the sidecar, which
+/// this function cannot see, and the root is the useful grouping key anyway.
+pub fn subagent_start(
+    header: &[String],
+    ctx: &Ctx,
+    offset: u64,
+) -> Option<(Value, Option<String>)> {
+    let (mut event, ts) = agent_start(header, ctx, offset)?;
+    if let Some(m) = event.as_object_mut()
+        && let Some((parent, agent)) = ctx.session_id.rsplit_once(':')
+    {
+        m.insert("claude_parent_session_id".into(), json!(parent));
+        m.insert("claude_agent_id".into(), json!(agent));
+    }
+    Some((event, ts))
+}
+
 /// The single `agent_end`, derived deterministically from the last timestamp
 /// and the file size (used as its offset, so it is unique per session).
 ///
@@ -202,9 +252,66 @@ pub fn transform_line(
     let events = match v.get("type").and_then(|t| t.as_str()) {
         Some("user") => user_events(&v, ctx, &ts, offset, state),
         Some("assistant") => assistant_events(&v, ctx, &ts, offset, state),
+        Some("system") => system_events(&v, ctx, &ts, offset, state),
         _ => Vec::new(),
     };
     (Some(ts), events)
+}
+
+/// A `system` line. Seven subtypes occur on this machine (`turn_duration`,
+/// `stop_hook_summary`, `local_command`, `away_summary`, `compact_boundary`,
+/// `informational`, `bridge_status`); only the one that changes what the model
+/// can see is modelled.
+fn system_events(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState) -> Vec<Value> {
+    match v.get("subtype").and_then(|s| s.as_str()) {
+        Some("compact_boundary") => compact_boundary(v, ctx, ts, offset, state),
+        _ => Vec::new(),
+    }
+}
+
+/// `system`/`compact_boundary` — the only on-disk record that the context was
+/// reset.
+///
+/// Modelled as a `model_request` because that is what a compaction is: the next
+/// request is built from a summary instead of the transcript. `model` is
+/// stamped from carried state for the same reason a user prompt is — the
+/// server builds this row's summary from the model alone.
+///
+/// This is orthogonal to the file SHRINKING, which `/compact` also does and
+/// which the engine already handles by re-reading from zero. Nothing here
+/// fights that: the re-read produces this same event at this same offset, so
+/// the server dedups it.
+///
+/// Only the scalar `compactMetadata` fields are promoted. `preservedMessages`
+/// is a uuid index that grows with the preserved window and answers no question
+/// an operator would ask, so shipping it would be volume without signal.
+fn compact_boundary(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState) -> Vec<Value> {
+    let Some(mut m) = base(ctx, "model_request", ts, 0, offset) else {
+        return Vec::new();
+    };
+    m.insert("claude_kind".into(), json!("compact_boundary"));
+    if let Some(model) = &state.last_model {
+        m.insert("model".into(), json!(model));
+    }
+    if let Some(meta) = v.get("compactMetadata") {
+        for (src, dst) in [
+            ("trigger", "claude_compact_trigger"),
+            ("preTokens", "claude_compact_pre_tokens"),
+            ("postTokens", "claude_compact_post_tokens"),
+            ("cumulativeDroppedTokens", "claude_compact_dropped_tokens"),
+        ] {
+            if let Some(x) = meta.get(src).filter(|x| !x.is_null()) {
+                m.insert(dst.into(), x.clone());
+            }
+        }
+        if let Some(ms) = meta.get("durationMs").and_then(|x| x.as_u64()) {
+            m.insert("duration_ms".into(), json!(ms));
+        }
+    }
+    if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+        m.insert("claude_cwd".into(), json!(c));
+    }
+    vec![Value::Object(m)]
 }
 
 /// A `user` line is either a human prompt or the results of tool calls.
@@ -284,22 +391,29 @@ fn assistant_events(
         return Vec::new();
     };
     let model = message.get("model").and_then(|m| m.as_str());
-    if let Some(m) = model {
+    if let Some(m) = model.filter(|m| *m != SYNTHETIC_MODEL) {
+        // `<synthetic>` is excluded deliberately: it is the placeholder on a
+        // fabricated turn, and letting it in would stamp "<synthetic>" as the
+        // model on every later user prompt that inherits from here.
         state.last_model = Some(m.to_string());
     }
     let message_id = message.get("id").and_then(|i| i.as_str());
 
+    // A turn Claude Code recorded as a failure replaces the whole line: one
+    // `error`, no content rows, and no usage.
+    if let Some(ev) = error_turn(v, message, ctx, ts, offset) {
+        return vec![ev];
+    }
+
     // One API response is written across several lines that each repeat the
     // SAME usage object. Attributing it per line multiplies token totals, so it
-    // is counted once per message id.
+    // is counted once per message id. The claim is staked at the bottom of this
+    // function, by the line that actually emits — see there.
     let usage_is_new = match (message_id, state.last_usage_message_id.as_deref()) {
         (Some(id), Some(seen)) => id != seen,
         (Some(_), None) => true,
         _ => false,
     };
-    if usage_is_new && let Some(id) = message_id {
-        state.last_usage_message_id = Some(id.to_string());
-    }
 
     let Some(blocks) = message.get("content").and_then(|c| c.as_array()) else {
         return Vec::new();
@@ -354,12 +468,51 @@ fn assistant_events(
                 }
                 out.push(Value::Object(m));
             }
+            // Emitted only when it carries text — see the module docs. Kept as
+            // an explicit arm so the 7,687-of-7,687-empty measurement has a
+            // place to live and a populated block cannot slip past unnoticed.
+            Some("thinking") => {
+                let text = block
+                    .get("thinking")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or_default();
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let Some(mut m) = base(ctx, "model_response", ts, i, offset) else {
+                    continue;
+                };
+                m.insert("role".into(), json!("assistant"));
+                m.insert("content".into(), json!(text));
+                m.insert("claude_kind".into(), json!("thinking"));
+                if let Some(model) = model {
+                    m.insert("model".into(), json!(model));
+                }
+                if let Some(id) = message_id {
+                    m.insert("claude_message_id".into(), json!(id));
+                }
+                out.push(Value::Object(m));
+            }
             _ => {}
         }
     }
 
     // Attach usage to the FIRST event of the line, so a line yielding several
     // events reports its tokens once.
+    //
+    // The group is claimed HERE, by a line that actually emitted — not up top
+    // on sight of the id. Claiming it earlier loses the whole group whenever
+    // its first line emits nothing, which is the common case, not an edge one:
+    // Claude writes the thinking block as its own line at the head of a group,
+    // and 7,699 of 11,213 groups on this machine begin with a line that yields
+    // no event. Under the earlier gate those groups reported zero tokens —
+    // 8.4M of 10.3M output tokens corpus-wide, silently.
+    //
+    // Deferring is also strictly more accurate: usage accumulates across a
+    // group's lines, and the later line this now bills carries the larger
+    // figure in 7,703 of the 8,599 multi-line groups (identical in the rest).
+    // Still pure — `last_usage_message_id` lives in the cursor, so a resumed
+    // read holds the same value at the same offset as a full re-read.
     if usage_is_new
         && let Some(usage) = message.get("usage")
         && let Some(first) = out.first_mut()
@@ -372,9 +525,83 @@ fn assistant_events(
             obj.insert("output_tokens".into(), json!(n));
         }
         obj.insert("claude_usage".into(), usage.clone());
+        if let Some(id) = message_id {
+            state.last_usage_message_id = Some(id.to_string());
+        }
     }
 
     out
+}
+
+/// A turn Claude Code recorded as a failure, or `None` if this is a normal one.
+///
+/// Three independent markers mean the same thing and any one alone is enough:
+/// `isApiErrorMessage`, `isAbortedMidStream`, and the fabricated
+/// `message.model == "<synthetic>"`. On this machine: 2 aborted, 5 synthetic,
+/// 0 api-error (the field is present 5 times, always `false`) — so the
+/// api-error arm is written from the marker's meaning rather than from a live
+/// sample, and is the one to re-check first if this ever misfires.
+///
+/// There is deliberately no "only if it has content" guard: a failed turn is
+/// precisely the one with nothing to check.
+///
+/// The line yields this event and NOTHING else — no `model_response` for its
+/// partial text, no usage. Usage in particular: a synthetic turn's usage object
+/// is all zeros and it is interleaved *inside* a real `message.id` group, so
+/// letting it claim the group would zero out the real response's tokens.
+/// Suppressing the content rows is safe here because none of the 7 flagged
+/// lines carries a `tool_use` block — all 7 are text-only — so no tool call can
+/// be lost this way.
+fn error_turn(v: &Value, message: &Value, ctx: &Ctx, ts: &str, offset: u64) -> Option<Value> {
+    let api_error = v.get("isApiErrorMessage").and_then(|x| x.as_bool()) == Some(true);
+    let aborted = v.get("isAbortedMidStream").and_then(|x| x.as_bool()) == Some(true);
+    let synthetic = message.get("model").and_then(|m| m.as_str()) == Some(SYNTHETIC_MODEL);
+    if !(api_error || aborted || synthetic) {
+        return None;
+    }
+
+    let mut m = base(ctx, "error", ts, 0, offset)?;
+    // Claude Code's own label (`"server_error"`) when it wrote one — that is
+    // the string an operator can group on — else whichever marker fired.
+    let error_type = v
+        .get("error")
+        .and_then(|e| e.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(if aborted {
+            "claude_aborted"
+        } else if api_error {
+            "claude_api_error"
+        } else {
+            "claude_synthetic"
+        });
+    m.insert("error_type".into(), json!(error_type));
+
+    // The server's `is_error` is a truthiness check on the message, so this
+    // must never be empty — a failed turn rendering as a success is worse than
+    // a generic sentence.
+    let text = message.get("content").map(stringify).unwrap_or_default();
+    let detail = if text.trim().is_empty() {
+        if aborted {
+            "assistant turn aborted mid-stream"
+        } else if api_error {
+            "assistant turn failed with an API error"
+        } else {
+            "synthetic assistant turn (no model response)"
+        }
+    } else {
+        text.trim()
+    };
+    m.insert("message".into(), json!(detail));
+    if let Some(model) = message.get("model").and_then(|x| x.as_str()) {
+        m.insert("claude_model".into(), json!(model));
+    }
+    if let Some(id) = message.get("id").and_then(|x| x.as_str()) {
+        m.insert("claude_message_id".into(), json!(id));
+    }
+    if let Some(sr) = message.get("stop_reason").and_then(|s| s.as_str()) {
+        m.insert("claude_stop_reason".into(), json!(sr));
+    }
+    Some(Value::Object(m))
 }
 
 /// Render a tool result payload as text. Claude uses a bare string, or an array

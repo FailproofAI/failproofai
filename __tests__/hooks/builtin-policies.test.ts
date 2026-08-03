@@ -570,6 +570,19 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("failproof\\ai config --pause --session s1")).toBe("deny");
     });
 
+    it("blocks ANSI-C quoting, the second lexical class a red-team used", async () => {
+      // $'...' is resolved by the shell purely lexically, like backslash and
+      // quotes — so it belongs on the closed side of the boundary. Each of
+      // these reconstructs `failproofai` and writes a real pause; all three
+      // slipped past the backslash/quote-only normalizer.
+      expect(await decide("$'fail\\x70roofai' config --pause")).toBe("deny"); // hex p
+      expect(await decide("$'fail\\160roofai' config --pause")).toBe("deny"); // octal p
+      expect(await decide("$'fail\\u0070roofai' config --pause")).toBe("deny"); // unicode p
+      expect(await decide("$'\\x66\\x61\\x69\\x6c\\x70\\x72\\x6f\\x6f\\x66\\x61\\x69' config --pause")).toBe(
+        "deny",
+      ); // the whole name in hex
+    });
+
     it("does NOT claim to block the indirection class — that is honestly out of scope", async () => {
       // When the binary name is BUILT from fragments so the literal never
       // appears contiguously, a regex over the pre-exec string cannot see it;

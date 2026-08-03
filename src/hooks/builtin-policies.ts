@@ -200,26 +200,61 @@ const SELF_PAUSE_RE =
   /failproofai[^\s]*(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s+--pause\b/;
 
 /**
- * Collapse the quoting and backslash-escapes a POSIX shell removes before it
- * execs a command, so a literal matcher sees roughly what will actually run.
+ * Decode one ANSI-C `$'...'` body (the text between the quotes) to the bytes a
+ * shell would produce. Covers the escape forms that can reconstruct an ASCII
+ * identifier: `\xHH`, octal `\NNN`, `\uHHHH`, `\UHHHHHHHH`, and the named
+ * controls. An out-of-range or malformed sequence is left as-is rather than
+ * throwing — this runs on adversarial input and must never crash the hook.
+ */
+function decodeAnsiC(body: string): string {
+  return body.replace(
+    /\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|.)/g,
+    (_, seq: string) => {
+      try {
+        if (seq[0] === "x") return String.fromCharCode(parseInt(seq.slice(1), 16));
+        if (seq[0] === "u" || seq[0] === "U") return String.fromCodePoint(parseInt(seq.slice(1), 16));
+        if (/^[0-7]+$/.test(seq)) return String.fromCharCode(parseInt(seq, 8));
+      } catch {
+        return seq;
+      }
+      const named: Record<string, string> = {
+        a: "\x07", b: "\b", e: "\x1b", f: "\f", n: "\n",
+        r: "\r", t: "\t", v: "\v", "\\": "\\", "'": "'", '"': '"', "?": "?",
+      };
+      return named[seq] ?? seq;
+    },
+  );
+}
+
+/**
+ * Collapse the quoting a POSIX shell resolves LEXICALLY — before it execs a
+ * command — so a literal matcher sees roughly what will actually run.
  *
- * An adversarial red-team defeated the pattern above with five one-liners that
- * a shell reassembles into the real binary name: `fail\proofai config --pause`,
- * `fail"proof"ai …`, `fail'proof'ai …`, `f\a\i\l\p\r\o\o\f\a\i …`. Each writes
- * a real pause and each slipped past the regex, which only ever saw the broken
- * spelling.
+ * Two adversarial red-team rounds defeated the pattern above by reassembling
+ * the binary name from fragments the regex could not see: first backslash and
+ * quote splitting (`fail\proofai`, `fail"proof"ai`, `f\a\i\l\p\r\o\o\f\a\i`),
+ * then ANSI-C quoting (`$'fail\x70roofai'`, octal `\160`, unicode `p`).
+ * Each executes the real pause. This now normalizes all three lexical forms:
+ * ANSI-C `$'...'` bodies are decoded first (the generic backslash pass below
+ * would otherwise turn `\x70` into `x70`), then surrounding single/double
+ * quotes and lone backslash-escapes are removed.
  *
- * This handles exactly the two splittings a shell resolves purely lexically —
- * an escaping backslash and surrounding single/double quotes. It is a
- * MITIGATION, not a closure: `$(printf failproofai)`, a variable
- * (`f=failproofai; $f config --pause`), `eval`, an alias, or a base64 pipe all
- * reconstruct the command downstream of anything a PreToolUse hook can inspect
- * — the class the header comment above already calls out. The only real fix is
- * to make the pause action itself refuse to originate from a tool call, which
- * is deferred with the rest of the daemon-side redesign.
+ * The boundary is principled, not arbitrary: everything handled here is pure
+ * shell LEXING. What remains — a variable (`f=failproofai; $f …`), command
+ * substitution (`$(printf failproofai)`), `eval`, an alias, a base64 pipe —
+ * requires the shell to EXECUTE something to reconstruct the name, which no
+ * PreToolUse hook inspecting a command string can follow. That class is the one
+ * the header comment above calls out, and the only real closure is to make the
+ * pause ACTION itself refuse to originate from a tool call — deferred with the
+ * rest of the daemon-side redesign.
  */
 function stripShellQuoting(command: string): string {
-  return command.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
+  // `$'...'` first, honoring `\'` inside the body, so its own escapes decode
+  // before the generic backslash-strip can mangle them.
+  const ansiDecoded = command.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_, body: string) =>
+    decodeAnsiC(body),
+  );
+  return ansiDecoded.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
 }
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 

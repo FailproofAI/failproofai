@@ -142,7 +142,7 @@ jobs:
           gzip -9 -c "$BIN" > "failproofaid-${{ matrix.platform }}.gz"
           ls -l "failproofaid-${{ matrix.platform }}.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: failproofaid-${{ matrix.platform }}
           path: failproofaid-${{ matrix.platform }}.gz

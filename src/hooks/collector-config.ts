@@ -15,7 +15,15 @@
  * The Rust daemon reads both (see `crates/fpai-collect/src/config.rs`); this is
  * the only thing that writes them.
  */
-import { writeFileSync, mkdirSync, existsSync, chmodSync, statSync } from "node:fs";
+import {
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  chmodSync,
+  statSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -50,6 +58,35 @@ export function ingestPath(): string {
 /** Whether an ingest credential is already configured on this machine. */
 export function hasIngestCredential(): boolean {
   return existsSync(ingestPath());
+}
+
+/**
+ * The stored ingest credential, or null.
+ *
+ * Malformed JSON reads as absent rather than throwing: this is called from
+ * `--status`, and a status command that crashes on a corrupt file is worse
+ * than one reporting the capability as unconfigured — which, given the daemon
+ * cannot read it either, is the truth.
+ */
+export function readIngestCredential(): IngestCredential | null {
+  try {
+    const raw = JSON.parse(readFileSync(ingestPath(), "utf8")) as Partial<IngestCredential>;
+    if (typeof raw.url !== "string" || typeof raw.key !== "string") return null;
+    if (!raw.url || !raw.key) return null;
+    return { url: raw.url, key: raw.key };
+  } catch {
+    return null;
+  }
+}
+
+/** Remove the ingest credential. Returns whether a file was actually removed. */
+export function clearIngestCredential(): boolean {
+  try {
+    rmSync(ingestPath());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

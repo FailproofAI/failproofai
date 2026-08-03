@@ -5,20 +5,34 @@ import { resolve } from "node:path";
 
 import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "../../src/hooks/cloud-enrollment-cli";
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
+import { readIngestCredential } from "../../src/hooks/collector-config";
+import { readHooksConfig } from "../../src/hooks/hooks-config";
 
 let dir: string;
+let realHome: string | undefined;
 const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, generation: 12 }));
+const ingestOk = vi.fn(async () => ({ ok: true as const }));
 
 beforeEach(() => {
   dir = mkdtempSync(resolve(tmpdir(), "fpai-enrollcli-"));
   process.env.FAILPROOFAI_CLOUD_CREDENTIALS = resolve(dir, "cloud.json");
+  process.env.FAILPROOFAI_HOME = resolve(dir, "home");
+  // `--connect` now also writes the collector block, and that path resolves
+  // through `homedir()` rather than FAILPROOFAI_HOME — so without this the
+  // suite would edit the real `~/.failproofai/policies-config.json`.
+  realHome = process.env.HOME;
+  process.env.HOME = resolve(dir, "home");
   delete process.env.FAILPROOFAI_CLOUD_URL;
   ok.mockClear();
+  ingestOk.mockClear();
 });
 
 afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+  delete process.env.FAILPROOFAI_HOME;
   delete process.env.FAILPROOFAI_CLOUD_URL;
+  if (realHome === undefined) delete process.env.HOME;
+  else process.env.HOME = realHome;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -26,6 +40,9 @@ const base = {
   url: "https://be.failproof.ai",
   token: "a-machine-token",
   verify: ok,
+  // Stubbed for the same reason `verify` is: a real call would reach the
+  // network from a unit test.
+  verifyIngest: ingestOk,
   daemonStatus: () => "running" as const,
 };
 
@@ -156,5 +173,147 @@ describe("a daemon running outside the service manager", () => {
     } finally {
       delete process.env.FAILPROOFAI_DAEMON_SOCKET;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// One connection, two capabilities
+//
+// Enrolment and collection each arrived with their own credential, URL and
+// setup step. Connecting for policy then left the dashboard empty with nothing
+// to suggest a second step existed.
+// ---------------------------------------------------------------------------
+
+describe("--connect configures policy AND the dashboard", () => {
+  it("writes both credentials from one url and token", async () => {
+    const r = await runConnectCommand({ ...base, machineId: "m-1" });
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()).not.toBeNull();
+    expect(readIngestCredential()).toEqual({
+      url: "https://be.failproof.ai/events",
+      key: "a-machine-token",
+    });
+    // The ingest endpoint is DERIVED, never asked for separately.
+    expect(ingestOk).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://be.failproof.ai/events" }),
+    );
+  });
+
+  it("does not send transcripts unless asked, and says so", async () => {
+    // A transcript carries prompts, file contents and whatever was pasted into
+    // a terminal. It can never be a side effect of connecting.
+    const r = await runConnectCommand({ ...base, machineId: "m-1" });
+    expect(readHooksConfig().collector).toMatchObject({ hooks: true, sessions: false });
+    expect(r.lines.join("\n")).toMatch(/transcripts are NOT being sent/i);
+  });
+
+  it("sends transcripts when explicitly opted in", async () => {
+    await runConnectCommand({ ...base, machineId: "m-1", sessions: true });
+    expect(readHooksConfig().collector).toMatchObject({ sessions: true });
+  });
+
+  it("accepts the ingest endpoint too, rather than being pedantic about it", async () => {
+    // People paste what the older prompt asked for, or what is already in
+    // their ingest.json.
+    const r = await runConnectCommand({
+      ...base,
+      url: "https://be.failproof.ai/events",
+      machineId: "m-1",
+    });
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()?.url).toBe("https://be.failproof.ai");
+    expect(readIngestCredential()?.url).toBe("https://be.failproof.ai/events");
+  });
+});
+
+describe("a key that carries only one permission", () => {
+  it("connects for policy and names why the dashboard is empty", async () => {
+    const verifyIngest = vi.fn(async () => ({
+      ok: false as const,
+      reason: "the server rejected that key (403)",
+    }));
+    const r = await runConnectCommand({ ...base, verifyIngest, machineId: "m-1" });
+
+    // Partial success, not failure: refusing to enrol for policy because the
+    // dashboard would be empty protects nothing.
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()).not.toBeNull();
+    expect(readIngestCredential()).toBeNull();
+    const out = r.lines.join("\n");
+    expect(out).toMatch(/for policy only/);
+    expect(out).toMatch(/403/);
+    expect(out).toMatch(/events:add/);
+  });
+
+  it("connects for the dashboard and says policy will not arrive", async () => {
+    const verify = vi.fn(async () => ({ ok: false as const, reason: "lacks policies:pull (403)" }));
+    const r = await runConnectCommand({ ...base, verify, machineId: "m-1" });
+
+    // Non-zero even though the dashboard IS configured: the exit code tracks
+    // the primary purpose, so a provisioning script stops rather than treating
+    // an unenrolled machine as done.
+    expect(r.exitCode).toBe(1);
+    expect(readCloudCredentials()).toBeNull();
+    expect(readIngestCredential()).not.toBeNull();
+    const out = r.lines.join("\n");
+    expect(out).toMatch(/dashboard reporting only/);
+    expect(out).toMatch(/will not receive centrally-managed/);
+  });
+
+  it("fails, writing nothing, when neither works", async () => {
+    const verify = vi.fn(async () => ({ ok: false as const, reason: "bad token" }));
+    const verifyIngest = vi.fn(async () => ({ ok: false as const, reason: "bad key" }));
+    const r = await runConnectCommand({ ...base, verify, verifyIngest, machineId: "m-1" });
+    expect(r.exitCode).toBe(1);
+    expect(readCloudCredentials()).toBeNull();
+    expect(readIngestCredential()).toBeNull();
+  });
+
+  it("reports BOTH reasons, so one fix does not just reveal the next", async () => {
+    const verify = vi.fn(async () => ({ ok: false as const, reason: "bad token" }));
+    const verifyIngest = vi.fn(async () => ({ ok: false as const, reason: "bad key" }));
+    const r = await runConnectCommand({ ...base, verify, verifyIngest, machineId: "m-1" });
+    expect(r.lines.join("\n")).toMatch(/bad token/);
+    expect(r.lines.join("\n")).toMatch(/bad key/);
+  });
+});
+
+describe("--disconnect means disconnect", () => {
+  it("stops sending activity as well as pulling policy", async () => {
+    // Clearing only the policy credential would leave the machine shipping to
+    // a cloud the user believes they have left.
+    await runConnectCommand({ ...base, machineId: "m-1" });
+    expect(readIngestCredential()).not.toBeNull();
+
+    const r = runDisconnectCommand();
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()).toBeNull();
+    expect(readIngestCredential()).toBeNull();
+    expect(r.lines.join("\n")).toMatch(/stop being sent/);
+  });
+});
+
+describe("status shows one connection with two capabilities", () => {
+  it("flags a machine that pulls policy but reports nothing", async () => {
+    const verifyIngest = vi.fn(async () => ({ ok: false as const, reason: "403" }));
+    await runConnectCommand({ ...base, verifyIngest, machineId: "m-1" });
+    const out = connectionStatusLines(() => "running").join("\n");
+    expect(out).toMatch(/Dashboard NOT sending/);
+    expect(out).toMatch(/--connect/);
+  });
+
+  it("flags a machine that reports but pulls no policy", async () => {
+    const verify = vi.fn(async () => ({ ok: false as const, reason: "403" }));
+    await runConnectCommand({ ...base, verify, machineId: "m-1" });
+    const out = connectionStatusLines(() => "running").join("\n");
+    expect(out).toMatch(/reporting only/);
+    expect(out).toMatch(/Policy\s+NOT pulling/);
+  });
+
+  it("shows both when both are configured", async () => {
+    await runConnectCommand({ ...base, machineId: "m-1" });
+    const out = connectionStatusLines(() => "running").join("\n");
+    expect(out).toMatch(/Policy\s+pulling/);
+    expect(out).toMatch(/Dashboard sending hook activity/);
   });
 });

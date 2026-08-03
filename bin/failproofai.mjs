@@ -772,13 +772,22 @@ WHAT IT DOES
 FAILPROOF CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
                                     Connect this machine to Failproof Cloud
-  failproofai config --disconnect   Stop pulling cloud-managed policies
+                                    [--send-transcripts] also send full session transcripts
+  failproofai config --disconnect   Stop pulling policy and sending activity
   failproofai config --status       Show connection and pause state
 
-  The token is stored owner-only in ~/.failproofai/cloud.json, never in the
-  service unit — that file is world-readable. Connecting needs no sudo, and
-  the machine id defaults to this host's name. Credentials are checked
-  against the server before anything is written.
+  One connection, two capabilities: this machine PULLS centrally-managed
+  policies and SENDS what its hooks decided, so the dashboard shows the fleet
+  it is enforcing on. Both are checked against the server before anything is
+  written, and reported separately — a key carrying policies:pull but not
+  events:add connects for policy and says exactly why the dashboard is empty.
+
+  Tokens are stored owner-only in ~/.failproofai/, never in the service unit —
+  that file is world-readable. Connecting needs no sudo, and the machine id
+  defaults to this host's name.
+
+  Session transcripts carry prompts, file contents and whatever was pasted into
+  a terminal, so they are NEVER sent unless --send-transcripts is passed.
 
 PAUSING ENFORCEMENT (one session, always time-boxed)
   failproofai config --pause         Pause this directory's newest agent session (30m)
@@ -831,6 +840,10 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
           token: valueAfter("--token"),
           machineId: valueAfter("--machine-id"),
           defaultMachineId: hostname(),
+          // Opt-in only. A transcript carries prompts, file contents and
+          // whatever was pasted into a terminal, so it can never be a side
+          // effect of connecting.
+          sessions: args.includes("--send-transcripts"),
         });
       }
       for (const line of result.lines) {

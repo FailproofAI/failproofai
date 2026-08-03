@@ -13,7 +13,7 @@
  * install/uninstall manager and the existing searchable policy picker.
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { resolve, sep } from "node:path";
 
 import {
@@ -54,6 +54,12 @@ import {
   setDaemonConfigured,
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
+import {
+  readCloudCredentials,
+  verifyCloudCredentials,
+  writeCloudCredentials,
+} from "./cloud-enrollment";
+import { cloudBaseFor, ingestUrlFor } from "./cloud-connection";
 
 export interface WizardIO {
   stdin?: TTYIn;
@@ -708,26 +714,65 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     if (send === null) return cancel();
 
     if (send === "yes") {
-      const url = await promptText({
-        message: "Ingest endpoint",
-        defaultValue: DEFAULT_INGEST_URL,
-        hint: "Enter for the hosted endpoint",
-        validate: (v) => (/^https?:\/\//.test(v) ? null : "must be an http(s) URL"),
-        stdin,
-        stdout,
-      });
-      if (url === null) return cancel();
+      // If this machine is ALREADY enrolled with Failproof Cloud, it has a URL
+      // and a token that usually work for both capabilities. Asking for them
+      // again is the seam that made connecting feel like two products: someone
+      // runs `--connect`, sees an empty dashboard, and has no reason to think a
+      // second credential exists. Offer what we already know, and let it be
+      // overridden.
+      const existing = readCloudCredentials();
+      let url: string | null = null;
+      let key: string | null = null;
 
-      const key = await promptText({
-        message: "events:add API key",
-        // Masked: setup is routinely run while screen-sharing, and a pasted key
-        // would otherwise sit in the scrollback of every recording.
-        mask: true,
-        validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
-        stdin,
-        stdout,
-      });
-      if (key === null) return cancel();
+      if (existing) {
+        const reuse = await selectOne<"reuse" | "other">({
+          message: `Use this machine's existing connection to ${existing.url}?`,
+          choices: [
+            {
+              label: `Yes — reuse it`,
+              value: "reuse",
+              hint: `as ${existing.machineId}, same token`,
+            },
+            { label: "No — use a different endpoint and key", value: "other", hint: "" },
+          ],
+          stdin,
+          stdout,
+        });
+        if (reuse === null) return cancel();
+        if (reuse === "reuse") {
+          url = ingestUrlFor(existing.url);
+          key = existing.token;
+        }
+      }
+
+      if (url === null) {
+        const entered = await promptText({
+          message: "Failproof Cloud URL",
+          defaultValue: cloudBaseFor(DEFAULT_INGEST_URL),
+          hint: "Enter for the hosted endpoint",
+          validate: (v) => (/^https?:\/\//.test(v) ? null : "must be an http(s) URL"),
+          stdin,
+          stdout,
+        });
+        if (entered === null) return cancel();
+        // Asked for as a base and derived, so this and `--connect` take the
+        // same thing. Someone pasting the older `/events` endpoint still works.
+        url = ingestUrlFor(cloudBaseFor(entered));
+      }
+
+      if (key === null) {
+        key = await promptText({
+          message: "API key",
+          hint: "needs events:add",
+          // Masked: setup is routinely run while screen-sharing, and a pasted key
+          // would otherwise sit in the scrollback of every recording.
+          mask: true,
+          validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
+          stdin,
+          stdout,
+        });
+        if (key === null) return cancel();
+      }
 
       // Check BEFORE writing anything. A typo'd key is otherwise only
       // discovered later as a silent pile of 401s parked in failed/, which
@@ -772,6 +817,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         });
         if (sessions === null) return cancel();
         collector = { cred: { url, key }, sessions: sessions === "both" };
+
+        // The other half of the same connection. If this machine is not
+        // enrolled for policy and the key turns out to carry `policies:pull`,
+        // enrol it here rather than making the user discover a second command.
+        // Silent when the key lacks the permission — an events-only key is a
+        // perfectly reasonable thing to have, and a warning about a capability
+        // nobody asked for is noise.
+        if (!readCloudCredentials()) {
+          const base = cloudBaseFor(url);
+          const machineId = hostname();
+          const enrol = await verifyCloudCredentials({ url: base, machineId, token: key });
+          if (enrol.ok) {
+            writeCloudCredentials({ url: base, machineId, token: key });
+            stdout.write(
+              `Also connected for cloud-managed policy (${enrol.policyCount} assigned, generation ${enrol.generation}).\n`,
+            );
+          }
+        }
       }
     }
   }

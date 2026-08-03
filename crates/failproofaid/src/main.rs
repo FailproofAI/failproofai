@@ -134,17 +134,56 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         return Vec::new();
     }
 
+    // `is_enabled()` already established there is one.
+    let Some(ingest) = cfg.ingest.clone() else {
+        return Vec::new();
+    };
+
+    let uploader = match fpai_collect::Uploader::new(
+        ingest.url.clone(),
+        ingest.key.clone(),
+        cfg.failed_dir.clone(),
+    ) {
+        Ok(u) => std::sync::Arc::new(u),
+        Err(err) => {
+            eprintln!("[failproofaid] collector disabled: {err}");
+            return Vec::new();
+        }
+    };
+
     eprintln!(
         "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
-        cfg.settings.sessions,
-        cfg.settings.hooks,
-        cfg.settings.hooks_verbosity,
-        cfg.ingest.as_ref().map(|i| i.url.as_str()).unwrap_or("-"),
+        cfg.settings.sessions, cfg.settings.hooks, cfg.settings.hooks_verbosity, ingest.url,
     );
 
-    // Sources land in the phases that follow; the credential, spool layout and
-    // supervision they all depend on are what this stage establishes.
-    Vec::new()
+    // One `Delivery` shared by both tasks, so they share an upload semaphore
+    // and an in-flight set. Separate ones would let the watcher and a
+    // concurrent sweep POST the same batch twice.
+    let delivery = std::sync::Arc::new(fpai_collect::Delivery::new(uploader));
+
+    let watch_delivery = delivery.clone();
+    let watch_dirs = cfg.spool_dirs.clone();
+    let sweep_delivery = delivery;
+    let sweep_dirs = cfg.spool_dirs.clone();
+    let failed_dir = cfg.failed_dir.clone();
+
+    vec![
+        // Latency: delivers a batch within milliseconds of it being published.
+        fpai_collect::TaskSpec::new("spool-watcher", move |sd| {
+            fpai_collect::delivery::watch(watch_delivery.clone(), watch_dirs.clone(), sd)
+        }),
+        // Guarantee: delivers anything the watcher never saw — published while
+        // the daemon was stopped, or on a filesystem with no event support —
+        // and retries parked batches on a much slower cadence.
+        fpai_collect::TaskSpec::new("spool-sweeper", move |sd| {
+            fpai_collect::delivery::sweep(
+                sweep_delivery.clone(),
+                sweep_dirs.clone(),
+                failed_dir.clone(),
+                sd,
+            )
+        }),
+    ]
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

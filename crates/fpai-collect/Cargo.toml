@@ -20,6 +20,10 @@ tracing = "0.1"
 # dependency that only breaks on the leg nobody tests. `failproofaid` already
 # depends on reqwest with the same TLS backend, so this adds no new C code.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# inotify on Linux, FSEvents on macOS. Only ever a latency optimisation — the
+# sweeper is what guarantees delivery, so a watcher that fails to register
+# degrades to interval-only rather than losing anything.
+notify = "8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }

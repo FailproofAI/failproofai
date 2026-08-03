@@ -12,11 +12,13 @@
 //! shutdown. Everything else is internal.
 
 pub mod config;
+pub mod delivery;
 pub mod spool;
 pub mod supervisor;
 pub mod uploader;
 
 pub use config::{CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings};
+pub use delivery::Delivery;
 pub use spool::SpoolWriter;
 pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,

@@ -87,6 +87,17 @@ pub struct Shutdown {
 }
 
 impl Shutdown {
+    /// Build one directly from a daemon flag, for tests and for callers that
+    /// drive a task outside the supervisor. Production code receives this from
+    /// the supervisor instead, which is why the fields stay private.
+    #[doc(hidden)]
+    pub fn for_test(daemon: Arc<AtomicBool>) -> Self {
+        Shutdown {
+            daemon,
+            collector: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     /// True once either the daemon or the collector has been asked to stop.
     pub fn is_set(&self) -> bool {
         self.daemon.load(Ordering::Relaxed) || self.collector.load(Ordering::Relaxed)

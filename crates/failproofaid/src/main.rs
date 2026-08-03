@@ -43,9 +43,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let warm_worker = worker.clone();
         std::thread::spawn(move || warm_worker.warm());
     }
-    let srv = server::Server::bind(&socket_path, worker)?;
-    eprintln!("[failproofaid] listening on {}", socket_path.display());
-
+    // The shutdown flag and its signal handler are installed BEFORE anything
+    // long-running starts, so the collector below can observe the same flag
+    // the socket server does. One SIGTERM then stops both; a second signal
+    // path would be one more thing to get wrong during shutdown.
     let shutdown = Arc::new(AtomicBool::new(false));
     install_signal_handler(shutdown.clone());
 
@@ -71,9 +72,43 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         ),
     };
 
-    srv.run_until(shutdown)?;
+    // Log/hook collection. Runs on its own thread with its own Tokio runtime
+    // so it can never share fate with the accept loop — this daemon fails
+    // closed, so a collector fault would otherwise deny every tool call on the
+    // machine (see fpai_collect::supervisor). It observes the same `shutdown`
+    // flag the server and the cloud monitor do, so one SIGTERM stops all three.
+    //
+    // INERT until ingest is configured: `collector_tasks()` returns an empty
+    // list, `spawn_supervised` then declines to start a thread or a runtime at
+    // all, and the daemon behaves byte-for-byte as it did before this existed.
+    let collector = fpai_collect::spawn_supervised(collector_tasks(), shutdown.clone());
+
+    let srv = server::Server::bind(&socket_path, worker)?;
+    eprintln!("[failproofaid] listening on {}", socket_path.display());
+
+    let run_result = srv.run_until(shutdown);
+
+    // Drain both background workers before returning. The collector gets a
+    // bounded budget rather than an unbounded join: process exit must not wait
+    // on a task that has wedged. Done before `?` so a server error still gets
+    // the collector a chance to flush instead of dropping buffered events.
+    if let Some(collector) = collector {
+        collector.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+    }
     let _ = cloud_monitor.join();
+
+    run_result?;
     Ok(())
+}
+
+/// The collector tasks to supervise for this process.
+///
+/// Empty until the ingest configuration lands, which is what keeps the
+/// collector inert on every machine for now: an empty list means no thread and
+/// no runtime, so an un-opted-in install pays nothing at all for this code
+/// path existing.
+fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
+    Vec::new()
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

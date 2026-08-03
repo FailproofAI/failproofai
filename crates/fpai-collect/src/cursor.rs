@@ -34,8 +34,64 @@ const SCHEMA: u32 = 1;
 
 const CURSOR_FILE: &str = "cursors.json";
 
-/// Where one file has been read up to.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+/// State a format carries from one line to the next within a session.
+///
+/// Persisted with the cursor rather than held in memory, so a resumed read
+/// reproduces byte-identical events — which is what lets the server's
+/// content-hash dedup collapse a re-read instead of storing it twice.
+///
+/// Fields are format-specific but live here because the cursor is what makes
+/// them durable. A format that carries no state leaves them all unset.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct TailState {
+    /// Model of the most recent assistant turn. A user line carries none and
+    /// inherits it, so without this the first prompt of a session renders with
+    /// no model at all.
+    pub last_model: Option<String>,
+    /// The last message id whose token usage was already attributed.
+    ///
+    /// One API response is written across several lines that each repeat the
+    /// SAME usage object, so counting per line inflates token totals several
+    /// times over. Gating on the group id is cross-line state, but of the safe
+    /// kind: persisted here, so a resumed read holds the same value at the same
+    /// offset as a full re-read would.
+    pub last_usage_message_id: Option<String>,
+    /// In-flight `tool_use` id → tool name.
+    ///
+    /// A tool result names no tool, and the server builds a result row's
+    /// summary from the tool name alone — so without this every tool result is
+    /// a blank row. A `Vec` rather than a map because eviction has to be
+    /// deterministic AND drop the oldest first; a map keyed by random ids would
+    /// evict in an order unrelated to age.
+    pub pending_tools: Vec<(String, String)>,
+}
+
+/// Most in-flight tool calls remembered per session. Bounds the cursor file
+/// when a transcript has calls that never produce a result.
+pub const MAX_PENDING_TOOLS: usize = 64;
+
+impl TailState {
+    pub fn remember_tool(&mut self, id: String, name: String) {
+        if self.pending_tools.iter().any(|(i, _)| *i == id) {
+            return;
+        }
+        self.pending_tools.push((id, name));
+        if self.pending_tools.len() > MAX_PENDING_TOOLS {
+            self.pending_tools.remove(0);
+        }
+    }
+
+    pub fn tool_name(&self, id: &str) -> Option<&str> {
+        self.pending_tools
+            .iter()
+            .find(|(i, _)| i == id)
+            .map(|(_, n)| n.as_str())
+    }
+}
+
+/// Where one file has been read up to, and what the format knows about it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FileCursor {
     /// Last known path. Compared on resume to catch inode reuse; not the key.
     pub path: PathBuf,
@@ -46,6 +102,36 @@ pub struct FileCursor {
     pub offset: u64,
     /// File size when the offset was last advanced. Used to detect truncation.
     pub size_seen: u64,
+
+    // Everything below is `serde(default)` so adding a field needs no SCHEMA
+    // bump: an older cursor file simply reads them as unset, which is the same
+    // state a freshly-discovered file starts in.
+    /// Identity stamped on every event from this file. Immutable once set, so
+    /// it cannot drift mid-session.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    /// Whether this session's `agent_start` has been emitted.
+    ///
+    /// Load-bearing: the server selects sessions on `agent_start`, so a session
+    /// without one is not merely incomplete, it is absent from the product
+    /// entirely — and `agent_end` is gated on the same flag, so it never ends
+    /// either.
+    #[serde(default)]
+    pub agent_start_emitted: bool,
+    /// Whether `agent_end` has been emitted. Cleared if the file grows again,
+    /// so a resumed session can end a second time rather than freezing.
+    #[serde(default)]
+    pub ended: bool,
+    /// Most recent timestamp seen, which `agent_end` is derived from.
+    #[serde(default)]
+    pub last_ts: Option<String>,
+    /// Length of the file's first line, for formats that rewrite it in place.
+    #[serde(default)]
+    pub first_line_len: Option<u64>,
+    #[serde(default)]
+    pub state: TailState,
 }
 
 impl FileCursor {
@@ -259,6 +345,7 @@ mod tests {
             inode,
             offset,
             size_seen: offset,
+            ..Default::default()
         }
     }
 

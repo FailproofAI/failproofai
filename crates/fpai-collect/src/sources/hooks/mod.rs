@@ -227,6 +227,10 @@ async fn poll_once(
             inode,
             offset: offset + usable.len() as u64,
             size_seen: size,
+            // The hook store is a flat row log, not a session transcript: it
+            // has no per-session lifecycle and carries no cross-line state, so
+            // every field the tailing engine uses stays at its default here.
+            ..Default::default()
         });
     }
 

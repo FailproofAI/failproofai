@@ -14,6 +14,7 @@
 pub mod config;
 pub mod cursor;
 pub mod delivery;
+pub mod filetail;
 pub mod sources;
 pub mod spool;
 pub mod supervisor;

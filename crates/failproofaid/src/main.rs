@@ -211,6 +211,39 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         }));
     }
 
+    if cfg.settings.sessions {
+        // Claude Code transcripts. Gated on the `sessions` opt-in because
+        // unlike hook activity these carry prompts, file contents and whatever
+        // was pasted into a terminal.
+        let roots = vec![claude_projects_root()];
+        let spool_dir = cfg.own_spool_dir.clone();
+        let state_dir = home.join("cursors").join("claude");
+        let environment = cfg.settings.environment.clone();
+        tasks.push(fpai_collect::TaskSpec::new("claude-sessions", move |sd| {
+            fpai_collect::filetail::run(
+                fpai_collect::filetail::Spec {
+                    format: fpai_collect::sources::claude::FORMAT,
+                    roots: roots.clone(),
+                    spool_dir: spool_dir.clone(),
+                    state_dir: state_dir.clone(),
+                    poll_interval: std::time::Duration::from_secs(2),
+                    params: fpai_collect::filetail::Params {
+                        agent_id: fpai_collect::sources::claude::DEFAULT_AGENT_ID.into(),
+                        environment: environment.clone(),
+                        end_idle_mins: 10,
+                        max_read_bytes: 32 * 1024 * 1024,
+                        max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
+                        // Never the whole history by default: this machine has
+                        // 548 MB of Claude transcripts, and shipping all of it
+                        // on first start is not a reasonable default.
+                        since_days: Some(7),
+                    },
+                },
+                sd,
+            )
+        }));
+    }
+
     tasks.extend([
         // Latency: delivers a batch within milliseconds of it being published.
         fpai_collect::TaskSpec::new("spool-watcher", move |sd| {
@@ -230,6 +263,21 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     ]);
 
     tasks
+}
+
+/// Where Claude Code keeps its transcripts.
+///
+/// `CLAUDE_PROJECTS_PATH` overrides it, matching the env var the TypeScript
+/// side already honours, so a machine that has moved the directory is captured
+/// by both halves rather than one.
+fn claude_projects_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("CLAUDE_PROJECTS_PATH") {
+        return std::path::PathBuf::from(p);
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".claude").join("projects")
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

@@ -922,34 +922,64 @@ privileges: `systemctl status failproofaid@<user>`, exposed as `daemonStatusComm
 
 ### How the daemon binary reaches users
 
-The npm package ships **no binary** — one tarball serves every platform. The four
-cross-compiled binaries are **GitHub Release assets** (`failproofaid-<os>-<arch>.gz` plus a
-`SHA256SUMS` manifest), and `src/hooks/daemon-download.ts` fetches the one matching this
-CLI's own version into `~/.failproofai/bin/failproofaid-<version>`, verifying the SHA-256
-**before** decompressing and installing via an atomic rename (a versioned filename avoids
-`ETXTBSY` against a running daemon, and stops an upgrade from repointing a live service
-unit at a binary built from different source).
+The CLI tarball itself carries no binary — one tarball serves every platform — but the
+binary reaches a machine through **two** channels, and `ensureFailproofaidBinary()` in
+`daemon-service.ts` tries them in this order:
 
-The URL is *constructed* from `package.json`'s version, never discovered — no API call, no
-`releases/latest` redirect, no rate limit, and no way to end up with a daemon built from
-different source than the CLI talking to it. `publish.yml` therefore attaches the assets
-**before** it publishes to npm; reverse that and the package ships pointing at a tag whose
-binaries do not exist yet.
+**1. npm, as an optional dependency.** The four binaries publish as
+`@failproofai/failproofaid-<os>-<arch>` packages with `os`/`cpu` set, pinned in the root
+package's `optionalDependencies`, so `npm install failproofai` already brought down the one
+matching this machine and skipped the other three. `installFromNpmPackage()` copies it into
+place with no network at all — the only channel that works air-gapped or behind a proxy
+that blocks github.com. `npmPlatformBinaryPath()` anchors resolution at
+`FAILPROOFAI_PACKAGE_ROOT` (**not** `import.meta.url`, which does not survive the CJS
+bundle) and uses a **computed** specifier, or the bundler would try to resolve a package
+that is optional and absent on three machines out of four at build time.
 
-Only the install path (`failproofai config`, global scope) downloads.
+**2. The GitHub Release asset.** `failproofaid-<os>-<arch>.gz` plus a `SHA256SUMS` manifest,
+which `daemon-download.ts` fetches for this CLI's own version, verifying the SHA-256
+**before** decompressing. Covers installs that skipped optional dependencies, tarballs
+installed from disk, and anyone installing the daemon standalone. The URL is *constructed*
+from `package.json`'s version, never discovered — no API call, no `releases/latest`
+redirect, no rate limit, and no way to end up with a daemon built from different source than
+the CLI talking to it.
+
+Both channels land the file at `~/.failproofai/bin/failproofaid-<version>` through the same
+`installBinaryBytes()` — atomic rename, mode 0755, versioned filename (which avoids
+`ETXTBSY` against a running daemon and stops an upgrade from repointing a live service unit
+at a binary built from different source). **`ExecStart` never points into `node_modules`**:
+an `npm i -g failproofai@next` would silently swap the file under a running service, and an
+uninstall would delete it out from under an enabled unit that then crash-loops at every boot.
+
+Ordering in `publish.yml` is load-bearing in two places, both guarded by
+`__tests__/ci/release-pipeline.test.ts`: the four platform packages publish **before** the
+root package that pins them (an `optionalDependency` npm cannot resolve is a 404 in every
+install), and the release assets attach **before** the npm publish (or the package ships
+pointing at a tag whose binaries do not exist yet). `scripts/build-daemon-packages.mjs`
+generates and publishes the platform packages and writes the pins in the same invocation —
+they are injected at publish time, never committed, so a pin can never name a version that
+was not published and this repo's own `bun install --frozen-lockfile` keeps working.
+
+This is the second attempt at the npm half. The first shipped the pins and never published
+anything behind them (the daemon PR never touched `publish.yml`), so every install resolved
+four 404s — which is why the publish script **fails the release** rather than warning when a
+platform package cannot be published, and why the ordering above is a test rather than a
+convention.
+
+Only the install path (`failproofai config`, global scope) does any of this.
 `resolveFailproofaidBinaryPath()` is a pure disk check — env override →
 `~/.failproofai/bin/failproofaid-<version>` → a locally-built `target/{release,debug}`
 binary — so the hook path can never block on the network. Two escape hatches:
 `FAILPROOFAI_NO_DOWNLOAD=1` (air-gapped: fail with a reason instead of reaching out, while
-an already-installed binary keeps working) and `FAILPROOFAI_DAEMON_BASE_URL` (an internal
-mirror, and what the tests point at a local HTTP server).
+an already-installed binary keeps working — it gates *fetching*, not the npm copy) and
+`FAILPROOFAI_DAEMON_BASE_URL` (an internal mirror, and what the tests point at a local HTTP
+server).
 
-An earlier design shipped `@failproofai/failproofaid-<os>-<arch>` optional platform
-packages instead. It was removed before release: the four packages were declared as
-`optionalDependencies` but nothing ever published them (the daemon PR never touched
-`publish.yml`), so every install resolved four 404s — and the release assets have to exist
-for standalone installs regardless, so npm would have been a second channel to keep in
-sync with the first.
+The release also carries `failproofai-<version>.tgz`, the CLI's own npm tarball, packed by
+the `cli-tarball` job at the version being published and covered by the same `SHA256SUMS`.
+It is how you install the CLI without the registry (`npm i -g ./failproofai-<version>.tgz`),
+and it is attached on every release — that job is deliberately **not** gated on
+`has_daemon`.
 
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
@@ -1051,11 +1081,16 @@ src/hooks/
                               below, and the awaitTelemetryFlush note in handler.ts for
                               a bug class that silently blew through the budget even
                               when warm
-  daemon-download.ts         Fetches the release asset for this version into
-                              ~/.failproofai/bin, SHA-256 verified before it is
-                              decompressed and atomically renamed into place. Never
-                              throws; FAILPROOFAI_NO_DOWNLOAD / FAILPROOFAI_DAEMON_BASE_URL
-                              opt out or redirect it
+  daemon-download.ts         Both channels that put the binary on disk, sharing one
+                              installBinaryBytes() (atomic rename, 0755):
+                              installFromNpmPackage() copies it out of the
+                              @failproofai/failproofaid-<os>-<arch> optional dependency
+                              (no network — the air-gapped path), and
+                              downloadFailproofaidBinary() fetches the release asset for
+                              this version, SHA-256 verified before it is decompressed.
+                              Never throws; FAILPROOFAI_NO_DOWNLOAD /
+                              FAILPROOFAI_DAEMON_BASE_URL opt out of or redirect the
+                              download only
   daemon-service.ts          installDaemonService()/uninstallDaemonService()/
                               daemonServiceStatus()/setDaemonConfigured() — SYSTEM-scope
                               systemd unit (/etc/systemd/system/failproofaid@<user>
@@ -1092,8 +1127,10 @@ crates/failproofaid/           The daemon binary — socket server + service lif
   src/server.rs                Unix socket accept loop, relays Hook requests to the worker
   src/paths.rs                  ~/.failproofai/run/ layout (socket, worker socket, lock)
   src/lock.rs                    Non-blocking flock() singleton guard
-                              (the four compiled binaries are GitHub Release assets, not
-                              npm packages — see "How the daemon binary reaches users")
+                              (the four compiled binaries ship BOTH as
+                              @failproofai/failproofaid-<os>-<arch> npm packages and as
+                              GitHub Release assets — see "How the daemon binary reaches
+                              users")
 __tests__/                   Unit + e2e tests (vitest)
 examples/                    Sample custom policy files
 ```

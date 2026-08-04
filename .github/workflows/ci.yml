@@ -55,11 +55,16 @@ jobs:
               MISMATCH=1
             fi
           done
-          # The daemon binaries ship as GitHub Release assets rather than npm
-          # platform packages, so there are no optionalDependencies to keep in
-          # step — but the Cargo version still has to match, because the
-          # release tag the CLI builds its download URL from is the npm
-          # version, and the binary at that URL reports the Cargo one.
+          # The daemon binaries DO ship as npm platform packages
+          # (@failproofai/failproofaid-<os>-<arch>), but their pins are injected
+          # into package.json at publish time by
+          # scripts/build-daemon-packages.mjs — the same invocation that
+          # publishes them, so they cannot drift — and are deliberately absent
+          # from the committed tree. Nothing to check here.
+          #
+          # The Cargo version still has to match, because the release tag the
+          # CLI builds its download URL from is the npm version, and the binary
+          # at that URL reports the Cargo one.
           # Check the Cargo workspace version (failproofaid) against root package.json
           if [ -f Cargo.toml ]; then
             CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')

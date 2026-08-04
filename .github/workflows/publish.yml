@@ -165,34 +165,117 @@ jobs:
     if: needs.preflight.outputs.has_daemon == 'true'
     uses: ./.github/workflows/build-daemon.yml
 
-  # Attaches the binaries + their checksums to the GitHub Release BEFORE npm
-  # publishes, because that release is where the installed CLI fetches its
-  # daemon from.
+  # The CLI's own installable artifact. Deliberately NOT gated on has_daemon:
+  # a release should carry an installable `failproofai` whether or not that ref
+  # builds a daemon, and this is the only way to install the CLI without the
+  # npm registry (`npm i -g ./failproofai-<version>.tgz`).
+  cli-tarball:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 5
+          command: bun install --frozen-lockfile
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      # The tarball has to be packed at the version being published, not at
+      # whatever the ref happens to carry — a release from a tag bumps the
+      # version in the publish job, and an asset named for a different version
+      # than it contains is worse than no asset.
+      - name: Set publish version in package.json
+        if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+        run: npm version "$PUBLISH_VERSION" --no-git-tag-version
+
+      - name: Build
+        run: bun run build
+
+      - name: Pack the CLI tarball
+        run: |
+          # --ignore-scripts: the build above already ran, and `prepare` would
+          # fire a second full Next.js build for nothing.
+          npm pack --ignore-scripts
+          ls -l failproofai-*.tgz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: failproofai-tarball
+          path: failproofai-*.tgz
+          if-no-files-found: error
+
+  # Attaches the daemon binaries, the CLI tarball and their checksums to the
+  # GitHub Release BEFORE npm publishes, because that release is where an
+  # installed CLI fetches its daemon from when npm did not supply one.
   release-assets:
-    needs: [preflight, daemon]
-    if: needs.preflight.outputs.has_daemon == 'true'
+    needs: [preflight, daemon, cli-tarball]
+    # `daemon` is skipped on a ref with no Rust workspace, which must still
+    # attach the CLI tarball — but a daemon FAILURE has to stop the release,
+    # and a skipped dependency is what a failed one leaves behind.
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.cli-tarball.result == 'success' &&
+      (needs.daemon.result == 'success' || needs.daemon.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
+        if: needs.preflight.outputs.has_daemon == 'true'
         with:
           pattern: failproofaid-*
           path: release-assets
           merge-multiple: true
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: failproofai-tarball
+          path: release-assets
+
       - name: Assemble SHA256SUMS
         working-directory: release-assets
+        env:
+          HAS_DAEMON: ${{ needs.preflight.outputs.has_daemon }}
         run: |
-          sha256sum failproofaid-*.gz > SHA256SUMS
-          cat SHA256SUMS
-          # The CLI refuses to install a binary it cannot match to a checksum,
-          # so a short list here is a broken release, not a partial one.
-          COUNT=$(grep -c . SHA256SUMS)
-          if [ "$COUNT" -ne 4 ]; then
-            echo "::error::Expected 4 platform binaries, found $COUNT"
+          : > SHA256SUMS
+          if [ "$HAS_DAEMON" = "true" ]; then
+            sha256sum failproofaid-*.gz >> SHA256SUMS
+            # The CLI refuses to install a binary it cannot match to a checksum,
+            # so a short list here is a broken release, not a partial one.
+            COUNT=$(grep -c . SHA256SUMS)
+            if [ "$COUNT" -ne 4 ]; then
+              echo "::error::Expected 4 platform binaries, found $COUNT"
+              exit 1
+            fi
+          fi
+          # Attached on every release, daemon or not.
+          if ! ls failproofai-*.tgz >/dev/null 2>&1; then
+            echo "::error::No CLI tarball to attach"
             exit 1
           fi
+          sha256sum failproofai-*.tgz >> SHA256SUMS
+          cat SHA256SUMS
 
       - name: Attach assets to the release
         if: ${{ !inputs.dry_run }}
@@ -220,19 +303,21 @@ jobs:
         if: ${{ inputs.dry_run }}
         env:
           TAG: ${{ needs.preflight.outputs.tag }}
-        run: echo "::notice::Dry run — built and checksummed 4 binaries, attached nothing to $TAG."
+        run: echo "::notice::Dry run — checksummed the CLI tarball and any platform binaries, attached nothing to $TAG."
 
   publish:
-    needs: [preflight, daemon, release-assets]
+    needs: [preflight, daemon, cli-tarball, release-assets]
     # Both daemon jobs are skipped on a ref with no Rust workspace, which must
     # not block the npm publish. A FAILURE in either one must, though — and
     # that is why `daemon` is checked explicitly rather than relied on through
     # release-assets: a failed dependency leaves the dependent job `skipped`,
     # which would otherwise read here as "nothing to do" and publish a package
-    # whose daemon binaries were never built.
+    # whose daemon binaries were never built. `cli-tarball` runs the same build
+    # this job publishes, so its failure is never "nothing to do" either.
     if: >-
       always() &&
       needs.preflight.result == 'success' &&
+      needs.cli-tarball.result == 'success' &&
       (needs.daemon.result == 'success' || needs.daemon.result == 'skipped') &&
       (needs.release-assets.result == 'success' || needs.release-assets.result == 'skipped')
     runs-on: ubuntu-latest
@@ -288,6 +373,43 @@ jobs:
         run: |
           npm version "$PUBLISH_VERSION" --no-git-tag-version
           echo "Updated package.json to $PUBLISH_VERSION"
+
+      # The four @failproofai/failproofaid-<platform> packages, from the same
+      # binaries the release gets. They MUST publish before the root package
+      # below, which pins them as optionalDependencies: an optional dependency
+      # npm cannot resolve is a 404 in every install, which is exactly how the
+      # first attempt at npm-shipping the daemon failed.
+      # Into RUNNER_TEMP, never the checkout. `npm publish` re-runs `prepare`,
+      # so the Next build happens again after this step, and its file tracing
+      # pulls the whole project root into `.next/standalone` — a dry run with
+      # these downloaded into the workspace shipped 16 MB of daemon `.gz`
+      # assets inside the published CLI tarball.
+      - name: Download the daemon binaries
+        if: needs.daemon.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: failproofaid-*
+          path: ${{ runner.temp }}/daemon-artifacts
+          merge-multiple: true
+
+      - name: Publish the failproofaid platform packages
+        if: needs.daemon.result == 'success'
+        env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          ARTIFACTS: ${{ runner.temp }}/daemon-artifacts
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # --pin-root writes the four pins into package.json for the publish
+          # below. It runs in the same step as the publish that makes those
+          # names resolvable, so the two can never disagree. The version-bump
+          # step later does `git checkout -- package.json`, so this edit never
+          # reaches main. Staging defaults to the temp dir for the same reason
+          # the artifacts land there.
+          ARGS=(--artifacts "$ARTIFACTS" --dist-tag "$DIST_TAG" --version "$PUBLISH_VERSION" --pin-root)
+          if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
+          node scripts/build-daemon-packages.mjs "${ARGS[@]}"
 
       - name: Publish
         env:

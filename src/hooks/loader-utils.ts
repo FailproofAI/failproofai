@@ -14,6 +14,7 @@
 import { readFile, writeFile, unlink, access } from "fs/promises";
 import { resolve, dirname, relative } from "path";
 import { pathToFileURL } from "url";
+import { createHash } from "crypto";
 
 export const TMP_SUFFIX = ".__failproofai_tmp__.mjs";
 
@@ -103,6 +104,16 @@ export async function rewriteFileTree(
   distUrl: string | null,
   distIndex: string | null,
   tmpSuffix = TMP_SUFFIX,
+  /**
+   * SHA-256 the ENTRY file's raw bytes must match, re-checked here at the moment
+   * they are read for rewriting and import. Cloud-managed policies pass their
+   * pinned digest so the bytes that get imported are the same bytes that were
+   * verified — closing a TOCTOU where an earlier caller hashed the file, then
+   * this function independently re-read it (a window in which a same-user
+   * attacker could swap the bytes so a verified file imports unverified code).
+   * Only the entry is content-addressed; transitive local imports are not.
+   */
+  entrySha256?: string | null,
 ): Promise<string[]> {
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
@@ -120,7 +131,22 @@ export async function rewriteFileTree(
     if (visited.has(filePath)) continue;
     visited.add(filePath);
 
-    let code = await readFile(filePath, "utf-8");
+    let code: string;
+    if (entrySha256 && filePath === entryPath) {
+      // Read the raw bytes, verify the pin against THEM, then decode and rewrite
+      // that same in-memory content — filePath is never read again, so the bytes
+      // imported below are exactly the bytes verified here.
+      const buf = await readFile(filePath);
+      const actual = createHash("sha256").update(buf).digest("hex");
+      if (actual !== entrySha256) {
+        throw new Error(
+          `cloud-managed policy failed integrity re-verification at load: expected ${entrySha256}, got ${actual}`,
+        );
+      }
+      code = buf.toString("utf-8");
+    } else {
+      code = await readFile(filePath, "utf-8");
+    }
 
     // Rewrite 'failproofai' or legacy 'claudeye' imports to the ESM shim (or direct CJS for require)
     if (esmShimUrl) {

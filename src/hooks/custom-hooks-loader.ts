@@ -102,7 +102,12 @@ export function findSkippedPolicyFiles(dir: string): string[] {
  */
 async function loadSingleFile(
   absPath: string,
-  opts?: { strict?: boolean; conventionScope?: "project" | "user" },
+  opts?: {
+    strict?: boolean;
+    conventionScope?: "project" | "user";
+    /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
+    verifyEntrySha?: string;
+  },
 ): Promise<void> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
@@ -114,7 +119,13 @@ async function loadSingleFile(
 
     const sequence = ++loadSequence;
     const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.mjs`;
-    tmpFiles = await rewriteFileTree(absPath, distUrl, distIndex, tmpSuffix);
+    tmpFiles = await rewriteFileTree(
+      absPath,
+      distUrl,
+      distIndex,
+      tmpSuffix,
+      opts?.verifyEntrySha,
+    );
 
     const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
     const cached = policyModuleCache.get(absPath);
@@ -282,7 +293,11 @@ export async function loadAllCustomHooks(
       if (!loadedPaths.has(absPath)) {
         loadedPaths.add(absPath);
         const hooksBefore = getCustomHooks().length;
-        await loadSingleFile(absPath);
+        // A cloud-managed policy re-verifies its pinned digest at load, binding
+        // the imported bytes to what desired-state promised.
+        await loadSingleFile(absPath, {
+          verifyEntrySha: cloudManagedByPath.get(absPath)?.sha256,
+        });
         for (const hook of getCustomHooks().slice(hooksBefore)) {
           const cloudManaged = cloudManagedByPath.get(absPath);
           const tagged = hook as CustomHook & {

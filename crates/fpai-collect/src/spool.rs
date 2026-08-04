@@ -508,6 +508,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_existing_machine_id_is_never_overwritten() {
+        // An event that already names its machine (a re-shipped batch, say) keeps
+        // its own id: the stamp uses `or_insert_with`, which fills only the absent
+        // case, so the collector never rewrites provenance an event already carries.
+        let dir = tmpdir("preexisting-machine-id");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_machine_id(Some("collector-host".into()));
+        w.push(json!({"type": "agent_start", "machine_id": "original-host"}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        let body = std::fs::read_to_string(dir.join(&name)).unwrap();
+        assert!(
+            body.contains(r#""machine_id":"original-host""#),
+            "got {body}"
+        );
+        assert!(
+            !body.contains("collector-host"),
+            "must not overwrite: {body}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
     async fn redaction_can_be_turned_off() {
         let dir = tmpdir("redact-off");
         let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")

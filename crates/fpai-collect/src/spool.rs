@@ -483,7 +483,11 @@ mod tests {
         w.push(json!({"type": "agent_start"})).await.unwrap();
         w.flush().await.unwrap();
         let name = batches(&dir).remove(0);
-        assert!(!std::fs::read_to_string(dir.join(&name)).unwrap().contains("machine_id"));
+        assert!(
+            !std::fs::read_to_string(dir.join(&name))
+                .unwrap()
+                .contains("machine_id")
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -495,7 +499,11 @@ mod tests {
         w.push(json!({"type": "agent_start"})).await.unwrap();
         w.flush().await.unwrap();
         let name = batches(&dir).remove(0);
-        assert!(!std::fs::read_to_string(dir.join(&name)).unwrap().contains("machine_id"));
+        assert!(
+            !std::fs::read_to_string(dir.join(&name))
+                .unwrap()
+                .contains("machine_id")
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

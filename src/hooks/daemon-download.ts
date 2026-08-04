@@ -120,17 +120,40 @@ export function npmPlatformBinaryPath(key: PlatformKey): string | null {
 
   try {
     const requireFromRoot = createRequire(resolve(packageRoot, "package.json"));
-    const manifest = requireFromRoot.resolve(`${name}/package.json`);
-    const candidate = resolve(dirname(manifest), "bin", "failproofaid");
-    if (existsSync(candidate)) return candidate;
+    const found = platformPackageBinary(dirname(requireFromRoot.resolve(`${name}/package.json`)));
+    if (found) return found;
   } catch {
     // Not installed (the common case on a machine that skipped optional
     // dependencies), or a resolver that cannot see it. The direct check below
     // is the fallback, not a failure.
   }
 
-  const nested = resolve(packageRoot, "node_modules", name, "bin", "failproofaid");
-  return existsSync(nested) ? nested : null;
+  return platformPackageBinary(resolve(packageRoot, "node_modules", name));
+}
+
+/**
+ * The binary inside one candidate platform-package directory, if it is the
+ * right one.
+ *
+ * The version check is not belt-and-braces. npm pins the exact version, but a
+ * workspace holding two `failproofai` versions can hoist the other one's
+ * platform package to the top of the tree — and installing that binary under
+ * *this* version's filename would put a daemon built from different source
+ * behind a CLI that believes it matches, which is the single thing the
+ * versioned install path exists to prevent. A mismatch falls through to the
+ * download, whose URL is pinned to this version.
+ */
+function platformPackageBinary(dir: string): string | null {
+  try {
+    const manifest = JSON.parse(readFileSync(resolve(dir, "package.json"), "utf8")) as {
+      version?: string;
+    };
+    if (manifest.version !== version) return null;
+  } catch {
+    return null;
+  }
+  const candidate = resolve(dir, "bin", "failproofaid");
+  return existsSync(candidate) ? candidate : null;
 }
 
 /**

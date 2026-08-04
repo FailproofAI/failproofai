@@ -281,12 +281,12 @@ describe("hooks/daemon-download", () => {
     });
 
     /** Stages what `npm install failproofai` leaves behind for this machine. */
-    function installPlatformPackage(key: string, binary: Buffer = BINARY): string {
+    function installPlatformPackage(key: string, binary: Buffer = BINARY, pkgVersion = version): string {
       const dir = resolve(packageRoot, "node_modules", "@failproofai", `failproofaid-${key}`);
       mkdirSync(resolve(dir, "bin"), { recursive: true });
       writeFileSync(
         resolve(dir, "package.json"),
-        JSON.stringify({ name: `@failproofai/failproofaid-${key}`, version, files: ["bin/"] }) + "\n",
+        JSON.stringify({ name: `@failproofai/failproofaid-${key}`, version: pkgVersion, files: ["bin/"] }) + "\n",
       );
       const binaryPath = resolve(dir, "bin", "failproofaid");
       writeFileSync(binaryPath, binary);
@@ -306,6 +306,16 @@ describe("hooks/daemon-download", () => {
       // os/cpu keep npm from installing the other three; asking for one of them
       // must not resolve the wrong machine's binary.
       expect(npmPlatformBinaryPath("darwin-arm64")).toBeNull();
+    });
+
+    it("ignores a platform package built for a different version of the CLI", async () => {
+      // A workspace holding two failproofai versions can hoist the other one's
+      // platform package to the top. Installing that binary under this
+      // version's filename would put a daemon built from different source
+      // behind a CLI that believes it matches.
+      installPlatformPackage("linux-x64", BINARY, "0.0.1-not-this-cli");
+      const { npmPlatformBinaryPath } = await import("../../src/hooks/daemon-download");
+      expect(npmPlatformBinaryPath("linux-x64")).toBeNull();
     });
 
     it("returns null when there is no package root to resolve from", async () => {

@@ -56,6 +56,14 @@ pub struct SpoolWriter {
     buf_bytes: u64,
     redact: Redact,
     redacted: u64,
+    /// The machine this daemon runs on, stamped on every event so the server
+    /// can tell one machine from another. Without it, events carry only
+    /// `agent_id` — a per-project/per-harness identity — and the fleet views
+    /// mistake every project for a separate machine. `None` on a machine that
+    /// was never enrolled with a machine id (older config); such events simply
+    /// carry no machine and are excluded from machine-level counts rather than
+    /// guessed into one.
+    machine_id: Option<String>,
 }
 
 impl SpoolWriter {
@@ -84,6 +92,7 @@ impl SpoolWriter {
             // which is the safe direction for the mistake to fall.
             redact: Redact::Minimal,
             redacted: 0,
+            machine_id: None,
         }
     }
 
@@ -92,6 +101,13 @@ impl SpoolWriter {
     /// omission.
     pub fn with_redact(mut self, mode: Redact) -> Self {
         self.redact = mode;
+        self
+    }
+
+    /// Set the machine id stamped on every event. An empty string is treated as
+    /// absent, so a misconfigured blank id never becomes a machine of its own.
+    pub fn with_machine_id(mut self, id: Option<String>) -> Self {
+        self.machine_id = id.filter(|s| !s.is_empty());
         self
     }
 
@@ -116,6 +132,17 @@ impl SpoolWriter {
         // the scrubbed form — there is no window where the raw value exists on
         // disk.
         self.redacted += crate::redact::scrub_value(&mut event, self.redact) as u64;
+
+        // Stamp the machine id here, at the one point every event passes
+        // through — a source cannot forget it and a new source inherits it. Set
+        // only when absent, so an event that already names its machine (a
+        // re-shipped batch, say) is never overwritten.
+        if let Some(id) = &self.machine_id {
+            if let Some(obj) = event.as_object_mut() {
+                obj.entry("machine_id")
+                    .or_insert_with(|| Value::String(id.clone()));
+            }
+        }
 
         let mut line = serialize(&event)?;
 
@@ -427,6 +454,48 @@ mod tests {
             "redaction marker missing: {body}"
         );
         assert!(w.redacted_count() >= 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn machine_id_is_stamped_on_every_event_when_set() {
+        // Without this the server can only group by agent_id — a per-project
+        // identity — so one machine's many projects each read as a machine.
+        let dir = tmpdir("machine-id");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_machine_id(Some("beta-test".into()));
+        w.push(json!({"type": "agent_start", "agent_id": "claude-foo"}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        let body = std::fs::read_to_string(dir.join(&name)).unwrap();
+        assert!(body.contains(r#""machine_id":"beta-test""#), "got {body}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn an_absent_machine_id_stamps_nothing() {
+        // A machine that was never given an id must not invent one — the server
+        // excludes machine-less events rather than bucket them.
+        let dir = tmpdir("no-machine-id");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s");
+        w.push(json!({"type": "agent_start"})).await.unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        assert!(!std::fs::read_to_string(dir.join(&name)).unwrap().contains("machine_id"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn an_empty_machine_id_is_treated_as_absent() {
+        let dir = tmpdir("blank-machine-id");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_machine_id(Some(String::new()));
+        w.push(json!({"type": "agent_start"})).await.unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        assert!(!std::fs::read_to_string(dir.join(&name)).unwrap().contains("machine_id"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

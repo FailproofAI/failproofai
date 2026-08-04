@@ -211,6 +211,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let spool_dir = cfg.own_spool_dir.clone();
         let verbosity = cfg.settings.hooks_verbosity;
         let environment = cfg.settings.environment.clone();
+        let machine_id = cfg.settings.machine_id.clone();
         tasks.push(fpai_collect::TaskSpec::new("hook-activity", move |sd| {
             fpai_collect::sources::hooks::run(
                 store_dir.clone(),
@@ -218,6 +219,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 spool_dir.clone(),
                 verbosity,
                 environment.clone(),
+                machine_id.clone(),
                 sd,
             )
         }));
@@ -232,6 +234,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // uses, so adding one is a row here plus its own module.
         let spool = cfg.own_spool_dir.clone();
         let env = cfg.settings.environment.clone();
+        let machine = cfg.settings.machine_id.clone();
         let cursors = home.join("cursors");
 
         use fpai_collect::sources::{claude, codex, copilot, openclaw, pi};
@@ -244,6 +247,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
         // Subagent transcripts live under the SAME root, claimed by a second
         // format. A separate source, not a second predicate: `is_source_file`
@@ -259,6 +263,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -269,6 +274,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -279,6 +285,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -289,6 +296,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -299,6 +307,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             &cursors,
             &env,
+            machine.as_deref(),
         );
 
         use fpai_collect::sources::{goose, hermes, opencode};
@@ -311,6 +320,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             cursors.join("goose"),
             &env,
+            machine.as_deref(),
         );
         sqlite_source(
             &mut tasks,
@@ -321,6 +331,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &spool,
             cursors.join("opencode"),
             &env,
+            machine.as_deref(),
         );
 
         // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
@@ -338,6 +349,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 &spool,
                 state,
                 &env,
+                machine.as_deref(),
             );
         }
     }
@@ -380,6 +392,7 @@ fn claude_projects_root() -> std::path::PathBuf {
 
 /// Register one file-tailing source.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn file_source(
     tasks: &mut Vec<fpai_collect::TaskSpec>,
     name: &'static str,
@@ -389,6 +402,7 @@ fn file_source(
     spool_dir: &std::path::Path,
     cursor_root: &std::path::Path,
     environment: &str,
+    machine_id: Option<&str>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     // One cursor store per source, never shared: the store writes its whole map
@@ -396,6 +410,7 @@ fn file_source(
     // loser would re-read from zero after every restart.
     let state_dir = cursor_root.join(name);
     let environment = environment.to_string();
+    let machine_id = machine_id.map(str::to_string);
     tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
         fpai_collect::filetail::run(
             fpai_collect::filetail::Spec {
@@ -407,6 +422,7 @@ fn file_source(
                 params: fpai_collect::filetail::Params {
                     agent_id: default_agent_id.to_string(),
                     environment: environment.clone(),
+                    machine_id: machine_id.clone(),
                     end_idle_mins: 10,
                     max_read_bytes: 32 * 1024 * 1024,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
@@ -432,9 +448,11 @@ fn sqlite_source(
     spool_dir: &std::path::Path,
     state_dir: std::path::PathBuf,
     environment: &str,
+    machine_id: Option<&str>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
+    let machine_id = machine_id.map(str::to_string);
     tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
         fpai_collect::sqlitepoll::run(
             fpai_collect::sqlitepoll::Spec {
@@ -446,6 +464,7 @@ fn sqlite_source(
                 params: fpai_collect::sqlitepoll::Params {
                     agent_id: default_agent_id.to_string(),
                     environment: environment.clone(),
+                    machine_id: machine_id.clone(),
                     max_rows_per_poll: 2000,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     max_drain_passes: 20,

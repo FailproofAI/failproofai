@@ -106,6 +106,8 @@ pub struct SqliteFormat {
 pub struct Params {
     pub agent_id: String,
     pub environment: String,
+    /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
+    pub machine_id: Option<String>,
     pub max_rows_per_poll: u64,
     pub max_batch_bytes: u64,
     /// Poll passes before yielding to the shutdown check. Bounds how long a
@@ -214,7 +216,8 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool)
         spec.params.max_batch_bytes,
         spec.format.kind,
         spec.format.kind,
-    );
+    )
+    .with_machine_id(spec.params.machine_id.clone());
     let emitted = outcome.events.len() as u64;
     for event in outcome.events {
         writer.push(event).await.map_err(io_err)?;

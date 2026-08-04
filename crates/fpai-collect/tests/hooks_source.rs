@@ -95,6 +95,7 @@ async fn run_once(store: &Path, state: &Path, spool: &Path, v: HooksVerbosity) {
         spool.to_path_buf(),
         v,
         "local".into(),
+        None,
         sd,
     );
     let _ = tokio::time::timeout(Duration::from_millis(1500), fut).await;

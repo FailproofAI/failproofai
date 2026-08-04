@@ -45,6 +45,13 @@ export interface CollectorSettings {
   hooksVerbosity?: "all" | "decisions" | "off";
   redact?: "minimal" | "off";
   environment?: string;
+  /**
+   * The machine's id, so the daemon can stamp it on every collected event and
+   * the dashboard groups by machine rather than by `agent_id` (a per-project
+   * identity). Written by `--connect --machine-id`; the Rust collector reads it
+   * as `collector.machineId`.
+   */
+  machineId?: string;
 }
 
 export function failproofaiHome(): string {
@@ -130,6 +137,9 @@ export function writeCollectorSettings(settings: CollectorSettings): void {
       hooksVerbosity: settings.hooksVerbosity ?? "decisions",
       redact: settings.redact ?? "minimal",
       environment: settings.environment ?? "local",
+      // Omit when unknown rather than writing null: the Rust side treats an
+      // absent field as "no machine", which is the correct fallback.
+      ...(settings.machineId ? { machineId: settings.machineId } : {}),
     },
   });
 }

@@ -143,6 +143,9 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       // a terminal, so they stay off unless explicitly asked for.
       sessions: input.sessions === true,
       environment: input.environment,
+      // So the daemon stamps this machine's id on every collected event and the
+      // dashboard groups by machine, not by per-project agent_id.
+      machineId: input.machineId,
     };
     writeCollectorSettings(settings);
     outcome.anyConfigured = true;

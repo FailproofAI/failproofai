@@ -81,6 +81,7 @@ pub async fn run(
     spool_dir: PathBuf,
     verbosity: HooksVerbosity,
     environment: String,
+    machine_id: Option<String>,
     sd: Shutdown,
 ) -> Result<(), TaskError> {
     if verbosity == HooksVerbosity::Off {
@@ -108,6 +109,7 @@ pub async fn run(
             &mut cursors,
             verbosity,
             &environment,
+            machine_id.as_deref(),
         )
         .await
         {
@@ -138,6 +140,7 @@ async fn poll_once(
     cursors: &mut CursorStore,
     verbosity: HooksVerbosity,
     environment: &str,
+    machine_id: Option<&str>,
 ) -> Result<u64, TaskError> {
     let files = list_pages(store_dir).await;
     if files.is_empty() {
@@ -149,7 +152,8 @@ async fn poll_once(
         DEFAULT_MAX_BATCH_BYTES,
         "hooks",
         "activity",
-    );
+    )
+    .with_machine_id(machine_id.map(str::to_string));
     // Allow rows are rolled up across the whole pass, so a bucket spanning two
     // files still emits once.
     let mut buckets: BTreeMap<transform::BucketKey, AllowBucket> = BTreeMap::new();

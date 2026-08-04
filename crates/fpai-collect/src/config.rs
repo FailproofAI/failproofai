@@ -117,6 +117,13 @@ pub struct Settings {
     /// here would silently drop every event this machine produced.
     #[serde(default = "default_environment")]
     pub environment: String,
+    /// The id of the machine this daemon runs on, written by
+    /// `failproofai config --connect --machine-id <id>`. Stamped on every
+    /// collected event so the server groups by machine rather than by
+    /// `agent_id` (a per-project identity). Absent on config written before
+    /// this field existed; such events carry no machine.
+    #[serde(default, rename = "machineId")]
+    pub machine_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -135,6 +142,7 @@ impl Default for Settings {
             hooks_verbosity: HooksVerbosity::default(),
             redact: Redact::default(),
             environment: default_environment(),
+            machine_id: None,
         }
     }
 }

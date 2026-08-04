@@ -130,6 +130,8 @@ pub fn no_seed_state(_lines: &[String], _state: &mut TailState) {}
 pub struct Params {
     pub agent_id: String,
     pub environment: String,
+    /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
+    pub machine_id: Option<String>,
     /// Minutes a file must be idle at EOF before `agent_end` is emitted.
     pub end_idle_mins: u64,
     pub max_read_bytes: u64,
@@ -248,7 +250,8 @@ async fn process_file(
         spec.params.max_batch_bytes,
         spec.format.kind,
         &ctx.session_id,
-    );
+    )
+    .with_machine_id(spec.params.machine_id.clone());
     let mut emitted = 0u64;
 
     // A session with no start event never appears in the product, so retry it

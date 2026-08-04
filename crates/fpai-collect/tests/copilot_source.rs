@@ -771,6 +771,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
         params: Params {
             agent_id: copilot::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
+            machine_id: None,
             end_idle_mins: 0, // end immediately, so the test need not wait
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,

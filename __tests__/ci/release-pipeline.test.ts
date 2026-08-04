@@ -171,6 +171,9 @@ describe("publish.yml", () => {
       encoding: "utf8",
       env: {
         PATH: process.env.PATH,
+        // Next's global augmentation makes NODE_ENV a required member of
+        // ProcessEnv, so a minimal env literal has to carry it.
+        NODE_ENV: process.env.NODE_ENV,
         STABLE_RELEASE_ACTORS: guard.env.STABLE_RELEASE_ACTORS,
         ACTOR: actor,
         TRIGGERING_ACTOR: triggeringActor,

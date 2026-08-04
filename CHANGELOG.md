@@ -6,6 +6,7 @@
 - Restrict stable releases to a maintainer allowlist while leaving prereleases open. `publish.yml`'s preflight now refuses any publish at dist-tag `latest`, or of a non-prerelease version at any dist-tag, unless both `github.actor` and `github.triggering_actor` are on the allowlist (`NiveditJain`) — the second identity matters because a re-run keeps `actor` as the original triggerer, so checking only it would make a maintainer's stable run a re-run button for everyone with write access. A stable version published under `next` is gated too: it claims that number on npm permanently and is one `npm dist-tag add` away from being the stable release. `beta` and `next` builds are untouched, so the branch-dispatch path stays open to anyone GitHub already trusts with write access. The check runs in preflight, which every other job depends on, so a refusal costs seconds rather than a 4-way cross-compile. (#651)
 
 ### Fixes
+- Flag `cat`/`head`/`tail` on a source file when a flag takes a separate numeric argument (`head -n 50 file.py`, `tail -c 20 app.ts`). The `prefer-edit-over-read-cat` detector only recognised the attached form (`head -50 file.py`), so the equally-common separated form slipped through. (#637)
 - Harden the release workflow against shell injection from ref names and generated outputs, align every Bun cache key with the tracked `bun.lock`, and discard the temporary publish-version edit before switching to `main` for the development-version bump. (#634)
 
 ### Dependencies

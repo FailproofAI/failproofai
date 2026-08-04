@@ -19,7 +19,13 @@ export const preferEditOverReadCat: Detector = {
     const cmd = command.trim();
     // Reject any shell pipeline, redirection, command chaining or substitution.
     if (/[|<>;&`$()]/.test(cmd)) return null;
-    const match = /^(cat|head|tail|less|more)\s+(?:-\S+\s+)*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(cmd);
+    // Skip leading flags. `(?:[+-]?\d+\s+)?` also consumes a flag's separate
+    // numeric argument (`head -n 50 file.py`, `tail -c 20 app.ts`), including the
+    // GNU signed line/byte offsets `head`/`tail` accept (`tail -n +50 app.ts`),
+    // so the following file is still reached. Without it only the attached form
+    // (`head -50 file.py`) matched and the separated form slipped through.
+    const match =
+      /^(cat|head|tail|less|more)\s+(?:-\S+\s+(?:[+-]?\d+\s+)?)*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(cmd);
     if (!match) return null;
     const path = match[2] ?? match[3] ?? match[4] ?? "";
     if (!path) return null;

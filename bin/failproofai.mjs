@@ -301,6 +301,34 @@ LINKS
     process.exit(0);
   }
 
+  // First-run onboarding — before any subcommand runs its own work.
+  //
+  // On a machine that has never been set up, the first thing the user typed is
+  // almost never the thing they need first, so we run the wizard and then let
+  // their original command proceed. Exemptions matter more than the rule:
+  //
+  //   --hook            never reaches here (it exits above) — it runs on every
+  //                     tool call, and a wizard on that path would hang an agent
+  //   --version/--help  answering "what is this" must not require setup
+  //   config            IS the wizard
+  //   policies/policy/  explicit configuration actions. Intercepting these would
+  //   auth              fight the intent the user just stated, and would break
+  //                     non-interactive scripts that call them to do setup.
+  //
+  // `maybeFirstRunConfigure` is itself a no-op on a configured machine, on a
+  // non-TTY, and under sudo — so this is a cheap check, not a second gate.
+  const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
+  if (shouldOfferFirstRun(args)) {
+    try {
+      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
+      // `audit` runs its own scan immediately after this returns; firing the
+      // post-setup audit too would scan the whole history twice in a row.
+      await maybeFirstRunConfigure({ postSetupAudit: args[0] !== "audit" });
+    } catch {
+      // Onboarding is never allowed to block the command the user actually typed.
+    }
+  }
+
   // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]
   if (args[0] === "policies") {
     const subArgs = args.slice(1);
@@ -954,22 +982,8 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     );
   }
 
-  // First-run onboarding — on the first bare `failproofai` invocation, run the
-  // configure wizard (which also fires the post-setup audit) BEFORE the
-  // dashboard. Unlike before, we then fall through to launch the dashboard, so a
-  // fresh user gets: setup → audit → dashboard, and every later `failproofai`
-  // goes straight to the dashboard. Best-effort: any error must not block launch.
-  if (args.length === 0) {
-    try {
-      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
-      await maybeFirstRunConfigure();
-    } catch {
-      // First-run onboarding is non-critical; fall through to the dashboard.
-    }
-  }
-
   // Dashboard launch — always production mode. Runs on every bare `failproofai`
-  // (after first-run onboarding, if any).
+  // (first-run onboarding, if any, already ran above).
   const { launch } = await import("../scripts/launch");
   launch("start");
 }

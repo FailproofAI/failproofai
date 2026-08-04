@@ -1,16 +1,30 @@
 /**
  * `failproofai config` — the interactive setup launcher.
  *
- * A single guided flow that sets up the whole failproofai ecosystem, hiding the
- * scope / cli / two-layer machinery behind three plain questions:
- *   1. Where?      global (user) vs this project
- *   2. Assistants? multi-select of agent CLIs (detected + install-ahead)
- *   3. Policies?   multi-select of themed presets (combine any) or Everything
- * …then a Review screen that shows exactly which files change, and Apply.
+ * A single guided flow that sets up the whole failproofai ecosystem:
+ *
+ *   0. Daemon    — REQUIRED. Asks for sudo first, on a clean terminal.
+ *   1. Where     — inferred from cwd, then confirmed (global / project / both)
+ *   2. Policies  — multi-select of themed presets (combine any) or Everything
+ *   3. Assistants— multi-select of agent CLIs (detected + install-ahead)
+ *   4. Connect   — paste an API key, or stay fully local
+ *   5. Review    — shows exactly which files change, then Apply.
  *
  * Selections REPLACE the enabled set at the chosen scope (the picker pre-checks
  * whatever is already enabled, so unticking removes). Reuses the tested
  * install/uninstall manager and the existing searchable policy picker.
+ *
+ * ## Two ordering rules that are not cosmetic
+ *
+ * **The daemon comes first because it is the only step that needs a password.**
+ * `sudo -v` must prompt on a clean terminal, before any TUI frame is drawn —
+ * fired from underneath a rendered screen the prompt is invisible and the typed
+ * password lands in a redrawn frame.
+ *
+ * **The daemon is INSTALLED first, before any user config is written.** Setup
+ * requires it, so a failure has to leave the machine exactly as it was found
+ * rather than half-configured. Writing hooks first and discovering the service
+ * will not start afterwards is the one ordering that cannot be undone cleanly.
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -50,6 +64,8 @@ import {
   isDaemonSupportedPlatform,
   installDaemonService,
   daemonServiceFilePath,
+  daemonServiceStatus,
+  daemonStatusCommand,
   primeElevation,
   setDaemonConfigured,
 } from "./daemon-service";
@@ -59,18 +75,49 @@ import {
   verifyCloudCredentials,
   writeCloudCredentials,
 } from "./cloud-enrollment";
-import { cloudBaseFor, ingestUrlFor } from "./cloud-connection";
+import {
+  cloudBaseFor,
+  ingestUrlFor,
+  connectToCloud,
+  describeOutcome,
+} from "./cloud-connection";
+import {
+  detectSetupState,
+  isConfigured,
+  buildTargetChoices,
+  scopesFor,
+  type SetupTarget,
+} from "./setup-state";
+import { acquireOnboardingLock } from "./onboarding-lock";
 
 export interface WizardIO {
   stdin?: TTYIn;
   stdout?: TTYOut;
 }
 
+/**
+ * Why a wizard run ended without applying. Distinguished so the caller can
+ * pick an exit code — a user who pressed Esc did nothing wrong (exit 0), a
+ * machine that could not install the required daemon did not get set up
+ * (exit 1), and a fleet script needs to tell those apart.
+ */
+export type WizardAbort =
+  | "cancelled"
+  | "needs_root"
+  | "daemon_failed"
+  | "not_a_tty"
+  | "running_as_sudo";
+
 export interface WizardResult {
   applied: boolean;
-  scope?: HookScope;
+  /** Present only when `applied` is false. */
+  abort?: WizardAbort;
+  target?: SetupTarget;
+  scopes?: HookScope[];
   clis?: IntegrationType[];
   policies?: string[];
+  daemonInstalled?: boolean;
+  connected?: boolean;
 }
 
 async function emit(event: string, props: Record<string, unknown>): Promise<void> {
@@ -92,21 +139,6 @@ function homeify(p: string): string {
 }
 
 // ── Pure builders (exported for tests) ───────────────────────────────────────
-
-export function buildScopeChoices(cwd: string) {
-  return [
-    {
-      label: "Everywhere I code",
-      value: "user" as HookScope,
-      hint: "global · applies in every project on this machine",
-    },
-    {
-      label: "Just this project",
-      value: "project" as HookScope,
-      hint: homeify(cwd),
-    },
-  ];
-}
 
 /** The CLIs that can actually be configured at `scope`. Hermes and OpenClaw
  *  are gateways with no project-level config, so they are user-scope only. */
@@ -358,22 +390,30 @@ export function describeCustomPolicies(cwd: string): {
 }
 
 export function reviewLines(state: {
-  scope: HookScope;
+  /** What the scope step resolved to. Expands to one or two real scopes. */
+  target: SetupTarget;
   clis: IntegrationType[];
   policies: string[];
   cwd: string;
   /** The Custom checkbox. `undefined` = nothing to toggle, leave as-is. */
   customEnabled?: boolean;
   /**
-   * Step 0's answer. The daemon is machine-level, so this is a decision the
-   * user made explicitly rather than something inferred from the scope —
-   * showing it any other way would promise a service the apply won't install.
+   * Whether a daemon will be installed by this run. False when one is already
+   * healthy (nothing to do) or the platform has no service manager — showing
+   * it any other way would promise work the apply will not perform.
    */
   installDaemon?: boolean;
+  /** Whether an API key will be written and reporting turned on. */
+  connect?: boolean;
 }): string[] {
-  const { scope, clis, policies, cwd, customEnabled, installDaemon } = state;
+  const { target, clis, policies, cwd, customEnabled, installDaemon, connect } = state;
+  const scopes = scopesFor(target);
   const where =
-    scope === "project" ? `This project (${homeify(cwd)})` : "Everywhere (global)";
+    target === "both"
+      ? `Global, plus this project (${homeify(cwd)})`
+      : target === "project"
+        ? `This project (${homeify(cwd)})`
+        : "Everywhere (global)";
   const lines: string[] = [];
   const assistantNames = clis.map((c) => getIntegration(c).displayName);
   lines.push(`  Where      : ${where}`);
@@ -391,6 +431,11 @@ export function reviewLines(state: {
       `  Daemon     : failproofaid, installed as a system service running as you`,
     );
   }
+  lines.push(
+    connect
+      ? "  Reporting  : on — policy decisions and session transcripts"
+      : "  Reporting  : off — nothing leaves this machine",
+  );
 
   // Reflect the Custom decision, not just what is on disk. Reporting
   // "1 file (project) (auto-loaded)" after the user had just unticked the row
@@ -407,15 +452,29 @@ export function reviewLines(state: {
 
   lines.push("");
   lines.push("  This will update:");
-  for (const cli of clis) {
-    const integration = getIntegration(cli);
-    // Usually one path; Hermes lists one per profile so the operator sees every
-    // home dir that is about to be written.
-    for (const p of settingsPathsFor(integration, scope, cwd)) {
-      lines.push(`    ${homeify(p)}   ${integration.displayName} hooks`);
+  // Deduplicated across scopes: a CLI that supports only user scope resolves to
+  // the same settings file under both halves of "Both", and listing it twice
+  // reads as two separate writes.
+  const seen = new Set<string>();
+  for (const scope of scopes) {
+    for (const cli of clis) {
+      const integration = getIntegration(cli);
+      if (!integration.scopes.includes(scope)) continue;
+      // Usually one path; Hermes lists one per profile so the operator sees
+      // every home dir that is about to be written.
+      for (const p of settingsPathsFor(integration, scope, cwd)) {
+        if (seen.has(p)) continue;
+        seen.add(p);
+        lines.push(`    ${homeify(p)}   ${integration.displayName} hooks`);
+      }
     }
   }
-  lines.push(`    ${homeify(getConfigPathForScope(scope, cwd))}   ${policies.length} policies`);
+  for (const scope of scopes) {
+    const configPath = getConfigPathForScope(scope, cwd);
+    if (seen.has(configPath)) continue;
+    seen.add(configPath);
+    lines.push(`    ${homeify(configPath)}   ${policies.length} policies`);
+  }
   if (installDaemon && isDaemonSupportedPlatform()) {
     const servicePath = daemonServiceFilePath();
     if (servicePath) lines.push(`    ${homeify(servicePath)}   failproofaid service (needs root)`);
@@ -443,23 +502,6 @@ export function markLauncherSeen(): void {
 }
 
 /**
- * Whether failproofai is already set up GLOBALLY (user scope) for any agent.
- * Deliberately ignores project scope: project-scoped hooks in whatever repo the
- * user happens to be in shouldn't suppress the one-time global welcome. The
- * marker file is the primary "seen" gate; this is the "already set up" shortcut.
- */
-function anyHooksInstalledGlobally(): boolean {
-  for (const id of INTEGRATION_TYPES) {
-    try {
-      if (getIntegration(id).hooksInstalledInSettings("user")) return true;
-    } catch {
-      // ignore broken settings files
-    }
-  }
-  return false;
-}
-
-/**
  * On the FIRST bare `failproofai` invocation, redirect the user into the
  * configure wizard instead of the dashboard. Returns true when it handled the
  * turn (caller should exit rather than launch the dashboard).
@@ -470,45 +512,84 @@ function anyHooksInstalledGlobally(): boolean {
  *   • non-TTY (CI/pipe)           → print a one-line hint, go to dashboard
  *   • fresh + TTY                 → mark seen, run the wizard, done
  */
-export async function maybeFirstRunConfigure(io: WizardIO = {}): Promise<boolean> {
+export interface FirstRunOptions {
+  /**
+   * Run the post-setup audit after a completed apply. The caller sets this to
+   * false when the command it is about to run is `audit` itself, which would
+   * otherwise scan the entire history twice back to back.
+   */
+  postSetupAudit?: boolean;
+}
+
+export async function maybeFirstRunConfigure(
+  io: WizardIO = {},
+  opts: FirstRunOptions = {},
+): Promise<boolean> {
   if (process.env.FAILPROOFAI_NO_FIRST_RUN === "1") return false;
-  if (hasSeenLauncher()) return false;
 
   const stdin: TTYIn = io.stdin ?? process.stdin;
   const stdout: TTYOut = io.stdout ?? process.stdout;
 
-  if (anyHooksInstalledGlobally()) {
-    markLauncherSeen();
+  // One state read covering all three "already set up" signals — a config
+  // file, live user-scope hooks, or the legacy marker. See `isConfigured`.
+  const state = detectSetupState();
+  if (isConfigured(state)) {
+    // Back-fill the marker for a machine that is demonstrably configured but
+    // predates it, so later runs settle this with a single stat instead of
+    // walking every integration's settings file on every invocation.
+    if (!state.hasLegacyMarker) markLauncherSeen();
     return false;
   }
 
   if (!stdin.isTTY || !stdout.isTTY) {
+    // Never launch a wizard nobody can answer. This is the CI / piped path,
+    // and it must stay a hint rather than a failure: the command the user
+    // actually typed still runs.
     stdout.write(
       `\n[failproofai] Not set up yet — run \`failproofai config\` to get started.\n\n`,
     );
     return false;
   }
 
-  // Fire-and-forget: never block the wizard's first paint on telemetry.
-  void emit("first_run_configure_shown", {});
-  // runConfigureWizard marks the launcher as seen only if the user completes an
-  // apply — so cancelling keeps redirecting here on the next bare run, and only
-  // a finished setup sends the user to the dashboard afterwards.
-  const result = await runConfigureWizard(io);
+  // Onboarding now fires on ANY command, so two terminals on a fresh machine
+  // is a real shape: both would draw a wizard, race on the same settings
+  // files, and both try to install the one system service. Only one gets to.
+  const lock = acquireOnboardingLock();
+  if (!lock) {
+    stdout.write(
+      `\n[failproofai] Setup is already running in another terminal — leaving it to finish.\n\n`,
+    );
+    return false;
+  }
+
+  try {
+    // Fire-and-forget: never block the wizard's first paint on telemetry.
+    void emit("first_run_configure_shown", {});
+    // runConfigureWizard marks the launcher as seen only if the user completes
+    // an apply — so cancelling keeps offering setup on the next run rather
+    // than silently never mentioning it again.
+    const result = await runConfigureWizard(io);
 
   // Onboarding-only: after a completed first-run setup, run the audit pipeline
   // (scan + cache warm) before the caller boots the dashboard. The explicit
   // `failproofai config` command does NOT do this — only this first-run path.
   // Lazy-imported + best-effort; opt out with FAILPROOFAI_NO_AUTO_AUDIT=1.
-  if (result.applied) {
-    try {
-      const { runPostSetupAudit } = await import("../audit/cli");
-      await runPostSetupAudit();
-    } catch {
-      // the audit is a bonus — never let it break onboarding or the dashboard.
+    if (result.applied && opts.postSetupAudit !== false) {
+      try {
+        const { runPostSetupAudit } = await import("../audit/cli");
+        await runPostSetupAudit();
+      } catch {
+        // the audit is a bonus — never let it break onboarding or the dashboard.
+      }
     }
+    return true;
+  } finally {
+    // Released on every path, including a throw from the wizard itself —
+    // otherwise a crash mid-setup would leave a lock behind, and although the
+    // liveness check reclaims it, doing so needs the next run to reach that
+    // check rather than relying on it.
+    lock.release();
   }
-  return true;
 }
 
 // ── The wizard ───────────────────────────────────────────────────────────────
@@ -551,104 +632,107 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   const cancel = (): WizardResult => {
     outro("Cancelled — nothing was changed.", { ok: false }, stdout);
-    return { applied: false };
+    // Distinguished from the abort reasons: pressing Esc is not a failure, and
+    // a caller picking an exit code must not treat it as one.
+    return { applied: false, abort: "cancelled" };
   };
 
-  // 0 — The background daemon, before anything else.
+  // 0 — The background daemon. REQUIRED, and before anything else.
   //
-  // First because it is the only step that needs a password: asking here
-  // means sudo prompts on a clean terminal, before any question has drawn a
-  // screen, instead of firing from underneath a rendered TUI where the prompt
-  // is invisible and the typed password lands in a redrawn frame. `sudo -v`
+  // First because it is the only step that needs a password: asking here means
+  // sudo prompts on a clean terminal, before any question has drawn a screen,
+  // instead of firing from underneath a rendered TUI where the prompt is
+  // invisible and the typed password lands in a redrawn frame. `sudo -v`
   // caches the credential for the rest of the run, so the actual install at
   // apply time stays non-interactive.
   //
   // Machine-level, so it is deliberately NOT gated on the scope chosen in the
   // next step: one daemon serves every project on this machine.
-  let daemonWanted = false;
-  let elevated = false;
-  if (isDaemonSupportedPlatform()) {
-    const choice = await selectOne<"install" | "skip">({
-      message: "Install the failproofaid background daemon?",
-      choices: [
-        {
-          label: "Yes — keep policy evaluation warm",
-          value: "install",
-          hint: "a system service, started at boot, running as you · needs your password once",
-        },
-        {
-          label: "Not now",
-          value: "skip",
-          hint: "policies still enforce, evaluated per hook call",
-        },
-      ],
+  //
+  // On a platform with no service manager there is nothing to install, so the
+  // requirement does not apply — requiring an impossible step would lock those
+  // users out of setup entirely rather than protecting anything.
+  const daemonSupported = isDaemonSupportedPlatform();
+  // An already-healthy daemon needs no install and no password. Re-running
+  // setup on a configured machine must not demand sudo for work that is
+  // already done.
+  // "running" only. A unit that exists but is stopped or crash-looping is
+  // exactly the machine that needs this run to reinstall it, and treating
+  // "installed" as good enough would skip the repair and then set
+  // `daemonConfigured` against a service that is not answering — which fails
+  // closed on every tool call.
+  const daemonAlreadyRunning = daemonSupported && daemonServiceStatus() === "running";
+  let daemonWanted = daemonSupported && !daemonAlreadyRunning;
+
+  if (daemonWanted) {
+    stdout.write(
+      "failproofai runs a small background service (failproofaid) so policy checks\n" +
+        "stay warm — without it every tool call pays a fresh startup, about 15x slower.\n" +
+        "Installing it needs root once. Your password goes to sudo, never to us.\n\n",
+    );
+    if (!primeElevation()) {
+      // Required means required: write nothing at all, so a machine that could
+      // not be set up is left exactly as it was found rather than carrying
+      // half a configuration. The commands are printed so an admin can do the
+      // privileged half by hand.
+      stdout.write(
+        "\nCould not get root, so setup stopped before changing anything.\n\n" +
+          "  Re-run once you can use sudo:   failproofai config\n" +
+          `  Check what it needs:            ${daemonStatusCommand() ?? "n/a"}\n\n`,
+      );
+      void emit("configure_aborted", { reason: "needs_root" });
+      outro("Nothing was changed.", { ok: false }, stdout);
+      return { applied: false, abort: "needs_root" };
+    }
+  } else if (daemonAlreadyRunning) {
+    stdout.write("failproofaid is already installed and running — leaving it alone.\n\n");
+  }
+
+  // 1 — Where? Inferred from cwd, then confirmed.
+  //
+  // Running from inside a project and running from a home directory are two
+  // different intents, and asking a context-free "global or project?" made the
+  // user restate something they had already expressed by choosing where to run
+  // the command. So the choices are built from what actually exists here — and
+  // labelled Update vs Set up accordingly — with the likelier target first.
+  const setupState = detectSetupState(cwd);
+  const targetChoices = buildTargetChoices(setupState);
+
+  let target: SetupTarget;
+  if (targetChoices.length === 1) {
+    // From a home directory there is no project to configure, so there is no
+    // question to ask. Say what is about to happen rather than silently
+    // deciding it.
+    target = targetChoices[0].value;
+    stdout.write(`Configuring ${targetChoices[0].label.toLowerCase()} — ${targetChoices[0].hint}.\n\n`);
+  } else {
+    const chosen = await selectOne<SetupTarget>({
+      message: "What are we configuring?",
+      choices: targetChoices.map((c) => ({
+        label: c.label,
+        value: c.value,
+        hint: c.hint,
+      })),
       stdin,
       stdout,
     });
-    if (choice === null) return cancel();
-    daemonWanted = choice === "install";
-
-    if (daemonWanted) {
-      stdout.write("\nInstalling the failproofaid service needs root. Your password stays with sudo.\n");
-      elevated = primeElevation();
-      if (!elevated) {
-        // Never fatal: the rest of setup is worth applying, and a machine with
-        // no daemon is exactly the machine every release before this one had.
-        stdout.write(
-          "Could not get sudo — carrying on without the daemon.\n" +
-            "Everything else still applies, and policies still enforce in-process.\n\n",
-        );
-        daemonWanted = false;
-      }
-    }
+    if (chosen === null) return cancel();
+    target = chosen;
   }
+  const scopes = scopesFor(target);
+  // The scope whose CURRENT state seeds the pickers below. With "Both" the
+  // project is the more specific of the two and the one the user is standing
+  // in, so it wins; anything it does not define still falls back to global at
+  // merge time, which is exactly the layering the policy loader already does.
+  const primaryScope: HookScope = scopes.includes("project") ? "project" : "user";
 
-  // 1 — Where?
-  const scope = await selectOne<HookScope>({
-    message: "Where should this apply?",
-    choices: buildScopeChoices(cwd),
-    stdin,
-    stdout,
-  });
-  if (scope === null) return cancel();
-
-  // 2 — Which assistants? An "Everything available" row protects every supported
-  // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-  const clisSel = await multiSelect<string>({
-    message: "Which AI assistants should it protect?",
-    choices: [
-      {
-        label: "Everything available",
-        value: ALL_CLIS,
-        // Counts only what this scope can actually take — expanding to all 12
-        // under project scope is what crashed the apply on Hermes.
-        hint: `protect all ${clisSupportingScope(scope).length} CLIs configurable here`,
-        // A selector, not an assistant. Counting it gave "13 assistants" for
-        // the 12 supported CLIs, and listed "Everything available" among them.
-        summaryExclude: true,
-      },
-      ...buildAgentChoices(scope, cwd),
-    ],
-    minSelected: 1,
-    summaryNoun: "assistants",
-    hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
-    stdin,
-    stdout,
-  });
-  if (clisSel === null) return cancel();
-  // Filter to what this scope supports in BOTH branches: "Everything
-  // available" must not expand to CLIs that cannot take this scope, and a
-  // locked row can't be ticked but belt-and-braces keeps the invariant local
-  // to the one place `clis` is built.
-  const supported = new Set(clisSupportingScope(scope));
-  const clis: IntegrationType[] = (
-    clisSel.includes(ALL_CLIS)
-      ? [...INTEGRATION_TYPES]
-      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
-  ).filter((id) => supported.has(id));
-
-  // 3 — Which policies? Multi-select of themed presets — additive, so the
+  // 2 — Which policies? Multi-select of themed presets — additive, so the
   // enabled set is the union of every ticked bundle.
+  //
+  // Before the assistants step, because "what do you want guarded" is the
+  // question the user came here to answer; which CLIs to wire it into is
+  // plumbing that follows from it.
+  //
   // Seed the Custom checkbox from whatever the config already says, so the
   // wizard shows the current state rather than resetting it every run.
   const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
@@ -664,7 +748,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // renders "none". Hooks still install, so enforcement can be switched on
   // later without re-running setup.
   //
-  // The assistants step above keeps its minimum deliberately: an empty CLI list
+  // The assistants step below keeps its minimum deliberately: an empty CLI list
   // does NOT mean "no assistants" there — `installHooksImpl` falls back to
   // ["claude"], so letting it through would silently install for Claude.
   const presets = await multiSelect<string>({
@@ -681,67 +765,110 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // locked-unchecked and must not write a disabling flag.
   const customEnabled = hasCustomFiles ? presets.includes(CUSTOM) : undefined;
 
-  // 4 — Send data to AgentEye? Last, and only when a daemon was asked for,
-  // since the daemon is what runs the collector.
+  // 3 — Which assistants? An "Everything available" row protects every supported
+  // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
+  const clisSel = await multiSelect<string>({
+    message: "Which AI assistants should it protect?",
+    choices: [
+      {
+        label: "Everything available",
+        value: ALL_CLIS,
+        // Counts only what this scope can actually take — expanding to all 12
+        // under project scope is what crashed the apply on Hermes.
+        hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
+        // A selector, not an assistant. Counting it gave "13 assistants" for
+        // the 12 supported CLIs, and listed "Everything available" among them.
+        summaryExclude: true,
+      },
+      ...buildAgentChoices(primaryScope, cwd),
+    ],
+    minSelected: 1,
+    summaryNoun: "assistants",
+    hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
+    stdin,
+    stdout,
+  });
+  if (clisSel === null) return cancel();
+  // Filter to what the chosen scopes support in BOTH branches: "Everything
+  // available" must not expand to CLIs that cannot take any selected scope,
+  // and a locked row can't be ticked but belt-and-braces keeps the invariant
+  // local to the one place `clis` is built.
   //
-  // Deliberately AFTER the enforcement questions rather than beside the daemon
-  // one: by this point the user has decided what to protect, so "and would you
-  // like to see it in a dashboard?" follows naturally, where asking up front
-  // interrupts setup with a question about a product they may not have.
+  // The union across scopes, not the intersection: under "Both", a user-scope-
+  // only gateway like Hermes is still installable via the user half, and
+  // dropping it because project scope cannot take it would silently protect
+  // less than the user asked for. `installHooks` is called per scope below and
+  // skips what a given scope cannot take.
+  const supported = new Set(scopes.flatMap((s) => clisSupportingScope(s)));
+  const clis: IntegrationType[] = (
+    clisSel.includes(ALL_CLIS)
+      ? [...INTEGRATION_TYPES]
+      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
+  ).filter((id) => supported.has(id));
+
+  // 4 — Connect this machine? Last, because by this point the user has decided
+  // what to protect, so "would you like to see it in a dashboard?" follows
+  // naturally — asking up front interrupts setup with a question about a
+  // product they may not have.
   //
-  // Defaults to NO, and the transcript choice is a SEPARATE question from the
-  // key, because a transcript carries prompts, file contents and whatever was
-  // pasted into a terminal. Configuring ingest must never silently send those.
-  let collector: { cred: { url: string; key: string }; sessions: boolean } | null = null;
-  if (daemonWanted) {
-    const send = await selectOne<"yes" | "no">({
-      message: "Send session and hook data to AgentEye?",
+  // A pasted API key rather than an interactive sign-in: it is the only form
+  // that works on a headless box, in a container or over SSH, and it is the
+  // same credential `failproofai config --connect` takes, so a machine set up
+  // by the wizard and one set up by hand end up byte-identical on disk.
+  //
+  // Connecting turns on BOTH streams — policy decisions and session
+  // transcripts. That is a real disclosure, not a footnote, so it is stated in
+  // the body of the question itself rather than buried in an option hint.
+  let connect: { url: string; token: string; machineId: string } | null = null;
+
+  {
+    const choice = await selectOne<"key" | "local">({
+      message: "Connect this machine to Failproof Cloud?",
+      body: [
+        "  Connecting reports this machine's policy decisions AND full session",
+        "  transcripts — prompts, file contents and command output — to your",
+        "  dashboard. Staying local sends nothing, anywhere, ever.",
+      ],
       choices: [
         {
-          label: "Not now",
-          value: "no",
-          hint: "nothing leaves this machine",
+          label: "Not now — stay local",
+          value: "local",
+          hint: "policies still enforce · connect later with failproofai config --connect",
         },
         {
-          label: "Yes — connect to a dashboard",
-          value: "yes",
-          hint: "needs an events:add API key",
+          label: "Paste an API key",
+          value: "key",
+          hint: "reports decisions and transcripts to your dashboard",
         },
       ],
       stdin,
       stdout,
     });
-    if (send === null) return cancel();
+    if (choice === null) return cancel();
 
-    if (send === "yes") {
-      // If this machine is ALREADY enrolled with Failproof Cloud, it has a URL
-      // and a token that usually work for both capabilities. Asking for them
-      // again is the seam that made connecting feel like two products: someone
-      // runs `--connect`, sees an empty dashboard, and has no reason to think a
-      // second credential exists. Offer what we already know, and let it be
-      // overridden.
+    if (choice === "key") {
+      // An already-enrolled machine has a URL and token that usually work.
+      // Asking again is the seam that made connecting feel like two products.
       const existing = readCloudCredentials();
       let url: string | null = null;
-      let key: string | null = null;
+      let token: string | null = null;
+      let machineId = existing?.machineId ?? hostname();
 
       if (existing) {
         const reuse = await selectOne<"reuse" | "other">({
           message: `Use this machine's existing connection to ${existing.url}?`,
           choices: [
-            {
-              label: `Yes — reuse it`,
-              value: "reuse",
-              hint: `as ${existing.machineId}, same token`,
-            },
-            { label: "No — use a different endpoint and key", value: "other", hint: "" },
+            { label: "Yes — reuse it", value: "reuse", hint: `as ${existing.machineId}, same token` },
+            { label: "No — different endpoint or key", value: "other", hint: "" },
           ],
           stdin,
           stdout,
         });
         if (reuse === null) return cancel();
         if (reuse === "reuse") {
-          url = ingestUrlFor(existing.url);
-          key = existing.token;
+          url = existing.url;
+          token = existing.token;
+          machineId = existing.machineId;
         }
       }
 
@@ -755,36 +882,37 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
           stdout,
         });
         if (entered === null) return cancel();
-        // Asked for as a base and derived, so this and `--connect` take the
+        // Asked for as a base and normalised, so this and `--connect` take the
         // same thing. Someone pasting the older `/events` endpoint still works.
-        url = ingestUrlFor(cloudBaseFor(entered));
+        url = cloudBaseFor(entered);
       }
 
-      if (key === null) {
-        key = await promptText({
+      if (token === null) {
+        token = await promptText({
           message: "API key",
-          hint: "needs events:add",
-          // Masked: setup is routinely run while screen-sharing, and a pasted key
-          // would otherwise sit in the scrollback of every recording.
+          hint: "needs events:add · policies:pull enables managed policy too",
+          // Masked: setup is routinely run while screen-sharing, and a pasted
+          // key would otherwise sit in the scrollback of every recording.
           mask: true,
           validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
           stdin,
           stdout,
         });
-        if (key === null) return cancel();
+        if (token === null) return cancel();
       }
 
-      // Check BEFORE writing anything. A typo'd key is otherwise only
-      // discovered later as a silent pile of 401s parked in failed/, which
-      // reads like a server problem rather than a typo.
+      // Check BEFORE the review screen, so a typo is caught while the user is
+      // still thinking about credentials rather than three screens later. The
+      // apply step re-verifies and is what actually writes — nothing is
+      // persisted here.
       stdout.write("\nChecking the key… ");
-      const check = await validateIngestKey({ url, key });
-      if (!check.ok) {
-        stdout.write(`\nThat did not work: ${check.reason}\n`);
+      const probe = await validateIngestKey({ url: ingestUrlFor(url), key: token });
+      if (!probe.ok) {
+        stdout.write(`\nThat did not work: ${probe.reason}\n`);
         const retry = await selectOne<"skip" | "anyway">({
-          message: "Carry on without sending data?",
+          message: "Carry on without connecting?",
           choices: [
-            { label: "Yes, skip it", value: "skip", hint: "re-run failproofai config later" },
+            { label: "Yes, skip it", value: "skip", hint: "everything else still applies" },
             { label: "Save it anyway", value: "anyway", hint: "if you know the server is just down" },
           ],
           stdin,
@@ -792,58 +920,28 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         });
         if (retry === null) return cancel();
         if (retry === "skip") {
-          stdout.write("Skipping data collection. Everything else still applies.\n\n");
+          stdout.write("Staying local. Connect later with `failproofai config --connect`.\n\n");
         } else {
-          collector = { cred: { url, key }, sessions: false };
+          connect = { url, token, machineId };
         }
       } else {
-        stdout.write("looks good.\n");
-        const sessions = await selectOne<"hooks" | "both">({
-          message: "What should it send?",
-          choices: [
-            {
-              label: "Policy decisions only",
-              value: "hooks",
-              hint: "which hooks fired and what they decided \u00b7 no file contents",
-            },
-            {
-              label: "Decisions and full session transcripts",
-              value: "both",
-              hint: "includes prompts, file contents and command output",
-            },
-          ],
-          stdin,
-          stdout,
-        });
-        if (sessions === null) return cancel();
-        collector = { cred: { url, key }, sessions: sessions === "both" };
-
-        // The other half of the same connection. If this machine is not
-        // enrolled for policy and the key turns out to carry `policies:pull`,
-        // enrol it here rather than making the user discover a second command.
-        // Silent when the key lacks the permission — an events-only key is a
-        // perfectly reasonable thing to have, and a warning about a capability
-        // nobody asked for is noise.
-        if (!readCloudCredentials()) {
-          const base = cloudBaseFor(url);
-          const machineId = hostname();
-          const enrol = await verifyCloudCredentials({ url: base, machineId, token: key });
-          if (enrol.ok) {
-            writeCloudCredentials({ url: base, machineId, token: key });
-            stdout.write(
-              `Also connected for cloud-managed policy (${enrol.policyCount} assigned, generation ${enrol.generation}).\n`,
-            );
-          }
-        }
+        stdout.write("looks good.\n\n");
+        connect = { url, token, machineId };
       }
     }
   }
-
-
   // 5 — Review & apply
   const decision = await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
-    body: reviewLines({ scope, clis, policies, cwd, customEnabled, installDaemon: daemonWanted }),
+    body: reviewLines({
+      target,
+      clis,
+      policies,
+      cwd,
+      customEnabled,
+      installDaemon: daemonWanted,
+      connect: connect !== null,
+    }),
     choices: [
       { label: "Yes, apply now", value: "apply", hint: "write the config" },
       { label: "Cancel", value: "cancel", hint: "quit, no changes" },
@@ -853,89 +951,126 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   });
   if (decision !== "apply") return cancel();
 
-  // Apply — REPLACE the enabled set at this scope.
-  // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so
-  // it doesn't add dead time between "apply" and the config actually writing,
-  // while still being awaited before the process can exit.
-  const applied = emit("configure_applied", {
-    scope,
-    cli: clis,
-    cli_count: clis.length,
-    policy_count: policies.length,
-    source: presets.join("+"),
-  });
-  // quiet: the wizard renders its own outro; replace: the chosen set becomes
-  // the full enabled set at this scope (unticking removes).
-  await installHooks(
-    policies,
-    scope,
-    cwd,
-    /* includeBeta */ false,
-    "configure-wizard",
-    /* customPoliciesPath */ undefined,
-    /* removeCustomHooks */ false,
-    clis,
-    { replace: true, quiet: true },
-  );
-  setCustomPoliciesEnabled(scope, cwd, customEnabled);
-
-  // Daemon setup — driven by step 0's answer, with the sudo credential it
-  // already primed, so nothing here can stop to ask a question. A failure
-  // (binary download blocked, no service manager, a daemon that won't stay
-  // up) never fails the wizard: the rest of setup already applied, and this
-  // machine simply stays on the in-process path, since `daemonConfigured` is
-  // only set on success.
-  let daemonInstalled = false;
+  // ── Apply ─────────────────────────────────────────────────────────────────
+  //
+  // ORDER MATTERS. The daemon goes first, because setup requires it: if it
+  // cannot be installed, this run must leave the machine exactly as it found
+  // it rather than half-configured. Writing hooks first and discovering the
+  // service will not start afterwards is the one ordering whose failure cannot
+  // be undone cleanly — hooks would already be live, pointing at a machine
+  // whose `daemonConfigured` flag we then could not honestly set.
+  let daemonInstalled = daemonAlreadyRunning;
   if (daemonWanted) {
+    stdout.write("Installing the failproofaid service…\n");
     const daemonResult = await installDaemonService();
-    if (daemonResult.installed) {
-      setDaemonConfigured(true);
-      daemonInstalled = true;
-    } else {
-      hookLogWarn(`failproofaid was not installed as a service: ${daemonResult.reason}`);
-    }
     void emit("configure_daemon_install", {
       installed: daemonResult.installed,
       // A bounded classification, never the raw reason: on the failure path
       // that string is an errno message from writeFileSync/execFileSync
       // against a homedir()-derived path, so it routinely carries the OS
-      // username and the local filesystem layout ("/home/<user>/.config/
-      // systemd/user/failproofaid.service"). The full text stays local via
-      // the hookLogWarn above.
+      // username and the local filesystem layout. The full text stays local
+      // via the hookLogWarn below.
       reason: daemonResult.installed ? null : classifyDaemonInstallFailure(daemonResult.reason),
       platform: process.platform,
     });
+
+    if (!daemonResult.installed) {
+      hookLogWarn(`failproofaid was not installed as a service: ${daemonResult.reason}`);
+      // Nothing user-facing has been written yet, so there is nothing to roll
+      // back — which is the entire reason this runs first.
+      stdout.write(
+        `\nThe failproofaid service could not be installed:\n  ${daemonResult.reason ?? "unknown error"}\n\n` +
+          "Setup stopped before changing anything. Once that is fixed, re-run:\n" +
+          "  failproofai config\n\n",
+      );
+      void emit("configure_aborted", { reason: "daemon_failed" });
+      outro("Nothing was changed.", { ok: false }, stdout);
+      return { applied: false, abort: "daemon_failed" };
+    }
+    daemonInstalled = true;
   }
 
-  // Collector config, written only when the daemon actually came up: the
-  // daemon is what runs the collector, so writing a credential for a service
-  // that failed to install would leave a key on disk doing nothing.
-  if (collector && daemonInstalled) {
+  // The flag that makes hooks route through the daemon — and, on a machine
+  // where the daemon is unreachable, fail closed. Only ever set after a
+  // verified-running service, never on intent.
+  if (daemonInstalled) setDaemonConfigured(true);
+
+  // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so
+  // it doesn't add dead time between "apply" and the config actually writing,
+  // while still being awaited before the process can exit.
+  const applied = emit("configure_applied", {
+    target,
+    scopes,
+    cli: clis,
+    cli_count: clis.length,
+    policy_count: policies.length,
+    source: presets.join("+"),
+    connected: connect !== null,
+  });
+
+  // One install per chosen scope. `installHooks` already skips CLIs a given
+  // scope cannot take, so "Both" writes Hermes/OpenClaw once (user) and the
+  // rest twice (user + project) without any filtering here.
+  //
+  // quiet: the wizard renders its own outro; replace: the chosen set becomes
+  // the full enabled set at that scope (unticking removes).
+  for (const scope of scopes) {
+    await installHooks(
+      policies,
+      scope,
+      cwd,
+      /* includeBeta */ false,
+      "configure-wizard",
+      /* customPoliciesPath */ undefined,
+      /* removeCustomHooks */ false,
+      clis,
+      { replace: true, quiet: true },
+    );
+    setCustomPoliciesEnabled(scope, cwd, customEnabled);
+  }
+
+  // Cloud connection, written after the daemon exists — the daemon is what
+  // runs the collector, so a credential written for a service that is not
+  // there would be a key on disk doing nothing.
+  //
+  // `connectToCloud` re-verifies each capability and writes only what actually
+  // works, so a key revoked between the earlier probe and here degrades to a
+  // reported partial rather than a connection this machine does not have.
+  let connected = false;
+  if (connect) {
     try {
-      writeIngestCredential(collector.cred);
-      writeCollectorSettings({
-        sessions: collector.sessions,
-        hooks: true,
-        hooksVerbosity: "decisions",
-        redact: "minimal",
+      const outcome = await connectToCloud({
+        url: connect.url,
+        token: connect.token,
+        machineId: connect.machineId,
+        // Both streams, as disclosed at the connect question. This is the one
+        // place that decision becomes a written setting.
+        sessions: true,
       });
-      // Never the key, the URL, or the count — only that it happened and what
-      // shape of data the user agreed to send.
-      void emit("configure_collector", { sessions: collector.sessions });
+      connected = outcome.anyConfigured;
+      for (const line of describeOutcome(outcome, connect.machineId, connect.url)) {
+        stdout.write(`${line}\n`);
+      }
+      // Never the key, the URL, or the count — only that it happened and which
+      // capabilities the server actually granted.
+      void emit("configure_connect", {
+        policy_ok: outcome.policy.ok,
+        ingest_ok: outcome.ingest.ok,
+      });
     } catch (err) {
-      // Non-fatal, like the daemon: the rest of setup is worth keeping, and a
-      // machine with no collector behaves exactly as every release before this.
+      // Non-fatal, unlike the daemon: enforcement does not depend on the
+      // dashboard, and a machine with no connection behaves exactly as every
+      // release before this one did.
       hookLogWarn(
-        `collector configuration was not written: ${err instanceof Error ? err.message : String(err)}`,
+        `cloud connection was not written: ${err instanceof Error ? err.message : String(err)}`,
       );
+      stdout.write("\nCould not connect — everything else applied. Retry with `failproofai config --connect`.\n");
     }
-  } else if (collector && !daemonInstalled) {
-    hookLogWarn("skipped collector configuration because the daemon was not installed");
   }
 
   await applied;
-  // Only now — a completed apply — is the launcher considered "seen", so the
-  // first-run bare invocation stops redirecting here and opens the dashboard.
+  // Only now — a completed apply — is the launcher considered "seen", so
+  // first-run onboarding stops offering itself on every command.
   markLauncherSeen();
 
   // Keep this inside a standard 80-column terminal. `writeLines` truncates with
@@ -949,12 +1084,21 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       : customEnabled === false
         ? " · custom policies DISABLED"
         : "";
-  const daemonNote = daemonInstalled ? " · background daemon enabled" : "";
+  const daemonNote = daemonInstalled ? " · daemon on" : "";
+  const cloudNote = connected ? " · reporting on" : "";
   const assistants = `${clis.length} assistant${clis.length === 1 ? "" : "s"}`;
   outro(
-    `Setup complete — ${policies.length} policies${customNote} · ${assistants}${daemonNote}`,
+    `Setup complete — ${policies.length} policies${customNote} · ${assistants}${daemonNote}${cloudNote}`,
     { ok: true },
     stdout,
   );
-  return { applied: true, scope, clis, policies };
+  return {
+    applied: true,
+    target,
+    scopes,
+    clis,
+    policies,
+    daemonInstalled,
+    connected,
+  };
 }

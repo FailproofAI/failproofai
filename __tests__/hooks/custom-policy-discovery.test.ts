@@ -258,7 +258,7 @@ describe("the Custom choice is visible to the user", () => {
   it("review screen says DISABLED when the row is unticked", () => {
     write("team-policies.mjs");
     const off = reviewLines({
-      scope: "project",
+      target: "project",
       clis: ["claude"],
       policies: [],
       cwd: dir,
@@ -271,7 +271,7 @@ describe("the Custom choice is visible to the user", () => {
   it("review screen says auto-loaded when the row is ticked", () => {
     write("team-policies.mjs");
     const on = reviewLines({
-      scope: "project",
+      target: "project",
       clis: ["claude"],
       policies: [],
       cwd: dir,

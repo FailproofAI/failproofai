@@ -107,6 +107,18 @@ const STANDALONE_ROOT_PRUNE = [
   // RUNNER_TEMP precisely so this cannot happen), and 16 MB of `.gz` shipped
   // inside the CLI tarball once already because nothing pruned them.
   "release-assets", ".daemon-packages",
+  // The Rust workspace. `target/` is the big one: on any machine that has run
+  // `cargo build`, NFT traces it into the standalone output and it is FIFTEEN
+  // GIGABYTES of compiled artifacts — `npm pack` then hangs trying to tar it,
+  // which is how this was found. CI has not hit it because the Rust jobs build
+  // in a separate workspace, so nothing caught it; a contributor who builds the
+  // daemon and then the package hits it every time. The dashboard is a Next
+  // server — it never reads any of this.
+  "target", "crates",
+  // Test/dev trees NFT also over-traces. `integration-suite` is a harness, the
+  // plugin/extension dirs are shipped from the package root by `files`, not
+  // from inside the standalone bundle.
+  "integration-suite", "pi-extension", "openclaw-plugin", "docker-hook-sync",
 ];
 const STANDALONE_ROOT_PRUNE_FILES = [
   // Top-level markdown / licenses / docs
@@ -117,6 +129,14 @@ const STANDALONE_ROOT_PRUNE_FILES = [
   "vitest.config.mts", "vitest.config.e2e.mts",
   // Lockfiles
   "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock",
+  // Rust workspace manifests, siblings of the `target`/`crates` prune above.
+  "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "osv-scanner.toml",
+  // 11 MB README animation. Traced because it sits in the repo root and is
+  // referenced from README.md; the running dashboard never serves it.
+  "readme-arch-hq.gif",
+  // Incremental typechecker state — regenerated on every build, read by nothing
+  // at runtime, and routinely a few hundred KB.
+  "tsconfig.tsbuildinfo", "next-env.d.ts", "postcss.config.mjs",
 ];
 for (const d of STANDALONE_ROOT_PRUNE) {
   rmSync(join(STANDALONE, d), { recursive: true, force: true });

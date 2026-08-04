@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
+import { globalPolicyConfigFile } from "../../src/hooks/fp-home";
 
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
@@ -35,7 +36,7 @@ vi.mock("../../src/hooks/hooks-config", () => ({
   readScopedHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   writeScopedHooksConfig: vi.fn(),
   getConfigPathForScope: vi.fn((scope: string, cwd?: string) => {
-    if (scope === "user") return resolve(homedir(), ".failproofai", "policies-config.json");
+    if (scope === "user") return globalPolicyConfigFile();
     if (scope === "local") return `${cwd ?? process.cwd()}/.failproofai/policies-config.local.json`;
     return `${cwd ?? process.cwd()}/.failproofai/policies-config.json`;
   }),

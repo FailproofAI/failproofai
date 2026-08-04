@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
+import { binDir } from "../../src/hooks/fp-home";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -125,7 +126,7 @@ describe("hooks/daemon-service", () => {
       setPlatform("linux");
       setArch("x64");
       const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
-      mkdirSync(resolve(home, ".failproofai", "bin"), { recursive: true });
+      mkdirSync(binDir(home), { recursive: true });
       writeFileSync(installedBinaryPath(), "#!/bin/sh\n");
 
       const { resolveFailproofaidBinaryPath } = await import("../../src/hooks/daemon-service");

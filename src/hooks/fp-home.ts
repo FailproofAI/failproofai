@@ -69,19 +69,31 @@ export const LAYOUT_VERSION = 2;
  * derived from it, so pointing it elsewhere relocates the entire layout
  * atomically rather than per-path.
  */
-export function failproofaiHome(): string {
+export function failproofaiHome(home?: string): string {
+  if (home) return resolve(home, ".failproofai");
   return process.env.FAILPROOFAI_HOME || resolve(homedir(), ".failproofai");
 }
 
 const at = (...parts: string[]): string => resolve(failproofaiHome(), ...parts);
 
+/**
+ * Same, against an explicitly supplied HOME (not the failproofai home).
+ *
+ * `setup-state` and `onboarding-lock` take a `home` parameter purely so their
+ * tests can point at a temp directory, and a helper that silently ignored it
+ * would send those tests at the developer's real home — which is precisely the
+ * bug this overload exists to make impossible.
+ */
+const atHome = (home: string | undefined, ...parts: string[]): string =>
+  home ? resolve(failproofaiHome(home), ...parts) : at(...parts);
+
 // ── Top level ────────────────────────────────────────────────────────────────
 
 /** Layout / CLI / daemon versions. Also the layout marker. */
-export const versionFile = () => at("VERSION");
+export const versionFile = (home?: string) => atHome(home, "VERSION");
 
 /** Non-secret configuration. World-readable by design; never holds a token. */
-export const configFile = () => at("config.toml");
+export const configFile = (home?: string) => atHome(home, "config.toml");
 
 /**
  * Every credential, owner-only.
@@ -91,80 +103,82 @@ export const configFile = () => at("config.toml");
  * there would be readable by every local user on the box — which is exactly
  * why `ingest.json` and `cloud.json` were separate files before this.
  */
-export const credentialsFile = () => at("credentials.toml");
+export const credentialsFile = (home?: string) => atHome(home, "credentials.toml");
 
 // ── Daemon binaries ──────────────────────────────────────────────────────────
 
-export const binDir = () => at("bin");
+export const binDir = (home?: string) => atHome(home, "bin");
 
 /**
  * One file per version, never overwritten in place: an in-place write hits
  * `ETXTBSY` against the running daemon on Linux, and would silently repoint a
  * live service unit at a binary built from different source.
  */
-export const daemonBinary = (version: string) => resolve(binDir(), `failproofaid-${version}`);
+export const daemonBinary = (version: string, home?: string) =>
+  resolve(binDir(home), `failproofaid-${version}`);
 
 // ── Policies ─────────────────────────────────────────────────────────────────
 
-export const policiesDir = () => at("policies");
+export const policiesDir = (home?: string) => atHome(home, "policies");
 
 /** The builtin enable/disable set and per-policy params, GLOBAL scope only. */
-export const localPoliciesDir = () => resolve(policiesDir(), "local-policies");
-export const globalPolicyConfigFile = () => resolve(localPoliciesDir(), "policies-config.json");
+export const localPoliciesDir = (home?: string) => atHome(home, "policies", "local-policies");
+export const globalPolicyConfigFile = (home?: string) =>
+  resolve(localPoliciesDir(home), "policies-config.json");
 
 /** Cloud-managed generations: `active.json` plus content-addressed artifacts. */
-export const cloudPoliciesDir = () => resolve(policiesDir(), "cloud-policies");
+export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "cloud-policies");
 
 /** User convention policies (`*.mjs`) that load without any flag. */
-export const customPoliciesDir = () => resolve(policiesDir(), "custom-policies");
+export const customPoliciesDir = (home?: string) => resolve(policiesDir(home), "custom-policies");
 
 // ── Collector ────────────────────────────────────────────────────────────────
 
 /** Per-source watermarks. One directory per source — never shared: the cursor
  *  store rewrites its whole map atomically, so two sources sharing a file
  *  clobber each other and the loser re-reads from zero after every restart. */
-export const cursorsDir = (source?: string) =>
-  source ? resolve(at("cursors"), source) : at("cursors");
+export const cursorsDir = (source?: string, home?: string) =>
+  source ? resolve(atHome(home, "cursors"), source) : atHome(home, "cursors");
 
 /** The SDK spool root. Mirrors `~/.agenteye/`, which stays supported. */
-export const customAgentsDir = () => at("custom-agents");
-export const customAgentsEventsDir = () => resolve(customAgentsDir(), "events");
-export const customAgentsFailedDir = () => resolve(customAgentsDir(), "failed");
+export const customAgentsDir = (home?: string) => atHome(home, "custom-agents");
+export const customAgentsEventsDir = (home?: string) => resolve(customAgentsDir(home), "events");
+export const customAgentsFailedDir = (home?: string) => resolve(customAgentsDir(home), "failed");
 
 // ── Audit ────────────────────────────────────────────────────────────────────
 
-export const auditDir = () => at("audit");
-export const auditDashboardFile = () => resolve(auditDir(), "dashboard.json");
-export const auditCacheDir = () => resolve(auditDir(), "cache");
+export const auditDir = (home?: string) => atHome(home, "audit");
+export const auditDashboardFile = (home?: string) => resolve(auditDir(home), "dashboard.json");
+export const auditCacheDir = (home?: string) => resolve(auditDir(home), "cache");
 
 // ── Hook activity ────────────────────────────────────────────────────────────
 
 /** The decision log: page-sized JSONL the dashboard's activity tab reads. */
-export const hookActivityDir = () => at("hook-activity");
+export const hookActivityDir = (home?: string) => atHome(home, "hook-activity");
 
 // ── Runtime ──────────────────────────────────────────────────────────────────
 
 /** Sockets and the singleton flock. Shallow on purpose — see the header note. */
-export const runDir = () => at("run");
+export const runDir = (home?: string) => atHome(home, "run");
 export const daemonSocket = () =>
   process.env.FAILPROOFAI_DAEMON_SOCKET || resolve(runDir(), "failproofaid.sock");
-export const workerSocket = () => resolve(runDir(), "worker.sock");
-export const daemonLock = () => resolve(runDir(), "failproofaid.lock");
+export const workerSocket = (home?: string) => resolve(runDir(home), "worker.sock");
+export const daemonLock = (home?: string) => resolve(runDir(home), "failproofaid.lock");
 
 // ── Daemon scratch state ─────────────────────────────────────────────────────
 
 /** Everything the daemon writes that a human would never open by hand. */
-export const stateDir = () => at("state");
-export const spoolDir = () => resolve(stateDir(), "spool");
-export const failedDir = () => resolve(stateDir(), "failed");
-export const collectorHealthFile = () => resolve(stateDir(), "collector-health.json");
+export const stateDir = (home?: string) => atHome(home, "state");
+export const spoolDir = (home?: string) => resolve(stateDir(home), "spool");
+export const failedDir = (home?: string) => resolve(stateDir(home), "failed");
+export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "collector-health.json");
 /** Per-session enforcement pauses, keyed by a hash of the session id. */
 export const sessionPauseDir = () => resolve(stateDir(), "sessions");
-export const launcherMarker = () => resolve(stateDir(), "launcher-configured");
-export const onboardingLockFile = () => resolve(stateDir(), "onboarding.lock");
-export const codexSessionPathsFile = () => resolve(stateDir(), "codex-session-paths.json");
+export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");
+export const onboardingLockFile = (home?: string) => resolve(stateDir(home), "onboarding.lock");
+export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), "codex-session-paths.json");
 
-export const logsDir = () => at("logs");
+export const logsDir = (home?: string) => atHome(home, "logs");
 
 // ── Layout 1 (legacy) ────────────────────────────────────────────────────────
 

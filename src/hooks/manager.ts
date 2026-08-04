@@ -24,6 +24,7 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
+import { customPoliciesDir } from "./fp-home";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -765,7 +766,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   // hook path was loading them.
   const base = findProjectConfigDir(cwd ?? process.cwd());
   const projectDir = resolve(base, ".failproofai", "policies");
-  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const userDir = customPoliciesDir();
   const sameDir = userDir === projectDir;
   const conventionDirs: { label: string; dir: string }[] = [
     { label: sameDir ? "Project + User" : "Project", dir: projectDir },

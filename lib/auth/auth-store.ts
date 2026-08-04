@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { writeJsonAtomically } from "../atomic-write";
+import { failproofaiHome } from "../../src/hooks/fp-home";
 import {
   AuthApiError,
   decodeJwt,
@@ -31,7 +32,7 @@ export interface StoredAuth {
 export function getAuthDir(): string {
   const override = process.env.FAILPROOFAI_AUTH_DIR;
   if (override) return override;
-  return join(homedir(), ".failproofai");
+  return failproofaiHome();
 }
 
 export function getAuthFilePath(): string {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 import { acquireOnboardingLock, onboardingLockPath } from "../../src/hooks/onboarding-lock";
 
 let home: string;
@@ -18,7 +18,7 @@ afterEach(() => {
 const DEAD_PID = 0x7fffffff;
 
 function writeLock(pid: number) {
-  mkdirSync(resolve(home, ".failproofai"), { recursive: true });
+  mkdirSync(dirname(onboardingLockPath(home)), { recursive: true });
   writeFileSync(onboardingLockPath(home), JSON.stringify({ pid, startedAt: Date.now() }));
 }
 
@@ -49,7 +49,7 @@ describe("acquireOnboardingLock", () => {
   });
 
   it("reclaims a lock file that was truncated mid-write", () => {
-    mkdirSync(resolve(home, ".failproofai"), { recursive: true });
+    mkdirSync(dirname(onboardingLockPath(home)), { recursive: true });
     writeFileSync(onboardingLockPath(home), "{not json");
     const lock = acquireOnboardingLock(home);
     expect(lock).not.toBeNull();

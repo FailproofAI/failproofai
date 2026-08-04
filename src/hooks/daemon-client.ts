@@ -18,6 +18,8 @@ import { homedir } from "node:os";
 import type { IntegrationType } from "./types";
 import { readHooksConfig } from "./hooks-config";
 import { existsSync } from "node:fs";
+import { daemonSocket as daemonSocketPath } from "./fp-home";
+import { readConfig } from "./fp-config";
 
 const PROTOCOL_VERSION = 1;
 
@@ -86,7 +88,7 @@ export function daemonSocketPresent(): boolean {
 
 function socketPath(): string {
   if (process.env.FAILPROOFAI_DAEMON_SOCKET) return process.env.FAILPROOFAI_DAEMON_SOCKET;
-  return resolve(homedir(), ".failproofai", "run", "failproofaid.sock");
+  return daemonSocketPath();
 }
 
 /**
@@ -99,8 +101,11 @@ function socketPath(): string {
  */
 export function isDaemonConfigured(): boolean {
   try {
-    return readHooksConfig().daemonConfigured === true;
+    return readConfig().daemon.configured === true;
   } catch {
+    // Unreadable config reads as NOT daemon-configured. The failure direction
+    // is deliberate: the alternative is a machine that fails closed on every
+    // tool call because a config file got truncated.
     return false;
   }
 }

@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { getAllHookActivityEntries } from "./hook-activity-store";
+import { sessionPauseDir } from "./fp-home";
 
 const SCHEMA_VERSION = 1;
 
@@ -59,7 +60,7 @@ interface StoredPause extends ActivePause {
 export function pauseStateDir(): string {
   const override = process.env.FAILPROOFAI_STATE_DIR;
   if (override) return resolve(override, "sessions");
-  return join(homedir(), ".failproofai", "state", "sessions");
+  return sessionPauseDir();
 }
 
 /**

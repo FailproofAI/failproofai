@@ -40,6 +40,7 @@ import { dirname, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { version } from "../../package.json";
 import type { PlatformKey } from "./daemon-service";
+import { binDir as layoutBinDir } from "./fp-home";
 
 /**
  * Where release assets live. Overridable so an air-gapped or proxied site can
@@ -62,7 +63,7 @@ function baseUrl(): string {
 
 /** Where downloaded binaries live. One directory, one file per version. */
 export function daemonBinaryDir(): string {
-  return resolve(homedir(), ".failproofai", "bin");
+  return layoutBinDir();
 }
 
 /**

@@ -28,7 +28,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 
 import {
   selectOne,
@@ -88,6 +88,7 @@ import {
   scopesFor,
   type SetupTarget,
 } from "./setup-state";
+import { launcherMarker } from "./fp-home";
 import { acquireOnboardingLock } from "./onboarding-lock";
 
 export interface WizardIO {
@@ -485,7 +486,7 @@ export function reviewLines(state: {
 // ── First-run redirect ───────────────────────────────────────────────────────
 
 function firstRunMarkerPath(): string {
-  return resolve(homedir(), ".failproofai", ".launcher-configured");
+  return launcherMarker();
 }
 
 export function hasSeenLauncher(): boolean {
@@ -494,7 +495,10 @@ export function hasSeenLauncher(): boolean {
 
 export function markLauncherSeen(): void {
   try {
-    mkdirSync(resolve(homedir(), ".failproofai"), { recursive: true });
+    // Layout 2 puts this under state/ with the rest of the daemon-adjacent
+    // markers, so the parent is a directory deeper than the home and has to be
+    // created rather than assumed.
+    mkdirSync(dirname(firstRunMarkerPath()), { recursive: true });
     writeFileSync(firstRunMarkerPath(), "1", "utf8");
   } catch {
     // best-effort

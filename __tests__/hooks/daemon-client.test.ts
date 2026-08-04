@@ -10,6 +10,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeConfig, DEFAULT_CONFIG } from "../../src/hooks/fp-config";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(),
@@ -266,23 +267,13 @@ describe("hooks/daemon-client", () => {
     });
 
     it("is true when the global config has daemonConfigured: true", async () => {
-      const dir = join(globalConfigDir, ".failproofai");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, "policies-config.json"),
-        JSON.stringify({ enabledPolicies: [], daemonConfigured: true }),
-      );
+      writeConfig({ ...DEFAULT_CONFIG, daemon: { configured: true } });
       const { isDaemonConfigured } = await import("../../src/hooks/daemon-client");
       expect(isDaemonConfigured()).toBe(true);
     });
 
     it("is false when daemonConfigured is explicitly false", async () => {
-      const dir = join(globalConfigDir, ".failproofai");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, "policies-config.json"),
-        JSON.stringify({ enabledPolicies: [], daemonConfigured: false }),
-      );
+      writeConfig({ ...DEFAULT_CONFIG, daemon: { configured: false } });
       const { isDaemonConfigured } = await import("../../src/hooks/daemon-client");
       expect(isDaemonConfigured()).toBe(false);
     });

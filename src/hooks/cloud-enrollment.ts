@@ -21,6 +21,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { fetchWithTimeout, isAbortError } from "../../lib/fetch-with-timeout";
+import { credentialsFile } from "./fp-home";
+import { readCredentials, writeCredentials } from "./fp-config";
 
 const SCHEMA_VERSION = 1;
 const VERIFY_TIMEOUT_MS = 10_000;
@@ -35,11 +37,22 @@ interface StoredCredentials extends CloudCredentials {
   schemaVersion: number;
 }
 
-/** `~/.failproofai/cloud.json`. The override is honoured by the daemon too. */
+/**
+ * Where the cloud credential lives.
+ *
+ * Layout 2 moved it out of `cloud.json` and into the `[cloud]` table of
+ * `credentials.toml`, alongside every other token, so there is exactly one
+ * owner-only file to protect rather than three. The env override still names a
+ * standalone JSON file, because the daemon and CI both use it that way and it
+ * predates the consolidation.
+ */
 export function cloudCredentialPath(): string {
-  const override = process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
-  if (override) return override;
-  return join(homedir(), ".failproofai", "cloud.json");
+  return process.env.FAILPROOFAI_CLOUD_CREDENTIALS ?? credentialsFile();
+}
+
+/** True when the credential is coming from the JSON override, not the TOML. */
+function usingJsonOverride(): boolean {
+  return Boolean(process.env.FAILPROOFAI_CLOUD_CREDENTIALS);
 }
 
 /**
@@ -81,6 +94,7 @@ export function maskToken(token: string): string {
 }
 
 export function readCloudCredentials(): CloudCredentials | null {
+  if (!usingJsonOverride()) return readCredentials().cloud ?? null;
   const path = cloudCredentialPath();
   if (!existsSync(path)) return null;
   try {
@@ -100,21 +114,36 @@ export function readCloudCredentials(): CloudCredentials | null {
 }
 
 export function writeCloudCredentials(creds: CloudCredentials): void {
-  // 0600 inside a 0700 dir — the default for writeJsonAtomically, and the
-  // whole reason this is a file of ours rather than a line in the unit.
-  writeJsonAtomically(cloudCredentialPath(), { schemaVersion: SCHEMA_VERSION, ...creds });
+  if (usingJsonOverride()) {
+    // 0600 inside a 0700 dir — the default for writeJsonAtomically.
+    writeJsonAtomically(cloudCredentialPath(), { schemaVersion: SCHEMA_VERSION, ...creds });
+    return;
+  }
+  // Merge, never replace: credentials.toml also carries the ingest key and the
+  // auth session, and rewriting the file from one caller must not drop the
+  // others.
+  writeCredentials({ ...readCredentials(), cloud: creds });
 }
 
 /** True if there was something to remove. */
 export function clearCloudCredentials(): boolean {
-  const path = cloudCredentialPath();
-  if (!existsSync(path)) return false;
-  try {
-    rmSync(path);
-    return true;
-  } catch {
-    return false;
+  if (usingJsonOverride()) {
+    const path = cloudCredentialPath();
+    if (!existsSync(path)) return false;
+    try {
+      rmSync(path);
+      return true;
+    } catch {
+      return false;
+    }
   }
+  const current = readCredentials();
+  if (!current.cloud) return false;
+  // Drop only the cloud table — disconnecting policy must not also revoke the
+  // ingest key or the dashboard session.
+  const { cloud: _dropped, ...rest } = current;
+  writeCredentials(rest);
+  return true;
 }
 
 export type VerifyResult =

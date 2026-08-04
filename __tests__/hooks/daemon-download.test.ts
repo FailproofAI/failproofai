@@ -28,6 +28,7 @@ import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { version } from "../../package.json";
+import { binDir } from "../../src/hooks/fp-home";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -161,7 +162,7 @@ describe("hooks/daemon-download", () => {
         // 0o755: the service manager execs this path directly.
         expect(statSync(result.path!).mode & 0o777).toBe(0o755);
         // The install is a rename, so no temp file survives it.
-        expect(readdirSync(resolve(home, ".failproofai", "bin"))).toEqual([`failproofaid-${version}`]);
+        expect(readdirSync(binDir(home))).toEqual([`failproofaid-${version}`]);
       } finally {
         await server.close();
       }
@@ -250,7 +251,7 @@ describe("hooks/daemon-download", () => {
       const { installedBinaryPath, downloadFailproofaidBinary } = await import(
         "../../src/hooks/daemon-download"
       );
-      mkdirSync(resolve(home, ".failproofai", "bin"), { recursive: true });
+      mkdirSync(binDir(home), { recursive: true });
       writeFileSync(installedBinaryPath(), BINARY);
       process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
 
@@ -337,7 +338,7 @@ describe("hooks/daemon-download", () => {
       expect(readFileSync(result.path!)).toEqual(BINARY);
       expect(statSync(result.path!).mode & 0o777).toBe(0o755);
       // Same atomic rename as the download path — no temp file survives.
-      expect(readdirSync(resolve(home, ".failproofai", "bin"))).toEqual([`failproofaid-${version}`]);
+      expect(readdirSync(binDir(home))).toEqual([`failproofaid-${version}`]);
     });
 
     it("reports a missing package without throwing", async () => {

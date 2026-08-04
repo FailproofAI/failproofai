@@ -24,6 +24,7 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import type { CustomHook } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { customPoliciesDir } from "./fp-home";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -362,7 +363,7 @@ export async function loadAllCustomHooks(
   // so the second import is a no-op — but Node honours the query and would
   // double-register. The binary runs under Bun and the tests under Node, so the
   // bug is invisible from both sides. Do not rely on that; dedupe the paths.
-  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const userDir = customPoliciesDir();
   if (conventionEnabled && userDir !== projectDir) warnSkippedPolicyFiles(userDir, "user");
   const userFiles =
     conventionEnabled && userDir !== projectDir

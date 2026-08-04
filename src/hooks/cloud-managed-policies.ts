@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
+import { cloudPoliciesDir } from "./fp-home";
 
 const ACTIVE_SCHEMA_VERSION = 1;
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -47,7 +48,7 @@ interface ActiveManifest {
 export function cloudManagedPolicyRoot(): string {
   return (
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR ??
-    resolve(homedir(), ".failproofai", "policies", "cloud-managed")
+    cloudPoliciesDir()
   );
 }
 

@@ -28,6 +28,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { onboardingLockFile, stateDir } from "./fp-home";
 
 interface LockBody {
   pid: number;
@@ -35,7 +36,7 @@ interface LockBody {
 }
 
 export function onboardingLockPath(home: string = homedir()): string {
-  return resolve(home, ".failproofai", ".onboarding.lock");
+  return onboardingLockFile(home);
 }
 
 /**
@@ -91,7 +92,7 @@ export function acquireOnboardingLock(home: string = homedir()): OnboardingLock 
     // already holds it — re-entering is fine and must not deadlock.
     if (held && held.pid !== process.pid && processAlive(held.pid)) return null;
 
-    mkdirSync(resolve(home, ".failproofai"), { recursive: true });
+    mkdirSync(stateDir(home), { recursive: true });
     const body: LockBody = { pid: process.pid, startedAt: Date.now() };
     writeFileSync(path, JSON.stringify(body), "utf8");
 

@@ -28,6 +28,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 import { readHooksConfig, writeHooksConfig } from "./hooks-config";
+import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
+import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
 
 /** The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto. */
 export const DEFAULT_INGEST_URL = "https://server.befailproof.ai/events";
@@ -55,16 +57,16 @@ export interface CollectorSettings {
 }
 
 export function failproofaiHome(): string {
-  return process.env.FAILPROOFAI_HOME || join(homedir(), ".failproofai");
+  return layoutHome();
 }
 
 export function ingestPath(): string {
-  return join(failproofaiHome(), "ingest.json");
+  return credentialsFile();
 }
 
 /** Whether an ingest credential is already configured on this machine. */
 export function hasIngestCredential(): boolean {
-  return existsSync(ingestPath());
+  return Boolean(readCredentials().ingest);
 }
 
 /**
@@ -76,24 +78,19 @@ export function hasIngestCredential(): boolean {
  * cannot read it either, is the truth.
  */
 export function readIngestCredential(): IngestCredential | null {
-  try {
-    const raw = JSON.parse(readFileSync(ingestPath(), "utf8")) as Partial<IngestCredential>;
-    if (typeof raw.url !== "string" || typeof raw.key !== "string") return null;
-    if (!raw.url || !raw.key) return null;
-    return { url: raw.url, key: raw.key };
-  } catch {
-    return null;
-  }
+  const ingest = readCredentials().ingest;
+  return ingest ? { url: ingest.url, key: ingest.key } : null;
 }
 
 /** Remove the ingest credential. Returns whether a file was actually removed. */
 export function clearIngestCredential(): boolean {
-  try {
-    rmSync(ingestPath());
-    return true;
-  } catch {
-    return false;
-  }
+  const current = readCredentials();
+  if (!current.ingest) return false;
+  // Drop only the ingest table: stopping event reporting must not also revoke
+  // the policy-pull credential or the dashboard session.
+  const { ingest: _dropped, ...rest } = current;
+  writeCredentials(rest);
+  return true;
 }
 
 /**
@@ -105,41 +102,26 @@ export function clearIngestCredential(): boolean {
  * without POSIX modes; the write itself is not.
  */
 export function writeIngestCredential(cred: IngestCredential): string {
-  const home = failproofaiHome();
-  mkdirSync(home, { recursive: true });
-  try {
-    const mode = statSync(home).mode & 0o777;
-    if (mode & 0o077) chmodSync(home, 0o700);
-  } catch {
-    // Not fatal: the file's own 0600 is the primary protection.
-  }
-
-  const path = ingestPath();
-  // `mode` on writeFileSync applies only when the file is CREATED, so an
-  // existing over-permissive file would keep its mode without the chmod.
-  writeFileSync(path, JSON.stringify(cred, null, 2) + "\n", { mode: 0o600 });
-  try {
-    chmodSync(path, 0o600);
-  } catch {
-    /* best effort */
-  }
-  return path;
+  // Merge, never replace — credentials.toml also holds the cloud token and the
+  // auth session, and one caller rewriting the file must not drop the others.
+  // writeCredentials owns the 0600 mode and tightens the home around it.
+  writeCredentials({ ...readCredentials(), ingest: cred });
+  return credentialsFile();
 }
 
 /** Merge the collector block into the shared (non-secret) config. */
 export function writeCollectorSettings(settings: CollectorSettings): void {
-  const config = readHooksConfig();
-  writeHooksConfig({
-    ...config,
+  // Collector preferences are NOT secret, so they live in config.toml. The key
+  // that makes them meaningful lives in credentials.toml; that split is the
+  // whole point of layout 2.
+  updateConfig({
     collector: {
       sessions: settings.sessions,
       hooks: settings.hooks,
       hooksVerbosity: settings.hooksVerbosity ?? "decisions",
       redact: settings.redact ?? "minimal",
       environment: settings.environment ?? "local",
-      // Omit when unknown rather than writing null: the Rust side treats an
-      // absent field as "no machine", which is the correct fallback.
-      ...(settings.machineId ? { machineId: settings.machineId } : {}),
+      machineId: settings.machineId,
     },
   });
 }

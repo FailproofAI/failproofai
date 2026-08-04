@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { listHooks } from "@/src/hooks/manager";
+import { customPoliciesDir } from "../../src/hooks/fp-home";
 
 const LONG_NAME = "enforce-bengaluru-event-links-policies.mjs";
 const SHORT_NAME = "team-policies.mjs";
@@ -100,18 +101,26 @@ describe("listHooks — convention policy column width", () => {
   // and the ESM cache short-circuits `customPolicies.add`, so
   // `loadCustomHooks` legitimately returns 0 hooks. Reported from a live
   // install where four working policies all showed ✗.
-  it("lists a shared project/user directory once, without a phantom load failure", async () => {
+  it("cannot double-list from $HOME any more — the two dirs are now distinct", async () => {
+    // The original defect: run from $HOME and both scopes resolved to the SAME
+    // <tmp>/.failproofai/policies, so every file printed twice and the second
+    // pass rendered as "failed to load" (the ESM cache short-circuits
+    // customPolicies.add, so loadCustomHooks legitimately returns 0 hooks).
+    //
+    // Layout 2 removes the collision by construction: user convention policies
+    // live in policies/custom-policies/, project ones in <cwd>/.failproofai/
+    // policies/. They can no longer be the same path, whatever the cwd. The
+    // dedup logic still exists for other cases; this asserts the shape that
+    // made it necessary is gone.
+    expect(customPoliciesDir(tmp)).not.toBe(join(tmp, ".failproofai", "policies"));
+
     seed({ [SHORT_NAME]: policySource("team-rule") });
-    // cwd === HOME: both scopes resolve to <tmp>/.failproofai/policies.
     vi.stubEnv("HOME", tmp);
     vi.stubEnv("USERPROFILE", tmp);
 
     await listHooks(tmp);
 
-    const headers = lines.filter((l) => l.includes("Convention Policies"));
-    expect(headers).toHaveLength(1);
-    expect(headers[0]).toContain("Project + User");
-
+    // The regression that mattered: one row per file, never "failed to load".
     const rows = lines.filter((l) => l.includes(SHORT_NAME));
     expect(rows).toHaveLength(1);
     expect(rows.join("\n")).not.toContain("failed to load");

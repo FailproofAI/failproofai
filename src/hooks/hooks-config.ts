@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import type { HookScope } from "./types";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
+import { globalPolicyConfigFile } from "./fp-home";
 
 /** Normalize plural and legacy singular explicit policy paths for consumers. */
 export function configuredCustomPolicyPaths(
@@ -69,7 +70,7 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
   const base = findProjectConfigDir(cwd ?? process.cwd());
   const projectPath = resolve(base, ".failproofai", "policies-config.json");
   const localPath = resolve(base, ".failproofai", "policies-config.local.json");
-  const globalPath = resolve(homedir(), ".failproofai", "policies-config.json");
+  const globalPath = globalPolicyConfigFile();
 
   const project = readConfigAt(projectPath);
   const local = readConfigAt(localPath);
@@ -128,7 +129,7 @@ export function readMergedHooksConfig(cwd?: string): HooksConfig {
 }
 
 function getConfigPath(): string {
-  return resolve(homedir(), ".failproofai", "policies-config.json");
+  return globalPolicyConfigFile();
 }
 
 export function readHooksConfig(): HooksConfig {
@@ -160,7 +161,7 @@ export function writeHooksConfig(config: HooksConfig): void {
 export function getConfigPathForScope(scope: HookScope, cwd?: string): string {
   switch (scope) {
     case "user":
-      return resolve(homedir(), ".failproofai", "policies-config.json");
+      return globalPolicyConfigFile();
     case "project":
       return resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies-config.json");
     case "local":

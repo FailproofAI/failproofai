@@ -33,10 +33,11 @@ import {
   type LogSource,
 } from "./log-entries";
 import { formatDuration } from "./format-duration";
+import { codexSessionPathsFile } from "../src/hooks/fp-home";
 
 // ── Transcript discovery ──
 
-const CACHE_PATH = join(homedir(), ".failproofai", "cache", "codex-session-paths.json");
+const CACHE_PATH = codexSessionPathsFile();
 
 function readCache(): Record<string, string> {
   try {

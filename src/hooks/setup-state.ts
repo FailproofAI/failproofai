@@ -19,6 +19,7 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { getIntegration } from "./integrations";
 import { INTEGRATION_TYPES } from "./types";
+import { globalPolicyConfigFile, launcherMarker as layoutLauncherMarker } from "./fp-home";
 
 /** Which config a wizard run is going to write. */
 export type SetupTarget = "user" | "project" | "both";
@@ -49,7 +50,7 @@ export interface SetupState {
 }
 
 export function globalConfigPath(home: string = homedir()): string {
-  return resolve(home, ".failproofai", "policies-config.json");
+  return globalPolicyConfigFile(home);
 }
 
 export function projectConfigPath(projectRoot: string): string {
@@ -57,7 +58,7 @@ export function projectConfigPath(projectRoot: string): string {
 }
 
 function legacyMarkerPath(home: string): string {
-  return resolve(home, ".failproofai", ".launcher-configured");
+  return layoutLauncherMarker(home);
 }
 
 function isDir(path: string): boolean {

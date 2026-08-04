@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { globalPolicyConfigFile, launcherMarker } from "../../src/hooks/fp-home";
 
 // hasGlobalHooksInstalled walks every real integration and reads real settings
 // files. Every test here is about PATHS, not about hook installs, so the
@@ -38,8 +39,10 @@ afterEach(() => {
 });
 
 function writeGlobalConfig() {
-  mkdirSync(resolve(home, ".failproofai"), { recursive: true });
-  writeFileSync(resolve(home, ".failproofai", "policies-config.json"), "{}");
+  // Layout 2 nests this under policies/local-policies/, so creating
+  // <home>/.failproofai alone is no longer enough.
+  mkdirSync(dirname(globalPolicyConfigFile(home)), { recursive: true });
+  writeFileSync(globalPolicyConfigFile(home), "{}");
 }
 
 function makeProject(name: string, withConfig = true): string {
@@ -121,8 +124,8 @@ describe("isConfigured", () => {
   it("is true when only the legacy marker exists", () => {
     // Users onboarded by an earlier version have the marker and nothing else
     // this function knows about. They must not see the wizard again.
-    mkdirSync(resolve(home, ".failproofai"), { recursive: true });
-    writeFileSync(resolve(home, ".failproofai", ".launcher-configured"), "1");
+    mkdirSync(dirname(launcherMarker(home)), { recursive: true });
+    writeFileSync(launcherMarker(home), "1");
     expect(isConfigured(detectSetupState(root, home))).toBe(true);
   });
 

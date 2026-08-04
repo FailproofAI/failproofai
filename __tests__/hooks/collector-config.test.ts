@@ -14,6 +14,7 @@ import {
   validateIngestKey,
   hasIngestCredential,
   ingestPath,
+  readIngestCredential,
 } from "@/src/hooks/collector-config";
 
 describe("collector credential storage", () => {
@@ -36,7 +37,9 @@ describe("collector credential storage", () => {
     const path = writeIngestCredential({ url: DEFAULT_INGEST_URL, key: "sk-secret" });
     const mode = statSync(path).mode & 0o777;
     expect(mode).toBe(0o600);
-    expect(JSON.parse(readFileSync(path, "utf8")).key).toBe("sk-secret");
+    // Stored in credentials.toml now; assert through the reader, and
+    // separately that the raw file never leaks into a world-readable mode.
+    expect(readIngestCredential()?.key).toBe("sk-secret");
   });
 
   it("tightens a world-traversable home", () => {
@@ -51,7 +54,7 @@ describe("collector credential storage", () => {
     // `mode` on writeFileSync applies only when the file is CREATED, so
     // without the explicit chmod an existing 0644 file keeps its mode.
     mkdirSync(home, { recursive: true });
-    writeFileSync(ingestPath(), "{}");
+    writeFileSync(ingestPath(), "");
     chmodSync(ingestPath(), 0o644);
 
     writeIngestCredential({ url: DEFAULT_INGEST_URL, key: "k" });

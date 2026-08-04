@@ -11,6 +11,7 @@ import {
   writeCachedTranscriptResult,
 } from "../../src/audit/cache";
 import type { TranscriptAuditResult } from "../../src/audit/types";
+import { auditCacheDir } from "../../src/hooks/fp-home";
 
 const TRANSCRIPT_PATH = "/tmp/fake-transcript.jsonl";
 const MTIME = 1_700_000_000_000;
@@ -32,7 +33,7 @@ const FAKE_RESULT: TranscriptAuditResult = {
 
 function cachePathFor(transcriptPath: string): string {
   const key = createHash("sha1").update(transcriptPath).digest("hex");
-  return join(homedir(), ".failproofai", "cache", "audit", `${key}.json`);
+  return join(auditCacheDir(), `${key}.json`);
 }
 
 describe("per-transcript audit cache", () => {
@@ -82,7 +83,7 @@ describe("per-transcript audit cache", () => {
 
   it("rejects entries older than the 7-day TTL", () => {
     const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60_000;
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({
@@ -110,7 +111,7 @@ describe("per-transcript audit cache", () => {
   });
 
   it("rejects a schema v2 entry (forces re-scan after upgrade)", () => {
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({
@@ -127,7 +128,7 @@ describe("per-transcript audit cache", () => {
   });
 
   it("rejects entries with a missing cachedAt field", () => {
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({

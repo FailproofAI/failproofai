@@ -130,6 +130,8 @@ import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
 import { trackHookEvent } from "../../src/hooks/hook-telemetry";
+import { globalPolicyConfigFile, configFile as fpConfigFile, launcherMarker } from "../../src/hooks/fp-home";
+import { readConfig as readFpConfig } from "../../src/hooks/fp-config";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
 const mkTtyStdout = (): TTYOut =>
@@ -545,12 +547,14 @@ describe("scope-aware assistant selection", () => {
 
 describe("configure-wizard daemon integration", () => {
   function globalConfigPath(): string {
-    return resolve(fileHome, ".failproofai", "policies-config.json");
+    return fpConfigFile();
   }
   function readGlobalConfig(): Record<string, unknown> {
-    const path = globalConfigPath();
-    if (!existsSync(path)) return {};
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    // Layout 2 moved this flag out of policies-config.json and into
+    // config.toml [daemon]. Shaped back to the old key so the assertions below
+    // keep reading as statements about daemonConfigured rather than about TOML.
+    const cfg = readFpConfig();
+    return cfg.daemon.configured ? { daemonConfigured: true } : {};
   }
 
   // fileHome (and therefore the global config file) is shared across every
@@ -561,7 +565,7 @@ describe("configure-wizard daemon integration", () => {
     // Same leak, one file over: an earlier test's completed apply leaves the
     // marker behind, so an abort test asserting "not marked seen" would read a
     // previous test's success as its own.
-    rmSync(resolve(fileHome, ".failproofai", ".launcher-configured"), { force: true });
+    rmSync(launcherMarker(fileHome), { force: true });
     vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
     // The telemetry assertions below locate their event with `.find()`, which
     // would otherwise match an identically-named event emitted by an earlier

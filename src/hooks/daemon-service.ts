@@ -23,6 +23,8 @@ import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { getConfigPathForScope } from "./hooks-config";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
+import { logsDir } from "./fp-home";
+import { updateConfig } from "./fp-config";
 
 /**
  * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
@@ -76,19 +78,17 @@ const SUDO_PROMPT_TIMEOUT_MS = 120_000;
  * Global scope only: whether *this machine* runs a daemon is not a
  * per-project setting.
  */
-export function setDaemonConfigured(value: boolean): void {
-  const path = getConfigPathForScope("user");
-  let config: Record<string, unknown> = {};
+export function setDaemonConfigured(value: boolean, installedVersion?: string): void {
   try {
-    if (existsSync(path)) config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return; // a malformed global config is the install path's problem, not ours
-  }
-  if (value) config.daemonConfigured = true;
-  else delete config.daemonConfigured;
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
+    updateConfig({
+      daemon: {
+        configured: value,
+        // Cleared alongside the flag: a recorded binary version for a service
+        // that is no longer configured is a claim about this machine that is
+        // no longer true.
+        installedVersion: value ? installedVersion : undefined,
+      },
+    });
   } catch {
     /* best-effort: never fail a completed setup (or uninstall) over this flag */
   }
@@ -605,7 +605,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       runPrivileged("systemctl", ["enable", "--now", systemdUnitName()]);
     } else {
       const plistPath = launchdPlistPath();
-      const logDir = resolve(homedir(), ".failproofai", "logs");
+      const logDir = logsDir();
       mkdirSync(logDir, { recursive: true });
       // Unload any previously-loaded copy first — reloading with a changed
       // binary path (e.g. after an upgrade) is a no-op under plain `load`

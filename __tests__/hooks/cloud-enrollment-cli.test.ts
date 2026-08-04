@@ -7,6 +7,7 @@ import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
 import { readIngestCredential } from "../../src/hooks/collector-config";
 import { readHooksConfig } from "../../src/hooks/hooks-config";
+import { readConfig } from "../../src/hooks/fp-config";
 
 let dir: string;
 let realHome: string | undefined;
@@ -203,13 +204,13 @@ describe("--connect configures policy AND the dashboard", () => {
     // A transcript carries prompts, file contents and whatever was pasted into
     // a terminal. It can never be a side effect of connecting.
     const r = await runConnectCommand({ ...base, machineId: "m-1" });
-    expect(readHooksConfig().collector).toMatchObject({ hooks: true, sessions: false });
+    expect(readConfig().collector).toMatchObject({ hooks: true, sessions: false });
     expect(r.lines.join("\n")).toMatch(/transcripts are NOT being sent/i);
   });
 
   it("sends transcripts when explicitly opted in", async () => {
     await runConnectCommand({ ...base, machineId: "m-1", sessions: true });
-    expect(readHooksConfig().collector).toMatchObject({ sessions: true });
+    expect(readConfig().collector).toMatchObject({ sessions: true });
   });
 
   it("accepts the ingest endpoint too, rather than being pedantic about it", async () => {

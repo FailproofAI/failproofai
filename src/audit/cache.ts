@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
 import { AUDIT_DETECTORS } from "./detectors";
 import type { TranscriptAuditResult } from "./types";
+import { auditCacheDir } from "../hooks/fp-home";
 
 let cachedEngineVersion: string | null = null;
 let cachedDetectorVersion: string | null = null;
@@ -44,7 +45,7 @@ function getDetectorVersion(): string {
 }
 
 function getCachePathFor(transcriptPath: string): string {
-  const root = join(homedir(), ".failproofai", "cache", "audit");
+  const root = auditCacheDir();
   const key = createHash("sha1").update(transcriptPath).digest("hex");
   return join(root, `${key}.json`);
 }
@@ -123,7 +124,7 @@ export function writeCachedTranscriptResult(
   if (sizeBytes === 0) return;
   const cachePath = getCachePathFor(transcriptPath);
   try {
-    mkdirSync(join(homedir(), ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(), { recursive: true });
     const entry: CacheEntry = {
       schemaVersion: CACHE_SCHEMA_VERSION,
       cachedAt: Date.now(),

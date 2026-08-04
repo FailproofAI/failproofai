@@ -130,6 +130,14 @@ pub struct FileCursor {
     /// Length of the file's first line, for formats that rewrite it in place.
     #[serde(default)]
     pub first_line_len: Option<u64>,
+    /// The file's mtime (epoch ms) at first discovery. Captured once and never
+    /// updated, so it stays stable across polls and restarts — which is what
+    /// lets a timestamp-less format (cursor) anchor its synthetic event times on
+    /// a real, re-read-stable value without breaking the content-hash dedup.
+    /// `None` for every other source and for cursors persisted before this
+    /// field existed.
+    #[serde(default)]
+    pub first_seen_epoch_ms: Option<i64>,
     #[serde(default)]
     pub state: TailState,
 }

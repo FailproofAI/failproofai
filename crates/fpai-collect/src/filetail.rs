@@ -64,6 +64,12 @@ pub struct Ctx {
     pub session_id: String,
     pub agent_id: String,
     pub environment: String,
+    /// The file's modification time (epoch ms) captured ONCE at first discovery
+    /// and carried immutably. Only for formats whose transcripts contain no
+    /// timestamps of their own (cursor) — every other source ignores it and
+    /// derives event times from the records themselves. Immutable like the rest
+    /// of `Ctx`, so a source that reads it stays a pure function of its inputs.
+    pub file_epoch_ms: Option<i64>,
 }
 
 /// The per-format adapter: a table of pure functions.
@@ -243,6 +249,7 @@ async fn process_file(
             .clone()
             .unwrap_or_else(|| spec.params.agent_id.clone()),
         environment: spec.params.environment.clone(),
+        file_epoch_ms: cursor.first_seen_epoch_ms,
     };
 
     let mut writer = SpoolWriter::new(
@@ -377,8 +384,19 @@ async fn new_cursor(
         ended: false,
         last_ts: None,
         first_line_len: first_line_len(&header),
+        first_seen_epoch_ms: mtime_epoch_ms(meta),
         state,
     }))
+}
+
+/// The file's modification time as epoch milliseconds, if the platform reports
+/// one. Captured once at discovery so a timestamp-less format can anchor on it.
+fn mtime_epoch_ms(meta: &std::fs::Metadata) -> Option<i64> {
+    meta.modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as i64)
 }
 
 /// Re-read line 1 and shift the cursor by any change in its length.

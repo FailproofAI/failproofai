@@ -39,6 +39,8 @@ fn ctx() -> Ctx {
         session_id: UUID.into(),
         agent_id: "factory-droid".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

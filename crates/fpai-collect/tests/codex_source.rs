@@ -39,6 +39,8 @@ fn ctx() -> Ctx {
         session_id: UUID.into(),
         agent_id: "codex-cli".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

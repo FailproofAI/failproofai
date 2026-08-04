@@ -49,6 +49,8 @@ fn ctx() -> Ctx {
         session_id: format!("{PARENT}:{AGENT}"),
         agent_id: "claude-Explore".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 
@@ -250,6 +252,8 @@ fn a_main_session_start_carries_no_parent_link() {
         session_id: PARENT.into(),
         agent_id: "claude-repo".into(),
         environment: "local".into(),
+
+        ..Default::default()
     };
     let (ev, _) = (claude::FORMAT.agent_start)(&header, &main_ctx, 0).unwrap();
     assert!(ev.get("claude_parent_session_id").is_none());

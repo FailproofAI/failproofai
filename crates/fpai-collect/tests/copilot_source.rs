@@ -38,6 +38,8 @@ fn ctx() -> Ctx {
         session_id: SESSION.into(),
         agent_id: "copilot-probe-copilot".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

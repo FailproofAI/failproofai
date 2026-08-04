@@ -45,6 +45,8 @@ fn ctx() -> Ctx {
         session_id: UUID.into(),
         agent_id: "pi-probe-pi".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

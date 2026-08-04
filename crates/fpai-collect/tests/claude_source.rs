@@ -34,6 +34,8 @@ fn ctx() -> Ctx {
         session_id: "fb9f0d4f-f739-4069-ac16-9add45fd2506".into(),
         agent_id: "claude-repo".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

@@ -36,6 +36,8 @@ fn ctx() -> Ctx {
         session_id: UUID.into(),
         agent_id: "openclaw-main".into(),
         environment: "local".into(),
+
+        ..Default::default()
     }
 }
 

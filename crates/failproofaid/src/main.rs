@@ -326,7 +326,9 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let machine = cfg.settings.machine_id.clone();
         let cursors = home.join("cursors");
 
-        use fpai_collect::sources::{claude, codex, copilot, factory, openclaw, pi};
+        use fpai_collect::sources::{
+            antigravity, claude, codex, copilot, cursor, factory, openclaw, pi,
+        };
         file_source(
             &mut tasks,
             "claude",
@@ -409,8 +411,30 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
         );
+        file_source(
+            &mut tasks,
+            "antigravity",
+            antigravity::FORMAT,
+            vec![antigravity_brain_root()],
+            antigravity::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+        );
+        file_source(
+            &mut tasks,
+            "cursor",
+            cursor::FORMAT,
+            vec![cursor_projects_root()],
+            cursor::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+        );
 
-        use fpai_collect::sources::{goose, hermes, opencode};
+        use fpai_collect::sources::{devin, goose, hermes, opencode};
         sqlite_source(
             &mut tasks,
             "goose",
@@ -430,6 +454,17 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             opencode::DEFAULT_AGENT_ID,
             &spool,
             cursors.join("opencode"),
+            &env,
+            machine.as_deref(),
+        );
+        sqlite_source(
+            &mut tasks,
+            "devin",
+            devin::FORMAT,
+            devin::db_path(),
+            devin::DEFAULT_AGENT_ID,
+            &spool,
+            cursors.join("devin"),
             &env,
             machine.as_deref(),
         );
@@ -617,6 +652,30 @@ fn factory_sessions_root() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     home.join(".factory").join("sessions")
+}
+
+/// `~/.gemini/antigravity-cli/brain`, honouring the `ANTIGRAVITY_HOME` override
+/// (which points at the `antigravity-cli` dir) the audit adapter uses.
+fn antigravity_brain_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("ANTIGRAVITY_HOME") {
+        return std::path::PathBuf::from(p).join("brain");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".gemini").join("antigravity-cli").join("brain")
+}
+
+/// `~/.cursor/projects`, honouring the `CURSOR_HOME` override the audit adapter
+/// uses so tests can point at a fixture tree.
+fn cursor_projects_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("CURSOR_HOME") {
+        return std::path::PathBuf::from(p).join("projects");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".cursor").join("projects")
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

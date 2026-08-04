@@ -13,9 +13,12 @@
 //!   that comes from failproofai sitting in the hook path rather than reading
 //!   somebody else's files.
 
+pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod copilot;
+pub mod cursor;
+pub mod devin;
 pub mod factory;
 pub mod goose;
 pub mod hermes;

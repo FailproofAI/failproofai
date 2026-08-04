@@ -17,11 +17,15 @@
  *     (it checks main out and pushes to it, regardless of the dispatched ref);
  *   - build-daemon.yml stays callable and is not also triggered standalone on
  *     a release (that would build the matrix twice per release);
+ *   - a stable release stays restricted to the maintainer allowlist while
+ *     beta/next builds stay open to anyone with write access (deleting that
+ *     step is a one-line change that nothing else would notice);
  *   - the platform list in the build matrix matches the platforms the CLI
  *     actually knows how to resolve — a missing leg is a platform that
  *     silently gets no daemon.
  */
 import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
@@ -130,6 +134,95 @@ describe("publish.yml", () => {
     // A branch dispatch defaults to `next` rather than `beta`, so it cannot
     // move `beta` to code that is not on main.
     expect(scripts).toContain('DIST_TAG="next"');
+  });
+
+  const stableGuard = () =>
+    wf.jobs.preflight.steps.find((s: Record<string, any>) => s.name === "Authorize stable release");
+
+  it("restricts a stable release to the maintainer allowlist", () => {
+    const guard = stableGuard();
+    expect(guard).toBeDefined();
+    expect(guard.env.STABLE_RELEASE_ACTORS.split(/\s+/)).toContain("NiveditJain");
+
+    // Both halves of "stable" are gated: the `latest` dist-tag a bare
+    // `npm install` follows, and any non-prerelease version, which claims that
+    // number on npm permanently whatever tag it was published under.
+    expect(guard.if).toContain("dist_tag == 'latest'");
+    expect(guard.if).toContain("is_prerelease == 'false'");
+
+    // A re-run leaves `actor` as whoever started the original run and moves
+    // `triggering_actor` to whoever pressed re-run, so both are checked —
+    // otherwise a maintainer's stable run is a re-run button for everyone.
+    expect(guard.env.ACTOR).toContain("github.actor");
+    expect(guard.env.TRIGGERING_ACTOR).toContain("github.triggering_actor");
+    expect(guard.run).toContain("exit 1");
+  });
+
+  /**
+   * Runs the guard step's REAL shell under a controlled environment. Every
+   * other assertion here reads YAML text, which a broken comparison or a
+   * dropped `TRIGGERING_ACTOR` check would sail straight through — the whole
+   * guard is shell, so the shell is what has to be exercised. `bash -e`
+   * mirrors the default shell Actions runs `run:` steps under.
+   */
+  function runGuard(actor: string, triggeringActor: string) {
+    const guard = stableGuard();
+    return spawnSync("bash", ["-e", "-c", guard.run], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        // Next's global augmentation makes NODE_ENV a required member of
+        // ProcessEnv, so a minimal env literal has to carry it.
+        NODE_ENV: process.env.NODE_ENV,
+        STABLE_RELEASE_ACTORS: guard.env.STABLE_RELEASE_ACTORS,
+        ACTOR: actor,
+        TRIGGERING_ACTOR: triggeringActor,
+        DIST_TAG: "latest",
+        PUBLISH_VERSION: "1.0.0",
+      },
+    });
+  }
+
+  it("passes an allowlisted maintainer in any casing and fails everyone else", () => {
+    // GitHub logins are not case-sensitive, so a case-sensitive comparison
+    // would lock the maintainer out of their own stable release.
+    expect(runGuard("nIvEdItJaIn", "NIVEDITJAIN").status).toBe(0);
+
+    const wrongActor = runGuard("someone-else", "NiveditJain");
+    expect(wrongActor.status).toBe(1);
+    expect(wrongActor.stdout).toContain("::error::Stable release refused");
+
+    // The re-run case: `actor` stays the maintainer who started the original
+    // run while `triggering_actor` becomes whoever pressed re-run. Checking
+    // only the first would authorize this.
+    expect(runGuard("NiveditJain", "someone-else").status).toBe(1);
+  });
+
+  it("tells a refused caller what would actually clear the gate", () => {
+    // A non-prerelease version trips the gate at ANY dist-tag, so advice to
+    // "use beta or next" on its own sends them into a second failure.
+    const refused = runGuard("someone-else", "someone-else").stdout;
+    expect(refused).toContain("PRERELEASE version");
+    expect(refused).toContain("allowlisted maintainer");
+  });
+
+  it("refuses an unauthorized stable release before anything is built", () => {
+    // The gate lives in preflight, which every other job hangs off, so the
+    // refusal costs seconds instead of a 4-way cross-compile — and nothing
+    // downstream can publish once preflight has failed.
+    expect(stableGuard()).toBeDefined();
+    expect(wf.jobs.daemon.needs).toContain("preflight");
+    expect(wf.jobs.publish.if).toContain("needs.preflight.result == 'success'");
+  });
+
+  it("leaves beta and next builds open to anyone with write access", () => {
+    // The branch-dispatch path exists so a collaborator can ship a prerelease
+    // for testing. An unconditional guard — or one that named those tags —
+    // would close it.
+    const guard = stableGuard();
+    expect(guard.if).toBeTruthy();
+    expect(guard.if).not.toContain("beta");
+    expect(guard.if).not.toContain("next");
   });
 
   it("bumps main's version only for a release or a dispatch from main", () => {

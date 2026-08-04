@@ -25,6 +25,7 @@
  *     silently gets no daemon.
  */
 import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
@@ -155,6 +156,51 @@ describe("publish.yml", () => {
     expect(guard.env.ACTOR).toContain("github.actor");
     expect(guard.env.TRIGGERING_ACTOR).toContain("github.triggering_actor");
     expect(guard.run).toContain("exit 1");
+  });
+
+  /**
+   * Runs the guard step's REAL shell under a controlled environment. Every
+   * other assertion here reads YAML text, which a broken comparison or a
+   * dropped `TRIGGERING_ACTOR` check would sail straight through — the whole
+   * guard is shell, so the shell is what has to be exercised. `bash -e`
+   * mirrors the default shell Actions runs `run:` steps under.
+   */
+  function runGuard(actor: string, triggeringActor: string) {
+    const guard = stableGuard();
+    return spawnSync("bash", ["-e", "-c", guard.run], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        STABLE_RELEASE_ACTORS: guard.env.STABLE_RELEASE_ACTORS,
+        ACTOR: actor,
+        TRIGGERING_ACTOR: triggeringActor,
+        DIST_TAG: "latest",
+        PUBLISH_VERSION: "1.0.0",
+      },
+    });
+  }
+
+  it("passes an allowlisted maintainer in any casing and fails everyone else", () => {
+    // GitHub logins are not case-sensitive, so a case-sensitive comparison
+    // would lock the maintainer out of their own stable release.
+    expect(runGuard("nIvEdItJaIn", "NIVEDITJAIN").status).toBe(0);
+
+    const wrongActor = runGuard("someone-else", "NiveditJain");
+    expect(wrongActor.status).toBe(1);
+    expect(wrongActor.stdout).toContain("::error::Stable release refused");
+
+    // The re-run case: `actor` stays the maintainer who started the original
+    // run while `triggering_actor` becomes whoever pressed re-run. Checking
+    // only the first would authorize this.
+    expect(runGuard("NiveditJain", "someone-else").status).toBe(1);
+  });
+
+  it("tells a refused caller what would actually clear the gate", () => {
+    // A non-prerelease version trips the gate at ANY dist-tag, so advice to
+    // "use beta or next" on its own sends them into a second failure.
+    const refused = runGuard("someone-else", "someone-else").stdout;
+    expect(refused).toContain("PRERELEASE version");
+    expect(refused).toContain("allowlisted maintainer");
   });
 
   it("refuses an unauthorized stable release before anything is built", () => {

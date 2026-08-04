@@ -185,7 +185,10 @@ jobs:
               fi
             done
             if [[ "$MATCHED" != "true" ]]; then
-              echo "::error::Stable release refused: publishing $PUBLISH_VERSION at dist-tag '$DIST_TAG' is restricted to [$STABLE_RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR'). Ship a prerelease version instead, or dispatch with dist_tag 'beta' or 'next'."
+              # Both halves of the remediation are required together: a
+              # non-prerelease version trips the gate at ANY dist-tag, so
+              # switching to `beta`/`next` alone does not clear it.
+              echo "::error::Stable release refused: publishing $PUBLISH_VERSION at dist-tag '$DIST_TAG' is restricted to [$STABLE_RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR'). Publish a PRERELEASE version at a non-latest dist-tag such as 'beta' or 'next', or have an allowlisted maintainer run it."
               exit 1
             fi
           done

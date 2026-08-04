@@ -481,7 +481,6 @@ fn claude_projects_root() -> std::path::PathBuf {
 
 /// Register one file-tailing source.
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn file_source(
     tasks: &mut Vec<fpai_collect::TaskSpec>,
     name: &'static str,

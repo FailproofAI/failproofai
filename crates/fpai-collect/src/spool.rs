@@ -137,11 +137,11 @@ impl SpoolWriter {
         // through — a source cannot forget it and a new source inherits it. Set
         // only when absent, so an event that already names its machine (a
         // re-shipped batch, say) is never overwritten.
-        if let Some(id) = &self.machine_id {
-            if let Some(obj) = event.as_object_mut() {
-                obj.entry("machine_id")
-                    .or_insert_with(|| Value::String(id.clone()));
-            }
+        if let Some(id) = &self.machine_id
+            && let Some(obj) = event.as_object_mut()
+        {
+            obj.entry("machine_id")
+                .or_insert_with(|| Value::String(id.clone()));
         }
 
         let mut line = serialize(&event)?;

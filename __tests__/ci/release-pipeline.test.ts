@@ -137,6 +137,31 @@ describe("publish.yml", () => {
     expect(scripts).toContain('DIST_TAG="next"');
   });
 
+  it("refuses to start when the version is already on the registry", () => {
+    // A workflow_dispatch has no version input — PUBLISH_VERSION is whatever
+    // package.json carries — so dispatching from a feature branch routinely
+    // targets a version that shipped long ago. The root package publishes
+    // LAST, so without this guard the run gets all the way through the
+    // cross-compile matrix, the asset upload, and the four platform-package
+    // publishes before npm rejects the root package with E403, stranding four
+    // orphan @failproofai/failproofaid-<os>-<arch> versions on the registry
+    // that nothing pins and nobody can unpublish after 72 hours. That is
+    // exactly what run 30906933501 did at 1.0.0-beta.0.
+    const guard = wf.jobs.preflight.steps.find(
+      (s: Record<string, any>) => s.name === "Verify the version is unpublished",
+    );
+    expect(guard).toBeDefined();
+    expect(guard.run).toContain('npm view "failproofai@$PUBLISH_VERSION"');
+    expect(guard.run).toContain("exit 1");
+    // Every other job needs preflight, so failing here costs seconds and
+    // publishes nothing.
+    expect(wf.jobs.daemon.needs).toContain("preflight");
+    expect(wf.jobs.publish.needs).toContain("preflight");
+    // Deliberately ungated: a dry run whose version is burned is a dry run
+    // that validated a release which cannot happen.
+    expect(guard.if).toBeUndefined();
+  });
+
   it("bumps main's version only for a release or a dispatch from main", () => {
     const bump = wf.jobs.publish.steps.find(
       (s: Record<string, any>) => s.name === "Bump version for next development cycle",

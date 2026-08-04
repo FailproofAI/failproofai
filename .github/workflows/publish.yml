@@ -132,6 +132,28 @@ jobs:
           echo "Next version: $NEXT_VERSION"
           echo "Dry run: $DRY_RUN"
 
+      # npm refuses to overwrite a published version, and the root package is
+      # the LAST thing this pipeline publishes — so without this check a burned
+      # version still runs the whole cross-compile matrix, attaches release
+      # assets, and publishes the four @failproofai/failproofaid-<os>-<arch>
+      # packages before dying on `E403 You cannot publish over the previously
+      # published versions`. That leaves four orphan platform packages on the
+      # registry at a version whose CLI is already published without pins to
+      # them, and the orphans cannot be unpublished after 72 hours. It is the
+      # exact failure a dispatch from a branch hits by default, because a
+      # workflow_dispatch has no version input: PUBLISH_VERSION is whatever
+      # package.json carries, and a feature branch's package.json is routinely
+      # a version that shipped long ago.
+      - name: Verify the version is unpublished
+        env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.publish_version }}
+        run: |
+          if npm view "failproofai@$PUBLISH_VERSION" version >/dev/null 2>&1; then
+            echo "::error::failproofai@$PUBLISH_VERSION is already published — npm will reject it. Bump the version on a release-cut branch, or dispatch from a ref that carries an unpublished version."
+            exit 1
+          fi
+          echo "failproofai@$PUBLISH_VERSION is not on the registry yet."
+
       # A ref without the Rust workspace (main, until the daemon lands) skips
       # the whole binary half of the pipeline and publishes exactly as before.
       - name: Detect the daemon workspace

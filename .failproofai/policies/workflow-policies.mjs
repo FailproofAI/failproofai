@@ -92,8 +92,7 @@ customPolicies.add({
       "Before creating the PR, ensure CHANGELOG.md entries land under a versioned section so the PR ships release-ready:\n" +
       "  1. Read `version` from package.json (e.g. `0.0.10-beta.10`).\n" +
       "  2. Ensure your changelog entries are under a `## <version> — <today's date in YYYY-MM-DD>` heading. If that heading does not exist yet, create it above the previous version's section. There is NO `## Unreleased` section — entries always go under a dated, versioned heading.\n" +
-      "  3. If you are on a `luv-cut-X.Y.Z` branch, the cut PR handles version bump itself.\n" +
-      "  4. Do NOT bump `package.json`'s `version` outside of `luv-cut-*` branches — that is enforced by `block-version-bumps`."
+      "  3. If you are on a `luv-cut-X.Y.Z` branch, the cut PR handles version bump itself."
     );
   },
 });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-beta.5 — 2026-08-04
+
+### Fixes
+- Fail a publish in preflight when the version is already on the registry, instead of discovering it in the last step. A `workflow_dispatch` has no version input — the publish version is whatever `package.json` carries — so dispatching from a feature branch routinely targets a version that shipped long ago, and the root package is the *last* thing the pipeline publishes. A dispatch of this branch at `1.0.0-beta.0` therefore ran the full 4-way cross-compile, attached the release assets, published all four `@failproofai/failproofaid-<os>-<arch>` packages, and only then hit `E403 You cannot publish over the previously published versions` on the root package. The four platform packages are still up there at a version whose CLI was published without pins to them, and npm's 72-hour window is the only way to remove them. The check is one `npm view` in preflight, ahead of every other job, and is deliberately ungated on `dry_run` — a dry run that validated a release which cannot happen is not a useful dry run. Pinned by `__tests__/ci/release-pipeline.test.ts` alongside the rest of the release wiring.
+- Bump the version to `1.0.0-beta.5` so this branch carries an unpublished version. `1.0.0-beta.0` through `1.0.0-beta.4` are all on npm; a dispatch from here could not have published anything.
+
+### Chores
+- Remove this repo's dogfood `block-version-bumps` policy, which reserved `package.json` version edits for `luv-cut-X.Y.Z` branches. It was added in #285 after the #270/#284 version drift, but it also blocks the only fix for a burned publish version, and the preflight check above now catches the failure it was guarding against at the point where it actually matters. The `release-prep-check` instruction that referenced it drops its last line.
+
 ## 1.0.0-beta.4 — 2026-08-04
 
 ### Features

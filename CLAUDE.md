@@ -966,6 +966,15 @@ four 404s — which is why the publish script **fails the release** rather than 
 platform package cannot be published, and why the ordering above is a test rather than a
 convention.
 
+That same ordering is why **preflight refuses to start when the publish version is already on
+the registry**. A `workflow_dispatch` has no version input — the publish version is whatever
+`package.json` carries, and a feature branch's is routinely a version that shipped long ago —
+while the root package publishes last. Without the check, a burned version runs the whole
+cross-compile, attaches the assets, publishes the four platform packages, and only then takes
+`E403` on the root package, stranding four orphan platform versions that nothing pins and that
+npm's 72-hour window is the only way to remove. It is ungated on `dry_run` on purpose: a dry
+run that validated a release which cannot happen is not a useful dry run.
+
 Only the install path (`failproofai config`, global scope) does any of this.
 `resolveFailproofaidBinaryPath()` is a pure disk check — env override →
 `~/.failproofai/bin/failproofaid-<version>` → a locally-built `target/{release,debug}`

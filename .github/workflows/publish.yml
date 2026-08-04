@@ -379,12 +379,17 @@ jobs:
       # below, which pins them as optionalDependencies: an optional dependency
       # npm cannot resolve is a 404 in every install, which is exactly how the
       # first attempt at npm-shipping the daemon failed.
+      # Into RUNNER_TEMP, never the checkout. `npm publish` re-runs `prepare`,
+      # so the Next build happens again after this step, and its file tracing
+      # pulls the whole project root into `.next/standalone` — a dry run with
+      # these downloaded into the workspace shipped 16 MB of daemon `.gz`
+      # assets inside the published CLI tarball.
       - name: Download the daemon binaries
         if: needs.daemon.result == 'success'
         uses: actions/download-artifact@v8
         with:
           pattern: failproofaid-*
-          path: release-assets
+          path: ${{ runner.temp }}/daemon-artifacts
           merge-multiple: true
 
       - name: Publish the failproofaid platform packages
@@ -393,14 +398,16 @@ jobs:
           DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          ARTIFACTS: ${{ runner.temp }}/daemon-artifacts
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # --pin-root writes the four pins into package.json for the publish
           # below. It runs in the same step as the publish that makes those
           # names resolvable, so the two can never disagree. The version-bump
           # step later does `git checkout -- package.json`, so this edit never
-          # reaches main.
-          ARGS=(--artifacts release-assets --dist-tag "$DIST_TAG" --version "$PUBLISH_VERSION" --pin-root)
+          # reaches main. Staging defaults to the temp dir for the same reason
+          # the artifacts land there.
+          ARGS=(--artifacts "$ARTIFACTS" --dist-tag "$DIST_TAG" --version "$PUBLISH_VERSION" --pin-root)
           if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
           node scripts/build-daemon-packages.mjs "${ARGS[@]}"
 

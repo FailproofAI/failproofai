@@ -179,6 +179,11 @@ describe("publish.yml", () => {
     );
     expect(download.with.pattern).toBe("failproofaid-*");
     expect(download.if).toContain("needs.daemon.result == 'success'");
+    // NOT into the checkout: `npm publish` re-runs `prepare`, and Next's file
+    // tracing sweeps the whole project root into `.next/standalone`. A dry run
+    // with these in the workspace shipped 16 MB of daemon .gz assets inside
+    // the published CLI tarball.
+    expect(download.with.path).toContain("runner.temp");
   });
 
   it("builds and attaches the CLI tarball on every release, daemon or not", () => {

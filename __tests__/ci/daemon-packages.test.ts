@@ -22,6 +22,7 @@ import {
   daemonPackageName,
 } from "../../scripts/daemon-platforms.mjs";
 import {
+  STAGING_DIR,
   pinRootManifest,
   platformPackageManifest,
   stagePlatformPackage,
@@ -122,6 +123,14 @@ describe("stagePlatformPackage", () => {
     expect(() => stagePlatformPackage(DAEMON_PLATFORMS[0], VERSION, ROOT_PKG, artifacts, staging)).toThrow(
       /missing artifact/,
     );
+  });
+
+  it("stages outside the repo, where a rebuild cannot sweep it into the tarball", () => {
+    // `npm publish` re-runs `prepare`, and Next's file tracing pulls the whole
+    // project root into `.next/standalone` — staging inside the checkout put
+    // 16 MB of daemon .gz assets inside the published CLI tarball once.
+    const repoRoot = resolve(__dirname, "..", "..");
+    expect(STAGING_DIR.startsWith(repoRoot)).toBe(false);
   });
 });
 

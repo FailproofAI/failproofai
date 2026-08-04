@@ -27,6 +27,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
@@ -39,8 +40,20 @@ import {
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Where the generated packages are staged. Gitignored; see .gitignore. */
-export const STAGING_DIR = resolve(REPO_ROOT, ".daemon-packages");
+/**
+ * Where the generated packages are staged — **outside the repo**, and that is
+ * load-bearing rather than tidy.
+ *
+ * `npm publish` re-runs `prepare`, so the Next build happens again *after*
+ * this script has run, and Next's file tracing pulls the whole project root
+ * into `.next/standalone` (see the "over-traced project artifacts" prune list
+ * in scripts/prune-standalone.mjs). Anything staged inside the checkout
+ * therefore ends up inside the published CLI tarball — measured: a dry run
+ * shipped 16 MB of daemon `.gz` assets under
+ * `.next/standalone/release-assets/`. Staging in the temp dir cannot be swept
+ * up by a build. `--staging` overrides it for tests.
+ */
+export const STAGING_DIR = resolve(tmpdir(), "failproofaid-packages");
 
 /**
  * The manifest for one platform package.
@@ -128,6 +141,7 @@ function parseArgs(argv) {
   };
   return {
     artifacts: valueOf("--artifacts", "release-assets"),
+    staging: valueOf("--staging", STAGING_DIR),
     distTag: valueOf("--dist-tag", null),
     version: valueOf("--version", null),
     pinRoot: argv.includes("--pin-root"),
@@ -178,7 +192,7 @@ export function main(argv = process.argv.slice(2)) {
   );
 
   for (const platform of DAEMON_PLATFORMS) {
-    const dir = stagePlatformPackage(platform, version, rootPkg, artifactsDir);
+    const dir = stagePlatformPackage(platform, version, rootPkg, artifactsDir, options.staging);
     const name = daemonPackageName(platform.key);
     console.log(`\n${name}@${version}`);
     console.log(publishPackage(dir, distTag, options.dryRun).trim());

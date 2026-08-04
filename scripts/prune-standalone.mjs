@@ -101,6 +101,12 @@ const STANDALONE_ROOT_PRUNE = [
   ".claude", ".failproofai", ".github", ".vscode", ".idea",
   // Failproofai CLI artifacts — the dashboard never loads these
   "bin", "dist", "scripts", "src",
+  // Release-pipeline scratch: the daemon binaries downloaded from the build
+  // matrix and the staged platform packages. Both are written into the
+  // workspace only by a local/manual run (the publish workflow keeps them in
+  // RUNNER_TEMP precisely so this cannot happen), and 16 MB of `.gz` shipped
+  // inside the CLI tarball once already because nothing pruned them.
+  "release-assets", ".daemon-packages",
 ];
 const STANDALONE_ROOT_PRUNE_FILES = [
   // Top-level markdown / licenses / docs

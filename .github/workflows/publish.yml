@@ -12,6 +12,10 @@ name: Publish to npm
 # the GitHub Release, and only then publish to npm. The published CLI downloads
 # its `failproofaid` binary from that release tag at `failproofai config` time,
 # so the assets have to exist before the package that looks for them does.
+#
+# Prerelease builds (`beta`, `next`) are open to anyone GitHub already trusts
+# with write access; a STABLE release is restricted to the logins in
+# `STABLE_RELEASE_ACTORS` below. See the "Authorize stable release" step.
 on:
   release:
     types: [published]
@@ -131,6 +135,62 @@ jobs:
           echo "Release tag: v$PUBLISH_VERSION (prerelease: $IS_PRERELEASE)"
           echo "Next version: $NEXT_VERSION"
           echo "Dry run: $DRY_RUN"
+
+      # Who may cut a STABLE release. Prereleases are deliberately open: a beta
+      # or a `next` build is how anyone with write access ships a branch for
+      # testing, and npm's `beta`/`next` tags are opt-in. A stable release is
+      # not — it is what a bare `npm install failproofai` resolves to — so it
+      # stays with the maintainers listed here.
+      #
+      # Two conditions count as stable, and both are gated:
+      #   * dist-tag `latest`, the tag a bare install follows; and
+      #   * a non-prerelease VERSION at any dist-tag, because publishing `1.0.0`
+      #     under `next` still claims that number on npm permanently and is one
+      #     `npm dist-tag add` away from being the stable release.
+      #
+      # `actor` and `triggering_actor` differ on a re-run: `actor` stays the
+      # user who started the original run while `triggering_actor` is whoever
+      # pressed re-run. Both must be authorized, so a maintainer's stable run
+      # cannot be re-driven by someone else. The check is deliberately NOT
+      # skipped for a dry run — the rule stays "stable implies maintainer",
+      # with no shape of this workflow that reaches npm unchecked.
+      #
+      # Scope, honestly stated: on a `workflow_dispatch` GitHub runs the
+      # workflow file FROM THE SELECTED REF, so this guard binds every ref that
+      # carries it, but a collaborator could push a branch with the step
+      # deleted and dispatch that. Making it tamper-proof means moving
+      # `NPM_TOKEN` into a protected GitHub Environment, which is a repo
+      # setting rather than a file — the guard here is the fast, legible half.
+      - name: Authorize stable release
+        if: >-
+          steps.version.outputs.dist_tag == 'latest' ||
+          steps.version.outputs.is_prerelease == 'false'
+        env:
+          # Space-separated GitHub logins, compared case-insensitively.
+          STABLE_RELEASE_ACTORS: NiveditJain
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+          PUBLISH_VERSION: ${{ steps.version.outputs.publish_version }}
+        run: |
+          ALLOWED_LC=$(printf '%s' "$STABLE_RELEASE_ACTORS" | tr '[:upper:]' '[:lower:]')
+
+          for WHO in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            WHO_LC=$(printf '%s' "$WHO" | tr '[:upper:]' '[:lower:]')
+            MATCHED=false
+            for ALLOWED in $ALLOWED_LC; do
+              if [[ "$ALLOWED" == "$WHO_LC" ]]; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [[ "$MATCHED" != "true" ]]; then
+              echo "::error::Stable release refused: publishing $PUBLISH_VERSION at dist-tag '$DIST_TAG' is restricted to [$STABLE_RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR'). Ship a prerelease version instead, or dispatch with dist_tag 'beta' or 'next'."
+              exit 1
+            fi
+          done
+
+          echo "Stable release authorized for '$ACTOR' (triggered by '$TRIGGERING_ACTOR')."
 
       # A ref without the Rust workspace (main, until the daemon lands) skips
       # the whole binary half of the pipeline and publishes exactly as before.

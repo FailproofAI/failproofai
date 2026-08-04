@@ -93,23 +93,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // machine (see fpai_collect::supervisor). It observes the same `shutdown`
     // flag the server and the cloud monitor do, so one SIGTERM stops all three.
     //
-    // INERT until ingest is configured: `collector_tasks()` returns an empty
-    // list, `spawn_supervised` then declines to start a thread or a runtime at
-    // all, and the daemon behaves byte-for-byte as it did before this existed.
-    let collector = fpai_collect::spawn_supervised(collector_tasks(), shutdown.clone());
+    // INERT until ingest is configured. But the config is not necessarily
+    // ready at startup: `failproofai config` installs the daemon and THEN
+    // connects, so the very first daemon start usually sees no ingest yet. A
+    // manager thread waits for the config to become enabled and starts the
+    // collector once it is — the collector's analogue of the cloud lane
+    // re-resolving enrolment per tick, so enabling collection takes effect
+    // within one interval with no restart and no root (see
+    // `spawn_collector_manager`). The manager owns the collector's lifecycle,
+    // including draining it on shutdown.
+    let collector_mgr = spawn_collector_manager(shutdown.clone());
 
     let srv = server::Server::bind(&socket_path, worker)?;
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 
     let run_result = srv.run_until(shutdown);
 
-    // Drain both background workers before returning. The collector gets a
-    // bounded budget rather than an unbounded join: process exit must not wait
-    // on a task that has wedged. Done before `?` so a server error still gets
-    // the collector a chance to flush instead of dropping buffered events.
-    if let Some(collector) = collector {
-        collector.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
-    }
+    // Join the manager, which drains the collector within its flush budget
+    // before returning. Done before `?` so a server error still gives the
+    // collector a chance to flush instead of dropping buffered events.
+    let _ = collector_mgr.join();
     let _ = cloud_monitor.join();
 
     run_result?;
@@ -128,6 +131,92 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// serving the socket, because the CLI fails closed and a daemon that refused
 /// to boot over a malformed `ingest.json` would deny every tool call on the
 /// machine. The error is loud so it is fixable, not silent.
+/// Own the collector's lifecycle on a dedicated thread.
+///
+/// The collector config is not necessarily complete when the daemon starts:
+/// `failproofai config` installs the service, so the daemon comes up, and only
+/// THEN runs the connect step that writes `ingest.json` and the collector
+/// block. Resolving the config once at startup therefore left a freshly-set-up
+/// machine shipping nothing until the next manual restart — the exact confusion
+/// a user hit while testing.
+///
+/// This mirrors what the cloud-policy lane already does: it re-resolves its
+/// config every tick precisely so `--connect` needs no root (restarting a
+/// system unit does). The collector follows the same rule — it waits for the
+/// config to become enabled, then starts once. Enabling collection thus takes
+/// effect within one poll interval, no restart, no sudo.
+///
+/// It starts the collector once and does not tear it back down on a later
+/// `--disconnect` — that remains a restart, matching today's behaviour and
+/// avoiding a second start against the set-once health registry. The gap this
+/// closes is the common one: enabled *after* startup never taking effect.
+fn spawn_collector_manager(daemon_shutdown: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
+    let interval = collector_config_poll_interval();
+    std::thread::Builder::new()
+        .name("fpai-collect-mgr".to_string())
+        .spawn(move || {
+            // Wait until collection is enabled. A cheap config read each tick,
+            // not the full task build, so an incomplete config waits quietly
+            // rather than logging on every interval.
+            loop {
+                if daemon_shutdown.load(Ordering::Relaxed) {
+                    return;
+                }
+                if collector_is_enabled() {
+                    break;
+                }
+                let deadline = std::time::Instant::now() + interval;
+                while std::time::Instant::now() < deadline {
+                    if daemon_shutdown.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+            }
+
+            // Enabled — build and start. `collector_tasks()` logs "collector
+            // enabled" once; `spawn_supervised` returns None only if the config
+            // flipped back to disabled between the check and the build, or the
+            // runtime failed to start.
+            let Some(collector) =
+                fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+            else {
+                return;
+            };
+
+            while !daemon_shutdown.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            collector.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+        })
+        .expect("failed to spawn the collector manager thread")
+}
+
+/// Cheap "should the collector be running?" check — reads the two small config
+/// files. Any error resolves to `false`; the full `collector_tasks()` build
+/// logs the reason when it acts on an enabled config.
+fn collector_is_enabled() -> bool {
+    let Ok(home) = paths::failproofai_home() else {
+        return false;
+    };
+    fpai_collect::config::load(&home)
+        .map(|cfg| cfg.is_enabled())
+        .unwrap_or(false)
+}
+
+/// How often to re-check whether the collector config has become enabled.
+/// Short by default — it is two small JSON reads — so enabling collection after
+/// a fresh setup is prompt. `FAILPROOFAI_COLLECTOR_CONFIG_POLL_MS` overrides it.
+fn collector_config_poll_interval() -> Duration {
+    const DEFAULT_MS: u64 = 5_000;
+    const MINIMUM_MS: u64 = 500;
+    let ms = std::env::var("FAILPROOFAI_COLLECTOR_CONFIG_POLL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_MS);
+    Duration::from_millis(ms.max(MINIMUM_MS))
+}
+
 fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     let home = match paths::failproofai_home() {
         Ok(home) => home,

@@ -26,6 +26,7 @@ import {
   readIngestCredential,
   validateIngestKey,
 } from "./collector-config";
+import { updateConfig } from "./fp-config";
 
 export interface ConnectOptions {
   url?: string;
@@ -170,6 +171,11 @@ export function runDisconnectCommand(): CommandResult {
   // leave the machine still shipping activity to a cloud the user believes
   // they have left — the one outcome nobody expects from this command.
   const removedIngest = clearIngestCredential();
+  // Back to OSS. Leaving mode = "cloud" with no credentials would describe a
+  // machine that does not exist, and every cloud code path keys off this flag
+  // rather than off "is a token lying around" precisely so that a disconnected
+  // machine is provably silent instead of silent-by-happenstance.
+  updateConfig({ mode: "oss" });
 
   if (!removed && !existing && !hadIngest) {
     return { exitCode: 0, lines: ["This machine is not connected to Failproof Cloud."] };

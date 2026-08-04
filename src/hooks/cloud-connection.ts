@@ -34,6 +34,7 @@ import {
   writeCloudCredentials,
   type CloudCredentials,
 } from "./cloud-enrollment";
+import { updateConfig } from "./fp-config";
 import {
   ingestPath,
   validateIngestKey,
@@ -131,6 +132,13 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
   if (policyResult.ok) {
     writeCloudCredentials(creds);
     outcome.anyConfigured = true;
+  }
+
+  // Mode is the hard gate, set only once a capability actually verified.
+  // "cloud" is never inferred from a token merely being present: a machine
+  // that has not proven it can reach the server must stay provably silent.
+  if (policyResult.ok || ingestResult.ok) {
+    updateConfig({ mode: "cloud" });
   }
 
   if (ingestResult.ok) {

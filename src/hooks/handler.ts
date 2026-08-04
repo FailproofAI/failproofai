@@ -43,6 +43,7 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import { readActivePause, type ActivePause } from "./session-pause";
+import { layoutWarningForHook } from "./fp-reset";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -182,6 +183,13 @@ export async function evaluateHookEvent(
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  // A home from another layout resolves to no global config, so every builtin
+  // silently stops firing — the machine looks protected and is not. Say so on
+  // every call rather than deleting anything (a hook is unattended) or denying
+  // (a blanket deny takes UserPromptSubmit with it and locks the user out of
+  // their agent entirely — demonstrated on a real machine during this work).
+  const layoutWarning = layoutWarningForHook();
+  if (layoutWarning) hookLogWarn(layoutWarning);
   try {
     let parsed: Record<string, unknown> = {};
     if (stdinPayload) {

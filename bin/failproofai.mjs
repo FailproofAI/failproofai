@@ -317,6 +317,19 @@ LINKS
   //
   // `maybeFirstRunConfigure` is itself a no-op on a configured machine, on a
   // non-TTY, and under sudo — so this is a cheap check, not a second gate.
+  // Layout check, before onboarding decides anything. A home written by an
+  // older layout is reset here — visibly, in a real command the user typed —
+  // rather than from a hook, which runs unattended once per tool call. A home
+  // written by a NEWER layout stops the command instead: that data is fine and
+  // an upgrade would read it, so deleting it would destroy something
+  // recoverable.
+  {
+    const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
+    const check = checkLayoutForCli();
+    for (const line of check.lines) console.error(line);
+    if (check.fatal) process.exit(1);
+  }
+
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
   if (shouldOfferFirstRun(args)) {
     try {

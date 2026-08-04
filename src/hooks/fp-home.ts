@@ -236,8 +236,10 @@ export function resettablePaths(): string[] {
     at("policies"),
     at("cursors"),
     at("state"),
-    // Layout 2
-    versionFile(),
+    // Layout 2.
+    // NOT versionFile() — it is the layout marker, not user data, and the
+    // reset rewrites it immediately afterwards. Listing it made a no-op reset
+    // report "removed 1 item" for a file it had just recreated.
     configFile(),
     credentialsFile(),
     auditDir(),

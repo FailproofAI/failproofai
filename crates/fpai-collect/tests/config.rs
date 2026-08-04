@@ -140,7 +140,7 @@ fn rewriting_an_already_permissive_credential_file_fixes_its_mode() {
     {
         use std::os::unix::fs::PermissionsExt;
         let home = tmp_home("rewrite");
-        let path = home.join("ingest.json");
+        let path = home.join("credentials.toml");
         fs::write(&path, "{}").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
@@ -167,7 +167,7 @@ fn the_endpoint_defaults_to_the_hosted_one_and_round_trips() {
     let home = tmp_home("url");
     // A file with only a key is the common case — the wizard need not write a
     // url when the user accepts the default.
-    fs::write(home.join("ingest.json"), r#"{"key":"abc"}"#).unwrap();
+    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
 
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     let ingest = cfg.ingest.unwrap();
@@ -176,8 +176,8 @@ fn the_endpoint_defaults_to_the_hosted_one_and_round_trips() {
 
     // A self-hoster replaces the whole endpoint, path included.
     fs::write(
-        home.join("ingest.json"),
-        r#"{"key":"abc","url":"http://localhost:8080/events"}"#,
+        home.join("credentials.toml"),
+        "[ingest]\nkey = \"abc\"\nurl = \"http://localhost:8080/events\"\n",
     )
     .unwrap();
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
@@ -190,7 +190,7 @@ fn an_empty_key_is_treated_as_unconfigured_rather_than_sent() {
     // Otherwise every request goes out as `Authorization: Bearer ` and the
     // spool fills with 401s that look like a server problem.
     let home = tmp_home("emptykey");
-    fs::write(home.join("ingest.json"), r#"{"key":"   "}"#).unwrap();
+    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"   \"\n").unwrap();
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     assert!(cfg.ingest.is_none());
     assert!(!cfg.is_enabled());
@@ -202,7 +202,9 @@ fn malformed_json_is_an_error_not_a_silent_disable() {
     // Quietly disabling collection because of a stray comma is precisely the
     // silent failure this project exists to remove.
     let home = tmp_home("malformed");
-    fs::write(home.join("ingest.json"), r#"{"key": "abc",}"#).unwrap();
+    // Not valid TOML — a truncated table header. Must be an error, not a
+    // silent disable.
+    fs::write(home.join("credentials.toml"), "[ingest\nkey = \"abc\"\n").unwrap();
     let err = without_env_overrides(|| config::load(&home)).unwrap_err();
     assert!(
         format!("{err}").contains("not valid JSON"),
@@ -212,13 +214,12 @@ fn malformed_json_is_an_error_not_a_silent_disable() {
 }
 
 #[test]
-fn settings_come_from_the_policies_config_collector_block() {
+fn settings_come_from_the_config_toml_collector_table() {
     let home = tmp_home("settings");
-    fs::write(home.join("ingest.json"), r#"{"key":"abc"}"#).unwrap();
+    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
     fs::write(
-        home.join("policies-config.json"),
-        r#"{"enabledPolicies":["block-sudo"],
-            "collector":{"sessions":true,"hooksVerbosity":"all","redact":"off","environment":"ci"}}"#,
+        home.join("config.toml"),
+        "[collector]\nsessions = true\nhooks_verbosity = \"all\"\nredact = \"off\"\nenvironment = \"ci\"\n",
     )
     .unwrap();
 
@@ -231,15 +232,13 @@ fn settings_come_from_the_policies_config_collector_block() {
 }
 
 #[test]
-fn a_policies_config_with_no_collector_block_uses_defaults() {
+fn a_config_with_no_collector_table_uses_defaults() {
     // Every existing install is this case; it must not error or change.
     let home = tmp_home("nocollector");
-    fs::write(home.join("ingest.json"), r#"{"key":"abc"}"#).unwrap();
-    fs::write(
-        home.join("policies-config.json"),
-        r#"{"enabledPolicies":[]}"#,
-    )
-    .unwrap();
+    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
+    // A config with no [collector] table at all — every machine that has not
+    // opted into collection is this case, and it must not error or change.
+    fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
 
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     assert!(!cfg.settings.sessions);
@@ -254,10 +253,10 @@ fn a_comma_in_environment_is_rejected_rather_than_dropped_downstream() {
     // Accepting it here would mean every event from this machine vanished
     // server-side with nothing on this end to show for it.
     let home = tmp_home("comma");
-    fs::write(home.join("ingest.json"), r#"{"key":"abc"}"#).unwrap();
+    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
     fs::write(
-        home.join("policies-config.json"),
-        r#"{"collector":{"environment":"local,ci"}}"#,
+        home.join("config.toml"),
+        "[collector]\nenvironment = \"local,ci\"\n",
     )
     .unwrap();
 
@@ -274,12 +273,24 @@ fn the_sdk_spool_directory_is_watched_alongside_our_own() {
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
 
     assert_eq!(cfg.spool_dirs[0], cfg.own_spool_dir);
-    assert_eq!(cfg.own_spool_dir, home.join("spool"));
+    // Layout 2 groups daemon scratch under state/.
+    assert_eq!(cfg.own_spool_dir, home.join("state").join("spool"));
+
+    // BOTH SDK roots are watched, indefinitely and on purpose. An SDK old
+    // enough to know only ~/.agenteye/events must keep working: dropping that
+    // path would mean an unupgraded SDK writes where nothing reads, which is
+    // silent data loss rather than a detectable failure.
     assert!(
         cfg.spool_dirs
             .iter()
             .any(|d| d.ends_with("events") && d.to_string_lossy().contains("agenteye")),
-        "the SDK's drop directory must be watched too, got {:?}",
+        "the legacy SDK drop directory must still be watched, got {:?}",
+        cfg.spool_dirs
+    );
+    assert!(
+        cfg.spool_dirs
+            .contains(&home.join("custom-agents").join("events")),
+        "the layout-2 SDK drop directory must be watched, got {:?}",
         cfg.spool_dirs
     );
     fs::remove_dir_all(&home).ok();

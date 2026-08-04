@@ -36,7 +36,10 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_INGEST_URL: &str = "https://server.befailproof.ai/events";
 
 /// Filename of the credential file inside the failproofai home.
-const INGEST_FILE: &str = "ingest.json";
+/// Layout 2: every credential in one owner-only TOML file, keyed by table.
+const CREDENTIALS_FILE: &str = "credentials.toml";
+/// Layout 2: non-secret configuration, including the collector block.
+const CONFIG_FILE: &str = "config.toml";
 /// Filename of the shared settings file, owned by the TypeScript side.
 const POLICIES_FILE: &str = "policies-config.json";
 
@@ -93,9 +96,12 @@ pub enum Redact {
     Off,
 }
 
-/// The non-secret half, read from `policies-config.json` under `"collector"`.
+/// The non-secret half, read from `config.toml` under `[collector]`.
+///
+/// snake_case keys, matching TOML convention and what `fp-config.ts` writes.
+/// This was camelCase while the source was `policies-config.json`; carrying
+/// that over would have meant every field silently falling back to its default.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Settings {
     /// Ship agent session transcripts. Defaults to FALSE and is deliberately
     /// separate from having a key: transcripts carry prompts, file contents
@@ -122,7 +128,7 @@ pub struct Settings {
     /// collected event so the server groups by machine rather than by
     /// `agent_id` (a per-project identity). Absent on config written before
     /// this field existed; such events carry no machine.
-    #[serde(default, rename = "machineId")]
+    #[serde(default)]
     pub machine_id: Option<String>,
 }
 
@@ -230,18 +236,28 @@ pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
         )));
     }
 
-    let own_spool_dir = home.join("spool");
-    let failed_dir = home.join("failed");
+    // Layout 2 groups daemon scratch under state/, leaving the top level to
+    // things a person would actually open. Mirrors `fp-home.ts`.
+    let state_dir = home.join("state");
+    let own_spool_dir = state_dir.join("spool");
+    let failed_dir = state_dir.join("failed");
 
-    // Watch our own derived batches first, then the directory the Python SDK
-    // and any custom agent already write to. Watching both is what lets
-    // failproofaid supersede agenteye-collector without every SDK user having
-    // to reconfigure anything: their events keep being collected, by a
-    // different daemon, with no change on their side.
+    // Watch our own derived batches first, then EVERY directory an SDK might
+    // write to. Watching all of them is what lets failproofaid supersede
+    // agenteye-collector without every SDK user having to reconfigure
+    // anything: their events keep being collected, by a different daemon, with
+    // no change on their side.
+    //
+    // Both SDK roots are watched deliberately and indefinitely. An SDK old
+    // enough to write only `~/.agenteye/events` must keep working — migrating
+    // it and dropping the old path would mean an unupgraded SDK writes to a
+    // directory nothing reads, which is silent data loss rather than a
+    // detectable failure.
     let mut spool_dirs = vec![own_spool_dir.clone()];
-    let sdk_spool = agenteye_events_dir();
-    if !spool_dirs.contains(&sdk_spool) {
-        spool_dirs.push(sdk_spool);
+    for sdk_spool in [custom_agents_events_dir(home), agenteye_events_dir()] {
+        if !spool_dirs.contains(&sdk_spool) {
+            spool_dirs.push(sdk_spool);
+        }
     }
 
     Ok(CollectorConfig {
@@ -251,6 +267,15 @@ pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
         own_spool_dir,
         failed_dir,
     })
+}
+
+/// The layout-2 SDK spool root, under the failproofai home.
+///
+/// The destination an SDK should prefer once it knows about it; the legacy
+/// `~/.agenteye/events` below stays watched regardless, so preferring this one
+/// is an SDK-side improvement rather than a requirement.
+fn custom_agents_events_dir(home: &Path) -> PathBuf {
+    home.join("custom-agents").join("events")
 }
 
 /// The directory the AgentEye Python SDK drops event batches into. Honors
@@ -264,20 +289,32 @@ fn agenteye_events_dir() -> PathBuf {
 }
 
 fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
-    let path = home.join(INGEST_FILE);
+    let path = home.join(CREDENTIALS_FILE);
 
     let from_file: Option<Ingest> = match fs::read_to_string(&path) {
         Ok(text) => {
             warn_if_world_readable(&path);
-            match serde_json::from_str::<Ingest>(&text) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    return Err(ConfigError::Malformed {
-                        path,
-                        detail: e.to_string(),
-                    });
-                }
-            }
+            let doc: toml::Value = toml::from_str(&text).map_err(|e| ConfigError::Malformed {
+                path: path.clone(),
+                detail: e.to_string(),
+            })?;
+            // A credentials file with no [ingest] table is not malformed — it
+            // is a machine connected for policy but not reporting, which is a
+            // supported half-state.
+            //
+            // `url` DEFAULTS rather than being required: the wizard writes only
+            // a key when the user accepts the hosted endpoint, so requiring it
+            // would read a perfectly good credential as absent and silently
+            // disable collection. Only `key` makes the table meaningful.
+            doc.get("ingest").and_then(|t| {
+                let key = t.get("key")?.as_str()?.to_string();
+                let url = t
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(default_url);
+                Some(Ingest { url, key })
+            })
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(ConfigError::Io(e)),
@@ -298,24 +335,23 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
 }
 
 fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
-    let path = home.join(POLICIES_FILE);
+    let path = home.join(CONFIG_FILE);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Settings::default()),
         Err(e) => return Err(ConfigError::Io(e)),
     };
 
-    let root: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| ConfigError::Malformed {
-            path: path.clone(),
-            detail: e.to_string(),
-        })?;
+    let root: toml::Value = toml::from_str(&text).map_err(|e| ConfigError::Malformed {
+        path: path.clone(),
+        detail: e.to_string(),
+    })?;
 
     match root.get("collector") {
         None => Ok(Settings::default()),
-        Some(v) => serde_json::from_value(v.clone()).map_err(|e| ConfigError::Malformed {
+        Some(v) => v.clone().try_into().map_err(|e| ConfigError::Malformed {
             path,
-            detail: format!("the \"collector\" block is not usable: {e}"),
+            detail: format!("the [collector] table is not usable: {e}"),
         }),
     }
 }
@@ -357,9 +393,27 @@ pub fn write_ingest(home: &Path, ingest: &Ingest) -> Result<PathBuf, ConfigError
     fs::create_dir_all(home)?;
     tighten_home(home);
 
-    let path = home.join(INGEST_FILE);
-    let body = serde_json::to_string_pretty(ingest)
-        .map_err(|e| ConfigError::Invalid(format!("could not serialize ingest config: {e}")))?;
+    let path = home.join(CREDENTIALS_FILE);
+
+    // Merge, never replace. credentials.toml also carries the cloud token and
+    // the dashboard session; rewriting the file from this one writer would
+    // silently disconnect both. Layout 1 could get away with a whole-file write
+    // because each credential had its own file.
+    let mut doc: toml::Table = fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str(&t).ok())
+        .unwrap_or_default();
+
+    let mut table = toml::Table::new();
+    table.insert("url".into(), toml::Value::String(ingest.url.clone()));
+    table.insert("key".into(), toml::Value::String(ingest.key.clone()));
+    doc.insert("ingest".into(), toml::Value::Table(table));
+
+    let body = format!(
+        "# failproofai credentials — owner-only (0600). Do not commit.\n\n{}",
+        toml::to_string_pretty(&doc)
+            .map_err(|e| ConfigError::Invalid(format!("could not serialize credentials: {e}")))?
+    );
 
     write_private(&path, body.as_bytes())?;
     Ok(path)

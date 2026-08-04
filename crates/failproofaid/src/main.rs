@@ -290,13 +290,16 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         )
     }));
 
+    let cursors_root = paths::cursors_dir().unwrap_or_else(|_| home.join("cursors"));
+
     if cfg.settings.hooks {
         // Hook activity: one source covering every CLI failproofai is
         // installed in, because the store is CLI-agnostic — each row names its
         // own integration. Reads the same store the dashboard's activity tab
         // does, and never writes to it.
-        let store_dir = home.join("cache").join("hook-activity");
-        let state_dir = home.join("cursors").join("hooks");
+        // Layout 2: promoted out of cache/ (see paths.rs).
+        let store_dir = paths::hook_activity_dir().unwrap_or_else(|_| home.join("hook-activity"));
+        let state_dir = cursors_root.join("hooks");
         let spool_dir = cfg.own_spool_dir.clone();
         let verbosity = cfg.settings.hooks_verbosity;
         let environment = cfg.settings.environment.clone();
@@ -324,7 +327,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let spool = cfg.own_spool_dir.clone();
         let env = cfg.settings.environment.clone();
         let machine = cfg.settings.machine_id.clone();
-        let cursors = home.join("cursors");
+        let cursors = cursors_root.clone();
 
         use fpai_collect::sources::{
             antigravity, claude, codex, copilot, cursor, factory, openclaw, pi,

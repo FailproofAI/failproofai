@@ -174,7 +174,7 @@ pub fn report_error(source: &str, error: &str) {
 
 /// Where the record lives.
 pub fn health_path(home: &Path) -> PathBuf {
-    home.join("collector-health.json")
+    home.join("state").join("collector-health.json")
 }
 
 /// Remove the record on a clean shutdown.

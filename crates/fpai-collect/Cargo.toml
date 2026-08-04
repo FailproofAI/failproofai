@@ -37,6 +37,7 @@ notify = "8"
 # Anything that parses the main file directly reads an empty database.
 rusqlite = { version = "0.40", features = ["bundled"] }
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+toml = "1.1.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }

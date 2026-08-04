@@ -64,6 +64,59 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
         .join("cloud-managed"))
 }
 
+// ── Layout 2 ─────────────────────────────────────────────────────────────────
+//
+// These MUST mirror `src/hooks/fp-home.ts` exactly. The daemon and the CLI are
+// separate processes with separate path logic, so a divergence does not fail —
+// it means the daemon writes where the dashboard never reads, and an absent
+// directory is indistinguishable from an idle one. `crates/failproofaid/tests/
+// layout.rs` asserts the two agree.
+
+/// `~/.failproofai/hook-activity` — the decision log. Promoted out of `cache/`
+/// in layout 2: nothing regenerates it, so it was never a cache.
+pub fn hook_activity_dir() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("hook-activity"))
+}
+
+/// `~/.failproofai/cursors/<source>` — per-source collector watermarks.
+pub fn cursors_dir() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("cursors"))
+}
+
+/// `~/.failproofai/state` — daemon scratch a human would never open by hand.
+pub fn state_dir() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("state"))
+}
+
+pub fn spool_dir() -> io::Result<PathBuf> {
+    Ok(state_dir()?.join("spool"))
+}
+
+pub fn failed_dir() -> io::Result<PathBuf> {
+    Ok(state_dir()?.join("failed"))
+}
+
+pub fn collector_health_file() -> io::Result<PathBuf> {
+    Ok(state_dir()?.join("collector-health.json"))
+}
+
+/// `~/.failproofai/custom-agents/events` — the SDK spool root layout 2 adds.
+/// `~/.agenteye/events` stays supported; the daemon watches both, so no SDK
+/// release is required and no user is broken by a version skew.
+pub fn custom_agents_events_dir() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("custom-agents").join("events"))
+}
+
+/// `~/.failproofai/credentials.toml` — every token, owner-only.
+pub fn credentials_file() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("credentials.toml"))
+}
+
+/// `~/.failproofai/config.toml` — non-secret configuration.
+pub fn config_file() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("config.toml"))
+}
+
 /// `~/.failproofai` — the root the collector reads its configuration from.
 ///
 /// `FAILPROOFAI_HOME` overrides it so tests and development runs never touch a

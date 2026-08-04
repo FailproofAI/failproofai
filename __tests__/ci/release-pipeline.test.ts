@@ -13,13 +13,18 @@
  *   - the npm publish happens AFTER the release assets are attached (the
  *     installed CLI downloads its daemon from that release tag, so publishing
  *     the package first ships a version whose binary does not exist yet);
+ *   - the four @failproofai/failproofaid-<platform> packages publish BEFORE
+ *     the root package that pins them as optionalDependencies — reversed, the
+ *     root package spends the gap (or forever, on a failure) resolving 404s,
+ *     which is the exact way the first attempt at this shipped broken;
+ *   - the CLI tarball is built and attached on every release, daemon or not;
  *   - the main-version bump only runs for a release or a dispatch from main
  *     (it checks main out and pushes to it, regardless of the dispatched ref);
  *   - build-daemon.yml stays callable and is not also triggered standalone on
  *     a release (that would build the matrix twice per release);
  *   - the platform list in the build matrix matches the platforms the CLI
- *     actually knows how to resolve — a missing leg is a platform that
- *     silently gets no daemon.
+ *     actually knows how to resolve AND the packages the publish scripts
+ *     generate — a missing leg is a platform that silently gets no daemon.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -150,9 +155,74 @@ describe("publish.yml", () => {
     expect(scripts).toContain('"$COUNT" -ne 4');
   });
 
+  it("publishes the platform packages before the root package that pins them", () => {
+    const steps = wf.jobs.publish.steps.map((s: Record<string, any>) => s.name ?? s.uses);
+    const platforms = steps.indexOf("Publish the failproofaid platform packages");
+    const root = steps.indexOf("Publish");
+    expect(platforms).toBeGreaterThan(-1);
+    // An optionalDependency npm cannot resolve is a 404 in every install.
+    expect(platforms).toBeLessThan(root);
+
+    const step = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Publish the failproofaid platform packages",
+    );
+    expect(step.run).toContain("scripts/build-daemon-packages.mjs");
+    // The same invocation writes the pins, so the two can never disagree.
+    expect(step.run).toContain("--pin-root");
+    expect(step.run).toContain("--version");
+    // Skipped wholesale on a ref that builds no daemon, or the root package
+    // would pin four packages this run never published.
+    expect(step.if).toContain("needs.daemon.result == 'success'");
+
+    const download = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Download the daemon binaries",
+    );
+    expect(download.with.pattern).toBe("failproofaid-*");
+    expect(download.if).toContain("needs.daemon.result == 'success'");
+  });
+
+  it("builds and attaches the CLI tarball on every release, daemon or not", () => {
+    const tarball = wf.jobs["cli-tarball"];
+    expect(tarball.needs).toBe("preflight");
+    // Deliberately NOT gated on has_daemon: the CLI artifact is how anyone
+    // installs failproofai without the npm registry.
+    expect(JSON.stringify(tarball.if ?? "")).not.toContain("has_daemon");
+
+    const scripts = runScripts(tarball);
+    // Packed at the version being published — an asset named for a version it
+    // does not contain is worse than no asset.
+    expect(scripts).toContain("npm version");
+    expect(scripts).toContain("npm pack --ignore-scripts");
+    const upload = tarball.steps.find((s: Record<string, any>) =>
+      String(s.uses ?? "").startsWith("actions/upload-artifact"),
+    );
+    expect(upload.with.name).toBe("failproofai-tarball");
+    expect(upload.with["if-no-files-found"]).toBe("error");
+
+    expect(wf.jobs["release-assets"].needs).toContain("cli-tarball");
+    const assetScripts = runScripts(wf.jobs["release-assets"]);
+    expect(assetScripts).toContain("sha256sum failproofai-*.tgz");
+    // A tarball-less release must fail rather than quietly ship four binaries
+    // and no CLI.
+    expect(assetScripts).toContain("No CLI tarball to attach");
+  });
+
+  it("never publishes when the CLI tarball build failed", () => {
+    // cli-tarball runs the same build the publish job publishes, so a failure
+    // there is never "nothing to do" — and a failed dependency leaves its
+    // dependents `skipped`, which the daemon clause already tolerates.
+    expect(wf.jobs.publish.needs).toContain("cli-tarball");
+    expect(wf.jobs.publish.if).toContain("needs.cli-tarball.result == 'success'");
+    expect(wf.jobs["release-assets"].if).toContain("needs.cli-tarball.result == 'success'");
+  });
+
   it("writes nothing to npm or the repo on a dry run", () => {
     const publishStep = wf.jobs.publish.steps.find((s: Record<string, any>) => s.name === "Publish");
     expect(publishStep.run).toContain("npm publish --dry-run");
+    const platformStep = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Publish the failproofaid platform packages",
+    );
+    expect(platformStep.run).toContain("--dry-run");
     const assets = wf.jobs["release-assets"].steps.find(
       (s: Record<string, any>) => s.name === "Attach assets to the release",
     );
@@ -179,6 +249,21 @@ describe("pipeline / CLI agreement", () => {
       // A platform the CLI resolves but CI never builds is a platform whose
       // users silently get no daemon.
       expect([...declared].sort()).toEqual([...built].sort());
+    },
+  );
+
+  it.skipIf(!existsSync(DAEMON_SERVICE))(
+    "publishes an npm package for every platform the CLI knows how to resolve",
+    async () => {
+      const source = readFileSync(DAEMON_SERVICE, "utf8");
+      const union = source.match(/type PlatformKey =([^;]+);/)?.[1] ?? "";
+      const declared = [...union.matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
+
+      const { DAEMON_PLATFORMS } = await import("../../scripts/daemon-platforms.mjs");
+      // A platform missing from the publish list is one whose users get no
+      // binary from npm and silently fall back to the download — or, if the
+      // download is blocked, no daemon at all.
+      expect(DAEMON_PLATFORMS.map((p: { key: string }) => p.key).sort()).toEqual([...declared].sort());
     },
   );
 });

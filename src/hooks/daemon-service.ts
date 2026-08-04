@@ -22,7 +22,7 @@ import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { getConfigPathForScope } from "./hooks-config";
-import { downloadFailproofaidBinary, installedBinaryPath } from "./daemon-download";
+import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 
 /**
  * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
@@ -145,13 +145,19 @@ export function resolveFailproofaidBinaryPath(): string | null {
 }
 
 /**
- * Resolves the binary, downloading it from this version's release if it is
- * not already on disk.
+ * Resolves the binary, installing one if it is not already on disk.
  *
- * Only the install path calls this. The npm package ships no binary — it is
- * one CLI tarball for every platform — so `failproofai config` choosing the
- * global scope is the moment a machine that opted into a daemon actually
- * acquires one.
+ * Only the install path calls this — `failproofai config` choosing the global
+ * scope is the moment a machine that opted into a daemon actually acquires
+ * one. Two channels, in this order:
+ *
+ *   1. The `@failproofai/failproofaid-<os>-<arch>` platform package, which a
+ *      plain `npm install failproofai` already brought down as an optional
+ *      dependency. No network, so it is also the only channel that works
+ *      air-gapped or behind a proxy that blocks github.com.
+ *   2. The GitHub Release asset for this exact version, checksum-verified.
+ *      Covers installs that skipped optional dependencies, older tarballs, and
+ *      anyone installing the daemon standalone.
  */
 export async function ensureFailproofaidBinary(): Promise<{ path?: string; reason?: string }> {
   const existing = resolveFailproofaidBinaryPath();
@@ -162,9 +168,18 @@ export async function ensureFailproofaidBinary(): Promise<{ path?: string; reaso
     return { reason: `failproofaid has no prebuilt binary for ${process.platform}/${process.arch}` };
   }
 
+  const fromNpm = installFromNpmPackage(key);
+  if (fromNpm.path) return { path: fromNpm.path };
+
   const result = await downloadFailproofaidBinary(key);
   if (result.path) return { path: result.path };
-  return { reason: result.error ?? "failproofaid binary could not be downloaded" };
+  // Both channels are worth reporting: "not installed" alone reads as a broken
+  // package, and the download error alone hides that npm could have supplied it.
+  return {
+    reason: result.error
+      ? `${result.error} (${fromNpm.error})`
+      : "failproofaid binary could not be installed",
+  };
 }
 
 /**

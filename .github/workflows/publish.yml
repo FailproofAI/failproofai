@@ -457,6 +457,83 @@ jobs:
           if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
           node scripts/publish-aliases.mjs "${ARGS[@]}"
 
+      # Every name above takes its version from the same PUBLISH_VERSION, so a
+      # run that completes is in lockstep by construction. This checks the
+      # thing construction cannot: that the REGISTRY ended up that way. The
+      # daemon story only works if `failproofai@V` and all four
+      # `@failproofai/failproofaid-<os>-<arch>@V` exist together — a version
+      # where the CLI resolved but a platform package did not is an install
+      # that 404s on an optionalDependency, and one where the platform
+      # packages landed but the CLI did not is four orphans nothing pins.
+      # Both halves of that split have already shipped once each (beta.1-3 and
+      # beta.0 respectively), from partial runs that each reported success.
+      # Publishes are not transactional and npm's own publish step can no-op on
+      # an already-published version, so the only way to know is to ask.
+      - name: Verify every package published at the same version
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          HAS_DAEMON: ${{ needs.preflight.outputs.has_daemon }}
+        run: |
+          NAMES=("failproofai")
+          if [[ "$HAS_DAEMON" == "true" ]]; then
+            for P in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+              NAMES+=("@failproofai/failproofaid-$P")
+            done
+          fi
+
+          MISSING=()
+          for NAME in "${NAMES[@]}"; do
+            # The registry is a read-through cache, so a just-published version
+            # can take a moment to be visible everywhere. Check immediately,
+            # then back off 10s / 30s / 1m / 2m before calling it missing —
+            # long enough that propagation is not mistaken for a failed publish,
+            # short enough that a genuinely failed publish is still reported in
+            # the same run rather than hours later by a user.
+            FOUND=""
+            for DELAY in 0 10 30 60 120; do
+              [[ "$DELAY" -gt 0 ]] && sleep "$DELAY"
+              if npm view "$NAME@$PUBLISH_VERSION" version >/dev/null 2>&1; then
+                FOUND=1
+                break
+              fi
+            done
+            if [[ -n "$FOUND" ]]; then
+              echo "  ok  $NAME@$PUBLISH_VERSION"
+            else
+              echo "  MISSING  $NAME@$PUBLISH_VERSION"
+              MISSING+=("$NAME")
+            fi
+          done
+
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            echo "::error::Version split on the registry — these are not published at $PUBLISH_VERSION: ${MISSING[*]}. Every package in a release must carry the same version."
+            exit 1
+          fi
+
+          # The pins are written at publish time, so a root package that
+          # resolved but points at a different version is a silent downgrade
+          # for the daemon half.
+          if [[ "$HAS_DAEMON" == "true" ]]; then
+            PINS=$(npm view "failproofai@$PUBLISH_VERSION" optionalDependencies --json)
+            BAD=$(node -e '
+              const pins = JSON.parse(process.argv[1] || "{}");
+              const want = process.argv[2];
+              const bad = Object.entries(pins)
+                .filter(([n]) => n.startsWith("@failproofai/failproofaid-"))
+                .filter(([, v]) => v !== want)
+                .map(([n, v]) => `${n}@${v}`);
+              if (Object.keys(pins).length === 0) bad.push("(no optionalDependencies at all)");
+              console.log(bad.join(", "));
+            ' "$PINS" "$PUBLISH_VERSION")
+            if [[ -n "$BAD" ]]; then
+              echo "::error::failproofai@$PUBLISH_VERSION pins daemon packages at the wrong version: $BAD"
+              exit 1
+            fi
+          fi
+
+          echo "All packages published at $PUBLISH_VERSION."
+
       # The bump targets main unconditionally — it checks main out and pushes to
       # it — so it must never run for a build that did not come from main. A
       # dispatch from a feature branch would otherwise rewrite main's version
@@ -496,3 +573,121 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           echo "::notice::Left main's version untouched (ref '$REF_NAME', dry_run=$DRY_RUN). Main is bumped only by a release or a dispatch from main."
+
+  # The last word on whether a release actually reached users: a real
+  # `npm install` from the registry, on a clean runner, one per platform the
+  # daemon ships for.
+  #
+  # `npm view` (in the publish job) proves a manifest is queryable. It does not
+  # prove the tarball is fetchable, that npm's `os`/`cpu` filters resolve the
+  # right platform package on the machine it is meant for, that the executable
+  # bit survived publish -> install, or that the binary inside is the version
+  # the CLI beside it believes it is. Only an install proves those, and each
+  # one has its own failure mode a manifest query reads as healthy.
+  #
+  # A matrix is not optional here: npm installs the ONE platform package
+  # matching the runner's os/cpu and silently skips the other three, so a
+  # single-runner check can only ever verify a quarter of what shipped.
+  verify-install:
+    name: verify-install (${{ matrix.platform }})
+    needs: [preflight, publish]
+    if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+    strategy:
+      fail-fast: false
+      # Same four legs as the build matrix, each on a runner native to its own
+      # target — a cross-installed package would not exercise the os/cpu filter
+      # that decides which binary a real user gets.
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+          - os: macos-15-intel
+            platform: darwin-x64
+          - os: macos-14
+            platform: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install the published CLI from the registry
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Same backoff as the registry check: immediate, then 10s / 30s / 1m
+          # / 2m. An install can 404 for a few seconds after a publish on a CDN
+          # edge that has not caught up.
+          INSTALLED=""
+          for DELAY in 0 10 30 60 120; do
+            [ "$DELAY" -gt 0 ] && sleep "$DELAY"
+            if npm install -g "failproofai@$PUBLISH_VERSION"; then
+              INSTALLED=1
+              break
+            fi
+            echo "install did not succeed yet; retrying"
+          done
+          if [ -z "$INSTALLED" ]; then
+            echo "::error::failproofai could not be installed from the registry on $PLATFORM at the published version."
+            exit 1
+          fi
+
+      - name: Verify the CLI runs and reports the published version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+        run: |
+          # Not a formality: the package ships a bundled dist/cli.mjs, so a
+          # broken build publishes fine and fails at the first invocation.
+          REPORTED=$(failproofai --version)
+          printf 'failproofai --version -> %s\n' "$REPORTED"
+          case "$REPORTED" in
+            *"$PUBLISH_VERSION"*) ;;
+            *) echo "::error::Installed failproofai reports a different version than the one published."; exit 1 ;;
+          esac
+
+      - name: Verify the daemon binary arrived through the optional dependency
+        if: ${{ needs.preflight.outputs.has_daemon == 'true' }}
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Resolved the same way the CLI resolves it at runtime
+          # (npmPlatformBinaryPath in daemon-download.ts): from the installed
+          # failproofai package, so a package that exists on the registry but
+          # does not resolve for THIS machine still fails here.
+          ROOT=$(npm root -g)
+          PKG_DIR=$(node -e '
+            const { createRequire } = require("module");
+            const { dirname } = require("path");
+            const req = createRequire(process.argv[1] + "/failproofai/package.json");
+            process.stdout.write(dirname(req.resolve("@failproofai/failproofaid-" + process.argv[2] + "/package.json")));
+          ' "$ROOT" "$PLATFORM")
+          printf 'Platform package resolved at %s\n' "$PKG_DIR"
+
+          PKG_VERSION=$(node -p "require('$PKG_DIR/package.json').version")
+          if [ "$PKG_VERSION" != "$PUBLISH_VERSION" ]; then
+            echo "::error::The resolved platform package is not at the published version. The CLI rejects a mismatched platform package and falls back to the download, so this is a silent loss of the offline install path."
+            exit 1
+          fi
+
+          BIN=$(ls "$PKG_DIR"/bin/failproofaid*)
+          # npm records the executable bit in the tarball; if it did not
+          # survive publish -> install, the daemon is unlaunchable on a user's
+          # machine while every manifest still looks correct.
+          [ -x "$BIN" ] || { echo "::error::The installed daemon binary is not executable."; exit 1; }
+
+          REPORTED=$("$BIN" --version)
+          printf 'failproofaid --version -> %s\n' "$REPORTED"
+          case "$REPORTED" in
+            *"$PUBLISH_VERSION"*) ;;
+            *) echo "::error::The daemon binary reports a different version than the one published. The CLI builds its download URL from the npm version and the binary at that URL must agree."; exit 1 ;;
+          esac
+
+      - name: Summary
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "::notice::$PLATFORM installs from the registry and carries a matching daemon."

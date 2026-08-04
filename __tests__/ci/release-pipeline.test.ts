@@ -162,6 +162,71 @@ describe("publish.yml", () => {
     expect(guard.if).toBeUndefined();
   });
 
+  it("verifies every package landed on the registry at one version", () => {
+    // Construction already guarantees lockstep — root, platform packages and
+    // aliases all take the same PUBLISH_VERSION — so this asserts the check on
+    // the thing construction cannot cover: a PARTIAL run. Both halves of the
+    // split have shipped once each. beta.1-3 published the CLI with no
+    // platform packages behind it (the publish step did not exist yet), and
+    // beta.0 published four platform packages whose CLI was already on the
+    // registry without pins to them. Each run reported success.
+    const steps = wf.jobs.publish.steps.map((s: Record<string, any>) => s.name ?? s.uses);
+    const verify = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Verify every package published at the same version",
+    );
+    expect(verify).toBeDefined();
+    // Must run after every publish step, or it verifies a state that is still
+    // being written.
+    for (const publishStep of ["Publish", "Publish the failproofaid platform packages"]) {
+      expect(steps.indexOf(publishStep)).toBeLessThan(steps.indexOf(verify.name));
+    }
+    for (const platform of PLATFORMS) {
+      expect(verify.run).toContain(platform);
+    }
+    // The pins are written at publish time, so a root package that resolved
+    // while pointing at another version is a silent downgrade of the daemon.
+    expect(verify.run).toContain("optionalDependencies");
+    expect(verify.run).toContain("exit 1");
+    // Nothing was published in a dry run, so there is nothing to verify.
+    expect(verify.if).toContain("dry_run != 'true'");
+    // The registry is a read-through cache — propagation must not read as a
+    // failed publish, and a failed publish must not wait forever.
+    expect(verify.run).toContain("for DELAY in 0 10 30 60 120");
+  });
+
+  it("installs the published packages from the registry, once per platform", () => {
+    // The last word on whether a release reached users. `npm view` proves a
+    // manifest is queryable; it does not prove the tarball is fetchable, that
+    // the os/cpu filters resolve the right platform package on the machine it
+    // is for, that the executable bit survived publish -> install, or that the
+    // binary matches the CLI beside it. Each of those fails while every
+    // manifest query still reads as healthy.
+    const job = wf.jobs["verify-install"];
+    expect(job).toBeDefined();
+    // After the publish, and skipped when nothing was published.
+    expect(job.needs).toContain("publish");
+    expect(job.if).toContain("dry_run != 'true'");
+
+    // npm installs the ONE platform package matching the runner's os/cpu and
+    // skips the other three, so a single-runner check verifies a quarter of
+    // what shipped. Each leg must also be native to its own target.
+    const legs = job.strategy.matrix.include;
+    expect(legs.map((l: Record<string, any>) => l.platform).sort()).toEqual([...PLATFORMS].sort());
+    expect(legs.every((l: Record<string, any>) => l.os)).toBe(true);
+    expect(job.strategy["fail-fast"]).toBe(false);
+
+    const scripts = runScripts(job);
+    expect(scripts).toContain("npm install -g");
+    expect(scripts).toContain("for DELAY in 0 10 30 60 120");
+    // A real invocation of both binaries, not just a file-exists check.
+    expect(scripts).toContain("failproofai --version");
+    expect(scripts).toContain('"$BIN" --version');
+    expect(scripts).toContain('[ -x "$BIN" ]');
+    // Resolved the way the CLI resolves it at runtime, so a package that
+    // exists but does not resolve for this machine still fails.
+    expect(scripts).toContain("createRequire");
+  });
+
   it("bumps main's version only for a release or a dispatch from main", () => {
     const bump = wf.jobs.publish.steps.find(
       (s: Record<string, any>) => s.name === "Bump version for next development cycle",

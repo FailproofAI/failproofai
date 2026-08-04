@@ -326,7 +326,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let machine = cfg.settings.machine_id.clone();
         let cursors = home.join("cursors");
 
-        use fpai_collect::sources::{claude, codex, copilot, openclaw, pi};
+        use fpai_collect::sources::{claude, codex, copilot, factory, openclaw, pi};
         file_source(
             &mut tasks,
             "claude",
@@ -393,6 +393,17 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             pi::FORMAT,
             vec![pi::sessions_root()],
             pi::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+        );
+        file_source(
+            &mut tasks,
+            "factory",
+            factory::FORMAT,
+            vec![factory_sessions_root()],
+            factory::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
             &env,
@@ -594,6 +605,18 @@ fn codex_sessions_root() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     home.join(".codex").join("sessions")
+}
+
+/// `~/.factory/sessions`, honouring the `FACTORY_HOME` override the audit
+/// adapter uses so tests can point at a fixture tree.
+fn factory_sessions_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("FACTORY_HOME") {
+        return std::path::PathBuf::from(p).join("sessions");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".factory").join("sessions")
 }
 
 fn cloud_policy_reconcile_interval() -> Duration {

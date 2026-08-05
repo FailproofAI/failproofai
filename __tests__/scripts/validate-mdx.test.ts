@@ -296,6 +296,25 @@ describe("findBrokenAssetRefs", () => {
     expect(broken[0].resolved).toBe("docs/agenteye/images/does-not-exist.png");
   });
 
+  it("checks srcset candidates, not just src", () => {
+    // The README's logo table pairs every <img src> with a dark-mode
+    // <source srcset>. Extracting only `src` passed a half-broken table.
+    const broken = findBrokenAssetRefs(
+      I18N_PAGE,
+      '<source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />\n',
+    );
+    expect(broken).toHaveLength(1);
+    expect(broken[0].resolved).toBe("docs/i18n/assets/logos/openai-dark.svg");
+  });
+
+  it("splits a multi-candidate srcset and strips each descriptor", () => {
+    const broken = findBrokenAssetRefs(
+      DOCS_PAGE,
+      '<source srcset="images/alerts.png 1x, images/missing@2x.png 2x" />\n',
+    );
+    expect(broken.map((b) => b.ref)).toEqual(["images/missing@2x.png"]);
+  });
+
   it("accepts a page-relative path that exists", () => {
     expect(
       findBrokenAssetRefs(DOCS_PAGE, "![Alerts](images/alerts.png)\n"),

@@ -87,32 +87,71 @@ export function rebaseReadmePaths(content: string): string {
   // HTML/JSX attributes: the README's logo table is a raw <table> of <img>.
   out = out.replace(
     /((?:src|href)=(["']))(.*?)\2/g,
-    (match, prefix: string, _quote: string, path: string, offset: number) => {
+    (match, prefix: string, quote: string, path: string, offset: number) => {
       if (insideFence(offset)) return match;
       const next = rebase(path);
-      return next === null ? match : `${prefix}${next}${_quote}`;
+      return next === null ? match : `${prefix}${next}${quote}`;
+    },
+  );
+
+  // `srcset` needs its own pass: each logo cell is a <picture> whose dark-mode
+  // <source srcset="assets/logos/*-dark.svg"> sits beside the <img src>. Miss
+  // it and half the table stays broken for dark-theme readers only — the half
+  // least likely to be noticed in review.
+  out = out.replace(
+    /(srcset=(["']))(.*?)\2/g,
+    (match, prefix: string, quote: string, value: string, offset: number) => {
+      if (insideFence(offset)) return match;
+      return `${prefix}${rebaseSrcset(value)}${quote}`;
     },
   );
 
   return out;
+
+  /**
+   * Rebase every candidate in a `srcset` value, preserving each one's optional
+   * density/width descriptor (`logo.svg 2x`, `wide.png 800w`) and the original
+   * comma spacing.
+   */
+  function rebaseSrcset(value: string): string {
+    return value
+      .split(",")
+      .map((candidate) => {
+        const [, lead, url, descriptor] =
+          /^(\s*)(\S+)(.*)$/.exec(candidate) ?? [];
+        if (url === undefined) return candidate; // whitespace-only candidate
+        const next = rebase(url);
+        return `${lead}${next ?? url}${descriptor}`;
+      })
+      .join(",");
+  }
 }
 
 /**
  * Byte ranges covered by fenced code blocks, per CommonMark: a fence opens with
  * ≥3 backticks or tildes and closes only on a later line using the SAME
- * character at ≥ the same length. Mirrors the scanner in
- * `mdx-translator.convertHtmlComments`, which needs the identical guard.
+ * character at ≥ the same length.
+ *
+ * Follows the scanner in `mdx-translator.convertHtmlComments`, with one
+ * correction: a CLOSING fence may carry only trailing whitespace, never an info
+ * string. Accepting ```` ```ts ```` as a close would end the block at the first
+ * *nested* opener inside it and leave the real code that follows looking like
+ * prose — whose sample paths this function exists to protect.
  */
 function findFenceRanges(content: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  const fenceRe = /^[ \t]*(`{3,}|~{3,})/gm;
+  const fenceRe = /^[ \t]*(`{3,}|~{3,})([^\n]*)$/gm;
   let match: RegExpExecArray | null;
   let open: { char: string; length: number; start: number } | null = null;
   while ((match = fenceRe.exec(content)) !== null) {
-    const marker = match[1];
+    const [, marker, rest] = match;
     if (!open) {
       open = { char: marker[0], length: marker.length, start: match.index };
-    } else if (marker[0] === open.char && marker.length >= open.length) {
+    } else if (
+      marker[0] === open.char &&
+      marker.length >= open.length &&
+      rest.trim() === ""
+    ) {
       const lineEnd = content.indexOf("\n", fenceRe.lastIndex);
       ranges.push([open.start, lineEnd === -1 ? content.length : lineEnd]);
       open = null;

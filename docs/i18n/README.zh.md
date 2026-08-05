@@ -43,7 +43,7 @@
     <td align="center" width="96">
       <a href="https://learn.chatgpt.com" title="OpenAI Codex">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
         </picture>
       </a>
@@ -51,7 +51,7 @@
     <td align="center" width="96">
       <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
         </picture>
       </a>
@@ -59,7 +59,7 @@
     <td align="center" width="96">
       <a href="https://cursor.com" title="Cursor Agent CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
         </picture>
       </a>
@@ -67,7 +67,7 @@
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
         </picture>
       </a>
@@ -75,7 +75,7 @@
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
         </picture>
       </a>
@@ -85,7 +85,7 @@
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
         </picture>
       </a>
@@ -98,7 +98,7 @@
     <td align="center" width="96">
       <a href="https://factory.ai/" title="Factory Droid (droid)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-dark.png" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
         </picture>
       </a>
@@ -116,7 +116,7 @@
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-dark.svg" />
           <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
       </a>

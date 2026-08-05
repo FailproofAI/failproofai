@@ -239,6 +239,18 @@ export function findBrokenAssetRefs(
       ...lines[i].matchAll(/(?:src|href)=["']([^"']+)["']/g),
     ].map((m) => m[1]);
 
+    // `srcset` carries a comma-separated candidate list, each optionally
+    // followed by a density/width descriptor (`logo.svg 2x`). The README's
+    // logo table pairs every <img src> with a dark-mode <source srcset>, so
+    // extracting only `src` would pass a table half-broken — and only for
+    // dark-theme readers, the half least likely to be caught by eye.
+    for (const m of lines[i].matchAll(/srcset=["']([^"']+)["']/g)) {
+      for (const candidate of m[1].split(",")) {
+        const url = candidate.trim().split(/\s+/)[0];
+        if (url) refs.push(url);
+      }
+    }
+
     for (const ref of refs) {
       if (/^[a-z][a-z0-9+.-]*:/i.test(ref)) continue; // https:, mailto:, data:
       if (ref.startsWith("//") || ref.startsWith("#")) continue;

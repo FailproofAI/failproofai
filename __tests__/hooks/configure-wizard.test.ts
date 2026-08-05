@@ -117,6 +117,7 @@ import {
   installDaemonService,
   daemonServiceStatus,
   daemonServiceNeedsUpgrade,
+  daemonServiceFilePath,
   ensureDaemonServiceCurrent,
   primeElevation,
 } from "../../src/hooks/daemon-service";
@@ -703,9 +704,17 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(daemonServiceStatus).mockReturnValue("running");
     vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
     vi.mocked(ensureDaemonServiceCurrent).mockResolvedValue({ outcome: "rewritten" });
+    vi.mocked(daemonServiceFilePath).mockReturnValue("/etc/systemd/system/failproofaid@test.service");
     drive(HAPPY);
 
     const result = await runConfigureWizard(ttyIO());
+
+    // The refresh rewrites a root-owned file and restarts the daemon, so the
+    // confirmation screen has to say so — a review that lists everything a run
+    // will touch except the privileged bit is worse than no review.
+    const review = vi.mocked(selectOne).mock.calls.find((c) => c[0].message === "Ready to apply?");
+    expect(String(review?.[0].body)).toContain("/etc/systemd/system/failproofaid@test.service");
+    vi.mocked(daemonServiceFilePath).mockReturnValue(null);
 
     expect(result.applied).toBe(true);
     expect(ensureDaemonServiceCurrent).toHaveBeenCalledTimes(1);
@@ -733,6 +742,35 @@ describe("configure-wizard daemon integration", () => {
 
     expect(result.applied).toBe(true);
     expect(readGlobalConfig().daemonConfigured).toBe(true);
+  });
+
+  it("stops claiming a daemon when the refresh left it stopped", async () => {
+    // The refresh restarts a HEALTHY daemon, which is the one thing the
+    // "already running — leaving it alone" branch never used to do. If it
+    // cannot bring it back, keeping daemonConfigured set is not "no scheduled
+    // audit", it is every tool call across all 12 CLIs denied against a socket
+    // nothing is listening on, with no recovery short of hand-editing
+    // policies-config.json.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
+    vi.mocked(ensureDaemonServiceCurrent).mockResolvedValue({
+      outcome: "failed",
+      reason: "failproofaid did not come back",
+      daemonRunning: false,
+    });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    // Setup still completes — the hooks it wrote enforce in-process.
+    expect(result.applied).toBe(true);
+    // Without the switch-back this reads `true`: the wizard seeds
+    // daemonInstalled from daemonAlreadyRunning, so a machine that was running
+    // a daemon re-asserts the flag at the end of every apply.
+    expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+    expect(readFpConfig().daemon.configured).toBe(false);
+    expect(result.daemonInstalled).toBe(false);
   });
 
   it("leaves a stale unit alone, without aborting, when root is unavailable", async () => {

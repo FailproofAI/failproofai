@@ -693,7 +693,7 @@ describe("hooks/daemon-service", () => {
         expect(readFileSync(unitPath, "utf8")).not.toContain("FAILPROOFAI_CLI_CMD");
         expect(daemonServiceNeedsUpgrade()).toBe(true);
 
-        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten" });
+        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten", daemonRunning: true });
 
         const rewritten = readFileSync(unitPath, "utf8");
         expect(rewritten).toContain(
@@ -730,11 +730,47 @@ describe("hooks/daemon-service", () => {
         delete process.env.FAILPROOFAI_WORKER_CMD;
         process.env.FAILPROOFAI_PACKAGE_ROOT = "/nonexistent/package/root";
 
-        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten" });
+        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten", daemonRunning: true });
         expect(readFileSync(unitPath, "utf8")).toContain(
           'Environment="FAILPROOFAI_WORKER_CMD=/usr/bin/node /baked/at/install/worker.mjs"',
         );
       }, 30_000);
+
+      it("puts the old definition back when the rewritten one will not start", async () => {
+        // Unlike install, this path runs against a HEALTHY, RUNNING daemon —
+        // and on a daemonConfigured machine a daemon that is down is not a
+        // missing feature, it is every tool call across all 12 CLIs denied
+        // against a socket nothing is listening on. So a refresh that stops
+        // the service and cannot start it again has to be able to undo itself;
+        // "the audit lane stays broken" is a far cheaper failure than that.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+        process.env.FAILPROOFAI_CLI_CMD = "/usr/bin/true --cli-cmd-sentinel";
+        setPlatform("linux");
+        const { installDaemonService, ensureDaemonServiceCurrent, daemonServiceStatus } = await import(
+          "../../src/hooks/daemon-service"
+        );
+
+        expect((await installDaemonService()).installed).toBe(true);
+        stripCliCommandFromUnit();
+        const legacy = readFileSync(unitPath, "utf8");
+
+        // Forced only AFTER the install, so the unit on disk is a good one:
+        // the injected `User=` overrides the real one and systemd refuses to
+        // start the regenerated unit. Poisoning the value is the only lever
+        // this test has on a definition the code generates itself, and the
+        // shape it produces is the realistic one — a definition systemd
+        // accepts and then cannot run.
+        process.env.FAILPROOFAI_CLI_CMD = '/usr/bin/true"\nUser=failproofai-no-such-user';
+
+        const result = await ensureDaemonServiceCurrent();
+        expect(result.outcome).toBe("failed");
+        // The verdict the wizard branches on: the daemon is back, so it must
+        // NOT clear daemonConfigured and drop the machine off the daemon.
+        expect(result.daemonRunning).toBe(true);
+
+        expect(readFileSync(unitPath, "utf8")).toBe(legacy);
+        expect(daemonServiceStatus()).toBe("running");
+      }, 40_000);
 
       it("installDaemonService fails cleanly when the binary cannot be resolved", async () => {
         // Scratch HOME + downloads off, or "cannot be resolved" is a lie:

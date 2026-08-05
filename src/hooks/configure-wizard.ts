@@ -979,7 +979,11 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       policies,
       cwd,
       customEnabled,
-      installDaemon: daemonWanted,
+      // A stale-unit refresh rewrites the service file and restarts the
+      // daemon, so it belongs on the list of things this run is about to
+      // change. Leaving it off would make the confirmation screen of a
+      // security tool quietly incomplete about a root-owned file.
+      installDaemon: daemonWanted || daemonUnitStale,
       connect: connect !== null,
     }),
     choices: [
@@ -1037,14 +1041,37 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     const upgrade = await ensureDaemonServiceCurrent();
     void emit("configure_daemon_unit_refresh", {
       outcome: upgrade.outcome,
+      daemon_running: upgrade.daemonRunning ?? true,
       platform: process.platform,
     });
     if (upgrade.outcome === "failed") {
       hookLogWarn(`failproofaid service definition could not be refreshed: ${upgrade.reason}`);
-      stdout.write(
-        `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
-          "Hooks keep enforcing; scheduled audits stay off until it is.\n\n",
-      );
+      if (upgrade.daemonRunning === false) {
+        // The refresh stopped a daemon it could not start again, and its own
+        // rollback could not either. Explicitly `=== false`: every failure
+        // that never touched the service leaves this undefined, and those must
+        // not drag a healthy machine down this branch.
+        //
+        // Leaving `daemonConfigured` set here is not "the audit stays off", it
+        // is every tool call across all 12 CLIs denied against a socket
+        // nothing is listening on, recoverable only by hand-editing
+        // policies-config.json. So the machine goes back to in-process
+        // evaluation — the same trade uninstallDaemonService makes, and for
+        // the same reason.
+        daemonInstalled = false;
+        setDaemonConfigured(false);
+        stdout.write(
+          `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
+            "failproofaid is no longer running, so this machine was switched back to\n" +
+            "in-process evaluation rather than left denying every tool call. Hooks keep\n" +
+            "enforcing. Re-run `failproofai config` to reinstall the service.\n\n",
+        );
+      } else {
+        stdout.write(
+          `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
+            "Hooks keep enforcing; scheduled audits stay off until it is.\n\n",
+        );
+      }
     }
   }
 

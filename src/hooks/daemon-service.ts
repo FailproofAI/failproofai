@@ -854,6 +854,75 @@ export type DaemonUpgradeOutcome =
 export interface DaemonUpgradeResult {
   outcome: DaemonUpgradeOutcome;
   reason?: string;
+  /**
+   * Whether failproofaid is running when this returns — probed, never
+   * inferred from what the commands returned.
+   *
+   * Set on every outcome that touched the service, because on a
+   * `daemonConfigured` machine a stopped daemon is not a lost feature: every
+   * hook event fails closed, across all 12 CLIs, until somebody hand-edits
+   * `policies-config.json`. The caller needs to know that specifically, not
+   * just that "the refresh failed".
+   */
+  daemonRunning?: boolean;
+}
+
+/**
+ * Puts a previous service definition back and starts the service again,
+ * answering whether failproofaid is running once it has.
+ *
+ * `ensureDaemonServiceCurrent` is the only caller, and it runs exclusively
+ * against a machine whose daemon is UP — which is what makes a half-applied
+ * rewrite so much worse than no rewrite. Stopping a healthy daemon and failing
+ * to start it again trades a dead audit lane for a machine that denies every
+ * tool call, so the refresh must be able to undo itself.
+ *
+ * Best-effort and never throws: it only ever runs where something has already
+ * gone wrong. The return value is `waitForDaemonRunning()` rather than "the
+ * commands succeeded" on purpose — the common rollback failure is a lost sudo
+ * credential, which means nothing was written and the daemon was never down.
+ */
+async function restoreServiceDefinition(previous: string): Promise<boolean> {
+  try {
+    if (process.platform === "linux") {
+      writePrivilegedFile(systemdUnitPath(), previous);
+      runPrivileged("systemctl", ["daemon-reload"]);
+      runPrivileged("systemctl", ["restart", systemdUnitName()]);
+    } else {
+      const plistPath = launchdPlistPath();
+      try {
+        runPrivileged("launchctl", ["unload", plistPath]);
+      } catch {
+        // Already unloaded — getting the old definition loaded is the point.
+      }
+      writePrivilegedFile(plistPath, previous);
+      runPrivileged("launchctl", ["load", "-w", plistPath]);
+    }
+  } catch (err) {
+    hookLogWarn(
+      `daemon service definition rollback failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    // Not a verdict on the daemon — fall through to the probe below, which is.
+  }
+  return waitForDaemonRunning();
+}
+
+/**
+ * The one exit for every way a refresh can fail after it started touching the
+ * service. Rolls back when there is something to roll back to, then reports
+ * the daemon's actual state.
+ */
+async function refreshFailed(message: string, previous: string | null): Promise<DaemonUpgradeResult> {
+  hookLogWarn(`daemon service unit refresh failed: ${message}`);
+  const running =
+    previous === null ? daemonServiceStatus() === "running" : await restoreServiceDefinition(previous);
+  return {
+    outcome: "failed",
+    daemonRunning: running,
+    reason: running
+      ? message
+      : `${message}. The previous service definition could not be restored either, so failproofaid is NOT running`,
+  };
 }
 
 /**
@@ -861,9 +930,13 @@ export interface DaemonUpgradeResult {
  *
  * Narrower than `installDaemonService` on purpose, and it is the narrowness
  * that makes it safe to run against a healthy machine: it never downloads, it
- * never touches a machine that has no service, it keeps the ExecStart and any
- * environment value it cannot re-resolve, and it fails inert. The worst
- * outcome is the machine it started with.
+ * never touches a machine that has no service, and it keeps the ExecStart and
+ * any environment value it cannot re-resolve. Everything past the first
+ * privileged write is undone by `restoreServiceDefinition` if the daemon does
+ * not come back, so the worst outcome really is the machine it started with —
+ * and when even the rollback cannot get the daemon up, that fact rides out on
+ * `daemonRunning` rather than being folded into a generic failure, because the
+ * caller has to stop asserting `daemonConfigured` over a daemon that is gone.
  *
  * It DOES restart the service, which `installDaemonService` does not do on
  * Linux (`enable --now` is a no-op against an already-active unit, so a
@@ -907,8 +980,16 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
     };
   }
 
+  // What to put back if this goes wrong, and from which point. Set BEFORE the
+  // step that can leave the machine changed, not after it succeeds: on Linux
+  // `writePrivilegedFile` is an `install` copy straight onto the unit path, so
+  // a failure part-way through leaves a truncated unit behind, and on macOS
+  // the unload has already stopped the daemon before anything is written.
+  let previous: string | null = null;
+
   try {
     if (process.platform === "linux") {
+      previous = definition;
       writePrivilegedFile(systemdUnitPath(), upgraded);
       runPrivileged("systemctl", ["daemon-reload"]);
       // `restart`, not `enable --now`: the unit is already enabled and active,
@@ -918,6 +999,7 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
     } else {
       const plistPath = launchdPlistPath();
       mkdirSync(logDir, { recursive: true });
+      previous = definition;
       try {
         runPrivileged("launchctl", ["unload", plistPath]);
       } catch {
@@ -927,21 +1009,21 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
       runPrivileged("launchctl", ["load", "-w", plistPath]);
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    hookLogWarn(`daemon service unit refresh failed: ${msg}`);
-    return { outcome: "failed", reason: msg };
+    return refreshFailed(err instanceof Error ? err.message : String(err), previous);
   }
 
   // The service was running when this started, so anything short of running
   // now is a regression this call caused — and on a daemon-configured machine
-  // that is every tool call failing closed. Report it loudly instead of
-  // returning success on the strength of having written a file.
+  // that is every tool call failing closed. A unit that parses but will not
+  // start is exactly the case `systemctl restart`'s exit code does not catch,
+  // so this is the check that hands it to the rollback.
   if (!(await waitForDaemonRunning())) {
-    const reason = `the service unit was refreshed but failproofaid did not come back within ${SERVICE_START_TIMEOUT_MS}ms (status: ${daemonServiceStatus()})`;
-    hookLogWarn(`daemon service unit refresh failed: ${reason}`);
-    return { outcome: "failed", reason };
+    return refreshFailed(
+      `the service definition was refreshed but failproofaid did not come back within ${SERVICE_START_TIMEOUT_MS}ms (status: ${daemonServiceStatus()})`,
+      previous,
+    );
   }
-  return { outcome: "rewritten" };
+  return { outcome: "rewritten", daemonRunning: true };
 }
 
 /**

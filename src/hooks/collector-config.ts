@@ -32,7 +32,7 @@ import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
 import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
 
 /** The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto. */
-export const DEFAULT_INGEST_URL = "https://server.befailproof.ai/events";
+export const DEFAULT_INGEST_URL = "https://server.befailproof.ai/v1/events";
 
 export interface IngestCredential {
   url: string;

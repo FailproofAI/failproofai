@@ -19,6 +19,7 @@ fpai-collect = { path = "../fpai-collect" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter"] }
 serde = { version = "1", features = ["derive"] }
+toml = "1.1.4"
 serde_json = "1"
 libc = "0.2"
 sha2 = "0.10"

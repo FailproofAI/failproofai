@@ -13,6 +13,14 @@ use std::path::PathBuf;
 /// file. Overridable via `FAILPROOFAI_DAEMON_SOCKET`'s parent for local dev
 /// (see `run_dir_override`), so a `bun run daemon:dev` loop never touches a
 /// real installed daemon's state.
+///
+/// Derived from [`failproofai_home`] and NOT from `$HOME` directly, because the
+/// CLI derives the same path from `FAILPROOFAI_HOME` (`fp-home.ts`'s `runDir`).
+/// While this read `$HOME` unconditionally, setting `FAILPROOFAI_HOME` put the
+/// two processes on different sockets: the daemon bound one, the hook looked for
+/// the other, found nothing, and — on a `daemonConfigured` machine, which fails
+/// closed — DENIED every tool call across all 11 CLIs, with a perfectly healthy
+/// daemon running the whole time.
 pub fn run_dir() -> io::Result<PathBuf> {
     if let Some(socket_override) = std::env::var_os("FAILPROOFAI_DAEMON_SOCKET") {
         let path = PathBuf::from(socket_override);
@@ -21,9 +29,7 @@ pub fn run_dir() -> io::Result<PathBuf> {
             .map(PathBuf::from)
             .ok_or_else(|| io::Error::other("FAILPROOFAI_DAEMON_SOCKET has no parent directory"));
     }
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| io::Error::other("HOME is not set; failproofaid is user-scope only"))?;
-    Ok(PathBuf::from(home).join(".failproofai").join("run"))
+    Ok(failproofai_home()?.join("run"))
 }
 
 pub fn socket_path() -> io::Result<PathBuf> {
@@ -49,19 +55,21 @@ pub fn worker_socket_path() -> io::Result<PathBuf> {
     Ok(run_dir()?.join("worker.sock"))
 }
 
-/// Local cache for cloud-managed policy generations. The override keeps
-/// tests and development runs away from a user's real policy directory.
+/// `~/.failproofai/policies/cloud-policies` — where pulled generations land.
+/// The override keeps tests and development runs away from a user's real
+/// policy directory.
+///
+/// The directory name is `cloud-policies`, matching `fp-home.ts`'s
+/// `cloudPoliciesDir`, which is what the hook path actually reads. Layout 2
+/// renamed it from `cloud-managed` and this function kept writing the old
+/// name — so the daemon downloaded every generation, verified it, wrote it to
+/// disk, and the CLI read an empty directory and enforced nothing. Both halves
+/// looked healthy; only the combination was broken.
 pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("FAILPROOFAI_CLOUD_POLICY_DIR") {
         return Ok(PathBuf::from(path));
     }
-    let home = std::env::var_os("HOME").ok_or_else(|| {
-        io::Error::other("HOME is not set; cannot resolve cloud policy directory")
-    })?;
-    Ok(PathBuf::from(home)
-        .join(".failproofai")
-        .join("policies")
-        .join("cloud-managed"))
+    Ok(failproofai_home()?.join("policies").join("cloud-policies"))
 }
 
 // ── Layout 2 ─────────────────────────────────────────────────────────────────
@@ -169,12 +177,100 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
+            std::env::remove_var("FAILPROOFAI_HOME");
             std::env::set_var("HOME", "/home/example-user");
         }
         assert_eq!(
             socket_path().unwrap(),
             PathBuf::from("/home/example-user/.failproofai/run/failproofaid.sock")
         );
+    }
+
+    #[test]
+    fn the_socket_follows_failproofai_home_because_the_cli_does() {
+        // The regression this exists for: while `run_dir` read `$HOME`
+        // directly, setting FAILPROOFAI_HOME put the daemon on one socket and
+        // the hook on another (`fp-home.ts`'s `runDir` has always honoured it).
+        // A daemon-configured machine fails closed when it cannot reach the
+        // daemon — so a HEALTHY daemon denied every tool call across all 11
+        // CLIs, and the only symptom was the generic "could not be reached".
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
+            std::env::set_var("HOME", "/home/example-user");
+            std::env::set_var("FAILPROOFAI_HOME", "/tmp/alt-home");
+        }
+        assert_eq!(
+            socket_path().unwrap(),
+            PathBuf::from("/tmp/alt-home/run/failproofaid.sock")
+        );
+        assert_eq!(
+            worker_socket_path().unwrap(),
+            PathBuf::from("/tmp/alt-home/run/worker.sock")
+        );
+        assert_eq!(
+            lock_path().unwrap(),
+            PathBuf::from("/tmp/alt-home/run/failproofaid.lock")
+        );
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_HOME");
+        }
+    }
+
+    #[test]
+    fn pulled_policies_land_where_the_cli_reads_them() {
+        // `fp-home.ts`: `cloudPoliciesDir = policies/cloud-policies`. This
+        // wrote layout 1's `policies/cloud-managed`, so the daemon downloaded
+        // every generation, verified its hashes, wrote it to disk — and the CLI
+        // read an empty directory and enforced nothing. Both halves logged
+        // success; only the combination was broken.
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
+            std::env::set_var("FAILPROOFAI_HOME", "/tmp/alt-home");
+        }
+        assert_eq!(
+            cloud_managed_policy_dir().unwrap(),
+            PathBuf::from("/tmp/alt-home/policies/cloud-policies")
+        );
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_HOME");
+            std::env::set_var("HOME", "/home/example-user");
+        }
+        assert_eq!(
+            cloud_managed_policy_dir().unwrap(),
+            PathBuf::from("/home/example-user/.failproofai/policies/cloud-policies")
+        );
+    }
+
+    #[test]
+    fn every_runtime_path_shares_one_home() {
+        // Two notions of "the failproofai home" in one process is the shape of
+        // all three bugs above: some paths read `$HOME/.failproofai` and the
+        // rest read FAILPROOFAI_HOME, so the daemon silently split itself
+        // across two directories.
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
+            std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
+            std::env::set_var("HOME", "/home/example-user");
+            std::env::set_var("FAILPROOFAI_HOME", "/tmp/one-home");
+        }
+        for path in [
+            run_dir().unwrap(),
+            cloud_managed_policy_dir().unwrap(),
+            hook_activity_dir().unwrap(),
+            cursors_dir().unwrap(),
+        ] {
+            assert!(
+                path.starts_with("/tmp/one-home"),
+                "{} escaped FAILPROOFAI_HOME",
+                path.display()
+            );
+        }
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_HOME");
+        }
     }
 
     #[test]

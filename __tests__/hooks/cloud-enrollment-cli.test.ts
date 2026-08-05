@@ -191,12 +191,12 @@ describe("--connect configures policy AND the dashboard", () => {
     expect(r.exitCode).toBe(0);
     expect(readCloudCredentials()).not.toBeNull();
     expect(readIngestCredential()).toEqual({
-      url: "https://be.failproof.ai/events",
+      url: "https://be.failproof.ai/v1/events",
       key: "a-machine-token",
     });
     // The ingest endpoint is DERIVED, never asked for separately.
     expect(ingestOk).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://be.failproof.ai/events" }),
+      expect.objectContaining({ url: "https://be.failproof.ai/v1/events" }),
     );
   });
 
@@ -231,7 +231,9 @@ describe("--connect configures policy AND the dashboard", () => {
     });
     expect(r.exitCode).toBe(0);
     expect(readCloudCredentials()?.url).toBe("https://be.failproof.ai");
-    expect(readIngestCredential()?.url).toBe("https://be.failproof.ai/events");
+    // Pasted as the unversioned path, stored as the versioned one: the base is
+    // what we keep, and the ingest path is derived from it, not echoed back.
+    expect(readIngestCredential()?.url).toBe("https://be.failproof.ai/v1/events");
   });
 });
 

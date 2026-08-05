@@ -13,7 +13,9 @@ import {
   writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
-import { daemonServiceStatus } from "./daemon-service";
+import { daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
+import { readVersionFile } from "./fp-config";
+import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
 import {
   cloudBaseFor,
@@ -43,9 +45,13 @@ export interface ConnectOptions {
    */
   defaultMachineId?: string;
   /**
-   * Send full session transcripts as well as hook decisions. Off unless asked
-   * for: a transcript carries prompts, file contents and whatever was pasted
-   * into a terminal, so it can never be a side effect of connecting.
+   * Send full session transcripts as well as hook decisions.
+   *
+   * DEFAULTS ON. A transcript carries prompts, file contents and whatever was
+   * pasted into a terminal — which is precisely what makes a dashboard worth
+   * connecting to, so hiding it behind an opt-in produced the empty-dashboard
+   * problem in a different costume. `false` is the explicit opt-out; the
+   * disclosure is printed either way.
    */
   sessions?: boolean;
   environment?: string;
@@ -166,10 +172,17 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
     ...describeOutcome(outcome, shownAs, validated.url),
     `  Token ${maskToken(opts.token)} stored in ${paths.join(" and ")} (owner-only).`,
   ];
-  if (outcome.ingest.ok && opts.sessions !== true) {
-    // Said out loud rather than left as a default: someone who wanted
-    // transcripts should not discover months later that none were sent.
-    lines.push("  Session transcripts are NOT being sent. Add --send-transcripts to include them.");
+  if (outcome.ingest.ok) {
+    // Stated on BOTH branches, never only on the surprising one. Connecting
+    // sends transcripts by default — prompts, file contents, command output —
+    // and a default that carries that much is one the user has to be told
+    // about at the moment it takes effect, not left to find in --help.
+    lines.push(
+      opts.sessions === false
+        ? "  Session transcripts are NOT being sent (--no-transcripts). Decisions only."
+        : "  Sending policy decisions AND full session transcripts (prompts, file\n" +
+          "  contents, command output). Use --no-transcripts for decisions only.",
+    );
   }
   lines.push(...daemonWarning(status));
 
@@ -207,6 +220,22 @@ export function runDisconnectCommand(): CommandResult {
 }
 
 /** The connection half of `--status`. Never prints the token. */
+/**
+ * The version line for `--status`.
+ *
+ * First thing worth knowing in a bug report, and the only place a user can
+ * currently find out which daemon they are running without listing a directory.
+ */
+export function versionStatusLines(): string[] {
+  const skew = daemonVersionSkew();
+  const recorded = readVersionFile();
+  const daemon = recorded?.daemon ?? "not installed";
+  return [
+    `CLI ${cliVersion} · daemon ${daemon}${skew ? " (STALE)" : ""} · layout ${recorded?.layout ?? "-"}`,
+    ...(skew ? ["  Run `failproofai config` to update the daemon."] : []),
+  ];
+}
+
 export function connectionStatusLines(daemonStatus = daemonServiceStatus): string[] {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {

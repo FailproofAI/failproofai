@@ -24,7 +24,8 @@ import { hookLogWarn } from "./hook-logger";
 import { getConfigPathForScope } from "./hooks-config";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
-import { updateConfig } from "./fp-config";
+import { version } from "../../package.json";
+import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
 /**
  * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
@@ -80,15 +81,14 @@ const SUDO_PROMPT_TIMEOUT_MS = 120_000;
  */
 export function setDaemonConfigured(value: boolean, installedVersion?: string): void {
   try {
-    updateConfig({
-      daemon: {
-        configured: value,
-        // Cleared alongside the flag: a recorded binary version for a service
-        // that is no longer configured is a claim about this machine that is
-        // no longer true.
-        installedVersion: value ? installedVersion : undefined,
-      },
-    });
+    updateConfig({ daemon: { configured: value } });
+    // The version lives in VERSION, not here. One file is ABOUT versions and
+    // one copy cannot disagree with itself; keeping a second in config.toml
+    // would be a field that drifts out of step with the file beside it —
+    // exactly the class of bug the single path module exists to prevent.
+    // Cleared on uninstall: a recorded binary version for a service that is no
+    // longer configured is a claim about this machine that is no longer true.
+    writeVersionFile({ daemon: value ? installedVersion : undefined, clearDaemon: !value });
   } catch {
     /* best-effort: never fail a completed setup (or uninstall) over this flag */
   }
@@ -1086,6 +1086,36 @@ export async function uninstallDaemonService(): Promise<void> {
  * file exists — a unit can be installed but crash-looped into a stopped
  * state.
  */
+/**
+ * Whether the installed daemon is a different version than this CLI expects.
+ *
+ * The expected version is this CLI's OWN — no lookup, no registry call, no
+ * network. `package.json` and `Cargo.toml` are held identical by CI, and every
+ * downstream path (the download URL, the binary filename, the npm pin) is
+ * derived from that one number, so a CLI can never want a daemon version that
+ * was not published alongside it.
+ *
+ * Returns null when the question does not apply, and the exclusions are the
+ * point:
+ *
+ *   • FAILPROOFAI_DAEMON_BINARY — someone named a binary explicitly; its
+ *     version is their business, not ours to second-guess.
+ *   • a locally-built target/{release,debug} binary — the developer's own
+ *     build. Reporting it "stale" on every command would be noise about the
+ *     exact setup this repo tells contributors to use.
+ *
+ * Only the managed `~/.failproofai/bin/failproofaid-<version>` path is
+ * checked, because it is the only one whose version we actually own.
+ */
+export function daemonVersionSkew(): { installed: string; expected: string } | null {
+  if (process.env.FAILPROOFAI_DAEMON_BINARY) return null;
+  const recorded = readVersionFile()?.daemon;
+  if (!recorded) return null;
+  // Managed installs only — see the exclusions above.
+  if (!existsSync(installedBinaryPath(recorded))) return null;
+  return recorded === version ? null : { installed: recorded, expected: version };
+}
+
 export function daemonServiceStatus(): DaemonServiceStatus {
   if (!isDaemonSupportedPlatform()) return "unsupported-platform";
 

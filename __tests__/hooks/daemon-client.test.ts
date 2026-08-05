@@ -145,6 +145,58 @@ describe("hooks/daemon-client", () => {
     expect(result).toBeNull();
   });
 
+  it("reports WHY it failed, so the caller can tell skew from absence", async () => {
+    // The distinction this exists for: a protocol mismatch means a daemon
+    // ANSWERED and is healthy — we just cannot speak its format, which is what
+    // an npm upgrade produces before the daemon is reinstalled. Collapsing that
+    // into the same `null` as "nothing is listening" is what would deny every
+    // tool call fleet-wide on the first PROTOCOL_VERSION bump.
+    await startServer(async (socket) => {
+      await readFrame(socket);
+      socket.end(
+        encodeFrame({ type: "hookResult", protocolVersion: 999, exitCode: 0, stdout: "", stderr: "" }),
+      );
+    });
+
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+  });
+
+  it("catches a mismatch in BOTH directions", async () => {
+    // Newer CLI against older daemon, and older CLI against newer daemon, both
+    // land here: the daemon stamps its own version on the error it sends back,
+    // so the versions disagree either way.
+    await startServer(async (socket) => {
+      await readFrame(socket);
+      socket.end(encodeFrame({ type: "error", protocolVersion: 2, message: "protocol version mismatch" }));
+    });
+
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+  });
+
+  it("an error at a MATCHING protocol version is unreachable, not skew", async () => {
+    // A daemon that answers "worker call failed" at the right version is not a
+    // version problem — it is a broken daemon, and must keep failing closed.
+    await startServer(async (socket) => {
+      await readFrame(socket);
+      socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "worker call failed" }));
+    });
+
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "Stop", cli: "codex", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "unreachable" });
+  });
+
+  it("nothing listening is unreachable", async () => {
+    process.env.FAILPROOFAI_DAEMON_SOCKET = "/tmp/fpai-nonexistent-socket-for-test.sock";
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "unreachable" });
+  });
+
   it("returns null on a well-formed but wrong-shape response (no partial trust)", async () => {
     await startServer(async (socket) => {
       await readFrame(socket);

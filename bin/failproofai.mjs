@@ -124,13 +124,13 @@ if (hookIdx >= 0) {
     // machine until `failproofai config` has installed failproofaid AND
     // written the daemonConfigured marker (Stage 4). Until then this is
     // byte-for-byte the same handleHookEvent(...) call below.
-    const { isDaemonConfigured, tryDaemonHook } = await import("../src/hooks/daemon-client");
+    const { isDaemonConfigured, attemptDaemonHook } = await import("../src/hooks/daemon-client");
     if (isDaemonConfigured()) {
       const { readStdinPayload } = await import("../src/hooks/read-stdin");
       const { evaluateHookEvent } = await import("../src/hooks/handler");
       const stdinRead = await readStdinPayload();
 
-      const daemonResult = await tryDaemonHook({
+      const attempt = await attemptDaemonHook({
         hookEvent: eventType,
         cli,
         stdin: stdinRead.payload,
@@ -140,21 +140,41 @@ if (hookIdx >= 0) {
         cwd: process.cwd(),
       });
 
-      // No silent fallback to in-process evaluation here: this machine was
-      // explicitly configured to run through the daemon, so an unreachable
-      // daemon fails closed instead — a loud, correctly-shaped deny (real
-      // per-CLI response shaping, not a generic denial) rather than a
-      // silent downgrade. See the plan's "Confirmed scope decisions".
-      const result =
-        daemonResult ??
-        (await evaluateHookEvent(eventType, cli, stdinRead.payload, {
+      // A failed attempt gets one of two opposite answers, and which one turns
+      // entirely on WHY it failed.
+      //
+      // protocol-mismatch: a daemon answered, so it is demonstrably alive — we
+      // just cannot speak its wire format, which happens when the CLI upgrades
+      // via npm and the daemon has not been reinstalled yet. Falling back to
+      // in-process costs latency and NOTHING else: it is the same policy engine
+      // producing the same decisions. Denying here would take a working machine
+      // offline to protect nothing, on an upgrade the user never asked to be
+      // interrupted by — and it would do it to every machine in a fleet at once,
+      // the moment PROTOCOL_VERSION is ever bumped.
+      //
+      // unreachable: nothing answered. A stopped service, a deleted socket,
+      // tampering — indistinguishable from here, so this keeps failing closed.
+      // That is the whole point of `daemonConfigured`.
+      let result;
+      if (attempt.ok) {
+        result = attempt.response;
+      } else if (attempt.failure === "protocol-mismatch") {
+        console.error(
+          "[failproofai] failproofaid speaks a different protocol version than this CLI — " +
+            "evaluating in-process instead (slower, identical policies). " +
+            "Run `failproofai config` to update the daemon.",
+        );
+        result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
+      } else {
+        result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {
           forceDecision: {
             decision: "deny",
             reason:
               "failproofaid could not be reached. This machine is configured to run hooks through it " +
               "— check the daemon (see `failproofai config`) rather than retrying blindly.",
           },
-        }));
+        });
+      }
 
       if (result.stdout) process.stdout.write(result.stdout);
       if (result.stderr) process.stderr.write(result.stderr);
@@ -837,7 +857,7 @@ WHAT IT DOES
 FAILPROOF CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
                                     Connect this machine to Failproof Cloud
-                                    [--send-transcripts] also send full session transcripts
+                                    [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
   failproofai config --status       Show connection and pause state
 
@@ -851,8 +871,10 @@ FAILPROOF CLOUD
   that file is world-readable. Connecting needs no sudo, and the machine id
   defaults to this host's name.
 
-  Session transcripts carry prompts, file contents and whatever was pasted into
-  a terminal, so they are NEVER sent unless --send-transcripts is passed.
+  Connecting sends BOTH policy decisions and full session transcripts. A
+  transcript carries prompts, file contents and whatever was pasted into a
+  terminal — that is the point of connecting, and it is stated here rather than
+  buried behind a flag nobody finds. Use --no-transcripts for decisions only.
 
 PAUSING ENFORCEMENT (one session, always time-boxed)
   failproofai config --pause         Pause this directory's newest agent session (30m)
@@ -906,10 +928,13 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
           machineId: valueAfter("--machine-id"),
           machineLabel: valueAfter("--machine-label"),
           defaultMachineId: hostname(),
-          // Opt-in only. A transcript carries prompts, file contents and
-          // whatever was pasted into a terminal, so it can never be a side
-          // effect of connecting.
-          sessions: args.includes("--send-transcripts"),
+          // Transcripts are what connecting is FOR, so they default on and the
+          // disclosure is made at the point of connection rather than hidden
+          // behind an opt-in flag most people never discover — a dashboard
+          // showing only decisions is the empty-dashboard problem in a
+          // different costume. --no-transcripts is the explicit way out, and
+          // `failproofai config --status` always says which is in effect.
+          sessions: !args.includes("--no-transcripts"),
         });
       }
       for (const line of result.lines) {

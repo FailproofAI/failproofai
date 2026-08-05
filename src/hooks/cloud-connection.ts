@@ -77,7 +77,16 @@ export interface ConnectInput {
   machineId: string;
   /** Human-facing display name for this machine. Defaults to the hostname. */
   machineLabel?: string;
-  /** Transcripts are a separate, explicit opt-in. Never defaulted on. */
+  /**
+   * Send session transcripts.
+   *
+   * Both callers — the wizard and `--connect` — now pass `true` unless the
+   * user opts out, because transcripts are what makes a dashboard worth
+   * connecting to. This function itself still requires it EXPLICITLY and
+   * treats `undefined` as off: a library that silently opts a caller into
+   * shipping prompts and file contents is the wrong default at this layer,
+   * whatever the product default above it happens to be.
+   */
   sessions?: boolean;
   environment?: string;
   /** Injected by tests so nothing reaches the network. */
@@ -150,8 +159,8 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       // Hook activity is what makes the dashboard show anything at all, and it
       // carries decisions and tool names — never file contents.
       hooks: true,
-      // Transcripts carry prompts, file contents and whatever was pasted into
-      // a terminal, so they stay off unless explicitly asked for.
+      // Explicit only — see the `sessions` doc on ConnectInput. Callers decide
+      // the product default; this layer never infers one.
       sessions: input.sessions === true,
       environment: input.environment,
       // So the daemon stamps this machine's id on every collected event and the

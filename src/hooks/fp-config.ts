@@ -106,12 +106,17 @@ export function readVersionFile(): VersionFile | null {
   }
 }
 
-export function writeVersionFile(v: Partial<VersionFile> = {}): void {
+export function writeVersionFile(
+  v: Partial<VersionFile> & { /** Erase the daemon version rather than keeping it. */ clearDaemon?: boolean } = {},
+): void {
   const existing = readVersionFile();
   const next: VersionFile = {
     layout: LAYOUT_VERSION,
     cli: v.cli ?? cliVersion,
-    daemon: v.daemon ?? existing?.daemon,
+    // `undefined` means "leave whatever is there" — a CLI-only rewrite must not
+    // drop a daemon version it never touched. Erasing it is therefore an
+    // explicit act, used on uninstall.
+    daemon: v.clearDaemon ? undefined : (v.daemon ?? existing?.daemon),
   };
   const lines = [
     "# Written by failproofai. `layout` is what tells a newer CLI whether this",
@@ -138,10 +143,14 @@ export type Mode = "oss" | "cloud";
 export interface FpConfig {
   mode: Mode;
   daemon: {
-    /** Route hooks through the daemon — and FAIL CLOSED when it is unreachable. */
+    /**
+     * Route hooks through the daemon — and FAIL CLOSED when it is unreachable.
+     *
+     * The installed binary VERSION deliberately does not live here; it is in
+     * `VERSION`, which is the file about versions. Two copies could disagree,
+     * and a stale one would misreport which daemon a machine is running.
+     */
     configured: boolean;
-    /** The binary version the service unit points at. */
-    installedVersion?: string;
   };
   collector: {
     sessions: boolean;
@@ -237,11 +246,7 @@ export function readConfig(): FpConfig {
       // Anything unrecognised reads as `oss`. The failure direction matters:
       // a corrupt config must not be able to turn cloud reporting ON.
       mode: mode === "cloud" ? "cloud" : "oss",
-      daemon: {
-        configured: daemon.configured === true,
-        installedVersion:
-          typeof daemon.installed_version === "string" ? daemon.installed_version : undefined,
-      },
+      daemon: { configured: daemon.configured === true },
       collector: {
         sessions: collector.sessions === true,
         hooks: collector.hooks !== false,
@@ -287,9 +292,6 @@ export function writeConfig(config: FpConfig): void {
     "# after verifying the service is genuinely running.",
     `configured = ${config.daemon.configured}`,
   ];
-  if (config.daemon.installedVersion) {
-    lines.push(`installed_version = ${JSON.stringify(config.daemon.installedVersion)}`);
-  }
   lines.push(
     "",
     "[collector]",

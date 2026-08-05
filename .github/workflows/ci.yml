@@ -131,6 +131,24 @@ jobs:
         with:
           bun-version: latest
 
+      # …and bun on PATH is not enough on its own. That worker runs the raw
+      # TypeScript, so it resolves the handler's real dependency tree at
+      # runtime rather than a bundle's. The moment anything under src/hooks
+      # imports a third-party package, this job fails with a bun ENOENT that
+      # reads like a Rust problem — the failure surfaces as "worker process
+      # exited before creating its socket". Production is unaffected, because
+      # dist/worker.mjs bundles those deps; only this path needs them on disk.
+      - if: steps.crates.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - if: steps.crates.outputs.present == 'true'
+        name: Install worker dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - if: steps.crates.outputs.present == 'true'
         uses: actions/cache@v6
         with:

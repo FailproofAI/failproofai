@@ -25,15 +25,22 @@
  * `findPageError`), so this net is a strict superset of `mintlify validate`:
  * it catches both the frontmatter YAML class that fails `mintlify validate`
  * and the body-MDX class that `mintlify validate` lets through to deploy.
+ *
+ * It also covers a third class neither tool sees: image references whose target
+ * does not exist (`findBrokenAssetRefs`). Those are valid MDX and valid YAML —
+ * nothing errors, the reader just gets a broken image — which is how all 14
+ * translated READMEs shipped with every logo and the architecture GIF broken.
+ * See that function for the mechanism.
  */
-import { readdirSync, statSync, readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
+import { dirname, join, relative, resolve, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compile } from "@mdx-js/mdx";
 import YAML from "yaml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DOCS_DIR = join(__dirname, "..", "docs");
+const ROOT_DIR = join(__dirname, "..");
+const DOCS_DIR = join(ROOT_DIR, "docs");
 
 export interface MdxParseError {
   message: string;
@@ -178,34 +185,167 @@ export function collectMdxFiles(dir: string): string[] {
   return out;
 }
 
+/** File extensions treated as bundled media rather than a link to a page. */
+const ASSET_RE = /\.(?:png|jpe?g|gif|svg|webp|ico|mp4|webm)$/i;
+
+export interface BrokenAssetRef {
+  /** The reference exactly as written in the page. */
+  ref: string;
+  /** Repo-relative path the reference resolves to, which does not exist. */
+  resolved: string;
+  /** 1-based line the reference appears on. */
+  line: number;
+}
+
+/**
+ * Report every local image reference on a page whose target does not exist on
+ * disk.
+ *
+ * Why this is a separate net from the MDX parse above: a broken image path is
+ * perfectly valid MDX and perfectly valid YAML, so `mintlify validate` and
+ * `findPageError` both pass it — it only surfaces as a missing image in a
+ * reader's browser, which nothing in CI was watching. That is exactly how all
+ * 14 translated READMEs shipped with every logo and the architecture GIF
+ * broken: the translator faithfully copies the root README's repo-root-relative
+ * `assets/logos/*.svg` into `docs/i18n/`, two directories deeper, where they
+ * resolve to nothing (GitHub 404, Mintlify S3 403). The auto-translation
+ * workflow regenerates these pages unattended, so only a deterministic check
+ * keeps that class from coming back.
+ *
+ * Resolution follows the two conventions in this repo:
+ *  - A leading `/` is Mintlify site-absolute → resolve against `docs/`
+ *    (`/agenteye/images/x.png` → `docs/agenteye/images/x.png`).
+ *  - Anything else is relative to the page's own directory, the way GitHub and
+ *    Mintlify both resolve it.
+ *
+ * Skipped: absolute URLs and any other scheme (`https:`, `mailto:`, `data:`),
+ * protocol-relative `//`, bare anchors, and non-asset references — a link to a
+ * `.md`/`.mdx` page or a bare doc slug is nav, already covered by
+ * `mintlify validate`, and would false-positive on extensionless Mintlify
+ * routes.
+ */
+export function findBrokenAssetRefs(
+  file: string,
+  source: string,
+): BrokenAssetRef[] {
+  const pageDir = dirname(file);
+  const out: BrokenAssetRef[] = [];
+  const seen = new Set<string>();
+
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const refs = [
+      ...lines[i].matchAll(/\]\(([^)\s]+)/g),
+      ...lines[i].matchAll(/(?:src|href)=["']([^"']+)["']/g),
+    ].map((m) => m[1]);
+
+    // `srcset` carries a comma-separated candidate list, each optionally
+    // followed by a density/width descriptor (`logo.svg 2x`). The README's
+    // logo table pairs every <img src> with a dark-mode <source srcset>, so
+    // extracting only `src` would pass a table half-broken — and only for
+    // dark-theme readers, the half least likely to be caught by eye.
+    for (const m of lines[i].matchAll(/srcset=["']([^"']+)["']/g)) {
+      for (const candidate of m[1].split(",")) {
+        const url = candidate.trim().split(/\s+/)[0];
+        if (url) refs.push(url);
+      }
+    }
+
+    for (const ref of refs) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(ref)) continue; // https:, mailto:, data:
+      if (ref.startsWith("//") || ref.startsWith("#")) continue;
+      // Strip the query/fragment before testing the extension so a versioned
+      // `x.png?v=2` is still recognised as an asset.
+      const path = ref.split(/[?#]/)[0];
+      if (!ASSET_RE.test(path)) continue;
+
+      const target = path.startsWith("/")
+        ? join(DOCS_DIR, path.slice(1))
+        : resolve(pageDir, path);
+      if (existsSync(target)) continue;
+
+      const key = `${i}:${ref}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        ref,
+        resolved: relative(ROOT_DIR, target).split(/[\\/]/).join(posix.sep),
+        line: i + 1,
+      });
+    }
+  }
+  return out;
+}
+
 async function main(): Promise<void> {
   const files = collectMdxFiles(DOCS_DIR).sort();
-  const failures: Array<{ file: string; error: MdxParseError }> = [];
+  const failures: Array<{
+    file: string;
+    error: MdxParseError;
+    kind: "MDX parse error" | "Broken image";
+  }> = [];
+
+  const collectAssetFailures = (file: string, source: string): void => {
+    for (const broken of findBrokenAssetRefs(file, source)) {
+      failures.push({
+        file: relative(process.cwd(), file),
+        kind: "Broken image",
+        error: {
+          message:
+            `Image \`${broken.ref}\` does not exist — it resolves to ` +
+            `\`${broken.resolved}\`. Paths are relative to the page's own ` +
+            "directory (a leading `/` is relative to `docs/`), so a path " +
+            "copied from a file at a different depth has to be re-pointed.",
+          line: broken.line,
+        },
+      });
+    }
+  };
 
   for (const file of files) {
-    const error = await findPageError(readFileSync(file, "utf-8"));
-    if (error) failures.push({ file: relative(process.cwd(), file), error });
+    const source = readFileSync(file, "utf-8");
+    const error = await findPageError(source);
+    if (error)
+      failures.push({
+        file: relative(process.cwd(), file),
+        error,
+        kind: "MDX parse error",
+      });
+
+    // A page can carry a broken image and still parse, so collect these
+    // independently rather than only when the parse succeeded.
+    collectAssetFailures(file, source);
+  }
+
+  // The root README is not a docs page (it is GitHub-only, and its HTML
+  // comments are illegal MDX, so findPageError would reject it) — but it IS
+  // the source every docs/i18n/README.<lang>.md is translated from. A bad
+  // image path here propagates into 14 files as an absolute raw URL, which
+  // findBrokenAssetRefs deliberately does not follow. Check it at the source.
+  const rootReadme = join(ROOT_DIR, "README.md");
+  if (existsSync(rootReadme)) {
+    collectAssetFailures(rootReadme, readFileSync(rootReadme, "utf-8"));
   }
 
   if (failures.length === 0) {
-    console.log(`✓ ${files.length} MDX page(s) parsed cleanly`);
+    console.log(
+      `✓ ${files.length} MDX page(s) parsed cleanly with no broken images`,
+    );
     return;
   }
 
-  console.error(
-    `✗ ${failures.length} of ${files.length} MDX page(s) failed to parse:\n`,
-  );
-  for (const { file, error } of failures) {
+  console.error(`✗ ${failures.length} problem(s) in ${files.length} page(s):\n`);
+  for (const { file, error, kind } of failures) {
     const pos = error.line
       ? `:${error.line}${error.column ? `:${error.column}` : ""}`
       : "";
-    console.error(`  ${file}${pos}\n    ${error.message}\n`);
+    console.error(`  ${file}${pos}\n    ${kind}: ${error.message}\n`);
     // GitHub Actions inline annotation.
     const loc =
       (error.line ? `,line=${error.line}` : "") +
       (error.column ? `,col=${error.column}` : "");
     console.log(
-      `::error file=${encodeAnnotation(file)}${loc}::MDX parse error: ${encodeAnnotation(error.message)}`,
+      `::error file=${encodeAnnotation(file)}${loc}::${kind}: ${encodeAnnotation(error.message)}`,
     );
   }
   process.exitCode = 1;

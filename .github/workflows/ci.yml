@@ -185,8 +185,10 @@ jobs:
       # time. `mintlify validate` does NOT parse page content, so a syntax
       # error (e.g. a translation that breaks a JSX tag or injects a `{#id}`
       # heading anchor) passes that step but fails the post-merge deploy.
-      # This catches it on the PR instead.
-      - name: Validate MDX pages parse
+      # This catches it on the PR instead. It also verifies every image
+      # reference resolves on disk — that class breaks nothing at build time,
+      # it just renders as a broken image, so nothing else in CI watches it.
+      - name: Validate MDX pages parse and image references resolve
         run: bun run validate:mdx
 
   test-e2e:

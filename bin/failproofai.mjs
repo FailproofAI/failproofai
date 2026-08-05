@@ -813,7 +813,7 @@ WHAT IT DOES
 FAILPROOF CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
                                     Connect this machine to Failproof Cloud
-                                    [--send-transcripts] also send full session transcripts
+                                    [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
   failproofai config --status       Show connection and pause state
 
@@ -827,8 +827,10 @@ FAILPROOF CLOUD
   that file is world-readable. Connecting needs no sudo, and the machine id
   defaults to this host's name.
 
-  Session transcripts carry prompts, file contents and whatever was pasted into
-  a terminal, so they are NEVER sent unless --send-transcripts is passed.
+  Connecting sends BOTH policy decisions and full session transcripts. A
+  transcript carries prompts, file contents and whatever was pasted into a
+  terminal — that is the point of connecting, and it is stated here rather than
+  buried behind a flag nobody finds. Use --no-transcripts for decisions only.
 
 PAUSING ENFORCEMENT (one session, always time-boxed)
   failproofai config --pause         Pause this directory's newest agent session (30m)
@@ -881,10 +883,13 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
           token: valueAfter("--token"),
           machineId: valueAfter("--machine-id"),
           defaultMachineId: hostname(),
-          // Opt-in only. A transcript carries prompts, file contents and
-          // whatever was pasted into a terminal, so it can never be a side
-          // effect of connecting.
-          sessions: args.includes("--send-transcripts"),
+          // Transcripts are what connecting is FOR, so they default on and the
+          // disclosure is made at the point of connection rather than hidden
+          // behind an opt-in flag most people never discover — a dashboard
+          // showing only decisions is the empty-dashboard problem in a
+          // different costume. --no-transcripts is the explicit way out, and
+          // `failproofai config --status` always says which is in effect.
+          sessions: !args.includes("--no-transcripts"),
         });
       }
       for (const line of result.lines) {

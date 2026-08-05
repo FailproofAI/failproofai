@@ -200,17 +200,25 @@ describe("--connect configures policy AND the dashboard", () => {
     );
   });
 
-  it("does not send transcripts unless asked, and says so", async () => {
-    // A transcript carries prompts, file contents and whatever was pasted into
-    // a terminal. It can never be a side effect of connecting.
-    const r = await runConnectCommand({ ...base, machineId: "m-1" });
-    expect(readConfig().collector).toMatchObject({ hooks: true, sessions: false });
-    expect(r.lines.join("\n")).toMatch(/transcripts are NOT being sent/i);
+  it("sends transcripts by default, and says so at the moment it takes effect", async () => {
+    // Transcripts are what makes a dashboard worth connecting to, so they are
+    // the default rather than an opt-in nobody discovers. A default that ships
+    // prompts and file contents has to be DISCLOSED where it takes effect —
+    // not left in --help — which is what the message assertion pins.
+    const r = await runConnectCommand({ ...base, machineId: "m-1", sessions: true });
+    expect(readConfig().collector).toMatchObject({ hooks: true, sessions: true });
+    const out = r.lines.join("\n");
+    expect(out).toMatch(/full session transcripts/i);
+    expect(out).toMatch(/prompts, file/i);
+    expect(out).toMatch(/--no-transcripts/);
   });
 
-  it("sends transcripts when explicitly opted in", async () => {
-    await runConnectCommand({ ...base, machineId: "m-1", sessions: true });
-    expect(readConfig().collector).toMatchObject({ sessions: true });
+  it("honours the explicit opt-out, and says THAT too", async () => {
+    // Stated on both branches, never only on the surprising one: somebody who
+    // opted out should be able to confirm it took, without reading a config file.
+    const r = await runConnectCommand({ ...base, machineId: "m-1", sessions: false });
+    expect(readConfig().collector).toMatchObject({ hooks: true, sessions: false });
+    expect(r.lines.join("\n")).toMatch(/transcripts are NOT being sent/i);
   });
 
   it("accepts the ingest endpoint too, rather than being pedantic about it", async () => {

@@ -16,8 +16,9 @@
  * Environment variables still win over this file, so CI, containers and the
  * existing tests are unaffected.
  */
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { fetchWithTimeout, isAbortError } from "../../lib/fetch-with-timeout";
@@ -31,6 +32,12 @@ export interface CloudCredentials {
   url: string;
   machineId: string;
   token: string;
+  /**
+   * A human-facing name for this machine (e.g. the hostname, or "Chetan's
+   * laptop"). Display only — the identity is `machineId`. Optional: absent on
+   * credentials written before labels existed, and never required to connect.
+   */
+  machineLabel?: string;
 }
 
 interface StoredCredentials extends CloudCredentials {
@@ -104,7 +111,8 @@ export function readCloudCredentials(): CloudCredentials | null {
       return null;
     }
     if (!raw.url || !raw.machineId || !raw.token) return null;
-    return { url: raw.url, machineId: raw.machineId, token: raw.token };
+    const label = typeof raw.machineLabel === "string" && raw.machineLabel ? raw.machineLabel : undefined;
+    return { url: raw.url, machineId: raw.machineId, token: raw.token, machineLabel: label };
   } catch {
     // Unreadable or malformed reads as "not connected" rather than throwing:
     // this is consulted by `--status`, and a corrupt file should be reported
@@ -123,6 +131,33 @@ export function writeCloudCredentials(creds: CloudCredentials): void {
   // auth session, and rewriting the file from one caller must not drop the
   // others.
   writeCredentials({ ...readCredentials(), cloud: creds });
+}
+
+/**
+ * The stable key that identifies this machine to the cloud.
+ *
+ * An explicit `--machine-id` always wins. Otherwise the id already enrolled on
+ * this machine is reused, so re-running `--connect` is idempotent and never
+ * "moves" the machine. Only a machine that has none mints a fresh one — and it
+ * mints a random id, NOT the hostname, because two hosts sharing a hostname
+ * (fresh cloud VMs, cloned images) would otherwise silently merge into one
+ * machine on the server. The hostname becomes the human label instead.
+ */
+export function resolveMachineId(explicit?: string): string {
+  const trimmed = explicit?.trim();
+  if (trimmed) return trimmed;
+  const existing = readCloudCredentials();
+  if (existing?.machineId) return existing.machineId;
+  return randomUUID();
+}
+
+/**
+ * The human-facing name for this machine. Defaults to the hostname as a
+ * *suggestion* — mutable, not the identity, and free to collide with another
+ * machine's label because `machineId` keeps them apart.
+ */
+export function resolveMachineLabel(explicit?: string): string {
+  return explicit?.trim() || hostname();
 }
 
 /** True if there was something to remove. */
@@ -160,7 +195,13 @@ export type VerifyResult =
  * came back.
  */
 export async function verifyCloudCredentials(creds: CloudCredentials): Promise<VerifyResult> {
-  const url = `${creds.url}/enforcement/v1/desired-state?machineId=${encodeURIComponent(creds.machineId)}`;
+  // The label rides the enrolment request so the server can record a
+  // human-facing name alongside the id. An older server simply ignores the
+  // extra query param, so sending it is always safe.
+  const labelParam = creds.machineLabel
+    ? `&label=${encodeURIComponent(creds.machineLabel)}`
+    : "";
+  const url = `${creds.url}/enforcement/v1/desired-state?machineId=${encodeURIComponent(creds.machineId)}${labelParam}`;
   let response: Response;
   try {
     response = await fetchWithTimeout(

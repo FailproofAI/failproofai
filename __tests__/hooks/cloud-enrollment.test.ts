@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { mkdtempSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { credentialsFile } from "../../src/hooks/fp-home";
 
+import { hostname } from "node:os";
 import {
   clearCloudCredentials,
   cloudCredentialPath,
   maskToken,
   readCloudCredentials,
+  resolveMachineId,
+  resolveMachineLabel,
   validateCloudUrl,
   verifyCloudCredentials,
   writeCloudCredentials,
@@ -24,6 +28,73 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
   rmSync(dir, { recursive: true, force: true });
+});
+
+describe("resolveMachineId", () => {
+  it("uses an explicit id verbatim", () => {
+    expect(resolveMachineId("prod-build-3")).toBe("prod-build-3");
+    expect(resolveMachineId("  spaced  ")).toBe("spaced");
+  });
+
+  it("mints a fresh UUID when nothing is enrolled and none is given", () => {
+    const id = resolveMachineId();
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    // Not the hostname — that is the whole point of minting.
+    expect(id).not.toBe(hostname());
+  });
+
+  it("reuses the already-enrolled id instead of minting again", () => {
+    writeCloudCredentials({ url: "https://x", machineId: "existing-id", token: "t" });
+    expect(resolveMachineId()).toBe("existing-id");
+    // An explicit id still overrides a stored one.
+    expect(resolveMachineId("override")).toBe("override");
+  });
+});
+
+describe("resolveMachineLabel", () => {
+  it("uses an explicit label, else falls back to the hostname", () => {
+    expect(resolveMachineLabel("Chetan's laptop")).toBe("Chetan's laptop");
+    expect(resolveMachineLabel("  ")).toBe(hostname());
+    expect(resolveMachineLabel()).toBe(hostname());
+  });
+});
+
+describe("machineLabel round-trips through the credentials.toml [cloud] table", () => {
+  // The default tests use the JSON override; this one exercises the real TOML
+  // path (layout 2), where the label lives in the [cloud] table of
+  // credentials.toml and must survive a write → read.
+  let homeDir: string;
+  beforeEach(() => {
+    delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+    homeDir = mkdtempSync(resolve(tmpdir(), "fpai-home-"));
+    process.env.FAILPROOFAI_HOME = homeDir;
+  });
+  afterEach(() => {
+    delete process.env.FAILPROOFAI_HOME;
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("writes machine_label into the TOML and reads it back", () => {
+    writeCloudCredentials({
+      url: "https://be.failproof.ai",
+      machineId: "id-123",
+      token: "tok",
+      machineLabel: "Chetan's laptop",
+    });
+    expect(readFileSync(credentialsFile(), "utf8")).toMatch(/machine_label = "Chetan's laptop"/);
+    expect(readCloudCredentials()).toEqual({
+      url: "https://be.failproof.ai",
+      machineId: "id-123",
+      token: "tok",
+      machineLabel: "Chetan's laptop",
+    });
+  });
+
+  it("omits machine_label when there is none, and reads back undefined", () => {
+    writeCloudCredentials({ url: "https://x", machineId: "id-1", token: "t" });
+    expect(readFileSync(credentialsFile(), "utf8")).not.toMatch(/machine_label/);
+    expect(readCloudCredentials()?.machineLabel).toBeUndefined();
+  });
 });
 
 describe("validateCloudUrl", () => {

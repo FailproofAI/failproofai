@@ -880,6 +880,7 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
           url: valueAfter("--connect"),
           token: valueAfter("--token"),
           machineId: valueAfter("--machine-id"),
+          machineLabel: valueAfter("--machine-label"),
           defaultMachineId: hostname(),
           // Opt-in only. A transcript carries prompts, file contents and
           // whatever was pasted into a terminal, so it can never be a side

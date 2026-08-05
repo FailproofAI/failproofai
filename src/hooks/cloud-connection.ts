@@ -75,6 +75,8 @@ export interface ConnectInput {
   url: string;
   token: string;
   machineId: string;
+  /** Human-facing display name for this machine. Defaults to the hostname. */
+  machineLabel?: string;
   /** Transcripts are a separate, explicit opt-in. Never defaulted on. */
   sessions?: boolean;
   environment?: string;
@@ -107,6 +109,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     url: input.url,
     machineId: input.machineId,
     token: input.token,
+    machineLabel: input.machineLabel,
   };
 
   const verifyPolicy = input.verifyPolicy ?? verifyCloudCredentials;

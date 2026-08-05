@@ -27,7 +27,7 @@
  * will not start afterwards is the one ordering that cannot be undone cleanly.
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 
 import {
@@ -72,6 +72,8 @@ import {
 import { hookLogWarn } from "./hook-logger";
 import {
   readCloudCredentials,
+  resolveMachineId,
+  resolveMachineLabel,
   verifyCloudCredentials,
   writeCloudCredentials,
 } from "./cloud-enrollment";
@@ -823,7 +825,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // Connecting turns on BOTH streams — policy decisions and session
   // transcripts. That is a real disclosure, not a footnote, so it is stated in
   // the body of the question itself rather than buried in an option hint.
-  let connect: { url: string; token: string; machineId: string } | null = null;
+  let connect: { url: string; token: string; machineId: string; machineLabel: string } | null = null;
 
   {
     const choice = await selectOne<"key" | "local">({
@@ -856,13 +858,21 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       const existing = readCloudCredentials();
       let url: string | null = null;
       let token: string | null = null;
-      let machineId = existing?.machineId ?? hostname();
+      // Reuse the enrolled id if there is one, else mint a stable key — never
+      // the hostname, so two hosts with the same name do not merge. The hostname
+      // becomes the human label instead.
+      let machineId = resolveMachineId();
+      let machineLabel = existing?.machineLabel ?? resolveMachineLabel();
 
       if (existing) {
         const reuse = await selectOne<"reuse" | "other">({
           message: `Use this machine's existing connection to ${existing.url}?`,
           choices: [
-            { label: "Yes — reuse it", value: "reuse", hint: `as ${existing.machineId}, same token` },
+            {
+              label: "Yes — reuse it",
+              value: "reuse",
+              hint: `as ${existing.machineLabel ?? existing.machineId}, same token`,
+            },
             { label: "No — different endpoint or key", value: "other", hint: "" },
           ],
           stdin,
@@ -873,6 +883,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
           url = existing.url;
           token = existing.token;
           machineId = existing.machineId;
+          machineLabel = existing.machineLabel ?? machineLabel;
         }
       }
 
@@ -926,11 +937,11 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         if (retry === "skip") {
           stdout.write("Staying local. Connect later with `failproofai config --connect`.\n\n");
         } else {
-          connect = { url, token, machineId };
+          connect = { url, token, machineId, machineLabel };
         }
       } else {
         stdout.write("looks good.\n\n");
-        connect = { url, token, machineId };
+        connect = { url, token, machineId, machineLabel };
       }
     }
   }
@@ -1047,12 +1058,18 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         url: connect.url,
         token: connect.token,
         machineId: connect.machineId,
+        machineLabel: connect.machineLabel,
         // Both streams, as disclosed at the connect question. This is the one
         // place that decision becomes a written setting.
         sessions: true,
       });
       connected = outcome.anyConfigured;
-      for (const line of describeOutcome(outcome, connect.machineId, connect.url)) {
+      // Show the human label with the id in parentheses when they differ.
+      const shownAs =
+        connect.machineLabel === connect.machineId
+          ? connect.machineId
+          : `${connect.machineLabel} (${connect.machineId})`;
+      for (const line of describeOutcome(outcome, shownAs, connect.url)) {
         stdout.write(`${line}\n`);
       }
       // Never the key, the URL, or the count — only that it happened and which

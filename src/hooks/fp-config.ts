@@ -252,7 +252,7 @@ export function updateConfig(patch: {
 // ── credentials.toml ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
-  cloud?: { url: string; machineId: string; token: string };
+  cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
 }
@@ -272,7 +272,9 @@ export function readCredentials(): FpCredentials {
       cloud.url &&
       cloud.token
     ) {
-      out.cloud = { url: cloud.url, machineId: cloud.machine_id, token: cloud.token };
+      const machineLabel =
+        typeof cloud.machine_label === "string" && cloud.machine_label ? cloud.machine_label : undefined;
+      out.cloud = { url: cloud.url, machineId: cloud.machine_id, token: cloud.token, machineLabel };
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
@@ -309,6 +311,9 @@ export function writeCredentials(creds: FpCredentials): void {
       "[cloud]",
       `url = ${JSON.stringify(creds.cloud.url)}`,
       `machine_id = ${JSON.stringify(creds.cloud.machineId)}`,
+      ...(creds.cloud.machineLabel
+        ? [`machine_label = ${JSON.stringify(creds.cloud.machineLabel)}`]
+        : []),
       `token = ${JSON.stringify(creds.cloud.token)}`,
     );
   }

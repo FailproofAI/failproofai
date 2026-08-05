@@ -6,6 +6,8 @@ import {
   clearCloudCredentials,
   maskToken,
   readCloudCredentials,
+  resolveMachineId,
+  resolveMachineLabel,
   validateCloudUrl,
   verifyCloudCredentials,
   writeCloudCredentials,
@@ -32,7 +34,13 @@ export interface ConnectOptions {
   url?: string;
   token?: string;
   machineId?: string;
-  /** Defaults to the hostname; injected for tests. */
+  /** Human-facing display name for this machine. Defaults to the hostname. */
+  machineLabel?: string;
+  /**
+   * The hostname, passed in by the caller (and injected by tests). Used as the
+   * default machine *label*, no longer as the machine id — the id now mints or
+   * reuses a stable key so two hosts with the same hostname never merge.
+   */
   defaultMachineId?: string;
   /**
    * Send full session transcripts as well as hook decisions. Off unless asked
@@ -117,10 +125,14 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
   const validated = validateCloudUrl(cloudBaseFor(opts.url));
   if (!validated.ok) return { exitCode: 1, lines: [validated.reason] };
 
-  const machineId = (opts.machineId ?? opts.defaultMachineId ?? "").trim();
-  if (!machineId) {
-    return { exitCode: 1, lines: ["Could not determine a machine id — pass one with --machine-id <id>."] };
-  }
+  // The stable key: an explicit --machine-id wins, else the id already enrolled
+  // here is reused (idempotent re-connect), else a fresh one is minted. Never
+  // the hostname — that is the label, so same-hostname hosts do not merge.
+  const machineId = resolveMachineId(opts.machineId);
+  const machineLabel = resolveMachineLabel(opts.machineLabel ?? opts.defaultMachineId);
+  // Humans read the label; the id is shown in parentheses only when it differs,
+  // so an operator who set an explicit --machine-id still sees it.
+  const shownAs = machineLabel === machineId ? machineId : `${machineLabel} (${machineId})`;
 
   // ONE connection, both capabilities. Each is verified before anything is
   // written and reported on its own, because a key can carry `policies:pull`
@@ -129,6 +141,7 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
     url: validated.url,
     token: opts.token,
     machineId,
+    machineLabel,
     sessions: opts.sessions,
     environment: opts.environment,
     verifyPolicy: opts.verify,
@@ -136,7 +149,7 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
   });
 
   if (!outcome.anyConfigured) {
-    return { exitCode: 1, lines: describeOutcome(outcome, machineId, validated.url) };
+    return { exitCode: 1, lines: describeOutcome(outcome, shownAs, validated.url) };
   }
 
   // The exit code tracks the PRIMARY purpose — enrolling this machine for
@@ -150,7 +163,7 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
   const status = (opts.daemonStatus ?? daemonServiceStatus)();
   const paths = configuredPaths(outcome);
   const lines = [
-    ...describeOutcome(outcome, machineId, validated.url),
+    ...describeOutcome(outcome, shownAs, validated.url),
     `  Token ${maskToken(opts.token)} stored in ${paths.join(" and ")} (owner-only).`,
   ];
   if (outcome.ingest.ok && opts.sessions !== true) {
@@ -214,7 +227,12 @@ export function connectionStatusLines(daemonStatus = daemonServiceStatus): strin
 
   const lines: string[] = [];
   if (creds) {
-    lines.push(`Cloud: connected to ${creds.url} as ${creds.machineId} (token ${maskToken(creds.token)}).`);
+    // Show the human label with the stable id in parentheses; fall back to the
+    // bare id for credentials written before labels existed.
+    const shownAs = creds.machineLabel
+      ? `${creds.machineLabel} (${creds.machineId})`
+      : creds.machineId;
+    lines.push(`Cloud: connected to ${creds.url} as ${shownAs} (token ${maskToken(creds.token)}).`);
     lines.push(`  Policy    pulling centrally-managed policies.`);
   } else {
     lines.push(`Cloud: connected to ${cloudBaseFor(ingest!.url)} for reporting only.`);

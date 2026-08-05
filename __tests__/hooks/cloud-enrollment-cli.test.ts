@@ -49,11 +49,17 @@ const base = {
 
 describe("--connect", () => {
   it("verifies before writing, and reports what is assigned", async () => {
-    const r = await runConnectCommand({ ...base, machineId: "m-1" });
+    const r = await runConnectCommand({ ...base, machineId: "m-1", machineLabel: "lab-1" });
     expect(r.exitCode).toBe(0);
-    expect(r.lines.join("\n")).toMatch(/Connected to https:\/\/be\.failproof\.ai as m-1/);
+    // The label is the human name; the explicit id is shown in parentheses.
+    expect(r.lines.join("\n")).toMatch(/Connected to https:\/\/be\.failproof\.ai as lab-1 \(m-1\)/);
     expect(r.lines.join("\n")).toMatch(/3 policies assigned \(generation 12\)/);
-    expect(readCloudCredentials()).toEqual({ url: base.url, machineId: "m-1", token: base.token });
+    expect(readCloudCredentials()).toEqual({
+      url: base.url,
+      machineId: "m-1",
+      token: base.token,
+      machineLabel: "lab-1",
+    });
   });
 
   it("writes NOTHING when verification fails", async () => {
@@ -71,9 +77,22 @@ describe("--connect", () => {
     expect(r.lines.join("\n")).toMatch(/\*\*\*\*oken/);
   });
 
-  it("defaults the machine id to the host name", async () => {
+  it("takes the host name as the label and mints a stable id, not the host name", async () => {
+    // The silent-merge fix: two hosts both named "my-laptop" must not collapse
+    // into one machine, so the hostname becomes the label and the id is minted.
     await runConnectCommand({ ...base, defaultMachineId: "my-laptop" });
-    expect(readCloudCredentials()?.machineId).toBe("my-laptop");
+    const creds = readCloudCredentials();
+    expect(creds?.machineLabel).toBe("my-laptop");
+    expect(creds?.machineId).not.toBe("my-laptop");
+    expect(creds?.machineId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+  });
+
+  it("reuses an already-enrolled machine id instead of minting a new one", async () => {
+    // Re-running --connect must be idempotent: the machine keeps its identity.
+    await runConnectCommand({ ...base, defaultMachineId: "host-a" });
+    const first = readCloudCredentials()?.machineId;
+    await runConnectCommand({ ...base, defaultMachineId: "host-a" });
+    expect(readCloudCredentials()?.machineId).toBe(first);
   });
 
   it("refuses without a token, and says which key to make", async () => {

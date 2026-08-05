@@ -17,12 +17,33 @@
  *   {type: "message",                id, parentId, timestamp,
  *                                    message: {role, content[], timestamp}}
  *
- * `message.content[]` items can be `{type: "text", text}` or
- * `{type: "thinking", thinking, thinkingSignature}`. Tool-call blocks are not
- * yet observed in this codebase (no tool-using runs were captured during
- * Phase 0); when Pi does emit them, this parser preserves them as-is via the
- * fallback "system" branch and the test suite asserts at least the
- * round-trip rather than a specific shape.
+ * `message.content[]` items can be `{type: "text", text}`,
+ * `{type: "thinking", thinking, thinkingSignature}` or `{type: "toolCall",
+ * id, name, arguments}`.
+ *
+ * Tool calls WERE previously believed not to exist here — the header used to
+ * say no tool-using run had been captured, so `toolCall` blocks fell through
+ * to the generic "system" branch and every tool event Pi emits was silently
+ * dropped from the audit path. A live capture (pi 0.73.1 and 0.83.0, driven
+ * against a real provider) shows Pi emits them in full:
+ *
+ *   assistant turn  content[] contains {type:"toolCall", id, name, arguments}
+ *                   and the message carries stopReason:"toolUse"
+ *   tool result     its own record with a THIRD role —
+ *                   message.role === "toolResult", carrying toolCallId,
+ *                   toolName, content[], isError, timestamp (epoch ms)
+ *
+ * `toolResult.toolCallId` pairs exactly with `toolCall.id`, one result record
+ * per call, emitted in call order — so results attach by id, never by
+ * position. Pi supplies no duration, so it is derived from the gap between
+ * the call and its result, the same way the OpenClaw parser does it.
+ *
+ * The format is identical across the 0.73.1 (`@mariozechner/pi-coding-agent`)
+ * and 0.83.0 (`@earendil-works/pi-coding-agent`) packages — same `version: 3`
+ * header, same record types — so one parser covers both. One difference worth
+ * guarding: 0.83.0 emits leading prose alongside the calls
+ * (`["text","toolCall","toolCall"]`) where 0.73.1 emitted only the calls, so
+ * assistant content must not be assumed homogeneous.
  */
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -38,8 +59,10 @@ import {
   type GenericEntry,
   type QueueOperationEntry,
   type ContentBlock,
+  type ToolUseBlock,
   type LogSource,
 } from "./log-entries";
+import { formatDuration } from "./format-duration";
 
 // ── Paths ──
 
@@ -107,6 +130,10 @@ interface PiSessionRecord {
     role?: string;
     content?: Array<Record<string, unknown>>;
     timestamp?: number;
+    /** Present on `role: "toolResult"` records — pairs with a `toolCall.id`. */
+    toolCallId?: string;
+    toolName?: string;
+    isError?: boolean;
   };
 }
 
@@ -129,9 +156,19 @@ function extractMessageText(content: Array<Record<string, unknown>> | undefined)
   return parts.join("\n\n");
 }
 
-/** Build a list of ContentBlocks for the assistant entry, preserving text and
- *  thinking blocks. Skips blocks with non-string payloads (typeof guards). */
-function buildAssistantContent(content: Array<Record<string, unknown>> | undefined): ContentBlock[] {
+/** Build a list of ContentBlocks for the assistant entry, preserving text,
+ *  thinking and tool-call blocks. Skips blocks with non-string payloads
+ *  (typeof guards).
+ *
+ *  Every `tool_use` block built here is also handed to `onToolUse` so the
+ *  caller can index it by id and attach the matching `toolResult` record when
+ *  it arrives on a later line. The block is passed by reference and mutated
+ *  in place, exactly as the OpenClaw parser does — the entry has already been
+ *  pushed by then, so there is nothing else to attach it to. */
+function buildAssistantContent(
+  content: Array<Record<string, unknown>> | undefined,
+  onToolUse?: (block: ToolUseBlock) => void,
+): ContentBlock[] {
   if (!Array.isArray(content)) return [];
   const blocks: ContentBlock[] = [];
   for (const block of content) {
@@ -142,6 +179,22 @@ function buildAssistantContent(content: Array<Record<string, unknown>> | undefin
     // hierarchy; embed as a text block prefixed for clarity.
     if (block?.type === "thinking" && typeof block.thinking === "string" && block.thinking.length > 0) {
       blocks.push({ type: "text", text: `[thinking] ${block.thinking}` });
+    }
+    if (block?.type === "toolCall") {
+      // Fall back to a positional id only when Pi omits one. A synthetic id
+      // still renders, but it can never pair with a result — so it must not
+      // collide with a real one, hence the index suffix.
+      const id = typeof block.id === "string" && block.id.length > 0
+        ? block.id
+        : `${typeof block.name === "string" ? block.name : "tool"}-${blocks.length}`;
+      const name = typeof block.name === "string" ? block.name : "tool";
+      const input =
+        block.arguments && typeof block.arguments === "object" && !Array.isArray(block.arguments)
+          ? (block.arguments as Record<string, unknown>)
+          : {};
+      const toolUse: ToolUseBlock = { type: "tool_use", id, name, input };
+      blocks.push(toolUse);
+      onToolUse?.(toolUse);
     }
   }
   return blocks;
@@ -161,6 +214,12 @@ export async function parsePiLog(
   const rawLines: Record<string, unknown>[] = [];
   let cwd: string | undefined;
   let seenSessionStart = false;
+  // In-flight tool calls, so a later `toolResult` record can attach its output
+  // to the block it belongs to. Keyed by the provider's own call id, never by
+  // position — Pi emits results in call order today, but pairing by order
+  // would break silently the first time it does not.
+  const toolUseById = new Map<string, ToolUseBlock>();
+  const toolUseStartMs = new Map<string, number>();
 
   for (let i = 0; i < lines.length; i++) {
     if (i > 0 && i % 200 === 0) await new Promise<void>((r) => setImmediate(r));
@@ -215,7 +274,10 @@ export async function parsePiLog(
       }
 
       if (role === "assistant") {
-        const blocks = buildAssistantContent(content);
+        const blocks = buildAssistantContent(content, (block) => {
+          toolUseById.set(block.id, block);
+          toolUseStartMs.set(block.id, date.getTime());
+        });
         if (blocks.length === 0) {
           entries.push({
             type: "system",
@@ -230,6 +292,33 @@ export async function parsePiLog(
           message: { role: "assistant", content: blocks },
         } satisfies AssistantEntry);
         continue;
+      }
+
+      // Pi's third role: a tool result, on its own record, pairing back to an
+      // assistant turn's toolCall by id. Attaching it to that block is what
+      // makes the tool's OUTPUT visible — without this the call renders with
+      // no result and the audit path sees no `toolResultText` at all.
+      if (role === "toolResult") {
+        const callId = raw.message.toolCallId;
+        const block = typeof callId === "string" ? toolUseById.get(callId) : undefined;
+        if (block) {
+          // Pi records no duration on the result, so derive it from the gap
+          // between the call and its result. `startMs` is always present for
+          // a block we indexed; the fallback keeps the arithmetic total.
+          const startMs = (typeof callId === "string" && toolUseStartMs.get(callId)) || date.getTime();
+          const durationMs = Math.max(0, date.getTime() - startMs);
+          block.result = {
+            timestamp,
+            timestampFormatted: formatTimestamp(date),
+            content: extractMessageText(content),
+            durationMs,
+            durationFormatted: formatDuration(durationMs),
+          };
+          continue;
+        }
+        // Orphan result — the call was never seen (truncated file, or a
+        // resumed session whose earlier half is in another file). Fall
+        // through so the record is preserved rather than dropped.
       }
 
       // Unknown role — preserve raw so nothing is dropped.
@@ -319,7 +408,3 @@ export function readPiTranscriptSync(sessionId: string): string | null {
     return null;
   }
 }
-
-/** Suppress unused-import warning for formatTimestamp; reserved for tool-call
- *  rendering once Pi emits it (see header comment). */
-void formatTimestamp;

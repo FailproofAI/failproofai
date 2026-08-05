@@ -464,20 +464,26 @@ describe("hooks/daemon-service", () => {
         const { installDaemonService, uninstallDaemonService, setDaemonConfigured } = await import(
           "../../src/hooks/daemon-service"
         );
-        const { getConfigPathForScope } = await import("../../src/hooks/hooks-config");
-        const configPath = getConfigPathForScope("user");
+        // Layout 2 moved this flag out of policies-config.json and into
+        // config.toml's [daemon] table, so it is read through the config
+        // accessor rather than by JSON.parse-ing a path.
+        const { readConfig } = await import("../../src/hooks/fp-config");
+        const { configFile } = await import("../../src/hooks/fp-home");
+        const configPath = configFile();
         const preexisting = existsSync(configPath) ? readFileSync(configPath, "utf8") : null;
 
         try {
           process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
           expect((await installDaemonService()).installed).toBe(true);
           setDaemonConfigured(true);
-          expect(JSON.parse(readFileSync(configPath, "utf8")).daemonConfigured).toBe(true);
+          expect(readConfig().daemon.configured).toBe(true);
 
           // Without this, removing the service leaves the machine failing
-          // closed forever against a socket that is gone.
+          // closed forever against a socket that is gone — which locked a real
+          // machine out of its agent entirely during this work, UserPromptSubmit
+          // included, with no CLI route back.
           await uninstallDaemonService();
-          expect(JSON.parse(readFileSync(configPath, "utf8")).daemonConfigured).toBeUndefined();
+          expect(readConfig().daemon.configured).toBe(false);
         } finally {
           if (preexisting !== null) writeFileSync(configPath, preexisting, "utf8");
           else rmSync(configPath, { force: true });

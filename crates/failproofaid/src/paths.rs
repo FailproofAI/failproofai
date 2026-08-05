@@ -83,39 +83,13 @@ pub fn cursors_dir() -> io::Result<PathBuf> {
     Ok(failproofai_home()?.join("cursors"))
 }
 
-/// `~/.failproofai/state` — daemon scratch a human would never open by hand.
-pub fn state_dir() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?.join("state"))
-}
-
-pub fn spool_dir() -> io::Result<PathBuf> {
-    Ok(state_dir()?.join("spool"))
-}
-
-pub fn failed_dir() -> io::Result<PathBuf> {
-    Ok(state_dir()?.join("failed"))
-}
-
-pub fn collector_health_file() -> io::Result<PathBuf> {
-    Ok(state_dir()?.join("collector-health.json"))
-}
-
-/// `~/.failproofai/custom-agents/events` — the SDK spool root layout 2 adds.
-/// `~/.agenteye/events` stays supported; the daemon watches both, so no SDK
-/// release is required and no user is broken by a version skew.
-pub fn custom_agents_events_dir() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?.join("custom-agents").join("events"))
-}
-
-/// `~/.failproofai/credentials.toml` — every token, owner-only.
-pub fn credentials_file() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?.join("credentials.toml"))
-}
-
-/// `~/.failproofai/config.toml` — non-secret configuration.
-pub fn config_file() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?.join("config.toml"))
-}
+// The collector's own paths — state/, spool/, failed/, collector-health.json,
+// custom-agents/, credentials.toml, config.toml — are NOT mirrored here.
+// `fpai-collect` derives them from the `home` it is handed (see its
+// `config.rs` and `health.rs`), so a copy in this file would be dead code that
+// exists only to drift out of agreement with the one that is actually used.
+// What must agree is the LAYOUT, and `__tests__/e2e/layout/` asserts that
+// end to end against a real daemon.
 
 /// `~/.failproofai` — the root the collector reads its configuration from.
 ///

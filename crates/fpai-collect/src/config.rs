@@ -2,22 +2,22 @@
 //!
 //! # Two files, on purpose
 //!
-//! The credential lives alone in `~/.failproofai/ingest.json` at mode 0600.
+//! Every credential lives in `~/.failproofai/credentials.toml` at mode 0600.
 //! Everything else — which sources are on, backfill window, hook verbosity —
-//! lives in `policies-config.json` beside the rest of failproofai's settings,
+//! lives in `config.toml` under `[collector]`, beside the rest of the settings,
 //! where it is readable, diffable and safe to commit to a dotfiles repo.
 //!
-//! That split is not tidiness. `policies-config.json` is written by
-//! `hooks-config.ts` with a bare `writeFileSync`, so it inherits the umask and
-//! lands at 0664 on a normal machine — inside `~/.failproofai/`, which is
-//! itself 0775. Putting an API key there would publish it to every local user
-//! on the box. `~/.agenteye/cli.json` already stores its session token at 0600,
-//! so the correct precedent existed; this follows it.
+//! That split is not tidiness. `config.toml` is written with a bare
+//! `writeFileSync`, so it inherits the umask and lands at 0664 on a normal
+//! machine — inside `~/.failproofai/`, which is itself 0775. Putting an API key
+//! there would publish it to every local user on the box, which is exactly why
+//! `ingest.json` and `cloud.json` were separate files before layout 2 merged
+//! them into one owner-only file.
 //!
 //! # Disabled is the default, and it is a real default
 //!
-//! No `ingest.json`, or one with no key, means collection is off: no tasks, so
-//! no thread and no runtime (see [`crate::supervisor::spawn_supervised`]). A
+//! No `[ingest]` table, or one with no key, means collection is off: no tasks,
+//! so no thread and no runtime (see [`crate::supervisor::spawn_supervised`]). A
 //! machine that has not opted in pays nothing for this code existing. Session
 //! collection additionally requires its own explicit opt-in, because
 //! transcripts carry prompts, file contents and whatever the user pasted into
@@ -40,8 +40,6 @@ pub const DEFAULT_INGEST_URL: &str = "https://server.befailproof.ai/events";
 const CREDENTIALS_FILE: &str = "credentials.toml";
 /// Layout 2: non-secret configuration, including the collector block.
 const CONFIG_FILE: &str = "config.toml";
-/// Filename of the shared settings file, owned by the TypeScript side.
-const POLICIES_FILE: &str = "policies-config.json";
 
 /// Mode the credential file must have. Anything wider is a finding.
 #[cfg(unix)]

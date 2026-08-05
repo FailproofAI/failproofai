@@ -18,6 +18,7 @@ import {
   assertCursorStopBlock,
 } from "../helpers/hook-runner";
 import { CursorPayloads } from "../helpers/payloads";
+import { hookActivityDir } from "../../../src/hooks/fp-home";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BINARY_PATH = resolve(REPO_ROOT, "bin/failproofai.mjs");
@@ -122,7 +123,7 @@ describe("E2E: Cursor integration — hook protocol", () => {
         CursorPayloads.preToolUse.bash("sudo cat /etc/passwd", env.cwd),
         { homeDir: env.home, cli: "cursor" },
       );
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
@@ -148,7 +149,7 @@ describe("E2E: Cursor integration — hook protocol", () => {
       );
       assertAllow(result);
 
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
@@ -173,7 +174,7 @@ describe("E2E: Cursor integration — hook protocol", () => {
       );
       assertAllow(result);
 
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
@@ -237,7 +238,7 @@ describe("E2E: Cursor integration — hook protocol", () => {
       );
       assertAllow(result);
 
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;

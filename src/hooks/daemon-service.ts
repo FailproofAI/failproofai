@@ -225,10 +225,58 @@ export function resolveWorkerCommand(): string | null {
   return `${shellQuote(process.execPath)} ${shellQuote(workerScript)}`;
 }
 
+/**
+ * Resolves the command the daemon should use to run a one-shot `failproofai`
+ * CLI task — today the scheduled audit — passed through as
+ * `FAILPROOFAI_CLI_CMD` in the service's own environment.
+ *
+ * Everything `resolveWorkerCommand` says about `process.execPath` and the
+ * shell quoting applies here verbatim, for the same reason: a system-scope
+ * unit gets no login environment, so its PATH is the system default, and the
+ * single most common Node install (nvm) is on no system PATH. The difference
+ * is the consequence of getting it wrong. A worker that cannot start makes the
+ * daemon visibly unhealthy; an audit that cannot start is SILENT — the config
+ * says the scan is on, nothing ever runs, and the only symptom is a dashboard
+ * that quietly stops moving.
+ *
+ * `dist/cli.mjs` (package.json's `bin.failproofai`), not `bin/failproofai.mjs`
+ * — the latter has a `#!/usr/bin/env bun` shebang and uses syntax node cannot
+ * load (a bare `import … from "../package.json"`, extensionless `.ts`
+ * specifiers). Only the bundle is node-runnable, and it sits beside the
+ * `dist/worker.mjs` the worker command already points at.
+ */
+export function resolveCliCommand(): string | null {
+  if (process.env.FAILPROOFAI_CLI_CMD) return process.env.FAILPROOFAI_CLI_CMD;
+
+  const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (!packageRoot) return null;
+  const cliScript = resolve(packageRoot, "dist", "cli.mjs");
+  if (!existsSync(cliScript)) return null;
+  return `${shellQuote(process.execPath)} ${shellQuote(cliScript)}`;
+}
+
 /** POSIX single-quoting: everything is literal inside '…', and a literal
  *  quote is closed, escaped and reopened. */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The environment the service definition carries, built once so the systemd
+ * and launchd renderers cannot drift apart — a variable added to one and not
+ * the other is invisible until somebody runs the other platform.
+ *
+ * Order is fixed rather than incidental: `upgradedServiceDefinition` rebuilds
+ * a definition from these renderers, so a stable order is what makes a
+ * rewritten unit byte-identical to a freshly installed one rather than merely
+ * equivalent — which is the difference between a diff a human can read and one
+ * they stop reading.
+ */
+function serviceEnvironment(workerCmd: string | null, cliCmd: string | null): [string, string][] {
+  const entries: [string, string][] = [];
+  if (workerCmd) entries.push(["FAILPROOFAI_WORKER_CMD", workerCmd]);
+  if (cliCmd) entries.push(["FAILPROOFAI_CLI_CMD", cliCmd]);
+  return entries;
 }
 
 /**
@@ -457,10 +505,16 @@ function removeLegacyUserService(): void {
   }
 }
 
-export function systemdUnitContents(binaryPath: string, workerCmd: string | null): string {
-  // Quoted because both values contain a space or a path — systemd's
+export function systemdUnitContents(
+  binaryPath: string,
+  workerCmd: string | null,
+  cliCmd: string | null = null,
+): string {
+  // Quoted because every value here contains a space or a path — systemd's
   // Environment= requires quoting whenever the value does.
-  const envLine = workerCmd ? `Environment="FAILPROOFAI_WORKER_CMD=${workerCmd}"\n` : "";
+  const envLines = serviceEnvironment(workerCmd, cliCmd)
+    .map(([key, value]) => `Environment="${key}=${value}"\n`)
+    .join("");
   const user = serviceUser();
   return `[Unit]
 Description=failproofai background daemon (failproofaid) for ${user}
@@ -474,7 +528,7 @@ User=${user}
 # HOME ("HOME is not set; failproofaid is user-scope only"), so the one
 # variable it cannot do without is not left to a version-dependent default.
 Environment="HOME=${homedir()}"
-${envLine}ExecStart=${binaryPath}
+${envLines}ExecStart=${binaryPath}
 Restart=on-failure
 RestartSec=2
 
@@ -490,12 +544,27 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function launchdPlistContents(binaryPath: string, logDir: string, workerCmd: string | null): string {
-  const envBlock = workerCmd
+function unescapeXml(s: string): string {
+  // &amp; last, or an escaped `&amp;lt;` would come back as `<`.
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+/**
+ * Exported for the same reason `systemdUnitContents` is: it is the only way to
+ * assert the plist's shape from a Linux CI runner, and this is the half of the
+ * pair no Linux test run can otherwise reach.
+ */
+export function launchdPlistContents(
+  binaryPath: string,
+  logDir: string,
+  workerCmd: string | null,
+  cliCmd: string | null = null,
+): string {
+  const env = serviceEnvironment(workerCmd, cliCmd);
+  const envBlock = env.length
     ? `    <key>EnvironmentVariables</key>
     <dict>
-        <key>FAILPROOFAI_WORKER_CMD</key>
-        <string>${escapeXml(workerCmd)}</string>
+${env.map(([key, value]) => `        <key>${key}</key>\n        <string>${escapeXml(value)}</string>`).join("\n")}
     </dict>
 `
     : "";
@@ -538,10 +607,14 @@ export interface DaemonInstallResult {
  * machine that cannot elevate can be told exactly what to run rather than
  * just that something failed.
  */
-function daemonInstallCommands(binaryPath: string, workerCmd: string | null): string[] {
+function daemonInstallCommands(
+  binaryPath: string,
+  workerCmd: string | null,
+  cliCmd: string | null,
+): string[] {
   if (process.platform === "linux") {
     return [
-      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(binaryPath, workerCmd)}EOF`,
+      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(binaryPath, workerCmd, cliCmd)}EOF`,
       "sudo systemctl daemon-reload",
       `sudo systemctl enable --now ${systemdUnitName()}`,
     ];
@@ -577,6 +650,11 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
   // environment is what makes a *service-managed* daemon actually find its
   // worker regardless of what cwd the service manager starts it from.
   const workerCmd = resolveWorkerCommand();
+  // Same best-effort footing as the worker command, and null is survivable in
+  // the same way — the daemon just has no way to run an audit. Unlike the
+  // worker, there is no relative-path fallback to degrade to, which is exactly
+  // why it is resolved here where FAILPROOFAI_PACKAGE_ROOT is reliably set.
+  const cliCmd = resolveCliCommand();
 
   // The service is installed system-wide, which needs root. Check before
   // writing anything, so a machine that cannot elevate gets the exact
@@ -588,7 +666,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
         "root privileges are required to install the failproofaid system service, and sudo credentials were not available. " +
         "Re-run `failproofai config` and approve the sudo prompt — do NOT run the CLI itself under sudo, which would " +
         "configure root's account instead of yours. To install by hand: " +
-        daemonInstallCommands(binaryPath, workerCmd).join(" && "),
+        daemonInstallCommands(binaryPath, workerCmd, cliCmd).join(" && "),
     };
   }
 
@@ -600,7 +678,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
 
   try {
     if (process.platform === "linux") {
-      writePrivilegedFile(systemdUnitPath(), systemdUnitContents(binaryPath, workerCmd));
+      writePrivilegedFile(systemdUnitPath(), systemdUnitContents(binaryPath, workerCmd, cliCmd));
       runPrivileged("systemctl", ["daemon-reload"]);
       runPrivileged("systemctl", ["enable", "--now", systemdUnitName()]);
     } else {
@@ -615,7 +693,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       } catch {
         // Wasn't loaded — fine, this is the common case on a fresh install.
       }
-      writePrivilegedFile(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd));
+      writePrivilegedFile(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd));
       runPrivileged("launchctl", ["load", "-w", plistPath]);
     }
   } catch (err) {
@@ -653,6 +731,217 @@ async function waitForDaemonRunning(): Promise<boolean> {
   }
   await new Promise((r) => setTimeout(r, SERVICE_SETTLE_MS));
   return daemonServiceStatus() === "running";
+}
+
+// ── Upgrading a service definition that predates a variable ──────────────────
+//
+// A machine that installed the daemon before `FAILPROOFAI_CLI_CMD` existed
+// keeps its old unit forever: `npm i -g failproofai@latest` replaces the CLI
+// and never touches /etc/systemd/system, and the wizard's own "already
+// installed and running — leaving it alone" branch skips it too. The daemon
+// then has no way to spawn an audit while `config.toml` says the scheduled
+// scan is on, and nothing anywhere reports a fault. This is the single most
+// likely way the whole feature ends up dead on real machines, so it gets an
+// explicit detect-and-rewrite rather than an assumption that reinstalls happen.
+
+/** Reads the installed unit / plist, or null when no service is installed. */
+function readInstalledServiceDefinition(): string | null {
+  if (!isDaemonSupportedPlatform()) return null;
+  const path = daemonServiceFilePath();
+  if (!path || !existsSync(path)) return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    // Unreadable is not "absent": claiming no service is installed would let a
+    // caller reinstall over something it cannot see. Treated as "nothing to
+    // upgrade" by the one caller below, which is the inert direction.
+    return null;
+  }
+}
+
+/**
+ * Reads one variable back out of an installed service definition.
+ *
+ * Used to carry values FORWARD across a rewrite. A rewrite resolves each
+ * command from this process, and a resolution that comes back null (no
+ * `FAILPROOFAI_PACKAGE_ROOT`, a `dist/` that moved) must never be allowed to
+ * silently DELETE a working line from a working unit — the rewrite exists to
+ * add a variable, not to drop one.
+ */
+function installedEnvValue(definition: string, name: string): string | null {
+  if (process.platform === "linux") {
+    const m = new RegExp(`^Environment="${name}=(.*)"$`, "m").exec(definition);
+    return m ? m[1] : null;
+  }
+  const m = new RegExp(`<key>${name}</key>\\s*<string>([^<]*)</string>`).exec(definition);
+  return m ? unescapeXml(m[1]) : null;
+}
+
+/**
+ * The binary an installed definition currently starts.
+ *
+ * Preserved across a rewrite rather than re-resolved, because the two disagree
+ * in exactly the upgrade case this is for: `installedBinaryPath()` is
+ * version-stamped (`failproofaid-<version>`), so right after a CLI upgrade the
+ * binary for the NEW version is not on disk yet and resolution returns null,
+ * while the unit still points at the older binary that is there and running.
+ * Re-resolving would either refuse to rewrite or repoint a live service at a
+ * file that does not exist.
+ */
+function installedExecStart(definition: string): string | null {
+  if (process.platform === "linux") {
+    const m = /^ExecStart=(.+)$/m.exec(definition);
+    return m ? m[1].trim() : null;
+  }
+  const m = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(definition);
+  return m ? unescapeXml(m[1]) : null;
+}
+
+/**
+ * True when a service IS installed but its definition predates
+ * `FAILPROOFAI_CLI_CMD`.
+ *
+ * Deliberately a content check against the definition on disk, not a revision
+ * number mirrored into `config.toml`. The mirror is the tempting shape — it is
+ * how `daemon.installed_version` is modelled — but that field is declared,
+ * read and cleared and has never once been WRITTEN (both `setDaemonConfigured`
+ * call sites pass no version), which is precisely how a mirror fails: it
+ * reports "current" for a unit nobody updated. A false negative here is the
+ * permanently-inert audit lane this function exists to catch, and the unit
+ * itself cannot lie about what it contains.
+ */
+export function daemonServiceNeedsUpgrade(): boolean {
+  const definition = readInstalledServiceDefinition();
+  if (definition === null) return false;
+  return !definition.includes("FAILPROOFAI_CLI_CMD");
+}
+
+/**
+ * The definition an installed one should become: regenerated by the same
+ * renderers a fresh install uses, carrying forward everything this process
+ * cannot re-resolve. `null` when the input has no readable start command,
+ * which means it is not a definition failproofai wrote and must be left alone.
+ *
+ * Split out from `ensureDaemonServiceCurrent` and kept pure — no privilege, no
+ * service manager, no writes — because the rewrite itself can only be
+ * exercised end-to-end on a machine with root AND the matching service
+ * manager. That is nowhere on a Linux CI runner for the launchd half, and
+ * nowhere at all on a developer box without passwordless sudo, so the one
+ * transformation that must not be wrong would otherwise be the one thing no
+ * ordinary test run ever executes.
+ */
+export function upgradedServiceDefinition(
+  definition: string,
+  cliCmd: string,
+  logDir: string,
+): string | null {
+  const binaryPath = installedExecStart(definition);
+  if (!binaryPath) return null;
+  const workerCmd = resolveWorkerCommand() ?? installedEnvValue(definition, "FAILPROOFAI_WORKER_CMD");
+  return process.platform === "linux"
+    ? systemdUnitContents(binaryPath, workerCmd, cliCmd)
+    : launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd);
+}
+
+export type DaemonUpgradeOutcome =
+  /** No service installed, or its definition already carries the variable. */
+  | "current"
+  /** The definition was rewritten and the service came back running. */
+  | "rewritten"
+  /** It needed a rewrite and did not get one. `reason` says why. */
+  | "failed";
+
+export interface DaemonUpgradeResult {
+  outcome: DaemonUpgradeOutcome;
+  reason?: string;
+}
+
+/**
+ * Brings an already-installed service definition up to date, in place.
+ *
+ * Narrower than `installDaemonService` on purpose, and it is the narrowness
+ * that makes it safe to run against a healthy machine: it never downloads, it
+ * never touches a machine that has no service, it keeps the ExecStart and any
+ * environment value it cannot re-resolve, and it fails inert. The worst
+ * outcome is the machine it started with.
+ *
+ * It DOES restart the service, which `installDaemonService` does not do on
+ * Linux (`enable --now` is a no-op against an already-active unit, so a
+ * rewritten unit's environment reaches the running process only at the next
+ * boot). Without the restart this "fix" would leave the audit lane inert for
+ * however long the machine stays up — which is the bug, not a smaller version
+ * of it. The restart costs a sub-second window in which a hook can find no
+ * daemon and fail closed, so it is confined to the wizard: `failproofai
+ * config` is an explicit, attended reconfiguration, and the same window
+ * already exists on macOS, where install unloads and reloads on every run.
+ */
+export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult> {
+  const definition = readInstalledServiceDefinition();
+  if (definition === null || definition.includes("FAILPROOFAI_CLI_CMD")) {
+    return { outcome: "current" };
+  }
+
+  const cliCmd = resolveCliCommand();
+  if (!cliCmd) {
+    return {
+      outcome: "failed",
+      reason:
+        "the failproofai CLI entry point (dist/cli.mjs) could not be located, so there is nothing to " +
+        "write into the unit. Re-run `failproofai config` from a complete install.",
+    };
+  }
+
+  const logDir = logsDir();
+  const upgraded = upgradedServiceDefinition(definition, cliCmd, logDir);
+  if (!upgraded) {
+    return {
+      outcome: "failed",
+      reason: `the installed service definition at ${daemonServiceFilePath()} has no readable start command; it looks hand-edited, so it was left alone`,
+    };
+  }
+
+  if (!canElevate()) {
+    return {
+      outcome: "failed",
+      reason: `root privileges are required to rewrite ${daemonServiceFilePath()}, and sudo credentials were not available`,
+    };
+  }
+
+  try {
+    if (process.platform === "linux") {
+      writePrivilegedFile(systemdUnitPath(), upgraded);
+      runPrivileged("systemctl", ["daemon-reload"]);
+      // `restart`, not `enable --now`: the unit is already enabled and active,
+      // so `--now` would return success having changed nothing and the daemon
+      // would keep the environment it was started with.
+      runPrivileged("systemctl", ["restart", systemdUnitName()]);
+    } else {
+      const plistPath = launchdPlistPath();
+      mkdirSync(logDir, { recursive: true });
+      try {
+        runPrivileged("launchctl", ["unload", plistPath]);
+      } catch {
+        // Not loaded — the rewrite is still the point.
+      }
+      writePrivilegedFile(plistPath, upgraded);
+      runPrivileged("launchctl", ["load", "-w", plistPath]);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    hookLogWarn(`daemon service unit refresh failed: ${msg}`);
+    return { outcome: "failed", reason: msg };
+  }
+
+  // The service was running when this started, so anything short of running
+  // now is a regression this call caused — and on a daemon-configured machine
+  // that is every tool call failing closed. Report it loudly instead of
+  // returning success on the strength of having written a file.
+  if (!(await waitForDaemonRunning())) {
+    const reason = `the service unit was refreshed but failproofaid did not come back within ${SERVICE_START_TIMEOUT_MS}ms (status: ${daemonServiceStatus()})`;
+    hookLogWarn(`daemon service unit refresh failed: ${reason}`);
+    return { outcome: "failed", reason };
+  }
+  return { outcome: "rewritten" };
 }
 
 /**

@@ -68,6 +68,11 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     // Drives the already-installed / crash-looped branches without touching
     // this machine's real service manager.
     daemonServiceStatus: vi.fn(() => "not-installed" as const),
+    // Reads /etc/systemd/system on the real machine, so a developer box with a
+    // pre-FAILPROOFAI_CLI_CMD unit installed would otherwise send every
+    // already-running test down the refresh branch.
+    daemonServiceNeedsUpgrade: vi.fn(() => false),
+    ensureDaemonServiceCurrent: vi.fn(async () => ({ outcome: "current" as const })),
     daemonStatusCommand: vi.fn(() => "systemctl status failproofaid@test"),
     // Step 0 primes sudo before anything is drawn. Mocked true by default so
     // no test can block on a real password prompt.
@@ -111,6 +116,8 @@ import {
   isDaemonSupportedPlatform,
   installDaemonService,
   daemonServiceStatus,
+  daemonServiceNeedsUpgrade,
+  ensureDaemonServiceCurrent,
   primeElevation,
 } from "../../src/hooks/daemon-service";
 import {
@@ -567,6 +574,8 @@ describe("configure-wizard daemon integration", () => {
     // previous test's success as its own.
     rmSync(launcherMarker(fileHome), { force: true });
     vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(false);
+    vi.mocked(ensureDaemonServiceCurrent).mockClear();
     // The telemetry assertions below locate their event with `.find()`, which
     // would otherwise match an identically-named event emitted by an earlier
     // test in this file and assert against the wrong run's props.
@@ -683,6 +692,64 @@ describe("configure-wizard daemon integration", () => {
     // Still configured — the daemon is there, it just did not need installing.
     expect(result.daemonInstalled).toBe(true);
     expect(readGlobalConfig().daemonConfigured).toBe(true);
+  });
+
+  it("refreshes a running daemon whose unit predates FAILPROOFAI_CLI_CMD", async () => {
+    // The upgrade case. Nothing else on the machine ever rewrites the unit —
+    // `npm i -g failproofai@latest` does not touch /etc/systemd/system — so
+    // without this the daemon has no way to spawn an audit for the rest of the
+    // machine's life while config.toml says the scheduled scan is on.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
+    vi.mocked(ensureDaemonServiceCurrent).mockResolvedValue({ outcome: "rewritten" });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(ensureDaemonServiceCurrent).toHaveBeenCalledTimes(1);
+    // A refresh, never a reinstall: the daemon is up, and reinstalling would
+    // re-resolve a binary path that after a CLI upgrade is not on disk yet.
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(primeElevation).toHaveBeenCalled();
+    expect(readGlobalConfig().daemonConfigured).toBe(true);
+  });
+
+  it("finishes setup anyway when the unit refresh fails", async () => {
+    // Only the scheduled audit is out of reach here — the daemon is up and
+    // hooks are enforcing. Aborting would make upgrading the package the thing
+    // that locked someone out of `failproofai config`.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
+    vi.mocked(ensureDaemonServiceCurrent).mockResolvedValue({
+      outcome: "failed",
+      reason: "sudo: a password is required",
+    });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(readGlobalConfig().daemonConfigured).toBe(true);
+  });
+
+  it("leaves a stale unit alone, without aborting, when root is unavailable", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
+    vi.mocked(primeElevation).mockReturnValue(false);
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(result.abort).toBeUndefined();
+    // Never attempted: the privileged write would fail, and a `sudo -n`
+    // failure per privileged command is noise, not information.
+    expect(ensureDaemonServiceCurrent).not.toHaveBeenCalled();
+    vi.mocked(primeElevation).mockReturnValue(true);
   });
 
   it("reinstalls a daemon that is installed but NOT running", async () => {

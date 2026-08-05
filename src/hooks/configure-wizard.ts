@@ -65,7 +65,9 @@ import {
   installDaemonService,
   daemonServiceFilePath,
   daemonServiceStatus,
+  daemonServiceNeedsUpgrade,
   daemonStatusCommand,
+  ensureDaemonServiceCurrent,
   primeElevation,
   setDaemonConfigured,
 } from "./daemon-service";
@@ -669,6 +671,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // closed on every tool call.
   const daemonAlreadyRunning = daemonSupported && daemonServiceStatus() === "running";
   let daemonWanted = daemonSupported && !daemonAlreadyRunning;
+  // A healthy daemon can still be running a service definition written before
+  // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever
+  // rewrite it: upgrading the npm package does not touch /etc/systemd/system.
+  // Re-running setup is the one moment a user asks for their configuration to
+  // be brought up to date, so it is the moment to do it.
+  let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
 
   if (daemonWanted) {
     stdout.write(
@@ -689,6 +697,23 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       void emit("configure_aborted", { reason: "needs_root" });
       outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "needs_root" };
+    }
+  } else if (daemonUnitStale) {
+    stdout.write(
+      "failproofaid is running, but from a service definition written by an older\n" +
+        "version — it cannot start a scheduled audit. Refreshing it needs root once.\n\n",
+    );
+    if (!primeElevation()) {
+      // NOT an abort, unlike the install branch above. There is a working
+      // daemon here and hooks are enforcing; only the scheduled audit is out
+      // of reach. Stopping setup over that would make an upgrade the thing
+      // that locked someone out of `failproofai config`.
+      stdout.write(
+        "\nCould not get root, so the service definition was left as it is.\n" +
+          "Everything else is set up as normal; scheduled audits stay off until it is\n" +
+          `refreshed. Re-run \`failproofai config\` once you can use sudo.\n\n`,
+      );
+      daemonUnitStale = false;
     }
   } else if (daemonAlreadyRunning) {
     stdout.write("failproofaid is already installed and running — leaving it alone.\n\n");
@@ -1003,6 +1028,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       return { applied: false, abort: "daemon_failed" };
     }
     daemonInstalled = true;
+  } else if (daemonUnitStale) {
+    // Deliberately after the install branch and never instead of it: this only
+    // ever runs on a machine whose daemon is already up, and it must not be
+    // able to abort a setup that is otherwise fine. A failure here costs the
+    // scheduled audit, nothing else.
+    stdout.write("Refreshing the failproofaid service definition…\n");
+    const upgrade = await ensureDaemonServiceCurrent();
+    void emit("configure_daemon_unit_refresh", {
+      outcome: upgrade.outcome,
+      platform: process.platform,
+    });
+    if (upgrade.outcome === "failed") {
+      hookLogWarn(`failproofaid service definition could not be refreshed: ${upgrade.reason}`);
+      stdout.write(
+        `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
+          "Hooks keep enforcing; scheduled audits stay off until it is.\n\n",
+      );
+    }
   }
 
   // The flag that makes hooks route through the daemon — and, on a machine

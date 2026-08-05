@@ -17,6 +17,7 @@ describe("hooks/daemon-service", () => {
   const originalBinaryEnv = process.env.FAILPROOFAI_DAEMON_BINARY;
   const originalPackageRootEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
   const originalWorkerCmdEnv = process.env.FAILPROOFAI_WORKER_CMD;
+  const originalCliCmdEnv = process.env.FAILPROOFAI_CLI_CMD;
   const originalHome = process.env.HOME;
   const originalNoDownload = process.env.FAILPROOFAI_NO_DOWNLOAD;
   // The download channel installs under `$HOME/.failproofai/bin`, so these
@@ -68,6 +69,8 @@ describe("hooks/daemon-service", () => {
     else delete process.env.FAILPROOFAI_PACKAGE_ROOT;
     if (originalWorkerCmdEnv !== undefined) process.env.FAILPROOFAI_WORKER_CMD = originalWorkerCmdEnv;
     else delete process.env.FAILPROOFAI_WORKER_CMD;
+    if (originalCliCmdEnv !== undefined) process.env.FAILPROOFAI_CLI_CMD = originalCliCmdEnv;
+    else delete process.env.FAILPROOFAI_CLI_CMD;
   });
 
   describe("isDaemonSupportedPlatform", () => {
@@ -277,6 +280,73 @@ describe("hooks/daemon-service", () => {
       }
     });
 
+    it("bakes an absolute runtime into the CLI command, and it actually runs", async () => {
+      // The daemon spawns this to run a scheduled audit. Getting it wrong is
+      // quieter than getting the worker command wrong: a worker that cannot
+      // start makes the daemon visibly unhealthy, an audit that cannot start
+      // just never happens while the config says it is on.
+      useScratchHome();
+      delete process.env.FAILPROOFAI_CLI_CMD;
+      // The repo's own dist/cli.mjs — built by `bun run build`, which the test
+      // job runs before this suite.
+      process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "..", "..");
+      setPlatform("linux");
+      const { resolveCliCommand } = await import("../../src/hooks/daemon-service");
+
+      const cliCmd = resolveCliCommand();
+      // Skipped rather than silently passing when dist/ has not been built —
+      // the point of this test is that the resolved string RUNS.
+      if (!cliCmd) return;
+
+      expect(cliCmd).toBe(
+        `'${process.execPath}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT, "dist", "cli.mjs")}'`,
+      );
+      expect(cliCmd).not.toMatch(/^node /);
+      // Through `sh -c`, exactly as the daemon will invoke it — which is also
+      // what proves the quoting survives a shell split rather than merely
+      // looking quoted.
+      const out = execFileSync("sh", ["-c", `${cliCmd} --version`], {
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 30_000,
+      })
+        .toString()
+        .trim();
+      expect(out).toMatch(/^\d+\.\d+\.\d+/);
+    }, 40_000);
+
+    it("carries FAILPROOFAI_CLI_CMD into both the unit and the plist", async () => {
+      // Both renderers, in one test, because the failure mode is a variable
+      // added to one platform and forgotten on the other — invisible until
+      // somebody runs the other platform.
+      useScratchHome();
+      const { systemdUnitContents, launchdPlistContents } = await import(
+        "../../src/hooks/daemon-service"
+      );
+      const cliCmd = "'/usr/bin/node' '/opt/failproofai/dist/cli.mjs'";
+
+      setPlatform("linux");
+      const unit = systemdUnitContents("/opt/failproofaid", "'/usr/bin/node' '/w.mjs'", cliCmd);
+      expect(unit).toContain(`Environment="FAILPROOFAI_WORKER_CMD='/usr/bin/node' '/w.mjs'"`);
+      expect(unit).toContain(`Environment="FAILPROOFAI_CLI_CMD=${cliCmd}"`);
+
+      setPlatform("darwin");
+      const plist = launchdPlistContents("/opt/failproofaid", "/tmp/logs", null, cliCmd);
+      expect(plist).toContain("<key>FAILPROOFAI_CLI_CMD</key>");
+      // Single quotes are legal XML text, so they must survive verbatim —
+      // escaping them would hand the shell a literal `&apos;` to split on.
+      expect(plist).toContain(`<string>${cliCmd}</string>`);
+    });
+
+    it("omits the environment block entirely when neither command resolves", async () => {
+      // A `<dict>` with no keys, or a stray `Environment=""`, is not the same
+      // as no environment — the daemon reads "set but empty" as a command.
+      useScratchHome();
+      setPlatform("darwin");
+      const { launchdPlistContents } = await import("../../src/hooks/daemon-service");
+      const plist = launchdPlistContents("/opt/failproofaid", "/tmp/logs", null, null);
+      expect(plist).not.toContain("EnvironmentVariables");
+    });
+
     // Meaningless as root, where elevation always succeeds.
     it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
       "refuses to half-install when it cannot elevate, and says exactly what to run",
@@ -316,6 +386,96 @@ describe("hooks/daemon-service", () => {
       setPlatform("win32");
       const { daemonServiceStatus } = await import("../../src/hooks/daemon-service");
       expect(daemonServiceStatus()).toBe("unsupported-platform");
+    });
+  });
+
+  describe("service-definition upgrades", () => {
+    it("has nothing to upgrade where no service can exist", async () => {
+      // The inert direction is the safe one: a machine with no service must
+      // never be told it needs a privileged rewrite, and `ensureDaemonService
+      // Current` must be a cheap no-op everywhere it has no business acting.
+      setPlatform("win32");
+      const { daemonServiceNeedsUpgrade, ensureDaemonServiceCurrent } = await import(
+        "../../src/hooks/daemon-service"
+      );
+      expect(daemonServiceNeedsUpgrade()).toBe(false);
+      await expect(ensureDaemonServiceCurrent()).resolves.toEqual({ outcome: "current" });
+    });
+
+    it("turns a systemd unit WITHOUT the variable into one WITH it, changing nothing else", async () => {
+      useScratchHome();
+      delete process.env.FAILPROOFAI_WORKER_CMD;
+      process.env.FAILPROOFAI_PACKAGE_ROOT = "/nonexistent/package/root";
+      setPlatform("linux");
+      const { systemdUnitContents, upgradedServiceDefinition } = await import(
+        "../../src/hooks/daemon-service"
+      );
+
+      // Exactly what an older failproofai wrote: this unit minus the line that
+      // did not exist yet. Derived by removal rather than hand-written, so it
+      // stays a true "previous version" as the unit's shape evolves.
+      const legacy = systemdUnitContents("/opt/failproofaid", "'/usr/bin/node' '/pkg/dist/worker.mjs'")
+        .split("\n")
+        .filter((line) => !line.includes("FAILPROOFAI_CLI_CMD"))
+        .join("\n");
+      expect(legacy).not.toContain("FAILPROOFAI_CLI_CMD");
+
+      const upgraded = upgradedServiceDefinition(legacy, "'/usr/bin/node' '/pkg/dist/cli.mjs'", "/tmp/logs");
+
+      expect(upgraded).toContain(`Environment="FAILPROOFAI_CLI_CMD='/usr/bin/node' '/pkg/dist/cli.mjs'"`);
+      // Carried over, not re-resolved: right after a CLI upgrade the version-
+      // stamped binary for the NEW version is not on disk yet, so re-resolving
+      // would repoint a live service at a file that does not exist.
+      expect(upgraded).toContain("ExecStart=/opt/failproofaid");
+      // Carried over too. The rewrite regenerates the whole unit, so a worker
+      // command this process cannot re-resolve (no package root here) would
+      // otherwise be silently DELETED from a working unit — turning a fix for
+      // the audit lane into a break of the warm worker, which is on the path
+      // of every tool call.
+      expect(upgraded).toContain(
+        `Environment="FAILPROOFAI_WORKER_CMD='/usr/bin/node' '/pkg/dist/worker.mjs'"`,
+      );
+      // And nothing else moved: the only difference is the added line.
+      expect(upgraded!.split("\n").filter((l) => !l.includes("FAILPROOFAI_CLI_CMD")).join("\n")).toBe(
+        legacy,
+      );
+    });
+
+    it("turns a launchd plist WITHOUT the variable into one WITH it", async () => {
+      // The half no Linux CI runner can reach through the real service
+      // manager, and the half whose environment block has a different shape:
+      // a shared <dict>, so a legacy plist already HAS an EnvironmentVariables
+      // key and the new value has to land inside it rather than beside it.
+      useScratchHome();
+      delete process.env.FAILPROOFAI_WORKER_CMD;
+      process.env.FAILPROOFAI_PACKAGE_ROOT = "/nonexistent/package/root";
+      setPlatform("darwin");
+      const { launchdPlistContents, upgradedServiceDefinition } = await import(
+        "../../src/hooks/daemon-service"
+      );
+
+      const legacy = launchdPlistContents("/opt/failproofaid", "/tmp/logs", "/usr/bin/node /w.mjs");
+      expect(legacy).not.toContain("FAILPROOFAI_CLI_CMD");
+
+      const upgraded = upgradedServiceDefinition(legacy, "/usr/bin/node /c.mjs", "/tmp/logs");
+
+      expect(upgraded).toContain("<key>FAILPROOFAI_CLI_CMD</key>");
+      expect(upgraded).toContain("<string>/usr/bin/node /c.mjs</string>");
+      expect(upgraded).toContain("<key>FAILPROOFAI_WORKER_CMD</key>");
+      expect(upgraded).toContain("<string>/usr/bin/node /w.mjs</string>");
+      expect(upgraded).toContain("<string>/opt/failproofaid</string>");
+      // One dict, not two: a second EnvironmentVariables key makes launchd
+      // take the first and silently drop everything in the second.
+      expect(upgraded!.match(/EnvironmentVariables/g)).toHaveLength(1);
+    });
+
+    it("refuses to rewrite a definition it cannot read a start command out of", async () => {
+      // A hand-edited or foreign unit at this path. Regenerating it from a
+      // guessed ExecStart would replace whatever the operator actually runs.
+      useScratchHome();
+      setPlatform("linux");
+      const { upgradedServiceDefinition } = await import("../../src/hooks/daemon-service");
+      expect(upgradedServiceDefinition("[Unit]\nDescription=something else\n", "cli", "/tmp")).toBeNull();
     });
   });
 
@@ -489,6 +649,92 @@ describe("hooks/daemon-service", () => {
           else rmSync(configPath, { force: true });
         }
       }, 20_000);
+
+      /**
+       * Downgrades the installed unit to what a failproofai from before this
+       * change wrote: byte-identical apart from the line that did not exist
+       * yet. Reproducing the upgrade case by *removing* the line — rather than
+       * by hand-writing a "legacy" unit — is what keeps the test honest as the
+       * unit's shape evolves.
+       */
+      function stripCliCommandFromUnit(): void {
+        const legacy = readFileSync(unitPath, "utf8")
+          .split("\n")
+          .filter((line) => !line.includes("FAILPROOFAI_CLI_CMD"))
+          .join("\n");
+        const staging = resolve(tmpdir(), `failproofaid-legacy-${process.pid}`);
+        writeFileSync(staging, legacy, "utf8");
+        run(["install", "-m", "0644", staging, unitPath]);
+        run(["systemctl", "daemon-reload"]);
+        run(["systemctl", "restart", unitName]);
+        rmSync(staging, { force: true });
+      }
+
+      it("rewrites a unit that predates FAILPROOFAI_CLI_CMD, and the service comes back", async () => {
+        // THE upgrade case. `npm i -g failproofai@latest` replaces the CLI and
+        // never touches /etc/systemd/system, and the wizard's own "already
+        // running — leaving it alone" branch skips it, so without this the
+        // daemon has no way to spawn an audit for the rest of the machine's
+        // life while config.toml says the scan is on.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+        process.env.FAILPROOFAI_CLI_CMD = "/usr/bin/true --cli-cmd-sentinel";
+        setPlatform("linux");
+        const {
+          installDaemonService,
+          daemonServiceNeedsUpgrade,
+          ensureDaemonServiceCurrent,
+          daemonServiceStatus,
+        } = await import("../../src/hooks/daemon-service");
+
+        expect((await installDaemonService()).installed).toBe(true);
+        expect(daemonServiceNeedsUpgrade()).toBe(false);
+
+        stripCliCommandFromUnit();
+        expect(readFileSync(unitPath, "utf8")).not.toContain("FAILPROOFAI_CLI_CMD");
+        expect(daemonServiceNeedsUpgrade()).toBe(true);
+
+        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten" });
+
+        const rewritten = readFileSync(unitPath, "utf8");
+        expect(rewritten).toContain(
+          'Environment="FAILPROOFAI_CLI_CMD=/usr/bin/true --cli-cmd-sentinel"',
+        );
+        // The ExecStart is carried over from the unit, not re-resolved: right
+        // after a CLI upgrade the version-stamped binary for the NEW version
+        // is not on disk yet, and re-resolving would repoint a live service at
+        // a file that does not exist.
+        expect(rewritten).toContain("ExecStart=/usr/bin/sleep infinity");
+        expect(daemonServiceNeedsUpgrade()).toBe(false);
+        // Not merely "the file changed": the whole point is that the running
+        // daemon now HAS the variable, which on Linux only happens on restart.
+        expect(daemonServiceStatus()).toBe("running");
+      }, 30_000);
+
+      it("keeps a worker command the rewrite cannot re-resolve", async () => {
+        // The rewrite regenerates the whole unit, so a resolver that comes
+        // back null would silently delete a working FAILPROOFAI_WORKER_CMD
+        // from a working unit — turning a fix for the audit lane into a break
+        // of the warm worker, which is on every tool call's path.
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+        process.env.FAILPROOFAI_WORKER_CMD = "/usr/bin/node /baked/at/install/worker.mjs";
+        process.env.FAILPROOFAI_CLI_CMD = "/usr/bin/true --cli-cmd-sentinel";
+        setPlatform("linux");
+        const { installDaemonService, ensureDaemonServiceCurrent } = await import(
+          "../../src/hooks/daemon-service"
+        );
+
+        expect((await installDaemonService()).installed).toBe(true);
+        stripCliCommandFromUnit();
+
+        // The upgrading process cannot work out a worker command of its own.
+        delete process.env.FAILPROOFAI_WORKER_CMD;
+        process.env.FAILPROOFAI_PACKAGE_ROOT = "/nonexistent/package/root";
+
+        expect(await ensureDaemonServiceCurrent()).toEqual({ outcome: "rewritten" });
+        expect(readFileSync(unitPath, "utf8")).toContain(
+          'Environment="FAILPROOFAI_WORKER_CMD=/usr/bin/node /baked/at/install/worker.mjs"',
+        );
+      }, 30_000);
 
       it("installDaemonService fails cleanly when the binary cannot be resolved", async () => {
         // Scratch HOME + downloads off, or "cannot be resolved" is a lie:

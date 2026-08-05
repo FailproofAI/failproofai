@@ -10,14 +10,32 @@ import { parseScriptArgs } from "./parse-script-args";
 import { diagnoseShadow } from "./install-diagnosis.mjs";
 import { makeSkewLogFilter } from "./skew-log-filter";
 import { renderLaunchBanner } from "../src/hooks/tui";
+import { isLoopbackHostname, resolveDashboardHost } from "../lib/dashboard-host";
 import { version } from "../package.json";
 
 export function launch(mode: "dev" | "start"): void {
-  const { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs } = parseScriptArgs(process.argv.slice(2));
+  const { loggingLevel, disableTelemetry, allowedDevOrigins, host, remainingArgs } = parseScriptArgs(process.argv.slice(2));
 
   // Branded splash — the same logomark + palette as the `configure` wizard, then
   // a tidy version/links column. Falls back to plain text off a TTY.
   for (const line of renderLaunchBanner(version)) console.log(line);
+
+  // The dashboard has no authentication and can toggle policies and uninstall
+  // hooks from every agent CLI, so it binds loopback unless someone asks
+  // otherwise. It used to bind 0.0.0.0 unconditionally, which handed all of
+  // that to every peer on the network.
+  const bindHost = resolveDashboardHost(host, process.env.FAILPROOFAI_DASHBOARD_HOST);
+  if (!isLoopbackHostname(bindHost)) {
+    console.warn(
+      `\n! Binding the dashboard to ${bindHost}, which is reachable from outside this machine.\n` +
+      `  It has no authentication: anyone who can reach it can read your session\n` +
+      `  transcripts, disable your policies, and uninstall failproofai's hooks.\n`,
+    );
+  }
+  // Read back by proxy.ts, which refuses any request whose Host is not one it
+  // should be answering to — the layer that stops DNS rebinding, which a
+  // loopback bind alone does not.
+  process.env.FAILPROOFAI_DASHBOARD_HOST = bindHost;
 
   let cmd: string;
   let cmdArgs: string[];
@@ -25,7 +43,7 @@ export function launch(mode: "dev" | "start"): void {
     const portIdx = remainingArgs.indexOf("--port");
     const port = portIdx >= 0 ? remainingArgs[portIdx + 1] : "8020";
     process.env.PORT = port;
-    process.env.HOSTNAME = "0.0.0.0";
+    process.env.HOSTNAME = bindHost;
     cmd = "node";
     // Resolve the real package root via realpathSync so symlinked npm global binaries
     // don't cause import.meta.url to point at the symlink dir instead of the package dir.
@@ -74,7 +92,11 @@ export function launch(mode: "dev" | "start"): void {
     cmdArgs = [serverJsPath];
   } else {
     cmd = "bunx";
-    cmdArgs = ["--bun", "next", "dev", ...remainingArgs];
+    // `next dev` with no -H listens on every interface too, so dev gets the same
+    // default. Skipped when the caller already passed one through, so an
+    // explicit -H in remainingArgs still wins.
+    const hasHostFlag = remainingArgs.some((a) => a === "-H" || a === "--hostname" || a.startsWith("--hostname="));
+    cmdArgs = ["--bun", "next", "dev", ...(hasHostFlag ? [] : ["-H", bindHost]), ...remainingArgs];
   }
 
   // In `start` (the shipped standalone server) we pipe + filter the child's

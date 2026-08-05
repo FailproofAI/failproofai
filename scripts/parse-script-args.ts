@@ -7,6 +7,13 @@ export interface ParsedScriptArgs {
   loggingLevel: string | undefined;
   disableTelemetry: boolean;
   allowedDevOrigins: string[] | undefined;
+  /**
+   * Interface to bind the dashboard to. Undefined means the safe default
+   * (loopback) — see `resolveDashboardHost` in launch.ts. Only set this to a
+   * non-loopback address deliberately: the dashboard has no authentication and
+   * is a WRITE surface for this machine's security configuration.
+   */
+  host: string | undefined;
   remainingArgs: string[];
 }
 
@@ -32,6 +39,7 @@ export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
   let loggingLevel: string | undefined;
   let disableTelemetry = false;
   let allowedDevOrigins: string[] | undefined;
+  let host: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -71,7 +79,15 @@ export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
       i--;
       continue;
     }
+
+    if (flag === "--host") {
+      const { value, spliceCount } = parseStringFlag(flag, "an address to bind (e.g. 127.0.0.1)", inlineValue, args, i);
+      host = value;
+      args.splice(i, spliceCount);
+      i--;
+      continue;
+    }
   }
 
-  return { loggingLevel, disableTelemetry, allowedDevOrigins, remainingArgs: args };
+  return { loggingLevel, disableTelemetry, allowedDevOrigins, host, remainingArgs: args };
 }

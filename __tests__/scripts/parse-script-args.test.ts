@@ -54,4 +54,14 @@ describe("parseScriptArgs", () => {
     expect(result.disableTelemetry).toBe(true);
     expect(result.remainingArgs).toEqual(["--turbopack"]);
   });
+
+  it("leaves host undefined by default, so the loopback default applies", () => {
+    expect(parseScriptArgs([]).host).toBeUndefined();
+  });
+
+  it("parses --host in both forms", () => {
+    expect(parseScriptArgs(["--host", "0.0.0.0"]).host).toBe("0.0.0.0");
+    expect(parseScriptArgs(["--host=192.168.1.5"]).host).toBe("192.168.1.5");
+    expect(parseScriptArgs(["--host", "0.0.0.0"]).remainingArgs).toEqual([]);
+  });
 });

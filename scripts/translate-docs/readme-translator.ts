@@ -17,6 +17,111 @@ const ROOT_DIR = join(__dirname, "..", "..");
 const README_PATH = join(ROOT_DIR, "README.md");
 const I18N_DIR = join(ROOT_DIR, "docs", "i18n");
 
+/**
+ * Prefix that walks from `docs/i18n/` back to the repo root. Keep in sync with
+ * I18N_DIR — the disclaimer and language selector already hard-code the same
+ * two levels in their `../../README.md` links.
+ */
+const TO_REPO_ROOT = "../../";
+
+/** Raw-content base for repo files that must resolve off-GitHub too. */
+const RAW_BASE = "https://raw.githubusercontent.com/FailproofAI/failproofai/main/";
+
+const ASSET_RE = /\.(?:png|jpe?g|gif|svg|webp|ico|mp4|webm)$/i;
+
+/**
+ * Re-point the root README's repo-root-relative paths so they still resolve
+ * from `docs/i18n/README.<lang>.md`, two directories deeper.
+ *
+ * The root README lives AT the repo root, so it writes `readme-arch-hq.gif` and
+ * `assets/logos/claude.svg` — correct there. The translator is prompt-forbidden
+ * from touching paths ("Preserve all URLs and paths", translator.ts), and
+ * rightly so, but that means every translated copy inherited those paths
+ * verbatim into a directory two levels down, where they resolve against
+ * `docs/i18n/`. Both consumers 404'd: GitHub asked for
+ * `docs/i18n/assets/logos/claude.svg` and Mintlify (which also serves these
+ * pages, unlisted, at `/i18n/README.<lang>`) asked S3 for `exosphere/i18n/...`.
+ * Every logo and the architecture GIF were broken in all 14 languages.
+ *
+ * The two ref kinds get different treatment because they resolve in different
+ * places:
+ *  - IMAGES become absolute raw.githubusercontent URLs. A `../../` relative
+ *    path would fix GitHub but not Mintlify, whose copy of the page has no
+ *    `assets/` tree above it to walk into — an absolute URL is the only form
+ *    that renders on BOTH surfaces.
+ *  - DOCUMENT links (`./LICENSE`, `./CONTRIBUTING.md`, the translations row's
+ *    `./docs/i18n/README.*.md`) get the `../../` prefix instead. GitHub is the
+ *    only surface where a link to a repo file resolves at all, and a raw URL
+ *    there would serve unrendered plaintext.
+ *
+ * Left alone: absolute URLs, anchors, `mailto:`, protocol-relative `//`,
+ * site-absolute `/`, anything already starting with `../`, and everything
+ * inside a fenced code block (where a path is literal sample text, not a ref).
+ */
+export function rebaseReadmePaths(content: string): string {
+  const fenceRanges = findFenceRanges(content);
+  const insideFence = (offset: number): boolean =>
+    fenceRanges.some(([start, end]) => offset >= start && offset < end);
+
+  const rebase = (path: string): string | null => {
+    if (path === "" || /^[a-z][a-z0-9+.-]*:/i.test(path)) return null; // scheme
+    if (path.startsWith("#") || path.startsWith("/")) return null; // anchor, site-absolute
+    if (path.startsWith("../")) return null; // already rebased
+    const bare = path.replace(/^\.\//, "");
+    if (bare === "" || bare.startsWith("../")) return null;
+    return ASSET_RE.test(bare.split(/[?#]/)[0])
+      ? `${RAW_BASE}${bare}`
+      : `${TO_REPO_ROOT}${bare}`;
+  };
+
+  // Markdown links and images: `](path)` / `](path "title")`.
+  let out = content.replace(
+    /(\]\()([^)\s]+)/g,
+    (match, prefix: string, path: string, offset: number) => {
+      if (insideFence(offset)) return match;
+      const next = rebase(path);
+      return next === null ? match : `${prefix}${next}`;
+    },
+  );
+
+  // HTML/JSX attributes: the README's logo table is a raw <table> of <img>.
+  out = out.replace(
+    /((?:src|href)=(["']))(.*?)\2/g,
+    (match, prefix: string, _quote: string, path: string, offset: number) => {
+      if (insideFence(offset)) return match;
+      const next = rebase(path);
+      return next === null ? match : `${prefix}${next}${_quote}`;
+    },
+  );
+
+  return out;
+}
+
+/**
+ * Byte ranges covered by fenced code blocks, per CommonMark: a fence opens with
+ * ≥3 backticks or tildes and closes only on a later line using the SAME
+ * character at ≥ the same length. Mirrors the scanner in
+ * `mdx-translator.convertHtmlComments`, which needs the identical guard.
+ */
+function findFenceRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const fenceRe = /^[ \t]*(`{3,}|~{3,})/gm;
+  let match: RegExpExecArray | null;
+  let open: { char: string; length: number; start: number } | null = null;
+  while ((match = fenceRe.exec(content)) !== null) {
+    const marker = match[1];
+    if (!open) {
+      open = { char: marker[0], length: marker.length, start: match.index };
+    } else if (marker[0] === open.char && marker.length >= open.length) {
+      const lineEnd = content.indexOf("\n", fenceRe.lastIndex);
+      ranges.push([open.start, lineEnd === -1 ? content.length : lineEnd]);
+      open = null;
+    }
+  }
+  if (open) ranges.push([open.start, content.length]);
+  return ranges;
+}
+
 function buildLanguageSelector(currentLang: string): string {
   const flags: Record<string, string> = {
     en: "\ud83c\uddfa\ud83c\uddf8",
@@ -117,10 +222,17 @@ export async function translateReadme(
         // Same MDX sanitizers as translateMdxPage — the README emits JSX (the
         // logo table), so strip stray attribute quotes, drop any unmatched
         // trailing code fence (which would swallow the RTL `</div>`), and
-        // convert HTML comments to MDX — then wrap in disclaimer + selector +
-        // RTL div.
-        const cleaned = convertHtmlComments(
-          stripStrayTrailingFence(sanitizeJsxAttributes(raw)),
+        // convert HTML comments to MDX — then re-point the root README's
+        // repo-root-relative paths for this file's depth, and wrap in
+        // disclaimer + selector + RTL div.
+        //
+        // The rebase runs on the model output ONLY, never on the wrapper: the
+        // disclaimer's `../../README.md` and the selector's sibling
+        // `README.<lang>.md` links are already written for `docs/i18n/`.
+        const cleaned = rebaseReadmePaths(
+          convertHtmlComments(
+            stripStrayTrailingFence(sanitizeJsxAttributes(raw)),
+          ),
         );
         return `${disclaimer}\n\n${langSelector}\n\n---\n${rtlOpen}\n${cleaned}\n${rtlClose}`;
       },

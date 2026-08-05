@@ -1,28 +1,28 @@
 ---
 title: 설정
-description: "설정 파일 형식, 세 가지 범위 시스템, 그리고 병합 규칙"
+description: "설정 파일 형식, 세 가지 범위 시스템, 병합 규칙"
 icon: gear
 ---
 
-failproofai는 JSON 설정 파일을 사용하여 어떤 정책이 활성화되어 있는지, 정책이 어떻게 동작하는지, 그리고 커스텀 정책을 어디에서 불러올지를 제어합니다. 설정은 팀과 쉽게 공유할 수 있도록 설계되어 있습니다. 저장소에 커밋하면 모든 개발자가 동일한 에이전트 안전망을 갖게 됩니다.
+failproofai는 JSON 설정 파일을 사용하여 어떤 정책이 활성화되는지, 정책이 어떻게 동작하는지, 그리고 커스텀 정책을 어디서 불러올지 제어합니다. 설정은 팀과 쉽게 공유할 수 있도록 설계되었습니다. 저장소에 커밋해두면 모든 개발자가 동일한 에이전트 안전망을 갖게 됩니다.
 
 ---
 
 ## 설정 범위
 
-설정 범위는 세 가지이며, 우선순위 순서대로 평가됩니다:
+세 가지 설정 범위가 있으며, 우선순위 순서대로 평가됩니다:
 
 | 범위 | 파일 경로 | 용도 |
-|------|-----------|------|
+|-------|-----------|---------|
 | **project** | `.failproofai/policies-config.json` | 저장소별 설정, 버전 관리에 커밋 |
-| **local** | `.failproofai/policies-config.local.json` | 개인 저장소별 오버라이드, gitignore 처리 |
+| **local** | `.failproofai/policies-config.local.json` | 개인용 저장소별 오버라이드, gitignore 처리 |
 | **global** | `~/.failproofai/policies-config.json` | 모든 프로젝트에 적용되는 사용자 수준 기본값 |
 
-failproofai가 훅 이벤트를 수신하면, 현재 작업 디렉터리에 존재하는 세 파일을 모두 로드하여 병합합니다.
+failproofai가 훅 이벤트를 수신하면 현재 작업 디렉토리에 대해 존재하는 세 파일을 모두 불러와 병합합니다.
 
 ### 병합 규칙
 
-**`enabledPolicies`** - 세 범위의 합집합입니다. 어느 수준에서든 활성화된 정책은 적용됩니다.
+**`enabledPolicies`** - 세 범위 모두의 합집합입니다. 어느 수준에서든 활성화된 정책은 적용됩니다.
 
 ```text
 project:  ["block-sudo"]
@@ -32,13 +32,13 @@ global:   ["block-sudo", "sanitize-api-keys"]
 resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← 중복 제거된 합집합
 ```
 
-**`policyParams`** - 특정 정책에 대해 파라미터를 정의한 첫 번째 범위가 전적으로 우선합니다. 정책 파라미터 내부 값의 깊은 병합은 이루어지지 않습니다.
+**`policyParams`** - 특정 정책에 대한 파라미터를 먼저 정의하는 범위가 전부 가져갑니다. 정책 파라미터 내부에서는 깊은 병합이 이루어지지 않습니다.
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project 우선, global 무시
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← project가 우선, global은 무시됨
 ```
 
 ```text
@@ -46,12 +46,14 @@ project:  (block-sudo 항목 없음)
 local:    (block-sudo 항목 없음)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려감
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← global로 폴스루
 ```
 
-**`customPoliciesPath`** - 이를 정의한 첫 번째 범위가 우선합니다.
+**`customPoliciesPaths` / `customPoliciesPath`** - 어느 쪽 형식이든 먼저 정의하는 범위가 우선합니다.
 
-**`llm`** - 이를 정의한 첫 번째 범위가 우선합니다.
+**`disabledCustomPolicies`** - 모든 범위에 걸쳐 합집합으로 처리됩니다. 대시보드에서 명시적 또는 컨벤션 정책 파일의 개별 정책을 끄면 소스가 포함된 ID가 여기에 기록됩니다. 목록에 없는 정책은 기본적으로 활성화 상태를 유지하며, ID에 소스 파일이 포함되어 있으므로 여러 파일에서 같은 이름의 정책을 독립적으로 제어할 수 있습니다.
+
+**`llm`** - 먼저 정의하는 범위가 우선합니다.
 
 ---
 
@@ -102,27 +104,27 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려�
 
 타입: `string[]`
 
-활성화할 정책 이름 목록입니다. 이름은 `failproofai policies`에서 표시되는 정책 식별자와 정확히 일치해야 합니다. 전체 목록은 [기본 제공 정책](/ko/built-in-policies)을 참고하세요.
+활성화할 정책 이름 목록입니다. 이름은 `failproofai policies`에서 표시되는 정책 식별자와 정확히 일치해야 합니다. 전체 목록은 [기본 제공 정책](/ko/built-in-policies)을 참조하세요.
 
-`enabledPolicies`에 없는 정책은 `policyParams`에 항목이 있더라도 비활성 상태입니다.
+`enabledPolicies`에 포함되지 않은 정책은 `policyParams`에 항목이 있더라도 비활성 상태입니다.
 
 ### `policyParams`
 
 타입: `Record<string, Record<string, unknown>>`
 
-정책별 파라미터 오버라이드입니다. 외부 키는 정책 이름이고, 내부 키는 정책별로 다릅니다. 각 정책의 사용 가능한 파라미터는 [기본 제공 정책](/ko/built-in-policies)에 설명되어 있습니다.
+정책별 파라미터 오버라이드입니다. 외부 키는 정책 이름이고, 내부 키는 정책별로 다릅니다. 각 정책의 사용 가능한 파라미터는 [기본 제공 정책](/ko/built-in-policies)에 문서화되어 있습니다.
 
-파라미터가 있는 정책에 파라미터를 지정하지 않으면 정책의 기본값이 사용됩니다. `policyParams`를 전혀 설정하지 않은 사용자는 이전 버전과 동일하게 동작합니다.
+정책에 파라미터가 있지만 직접 지정하지 않으면 정책의 기본값이 사용됩니다. `policyParams`를 전혀 설정하지 않은 사용자는 이전 버전과 동일한 동작을 경험합니다.
 
-정책 파라미터 블록 내의 알 수 없는 키는 훅 실행 시 무시되지만, `failproofai policies` 실행 시 경고로 표시됩니다.
+정책 파라미터 블록 내의 알 수 없는 키는 훅 실행 시 자동으로 무시되지만, `failproofai policies`를 실행할 때 경고로 표시됩니다.
 
-#### `hint` (공통 설정)
+#### `hint` (공통 적용)
 
 타입: `string` (선택 사항)
 
-정책이 `deny` 또는 `instruct`를 반환할 때 reason에 추가되는 메시지입니다. 정책 자체를 수정하지 않고도 Claude에게 실행 가능한 안내를 제공할 때 사용합니다.
+정책이 `deny` 또는 `instruct`를 반환할 때 사유에 추가되는 메시지입니다. 정책 자체를 수정하지 않고도 Claude에게 실행 가능한 안내를 제공하는 데 사용합니다.
 
-기본 제공, 커스텀(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 등 모든 정책 유형에서 사용할 수 있습니다.
+기본 제공 정책, 커스텀 정책(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 등 모든 정책 유형에서 작동합니다.
 
 ```json
 {
@@ -141,40 +143,40 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려�
 }
 ```
 
-`block-force-push`가 거부할 경우 Claude는 다음과 같은 메시지를 받습니다: *"Force-pushing is blocked. Try creating a fresh branch instead."*
+`block-force-push`가 거부하면 Claude는 다음과 같은 메시지를 받습니다: *"Force-pushing is blocked. Try creating a fresh branch instead."*
 
-문자열이 아닌 값과 빈 문자열은 무시됩니다. `hint`가 설정되지 않으면 동작이 변경되지 않습니다(하위 호환성 유지).
+문자열이 아닌 값과 빈 문자열은 자동으로 무시됩니다. `hint`가 설정되지 않으면 동작은 변경되지 않습니다(하위 호환성 유지).
 
 ### `customPoliciesPath`
 
 타입: `string` (절대 경로)
 
-커스텀 훅 정책이 포함된 JavaScript 파일의 경로입니다. `failproofai policies --install --custom <path>` 명령으로 자동 설정됩니다(경로는 저장 전에 절대 경로로 변환됩니다).
+커스텀 훅 정책이 포함된 JavaScript 파일의 경로입니다. `failproofai policies --install --custom <path>`를 실행하면 자동으로 설정됩니다(경로는 저장 전에 절대 경로로 변환됩니다).
 
-파일은 훅 이벤트마다 새로 로드되며 캐싱이 없습니다. 작성 방법은 [커스텀 정책](/ko/custom-policies)을 참고하세요.
+파일은 매 훅 이벤트마다 새로 불러옵니다. 캐싱은 없습니다. 작성 방법에 대한 자세한 내용은 [커스텀 정책](/ko/custom-policies)을 참조하세요.
 
 ### 컨벤션 기반 정책
 
-명시적인 `customPoliciesPath` 외에도, failproofai는 `.failproofai/policies/` 디렉터리에서 정책 파일을 자동으로 검색하여 로드합니다:
+명시적인 `customPoliciesPath` 외에도 failproofai는 `.failproofai/policies/` 디렉토리에서 정책 파일을 자동으로 탐색하고 불러옵니다:
 
-| 수준 | 디렉터리 | 범위 |
-|------|-----------|------|
+| 수준 | 디렉토리 | 범위 |
+|-------|-----------|-------|
 | 프로젝트 | `.failproofai/policies/` | 버전 관리를 통해 팀과 공유 |
 | 사용자 | `~/.failproofai/policies/` | 개인용, 모든 프로젝트에 적용 |
 
-**파일 매칭:** `*policies.{js,mjs,ts}` 패턴과 일치하는 파일만 로드됩니다(예: `security-policies.mjs`, `workflow-policies.js`). 디렉터리 내 다른 파일은 무시됩니다.
+**파일 매칭:** `*policies.{js,mjs,ts}` 패턴과 일치하는 파일만 불러옵니다(예: `security-policies.mjs`, `workflow-policies.js`). 디렉토리 내 다른 파일은 무시됩니다.
 
-**별도 설정 불필요:** 컨벤션 정책은 `policies-config.json`에 항목을 추가할 필요가 없습니다. 디렉터리에 파일을 넣기만 하면 다음 훅 이벤트 시 자동으로 인식됩니다.
+**설정 불필요:** 컨벤션 정책은 `policies-config.json`에 항목을 추가할 필요가 없습니다. 디렉토리에 파일을 넣기만 하면 다음 훅 이벤트에서 자동으로 적용됩니다.
 
-**합집합 로딩:** 프로젝트와 사용자 컨벤션 디렉터리가 모두 스캔됩니다. 두 수준에서 일치하는 모든 파일이 로드됩니다(첫 번째 범위 우선 방식을 사용하는 `customPoliciesPath`와 다릅니다).
+**합집합 로딩:** 프로젝트와 사용자 컨벤션 디렉토리 모두 스캔됩니다. 두 수준의 일치하는 파일이 모두 불러와집니다(`customPoliciesPath`의 첫 번째 범위 우선 방식과 다릅니다).
 
-자세한 내용과 예시는 [커스텀 정책](/ko/custom-policies)을 참고하세요.
+자세한 내용과 예제는 [커스텀 정책](/ko/custom-policies)을 참조하세요.
 
 ### `llm`
 
 타입: `object` (선택 사항)
 
-AI 호출을 수행하는 정책을 위한 LLM 클라이언트 설정입니다. 대부분의 경우 필요하지 않습니다.
+AI 호출을 수행하는 정책을 위한 LLM 클라이언트 설정입니다. 대부분의 설정에서는 필요하지 않습니다.
 
 ```json
 {
@@ -189,19 +191,24 @@ AI 호출을 수행하는 정책을 위한 LLM 클라이언트 설정입니다. 
 
 ## CLI에서 설정 관리하기
 
-`policies --install` 및 `policies --uninstall` 명령은 에이전트 CLI의 훅 설정 파일(훅 진입점)에 기록하며, `policies-config.json`은 직접 관리하는 파일입니다. 두 가지는 별개입니다:
+`policies --install`과 `policies --uninstall` 명령은 에이전트 CLI의 훅 설정 파일(훅 진입점)에 씁니다. 반면 `policies-config.json`은 직접 관리하는 파일입니다. 두 가지는 별개입니다:
 
 - **에이전트 CLI 설정** — 에이전트가 각 도구 사용 시 `failproofai --hook <event>`를 호출하도록 지시합니다:
   - **Claude Code**: `~/.claude/settings.json` (사용자), `<cwd>/.claude/settings.json` (프로젝트), `<cwd>/.claude/settings.local.json` (로컬)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (사용자), `<cwd>/.codex/hooks.json` (프로젝트) — Codex는 `local` 범위가 없습니다
-  - **GitHub Copilot CLI _(베타)_**: `~/.copilot/hooks/failproofai.json` (사용자), `<cwd>/.github/hooks/failproofai.json` (프로젝트) — Copilot에는 `local` 범위가 없습니다. 훅 항목은 Copilot의 OS별 `bash`/`powershell` 명령 필드와 `timeoutSec`를 사용하며, 파일 최상단에 `version: 1` 마커가 있습니다. `events.jsonl` 레코드 스키마(공개 문서에 명시되지 않음)를 더 많은 실제 세션을 통해 검증 중이므로 Copilot CLI 지원은 **베타** 상태입니다.
-  - **Cursor Agent _(베타)_**: `~/.cursor/hooks.json` (사용자), `<cwd>/.cursor/hooks.json` (프로젝트) — Cursor에는 `local` 범위가 없습니다. 훅 항목은 Claude 형식의 `{type, command, timeout}` 구조를 사용하지만(`bash`/`powershell` 분리 없음), Cursor의 [훅 스키마](https://cursor.com/docs/hooks)에 따라 camelCase 이벤트 키(`preToolUse`, `beforeSubmitPrompt` 등) 아래 플랫 배열로 저장되며 파일 최상단에 `version: 1` 마커가 있습니다. 핸들러는 `CURSOR_EVENT_MAP`을 통해 camelCase → PascalCase로 정규화하므로 기존 기본 제공 정책이 변경 없이 동작합니다. Cursor의 트랜스크립트 온디스크 형식(공개 문서에 명시되지 않음)을 더 많은 실제 설치를 통해 검증 중이므로 Cursor Agent 지원은 **베타** 상태입니다.
-  - **OpenCode _(베타)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (사용자), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (프로젝트) — OpenCode에는 `local` 범위가 없습니다. 다른 다섯 CLI와 달리 OpenCode에는 **외부 명령 훅 시스템이 없습니다**: `opencode.json`의 `plugin: []` 배열을 통해 명시적으로 등록된 인프로세스 JS/TS 플러그인을 로드합니다(`.opencode/plugins/`에서의 자동 검색은 opencode v1.14.33에서 플러그인이 로드되는 방식이 **아닙니다**). 설치 시 failproofai 바이너리를 서브프로세스로 호출하고 바이너리의 Claude 형식 JSON 응답을 플러그인 시맨틱으로 변환하는 작은 생성된 플러그인 심을 배치합니다: 도구 이벤트 거부 시 `throw new Error()`(도구 호출 취소), instruct와 `Stop`/`SubagentStop` 거부 시 `client.session.prompt(...)`(거부 이유를 다음 사용자 메시지로 제출 — `session.idle`은 알림 전용이고 거기서 throw는 no-op이므로 유일한 강제 재시도 채널), allow 시 no-op. 심은 도구 이름(소문자 → PascalCase, `OPENCODE_TOOL_MAP` 사용)과 도구 입력 인수 키(camelCase → snake_case, `Read`/`Write`/`Edit`용 `OPENCODE_TOOL_INPUT_MAP` 사용, 예: `filePath` → `file_path`, `oldString` → `old_string`)를 바이너리에 전달하기 전에 정규화하므로 `block-read-outside-cwd`, `block-env-files`, `block-secrets-write` 같은 경로 확인 기본 정책이 OpenCode 도구 호출에서도 변경 없이 동작합니다. 세션은 `~/.local/share/opencode/opencode.db`의 opencode SQLite DB에 저장되며, 대시보드의 세션 뷰어는 `opencode db --format json` 및 `opencode export <id>`를 통해 읽습니다. 버전 간 동작 및 더 많은 실제 세션 검증 중이므로 OpenCode 지원은 **베타** 상태입니다. [OpenCode 플러그인 문서](https://opencode.ai/docs/plugins/)를 참고하세요.
-  - **Pi _(베타)_**: `~/.pi/agent/settings.json` (사용자), `<cwd>/.pi/settings.json` (프로젝트) — Pi에는 `local` 범위가 없습니다. Pi는 시작 시 TypeScript 확장 패키지를 로드하며, 설정 파일은 `{"packages": ["./relative/path", …]}` 형식의 플랫 문자열 배열입니다. failproofai는 번들된 `pi-extension/` 디렉터리를 가리키는 단일 packages 배열 항목을 씁니다. 확장은 내부적으로 Pi의 `tool_call`/`user_bash`/`input`/`session_start` 이벤트를 구독하고 `failproofai --hook <Event> --cli pi`를 셸아웃합니다. 핸들러는 `PI_EVENT_MAP`을 통해 underscore_lower_snake_case → PascalCase로 이벤트를 정규화하므로 기존 기본 제공 정책이 변경 없이 동작합니다. 도구 입력 인수도 `PI_TOOL_INPUT_MAP`을 통해 정규화됩니다(Pi의 Read/Write/Edit는 `file_path` 대신 `path`를 전달하며, 최상위 키를 매핑하면 `block-env-files`와 `block-secrets-write`가 동작합니다 — `block-read-outside-cwd`는 이미 `path` 폴백이 있었습니다). Pi의 확장 API와 세션 로그 레이아웃이 안정화되는 동안 Pi 지원은 **베타** 상태입니다.
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**사용자 범위만** — Hermes에는 프로젝트/로컬 설정이 없습니다). Hermes는 Slack/Telegram **게이트웨이**이므로, 설치 한 번으로 모든 플랫폼(Slack/Telegram/cli/cron)과 내부 서브에이전트의 도구 호출을 가로챕니다. 훅 항목은 Hermes의 snake_case 이벤트(`pre_tool_call`/`post_tool_call`/`on_session_start`/`on_session_end`/`subagent_stop`)를 키로 하는 `hooks:` 맵 아래 `{command, timeout}` 쌍(timeout은 **초** 단위)입니다. 핸들러는 `HERMES_EVENT_MAP`으로 이벤트를, `HERMES_TOOL_MAP`으로 도구 이름을 정규화하므로 기본 제공 정책이 변경 없이 동작합니다. 설정은 주석 보존 YAML `Document` 라운드트립을 통해 편집되므로 운영자의 다른 설정이 유지되며, 설치 시 `hooks_auto_accept: true`로 설정되어 헤드리스 게이트웨이(TTY 없음)가 동의 프롬프트 없이 훅을 실행합니다. 평가기는 Hermes의 `{"decision":"block","reason"}` stdout 계약을 반환합니다(Hermes는 종료 코드를 무시합니다). **제한 사항:** Hermes에는 턴 종료 `Stop` 이벤트가 없으므로 `require-*-before-stop` 기본 정책은 동작하지 않습니다(해당 없음, 오류 아님). `instruct`는 allow-with-logged-note로 격하됩니다(추가 컨텍스트 채널 없음). 출력 시크릿 편집(`sanitize-*`)은 셸 훅 계약으로 도구 출력을 재작성할 수 없습니다. Hermes는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.hermes/state.db`에서 게이트웨이 세션을 직접 읽습니다.
-- **`policies-config.json`** — failproofai에게 어떤 정책을 어떤 파라미터로 평가할지 지시합니다(모든 에이전트 CLI에 공통 적용)
+  - **OpenAI Codex**: `~/.codex/hooks.json` (사용자), `<cwd>/.codex/hooks.json` (프로젝트) — Codex에는 `local` 범위가 없습니다
+  - **GitHub Copilot CLI _(베타)_**: `~/.copilot/hooks/failproofai.json` (사용자), `<cwd>/.github/hooks/failproofai.json` (프로젝트) — Copilot에는 `local` 범위가 없습니다. 훅 항목은 `timeoutSec`과 함께 Copilot의 OS별 `bash`/`powershell` 명령 필드를 사용하며, 파일 최상위에 `version: 1` 마커가 있습니다. Copilot CLI 지원은 **베타** 상태입니다. 공개 문서에 명시되지 않은 `events.jsonl` 레코드 스키마를 더 많은 실제 세션에서 검증하는 중입니다. **VS Code Copilot Chat 에이전트 모드(미리보기)**는 `chat.hookFilesLocations` 설정으로 관리되는 `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, `~/.claude/settings.json`에서 훅 설정을 읽으며, 동일한 Claude 형태의 `{hookSpecificOutput:{permissionDecision:"deny",…}}` 계약을 사용합니다. 이는 `copilot` 통합과 `claude` 통합(`~/.claude/settings.json`)이 이미 쓰는 경로와 동일하므로, `failproofai policies --install --cli copilot` (또는 `--cli claude`)만으로 **VS Code 에이전트 모드에서도 별도의 `vscode` 통합 없이 즉시 적용됩니다** (VS Code의 탐색 로그에서 실제로 확인됨).
+  - **Cursor Agent _(베타)_**: `~/.cursor/hooks.json` (사용자), `<cwd>/.cursor/hooks.json` (프로젝트) — Cursor에는 `local` 범위가 없습니다. 훅 항목은 Claude 형태의 `{type, command, timeout}` 구조를 사용하지만(`bash`/`powershell` 분리 없음), Cursor의 [훅 스키마](https://cursor.com/docs/hooks)에 따라 camelCase 이벤트 키(`preToolUse`, `beforeSubmitPrompt` 등) 아래 평탄한 배열로 저장됩니다. 파일 최상위에 `version: 1` 마커가 있습니다. 핸들러는 `CURSOR_EVENT_MAP`을 통해 camelCase → PascalCase로 정규화하므로 기존 기본 제공 정책이 변경 없이 작동합니다. Cursor Agent 지원은 **베타** 상태입니다. Cursor의 온디스크 트랜스크립트 형식(공개 문서에 명시되지 않음)을 더 많은 실제 설치 환경에서 검증하는 중입니다.
+  - **OpenCode _(베타)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (사용자), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (프로젝트) — OpenCode에는 `local` 범위가 없습니다. 다른 다섯 CLI와 달리 OpenCode에는 **외부 명령 훅 시스템이 없습니다**: `opencode.json`의 `plugin: []` 배열에 명시적으로 등록된 인프로세스 JS/TS 플러그인을 불러옵니다(`.opencode/plugins/`의 자동 탐색은 opencode v1.14.33에서 플러그인을 불러오는 방식이 **아닙니다**). 설치 시 failproofai 바이너리를 서브프로세스로 호출하고 바이너리의 Claude 형태 JSON 응답을 플러그인 시맨틱으로 변환하는 작은 생성 플러그인 심을 배치합니다: 도구 이벤트 거부 시 `throw new Error()`(도구 호출 취소), instruct 및 `Stop` / `SubagentStop` 거부 시 `client.session.prompt(...)`(거부 사유를 다음 사용자 메시지로 제출 — `session.idle`이 알림 전용이고 거기서 throw는 무작동이므로 유일한 강제 재시도 채널), 허용 시 무작동. 심은 도구 이름(`OPENCODE_TOOL_MAP`을 통해 소문자 → PascalCase)과 도구 입력 인수 키(`OPENCODE_TOOL_INPUT_MAP`을 통해 `Read` / `Write` / `Edit`의 camelCase → snake_case, 예: `filePath` → `file_path`, `oldString` → `old_string`)를 바이너리에 전달하기 전에 정규화하므로 `block-read-outside-cwd`, `block-env-files`, `block-secrets-write` 같은 경로 확인 내장 정책이 OpenCode 도구 호출에서도 변경 없이 작동합니다. 세션은 `~/.local/share/opencode/opencode.db`의 OpenCode SQLite DB에 저장됩니다. 대시보드의 세션 뷰어는 `opencode db --format json`과 `opencode export <id>`를 통해 세션을 읽습니다. OpenCode 지원은 **베타** 상태입니다. 버전 간 동작과 더 많은 실제 세션에서 검증하는 중입니다. [OpenCode 플러그인 문서](https://opencode.ai/docs/plugins/)를 참조하세요.
+  - **Pi _(베타)_**: `~/.pi/agent/settings.json` (사용자), `<cwd>/.pi/settings.json` (프로젝트) — Pi에는 `local` 범위가 없습니다. Pi는 시작 시 TypeScript 확장 패키지를 불러옵니다. 설정 파일은 평탄한 문자열 배열 `{"packages": ["./relative/path", …]}` 형태입니다. failproofai는 번들된 `pi-extension/` 디렉토리를 가리키는 단일 packages 배열 항목을 씁니다. 확장은 내부적으로 Pi의 `tool_call` / `user_bash` / `input` / `session_start` 이벤트를 구독하고 `failproofai --hook <Event> --cli pi`를 쉘아웃합니다. 핸들러는 `PI_EVENT_MAP`을 통해 underscore_lower_snake_case → PascalCase로 정규화하므로 기존 내장 정책이 변경 없이 작동합니다. 도구 입력 인수도 `PI_TOOL_INPUT_MAP`을 통해 정규화됩니다(Pi의 Read / Write / Edit는 `file_path` 대신 `path`를 전달하므로, 최상위 키를 매핑하면 `block-env-files`와 `block-secrets-write`가 작동합니다 — `block-read-outside-cwd`는 이미 `path` 폴백이 있었습니다). Pi 지원은 **베타** 상태입니다. Pi의 확장 API와 세션 로그 레이아웃이 안정화되는 과정에 있습니다.
+  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**사용자 범위만** — Hermes에는 프로젝트/로컬 설정이 없습니다). Hermes는 Slack/Telegram **게이트웨이**이므로, 한 번 설치하면 모든 플랫폼(Slack/Telegram/cli/cron)의 도구 호출 **및** 내부 서브에이전트를 차단합니다. 훅 항목은 Hermes의 snake_case 이벤트(`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`) 키 아래 `hooks:` 맵의 `{command, timeout}` 쌍입니다(timeout은 **초** 단위). 핸들러는 `HERMES_EVENT_MAP`을 통해 이벤트를, `HERMES_TOOL_MAP`을 통해 도구 이름을 정규화하므로 내장 정책이 변경 없이 작동합니다. 설정은 주석을 보존하는 YAML `Document` 왕복 방식으로 편집되므로 운영자의 다른 설정이 유지됩니다. 설치 시 `hooks_auto_accept: true`를 설정하여 TTY가 없는 헤드리스 게이트웨이가 동의 프롬프트 없이 훅을 실행합니다. 평가기는 Hermes의 `{"decision":"block","reason"}` stdout 계약을 출력합니다(Hermes는 종료 코드를 무시). **제한 사항:** Hermes에는 턴 종료 `Stop` 이벤트가 없으므로 `require-*-before-stop` 내장 정책은 Hermes에서 실행되지 않습니다(적용 불가, 오류 아님). `instruct`는 allow-with-logged-note로 저하됩니다(추가 컨텍스트 채널 없음). 출력 비밀 교체(`sanitize-*`)는 쉘 훅 계약으로 도구 출력을 재작성할 수 없습니다. Hermes는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.hermes/state.db`에서 게이트웨이 세션을 직접 읽습니다.
+  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**사용자 범위만** — OpenClaw에는 프로젝트/로컬 설정이 없습니다). Hermes와 마찬가지로 OpenClaw는 자체 호스팅 멀티채널 **게이트웨이**이므로, 한 번 설치하면 모든 채널과 내부 서브에이전트의 도구 호출을 차단합니다. 적용은 OpenClaw의 **인프로세스 플러그인 훅**을 통해 이루어집니다(파일 기반 내부 훅은 관찰 전용이며 차단 불가). 따라서 OpenCode/Pi처럼 failproofai는 failproofai 바이너리를 비동기로 스폰하고 판정을 변환하는 정적 `openclaw-plugin/` 패키지를 제공합니다. 설치 시 `openclaw.json`의 `plugins.load.paths[]`에 제공된 플러그인 디렉토리를 등록하고 `plugins.entries.failproofai` 아래 활성화합니다(`hooks.allowConversationAccess: true` 포함, 원시 대화 훅에 필요). 평가기는 평탄한 `{permission, reason}` 판정을 출력하며 심은 각 훅의 기본 반환 형태로 매핑합니다: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), `before_agent_finalize → {action:"revise", reason}` (**Stop** — 실제 턴 종료 게이트이므로 `require-*-before-stop` 내장 정책이 OpenClaw에서 **적용됩니다**, Hermes와 달리). 이벤트와 도구 이름은 `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP`(`exec→Bash`, `read→Read` 등)을 통해 바이너리 측에서 정규화되므로 내장 정책이 변경 없이 작동합니다. 심은 스폰/파싱/타임아웃 오류 시 허용 방향으로 실패합니다. OpenClaw는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`의 JSONL 세션을 읽습니다.
+  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (사용자), `<cwd>/.factory/hooks.json` (프로젝트) — Factory에는 `local` 범위가 없습니다. droid는 Claude 형태의 외부 명령 훅 시스템을 제공하지만, droid v0.171.0에서 실제 검증된 두 가지 특이점이 있습니다: (1) 이벤트 이름이 `hooks.json`의 **최상위 레벨**에 위치합니다 — **`"hooks"` 래퍼가 없습니다**(droid가 거부). 도구 이벤트(`PreToolUse`/`PostToolUse`)에는 `"matcher": "*"`가 있고, 비도구 이벤트는 생략합니다. (2) 거부는 훅 **종료 코드 2 + stderr**로 구동됩니다. JSON 결정이 아닙니다 — 평가기의 `factory` 브랜치는 도구/프롬프트 이벤트에 종료 코드 2를 반환하고, 턴 종료 `Stop` 이벤트에만 `{decision:"block", reason}`을 반환합니다(droid의 유일한 강제 재시도 채널). 이벤트는 이미 PascalCase입니다(이벤트 맵 없음). 페이로드는 Claude snake_case입니다. 도구 이름만 `FACTORY_TOOL_MAP`을 통해 정규화됩니다(`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch` 등). Factory는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`의 온디스크 JSONL 세션을 읽습니다.
+  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (사용자), `<cwd>/.devin/config.json` (프로젝트) — Devin에는 `local` 범위가 없습니다. Devin은 devin v3000.1.27에서 실제 검증된 **순수 Claude 클론**입니다: 표준 Claude `"hooks"` 래퍼 스키마를 사용하며(쓰기는 병합 보존 방식이므로 설정 파일의 다른 키 — `org_id`, `theme_mode` 등 — 가 유지됩니다), 이미 PascalCase 이벤트 이름(이벤트 맵 없음, 핸들러 브랜치 없음), Claude snake_case stdin 페이로드(정규화 없음)를 사용합니다. 평가기의 `devin` 브랜치는 **모든** 이벤트에 대해 종료 코드 0에서 `{"decision":"block","reason"}` JSON을 stdout으로 출력하여 거부합니다(검증됨 — 블록이 `--permission-mode dangerous`를 재정의함). 턴 종료 `Stop` 이벤트에서는 사유에 MANDATORY-ACTION 강제 재시도 문구가 포함되므로 `require-*-before-stop` 내장 정책이 적용됩니다. 도구 이름만 `DEVIN_TOOL_MAP`을 통해 정규화됩니다(`exec→Bash`; `tool_input.command`는 이미 정규형). Devin은 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.local/share/devin/cli/sessions.db`의 SQLite 세션을 읽습니다(각 `sessions` 행에 실제 `working_directory`가 있으므로 Claude처럼 프로젝트 cwd별로 세션이 그룹화됩니다).
+  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (사용자), `<cwd>/.agents/hooks.json` (프로젝트) — Antigravity에는 `local` 범위가 없습니다. Factory/Devin과 달리 Antigravity는 agy v1.1.2에서 실제 검증된 **자체 계약**을 가집니다(Claude 클론이 아님). `hooks.json`은 **이름 있는 훅** 스키마를 사용합니다: 최상위 키는 훅 *이름*(`"failproofai"`)이며, 그 값은 이벤트→핸들러 맵입니다 — 도구 이벤트(`PreToolUse`/`PostToolUse`)는 핸들러를 `{matcher:"*", hooks:[…]}`로 감싸고, `PreInvocation`/`Stop`은 **평탄한** 핸들러 배열입니다(다른 이름 있는 훅은 보존됩니다). stdin 페이로드는 **camelCase protojson**(`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`)입니다 — failproofai는 정책 실행 전에 snake_case로 정규화하고, `run_command`의 PascalCase 인수(`CommandLine`/`Cwd`)는 `ANTIGRAVITY_TOOL_INPUT_MAP`을 통해 매핑합니다. 평가기의 `antigravity` 브랜치는 Antigravity 자체 응답 형태를 사용합니다: `{decision:"deny", reason}`은 도구/프롬프트를 차단하고(종료 코드 0), `{decision:"continue", reason}`은 턴 종료 `Stop`에서 루프를 재진입하며(`require-*-before-stop` 내장 정책이 적용됨), `{injectSteps:[{ephemeralMessage}]}`는 `PreInvocation`(→ `UserPromptSubmit`)에서 지침을 주입합니다. 도구 이름은 `ANTIGRAVITY_TOOL_MAP`을 통해 정규화됩니다(`run_command→Bash`, `view_file→Read` 등). Antigravity는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl`의 일반 JSONL 트랜스크립트를 읽습니다(대화 인덱스는 `conversation_summaries.db`에 있습니다).
+  - **Goose (코드명 goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (사용자), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (프로젝트) — Goose에는 `local` 범위가 없습니다. 적용은 Goose의 **훅** 시스템인 크로스에이전트 **Open Plugins** 사양을 사용합니다: 설치기가 `failproofai` 플러그인 디렉토리를 배치하면 Goose가 시작 시 자동으로 탐색합니다(`~/.config/goose/config.yaml`에 자동 등록). `hooks.json`은 **최상위 `"hooks"` 래퍼**가 있는 Open Plugins 스키마를 사용하며, 모든 이벤트에서 matcher가 **생략됩니다** — 단독 `"*"`는 아무것도 매칭하지 않는 유효하지 않은 정규식입니다(goose v1.43.0에서 실제 검증됨). 이벤트 이름은 이미 PascalCase입니다(이벤트 맵 없음). stdin 페이로드는 `event`/`working_dir`를 사용하며, 핸들러가 이를 `hook_event_name`/`cwd`로 정규화합니다. 평가기의 `goose` 브랜치는 종료 코드 0에서 `{"decision":"block","reason"}` JSON을 stdout으로 출력하여 거부하며, **`PreToolUse`** 이벤트에서만 적용됩니다(goose ≥ v1.37.0에서 제공됨) — 셸 도구뿐만 아니라 **위임된 서브에이전트 내부에서도** 실행되므로 단일 충분한 거부 지점입니다. 다른 훅 오류는 **허용 방향으로 실패**합니다. Goose에는 **`Stop` 이벤트가 없으므로** `require-*-before-stop` 내장 정책은 적용되지 않습니다(Hermes와 동일). 도구 이름은 `GOOSE_TOOL_MAP`을 통해 정규화됩니다(`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite` 등). 경로 키는 `GOOSE_TOOL_INPUT_MAP`을 통해 정규화됩니다(`path`/`source` → `file_path`). Goose는 **오프라인 감사** 소스이기도 합니다 — 대시보드는 `~/.local/share/goose/sessions/sessions.db`의 SQLite 세션을 읽습니다(각 `sessions` 행에 실제 `working_dir`가 있으므로 Devin처럼 프로젝트 cwd별로 세션이 그룹화됩니다. `--no-session` 임시 실행은 필터링됩니다).
+- **`policies-config.json`** — failproofai가 어떤 정책을 어떤 파라미터로 평가할지 지시합니다(모든 에이전트 CLI에서 공유됨)
 
-특정 에이전트를 대상으로 하려면 `--cli claude|codex|copilot|cursor|opencode|pi|hermes`를 전달하세요(여러 개는 공백으로 구분하거나 반복 사용):
+특정 에이전트를 지정하려면 `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`를 전달합니다(공백으로 구분하거나 반복 사용하여 일부를 선택):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -210,23 +217,28 @@ failproofai policies --install --cli cursor --scope project
 failproofai policies --install --cli opencode --scope project
 failproofai policies --install --cli pi --scope project
 failproofai policies --install --cli hermes --scope user
-failproofai policies --install --cli claude codex copilot cursor opencode pi
+failproofai policies --install --cli openclaw --scope user
+failproofai policies --install --cli factory --scope project
+failproofai policies --install --cli devin --scope project
+failproofai policies --install --cli antigravity --scope project
+failproofai policies --install --cli goose --scope project
+failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-`--cli`를 생략하면 `failproofai`가 설치된 에이전트 CLI를 자동으로 감지합니다(`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes`):
+`--cli`를 생략하면 `failproofai`가 설치된 에이전트 CLI를 자동으로 감지합니다(`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
-- **CLI 1개 감지** — 확인 없이 해당 CLI를 자동 선택합니다.
-- **여러 CLI 감지** (대화형 터미널) — 화살표 키 단일 선택 프롬프트를 표시합니다. `Detected (N)` 섹션(전체 감지 CLI에 대한 `Install for all N detected` 통합 행 + 각 감지된 CLI 개별 항목)과, 사전 설치를 위한 모든 미감지 지원 CLI를 나열하는 `Not installed (M) · install hooks ahead of time` 섹션으로 구성됩니다(↑↓로 이동, Enter로 선택, ^C로 종료). 제거 흐름은 Detected 섹션만 표시합니다.
-- **여러 CLI 감지** (비대화형 실행, TTY 없음, CI 등) — 확인 없이 감지된 모든 CLI에 설치합니다.
-- **감지 없음** — `claude`로 폴백하며, PATH에서 에이전트 바이너리를 찾을 수 없다는 경고를 표시합니다. 훅 명령은 그래도 기록되므로 설치 즉시 활성화됩니다.
+- **하나의 CLI 감지** — 프롬프트 없이 해당 CLI를 자동 선택합니다.
+- **여러 CLI 감지**, 대화형 터미널 — 화살표 키 단일 선택 프롬프트를 표시합니다. `Detected (N)` 섹션(감지된 각 CLI와 `Install for all N detected` 집계 행 포함)과 `Not installed (M) · install hooks ahead of time` 섹션(지원되는 미감지 CLI를 미리 설치 옵션으로 나열)으로 구성됩니다(↑↓로 이동, Enter로 선택, ^C로 종료). 삭제 흐름에는 Detected 섹션만 표시됩니다.
+- **여러 CLI 감지**, 비대화형 실행(CI, TTY 없음) — 프롬프트 없이 감지된 모든 CLI에 설치합니다.
+- **감지 없음** — `claude`로 폴백하며, PATH에서 에이전트 바이너리를 찾을 수 없다는 경고를 표시합니다. 훅 명령은 그래도 작성되므로 에이전트를 설치하는 즉시 활성화됩니다.
 
-`policies-config.json`은 언제든지 직접 편집할 수 있으며, 변경 사항은 재시작 없이 다음 훅 이벤트부터 즉시 적용됩니다.
+`policies-config.json`은 언제든지 직접 편집할 수 있으며, 다음 훅 이벤트부터 재시작 없이 즉시 변경 사항이 적용됩니다.
 
 ---
 
 ## 예시: 팀 기본값이 포함된 프로젝트 수준 설정
 
-`.failproofai/policies-config.json`을 저장소에 커밋하세요:
+`.failproofai/policies-config.json`을 저장소에 커밋합니다:
 
 ```json
 {
@@ -245,4 +257,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi
 }
 ```
 
-각 개발자는 팀원에게 영향을 주지 않고 개인 오버라이드를 위해 `.failproofai/policies-config.local.json`(gitignore 처리)을 생성할 수 있습니다.
+각 개발자는 팀원에게 영향을 주지 않고 개인 오버라이드를 위해 `.failproofai/policies-config.local.json`(gitignore 처리됨)을 만들 수 있습니다.

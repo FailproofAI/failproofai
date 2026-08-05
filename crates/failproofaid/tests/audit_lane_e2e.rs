@@ -296,6 +296,49 @@ fn exit_75_is_retried_soon_and_is_not_recorded_as_a_run() {
 }
 
 #[test]
+fn a_schedule_that_cannot_be_written_is_reported_once_not_once_a_tick() {
+    // A home the daemon cannot write a schedule into is PERMANENT — every tick
+    // reads no schedule, decides to seed one, and fails again. The floor that
+    // rate-limits the scanning branch does not cover this one, so without a
+    // transition-only announcement this is a journal line every minute for the
+    // life of the daemon, forever, on a machine that is already broken.
+    let home = scratch_home("unwritable");
+    std::fs::write(
+        home.join("config.toml"),
+        "[audit]\nauto = true\ninterval_days = 7\n",
+    )
+    .unwrap();
+    // `state` as a regular file: create_dir_all fails with EEXIST, which is the
+    // same shape as a read-only mount or a full disk and needs no root to set up.
+    std::fs::write(home.join("state"), "not a directory").unwrap();
+
+    let marker = home.join("ran");
+    let daemon = spawn_daemon(&home, &stub_cli(&marker, 0));
+    // ~16 ticks at the 500ms poll this harness sets.
+    std::thread::sleep(Duration::from_secs(8));
+
+    let complaints = daemon
+        .stderr()
+        .lines()
+        .filter(|l| l.contains("its schedule cannot be written"))
+        .count();
+    assert_eq!(
+        complaints,
+        1,
+        "expected exactly one line over many ticks, got {complaints}. stderr:\n{}",
+        daemon.stderr()
+    );
+    assert!(
+        !marker.exists(),
+        "a lane that cannot record a schedule must not scan — an unadvanced \
+         schedule plus Restart=on-failure is a scan on every restart"
+    );
+
+    drop(daemon);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
 fn a_shutdown_is_not_held_up_by_a_running_scan() {
     // The lane joins on the daemon's shutdown path. If it waited out its child,
     // a `systemctl stop` (or the restart every upgrade performs) would hang for

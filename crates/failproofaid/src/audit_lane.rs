@@ -344,6 +344,14 @@ enum Announced {
     Off,
     Scheduled,
     NoCliCommand,
+    /// The schedule could not be seeded, so the lane is stuck: with nothing on
+    /// disk every tick decides `Reschedule` again, and that branch has no other
+    /// rate limit — the attempt floor only guards the branch that spawns a scan.
+    /// Announcing it makes a permanent condition print once, like
+    /// `NoCliCommand`, rather than a line a minute for the life of the daemon.
+    /// Same variant whatever the errno, so a changing error message does not
+    /// reopen the tap.
+    NoSchedule,
 }
 
 #[derive(Default)]
@@ -440,7 +448,14 @@ impl Lane {
                     ..state.unwrap_or(BLANK)
                 };
                 if let Err(err) = save_state(&path, &rescheduled) {
-                    eprintln!("[failproofaid] could not write the audit schedule: {err}");
+                    self.announce(
+                        Announced::NoSchedule,
+                        &format!(
+                            "scheduled audit is ON but its schedule cannot be written to {} \
+                             ({err}), so no scan will run until that is fixed",
+                            path.display()
+                        ),
+                    );
                     return;
                 }
                 self.announce(Announced::Scheduled, "scheduled audit enabled");
@@ -668,9 +683,10 @@ fn kill_process_group(child: &mut Child) {
 fn now_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_millis() as i64,
-        // A clock set before 1970. Negative is the honest reading, and the
-        // clamp in `effective_due` is what keeps the schedule usable once it is
-        // corrected.
+        // A clock set before 1970. Negative is the honest reading, and
+        // `needs_rescheduling` is what makes the schedule usable again once the
+        // clock is corrected — every due time this lane wrote while the clock
+        // was wrong then sits more than one interval out and gets rewritten.
         Err(err) => -(err.duration().as_millis() as i64),
     }
 }

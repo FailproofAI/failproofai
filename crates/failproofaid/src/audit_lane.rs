@@ -378,7 +378,18 @@ struct Lane {
 /// file without root while this is a SYSTEM unit, so resolving once at startup
 /// would put `sudo systemctl restart` back into the flow that was built to avoid
 /// it. The cost of being wrong the other way is one small file read a minute.
-pub fn spawn(shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
+/// Returns `None` when the OS refused the thread.
+///
+/// The lane BODY already refuses to propagate a fault, for the reason in the
+/// paragraph above — but `Builder::spawn` itself returns a `Result`, and
+/// `.expect()`ing it put the one failure the lane cannot catch back on the main
+/// thread. A machine at its thread limit (`EAGAIN`) would have panicked
+/// `run()`, so the daemon would not start, so on a `daemon.configured` machine
+/// every tool call across all twelve CLIs is denied — the exact outcome this
+/// lane's design goes out of its way to avoid, reached through the one line
+/// that was not guarding against it. Losing the scheduled audit is a feature
+/// being off; losing the daemon is a machine being unusable.
+pub fn spawn(shutdown: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
     let poll = poll_interval();
     std::thread::Builder::new()
         .name("fpai-audit-lane".to_string())
@@ -396,7 +407,10 @@ pub fn spawn(shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
                 wait_until_shutdown(&shutdown, poll);
             }
         })
-        .expect("failed to spawn the audit lane thread")
+        .inspect_err(|err| {
+            eprintln!("[failproofaid] could not start the audit lane: {err}; scheduled audits are off this run");
+        })
+        .ok()
 }
 
 impl Lane {

@@ -74,8 +74,21 @@ export const CACHE_SCHEMA_VERSION = 3;
 /** Hard expiry: a cached transcript result is rejected on read once it's
  *  this old. Keeps the audit pipeline honest about long-lived results that
  *  may no longer reflect current detector intent even if the transcript
- *  bytes and policy hashes haven't changed. */
-export const CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
+ *  bytes and policy hashes haven't changed.
+ *
+ *  30 days, and it MUST stay clear of the scheduled-audit interval
+ *  (`DEFAULT_AUDIT_INTERVAL_DAYS`, 7). It was 7 days — exactly equal — which
+ *  meant a scheduled run at T+7d found every entry cached at T+0 already
+ *  expired and cold-scanned the entire history: ~104 seconds and megabytes of
+ *  rewrites, on every single run, for a lane whose whole point is to be cheap.
+ *  The margin was one scan duration, so any suspend, missed tick, or deferral
+ *  tipped all of it over at once.
+ *
+ *  Correctness does not rest on this number: `engineVersion` (a hash over every
+ *  builtin's source) and `detectorVersion` already invalidate the cache the
+ *  moment detection logic actually changes. The TTL only bounds staleness for
+ *  changes those two cannot see, so it can be generous. */
+export const CACHE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 interface CacheEntry {
   /** Bumped whenever the on-disk shape changes incompatibly. */

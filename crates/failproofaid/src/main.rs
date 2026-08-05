@@ -62,7 +62,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // resolves the opt-out and installs an in-memory buffer — every request it
     // ever makes happens on its own thread, never here and never on the hook
     // path (see the module header; this daemon fails closed).
-    let telemetry_lane = telemetry::spawn(shutdown.clone());
+    let mut telemetry_lane = telemetry::spawn(shutdown.clone());
     let started_at = telemetry::record_started();
 
     let socket_path = paths::socket_path()?;
@@ -114,7 +114,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // within one interval with no restart and no root (see
     // `spawn_collector_manager`). The manager owns the collector's lifecycle,
     // including draining it on shutdown.
-    let collector_mgr = spawn_collector_manager(shutdown.clone());
+    let mut collector_mgr = spawn_collector_manager(shutdown.clone());
 
     // The scheduled local audit. Another lane on the same pattern — its own
     // thread, the same shutdown flag, every error swallowed — but it never
@@ -127,7 +127,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // collector manager and the cloud lane, it re-reads config.toml every tick,
     // so switching it on with `failproofai config` — which writes that file
     // WITHOUT root, against a system unit — takes effect without a restart.
-    let audit_lane = audit_lane::spawn(shutdown.clone());
+    let mut audit_lane = audit_lane::spawn(shutdown.clone());
 
     // Handled rather than `?`-ed, because a bare `?` here returns past every
     // join below — including the telemetry flush — so a daemon that cannot bind
@@ -143,7 +143,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Ok(srv) => srv,
         Err(err) => {
             shutdown.store(true, Ordering::Relaxed);
-            let _ = telemetry_lane.join();
+            join_lane(&mut telemetry_lane);
             telemetry::record_stopped("bind_failed", started_at);
             telemetry::shutdown_flush();
             return Err(err.into());
@@ -156,19 +156,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Join the manager, which drains the collector within its flush budget
     // before returning. Done before `?` so a server error still gives the
     // collector a chance to flush instead of dropping buffered events.
-    let _ = collector_mgr.join();
+    join_lane(&mut collector_mgr);
     let _ = cloud_monitor.join();
     // Returns promptly even mid-scan: the lane watches the same flag while it
     // waits on its child and kills the process group rather than waiting the
     // scan out, so a `systemctl stop` is never held up by an audit.
-    let _ = audit_lane.join();
+    join_lane(&mut audit_lane);
 
     // Joined BEFORE the stop event is recorded, so nothing contends with the
     // final send. `run_result` is what distinguishes the two ways this daemon
     // ends: a signal (the ordinary stop, and every upgrade) from a socket server
     // that gave up, which on a fail-closed machine is every tool call denied
     // until systemd restarts it.
-    let _ = telemetry_lane.join();
+    join_lane(&mut telemetry_lane);
     telemetry::record_stopped(
         if run_result.is_ok() {
             "signal"
@@ -214,7 +214,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// `--disconnect` — that remains a restart, matching today's behaviour and
 /// avoiding a second start against the set-once health registry. The gap this
 /// closes is the common one: enabled *after* startup never taking effect.
-fn spawn_collector_manager(daemon_shutdown: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
+fn spawn_collector_manager(
+    daemon_shutdown: Arc<AtomicBool>,
+) -> Option<std::thread::JoinHandle<()>> {
     let interval = collector_config_poll_interval();
     std::thread::Builder::new()
         .name("fpai-collect-mgr".to_string())
@@ -260,7 +262,24 @@ fn spawn_collector_manager(daemon_shutdown: Arc<AtomicBool>) -> std::thread::Joi
             }
             collector.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
         })
-        .expect("failed to spawn the collector manager thread")
+        .inspect_err(|err| {
+            eprintln!("[failproofaid] could not start the collector manager: {err}; nothing is collected this run");
+        })
+        .ok()
+}
+
+/// Join a lane that may never have started.
+///
+/// Every lane is optional by construction: when the OS refuses a thread the
+/// daemon runs WITHOUT that feature rather than not at all, because this daemon
+/// fails closed and a process that will not start denies every tool call on the
+/// machine. Taking the handle also makes a second join a no-op, which the
+/// telemetry lane needs — the bind-failure path and the normal path both join
+/// it, and only one of them ever runs.
+fn join_lane(handle: &mut Option<std::thread::JoinHandle<()>>) {
+    if let Some(h) = handle.take() {
+        let _ = h.join();
+    }
 }
 
 /// Cheap "should the collector be running?" check — reads the two small config

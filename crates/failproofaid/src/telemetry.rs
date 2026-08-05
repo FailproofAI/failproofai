@@ -688,7 +688,11 @@ struct Runner {
 /// opt-out once here, before returning, so the very first [`record`] is already
 /// gated. Everything expensive (identity, which may run `ioreg`, and every HTTP
 /// request) happens on the thread.
-pub fn spawn(shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
+/// Returns `None` when the OS refused the thread — telemetry is the most
+/// expendable thing in this process, so it must never be the reason a
+/// fail-closed daemon does not start. See `audit_lane::spawn` for the full
+/// reasoning; it applies identically here.
+pub fn spawn(shutdown: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
     let home = crate::paths::failproofai_home().ok();
     let enabled = home
         .as_deref()
@@ -743,7 +747,12 @@ pub fn spawn(shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
                 wait_until_shutdown(&shutdown, interval);
             }
         })
-        .expect("failed to spawn the telemetry lane thread")
+        .inspect_err(|err| {
+            eprintln!(
+                "[failproofaid] could not start the telemetry lane: {err}; this run reports nothing"
+            );
+        })
+        .ok()
 }
 
 impl Runner {

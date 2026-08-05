@@ -94,6 +94,12 @@ describe("prefer-write-over-heredoc", () => {
   it("matches `echo \"multi\\nline\" > file`", () => {
     expect(preferWriteOverHeredoc.detect(bash('echo "a\nb" > out'), {})).not.toBeNull();
   });
+  it("matches `printf \"a\\nb\\n\" > file` (escaped newlines)", () => {
+    expect(preferWriteOverHeredoc.detect(bash('printf "line1\\nline2\\n" > out.txt'), {})).not.toBeNull();
+  });
+  it("does not match `printf \"%s\\n\" ... > file` (single line)", () => {
+    expect(preferWriteOverHeredoc.detect(bash('printf "%s\\n" "$var" > out.txt'), {})).toBeNull();
+  });
 });
 
 describe("sleep-polling-loop", () => {

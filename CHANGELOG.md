@@ -6,6 +6,7 @@
 - Restrict stable releases to a maintainer allowlist while leaving prereleases open. `publish.yml`'s preflight now refuses any publish at dist-tag `latest`, or of a non-prerelease version at any dist-tag, unless both `github.actor` and `github.triggering_actor` are on the allowlist (`NiveditJain`) — the second identity matters because a re-run keeps `actor` as the original triggerer, so checking only it would make a maintainer's stable run a re-run button for everyone with write access. A stable version published under `next` is gated too: it claims that number on npm permanently and is one `npm dist-tag add` away from being the stable release. `beta` and `next` builds are untouched, so the branch-dispatch path stays open to anyone GitHub already trusts with write access. The check runs in preflight, which every other job depends on, so a refusal costs seconds rather than a 4-way cross-compile. (#651)
 
 ### Fixes
+- Flag `printf "a\nb\n" > file` in the `prefer-write-over-heredoc` detector. The `printf` branch only matched literal embedded newlines, so the usual `\n`-escape form (which `printf` interprets into real newlines) slipped through. A `\n` only at the end (`printf "%s\n" ...`) stays unflagged, since that is a single line. (#638)
 - Harden the release workflow against shell injection from ref names and generated outputs, align every Bun cache key with the tracked `bun.lock`, and discard the temporary publish-version edit before switching to `main` for the development-version bump. (#634)
 
 ### Dependencies

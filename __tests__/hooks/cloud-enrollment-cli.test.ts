@@ -13,6 +13,15 @@ let dir: string;
 let realHome: string | undefined;
 const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, generation: 12 }));
 const ingestOk = vi.fn(async () => ({ ok: true as const }));
+// A key carrying both permissions, so the capability gating is transparent here
+// and each test exercises whatever `verify`/`verifyIngest` it injected. Reports
+// no org, which keeps these assertions about the connect flow rather than about
+// the org line — `cloud-connect-permissions.test.ts` covers the org and the
+// permission gating on their own.
+const introspectOk = vi.fn(async () => ({
+  kind: "ok" as const,
+  identity: { permissions: ["events:add", "policies:pull"] },
+}));
 
 beforeEach(() => {
   dir = mkdtempSync(resolve(tmpdir(), "fpai-enrollcli-"));
@@ -26,6 +35,7 @@ beforeEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_URL;
   ok.mockClear();
   ingestOk.mockClear();
+  introspectOk.mockClear();
 });
 
 afterEach(() => {
@@ -44,6 +54,7 @@ const base = {
   // Stubbed for the same reason `verify` is: a real call would reach the
   // network from a unit test.
   verifyIngest: ingestOk,
+  introspect: introspectOk,
   daemonStatus: () => "running" as const,
 };
 

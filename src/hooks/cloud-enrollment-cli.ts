@@ -31,6 +31,7 @@ import {
   validateIngestKey,
 } from "./collector-config";
 import { updateConfig } from "./fp-config";
+import type { introspectKey } from "./cloud-introspect";
 
 export interface ConnectOptions {
   url?: string;
@@ -55,9 +56,19 @@ export interface ConnectOptions {
    */
   sessions?: boolean;
   environment?: string;
-  /** Injected for tests so nothing reaches the network. */
+  /**
+   * Injected for tests so nothing reaches the network.
+   *
+   * All THREE must be here, and a new network call added below has to gain its
+   * seam in the same commit: `introspect` was added without one, so every test
+   * in `cloud-enrollment-cli.test.ts` silently began making a real request to
+   * `be.failproof.ai`. It usually failed fast enough to pass, which is the worst
+   * available outcome — the suite went intermittently red on network timing
+   * rather than on anything a change had broken.
+   */
   verify?: typeof verifyCloudCredentials;
   verifyIngest?: typeof validateIngestKey;
+  introspect?: typeof introspectKey;
   daemonStatus?: () => ReturnType<typeof daemonServiceStatus>;
 }
 
@@ -152,6 +163,7 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
     environment: opts.environment,
     verifyPolicy: opts.verify,
     verifyIngest: opts.verifyIngest,
+    introspect: opts.introspect,
   });
 
   if (!outcome.anyConfigured) {

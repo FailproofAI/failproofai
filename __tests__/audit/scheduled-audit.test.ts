@@ -26,6 +26,7 @@ const h = vi.hoisted(() => ({
   writeDashboardCache: vi.fn(() => true),
   openWhenReady: vi.fn(),
   launch: vi.fn(),
+  reportScanToCloud: vi.fn(),
 }));
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({ trackHookEvent: h.trackHookEvent }));
@@ -34,6 +35,9 @@ vi.mock("../../src/audit/dashboard-cache", () => ({ writeDashboardCache: h.write
 vi.mock("../../src/audit/open-browser", () => ({ openWhenReady: h.openWhenReady }));
 vi.mock("../../scripts/launch", () => ({ launch: h.launch }));
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
+vi.mock("../../src/audit/machine-scan-report", () => ({
+  reportScanToCloud: h.reportScanToCloud,
+}));
 
 import { runAuditCli, runScheduledAudit, EXIT_AUDIT_ALREADY_RUNNING } from "../../src/audit/cli";
 
@@ -60,6 +64,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.trackHookEvent.mockImplementation(() => Promise.resolve());
   h.writeDashboardCache.mockReturnValue(true);
+  // The default for every pre-existing test: an unenrolled machine, which is
+  // what the overwhelming majority of installs are.
+  h.reportScanToCloud.mockResolvedValue({ sent: false, reason: "not-enrolled" });
   prevHome = process.env.FAILPROOFAI_HOME;
   home = mkdtempSync(resolve(tmpdir(), "fpai-sched-"));
   process.env.FAILPROOFAI_HOME = home;
@@ -177,6 +184,93 @@ describe("runScheduledAudit", () => {
     h.runAudit.mockRejectedValue(new Error("nope"));
     await runScheduledAudit();
     expect(existsSync(auditLockFile())).toBe(false);
+  });
+});
+
+describe("reporting the scan to Failproof Cloud", () => {
+  it("hands the completed result to the reporter after the cache is written", async () => {
+    const scan = result({ totals: { hits: 4, projectsWithHits: 2 } });
+    h.runAudit.mockResolvedValue(scan);
+
+    expect(await runScheduledAudit()).toBe(0);
+
+    expect(h.reportScanToCloud).toHaveBeenCalledTimes(1);
+    expect(h.reportScanToCloud).toHaveBeenCalledWith(scan);
+    // Ordering matters: the cache is the channel the user actually sees, and a
+    // slow cloud must never sit in front of it.
+    const cacheOrder = h.writeDashboardCache.mock.invocationCallOrder[0];
+    const reportOrder = h.reportScanToCloud.mock.invocationCallOrder[0];
+    expect(cacheOrder).toBeLessThan(reportOrder);
+  });
+
+  it("does not report a scan that never completed", async () => {
+    h.runAudit.mockRejectedValue(new Error("disk exploded"));
+    expect(await runScheduledAudit()).toBe(1);
+    expect(h.reportScanToCloud).not.toHaveBeenCalled();
+  });
+
+  it("awaits the post — nothing keeps this process alive afterwards", async () => {
+    // Same trap as the telemetry send above: `runScheduledAudit` returning is
+    // the end of the process, so a fire-and-forget POST is simply never sent.
+    let landed = false;
+    h.reportScanToCloud.mockImplementation(
+      () =>
+        new Promise((res) =>
+          setTimeout(() => {
+            landed = true;
+            res({ sent: true, status: 202 });
+          }, 5),
+        ),
+    );
+    h.runAudit.mockResolvedValue(result());
+
+    await runScheduledAudit();
+
+    expect(landed).toBe(true);
+  });
+
+  it("still exits 0 when the cloud is unreachable, and says so once", async () => {
+    // A failed report is not a failed audit. The scan ran, the cache was
+    // written, the dashboard is current — the only thing missing is an email.
+    h.runAudit.mockResolvedValue(result());
+    h.reportScanToCloud.mockResolvedValue({ sent: false, reason: "unreachable", detail: "ECONNREFUSED" });
+
+    expect(await runScheduledAudit()).toBe(0);
+
+    const stderr = (process.stderr.write as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((c) => String(c[0]))
+      .join("");
+    expect(stderr).toContain("could not be reported");
+    expect(stderr).toContain("next scheduled scan");
+  });
+
+  it("stays silent about every outcome that is normal", async () => {
+    // An unenrolled machine, one that never opted in, and a clean week are all
+    // expected states. A line about any of them on every run is noise in a log
+    // nobody reads until something is actually wrong.
+    for (const reason of ["not-enrolled", "not-opted-in", "no-harmful-findings"] as const) {
+      vi.clearAllMocks();
+      h.writeDashboardCache.mockReturnValue(true);
+      h.trackHookEvent.mockResolvedValue(undefined);
+      h.runAudit.mockResolvedValue(result());
+      h.reportScanToCloud.mockResolvedValue({ sent: false, reason });
+
+      expect(await runScheduledAudit()).toBe(0);
+
+      const stderr = (process.stderr.write as unknown as { mock: { calls: unknown[][] } }).mock.calls
+        .map((c) => String(c[0]))
+        .join("");
+      expect(stderr, reason).toBe("");
+    }
+  });
+
+  it("does not let a throwing reporter fail the audit", async () => {
+    // `reportScanToCloud` promises never to throw; this pins that the caller
+    // does not depend on that promise being kept.
+    h.runAudit.mockResolvedValue(result());
+    h.reportScanToCloud.mockRejectedValue(new Error("boom"));
+
+    await expect(runScheduledAudit()).resolves.toBe(0);
   });
 });
 

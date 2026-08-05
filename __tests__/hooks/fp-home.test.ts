@@ -182,6 +182,7 @@ describe("config.toml", () => {
       },
       telemetry: { enabled: true },
       audit: { auto: true, intervalDays: 14 },
+      email: { reports: true },
     };
     writeConfig(cfg);
     expect(readConfig()).toEqual(cfg);

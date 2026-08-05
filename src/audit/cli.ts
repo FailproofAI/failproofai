@@ -28,6 +28,7 @@ import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
+import { reportScanToCloud } from "./machine-scan-report";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -364,6 +365,41 @@ export async function runScheduledAudit(): Promise<number> {
       `failproofai: audit complete — ${num(result.eventsScanned)} tool calls across ` +
         `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
     );
+
+    // Last, and never able to change the exit code above.
+    //
+    // Awaited rather than fired and forgotten because nothing keeps this
+    // process alive once `runScheduledAudit` returns — a detached POST would
+    // simply never be sent. It is bounded at 10s and never retried, so the
+    // worst case it can add to a ~104-second job is a rounding error, and the
+    // audit has already been persisted and reported by this point.
+    //
+    // Every silent outcome is silent HERE too: an unenrolled machine, one that
+    // never opted in, and a clean week are all normal, and a line about any of
+    // them on every scheduled run would be noise in a log nobody reads until
+    // something is wrong. Only a genuine failure to deliver says anything, and
+    // even that is a note rather than a non-zero exit — the scan itself worked.
+    //
+    // Wrapped even though `reportScanToCloud` documents that it never throws:
+    // this is the last statement before a successful return, so an unhandled
+    // rejection here would turn a completed, cached, reported audit into exit 1
+    // — the audit failing because the *email* failed, which is exactly backwards.
+    try {
+      const report = await reportScanToCloud(result);
+      if (!report.sent && (report.reason === "rejected" || report.reason === "unreachable")) {
+        const why =
+          report.reason === "rejected"
+            ? `the server answered ${report.status}`
+            : report.detail;
+        process.stderr.write(
+          `failproofai: audit findings could not be reported to Failproof Cloud (${why}); ` +
+            "the next scheduled scan will try again\n",
+        );
+      }
+    } catch {
+      // Deliberately silent: the scan itself succeeded and has already been
+      // persisted and announced on stdout.
+    }
     return 0;
   } finally {
     attempt.lock.release();

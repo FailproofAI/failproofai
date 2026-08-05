@@ -7,6 +7,7 @@
 
 import { version } from "../../package.json";
 import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../posthog-key";
+import { isTelemetryEnabled } from "../../lib/telemetry-enabled";
 
 const API_KEY = POSTHOG_API_KEY;
 const CAPTURE_URL = "https://us.i.posthog.com/capture/";
@@ -57,7 +58,10 @@ export async function trackHookEvent(
   event: string,
   properties?: Record<string, unknown>,
 ): Promise<void> {
-  if (process.env.FAILPROOFAI_TELEMETRY_DISABLED === "1") return;
+  // Honours the config file as well as the env var — the env var alone cannot
+  // reach a system-scope daemon. Memoised, so this stays off the hook path's
+  // latency budget. See lib/telemetry-enabled.ts.
+  if (!isTelemetryEnabled()) return;
 
   const p = sendEvent(distinctId, event, properties);
   pending.add(p);

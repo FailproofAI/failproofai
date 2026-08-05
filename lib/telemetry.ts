@@ -9,6 +9,7 @@
  */
 
 import { getInstanceId } from "./telemetry-id";
+import { isTelemetryEnabled } from "./telemetry-enabled";
 import { version } from "../package.json";
 import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../src/posthog-key";
 
@@ -74,10 +75,13 @@ async function resilientFetch(
   return new Response("{}", { status: 200 });
 }
 
-/** Returns true unless the user has explicitly opted out. */
-export function isTelemetryEnabled(): boolean {
-  return process.env.FAILPROOFAI_TELEMETRY_DISABLED !== "1";
-}
+/**
+ * Returns true unless the user has explicitly opted out, via either
+ * `FAILPROOFAI_TELEMETRY_DISABLED=1` or `[telemetry] enabled = false` in
+ * config.toml. Re-exported from the shared resolver so all four dispatchers
+ * cannot drift — see lib/telemetry-enabled.ts.
+ */
+export { isTelemetryEnabled };
 
 /**
  * Lazily import posthog-node and create a client.

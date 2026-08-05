@@ -151,6 +151,18 @@ export interface FpConfig {
     environment: string;
     machineId?: string;
   };
+  telemetry: {
+    /**
+     * Anonymous product telemetry. On unless switched off.
+     *
+     * This is the ONLY off-switch that can reach the daemon.
+     * `FAILPROOFAI_TELEMETRY_DISABLED=1` is read from `process.env`, and
+     * failproofaid runs as a system-scope service whose environment carries
+     * essentially nothing — so a shell export is structurally incapable of
+     * turning it off there. A file both sides read is the only thing that works.
+     */
+    enabled: boolean;
+  };
 }
 
 export const DEFAULT_CONFIG: FpConfig = {
@@ -163,6 +175,7 @@ export const DEFAULT_CONFIG: FpConfig = {
     redact: "minimal",
     environment: "local",
   },
+  telemetry: { enabled: true },
 };
 
 export function readConfig(): FpConfig {
@@ -171,6 +184,7 @@ export function readConfig(): FpConfig {
     const mode = (parsed.mode as Record<string, unknown> | undefined)?.kind;
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
+    const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
     return {
       // Anything unrecognised reads as `oss`. The failure direction matters:
       // a corrupt config must not be able to turn cloud reporting ON.
@@ -192,6 +206,10 @@ export function readConfig(): FpConfig {
           typeof collector.environment === "string" ? collector.environment : "local",
         machineId: typeof collector.machine_id === "string" ? collector.machine_id : undefined,
       },
+      // Only an explicit `false` switches it off. Absent, or any other value,
+      // reads as on — the shipped default, and what a config with no
+      // [telemetry] block at all means.
+      telemetry: { enabled: telemetry.enabled !== false },
     };
   } catch {
     return structuredClone(DEFAULT_CONFIG);
@@ -205,7 +223,8 @@ export function writeConfig(config: FpConfig): void {
     "# Credentials are NOT here — see credentials.toml (owner-only).",
     "",
     "[mode]",
-    "# \"oss\"   — fully local. Nothing is sent anywhere, ever.",
+    "# \"oss\"   — fully local. No transcripts, hook activity or policy leave",
+    "#           this machine.",
     "# \"cloud\" — reports to, and receives policy from, Failproof Cloud.",
     `kind = ${JSON.stringify(config.mode)}`,
     "",
@@ -230,6 +249,14 @@ export function writeConfig(config: FpConfig): void {
     `environment = ${JSON.stringify(c.environment)}`,
   );
   if (c.machineId) lines.push(`machine_id = ${JSON.stringify(c.machineId)}`);
+  // Written ONLY when switched off. A default install therefore carries no
+  // [telemetry] block at all, but an operator who added one by hand keeps it:
+  // writeConfig regenerates this file wholesale, so emitting the key only when
+  // it is set is what stops a later rewrite from silently switching telemetry
+  // back on underneath them.
+  if (!config.telemetry.enabled) {
+    lines.push("", "[telemetry]", "enabled = false");
+  }
   writeFileAt(configFile(), lines.join("\n") + "\n");
 }
 
@@ -238,12 +265,14 @@ export function updateConfig(patch: {
   mode?: Mode;
   daemon?: Partial<FpConfig["daemon"]>;
   collector?: Partial<FpConfig["collector"]>;
+  telemetry?: Partial<FpConfig["telemetry"]>;
 }): FpConfig {
   const current = readConfig();
   const next: FpConfig = {
     mode: patch.mode ?? current.mode,
     daemon: { ...current.daemon, ...patch.daemon },
     collector: { ...current.collector, ...patch.collector },
+    telemetry: { ...current.telemetry, ...patch.telemetry },
   };
   writeConfig(next);
   return next;

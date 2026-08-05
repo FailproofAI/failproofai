@@ -23,6 +23,7 @@ import { resolve } from "node:path";
 import { platform, arch, release, homedir, hostname } from "node:os";
 import { createHmac } from "node:crypto";
 import { trackInstallEvent } from "../scripts/install-telemetry.mjs";
+import { isTelemetryEnabled } from "./telemetry-enabled";
 
 const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__";
 const NAMESPACE = "failproofai-telemetry-v1";
@@ -177,6 +178,13 @@ export async function maybeReportInstall(version: string): Promise<void> {
     // Steady state: same version already reported. Costs one stat() per command.
     if (previousVersion === version) return;
 
+    // The install dispatcher is a dependency-free .mjs and cannot import the
+    // TOML config, so it is told the verdict rather than resolving it. Passed
+    // per call rather than checked here, because the version marker below must
+    // still be written when telemetry is off — otherwise this whole check would
+    // re-run on every single CLI invocation, forever.
+    const telemetryEnabled = isTelemetryEnabled();
+
     const hooks = checkHooks();
 
     const events: Promise<void>[] = [];
@@ -187,7 +195,7 @@ export async function maybeReportInstall(version: string): Promise<void> {
           arch: arch(),
           os_release: release(),
           node_version: process.versions.node,
-        }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+        }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
       );
     } else {
       const cmp = compareSemver(previousVersion, version);
@@ -198,7 +206,7 @@ export async function maybeReportInstall(version: string): Promise<void> {
           direction: cmp < 0 ? "upgrade" : "downgrade",
           platform: platform(),
           arch: arch(),
-        }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+        }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
       );
     }
 
@@ -212,7 +220,7 @@ export async function maybeReportInstall(version: string): Promise<void> {
         hooks_configured: hooks.configured,
         hooks_registered: hooks.registered,
         enabled_policy_count: hooks.policyCount,
-      }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+      }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
     );
 
     // Record before awaiting: a dropped event is cheaper than re-reporting the

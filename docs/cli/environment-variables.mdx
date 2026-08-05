@@ -21,9 +21,27 @@ description: "Configure failproofai behavior with environment variables"
 
 ## Telemetry
 
+failproofai reports anonymous usage telemetry by default. There are two ways to
+turn it off, and they resolve to whichever is more restrictive — an environment
+variable can never re-enable something the config file switched off.
+
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disable anonymous usage telemetry |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disable anonymous usage telemetry for this process |
+
+To disable it permanently for the machine, add this to `~/.failproofai/config.toml`:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+The config file is the option to use if you run the **failproofaid daemon**.
+The daemon is a system-scope service, and its environment does not include
+variables exported from your shell — so `FAILPROOFAI_TELEMETRY_DISABLED` cannot
+reach it. `[telemetry] enabled = false` is read by both the CLI and the daemon.
+</Note>
 
 ## Authentication
 

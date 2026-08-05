@@ -156,9 +156,47 @@ describe("config.toml", () => {
         sessions: true, hooks: true, hooksVerbosity: "all" as const,
         redact: "off" as const, environment: "prod", machineId: "box-1",
       },
+      telemetry: { enabled: true },
     };
     writeConfig(cfg);
     expect(readConfig()).toEqual(cfg);
+  });
+
+  it("telemetry is on by default and the file says nothing about it", () => {
+    // The shipped posture: on, and not advertised in the config a user cat's.
+    writeConfig(DEFAULT_CONFIG);
+    expect(readConfig().telemetry.enabled).toBe(true);
+    expect(readFileSync(H.configFile(), "utf8")).not.toContain("[telemetry]");
+  });
+
+  it("a telemetry opt-out SURVIVES a rewrite", () => {
+    // writeConfig regenerates the whole file, so a key it does not emit is a key
+    // it silently deletes. Switching telemetry back on under someone who turned
+    // it off would be the worst possible bug in this feature.
+    writeConfig({ ...DEFAULT_CONFIG, telemetry: { enabled: false } });
+    expect(readConfig().telemetry.enabled).toBe(false);
+    expect(readFileSync(H.configFile(), "utf8")).toContain("enabled = false");
+
+    // A later unrelated write must not resurrect it.
+    writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
+    expect(readConfig().telemetry.enabled).toBe(false);
+  });
+
+  it("only an explicit false disables telemetry", () => {
+    writeFileSync(H.configFile(), '[telemetry]\nenabled = "no"\n');
+    expect(readConfig().telemetry.enabled).toBe(true);
+    writeFileSync(H.configFile(), "[telemetry]\nenabled = false\n");
+    expect(readConfig().telemetry.enabled).toBe(false);
+  });
+
+  it("the mode comment no longer claims nothing is EVER sent", () => {
+    // It used to read "fully local. Nothing is sent anywhere, ever." — untrue
+    // while four telemetry dispatchers exist. Not mentioning telemetry is fine;
+    // asserting the opposite is not.
+    writeConfig(DEFAULT_CONFIG);
+    const written = readFileSync(H.configFile(), "utf8");
+    expect(written).not.toContain("Nothing is sent anywhere, ever");
+    expect(written).toContain("No transcripts, hook activity or policy leave");
   });
 
   it("a corrupt config reads as OSS, never as cloud", () => {

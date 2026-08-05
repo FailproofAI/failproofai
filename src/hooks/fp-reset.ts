@@ -32,7 +32,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { LAYOUT_VERSION, failproofaiHome, resettablePaths } from "./fp-home";
 import { detectLayout, readConfig, updateConfig, writeVersionFile, type LayoutState } from "./fp-config";
-import { daemonServiceStatus, isDaemonSupportedPlatform } from "./daemon-service";
+import { daemonServiceStatus, daemonVersionSkew, isDaemonSupportedPlatform } from "./daemon-service";
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
@@ -117,7 +117,7 @@ export function checkLayoutForCli(): LayoutCheck {
   }
 
   if (state.kind === "absent") writeVersionFile();
-  return { state, fatal: false, lines: healDaemonFlag() };
+  return { state, fatal: false, lines: [...healDaemonFlag(), ...staleDaemonHint()] };
 }
 
 /**
@@ -142,7 +142,7 @@ function healDaemonFlag(): string[] {
     if (!isDaemonSupportedPlatform()) return [];
     if (daemonServiceStatus() !== "not-installed") return [];
 
-    updateConfig({ daemon: { configured: false, installedVersion: undefined } });
+    updateConfig({ daemon: { configured: false } });
     return [
       `failproofaid is no longer installed, but this machine was still configured`,
       `to require it — which denies every tool call. Cleared that flag; policies`,
@@ -151,6 +151,28 @@ function healDaemonFlag(): string[] {
     ];
   } catch {
     // Never let a self-heal attempt break the command the user actually typed.
+    return [];
+  }
+}
+
+/**
+ * One line when the daemon is older than the CLI.
+ *
+ * Deliberately NOT on the hook path. A stale daemon still enforces every policy
+ * correctly — it is slower to notice an upgrade, not broken — so a warning once
+ * per tool call would be noise about something that is working. CLI commands
+ * are where a person is present to act on it.
+ */
+function staleDaemonHint(): string[] {
+  try {
+    const skew = daemonVersionSkew();
+    if (!skew) return [];
+    return [
+      `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected} — ` +
+        `run \`failproofai config\` to update it.`,
+      ``,
+    ];
+  } catch {
     return [];
   }
 }

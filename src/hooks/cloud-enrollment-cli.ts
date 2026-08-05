@@ -11,7 +11,9 @@ import {
   writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
-import { daemonServiceStatus } from "./daemon-service";
+import { daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
+import { readVersionFile } from "./fp-config";
+import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
 import {
   cloudBaseFor,
@@ -205,6 +207,22 @@ export function runDisconnectCommand(): CommandResult {
 }
 
 /** The connection half of `--status`. Never prints the token. */
+/**
+ * The version line for `--status`.
+ *
+ * First thing worth knowing in a bug report, and the only place a user can
+ * currently find out which daemon they are running without listing a directory.
+ */
+export function versionStatusLines(): string[] {
+  const skew = daemonVersionSkew();
+  const recorded = readVersionFile();
+  const daemon = recorded?.daemon ?? "not installed";
+  return [
+    `CLI ${cliVersion} · daemon ${daemon}${skew ? " (STALE)" : ""} · layout ${recorded?.layout ?? "-"}`,
+    ...(skew ? ["  Run `failproofai config` to update the daemon."] : []),
+  ];
+}
+
 export function connectionStatusLines(daemonStatus = daemonServiceStatus): string[] {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {

@@ -66,6 +66,7 @@ import {
   daemonServiceFilePath,
   daemonServiceStatus,
   daemonStatusCommand,
+  daemonVersionSkew,
   primeElevation,
   setDaemonConfigured,
 } from "./daemon-service";
@@ -89,6 +90,8 @@ import {
   type SetupTarget,
 } from "./setup-state";
 import { launcherMarker } from "./fp-home";
+import { pruneOldDaemonBinaries } from "./daemon-download";
+import { version as cliVersion } from "../../package.json";
 import { acquireOnboardingLock } from "./onboarding-lock";
 
 export interface WizardIO {
@@ -665,7 +668,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // "installed" as good enough would skip the repair and then set
   // `daemonConfigured` against a service that is not answering — which fails
   // closed on every tool call.
-  const daemonAlreadyRunning = daemonSupported && daemonServiceStatus() === "running";
+  // Running is not enough — it must also be the version this CLI ships.
+  //
+  // Skipping on "running" alone was right for the case it was written for
+  // (never demand a password for work already done), and exactly backwards
+  // during an upgrade: the OLD daemon is perfectly healthy, so setup skipped
+  // it and the stale version survived. That made "just re-run config" — the
+  // remedy every message points at — silently do nothing.
+  const daemonSkew = daemonSupported ? daemonVersionSkew() : null;
+  const daemonAlreadyRunning =
+    daemonSupported && daemonServiceStatus() === "running" && daemonSkew === null;
   let daemonWanted = daemonSupported && !daemonAlreadyRunning;
 
   if (daemonWanted) {
@@ -690,6 +702,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     }
   } else if (daemonAlreadyRunning) {
     stdout.write("failproofaid is already installed and running — leaving it alone.\n\n");
+  }
+  if (daemonSkew) {
+    stdout.write(
+      `failproofaid is ${daemonSkew.installed} but this CLI ships ${daemonSkew.expected} — ` +
+        `reinstalling it.\n\n`,
+    );
   }
 
   // 1 — Where? Inferred from cwd, then confirmed.
@@ -997,7 +1015,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // The flag that makes hooks route through the daemon — and, on a machine
   // where the daemon is unreachable, fail closed. Only ever set after a
   // verified-running service, never on intent.
-  if (daemonInstalled) setDaemonConfigured(true);
+  // The version is recorded HERE, from the CLI that installed it — which is by
+  // construction the version that was installed, since the download URL and the
+  // binary filename are both derived from it.
+  if (daemonInstalled) {
+    setDaemonConfigured(true, cliVersion);
+    // Only now — the unit points at the new binary, so older ones are no
+    // longer referenced by anything. Keeps the previous version for an
+    // offline rollback.
+    pruneOldDaemonBinaries();
+  }
 
   // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so
   // it doesn't add dead time between "apply" and the config actually writing,

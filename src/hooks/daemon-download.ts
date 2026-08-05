@@ -33,7 +33,17 @@
  * this writes an executable that a service manager will then run at login.
  */
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -166,6 +176,47 @@ function platformPackageBinary(dir: string): string | null {
  * manager could pick up), mode 0755, pid-suffixed so two concurrent wizards
  * stay off each other's file.
  */
+/**
+ * Delete daemon binaries older than the current and previous versions.
+ *
+ * Called AFTER the new binary is in place and the unit repointed, never
+ * before: a binary a running service points at must not be removed out from
+ * under it. One previous version is kept deliberately — a rollback is then a
+ * local file rather than a re-download, which is the difference between
+ * working and not on a machine that is offline or behind a proxy.
+ *
+ * Sorted by mtime rather than by parsing versions out of filenames: a
+ * prerelease ordering (`1.0.0-beta.10` vs `1.0.0-beta.9`) is easy to get
+ * subtly wrong, and "which did we install most recently" is the question that
+ * actually matters here.
+ */
+export function pruneOldDaemonBinaries(keep = 2): string[] {
+  const removed: string[] = [];
+  try {
+    const dir = daemonBinaryDir();
+    const entries = readdirSync(dir)
+      .filter((f) => f.startsWith("failproofaid-") && !f.endsWith(".tmp"))
+      .map((f) => {
+        const full = resolve(dir, f);
+        return { full, mtime: statSync(full).mtimeMs };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+
+    for (const stale of entries.slice(keep)) {
+      try {
+        rmSync(stale.full, { force: true });
+        removed.push(stale.full);
+      } catch {
+        // In use, or not ours to delete. Leaving it costs disk; removing it by
+        // force could break a running service.
+      }
+    }
+  } catch {
+    // No directory yet, or unreadable — nothing to prune.
+  }
+  return removed;
+}
+
 function installBinaryBytes(binary: Buffer): string {
   const target = installedBinaryPath();
   const tempPath = `${target}.${process.pid}.tmp`;

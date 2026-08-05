@@ -151,7 +151,9 @@ describe("config.toml", () => {
   it("round-trips every field", () => {
     const cfg = {
       mode: "cloud" as const,
-      daemon: { configured: true, installedVersion: "1.2.3" },
+      // No version field here on purpose — the installed daemon version lives
+      // in VERSION, so one copy cannot disagree with another.
+      daemon: { configured: true },
       collector: {
         sessions: true, hooks: true, hooksVerbosity: "all" as const,
         redact: "off" as const, environment: "prod", machineId: "box-1",

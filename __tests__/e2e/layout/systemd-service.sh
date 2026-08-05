@@ -59,6 +59,7 @@ User=root
 Environment=HOME=/root
 Environment=FAILPROOFAI_HOME=/root/.failproofai
 Environment="FAILPROOFAI_WORKER_CMD=node /opt/fp/dist/worker.mjs"
+Environment="FAILPROOFAI_CLI_CMD=node /opt/fp/dist/cli.mjs"
 ExecStart=/opt/fp/bin/failproofaid
 Restart=on-failure
 RestartSec=2
@@ -114,6 +115,7 @@ User=root
 Environment=HOME=/root
 Environment=FAILPROOFAI_HOME=/root/.failproofai
 Environment="FAILPROOFAI_WORKER_CMD=node /opt/fp/dist/worker.mjs"
+Environment="FAILPROOFAI_CLI_CMD=node /opt/fp/dist/cli.mjs"
 ExecStart=/opt/fp/bin/failproofaid
 [Install]
 WantedBy=multi-user.target

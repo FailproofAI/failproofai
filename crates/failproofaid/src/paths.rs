@@ -83,6 +83,21 @@ pub fn cursors_dir() -> io::Result<PathBuf> {
     Ok(failproofai_home()?.join("cursors"))
 }
 
+/// `~/.failproofai/state/audit-schedule.json` — when the scheduled audit last
+/// ran and when the next one is due.
+///
+/// The one path under `state/` that IS mirrored here, and the exception is the
+/// point: the collector derives its own paths from the `home` it is handed (see
+/// the note below), whereas this file has exactly two parties — the daemon,
+/// which is its sole writer, and `auditScheduleFile()` in `src/hooks/fp-home.ts`,
+/// which the dashboard's last-run / next-due readout reads. Two processes with
+/// two path expressions is precisely the drift this section exists to prevent.
+pub fn audit_schedule_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?
+        .join("state")
+        .join("audit-schedule.json"))
+}
+
 // The collector's own paths — state/, spool/, failed/, collector-health.json,
 // custom-agents/, credentials.toml, config.toml — are NOT mirrored here.
 // `fpai-collect` derives them from the `home` it is handed (see its

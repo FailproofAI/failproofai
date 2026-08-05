@@ -1,3 +1,4 @@
+mod audit_lane;
 mod cloud_client;
 pub mod cloud_policies;
 mod lock;
@@ -104,6 +105,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // including draining it on shutdown.
     let collector_mgr = spawn_collector_manager(shutdown.clone());
 
+    // The scheduled local audit. Another lane on the same pattern — its own
+    // thread, the same shutdown flag, every error swallowed — but it never
+    // evaluates anything in-process: it spawns `failproofai audit --scheduled`
+    // as a separate short-lived process, because a ~104-second scan on the warm
+    // worker's single serialized chain would exceed worker.rs's 30s cap and turn
+    // into a DENY on every tool call across all 12 CLIs (see audit_lane's header).
+    //
+    // Started unconditionally although the feature is OFF by default: like the
+    // collector manager and the cloud lane, it re-reads config.toml every tick,
+    // so switching it on with `failproofai config` — which writes that file
+    // WITHOUT root, against a system unit — takes effect without a restart.
+    let audit_lane = audit_lane::spawn(shutdown.clone());
+
     let srv = server::Server::bind(&socket_path, worker)?;
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 
@@ -114,6 +128,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // collector a chance to flush instead of dropping buffered events.
     let _ = collector_mgr.join();
     let _ = cloud_monitor.join();
+    // Returns promptly even mid-scan: the lane watches the same flag while it
+    // waits on its child and kills the process group rather than waiting the
+    // scan out, so a `systemctl stop` is never held up by an audit.
+    let _ = audit_lane.join();
 
     run_result?;
     Ok(())

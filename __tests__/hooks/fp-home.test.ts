@@ -42,8 +42,19 @@ describe("fp-home layout", () => {
       H.hookActivityDir(), H.customAgentsEventsDir(), H.runDir(),
       H.stateDir(), H.spoolDir(), H.failedDir(), H.collectorHealthFile(),
       H.sessionPauseDir(), H.launcherMarker(), H.onboardingLockFile(),
+      H.auditScheduleFile(),
     ];
     for (const p of paths) expect(p.startsWith(home + "/")).toBe(true);
+  });
+
+  it("puts the audit schedule exactly where the daemon writes it", () => {
+    // The daemon is this file's sole writer and resolves it independently in
+    // crates/failproofaid/src/paths.rs. A divergence does not fail, it just
+    // means the dashboard's last-run / next-due readout reads a path nothing
+    // writes — and an absent file is indistinguishable from a lane that has
+    // never run. Kept next to the Rust literal so the pair has to be changed
+    // together.
+    expect(H.auditScheduleFile()).toBe(resolve(home, "state", "audit-schedule.json"));
   });
 
   it("keeps run/ shallow — sockets must fit in SUN_LEN", () => {

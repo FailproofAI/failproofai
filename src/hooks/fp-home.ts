@@ -189,6 +189,17 @@ export const failedDir = (home?: string) => resolve(stateDir(home), "failed");
 export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "collector-health.json");
 /** Per-session enforcement pauses, keyed by a hash of the session id. */
 export const sessionPauseDir = () => resolve(stateDir(), "sessions");
+/**
+ * When the scheduled audit last ran, and when the next one is due.
+ *
+ * The DAEMON is the sole writer (`crates/failproofaid/src/audit_lane.rs`, which
+ * mirrors this path in `paths.rs`) — it owns the schedule, and a second writer
+ * racing it could hand a machine two full scans back to back. Everything on this
+ * side reads it: the interval itself lives in `config.toml`'s `[audit]` table,
+ * which a human edits, while this file is derived state a human never opens,
+ * which is why it sits under `state/` rather than beside the audit results.
+ */
+export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "audit-schedule.json");
 export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");
 export const onboardingLockFile = (home?: string) => resolve(stateDir(home), "onboarding.lock");
 export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), "codex-session-paths.json");

@@ -302,6 +302,39 @@ customPolicies.add({
     expect(response.type).toBe("error");
   });
 
+  it("speaks ONLY the hook protocol — the audit must never be routed onto this chain", async () => {
+    // A tripwire, not a feature test. Every request here is serialized through
+    // ONE promise chain (see the module header), `worker.rs` caps a call at 30
+    // seconds, and `daemon-client.ts` turns that timeout into a DENY — so on a
+    // daemon-configured machine, putting the ~104-second audit on this socket
+    // would be a fail-closed denial of every tool call across all 12 CLIs for
+    // as long as the scan ran. The daemon's audit lane therefore spawns a
+    // SEPARATE short-lived process (crates/failproofaid/src/audit_lane.rs).
+    //
+    // If someone later "optimises" that into a worker request to save a process
+    // spawn, this is what fails: adding an `audit` arm to isWorkerHookRequest
+    // makes the assertion below stop holding.
+    for (const request of [
+      { type: "audit" },
+      { type: "audit", scheduled: true },
+      { type: "runAudit", hookEvent: "PreToolUse", cli: "claude", stdin: "{}" },
+    ]) {
+      const response = await sendRequest(workerSocketPath, request);
+      expect(response.type).toBe("error");
+      expect(response.message).toBe("unrecognized request shape");
+    }
+
+    // And the one thing it does speak still works, so this is a rejection of
+    // the request type rather than a wedged server.
+    const hook = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "PreToolUse",
+      cli: "claude",
+      stdin: JSON.stringify({ cwd: projectDir, tool_name: "Bash", tool_input: { command: "echo ok" } }),
+    });
+    expect(hook.type).toBe("hookResult");
+  });
+
   it("answers both requests when two frames arrive coalesced in one read", async () => {
     // Two requests written back-to-back on one connection routinely land in
     // a single `data` event. Decoding only the first leaves the second

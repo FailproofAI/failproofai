@@ -14,6 +14,9 @@
 ### Chores
 - Remove this repo's dogfood `block-version-bumps` policy, which reserved `package.json` version edits for `luv-cut-X.Y.Z` branches. It was added in #285 after the #270/#284 version drift, but it also blocks the only fix for a burned publish version, and the preflight check above now catches the failure it was guarding against at the point where it actually matters. The `release-prep-check` instruction that referenced it drops its last line.
 
+### Dependencies
+- Bump `react` to 19.2.8 and `@types/react` to 19.2.18 (#652). `react-dom` moves to 19.2.8 in the same commit (#607): React refuses to render when `react` and `react-dom` are not the exact same version, so the two bumps are only green together — landing #652 alone failed 15 component test files with `Incompatible React versions`.
+
 ## 1.0.0-beta.4 — 2026-08-04
 
 ### Features

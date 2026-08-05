@@ -356,6 +356,22 @@ export function updateConfig(patch: {
 
 export interface FpCredentials {
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
+  /**
+   * Which organisation this machine's credentials report into, as the server
+   * named it at connect time (`/v1/auth/introspect`).
+   *
+   * ONE table, not a field on `[cloud]` and `[ingest]` both: it describes the
+   * TOKEN, and connect uses the same token for both capabilities, so two copies
+   * could only ever drift or disagree. It also has to survive the case that
+   * motivated recording it at all — an `events:add`-only key, which configures
+   * ingest and never writes `[cloud]`.
+   *
+   * Recorded so `--status` can answer "where does this machine's data go?"
+   * with no network call: the question asked when a dashboard looks empty, and
+   * the one a key pasted from the wrong org gets silently wrong. Absent against
+   * a server predating introspect, and in files written by an older CLI.
+   */
+  org?: { id?: string; slug?: string; name?: string };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
 }
@@ -378,6 +394,14 @@ export function readCredentials(): FpCredentials {
       const machineLabel =
         typeof cloud.machine_label === "string" && cloud.machine_label ? cloud.machine_label : undefined;
       out.cloud = { url: cloud.url, machineId: cloud.machine_id, token: cloud.token, machineLabel };
+    }
+    const org = parsed.org as Record<string, unknown> | undefined;
+    if (org) {
+      // Every field independently optional: a server may send fewer than three,
+      // and a partial org record is still better than none for `--status`.
+      const pick = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name) };
+      if (built.id || built.slug || built.name) out.org = built;
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
@@ -427,6 +451,12 @@ export function writeCredentials(creds: FpCredentials): void {
       `url = ${JSON.stringify(creds.ingest.url)}`,
       `key = ${JSON.stringify(creds.ingest.key)}`,
     );
+  }
+  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
+    lines.push("", "[org]");
+    if (creds.org.id) lines.push(`id = ${JSON.stringify(creds.org.id)}`);
+    if (creds.org.slug) lines.push(`slug = ${JSON.stringify(creds.org.slug)}`);
+    if (creds.org.name) lines.push(`name = ${JSON.stringify(creds.org.name)}`);
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {
     lines.push("", "[auth]");

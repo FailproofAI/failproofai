@@ -32,36 +32,41 @@ struct StoredCredentials {
     token: String,
 }
 
-/// Where the cloud credential lives — the same two rules the TS side applies in
-/// `cloudCredentialPath()`, so the pair cannot drift.
-///
-/// Layout 2 moved this out of `~/.failproofai/cloud.json` and into the `[cloud]`
-/// table of `credentials.toml`, alongside every other token. Reading the old
-/// path was leaving the daemon with **no enrolment at all** on a layout-2 home:
-/// it polled for cloud policy, found no credential, and reported itself as
-/// simply not connected while the CLI showed a perfectly good connection.
-///
-/// The legacy path is deliberately NOT tried as a fallback. Layout 2 chose
-/// wipe-and-re-setup over migration (see `legacy` in src/hooks/fp-home.ts —
-/// "Nothing reads data from these paths"), so an old `cloud.json` on disk is
-/// something the reset is expected to delete, not a credential still in force.
+/// `FAILPROOFAI_CLOUD_CREDENTIALS`, when set — a standalone JSON file, the shape
+/// this loader has always read. Mirrors `cloudCredentialPath()` on the TS side.
+pub fn credentials_json_override() -> Option<std::path::PathBuf> {
+    std::env::var_os("FAILPROOFAI_CLOUD_CREDENTIALS").map(std::path::PathBuf::from)
+}
+
+/// `~/.failproofai/credentials.toml` — where layout 2 keeps the enrolment.
 pub fn credentials_path() -> Option<std::path::PathBuf> {
-    if let Some(path) = std::env::var_os("FAILPROOFAI_CLOUD_CREDENTIALS") {
-        return Some(std::path::PathBuf::from(path));
+    if let Some(path) = credentials_json_override() {
+        return Some(path);
     }
     crate::paths::failproofai_home()
         .ok()
-        .map(|home| home.join(CREDENTIALS_FILE))
+        .map(|home| home.join("credentials.toml"))
 }
 
-const CREDENTIALS_FILE: &str = "credentials.toml";
+/// `~/.failproofai/cloud.json` — layout 1. Read only if the TOML is absent.
+fn legacy_credentials_path() -> Option<std::path::PathBuf> {
+    crate::paths::failproofai_home()
+        .ok()
+        .map(|home| home.join("cloud.json"))
+}
 
-/// True when the credential is coming from the JSON override rather than the
-/// TOML. Mirrors the TS `usingJsonOverride()`: the env var still names a
-/// standalone JSON file, because CI and container setups already use it that way
-/// and it predates the consolidation.
-fn using_json_override() -> bool {
-    std::env::var_os("FAILPROOFAI_CLOUD_CREDENTIALS").is_some()
+/// The `[cloud]` table of `credentials.toml`. Snake_case keys, because that is
+/// what `fp-config.ts`'s `writeCredentials` emits.
+#[derive(serde::Deserialize)]
+struct TomlCredentials {
+    cloud: Option<TomlCloud>,
+}
+
+#[derive(serde::Deserialize)]
+struct TomlCloud {
+    url: String,
+    machine_id: String,
+    token: String,
 }
 
 impl CloudClient {
@@ -90,8 +95,64 @@ impl CloudClient {
     /// A missing file means "not enrolled" — not an error. A malformed one IS
     /// an error: it was written by us, so bad content means something is wrong
     /// that the operator should see rather than a silently unenrolled machine.
+    ///
+    /// Two formats, in this order:
+    ///
+    ///   1. `credentials.toml`'s `[cloud]` table — what layout 2 writes, and
+    ///      what `--connect` has produced since. Also the JSON shape when
+    ///      `FAILPROOFAI_CLOUD_CREDENTIALS` names a file, which is how the
+    ///      override has always worked.
+    ///   2. `cloud.json` — layout 1, read ONLY when the TOML is absent, for a
+    ///      machine whose daemon upgraded before its CLI ran once to migrate.
+    ///      Never preferred: mid-migration both exist and the TOML is current.
+    ///
+    /// Reading only (1)'s old location is what made cloud-managed policy dead on
+    /// arrival in layout 2 — `--connect` reported success, wrote a credential
+    /// the daemon never looked at, and the daemon logged "cloud-managed policy
+    /// polling disabled" as though the machine had simply never enrolled.
     pub fn from_file() -> Result<Option<Self>, String> {
+        // An explicitly-named file is the whole configuration: if it is absent,
+        // this machine is not enrolled. Falling through to the default location
+        // would quietly enrol it against a DIFFERENT credential than the one the
+        // operator named — the opposite of what naming a file asks for.
+        if let Some(path) = credentials_json_override() {
+            return match std::fs::read(&path) {
+                Ok(bytes) => Self::from_json_bytes(&bytes, &path),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(err) => Err(format!("failed to read {}: {err}", path.display())),
+            };
+        }
+
         let Some(path) = credentials_path() else {
+            return Ok(None);
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Self::from_legacy_file();
+            }
+            Err(err) => return Err(format!("failed to read {}: {err}", path.display())),
+        };
+
+        let parsed: TomlCredentials = toml::from_str(
+            std::str::from_utf8(&bytes)
+                .map_err(|err| format!("{} is not valid UTF-8: {err}", path.display()))?,
+        )
+        .map_err(|err| format!("invalid credentials in {}: {err}", path.display()))?;
+
+        // The file exists for the ingest key and the auth session too, so no
+        // `[cloud]` table means "not enrolled for policy" — not a malformed file.
+        let Some(cloud) = parsed.cloud else {
+            return Ok(None);
+        };
+        if cloud.token.is_empty() {
+            return Err(format!("empty token in {}", path.display()));
+        }
+        Self::new(&cloud.url, cloud.token, cloud.machine_id).map(Some)
+    }
+
+    fn from_legacy_file() -> Result<Option<Self>, String> {
+        let Some(path) = legacy_credentials_path() else {
             return Ok(None);
         };
         let bytes = match std::fs::read(&path) {
@@ -99,15 +160,9 @@ impl CloudClient {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(format!("failed to read {}: {err}", path.display())),
         };
-        if using_json_override() {
-            return Self::from_json_bytes(&bytes, &path);
-        }
-        let text = String::from_utf8(bytes)
-            .map_err(|_| format!("{} is not valid UTF-8", path.display()))?;
-        Self::from_credentials_toml(&text, &path)
+        Self::from_json_bytes(&bytes, &path)
     }
 
-    /// The standalone JSON file named by `FAILPROOFAI_CLOUD_CREDENTIALS`.
     fn from_json_bytes(bytes: &[u8], path: &std::path::Path) -> Result<Option<Self>, String> {
         let stored: StoredCredentials = serde_json::from_slice(bytes)
             .map_err(|err| format!("invalid credentials in {}: {err}", path.display()))?;
@@ -122,27 +177,6 @@ impl CloudClient {
             return Err(format!("empty token in {}", path.display()));
         }
         Self::new(&stored.url, stored.token, stored.machine_id).map(Some)
-    }
-
-    /// The `[cloud]` table of layout 2's `credentials.toml`.
-    ///
-    /// An absent or incomplete table reads as "not enrolled for policy" rather
-    /// than as an error, exactly as the TS reader treats it: the same file also
-    /// carries `[ingest]` and `[auth]`, so a machine reporting to the dashboard
-    /// but not pulling policy is an ordinary, supported half-state — not damage.
-    /// Only TOML that will not parse at all is an error, because we wrote it.
-    fn from_credentials_toml(text: &str, path: &std::path::Path) -> Result<Option<Self>, String> {
-        let doc: toml::Value = toml::from_str(text)
-            .map_err(|err| format!("invalid credentials in {}: {err}", path.display()))?;
-        let Some(cloud) = doc.get("cloud") else {
-            return Ok(None);
-        };
-        let field = |name: &str| cloud.get(name).and_then(|v| v.as_str()).unwrap_or("");
-        let (url, machine_id, token) = (field("url"), field("machine_id"), field("token"));
-        if url.is_empty() || token.is_empty() || machine_id.is_empty() {
-            return Ok(None);
-        }
-        Self::new(url, token.to_string(), machine_id.to_string()).map(Some)
     }
 
     fn new(base_url: &str, token: String, machine_id: String) -> Result<Self, String> {
@@ -231,7 +265,6 @@ pub fn spawn_maintenance(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
-        let mut reported: Option<PullReport> = None;
         while !shutdown.load(Ordering::Relaxed) {
             let cloud = match CloudClient::from_env_or_file() {
                 Ok(client) => client,
@@ -253,21 +286,7 @@ pub fn spawn_maintenance(
             }
 
             if let Some(cloud) = cloud.as_ref() {
-                let report = poll_once(&store, cloud);
-                // Reported on a CHANGE only, never per tick. This lane polls
-                // every 30 seconds, so a per-tick event would be ~2,900 a day
-                // from every enrolled machine to say nothing happened — and an
-                // unreachable cloud would send the same failure 2,900 times.
-                // A new generation is always a change; a steady state is not.
-                if reported.as_ref() != Some(&report) {
-                    report.emit();
-                    reported = Some(report);
-                }
-            } else {
-                // Forget the last report while unenrolled, so reconnecting
-                // reports its first pull rather than being deduped against a
-                // state from before the disconnect.
-                reported = None;
+                poll_once(&store, cloud);
             }
 
             // Runs whether or not cloud is reachable: poll failures never
@@ -288,77 +307,23 @@ pub fn spawn_maintenance(
     })
 }
 
-/// What one poll amounted to, in terms a telemetry event may carry.
-///
-/// Enums and counts only — deliberately no error text: a reconcile or transport
-/// error renders the cloud origin (which identifies the customer's deployment)
-/// and local paths. The detail stays in the service log, which is where an
-/// operator debugging their own machine already looks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PullReport {
-    outcome: &'static str,
-    generation: Option<u64>,
-    activated: bool,
-    downloaded: usize,
-    repaired: usize,
-}
-
-impl PullReport {
-    fn failed(outcome: &'static str) -> Self {
-        PullReport {
-            outcome,
-            generation: None,
-            activated: false,
-            downloaded: 0,
-            repaired: 0,
-        }
-    }
-
-    fn emit(&self) {
-        let mut props = serde_json::json!({
-            "outcome": self.outcome,
-            "generation_changed": self.activated,
-            "downloaded": self.downloaded,
-            "repaired": self.repaired,
-        });
-        if let Some(generation) = self.generation
-            && let Some(map) = props.as_object_mut()
-        {
-            map.insert("generation".into(), serde_json::json!(generation));
-        }
-        crate::telemetry::record("daemon_cloud_policy_pull", props);
-    }
-}
-
-fn poll_once(store: &PolicyStore, cloud: &CloudClient) -> PullReport {
+fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
     match cloud.desired_state() {
         Ok(desired) => {
             match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
-                Ok(outcome) => {
-                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
-                        eprintln!(
-                            "[failproofaid] cloud policy generation {} active (downloaded {}, repaired {})",
-                            outcome.generation, outcome.downloaded, outcome.repaired
-                        );
-                    }
-                    PullReport {
-                        outcome: "ok",
-                        generation: Some(outcome.generation),
-                        activated: outcome.activated,
-                        downloaded: outcome.downloaded,
-                        repaired: outcome.repaired,
-                    }
+                Ok(outcome)
+                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 =>
+                {
+                    eprintln!(
+                        "[failproofaid] cloud policy generation {} active (downloaded {}, repaired {})",
+                        outcome.generation, outcome.downloaded, outcome.repaired
+                    );
                 }
-                Err(err) => {
-                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
-                    PullReport::failed("reconcile_failed")
-                }
+                Ok(_) => {}
+                Err(err) => eprintln!("[failproofaid] cloud policy reconcile error: {err}"),
             }
         }
-        Err(err) => {
-            eprintln!("[failproofaid] cloud policy poll error: {err}");
-            PullReport::failed("poll_failed")
-        }
+        Err(err) => eprintln!("[failproofaid] cloud policy poll error: {err}"),
     }
 }
 
@@ -406,35 +371,10 @@ mod tests {
                 std::env::remove_var("FAILPROOFAI_CLOUD_URL");
                 std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
                 std::env::remove_var("FAILPROOFAI_MACHINE_ID");
-                std::env::remove_var("FAILPROOFAI_HOME");
             }
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-
-    /// A layout-2 home: `FAILPROOFAI_HOME` pointing at a scratch dir holding a
-    /// `credentials.toml`, with the JSON override explicitly UNSET so the
-    /// default path is what gets exercised.
-    fn with_home_credentials(contents: Option<&str>) -> EnvGuard {
-        let seq = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("failproofaid-home-{}-{seq}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        if let Some(contents) = contents {
-            fs::write(dir.join(CREDENTIALS_FILE), contents).unwrap();
-        }
-        unsafe {
-            std::env::remove_var("FAILPROOFAI_CLOUD_CREDENTIALS");
-            std::env::remove_var("FAILPROOFAI_CLOUD_URL");
-            std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
-            std::env::remove_var("FAILPROOFAI_MACHINE_ID");
-            std::env::set_var("FAILPROOFAI_HOME", &dir);
-        }
-        EnvGuard(dir)
-    }
-
-    const TOML_GOOD: &str = "[cloud]\nurl = \"https://cloud.example\"\n\
-         machine_id = \"m-1\"\nmachine_label = \"Chetan's laptop\"\ntoken = \"secret\"\n";
 
     static SCRATCH_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
@@ -625,86 +565,111 @@ mod tests {
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }
 
-    // ── layout 2: credentials.toml [cloud] ───────────────────────────────────
+    // ── Layout 2: the enrolment lives in credentials.toml ────────────────────
+    //
+    // These cover the bug that made cloud-managed policy dead on arrival:
+    // `--connect` wrote `credentials.toml`'s `[cloud]` table, this loader read
+    // `cloud.json`, and the daemon logged "cloud-managed policy polling
+    // disabled" — indistinguishable from a machine that had never enrolled.
 
-    #[test]
-    fn reads_the_cloud_table_from_a_layout_2_credentials_file() {
-        // THE REGRESSION. Layout 2 moved the credential into credentials.toml,
-        // and this reader was still looking for ~/.failproofai/cloud.json — so
-        // an enrolled machine's daemon found nothing, quietly polled no policy,
-        // and reported itself unconnected while the CLI showed a live
-        // connection.
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = with_home_credentials(Some(TOML_GOOD));
-        let client = CloudClient::from_file()
-            .unwrap()
-            .expect("should be enrolled");
-        assert_eq!(client.machine_id, "m-1");
-    }
-
-    #[test]
-    fn a_credentials_file_with_no_cloud_table_is_not_enrolled_rather_than_an_error() {
-        // The same file carries [ingest] and [auth]. Reporting to the dashboard
-        // without pulling policy is an ordinary half-state, not damage.
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = with_home_credentials(Some("[ingest]\nurl = \"https://x\"\nkey = \"k\"\n"));
-        assert!(CloudClient::from_file().unwrap().is_none());
-    }
-
-    #[test]
-    fn an_incomplete_cloud_table_reads_as_not_enrolled() {
-        // Mirrors the TS reader, which requires url, machine_id and token before
-        // it will call a machine connected. Drifting from it is what produced
-        // the bug above.
-        let _lock = ENV_LOCK.lock().unwrap();
-        for partial in [
-            "[cloud]\nurl = \"https://x\"\n",
-            "[cloud]\nurl = \"https://x\"\nmachine_id = \"m\"\n",
-            "[cloud]\nurl = \"\"\nmachine_id = \"m\"\ntoken = \"t\"\n",
-            "[cloud]\nurl = \"https://x\"\nmachine_id = \"m\"\ntoken = \"\"\n",
-        ] {
-            let _guard = with_home_credentials(Some(partial));
-            assert!(
-                CloudClient::from_file().unwrap().is_none(),
-                "should not be enrolled: {partial}"
-            );
+    /// A FAILPROOFAI_HOME containing the given files. Clears the JSON override
+    /// so the default (TOML) path is what gets exercised.
+    fn with_home(files: &[(&str, &str)]) -> EnvGuard {
+        let seq = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("failproofaid-home-{}-{seq}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for (name, contents) in files {
+            fs::write(dir.join(name), contents).unwrap();
         }
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_CLOUD_CREDENTIALS");
+            std::env::remove_var("FAILPROOFAI_CLOUD_URL");
+            std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
+            std::env::remove_var("FAILPROOFAI_MACHINE_ID");
+            std::env::set_var("FAILPROOFAI_HOME", &dir);
+        }
+        EnvGuard(dir)
+    }
+
+    const TOML_CREDS: &str = "[cloud]\nurl = \"https://cloud.example\"\nmachine_id = \"m-toml\"\ntoken = \"toml-secret\"\n";
+
+    #[test]
+    fn reads_the_cloud_table_of_credentials_toml() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = with_home(&[("credentials.toml", TOML_CREDS)]);
+        let client = CloudClient::from_file().unwrap().expect("enrolled");
+        assert_eq!(client.machine_id, "m-toml");
+        assert_eq!(client.token, "toml-secret");
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
 
     #[test]
-    fn malformed_toml_is_an_error_not_a_silent_disconnect() {
+    fn a_credentials_file_with_no_cloud_table_is_not_enrolled_rather_than_malformed() {
+        // credentials.toml also holds the ingest key and the auth session, so an
+        // events-only machine has a perfectly valid file and no `[cloud]`.
+        // Treating that as corrupt would fail a machine that is working exactly
+        // as configured.
         let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = with_home_credentials(Some("[cloud\nurl = "));
-        assert!(CloudClient::from_file().is_err());
-    }
-
-    #[test]
-    fn no_credentials_toml_at_all_means_not_enrolled() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = with_home_credentials(None);
+        let _guard = with_home(&[(
+            "credentials.toml",
+            "[ingest]\nurl = \"https://cloud.example/v1/events\"\nkey = \"k\"\n",
+        )]);
         assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
 
     #[test]
-    fn a_leftover_layout_1_cloud_json_is_ignored() {
-        // Layout 2 chose wipe-and-re-setup over migration, so an old cloud.json
-        // is something the reset deletes — not a credential still in force.
-        // Honouring it here would resurrect an enrolment the CLI considers gone.
+    fn falls_back_to_layout_1_cloud_json_when_the_toml_is_absent() {
+        // A machine whose daemon upgraded before its CLI ran once to migrate.
         let _lock = ENV_LOCK.lock().unwrap();
-        let guard = with_home_credentials(None);
-        fs::write(guard.0.join("cloud.json"), GOOD).unwrap();
-        assert!(CloudClient::from_file().unwrap().is_none());
-    }
-
-    #[test]
-    fn the_json_override_still_reads_json() {
-        // CI and containers point FAILPROOFAI_CLOUD_CREDENTIALS at a standalone
-        // JSON file; that predates the consolidation and must keep working.
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = with_credentials_file(Some(GOOD));
-        let client = CloudClient::from_file()
-            .unwrap()
-            .expect("should be enrolled");
+        let _guard = with_home(&[("cloud.json", GOOD)]);
+        let client = CloudClient::from_file().unwrap().expect("enrolled");
         assert_eq!(client.machine_id, "m-1");
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn prefers_the_toml_when_both_exist() {
+        // Mid-migration both are on disk, and the TOML is the current one.
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = with_home(&[("credentials.toml", TOML_CREDS), ("cloud.json", GOOD)]);
+        let client = CloudClient::from_file().unwrap().expect("enrolled");
+        assert_eq!(client.machine_id, "m-toml");
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn an_empty_home_is_not_enrolled() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = with_home(&[]);
+        assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn a_malformed_toml_is_an_error_rather_than_a_silently_unenrolled_machine() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = with_home(&[("credentials.toml", "[cloud]\nurl = ")]);
+        let err = match CloudClient::from_file() {
+            Err(err) => err,
+            Ok(_) => panic!("a malformed credentials.toml must not read as enrolled"),
+        };
+        assert!(err.contains("invalid"), "{err}");
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn a_named_override_that_is_missing_never_falls_back_to_the_default() {
+        // Naming a file says "use THIS credential". Silently enrolling against
+        // the one in the home directory instead would point the machine at a
+        // different org than the operator asked for.
+        let _lock = ENV_LOCK.lock().unwrap();
+        let guard = with_home(&[("credentials.toml", TOML_CREDS)]);
+        unsafe {
+            std::env::set_var("FAILPROOFAI_CLOUD_CREDENTIALS", guard.0.join("absent.json"));
+        }
+        assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
 }

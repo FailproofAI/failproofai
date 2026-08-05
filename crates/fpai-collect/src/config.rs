@@ -30,10 +30,19 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// The hosted ingest endpoint. A COMPLETE endpoint including its path, not a
-/// base to join onto — byte-identical to what `agenteye-collector` defaults
-/// to, so a migrated config needs no rewriting and a self-hoster replaces the
-/// whole value with one of their own.
-pub const DEFAULT_INGEST_URL: &str = "https://server.befailproof.ai/events";
+/// base to join onto — a self-hoster replaces the whole value with one of
+/// their own.
+///
+/// MUST stay byte-identical to `DEFAULT_INGEST_URL` in `collector-config.ts`.
+/// The two sides resolve a credential independently, so a divergence would
+/// mean the CLI verified one endpoint at setup and the daemon posted to
+/// another — and the daemon would look healthy while nothing arrived.
+///
+/// `/v1/events`, not `/events`: on the dashboard hostname only `/v1/*` reaches
+/// the server, so the versioned path is the only one that works on every
+/// deployment shape. Both paths are the same handler on the server itself, so
+/// this is not a behaviour change for anyone already pointed at that host.
+pub const DEFAULT_INGEST_URL: &str = "https://server.befailproof.ai/v1/events";
 
 /// Filename of the credential file inside the failproofai home.
 /// Layout 2: every credential in one owner-only TOML file, keyed by table.

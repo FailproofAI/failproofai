@@ -14,7 +14,7 @@ import {
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import { daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
-import { readVersionFile } from "./fp-config";
+import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
 import {
@@ -254,6 +254,18 @@ export function connectionStatusLines(daemonStatus = daemonServiceStatus): strin
   // catch, and two unrelated lines made it easy to miss.
   if (!creds && !ingest) return ["Cloud: not connected."];
 
+  // Recorded at connect time from the server's own answer, never guessed from
+  // the URL: one deployment hosts many orgs, so the host says nothing about
+  // which one this machine's data lands in. Absent against a server with no
+  // introspect endpoint, and on credentials written before this was recorded —
+  // in both cases the line is simply omitted rather than guessed at.
+  const org = readCredentials().org;
+  const orgLine = org
+    ? org.name && org.slug
+      ? `${org.name} (${org.slug})`
+      : (org.name ?? org.slug ?? org.id)
+    : undefined;
+
   const lines: string[] = [];
   if (creds) {
     // Show the human label with the stable id in parentheses; fall back to the
@@ -267,6 +279,8 @@ export function connectionStatusLines(daemonStatus = daemonServiceStatus): strin
     lines.push(`Cloud: connected to ${cloudBaseFor(ingest!.url)} for reporting only.`);
     lines.push(`  Policy    NOT pulling — this machine enforces only its local policies.`);
   }
+
+  if (orgLine) lines.push(`  Org       ${orgLine}`);
 
   if (ingest) {
     lines.push(`  Dashboard sending hook activity to ${ingest.url}.`);

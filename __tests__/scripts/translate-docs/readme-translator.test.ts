@@ -145,6 +145,28 @@ describe("rebaseReadmePaths", () => {
     );
   });
 
+  it("keeps a fence intact after an earlier pass lengthened the text", () => {
+    // The markdown pass rewrites the GIF to a much longer absolute URL, pushing
+    // the fence forward. A fence map computed once from the input would leave
+    // the later src/srcset passes reading stale offsets and rewriting the
+    // literal sample paths inside the block.
+    const fenced =
+      "![arch](readme-arch-hq.gif)\n" +
+      "\n" +
+      "```html\n" +
+      '<img src="assets/logos/claude.svg" />\n' +
+      '<source srcset="assets/logos/claude-dark.svg" />\n' +
+      "```";
+    expect(rebaseReadmePaths(fenced)).toBe(
+      `![arch](${RAW}/readme-arch-hq.gif)\n` +
+        "\n" +
+        "```html\n" +
+        '<img src="assets/logos/claude.svg" />\n' +
+        '<source srcset="assets/logos/claude-dark.svg" />\n' +
+        "```",
+    );
+  });
+
   it("leaves paths inside fenced code blocks literal", () => {
     // There a path is sample text a reader copies, not a reference to resolve.
     const fenced =

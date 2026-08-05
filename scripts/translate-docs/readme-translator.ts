@@ -59,7 +59,13 @@ const ASSET_RE = /\.(?:png|jpe?g|gif|svg|webp|ico|mp4|webm)$/i;
  * inside a fenced code block (where a path is literal sample text, not a ref).
  */
 export function rebaseReadmePaths(content: string): string {
-  const fenceRanges = findFenceRanges(content);
+  // Recomputed before each pass. `String.replace` reports offsets into the
+  // string it is scanning, so one map is valid for a whole pass — but a pass
+  // that rewrites a path AHEAD of a fence lengthens the text and shifts that
+  // fence, leaving offsets from the previous string pointing short. The next
+  // pass would then read a literal `<img src=…>` inside a fence as ordinary
+  // markup and rewrite the sample path this guard exists to protect.
+  let fenceRanges = findFenceRanges(content);
   const insideFence = (offset: number): boolean =>
     fenceRanges.some(([start, end]) => offset >= start && offset < end);
 
@@ -85,6 +91,7 @@ export function rebaseReadmePaths(content: string): string {
   );
 
   // HTML/JSX attributes: the README's logo table is a raw <table> of <img>.
+  fenceRanges = findFenceRanges(out);
   out = out.replace(
     /((?:src|href)=(["']))(.*?)\2/g,
     (match, prefix: string, quote: string, path: string, offset: number) => {
@@ -98,6 +105,7 @@ export function rebaseReadmePaths(content: string): string {
   // <source srcset="assets/logos/*-dark.svg"> sits beside the <img src>. Miss
   // it and half the table stays broken for dark-theme readers only — the half
   // least likely to be noticed in review.
+  fenceRanges = findFenceRanges(out);
   out = out.replace(
     /(srcset=(["']))(.*?)\2/g,
     (match, prefix: string, quote: string, value: string, offset: number) => {

@@ -323,11 +323,35 @@ LINKS
   // written by a NEWER layout stops the command instead: that data is fine and
   // an upgrade would read it, so deleting it would destroy something
   // recoverable.
+  //
+  // `audit --scheduled` is the exception, and it takes the HOOK's branch: it is
+  // spawned by failproofaid on a timer, so "visibly, in a real command the user
+  // typed" is exactly what it is not. `checkLayoutForCli()` deletes
+  // config.toml and credentials.toml (see `resettablePaths`), so letting a
+  // background process reach it would silently revoke a user's
+  // `[telemetry] enabled = false`, erase their cloud enrolment, and switch off
+  // `[audit] auto` — the setting that scheduled the run — with the explanation
+  // going only to the service journal. Reachable on every machine at the next
+  // LAYOUT_VERSION bump, when a home carrying `auto = true` is by definition
+  // stale. Verified live: one scheduled tick took a home's whole config.
   {
-    const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
-    const check = checkLayoutForCli();
-    for (const line of check.lines) console.error(line);
-    if (check.fatal) process.exit(1);
+    if (args[0] === "audit" && args.includes("--scheduled")) {
+      const { layoutWarningForHook } = await import("../src/hooks/fp-reset");
+      const warning = layoutWarningForHook();
+      if (warning) {
+        // Exit 1, not 75: 75 means "another audit holds the lock" and is retried
+        // in fifteen minutes, which here would just re-warn four times an hour
+        // forever. A stale home is a real failure that `failproofai config`
+        // fixes, so it is reported and retried at the ordinary cadence.
+        console.error(warning);
+        process.exit(1);
+      }
+    } else {
+      const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
+      const check = checkLayoutForCli();
+      for (const line of check.lines) console.error(line);
+      if (check.fatal) process.exit(1);
+    }
   }
 
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");

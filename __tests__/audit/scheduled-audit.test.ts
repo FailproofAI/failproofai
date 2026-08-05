@@ -11,9 +11,11 @@
  * where neither of these two could see it.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { LAYOUT_VERSION } from "../../src/hooks/fp-home";
 import type { AuditResult } from "../../src/audit/types";
 import { acquireAuditLock } from "../../src/audit/audit-lock";
 import { auditLockFile } from "../../src/hooks/fp-home";
@@ -235,4 +237,103 @@ describe("the interactive `failproofai audit` shares the lock", () => {
     await expect(runAuditCli([])).rejects.toThrow("__EXIT__");
     expect(h.trackHookEvent).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * The binary-level half of "headless".
+ *
+ * `runScheduledAudit` above is headless inside src/audit/cli.ts, but the daemon
+ * does not call it — it spawns `failproofai audit --scheduled`, so everything
+ * bin/failproofai.mjs does BEFORE dispatch runs unattended too. One of those
+ * things deletes config.toml and credentials.toml. These tests therefore drive
+ * the real binary as a subprocess, because that is the only place the bug lives.
+ */
+describe("the binary-level scheduled entry point", () => {
+  // Each case boots `bun` and, in one case, runs a real scan. Vitest's 5s default
+  // is fine for these in isolation and not fine when the whole suite is running
+  // in parallel around them, which is the only way CI ever sees them.
+  const SUBPROCESS_TIMEOUT_MS = 120_000;
+  const REPO_ROOT = resolve(__dirname, "../..");
+  let box: string;
+
+  /** A home the CLI will read as an older layout: markers, but no VERSION. */
+  function staleHome(): string {
+    const home = mkdtempSync(resolve(tmpdir(), "fpai-stale-"));
+    const fp = resolve(home, ".failproofai");
+    mkdirSync(fp, { recursive: true });
+    writeFileSync(
+      resolve(fp, "config.toml"),
+      '[mode]\nkind = "cloud"\n\n[telemetry]\nenabled = false\n\n[audit]\nauto = true\ninterval_days = 7\n',
+    );
+    writeFileSync(resolve(fp, "credentials.toml"), '[cloud]\ntoken = "secret-token"\n');
+    // A layout-1 landmark, which is what makes `detectLayout` say "stale".
+    writeFileSync(resolve(fp, "policies-config.json"), "{}\n");
+    return home;
+  }
+
+  function run(home: string, ...args: string[]) {
+    return spawnSync("bun", [resolve(REPO_ROOT, "bin/failproofai.mjs"), ...args], {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        FAILPROOFAI_HOME: resolve(home, ".failproofai"),
+        FAILPROOFAI_TELEMETRY_DISABLED: "1",
+      },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+  }
+
+  afterEach(() => {
+    if (box) rmSync(box, { recursive: true, force: true });
+  });
+
+  it("reports a stale layout instead of resetting it", () => {
+    // The failure this prevents: the reset deletes config.toml and
+    // credentials.toml, so one unattended tick silently revokes the user's
+    // `[telemetry] enabled = false`, drops their cloud enrolment, and switches
+    // off `[audit] auto` — the setting that scheduled the run. Nobody is
+    // watching, and the explanation goes only to the service journal.
+    box = staleHome();
+    const fp = resolve(box, ".failproofai");
+
+    const out = run(box, "audit", "--scheduled");
+
+    expect(out.status).toBe(1);
+    expect(out.stderr).toContain("failproofai config");
+    expect(existsSync(resolve(fp, "config.toml"))).toBe(true);
+    expect(readFileSync(resolve(fp, "config.toml"), "utf8")).toContain("auto = true");
+    expect(readFileSync(resolve(fp, "config.toml"), "utf8")).toContain("enabled = false");
+    expect(readFileSync(resolve(fp, "credentials.toml"), "utf8")).toContain("secret-token");
+  }, SUBPROCESS_TIMEOUT_MS);
+
+  it("still resets a stale layout for a command a human typed", () => {
+    // The guard must be specific to the unattended path. An interactive command
+    // resetting an old home — visibly, with the reason on screen — is the
+    // behaviour the layout mechanism exists for, and it must not be collateral.
+    box = staleHome();
+    const fp = resolve(box, ".failproofai");
+
+    const out = run(box, "policies");
+
+    expect(out.stderr).toContain("reorganised");
+    expect(existsSync(resolve(fp, "config.toml"))).toBe(false);
+  }, SUBPROCESS_TIMEOUT_MS);
+
+  it("runs the scan on a home whose layout is current", () => {
+    // The other direction: the guard must not be "the scheduled run never
+    // works". A current home scans and reports normally.
+    box = mkdtempSync(resolve(tmpdir(), "fpai-current-"));
+    const fp = resolve(box, ".failproofai");
+    mkdirSync(fp, { recursive: true });
+    writeFileSync(resolve(fp, "VERSION"), `layout = ${LAYOUT_VERSION}\ncli = "test"\n`);
+    writeFileSync(resolve(fp, "config.toml"), "[audit]\nauto = true\ninterval_days = 7\n");
+
+    const out = run(box, "audit", "--scheduled");
+
+    expect(out.status).toBe(0);
+    expect(out.stdout).toContain("audit complete");
+    expect(existsSync(resolve(fp, "config.toml"))).toBe(true);
+  }, SUBPROCESS_TIMEOUT_MS);
 });

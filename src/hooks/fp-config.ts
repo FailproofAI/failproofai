@@ -163,6 +163,52 @@ export interface FpConfig {
      */
     enabled: boolean;
   };
+  audit: {
+    /**
+     * Scan this machine's agent history on a schedule.
+     *
+     * OFF by default, and the asymmetry with `telemetry.enabled` above is
+     * deliberate: the audit reads the CONTENTS of every session transcript on
+     * disk — prompts, file contents, command output — so nothing scans on a
+     * timer until somebody asks for it.
+     */
+    auto: boolean;
+    /** Days between scheduled runs. Wall clock, so it survives suspend. */
+    intervalDays: number;
+  };
+}
+
+/**
+ * Days between scheduled audits when nothing says otherwise, and the bounds a
+ * hand-written value is held to.
+ *
+ * Both ends fail quietly, which is why they are clamped at all. A measured full
+ * scan is ~104 seconds over 3,277 transcripts and grows with history, so an
+ * interval under a day spends minutes of disk every day re-reading transcripts
+ * that have barely changed. At the other end a typo'd `interval_days = 3650`
+ * reads as "never", which on a status line is indistinguishable from the
+ * feature being broken — and "never" already has its own switch, `auto = false`.
+ */
+export const DEFAULT_AUDIT_INTERVAL_DAYS = 7;
+const MIN_AUDIT_INTERVAL_DAYS = 1;
+const MAX_AUDIT_INTERVAL_DAYS = 90;
+
+/**
+ * Resolve `interval_days`, refusing anything that is not a whole number of days.
+ *
+ * 0, a negative, a fraction below a day, and any non-number all resolve to the
+ * DEFAULT rather than clamping up to the 1-day floor. A `0` almost certainly
+ * means "off", and reading it as a DAILY 104-second scan of every transcript on
+ * the machine is the loudest possible way to get that wrong. A too-large value
+ * is clamped DOWN to 90 instead, because that is the conservative direction of
+ * the two available: falling back to 7 there would scan an order of magnitude
+ * more often than was asked for.
+ */
+function readIntervalDays(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return DEFAULT_AUDIT_INTERVAL_DAYS;
+  const days = Math.floor(raw);
+  if (days < MIN_AUDIT_INTERVAL_DAYS) return DEFAULT_AUDIT_INTERVAL_DAYS;
+  return Math.min(days, MAX_AUDIT_INTERVAL_DAYS);
 }
 
 export const DEFAULT_CONFIG: FpConfig = {
@@ -176,6 +222,7 @@ export const DEFAULT_CONFIG: FpConfig = {
     environment: "local",
   },
   telemetry: { enabled: true },
+  audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
 };
 
 export function readConfig(): FpConfig {
@@ -185,6 +232,7 @@ export function readConfig(): FpConfig {
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
     const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
+    const audit = (parsed.audit ?? {}) as Record<string, unknown>;
     return {
       // Anything unrecognised reads as `oss`. The failure direction matters:
       // a corrupt config must not be able to turn cloud reporting ON.
@@ -210,6 +258,11 @@ export function readConfig(): FpConfig {
       // reads as on — the shipped default, and what a config with no
       // [telemetry] block at all means.
       telemetry: { enabled: telemetry.enabled !== false },
+      // Mirror image of telemetry above: only an explicit `true` switches the
+      // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
+      // because the failure direction here is a machine that starts reading
+      // every transcript it can find on a timer nobody set.
+      audit: { auto: audit.auto === true, intervalDays: readIntervalDays(audit.interval_days) },
     };
   } catch {
     return structuredClone(DEFAULT_CONFIG);
@@ -257,6 +310,23 @@ export function writeConfig(config: FpConfig): void {
   if (!config.telemetry.enabled) {
     lines.push("", "[telemetry]", "enabled = false");
   }
+  // Written ALWAYS, unlike [telemetry] directly above — the two are opposites
+  // on purpose. Telemetry ships on and is deliberately not advertised in the
+  // file; the scheduled audit ships off and is meant to be FOUND, and a switch
+  // nobody can see is the same as a switch that does not exist. Emitting both
+  // keys unconditionally also makes "a user's setting survives a rewrite" total
+  // rather than conditional: every field the struct carries is on disk, so
+  // there is no value of this block that a later regeneration can drop.
+  lines.push(
+    "",
+    "[audit]",
+    "# Scan this machine's agent history on a schedule and refresh the audit",
+    "# dashboard. OFF by default: the scan reads the CONTENTS of every session",
+    "# transcript on disk, so it waits to be asked. It runs as a separate",
+    "# short-lived process — never on the hook path.",
+    `auto = ${config.audit.auto}`,
+    `interval_days = ${config.audit.intervalDays}`,
+  );
   writeFileAt(configFile(), lines.join("\n") + "\n");
 }
 
@@ -266,6 +336,7 @@ export function updateConfig(patch: {
   daemon?: Partial<FpConfig["daemon"]>;
   collector?: Partial<FpConfig["collector"]>;
   telemetry?: Partial<FpConfig["telemetry"]>;
+  audit?: Partial<FpConfig["audit"]>;
 }): FpConfig {
   const current = readConfig();
   const next: FpConfig = {
@@ -273,6 +344,7 @@ export function updateConfig(patch: {
     daemon: { ...current.daemon, ...patch.daemon },
     collector: { ...current.collector, ...patch.collector },
     telemetry: { ...current.telemetry, ...patch.telemetry },
+    audit: { ...current.audit, ...patch.audit },
   };
   writeConfig(next);
   return next;

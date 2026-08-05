@@ -165,6 +165,21 @@ export const daemonSocket = () =>
 export const workerSocket = (home?: string) => resolve(runDir(home), "worker.sock");
 export const daemonLock = (home?: string) => resolve(runDir(home), "failproofaid.lock");
 
+/**
+ * Single-flight lock for the audit.
+ *
+ * Three separate processes can start one — a scheduled run, `failproofai
+ * audit`, and the dashboard's re-run — and all three write the same
+ * sha1-keyed cache files, so the lock has to be visible across processes.
+ * It sits in `run/` with the other runtime files rather than under `audit/`,
+ * which holds results a human might keep and a reset is expected to clear.
+ *
+ * NOT mirrored in `crates/failproofaid/src/paths.rs` yet: nothing in Rust
+ * takes this lock until the daemon grows its audit lane, and a `pub fn` no
+ * caller uses is a dead_code failure under `-D warnings`.
+ */
+export const auditLockFile = (home?: string) => resolve(runDir(home), "audit.lock");
+
 // ── Daemon scratch state ─────────────────────────────────────────────────────
 
 /** Everything the daemon writes that a human would never open by hand. */

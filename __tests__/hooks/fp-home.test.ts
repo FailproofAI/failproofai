@@ -157,6 +157,7 @@ describe("config.toml", () => {
         redact: "off" as const, environment: "prod", machineId: "box-1",
       },
       telemetry: { enabled: true },
+      audit: { auto: true, intervalDays: 14 },
     };
     writeConfig(cfg);
     expect(readConfig()).toEqual(cfg);
@@ -187,6 +188,62 @@ describe("config.toml", () => {
     expect(readConfig().telemetry.enabled).toBe(true);
     writeFileSync(H.configFile(), "[telemetry]\nenabled = false\n");
     expect(readConfig().telemetry.enabled).toBe(false);
+  });
+
+  it("the scheduled audit is OFF by default and says so in the file", () => {
+    // The opposite posture to telemetry directly above: off, and deliberately
+    // visible, because it is a switch the user is meant to find and flip. It is
+    // off because the scan reads the contents of every transcript on disk.
+    expect(DEFAULT_CONFIG.audit).toEqual({ auto: false, intervalDays: 7 });
+    writeConfig(DEFAULT_CONFIG);
+    const written = readFileSync(H.configFile(), "utf8");
+    expect(written).toContain("[audit]");
+    expect(written).toContain("auto = false");
+    expect(written).toContain("interval_days = 7");
+  });
+
+  it("an enabled auto-audit SURVIVES a rewrite", () => {
+    // writeConfig regenerates the whole file, so a key it does not emit is a key
+    // it silently deletes — the failure that would turn somebody's weekly audit
+    // off the next time any unrelated setting changed.
+    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30 } });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
+
+    writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
+  });
+
+  it("only an explicit true switches the auto-audit on", () => {
+    writeFileSync(H.configFile(), '[audit]\nauto = "yes"\n');
+    expect(readConfig().audit.auto).toBe(false);
+    writeFileSync(H.configFile(), "[audit]\nauto = true\n");
+    expect(readConfig().audit.auto).toBe(true);
+  });
+
+  it("resolves a nonsense interval to the default rather than to a daily scan", () => {
+    // 0 almost certainly means "off", and reading it as a DAILY 104-second scan
+    // of every transcript on the machine is the loudest way to misread it.
+    for (const raw of ["0", "-3", "0.5", '"weekly"', "true"]) {
+      writeFileSync(H.configFile(), `[audit]\nauto = true\ninterval_days = ${raw}\n`);
+      expect(readConfig().audit.intervalDays).toBe(7);
+    }
+  });
+
+  it("clamps a too-large interval DOWN rather than falling back", () => {
+    // Falling back to 7 for `3650` would scan an order of magnitude more often
+    // than was asked for; 90 is the conservative direction of the two.
+    writeFileSync(H.configFile(), "[audit]\nauto = true\ninterval_days = 3650\n");
+    expect(readConfig().audit.intervalDays).toBe(90);
+    writeFileSync(H.configFile(), "[audit]\nauto = true\ninterval_days = 1\n");
+    expect(readConfig().audit.intervalDays).toBe(1);
+  });
+
+  it("updateConfig patches the audit block without touching the rest", () => {
+    writeConfig({ ...DEFAULT_CONFIG, telemetry: { enabled: false } });
+    updateConfig({ audit: { auto: true } });
+    const after = readConfig();
+    expect(after.audit).toEqual({ auto: true, intervalDays: 7 });
+    expect(after.telemetry.enabled).toBe(false); // untouched
   });
 
   it("the mode comment no longer claims nothing is EVER sent", () => {

@@ -868,6 +868,32 @@ export interface DaemonUpgradeResult {
 }
 
 /**
+ * Restart the systemd unit, clearing any start-limit latch first.
+ *
+ * The unit ships `Restart=on-failure` with `RestartSec=2`, so a definition
+ * systemd accepts but cannot run (a poisoned `User=`, a missing binary) does
+ * not fail once — it cycles, and within `DefaultStartLimitIntervalSec` (10s) it
+ * trips `DefaultStartLimitBurst` (5) and latches into "start request repeated
+ * too quickly". On systemd 255 — what ubuntu-24.04 and GitHub's runners ship —
+ * that latch is sticky at the unit level: a later `systemctl restart` is refused
+ * even after the definition on disk has been REPLACED with a good one. A
+ * rollback that restores a perfectly runnable unit then still cannot start it,
+ * and the machine stays fail-closed against a daemon that never comes back.
+ * `reset-failed` clears the failure counter so the restart is deterministic; on
+ * a healthy unit it is a no-op. Best-effort — a `reset-failed` that errors (the
+ * unit was never failed) must never abort the restart that is the real step.
+ */
+function restartSystemdUnit(): void {
+  try {
+    runPrivileged("systemctl", ["reset-failed", systemdUnitName()]);
+  } catch {
+    // The restart below is the operative step; do not let a reset-failed
+    // that errored on an already-clean unit swallow it.
+  }
+  runPrivileged("systemctl", ["restart", systemdUnitName()]);
+}
+
+/**
  * Puts a previous service definition back and starts the service again,
  * answering whether failproofaid is running once it has.
  *
@@ -887,7 +913,10 @@ async function restoreServiceDefinition(previous: string): Promise<boolean> {
     if (process.platform === "linux") {
       writePrivilegedFile(systemdUnitPath(), previous);
       runPrivileged("systemctl", ["daemon-reload"]);
-      runPrivileged("systemctl", ["restart", systemdUnitName()]);
+      // reset-failed first: the failed rewrite we are undoing has been cycling
+      // under Restart=on-failure and may have tripped systemd's start-limit,
+      // which on systemd 255 refuses to start even this restored, good unit.
+      restartSystemdUnit();
     } else {
       const plistPath = launchdPlistPath();
       try {
@@ -994,8 +1023,10 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
       runPrivileged("systemctl", ["daemon-reload"]);
       // `restart`, not `enable --now`: the unit is already enabled and active,
       // so `--now` would return success having changed nothing and the daemon
-      // would keep the environment it was started with.
-      runPrivileged("systemctl", ["restart", systemdUnitName()]);
+      // would keep the environment it was started with. reset-failed first so a
+      // machine that arrived here with an already-latched start-limit (a prior
+      // failed refresh) can still be upgraded.
+      restartSystemdUnit();
     } else {
       const plistPath = launchdPlistPath();
       mkdirSync(logDir, { recursive: true });

@@ -5,15 +5,30 @@ import type { NextRequest } from "next/server";
 // Mock the heavy audit modules so the route is exercised in isolation: runAudit
 // is replaced with a controllable promise, the cache write is a no-op, and the
 // telemetry channel is a spy so we can assert the dashboard run funnel.
-const { runAuditMock, writeCacheMock, trackEventMock, initTelemetryMock } = vi.hoisted(() => ({
+const {
+  runAuditMock,
+  writeCacheMock,
+  trackEventMock,
+  initTelemetryMock,
+  acquireAuditLockMock,
+  releaseSpy,
+} = vi.hoisted(() => ({
   runAuditMock: vi.fn(),
   writeCacheMock: vi.fn(),
   trackEventMock: vi.fn(),
   initTelemetryMock: vi.fn(async () => {}),
+  acquireAuditLockMock: vi.fn(),
+  releaseSpy: vi.fn(),
 }));
 vi.mock("@/src/audit", () => ({ runAudit: runAuditMock }));
 vi.mock("@/src/audit/dashboard-cache", () => ({ writeDashboardCache: writeCacheMock }));
 vi.mock("@/lib/telemetry", () => ({ initTelemetry: initTelemetryMock, trackEvent: trackEventMock }));
+// The route now also takes the cross-process audit lock. Mock it so the route
+// is exercised in isolation — the real acquire writes to ~/.failproofai/run and
+// installs a process-exit handler, neither of which belongs in a unit test (the
+// lock's own semantics are covered by __tests__/audit/audit-lock.test.ts). The
+// default grants the lock; a test overrides it to simulate a foreign holder.
+vi.mock("@/src/audit/audit-lock", () => ({ acquireAuditLock: acquireAuditLockMock }));
 
 import { POST } from "@/app/api/audit/run/route";
 import { getRunState, releaseRun } from "@/app/api/audit/_state";
@@ -47,6 +62,15 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
     writeCacheMock.mockReset();
     trackEventMock.mockReset();
     initTelemetryMock.mockClear();
+    releaseSpy.mockReset();
+    // Default: the cross-process lock is free and this run gets it. A handle
+    // whose release() is a spy so we can assert it fires exactly when the scan
+    // settles.
+    acquireAuditLockMock.mockReset();
+    acquireAuditLockMock.mockReturnValue({
+      ok: true,
+      lock: { info: { pid: process.pid, startedAt: Date.now(), source: "dashboard" }, release: releaseSpy },
+    });
   });
   afterEach(() => releaseRun());
 
@@ -62,6 +86,33 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
     expect(getRunState().running).toBe(true);
     expect(runAuditMock).toHaveBeenCalledTimes(1);
     expect(trackedNames()).toContain("audit_run_started");
+  });
+
+  it("409s WITHOUT starting a run when the cross-process lock is held elsewhere, and frees the in-memory lock", async () => {
+    // A scheduled daemon child or a `failproofai audit` in another process holds
+    // the shared cache lock. The dashboard must NOT co-write that cache — it
+    // backs out and reports "already running" (information, not an error), and
+    // crucially must release the in-memory lock it took first, or the next POST
+    // would be wedged behind a run that never started.
+    acquireAuditLockMock.mockReturnValue({
+      ok: false,
+      heldBy: { pid: 999999, startedAt: Date.now(), source: "scheduled" },
+    });
+
+    const res = await POST(req("{}"));
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual(
+      expect.objectContaining({ status: "already-running" }),
+    );
+    expect(runAuditMock).not.toHaveBeenCalled();
+    expect(getRunState().running).toBe(false); // in-memory lock backed out
+    expect(trackEventMock).toHaveBeenCalledWith(
+      "audit_run_rejected",
+      expect.objectContaining({ reason: "cross_process_lock" }),
+    );
+    // A run that never started must not have started the funnel either.
+    expect(trackedNames()).not.toContain("audit_run_started");
   });
 
   it("409s a second concurrent run and tracks audit_run_rejected(already_running)", async () => {
@@ -94,6 +145,9 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
     expect(s.running).toBe(false);
     expect(s.error).toBe("scan blew up");
     expect(writeCacheMock).not.toHaveBeenCalled();
+    // The cross-process lock is released even when the detached run throws, or a
+    // failed scan would lock every other writer out for up to an hour.
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
     expect(trackedNames()).toContain("audit_run_failed");
     expect(trackEventMock).toHaveBeenCalledWith(
       "audit_run_failed",
@@ -115,6 +169,8 @@ describe("POST /api/audit/run (fire-and-forget)", () => {
 
     expect(writeCacheMock).toHaveBeenCalledTimes(1);
     expect(getRunState()).toMatchObject({ running: false, error: null });
+    // Lock released on the success path too — held only for the scan's duration.
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
     expect(trackEventMock).toHaveBeenCalledWith(
       "audit_run_completed",
       expect.objectContaining({

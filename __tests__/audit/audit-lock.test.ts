@@ -31,6 +31,7 @@ import {
   AUDIT_LOCK_MAX_AGE_MS,
   acquireAuditLock,
   readAuditLock,
+  readActiveAuditLock,
   type AuditLockInfo,
 } from "../../src/audit/audit-lock";
 
@@ -204,5 +205,46 @@ describe("release", () => {
 
     expect(existsSync(auditLockFile())).toBe(true);
     expect(JSON.parse(readFileSync(auditLockFile(), "utf8")).source).toBe("dashboard");
+  });
+});
+
+describe("readActiveAuditLock", () => {
+  // The status/UI read: /api/audit/status folds this in so the settings page and
+  // the /audit poller answer "is a scan running on this MACHINE", including a
+  // scheduled daemon child in another process. It must apply the SAME staleness
+  // rules acquire uses, or a crashed run's leftover lockfile would report the
+  // machine as forever busy — and it must never steal, since it runs from a
+  // read-only request handler.
+  it("returns null when the lock is free", () => {
+    expect(readActiveAuditLock()).toBeNull();
+  });
+
+  it("returns a live holder inside the age ceiling", () => {
+    writeRawLock({ pid: process.pid, startedAt: Date.now(), source: "scheduled" });
+    expect(readActiveAuditLock()).toMatchObject({ pid: process.pid, source: "scheduled" });
+  });
+
+  it("reports a dead holder as NOT running (no wedged 'busy' state)", () => {
+    writeRawLock({ pid: deadPid(), startedAt: Date.now(), source: "cli" });
+    expect(readActiveAuditLock()).toBeNull();
+  });
+
+  it("reports an aged-out lock as NOT running even when its pid is alive", () => {
+    writeRawLock({ pid: process.pid, startedAt: Date.now() - AUDIT_LOCK_MAX_AGE_MS - 1_000, source: "cli" });
+    expect(readActiveAuditLock()).toBeNull();
+  });
+
+  it("reports an unreadable lock as NOT running", () => {
+    writeRawLock("{ not json");
+    expect(readActiveAuditLock()).toBeNull();
+  });
+
+  it("does NOT steal or delete the lock it reads", () => {
+    // Unlike acquire, a status read is side-effect free: a live foreign scan's
+    // lock must still be on disk, unchanged, after we describe it.
+    writeRawLock({ pid: process.pid, startedAt: Date.now(), source: "scheduled" });
+    readActiveAuditLock();
+    expect(existsSync(auditLockFile())).toBe(true);
+    expect(JSON.parse(readFileSync(auditLockFile(), "utf8")).source).toBe("scheduled");
   });
 });

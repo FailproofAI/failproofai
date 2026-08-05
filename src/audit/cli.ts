@@ -422,47 +422,67 @@ export async function runScheduledAudit(): Promise<number> {
 export async function runPostSetupAudit(): Promise<void> {
   if (process.env.FAILPROOFAI_NO_AUTO_AUDIT === "1") return;
 
-  const instanceId = getInstanceId();
-  // Fire-and-forget, as in runAuditCli: the multi-second scan below keeps the
-  // process alive long enough for this to land, and the completed/failed event
-  // that follows is awaited.
-  void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
+  // Take the same cross-process cache lock the scheduled run, `failproofai
+  // audit` and the dashboard re-run take. This onboarding scan writes the very
+  // same sha1-keyed per-transcript cache and single-slot dashboard cache, so it
+  // is the fourth writer and must serialise with the other three — a scheduled
+  // daemon child can already be mid-scan when setup finishes. Held ⇒ skip, best
+  // effort: the dashboard boots on whatever the holder's run leaves behind, and
+  // this is pre-warming, not a result anyone is waiting on. `onboarding` matches
+  // the telemetry source below and the lock source declared in audit-lock.ts.
+  const attempt = acquireAuditLock("onboarding");
+  if (!attempt.ok) {
+    process.stdout.write(
+      `\n  ${c(DIM, "an audit is already running — the dashboard will show its result.")}\n\n`,
+    );
+    return;
+  }
 
-  process.stdout.write(
-    `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
-  );
-
-  let result: AuditResult;
   try {
-    result = await runWithProgress({});
-  } catch (err) {
-    // Awaited: this function returns straight into the dashboard boot, and a
-    // fire-and-forget fetch would race it.
-    await trackHookEvent(instanceId, "cli_audit_failed", {
-      source: "onboarding",
-      error_type: err instanceof Error ? err.name : "unknown",
-      error_message: sanitizeErrorMessage(err),
-    });
-    process.stdout.write(
-      `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
-    );
-    return;
-  }
+    const instanceId = getInstanceId();
+    // Fire-and-forget, as in runAuditCli: the multi-second scan below keeps the
+    // process alive long enough for this to land, and the completed/failed event
+    // that follows is awaited.
+    void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
 
-  // Reported before the empty-history return below, so an onboarding audit that
-  // finds nothing is still counted — matching runAuditCli, which reports
-  // completed regardless of what the scan turned up.
-  await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
-
-  if (result.eventsScanned === 0) {
     process.stdout.write(
-      `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
+      `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
     );
-    return;
+
+    let result: AuditResult;
+    try {
+      result = await runWithProgress({});
+    } catch (err) {
+      // Awaited: this function returns straight into the dashboard boot, and a
+      // fire-and-forget fetch would race it.
+      await trackHookEvent(instanceId, "cli_audit_failed", {
+        source: "onboarding",
+        error_type: err instanceof Error ? err.name : "unknown",
+        error_message: sanitizeErrorMessage(err),
+      });
+      process.stdout.write(
+        `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
+      );
+      return;
+    }
+
+    // Reported before the empty-history return below, so an onboarding audit that
+    // finds nothing is still counted — matching runAuditCli, which reports
+    // completed regardless of what the scan turned up.
+    await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
+
+    if (result.eventsScanned === 0) {
+      process.stdout.write(
+        `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
+      );
+      return;
+    }
+    writeDashboardCache({}, result);
+    printSummary(result);
+    process.stdout.write("\n");
+  } finally {
+    attempt.lock.release();
   }
-  writeDashboardCache({}, result);
-  printSummary(result);
-  process.stdout.write("\n");
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────

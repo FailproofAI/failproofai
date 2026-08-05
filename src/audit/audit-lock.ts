@@ -56,8 +56,10 @@ export const AUDIT_LOCK_MAX_AGE_MS = 60 * 60_000;
 
 /**
  * Which entry point holds the lock. Recorded so a refusal can say who it lost
- * to. `dashboard` and `onboarding` are declared but not yet wired — see the
- * note in `src/audit/cli.ts`.
+ * to. All four are wired: `cli` and `scheduled` in `src/audit/cli.ts`,
+ * `dashboard` in `app/api/audit/run/route.ts`, and `onboarding` in
+ * `runPostSetupAudit` — every process that writes the shared cache takes this
+ * lock, so no two of them can co-write it.
  */
 export type AuditLockSource = "cli" | "scheduled" | "dashboard" | "onboarding";
 
@@ -119,6 +121,23 @@ export function acquireAuditLock(source: AuditLockSource, now: number = Date.now
 /** Whoever holds the lock right now, or null if it is free/unreadable. */
 export function readAuditLock(): AuditLockInfo | null {
   return readLock(auditLockFile());
+}
+
+/**
+ * The holder only when its lock is still ACTIVE — holder alive and not aged
+ * out; null when the lock is free, unreadable, or provably abandoned.
+ *
+ * For status/UI, not for acquiring: a settings page or `/api/audit/status`
+ * asking "is a scan running somewhere on this machine right now?" must answer
+ * off the same staleness rules `acquireAuditLock` uses, or it would report
+ * "running" forever off a crashed run's leftover lockfile — a dead pid or an
+ * hour-old file the next real acquire would rightly steal. Read-only: unlike
+ * `acquireAuditLock` it never unlinks or steals, so it is safe to call from a
+ * request handler that only wants to describe the machine's state.
+ */
+export function readActiveAuditLock(now: number = Date.now()): AuditLockInfo | null {
+  const held = readLock(auditLockFile());
+  return isStale(held, now) ? null : held;
 }
 
 function isStale(held: AuditLockInfo | null, now: number): boolean {

@@ -70,6 +70,27 @@ export interface DaemonHookResponse {
 }
 
 /**
+ * Why an attempt failed — and it matters, because the two cases deserve
+ * opposite answers.
+ *
+ * `protocol-mismatch` means a daemon answered and is demonstrably HEALTHY; we
+ * simply cannot speak its wire format. The cause is known and benign: the CLI
+ * upgraded via npm and the daemon has not been reinstalled yet. Falling back to
+ * in-process evaluation there loses no enforcement at all — it runs the
+ * identical policy engine, just slower — so denying every tool call over it
+ * would take a working machine offline to protect nothing.
+ *
+ * `unreachable` means nothing answered. That could be a stopped service, a
+ * deleted socket, or tampering, and we cannot tell which — so it keeps failing
+ * closed, which is the whole point of `daemonConfigured`.
+ */
+export type DaemonFailure = "unreachable" | "protocol-mismatch";
+
+export type DaemonAttempt =
+  | { ok: true; response: DaemonHookResponse }
+  | { ok: false; failure: DaemonFailure };
+
+/**
  * Whether a daemon is listening, regardless of how it was started.
  *
  * Distinct from `daemonServiceStatus()`, which asks the service manager. A
@@ -125,24 +146,37 @@ function encodeFrame(value: unknown): Buffer {
  * falls through to whatever its own fallback policy is.
  */
 export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookResponse | null> {
+  const attempt = await attemptDaemonHook(req);
+  return attempt.ok ? attempt.response : null;
+}
+
+/**
+ * The same attempt, but reporting WHY it failed.
+ *
+ * `tryDaemonHook` above collapses every failure into `null`, which was fine
+ * while the caller had one answer for all of them. It no longer does: a
+ * protocol mismatch must fall back rather than deny (see `DaemonFailure`), and
+ * a caller cannot make that distinction from `null`.
+ */
+export async function attemptDaemonHook(req: DaemonHookRequest): Promise<DaemonAttempt> {
   // Windows never has a daemon in this phase (see the plan's platform
   // scope) — skip the attempt outright rather than depending on however
   // Node happens to behave when handed a POSIX socket path on Windows.
-  if (process.platform === "win32") return null;
+  if (process.platform === "win32") return { ok: false, failure: "unreachable" };
 
-  return new Promise<DaemonHookResponse | null>((resolvePromise) => {
+  return new Promise<DaemonAttempt>((resolvePromise) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
     const arm = (ms: number) => {
       clearTimeout(timer);
-      timer = setTimeout(() => finish(null), ms);
+      timer = setTimeout(() => fail("unreachable"), ms);
       // Don't let this timer alone keep the process alive if everything else
       // has already finished — it's always cleared on the success/failure
       // paths below, this just avoids it being the sole reason a --hook
       // process lingers if something upstream forgets to await us.
       timer.unref?.();
     };
-    const finish = (result: DaemonHookResponse | null) => {
+    const finish = (result: DaemonAttempt) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -150,6 +184,7 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
       socket.destroy();
       resolvePromise(result);
     };
+    const fail = (failure: DaemonFailure) => finish({ ok: false, failure });
 
     const socket = createConnection({ path: socketPath() });
     arm(DAEMON_CONNECT_TIMEOUT_MS);
@@ -180,7 +215,7 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
         if (recvBuf.length < 4) return;
         declaredLen = recvBuf.readUInt32BE(0);
         if (declaredLen > MAX_FRAME_LEN) {
-          finish(null);
+          fail("unreachable");
           return;
         }
         recvBuf = recvBuf.subarray(4);
@@ -193,12 +228,16 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
       try {
         message = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
       } catch {
-        finish(null);
+        fail("unreachable");
         return;
       }
 
       if (message.protocolVersion !== PROTOCOL_VERSION) {
-        finish(null);
+        // Catches BOTH directions. A newer CLI sends v2 and the daemon replies
+        // with an error stamped v1; an older CLI sends v1 and a newer daemon
+        // replies stamped v2. Either way the versions disagree here, and either
+        // way a daemon answered — so this is skew, not absence.
+        fail("protocol-mismatch");
         return;
       }
       if (
@@ -207,16 +246,23 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
         typeof message.stdout === "string" &&
         typeof message.stderr === "string"
       ) {
-        finish({ exitCode: message.exitCode, stdout: message.stdout, stderr: message.stderr });
+        finish({
+          ok: true,
+          response: {
+            exitCode: message.exitCode,
+            stdout: message.stdout,
+            stderr: message.stderr,
+          },
+        });
         return;
       }
-      // Anything else — an explicit `error` message, a `pong` (protocol
-      // confusion), or a well-formed-but-wrong-shape body — is treated
-      // identically to a connection failure: no partial trust.
-      finish(null);
+      // Anything else — an explicit `error` message at a MATCHING protocol
+      // version, a `pong` (protocol confusion), or a well-formed-but-wrong-shape
+      // body — is treated identically to a connection failure: no partial trust.
+      fail("unreachable");
     });
 
-    socket.on("error", () => finish(null));
-    socket.on("close", () => finish(null));
+    socket.on("error", () => fail("unreachable"));
+    socket.on("close", () => fail("unreachable"));
   });
 }

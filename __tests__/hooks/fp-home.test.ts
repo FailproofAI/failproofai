@@ -42,9 +42,20 @@ describe("fp-home layout", () => {
       H.hookActivityDir(), H.customAgentsEventsDir(), H.runDir(),
       H.stateDir(), H.spoolDir(), H.failedDir(), H.collectorHealthFile(),
       H.sessionPauseDir(), H.launcherMarker(), H.onboardingLockFile(),
-      H.auditScheduleFile(),
+      H.auditScheduleFile(), H.telemetryIdFile(),
     ];
     for (const p of paths) expect(p.startsWith(home + "/")).toBe(true);
+  });
+
+  it("puts the telemetry id exactly where the daemon reads it", () => {
+    // The mirror image of the audit schedule below: the CLI is the sole writer
+    // and failproofaid only reads, through telemetry_id_path() in
+    // crates/failproofaid/src/paths.rs. A divergence does not fail — the daemon
+    // simply never finds the file, falls back to a tier it can recompute, and
+    // files this machine under a second PostHog person that is indistinguishable
+    // from a second machine. Kept next to the Rust literal so the pair has to be
+    // changed together.
+    expect(H.telemetryIdFile()).toBe(resolve(home, "state", "telemetry-id"));
   });
 
   it("puts the audit schedule exactly where the daemon writes it", () => {

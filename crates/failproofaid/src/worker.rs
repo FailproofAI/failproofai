@@ -139,6 +139,27 @@ fn forward_worker_output(label: &'static str, pipe: impl io::Read) {
     }
 }
 
+/// Buffer one worker-lifecycle event.
+///
+/// Called from `ensure_started`, which is ON the hook path — so this must stay
+/// a bounded in-memory push and nothing else. `telemetry::record` is exactly
+/// that (no I/O, no allocation the caller waits on, no panic), and it is a
+/// no-op when the machine has opted out or before the lane exists.
+///
+/// `startup_ms` is the number worth having: the client's fail-closed budget
+/// assumes a WARM worker, so a cold start creeping upward is what turns a
+/// healthy daemon into intermittent denials, and nothing else measures it.
+fn report_spawn(reason: &'static str, outcome: &'static str, began: Instant) {
+    crate::telemetry::record(
+        "daemon_worker_spawned",
+        serde_json::json!({
+            "reason": reason,
+            "outcome": outcome,
+            "startup_ms": began.elapsed().as_millis() as u64,
+        }),
+    );
+}
+
 /// Kills the entire process group `child` leads (see `.process_group(0)` in
 /// `WorkerCommand::spawn`), not just the single tracked PID — reaches a
 /// `sh -c "<cmd>"` grandchild even when `sh` forked rather than exec'd.
@@ -182,19 +203,38 @@ impl Worker {
     /// reason.
     fn ensure_started(&self) -> Result<(), WorkerError> {
         let mut guard = self.child.lock().unwrap();
+        // "Was there a child, and is it gone?" is the whole crash signal. A
+        // `Some` that no longer runs is a worker that died between requests —
+        // the case that matters, because from the outside it is indistinguishable
+        // from a healthy daemon right up until it stops coming back.
+        let previous_child = guard.is_some();
         let needs_spawn = match guard.as_mut() {
             Some(child) => !matches!(child.try_wait(), Ok(None)), // Ok(None) == still running
             None => true,
         };
         if needs_spawn {
+            let reason = if previous_child { "restart" } else { "initial" };
+            let began = Instant::now();
             let _ = std::fs::remove_file(&self.socket_path);
-            let mut child = self.cmd.spawn(&self.socket_path).map_err(WorkerError::Io)?;
-            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut child = match self.cmd.spawn(&self.socket_path) {
+                Ok(child) => child,
+                Err(err) => {
+                    // The error itself is deliberately NOT reported: an
+                    // `io::Error` from a spawn renders the command, which is a
+                    // path (and under `FAILPROOFAI_WORKER_CMD` an arbitrary
+                    // shell string). It stays in the service log; the outcome
+                    // enum is what travels.
+                    report_spawn(reason, "spawn_failed", began);
+                    return Err(WorkerError::Io(err));
+                }
+            };
+            let deadline = began + Duration::from_secs(5);
             loop {
                 if UnixStream::connect(&self.socket_path).is_ok() {
                     break;
                 }
                 if let Ok(Some(status)) = child.try_wait() {
+                    report_spawn(reason, "exited_early", began);
                     return Err(WorkerError::Io(io::Error::other(format!(
                         "worker process exited before creating its socket (status: {status})"
                     ))));
@@ -202,10 +242,12 @@ impl Worker {
                 if Instant::now() >= deadline {
                     kill_process_group(&mut child);
                     let _ = std::fs::remove_file(&self.socket_path);
+                    report_spawn(reason, "startup_timeout", began);
                     return Err(WorkerError::StartupTimedOut);
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
+            report_spawn(reason, "ready", began);
             *guard = Some(child);
         }
         Ok(())

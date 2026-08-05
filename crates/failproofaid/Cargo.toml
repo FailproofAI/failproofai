@@ -27,3 +27,17 @@ toml = "1.1.4"
 libc = "0.2"
 sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+# Epoch-millis to RFC3339, for the `timestamp` on each telemetry event. Already
+# in the tree via fpai-collect at the same version and features, so this adds
+# nothing to the lockfile or to any of the four cross-compile legs — and the
+# alternative is hand-rolled civil date maths, which fails silently (a leap-year
+# slip puts every event on the wrong day with nothing to notice it).
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+
+[dev-dependencies]
+# The telemetry lane's transport is asserted against a real HTTP server rather
+# than a trait double: the failure this guards against is a batch PostHog
+# rejects, which only a server that parses the body can see. Both are already in
+# the lockfile via fpai-collect's dev-dependencies.
+wiremock = "0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -4,6 +4,7 @@ pub mod cloud_policies;
 mod lock;
 mod paths;
 mod server;
+mod telemetry;
 mod worker;
 
 use std::sync::Arc;
@@ -48,6 +49,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
 
+    // The shutdown flag and its signal handler are installed BEFORE anything
+    // long-running starts, so every lane below observes the same flag the socket
+    // server does. One SIGTERM then stops all of them; a second signal path
+    // would be one more thing to get wrong during shutdown.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    install_signal_handler(shutdown.clone());
+
+    // Telemetry first, and deliberately ahead of the worker: the warm-up below
+    // is the earliest thing that reports, and a lane installed after it would
+    // drop the very event that says whether the worker came up. `spawn` only
+    // resolves the opt-out and installs an in-memory buffer — every request it
+    // ever makes happens on its own thread, never here and never on the hook
+    // path (see the module header; this daemon fails closed).
+    let telemetry_lane = telemetry::spawn(shutdown.clone());
+    let started_at = telemetry::record_started();
+
     let socket_path = paths::socket_path()?;
     let worker_socket_path = paths::worker_socket_path()?;
     let worker = Arc::new(worker::Worker::new(
@@ -64,12 +81,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let warm_worker = worker.clone();
         std::thread::spawn(move || warm_worker.warm());
     }
-    // The shutdown flag and its signal handler are installed BEFORE anything
-    // long-running starts, so the collector below can observe the same flag
-    // the socket server does. One SIGTERM then stops both; a second signal
-    // path would be one more thing to get wrong during shutdown.
-    let shutdown = Arc::new(AtomicBool::new(false));
-    install_signal_handler(shutdown.clone());
 
     // Cloud policy integrity is a maintenance-lane responsibility, never a
     // hook-path operation. The monitor is useful before cloud transport lands:
@@ -118,7 +129,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // WITHOUT root, against a system unit — takes effect without a restart.
     let audit_lane = audit_lane::spawn(shutdown.clone());
 
-    let srv = server::Server::bind(&socket_path, worker)?;
+    // Handled rather than `?`-ed, because a bare `?` here returns past every
+    // join below — including the telemetry flush — so a daemon that cannot bind
+    // its socket would buffer `daemon_started` and then take it to the grave.
+    // That is the single most interesting failure this daemon has: on a
+    // `daemonConfigured` machine it is every tool call across all 12 CLIs denied
+    // against a socket nothing is listening on, in a `Restart=on-failure` loop,
+    // and it is precisely the case nobody can see from outside the machine.
+    // (Every other `?` between the lane starting and here can only fail when
+    // HOME is unset, in which case the lane has already stopped and buffered
+    // nothing.)
+    let srv = match server::Server::bind(&socket_path, worker) {
+        Ok(srv) => srv,
+        Err(err) => {
+            shutdown.store(true, Ordering::Relaxed);
+            let _ = telemetry_lane.join();
+            telemetry::record_stopped("bind_failed", started_at);
+            telemetry::shutdown_flush();
+            return Err(err.into());
+        }
+    };
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 
     let run_result = srv.run_until(shutdown);
@@ -132,6 +162,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // waits on its child and kills the process group rather than waiting the
     // scan out, so a `systemctl stop` is never held up by an audit.
     let _ = audit_lane.join();
+
+    // Joined BEFORE the stop event is recorded, so nothing contends with the
+    // final send. `run_result` is what distinguishes the two ways this daemon
+    // ends: a signal (the ordinary stop, and every upgrade) from a socket server
+    // that gave up, which on a fail-closed machine is every tool call denied
+    // until systemd restarts it.
+    let _ = telemetry_lane.join();
+    telemetry::record_stopped(
+        if run_result.is_ok() {
+            "signal"
+        } else {
+            "server_error"
+        },
+        started_at,
+    );
+    telemetry::shutdown_flush();
 
     run_result?;
     Ok(())
@@ -201,6 +247,13 @@ fn spawn_collector_manager(daemon_shutdown: Arc<AtomicBool>) -> std::thread::Joi
             else {
                 return;
             };
+
+            // Publish the counters the collector already keeps for its health
+            // record, so the telemetry lane can POLL them. A pull, not a push:
+            // no telemetry code enters `fpai-collect`, and a task quietly
+            // restarting in a loop stops being invisible from outside the
+            // machine.
+            telemetry::set_collector_metrics(collector.metrics());
 
             while !daemon_shutdown.load(Ordering::Relaxed) {
                 std::thread::sleep(Duration::from_millis(200));

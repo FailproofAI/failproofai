@@ -231,6 +231,7 @@ pub fn spawn_maintenance(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
+        let mut reported: Option<PullReport> = None;
         while !shutdown.load(Ordering::Relaxed) {
             let cloud = match CloudClient::from_env_or_file() {
                 Ok(client) => client,
@@ -252,7 +253,21 @@ pub fn spawn_maintenance(
             }
 
             if let Some(cloud) = cloud.as_ref() {
-                poll_once(&store, cloud);
+                let report = poll_once(&store, cloud);
+                // Reported on a CHANGE only, never per tick. This lane polls
+                // every 30 seconds, so a per-tick event would be ~2,900 a day
+                // from every enrolled machine to say nothing happened — and an
+                // unreachable cloud would send the same failure 2,900 times.
+                // A new generation is always a change; a steady state is not.
+                if reported.as_ref() != Some(&report) {
+                    report.emit();
+                    reported = Some(report);
+                }
+            } else {
+                // Forget the last report while unenrolled, so reconnecting
+                // reports its first pull rather than being deduped against a
+                // state from before the disconnect.
+                reported = None;
             }
 
             // Runs whether or not cloud is reachable: poll failures never
@@ -273,23 +288,77 @@ pub fn spawn_maintenance(
     })
 }
 
-fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
+/// What one poll amounted to, in terms a telemetry event may carry.
+///
+/// Enums and counts only — deliberately no error text: a reconcile or transport
+/// error renders the cloud origin (which identifies the customer's deployment)
+/// and local paths. The detail stays in the service log, which is where an
+/// operator debugging their own machine already looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PullReport {
+    outcome: &'static str,
+    generation: Option<u64>,
+    activated: bool,
+    downloaded: usize,
+    repaired: usize,
+}
+
+impl PullReport {
+    fn failed(outcome: &'static str) -> Self {
+        PullReport {
+            outcome,
+            generation: None,
+            activated: false,
+            downloaded: 0,
+            repaired: 0,
+        }
+    }
+
+    fn emit(&self) {
+        let mut props = serde_json::json!({
+            "outcome": self.outcome,
+            "generation_changed": self.activated,
+            "downloaded": self.downloaded,
+            "repaired": self.repaired,
+        });
+        if let Some(generation) = self.generation
+            && let Some(map) = props.as_object_mut()
+        {
+            map.insert("generation".into(), serde_json::json!(generation));
+        }
+        crate::telemetry::record("daemon_cloud_policy_pull", props);
+    }
+}
+
+fn poll_once(store: &PolicyStore, cloud: &CloudClient) -> PullReport {
     match cloud.desired_state() {
         Ok(desired) => {
             match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
-                Ok(outcome)
-                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 =>
-                {
-                    eprintln!(
-                        "[failproofaid] cloud policy generation {} active (downloaded {}, repaired {})",
-                        outcome.generation, outcome.downloaded, outcome.repaired
-                    );
+                Ok(outcome) => {
+                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
+                        eprintln!(
+                            "[failproofaid] cloud policy generation {} active (downloaded {}, repaired {})",
+                            outcome.generation, outcome.downloaded, outcome.repaired
+                        );
+                    }
+                    PullReport {
+                        outcome: "ok",
+                        generation: Some(outcome.generation),
+                        activated: outcome.activated,
+                        downloaded: outcome.downloaded,
+                        repaired: outcome.repaired,
+                    }
                 }
-                Ok(_) => {}
-                Err(err) => eprintln!("[failproofaid] cloud policy reconcile error: {err}"),
+                Err(err) => {
+                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    PullReport::failed("reconcile_failed")
+                }
             }
         }
-        Err(err) => eprintln!("[failproofaid] cloud policy poll error: {err}"),
+        Err(err) => {
+            eprintln!("[failproofaid] cloud policy poll error: {err}");
+            PullReport::failed("poll_failed")
+        }
     }
 }
 

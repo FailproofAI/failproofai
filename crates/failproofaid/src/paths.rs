@@ -98,6 +98,23 @@ pub fn audit_schedule_path() -> io::Result<PathBuf> {
         .join("audit-schedule.json"))
 }
 
+/// `~/.failproofai/state/telemetry-id` — the anonymous instance id the CLI
+/// resolved, so the daemon reports under the SAME PostHog person the CLI does.
+///
+/// Mirrored for the same reason `audit_schedule_path` is, with the direction
+/// reversed: the CLI is the sole writer (`getInstanceId()` in
+/// `lib/telemetry-id.ts`) and the daemon only reads. Two path expressions would
+/// not fail — the daemon would simply never find the file, fall to a tier it can
+/// recompute, and file this machine under a second person that looks exactly
+/// like a second machine.
+/// Takes the home rather than resolving it, unlike its neighbours: its only
+/// caller (the telemetry lane) already holds one, and passing it is what lets
+/// the identity ladder be tested against a scratch directory without mutating
+/// process-global environment under a parallel test harness.
+pub fn telemetry_id_path(home: &std::path::Path) -> PathBuf {
+    home.join("state").join("telemetry-id")
+}
+
 // The collector's own paths — state/, spool/, failed/, collector-health.json,
 // custom-agents/, credentials.toml, config.toml — are NOT mirrored here.
 // `fpai-collect` derives them from the `home` it is handed (see its

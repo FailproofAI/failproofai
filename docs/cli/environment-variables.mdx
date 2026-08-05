@@ -43,6 +43,13 @@ variables exported from your shell — so `FAILPROOFAI_TELEMETRY_DISABLED` canno
 reach it. `[telemetry] enabled = false` is read by both the CLI and the daemon.
 </Note>
 
+The daemon reports its own **lifecycle** only: that it started (and whether the
+previous run exited cleanly), that it stopped, when its evaluation worker was
+spawned or restarted, when a collector task failed, and the outcome of a
+cloud-policy pull. These carry low-cardinality values and counts — never a file
+path, a command, a policy, a prompt, or anything read out of a transcript. There
+is no per-tool-call event.
+
 ## Authentication
 
 | Variable | Description |

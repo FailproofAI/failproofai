@@ -200,6 +200,20 @@ export const sessionPauseDir = () => resolve(stateDir(), "sessions");
  * which is why it sits under `state/` rather than beside the audit results.
  */
 export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "audit-schedule.json");
+/**
+ * The anonymous instance id this machine reports telemetry under.
+ *
+ * The mirror image of `auditScheduleFile()` above: here the CLI is the sole
+ * writer (`getInstanceId()` in `lib/telemetry-id.ts`, which persists whatever it
+ * resolved) and **failproofaid** only reads, through `telemetry_id_path()` in
+ * `crates/failproofaid/src/paths.rs`. The daemon cannot re-derive the value —
+ * `getInstanceId`'s middle tier hashes Node-formatted strings (`os.arch()` is
+ * `x64` where Rust says `x86_64`), and a near-miss there does not fail, it
+ * silently files one machine under two PostHog persons — so this file is how the
+ * two agree. Derived state a human never opens, hence `state/` rather than
+ * beside `config.toml`.
+ */
+export const telemetryIdFile = (home?: string) => resolve(stateDir(home), "telemetry-id");
 export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");
 export const onboardingLockFile = (home?: string) => resolve(stateDir(home), "onboarding.lock");
 export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), "codex-session-paths.json");

@@ -75,6 +75,10 @@ fn spawn_daemon(home: &Path, cli_cmd: &str) -> DaemonGuard {
         .env("FAILPROOFAI_DAEMON_SOCKET", &socket)
         .env("FAILPROOFAI_CLI_CMD", cli_cmd)
         .env("FAILPROOFAI_AUDIT_POLL_MS", "500")
+        // Never report from a test: this home carries no [telemetry] block, so
+        // the daemon's telemetry lane would otherwise resolve to its shipped
+        // default (ON) and POST to the real PostHog endpoint on every run.
+        .env("FAILPROOFAI_TELEMETRY_DISABLED", "1")
         // Nothing here connects to the cloud; keep the other lanes quiet so the
         // stderr a failure prints is about the audit.
         .env("FAILPROOFAI_CLOUD_POLICY_RECONCILE_MS", "600000")

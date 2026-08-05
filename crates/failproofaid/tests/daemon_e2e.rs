@@ -37,6 +37,23 @@ fn unique_socket_path(name: &str) -> PathBuf {
         .join("failproofaid.sock")
 }
 
+/// A scratch failproofai home for a spawned daemon, beside its socket.
+///
+/// `FAILPROOFAI_DAEMON_SOCKET` relocates only `run/`; everything else the
+/// daemon reads and writes — `config.toml`, `state/` — still resolves from
+/// `$HOME`. So without this, these tests ran the real binary against the
+/// developer's own `~/.failproofai`: it would read their real telemetry
+/// opt-out, write their real `state/daemon-run.json`, and POST a
+/// `daemon_started` to the REAL PostHog endpoint on every `cargo test` and every
+/// CI run. Found the moment the telemetry lane landed, by noticing files with a
+/// fresh mtime in a home no test names.
+fn scratch_home(socket_path: &std::path::Path) -> PathBuf {
+    socket_path
+        .parent()
+        .expect("the socket path always has a parent")
+        .join("home")
+}
+
 /// Owns a spawned daemon subprocess and guarantees it is killed and reaped
 /// on scope exit — including during an unwind from a failed assertion.
 /// Without this, any panic between `spawn_daemon` and a test's explicit
@@ -80,6 +97,13 @@ impl Drop for DaemonGuard {
 fn spawn_daemon(socket_path: &PathBuf) -> DaemonGuard {
     let mut child = Command::new(binary_path())
         .env("FAILPROOFAI_DAEMON_SOCKET", socket_path)
+        .env("FAILPROOFAI_HOME", scratch_home(socket_path))
+        // Never report from a test. The scratch home above keeps the daemon out
+        // of the developer's real `~/.failproofai`, but a home with no
+        // config.toml resolves telemetry to its shipped default — ON — so
+        // without this every `cargo test` and every CI run would POST a real
+        // `daemon_started` to the real PostHog endpoint.
+        .env("FAILPROOFAI_TELEMETRY_DISABLED", "1")
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -177,6 +201,8 @@ fn a_second_daemon_on_the_same_socket_refuses_to_start() {
 
     let second_output = Command::new(binary_path())
         .env("FAILPROOFAI_DAEMON_SOCKET", &socket_path)
+        .env("FAILPROOFAI_HOME", scratch_home(&socket_path))
+        .env("FAILPROOFAI_TELEMETRY_DISABLED", "1")
         .output()
         .expect("failed to run second instance");
     assert!(

@@ -13,9 +13,9 @@
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
-[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**翻訳:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
+**翻訳:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **コーディングエージェントのランタイム障害解決ツール。**
 Claude Code および Codex にフックし、ループ・危険な操作・シークレットの漏洩を
@@ -24,7 +24,7 @@ Claude Code および Codex にフックし、ループ・危険な操作・シ�
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---
@@ -38,46 +38,46 @@ Claude Code および Codex にフックし、ループ・危険な操作・シ�
   <tr>
     <td align="center" width="96">
       <a href="https://claude.com/claude-code" title="Claude Code">
-        <img src="assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://learn.chatgpt.com" title="OpenAI Codex">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
-          <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
-          <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://cursor.com" title="Cursor Agent CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
-          <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
-          <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
-          <img src="assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -86,39 +86,39 @@ Claude Code および Codex にフックし、ループ・危険な操作・シ�
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
-          <img src="assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
-        <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://factory.ai/" title="Factory Droid (droid)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
-          <img src="assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-dark.png" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://devin.ai" title="Devin CLI (Cognition)">
-        <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://antigravity.google" title="Antigravity CLI (agy)">
-        <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
-          <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -203,15 +203,15 @@ customPolicies.add({
 
 ## ライセンス
 
-MIT に [Commons Clause](https://commonsclause.com/) を追加 — 社内利用および個人利用は無償。failproofai 自体の商業的な再販には別途契約が必要です。全文は [LICENSE](./LICENSE) を参照してください。
+MIT に [Commons Clause](https://commonsclause.com/) を追加 — 社内利用および個人利用は無償。failproofai 自体の商業的な再販には別途契約が必要です。全文は [LICENSE](../../LICENSE) を参照してください。
 
 ---
 
 ## コントリビュート
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。新しいポリシー、エッジケース、翻訳はいずれも歓迎します。
+[CONTRIBUTING.md](../../CONTRIBUTING.md) を参照してください。新しいポリシー、エッジケース、翻訳はいずれも歓迎します。
 
-> **開始前にビルドしてください。** まず `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自分自身に適用しており、`failproofai` のインポートはコンパイル済みの `dist/` バンドルに対して解決されます。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は必ず再ビルドしてください。詳細は [リポジトリ内の開発用フックを動作させるためのビルド](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) を参照してください。
+> **開始前にビルドしてください。** まず `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自分自身に適用しており、`failproofai` のインポートはコンパイル済みの `dist/` バンドルに対して解決されます。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は必ず再ビルドしてください。詳細は [リポジトリ内の開発用フックを動作させるためのビルド](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) を参照してください。
 
 ---
 

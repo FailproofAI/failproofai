@@ -90,6 +90,15 @@ jobs:
       - name: Translate ${{ matrix.lang }}
         run: bun run translate --languages ${{ matrix.lang }} ${{ inputs.force == true && '--force' || '' }}
 
+      # Fail the language that actually broke, before its artifact is uploaded.
+      # `consolidate` re-runs this on the merged tree, but only after every
+      # language finished — attributing a failure there means reading 14 logs.
+      # This also covers broken image paths (see findBrokenAssetRefs), the class
+      # that shipped every logo broken in all 14 translated READMEs: valid MDX,
+      # valid YAML, so neither `mintlify validate` nor the MDX parse saw it.
+      - name: Validate translated pages parse and images resolve
+        run: bun run validate:mdx
+
       - name: Upload translated files
         uses: actions/upload-artifact@v7
         with:
@@ -161,7 +170,10 @@ jobs:
         working-directory: docs
         run: mintlify validate
 
-      - name: Validate translated MDX pages
+      # Parses every page AND checks that every image reference resolves on
+      # disk — a broken image path is valid MDX, so `mintlify validate` above
+      # passes it straight through to a reader's browser.
+      - name: Validate translated MDX pages and image references
         run: bun run validate:mdx
 
       - name: Download cache fragments

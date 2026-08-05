@@ -75,6 +75,7 @@ const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Run the source until shutdown.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     store_dir: PathBuf,
     state_dir: PathBuf,
@@ -82,6 +83,7 @@ pub async fn run(
     verbosity: HooksVerbosity,
     environment: String,
     machine_id: Option<String>,
+    user: Option<String>,
     sd: Shutdown,
 ) -> Result<(), TaskError> {
     if verbosity == HooksVerbosity::Off {
@@ -110,6 +112,7 @@ pub async fn run(
             verbosity,
             &environment,
             machine_id.as_deref(),
+            user.as_deref(),
         )
         .await
         {
@@ -141,6 +144,7 @@ async fn poll_once(
     verbosity: HooksVerbosity,
     environment: &str,
     machine_id: Option<&str>,
+    user: Option<&str>,
 ) -> Result<u64, TaskError> {
     let files = list_pages(store_dir).await;
     if files.is_empty() {
@@ -153,7 +157,8 @@ async fn poll_once(
         "hooks",
         "activity",
     )
-    .with_machine_id(machine_id.map(str::to_string));
+    .with_machine_id(machine_id.map(str::to_string))
+    .with_user(user.map(str::to_string));
     // Allow rows are rolled up across the whole pass, so a bucket spanning two
     // files still emits once.
     let mut buckets: BTreeMap<transform::BucketKey, AllowBucket> = BTreeMap::new();

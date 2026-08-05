@@ -64,6 +64,12 @@ pub struct SpoolWriter {
     /// carry no machine and are excluded from machine-level counts rather than
     /// guessed into one.
     machine_id: Option<String>,
+    /// The OS user this daemon runs as, stamped on every event so the server can
+    /// tell one profile from another on the same machine. Identity is the pair
+    /// `(machine_id, user)`: a username is unique only within a machine, so the
+    /// same name on two machines never merges. `None` when it could not be
+    /// resolved; such events simply carry no user.
+    user: Option<String>,
 }
 
 impl SpoolWriter {
@@ -93,6 +99,7 @@ impl SpoolWriter {
             redact: Redact::Minimal,
             redacted: 0,
             machine_id: None,
+            user: None,
         }
     }
 
@@ -108,6 +115,14 @@ impl SpoolWriter {
     /// absent, so a misconfigured blank id never becomes a machine of its own.
     pub fn with_machine_id(mut self, id: Option<String>) -> Self {
         self.machine_id = id.filter(|s| !s.is_empty());
+        self
+    }
+
+    /// Set the OS user stamped on every event. An empty string is treated as
+    /// absent, like the machine id, so a blank never becomes a profile of its
+    /// own.
+    pub fn with_user(mut self, user: Option<String>) -> Self {
+        self.user = user.filter(|s| !s.is_empty());
         self
     }
 
@@ -142,6 +157,16 @@ impl SpoolWriter {
         {
             obj.entry("machine_id")
                 .or_insert_with(|| Value::String(id.clone()));
+        }
+
+        // Stamp the OS user the same way, at the same choke point. Identity is
+        // the pair `(machine_id, user)`; an event that already names its user (a
+        // re-shipped batch) keeps it.
+        if let Some(user) = &self.user
+            && let Some(obj) = event.as_object_mut()
+        {
+            obj.entry("user")
+                .or_insert_with(|| Value::String(user.clone()));
         }
 
         let mut line = serialize(&event)?;
@@ -529,6 +554,61 @@ mod tests {
             !body.contains("collector-host"),
             "must not overwrite: {body}"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn user_is_stamped_on_every_event_when_set() {
+        // The profile half of the (machine_id, user) identity. Without it, two
+        // profiles on one machine are indistinguishable in the fleet views.
+        let dir = tmpdir("user");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_user(Some("alice".into()));
+        w.push(json!({"type": "agent_start", "agent_id": "claude-foo"}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        let body = std::fs::read_to_string(dir.join(&name)).unwrap();
+        assert!(body.contains(r#""user":"alice""#), "got {body}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn an_absent_or_empty_user_stamps_nothing() {
+        // Same rule as the machine id: a daemon that could not resolve its user
+        // (or resolved a blank one) invents no profile.
+        for (label, id) in [("no-user", None), ("blank-user", Some(String::new()))] {
+            let dir = tmpdir(label);
+            let mut w =
+                SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s").with_user(id);
+            w.push(json!({"type": "agent_start"})).await.unwrap();
+            w.flush().await.unwrap();
+            let name = batches(&dir).remove(0);
+            assert!(
+                !std::fs::read_to_string(dir.join(&name))
+                    .unwrap()
+                    .contains(r#""user""#)
+            );
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_existing_user_is_never_overwritten() {
+        // `or_insert_with` fills only the absent case, so a re-shipped event that
+        // already names its user keeps it — same provenance rule as machine_id.
+        let dir = tmpdir("preexisting-user");
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "claude", "s")
+            .with_user(Some("daemon-user".into()));
+        w.push(json!({"type": "agent_start", "user": "original-user"}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        let name = batches(&dir).remove(0);
+        let body = std::fs::read_to_string(dir.join(&name)).unwrap();
+        assert!(body.contains(r#""user":"original-user""#), "got {body}");
+        assert!(!body.contains("daemon-user"), "must not overwrite: {body}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

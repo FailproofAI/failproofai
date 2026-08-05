@@ -138,6 +138,8 @@ pub struct Params {
     pub environment: String,
     /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
     pub machine_id: Option<String>,
+    /// OS user this daemon runs as, stamped on every event. See `SpoolWriter`.
+    pub user: Option<String>,
     /// Minutes a file must be idle at EOF before `agent_end` is emitted.
     pub end_idle_mins: u64,
     pub max_read_bytes: u64,
@@ -258,7 +260,8 @@ async fn process_file(
         spec.format.kind,
         &ctx.session_id,
     )
-    .with_machine_id(spec.params.machine_id.clone());
+    .with_machine_id(spec.params.machine_id.clone())
+    .with_user(spec.params.user.clone());
     let mut emitted = 0u64;
 
     // A session with no start event never appears in the product, so retry it

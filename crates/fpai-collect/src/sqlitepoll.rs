@@ -108,6 +108,8 @@ pub struct Params {
     pub environment: String,
     /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
     pub machine_id: Option<String>,
+    /// OS user this daemon runs as, stamped on every event. See `SpoolWriter`.
+    pub user: Option<String>,
     pub max_rows_per_poll: u64,
     pub max_batch_bytes: u64,
     /// Poll passes before yielding to the shutdown check. Bounds how long a
@@ -217,7 +219,8 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool)
         spec.format.kind,
         spec.format.kind,
     )
-    .with_machine_id(spec.params.machine_id.clone());
+    .with_machine_id(spec.params.machine_id.clone())
+    .with_user(spec.params.user.clone());
     let emitted = outcome.events.len() as u64;
     for event in outcome.events {
         writer.push(event).await.map_err(io_err)?;

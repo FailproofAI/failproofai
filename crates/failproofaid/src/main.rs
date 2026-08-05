@@ -292,6 +292,11 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
 
     let cursors_root = paths::cursors_dir().unwrap_or_else(|_| home.join("cursors"));
 
+    // The OS user this daemon runs as — the profile half of the (machine_id,
+    // user) identity. Resolved once and stamped onto every event by every source
+    // below, so two profiles on one machine stay distinct in the fleet views.
+    let os_user = current_os_user();
+
     if cfg.settings.hooks {
         // Hook activity: one source covering every CLI failproofai is
         // installed in, because the store is CLI-agnostic — each row names its
@@ -304,6 +309,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let verbosity = cfg.settings.hooks_verbosity;
         let environment = cfg.settings.environment.clone();
         let machine_id = cfg.settings.machine_id.clone();
+        let hooks_user = os_user.clone();
         tasks.push(fpai_collect::TaskSpec::new("hook-activity", move |sd| {
             fpai_collect::sources::hooks::run(
                 store_dir.clone(),
@@ -312,6 +318,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 verbosity,
                 environment.clone(),
                 machine_id.clone(),
+                hooks_user.clone(),
                 sd,
             )
         }));
@@ -342,6 +349,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         // Subagent transcripts live under the SAME root, claimed by a second
         // format. A separate source, not a second predicate: `is_source_file`
@@ -358,6 +366,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -369,6 +378,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -380,6 +390,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -391,6 +402,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -402,6 +414,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -413,6 +426,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -424,6 +438,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         file_source(
             &mut tasks,
@@ -435,6 +450,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &cursors,
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
 
         use fpai_collect::sources::{devin, goose, hermes, opencode};
@@ -448,6 +464,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             cursors.join("goose"),
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         sqlite_source(
             &mut tasks,
@@ -459,6 +476,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             cursors.join("opencode"),
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
         sqlite_source(
             &mut tasks,
@@ -470,6 +488,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             cursors.join("devin"),
             &env,
             machine.as_deref(),
+            os_user.as_deref(),
         );
 
         // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
@@ -488,6 +507,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 state,
                 &env,
                 machine.as_deref(),
+                os_user.as_deref(),
             );
         }
     }
@@ -540,6 +560,7 @@ fn file_source(
     cursor_root: &std::path::Path,
     environment: &str,
     machine_id: Option<&str>,
+    user: Option<&str>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     // One cursor store per source, never shared: the store writes its whole map
@@ -548,6 +569,7 @@ fn file_source(
     let state_dir = cursor_root.join(name);
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
+    let user = user.map(str::to_string);
     tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
         fpai_collect::filetail::run(
             fpai_collect::filetail::Spec {
@@ -560,6 +582,7 @@ fn file_source(
                     agent_id: default_agent_id.to_string(),
                     environment: environment.clone(),
                     machine_id: machine_id.clone(),
+                    user: user.clone(),
                     end_idle_mins: 10,
                     max_read_bytes: 32 * 1024 * 1024,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
@@ -586,10 +609,12 @@ fn sqlite_source(
     state_dir: std::path::PathBuf,
     environment: &str,
     machine_id: Option<&str>,
+    user: Option<&str>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
+    let user = user.map(str::to_string);
     tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
         fpai_collect::sqlitepoll::run(
             fpai_collect::sqlitepoll::Spec {
@@ -602,6 +627,7 @@ fn sqlite_source(
                     agent_id: default_agent_id.to_string(),
                     environment: environment.clone(),
                     machine_id: machine_id.clone(),
+                    user: user.clone(),
                     max_rows_per_poll: 2000,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     max_drain_passes: 20,
@@ -610,6 +636,50 @@ fn sqlite_source(
             sd,
         )
     }));
+}
+
+/// The OS user this daemon runs as, for stamping onto collected events.
+///
+/// Resolved from the real uid via the password database, not `$USER`: a
+/// system-scope service unit runs with a minimal environment where `$USER` may
+/// be unset or stale, whereas the uid is always authoritative. Returns `None`
+/// when the uid has no passwd entry (or the name is empty/non-UTF-8), in which
+/// case events simply carry no user — the same "never invent an identity"
+/// stance `machine_id` takes.
+fn current_os_user() -> Option<String> {
+    // SAFETY: getuid reads this process's credentials and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    // The reentrant getpwuid_r fills a caller-owned buffer, so nothing here
+    // races on the shared static that the plain getpwuid returns.
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 1024];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    loop {
+        // SAFETY: `pwd`, `buf` and `result` all outlive the call; `result`
+        // receives either `&mut pwd` or null.
+        let rc =
+            unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+        if rc == libc::ERANGE {
+            // Buffer too small — grow and retry, capped so a broken libc cannot
+            // spin us into unbounded allocation.
+            if buf.len() >= 64 * 1024 {
+                return None;
+            }
+            buf.resize(buf.len() * 2, 0);
+            continue;
+        }
+        if rc != 0 || result.is_null() {
+            return None;
+        }
+        break;
+    }
+    // SAFETY: `pw_name` points into `buf`, valid until `buf` is dropped; the
+    // string is copied out before that happens.
+    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
+    name.to_str()
+        .ok()
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
 }
 
 /// A stable, filesystem-safe directory name for one Hermes profile database.
@@ -721,4 +791,20 @@ fn install_signal_handler(shutdown: Arc<AtomicBool>) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn current_os_user_resolves_the_running_user() {
+        // Guards the unsafe getpwuid_r plumbing: whoever runs the tests has a
+        // passwd entry, so the lookup must yield a non-empty name.
+        let name = current_os_user().expect("the running uid should resolve to a passwd entry");
+        assert!(!name.is_empty());
+        // It reads the process uid, not the environment, so it is stable across
+        // calls within one process.
+        assert_eq!(current_os_user().as_deref(), Some(name.as_str()));
+    }
 }

@@ -872,6 +872,7 @@ fn spec(db: &Path, spool: PathBuf, state: PathBuf) -> Spec {
             agent_id: goose::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
             machine_id: None,
+            user: None,
             max_rows_per_poll: 500,
             max_batch_bytes: 8 * 1024 * 1024,
             max_drain_passes: 8,

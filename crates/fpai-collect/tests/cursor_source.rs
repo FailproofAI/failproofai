@@ -177,6 +177,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
             agent_id: cursor::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
             machine_id: None,
+            user: None,
             end_idle_mins: 0,
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,

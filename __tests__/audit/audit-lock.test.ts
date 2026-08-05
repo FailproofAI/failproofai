@@ -14,7 +14,16 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { auditLockFile, runDir } from "../../src/hooks/fp-home";
@@ -118,6 +127,25 @@ describe("acquireAuditLock", () => {
     // Clock skew must not become a licence to steal from a running scan.
     writeRawLock({ pid: process.pid, startedAt: Date.now() + 86_400_000, source: "cli" });
     expect(acquireAuditLock("scheduled").ok).toBe(false);
+  });
+
+  it("publishes a lock that already parses, and leaves nothing else in run/", () => {
+    // The lock is staged and link()ed into place rather than created empty and
+    // then written, because a competitor that reads the file in the window
+    // between those two syscalls sees an unreadable lock — which isStale()
+    // correctly calls abandoned — and steals it from a holder that is
+    // mid-acquire. The staging file must not outlive the acquire either: run/
+    // is the daemon's directory, not a scratch pad.
+    const attempt = acquireAuditLock("cli");
+    expect(attempt.ok).toBe(true);
+    expect(readAuditLock()).toMatchObject({ pid: process.pid, source: "cli" });
+    expect(readdirSync(runDir())).toEqual(["audit.lock"]);
+  });
+
+  it("leaves nothing behind in run/ when it loses the lock", () => {
+    writeRawLock({ pid: process.pid, startedAt: Date.now(), source: "scheduled" });
+    expect(acquireAuditLock("cli").ok).toBe(false);
+    expect(readdirSync(runDir())).toEqual(["audit.lock"]);
   });
 
   it("never throws when the lock directory cannot be created", () => {

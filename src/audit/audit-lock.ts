@@ -27,7 +27,16 @@
  * recycled pid, or a lock written by a machine that shares this home over a
  * network filesystem.
  */
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { auditLockFile, failproofaiHome, runDir } from "../hooks/fp-home";
 
 /**
@@ -178,13 +187,57 @@ function readLock(path: string): AuditLockInfo | null {
   }
 }
 
-/** True when this call created the file; false when it already existed (or the
- *  write failed for any other reason, which is equally "not ours to hold"). */
+/**
+ * True when this call published the lock; false when somebody else already had
+ * it (or the write failed for any other reason, which is equally "not ours").
+ *
+ * Written to a staging file and `link()`ed into place rather than created with
+ * `O_EXCL` and then written. Both are atomic about who WINS, but only this one
+ * is atomic about what the winner's file CONTAINS: `open(O_EXCL)` publishes the
+ * final name while the file is still empty, and an empty lock is an unreadable
+ * lock, which `isStale` — correctly — calls abandoned. A competitor landing in
+ * that window steals the lock from a holder that is mid-acquire and both
+ * processes then scan at once, which is the two-writers-on-one-cache outcome
+ * this whole module exists to prevent. `link()` makes the name appear only once
+ * the bytes behind it are already there. (It is also the idiom that survives a
+ * home shared over NFS, where `O_EXCL` has historically not been atomic at all
+ * — one of the cases the age rule above is a backstop for.)
+ */
 function writeLockExclusive(path: string, info: AuditLockInfo): boolean {
+  const body = JSON.stringify(info);
+  // Same directory, so `link()` stays within one filesystem; keyed by pid so
+  // two processes staging at once cannot overwrite each other's bytes.
+  const staging = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(staging, body, { mode: 0o600 });
+  } catch {
+    return false;
+  }
+  try {
+    linkSync(staging, path);
+    return true;
+  } catch (err) {
+    // EEXIST is the answer we asked the kernel for: somebody else holds it.
+    // Anything else means link() itself is unavailable — a filesystem with no
+    // hard links — and refusing there would mean the audit can never run on
+    // that machine at all, so fall back to the create-then-write form.
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+    return createThenWrite(path, body);
+  } finally {
+    try {
+      unlinkSync(staging);
+    } catch {
+      /* the link (or the failure) is what mattered; a leftover staging file is not */
+    }
+  }
+}
+
+/** The `O_EXCL` form, kept only as the no-hard-links fallback above. */
+function createThenWrite(path: string, body: string): boolean {
   let fd: number | undefined;
   try {
     fd = openSync(path, "wx", 0o600);
-    writeSync(fd, JSON.stringify(info));
+    writeSync(fd, body);
     return true;
   } catch {
     return false;

@@ -55,14 +55,66 @@ function encodeFrame(value: unknown): Buffer {
 }
 
 /**
+ * Last-resort deadline on a single queued task.
+ *
+ * Deliberately far above `daemon-client.ts`'s 30s `DAEMON_RESPONSE_TIMEOUT_MS`:
+ * by the time this fires the client has long since given up and fail-closed, so
+ * nothing legitimate is waiting. It exists only to detect a task that will never
+ * settle at all.
+ */
+const TASK_DEADLINE_MS = 60_000;
+
+/**
  * Serializes every request across every connection through one chain, so
  * `evaluateHookEvent` calls never overlap. `.catch()` on each link keeps the
  * chain alive even if a handler throws unexpectedly — one bad request must
  * never wedge every request queued behind it.
+ *
+ * `.catch()` covers a task that REJECTS. It does nothing for one that never
+ * SETTLES, and that state is reachable: a policy file with a top-level `await`
+ * that never resolves hangs its `import()`, so the task neither resolves nor
+ * rejects and every hook queued behind it waits forever. Each client then burns
+ * its own 30s budget and fail-closed denies — every tool call, every CLI on the
+ * machine, until someone restarts the daemon. This is a class the warm worker
+ * creates: in the one-shot path the identical file hangs one hook process and
+ * the agent CLI's own timeout reaps it.
+ *
+ * `custom-hooks-loader.ts` bounds that import directly, which is the graceful
+ * fix and covers the known cause. This is the backstop for the ones nobody
+ * thought of, and it EXITS rather than continuing: the orphaned task is still
+ * running and still holds the `globalThis` policy registry this chain exists to
+ * serialize access to, so letting the next request proceed would trade a wedge
+ * for silent cross-request registry corruption. Exiting hands the supervisor a
+ * process it will respawn clean (`worker.rs`'s `ensure_started` respawns a
+ * worker whose `try_wait()` reports it gone), which costs one cold start and
+ * denies the in-flight requests — the same fail-closed outcome they were headed
+ * for anyway, but recovered on the next call instead of never.
  */
+const WEDGED_EXIT_CODE = 75;
+
 let processingChain: Promise<void> = Promise.resolve();
 function enqueue(task: () => Promise<void>): void {
-  processingChain = processingChain.then(task).catch(() => {});
+  processingChain = processingChain
+    .then(
+      () =>
+        new Promise<void>((settle) => {
+          const timer = setTimeout(() => {
+            hookLogWarn(
+              `worker: a request did not settle within ${TASK_DEADLINE_MS}ms; ` +
+                `exiting so the supervisor can respawn a clean worker`,
+            );
+            process.exit(WEDGED_EXIT_CODE);
+          }, TASK_DEADLINE_MS);
+          // Never let the deadline itself hold the event loop open.
+          timer.unref?.();
+          const done = () => {
+            clearTimeout(timer);
+            settle();
+          };
+          void task().then(done, done);
+        }),
+    )
+    .catch(() => {});
 }
 
 function handleConnection(socket: Socket): void {

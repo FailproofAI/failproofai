@@ -77,8 +77,14 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
 // These MUST mirror `src/hooks/fp-home.ts` exactly. The daemon and the CLI are
 // separate processes with separate path logic, so a divergence does not fail —
 // it means the daemon writes where the dashboard never reads, and an absent
-// directory is indistinguishable from an idle one. `crates/failproofaid/tests/
-// layout.rs` asserts the two agree.
+// directory is indistinguishable from an idle one.
+//
+// `every_mirrored_path_agrees_with_fp_home_ts` at the bottom of this file is
+// the guard: it queries the TypeScript module in a child process and compares,
+// so adding a mirrored path means adding a row to `mirrored_paths()`. It
+// replaces a citation of `crates/failproofaid/tests/layout.rs`, which was never
+// created — three of these rows were wrong in production at once while this
+// comment claimed they were covered.
 
 /// `~/.failproofai/hook-activity` — the decision log. Promoted out of `cache/`
 /// in layout 2: nothing regenerates it, so it was never a cache.
@@ -351,6 +357,144 @@ mod tests {
         fs::remove_dir_all(&tmp).ok();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
+        }
+    }
+
+    /// Every path this file and `fp-home.ts` must both resolve the same way,
+    /// as `(rust value, the `fp-home.ts` export that must equal it)`.
+    ///
+    /// Add a row whenever a path is mirrored. A Rust-only or TS-only path does
+    /// NOT belong here — see the note above `failproofai_home` about the
+    /// collector deriving its own paths from the home it is handed.
+    fn mirrored_paths() -> Vec<(&'static str, PathBuf, &'static str)> {
+        vec![
+            ("run_dir", run_dir().unwrap(), "runDir()"),
+            ("socket_path", socket_path().unwrap(), "daemonSocket()"),
+            (
+                "worker_socket_path",
+                worker_socket_path().unwrap(),
+                "workerSocket()",
+            ),
+            ("lock_path", lock_path().unwrap(), "daemonLock()"),
+            (
+                "cloud_managed_policy_dir",
+                cloud_managed_policy_dir().unwrap(),
+                "cloudPoliciesDir()",
+            ),
+            (
+                "hook_activity_dir",
+                hook_activity_dir().unwrap(),
+                "hookActivityDir()",
+            ),
+            ("cursors_dir", cursors_dir().unwrap(), "cursorsDir()"),
+            (
+                "audit_schedule_path",
+                audit_schedule_path().unwrap(),
+                "auditScheduleFile()",
+            ),
+            (
+                "telemetry_id_path",
+                telemetry_id_path(&failproofai_home().unwrap()),
+                "telemetryIdFile()",
+            ),
+            (
+                "cloud_client::credentials_path",
+                crate::cloud_client::credentials_path().unwrap(),
+                "credentialsFile()",
+            ),
+        ]
+    }
+
+    /// The cross-language guard this file's header has always claimed.
+    ///
+    /// Two processes, two path expressions, and a divergence that does not
+    /// fail — it means the daemon writes where the CLI never reads, and an
+    /// absent directory is indistinguishable from an idle one. Three rows here
+    /// were live bugs at once: `run_dir` read `$HOME` while the CLI honoured
+    /// `FAILPROOFAI_HOME` (so a healthy daemon denied every tool call on a
+    /// fail-closed machine), `cloud_managed_policy_dir` still wrote layout 1's
+    /// `cloud-managed` (so every verified generation landed in a directory
+    /// nothing opened), and the credential moved to `credentials.toml` on one
+    /// side only (so `--connect` wrote a token the daemon never read). Each was
+    /// fixed by hand; nothing stopped the next one, and BOTH files cited a test
+    /// that did not exist — `fp-home.ts` named `__tests__/hooks/fp-home.test.ts`
+    /// (no reference to `crates/`) and this file named
+    /// `crates/failproofaid/tests/layout.rs` (never created).
+    ///
+    /// It asks the OTHER implementation rather than restating its answers:
+    /// hardcoding the expected strings here — which the tests above do, and
+    /// which is why they all passed while all three rows were wrong — only
+    /// pins Rust against Rust.
+    #[test]
+    fn every_mirrored_path_agrees_with_fp_home_ts() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let home =
+            std::env::temp_dir().join(format!("failproofaid-layout-parity-{}", std::process::id()));
+        unsafe {
+            // Both overrides off: they short-circuit the very derivation under
+            // test, and a green run with them set is what let the cloud rows
+            // stay broken in production for as long as they did.
+            std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
+            std::env::remove_var("FAILPROOFAI_WORKER_SOCKET");
+            std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
+            std::env::remove_var("FAILPROOFAI_CLOUD_CREDENTIALS");
+            std::env::set_var("FAILPROOFAI_HOME", &home);
+        }
+
+        let rows = mirrored_paths();
+
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("crates/failproofaid should be two levels under the repo root")
+            .to_path_buf();
+        let fp_home_ts = repo_root.join("src").join("hooks").join("fp-home.ts");
+        assert!(fp_home_ts.exists(), "expected {fp_home_ts:?} to exist");
+
+        // Ask the TypeScript module itself, in a child process that sees the
+        // same FAILPROOFAI_HOME.
+        let script = format!(
+            "const m = await import({:?}); console.log(JSON.stringify({{{}}}));",
+            fp_home_ts.to_string_lossy(),
+            rows.iter()
+                .map(|(name, _, ts_expr)| format!("{name:?}: m.{ts_expr}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let out = std::process::Command::new("bun")
+            .arg("-e")
+            .arg(&script)
+            .env("FAILPROOFAI_HOME", &home)
+            .env_remove("FAILPROOFAI_DAEMON_SOCKET")
+            .env_remove("FAILPROOFAI_WORKER_SOCKET")
+            .env_remove("FAILPROOFAI_CLOUD_POLICY_DIR")
+            .env_remove("FAILPROOFAI_CLOUD_CREDENTIALS")
+            .output()
+            .expect("bun must be on PATH — the rust-quality CI job installs it");
+        assert!(
+            out.status.success(),
+            "querying fp-home.ts failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let ts: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("fp-home.ts must print one JSON object");
+
+        for (name, rust_value, ts_expr) in &rows {
+            let ts_value = ts
+                .get(name)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("fp-home.ts returned nothing for {name}"));
+            assert_eq!(
+                rust_value.to_string_lossy(),
+                ts_value,
+                "paths.rs::{name} and fp-home.ts's {ts_expr} disagree — the daemon \
+                 would write where the CLI never reads"
+            );
+        }
+
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_HOME");
         }
     }
 }

@@ -29,16 +29,84 @@
  * user out of their agent entirely, with no way back except hand-editing JSON.
  * A loud warning that survives until setup runs is the proportionate answer.
  */
-import { existsSync, rmSync } from "node:fs";
-import { LAYOUT_VERSION, failproofaiHome, resettablePaths } from "./fp-home";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  LAYOUT_VERSION,
+  customPoliciesDir,
+  failproofaiHome,
+  policiesDir,
+  resettablePaths,
+} from "./fp-home";
 import { detectLayout, readConfig, updateConfig, writeVersionFile, type LayoutState } from "./fp-config";
-import { daemonServiceStatus, daemonVersionSkew, isDaemonSupportedPlatform } from "./daemon-service";
+import {
+  daemonServiceStatus,
+  daemonVersionSkew,
+  isDaemonSupportedPlatform,
+  probeDaemonEndToEnd,
+} from "./daemon-service";
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
   removed: string[];
+  /** Basenames of user-authored policy files moved into `custom-policies/`. */
+  migrated: string[];
   /** The layout that was found before the reset. */
   from: number;
+}
+
+/** Script files a person could have written by hand. `.d.ts` is a type stub. */
+const USER_SOURCE_RE = /\.(js|mjs|ts)$/;
+
+/**
+ * Move hand-written policies from layout 1's `policies/` into layout 2's
+ * `policies/custom-policies/`, where the loader actually reads them.
+ *
+ * Layout 1 documented `~/.failproofai/policies/` as the user scope for personal
+ * convention policies, and layout 2 moved the directory the loader opens down a
+ * level (`customPoliciesDir()`). Left alone, those files survive the reset —
+ * that part is handled by keeping the parent out of `resettablePaths()` — but
+ * nothing would ever load them again, which is the same silent enforcement gap
+ * by a slower route.
+ *
+ * Every loadable extension moves, not just the `*policies.{js,mjs,ts}` names
+ * the convention loads: a file that misses the naming convention is still
+ * source somebody wrote, and `findSkippedPolicyFiles` exists precisely to tell
+ * them so. Leaving it behind to be reported against an empty directory helps
+ * nobody.
+ *
+ * A destination that already exists is never overwritten — the source is left
+ * in place instead. The parent directory is no longer deleted, so "left in
+ * place" means "still there to look at", which is the right outcome for the
+ * only case that reaches it (a half-finished earlier migration).
+ */
+export function migrateConventionPolicies(): string[] {
+  const from = policiesDir();
+  if (!existsSync(from)) return [];
+  const moved: string[] = [];
+  try {
+    const entries = readdirSync(from, { withFileTypes: true }).filter(
+      (e) => e.isFile() && USER_SOURCE_RE.test(e.name) && !e.name.endsWith(".d.ts"),
+    );
+    if (entries.length === 0) return [];
+
+    const to = customPoliciesDir();
+    mkdirSync(to, { recursive: true });
+    for (const entry of entries) {
+      const target = resolve(to, entry.name);
+      if (existsSync(target)) continue;
+      try {
+        renameSync(resolve(from, entry.name), target);
+        moved.push(entry.name);
+      } catch {
+        // One unmovable file must not strand the rest. It stays where it is,
+        // and the reset no longer deletes that directory.
+      }
+    }
+  } catch {
+    // A policies directory we cannot read is not worth aborting a reset over.
+  }
+  return moved.sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -52,6 +120,9 @@ export interface ResetOutcome {
  * belonging to a process that may be alive right now.
  */
 export function resetHome(from: number): ResetOutcome {
+  // BEFORE the deletions, so a file that is mid-move is never one the reset
+  // then walks over.
+  const migrated = migrateConventionPolicies();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
     if (!existsSync(path)) continue;
@@ -65,7 +136,7 @@ export function resetHome(from: number): ResetOutcome {
     }
   }
   writeVersionFile();
-  return { removed, from };
+  return { removed, migrated, from };
 }
 
 export interface LayoutCheck {
@@ -74,6 +145,18 @@ export interface LayoutCheck {
   lines: string[];
   /** True when the caller should stop rather than continue. */
   fatal: boolean;
+  /**
+   * True when this call actually reset the home.
+   *
+   * The caller must force setup when it is set. A reset removes the global
+   * policy config, but `isConfigured()` is a union that also counts the agent
+   * CLIs' settings files — which the reset deliberately leaves alone — so the
+   * machine still reads as configured, the wizard is skipped, and
+   * `markLauncherSeen()` back-fills the marker so every later run skips it too.
+   * The user is left with hooks firing on every tool call against no policies
+   * at all, and nothing ever says so again.
+   */
+  didReset: boolean;
 }
 
 /**
@@ -84,13 +167,14 @@ export interface LayoutCheck {
  * written by a NEWER CLI holds data this build cannot read but a simple
  * upgrade could, and deleting it would destroy something recoverable.
  */
-export function checkLayoutForCli(): LayoutCheck {
+export async function checkLayoutForCli(): Promise<LayoutCheck> {
   const state = detectLayout();
 
   if (state.kind === "future") {
     return {
       state,
       fatal: true,
+      didReset: false,
       lines: [
         `This machine's failproofai directory was written by a newer version`,
         `(layout ${state.found}; this build speaks ${LAYOUT_VERSION}).`,
@@ -102,14 +186,26 @@ export function checkLayoutForCli(): LayoutCheck {
   }
 
   if (state.kind === "stale") {
-    const { removed } = resetHome(state.found);
+    const { removed, migrated } = resetHome(state.found);
     return {
       state,
       fatal: false,
+      didReset: true,
       lines: [
         `failproofai reorganised ${failproofaiHome()} in this version.`,
         `Removed ${removed.length} item(s) from the old layout — policy config, activity`,
         `history and audit cache. Your downloaded daemon binary was kept.`,
+        // Named individually rather than counted. These are files a person
+        // wrote; "moved 3 items" is not something you can check at a glance,
+        // and the whole point of saying it is that they can.
+        ...(migrated.length > 0
+          ? [
+              ``,
+              `Kept your own policy file(s) and moved them to where this version`,
+              `loads them (${customPoliciesDir()}):`,
+              ...migrated.map((name) => `  ${name}`),
+            ]
+          : []),
         ``,
         `Run \`failproofai config\` to set up again.`,
       ],
@@ -117,7 +213,12 @@ export function checkLayoutForCli(): LayoutCheck {
   }
 
   if (state.kind === "absent") writeVersionFile();
-  return { state, fatal: false, lines: [...healDaemonFlag(), ...staleDaemonHint()] };
+  return {
+    state,
+    fatal: false,
+    didReset: false,
+    lines: [...(await healDaemonFlag()), ...staleDaemonHint()],
+  };
 }
 
 /**
@@ -135,20 +236,48 @@ export function checkLayoutForCli(): LayoutCheck {
  * downgrade a healthy machine to the in-process path — trading a loud, correct
  * failure for a quiet, wrong one.
  */
-function healDaemonFlag(): string[] {
+async function healDaemonFlag(): Promise<string[]> {
   try {
     const cfg = readConfig();
     if (!cfg.daemon.configured) return [];
     if (!isDaemonSupportedPlatform()) return [];
-    if (daemonServiceStatus() !== "not-installed") return [];
 
-    updateConfig({ daemon: { configured: false } });
-    return [
-      `failproofaid is no longer installed, but this machine was still configured`,
-      `to require it — which denies every tool call. Cleared that flag; policies`,
-      `now evaluate in-process. Run \`failproofai config\` to reinstall the daemon.`,
-      ``,
-    ];
+    const status = daemonServiceStatus();
+    if (status === "not-installed") {
+      updateConfig({ daemon: { configured: false } });
+      return [
+        `failproofaid is no longer installed, but this machine was still configured`,
+        `to require it — which denies every tool call. Cleared that flag; policies`,
+        `now evaluate in-process. Run \`failproofai config\` to reinstall the daemon.`,
+        ``,
+      ];
+    }
+
+    // Installed and RUNNING is not the same as working, and the difference is
+    // a total lockout. `ExecStart` bakes in `process.execPath`, so an
+    // `nvm uninstall 20` months later leaves a unit systemd still calls active
+    // whose worker dies on every spawn. Nothing else catches it: the install
+    // probe cannot run retroactively, and the not-installed branch above never
+    // fires because the unit is very much installed.
+    //
+    // Clearing the flag is the whole repair, and it is deliberately NOT
+    // accompanied by an uninstall: this runs unprompted at the top of whatever
+    // command the user typed, and tearing down a root-owned service from there
+    // is not a decision to make on their behalf. Removing and reinstalling the
+    // unit is the wizard's job, where a person is present — see the
+    // `daemonAlreadyHealthy` probe in `configure-wizard.ts`.
+    if (status === "running" && !(await probeDaemonEndToEnd())) {
+      updateConfig({ daemon: { configured: false } });
+      return [
+        `failproofaid is running but cannot evaluate policies — its worker process`,
+        `will not start (most often because the Node install its service was built`,
+        `against is gone). This machine was configured to require it, which denies`,
+        `every tool call, so that flag is cleared; policies now evaluate in-process.`,
+        `Run \`failproofai config\` to rebuild the service.`,
+        ``,
+      ];
+    }
+    return [];
   } catch {
     // Never let a self-heal attempt break the command the user actually typed.
     return [];

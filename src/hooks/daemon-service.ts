@@ -714,7 +714,73 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     hookLogWarn(`daemon service install failed: ${reason}`);
     return { installed: false, reason };
   }
+
+  // "Running" is the service manager's opinion, and it is not enough. It says
+  // the process was spawned and has not exited; it says nothing about whether
+  // the worker behind it can start, which is the half that actually evaluates
+  // policy. Reporting success here on a daemon that cannot answer a hook is
+  // what sets `daemonConfigured` and locks the machine out — see
+  // `probeDaemonEndToEnd`.
+  if (!(await probeDaemonEndToEnd())) {
+    const reason =
+      "failproofaid started but did not answer a policy evaluation — its worker process " +
+      "could not be run. Check it with: " +
+      (daemonStatusCommand() ?? "systemctl status");
+    hookLogWarn(`daemon service install failed: ${reason}`);
+    return { installed: false, reason };
+  }
   return { installed: true };
+}
+
+/**
+ * How long the health probe waits for the daemon to answer a real hook.
+ *
+ * Far below the hook path's 30s: this runs from an interactive command, and
+ * the cold start it is most likely to be waiting on (`worker.rs` pre-warms the
+ * worker, ~700ms of Node startup) is comfortably inside it. A daemon that
+ * cannot answer a trivial event in this long is not one to hand a machine's
+ * fail-closed enforcement to.
+ */
+const DAEMON_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Ask the daemon to evaluate a real hook, end to end.
+ *
+ * The thing this catches that nothing else did: a unit that is *running* while
+ * the worker behind it cannot start. `ExecStart` bakes in `process.execPath`
+ * and an absolute `dist/worker.mjs`, so an `nvm uninstall 20` leaves a service
+ * systemd reports as perfectly active and a worker that dies on every spawn.
+ * Every existing check passes that machine — `waitForDaemonRunning()` asks the
+ * service manager, `Ping` is answered in `server.rs` without ever touching the
+ * worker, a null `resolveWorkerCommand()` is treated as best-effort, and
+ * `Worker::warm()` swallows its own failure. `daemonConfigured` then gets set,
+ * and because that flag makes every hook fail closed, the machine denies every
+ * tool call across all 12 CLIs — including `UserPromptSubmit`, so the user
+ * cannot even talk to their agent to ask why.
+ *
+ * `SessionStart` rather than a tool event: it traverses the identical path
+ * (socket → daemon → worker → `evaluateHookEvent`) but describes nothing a
+ * policy would deny and records no tool decision, so probing cannot itself
+ * change what the machine does.
+ */
+export async function probeDaemonEndToEnd(): Promise<boolean> {
+  try {
+    const { attemptDaemonHook } = await import("./daemon-client");
+    const attempt = await attemptDaemonHook(
+      {
+        hookEvent: "SessionStart",
+        cli: "claude",
+        stdin: JSON.stringify({ hook_event_name: "SessionStart", source: "failproofai-health-probe" }),
+      },
+      { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },
+    );
+    // A protocol mismatch is a REACHABLE daemon of the wrong vintage. The hook
+    // path already falls back rather than denying for that case, so it is not
+    // the lockout this probe exists to find.
+    return attempt.ok || attempt.failure === "protocol-mismatch";
+  } catch {
+    return false;
+  }
 }
 
 /**

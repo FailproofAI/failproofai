@@ -330,6 +330,33 @@ describe("publish.yml", () => {
     expect(bump.if).toContain("dry_run != 'true'");
   });
 
+  it("bumps the Cargo workspace version alongside package.json", () => {
+    // `ci.yml`'s version-consistency job compares Cargo.toml's
+    // [workspace.package] version against root package.json, and this commit
+    // carries `[skip ci]` — so a bump that moved only package.json left main
+    // red, and the failure surfaced on the NEXT, unrelated PR as
+    // "Version mismatch: Cargo.toml has <old>, expected <new>". Every release
+    // did it.
+    const bump = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Bump version for next development cycle",
+    );
+    expect(bump.run).toContain("Cargo.toml");
+    // The lockfile pins both crates by the workspace version, so leaving it
+    // behind breaks any `--locked` build.
+    expect(bump.run).toContain("cargo update --workspace");
+    expect(bump.run).toContain("git add package.json Cargo.toml Cargo.lock");
+  });
+
+  it("serializes overlapping runs", () => {
+    // Two entry points can fire for one version. Without this, both pass the
+    // preflight's "already published" check before either publishes, and the
+    // bump step's unguarded `git push origin main` loses outright for one of
+    // them. Never cancel-in-progress: the assets attach before the npm publish,
+    // so a run killed between them leaves a tag with binaries and no package.
+    expect(wf.concurrency?.group).toBe("publish-${{ github.ref }}");
+    expect(wf.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
+
   it("verifies the release carries every platform binary", () => {
     const scripts = runScripts(wf.jobs["release-assets"]);
     expect(scripts).toContain("SHA256SUMS");

@@ -158,11 +158,26 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
  * protocol mismatch must fall back rather than deny (see `DaemonFailure`), and
  * a caller cannot make that distinction from `null`.
  */
-export async function attemptDaemonHook(req: DaemonHookRequest): Promise<DaemonAttempt> {
+export async function attemptDaemonHook(
+  req: DaemonHookRequest,
+  opts?: {
+    /**
+     * Override the RESPONSE budget only — the connect budget is never
+     * relaxed. Used by the health probe (`probeDaemonEndToEnd`), which runs
+     * from an interactive command rather than a hook and must not make a
+     * person wait out the full 30s hook budget to be told their daemon is
+     * broken. Never set this on the hook path: 30s is matched to the
+     * daemon's own read timeout so this side never gives up on a request the
+     * daemon is still honestly working on.
+     */
+    responseTimeoutMs?: number;
+  },
+): Promise<DaemonAttempt> {
   // Windows never has a daemon in this phase (see the plan's platform
   // scope) — skip the attempt outright rather than depending on however
   // Node happens to behave when handed a POSIX socket path on Windows.
   if (process.platform === "win32") return { ok: false, failure: "unreachable" };
+  const responseBudget = opts?.responseTimeoutMs ?? DAEMON_RESPONSE_TIMEOUT_MS;
 
   return new Promise<DaemonAttempt>((resolvePromise) => {
     let settled = false;
@@ -195,7 +210,7 @@ export async function attemptDaemonHook(req: DaemonHookRequest): Promise<DaemonA
     socket.on("connect", () => {
       // Connected: the daemon is demonstrably reachable, so the question is
       // no longer "is it there" but "how long does this evaluation take".
-      arm(DAEMON_RESPONSE_TIMEOUT_MS);
+      arm(responseBudget);
       socket.write(
         encodeFrame({
           type: "hook",

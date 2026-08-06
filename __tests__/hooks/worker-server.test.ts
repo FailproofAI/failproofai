@@ -99,6 +99,7 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
   afterEach(async () => {
     await new Promise<void>((r) => server.close(() => r()));
     delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    delete process.env.FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS;
     delete (globalThis as Record<string, unknown>).__fpaiRepeatLoadCount;
     rmSync(projectDir, { recursive: true, force: true });
   });
@@ -383,4 +384,61 @@ customPolicies.add({
     expect(permissionDecisionOf(responses[0])).toBe("deny"); // sudo
     expect(permissionDecisionOf(responses[1])).toBeUndefined(); // echo
   });
+
+  /**
+   * The regression this exists for wedges the whole machine, not one request.
+   *
+   * `enqueue`'s `.catch()` keeps the serialization chain alive when a task
+   * REJECTS. A policy file whose top level awaits a promise that never resolves
+   * makes the task never SETTLE — no rejection, so nothing above it ever runs —
+   * and every hook queued behind it waits forever. On a daemon-configured
+   * machine each client then burns its 30s budget and fail-closed denies, for
+   * every CLI, until someone restarts the daemon.
+   *
+   * A second request completing normally after the hanging one is the whole
+   * assertion: it can only happen if the first task settled.
+   */
+  it("does not wedge the queue when a policy file's top-level await never resolves", async () => {
+    process.env.FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS = "300";
+    const policyPath = join(projectDir, "hanging-policy.mjs");
+    writeFileSync(
+      policyPath,
+      `import { customPolicies, deny } from "failproofai";
+// Hangs BEFORE registering — the shape a policy file that awaits remote
+// config at its top level takes when that fetch never returns. Nothing
+// cancels this; the loader must stop waiting on it.
+await new Promise(() => {});
+customPolicies.add({
+  name: "never-registers",
+  description: "unreachable — the module never gets here",
+  match: { events: ["PreToolUse"] },
+  fn: async () => deny("unreachable"),
+});\n`,
+    );
+    writeFileSync(
+      join(projectDir, ".failproofai", "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["block-sudo"], customPoliciesPaths: [policyPath] }),
+    );
+
+    const hung = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "PreToolUse",
+      cli: "claude",
+      stdin: JSON.stringify({ cwd: projectDir, tool_name: "Bash", tool_input: { command: "echo one" } }),
+    });
+    // The hanging file is reported as failed to load and skipped, not applied.
+    expect(hung.type).toBe("hookResult");
+    expect(permissionDecisionOf(hung)).toBeUndefined();
+
+    // The chain moved on: a later request still gets a real answer, and the
+    // unaffected builtin still enforces.
+    const after = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "PreToolUse",
+      cli: "claude",
+      stdin: JSON.stringify({ cwd: projectDir, tool_name: "Bash", tool_input: { command: "sudo rm -rf /" } }),
+    });
+    expect(after.type).toBe("hookResult");
+    expect(permissionDecisionOf(after)).toBe("deny");
+  }, 20_000);
 });

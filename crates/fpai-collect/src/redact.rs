@@ -274,16 +274,26 @@ fn match_jwt(bytes: &[u8], i: usize, rest: &str) -> Option<(usize, &'static str)
 }
 
 /// `Bearer <token>` from an Authorization header.
+///
+/// Length is summed in BYTES, not characters. `scrub_str` uses what these
+/// matchers return as a byte offset (`i += len`), and unlike `is_token_char`
+/// and the JWT matcher's `is_b64` — both ASCII-only, so a char count and a byte
+/// count coincide — this predicate accepts any non-whitespace character. One
+/// multi-byte character in a token therefore made the returned length SHORTER
+/// than the text it covered, so the cursor landed back inside the secret and
+/// the unconsumed tail was copied to the output verbatim. Every test passed,
+/// because every test token was ASCII.
 fn match_bearer(rest: &str) -> Option<(usize, &'static str)> {
     let lower = rest.get(..7)?.to_ascii_lowercase();
     if lower != "bearer " {
         return None;
     }
     let after = &rest[7..];
-    let token_len = after
+    let token_len: usize = after
         .chars()
         .take_while(|c| !c.is_whitespace() && *c != '"' && *c != '\'')
-        .count();
+        .map(char::len_utf8)
+        .sum();
     (token_len >= 8).then_some((7 + token_len, "bearer-token"))
 }
 
@@ -337,7 +347,10 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
     // The value runs to the closing quote, or to whitespace / a shell
     // separator when unquoted. The closing quote is left in place.
     let quoted = matches!(s[..i].chars().next_back(), Some('"') | Some('\''));
-    let value_len = rest
+    // Bytes, not characters — see the note on `match_bearer`. This predicate
+    // also accepts non-ASCII, so a char count under-reports the span and
+    // `scrub_str`'s `i += len` leaves the cursor inside the value.
+    let value_len: usize = rest
         .chars()
         .take_while(|c| {
             if quoted {
@@ -346,7 +359,8 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
                 !c.is_whitespace() && *c != ';' && *c != '&'
             }
         })
-        .count();
+        .map(char::len_utf8)
+        .sum();
     (value_len >= MIN_ASSIGNMENT_VALUE).then_some((value_len, "secret-assignment"))
 }
 
@@ -390,6 +404,50 @@ mod tests {
         let out = scrub(r#"curl -H "Authorization: Bearer sk-pv7KDjLZ2u-uMgM2ym2uyw" https://x"#);
         assert!(out.contains("[redacted:bearer-token]"), "got {out}");
         assert!(!out.contains("pv7KDjLZ"), "the token survived: {out}");
+    }
+
+    /// A secret containing one multi-byte character used to leak its own tail.
+    ///
+    /// `scrub_str` advances by `i += len`, where `len` comes from a matcher.
+    /// `match_bearer` and `match_assignment` both accept any non-whitespace
+    /// character and both returned a CHARACTER count, so a value holding
+    /// anything outside ASCII reported fewer units than it occupied bytes. The
+    /// cursor then resumed INSIDE the secret and copied everything from there
+    /// on into the output verbatim.
+    ///
+    /// Invisible to every other test in this module because every token in
+    /// them is ASCII, where the two counts are equal. Non-ASCII in a secret is
+    /// not exotic: a generated passphrase, a password a human chose, or any
+    /// value that arrives through a UTF-8 field.
+    ///
+    /// Asserted with exact equality, not `!contains(tail)`. The number of bytes
+    /// that leak equals the number of EXTRA bytes the value carries over its
+    /// character count, so a value with a single two-byte character leaks
+    /// exactly one character — which a "does the tail survive" assertion sails
+    /// straight past while the bug is fully present. Exact equality cannot.
+    #[test]
+    fn a_multibyte_character_does_not_leak_the_rest_of_the_secret() {
+        // One 2-byte character: exactly one byte of the secret used to survive
+        // (`…[redacted:secret-assignment]K`).
+        assert_eq!(
+            scrub("DATABASE_PASSWORD=hunter2é-TAILWOULDLEAK"),
+            "DATABASE_PASSWORD=[redacted:secret-assignment]"
+        );
+
+        // Eleven 2-byte characters: eleven bytes survived, which here is the
+        // whole readable tail (`…[redacted:secret-assignment]ENDOFSECRET`).
+        assert_eq!(
+            scrub("API_TOKEN=пароль-очень-ENDOFSECRET"),
+            "API_TOKEN=[redacted:secret-assignment]"
+        );
+
+        // A 4-byte character, so the fix cannot be right only for the 2-byte
+        // case, and a bearer header rather than an assignment, so both of the
+        // two affected matchers are covered.
+        assert_eq!(
+            scrub(r#"Authorization: Bearer tok-🔑🔑🔑-SECRETTAIL"#),
+            "Authorization: [redacted:bearer-token]"
+        );
     }
 
     #[test]

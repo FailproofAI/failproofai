@@ -98,6 +98,57 @@ export function findSkippedPolicyFiles(dir: string): string[] {
 }
 
 /**
+ * How long a policy module gets to finish evaluating its top level.
+ *
+ * Matches the 10s `handler.ts` gives a policy's `fn` to run, for the same
+ * reason: a policy file is user code, and user code that hangs must cost one
+ * skipped policy rather than the process.
+ *
+ * `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` shortens it for tests — a suite proving
+ * the deadline fires should not have to sit out the real one.
+ */
+function moduleLoadTimeoutMs(): number {
+  const override = Number(process.env.FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS);
+  return Number.isFinite(override) && override > 0 ? override : 10_000;
+}
+
+/**
+ * `import()`, but it cannot hang forever.
+ *
+ * A bare `await import(...)` on a module whose top level contains an `await`
+ * that never resolves never settles — it does not reject, so no `catch` and no
+ * `finally` anywhere above it ever runs. In the one-shot hook path that costs
+ * one hook process, which the agent CLI's own timeout reaps. In the warm daemon
+ * worker it holds `worker-server.ts`'s serialization chain forever, and every
+ * subsequent hook on the machine queues behind it and fail-closed denies.
+ *
+ * Losing the race does NOT cancel the import — nothing can. It stops us
+ * *waiting* on it, which is the part that matters, and the caller's `catch`
+ * below reports the file as failed to load. The abandoned module keeps its
+ * half-initialized entry in the ESM cache, but each load writes a uniquely
+ * named temporary tree, so a retry imports a different specifier and is never
+ * poisoned by it.
+ */
+async function importWithDeadline(fileUrl: string): Promise<void> {
+  const budget = moduleLoadTimeoutMs();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      import(/* webpackIgnore: true */ fileUrl),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`timed out loading module after ${budget}ms`)),
+          budget,
+        );
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * Load a single policy file into the globalThis custom hooks registry.
  * Does NOT clear the registry — caller is responsible for that.
  */
@@ -138,7 +189,7 @@ async function loadSingleFile(
     const entryTmp = absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
-    await import(/* webpackIgnore: true */ fileUrl);
+    await importWithDeadline(fileUrl);
     policyModuleCache.set(absPath, {
       fingerprint,
       hooks: getCustomHooks()
@@ -151,7 +202,9 @@ async function loadSingleFile(
       ? "module_not_found"
       : /SyntaxError|Unexpected token/i.test(msg)
         ? "syntax_error"
-        : "runtime_error";
+        : /timed out loading module/i.test(msg)
+          ? "load_timeout"
+          : "runtime_error";
     void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
       error_type: errorType,
       is_convention: !!opts?.conventionScope,

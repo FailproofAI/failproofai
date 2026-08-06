@@ -627,6 +627,30 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("git commit -m 'pause the rollout'")).toBe("allow");
     });
 
+    // The policy is defaultEnabled, and this repo's own CHANGELOG.md and
+    // docs/built-in-policies.mdx contain the literal invocation — so before the
+    // command-position anchor, the first thing it did on a real machine was
+    // deny an agent reading the documentation for it. Every line below was
+    // denied by the unanchored pattern.
+    it("does NOT fire when the invocation is merely quoted inside an argument", async () => {
+      expect(await decide('grep -rn "failproofai config --pause" docs/')).toBe("allow");
+      expect(await decide('git commit -m "docs: explain failproofai config --pause"')).toBe("allow");
+      expect(await decide('gh pr create --body "adds failproofai config --pause"')).toBe("allow");
+      expect(await decide('git log --grep "failproofai config --pause"')).toBe("allow");
+      expect(await decide('rg --files-with-matches "failproofai config --pause"')).toBe("allow");
+      expect(await decide('echo "run failproofai config --pause to suspend"')).toBe("allow");
+    });
+
+    // The anchor must not be satisfied by a wrapper that merely *precedes* the
+    // binary, or the runner forms above would have regressed with it.
+    it("still blocks it behind an interpreter, a wrapper and command substitution", async () => {
+      expect(await decide('sh -c "failproofai config --pause"')).toBe("deny");
+      expect(await decide("timeout 30 failproofai config --pause")).toBe("deny");
+      expect(await decide("env FPAI_X=1 failproofai config --pause")).toBe("deny");
+      expect(await decide("echo $(failproofai config --pause)")).toBe("deny");
+      expect(await decide("failproofai config --pause=30m")).toBe("deny");
+    });
+
     it("is on by default — an opt-in guardrail here protects nobody", async () => {
       expect(policy.defaultEnabled).toBe(true);
     });

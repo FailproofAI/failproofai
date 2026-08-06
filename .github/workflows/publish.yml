@@ -35,6 +35,23 @@ on:
         type: boolean
         default: false
 
+# Two entry points can fire for the same version — a `release: published` and a
+# `workflow_dispatch` — and this pipeline is not safe to run twice at once.
+# Overlapping runs both pass the preflight's "this version is unpublished"
+# `npm view` check before either has published, and the "Bump version for next
+# development cycle" step then has both racing an unguarded
+# `git fetch → checkout main → commit → push`, where the loser's push simply
+# fails. `ci.yml` and `bump-platform-submodule.yml` both serialize for the same
+# reason; this one was the exception.
+#
+# NOT `cancel-in-progress`: a half-cancelled publish is the one outcome worse
+# than a queued one — the release assets attach before the npm publish, so a run
+# killed between them leaves a tag whose binaries exist and whose package does
+# not.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # Everything cheap and fail-fast lives here: version resolution, the npm
   # credential check (so a bad token costs seconds rather than a 20-minute
@@ -619,7 +636,29 @@ jobs:
 
           npm version "$NEXT_VERSION" --no-git-tag-version
 
-          git add package.json
+          # The Cargo workspace version has to move WITH package.json.
+          # `ci.yml`'s version-consistency job compares the two, and this commit
+          # carries `[skip ci]` — so a bump that touched only package.json left
+          # main red, and the failure surfaced on the next unrelated PR as
+          # "Version mismatch: Cargo.toml has <old>, expected <new>" from a
+          # change that had nothing to do with it. Every release did this.
+          #
+          # Anchored to the [workspace.package] table rather than a bare
+          # `^version = `: the file has several `version = ` lines and only the
+          # first one under that heading is the workspace version.
+          perl -0pi -e 's/(\[workspace\.package\]\n(?:[^\[]*?\n)?version = ")[^"]*(")/${1}'"$NEXT_VERSION"'${2}/' Cargo.toml
+          CARGO_VERSION=$(perl -0ne 'print $1 if /\[workspace\.package\][^\[]*?version = "([^"]*)"/' Cargo.toml)
+          if [ "$CARGO_VERSION" != "$NEXT_VERSION" ]; then
+            echo "::error file=Cargo.toml::Failed to bump the Cargo workspace version (found '$CARGO_VERSION', wanted '$NEXT_VERSION')"
+            exit 1
+          fi
+          # Both crates carry `version.workspace = true`, so their lockfile
+          # entries move with it. Without this the tree is left with a
+          # Cargo.lock that disagrees with Cargo.toml, which fails any
+          # `--locked` build.
+          cargo update --workspace --offline || cargo update --workspace
+
+          git add package.json Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
 
           # Authenticated as the version-bot App (persisted by the checkout above),

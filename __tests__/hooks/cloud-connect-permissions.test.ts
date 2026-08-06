@@ -225,3 +225,52 @@ describe("what the user is told", () => {
     expect(text).not.toContain("into");
   });
 });
+
+/**
+ * The URL guard, enforced at the boundary rather than assumed.
+ *
+ * `ConnectInput.url` was documented as "already validated by
+ * `validateCloudUrl`", and only ONE of the two callers did it. `--connect`
+ * validated; the interactive wizard — the documented primary path — checked
+ * `/^https?:\/\//` and handed the raw string to `validateIngestKey` and then
+ * here, so the flow most people use put the machine's bearer token on the wire
+ * in clear against any `http://` host.
+ */
+describe("the cloud URL", () => {
+  it("refuses plain http to a remote host, before probing anything", async () => {
+    const p = probes();
+    const outcome = await connectToCloud({
+      url: "http://cloud.example.com",
+      token: "k-secret",
+      machineId: "machine-1",
+      sessions: true,
+      introspect: withPermissions("events:add", "policies:pull"),
+      verifyPolicy: p.verifyPolicy,
+      verifyIngest: p.verifyIngest,
+    });
+
+    expect(outcome.anyConfigured).toBe(false);
+    expect(outcome.policy.reason).toMatch(/plain http/i);
+    // Nothing reached the network, and nothing was written — the token must not
+    // leave the machine even once to discover that the URL was unacceptable.
+    expect(p.ran).toEqual({ policy: false, ingest: false });
+    expect(readCloudCredentials()).toBeNull();
+    expect(readIngestCredential()).toBeNull();
+  });
+
+  it("still allows plain http to loopback, which the local walkthrough needs", async () => {
+    const p = probes();
+    const outcome = await connectToCloud({
+      url: "http://localhost:8080",
+      token: "k-secret",
+      machineId: "machine-1",
+      sessions: true,
+      introspect: withPermissions("events:add", "policies:pull"),
+      verifyPolicy: p.verifyPolicy,
+      verifyIngest: p.verifyIngest,
+    });
+
+    expect(outcome.anyConfigured).toBe(true);
+    expect(p.ran).toEqual({ policy: true, ingest: true });
+  });
+});

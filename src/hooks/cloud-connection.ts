@@ -30,6 +30,7 @@
  */
 import {
   cloudCredentialPath,
+  validateCloudUrl,
   verifyCloudCredentials,
   writeCloudCredentials,
   type CloudCredentials,
@@ -102,7 +103,11 @@ export function cloudBaseFor(url: string): string {
 }
 
 export interface ConnectInput {
-  /** Cloud base URL, already validated by `validateCloudUrl`. */
+  /**
+   * Cloud base URL. Re-validated with `validateCloudUrl` on entry rather than
+   * trusted — this used to say "already validated by `validateCloudUrl`", and
+   * the wizard did not.
+   */
   url: string;
   token: string;
   machineId: string;
@@ -148,6 +153,23 @@ export interface ConnectOutcome {
  * connection the machine does not have.
  */
 export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcome> {
+  // Checked HERE, not only at the call sites. `ConnectInput.url` is documented
+  // as "already validated by `validateCloudUrl`", and that was true of exactly
+  // one of the two callers: `--connect` validated, and the interactive wizard —
+  // the documented primary path — matched `/^https?:\/\//` and handed the raw
+  // string straight to `validateIngestKey` and then to here. So the flow most
+  // people use sent the machine's bearer token to any `http://` host in clear.
+  // A precondition worth stating in a docstring is worth enforcing at the
+  // boundary that depends on it.
+  const checked = validateCloudUrl(input.url);
+  if (!checked.ok) {
+    return {
+      policy: { ok: false, reason: checked.reason },
+      ingest: { ok: false, reason: checked.reason },
+      anyConfigured: false,
+    };
+  }
+
   const creds: CloudCredentials = {
     url: input.url,
     machineId: input.machineId,

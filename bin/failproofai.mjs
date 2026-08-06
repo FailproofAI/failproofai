@@ -354,7 +354,17 @@ LINKS
   // going only to the service journal. Reachable on every machine at the next
   // LAYOUT_VERSION bump, when a home carrying `auto = true` is by definition
   // stale. Verified live: one scheduled tick took a home's whole config.
+  //
+  // `--help` / `--version` take the same exemption `first-run-gate.ts` gives
+  // them, and for a stronger reason. Those two answer "what is this / how do I
+  // use it"; the subcommands that parse their own help (`policies --help`) fall
+  // past the help block above and reach here, so without this a user typing
+  // `failproofai policies --help` had their home reset by a question. The
+  // adjacent, far less destructive first-run gate exempted help from the start.
+  let layoutWasReset = false;
   {
+    const isHelpOrVersion =
+      args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
     if (args[0] === "audit" && args.includes("--scheduled")) {
       const { layoutWarningForHook } = await import("../src/hooks/fp-reset");
       const warning = layoutWarningForHook();
@@ -366,21 +376,30 @@ LINKS
         console.error(warning);
         process.exit(1);
       }
-    } else {
+    } else if (!isHelpOrVersion) {
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
-      const check = checkLayoutForCli();
+      const check = await checkLayoutForCli();
       for (const line of check.lines) console.error(line);
       if (check.fatal) process.exit(1);
+      layoutWasReset = check.didReset;
     }
   }
 
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
-  if (shouldOfferFirstRun(args)) {
+  if (shouldOfferFirstRun(args) || layoutWasReset) {
     try {
       const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
       // `audit` runs its own scan immediately after this returns; firing the
       // post-setup audit too would scan the whole history twice in a row.
-      await maybeFirstRunConfigure({ postSetupAudit: args[0] !== "audit" });
+      //
+      // `force` after a reset: the home's policy config is gone, but the agent
+      // CLIs' settings files were deliberately left alone, so `isConfigured()`
+      // still reads true off `hasGlobalHooks` and setup would be skipped —
+      // leaving hooks firing against no policies, silently and permanently.
+      await maybeFirstRunConfigure(
+        {},
+        { postSetupAudit: args[0] !== "audit", force: layoutWasReset },
+      );
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }

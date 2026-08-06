@@ -71,12 +71,15 @@ import {
   daemonVersionSkew,
   primeElevation,
   setDaemonConfigured,
+  probeDaemonEndToEnd,
+  uninstallDaemonService,
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
 import {
   readCloudCredentials,
   resolveMachineId,
   resolveMachineLabel,
+  validateCloudUrl,
   verifyCloudCredentials,
   writeCloudCredentials,
 } from "./cloud-enrollment";
@@ -530,6 +533,18 @@ export interface FirstRunOptions {
    * otherwise scan the entire history twice back to back.
    */
   postSetupAudit?: boolean;
+  /**
+   * Run setup even though the machine reads as already configured.
+   *
+   * Set by the caller after a layout reset. `isConfigured()` is a union that
+   * counts live user-scope hooks in any agent CLI, and the reset deliberately
+   * leaves those settings files alone — so a machine whose policy config was
+   * just deleted still answers "configured", the wizard is skipped, and
+   * `markLauncherSeen()` below back-fills the marker so every later run skips
+   * it too. The result is hooks firing on every tool call against no policies,
+   * with nothing to say so.
+   */
+  force?: boolean;
 }
 
 export async function maybeFirstRunConfigure(
@@ -544,7 +559,7 @@ export async function maybeFirstRunConfigure(
   // One state read covering all three "already set up" signals — a config
   // file, live user-scope hooks, or the legacy marker. See `isConfigured`.
   const state = detectSetupState();
-  if (isConfigured(state)) {
+  if (isConfigured(state) && !opts.force) {
     // Back-fill the marker for a machine that is demonstrably configured but
     // predates it, so later runs settle this with a single stat instead of
     // walking every integration's settings file on every invocation.
@@ -679,9 +694,22 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // during an upgrade: the OLD daemon is perfectly healthy, so setup skipped
   // it and the stale version survived. That made "just re-run config" — the
   // remedy every message points at — silently do nothing.
+  //
+  // And running the right VERSION is still not enough: it must be able to
+  // answer. `ExecStart` bakes in `process.execPath` and an absolute
+  // `dist/worker.mjs`, so an `nvm uninstall 20` after setup leaves a unit
+  // systemd calls active whose worker dies on every spawn. That machine reads
+  // as "already running", so this wizard — the documented remedy, and the only
+  // caller that can rebuild the unit — skipped it and left the box denying
+  // every tool call with no route back but hand-editing `config.toml`. A real
+  // hook evaluation is the only check that distinguishes the two.
   const daemonSkew = daemonSupported ? daemonVersionSkew() : null;
-  const daemonAlreadyRunning =
+  const daemonUpToDate =
     daemonSupported && daemonServiceStatus() === "running" && daemonSkew === null;
+  const daemonAnswers = daemonUpToDate ? await probeDaemonEndToEnd() : false;
+  const daemonAlreadyRunning = daemonUpToDate && daemonAnswers;
+  /** Installed and running, but its worker cannot evaluate anything. */
+  const daemonBroken = daemonUpToDate && !daemonAnswers;
   let daemonWanted = daemonSupported && !daemonAlreadyRunning;
   // A healthy daemon can still be running a service definition written before
   // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever
@@ -692,9 +720,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   if (daemonWanted) {
     stdout.write(
-      "failproofai runs a small background service (failproofaid) so policy checks\n" +
-        "stay warm — without it every tool call pays a fresh startup, about 15x slower.\n" +
-        "Installing it needs root once. Your password goes to sudo, never to us.\n\n",
+      daemonBroken
+        ? "failproofaid is installed and running but cannot evaluate policies — its worker\n" +
+            "process will not start, which on this machine denies every tool call. Rebuilding\n" +
+            "the service needs root once. Your password goes to sudo, never to us.\n\n"
+        : "failproofai runs a small background service (failproofaid) so policy checks\n" +
+            "stay warm — without it every tool call pays a fresh startup, about 15x slower.\n" +
+            "Installing it needs root once. Your password goes to sudo, never to us.\n\n",
     );
     if (!primeElevation()) {
       // Required means required: write nothing at all, so a machine that could
@@ -935,14 +967,30 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
           message: "Failproof Cloud URL",
           defaultValue: cloudBaseFor(DEFAULT_INGEST_URL),
           hint: "Enter for the hosted endpoint",
-          validate: (v) => (/^https?:\/\//.test(v) ? null : "must be an http(s) URL"),
+          // The SAME guard `--connect` uses, not a looser lookalike. This was
+          // `/^https?:\/\//`, which accepts `http://cloud.example.com` — and
+          // the wizard is the documented primary path, so the interactive flow
+          // put the machine's bearer token on the wire in clear while the flag
+          // nobody uses refused to. `validateCloudUrl` permits http for
+          // loopback only, which is what the local walkthrough needs.
+          validate: (v) => {
+            const check = validateCloudUrl(cloudBaseFor(v));
+            return check.ok ? null : check.reason;
+          },
           stdin,
           stdout,
         });
         if (entered === null) return cancel();
         // Asked for as a base and normalised, so this and `--connect` take the
         // same thing. Someone pasting the older `/events` endpoint still works.
-        url = cloudBaseFor(entered);
+        const validated = validateCloudUrl(cloudBaseFor(entered));
+        if (!validated.ok) {
+          // Unreachable while `validate` above rejects the same input; kept so
+          // the two can never drift into disagreeing silently.
+          stdout.write(`\n${validated.reason}\n`);
+          return cancel();
+        }
+        url = validated.url;
       }
 
       if (token === null) {
@@ -1023,7 +1071,27 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // whose `daemonConfigured` flag we then could not honestly set.
   let daemonInstalled = daemonAlreadyRunning;
   if (daemonWanted) {
-    stdout.write("Installing the failproofaid service…\n");
+    // A unit that is running but cannot answer is torn down before it is
+    // rebuilt, rather than installed over. Its `ExecStart` points at a binary
+    // or interpreter that no longer works, and it holds the singleton flock
+    // the replacement needs — install over the top and the new unit starts,
+    // loses the lock race, and the machine stays exactly as broken. This is
+    // the production path for `uninstallDaemonService`, which until now had
+    // none: it was defined, tested, documented in CLAUDE.md as called from
+    // here, and referenced by nothing.
+    if (daemonBroken) {
+      stdout.write("Removing the failproofaid service that cannot start…\n");
+      try {
+        await uninstallDaemonService();
+      } catch (err) {
+        // Non-fatal: the install below reports its own outcome, and it is that
+        // outcome — not this one — that decides whether setup continues.
+        hookLogWarn(
+          `could not remove the broken failproofaid service: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    stdout.write(daemonBroken ? "Reinstalling the failproofaid service…\n" : "Installing the failproofaid service…\n");
     const daemonResult = await installDaemonService();
     void emit("configure_daemon_install", {
       installed: daemonResult.installed,
@@ -1120,24 +1188,39 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     connected: connect !== null,
   });
 
-  // One install per chosen scope. `installHooks` already skips CLIs a given
-  // scope cannot take, so "Both" writes Hermes/OpenClaw once (user) and the
-  // rest twice (user + project) without any filtering here.
+  // One install per chosen scope, with the CLI list narrowed to what THAT
+  // scope can take.
+  //
+  // The comment here used to claim `installHooks` "already skips CLIs a given
+  // scope cannot take". It does not — `installHooksImpl` validates every CLI
+  // against the scope up front and THROWS `Scope "project" is not supported by
+  // Hermes`. `clis` is the union across scopes (deliberately, so a user-scope-
+  // only gateway is still installed via the user half), so under "Both" +
+  // "Everything available" the project pass got handed hermes/openclaw and
+  // died. Nothing catches it, and by then the daemon is installed,
+  // `daemonConfigured` is set and user-scope hooks are written — so the run
+  // aborted mid-apply, before any project config or the pasted cloud key.
+  // `configure-wizard.test.ts` mocks `installHooks` wholesale, which is why the
+  // real validation path was never exercised.
   //
   // quiet: the wizard renders its own outro; replace: the chosen set becomes
   // the full enabled set at that scope (unticking removes).
   for (const scope of scopes) {
-    await installHooks(
-      policies,
-      scope,
-      cwd,
-      /* includeBeta */ false,
-      "configure-wizard",
-      /* customPoliciesPath */ undefined,
-      /* removeCustomHooks */ false,
-      clis,
-      { replace: true, quiet: true },
-    );
+    const supportedHere = new Set(clisSupportingScope(scope));
+    const clisForScope = clis.filter((id) => supportedHere.has(id));
+    if (clisForScope.length > 0) {
+      await installHooks(
+        policies,
+        scope,
+        cwd,
+        /* includeBeta */ false,
+        "configure-wizard",
+        /* customPoliciesPath */ undefined,
+        /* removeCustomHooks */ false,
+        clisForScope,
+        { replace: true, quiet: true },
+      );
+    }
     setCustomPoliciesEnabled(scope, cwd, customEnabled);
   }
 

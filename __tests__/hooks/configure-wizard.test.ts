@@ -77,6 +77,12 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     // Step 0 primes sudo before anything is drawn. Mocked true by default so
     // no test can block on a real password prompt.
     primeElevation: vi.fn(() => true),
+    // The end-to-end health probe opens the real daemon socket. Default true —
+    // "the service manager says running" and "it can actually answer" agree on
+    // a healthy machine, which is what every pre-existing test here means by
+    // running. The tests that drive the broken-worker branch override it.
+    probeDaemonEndToEnd: vi.fn(async () => true),
+    uninstallDaemonService: vi.fn(async () => {}),
   };
 });
 // The wizard kicks off the audit pipeline after a completed apply; stub it so
@@ -120,6 +126,8 @@ import {
   daemonServiceFilePath,
   ensureDaemonServiceCurrent,
   primeElevation,
+  probeDaemonEndToEnd,
+  uninstallDaemonService,
 } from "../../src/hooks/daemon-service";
 import {
   buildAgentChoices,
@@ -226,6 +234,10 @@ beforeEach(() => {
   // Reset too, or call counts leak across tests and "was never asked for sudo"
   // silently passes on history from an earlier one.
   vi.mocked(primeElevation).mockReset().mockReturnValue(true);
+  // Same reason: "a healthy daemon was left alone" asserts a call count of
+  // zero, which the broken-worker test above would otherwise satisfy for it.
+  vi.mocked(probeDaemonEndToEnd).mockReset().mockResolvedValue(true);
+  vi.mocked(uninstallDaemonService).mockReset().mockResolvedValue(undefined);
 });
 
 describe("configure-wizard pure builders", () => {
@@ -773,6 +785,48 @@ describe("configure-wizard daemon integration", () => {
     expect(result.daemonInstalled).toBe(false);
   });
 
+  it("rebuilds a daemon that runs but cannot evaluate anything", async () => {
+    // The lockout with no route back: `ExecStart` bakes in `process.execPath`,
+    // so an `nvm uninstall 20` months after setup leaves a unit systemd still
+    // calls active whose worker dies on every spawn. Every existing check
+    // passes that machine — the service manager says running, `Ping` is
+    // answered without touching the worker — so this wizard, the documented
+    // remedy, took the "already installed and running — leaving it alone"
+    // branch and changed nothing, while `daemonConfigured` denied every tool
+    // call including UserPromptSubmit.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+    vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    // Torn down BEFORE the reinstall: the dead unit holds the singleton flock
+    // the replacement needs, so installing over the top would start a daemon
+    // that loses the lock race and leave the machine exactly as broken.
+    expect(uninstallDaemonService).toHaveBeenCalled();
+    expect(installDaemonService).toHaveBeenCalled();
+    expect(result.daemonInstalled).toBe(true);
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+  });
+
+  it("does not touch a daemon that is running AND answering", async () => {
+    // The other half of the branch above: the probe must not turn every
+    // healthy re-run into an uninstall/reinstall cycle that demands a password.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(uninstallDaemonService).not.toHaveBeenCalled();
+    expect(installDaemonService).not.toHaveBeenCalled();
+  });
+
   it("leaves a stale unit alone, without aborting, when root is unavailable", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(daemonServiceStatus).mockReturnValue("running");
@@ -932,10 +986,30 @@ describe("scope targets", () => {
   it("keeps a user-scope-only gateway when Both is chosen", async () => {
     // Hermes and OpenClaw have no project config. Taking the INTERSECTION of
     // what both scopes support would silently drop them and protect less than
-    // the user ticked; installHooks skips what a given scope cannot take.
+    // the user ticked, so the selection is the UNION across scopes.
     drive({ ...HAPPY, target: "both", clis: ["claude", "hermes"] });
     await runConfigureWizard(ttyIO());
     expect(vi.mocked(installHooks).mock.calls[0][7]).toContain("hermes");
+  });
+
+  it("does not hand a user-scope-only gateway to the project pass", async () => {
+    // The union above is right, and passing it unfiltered to EVERY scope was
+    // not. `installHooksImpl` validates each CLI against the scope up front and
+    // throws `Scope "project" is not supported by Hermes` — it does not skip,
+    // despite the comment here that said it did. With no try/catch around the
+    // loop the wizard died mid-apply, after the daemon was installed,
+    // `daemonConfigured` was set and user-scope hooks were written, and before
+    // any project config or the pasted cloud key. Reachable from the plainest
+    // possible answers: "Both" + "Everything available".
+    drive({ ...HAPPY, target: "both", clis: ["claude", "hermes"] });
+    await runConfigureWizard(ttyIO());
+
+    const [userCall, projectCall] = vi.mocked(installHooks).mock.calls;
+    expect(userCall[1]).toBe("user");
+    expect(userCall[7]).toContain("hermes");
+    expect(projectCall[1]).toBe("project");
+    expect(projectCall[7]).not.toContain("hermes");
+    expect(projectCall[7]).toContain("claude");
   });
 
   it("writes nothing when cancelled at the scope step", async () => {

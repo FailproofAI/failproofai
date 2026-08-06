@@ -195,9 +195,106 @@ const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|
  * Matched against BOTH the raw command and its shell-unescaped form (see
  * `stripShellQuoting`), because a shell reconstructs the binary name from
  * fragments a regex over the raw string cannot see.
+ *
+ * ANCHORED ON COMMAND POSITION, which is the third thing an earlier version got
+ * wrong and the most expensive: with no anchor, the pattern fired on any string
+ * that merely CONTAINED the invocation, so `grep -rn "failproofai config
+ * --pause" docs/`, `git commit -m "docs: explain failproofai config --pause"`,
+ * `gh pr create --body "...failproofai config --pause"` and `git log --grep`
+ * were all denied. This policy is `defaultEnabled`, and this repo's own
+ * CHANGELOG and `docs/built-in-policies.mdx` contain that literal string, so
+ * the first thing it did on a real machine was block someone reading the
+ * documentation for it. Its sibling `FAILPROOFAI_CLI_RE` was anchored from the
+ * start; this one was not.
+ *
+ * The distinction that matters is structural, not textual: in a real
+ * invocation the binary sits where the shell will look for a COMMAND — first in
+ * a segment, or behind a runner (`npx`, `pnpm dlx`, `node`, `sh -c`) and its
+ * flags. In every false positive above it sits where an ARGUMENT goes.
  */
-const SELF_PAUSE_RE =
-  /failproofai[^\s]*(?:\s+\S+)*?\s+(?:config|configure|setup)\b(?:\s+\S+)*?\s+--pause\b/;
+
+/**
+ * Split a command into the pieces a shell would treat as separate commands.
+ *
+ * Includes `(`, `)` and backtick alongside the ordinary operators so that
+ * command substitution — `echo $(failproofai config --pause)` — puts the inner
+ * invocation in command position of its own segment rather than hiding it as an
+ * argument of `echo`.
+ */
+const SEGMENT_SEPARATORS = /[;&|\n\r(){}`]+/;
+
+/**
+ * Tokens that stand in front of the real binary without being it: package
+ * runners, interpreters, and the `exec`-alikes. Compared by basename, so
+ * `/usr/bin/env` and `env` behave identically.
+ */
+const COMMAND_PREFIX_TOKENS = new Set([
+  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run",
+  "node", "bun", "deno", "env", "command", "builtin", "nohup", "setsid",
+  "time", "timeout", "nice", "stdbuf", "xargs", "sudo", "doas",
+  "sh", "bash", "zsh", "dash", "ksh", "fish", "ash",
+]);
+
+/** The binary itself, however it is pinned or pathed: `failproofai`,
+ * `failproofai@latest`, `/usr/local/bin/failproofai`,
+ * `./node_modules/.bin/failproofai`, `.../failproofai/bin/failproofai.mjs`. */
+const SELF_BINARY_TOKEN_RE = /(?:^|\/)failproofai[^/]*$/;
+
+/** `config`, and the two aliases the entrypoint normalizes to it. */
+const CONFIG_SUBCOMMAND_RE = /^(?:config|configure|setup)$/;
+
+/** `--pause`, with or without an `=value` tail. */
+const PAUSE_FLAG_RE = /^--pause(?:=|$)/;
+
+/** An `FOO=bar` prefix assignment, which a shell consumes before the command. */
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * A bare operand belonging to the runner in front of it — `timeout 30 …`,
+ * `nice -n 5 …`. Skipped so the runner's argument is not mistaken for the
+ * command. Safe to skip unconditionally: no binary is named `30` or `5m`.
+ */
+const RUNNER_OPERAND_RE = /^\d+[a-z]*$/i;
+
+/**
+ * True when `command` runs `failproofai config --pause` in command position.
+ *
+ * Residual false positive, deliberately accepted: a quoted argument that itself
+ * contains a shell operator AND the whole invocation — `git commit -m "x;
+ * failproofai config --pause"` — survives `stripShellQuoting` as two segments
+ * and denies. That is a far narrower miss than matching every mention, and it
+ * errs toward refusing rather than toward silently suspending enforcement.
+ */
+function namesSelfPause(command: string): boolean {
+  for (const segment of command.split(SEGMENT_SEPARATORS)) {
+    const tokens = segment.split(/\s+/).filter(Boolean);
+    let i = 0;
+    // Walk off everything a shell resolves before it settles on the command:
+    // prefix assignments, redirections, runner flags, and the runners.
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const isSkippable =
+        ENV_ASSIGNMENT_RE.test(token) ||
+        token.startsWith("-") ||
+        token.startsWith(">") ||
+        token.startsWith("<") ||
+        RUNNER_OPERAND_RE.test(token) ||
+        COMMAND_PREFIX_TOKENS.has(token.slice(token.lastIndexOf("/") + 1));
+      if (!isSkippable) break;
+      i++;
+    }
+    if (i >= tokens.length) continue;
+    if (!SELF_BINARY_TOKEN_RE.test(tokens[i])) continue;
+
+    // The binary IS the command here. Now require `config … --pause` in the
+    // argument order the CLI actually accepts.
+    const args = tokens.slice(i + 1);
+    const configAt = args.findIndex((a) => CONFIG_SUBCOMMAND_RE.test(a));
+    if (configAt === -1) continue;
+    if (args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) return true;
+  }
+  return false;
+}
 
 /**
  * Decode one ANSI-C `$'...'` body (the text between the quotes) to the bytes a
@@ -699,7 +796,7 @@ function blockSelfPause(ctx: PolicyContext): PolicyResult {
   // The raw command AND its shell-unescaped form: a shell strips quotes and
   // backslashes before running the binary, so `fail\proofai config --pause`
   // reaches the pause CLI even though the literal name is broken.
-  if (SELF_PAUSE_RE.test(cmd) || SELF_PAUSE_RE.test(stripShellQuoting(cmd))) {
+  if (namesSelfPause(cmd) || namesSelfPause(stripShellQuoting(cmd))) {
     return deny(
       "Pausing failproofai enforcement is a human action, not an agent one. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",

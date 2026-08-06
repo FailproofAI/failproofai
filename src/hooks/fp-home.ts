@@ -10,8 +10,17 @@
  * an absent directory is indistinguishable from an idle one.
  *
  * So: nothing outside this file may join a path onto the failproofai home.
- * The Rust side mirrors it in `crates/failproofaid/src/paths.rs`, and
- * `__tests__/hooks/fp-home.test.ts` asserts the two agree.
+ * The Rust side mirrors it in `crates/failproofaid/src/paths.rs`. The test that
+ * asserts the two agree lives THERE, not here —
+ * `paths::tests::every_mirrored_path_agrees_with_fp_home_ts` imports this module
+ * in a child process and compares every mirrored path against its own.
+ *
+ * This line used to cite `__tests__/hooks/fp-home.test.ts`, which contains no
+ * reference to `crates/` and never checked anything cross-language. While both
+ * files claimed the guard existed, three paths were wrong at once: the daemon's
+ * `run/` ignored `FAILPROOFAI_HOME` (so a healthy daemon on a fail-closed
+ * machine denied every tool call), its cloud policy directory still said
+ * `cloud-managed`, and its credential still said `cloud.json`.
  *
  * ## Layout 2
  *
@@ -273,7 +282,24 @@ export function resettablePaths(): string[] {
     legacy.failedDir(),
     legacy.collectorHealth(),
     legacy.onboardingLock(),
-    at("policies"),
+    legacy.cloudManagedPolicies(),
+    // The MACHINE-OWNED children of `policies/`, never the parent.
+    //
+    // `at("policies")` stood here, and on layout 1 that directory IS the
+    // documented home for hand-written personal policies — `docs/
+    // configuration.mdx` names `~/.failproofai/policies/` as the user scope,
+    // and `manager.ts` read it. Those are source files a person wrote; nothing
+    // regenerates them, nothing backed them up, and the reset message named
+    // only "policy config, activity history and audit cache". Worse, the
+    // machine then reported itself configured — `isConfigured()` is a union
+    // that still sees the agent CLIs' untouched settings files — so the wizard
+    // was skipped and hooks kept firing against an empty policy set.
+    //
+    // `custom-policies/` is deliberately absent from this list for the same
+    // reason. Both directories below are re-derived: `local-policies/` by
+    // setup, `cloud-policies/` by the next daemon poll.
+    localPoliciesDir(),
+    cloudPoliciesDir(),
     at("cursors"),
     at("state"),
     // Layout 2.

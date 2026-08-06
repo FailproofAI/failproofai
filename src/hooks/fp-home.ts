@@ -39,7 +39,7 @@
  *   hook-activity/           decision log the dashboard reads
  *   custom-agents/           SDK spool (events/ + failed/)
  *   run/                     sockets + flock  — MUST stay shallow, see below
- *   state/                   daemon scratch: spool, failed, health, pauses
+ *   state/                   daemon scratch: spool, failed, health, pauses, shims
  * ```
  *
  * **`run/` is deliberately NOT under `state/`.** A Unix socket path must fit
@@ -193,6 +193,15 @@ export const auditLockFile = (home?: string) => resolve(runDir(home), "audit.loc
 
 /** Everything the daemon writes that a human would never open by hand. */
 export const stateDir = (home?: string) => atHome(home, "state");
+/**
+ * Where the policy loader writes its ESM shim.
+ *
+ * Under the user's own home rather than beside the installed package: that
+ * directory belongs to whoever installed failproofai, and on a system-wide
+ * install it is root-owned, which made every non-root hook fail to load
+ * cloud-managed and custom policies — silently, and open.
+ */
+export const shimsDir = (home?: string) => resolve(stateDir(home), "shims");
 export const spoolDir = (home?: string) => resolve(stateDir(home), "spool");
 export const failedDir = (home?: string) => resolve(stateDir(home), "failed");
 export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "collector-health.json");

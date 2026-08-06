@@ -11,6 +11,7 @@
  * and results in an empty hook list for that file. Builtins continue normally.
  */
 import { resolve, isAbsolute, basename } from "node:path";
+import { randomUUID } from "crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -31,7 +32,7 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import type { CustomHook } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
-import { customPoliciesDir } from "./fp-home";
+import { customPoliciesDir, shimsDir } from "./fp-home";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -190,7 +191,12 @@ async function loadSingleFile(
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
 
     const sequence = ++loadSequence;
-    const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.mjs`;
+    // pid + sequence is not unique enough on its own: two containers sharing a
+    // mounted HOME, or two pid namespaces, can collide — and on the shim's
+    // fallback path a collision means EEXIST, which fails the load OPEN. A
+    // random id removes the class. It costs nothing: `fingerprintTemporaryTree`
+    // normalises the whole suffix away, so the module cache still hits.
+    const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.${randomUUID()}.mjs`;
     tmpFiles = await rewriteFileTree(
       absPath,
       distUrl,
@@ -413,6 +419,11 @@ export async function loadAllCustomHooks(
     void sweepStaleTmpArtifacts(projectDir);
     warnSkippedPolicyFiles(projectDir, "project");
   }
+  // The shim directory leaks the same way and is swept on the same terms. It is
+  // ours alone and outside the policy tree, so nothing else would ever reap it;
+  // the age gate is what keeps this from removing a shim another process is
+  // still importing.
+  void sweepStaleTmpArtifacts(shimsDir());
   const projectFiles = conventionEnabled
     ? discoverPolicyFiles(projectDir).filter((f) => !loadedPaths.has(f))
     : [];

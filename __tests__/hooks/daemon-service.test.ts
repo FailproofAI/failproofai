@@ -410,7 +410,12 @@ describe("hooks/daemon-service", () => {
 
           expect(result.installed).toBe(false);
           expect(result.reason).toContain("root privileges are required");
-          expect(result.reason).toContain("systemctl enable --now");
+          // `enable` then `restart` — never `enable --now`, which is a no-op
+          // against an already-active unit and would hand someone upgrading a
+          // live daemon a recipe that silently changes nothing.
+          expect(result.reason).toContain("systemctl enable");
+          expect(result.reason).toContain("systemctl restart");
+          expect(result.reason).not.toContain("enable --now");
           expect(existsSync(`/etc/systemd/system/failproofaid@${userInfo().username}.service`)).toBe(false);
         } finally {
           vi.doUnmock("node:child_process");
@@ -642,6 +647,45 @@ describe("hooks/daemon-service", () => {
         expect(rewritten).toContain("ExecStart=/usr/bin/sleep 3600");
         expect(rewritten).not.toContain("infinity");
       });
+
+      it("re-installing restarts the service, so the RUNNING process is the new one", async () => {
+        // The test above asserts the unit FILE was rewritten, which is what the
+        // install always did. The defect was everything after that: the linux
+        // path ran `daemon-reload` + `enable --now`, and `--now` does nothing to
+        // a unit that is already active. So the file described the new binary
+        // while the machine went on running the old one, indefinitely.
+        //
+        // That is the documented recovery for a PROTOCOL_VERSION bump
+        // (`npm update -g failproofai` → `failproofai config`), and it is
+        // reached with the daemon UP: the wizard's `daemonBroken` is
+        // `daemonUpToDate && !daemonAnswers` and `daemonUpToDate` requires no
+        // skew, so skew never triggers the uninstall-first path and the install
+        // runs straight over the live process. `probeDaemon()` then reads the
+        // survivor's protocol-mismatch reply as `ok`, `daemonConfigured` is
+        // recorded at the NEW version, and `pruneOldDaemonBinaries()` becomes
+        // free to delete the binary that process is running from.
+        setPlatform("linux");
+        const { installDaemonService } = await import("../../src/hooks/daemon-service");
+        const mainPid = () =>
+          execFileSync("systemctl", ["show", "-p", "MainPID", "--value", unitName], {
+            encoding: "utf8",
+          }).trim();
+
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep infinity";
+        expect(await installDaemonService()).toEqual({ installed: true });
+        const firstPid = mainPid();
+        expect(firstPid).not.toBe("0");
+
+        process.env.FAILPROOFAI_DAEMON_BINARY = "/usr/bin/sleep 3600";
+        expect(await installDaemonService()).toEqual({ installed: true });
+        const secondPid = mainPid();
+
+        expect(secondPid).not.toBe("0");
+        expect(secondPid).not.toBe(firstPid);
+        // And it is genuinely the new command that is running, not just a
+        // restart of the old one.
+        expect(readFileSync(`/proc/${secondPid}/cmdline`, "utf8").replace(/\0/g, " ")).toContain("3600");
+      }, 30_000);
 
       it("does not report installed when the service never stays running", async () => {
         // A "daemon" that exits the moment it starts: systemd accepts the

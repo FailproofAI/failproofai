@@ -764,7 +764,12 @@ function daemonInstallCommands(
     return [
       `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(binaryPath, workerCmd, cliCmd)}EOF`,
       "sudo systemctl daemon-reload",
-      `sudo systemctl enable --now ${systemdUnitName()}`,
+      `sudo systemctl enable ${systemdUnitName()}`,
+      // `restart`, not `enable --now`, for the reason the install path gives:
+      // `--now` does nothing to an already-active unit, and these commands are
+      // handed to someone whose daemon may well be running — an upgrade is the
+      // most likely reason they are reading them.
+      `sudo systemctl restart ${systemdUnitName()}`,
     ];
   }
   return [
@@ -774,9 +779,15 @@ function daemonInstallCommands(
 }
 
 /**
- * Writes and enables the service unit, starting it immediately. Safe to
- * call repeatedly — re-running replaces the unit file (picking up a
- * changed binary path after an upgrade) and re-enables it.
+ * Writes and enables the service unit, and leaves the machine running THAT
+ * unit — not merely a unit.
+ *
+ * Safe to call repeatedly: re-running replaces the unit file (picking up a
+ * changed binary path after an upgrade) and restarts the service so the
+ * running process is the one the file describes. It used to say it did that
+ * and did not: `enable --now` is a no-op against an active unit, so every
+ * reinstall over a live daemon rewrote the file and left the old process in
+ * place. See the `restartSystemdUnit()` call below.
  */
 export async function installDaemonService(): Promise<DaemonInstallResult> {
   if (!isDaemonSupportedPlatform()) {
@@ -828,7 +839,31 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     if (process.platform === "linux") {
       writePrivilegedFile(systemdUnitPath(), systemdUnitContents(binaryPath, workerCmd, cliCmd));
       runPrivileged("systemctl", ["daemon-reload"]);
-      runPrivileged("systemctl", ["enable", "--now", systemdUnitName()]);
+      // `enable` for boot persistence, then `restart` — NOT `enable --now`.
+      //
+      // `--now` starts a unit that is stopped and does NOTHING to one that is
+      // already active. So on every install over a live daemon it returned
+      // success having changed nothing, and the machine kept running the OLD
+      // binary from the OLD unit — the same trap `ensureDaemonServiceCurrent`
+      // already documents and avoids, which this path never inherited.
+      //
+      // Version skew is where that mattered. The wizard's `daemonBroken` is
+      // `daemonUpToDate && !daemonAnswers`, and `daemonUpToDate` requires
+      // `daemonSkew === null`, so skew can never set it — the
+      // uninstall-then-reinstall path does not fire and this install runs
+      // straight over the still-live old process. `probeDaemon()` then reads a
+      // protocol-mismatch reply from that survivor as `ok`, deliberately,
+      // because it is "acted on elsewhere" — elsewhere being here. The CLI
+      // recorded `daemonConfigured` at the NEW version, and
+      // `pruneOldDaemonBinaries()` was then free to delete the binary the
+      // running process had been started from. The documented recovery for a
+      // `PROTOCOL_VERSION` bump (`npm update -g failproofai` → `failproofai
+      // config`) therefore left the machine exactly as skewed as it began.
+      //
+      // `restart` also covers the fresh-install case: it starts a unit that is
+      // not running, so this is strictly `--now` plus the case `--now` missed.
+      runPrivileged("systemctl", ["enable", systemdUnitName()]);
+      restartSystemdUnit();
     } else {
       const plistPath = launchdPlistPath();
       const logDir = logsDir();

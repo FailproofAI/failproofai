@@ -799,6 +799,15 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
 const DAEMON_PROBE_TIMEOUT_MS = 5_000;
 
 /**
+ * How long the probe keeps waiting for the socket to come up before calling the
+ * daemon unreachable. Generous on purpose: this runs once, from an interactive
+ * setup command, and the cost of being impatient is aborting setup at a machine
+ * whose daemon is merely still starting.
+ */
+const DAEMON_PROBE_READY_TIMEOUT_MS = 10_000;
+const DAEMON_PROBE_RETRY_MS = 150;
+
+/**
  * Ask the daemon to evaluate a real hook, end to end.
  *
  * The thing this catches that nothing else did: a unit that is *running* while
@@ -818,24 +827,79 @@ const DAEMON_PROBE_TIMEOUT_MS = 5_000;
  * policy would deny and records no tool decision, so probing cannot itself
  * change what the machine does.
  */
-export async function probeDaemonEndToEnd(): Promise<boolean> {
+export type DaemonProbe =
+  | { ok: true }
+  | {
+      ok: false;
+      /**
+       * `unreachable` — nothing ever accepted a connection on the socket.
+       * `worker`      — the daemon accepted a connection but could not answer a
+       *                 hook, which is the worker failing to run.
+       *
+       * Kept apart because the remedies are different, and because reporting
+       * "your worker will not start" at someone whose worker is fine sends them
+       * to inspect a healthy process. `DaemonFailure` cannot make this
+       * distinction: it reports `unreachable` for a refused connection AND for
+       * a request that was accepted and never answered.
+       */
+      reason: "unreachable" | "worker";
+    };
+
+/**
+ * Ask the daemon to evaluate a real hook, end to end.
+ *
+ * The thing this catches that nothing else did: a unit that is *running* while
+ * the worker behind it cannot start. `ExecStart` bakes in `process.execPath`
+ * and an absolute `dist/worker.mjs`, so an `nvm uninstall 20` leaves a service
+ * systemd reports as perfectly active and a worker that dies on every spawn.
+ *
+ * **Why this retries.** It is called moments after `systemctl enable --now`, and
+ * a `Type=simple` unit is reported ACTIVE the instant systemd forks it — before
+ * the daemon has bound its socket. A single attempt therefore raced the bind
+ * and, because the hook path's connect budget is deliberately 150ms, lost that
+ * race on any loaded machine. Setup then aborted with "its worker process could
+ * not be run" at a daemon that was seconds away from serving happily — the
+ * worker had already logged that it was listening. Waiting for the socket is
+ * the fix; relaxing the 150ms is NOT, because that budget is what keeps a dead
+ * daemon from adding latency to every tool call on the hook path.
+ */
+export async function probeDaemon(): Promise<DaemonProbe> {
   try {
-    const { attemptDaemonHook } = await import("./daemon-client");
-    const attempt = await attemptDaemonHook(
-      {
-        hookEvent: "SessionStart",
-        cli: "claude",
-        stdin: JSON.stringify({ hook_event_name: "SessionStart", source: "failproofai-health-probe" }),
-      },
-      { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },
-    );
-    // A protocol mismatch is a REACHABLE daemon of the wrong vintage. The hook
-    // path already falls back rather than denying for that case, so it is not
-    // the lockout this probe exists to find.
-    return attempt.ok || attempt.failure === "protocol-mismatch";
+    const { attemptDaemonHook, daemonAcceptsConnections } = await import("./daemon-client");
+    const deadline = Date.now() + DAEMON_PROBE_READY_TIMEOUT_MS;
+    let everConnected = false;
+
+    for (;;) {
+      if (await daemonAcceptsConnections()) {
+        everConnected = true;
+        const attempt = await attemptDaemonHook(
+          {
+            hookEvent: "SessionStart",
+            cli: "claude",
+            stdin: JSON.stringify({
+              hook_event_name: "SessionStart",
+              source: "failproofai-health-probe",
+            }),
+          },
+          { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },
+        );
+        // A protocol mismatch is a REACHABLE daemon of the wrong vintage, which
+        // is a version problem rather than the lockout this probe exists to
+        // find. It is reported, and acted on, elsewhere.
+        if (attempt.ok || attempt.failure === "protocol-mismatch") return { ok: true };
+      }
+      if (Date.now() >= deadline) break;
+      await new Promise((r) => setTimeout(r, DAEMON_PROBE_RETRY_MS));
+    }
+    return { ok: false, reason: everConnected ? "worker" : "unreachable" };
   } catch {
-    return false;
+    return { ok: false, reason: "unreachable" };
   }
+}
+
+/** Boolean form, for callers that only branch on healthy/not. */
+export async function probeDaemonEndToEnd(): Promise<boolean> {
+  return (await probeDaemon()).ok;
 }
 
 /**

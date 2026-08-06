@@ -43,7 +43,15 @@ function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
     typeof m.hookEvent === "string" &&
     typeof m.cli === "string" &&
     typeof m.stdin === "string" &&
-    (m.cwd === undefined || typeof m.cwd === "string")
+    // `null` as well as `undefined`. `cwd` is `Option<String>` on the wire, and
+    // the daemon forwards it with `json!({ "cwd": cwd })`, which serialises
+    // `None` as an explicit NULL rather than omitting the key. Accepting only
+    // `undefined` therefore rejected every request that legitimately carried no
+    // cwd — including the setup health probe, which sends none, so
+    // `failproofai config` aborted with "its worker process could not be run"
+    // against a daemon and worker that were both perfectly healthy. On a
+    // daemonConfigured machine the same mismatch denies the tool call.
+    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string")
   );
 }
 
@@ -165,7 +173,9 @@ function handleConnection(socket: Socket): void {
         try {
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
             awaitTelemetryFlush: false,
-            fallbackCwd: request.cwd,
+            // Normalised here so no consumer has to know the wire spells
+            // "absent" as null.
+            fallbackCwd: request.cwd ?? undefined,
           });
           socket.write(
             encodeFrame({

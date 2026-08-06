@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-beta.8 — 2026-08-06
+
+### Fixes
+- Stop `failproofai config` refusing to finish against a daemon that is working. The setup health probe sends no `cwd`; the daemon deserialises that as `None` and forwards it with `json!({ "cwd": cwd })`, which writes an explicit **null** rather than omitting the key — and the worker's request validator accepted only `undefined`. So the worker answered "unrecognized request shape", the probe failed, and setup aborted with "its worker process could not be run" **against a worker that had already logged that it was listening**. It was not intermittent: the probe never sends a cwd, so it failed on every machine, every time, and setup could never install a daemon. The validator now treats null and absent alike (a wrong TYPE is still refused) and normalises to `undefined` so nothing downstream learns how the wire spells "absent". The same mismatch sat under real enforcement, not just setup: on a `daemonConfigured` machine a hook payload without a cwd fails closed, i.e. denies the tool call. (#PR)
+- Make the health probe wait for the socket instead of racing it. It runs moments after `systemctl enable --now`, and a `Type=simple` unit is reported ACTIVE the instant systemd forks it — before the daemon has bound. The probe got the hook path's deliberately-tight 150ms connect budget and one attempt, so on a loaded machine it lost that race and reported a healthy daemon as broken. It now retries for up to 10s. The 150ms is untouched, because that budget is what stops a dead daemon adding latency to every tool call. (#PR)
+- Say which fault the probe actually hit. `DaemonFailure` reports `unreachable` for BOTH a refused connection and a request that was accepted and never answered, so setup told people their worker would not start when nothing was listening at all — sending them to inspect a healthy process. `probeDaemon` now distinguishes "never accepted a connection" from "accepted, but could not answer a hook", and the wizard prints the matching remedy. (#PR)
+
 ## 1.0.0-beta.7 — 2026-08-06
 
 ### Fixes

@@ -107,6 +107,41 @@ export function daemonSocketPresent(): boolean {
   }
 }
 
+/**
+ * Whether the daemon socket accepts a connection *right now*.
+ *
+ * Narrower than `daemonSocketPresent()` (a stale socket file outlives the
+ * process that made it) and narrower than `attemptDaemonHook`, which reports
+ * `"unreachable"` for BOTH a refused connection and a request that was accepted
+ * and then never answered. Those two have different causes and different
+ * remedies — a socket that is not up yet versus a worker that cannot run — and
+ * telling them apart is the whole point of this function.
+ *
+ * Connect budget only; nothing is sent. Used by the health probe, never on the
+ * hook path.
+ */
+export async function daemonAcceptsConnections(
+  timeoutMs = DAEMON_CONNECT_TIMEOUT_MS,
+): Promise<boolean> {
+  if (process.platform === "win32") return false;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (v: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(v);
+    };
+    const socket = createConnection({ path: socketPath() });
+    const timer = setTimeout(() => done(false), timeoutMs);
+    timer.unref?.();
+    socket.on("connect", () => done(true));
+    socket.on("error", () => done(false));
+  });
+}
+
 function socketPath(): string {
   if (process.env.FAILPROOFAI_DAEMON_SOCKET) return process.env.FAILPROOFAI_DAEMON_SOCKET;
   return daemonSocketPath();

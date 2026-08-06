@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-beta.5 — 2026-08-06
+## 1.0.0-beta.6 — 2026-08-06
 
 ### Removals
 - Stop sending anything about a scheduled scan to Failproof Cloud. The scan reads the CONTENTS of every agent session transcript on the machine — prompts, file contents, pasted credentials, command output — and it POSTed a counters-only projection of that to `/enforcement/v1/machine-scans`. That projection was built defensively (an additive whitelist, rule ids checked against our own catalog, a project COUNT rather than names, `deny_unknown_fields` on the receiving side) and it never carried a path, a command or a line of prose. It is still gone: an audit of what is on someone's laptop is a local tool, and the safest version of a network call it does not need to make is not making it. `machine-scan-payload.ts`, `machine-scan-report.ts` and `harmful.ts` are deleted, and `runScheduledAudit` now ends at the dashboard cache. The scheduled audit itself is untouched — the daemon still runs it, `audit --scheduled` still works, and the /settings controls still schedule it. A regression test pins that a completed scan makes no `fetch` call at all, so the upload cannot return by accident. The receiving route in AgentEye is deliberately left in place and simply stops being called.

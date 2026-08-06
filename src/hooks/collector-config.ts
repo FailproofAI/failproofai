@@ -31,8 +31,24 @@ import { readHooksConfig, writeHooksConfig } from "./hooks-config";
 import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
 import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
 
-/** The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto. */
-export const DEFAULT_INGEST_URL = "https://server.befailproof.ai/v1/events";
+/**
+ * The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto.
+ *
+ * The DASHBOARD hostname, not the API server's. On the hosted deployment a
+ * reverse proxy routes `/v1/*` and `/enforcement/v1/*` to the server and
+ * everything else to the Next.js app, so this path already reaches ingest —
+ * the server hostname is not needed to get there and does not need to be a
+ * public name for the product to work.
+ *
+ * One hostname is also what makes `--connect <origin>` mean one thing. Ingest,
+ * key introspection (`/v1/auth/introspect`) and cloud-managed policy
+ * (`/enforcement/v1/*`) all resolve against the same origin someone pastes,
+ * which is the origin they already have in their browser.
+ *
+ * MUST stay byte-identical to `DEFAULT_INGEST_URL` in
+ * `crates/fpai-collect/src/config.rs` — see that copy for why.
+ */
+export const DEFAULT_INGEST_URL = "https://app.befailproof.ai/v1/events";
 
 export interface IngestCredential {
   url: string;

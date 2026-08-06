@@ -42,7 +42,20 @@ use serde::{Deserialize, Serialize};
 /// the server, so the versioned path is the only one that works on every
 /// deployment shape. Both paths are the same handler on the server itself, so
 /// this is not a behaviour change for anyone already pointed at that host.
-pub const DEFAULT_INGEST_URL: &str = "https://server.befailproof.ai/v1/events";
+///
+/// The DASHBOARD hostname, not the API server's. The reverse proxy in front of
+/// the hosted deployment already routes `/v1/*` and `/enforcement/v1/*` to the
+/// server, so this reaches ingest exactly as the server hostname did — while
+/// leaving the server without a public name of its own to expose.
+///
+/// It also makes one origin sufficient. Ingest, `/v1/auth/introspect` and
+/// `/enforcement/v1/*` all hang off the origin a person pastes into
+/// `--connect`, and that origin is now the one already in their browser rather
+/// than a second hostname they have to be told about.
+///
+/// Machines already carrying the server hostname in `credentials.toml` keep
+/// working untouched: this is only the value used when no URL was recorded.
+pub const DEFAULT_INGEST_URL: &str = "https://app.befailproof.ai/v1/events";
 
 /// Filename of the credential file inside the failproofai home.
 /// Layout 2: every credential in one owner-only TOML file, keyed by table.

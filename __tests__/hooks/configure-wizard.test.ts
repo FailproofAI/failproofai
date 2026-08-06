@@ -1062,10 +1062,16 @@ describe("connect step", () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
     vi.mocked(connectToCloud).mockClear();
     vi.mocked(validateIngestKey).mockClear().mockResolvedValue({ ok: true });
-    vi.mocked(promptText)
-      .mockReset()
-      .mockResolvedValueOnce("https://cloud.example.com")
-      .mockResolvedValueOnce("a-real-looking-key");
+    // ONE prompt now, not two. The endpoint is no longer asked for: there is
+    // one right answer for the hosted product, and asking made it look like a
+    // decision — which is how a key gets pasted into the URL field and how the
+    // dashboard's own address gets typed at a prompt that wants the API server.
+    vi.mocked(promptText).mockReset().mockResolvedValueOnce("a-real-looking-key");
+    delete process.env.FAILPROOFAI_CLOUD_URL;
+  });
+
+  afterEach(() => {
+    delete process.env.FAILPROOFAI_CLOUD_URL;
   });
 
   it("connects with transcripts ON, as disclosed at the question", async () => {
@@ -1080,10 +1086,54 @@ describe("connect step", () => {
     expect(result.connected).toBe(true);
     expect(connectToCloud).toHaveBeenCalledTimes(1);
     expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({
-      url: "https://cloud.example.com",
+      url: "https://app.befailproof.ai",
       token: "a-real-looking-key",
       sessions: true,
     });
+  });
+
+  it("never asks for the endpoint — only the key", async () => {
+    // The regression this guards: re-introducing the URL prompt silently makes
+    // the key the SECOND answer again, so every scripted or muscle-memory
+    // paste lands in the wrong field.
+    drive({ ...HAPPY, connect: "key" });
+
+    await runConfigureWizard(ttyIO());
+
+    expect(vi.mocked(promptText)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(promptText).mock.calls[0][0].message).toMatch(/API key/);
+  });
+
+  it("takes the endpoint from FAILPROOFAI_CLOUD_URL when it is set", async () => {
+    // The local-development and self-hosting path. Deliberately the SAME
+    // variable the daemon already reads for cloud-managed policy, so one export
+    // points the whole machine at one place rather than leaving the wizard and
+    // the daemon disagreeing about where this machine reports.
+    process.env.FAILPROOFAI_CLOUD_URL = "http://localhost:8080";
+    drive({ ...HAPPY, connect: "key" });
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.connected).toBe(true);
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({
+      url: "http://localhost:8080",
+      token: "a-real-looking-key",
+    });
+  });
+
+  it("refuses an unusable FAILPROOFAI_CLOUD_URL instead of falling back to hosted", async () => {
+    // Falling back would report the machine to the hosted service — the one
+    // outcome someone who exported this variable did not ask for, and one they
+    // would only discover by going looking for data that never arrived.
+    // `http://` to a NON-loopback host is refused for the original reason: it
+    // puts the machine's bearer token on the wire in clear.
+    process.env.FAILPROOFAI_CLOUD_URL = "http://cloud.example.com";
+    drive({ ...HAPPY, connect: "key" });
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(false);
+    expect(connectToCloud).not.toHaveBeenCalled();
   });
 
   it("probes the key BEFORE the review screen", async () => {

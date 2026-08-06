@@ -1021,39 +1021,60 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       }
 
       if (url === null) {
-        const entered = await promptText({
-          message: "Failproof Cloud URL",
-          defaultValue: cloudBaseFor(DEFAULT_INGEST_URL),
-          hint: "Enter for the hosted endpoint",
-          // The SAME guard `--connect` uses, not a looser lookalike. This was
-          // `/^https?:\/\//`, which accepts `http://cloud.example.com` — and
-          // the wizard is the documented primary path, so the interactive flow
-          // put the machine's bearer token on the wire in clear while the flag
-          // nobody uses refused to. `validateCloudUrl` permits http for
-          // loopback only, which is what the local walkthrough needs.
-          validate: (v) => {
-            const check = validateCloudUrl(cloudBaseFor(v));
-            return check.ok ? null : check.reason;
-          },
-          stdin,
-          stdout,
-        });
-        if (entered === null) return cancel();
-        // Asked for as a base and normalised, so this and `--connect` take the
-        // same thing. Someone pasting the older `/events` endpoint still works.
-        const validated = validateCloudUrl(cloudBaseFor(entered));
-        if (!validated.ok) {
-          // Unreachable while `validate` above rejects the same input; kept so
-          // the two can never drift into disagreeing silently.
-          stdout.write(`\n${validated.reason}\n`);
-          return cancel();
+        // NOT asked for. There is exactly one right answer for everybody using
+        // the hosted product, and asking made it look like a decision — which
+        // is how a key ends up pasted into the URL field, and how someone
+        // reasonably types the dashboard's own address and gets a 404 from a
+        // web app that is not the ingest endpoint. Both are real, both happened
+        // within ten minutes of each other, and neither is a mistake the person
+        // making it can be expected to avoid: "Failproof Cloud URL" has no
+        // knowable answer other than the default it was already showing.
+        //
+        // The two audiences that genuinely need a different endpoint keep an
+        // explicit way to say so, and neither is an interactive prompt:
+        //
+        //   • local development / self-hosting → FAILPROOFAI_CLOUD_URL, the
+        //     same variable the DAEMON already reads for cloud-managed policy
+        //     (crates/failproofaid/src/cloud_client.rs), so one export points
+        //     the whole machine at one place instead of the wizard and the
+        //     daemon disagreeing.
+        //   • scripted installs → `failproofai config --connect <url> --token`,
+        //     unchanged.
+        //
+        // The env value goes through the SAME `validateCloudUrl` a typed one
+        // did — it is not a trusted back door. http stays loopback-only, so a
+        // bearer token still cannot be exported onto the wire in clear by
+        // setting a variable.
+        const override = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+        if (override) {
+          const validated = validateCloudUrl(cloudBaseFor(override));
+          if (!validated.ok) {
+            // Loud, not silent-fallback-to-hosted: someone who exported this
+            // wants THAT endpoint, and quietly reporting a machine to the
+            // hosted service instead is the one outcome they did not ask for.
+            stdout.write(
+              `\nFAILPROOFAI_CLOUD_URL is set to "${override}", which cannot be used: ` +
+                `${validated.reason}\n`,
+            );
+            return cancel();
+          }
+          url = validated.url;
+          // Named on screen, because an env var is invisible at the moment it
+          // matters and a machine reporting somewhere unexpected is exactly the
+          // thing nobody notices until they go looking for data that is not
+          // there.
+          stdout.write(`\nUsing ${url} (from FAILPROOFAI_CLOUD_URL).\n`);
+        } else {
+          url = cloudBaseFor(DEFAULT_INGEST_URL);
         }
-        url = validated.url;
       }
 
       if (token === null) {
         token = await promptText({
-          message: "API key",
+          // The destination is in the question now that it is no longer a
+          // question of its own. It is the only remaining place a person can
+          // notice they are about to send a key somewhere they did not mean.
+          message: `API key for ${new URL(url).host}`,
           hint: "needs events:add · policies:pull enables managed policy too",
           // Masked: setup is routinely run while screen-sharing, and a pasted
           // key would otherwise sit in the scrollback of every recording.

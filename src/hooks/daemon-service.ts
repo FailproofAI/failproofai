@@ -640,8 +640,25 @@ export function systemdUnitContents(
   // machine that was configured to require the daemon still denies while the
   // daemon is absent — being skipped by systemd is not consent to stop
   // enforcing. It shortens how long that lasts and explains why.
+  // Only paths that EXIST right now are gated on, and that filter is load-
+  // bearing rather than belt-and-braces.
+  //
+  // `binaryPath` is an ExecStart value, not necessarily a bare path: systemd
+  // accepts arguments there, and `FAILPROOFAI_DAEMON_BINARY` is documented as
+  // "someone named a binary explicitly" — this repo's own systemd tests set it
+  // to `/usr/bin/sleep infinity`. `ConditionPathExists=` takes a PATH, so
+  // gating on that string looks for a file literally named "sleep infinity",
+  // never finds it, and skips a unit that would have run perfectly. Splitting
+  // on whitespace to recover the binary is worse, because a path may legally
+  // contain spaces and there is no way to tell the two apart from here.
+  //
+  // Existence at render time answers it without guessing: a real binary is on
+  // disk when its unit is written (installDaemonService just put it there), and
+  // a command-with-arguments is not. Same rule the worker script already
+  // follows — never gate on a path that is not there, or the freshly installed
+  // unit skips on its very first start.
   const conditionPaths = [binaryPath, workerScriptPath()].filter(
-    (p): p is string => typeof p === "string",
+    (p): p is string => typeof p === "string" && existsSync(p),
   );
   const conditionLines = conditionPaths
     .map((p) => `ConditionPathExists=${assertUnitSafe(p, "ConditionPathExists")}\n`)

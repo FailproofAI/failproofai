@@ -74,9 +74,19 @@ describe("top-level: unknown command", () => {
     assertCleanError(result, "Unknown command: unknowncommand");
   });
 
-  it("suggests failproofai policies for unknown subcommand", () => {
+  it("always offers a runnable suggestion for an unknown subcommand", () => {
+    // Deliberately NOT pinned to a specific word. "unknowncommand" is a typo of
+    // nothing, so which subcommand comes out nearest is an artefact of the
+    // command LIST, not a contract: it read "policies" only because three names
+    // tied at distance 12 and `SUBCOMMANDS[0]` broke the tie. Adding
+    // `uninstall` (distance 10) changed the winner without changing any
+    // behaviour anyone relies on. The contract is that a suggestion is offered
+    // and names a real subcommand; the nearest-match behaviour itself is
+    // covered by the tests below, which use inputs that ARE typos of something.
     const result = runCli("unknowncommand");
-    expect(result.stderr).toContain("failproofai policies");
+    const match = /Did you mean: failproofai (\S+)\?/.exec(result.stderr);
+    expect(match).not.toBeNull();
+    expect(["policies", "policy", "audit", "config", "uninstall"]).toContain(match![1]);
   });
 
   it("suggests the NEAREST subcommand, not a hardcoded one", () => {

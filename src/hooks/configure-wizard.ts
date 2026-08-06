@@ -1122,6 +1122,34 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "daemon_failed" };
     }
+
+    // Installed and running is the service manager's opinion, and it is not
+    // what setup needs to know. `ExecStart` bakes in `process.execPath` and an
+    // absolute `dist/worker.mjs`, so a unit can be perfectly active while the
+    // worker behind it dies on every spawn — and every other check waves that
+    // machine through: `waitForDaemonRunning()` asks systemd, `Ping` is
+    // answered in `server.rs` without touching the worker, a null
+    // `resolveWorkerCommand()` is best-effort, and `Worker::warm()` swallows
+    // its own failure. Setting `daemonConfigured` against it denies every tool
+    // call across all twelve CLIs, `UserPromptSubmit` included, so the user
+    // cannot even ask their agent why.
+    //
+    // Checked HERE rather than inside `installDaemonService`, which can only
+    // honestly report on the service: keeping them apart is also what lets the
+    // install mechanics be tested against a stub binary.
+    if (!(await probeDaemonEndToEnd())) {
+      hookLogWarn("failproofaid was installed and running but did not answer a policy evaluation");
+      stdout.write(
+        "\nfailproofaid started but cannot evaluate policies — its worker process\n" +
+          "could not be run. Setup stopped before changing anything, because a machine\n" +
+          "configured to require a daemon that cannot answer denies every tool call.\n\n" +
+          `  Check it with:  ${daemonStatusCommand() ?? "systemctl status failproofaid"}\n` +
+          "  Then re-run:    failproofai config\n\n",
+      );
+      void emit("configure_aborted", { reason: "daemon_not_answering" });
+      outro("Nothing was changed.", { ok: false }, stdout);
+      return { applied: false, abort: "daemon_failed" };
+    }
     daemonInstalled = true;
   } else if (daemonUnitStale) {
     // Deliberately after the install branch and never instead of it: this only

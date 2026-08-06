@@ -767,20 +767,15 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     return { installed: false, reason };
   }
 
-  // "Running" is the service manager's opinion, and it is not enough. It says
-  // the process was spawned and has not exited; it says nothing about whether
-  // the worker behind it can start, which is the half that actually evaluates
-  // policy. Reporting success here on a daemon that cannot answer a hook is
-  // what sets `daemonConfigured` and locks the machine out — see
-  // `probeDaemonEndToEnd`.
-  if (!(await probeDaemonEndToEnd())) {
-    const reason =
-      "failproofaid started but did not answer a policy evaluation — its worker process " +
-      "could not be run. Check it with: " +
-      (daemonStatusCommand() ?? "systemctl status");
-    hookLogWarn(`daemon service install failed: ${reason}`);
-    return { installed: false, reason };
-  }
+  // NOTE: this reports that the SERVICE is installed and running, which is all
+  // it can honestly claim. Whether the daemon can actually evaluate a hook is a
+  // separate question, answered by `probeDaemonEndToEnd()` — and the caller
+  // must ask it before setting `daemonConfigured`, because that flag is what
+  // makes an unanswering daemon deny every tool call. `configure-wizard.ts`
+  // does exactly that. Keeping the two apart matters: "the unit was written and
+  // systemd started it" is testable against a stub binary, and folding the
+  // probe in here would mean this function could never be tested without a real
+  // failproofaid.
   return { installed: true };
 }
 

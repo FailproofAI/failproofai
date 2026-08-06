@@ -164,7 +164,6 @@ const ENV_FILE_PATH_RE = /(?:^|[\\/])\.env(?:\.|$)/;
 const ENV_CMD_RE = /\.env(?:\b|\s|$|\.)/;
 
 // blockSudo
-const SUDO_RE = /(?:^|;|&&|\|\|)\s*sudo\s/;
 const PS_ELEVATION_RE = /Start-Process\s+.*-Verb\s+RunAs/i;
 const RUNAS_RE = /(?:^|;|&&|\|\|)\s*runas\s/i;
 
@@ -749,10 +748,163 @@ function blockEnvFiles(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/**
+ * True when a segment runs an elevation binary IN COMMAND POSITION.
+ *
+ * Anchored structurally rather than by token, for the reason `namesSelfPause`
+ * is: `SUDO_RE` required the literal token `sudo` at a command boundary, so
+ * **`/usr/bin/sudo rm -rf /` was ALLOWED** — a direct invocation, no
+ * obfuscation, one absolute path away from root on a `defaultEnabled` guard.
+ * Every other form the shell resolves before settling on the binary — prefix
+ * assignments, redirections, runners and their flags — is walked off first, and
+ * the comparison is on the BASENAME so a path cannot hide the name.
+ *
+ * `doas` is included because it is the same capability under a different name;
+ * a machine with `doas` installed and only `sudo` blocked is not blocked.
+ *
+ * This raises the bar; it does not close the class. `bash -c "sudo …"`, a
+ * variable (`S=sudo; $S …`) and base64-through-a-pipe all still reach root,
+ * because static inspection of one command string cannot follow them. Closing
+ * that properly needs enforcement below the shell, not a better regex.
+ */
+/**
+ * Split a command into per-segment TOKEN LISTS the way a shell reads it.
+ *
+ * Distinct from `shellSegments` below, which returns raw segment STRINGS and is
+ * what the deletion policies want. Named apart deliberately: defining a second
+ * `shellSegments` here shadowed that one, silently broke every `rm -rf` check,
+ * and disabled this matcher too — caught only because `tsc` reports duplicate
+ * implementations.
+ *
+ * Segmentation happens on the RAW string and skips separators inside quotes,
+ * which is the whole point: stripping quoting FIRST turns `\|` — a literal pipe
+ * in a grep alternation — into a real separator, so `grep "a\|sudo b"` parses
+ * as a command called `sudo` and gets denied. That is a common enough pattern
+ * that over-blocking it is worse than the evasion it would catch.
+ *
+ * Each token is unquoted individually afterwards, which still defeats `\sudo`
+ * and `"sudo"` without ever letting quote removal change where the boundaries
+ * are. Quoted tokens are returned separately so a caller can decide whether
+ * their CONTENTS deserve a second look — see `EVAL_FLAG_RE`.
+ */
+function quoteAwareSegments(command: string): Array<string[]> {
+  const segments: Array<string[]> = [];
+  let tokens: string[] = [];
+  let token = "";
+  let quote: '"' | "'" | null = null;
+  const endToken = () => {
+    if (token) tokens.push(token);
+    token = "";
+  };
+  const endSegment = () => {
+    endToken();
+    if (tokens.length) segments.push(tokens);
+    tokens = [];
+  };
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      // Inside single quotes a backslash is literal; inside double quotes it escapes.
+      if (c === "\\" && quote === '"' && i + 1 < command.length) {
+        token += command[++i];
+        continue;
+      }
+      if (c === quote) {
+        quote = null;
+        continue;
+      }
+      token += c;
+      continue;
+    }
+    if (c === "\\" && i + 1 < command.length) {
+      // An escaped character is literal — `\sudo` is still sudo, and `\|` is a
+      // pipe CHARACTER rather than a separator.
+      token += command[++i];
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      endToken();
+      continue;
+    }
+    if (/[;&|\n\r(){}`]/.test(c)) {
+      endSegment();
+      continue;
+    }
+    token += c;
+  }
+  endSegment();
+  return segments;
+}
+
+/** `-c` and friends: the flags whose ARGUMENT is a command, not data. */
+const EVAL_FLAG_RE = /^-{1,2}c$/;
+
+/**
+ * True when a command runs an elevation binary IN COMMAND POSITION.
+ *
+ * Anchored structurally rather than by token, for the reason `namesSelfPause`
+ * is: `SUDO_RE` required the literal token `sudo` at a command boundary, so
+ * **`/usr/bin/sudo rm -rf /` was ALLOWED** — a direct invocation, no
+ * obfuscation, one absolute path away from root on a `defaultEnabled` guard.
+ * Every other form the shell resolves before settling on the binary — prefix
+ * assignments, redirections, runners and their flags — is walked off first, and
+ * the comparison is on the BASENAME so a path cannot hide the name.
+ *
+ * `doas` is included because it is the same capability under a different name;
+ * a machine with `doas` installed and only `sudo` blocked is not blocked.
+ *
+ * A quoted argument is re-examined ONLY when the command that owns it is a
+ * shell runner invoked with an eval flag (`bash -c "sudo …"`). That distinction
+ * is load-bearing: `bash -c "sudo x"` and `grep "a|sudo x"` are identical from
+ * the outside, and the only thing separating an execution from a search string
+ * is whether the receiving binary evaluates its argument.
+ *
+ * This raises the bar; it does not close the class. A variable (`S=sudo; $S …`),
+ * base64 through a pipe, and a wrapper script on disk all still reach root,
+ * because static inspection of one command string cannot follow them. Closing
+ * that properly needs enforcement below the shell, not a better matcher.
+ */
+function namesElevation(command: string, depth = 0): boolean {
+  for (const tokens of quoteAwareSegments(command)) {
+    let i = 0;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const base = token.slice(token.lastIndexOf("/") + 1);
+      // `sudo`/`doas` are themselves in COMMAND_PREFIX_TOKENS (they legitimately
+      // stand in front of another binary), so they must be tested BEFORE the
+      // skip list or the walk would step straight over the thing being looked for.
+      if (base === "sudo" || base === "doas") return true;
+      const isSkippable =
+        ENV_ASSIGNMENT_RE.test(token) ||
+        token.startsWith("-") ||
+        token.startsWith(">") ||
+        token.startsWith("<") ||
+        RUNNER_OPERAND_RE.test(token) ||
+        COMMAND_PREFIX_TOKENS.has(base);
+      if (!isSkippable) break;
+      // `sh -c "…"` / `bash -c "…"`: the next token is a COMMAND. Bounded
+      // recursion so a nested `bash -c "bash -c …"` cannot spin.
+      if (EVAL_FLAG_RE.test(token) && depth < 3 && i + 1 < tokens.length) {
+        if (namesElevation(tokens[i + 1], depth + 1)) return true;
+      }
+      i++;
+    }
+  }
+  return false;
+}
+
 function blockSudo(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx).trimStart();
-  if (SUDO_RE.test(cmd) || cmd.startsWith("sudo ")) {
+  // ONE pass. `shellSegments` unquotes each token individually, so `\sudo` and
+  // `"sudo"` are still caught — without a whole-string strip, which is what
+  // turned an escaped pipe in `grep "a\|sudo b"` into a segment separator and
+  // denied an ordinary search.
+  if (namesElevation(cmd)) {
     // Check allowPatterns — match against parsed tokens, not raw string
     const allowPatterns = ((ctx.params?.allowPatterns ?? []) as string[]);
     if (allowPatterns.some((p) => matchesAllowedPattern(cmd, p))) return allow();

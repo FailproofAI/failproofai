@@ -43,7 +43,18 @@ function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
     typeof m.hookEvent === "string" &&
     typeof m.cli === "string" &&
     typeof m.stdin === "string" &&
-    (m.cwd === undefined || typeof m.cwd === "string")
+    // `null` as well as `undefined`. The sender is Rust, and `json!({"cwd":
+    // cwd})` with an `Option::None` emits `"cwd": null` — JSON has no way to
+    // spell `undefined`. Accepting only `undefined` therefore rejected every
+    // request that legitimately had no cwd, with "unrecognized request shape".
+    //
+    // Exactly one caller omits it — `probeDaemonEndToEnd()` — so the effect was
+    // that the health probe failed against a PERFECTLY HEALTHY daemon, the
+    // wizard read that as "installed but cannot evaluate", and setup aborted
+    // writing nothing. On a machine where the daemon is required, that made
+    // first-run setup impossible to complete, while every manual check of the
+    // daemon said it was fine.
+    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string")
   );
 }
 

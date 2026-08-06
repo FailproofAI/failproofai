@@ -116,9 +116,17 @@ describe("THE INVARIANT: an attempt never means configured", () => {
     recordOnboardingAttempt("needs_root", "1.0.0", "not-installed");
 
     const state = detectSetupState(home, home);
-    expect(isConfigured(state)).toBe(false);
     expect(state.hasGlobalConfig).toBe(false);
     expect(state.hasLegacyMarker).toBe(false);
+
+    // `hasGlobalHooks` is pinned rather than read. `detectSetupState` takes an
+    // injectable home and its docstring promises "every path is derived from
+    // an injectable home/cwd" — but `hasGlobalHooksInstalled()` takes no home
+    // and walks the REAL user's settings files, so this assertion flipped the
+    // moment a developer had failproofai hooks installed on their own machine.
+    // Neutralising it here keeps the test about the attempt record, which is
+    // what it is for; the injectability gap is a separate problem.
+    expect(isConfigured({ ...state, hasGlobalHooks: false })).toBe(false);
   });
 });
 

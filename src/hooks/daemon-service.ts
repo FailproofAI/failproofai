@@ -825,6 +825,12 @@ export async function probeDaemonEndToEnd(): Promise<boolean> {
       {
         hookEvent: "SessionStart",
         cli: "claude",
+        // Sent for the same reason the docstring above claims this "traverses
+        // the identical path": a real hook always carries one, and omitting it
+        // is what made this probe stop being representative. The wire bug it
+        // tripped is fixed in `worker-server.ts`, but a probe that sends a
+        // shape no real caller sends can only ever test something else.
+        cwd: process.cwd(),
         stdin: JSON.stringify({ hook_event_name: "SessionStart", source: "failproofai-health-probe" }),
       },
       { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },

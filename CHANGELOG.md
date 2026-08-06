@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.10 — 2026-08-06
+
+### Fixes
+- Restart failproofaid when a config or credential change lands, so the running daemon stops disagreeing with the file on disk. The daemon reads its ingest credential **once**, at collector start — `main.rs` starts the collector manager once and never tears it down, and the uploader caches its bearer key at construction. Config is re-read on a 5s tick; the credential is not. So rotating a key left the file correct and the process wrong, and the failure was invisible from every angle a person can check: `--connect` verifies the NEW key itself and prints success, the service reports healthy, and `credentials.toml` holds a key that works when curled — while every batch 401s and parks. Observed live: a key revoked at 13:05:37 and replaced 37 seconds later still produced 401s twenty minutes on, with 26 batches parked and a CLI that said "connected". `--connect`, `--disconnect` and the wizard now all restart a running daemon and verify it can evaluate again with the same probe setup uses — a `systemctl restart` exit code proves the fork happened, not that the thing can answer a hook. When the restart cannot happen (no sudo, a failed unit) that is stated plainly with the exact command, rather than printing success over a machine that is still shipping with the old key. (#PR)
+- Stop `--disconnect` claiming a machine stopped reporting when it had not. The message already described the restart the user had to run themselves; it now performs it, and only names the command when it could not. A machine that had deliberately left its organisation went on shipping until somebody read past a success message. (#PR)
+
 ## 1.0.0-beta.9 — 2026-08-06
 
 ### Fixes

@@ -86,6 +86,7 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     // unreachable socket and a worker that will not run need different words.
     probeDaemon: vi.fn(async () => ({ ok: true })),
     uninstallDaemonService: vi.fn(async () => {}),
+    reloadDaemonAfterConfigChange: vi.fn(async () => ({ reloaded: true })),
   };
 });
 // The wizard kicks off the audit pipeline after a completed apply; stub it so

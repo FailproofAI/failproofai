@@ -312,7 +312,15 @@ export function resettablePaths(): string[] {
     legacy.launcherMarker(),
     legacy.lastVersion(),
     legacy.auditDashboard(),
-    legacy.cacheDir(),
+    // `legacy.cacheDir()` — the whole of `cache/` — stood here, and it CONTAINS
+    // `cache/hook-activity`: layout 1's decision log. Deleting the parent threw
+    // away every decision the machine had ever recorded, which is the data the
+    // dashboard's activity tab exists to show. Its children are now named
+    // individually so the log can be carried across by
+    // `migrateHookActivity()`, and everything else in `cache/` still goes —
+    // both remaining entries are re-derived on demand.
+    legacy.auditCacheDir(),
+    legacy.codexSessionPaths(),
     legacy.spoolDir(),
     legacy.failedDir(),
     legacy.collectorHealth(),
@@ -335,7 +343,14 @@ export function resettablePaths(): string[] {
     // setup, `cloud-policies/` by the next daemon poll.
     localPoliciesDir(),
     cloudPoliciesDir(),
-    at("cursors"),
+    // `at("cursors")` is deliberately NOT here, and it is load-bearing for the
+    // activity migration above rather than a separate opinion. Cursors are keyed
+    // on `(device, inode)`; `migrateHookActivity()` MOVES pages, which preserves
+    // the inode, so a surviving cursor still points at the file it belongs to
+    // and resumes at the right offset. Delete the cursors and every carried page
+    // reads as new and re-ships in full — which is the outcome the move exists
+    // to avoid. A cursor whose file is gone is inert (`retain_existing` drops
+    // it), so keeping them costs nothing when there is nothing to resume.
     at("state"),
     // Layout 2.
     // NOT versionFile() — it is the layout marker, not user data, and the
@@ -344,7 +359,12 @@ export function resettablePaths(): string[] {
     configFile(),
     credentialsFile(),
     auditDir(),
-    hookActivityDir(),
+    // NOT hookActivityDir(). It is the DESTINATION `migrateHookActivity()` has
+    // just moved layout 1's log into, so listing it here deleted the migration
+    // moments after it happened — the reset runs every path in this list after
+    // the migrations. It is also the one directory here that is neither derived
+    // nor re-fetchable: a decision log is the record of what this machine did,
+    // and nothing regenerates it.
     customAgentsDir(),
     logsDir(),
     // NOT bin/ — a downloaded daemon binary is large, version-pinned and

@@ -111,10 +111,18 @@ describe("fp-home layout", () => {
 
   it("resettablePaths covers both layouts", () => {
     const paths = H.resettablePaths();
-    expect(paths).toContain(H.legacy.cacheDir());
     expect(paths).toContain(H.legacy.policyConfig());
-    expect(paths).toContain(H.hookActivityDir());
     expect(paths).toContain(H.credentialsFile());
+    // `cache/` is no longer removed as a unit — it CONTAINS layout 1's decision
+    // log, which is now carried across — so its other children are named
+    // individually and must still be here.
+    expect(paths).not.toContain(H.legacy.cacheDir());
+    expect(paths).toContain(H.legacy.auditCacheDir());
+    expect(paths).toContain(H.legacy.codexSessionPaths());
+    // The decision log and the cursors that resume it are the two things a
+    // reset must NOT take. See `hook-activity-migration.test.ts`.
+    expect(paths).not.toContain(H.hookActivityDir());
+    expect(paths).not.toContain(H.cursorsDir());
   });
 });
 

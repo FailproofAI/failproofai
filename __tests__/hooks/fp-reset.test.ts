@@ -52,19 +52,30 @@ describe("resetHome", () => {
     expect(out.from).toBe(1);
     expect(out.removed.length).toBeGreaterThan(0);
     expect(existsSync(legacy.policyConfig())).toBe(false);
-    expect(existsSync(legacy.cacheDir())).toBe(false);
+    // `cache/` itself survives now — it contains the decision log, which is
+    // carried across — but everything else inside it goes.
+    expect(existsSync(legacy.auditCacheDir())).toBe(false);
     expect(existsSync(legacy.ingestCredentials())).toBe(false);
     expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
     expect(detectLayout().kind).toBe("current");
   });
 
-  it("removes cursors too — that was the explicit decision", () => {
-    // Keeping watermarks would avoid a one-off re-ship of the last 7 days, but
-    // the call was one rule with no exceptions. Pinned so a later "kindness"
-    // does not quietly reintroduce a special case nobody asked for.
+  it("KEEPS cursors — the decision was reversed deliberately", () => {
+    // This asserted the opposite, with a comment warning that a later
+    // "kindness" must not quietly reintroduce a special case. The reversal is
+    // not a kindness and is not quiet: layout 1's decision log is now MOVED
+    // into layout 2 rather than deleted, and a move preserves the inode
+    // precisely so the cursors keyed on `(device, inode)` still resume it.
+    // Delete the cursors and every carried page reads as new and re-ships in
+    // full — which is the outcome the move exists to prevent, so keeping the
+    // log and dropping the watermarks would be half a feature.
+    //
+    // The original call — one rule, no exceptions — bought simplicity at the
+    // price of a one-off re-ship. That price is now paid by users who have
+    // real history, which is the case this exists to serve.
     seedLayoutOne();
     resetHome(1);
-    expect(existsSync(cursorsDir())).toBe(false);
+    expect(existsSync(cursorsDir())).toBe(true);
   });
 
   it("NEVER removes the downloaded daemon binary", () => {

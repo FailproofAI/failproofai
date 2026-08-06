@@ -29,12 +29,14 @@
  * user out of their agent entirely, with no way back except hand-editing JSON.
  * A loud warning that survives until setup runs is the proportionate answer.
  */
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   LAYOUT_VERSION,
   customPoliciesDir,
   failproofaiHome,
+  hookActivityDir,
+  legacy,
   policiesDir,
   resettablePaths,
 } from "./fp-home";
@@ -52,6 +54,8 @@ export interface ResetOutcome {
   removed: string[];
   /** Basenames of user-authored policy files moved into `custom-policies/`. */
   migrated: string[];
+  /** Basenames of decision-log pages carried into layout 2's `hook-activity/`. */
+  activity: string[];
   /** The layout that was found before the reset. */
   from: number;
 }
@@ -111,6 +115,94 @@ export function migrateConventionPolicies(): string[] {
 }
 
 /**
+ * Carry layout 1's decision log into layout 2, WITHOUT re-shipping it.
+ *
+ * `cache/hook-activity` was deleted along with the rest of `cache/`, so an
+ * upgrade silently discarded every decision the machine had ever recorded —
+ * the data the dashboard's activity tab exists to show, and on a connected
+ * machine the data an operator had already been billed the collection of.
+ *
+ * # Why this MOVES rather than copies
+ *
+ * The collector keys its cursors on `(device, inode)` — deliberately, because
+ * the store rotates by RENAMING `current.jsonl`, and a path-keyed cursor would
+ * both re-ship the rotated file and carry its offset onto the fresh one.
+ * `rename()` preserves the inode, so a moved page is still the file its cursor
+ * belongs to and resumes at the right offset. A copy gives every page a NEW
+ * inode, which reads as "never seen before" and re-ships all of it.
+ *
+ * `head_fingerprint` is what makes that safe rather than lucky: the cursor
+ * verifies the file's first bytes whenever a resumed cursor's path has changed,
+ * which is exactly this situation. It was added for inode REUSE; a migration is
+ * the same question asked the other way round.
+ *
+ * The fallback for `EXDEV` (a `cache/` on a different filesystem — rare, since
+ * both live under one home, but possible with bind mounts) is a copy, accepting
+ * that those pages re-ship. Ingest dedups on a content hash and collapses them
+ * at merge, so the cost is bandwidth, not duplicate rows.
+ *
+ * # What is deliberately NOT carried
+ *
+ * `current.count` and `stats.json` are derived state, and two of each cannot be
+ * merged without inventing a number. They are dropped and the store rebuilds
+ * them. The legacy `current.jsonl` is moved under a PAGE name rather than onto
+ * the destination's own `current.jsonl`, which may already exist and may be
+ * mid-write — a rotated page is exactly what the store would have made of it.
+ */
+export function migrateHookActivity(): string[] {
+  const from = legacy.hookActivityDir();
+  if (!existsSync(from)) return [];
+  const moved: string[] = [];
+  try {
+    const entries = readdirSync(from, { withFileTypes: true }).filter(
+      (e) => e.isFile() && e.name.endsWith(".jsonl"),
+    );
+    if (entries.length === 0) return [];
+
+    const to = hookActivityDir();
+    mkdirSync(to, { recursive: true });
+
+    // One timestamp for the whole migration, with a per-file counter, so the
+    // names are stable, ordered, and cannot collide with each other.
+    const stamp = Date.now();
+    let seq = 0;
+
+    for (const entry of entries) {
+      const source = resolve(from, entry.name);
+      // `current.jsonl` becomes a page: the destination has its own, and the
+      // store's reader treats pages and current identically.
+      let name = entry.name === "current.jsonl" ? `page-${stamp}-${seq++}.jsonl` : entry.name;
+      let target = resolve(to, name);
+      // Never overwrite. A same-named page in the destination is a different
+      // file with different records, and losing either is worse than a rename.
+      while (existsSync(target)) {
+        name = `page-${stamp}-${seq++}.jsonl`;
+        target = resolve(to, name);
+      }
+      try {
+        renameSync(source, target);
+        moved.push(name);
+      } catch (err) {
+        // EXDEV: a rename across filesystems. Copy instead and accept the
+        // re-ship; a page left behind would be data lost.
+        if ((err as NodeJS.ErrnoException)?.code === "EXDEV") {
+          try {
+            copyFileSync(source, target);
+            moved.push(name);
+          } catch {
+            // Unreadable or undeletable — leave it where it is. `cache/` is no
+            // longer deleted wholesale, so "left behind" means "still there".
+          }
+        }
+      }
+    }
+  } catch {
+    // An activity directory we cannot read is not worth aborting a reset over.
+  }
+  return moved.sort((a, b) => a.localeCompare(b));
+}
+
+/**
  * Delete every path layout 1 or layout 2 could have written, then stamp
  * VERSION so the next run reads as current.
  *
@@ -124,6 +216,7 @@ export function resetHome(from: number): ResetOutcome {
   // BEFORE the deletions, so a file that is mid-move is never one the reset
   // then walks over.
   const migrated = migrateConventionPolicies();
+  const activity = migrateHookActivity();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
     if (!existsSync(path)) continue;
@@ -137,7 +230,7 @@ export function resetHome(from: number): ResetOutcome {
     }
   }
   writeVersionFile();
-  return { removed, migrated, from };
+  return { removed, migrated, activity, from };
 }
 
 export interface LayoutCheck {
@@ -187,15 +280,19 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
   }
 
   if (state.kind === "stale") {
-    const { removed, migrated } = resetHome(state.found);
+    const { removed, migrated, activity } = resetHome(state.found);
     return {
       state,
       fatal: false,
       didReset: true,
       lines: [
         `failproofai reorganised ${failproofaiHome()} in this version.`,
-        `Removed ${removed.length} item(s) from the old layout — policy config, activity`,
-        `history and audit cache. Your downloaded daemon binary was kept.`,
+        // "activity history" was in this sentence while the reset was deleting
+        // it. It is carried over now, so the message says what was KEPT as well
+        // as what went — a user who reads "removed" and nothing else has no way
+        // to know their decision log survived.
+        `Removed ${removed.length} item(s) from the old layout — policy config and`,
+        `audit cache. Your daemon binary and decision history were kept.`,
         // Named individually rather than counted. These are files a person
         // wrote; "moved 3 items" is not something you can check at a glance,
         // and the whole point of saying it is that they can.
@@ -205,6 +302,16 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
               `Kept your own policy file(s) and moved them to where this version`,
               `loads them (${customPoliciesDir()}):`,
               ...migrated.map((name) => `  ${name}`),
+            ]
+          : []),
+        // Counted, not named. Unlike policy files these are machine-written
+        // pages with generated names — a list of them tells the reader nothing
+        // they could act on, where the COUNT answers the only question they
+        // have: did my history survive.
+        ...(activity.length > 0
+          ? [
+              ``,
+              `Carried ${activity.length} page(s) of decision history into ${hookActivityDir()}.`,
             ]
           : []),
         ``,

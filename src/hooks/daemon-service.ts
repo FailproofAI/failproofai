@@ -94,7 +94,25 @@ export function setDaemonConfigured(value: boolean, installedVersion?: string): 
   }
 }
 
-export type DaemonServiceStatus = "running" | "stopped" | "not-installed" | "unsupported-platform";
+export type DaemonServiceStatus =
+  | "running"
+  | "stopped"
+  /**
+   * Installed, but systemd evaluated its `ConditionPathExists=` and refused to
+   * start it — the daemon binary or the worker script is gone.
+   *
+   * Deliberately its own state rather than folded into "stopped". "Stopped" is
+   * ambiguous on purpose (a restart in flight looks identical), which is why
+   * nothing is allowed to act destructively on it. A failed condition carries
+   * no such ambiguity: systemd has already decided this unit will not run, and
+   * will keep deciding that at every boot until the missing path returns. That
+   * is provable enough to clear `daemonConfigured` on, and leaving it
+   * indistinguishable from a transient stop is what kept a machine denying
+   * every tool call with no explanation.
+   */
+  | "condition-failed"
+  | "not-installed"
+  | "unsupported-platform";
 
 /** Linux + macOS only, per the plan's platform scope — full stop. */
 export function isDaemonSupportedPlatform(): boolean {
@@ -259,6 +277,28 @@ export function resolveCliCommand(): string | null {
  *  quote is closed, escaped and reopened. */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The raw, unquoted path to the worker script the service will run — the same
+ * file `resolveWorkerCommand` builds its shell command around.
+ *
+ * It exists separately because the unit needs the path as a PATH (for
+ * `ConditionPathExists=`), not as a shell word, and recovering one from the
+ * other means unparsing POSIX quoting for a value we already had.
+ *
+ * Returns null when `FAILPROOFAI_WORKER_CMD` is set: that value is an arbitrary
+ * shell command — a wrapper script, an interpreter with flags, `exec`ing
+ * something else entirely — and guessing which token in it is "the file that
+ * must exist" would gate the service on a path nobody promised. An absent
+ * condition is the correct answer to a question we cannot answer.
+ */
+export function workerScriptPath(): string | null {
+  if (process.env.FAILPROOFAI_WORKER_CMD) return null;
+  const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (!packageRoot) return null;
+  const workerScript = resolve(packageRoot, "dist", "worker.mjs");
+  return existsSync(workerScript) ? workerScript : null;
 }
 
 /**
@@ -576,10 +616,41 @@ export function systemdUnitContents(
   const user = assertUnitSafe(serviceUser(), "User");
   assertUnitSafe(binaryPath, "ExecStart");
   assertUnitSafe(homedir(), "HOME");
+
+  // Gate the unit on the two files it cannot run without, so that an install
+  // which is no longer there STOPS rather than thrashes.
+  //
+  // `npm rm -g failproofai` is the case this is for, and npm runs no uninstall
+  // script — see the note on `failproofai uninstall`. It deletes the package,
+  // which takes `dist/worker.mjs` with it, while the daemon binary under
+  // ~/.failproofai survives. Without a condition systemd keeps a daemon alive
+  // whose worker cannot spawn; with a deleted BINARY it is worse, because
+  // ExecStart fails 203/EXEC under `Restart=on-failure` and cycles until it
+  // trips the start-limit and latches into "start request repeated too
+  // quickly" — a state that then refuses a legitimate restart later.
+  //
+  // A failed condition is not a failure: systemd SKIPS the job, leaves the unit
+  // inactive, and `systemctl status` names the exact path that was missing.
+  // That turns an unexplained crash-loop into a one-line diagnosis, and
+  // `daemonServiceStatus()` reads it back as `condition-failed` so the next CLI
+  // command can clear `daemonConfigured` instead of leaving the machine denying
+  // every tool call.
+  //
+  // This deliberately does NOT soften the hook path's fail-closed deny. A
+  // machine that was configured to require the daemon still denies while the
+  // daemon is absent — being skipped by systemd is not consent to stop
+  // enforcing. It shortens how long that lasts and explains why.
+  const conditionPaths = [binaryPath, workerScriptPath()].filter(
+    (p): p is string => typeof p === "string",
+  );
+  const conditionLines = conditionPaths
+    .map((p) => `ConditionPathExists=${assertUnitSafe(p, "ConditionPathExists")}\n`)
+    .join("");
+
   return `[Unit]
 Description=failproofai background daemon (failproofaid) for ${user}
 After=network.target
-
+${conditionLines}
 [Service]
 Type=simple
 User=${user}
@@ -1355,6 +1426,59 @@ export function daemonVersionSkew(): { installed: string; expected: string } | n
   return recorded === version ? null : { installed: recorded, expected: version };
 }
 
+/**
+ * Why a Linux unit that exists is not active: skipped on a condition, or
+ * merely stopped.
+ *
+ * Only reached once `is-active` has already said "not active", so it costs a
+ * second `systemctl` call on the unhealthy path and nothing at all on the
+ * healthy one.
+ *
+ * `ConditionResult` is systemd's own record of the last condition evaluation
+ * and is `no` only after it actually ran them and one failed. A unit that has
+ * never been started since boot reports `yes` (the field's default), so this
+ * cannot invent a `condition-failed` for a unit systemd has not judged — it
+ * under-reports rather than over-reports, which is the safe direction for a
+ * signal that clears `daemonConfigured`.
+ */
+function inactiveLinuxStatus(): DaemonServiceStatus {
+  try {
+    return interpretConditionResult(
+      execFileSync(
+        "systemctl",
+        ["show", systemdUnitName(), "--property=ConditionResult", "--value"],
+        { stdio: ["ignore", "pipe", "ignore"], timeout: SERVICE_CMD_TIMEOUT_MS },
+      ).toString(),
+    );
+  } catch {
+    // No systemd, no systemctl, or a version without `--value`. The unit file
+    // exists, so "stopped" remains the honest answer — and it is the
+    // conservative one, because nothing acts destructively on it.
+    return "stopped";
+  }
+}
+
+/**
+ * `systemctl show --property=ConditionResult --value` → a status.
+ *
+ * Split out from the subprocess so the interpretation can be tested without
+ * `/etc/systemd/system`, which this code reads at a fixed path and no test may
+ * write. The live behaviour — that systemd actually skips a unit whose
+ * `ConditionPathExists=` fails, and records `no` when it does — is proven
+ * against a real systemd in the container test rather than asserted here.
+ *
+ * Only a literal `no` means condition-failed. Anything else — `yes`, an empty
+ * string from a unit systemd has not evaluated since boot, an unfamiliar word
+ * from a future version — is "stopped", which is the state nothing acts
+ * destructively on. This under-reports rather than over-reports on purpose: the
+ * cost of a missed `condition-failed` is a flag cleared one command later, and
+ * the cost of a false one is a healthy machine silently dropped to the
+ * in-process path.
+ */
+export function interpretConditionResult(raw: string): DaemonServiceStatus {
+  return raw.trim() === "no" ? "condition-failed" : "stopped";
+}
+
 export function daemonServiceStatus(): DaemonServiceStatus {
   if (!isDaemonSupportedPlatform()) return "unsupported-platform";
 
@@ -1369,14 +1493,14 @@ export function daemonServiceStatus(): DaemonServiceStatus {
       })
         .toString()
         .trim();
-      return out === "active" ? "running" : "stopped";
+      return out === "active" ? "running" : inactiveLinuxStatus();
     } catch {
       // `systemctl is-active` exits non-zero (and execFileSync throws) for
       // every non-"active" state — inactive, failed, or the command not
-      // working at all (no systemd user session, systemctl missing). All
-      // of those are indistinguishable from "stopped" from here, and the
-      // unit file existing is what already ruled out "not-installed".
-      return "stopped";
+      // working at all (no systemd user session, systemctl missing). The unit
+      // file existing already ruled out "not-installed", so the only question
+      // left is whether systemd skipped it on a condition.
+      return inactiveLinuxStatus();
     }
   }
 

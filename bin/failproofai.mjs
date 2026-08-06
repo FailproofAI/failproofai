@@ -211,7 +211,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -255,6 +255,16 @@ COMMANDS
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command
+
+  uninstall                      Remove failproofai from this machine: hook
+                                 entries from every agent CLI, and the daemon
+                                 service. Run this BEFORE \`npm rm -g failproofai\`
+                                 — npm runs no uninstall script, so removing the
+                                 package alone leaves both behind.
+    --purge                        Also delete ~/.failproofai (settings,
+                                   credentials, audit history, daemon binary)
+    --dry-run                      Show what would be removed, change nothing
+    --yes, -y                      Skip the confirmation prompt
 
   --version, -v                  Print version and exit
   --help, -h                     Show this help message
@@ -408,6 +418,113 @@ LINKS
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }
+  }
+
+  // uninstall [--purge] [--dry-run] [--yes|-y]
+  //
+  // Top-level, and deliberately NOT a flag on `policies`. `policies --uninstall`
+  // disables policies; this removes the product — hook entries across every
+  // agent CLI plus the root-owned daemon service — and the two must not be one
+  // keystroke apart.
+  if (args[0] === "uninstall") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai uninstall — remove failproofai from this machine
+
+USAGE
+  failproofai uninstall [--purge] [--dry-run] [--yes]
+
+WHAT IT REMOVES
+  • failproofai hook entries from every agent CLI that has them
+  • the failproofaid daemon service (needs sudo)
+  • the "require the daemon" flag — cleared FIRST, so a partial uninstall can
+    never leave this machine denying every tool call
+
+OPTIONS
+  --purge         Also delete ~/.failproofai — settings, credentials, audit
+                  history and the downloaded daemon binary. Off by default so a
+                  reinstall keeps your history.
+  --dry-run       Print what would be removed and change nothing.
+  --yes, -y       Skip the confirmation prompt. Required when there is no TTY.
+
+WHY THIS EXISTS
+  npm runs no uninstall script, so \`npm rm -g failproofai\` removes the package
+  and leaves the hook entries and the service behind. Run this first, then:
+      npm rm -g failproofai
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--purge", "--dry-run", "--yes", "-y"]);
+    const unknown = subArgs.find((a) => !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai uninstall --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "uninstall_command";
+    const { runUninstallCommand } = await import("../src/hooks/uninstall-cli");
+    const purge = subArgs.includes("--purge");
+    const dryRun = subArgs.includes("--dry-run");
+    const yes = subArgs.includes("--yes") || subArgs.includes("-y");
+
+    // Set only when the prompt actually rendered the plan, which is the one
+    // case where printing it again would duplicate it.
+    let planWasShown = false;
+    const result = await runUninstallCommand({
+      purge,
+      dryRun,
+      yes,
+      cwd: process.cwd(),
+      // Only offered when a person can actually answer. Without a TTY the
+      // command requires --yes rather than assuming consent — see the module.
+      confirm: process.stdin.isTTY
+        ? async (planLines) => {
+            planWasShown = true;
+            const { selectOne } = await import("../src/hooks/tui");
+            // "No" first, so the default landing position on Enter is the
+            // non-destructive one.
+            const answer = await selectOne({
+              message: purge
+                ? "Remove failproofai and DELETE ~/.failproofai?"
+                : "Remove failproofai from this machine?",
+              body: planLines,
+              choices: [
+                { label: "No, cancel", value: false },
+                { label: purge ? "Yes, remove and purge" : "Yes, remove it", value: true },
+              ],
+            });
+            return answer === true;
+          }
+        : undefined,
+    });
+
+    // The prompt already rendered the plan as its body; re-printing it would
+    // show the same block twice. `planLines` is reported by the command rather
+    // than guessed from the text — see UninstallResult.
+    const skip = planWasShown ? result.planLines : 0;
+    for (const line of result.lines.slice(skip)) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    // NOT after a purge. `track` resolves the instance id, and `getInstanceId()`
+    // lazily WRITES ~/.failproofai/state/telemetry-id — which re-created the
+    // whole directory seconds after the purge deleted it, leaving a machine the
+    // user had just wiped holding a brand-new tracking identifier and making
+    // the command's own "✓ deleted" line false. A purge means gone; nothing
+    // gets to touch the home afterwards, least of all telemetry.
+    if (!result.purged) {
+      await track("cli_uninstall_command", {
+        ok: result.exitCode === 0,
+        purge,
+        dry_run: dryRun,
+      });
+    }
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
   }
 
   // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]

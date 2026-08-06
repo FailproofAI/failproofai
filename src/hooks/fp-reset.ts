@@ -41,6 +41,7 @@ import {
 import { detectLayout, readConfig, updateConfig, writeVersionFile, type LayoutState } from "./fp-config";
 import {
   daemonServiceStatus,
+  daemonStatusCommand,
   daemonVersionSkew,
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
@@ -249,6 +250,30 @@ async function healDaemonFlag(): Promise<string[]> {
         `failproofaid is no longer installed, but this machine was still configured`,
         `to require it — which denies every tool call. Cleared that flag; policies`,
         `now evaluate in-process. Run \`failproofai config\` to reinstall the daemon.`,
+        ``,
+      ];
+    }
+
+    // Installed, and systemd has refused to start it: one of the paths the unit
+    // is gated on is gone. This is what `npm rm -g failproofai` leaves behind —
+    // npm runs no uninstall script, so the unit survives the package that
+    // supplies its worker, and every tool call on the machine then denies with
+    // nothing to point at.
+    //
+    // Treated like "not-installed" rather than like "stopped" because systemd
+    // has already made the call and will keep making it at every boot. That is
+    // the distinction `condition-failed` exists to carry; see its definition.
+    if (status === "condition-failed") {
+      updateConfig({ daemon: { configured: false } });
+      return [
+        `failproofaid is installed but cannot start — a file its service requires is`,
+        `gone (most often because failproofai was removed with \`npm rm -g\`, which`,
+        `deletes the worker but leaves the service behind). This machine was`,
+        `configured to require the daemon, which denies every tool call, so that flag`,
+        `is cleared; policies now evaluate in-process.`,
+        ``,
+        `Run \`failproofai uninstall\` to remove the leftover service, or`,
+        `\`failproofai config\` to rebuild it. \`${daemonStatusCommand()}\` names the missing path.`,
         ``,
       ];
     }

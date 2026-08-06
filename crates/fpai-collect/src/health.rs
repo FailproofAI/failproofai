@@ -149,25 +149,54 @@ impl Health {
 /// them vary. Unset until the daemon installs one, and every method on the
 /// returned handle is a no-op in that state — so a source reports health
 /// unconditionally and a test that never installs one pays nothing.
-static GLOBAL: std::sync::OnceLock<std::sync::Arc<Health>> = std::sync::OnceLock::new();
+/// REPLACEABLE, not set-once — the same correction made to `telemetry.rs`'s
+/// `COLLECTOR_METRICS`, for the same reason and with the same consequence.
+///
+/// This was a `OnceLock`, so only the FIRST `install()` in a process took
+/// effect. That was true for exactly one generation of the collector: it is now
+/// cycled whenever its configuration changes (a rotated credential, a stream
+/// switched off) and rebuilt by `failproofai backfill`, and `collector_tasks()`
+/// installs a fresh `Health` each time. Every later install was silently
+/// dropped, so sources reported into the ORPHANED first-generation registry
+/// while the live `writer_task` published the one nobody was writing to.
+/// `collector-health.json` kept being rewritten every 30s with frozen numbers,
+/// and a source that had gone completely dark read exactly like a healthy one —
+/// which defeats the only purpose this module has.
+static GLOBAL: std::sync::RwLock<Option<std::sync::Arc<Health>>> = std::sync::RwLock::new(None);
 
-/// Install the process health registry. The first call wins; later ones are
-/// ignored, so a stray second install cannot silently orphan the record the
-/// writer task is publishing.
+/// Install the process health registry, replacing any previous one.
+///
+/// The caller installs before starting any source, so no poll ever reports into
+/// a registry that does not exist yet, and the generation being replaced is one
+/// whose tasks have already been joined.
 pub fn install(health: std::sync::Arc<Health>) {
-    let _ = GLOBAL.set(health);
+    // A poisoned lock is not a reason to stop recording health: recover the
+    // guard and carry on. The only operation is replacing one `Arc`, so there
+    // is no torn value a panic could have left behind.
+    let mut slot = GLOBAL.write().unwrap_or_else(|e| e.into_inner());
+    *slot = Some(health);
+}
+
+/// The currently installed registry, if any. Cloned out rather than held, so a
+/// source's own `record_*` call never runs with the registry lock held.
+fn current() -> Option<std::sync::Arc<Health>> {
+    GLOBAL
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .cloned()
 }
 
 /// Report a successful poll to the process registry, if one is installed.
 pub fn report_poll(source: &str, root_present: bool, events: u64, cursor: u64) {
-    if let Some(h) = GLOBAL.get() {
+    if let Some(h) = current() {
         h.record_poll(source, root_present, events, cursor);
     }
 }
 
 /// Report a failed poll to the process registry, if one is installed.
 pub fn report_error(source: &str, error: &str) {
-    if let Some(h) = GLOBAL.get() {
+    if let Some(h) = current() {
         h.record_error(source, error);
     }
 }
@@ -352,6 +381,52 @@ mod tests {
             .any(|e| e.file_name().to_string_lossy().ends_with(".tmp"));
         assert!(!stray, "the atomic write left its tmp behind");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The registry must follow the collector across a cycle.
+    ///
+    /// `GLOBAL` was a `OnceLock`, so the second `install()` — which happens on
+    /// every credential rotation, every `[collector]` config change and every
+    /// `failproofai backfill` — was silently dropped. Sources then reported
+    /// through the free functions into the first generation, which had already
+    /// been joined, while the live `writer_task` published the second one.
+    /// `collector-health.json` froze, and a dead source became
+    /// indistinguishable from an idle one.
+    ///
+    /// Source names are unique to this test because `GLOBAL` is process-wide
+    /// and the crate's tests run in parallel.
+    #[test]
+    fn a_reinstalled_registry_is_the_one_that_receives_reports() {
+        let first = std::sync::Arc::new(Health::new());
+        install(first.clone());
+        report_poll("cycle-test-gen1", true, 3, 30);
+
+        // Exactly what `collector_tasks()` does when the collector is cycled.
+        let second = std::sync::Arc::new(Health::new());
+        install(second.clone());
+        report_poll("cycle-test-gen2", true, 7, 70);
+        report_error("cycle-test-gen2", "boom");
+
+        let gen2 = second.snapshot();
+        let entry = gen2
+            .sources
+            .get("cycle-test-gen2")
+            .expect("the live registry must receive reports made after it was installed");
+        assert_eq!(entry.events, 7);
+        assert_eq!(entry.errors, 1);
+
+        // And the replaced generation must go quiet rather than keep absorbing
+        // them — that silent absorption is what made the file freeze.
+        let gen1 = first.snapshot();
+        assert!(
+            !gen1.sources.contains_key("cycle-test-gen2"),
+            "reports leaked into the orphaned generation: {:?}",
+            gen1.sources.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            gen1.sources.contains_key("cycle-test-gen1"),
+            "the first generation should still hold what it recorded while it was live"
+        );
     }
 
     #[test]

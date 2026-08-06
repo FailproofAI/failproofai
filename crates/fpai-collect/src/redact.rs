@@ -311,6 +311,22 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
         return None;
     }
     let before = &s[..i];
+    // The cursor is ON the opening quote, so the value starts one character
+    // later. Decline here and let the left-to-right scan match at the value
+    // itself on its next step.
+    //
+    // Matching here is what broke quoted assignments. `scrub_str` walks
+    // forward, so this position is reached FIRST, and from it `quoted` (which
+    // looks at the character before the cursor) sees the `=` rather than the
+    // quote and reads false. The unquoted stop-set then ran past the closing
+    // quote and swallowed whatever was glued to it:
+    // `API_KEY="sk-…"myapp/image:latest` lost the image tag entirely, with
+    // nothing in the output to distinguish redaction from deletion. It also
+    // meant the plain `KEY="value"` case ate both quotes, which the doc comment
+    // above says it does not.
+    if before.ends_with('=') && rest.starts_with(['"', '\'']) {
+        return None;
+    }
     // Step back over an opening quote, if any, then require the `=`.
     let before = match before.chars().next_back() {
         Some('"') | Some('\'') => &before[..before.len() - 1],
@@ -356,7 +372,13 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
             if quoted {
                 *c != '"' && *c != '\''
             } else {
-                !c.is_whitespace() && *c != ';' && *c != '&'
+                // Quotes end an unquoted value too, matching `match_bearer`'s
+                // token run. An unquoted shell word does not contain a bare
+                // quote, so stopping costs no real redaction — and running past
+                // one destroys whatever it delimits, which is the strictly
+                // worse error: an under-redacted value is still visibly a
+                // value, while a swallowed one is gone with no marker saying so.
+                !c.is_whitespace() && *c != ';' && *c != '&' && *c != '"' && *c != '\''
             }
         })
         .map(char::len_utf8)
@@ -492,6 +514,72 @@ mod tests {
         assert!(scrub("--api-token=abcdefghijklmnop").contains("[redacted:"));
         // Strong names redact even bare.
         assert!(scrub("password=abcdefghijklmnop").contains("[redacted:"));
+    }
+
+    /// A quoted value must lose the secret and NOTHING else.
+    ///
+    /// `match_assignment` used to match at the opening quote rather than at the
+    /// value, so `quoted` read false and the unquoted stop-set ran past the
+    /// closing quote to the next space. Anything glued to that quote was
+    /// deleted, with no marker to say a redaction had eaten it — and a
+    /// destroyed image tag reads exactly like one that was never there.
+    #[test]
+    fn a_quoted_value_is_redacted_without_swallowing_what_follows() {
+        // The reported case: the image ref is glued to the closing quote.
+        assert_eq!(
+            scrub(
+                r#"docker run -e API_KEY="abcdefghijklmnop"myapp/image:latest --flag positional-arg"#
+            ),
+            r#"docker run -e API_KEY="[redacted:secret-assignment]"myapp/image:latest --flag positional-arg"#
+        );
+        // The plain case, which lost both quotes: the doc comment promises the
+        // assignment still reads as one.
+        assert_eq!(
+            scrub(r#"API_KEY="abcdefghijklmnop""#),
+            r#"API_KEY="[redacted:secret-assignment]""#
+        );
+        assert_eq!(
+            scrub("API_KEY='abcdefghijklmnop'"),
+            "API_KEY='[redacted:secret-assignment]'"
+        );
+        // Ordinary trailing content, separated normally, is still untouched.
+        assert_eq!(
+            scrub(r#"API_KEY="abcdefghijklmnop" && echo done"#),
+            r#"API_KEY="[redacted:secret-assignment]" && echo done"#
+        );
+        // Unquoted values keep working, and stop at the shell separators.
+        assert_eq!(
+            scrub("API_KEY=abcdefghijklmnop && echo done"),
+            "API_KEY=[redacted:secret-assignment] && echo done"
+        );
+        // An unquoted value abutting a quoted argument must not eat it either.
+        assert_eq!(
+            scrub(r#"--api-token=abcdefghijklmnop"trailing""#),
+            r#"--api-token=[redacted:secret-assignment]"trailing""#
+        );
+    }
+
+    /// Redaction must never be a net data loss beyond the secret itself: every
+    /// character outside the replaced span survives verbatim.
+    #[test]
+    fn redaction_only_ever_removes_the_matched_span() {
+        for s in [
+            r#"docker run -e API_KEY="abcdefghijklmnop"myapp/image:latest"#,
+            r#"API_KEY="abcdefghijklmnop""#,
+            "API_KEY=abcdefghijklmnop tail",
+        ] {
+            let out = scrub(s);
+            let (before, rest) = out.split_once("[redacted:").expect("should redact");
+            let after = rest.split_once(']').expect("marker should close").1;
+            assert!(
+                s.starts_with(before),
+                "text before the marker was altered: {s:?} -> {out:?}"
+            );
+            assert!(
+                s.ends_with(after),
+                "text after the marker was dropped: {s:?} -> {out:?}"
+            );
+        }
     }
 
     #[test]

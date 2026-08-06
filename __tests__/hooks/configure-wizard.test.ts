@@ -82,6 +82,9 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     // a healthy machine, which is what every pre-existing test here means by
     // running. The tests that drive the broken-worker branch override it.
     probeDaemonEndToEnd: vi.fn(async () => true),
+    // Richer form the wizard uses so it can name WHICH fault it hit — an
+    // unreachable socket and a worker that will not run need different words.
+    probeDaemon: vi.fn(async () => ({ ok: true })),
     uninstallDaemonService: vi.fn(async () => {}),
   };
 });
@@ -126,6 +129,7 @@ import {
   daemonServiceFilePath,
   ensureDaemonServiceCurrent,
   primeElevation,
+  probeDaemon,
   probeDaemonEndToEnd,
   uninstallDaemonService,
 } from "../../src/hooks/daemon-service";
@@ -237,6 +241,7 @@ beforeEach(() => {
   // Same reason: "a healthy daemon was left alone" asserts a call count of
   // zero, which the broken-worker test above would otherwise satisfy for it.
   vi.mocked(probeDaemonEndToEnd).mockReset().mockResolvedValue(true);
+  vi.mocked(probeDaemon).mockReset().mockResolvedValue({ ok: true });
   vi.mocked(uninstallDaemonService).mockReset().mockResolvedValue(undefined);
 });
 
@@ -798,7 +803,11 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(daemonServiceStatus).mockReturnValue("running");
     // False for the health check that classifies the machine as broken, then
     // true for the post-install probe — the rebuilt daemon answers.
+    // Two different call sites: the boolean form DETECTS the broken daemon
+    // (first call, false), and the richer form VERIFIES the rebuild afterwards
+    // (must be ok, or the wizard aborts and nothing is applied).
     vi.mocked(probeDaemonEndToEnd).mockResolvedValueOnce(false).mockResolvedValue(true);
+    vi.mocked(probeDaemon).mockResolvedValue({ ok: true });
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
     drive(HAPPY);
 
@@ -812,6 +821,7 @@ describe("configure-wizard daemon integration", () => {
     expect(installDaemonService).toHaveBeenCalled();
     expect(result.daemonInstalled).toBe(true);
     vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+    vi.mocked(probeDaemon).mockResolvedValue({ ok: true });
   });
 
   it("refuses to finish setup when the freshly installed daemon cannot answer", async () => {
@@ -825,6 +835,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
     vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+    vi.mocked(probeDaemon).mockResolvedValue({ ok: false, reason: "worker" });
     drive(HAPPY);
 
     const result = await runConfigureWizard(ttyIO());
@@ -842,6 +853,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(daemonServiceStatus).mockReturnValue("running");
     vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+    vi.mocked(probeDaemon).mockResolvedValue({ ok: true });
     drive(HAPPY);
 
     const result = await runConfigureWizard(ttyIO());

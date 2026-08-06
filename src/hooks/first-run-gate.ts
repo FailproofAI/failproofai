@@ -15,15 +15,23 @@
 /**
  * Subcommands that must never be interrupted by onboarding.
  *
- * All three are configuration actions in their own right: `config` IS the
+ * The first three are configuration actions in their own right: `config` IS the
  * wizard, and `policies` / `policy` are the non-interactive way to do setup.
  * Putting a wizard in front of them would override an intent the user just
  * stated, and would hang any script that calls them.
+ *
+ * `uninstall` is here for the sharper version of the same reason: it states the
+ * exact OPPOSITE intent. Offering to set this machine up, on the way to tearing
+ * it down, would install hooks and a root-owned systemd unit seconds before the
+ * command removes them — and on a machine that had drifted to unconfigured
+ * (a cleared flag, a reset home), that is the difference between a clean
+ * uninstall and one that leaves behind more than it found.
  */
 export const FIRST_RUN_EXEMPT_SUBCOMMANDS: readonly string[] = [
   "config",
   "policies",
   "policy",
+  "uninstall",
 ];
 
 export function shouldOfferFirstRun(args: readonly string[]): boolean {

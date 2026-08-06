@@ -72,6 +72,7 @@ import {
   daemonVersionSkew,
   primeElevation,
   setDaemonConfigured,
+  probeDaemon,
   probeDaemonEndToEnd,
   uninstallDaemonService,
 } from "./daemon-service";
@@ -1189,16 +1190,25 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     // Checked HERE rather than inside `installDaemonService`, which can only
     // honestly report on the service: keeping them apart is also what lets the
     // install mechanics be tested against a stub binary.
-    if (!(await probeDaemonEndToEnd())) {
-      hookLogWarn("failproofaid was installed and running but did not answer a policy evaluation");
+    const probe = await probeDaemon();
+    if (!probe.ok) {
+      hookLogWarn(
+        `failproofaid was installed and running but did not answer a policy evaluation (${probe.reason})`,
+      );
+      // Two different faults, two different things to go and look at. Saying
+      // "your worker will not start" at a machine whose socket simply never
+      // came up sends someone to inspect a process that is fine.
       stdout.write(
-        "\nfailproofaid started but cannot evaluate policies — its worker process\n" +
-          "could not be run. Setup stopped before changing anything, because a machine\n" +
-          "configured to require a daemon that cannot answer denies every tool call.\n\n" +
+        (probe.reason === "worker"
+          ? "\nfailproofaid started but cannot evaluate policies — it is listening, and\n" +
+            "its worker process could not be run.\n"
+          : "\nfailproofaid started but could not be reached on its socket.\n") +
+          "Setup stopped before changing anything, because a machine configured to\n" +
+          "require a daemon that cannot answer denies every tool call.\n\n" +
           `  Check it with:  ${daemonStatusCommand() ?? "systemctl status failproofaid"}\n` +
           "  Then re-run:    failproofai config\n\n",
       );
-      void emit("configure_aborted", { reason: "daemon_not_answering" });
+      void emit("configure_aborted", { reason: `daemon_not_answering_${probe.reason}` });
       outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "daemon_failed" };
     }

@@ -120,6 +120,50 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
     expect(permissionDecisionOf(response)).toBe("deny");
   });
 
+  // The daemon forwards the hook with `json!({ "cwd": cwd })`, and serde writes
+  // `None` as an explicit NULL rather than omitting the key. The validator here
+  // accepted only `undefined`, so every request that legitimately carried no cwd
+  // was answered "unrecognized request shape" — including the setup health
+  // probe, which sends none. `failproofai config` therefore aborted with "its
+  // worker process could not be run" against a daemon and worker that were both
+  // healthy and whose logs said so. On a daemonConfigured machine the same
+  // mismatch denies the tool call rather than merely failing setup.
+  it("accepts a request whose cwd is NULL, the way the daemon actually sends it", async () => {
+    const response = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "SessionStart",
+      cli: "claude",
+      cwd: null,
+      stdin: JSON.stringify({ hook_event_name: "SessionStart", source: "failproofai-health-probe" }),
+    });
+    expect(response.type).toBe("hookResult");
+    expect(response.exitCode).toBe(0);
+  });
+
+  it("accepts a request with no cwd key at all", async () => {
+    const response = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "SessionStart",
+      cli: "claude",
+      stdin: JSON.stringify({ hook_event_name: "SessionStart", source: "failproofai-health-probe" }),
+    });
+    expect(response.type).toBe("hookResult");
+    expect(response.exitCode).toBe(0);
+  });
+
+  it("still refuses a cwd of the wrong TYPE", async () => {
+    // Tolerating "absent" must not become tolerating anything: a number here is
+    // a malformed request, not an optional field.
+    const response = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "SessionStart",
+      cli: "claude",
+      cwd: 42,
+      stdin: JSON.stringify({ hook_event_name: "SessionStart" }),
+    });
+    expect(response.type).toBe("error");
+  });
+
   it("allows a benign command through the real policy engine", async () => {
     const response = await sendRequest(workerSocketPath, {
       type: "hook",

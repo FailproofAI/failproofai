@@ -68,9 +68,15 @@ Prevent agents from running operations that are hard to undo or that could damag
 ### `block-sudo`
 
 **Event:** PreToolUse (Bash)  
-**Default:** Denies any `sudo` command.
+**Default:** Denies any `sudo` or `doas` command.
 
-Blocks invocations that include the `sudo` keyword. Pattern matching is done on parsed command tokens, not the raw string, to prevent bypass via shell operator injection.
+Blocks a command that runs an elevation binary **in command position**. Matching is structural rather than textual: the command is split into segments the way a shell would, prefix assignments (`FOO=bar`), redirections, and runners with their flags (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, …) are walked off, and the resulting binary is compared by **basename**. So `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` and `bash -c "sudo …"` are all denied, and `doas` is treated as the same capability under a different name.
+
+Because it anchors on command position rather than on the word appearing anywhere, it does **not** fire on commands that merely mention it — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, or a `grep` alternation containing the word all run normally.
+
+<Warning>
+This stops the obvious attempt; it does not close the class. An agent that can run arbitrary shell can still reach elevation indirectly — through a variable (`S=sudo; $S …`), a base64-decoded pipe, or a wrapper script on disk — because no inspection of a single command string can follow those. Treat this as a guardrail against mistakes and casual escalation, not as a security boundary against a determined agent. A real boundary has to be enforced below the shell.
+</Warning>
 
 **Parameters:**
 

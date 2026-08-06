@@ -120,7 +120,10 @@ impl Drop for DaemonGuard {
 fn spawn_daemon(home: &Path) -> DaemonGuard {
     let mut child = Command::new(binary_path())
         .env("FAILPROOFAI_HOME", home)
-        .env("FAILPROOFAI_DAEMON_SOCKET", home.join("run/failproofaid.sock"))
+        .env(
+            "FAILPROOFAI_DAEMON_SOCKET",
+            home.join("run/failproofaid.sock"),
+        )
         // Never report from a test — a scratch home with no opt-out resolves
         // telemetry to its shipped default, which is ON.
         .env("FAILPROOFAI_TELEMETRY_DISABLED", "1")
@@ -230,7 +233,8 @@ fn a_half_written_config_is_waited_out_rather_than_acted_on() {
 
     // Truncated TOML: a real mid-save state, not invented garbage.
     let mut f = std::fs::File::create(home.join("credentials.toml")).unwrap();
-    f.write_all(b"[ingest]\nurl = \"http://127.0.0.1:59999/v1/ev").unwrap();
+    f.write_all(b"[ingest]\nurl = \"http://127.0.0.1:59999/v1/ev")
+        .unwrap();
     drop(f);
     std::thread::sleep(Duration::from_secs(3));
 

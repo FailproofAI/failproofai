@@ -118,7 +118,9 @@ pub fn cursors_dir() -> io::Result<PathBuf> {
 /// The daemon deletes it once acted on, so the file's existence IS the pending
 /// state and there is no separate "done" flag to get out of step with it.
 pub fn backfill_request_path() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?.join("state").join("backfill-request.json"))
+    Ok(failproofai_home()?
+        .join("state")
+        .join("backfill-request.json"))
 }
 
 pub fn audit_schedule_path() -> io::Result<PathBuf> {

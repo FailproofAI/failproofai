@@ -234,6 +234,19 @@ export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "aud
 export const telemetryIdFile = (home?: string) => resolve(stateDir(home), "telemetry-id");
 export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");
 /**
+ * The last first-run setup attempt that ABORTED, and why.
+ *
+ * Deliberately NOT one of `isConfigured()`'s signals: a failed attempt must
+ * never make a machine read as set up. It exists only so the next command can
+ * tell "never tried" from "tried and could not finish" — the wizard writes
+ * nothing on an abort, so without this the two are identical and setup
+ * relaunches on every single command forever.
+ *
+ * Under `state/` with the other derived markers a human never opens.
+ */
+export const onboardingAttemptFile = (home?: string) =>
+  resolve(stateDir(home), "onboarding-attempt.json");
+/**
  * The version that last reported an install, so an upgrade is reported once.
  *
  * Under `state/` in layout 2 like every other piece of derived state, and that

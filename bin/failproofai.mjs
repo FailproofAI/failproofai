@@ -140,39 +140,38 @@ if (hookIdx >= 0) {
         cwd: process.cwd(),
       });
 
-      // A failed attempt gets one of two opposite answers, and which one turns
-      // entirely on WHY it failed.
+      // On a daemon-configured machine the daemon is the ONLY evaluator. Every
+      // way of not getting an answer from it denies, and in-process evaluation
+      // is never reached from this branch — that is what "all enforcement is
+      // routed through the daemon" means, and a fallback here would be a second
+      // policy engine reachable by breaking the first.
       //
-      // protocol-mismatch: a daemon answered, so it is demonstrably alive — we
-      // just cannot speak its wire format, which happens when the CLI upgrades
-      // via npm and the daemon has not been reinstalled yet. Falling back to
-      // in-process costs latency and NOTHING else: it is the same policy engine
-      // producing the same decisions. Denying here would take a working machine
-      // offline to protect nothing, on an upgrade the user never asked to be
-      // interrupted by — and it would do it to every machine in a fleet at once,
-      // the moment PROTOCOL_VERSION is ever bumped.
+      // The two failures still differ in what the USER has to do, so they are
+      // told apart in the message and nowhere else:
       //
-      // unreachable: nothing answered. A stopped service, a deleted socket,
-      // tampering — indistinguishable from here, so this keeps failing closed.
-      // That is the whole point of `daemonConfigured`.
+      //   protocol-mismatch: a daemon answered, so it is alive; the CLI and the
+      //     daemon are different versions, which is what an `npm update` that
+      //     has not been followed by `failproofai config` looks like. The remedy
+      //     is an upgrade, and naming it is the difference between a one-command
+      //     fix and a support ticket. `daemonVersionSkew()` has already been
+      //     hinting this on every CLI command.
+      //
+      //   unreachable: nothing answered. A stopped service, a deleted socket and
+      //     deliberate tampering are indistinguishable from here — and a machine
+      //     where stopping one service silently disables every guardrail is not
+      //     a guarded machine.
       let result;
       if (attempt.ok) {
         result = attempt.response;
-      } else if (attempt.failure === "protocol-mismatch") {
-        console.error(
-          "[failproofai] failproofaid speaks a different protocol version than this CLI — " +
-            "evaluating in-process instead (slower, identical policies). " +
-            "Run `failproofai config` to update the daemon.",
-        );
-        result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
       } else {
+        const reason =
+          attempt.failure === "protocol-mismatch"
+            ? "failproofaid is running a different protocol version than this CLI, so it " +
+              "cannot evaluate this call. Run `failproofai config` to update the daemon."
+            : "failproofaid could not be reached. This machine is configured to run hooks through it " +
+              "— check the daemon (see `failproofai config`) rather than retrying blindly.";
         result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {
-          forceDecision: {
-            decision: "deny",
-            reason:
-              "failproofaid could not be reached. This machine is configured to run hooks through it " +
-              "— check the daemon (see `failproofai config`) rather than retrying blindly.",
-          },
+          forceDecision: { decision: "deny", reason },
         });
       }
 

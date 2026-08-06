@@ -61,6 +61,7 @@ import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-load
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import {
+  canElevate,
   isDaemonSupportedPlatform,
   installDaemonService,
   daemonServiceFilePath,
@@ -99,6 +100,14 @@ import {
 import { customPoliciesDir, launcherMarker } from "./fp-home";
 import { pruneOldDaemonBinaries } from "./daemon-download";
 import { version as cliVersion } from "../../package.json";
+import {
+  attemptHintLines,
+  blockerCleared,
+  clearOnboardingAttempt,
+  readOnboardingAttempt,
+  recordOnboardingAttempt,
+  type RetryProbe,
+} from "./onboarding-attempt";
 import { acquireOnboardingLock } from "./onboarding-lock";
 
 export interface WizardIO {
@@ -552,6 +561,33 @@ export interface FirstRunOptions {
   force?: boolean;
 }
 
+/**
+ * The live values `blockerCleared` compares an earlier attempt against.
+ *
+ * Built here rather than imported into `onboarding-attempt.ts` so that module
+ * stays pure and unit-testable without a service manager or a sudo binary.
+ */
+function retryProbe(): RetryProbe {
+  return {
+    canElevate: () => {
+      try {
+        return canElevate();
+      } catch {
+        // No sudo binary at all is a blocker that has not cleared.
+        return false;
+      }
+    },
+    daemonStatus: () => {
+      try {
+        return daemonServiceStatus();
+      } catch {
+        return "";
+      }
+    },
+    cliVersion,
+  };
+}
+
 export async function maybeFirstRunConfigure(
   io: WizardIO = {},
   opts: FirstRunOptions = {},
@@ -569,6 +605,17 @@ export async function maybeFirstRunConfigure(
     // predates it, so later runs settle this with a single stat instead of
     // walking every integration's settings file on every invocation.
     if (!state.hasLegacyMarker) markLauncherSeen();
+    return false;
+  }
+
+  // A previous attempt that ABORTED. Setup writes nothing on those paths, by
+  // design, so without this record the machine is indistinguishable from one
+  // that has never been offered setup — and the wizard relaunches on every
+  // command forever. `--force` (an explicit `failproofai config`) never reaches
+  // here, so asking for setup by name always gets it.
+  const attempt = opts.force ? null : readOnboardingAttempt();
+  if (attempt && !blockerCleared(attempt, retryProbe())) {
+    for (const line of attemptHintLines(attempt)) stdout.write(`${line}\n`);
     return false;
   }
 
@@ -600,6 +647,11 @@ export async function maybeFirstRunConfigure(
     // an apply — so cancelling keeps offering setup on the next run rather
     // than silently never mentioning it again.
     const result = await runConfigureWizard(io);
+    // Remember WHY, so the next command can hint instead of relaunching. Only
+    // on an abort: a completed apply clears the record below.
+    if (!result.applied && result.abort) {
+      recordOnboardingAttempt(result.abort, cliVersion, daemonServiceStatus());
+    }
 
   // Onboarding-only: after a completed first-run setup, run the audit pipeline
   // (scan + cache warm) before the caller boots the dashboard. The explicit
@@ -1306,6 +1358,8 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // Only now — a completed apply — is the launcher considered "seen", so
   // first-run onboarding stops offering itself on every command.
   markLauncherSeen();
+  // And any record of an earlier failure is now false: this machine got set up.
+  clearOnboardingAttempt();
 
   // Keep this inside a standard 80-column terminal. `writeLines` truncates with
   // a hard cut and no ellipsis, so an over-long line doesn't just lose its tail

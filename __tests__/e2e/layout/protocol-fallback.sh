@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# Proves the outage fix with a REAL CLI process: a daemon-configured machine
-# whose daemon speaks a different protocol must EVALUATE, not deny.
+# A daemon-configured machine has exactly ONE evaluator, and this proves it with
+# a REAL CLI process: when the daemon cannot answer — for ANY reason — the call
+# is denied, and in-process evaluation is never reached.
+#
+# This asserted the opposite until enforcement was made daemon-only. A protocol
+# mismatch used to fall back to in-process on the grounds that a daemon which
+# answered is demonstrably alive. That fallback was a second policy engine
+# reachable by breaking the first, so it is gone; what survives from it is the
+# MESSAGE, which still names which of the two failures happened, because the
+# remedies differ (upgrade the daemon vs. find out why it is down).
 set -uo pipefail
 R=/home/sidd/Desktop/work-failproofai/failproofai
 H=/tmp/fpai-proto
@@ -35,22 +43,25 @@ sleep 2
 hook() { printf '{"session_id":"p","cwd":"%s/proj","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s"}}' "$H" "$1" \
   | FAILPROOFAI_HOME="$H" node "$R/dist/cli.mjs" --hook PreToolUse --cli claude 2>&1; }
 
-printf '\n=== PROTOCOL MISMATCH: must EVALUATE, not deny ===\n'
+printf '\n=== PROTOCOL MISMATCH: denies, and says WHICH failure it was ===\n'
 OUT=$(hook "ls -la")
-hasnt "a harmless command is NOT denied (no fleet lockout)" "$OUT" "could not be reached"
-hasnt "…and not denied at all" "$OUT" '"permissionDecision":"deny"'
-has "warns that it fell back" "$OUT" "different protocol version"
+has "a daemon that cannot answer denies" "$OUT" '"permissionDecision":"deny"'
+has "…named as a version mismatch, not as unreachable" "$OUT" "different protocol version"
 has "…and says how to fix it" "$OUT" "failproofai config"
+hasnt "…and is NOT reported as unreachable" "$OUT" "could not be reached"
 
-printf '\n=== …and policies STILL ENFORCE on the fallback path ===\n'
-OUT=$(hook "sudo rm -rf /")
-has "block-sudo still denies" "$OUT" "sudo commands are blocked"
-hasnt "denied by policy, not by fail-closed" "$OUT" "could not be reached"
+printf '\n=== no in-process evaluation is reachable from here ===\n'
+# A command a LOCAL policy would allow must still be denied: reaching a verdict
+# of its own would mean a second evaluator ran.
+OUT=$(hook "echo hello")
+has "an otherwise-allowed command is denied too" "$OUT" '"permissionDecision":"deny"'
+hasnt "…and no policy decided it" "$OUT" "sudo commands are blocked"
 
 printf '\n=== CONTROL: a truly absent daemon still FAILS CLOSED ===\n'
 kill -TERM $FD 2>/dev/null; sleep 2; rm -f "$H/run/failproofaid.sock"
 OUT=$(hook "ls -la")
 has "unreachable daemon denies (unchanged)" "$OUT" "could not be reached"
+hasnt "…and is NOT reported as a version mismatch" "$OUT" "different protocol version"
 
 printf '\n=== RESULT: %s passed, %s failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

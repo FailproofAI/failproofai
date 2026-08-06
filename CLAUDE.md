@@ -888,6 +888,41 @@ triggered manually via `workflow_dispatch`. It's slower than `rust-quality` (rea
 cross-compiles across 4 matrix legs, two of them real macOS runners) — don't expect it to
 finish inside a quick `gh run watch` poll; check back or use a longer timeout.
 
+### Enforcement routes through the daemon, and where it cannot
+
+On a machine that completed setup, **failproofaid is the only evaluator**. Setup requires
+the daemon, so `daemonConfigured` is true, and from there every way of not getting an
+answer denies — an unreachable socket *and* a protocol-version mismatch. There is no
+in-process fallback on that path: a second policy engine reachable by breaking the first
+is not a guarantee, and a machine where stopping one service silently disables every
+guardrail is not a guarded machine.
+
+The mismatch case denies with a message naming the version and `failproofai config`,
+because the remedy differs from "the daemon is down" and that difference is the whole
+value of telling them apart. The accepted cost: both sides hardcode `PROTOCOL_VERSION`,
+so the first time it is bumped a machine whose CLI updated via npm before its daemon did
+denies until `failproofai config` runs. `publish.yml` ships both from one commit and
+`daemonVersionSkew()` hints on every CLI command, so the window is bounded and announces
+itself.
+
+**In-process evaluation still exists**, reachable only when `daemonConfigured` is false —
+which is exactly three situations, none of them a configured user machine:
+
+| Case | Why |
+|------|-----|
+| This repo's dogfood configs | Standing decision above: a flaky dev daemon must not block contributors' tool calls in the same loop where the daemon is being developed. |
+| Unsupported platforms | `isDaemonSupportedPlatform()` is linux + darwin only. |
+| Not yet set up | No hooks are installed either, so nothing evaluates anything. |
+
+**Known gap — Windows.** The wizard *skips* the daemon requirement on an unsupported
+platform rather than refusing setup, so a Windows user completes setup, reads as
+configured, and enforces **in-process**: slower (~850ms vs ~57ms), and with no fail-closed
+guarantee, because `daemonConfigured` is never set and there is nothing to fail closed
+against. The policies themselves are identical and do enforce. This is a deliberate
+trade — refusing setup would drop the platform entirely — and it is the one place
+"all enforcement routes through the daemon" is not literally true. Revisit it if
+failproofaid ever gains a Windows service target.
+
 ### How the daemon is supervised
 
 The service is **system-scope, user-run**: `/etc/systemd/system/failproofaid@<user>.service`

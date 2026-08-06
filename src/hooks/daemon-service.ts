@@ -450,8 +450,16 @@ export function primeElevation(): boolean {
   }
 }
 
-/** True when privileged commands can run without prompting for a password. */
-function canElevate(): boolean {
+/**
+ * True when privileged commands can run without prompting for a password.
+ *
+ * Exported because onboarding re-checks it: `needs_root` is the most common
+ * reason setup aborts, and it is the one most likely to stop being true (the
+ * user gets sudo rights, or primes their timestamp in another terminal). One
+ * `sudo -n true`, no prompt, milliseconds — and never on the hook path, which
+ * does not reach the first-run gate at all.
+ */
+export function canElevate(): boolean {
   if (typeof process.getuid === "function" && process.getuid() === 0) return true;
   try {
     execFileSync("sudo", ["-n", "true"], { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });

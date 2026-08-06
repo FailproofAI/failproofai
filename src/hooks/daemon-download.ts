@@ -49,6 +49,14 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { version } from "../../package.json";
+// A DEFAULT import, never a named one. `failproofaidBinaries` is written into
+// the manifest at publish time (see `pinRootManifest`), so it is absent from
+// every dev build and every unpublished commit — and a named import of a
+// missing export throws at MODULE LOAD, before any code can guard it. On this
+// module that is not a broken feature: `handler.ts` pulls it in on the hook
+// path, so the throw denies every tool call on the machine. Learned the hard
+// way; the runtime lookup below is the only safe shape.
+import rootManifest from "../../package.json";
 import type { PlatformKey } from "./daemon-service";
 import { binDir as layoutBinDir } from "./fp-home";
 
@@ -233,11 +241,43 @@ function installBinaryBytes(binary: Buffer): string {
 }
 
 /**
+ * The SHA-256 the publish recorded for each platform's binary, or null when
+ * this build has none.
+ *
+ * `scripts/build-daemon-packages.mjs` writes these into the ROOT manifest at
+ * publish time — the same step that pins the four `optionalDependencies` — so
+ * they are absent from a local dev build and from any tree built off an
+ * unpublished commit. Absent means "nothing to compare against", never "the
+ * comparison passed".
+ */
+export function expectedNpmBinaryDigest(key: PlatformKey): string | null {
+  const map = (rootManifest as Record<string, unknown>).failproofaidBinaries as
+    | Record<string, string>
+    | undefined;
+  const digest = map?.[key];
+  return typeof digest === "string" && /^[0-9a-f]{64}$/.test(digest) ? digest : null;
+}
+
+/**
  * Installs the daemon from the npm platform package, if one is present.
  *
- * No checksum step, unlike the download: npm verified the tarball's integrity
- * against the registry when it installed it, and this file never crossed the
- * network on its own.
+ * Verified against the digest the publish recorded, when this build carries
+ * one. It used to do no integrity check at all on the grounds that "npm
+ * verified the tarball when it installed it" — true, and about a different
+ * moment. npm checks the tarball at EXTRACTION; this reads a loose file out of
+ * a shared, writable `node_modules` some time later, and installs the result as
+ * a root-owned, boot-persistent system service. Anything that touched the file
+ * in between — another package's postinstall, a partial write, a half-upgraded
+ * tree — went in unexamined, while the sibling download channel had verified
+ * against `SHA256SUMS` since it existed.
+ *
+ * What this is worth, stated plainly: the digest travels in a DIFFERENT package
+ * from the bytes it describes, and `bun build` inlines it into `dist/cli.mjs`,
+ * so it is not simply a second file the same writer could edit. It is still not
+ * proof against an attacker already executing code in this tree — such an
+ * attacker can write `~/.failproofai/bin` directly and skip all of this. It
+ * closes accidental corruption and the non-adaptive overwrite, and it makes the
+ * two install channels make the same promise.
  *
  * Deliberately NOT gated on `FAILPROOFAI_NO_DOWNLOAD` — that variable exists
  * so an air-gapped machine does not reach out, and this is a local copy. On
@@ -247,11 +287,43 @@ export function installFromNpmPackage(key: PlatformKey): DaemonDownloadResult {
   const source = npmPlatformBinaryPath(key);
   if (!source) return { error: `${platformPackageName(key)} is not installed` };
   try {
-    return { path: installBinaryBytes(readFileSync(source)) };
+    const bytes = readFileSync(source);
+    const mismatch = binaryDigestMismatch(expectedNpmBinaryDigest(key), bytes, source);
+    // An error, never a silent fall-through to installing it anyway. The
+    // caller's next channel is the release download, which is pinned to this
+    // version and verifies its own digest — so a machine whose package is
+    // tampered or corrupt still has a correct route to a good binary.
+    if (mismatch) return { error: mismatch };
+    return { path: installBinaryBytes(bytes) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { error: `failed to install failproofaid from ${source}: ${message}` };
   }
+}
+
+/**
+ * Why `bytes` may not be installed, or null if it may.
+ *
+ * Split out from `installFromNpmPackage` so the comparison is testable without
+ * mocking `package.json` — the digest map is inlined at build time, so a test
+ * cannot otherwise reach the branch that matters.
+ *
+ * A null `expected` is "this build recorded no digest", which is every dev
+ * build and every unpublished commit, and means there is nothing to compare
+ * against — never that the comparison passed.
+ */
+export function binaryDigestMismatch(
+  expected: string | null,
+  bytes: Buffer,
+  source: string,
+): string | null {
+  if (!expected) return null;
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  if (actual === expected) return null;
+  return (
+    `refusing to install failproofaid from ${source}: its SHA-256 is ${actual}, ` +
+    `but this build of failproofai expects ${expected}`
+  );
 }
 
 async function fetchBytes(url: string): Promise<Buffer> {

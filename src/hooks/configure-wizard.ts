@@ -762,12 +762,31 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // every tool call with no route back but hand-editing `config.toml`. A real
   // hook evaluation is the only check that distinguishes the two.
   const daemonSkew = daemonSupported ? daemonVersionSkew() : null;
-  const daemonUpToDate =
-    daemonSupported && daemonServiceStatus() === "running" && daemonSkew === null;
-  const daemonAnswers = daemonUpToDate ? await probeDaemonEndToEnd() : false;
-  const daemonAlreadyRunning = daemonUpToDate && daemonAnswers;
-  /** Installed and running, but its worker cannot evaluate anything. */
-  const daemonBroken = daemonUpToDate && !daemonAnswers;
+  const daemonState = daemonSupported ? daemonServiceStatus() : "unsupported-platform";
+  // `unknown` is "the service state could not be READ", which only macOS
+  // produces: a LaunchDaemon's state lives in launchd's system domain and needs
+  // root to read, so a sudo cache older than five minutes says nothing about
+  // whether the daemon is up. Treating that as "stopped" made the wizard demand
+  // a password and unload/reload a perfectly healthy service — a real
+  // fail-closed window on a `daemonConfigured` machine, opened to fix nothing,
+  // and a direct breach of this file's own rule that setup must not demand sudo
+  // for work already done. So it is probed rather than assumed: the probe is a
+  // real hook evaluation over the socket, needs no privileges, and answers the
+  // question the status check was only standing in for.
+  const daemonMaybeUp =
+    daemonSupported && (daemonState === "running" || daemonState === "unknown") && daemonSkew === null;
+  const daemonAnswers = daemonMaybeUp ? await probeDaemonEndToEnd() : false;
+  const daemonAlreadyRunning = daemonMaybeUp && daemonAnswers;
+  /**
+   * Installed and running, but its worker cannot evaluate anything.
+   *
+   * Keyed on a DEFINITE `running` reading, not on `daemonMaybeUp`: this is the
+   * branch that tears the service down before rebuilding, and the justification
+   * for that is knowing a live process is holding the singleton flock. An
+   * unreadable state is not that knowledge, and the plain install path already
+   * unloads before it writes.
+   */
+  const daemonBroken = daemonState === "running" && daemonSkew === null && !daemonAnswers;
   let daemonWanted = daemonSupported && !daemonAlreadyRunning;
   // A healthy daemon can still be running a service definition written before
   // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever

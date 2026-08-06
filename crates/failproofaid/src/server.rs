@@ -117,11 +117,13 @@ impl Drop for InflightGuard {
 }
 
 impl Server {
-    /// Binds a fresh listener at `socket_path`, replacing a stale socket
-    /// file left behind by a process that didn't shut down cleanly (a live
-    /// daemon is never listening on a leftover file — the singleton lock in
-    /// `lock.rs` is what actually prevents two daemons; this only clears
-    /// the debris of one that's already gone).
+    /// Binds a fresh listener at `socket_path`, replacing a stale socket file
+    /// left behind by a process that didn't shut down cleanly.
+    ///
+    /// "Stale" is established by PROBING the path, not by assuming it: if
+    /// something is still accepting there, this refuses with `AddrInUse` rather
+    /// than unlinking a socket a live daemon is serving. See the note below on
+    /// why the singleton `flock` is not sufficient on its own.
     pub fn bind(socket_path: &Path, worker: Arc<Worker>) -> io::Result<Self> {
         // `symlink_metadata`, not `exists()`. `Path::exists()` FOLLOWS
         // symlinks, so a DANGLING symlink at the socket path reports false,
@@ -134,8 +136,38 @@ impl Server {
         // was: a live daemon is never listening on a leftover path (the
         // singleton flock in `lock.rs` is what actually prevents two daemons),
         // so anything here is debris.
+        //
+        // "Anything here is debris" rested entirely on `flock()` guaranteeing
+        // there is no second daemon, and flock does NOT provide that across
+        // hosts on an NFS-mounted home: pre-NFSv4 locks are client-local
+        // without an active lockd, and `failproofai_home()` never checks what
+        // filesystem `$HOME`/`FAILPROOFAI_HOME` lives on. The same user on two
+        // machines sharing a home would then have the second daemon believe it
+        // held the lock and unlink the first one's LIVE socket, silently
+        // orphaning every client of a daemon that is still running — and on a
+        // fail-closed machine those clients deny every tool call. (`audit-lock.ts`
+        // already engineers around NFS for `O_EXCL`, so the deployment shape is
+        // one this codebase accounts for elsewhere.)
+        //
+        // So the liveness question is answered directly instead of inferred:
+        // if something is actually accepting on that path, it is a live daemon
+        // and this one refuses to start rather than stealing it. A connect that
+        // fails means nothing is listening, which is what debris looks like on
+        // any filesystem.
         match fs::symlink_metadata(socket_path) {
-            Ok(_) => fs::remove_file(socket_path)?,
+            Ok(_) => {
+                if UnixStream::connect(socket_path).is_ok() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AddrInUse,
+                        format!(
+                            "a failproofaid is already accepting connections on {} — refusing to \
+                             replace it",
+                            socket_path.display()
+                        ),
+                    ));
+                }
+                fs::remove_file(socket_path)?
+            }
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(err) => return Err(err),
         }
@@ -699,6 +731,58 @@ mod tests {
 
         drop(server_side);
         let _ = dribbler.join();
+    }
+
+    /// A live daemon's socket must never be unlinked out from under it.
+    ///
+    /// `bind()` used to remove whatever sat at the path unconditionally, on the
+    /// grounds that `lock.rs`'s `flock()` makes a second daemon impossible.
+    /// That does not hold across hosts on an NFS-mounted home — pre-NFSv4 locks
+    /// are client-local without an active lockd, and nothing checks what
+    /// filesystem the home lives on — so a second machine could take the lock,
+    /// unlink the first's live socket, and silently orphan its clients. Now the
+    /// path is probed instead of assumed.
+    #[test]
+    fn binding_over_a_live_socket_is_refused_rather_than_stealing_it() {
+        let socket_path = temp_socket_path("live");
+        let worker = Arc::new(Worker::new(
+            temp_socket_path("live-worker"),
+            broken_worker_cmd(),
+        ));
+
+        let first = Server::bind(&socket_path, worker.clone()).expect("first bind should succeed");
+
+        let Err(err) = Server::bind(&socket_path, worker) else {
+            panic!("a second bind must not replace a listening daemon");
+        };
+        assert_eq!(err.kind(), io::ErrorKind::AddrInUse);
+        assert!(
+            err.to_string().contains("already accepting"),
+            "expected a liveness refusal, got: {err}"
+        );
+
+        // And the original is untouched — still the one bound to that path.
+        drop(first);
+    }
+
+    /// The ordinary restart path still works: a socket file whose process is
+    /// gone is debris, and binding must clear it rather than refuse forever.
+    #[test]
+    fn a_socket_file_with_no_listener_is_replaced() {
+        let socket_path = temp_socket_path("debris");
+        let worker = Arc::new(Worker::new(
+            temp_socket_path("debris-worker"),
+            broken_worker_cmd(),
+        ));
+
+        // Exactly what a killed daemon leaves: std does not unlink on drop of
+        // the listener alone, so create the file and let the listener go.
+        {
+            let _stale = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        }
+        assert!(fs::symlink_metadata(&socket_path).is_ok());
+
+        Server::bind(&socket_path, worker).expect("debris must not block a restart");
     }
 
     /// A refused handler thread must give its in-flight slot back.

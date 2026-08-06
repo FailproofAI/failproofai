@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import {
   DAEMON_PLATFORMS,
@@ -26,6 +27,7 @@ import {
   pinRootManifest,
   platformPackageManifest,
   stagePlatformPackage,
+  stagedBinaryDigest,
 } from "../../scripts/build-daemon-packages.mjs";
 import { aliasManifest, ALIASES } from "../../scripts/publish-aliases.mjs";
 
@@ -119,6 +121,19 @@ describe("stagePlatformPackage", () => {
     }
   });
 
+  it("digests the bytes that were actually staged", () => {
+    // The digest the root manifest records, and the one installFromNpmPackage
+    // checks against, must describe the file that ships — not the artifact it
+    // was decompressed from. Read back off disk for exactly that reason.
+    const binary = Buffer.from("#!/bin/sh\necho failproofaid\n");
+    for (const platform of DAEMON_PLATFORMS) {
+      writeFileSync(resolve(artifacts, daemonAssetName(platform.key)), gzipSync(binary));
+    }
+    const dir = stagePlatformPackage(DAEMON_PLATFORMS[0], VERSION, ROOT_PKG, artifacts, staging);
+
+    expect(stagedBinaryDigest(dir)).toBe(createHash("sha256").update(binary).digest("hex"));
+  });
+
   it("fails loudly when the daemon build did not produce an artifact", () => {
     expect(() => stagePlatformPackage(DAEMON_PLATFORMS[0], VERSION, ROOT_PKG, artifacts, staging)).toThrow(
       /missing artifact/,
@@ -157,6 +172,29 @@ describe("pinRootManifest", () => {
     expect(written.optionalDependencies).toEqual(daemonOptionalDependencies(VERSION));
     expect(written.dependencies).toEqual({ yaml: "2.0.0" });
     expect(written.version).toBe(VERSION);
+  });
+
+  it("records the binary digests, in the ROOT manifest", () => {
+    // Deliberately not in each platform package: a digest shipped alongside the
+    // bytes it describes verifies nothing. This one travels in a different
+    // package, published separately, and `bun build` inlines it into
+    // dist/cli.mjs — so it is not merely a second file the same writer edits.
+    const digests = { "linux-x64": "a".repeat(64), "darwin-arm64": "b".repeat(64) };
+    pinRootManifest(VERSION, manifestPath, digests);
+
+    const written = JSON.parse(readFileSync(manifestPath, "utf8"));
+    expect(written.failproofaidBinaries).toEqual(digests);
+    // Still does its original job.
+    expect(written.optionalDependencies).toEqual(daemonOptionalDependencies(VERSION));
+  });
+
+  it("omits the digests entirely rather than writing an empty map", () => {
+    // A publish that recorded nothing must leave the key ABSENT, because
+    // `expectedNpmBinaryDigest` reads absence as "nothing to compare against".
+    // An empty object would mean the same thing today and is easy to mistake
+    // for "verified" later.
+    pinRootManifest(VERSION, manifestPath);
+    expect(JSON.parse(readFileSync(manifestPath, "utf8")).failproofaidBinaries).toBeUndefined();
   });
 
   it("pins at the version being published, not whatever the manifest carries", () => {

@@ -70,19 +70,27 @@ export interface DaemonHookResponse {
 }
 
 /**
- * Why an attempt failed — and it matters, because the two cases deserve
- * opposite answers.
+ * Why an attempt failed. BOTH cases deny; they differ only in what the user is
+ * told to do about it.
  *
- * `protocol-mismatch` means a daemon answered and is demonstrably HEALTHY; we
- * simply cannot speak its wire format. The cause is known and benign: the CLI
- * upgraded via npm and the daemon has not been reinstalled yet. Falling back to
- * in-process evaluation there loses no enforcement at all — it runs the
- * identical policy engine, just slower — so denying every tool call over it
- * would take a working machine offline to protect nothing.
+ * `protocol-mismatch` means a daemon answered, so it is alive — we simply
+ * cannot speak its wire format. The cause is known and benign: the CLI upgraded
+ * via npm and the daemon has not been reinstalled yet, so the remedy is
+ * `failproofai config`, and naming it is the difference between a one-command
+ * fix and a support ticket.
  *
- * `unreachable` means nothing answered. That could be a stopped service, a
- * deleted socket, or tampering, and we cannot tell which — so it keeps failing
- * closed, which is the whole point of `daemonConfigured`.
+ * `unreachable` means nothing answered. A stopped service, a deleted socket and
+ * deliberate tampering are indistinguishable from here.
+ *
+ * This comment used to say a mismatch should FALL BACK to in-process
+ * evaluation, "because denying every tool call over it would take a working
+ * machine offline to protect nothing". `2926252` deliberately reversed that,
+ * and `bin/failproofai.mjs` now routes both failures to the same forced deny:
+ * on a daemon-configured machine the daemon is the ONLY evaluator, and a second
+ * policy engine reachable by breaking the first is not a guarantee. The
+ * distinction survives in the MESSAGE and nowhere else. Do not restore the
+ * fallback without revisiting that decision — the comment outliving the code is
+ * exactly how it would come back by accident.
  */
 export type DaemonFailure = "unreachable" | "protocol-mismatch";
 
@@ -188,10 +196,10 @@ export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookR
 /**
  * The same attempt, but reporting WHY it failed.
  *
- * `tryDaemonHook` above collapses every failure into `null`, which was fine
- * while the caller had one answer for all of them. It no longer does: a
- * protocol mismatch must fall back rather than deny (see `DaemonFailure`), and
- * a caller cannot make that distinction from `null`.
+ * `tryDaemonHook` above collapses every failure into `null`, which loses the
+ * one thing the caller still needs: both failures deny (see `DaemonFailure`),
+ * but they call for different remedies — reinstall the daemon versus start it —
+ * and a `null` cannot say which to print.
  */
 export async function attemptDaemonHook(
   req: DaemonHookRequest,

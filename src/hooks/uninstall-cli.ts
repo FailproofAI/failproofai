@@ -339,7 +339,11 @@ function manualServiceRemoval(servicePath: string): string[] {
 /** What `daemonServiceStatus()` says, for the status line the CLI prints. */
 export function serviceStateLabel(): string {
   const status = daemonServiceStatus();
-  return status === "condition-failed"
-    ? "installed but skipped by systemd (a file it needs is missing)"
-    : status;
+  if (status === "condition-failed") return "installed but skipped by systemd (a file it needs is missing)";
+  // Printing a bare "unknown" invites the reading "something is wrong". It is
+  // narrower than that: the service is installed and we could not read its
+  // state, because doing so on macOS needs root and no sudo credential was
+  // cached. Say which, so the reader knows there is nothing to fix.
+  if (status === "unknown") return "installed (state needs sudo to read)";
+  return status;
 }

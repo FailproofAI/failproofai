@@ -351,6 +351,60 @@ describe("hooks/daemon-download", () => {
       expect(existsSync(installedBinaryPath())).toBe(false);
     });
 
+    // The npm channel used to install with NO integrity step of any kind, on
+    // the reasoning that "npm verified the tarball when it installed it" —
+    // which is true, and about a different moment. npm checks at EXTRACTION;
+    // this reads a loose file out of a shared, writable node_modules some time
+    // later and installs it as a root-owned, boot-persistent system service.
+    // The sibling download channel has verified against SHA256SUMS since it
+    // existed.
+    describe("integrity of the npm-channel binary", () => {
+      it("refuses a binary whose digest does not match what this build recorded", async () => {
+        const { binaryDigestMismatch } = await import("../../src/hooks/daemon-download");
+        const expected = createHash("sha256").update(Buffer.from("the real binary")).digest("hex");
+
+        const problem = binaryDigestMismatch(expected, Buffer.from("tampered"), "/pkg/bin/failproofaid");
+
+        expect(problem).toContain("refusing to install");
+        expect(problem).toContain(expected);
+        // Names the path, so an operator can see WHICH copy is wrong.
+        expect(problem).toContain("/pkg/bin/failproofaid");
+      });
+
+      it("accepts a binary that matches", async () => {
+        const { binaryDigestMismatch } = await import("../../src/hooks/daemon-download");
+        const bytes = Buffer.from("the real binary");
+        const expected = createHash("sha256").update(bytes).digest("hex");
+        expect(binaryDigestMismatch(expected, bytes, "/pkg/bin/failproofaid")).toBeNull();
+      });
+
+      it("treats 'no recorded digest' as nothing to compare, not as a pass", async () => {
+        // `failproofaidBinaries` is written into the manifest at publish time,
+        // so it is absent from every dev build and unpublished commit. The
+        // install must still work there — this channel is the only one that
+        // functions air-gapped.
+        const { binaryDigestMismatch } = await import("../../src/hooks/daemon-download");
+        expect(binaryDigestMismatch(null, Buffer.from("anything"), "/pkg/bin/failproofaid")).toBeNull();
+      });
+
+      it("expectedNpmBinaryDigest ignores a malformed entry rather than trusting it", async () => {
+        const { expectedNpmBinaryDigest } = await import("../../src/hooks/daemon-download");
+        // This repo's committed manifest carries no digests, so every platform
+        // reads as "not recorded" — the property that keeps dev builds working.
+        expect(expectedNpmBinaryDigest("linux-x64")).toBeNull();
+      });
+
+      it("still installs on a build with no recorded digest", async () => {
+        installPlatformPackage("linux-x64");
+        const { installFromNpmPackage, installedBinaryPath } = await import(
+          "../../src/hooks/daemon-download"
+        );
+        const result = await installFromNpmPackage("linux-x64");
+        expect(result.error).toBeUndefined();
+        expect(result.path).toBe(installedBinaryPath());
+      });
+    });
+
     it("ensureFailproofaidBinary prefers the package and never touches the network", async () => {
       installPlatformPackage("linux-x64");
       // Any fetch at all fails this test: a machine that already has the

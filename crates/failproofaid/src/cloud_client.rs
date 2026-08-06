@@ -69,6 +69,30 @@ struct TomlCloud {
     token: String,
 }
 
+/// Whether a URL's host is the local machine, and so unreachable from the
+/// network regardless of scheme.
+///
+/// `localhost` is matched by name rather than resolved: resolution can be
+/// pointed elsewhere by `/etc/hosts` or DNS, and a check that a hostile
+/// resolver can turn into "yes" is not a check. Every other host must be an
+/// IP literal in a loopback range to qualify.
+fn host_is_loopback(url: &Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // `host_str` keeps the brackets on an IPv6 literal (`[::1]`), which
+    // `IpAddr::from_str` will not accept.
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
 impl CloudClient {
     /// Environment first, then the credential file.
     ///
@@ -184,6 +208,31 @@ impl CloudClient {
             Url::parse(base_url).map_err(|err| format!("invalid FAILPROOFAI_CLOUD_URL: {err}"))?;
         if !matches!(base_url.scheme(), "http" | "https") {
             return Err("FAILPROOFAI_CLOUD_URL must use http or https".to_string());
+        }
+        // Plain `http` only to a loopback host — the same rule
+        // `validateCloudUrl()` enforces in `cloud-enrollment.ts`, which
+        // `configure-wizard.ts` already documents as being enforced on both
+        // sides. It was not: this checked the scheme and stopped, so an
+        // `http://internal-host` accepted here put the org-scoped
+        // `policies:pull` bearer token on the wire in clear, on every
+        // `spawn_maintenance()` poll — one every 30 seconds, indefinitely.
+        //
+        // It matters most on exactly the path the TS validator cannot cover:
+        // `FAILPROOFAI_CLOUD_URL` takes precedence over the credentials file and
+        // is a documented CI/container knob, so it reaches this constructor
+        // without passing through the wizard at all.
+        //
+        // Loopback is judged by what the address IS rather than by a fixed list
+        // of spellings (the TS side names `localhost`, `127.0.0.1` and `::1`);
+        // the extra addresses this admits — the rest of `127.0.0.0/8` — are
+        // loopback by definition and cannot leave the host, so the property
+        // being protected is identical.
+        if base_url.scheme() == "http" && !host_is_loopback(&base_url) {
+            return Err(format!(
+                "refusing to send the machine token to {} over plain http. \
+                 Use https, or http only for localhost during development.",
+                base_url.origin().ascii_serialization()
+            ));
         }
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
@@ -563,6 +612,47 @@ mod tests {
             effect: PolicyEffect::Enforce,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
+    }
+
+    /// Plain http may not carry the machine token off the host.
+    ///
+    /// `new()` checked only that the scheme was http OR https, so
+    /// `http://internal-agenteye.example` was accepted and `spawn_maintenance()`
+    /// then put the org-scoped `policies:pull` bearer on the wire in clear every
+    /// 30 seconds. `validateCloudUrl()` in `cloud-enrollment.ts` has always
+    /// blocked this, and `configure-wizard.ts` documents the daemon as enforcing
+    /// the same rule — this is what makes that true.
+    #[test]
+    fn plain_http_may_not_leave_the_local_machine() {
+        for url in [
+            "http://internal-agenteye.example",
+            "http://10.0.0.5:8080",
+            "http://be.failproof.ai",
+            // Not loopback merely because the name contains it.
+            "http://localhost.evil.example",
+        ] {
+            let Err(err) = CloudClient::new(url, "secret".into(), "machine".into()) else {
+                panic!("{url} must be refused over plain http");
+            };
+            assert!(
+                err.contains("plain http"),
+                "expected a transport refusal for {url}, got: {err}"
+            );
+        }
+
+        // Loopback over http stays allowed — it is how local development and
+        // the e2e harness point the daemon at a test server.
+        for url in [
+            "http://localhost:3000",
+            "http://127.0.0.1:8080",
+            "http://[::1]:8080",
+        ] {
+            CloudClient::new(url, "secret".into(), "machine".into())
+                .unwrap_or_else(|err| panic!("{url} should be allowed, got: {err}"));
+        }
+
+        // https is unrestricted, loopback or not.
+        CloudClient::new("https://be.failproof.ai", "secret".into(), "machine".into()).unwrap();
     }
 
     // ── Layout 2: the enrolment lives in credentials.toml ────────────────────

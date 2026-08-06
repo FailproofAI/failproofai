@@ -112,6 +112,22 @@ export type DaemonServiceStatus =
    */
   | "condition-failed"
   | "not-installed"
+  /**
+   * Installed, and its state could not be READ — distinct from any claim about
+   * whether it is running.
+   *
+   * Only macOS reaches this. A LaunchDaemon lives in launchd's system domain,
+   * so unlike `systemctl is-active` (which any user can run against a system
+   * unit) reading its state needs the same elevation installing it did, and the
+   * CLI will not prompt for a password from under a TUI. An expired sudo cache
+   * — five minutes by default — therefore means "cannot check", and folding
+   * that into "stopped" made a perfectly healthy daemon look dead: the wizard
+   * then demanded sudo and bounced the service, which on a `daemonConfigured`
+   * machine is a real fail-closed window, to fix nothing. Callers that need the
+   * truth should ask the daemon itself (`probeDaemonEndToEnd`), which needs no
+   * privileges at all.
+   */
+  | "unknown"
   | "unsupported-platform";
 
 /** Linux + macOS only, per the plan's platform scope — full stop. */
@@ -1563,6 +1579,13 @@ export function daemonServiceStatus(): DaemonServiceStatus {
     // `launchctl list` cannot see — unlike systemd, reading the state needs
     // the same elevation installing it did.
     const root = typeof process.getuid === "function" && process.getuid() === 0;
+    // Whether we can elevate AT ALL is checked first, because it decides what a
+    // failure below means. Without it, `sudo -n` refusing for want of a cached
+    // credential was indistinguishable from launchctl reporting the job absent,
+    // and both became "stopped" — so a five-minute-old sudo timestamp made a
+    // running daemon read as dead, and the wizard then demanded a password to
+    // unload and reload a service that was fine.
+    if (!root && !canElevate()) return "unknown";
     const args = ["print", `system/${launchdLabel()}`];
     const out = root
       ? execFileSync("launchctl", args, {
@@ -1577,6 +1600,9 @@ export function daemonServiceStatus(): DaemonServiceStatus {
     // prints `state = not running` and must not read as healthy.
     return /state\s*=\s*running/.test(out) ? "running" : "stopped";
   } catch {
+    // We could elevate a moment ago, so this is launchctl's own answer: the
+    // label is not loaded in the system domain. The plist exists (checked
+    // above), so that is genuinely "installed but not running".
     return "stopped";
   }
 }

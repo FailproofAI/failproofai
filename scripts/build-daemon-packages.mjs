@@ -26,6 +26,7 @@
  *                                          [--version <v>] [--pin-root] [--dry-run]
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -119,6 +120,20 @@ export function stagePlatformPackage(platform, version, rootPkg, artifactsDir, s
 }
 
 /**
+ * The SHA-256 of the binary inside a staged platform package.
+ *
+ * Read back off disk rather than returned from `stagePlatformPackage` so that
+ * function's contract stays a plain directory path, and so the digest describes
+ * the bytes that will actually be packed — not an in-memory buffer that was
+ * supposed to become them.
+ */
+export function stagedBinaryDigest(dir) {
+  return createHash("sha256")
+    .update(readFileSync(join(dir, "bin", "failproofaid")))
+    .digest("hex");
+}
+
+/**
  * Writes the four platform packages into the root manifest's
  * `optionalDependencies`, pinned to `version`.
  *
@@ -126,10 +141,27 @@ export function stagePlatformPackage(platform, version, rootPkg, artifactsDir, s
  * not exist yet breaks `bun install --frozen-lockfile` in this repo's own CI,
  * and keeping four pins in step with every version bump by hand is the drift
  * this whole file exists to avoid.
+ *
+ * @param {string} version
+ * @param {string} [packageJsonPath]
+ * @param {Record<string, string> | null} [digests] platform key → SHA-256 of
+ *   that platform's staged binary. Omitted leaves the key ABSENT, which
+ *   `expectedNpmBinaryDigest` reads as "nothing to compare against".
  */
-export function pinRootManifest(version, packageJsonPath = resolve(REPO_ROOT, "package.json")) {
+export function pinRootManifest(version, packageJsonPath = resolve(REPO_ROOT, "package.json"), digests = null) {
   const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
   pkg.optionalDependencies = { ...pkg.optionalDependencies, ...daemonOptionalDependencies(version) };
+  // The SHA-256 of each binary as it was staged, recorded in the ROOT manifest
+  // so `installFromNpmPackage` has something to check the file it copies
+  // against. The download channel has verified against `SHA256SUMS` since it
+  // existed; the npm channel had no integrity step of any kind, and it installs
+  // its result as a root-owned, boot-persistent system service.
+  //
+  // Written here rather than into each platform package because a digest
+  // shipped alongside the bytes it describes verifies nothing. This one travels
+  // in a different package, published separately, and `bun build` INLINES it
+  // into dist/cli.mjs — so it is not merely a second file in the same tree.
+  if (digests) pkg.failproofaidBinaries = digests;
   writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n");
   return pkg.optionalDependencies;
 }
@@ -191,17 +223,22 @@ export function main(argv = process.argv.slice(2)) {
       `(tag: ${distTag}${options.dryRun ? ", dry run" : ""}) from ${artifactsDir}`,
   );
 
+  const digests = {};
   for (const platform of DAEMON_PLATFORMS) {
     const dir = stagePlatformPackage(platform, version, rootPkg, artifactsDir, options.staging);
+    const sha256 = stagedBinaryDigest(dir);
+    digests[platform.key] = sha256;
     const name = daemonPackageName(platform.key);
-    console.log(`\n${name}@${version}`);
+    console.log(`\n${name}@${version}  sha256:${sha256}`);
     console.log(publishPackage(dir, distTag, options.dryRun).trim());
   }
 
   if (options.pinRoot) {
-    const pins = pinRootManifest(version);
+    const pins = pinRootManifest(version, resolve(REPO_ROOT, "package.json"), digests);
     console.log("\nPinned in the root manifest's optionalDependencies:");
     console.log(JSON.stringify(pins, null, 2));
+    console.log("\nRecorded binary digests (failproofaidBinaries):");
+    console.log(JSON.stringify(digests, null, 2));
   }
 }
 

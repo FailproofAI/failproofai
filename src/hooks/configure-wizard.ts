@@ -75,7 +75,6 @@ import {
   probeDaemon,
   probeDaemonEndToEnd,
   uninstallDaemonService,
-  reloadDaemonAfterConfigChange,
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
 import {
@@ -1387,32 +1386,6 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   }
 
   await applied;
-
-  // Make the RUNNING daemon match what was just written.
-  //
-  // The collector reads its credential once, at start, and caches the bearer
-  // key — config is re-read on a 5s tick but the credential is not. So a wizard
-  // run that rotates a key leaves the file correct and the process posting the
-  // old one: every batch 401s and parks, while the wizard has just verified the
-  // NEW key itself and reported success. Nothing a person can see says
-  // otherwise; the only symptom is data that never arrives.
-  //
-  // Only when something the daemon reads actually changed. A run that only
-  // touched policy selection has nothing to reload, and a restart costs a short
-  // window in which a fail-closed machine denies tool calls — not a price to
-  // pay for nothing.
-  if (connected) {
-    const reload = await reloadDaemonAfterConfigChange();
-    if (reload.reloaded) {
-      stdout.write("Restarted failproofaid so it uses this connection now.\n");
-    } else if (reload.reason !== "no-service" && reload.reason !== "not-running") {
-      stdout.write(
-        `failproofaid could not be restarted, so it is STILL USING ITS PREVIOUS\n` +
-          `credential and will reject what it queues. Run:\n  ${reload.command}\n`,
-      );
-    }
-  }
-
   // Only now — a completed apply — is the launcher considered "seen", so
   // first-run onboarding stops offering itself on every command.
   markLauncherSeen();

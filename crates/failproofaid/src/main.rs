@@ -225,10 +225,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// config to become enabled, then starts once. Enabling collection thus takes
 /// effect within one poll interval, no restart, no sudo.
 ///
-/// It starts the collector once and does not tear it back down on a later
-/// `--disconnect` — that remains a restart, matching today's behaviour and
-/// avoiding a second start against the set-once health registry. The gap this
-/// closes is the common one: enabled *after* startup never taking effect.
+/// It also CYCLES the collector whenever that config changes, which is the
+/// difference between a setting being written and a setting taking effect.
+///
+/// The collector resolves its ingest credential once, when it starts, and the
+/// uploader caches the bearer key at construction. So rotating a key used to
+/// leave the file correct and the process wrong: `--connect` verified the NEW
+/// key and reported success, the service stayed healthy, the file held a key
+/// that worked when curled — and every batch 401'd and parked. Observed live, a
+/// key revoked at 13:05:37 and replaced 37 seconds later was still producing
+/// 401s twenty minutes on, with 26 parked batches and a CLI saying "connected".
+/// The only symptom was data that never arrived.
+///
+/// Doing it HERE rather than in the CLI is what makes it unconditional.
+/// `config.toml` says "Safe to edit by hand" and means it; a fleet tool, an
+/// editor or a `sed` are all legitimate ways to change this file, and none of
+/// them run our code. A daemon that only learns about changes its own CLI made
+/// is not reloading configuration, it is being told.
+///
+/// The CYCLE is the collector, not the daemon. A daemon restart is a window in
+/// which a `daemonConfigured` machine denies every tool call, and nothing about
+/// re-reading a credential justifies that. Cycling the collector leaves the
+/// enforcement socket serving throughout.
 fn spawn_collector_manager(
     daemon_shutdown: Arc<AtomicBool>,
 ) -> Option<std::thread::JoinHandle<()>> {
@@ -271,11 +289,98 @@ fn spawn_collector_manager(
             // restarting in a loop stops being invisible from outside the
             // machine.
             telemetry::set_collector_metrics(collector.metrics());
+            // `Option` because `join_with_flush` CONSUMES the handle: the loop
+            // has to be able to give a generation away and hold nothing until it
+            // has a replacement.
+            let mut collector = Some(collector);
+            // The config this generation was built from. Comparing the whole
+            // `CollectorConfig` rather than just the credential is deliberate:
+            // it also covers a stream being switched off, a verbosity change and
+            // a redaction change, all of which are baked into the tasks at build
+            // time and none of which took effect before.
+            let mut running_cfg = current_collector_config();
 
-            while !daemon_shutdown.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(200));
+            loop {
+                if daemon_shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                let deadline = std::time::Instant::now() + interval;
+                while std::time::Instant::now() < deadline {
+                    if daemon_shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                if daemon_shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let next = current_collector_config();
+                // `None` means unreadable, not "disabled". A half-written file
+                // caught mid-save would otherwise tear down a healthy collector
+                // and, on the next tick, build a new one from the same bytes.
+                // Waiting costs one interval and is always recoverable.
+                let Some(next_cfg) = next else {
+                    continue;
+                };
+                if running_cfg.as_ref() == Some(&next_cfg) {
+                    continue;
+                }
+
+                // Drain what the old generation already spooled BEFORE starting
+                // the new one. Two collectors sharing a spool directory would
+                // both claim the same batch files.
+                tracing::info!("collector configuration changed; cycling the collector");
+                if let Some(running) = collector.take() {
+                    running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+                }
+
+                if !next_cfg.is_enabled() {
+                    // Disconnected. Nothing to run, but keep watching: a later
+                    // `--connect` must start collecting again without a restart,
+                    // which is the whole point of this loop.
+                    tracing::info!("collector is no longer enabled; stopping until it is");
+                    loop {
+                        if daemon_shutdown.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(200));
+                        if collector_is_enabled() {
+                            break;
+                        }
+                    }
+                    // Control falls through to the spawn below. `next_cfg` is
+                    // refreshed to whatever re-enabled collection, because THAT
+                    // is what the new generation will be built from.
+                }
+                let next_cfg = current_collector_config().unwrap_or(next_cfg);
+
+                let Some(next_collector) =
+                    fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+                else {
+                    // Nothing to supervise for this config. Keep the loop alive
+                    // so the next edit is still seen; returning here would make
+                    // one bad config permanent until the next daemon restart.
+                    running_cfg = Some(next_cfg);
+                    continue;
+                };
+                // Replaces the previous generation's counters. The registry is a
+                // RwLock rather than a OnceLock for exactly this — a set-once
+                // slot left telemetry polling a collector that had been joined,
+                // reporting a dead generation's totals as current.
+                telemetry::set_collector_metrics(next_collector.metrics());
+                collector = Some(next_collector);
+                // What was BUILT FROM, not a fresh read. Re-reading here loses
+                // any edit that landed between the spawn and this line: it would
+                // be recorded as the running config and therefore never seen as
+                // a change again. Caught by the repeat-rotation test, which
+                // rotates twice in quick succession and saw only the first.
+                running_cfg = Some(next_cfg);
             }
-            collector.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+
+            if let Some(running) = collector.take() {
+                running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+            }
         })
         .inspect_err(|err| {
             eprintln!("[failproofaid] could not start the collector manager: {err}; nothing is collected this run");
@@ -300,6 +405,17 @@ fn join_lane(handle: &mut Option<std::thread::JoinHandle<()>>) {
 /// Cheap "should the collector be running?" check — reads the two small config
 /// files. Any error resolves to `false`; the full `collector_tasks()` build
 /// logs the reason when it acts on an enabled config.
+/// The collector's current on-disk configuration, or `None` when it cannot be
+/// read.
+///
+/// `None` is deliberately NOT "disabled": an unreadable file is usually one
+/// caught mid-save, and treating that as a configuration change would tear down
+/// a healthy collector and rebuild it from the same bytes a tick later.
+fn current_collector_config() -> Option<fpai_collect::CollectorConfig> {
+    let home = paths::failproofai_home().ok()?;
+    fpai_collect::config::load(&home).ok()
+}
+
 fn collector_is_enabled() -> bool {
     let Ok(home) = paths::failproofai_home() else {
         return false;

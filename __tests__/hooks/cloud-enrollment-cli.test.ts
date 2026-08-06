@@ -3,18 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-// Only the RESTART is stubbed, and it has to be: these tests run on a developer
-// machine that may have a real failproofaid installed, and an unmocked
-// `reloadDaemonAfterConfigChange` would restart the suite runner's own daemon
-// once per assertion. Everything else in the module stays real — the tests
-// assert against the genuine status and version helpers.
-vi.mock("../../src/hooks/daemon-service", async () => ({
-  ...(await vi.importActual<typeof import("../../src/hooks/daemon-service")>(
-    "../../src/hooks/daemon-service",
-  )),
-  reloadDaemonAfterConfigChange: vi.fn(async () => ({ reloaded: false, reason: "no-service" })),
-}));
-
 import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "../../src/hooks/cloud-enrollment-cli";
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
 import { readIngestCredential } from "../../src/hooks/collector-config";
@@ -148,27 +136,27 @@ describe("--connect", () => {
 });
 
 describe("--disconnect", () => {
-  it("removes the credential and says what stops happening", async () => {
+  it("removes the credential and says what stops happening", () => {
     writeCloudCredentials({ url: "https://x", machineId: "m", token: "t" });
-    const r = await runDisconnectCommand();
+    const r = runDisconnectCommand();
     expect(r.exitCode).toBe(0);
     expect(existsSync(cloudCredentialPath())).toBe(false);
     expect(r.lines.join("\n")).toMatch(/Local\s+builtin, custom and convention policies are unaffected/);
   });
 
-  it("is a no-op, not an error, when not connected", async () => {
-    const r = await runDisconnectCommand();
+  it("is a no-op, not an error, when not connected", () => {
+    const r = runDisconnectCommand();
     expect(r.exitCode).toBe(0);
     expect(r.lines.join("\n")).toMatch(/not connected/);
   });
 });
 
 describe("status", () => {
-  it("says not connected when there is no credential", async () => {
+  it("says not connected when there is no credential", () => {
     expect(connectionStatusLines(() => "running").join("\n")).toMatch(/not connected/);
   });
 
-  it("shows the endpoint and machine id, with the token masked", async () => {
+  it("shows the endpoint and machine id, with the token masked", () => {
     writeCloudCredentials({ url: "https://be.failproof.ai", machineId: "m-9", token: "abcdefghijkl" });
     const out = connectionStatusLines(() => "running").join("\n");
     expect(out).toMatch(/connected to https:\/\/be\.failproof\.ai as m-9/);
@@ -176,7 +164,7 @@ describe("status", () => {
     expect(out).not.toContain("abcdefghijkl");
   });
 
-  it("reports the environment when it is set, because env wins in the daemon", async () => {
+  it("reports the environment when it is set, because env wins in the daemon", () => {
     // Showing the file here would describe a configuration that is not the one
     // in effect.
     writeCloudCredentials({ url: "https://from-file", machineId: "m", token: "t" });
@@ -338,48 +326,23 @@ describe("--disconnect means disconnect", () => {
     await runConnectCommand({ ...base, machineId: "m-1" });
     expect(readIngestCredential()).not.toBeNull();
 
-    const r = await runDisconnectCommand();
+    const r = runDisconnectCommand();
     expect(r.exitCode).toBe(0);
     expect(readCloudCredentials()).toBeNull();
     expect(readIngestCredential()).toBeNull();
     expect(r.lines.join("\n")).toMatch(/No new hook activity or transcripts will be queued/);
   });
 
-  it("does not claim a running daemon stopped when it could not be restarted", async () => {
-    // A running failproofaid never notices the credential file disappear: the
-    // collector manager starts once for the daemon's lifetime (`main.rs`) and
-    // the uploader caches its bearer key at construction. So "stops being sent"
-    // is false until the process is restarted.
-    //
-    // Disconnect now performs that restart rather than describing it. When it
-    // CANNOT — no sudo, a failed unit — the claim must not be made anyway: the
-    // machine is still shipping, and saying otherwise is the one sentence that
-    // would stop someone checking.
+  it("names the restart rather than claiming a running daemon already stopped", async () => {
+    // It used to print "Hook activity and transcripts stop being sent", which
+    // was not true yet: the collector manager starts once for the daemon's
+    // lifetime (`main.rs`) and the uploader caches its bearer key at
+    // construction, so a running failproofaid never notices the credential
+    // file disappear. The claim only became true at the next daemon start.
     await runConnectCommand({ ...base, machineId: "m-1" });
-    // Queued AFTER connect: `--connect` reloads too, so a value queued before it
-    // is consumed by the wrong call.
-    const { reloadDaemonAfterConfigChange } = await import("../../src/hooks/daemon-service");
-    vi.mocked(reloadDaemonAfterConfigChange).mockResolvedValueOnce({
-      reloaded: false,
-      reason: "no-elevation",
-      command: "sudo systemctl restart failproofaid@tester",
-    });
-    const text = (await runDisconnectCommand()).lines.join("\n");
-    expect(text).toMatch(/IS STILL/);
-    expect(text).toMatch(/sudo systemctl restart failproofaid@tester/);
+    const text = runDisconnectCommand().lines.join("\n");
+    expect(text).toMatch(/restart it to stop the current process/);
     expect(text).not.toMatch(/transcripts stop being sent/);
-  });
-
-  it("restarts the daemon on disconnect so the running process stops sending", async () => {
-    // The whole point: the credential file and the running process must agree.
-    // Leaving the restart as an instruction meant a machine that had left its
-    // organisation went on shipping until somebody read past a success message.
-    await runConnectCommand({ ...base, machineId: "m-1" });
-    const { reloadDaemonAfterConfigChange } = await import("../../src/hooks/daemon-service");
-    vi.mocked(reloadDaemonAfterConfigChange).mockResolvedValueOnce({ reloaded: true });
-    const text = (await runDisconnectCommand()).lines.join("\n");
-    expect(text).toMatch(/has\s+been restarted so the running process has stopped sending/);
-    expect(text).not.toMatch(/IS STILL/);
   });
 
   it("stops ENFORCING cloud-managed policies, not just refreshing them", async () => {
@@ -395,7 +358,7 @@ describe("--disconnect means disconnect", () => {
       JSON.stringify({ schemaVersion: 1, generation: 4, policies: [] }),
     );
 
-    await runDisconnectCommand();
+    runDisconnectCommand();
 
     expect(existsSync(resolve(managedRoot, "active.json"))).toBe(false);
   });

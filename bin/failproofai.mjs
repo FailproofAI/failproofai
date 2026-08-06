@@ -1046,7 +1046,7 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       let result;
       if (wantsDisconnect) {
         const { runDisconnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
-        result = await runDisconnectCommand();
+        result = runDisconnectCommand();
       } else {
         const { hostname } = await import("node:os");
         const { runConnectCommand } = await import("../src/hooks/cloud-enrollment-cli");

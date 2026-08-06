@@ -13,12 +13,7 @@ import {
   writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
-import {
-  daemonRestartCommand,
-  daemonServiceStatus,
-  daemonVersionSkew,
-  reloadDaemonAfterConfigChange,
-} from "./daemon-service";
+import { daemonRestartCommand, daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
@@ -203,40 +198,11 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
     );
   }
   lines.push(...daemonWarning(status));
-  lines.push(...(await applyToRunningDaemon()));
 
   return { exitCode, lines };
 }
 
-/**
- * Make a running daemon use the credential that was just written.
- *
- * Without this the file is correct and the process is not: the collector reads
- * its key once at start and caches it, so a rotation leaves the daemon posting
- * a revoked token — 401, batch parked, and a CLI that has just printed
- * "connected". The remedy used to be a line of prose telling the user to
- * restart; applying it is strictly better than describing it.
- */
-async function applyToRunningDaemon(): Promise<string[]> {
-  const outcome = await reloadDaemonAfterConfigChange();
-  if (outcome.reloaded) return ["  Restarted failproofaid so it uses this key now."];
-  switch (outcome.reason) {
-    case "no-service":
-    case "not-running":
-      // Nothing is holding a stale key, so there is nothing to say.
-      return [];
-    default:
-      // Named, not glossed: until this runs, everything queued keeps 401ing
-      // against the key the process started with, and the batches park.
-      return [
-        "  Could not restart failproofaid, so it is STILL USING ITS PREVIOUS KEY and",
-        "  will reject what it queues. Run:",
-        `    ${outcome.command}`,
-      ];
-  }
-}
-
-export async function runDisconnectCommand(): Promise<CommandResult> {
+export function runDisconnectCommand(): CommandResult {
   const existing = readCloudCredentials();
   const hadIngest = hasIngestCredential();
   const removed = clearCloudCredentials();
@@ -275,26 +241,11 @@ export async function runDisconnectCommand(): Promise<CommandResult> {
     // construction, so nothing already running notices this file disappear —
     // "stop being sent" was true only of the NEXT daemon start. Telling the
     // user the step that makes it true beats a claim that quietly is not.
-    // A running failproofaid keeps the key it started with, so removing the
-    // file alone does not stop the process that is already sending. That used
-    // to be reported as an instruction; now it is done, and only reported when
-    // it could not be.
-    const outcome = await reloadDaemonAfterConfigChange();
-    if (outcome.reloaded) {
-      lines.push(
-        "  No new hook activity or transcripts will be queued, and failproofaid has",
-        "  been restarted so the running process has stopped sending too.",
-      );
-    } else if (outcome.reason === "no-service" || outcome.reason === "not-running") {
-      lines.push("  No new hook activity or transcripts will be queued.");
-    } else {
-      lines.push(
-        "  No new hook activity or transcripts will be queued. A running failproofaid",
-        "  keeps the key it started with and could not be restarted, so it IS STILL",
-        "  SENDING. Stop it with:",
-        `    ${outcome.command}`,
-      );
-    }
+    lines.push(
+      "  No new hook activity or transcripts will be queued. A running failproofaid",
+      "  keeps the key it started with, so restart it to stop the current process",
+      `  sending: ${daemonRestartCommand() ?? "restart failproofaid"}`,
+    );
   }
   return { exitCode: 0, lines };
 }

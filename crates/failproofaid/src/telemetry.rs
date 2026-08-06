@@ -60,7 +60,7 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -144,10 +144,21 @@ static LANE: OnceLock<Arc<Lane>> = OnceLock::new();
 /// code enters `crates/fpai-collect`. The counters it already keeps for the
 /// health record are enough to see a task restarting in a loop, and polling
 /// them here keeps the collector unaware that anything is watching.
-static COLLECTOR_METRICS: OnceLock<Arc<fpai_collect::SupervisorMetrics>> = OnceLock::new();
+///
+/// REPLACEABLE, not set-once. The collector is cycled whenever its configuration
+/// changes, and a `OnceLock` silently dropped every set after the first — so
+/// after a credential rotation this lane went on polling the counters of a
+/// collector that had already been joined, reporting a dead generation's totals
+/// as if they were current. Nothing errored; the numbers simply stopped moving,
+/// which is indistinguishable from a healthy idle machine.
+static COLLECTOR_METRICS: RwLock<Option<Arc<fpai_collect::SupervisorMetrics>>> = RwLock::new(None);
 
 pub fn set_collector_metrics(metrics: Arc<fpai_collect::SupervisorMetrics>) {
-    let _ = COLLECTOR_METRICS.set(metrics);
+    // A poisoned lock is not a reason to stop reporting health: recover the
+    // guard and carry on. Nothing here can leave a torn value — the only
+    // operation is replacing one Arc.
+    let mut slot = COLLECTOR_METRICS.write().unwrap_or_else(|e| e.into_inner());
+    *slot = Some(metrics);
 }
 
 /// Buffer one event. Never blocks on I/O, never fails, never panics.
@@ -799,7 +810,14 @@ impl Runner {
     /// Turn the collector's monotonic counters into an event when, and only
     /// when, one of them moved.
     fn poll_collector(&mut self) {
-        let Some(metrics) = COLLECTOR_METRICS.get() else {
+        // Cloned out of the lock rather than read through it: `poll_collector`
+        // does real work below, and holding a read guard across it would block
+        // the manager thread mid-cycle when it swaps in a new generation.
+        let Some(metrics) = COLLECTOR_METRICS
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        else {
             return;
         };
         let now = (

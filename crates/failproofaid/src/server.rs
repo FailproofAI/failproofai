@@ -169,12 +169,43 @@ impl Server {
                     inflight.fetch_add(1, Ordering::Relaxed);
                     let guard = InflightGuard(inflight.clone());
                     let worker = self.worker.clone();
-                    std::thread::spawn(move || {
-                        let _guard = guard;
-                        if let Err(err) = handle_connection(stream, &worker) {
-                            log_connection_error(&err);
-                        }
-                    });
+                    // `Builder::spawn`, not `std::thread::spawn`, for the same
+                    // reason the telemetry, audit and collector lanes use it:
+                    // the plain function PANICS when the OS refuses a thread
+                    // (`RLIMIT_NPROC`, a pids cgroup ceiling, transient
+                    // `pthread_create` EAGAIN). This one runs on the daemon's
+                    // MAIN thread, once per connection — by far the most
+                    // frequent spawn in the process — and nothing above `run()`
+                    // catches an unwind, so a single refusal killed the whole
+                    // daemon. On a `daemonConfigured` machine that denies every
+                    // tool call across every CLI, and `Restart=on-failure` then
+                    // turns it into a crash loop that re-arrives at the same
+                    // exhausted thread limit.
+                    //
+                    // Dropping the connection instead is a bounded, logged
+                    // overload — the same outcome as exceeding
+                    // `MAX_INFLIGHT_CONNECTIONS` above, and the client's own
+                    // fail-closed path. Dropping the closure releases `stream`
+                    // and `guard`, so the in-flight count is restored by
+                    // `InflightGuard::drop` and does not leak the slot.
+                    //
+                    // The error is NOT written back to the peer first: that
+                    // would put a blocking write on the accept loop, and a peer
+                    // that never reads would then stall every other connection
+                    // — trading a rare refused thread for a wedged daemon.
+                    if let Err(err) = std::thread::Builder::new()
+                        .name("fpai-conn".to_string())
+                        .spawn(move || {
+                            let _guard = guard;
+                            if let Err(err) = handle_connection(stream, &worker) {
+                                log_connection_error(&err);
+                            }
+                        })
+                    {
+                        log_connection_error(&io::Error::other(format!(
+                            "could not start a handler thread, dropping this connection: {err}"
+                        )));
+                    }
                 }
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
@@ -668,6 +699,37 @@ mod tests {
 
         drop(server_side);
         let _ = dribbler.join();
+    }
+
+    /// A refused handler thread must give its in-flight slot back.
+    ///
+    /// When `Builder::spawn` fails it drops the closure it was handed, which is
+    /// the only thing that runs `InflightGuard::drop` on that path — nothing in
+    /// the accept loop decrements explicitly. If that did not hold, every
+    /// refused thread would permanently shrink `MAX_INFLIGHT_CONNECTIONS`, and
+    /// 64 of them would wedge the daemon into refusing every connection for the
+    /// rest of its life: a fail-closed machine denying every tool call, which is
+    /// the outcome the whole `Builder::spawn` change exists to avoid.
+    #[test]
+    fn a_handler_thread_that_never_starts_releases_its_slot() {
+        let inflight = Arc::new(AtomicUsize::new(0));
+
+        inflight.fetch_add(1, Ordering::Relaxed);
+        let guard = InflightGuard(inflight.clone());
+        assert_eq!(inflight.load(Ordering::Relaxed), 1);
+
+        // Exactly what `Builder::spawn`'s error path does with the closure it
+        // could not run: drops it, and with it every captured value.
+        let closure = move || {
+            let _guard = guard;
+        };
+        drop(closure);
+
+        assert_eq!(
+            inflight.load(Ordering::Relaxed),
+            0,
+            "the slot must be returned when the thread is never started"
+        );
     }
 
     /// The budget is spent by elapsed time, not reset by progress — the exact

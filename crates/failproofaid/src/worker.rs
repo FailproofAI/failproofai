@@ -120,14 +120,49 @@ impl WorkerCommand {
             // either way.
             .process_group(0);
         let mut child = command.spawn()?;
-        if let Some(out) = child.stdout.take() {
-            std::thread::spawn(move || forward_worker_output("stdout", out));
-        }
-        if let Some(err) = child.stderr.take() {
-            std::thread::spawn(move || forward_worker_output("stderr", err));
+        // Both drainers must start, or the worker does not run at all.
+        //
+        // `Builder::spawn` rather than `std::thread::spawn` because the plain
+        // function panics when the OS refuses a thread — and this runs while
+        // `ensure_started` holds the `child` mutex, so that panic POISONED the
+        // lock. The daemon itself survived (the unwind is confined to a
+        // per-connection handler thread), which is what made it so bad: it kept
+        // answering `Ping` and looking healthy while every `Hook` request
+        // panicked on the poisoned lock forever after, and `shutdown()` — which
+        // takes the same lock — silently stopped killing the worker.
+        //
+        // The failure is deliberately fatal to the SPAWN rather than logged and
+        // ignored. An undrained pipe fills its OS buffer and blocks the worker
+        // mid-write (see the `Stdio::piped()` note above), so continuing without
+        // a drainer trades a rare refused thread for a worker that wedges later,
+        // at a time and for a reason nothing connects back to this moment.
+        // Returning the error costs one denied hook call, is logged, and
+        // self-heals: `ensure_started` retries the spawn on the very next
+        // request, by which time a transient EAGAIN has usually passed.
+        let drainers = spawn_forwarder("stdout", child.stdout.take())
+            .and_then(|()| spawn_forwarder("stderr", child.stderr.take()));
+        if let Err(err) = drainers {
+            kill_process_group(&mut child);
+            return Err(io::Error::other(format!(
+                "could not start the worker output drainers: {err}"
+            )));
         }
         Ok(child)
     }
+}
+
+/// Starts the drainer thread for one of the worker's output pipes, or reports
+/// why it could not. `None` means the pipe was already taken, which is not a
+/// failure. See the call site for why a refusal here is fatal to the spawn.
+fn spawn_forwarder(
+    label: &'static str,
+    pipe: Option<impl io::Read + Send + 'static>,
+) -> io::Result<()> {
+    let Some(pipe) = pipe else { return Ok(()) };
+    std::thread::Builder::new()
+        .name(format!("fpai-worker-{label}"))
+        .spawn(move || forward_worker_output(label, pipe))
+        .map(|_| ())
 }
 
 /// Drains one of the worker's output pipes for its whole life, relaying it
@@ -209,9 +244,14 @@ impl Worker {
     /// same lock, so once shutdown has it, no spawn can follow.
     pub fn shutdown(&self) {
         self.stopping.store(true, Ordering::SeqCst);
-        if let Ok(mut guard) = self.child.lock()
-            && let Some(mut child) = guard.take()
-        {
+        // Poison-tolerant, deliberately. `if let Ok(guard)` silently skipped the
+        // kill on a poisoned lock, so the one situation where a worker most
+        // needs reaping — a thread panicked while holding this lock — was
+        // exactly the one where the daemon exited and left it orphaned. The
+        // guarded state is a `Option<Child>` handle, not an invariant a panic
+        // can leave half-built, so there is nothing here to protect by refusing.
+        let mut guard = self.child.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut child) = guard.take() {
             kill_process_group(&mut child);
             let _ = std::fs::remove_file(&self.socket_path);
         }
@@ -233,7 +273,12 @@ impl Worker {
     /// here to provide. The stale file is removed first for the same
     /// reason.
     fn ensure_started(&self) -> Result<(), WorkerError> {
-        let mut guard = self.child.lock().unwrap();
+        // Poison-tolerant for the same reason as `shutdown()`: an `unwrap()` here
+        // turned one panic under this lock into a daemon that answered `Ping`
+        // normally and denied every `Hook` request for the rest of its life,
+        // because the panic reached only a per-connection handler thread and so
+        // never restarted the process that would have cleared it.
+        let mut guard = self.child.lock().unwrap_or_else(|e| e.into_inner());
         // Checked under the lock, so a warm-up racing shutdown cannot spawn a
         // worker the shutdown has already finished killing.
         if self.stopping.load(Ordering::SeqCst) {
@@ -393,9 +438,11 @@ impl Drop for Worker {
     /// (tests, and any early return). Idempotent: `take()` yields `None` once
     /// shutdown has already run.
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.child.lock()
-            && let Some(mut child) = guard.take()
-        {
+        // Poison-tolerant, like `shutdown()`. This is the LAST backstop against
+        // an orphaned worker process, so declining to run on a poisoned lock
+        // gave up precisely when the guarantee mattered most.
+        let mut guard = self.child.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut child) = guard.take() {
             kill_process_group(&mut child);
             // The worker's socket file survives the process that bound it,
             // so a clean shutdown has to clear it too — otherwise the next
@@ -410,6 +457,7 @@ impl Drop for Worker {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixListener;
+    use std::sync::Arc;
 
     fn temp_socket_path(name: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -527,5 +575,55 @@ mod tests {
 
         // Idempotent — `Drop` runs it again as a backstop.
         worker.shutdown();
+    }
+
+    /// A panic under the `child` lock must not permanently disable the worker.
+    ///
+    /// `WorkerCommand::spawn` used bare `std::thread::spawn` for the two output
+    /// drainers, and `ensure_started` calls it while holding this lock — so an
+    /// OS refusal to create a thread panicked mid-guard and POISONED it. The
+    /// daemon did not crash (the unwind stops at the per-connection handler
+    /// thread), so it kept answering `Ping` and looking healthy while every
+    /// `Hook` request panicked on `lock().unwrap()` for the rest of the
+    /// process's life, and `shutdown()`/`Drop` silently stopped reaping the
+    /// worker. Both halves are fixed: the spawn cannot panic, and the lock is
+    /// no longer treated as unusable when it is merely poisoned.
+    #[test]
+    fn a_poisoned_child_lock_does_not_wedge_the_worker() {
+        let socket_path = temp_socket_path("poisoned");
+        let worker = Arc::new(Worker::new(socket_path, WorkerCommand::shell("true")));
+
+        // Poison it exactly as a panic under the guard would.
+        let poisoner = Arc::clone(&worker);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.child.lock().unwrap();
+            panic!("poisoning the child lock");
+        })
+        .join();
+        assert!(
+            worker.child.lock().is_err(),
+            "test precondition: the lock should now be poisoned"
+        );
+
+        // The real assertion: still reachable. `ensure_started` must return a
+        // normal error (this command exits immediately and never binds a
+        // socket) rather than panicking on the poison.
+        let err = worker
+            .ensure_started()
+            .expect_err("`true` exits without ever creating a worker socket");
+        assert!(
+            !err.to_string().is_empty(),
+            "expected a reported failure, not a panic"
+        );
+
+        // And the reaping paths still run rather than silently skipping.
+        worker.shutdown();
+        assert!(
+            worker
+                .child
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        );
     }
 }

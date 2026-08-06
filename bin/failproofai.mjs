@@ -187,6 +187,64 @@ if (hookIdx >= 0) {
     await exitAfterFlush(exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // The outer fail-closed boundary. This wrote NOTHING to stdout and exited 2,
+    // which is a deny for Claude and Factory's non-Stop events and a silent
+    // ALLOW for the eight CLIs that read their verdict from stdout JSON —
+    // Cursor, Pi, Hermes, OpenClaw, Devin, Antigravity, Goose, and Factory's
+    // Stop. Everything above can land here, INCLUDING the forced-deny call that
+    // handles an unreachable daemon, so the one path whose entire job is to fail
+    // closed failed open instead.
+    //
+    // Emitted BEFORE any telemetry: `flushHookTelemetry` loops until its queue
+    // drains and is not bounded, so draining first meant a stuck send could hold
+    // the verdict back indefinitely — and a verdict that arrives after the agent
+    // has moved on is the same as no verdict.
+    const reason =
+      "failproofai could not evaluate this call and is failing closed. " +
+      `Check the failproofai installation (\`failproofai config\`). Underlying error: ${msg}`;
+    let emitted = false;
+    let denyExitCode = 2;
+    try {
+      // The real evaluator does the shaping, exactly as the unreachable-daemon
+      // path above does — that is what keeps this deny from being inert on some
+      // CLI whose contract nobody remembered here. It can only work if the
+      // handler module is loadable, which is why the fallback below exists.
+      const { evaluateHookEvent } = await import("../src/hooks/handler");
+      const forced = await evaluateHookEvent(eventType, cli, "", {
+        forceDecision: { decision: "deny", reason },
+      });
+      if (forced.stdout) process.stdout.write(forced.stdout);
+      if (forced.stderr) process.stderr.write(forced.stderr);
+      emitted = true;
+      denyExitCode = forced.exitCode;
+    } catch {
+      // Last ditch: the module that knows each CLI's exact deny shape is itself
+      // the thing that just failed, so this emits the union of them — every CLI
+      // reads only the keys it knows and ignores the rest. Deliberately NOT a
+      // per-CLI table: a second copy of those twelve contracts would drift from
+      // the real one, and this runs only when the install is already broken.
+      // Imperfect enforcement beats the zero bytes that were written before.
+      try {
+        process.stdout.write(
+          JSON.stringify({
+            decision: "block",
+            reason,
+            permission: "deny",
+            followup_message: reason,
+            hookSpecificOutput: {
+              hookEventName: eventType,
+              permissionDecision: "deny",
+              permissionDecisionReason: reason,
+            },
+          }),
+        );
+        emitted = true;
+      } catch {}
+    }
+    if (!emitted) console.error(`Unexpected error: ${msg}`);
+    else console.error(`[failproofai] failing closed: ${msg}`);
+
     await track("hook_dispatch_error", {
       event_type: eventType,
       cli,
@@ -199,8 +257,10 @@ if (hookIdx >= 0) {
       const { flushHookTelemetry } = await import("../src/hooks/hook-telemetry");
       await flushHookTelemetry();
     } catch {}
-    console.error(`Unexpected error: ${msg}`);
-    process.exit(2);
+    // `exitAfterFlush`, not a bare `process.exit`: this was the one exit in
+    // `--hook` handling that skipped it, so under load `process.exit` could
+    // truncate the very bytes carrying the deny.
+    await exitAfterFlush(denyExitCode);
   }
 }
 

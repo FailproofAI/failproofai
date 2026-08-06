@@ -14,7 +14,7 @@
  * shape of a stub instead of the shape of a deny.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -127,6 +127,94 @@ describe("hooks/handler forceDecision (fail-closed)", () => {
 
     expect(permissionDecisionOf(result.stdout)).toBe("deny");
     expect(`${result.stdout}${result.stderr}`).not.toContain("must never be imported");
+  });
+});
+
+/**
+ * The outer boundary in `bin/failproofai.mjs` — the last thing standing between
+ * an unexpected throw and a silent allow.
+ *
+ * The header of the corrupt-manifest suite below already describes this failure
+ * exactly: "the throw reaches the CLI's outer catch, which exits 2 with nothing
+ * on stdout — a deny on Claude and Factory, but a warning followed by an ALLOW
+ * on the [CLIs] that read a decision off stdout and ignore the exit code."
+ * `readActiveCloudManagedPolicies` was wrapped to stop ONE source of such
+ * throws, but the boundary itself still failed open for every other source —
+ * including a throw from the forced-deny call that handles an unreachable
+ * daemon, i.e. the fail-closed path failing open.
+ */
+describe("the fail-closed verdict is enforcing on every supported CLI", () => {
+  // Every CLI the `--hook` entrypoint accepts. Kept literal rather than derived,
+  // so adding a CLI without deciding how it denies fails here.
+  const CLIS = [
+    "claude", "codex", "copilot", "cursor", "opencode", "pi",
+    "hermes", "openclaw", "factory", "devin", "antigravity", "goose",
+  ] as const;
+
+  // The CLIs that read their verdict from stdout JSON and IGNORE the exit code.
+  // For these, an empty stdout is not a weak deny — it is an allow.
+  const STDOUT_DRIVEN = [
+    "cursor", "pi", "hermes", "openclaw", "devin", "antigravity", "goose",
+  ] as const;
+
+  it.each(CLIS)("%s receives a verdict that actually enforces", async (cli) => {
+    const result = await evaluateHookEvent("PreToolUse", cli, stdin({
+      tool_name: "Bash",
+      tool_input: { command: "echo hi" },
+    }), { forceDecision: FORCED });
+
+    const emitted = `${result.stdout}${result.stderr}`;
+    expect(emitted).toContain("failproofaid could not be reached");
+    expect(
+      result.stdout.length > 0 || result.exitCode !== 0,
+      "a verdict with no stdout and a zero exit is an allow",
+    ).toBe(true);
+  });
+
+  it.each(STDOUT_DRIVEN)("%s gets its deny on stdout, not merely an exit code", async (cli) => {
+    const result = await evaluateHookEvent("PreToolUse", cli, stdin({
+      tool_name: "Bash",
+      tool_input: { command: "echo hi" },
+    }), { forceDecision: FORCED });
+
+    expect(result.stdout.length).toBeGreaterThan(0);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+    expect(result.stdout).toContain("failproofaid could not be reached");
+  });
+});
+
+/**
+ * A tripwire on the `--hook` catch block itself.
+ *
+ * The logic lives in `bin/failproofai.mjs`, which cannot be imported by vitest
+ * (a bare `package.json` import and extensionless TypeScript specifiers — see
+ * CLAUDE.md), so its shape is asserted from source, the same way
+ * `dogfood-configs.test.ts` guards the committed hook configs. Both properties
+ * here regressed silently once already.
+ */
+describe("bin/failproofai.mjs --hook error boundary", () => {
+  const source = readFileSync(
+    join(__dirname, "..", "..", "bin", "failproofai.mjs"),
+    "utf8",
+  );
+  // From `} catch (err) {` after the hook block to the end of that handler.
+  const hookCatch = source.slice(
+    source.indexOf("const hookIdx = args.indexOf(\"--hook\");"),
+    source.indexOf("Centralised error handler for all CLI subcommands"),
+  );
+
+  it("writes a decision to stdout rather than exiting silently", () => {
+    // The whole bug: the handler logged to stderr and exited, writing zero
+    // bytes to stdout — which the stdout-driven CLIs above read as an allow.
+    expect(hookCatch).toMatch(/catch \(err\)[\s\S]*process\.stdout\.write/);
+  });
+
+  it("never leaves the hook path through a bare process.exit", () => {
+    // `process.exit` truncates pending pipe writes, and on this path those
+    // writes ARE the decision. `exitAfterFlush` exists for exactly this.
+    const afterCatch = hookCatch.slice(hookCatch.indexOf("} catch (err) {"));
+    expect(afterCatch).not.toMatch(/\bprocess\.exit\(/);
+    expect(afterCatch).toMatch(/await exitAfterFlush\(/);
   });
 });
 

@@ -171,6 +171,63 @@ describe("origin checking — the ordinary drive-by defence", () => {
     const res = await proxy(req("http://localhost:8020/api/audit/run", { method: "POST" }));
     expect(res.status).not.toBe(403);
   });
+
+  // The exemption above is entirely an argument about the BIND address, and it
+  // used to be applied unconditionally. On a deliberate non-loopback bind all
+  // three layers were then off at once: layer 1 by the operator's choice, layer
+  // 2 because the Host pin is skipped for exactly that case (see the test
+  // above), and layer 3 because no Origin is the default for curl and every
+  // other non-browser client. Any host on the segment could reach every
+  // mutating route.
+  describe("on a deliberately non-loopback bind", () => {
+    beforeEach(() => {
+      process.env.FAILPROOFAI_DASHBOARD_HOST = "0.0.0.0";
+    });
+
+    it("REFUSES an origin-less POST — it is no longer necessarily local", async () => {
+      const res = await proxy(
+        req("http://192.168.1.5:8020/api/audit/run", { method: "POST", host: "192.168.1.5:8020" }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("REFUSES the origin-less token graft the lockdown suite exists to stop", async () => {
+      // login-verify is unauthenticated and writes auth.json — whoever lands
+      // there receives every future audit report.
+      const res = await proxy(
+        req("http://192.168.1.5:8020/api/auth/login-verify", {
+          method: "POST",
+          host: "192.168.1.5:8020",
+        }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("REFUSES an origin-less hook uninstall", async () => {
+      const res = await proxy(
+        req("http://192.168.1.5:8020/policies", { method: "POST", host: "192.168.1.5:8020" }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("still allows a same-origin mutating request, so the bind stays usable", async () => {
+      // The point is to require a real same-origin claim, not to break the
+      // container/remote-dev-box setup the operator deliberately asked for.
+      const res = await proxy(
+        req("http://192.168.1.5:8020/policies", {
+          method: "POST",
+          host: "192.168.1.5:8020",
+          origin: "http://192.168.1.5:8020",
+        }),
+      );
+      expect(res.status).not.toBe(403);
+    });
+
+    it("still allows origin-less READS — only mutating methods are gated", async () => {
+      const res = await proxy(req("http://192.168.1.5:8020/policies", { host: "192.168.1.5:8020" }));
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
 
 describe("x-forwarded-host is stripped", () => {

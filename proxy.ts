@@ -39,9 +39,18 @@ function forbid(): NextResponse {
  * CORS *simple* request: no preflight, the request is delivered, the side effect
  * lands, and the attacker never needs to read the response.
  *
- * A request with no Origin at all is allowed: that is a non-browser caller, and
- * with a loopback bind it is necessarily a local process — which can already
- * read and rewrite these files directly, so refusing it buys nothing.
+ * A request with no Origin at all is allowed ONLY on a loopback bind: it is a
+ * non-browser caller, and on loopback that is necessarily a local process —
+ * which can already read and rewrite these files directly, so refusing it buys
+ * nothing. That reasoning is entirely about the bind address, and the exemption
+ * used to ignore it. `dashboard-host.ts` documents and supports a deliberate
+ * non-loopback bind (`--host`, `FAILPROOFAI_DASHBOARD_HOST`) for containers and
+ * remote dev boxes, and on one of those "no Origin" describes every `curl` on
+ * the network segment — including one grafting an OTP token into `auth.json`
+ * via `/api/auth/login-verify`, uninstalling every CLI's hooks via `POST
+ * /policies`, or starting a scan via `POST /api/audit/run`. Layer 1 is absent
+ * by the operator's choice and layer 2 cannot apply, so this is the only layer
+ * left; exempting the commonest non-browser shape from it left nothing at all.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const bindHost = resolveDashboardHost(undefined, process.env.FAILPROOFAI_DASHBOARD_HOST);
@@ -64,21 +73,34 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   const origin = request.headers.get("origin");
-  if (origin && MUTATING_METHODS.has(request.method)) {
-    let originHost: string | null = null;
-    try {
-      // "null" (sandboxed iframes, some redirects) is a valid Origin value and
-      // must not parse into anything permissive — the URL constructor throws on
-      // it, which is the behaviour we want.
-      originHost = new URL(origin).host.toLowerCase();
-    } catch {
-      originHost = null;
-    }
-    // Compare the full authority, not just the hostname: another app on
-    // localhost:3000 is a different origin and has no business POSTing here.
-    if (!originHost || originHost !== (hostHeader ?? "").toLowerCase()) {
-      console.warn(`[failproofai] refused a cross-origin ${request.method} from ${origin}`);
-      return forbid();
+  if (MUTATING_METHODS.has(request.method)) {
+    if (!origin) {
+      // See the header: only a loopback bind makes "no Origin" mean "a local
+      // process that could do this by editing the files anyway".
+      if (!boundToLoopback) {
+        console.warn(
+          `[failproofai] refused a ${request.method} with no Origin header — ` +
+            `the dashboard is bound to ${bindHost}, not loopback, so an Origin-less ` +
+            `request is not necessarily local`,
+        );
+        return forbid();
+      }
+    } else {
+      let originHost: string | null = null;
+      try {
+        // "null" (sandboxed iframes, some redirects) is a valid Origin value and
+        // must not parse into anything permissive — the URL constructor throws on
+        // it, which is the behaviour we want.
+        originHost = new URL(origin).host.toLowerCase();
+      } catch {
+        originHost = null;
+      }
+      // Compare the full authority, not just the hostname: another app on
+      // localhost:3000 is a different origin and has no business POSTing here.
+      if (!originHost || originHost !== (hostHeader ?? "").toLowerCase()) {
+        console.warn(`[failproofai] refused a cross-origin ${request.method} from ${origin}`);
+        return forbid();
+      }
     }
   }
 

@@ -80,7 +80,17 @@ export function parseScriptArgs(argv: string[]): ParsedScriptArgs {
       continue;
     }
 
-    if (flag === "--host") {
+    // `-H` / `--hostname` are Next's own spellings of this, and `bun run dev`
+    // passes unrecognised arguments straight through to `next dev`. Capturing
+    // only `--host` meant a raw `-H 0.0.0.0` fell into `remainingArgs`: Next
+    // bound the wildcard, while `bindHost` kept the loopback default and
+    // `FAILPROOFAI_DASHBOARD_HOST=127.0.0.1` told `proxy.ts` it was on
+    // loopback. It then enforced a Host-header pin — which a raw network
+    // client forges trivially, unlike a browser — against a server genuinely
+    // reachable from the network, and skipped the no-Origin refusal that is
+    // the real defence for that bind. The two must agree, so all three
+    // spellings resolve to the same value.
+    if (flag === "--host" || flag === "-H" || flag === "--hostname") {
       const { value, spliceCount } = parseStringFlag(flag, "an address to bind (e.g. 127.0.0.1)", inlineValue, args, i);
       host = value;
       args.splice(i, spliceCount);

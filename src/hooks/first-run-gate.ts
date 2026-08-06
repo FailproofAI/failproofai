@@ -32,6 +32,9 @@ export const FIRST_RUN_EXEMPT_SUBCOMMANDS: readonly string[] = [
   "policies",
   "policy",
   "uninstall",
+  // Same reason: a backfill is an explicit instruction about an already-set-up
+  // machine, and interrupting it to offer setup answers a question nobody asked.
+  "backfill",
 ];
 
 export function shouldOfferFirstRun(args: readonly string[]): boolean {

@@ -317,6 +317,42 @@ impl CursorStore {
         }
     }
 
+    /// Forget every cursor whose file was modified at or after `since`, so the
+    /// next read starts those files from byte 0.
+    ///
+    /// This is what `failproofai backfill` acts through. Forgetting a cursor is
+    /// safe rather than destructive: the whole store is already documented as
+    /// re-readable — "corruption is logged and treated as empty ... starting
+    /// over re-ships records the server already dedups" — and redaction is
+    /// deterministic, so a re-shipped event hashes identically and collapses
+    /// into the row that is already there.
+    ///
+    /// Scoped by mtime rather than cleared wholesale because a backfill has a
+    /// window. A machine with years of transcripts should not have to re-ship
+    /// all of them to recover the last month.
+    ///
+    /// A file whose mtime cannot be read is KEPT, not forgotten. The failure
+    /// mode of forgetting is re-shipping a file nobody asked for; on a store
+    /// where every stat is failing that is the whole history, which is exactly
+    /// the runaway a windowed backfill exists to avoid.
+    pub fn forget_modified_since(&mut self, since: std::time::SystemTime) -> usize {
+        let before = self.cursors.len();
+        self.cursors.retain(|_, c| {
+            let Ok(meta) = std::fs::metadata(&c.path) else {
+                return true;
+            };
+            let Ok(modified) = meta.modified() else {
+                return true;
+            };
+            modified < since
+        });
+        let dropped = before - self.cursors.len();
+        if dropped > 0 {
+            self.dirty = true;
+        }
+        dropped
+    }
+
     /// Whether anything has changed since the last successful [`save`].
     ///
     /// [`save`]: CursorStore::save

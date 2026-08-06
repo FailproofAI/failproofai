@@ -315,6 +315,45 @@ fn spawn_collector_manager(
                     break;
                 }
 
+                // A backfill rewinds cursors, which the RUNNING collector holds
+                // in memory and would write straight back over. So it is
+                // handled here, where the collector can be stopped first — and
+                // it deliberately runs before the config compare, so a backfill
+                // and a config change arriving together produce one cycle
+                // rather than two.
+                if let Some(since) = take_backfill_request() {
+                    if let Some(running) = collector.take() {
+                        running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+                    }
+                    let dropped = rewind_cursors_for_backfill(since);
+                    // Widen the first-sight window to cover the request, or the
+                    // files just forgotten are refused as too old and never read
+                    // — the cursor rewind alone would look like it worked and
+                    // deliver a fraction of what was asked for.
+                    let days = std::time::SystemTime::now()
+                        .duration_since(since)
+                        .map(|d| d.as_secs() / 86_400 + 1)
+                        .unwrap_or(0);
+                    set_backfill_window_days(Some(days));
+                    tracing::info!(
+                        cursors_forgotten = dropped,
+                        window_days = days,
+                        "backfill requested; re-reading those sessions from the start"
+                    );
+                    match fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+                    {
+                        Some(next_collector) => {
+                            telemetry::set_collector_metrics(next_collector.metrics());
+                            collector = Some(next_collector);
+                        }
+                        None => tracing::warn!(
+                            "backfill rewound cursors but the collector could not be restarted"
+                        ),
+                    }
+                    running_cfg = current_collector_config();
+                    continue;
+                }
+
                 let next = current_collector_config();
                 // `None` means unreadable, not "disabled". A half-written file
                 // caught mid-save would otherwise tear down a healthy collector
@@ -405,6 +444,106 @@ fn join_lane(handle: &mut Option<std::thread::JoinHandle<()>>) {
 /// Cheap "should the collector be running?" check — reads the two small config
 /// files. Any error resolves to `false`; the full `collector_tasks()` build
 /// logs the reason when it acts on an enabled config.
+/// How many days of history file sources may reach back on FIRST sight of a
+/// file, overriding the default when a backfill is in flight.
+///
+/// It has to exist because rewinding cursors is not, on its own, enough.
+/// `new_cursor` refuses any file older than `since_days` and returns without
+/// giving it a cursor at all — so a wiped cursor store re-reads only the last 7
+/// days, and everything older is skipped again on every poll, silently. A
+/// backfill that asked for 30 days and quietly delivered 7 would be worse than
+/// no backfill: the gap it leaves is invisible, and the dashboard looks complete.
+///
+/// Only consulted when a source meets a file it has no cursor for, so it does
+/// not need clearing: once the backfill's rebuild has read those files they all
+/// have cursors, and `since_days` is never asked again for them.
+static BACKFILL_SINCE_DAYS: std::sync::RwLock<Option<u64>> = std::sync::RwLock::new(None);
+
+fn set_backfill_window_days(days: Option<u64>) {
+    let mut slot = BACKFILL_SINCE_DAYS
+        .write()
+        .unwrap_or_else(|e| e.into_inner());
+    *slot = days;
+}
+
+/// The history window file sources should honour right now.
+///
+/// `Some(7)` normally: a machine holds hundreds of megabytes of transcripts and
+/// shipping all of it on first start is not a reasonable default.
+fn file_source_since_days() -> Option<u64> {
+    const DEFAULT_DAYS: u64 = 7;
+    BACKFILL_SINCE_DAYS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .or(Some(DEFAULT_DAYS))
+}
+
+/// A pending backfill request, if one is on disk.
+///
+/// `since` is epoch millis: every session file modified at or after it has its
+/// cursor forgotten, so the next read starts that file from byte 0.
+///
+/// An unparseable request is DELETED rather than retried. It cannot be acted on,
+/// and leaving it would re-attempt the same failure on every tick forever — the
+/// CLI is the only writer, and it writes this file atomically, so a malformed
+/// one means a hand-edit or a truncated disk rather than a race worth waiting
+/// out.
+fn take_backfill_request() -> Option<std::time::SystemTime> {
+    let path = paths::backfill_request_path().ok()?;
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::warn!(?err, "discarding an unreadable backfill request");
+            let _ = std::fs::remove_file(&path);
+            return None;
+        }
+    };
+    // Removed BEFORE acting, not after. A backfill that panics mid-rewind must
+    // not be retried on the next tick — the cursors it already forgot would be
+    // forgotten again, and a machine could sit re-shipping its whole history in
+    // a loop. Losing a request costs one re-run of a command; looping does not
+    // stop.
+    let _ = std::fs::remove_file(&path);
+    let since_ms = parsed.get("sinceMs").and_then(|v| v.as_u64())?;
+    Some(std::time::UNIX_EPOCH + Duration::from_millis(since_ms))
+}
+
+/// Forget every session cursor for files touched since `since`, across every
+/// source, so the collector re-reads and re-ships them.
+///
+/// Safe by construction rather than by luck: the cursor store is already
+/// documented as re-readable, and redaction is deterministic, so a re-shipped
+/// event hashes identically and collapses into the row already on the server
+/// instead of duplicating it.
+fn rewind_cursors_for_backfill(since: std::time::SystemTime) -> usize {
+    let Ok(root) = paths::cursors_dir() else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        // No cursors yet means nothing has been shipped, so the next start
+        // reads everything from the beginning anyway — the backfill is already
+        // what is about to happen.
+        return 0;
+    };
+    let mut dropped = 0;
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let mut store = fpai_collect::cursor::CursorStore::load(entry.path());
+        let n = store.forget_modified_since(since);
+        if n > 0 {
+            if let Err(err) = store.save() {
+                tracing::warn!(dir = ?entry.path(), ?err, "could not persist a rewound cursor store");
+                continue;
+            }
+            dropped += n;
+        }
+    }
+    dropped
+}
+
 /// The collector's current on-disk configuration, or `None` when it cannot be
 /// read.
 ///
@@ -842,8 +981,11 @@ fn file_source(
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     // Never the whole history by default. A normal machine holds
                     // hundreds of megabytes of transcripts, and shipping all of
-                    // it on first start is not a reasonable default.
-                    since_days: Some(7),
+                    // it on first start is not a reasonable default. A backfill
+                    // widens this for its own rebuild — see BACKFILL_SINCE_DAYS,
+                    // without which rewinding cursors delivers only 7 days no
+                    // matter what was asked for.
+                    since_days: file_source_since_days(),
                 },
             },
             sd,

@@ -106,6 +106,21 @@ pub fn cursors_dir() -> io::Result<PathBuf> {
 /// which is its sole writer, and `auditScheduleFile()` in `src/hooks/fp-home.ts`,
 /// which the dashboard's last-run / next-due readout reads. Two processes with
 /// two path expressions is precisely the drift this section exists to prevent.
+/// `~/.failproofai/state/backfill-request.json` — a pending `failproofai
+/// backfill`, waiting for the daemon to act on it.
+///
+/// A FILE rather than an IPC call, for two reasons. The CLI hands off and
+/// returns immediately, so nothing is holding a connection to answer on; and a
+/// request that outlives a daemon restart is the one a person expects — a
+/// backfill asked for while the service happened to be cycling should still
+/// happen, not vanish.
+///
+/// The daemon deletes it once acted on, so the file's existence IS the pending
+/// state and there is no separate "done" flag to get out of step with it.
+pub fn backfill_request_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("state").join("backfill-request.json"))
+}
+
 pub fn audit_schedule_path() -> io::Result<PathBuf> {
     Ok(failproofai_home()?
         .join("state")

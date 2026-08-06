@@ -211,7 +211,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -418,6 +418,83 @@ LINKS
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }
+  }
+
+  // backfill [--since <YYYY-MM-DD|Nd>] [--dry-run]
+  //
+  // Hands off to the daemon rather than doing the work: the cursors it rewinds
+  // are held in memory by the RUNNING collector, which would write them back
+  // over. Every precondition a person can get wrong is still checked HERE,
+  // synchronously, because reporting success and leaving the real failure in the
+  // journal is what already cost twenty minutes on a live machine.
+  if (args[0] === "backfill") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai backfill — re-send history the collector has already read past
+
+USAGE
+  failproofai backfill [--since <when>] [--dry-run]
+
+WHY
+  The collector never re-reads a file it has a cursor for, which is right until
+  the dashboard's data is cleared, a machine is re-enrolled, or cursors advanced
+  before there was anywhere to send. Then the history exists on disk and nowhere
+  else, with no way to ask for it again.
+
+  Re-sending is safe: redaction is deterministic, so a re-sent event hashes
+  identically to its first send and collapses into the row already there.
+
+OPTIONS
+  --since <when>   How far back. \`30d\`, \`6m\`, or \`YYYY-MM-DD\`.
+                   Default: 30 days.
+  --dry-run        Report what would be re-read and change nothing.
+
+  Which streams are sent follows [collector] in ~/.failproofai/config.toml —
+  a backfill never sends something your config says you do not want.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--since", "--dry-run"]);
+    const unknown = subArgs.find((a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--since");
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai backfill --help\` for usage.`);
+    }
+
+    let sinceMs;
+    const sinceIdx = subArgs.indexOf("--since");
+    if (sinceIdx >= 0) {
+      const raw = subArgs[sinceIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --since.");
+      // `30d` / `6m` / an ISO date. Rejected rather than guessed at: silently
+      // reading an unparseable window as "the default" would send a different
+      // amount of history than was asked for, and nothing would say so.
+      const rel = /^(\d+)([dmy])$/.exec(raw);
+      if (rel) {
+        const n = Number(rel[1]);
+        const days = rel[2] === "d" ? n : rel[2] === "m" ? n * 30 : n * 365;
+        sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+      } else {
+        const t = Date.parse(raw);
+        if (Number.isNaN(t)) {
+          throw new CliError(`Could not read --since ${raw}. Use 30d, 6m, or YYYY-MM-DD.`);
+        }
+        sinceMs = t;
+      }
+    }
+
+    lastSubcommand = "backfill";
+    const { runBackfillCommand } = await import("../src/hooks/backfill-cli");
+    const result = runBackfillCommand({ sinceMs, dryRun: subArgs.includes("--dry-run") });
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_backfill", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run"), explicit_since: sinceIdx >= 0 });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
   }
 
   // uninstall [--purge] [--dry-run] [--yes|-y]

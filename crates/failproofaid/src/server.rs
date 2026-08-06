@@ -23,7 +23,73 @@ use std::time::Duration;
 /// accumulate — the opposite of the "never a hang" promise above. Generous
 /// for a real client (which writes its request immediately after connect,
 /// over a local socket) and still bounded.
+///
+/// Enforced as an ABSOLUTE DEADLINE per connection (see [`Deadline`]), not by
+/// handing it to `set_read_timeout` alone. `SO_RCVTIMEO` bounds a single
+/// `read(2)`, and `read_message` reads through `read_exact`, which loops until
+/// the buffer is full — so every byte that arrives resets the clock. A peer
+/// dribbling one byte every nine seconds satisfied that timeout forever while
+/// pinning its handler thread, and 64 of them fill
+/// [`MAX_INFLIGHT_CONNECTIONS`], at which point the daemon refuses every real
+/// hook and a `daemonConfigured` machine fails closed on every tool call. The
+/// doc comment above asserted the opposite invariant.
 const CONNECTION_IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Enforces [`CONNECTION_IO_TIMEOUT`] as a wall-clock budget across every
+/// read and write on one connection, rather than per syscall.
+///
+/// Before each operation it re-arms the socket timeout with what is LEFT of
+/// the budget, so a slow peer cannot extend its own deadline by making
+/// progress. Once the budget is spent the operation fails rather than
+/// blocking — the handler thread returns, and the client sees a dropped
+/// connection, which is already its fail-closed path.
+struct Deadline<'a> {
+    stream: &'a UnixStream,
+    expires_at: std::time::Instant,
+}
+
+impl<'a> Deadline<'a> {
+    fn new(stream: &'a UnixStream, budget: Duration) -> Self {
+        Self {
+            stream,
+            expires_at: std::time::Instant::now() + budget,
+        }
+    }
+
+    /// The remaining budget, or `TimedOut` once it is gone. Never returns a
+    /// zero duration: to `set_*_timeout` that means "block forever", which is
+    /// exactly the state this type exists to prevent.
+    fn remaining(&self) -> io::Result<Duration> {
+        let left = self
+            .expires_at
+            .saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "connection exceeded its total I/O budget",
+            ));
+        }
+        Ok(left)
+    }
+}
+
+impl io::Read for Deadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.stream.set_read_timeout(Some(self.remaining()?))?;
+        (&*self.stream).read(buf)
+    }
+}
+
+impl io::Write for Deadline<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stream.set_write_timeout(Some(self.remaining()?))?;
+        (&*self.stream).write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        (&*self.stream).flush()
+    }
+}
 
 /// Hard ceiling on connection-handling threads alive at once. The worker
 /// serializes evaluation anyway, so more than a handful in flight already
@@ -57,8 +123,21 @@ impl Server {
     /// `lock.rs` is what actually prevents two daemons; this only clears
     /// the debris of one that's already gone).
     pub fn bind(socket_path: &Path, worker: Arc<Worker>) -> io::Result<Self> {
-        if socket_path.exists() {
-            fs::remove_file(socket_path)?;
+        // `symlink_metadata`, not `exists()`. `Path::exists()` FOLLOWS
+        // symlinks, so a DANGLING symlink at the socket path reports false,
+        // is left in place, and `UnixListener::bind` then fails `EADDRINUSE`.
+        // With `Restart=on-failure` in the unit that is a crash loop, and a
+        // crash-looping daemon on a `daemonConfigured` machine denies every
+        // tool call across every CLI — reachable with one `ln -s`.
+        //
+        // Unlinking unconditionally is safe for the same reason the old check
+        // was: a live daemon is never listening on a leftover path (the
+        // singleton flock in `lock.rs` is what actually prevents two daemons),
+        // so anything here is debris.
+        match fs::symlink_metadata(socket_path) {
+            Ok(_) => fs::remove_file(socket_path)?,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
         }
         let listener = UnixListener::bind(socket_path)?;
         fs::set_permissions(socket_path, fs::Permissions::from_mode(0o600))?;
@@ -143,21 +222,25 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
     // would fail closed. Set the mode explicitly rather than relying on
     // per-platform accept semantics.
     stream.set_nonblocking(false)?;
-    // Bound the peer's share of this thread's life in both directions (see
-    // CONNECTION_IO_TIMEOUT).
-    stream.set_read_timeout(Some(CONNECTION_IO_TIMEOUT))?;
-    stream.set_write_timeout(Some(CONNECTION_IO_TIMEOUT))?;
+    // Bound the peer's share of this thread's life in both directions, as ONE
+    // wall-clock budget across every read and write rather than per syscall
+    // (see CONNECTION_IO_TIMEOUT and Deadline).
+    let mut io = Deadline::new(&stream, CONNECTION_IO_TIMEOUT);
 
-    let mut reader = stream.try_clone()?;
-    let mut writer = stream;
-
-    let request: ClientMessage = match read_message(&mut reader) {
+    let request: ClientMessage = match read_message(&mut io) {
         Ok(msg) => msg,
         Err(_) => return Ok(()), // malformed frame: nothing to respond to, nothing to act on
     };
 
+    // The worker call is deliberately OUTSIDE the connection budget: it is our
+    // own evaluation taking time, not the peer withholding bytes, and it has
+    // its own 30s ceiling in `worker.rs` matched to the client's. The response
+    // write below gets a fresh budget for the same reason — a peer that has
+    // waited through a slow evaluation must not then be denied its answer
+    // because the read half used the clock up.
     let response = dispatch(request, worker);
-    write_message(&mut writer, &response)
+    let mut io = Deadline::new(&stream, CONNECTION_IO_TIMEOUT);
+    write_message(&mut io, &response)
         .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
 }
 
@@ -498,5 +581,104 @@ mod tests {
         for c in clients {
             c.join().unwrap();
         }
+    }
+
+    /// `Path::exists()` follows symlinks, so a DANGLING one at the socket path
+    /// reported false, was never unlinked, and `UnixListener::bind` then failed
+    /// `EADDRINUSE`. With `Restart=on-failure` that is a crash loop, and a
+    /// crash-looping daemon on a `daemonConfigured` machine denies every tool
+    /// call across every CLI — reachable with a single `ln -s`.
+    #[test]
+    fn binds_over_a_dangling_symlink_left_at_the_socket_path() {
+        let socket_path = temp_socket_path("dangling-symlink");
+        let nowhere = temp_socket_path("target-that-never-existed");
+        std::os::unix::fs::symlink(&nowhere, &socket_path).unwrap();
+        assert!(
+            !socket_path.exists(),
+            "a dangling symlink must report exists() == false, or this test proves nothing"
+        );
+
+        let _guard = start_test_server(socket_path.clone());
+
+        // Connecting at all is the assertion: it can only succeed if bind did.
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Ping {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        assert_eq!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: PROTOCOL_VERSION
+            }
+        );
+    }
+
+    /// `SO_RCVTIMEO` bounds ONE `read(2)`, and `read_message` reads through
+    /// `read_exact`, which loops until its buffer is full — so every byte that
+    /// arrives reset the clock. A peer dribbling bytes slower than the timeout
+    /// but faster than never satisfied it indefinitely while pinning a handler
+    /// thread; 64 of those fill `MAX_INFLIGHT_CONNECTIONS` and the daemon stops
+    /// answering real hooks entirely.
+    ///
+    /// The peer here announces a 4 KiB body and then sends one byte every
+    /// 40 ms. Under the old per-read timeout that read completes in about 164
+    /// SECONDS, having never once exceeded 10s between bytes.
+    #[test]
+    fn a_trickling_peer_cannot_hold_a_connection_past_its_budget() {
+        use std::io::Write;
+
+        let (server_side, mut client_side) = UnixStream::pair().unwrap();
+        let dribbler = std::thread::spawn(move || {
+            // A valid, in-range length prefix — the frame is well formed, it
+            // simply never finishes arriving.
+            if client_side.write_all(&4096u32.to_be_bytes()).is_err() {
+                return;
+            }
+            let _ = client_side.flush();
+            loop {
+                if client_side.write_all(b"x").is_err() {
+                    return;
+                }
+                if client_side.flush().is_err() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(40));
+            }
+        });
+
+        let started = std::time::Instant::now();
+        let mut io = Deadline::new(&server_side, Duration::from_millis(300));
+        let result: Result<ClientMessage, _> = read_message(&mut io);
+        let elapsed = started.elapsed();
+
+        assert!(
+            result.is_err(),
+            "the deadline must cut a trickling peer off"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "gave up after {elapsed:?}; the budget was 300ms and the peer would \
+             have taken ~164s to finish its frame"
+        );
+
+        drop(server_side);
+        let _ = dribbler.join();
+    }
+
+    /// The budget is spent by elapsed time, not reset by progress — the exact
+    /// property `set_read_timeout` alone does not give.
+    #[test]
+    fn the_connection_budget_does_not_reset_when_bytes_arrive() {
+        let (server_side, _client_side) = UnixStream::pair().unwrap();
+        let io = Deadline::new(&server_side, Duration::from_millis(80));
+        assert!(io.remaining().is_ok());
+        std::thread::sleep(Duration::from_millis(120));
+        let err = io.remaining().expect_err("the budget must be spent");
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
     }
 }

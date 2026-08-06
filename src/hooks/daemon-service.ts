@@ -370,6 +370,22 @@ export function daemonStatusCommand(): string | null {
 }
 
 /**
+ * The command that restarts the daemon, for the places where a config change
+ * only takes effect on the next start.
+ *
+ * `--disconnect` is the motivating case: the collector manager starts once for
+ * the daemon's lifetime and the uploader caches its bearer key at construction,
+ * so removing the credential file changes nothing about the process already
+ * running.
+ */
+export function daemonRestartCommand(): string | null {
+  if (!isDaemonSupportedPlatform()) return null;
+  return process.platform === "linux"
+    ? `sudo systemctl restart ${systemdUnitName()}`
+    : `sudo launchctl kickstart -k system/${launchdLabel()}`;
+}
+
+/**
  * Acquires sudo credentials up front, prompting in the terminal if needed.
  *
  * `sudo -v` refreshes the user's sudo timestamp and returns; every later

@@ -96,7 +96,7 @@ import {
   scopesFor,
   type SetupTarget,
 } from "./setup-state";
-import { launcherMarker } from "./fp-home";
+import { customPoliciesDir, launcherMarker } from "./fp-home";
 import { pruneOldDaemonBinaries } from "./daemon-download";
 import { version as cliVersion } from "../../package.json";
 import { acquireOnboardingLock } from "./onboarding-lock";
@@ -381,7 +381,12 @@ export function describeCustomPolicies(cwd: string): {
   let fileCount = 0;
   const dirs: Array<{ dir: string; label: string }> = [
     { dir: resolve(cwd, ".failproofai", "policies"), label: "project" },
-    { dir: resolve(homedir(), ".failproofai", "policies"), label: "global" },
+    // `customPoliciesDir()`, not layout 1's `~/.failproofai/policies`. This
+    // scanned the old location while `custom-hooks-loader.ts` loads from the
+    // new one, so the wizard reported "no personal policies" to users whose
+    // policies were being enforced, and would have reported the opposite after
+    // the layout reset moved them.
+    { dir: customPoliciesDir(), label: "global" },
   ];
   for (const { dir, label } of dirs) {
     const found = discoverPolicyFiles(dir);

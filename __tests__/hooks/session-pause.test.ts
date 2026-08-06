@@ -148,6 +148,64 @@ describe("pause state", () => {
     expect(Number.isFinite(pause.expiresAt)).toBe(true);
     expect(pause.expiresAt - pause.pausedAt).toBeLessThanOrEqual(PAUSE_CEILING_MS);
   });
+
+  // The ceiling was measured from `pausedAt`, which every renewal reset to now.
+  // So `--pause 8h` re-issued every seven hours suspended enforcement forever,
+  // one individually-legal command at a time, and every single check passed.
+  it("measures the ceiling from the start of the run, not the latest renewal", () => {
+    const start = 1_000_000;
+    writePause({ sessionId: "sess-r", durationMs: PAUSE_CEILING_MS, now: start });
+
+    // Renewed after seven hours, asking for another full eight.
+    const sevenHours = 7 * 3_600_000;
+    const renewed = writePause({
+      sessionId: "sess-r",
+      durationMs: PAUSE_CEILING_MS,
+      now: start + sevenHours,
+    });
+
+    expect(renewed.firstPausedAt).toBe(start);
+    expect(renewed.expiresAt).toBe(start + PAUSE_CEILING_MS);
+    // i.e. one more hour, not another eight.
+    expect(renewed.expiresAt - (start + sevenHours)).toBe(3_600_000);
+  });
+
+  it("starts a fresh ceiling once a pause has actually lapsed", () => {
+    // The bound is on one unbroken stretch of suspended enforcement, not a
+    // daily quota — otherwise a machine could be permanently unable to pause.
+    const start = 2_000_000;
+    writePause({ sessionId: "sess-l", durationMs: 60_000, now: start });
+    const later = start + PAUSE_CEILING_MS * 2;
+    const fresh = writePause({ sessionId: "sess-l", durationMs: 60_000, now: later });
+
+    expect(fresh.firstPausedAt).toBe(later);
+    expect(fresh.expiresAt).toBe(later + 60_000);
+  });
+
+  it("clamps an expiry that was written by hand past the ceiling", () => {
+    // The state directory is owner-writable by design, so the bound has to hold
+    // against a file this process did not write — otherwise editing one number
+    // buys a pause that never ends.
+    const start = 3_000_000;
+    writePause({ sessionId: "sess-h", durationMs: 60_000, now: start });
+    const [file] = readdirSync(pauseStateDir());
+    writeFileSync(
+      resolve(pauseStateDir(), file),
+      JSON.stringify({
+        schemaVersion: 1,
+        sessionId: "sess-h",
+        pausedAt: start,
+        firstPausedAt: start,
+        expiresAt: start + 365 * 24 * 3_600_000,
+        setBy: "hand-edited",
+      }),
+    );
+
+    const read = readActivePause("sess-h", start + 1000);
+    expect(read?.expiresAt).toBe(start + PAUSE_CEILING_MS);
+    // And it is genuinely inert once the ceiling passes.
+    expect(readActivePause("sess-h", start + PAUSE_CEILING_MS + 1)).toBeNull();
+  });
 });
 
 describe("formatDuration", () => {

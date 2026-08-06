@@ -563,6 +563,22 @@ async fn an_allow_rollup_never_mixes_two_policy_sources() {
         .expect("the unattributed allow stays unattributed");
     assert_eq!(plain["failproofai_allow_count"], 1);
 
+    // …and they must reach the server as two rows, not one.
+    //
+    // Splitting the bucket is only half the job. Per `transform.rs`'s own
+    // header, the server pairs legs on `hook_id` and dedups on a content hash,
+    // so two events carrying the SAME id collapse back into one row in the
+    // product — undoing this split downstream, silently, in exactly the two
+    // cases it exists for: the minute a pause starts, and the minute a cloud
+    // generation flips during a rollout. The aggregate id was built from
+    // session/minute/event/tool only, all four of which are identical here by
+    // construction, so both events shipped with byte-identical ids and this
+    // test passed anyway.
+    assert_ne!(
+        cloud["hook_id"], plain["hook_id"],
+        "two buckets the key split apart must not share a hook_id"
+    );
+
     fs::remove_dir_all(&store).ok();
     fs::remove_dir_all(&state).ok();
     fs::remove_dir_all(&spool).ok();

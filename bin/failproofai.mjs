@@ -211,16 +211,6 @@ if (hookIdx >= 0) {
  * Error     → unexpected; shows message only, exits 2
  */
 async function runCli() {
-  // Report a fresh install / upgrade. Deliberately here rather than at module
-  // scope: everything above this point is the --hook fast path, which runs on
-  // every tool call. No-ops after the first run on a given version.
-  try {
-    const { maybeReportInstall } = await import("../lib/install-check");
-    await maybeReportInstall(version);
-  } catch {
-    // never block a command on reporting
-  }
-
   // --help / -h  (only when not inside a subcommand that handles its own --help)
   const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "config"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
@@ -383,6 +373,28 @@ LINKS
       if (check.fatal) process.exit(1);
       layoutWasReset = check.didReset;
     }
+  }
+
+  // Report a fresh install / upgrade. AFTER the layout check above, never
+  // before: this writes the `last-version` marker, and while that file lived at
+  // the root of the home it was one of the landmarks `detectLayout()` reads as
+  // "layout 1". Running first meant the CLI created the file and then read it
+  // back as evidence of an old layout, so every genuinely fresh machine had its
+  // very first command open with "failproofai reorganised … Removed 1 item(s)
+  // from the old layout." Nothing was lost — there was nothing there — but
+  // training every new user to ignore that banner is expensive given what it
+  // says on a real layout-1 home. The file has also moved under `state/`, so
+  // the two are independent now; the order is kept because it is the correct
+  // one regardless.
+  //
+  // Deliberately not at module scope: everything above the CLI entry is the
+  // --hook fast path, which runs on every tool call. No-ops after the first run
+  // on a given version.
+  try {
+    const { maybeReportInstall } = await import("../lib/install-check");
+    await maybeReportInstall(version);
+  } catch {
+    // never block a command on reporting
   }
 
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
@@ -1062,10 +1074,21 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     const result = await runConfigureWizard();
     await track("cli_configure_invoked", {
       applied: result.applied,
-      scope: result.scope ?? null,
+      // `target` and `scopes`, not `scope`: the wizard rework replaced that
+      // field and nothing caught it, because `.mjs` is outside the tsconfig
+      // include so `tsc --noEmit` never type-checks this file. Every
+      // `cli_configure_invoked` since has reported `scope: null`.
+      target: result.target ?? null,
+      scopes: result.scopes ?? [],
       cli_count: result.clis?.length ?? 0,
+      abort: result.abort ?? null,
     });
-    process.exit(0);
+    // `abort` is the field `WizardAbort` exists to expose, and exiting 0
+    // regardless discarded it: a fleet script could not tell "the user pressed
+    // Esc" from "this machine could not install the required daemon and is
+    // unconfigured". Cancelling is not a failure; the other two are.
+    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : 0);
+    return;
   }
 
   // Unknown flag guard — must appear after all known-flag branches

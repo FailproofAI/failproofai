@@ -555,6 +555,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            None,
         );
         sqlite_source(
             &mut tasks,
@@ -567,6 +568,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            None,
         );
         sqlite_source(
             &mut tasks,
@@ -579,6 +581,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            None,
         );
 
         // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
@@ -586,7 +589,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // directory would clobber each other's watermark and each would re-read
         // from zero after every restart. Each database gets its own.
         for (i, db) in hermes::default_db_paths().into_iter().enumerate() {
-            let state = cursors.join("hermes").join(profile_dir_name(&db, i));
+            let profile = profile_dir_name(&db, i);
+            let state = cursors.join("hermes").join(&profile);
+            // ...and its own health key, for the same reason it gets its own
+            // cursor directory. Every profile reporting under the bare string
+            // "hermes" made two profiles overwrite each other's record five
+            // times a second: with one database missing, `root_present`
+            // alternated true/false forever, which is precisely the "absent
+            // root versus merely idle" distinction this record exists to draw.
             sqlite_source(
                 &mut tasks,
                 "hermes",
@@ -598,6 +608,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 &env,
                 machine.as_deref(),
                 os_user.as_deref(),
+                Some(format!("hermes:{profile}")),
             );
         }
     }
@@ -700,6 +711,9 @@ fn sqlite_source(
     environment: &str,
     machine_id: Option<&str>,
     user: Option<&str>,
+    // Distinct health key when one format has several live instances (Hermes,
+    // one database per profile). `None` reports under the format's own kind.
+    health_key: Option<String>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
@@ -722,6 +736,7 @@ fn sqlite_source(
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     max_drain_passes: 20,
                 },
+                health_key: health_key.clone(),
             },
             sd,
         )

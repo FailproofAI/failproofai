@@ -8,9 +8,20 @@ vi.mock("lucide-react", () => ({
 }));
 
 const NOW = 1_700_000_000_000;
-const pause = (over: Partial<{ sessionId: string; expiresAt: number; pausedAt: number; setBy: string }> = {}) => ({
+const pause = (
+  over: Partial<{
+    sessionId: string;
+    expiresAt: number;
+    pausedAt: number;
+    firstPausedAt: number;
+    setBy: string;
+  }> = {},
+) => ({
   sessionId: "s1",
   pausedAt: NOW,
+  // Equal to `pausedAt` for a pause that was never renewed. The two differ
+  // only across a renewal, which is what the 8h ceiling is measured from.
+  firstPausedAt: NOW,
   expiresAt: NOW + 20 * 60_000,
   setBy: "cli",
   ...over,

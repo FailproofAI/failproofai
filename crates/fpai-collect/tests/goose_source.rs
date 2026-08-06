@@ -863,6 +863,7 @@ fn usage_is_billed_once_per_row_rather_than_once_per_block() {
 
 fn spec(db: &Path, spool: PathBuf, state: PathBuf) -> Spec {
     Spec {
+        health_key: None,
         format: goose::FORMAT,
         db_path: db.to_path_buf(),
         spool_dir: spool,

@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
+import {
+  clearActiveCloudManagedPolicies,
+  readActiveCloudManagedPolicies,
+} from "../../src/hooks/cloud-managed-policies";
 
 const roots: string[] = [];
 
@@ -105,5 +108,31 @@ describe("policy effect", () => {
       }),
     );
     expect(() => readActiveCloudManagedPolicies()).toThrow(/unknown effect/);
+  });
+});
+
+describe("clearActiveCloudManagedPolicies", () => {
+  it("stops enforcement while leaving the verified artifacts on disk", () => {
+    // `--disconnect` cleared the credential, which ends POLLING. Every artifact
+    // already on disk stayed referenced by active.json and kept being loaded on
+    // every tool call — so a machine that had deliberately left its
+    // organisation went on being governed by whatever generation was current
+    // when it left, indefinitely, while `--status` called it unconnected.
+    const { policyPath } = fixture();
+    expect(readActiveCloudManagedPolicies()).toHaveLength(1);
+
+    expect(clearActiveCloudManagedPolicies()).toBe(true);
+
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+    // The artifacts themselves stay: large, hash-verified on use, and inert
+    // once nothing points at them — so a reconnect is cheap and works offline.
+    expect(existsSync(policyPath)).toBe(true);
+  });
+
+  it("reports nothing removed when no generation was active", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-clear-"));
+    roots.push(root);
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
+    expect(clearActiveCloudManagedPolicies()).toBe(false);
   });
 });

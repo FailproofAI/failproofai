@@ -124,10 +124,24 @@ pub struct Spec {
     pub state_dir: PathBuf,
     pub poll_interval: std::time::Duration,
     pub params: Params,
+    /// Key this instance reports health under. `None` uses `format.kind`.
+    ///
+    /// Exists because one format can have SEVERAL live instances: Hermes has a
+    /// database per profile, each already given its own cursor directory
+    /// precisely so they cannot clobber each other — and then every one of them
+    /// reported under the bare string `"hermes"`. Two profiles where one
+    /// database is missing made `collector-health.json` alternate
+    /// `root_present` true/false every five seconds, destroying the exact
+    /// "absent root versus idle source" distinction this record exists to draw.
+    pub health_key: Option<String>,
 }
 
 /// Poll until shutdown.
 pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
+    let health_key = spec
+        .health_key
+        .clone()
+        .unwrap_or_else(|| spec.format.kind.to_string());
     let mut cursors = CursorStore::load(spec.state_dir.clone());
     tracing::info!(
         source = spec.format.kind,
@@ -145,7 +159,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
             match poll_once(&spec, &mut cursors).await {
                 Ok((events, more)) => {
                     crate::health::report_poll(
-                        spec.format.kind,
+                        &health_key,
                         spec.db_path.exists(),
                         events,
                         cursors.len() as u64,
@@ -157,7 +171,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
                 }
                 Err(err) => {
                     tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
-                    crate::health::report_error(spec.format.kind, &err.to_string());
+                    crate::health::report_error(&health_key, &err.to_string());
                     break;
                 }
             }

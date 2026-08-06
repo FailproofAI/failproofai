@@ -17,7 +17,6 @@ import {
   writePause,
   type ActivePause,
 } from "./session-pause";
-import { readMergedHooksConfig } from "./hooks-config";
 
 export interface PauseCommandOptions {
   action: "pause" | "resume" | "status";
@@ -39,18 +38,21 @@ export interface PauseCommandResult {
 }
 
 /**
- * The ceiling, after any config lowering. A project may tighten this; nothing
- * may loosen it, so a config asking for 24h still gets 8h.
+ * The ceiling on a single `--pause`.
+ *
+ * Took a `cwd` and consulted `readMergedHooksConfig(cwd).maxPauseMs` to let a
+ * project LOWER it. That path was dead: the merge in `hooks-config.ts` builds
+ * its result field by field and never emits `maxPauseMs`, so the lookup could
+ * only ever read `undefined` — and the two tests that claimed to cover it
+ * `vi.mock`ed `readMergedHooksConfig` to return a field the real function
+ * cannot produce, which is why the gap survived. The knob is removed rather
+ * than wired up: nothing documented it, nothing could have used it, and the
+ * hard ceiling was doing all the work already.
+ *
+ * Kept as a function, and still the only thing `--pause` measures against, so
+ * reinstating a config lowering later is a change in one place.
  */
-export function effectiveCeilingMs(cwd?: string): number {
-  try {
-    const configured = readMergedHooksConfig(cwd).maxPauseMs;
-    if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
-      return Math.min(configured, PAUSE_CEILING_MS);
-    }
-  } catch {
-    // An unreadable config must not remove the ceiling.
-  }
+export function effectiveCeilingMs(): number {
   return PAUSE_CEILING_MS;
 }
 
@@ -109,7 +111,7 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
   // pause
   let durationMs: number;
   try {
-    durationMs = parsePauseDuration(opts.duration, effectiveCeilingMs(cwd));
+    durationMs = parsePauseDuration(opts.duration, effectiveCeilingMs());
   } catch (err) {
     return { exitCode: 1, lines: [err instanceof Error ? err.message : String(err)], affected: 0 };
   }

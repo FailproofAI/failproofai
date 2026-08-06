@@ -138,8 +138,42 @@ pub struct FileCursor {
     /// field existed.
     #[serde(default)]
     pub first_seen_epoch_ms: Option<i64>,
+    /// Fingerprint of the file's first bytes when this cursor was created.
+    ///
+    /// The discriminator for INODE REUSE. The path check in
+    /// [`CursorStore::resume`] catches only the case where the recorded path
+    /// still exists and still holds this inode — and in a real reuse the old
+    /// file was UNLINKED, which is how its inode came to be free, so that
+    /// check never fires and the dead file's offset is applied to unrelated
+    /// content. See `filetail::process_file`, which verifies this whenever a
+    /// resumed cursor's path has changed.
+    #[serde(default)]
+    pub head_fingerprint: Option<u64>,
     #[serde(default)]
     pub state: TailState,
+}
+
+/// Bytes of a file's head that [`FileCursor::head_fingerprint`] covers.
+pub const HEAD_FINGERPRINT_BYTES: usize = 512;
+
+/// FNV-1a over a file's first bytes.
+///
+/// Hand-written rather than `DefaultHasher`, whose output is explicitly not
+/// stable across Rust releases — a cursor file has to mean the same thing after
+/// a toolchain upgrade. Not a cryptographic hash and does not need to be: it
+/// separates "the same file" from "an unrelated file that inherited a freed
+/// inode", and the cost of the astronomically unlikely collision is the same
+/// re-read this guard exists to avoid.
+pub fn head_fingerprint(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes.iter().take(HEAD_FINGERPRINT_BYTES) {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    // Length matters: one file being a strict prefix of another is exactly the
+    // "skipped bytes" case, and folding it in separates them.
+    hash ^= bytes.len().min(HEAD_FINGERPRINT_BYTES) as u64;
+    hash
 }
 
 impl FileCursor {
@@ -164,6 +198,13 @@ impl FileCursor {
 pub struct CursorStore {
     dir: PathBuf,
     cursors: BTreeMap<String, FileCursor>,
+    /// Whether anything has changed since the last successful `save()`.
+    ///
+    /// Starts false: what was just loaded from disk is by definition already
+    /// on disk. A load that FAILED (missing, unreadable, schema mismatch)
+    /// also starts false — writing an empty map over an unreadable one buys
+    /// nothing, and the first real cursor set marks it dirty anyway.
+    dirty: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -210,7 +251,11 @@ impl CursorStore {
             },
             Err(_) => BTreeMap::new(),
         };
-        CursorStore { dir, cursors }
+        CursorStore {
+            dir,
+            cursors,
+            dirty: false,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -255,13 +300,28 @@ impl CursorStore {
     }
 
     pub fn set(&mut self, cursor: FileCursor) {
-        self.cursors.insert(key(cursor.dev, cursor.inode), cursor);
+        let k = key(cursor.dev, cursor.inode);
+        if self.cursors.get(&k) != Some(&cursor) {
+            self.dirty = true;
+        }
+        self.cursors.insert(k, cursor);
     }
 
     /// Drop cursors whose files no longer exist, so the store does not grow
     /// without bound as pages are pruned.
     pub fn retain_existing(&mut self) {
+        let before = self.cursors.len();
         self.cursors.retain(|_, c| c.path.exists());
+        if self.cursors.len() != before {
+            self.dirty = true;
+        }
+    }
+
+    /// Whether anything has changed since the last successful [`save`].
+    ///
+    /// [`save`]: CursorStore::save
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
     /// Persist atomically (tmp → fsync → rename) at owner-only permissions.
@@ -269,7 +329,18 @@ impl CursorStore {
     /// Callers write this AFTER the events derived from the new offsets are
     /// durable. A crash between the two costs a re-ship, which the server
     /// dedups; the other order loses records outright.
-    pub fn save(&self) -> std::io::Result<()> {
+    pub fn save(&mut self) -> std::io::Result<()> {
+        // A clean store writes nothing. Every source calls this at the end of
+        // every poll — every 2s, per source, whether or not a byte moved — and
+        // the whole map is re-serialized with `to_string_pretty`, `sync_all`ed
+        // and renamed each time. `retain_existing` only drops cursors for
+        // DELETED files and agent transcripts are never deleted, so the map
+        // grows monotonically for the life of the machine: an idle laptop with
+        // a few hundred transcripts was doing a growing fsync twelve times a
+        // minute to write bytes identical to the ones already there.
+        if !self.dirty {
+            return Ok(());
+        }
         std::fs::create_dir_all(&self.dir)?;
         let body = serde_json::to_string_pretty(&OnDisk {
             schema: SCHEMA,
@@ -279,7 +350,11 @@ impl CursorStore {
 
         let tmp = self.dir.join(format!("{CURSOR_FILE}.tmp"));
         write_private(&tmp, body.as_bytes())?;
-        std::fs::rename(&tmp, self.dir.join(CURSOR_FILE))
+        std::fs::rename(&tmp, self.dir.join(CURSOR_FILE))?;
+        // Only after the rename: a failed write must leave the store dirty so
+        // the next poll retries rather than silently dropping the update.
+        self.dirty = false;
+        Ok(())
     }
 }
 

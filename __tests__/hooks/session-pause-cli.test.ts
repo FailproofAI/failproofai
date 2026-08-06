@@ -28,24 +28,13 @@ afterEach(() => {
 });
 
 describe("effectiveCeilingMs", () => {
-  it("is the hard ceiling by default", () => {
-    expect(effectiveCeilingMs("/tmp/p")).toBe(PAUSE_CEILING_MS);
-  });
-
-  it("lets config LOWER the ceiling", () => {
-    vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [], maxPauseMs: 600_000 } as never);
-    expect(effectiveCeilingMs("/tmp/p")).toBe(600_000);
-  });
-
-  it("does NOT let config raise it", () => {
-    // A ceiling a project can raise is not a ceiling.
-    vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [], maxPauseMs: 999 * 3_600_000 } as never);
-    expect(effectiveCeilingMs("/tmp/p")).toBe(PAUSE_CEILING_MS);
-  });
-
-  it("keeps the ceiling when config is unreadable", () => {
-    vi.mocked(readMergedHooksConfig).mockImplementation(() => { throw new Error("bad config"); });
-    expect(effectiveCeilingMs("/tmp/p")).toBe(PAUSE_CEILING_MS);
+  // The three tests that stood here asserted a config lowering that could not
+  // happen: `readMergedHooksConfig` builds its result field by field and never
+  // emits `maxPauseMs`, so the lookup always read `undefined`. They passed only
+  // because they `vi.mock`ed that function to return a field the real one
+  // cannot produce — a mock asserting against itself. The knob is gone.
+  it("is the hard ceiling, and nothing lowers it", () => {
+    expect(effectiveCeilingMs()).toBe(PAUSE_CEILING_MS);
   });
 });
 

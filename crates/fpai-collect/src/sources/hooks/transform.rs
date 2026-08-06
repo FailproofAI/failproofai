@@ -417,14 +417,36 @@ impl AllowBucket {
         m.insert("type".into(), json!("hook_completed"));
         m.insert("environment".into(), json!(environment));
         m.insert("hook_name".into(), json!(self.event_name));
+        // The attribution is part of the id because it is part of the KEY.
+        //
+        // `BucketKey` deliberately includes `Attribution`, so a minute that
+        // mixes policy sources emits one aggregate per source rather than one
+        // row carrying whichever attribution happened to be first. Building the
+        // id from session/minute/event/tool alone gave those buckets
+        // byte-identical ids — and per this file's own header, the server
+        // dedups on `hook_id`, so the split was undone downstream and the two
+        // rows collapsed back into one. That happened in exactly the two cases
+        // the split was built for: the minute a pause starts, and the minute a
+        // cloud generation flips during a rollout, which is the measurement
+        // `cloud_generation` exists to enable.
+        let a = &self.attribution;
         m.insert(
             "hook_id".into(),
             json!(format!(
-                "{}:{}:{}:{}:agg",
+                "{}:{}:{}:{}:{}:{}:{}:{}:{}:agg",
                 self.session_id,
                 self.minute_ms,
                 self.event_name,
-                self.tool_name.as_deref().unwrap_or("-")
+                self.tool_name.as_deref().unwrap_or("-"),
+                a.policy_source.as_deref().unwrap_or("-"),
+                a.cloud_policy_id.as_deref().unwrap_or("-"),
+                a.cloud_revision
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".into()),
+                a.cloud_generation
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".into()),
+                if a.paused { "paused" } else { "-" },
             )),
         );
         m.insert("outcome".into(), json!("allow"));

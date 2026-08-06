@@ -663,6 +663,7 @@ fn re_reading_the_same_rows_produces_byte_identical_events() {
 
 fn spec(db: &Path, spool: PathBuf, state: PathBuf) -> Spec {
     Spec {
+        health_key: None,
         format: devin::FORMAT,
         db_path: db.to_path_buf(),
         spool_dir: spool,

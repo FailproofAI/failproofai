@@ -224,6 +224,19 @@ export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "aud
  */
 export const telemetryIdFile = (home?: string) => resolve(stateDir(home), "telemetry-id");
 export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");
+/**
+ * The version that last reported an install, so an upgrade is reported once.
+ *
+ * Under `state/` in layout 2 like every other piece of derived state, and that
+ * placement fixes a real bug rather than being tidiness: at the root it was
+ * `~/.failproofai/last-version`, which `detectLayout()` lists as a LAYOUT-1
+ * MARKER — while the code that writes it still runs under layout 2, and runs
+ * BEFORE the layout check. So on a genuinely fresh machine the CLI created the
+ * file, then immediately read it back as evidence of an old layout, classified
+ * a brand-new home as stale, and opened every new user's first command with
+ * "failproofai reorganised … Removed 1 item(s) from the old layout."
+ */
+export const lastVersionFile = (home?: string) => resolve(stateDir(home), "last-version");
 export const onboardingLockFile = (home?: string) => resolve(stateDir(home), "onboarding.lock");
 export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), "codex-session-paths.json");
 

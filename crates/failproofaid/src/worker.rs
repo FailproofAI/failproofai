@@ -291,6 +291,18 @@ impl Worker {
         stream
             .set_read_timeout(Some(Duration::from_secs(30)))
             .map_err(WorkerError::Io)?;
+        // Symmetric with the read timeout, and not optional. `write_message`
+        // does a blocking `write_all`: if the worker's single-threaded event
+        // loop stalls — a custom policy running synchronous CPU-bound code — it
+        // stops draining this socket, and once the kernel send buffer fills, a
+        // large enough request blocks the writer with nothing to interrupt it.
+        // Nothing reclaims a connection thread in that state, so
+        // `MAX_INFLIGHT_CONNECTIONS` fills within 64 requests and the daemon
+        // stops answering entirely — the opposite of the fail-fast behaviour
+        // the rest of this file is built around.
+        stream
+            .set_write_timeout(Some(Duration::from_secs(30)))
+            .map_err(WorkerError::Io)?;
 
         let request = json!({
             "type": "hook",

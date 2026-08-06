@@ -23,6 +23,18 @@ vi.mock("../../src/hooks/hook-telemetry", () => ({
   flushHookTelemetry: vi.fn(() => Promise.resolve()),
 }));
 
+/** Captured so a degraded-but-silent failure is distinguishable from a clean run. */
+const warnings: string[] = [];
+vi.mock("../../src/hooks/hook-logger", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/hook-logger")>();
+  return {
+    ...actual,
+    hookLogWarn: vi.fn((msg: string) => {
+      warnings.push(msg);
+    }),
+  };
+});
+
 import { evaluateHookEvent } from "../../src/hooks/handler";
 
 const FORCED = {
@@ -33,6 +45,7 @@ const FORCED = {
 let projectDir: string;
 
 beforeEach(() => {
+  warnings.length = 0;
   projectDir = mkdtempSync(join(tmpdir(), "fpai-fail-closed-"));
   mkdirSync(join(projectDir, ".failproofai"), { recursive: true });
 });
@@ -114,5 +127,73 @@ describe("hooks/handler forceDecision (fail-closed)", () => {
 
     expect(permissionDecisionOf(result.stdout)).toBe("deny");
     expect(`${result.stdout}${result.stderr}`).not.toContain("must never be imported");
+  });
+});
+
+/**
+ * A corrupt cloud-managed manifest must cost the cloud layer, not the machine.
+ *
+ * `readActiveCloudManagedPolicies()` has fourteen throw sites and sat bare
+ * inside `evaluateHookEvent`'s `try`, whose only handler is a `finally` — so any
+ * of them aborted the whole evaluation. The outcome then depended on where the
+ * hook ran, and neither branch was the intended one: on a daemon machine the
+ * client fail-closed denies everything, and off it the throw reaches the CLI's
+ * outer catch, which exits 2 with nothing on stdout — a deny on Claude and
+ * Factory, but a warning followed by an ALLOW on the five CLIs that read a
+ * decision off stdout and ignore the exit code.
+ */
+describe("hooks/handler with a corrupt cloud-managed manifest", () => {
+  let policyRoot: string;
+
+  beforeEach(() => {
+    policyRoot = mkdtempSync(join(tmpdir(), "fpai-corrupt-managed-"));
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = policyRoot;
+  });
+
+  afterEach(() => {
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    rmSync(policyRoot, { recursive: true, force: true });
+  });
+
+  it("keeps enforcing local policies instead of aborting the evaluation", async () => {
+    writeFileSync(join(policyRoot, "active.json"), "{ this is not json");
+    writeFileSync(
+      join(projectDir, ".failproofai", "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["block-sudo"] }),
+    );
+
+    // The local builtin still fires — the cloud layer degrades alone.
+    const denied = await evaluateHookEvent("PreToolUse", "claude", stdin({
+      tool_name: "Bash",
+      tool_input: { command: "sudo rm -rf /" },
+    }));
+    expect(permissionDecisionOf(denied.stdout)).toBe("deny");
+
+    // And a benign command is still allowed, rather than the whole machine
+    // being denied (daemon path) or silently allowed (Copilot/Cursor/Goose/
+    // Pi/Hermes, which ignore the exit code).
+    const allowed = await evaluateHookEvent("PreToolUse", "claude", stdin({
+      tool_name: "Bash",
+      tool_input: { command: "echo hi" },
+    }));
+    expect(permissionDecisionOf(allowed.stdout)).toBeUndefined();
+    expect(allowed.exitCode).toBe(0);
+  });
+
+  it("says loudly that cloud policies are not being enforced", async () => {
+    // Failing open silently would be the worse bug: a managed machine would
+    // look protected and be enforcing only its local set.
+    writeFileSync(
+      join(policyRoot, "active.json"),
+      JSON.stringify({ schemaVersion: 999, generation: 1, policies: [] }),
+    );
+
+    const result = await evaluateHookEvent("PreToolUse", "claude", stdin({
+      tool_name: "Bash",
+      tool_input: { command: "echo hi" },
+    }));
+
+    expect(result.exitCode).toBe(0);
+    expect(warnings.join("\n")).toMatch(/cloud-managed policies could NOT be loaded/i);
   });
 });

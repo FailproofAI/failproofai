@@ -5,7 +5,7 @@
  * before import so the worker never knowingly executes modified bytes.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
@@ -84,6 +84,36 @@ function resolveManagedPath(root: string, candidate: string): string {
     throw new Error(`managed policy symlink escapes its root: ${JSON.stringify(candidate)}`);
   }
   return realFile;
+}
+
+/**
+ * Stop enforcing cloud-managed policies on this machine.
+ *
+ * Removes `active.json` only — the manifest that says which generation is
+ * live. The generation directories and content-addressed artifacts are left
+ * alone: they are large, hash-verified on use, and inert once nothing points
+ * at them, so keeping them makes a reconnect cheap and offline-safe.
+ *
+ * Called by `--disconnect`, which without it did not disconnect. Clearing the
+ * credential stops the daemon REFRESHING policy; every artifact already on disk
+ * kept being loaded and enforced on every tool call, so a user who had
+ * deliberately left their organisation's cloud went on being governed by
+ * whatever generation happened to be current when they left — indefinitely,
+ * with `--status` reporting the machine as unconnected.
+ *
+ * Returns true when a manifest was actually removed.
+ */
+export function clearActiveCloudManagedPolicies(): boolean {
+  const activePath = resolve(cloudManagedPolicyRoot(), "active.json");
+  if (!existsSync(activePath)) return false;
+  try {
+    rmSync(activePath, { force: true });
+    return true;
+  } catch {
+    // Best-effort: `--disconnect` still clears the credentials, and reporting
+    // a failure to remove one file would obscure that the rest succeeded.
+    return false;
+  }
 }
 
 export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {

@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-use crate::cursor::{CursorStore, FileCursor, TailState, identity};
+use crate::cursor::{self, CursorStore, FileCursor, TailState, identity};
 use crate::spool::SpoolWriter;
 use crate::supervisor::{Shutdown, TaskError};
 
@@ -181,12 +181,25 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
 
     loop {
         match poll_once(&spec, &mut cursors).await {
-            Ok(events) => crate::health::report_poll(
-                spec.format.kind,
-                spec.roots.iter().any(|r| r.exists()),
-                events,
-                cursors.len() as u64,
-            ),
+            Ok(outcome) => {
+                crate::health::report_poll(
+                    spec.format.kind,
+                    spec.roots.iter().any(|r| r.exists()),
+                    outcome.events,
+                    cursors.len() as u64,
+                );
+                // AFTER report_poll, which clears `last_error` — a pass where
+                // every file failed must not read as a clean one.
+                if let Some(err) = outcome.first_error {
+                    crate::health::report_error(
+                        spec.format.kind,
+                        &format!(
+                            "{} file(s) could not be processed; first: {err}",
+                            outcome.failed
+                        ),
+                    );
+                }
+            }
             Err(err) => {
                 tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
                 crate::health::report_error(spec.format.kind, &err.to_string());
@@ -198,20 +211,47 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
     }
 }
 
-/// One pass. Returns how many events were spooled, for the health record.
-async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<u64, TaskError> {
+/// What one pass did, for the health record.
+struct PollOutcome {
+    events: u64,
+    /// Files that could not be processed at all this pass.
+    ///
+    /// Reported so a source whose root is unreadable is DISTINGUISHABLE from
+    /// one that is merely idle — which is the whole reason per-source health
+    /// exists. Previously a pass warned per file and returned `Ok(0)` even when
+    /// every file failed, and `record_poll` then unconditionally cleared
+    /// `last_error`, so a permanently broken source reported exactly what a
+    /// healthy quiet one does.
+    failed: u64,
+    /// The first failure's message, for the health record's `last_error`.
+    first_error: Option<String>,
+}
+
+/// One pass over every discovered file.
+async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<PollOutcome, TaskError> {
     let files = discover(&spec.roots, spec.format.is_source_file).await;
-    let mut events = 0u64;
+    let mut out = PollOutcome {
+        events: 0,
+        failed: 0,
+        first_error: None,
+    };
     for path in files {
         match process_file(spec, cursors, &path).await {
-            Ok(n) => events += n,
-            // Per-file, so one malformed transcript cannot stop the others.
-            Err(err) => tracing::warn!(file = %path.display(), %err, "could not process file"),
+            Ok(n) => out.events += n,
+            // Per-file, so one malformed transcript cannot stop the others —
+            // but counted, so "none of them worked" is not silence.
+            Err(err) => {
+                tracing::warn!(file = %path.display(), %err, "could not process file");
+                out.failed += 1;
+                if out.first_error.is_none() {
+                    out.first_error = Some(format!("{}: {err}", path.display()));
+                }
+            }
         }
     }
     cursors.retain_existing();
     cursors.save().map_err(io_err)?;
-    Ok(events)
+    Ok(out)
 }
 
 /// Tail one file. Returns how many events it spooled, for the health record.
@@ -231,13 +271,68 @@ async fn process_file(
             None => return Ok(0), // outside the backfill window
         },
     };
+
+    // A resumed cursor whose recorded path has CHANGED is either a rotation
+    // (same file, new name — resume it) or INODE REUSE (the old file was
+    // unlinked, freeing its inode for an unrelated new one — do not).
+    // `CursorStore::resume` can only rule out the case where the recorded path
+    // still exists and still holds this inode, and in a real reuse the old file
+    // is gone, which is precisely how its inode came to be free. So that guard
+    // never fired for the case it was named after, and a dead file's offset was
+    // applied to different content: its opening bytes skipped, and
+    // `agent_start_emitted` carried over so the new session never announced
+    // itself and never appeared in the product at all.
+    //
+    // Checked only on this branch. The overwhelmingly common poll finds the
+    // path unchanged and pays nothing.
+    if cursor.path != path
+        && let Some(recorded) = cursor.head_fingerprint
+    {
+        let head = read_range(path, 0, cursor::HEAD_FINGERPRINT_BYTES as u64)
+            .await
+            .unwrap_or_default();
+        if cursor::head_fingerprint(&head) != recorded {
+            tracing::warn!(
+                recorded = %cursor.path.display(),
+                found = %path.display(),
+                "inode reused by a different file; starting from zero"
+            );
+            match new_cursor(spec, path, dev, inode, &meta).await? {
+                Some(fresh) => cursor = fresh,
+                None => return Ok(0),
+            }
+        }
+    }
     cursor.path = path.to_path_buf();
 
     // A file that shrank was replaced or truncated; its offsets mean nothing.
+    //
+    // NEITHER does anything else derived from the old content, which is why
+    // this re-derives the whole cursor from the file as it is now rather than
+    // zeroing `offset` and `state` and keeping the rest. Leaving
+    // `first_line_len` behind was the sharp edge: for a `ValidatePrefix` format
+    // (Factory), `rebase_on_first_line` immediately below computes
+    // `new_len - old_len` and applies it to the offset this branch had just set
+    // to zero, so the very first read of the replaced file started at a bogus
+    // offset and skipped bytes. `agent_start_emitted` staying true was as bad
+    // in a quieter way: the server selects sessions on `agent_start`, so the
+    // replacement content would be spooled and then be absent from the product
+    // entirely, having never announced a session. `session_id`, `last_ts` and
+    // `first_seen_epoch_ms` likewise described content that is gone.
+    //
+    // `new_cursor` is used rather than blanking the fields because the correct
+    // values are all recoverable from the new content — it re-reads the header
+    // for the session and agent ids, the first-line length, the seeded state
+    // and the mtime anchor, exactly as it does for a file seen for the first
+    // time. Which is what this now is.
     if size < cursor.offset {
         tracing::warn!(file = %path.display(), size, offset = cursor.offset, "file shrank; re-reading");
-        cursor.offset = 0;
-        cursor.state = TailState::default();
+        match new_cursor(spec, path, dev, inode, &meta).await? {
+            Some(fresh) => cursor = fresh,
+            // Outside the backfill window: the replacement content is older
+            // than we collect, so there is nothing to read.
+            None => return Ok(0),
+        }
     }
 
     if spec.format.reread == RereadPolicy::ValidatePrefix {
@@ -359,6 +454,9 @@ async fn new_cursor(
         return Ok(None);
     }
 
+    let head = read_range(path, 0, cursor::HEAD_FINGERPRINT_BYTES as u64)
+        .await
+        .unwrap_or_default();
     let header = read_header(path).await.unwrap_or_default();
     let session_id = (spec.format.session_id_from_path)(path).unwrap_or_else(|| {
         // A synthetic id keeps the session distinct rather than merging it with
@@ -388,6 +486,7 @@ async fn new_cursor(
         last_ts: None,
         first_line_len: first_line_len(&header),
         first_seen_epoch_ms: mtime_epoch_ms(meta),
+        head_fingerprint: Some(cursor::head_fingerprint(&head)),
         state,
     }))
 }

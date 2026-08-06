@@ -45,6 +45,19 @@ export interface ActivePause {
   sessionId: string;
   /** Epoch ms. */
   pausedAt: number;
+  /**
+   * Epoch ms of the FIRST pause in this unbroken run, which the ceiling is
+   * measured from.
+   *
+   * `pausedAt` moves to now on every renewal, so a ceiling measured from it is
+   * not a ceiling at all: `--pause 8h` every seven hours suspends enforcement
+   * indefinitely, one legal command at a time, and each individual pause passes
+   * every check. This field is what makes 8h mean 8h. Carried forward by
+   * `writePause` while a pause is still live, and reset once one has expired —
+   * the limit is on how long enforcement can stay off in one stretch, not a
+   * daily quota.
+   */
+  firstPausedAt: number;
   /** Epoch ms. Always finite — there is no unbounded pause. */
   expiresAt: number;
   /** Free-form provenance, e.g. "cli". Recorded so the activity log can say who. */
@@ -120,11 +133,22 @@ function parseStored(raw: unknown): StoredPause | null {
   if (p.schemaVersion !== SCHEMA_VERSION) return null;
   if (typeof p.sessionId !== "string" || p.sessionId.length === 0) return null;
   if (!Number.isFinite(p.pausedAt) || !Number.isFinite(p.expiresAt)) return null;
+  const pausedAt = p.pausedAt as number;
+  // A file written before this field existed measures its ceiling from the
+  // only start it recorded. Same meaning for a pause that was never renewed.
+  const firstPausedAt = Number.isFinite(p.firstPausedAt) ? (p.firstPausedAt as number) : pausedAt;
   return {
     schemaVersion: SCHEMA_VERSION,
     sessionId: p.sessionId,
-    pausedAt: p.pausedAt as number,
-    expiresAt: p.expiresAt as number,
+    pausedAt,
+    firstPausedAt,
+    // Clamped at READ time, not only at write. The ceiling has to hold against
+    // a file this process did not write: `~/.failproofai/state/sessions/` is
+    // owner-writable by design, and an `expiresAt` a year out would otherwise
+    // be honoured on every subsequent tool call forever. Enforcing it here
+    // means the bound is a property of the pause, not of the path that created
+    // it.
+    expiresAt: Math.min(p.expiresAt as number, firstPausedAt + PAUSE_CEILING_MS),
     setBy: typeof p.setBy === "string" ? p.setBy : "unknown",
     ...(typeof p.cwd === "string" ? { cwd: p.cwd } : {}),
   };
@@ -160,10 +184,17 @@ export function writePause(opts: {
   now?: number;
 }): ActivePause {
   const now = opts.now ?? Date.now();
+  // Carry the run's original start forward while a pause is still live, so a
+  // renewal extends the same stretch rather than starting a fresh ceiling.
+  const existing = readActivePause(opts.sessionId, now);
+  const firstPausedAt = existing?.firstPausedAt ?? now;
   const pause: ActivePause = {
     sessionId: opts.sessionId,
     pausedAt: now,
-    expiresAt: now + opts.durationMs,
+    firstPausedAt,
+    // The requested duration, but never past the ceiling measured from the
+    // start of the run. A renewal can shorten a pause; it cannot outrun 8h.
+    expiresAt: Math.min(now + opts.durationMs, firstPausedAt + PAUSE_CEILING_MS),
     setBy: opts.setBy ?? "cli",
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
   };

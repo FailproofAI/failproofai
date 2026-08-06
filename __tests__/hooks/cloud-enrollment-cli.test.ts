@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -330,7 +330,37 @@ describe("--disconnect means disconnect", () => {
     expect(r.exitCode).toBe(0);
     expect(readCloudCredentials()).toBeNull();
     expect(readIngestCredential()).toBeNull();
-    expect(r.lines.join("\n")).toMatch(/stop being sent/);
+    expect(r.lines.join("\n")).toMatch(/No new hook activity or transcripts will be queued/);
+  });
+
+  it("names the restart rather than claiming a running daemon already stopped", async () => {
+    // It used to print "Hook activity and transcripts stop being sent", which
+    // was not true yet: the collector manager starts once for the daemon's
+    // lifetime (`main.rs`) and the uploader caches its bearer key at
+    // construction, so a running failproofaid never notices the credential
+    // file disappear. The claim only became true at the next daemon start.
+    await runConnectCommand({ ...base, machineId: "m-1" });
+    const text = runDisconnectCommand().lines.join("\n");
+    expect(text).toMatch(/restart it to stop the current process/);
+    expect(text).not.toMatch(/transcripts stop being sent/);
+  });
+
+  it("stops ENFORCING cloud-managed policies, not just refreshing them", async () => {
+    // Clearing the credential ends polling. Every artifact already on disk
+    // stayed referenced by active.json and kept being loaded on every tool
+    // call, so a machine that had deliberately left its organisation went on
+    // being governed by whatever generation was current when it left.
+    await runConnectCommand({ ...base, machineId: "m-1" });
+    const managedRoot = resolve(dir, "home", "policies", "cloud-policies");
+    mkdirSync(managedRoot, { recursive: true });
+    writeFileSync(
+      resolve(managedRoot, "active.json"),
+      JSON.stringify({ schemaVersion: 1, generation: 4, policies: [] }),
+    );
+
+    runDisconnectCommand();
+
+    expect(existsSync(resolve(managedRoot, "active.json"))).toBe(false);
   });
 });
 

@@ -294,7 +294,40 @@ export async function evaluateHookEvent(
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add
       // only the paths referenced by the atomically active generation.
-      const cloudManagedPolicies = readActiveCloudManagedPolicies();
+      //
+      // Wrapped, like `readConfigAt` and `readActivePause` above it. This call
+      // has fourteen throw sites — a malformed manifest, an unsafe id, an
+      // integrity mismatch, an unknown effect — and it sat bare inside a `try`
+      // whose only handler is a `finally`, so any of them aborted the entire
+      // evaluation. What that cost depended on where the hook ran, and none of
+      // the outcomes were the intended one: on a daemon machine the client
+      // fail-closed denies every tool call, and off the daemon path the throw
+      // reaches `bin/failproofai.mjs`'s outer catch, which exits 2 with nothing
+      // on stdout — a deny on Claude and Factory, but a logged warning followed
+      // by an ALLOW on Copilot, Cursor, Goose, Pi and Hermes, which read a
+      // decision off stdout and ignore the exit code. One corrupt byte was
+      // either a permanent machine-wide lockout or silent non-enforcement,
+      // depending on the CLI.
+      //
+      // Failing open here degrades ONE layer: builtins and local custom
+      // policies were already registered above and keep enforcing. That is the
+      // same trade `2ad735e5` made on the Rust side, and it is strictly better
+      // than the status quo, which already failed open on five of the twelve —
+      // just accidentally, and without saying so.
+      let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      try {
+        cloudManagedPolicies = readActiveCloudManagedPolicies();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        hookLogWarn(
+          `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
+            `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
+        );
+        void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
+          event_type: eventType,
+          cli,
+        });
+      }
       // Recorded on every row once a machine is managed, whether or not a cloud
       // policy decided this event: "what was deployed here at the time" is a
       // separate question from "what decided", and only the former can tell a

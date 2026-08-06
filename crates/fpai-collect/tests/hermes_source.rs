@@ -985,6 +985,7 @@ fn a_hermes_home_pointing_at_a_profile_climbs_back_to_the_root() {
 
 fn spec(db: PathBuf, spool: PathBuf, state: PathBuf) -> sqlitepoll::Spec {
     sqlitepoll::Spec {
+        health_key: None,
         format: hermes::FORMAT,
         db_path: db,
         spool_dir: spool,

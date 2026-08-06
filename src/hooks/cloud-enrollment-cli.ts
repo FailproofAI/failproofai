@@ -13,7 +13,8 @@ import {
   writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
-import { daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
+import { daemonRestartCommand, daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
+import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
@@ -209,24 +210,42 @@ export function runDisconnectCommand(): CommandResult {
   // leave the machine still shipping activity to a cloud the user believes
   // they have left — the one outcome nobody expects from this command.
   const removedIngest = clearIngestCredential();
+  // Stop ENFORCING them too, not merely refreshing them. Clearing the
+  // credential ends the daemon's polling; every artifact already on disk stayed
+  // referenced by `active.json` and kept being loaded on every tool call — so a
+  // machine that had deliberately left its organisation went on being governed
+  // by whatever generation was current when it left, indefinitely, while
+  // `--status` reported it as unconnected.
+  const stoppedManaged = clearActiveCloudManagedPolicies();
   // Back to OSS. Leaving mode = "cloud" with no credentials would describe a
   // machine that does not exist, and every cloud code path keys off this flag
   // rather than off "is a token lying around" precisely so that a disconnected
   // machine is provably silent instead of silent-by-happenstance.
   updateConfig({ mode: "oss" });
 
-  if (!removed && !existing && !hadIngest) {
+  if (!removed && !existing && !hadIngest && !stoppedManaged) {
     return { exitCode: 0, lines: ["This machine is not connected to Failproof Cloud."] };
   }
 
   const lines = [
     "Disconnected from Failproof Cloud.",
     "",
-    "  Cloud-managed policies already on disk stop being refreshed. Local",
-    "  builtin, custom and convention policies are unaffected.",
+    stoppedManaged
+      ? "  Cloud-managed policies stop being enforced and stop being refreshed.\n" +
+        "  Local builtin, custom and convention policies are unaffected."
+      : "  Local builtin, custom and convention policies are unaffected.",
   ];
   if (removedIngest) {
-    lines.push("  Hook activity and transcripts stop being sent.");
+    // Named honestly. The collector manager starts once for the daemon's
+    // lifetime (`main.rs`) and the uploader caches its bearer key at
+    // construction, so nothing already running notices this file disappear —
+    // "stop being sent" was true only of the NEXT daemon start. Telling the
+    // user the step that makes it true beats a claim that quietly is not.
+    lines.push(
+      "  No new hook activity or transcripts will be queued. A running failproofaid",
+      "  keeps the key it started with, so restart it to stop the current process",
+      `  sending: ${daemonRestartCommand() ?? "restart failproofaid"}`,
+    );
   }
   return { exitCode: 0, lines };
 }

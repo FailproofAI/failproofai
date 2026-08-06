@@ -212,7 +212,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "config"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -252,12 +252,6 @@ COMMANDS
     --custom, -c                   Clear all explicit custom policy paths
 
   policies --help, -h            Show this help for the policies command
-
-  auth                           Sign in / out of FailproofAI from the CLI.
-    login                          Email + OTP flow; writes ~/.failproofai/auth.json
-    logout                         Revoke this session and remove auth.json
-    whoami                         Print the currently authenticated identity
-  auth --help, -h                Show this help for the auth command
 
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
@@ -321,8 +315,8 @@ LINKS
   //                     tool call, and a wizard on that path would hang an agent
   //   --version/--help  answering "what is this" must not require setup
   //   config            IS the wizard
-  //   policies/policy/  explicit configuration actions. Intercepting these would
-  //   auth              fight the intent the user just stated, and would break
+  //   policies/policy   explicit configuration actions. Intercepting these would
+  //                     fight the intent the user just stated, and would break
   //                     non-interactive scripts that call them to do setup.
   //
   // `maybeFirstRunConfigure` is itself a no-op on a configured machine, on a
@@ -682,19 +676,6 @@ EXAMPLES
     process.exit(0);
   }
 
-  // auth — email-OTP login flow against the FailproofAI api-server.
-  if (args[0] === "auth") {
-    lastSubcommand = "auth";
-    const { runAuthCli } = await import("../src/auth/cli");
-    await runAuthCli(args.slice(1));
-    await track("cli_auth_invoked", {
-      args_count: args.length - 1,
-      subcommand: args[1] ?? "help",
-      exit_code: process.exitCode ?? 0,
-    });
-    process.exit(process.exitCode ?? 0);
-  }
-
   // audit — scan local agent-CLI history, then launch the dashboard at /audit.
   if (args[0] === "audit") {
     lastSubcommand = "audit";
@@ -890,21 +871,7 @@ FAILPROOF CLOUD
                                     Connect this machine to Failproof Cloud
                                     [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
-  failproofai config --status       Show connection, reports and pause state
-
-EMAILED AUDIT REPORTS
-  failproofai config --email        Email me when a scheduled scan finds
-                                    something harmful still getting through
-  failproofai config --no-email     Stop, and forget the address
-
-  Needs a connected machine and a signed-in session (\`failproofai auth login\`):
-  the cloud renders and sends the mail, scoped to your organisation. A machine
-  that named its own recipient would be an open mail relay, so there is no
-  offline version of this.
-
-  The upload is counts only — rule ids, hit counts, how many projects each
-  fired in, timestamps. No paths, commands, prompts or transcript text. You are
-  mailed only when something harmful is found; a clean week is silent.
+  failproofai config --status       Show connection and pause state
 
   One connection, two capabilities: this machine PULLS centrally-managed
   policies and SENDS what its hooks decided, so the dashboard shows the fleet
@@ -994,32 +961,6 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       return;
     }
 
-    // Emailed scan reports. A separate switch from --connect on purpose:
-    // connecting is about policy and dashboard activity, while this is consent
-    // to be mailed, and bundling the two would opt every connected fleet into
-    // mail nobody asked for.
-    const wantsEmail = args.includes("--email");
-    const wantsNoEmail = args.includes("--no-email");
-    if (wantsEmail || wantsNoEmail) {
-      if (wantsEmail && wantsNoEmail) {
-        throw new CliError("--email and --no-email cannot be combined.");
-      }
-      const { runEmailReportsOnCommand, runEmailReportsOffCommand } = await import(
-        "../src/hooks/email-reports-cli"
-      );
-      const result = wantsEmail ? runEmailReportsOnCommand() : runEmailReportsOffCommand();
-      for (const line of result.lines) {
-        if (result.exitCode === 0) console.log(line);
-        else console.error(line);
-      }
-      await track("cli_email_reports_toggled", {
-        action: wantsEmail ? "on" : "off",
-        ok: result.exitCode === 0,
-      });
-      await exitAfterFlush(result.exitCode);
-      return;
-    }
-
     const pauseIdx = args.indexOf("--pause");
     const wantsResume = args.includes("--resume");
     const wantsStatus = args.includes("--status");
@@ -1053,8 +994,6 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         // Always printed, including where reports can never work: "why am I
         // not getting them?" is the question --status exists to answer, and an
         // omitted line answers it with silence.
-        const { emailReportStatusLines } = await import("../src/hooks/email-reports-cli");
-        for (const line of emailReportStatusLines()) console.log(line);
         console.log("");
       }
       for (const line of result.lines) {
@@ -1091,25 +1030,27 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     return;
   }
 
+  // Shared by both "unknown thing" guards below, so a mistyped SUBCOMMAND gets
+  // the same nearest-match treatment a mistyped flag already got.
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    return dp[m][n];
+  }
+
   // Unknown flag guard — must appear after all known-flag branches
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
 
   if (unknownFlag) {
-    function levenshtein(a, b) {
-      const m = a.length, n = b.length;
-      const dp = Array.from({ length: m + 1 }, (_, i) =>
-        Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-      );
-      for (let i = 1; i <= m; i++)
-        for (let j = 1; j <= n; j++)
-          dp[i][j] = a[i - 1] === b[j - 1]
-            ? dp[i - 1][j - 1]
-            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-      return dp[m][n];
-    }
-
-    const primary = ["--version", "--help", "--hook", "policies", "policy", "auth", "audit"];
+    const primary = ["--version", "--help", "--hook", "policies", "policy", "audit"];
     const closest = primary.reduce((best, flag) => {
       const dist = levenshtein(unknownFlag, flag);
       return dist < best.dist ? { flag, dist } : best;
@@ -1125,9 +1066,21 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
   // Unknown subcommand guard (non-flag args that aren't a known subcommand)
   const unknownSubcommand = args.find(a => !a.startsWith("-") && !SUBCOMMANDS.includes(a));
   if (unknownSubcommand) {
+    // Nearest match rather than a hardcoded "policies", which was wrong for
+    // every input that was not a typo of it. `auth` made that concrete: it was
+    // a real subcommand until this release, so an old script or plain muscle
+    // memory lands here, and answering "did you mean policies?" sends someone
+    // to the one command that has nothing to do with what they typed.
+    const nearest = SUBCOMMANDS.reduce(
+      (best, name) => {
+        const dist = levenshtein(unknownSubcommand, name);
+        return dist < best.dist ? { name, dist } : best;
+      },
+      { name: SUBCOMMANDS[0], dist: Infinity },
+    );
     throw new CliError(
       `Unknown command: ${unknownSubcommand}\n` +
-      `Did you mean: failproofai policies?\n` +
+      `Did you mean: failproofai ${nearest.name}?\n` +
       `Run \`failproofai --help\` for usage details.`
     );
   }

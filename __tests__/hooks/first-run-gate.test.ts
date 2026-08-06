@@ -36,12 +36,11 @@ describe("shouldOfferFirstRun", () => {
   it("never interrupts the configuration subcommands", () => {
     // These ARE setup. A wizard in front of them overrides a stated intent and
     // hangs any script that calls them non-interactively.
-    for (const sub of ["config", "policies", "policy", "auth"]) {
+    for (const sub of ["config", "policies", "policy"]) {
       expect(shouldOfferFirstRun([sub])).toBe(false);
     }
     expect(shouldOfferFirstRun(["policies", "--install", "--cli", "claude"])).toBe(false);
     expect(shouldOfferFirstRun(["policy", "add", "block-sudo"])).toBe(false);
-    expect(shouldOfferFirstRun(["auth", "login"])).toBe(false);
   });
 
   it("only exempts a configuration word in the SUBCOMMAND position", () => {

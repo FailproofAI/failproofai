@@ -69,7 +69,7 @@ La page `/audit` est une **affiche** plein écran partageable, suivie de quatre 
 2. **`// strengths`** — ce que votre agent fait déjà bien, exprimé en chiffres réels issus de l'analyse (ex. : taux d'appels d'outils propres, `0` tentative de push sur main), affiché uniquement lorsque la politique concernée affiche un bilan sans faille.
 3. **`// quirks`** — ce qui a échappé : un tableau classé des comportements que failproofai aurait détectés — *quand* c'est arrivé la dernière fois, *ce qui a échappé* (et la politique intégrée qui l'aurait bloqué), sa *sévérité*, et la fréquence à laquelle c'a été *observé* (`new` / `recurring` / `N× seen`).
 4. **`// how to improve`** — la liste des correctifs recommandés : une ligne par politique avec un `failproofai policy add <slug>` à copier-coller, ainsi qu'un bouton **install all** qui active toutes les recommandations en une fois et affiche votre **score projeté** si vous le faisiez.
-5. **`// come back better`** — ancrez la bonne habitude : définissez un **rappel** par e-mail pour un nouvel audit (`3d` / `7d` / `14d` / `30d`) ou relancez l'audit maintenant, et **invitez un ami** à effectuer son propre audit (envoyé depuis failproof.ai, en Cc à vous). Les rappels et invitations nécessitent une connexion — voir [`failproofai auth`](/fr/cli/auth).
+5. **`// come back better`** — ancrez la bonne habitude : définissez un **rappel** par e-mail pour un nouvel audit (`3d` / `7d` / `14d` / `30d`) ou relancez l'audit maintenant, et **invitez un ami** à effectuer son propre audit (envoyé depuis failproof.ai, en Cc à vous). Les rappels et invitations nécessitent une connexion.
 
 ## Détecteurs exclusifs à l'audit
 

@@ -2,9 +2,8 @@
  * Persistence layer for the FailproofAI auth.json file.
  *
  * Tokens live at ~/.failproofai/auth.json with mode 0600. The dashboard's
- * Next.js API routes and the CLI both read/write through here so the user's
- * session survives across `failproofai` (dashboard) and `failproofai auth`
- * (CLI) invocations.
+ * Next.js API routes read and write through here, so a session survives across
+ * dashboard runs.
  */
 
 import { existsSync, readFileSync, rmSync } from "node:fs";

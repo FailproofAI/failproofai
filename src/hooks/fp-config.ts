@@ -185,20 +185,6 @@ export interface FpConfig {
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
-  email: {
-    /**
-     * Send this machine's scheduled-scan findings to Failproof Cloud so it can
-     * email a report when something harmful is still getting through.
-     *
-     * OFF by default and gated on `mode = "cloud"`. The boolean lives HERE, in
-     * the world-readable config, while the address it was agreed against lives
-     * in `credentials.toml` — see `FpCredentials.email`. It is the *consent*
-     * gate, not a preference: the server resolves recipients from org
-     * membership and has no idea whether anyone on this machine asked to be
-     * mailed, so if this flag did not stop the upload, nothing local would.
-     */
-    reports: boolean;
-  };
 }
 
 /**
@@ -246,7 +232,6 @@ export const DEFAULT_CONFIG: FpConfig = {
   },
   telemetry: { enabled: true },
   audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
-  email: { reports: false },
 };
 
 export function readConfig(): FpConfig {
@@ -257,7 +242,6 @@ export function readConfig(): FpConfig {
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
     const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
     const audit = (parsed.audit ?? {}) as Record<string, unknown>;
-    const email = (parsed.email ?? {}) as Record<string, unknown>;
     return {
       // Anything unrecognised reads as `oss`. The failure direction matters:
       // a corrupt config must not be able to turn cloud reporting ON.
@@ -288,7 +272,6 @@ export function readConfig(): FpConfig {
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
       // mailing a report nobody asked for to an org address it never sees.
-      email: { reports: email.reports === true },
     };
   } catch {
     return structuredClone(DEFAULT_CONFIG);
@@ -350,22 +333,6 @@ export function writeConfig(config: FpConfig): void {
     `auto = ${config.audit.auto}`,
     `interval_days = ${config.audit.intervalDays}`,
   );
-  // Written unconditionally, like [audit] and unlike [telemetry] — this is the
-  // switch that decides whether anything about this machine's scan leaves it,
-  // so it has to be findable in the file rather than inferable from its
-  // absence. `credentials.toml` carries a matching [email] block holding the
-  // address; only the boolean belongs here, because config.toml inherits the
-  // umask and lands 0664 — an address there is readable by every local user.
-  lines.push(
-    "",
-    "[email]",
-    "# Send scheduled-scan findings to Failproof Cloud so it can email a report",
-    "# when something harmful is still getting through. OFF by default, and",
-    "# ignored entirely unless [mode] kind = \"cloud\". Turn it on with",
-    "# `failproofai config --email`, which checks this machine is enrolled and",
-    "# signed in first. The address is NOT here — see credentials.toml.",
-    `reports = ${config.email.reports}`,
-  );
   writeFileAt(configFile(), lines.join("\n") + "\n");
 }
 
@@ -376,7 +343,6 @@ export function updateConfig(patch: {
   collector?: Partial<FpConfig["collector"]>;
   telemetry?: Partial<FpConfig["telemetry"]>;
   audit?: Partial<FpConfig["audit"]>;
-  email?: Partial<FpConfig["email"]>;
 }): FpConfig {
   const current = readConfig();
   const next: FpConfig = {
@@ -385,7 +351,6 @@ export function updateConfig(patch: {
     collector: { ...current.collector, ...patch.collector },
     telemetry: { ...current.telemetry, ...patch.telemetry },
     audit: { ...current.audit, ...patch.audit },
-    email: { ...current.email, ...patch.email },
   };
   writeConfig(next);
   return next;
@@ -413,24 +378,6 @@ export interface FpCredentials {
   org?: { id?: string; slug?: string; name?: string };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
-  /**
-   * The OTP-verified address this machine's scan reports were opted in under.
-   *
-   * NOT a recipient. Nothing on the wire names one — the payload has no
-   * recipient field by design, and the server resolves who to mail from org
-   * membership, so a machine can never direct mail at an address it chose. This
-   * is the record of WHOSE consent the opt-in in `config.toml` represents, so
-   * `--status` can show it and so a different person signing in on this machine
-   * is visible rather than silent.
-   *
-   * It lives here rather than beside the boolean because `config.toml` inherits
-   * the umask (0664 on a normal machine) and an email address is exactly the
-   * kind of thing a screen-shared `cat config.toml` should not spill.
-   * `credentials.toml` is 0600. It is copied from `auth.json`'s verified
-   * session rather than typed, so there is never a second, unverified email
-   * field for the two to disagree about.
-   */
-  email?: { verifiedFor: string };
 }
 
 export function readCredentials(): FpCredentials {
@@ -470,10 +417,6 @@ export function readCredentials(): FpCredentials {
         expiresAt: typeof auth.expires_at === "number" ? auth.expires_at : undefined,
         email: typeof auth.email === "string" ? auth.email : undefined,
       };
-    }
-    const email = parsed.email as Record<string, unknown> | undefined;
-    if (email && typeof email.verified_for === "string" && email.verified_for) {
-      out.email = { verifiedFor: email.verified_for };
     }
     return out;
   } catch {
@@ -525,15 +468,6 @@ export function writeCredentials(creds: FpCredentials): void {
     if (creds.auth.sessionToken) lines.push(`session_token = ${JSON.stringify(creds.auth.sessionToken)}`);
     if (creds.auth.expiresAt) lines.push(`expires_at = ${creds.auth.expiresAt}`);
     if (creds.auth.email) lines.push(`email = ${JSON.stringify(creds.auth.email)}`);
-  }
-  if (creds.email?.verifiedFor) {
-    lines.push(
-      "",
-      "# Whose sign-in the scan-report opt-in in config.toml was agreed under.",
-      "# Never sent anywhere: the server picks recipients from org membership.",
-      "[email]",
-      `verified_for = ${JSON.stringify(creds.email.verifiedFor)}`,
-    );
   }
 
   const home = failproofaiHome();

@@ -112,10 +112,10 @@ export function colorsEnabled(out: TTYOut): boolean {
 
 /**
  * The raw ANSI opening sequence for a brand role, for callers that assemble
- * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`,
- * `src/auth/cli.ts`). Those files previously hardcoded their own 256-colour
- * palette — a green and a blue that appear nowhere in the brand — so `audit`
- * and `auth` looked like different products from `config`. Routing them here
+ * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`).
+ * That file previously hardcoded its own 256-colour palette — a green and a
+ * blue that appear nowhere in the brand — so `audit` looked like a different
+ * product from `config`. Routing it here
  * keeps HUES the single source of truth: change a hue once and every surface
  * follows. Emits truecolor where the terminal advertises it, basic ANSI
  * otherwise; the caller still decides *whether* to colour at all.

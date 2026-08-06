@@ -12,16 +12,14 @@
  * emerald switch /policies uses (PolicyToggle), inline `var(--…)` colours, and
  * the shared `toast()`. No new design language, colour, or component library.
  *
- * All writes go through server actions that call `updateConfig` /
- * `runEmailReports*` — never a raw file write — so the CLI and dashboard cannot
- * diverge. The parity mapping is documented on each action module.
+ * All writes go through server actions that call `updateConfig` — never a raw
+ * file write — so the CLI and dashboard cannot diverge. The parity mapping is
+ * documented on each action module.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getScheduledAuditAction, type ScheduledAuditView } from "@/app/actions/get-scheduled-audit";
 import { setAutoAuditAction, setAuditIntervalAction } from "@/app/actions/update-scheduled-audit";
-import { getEmailReportsAction, type EmailReportsView } from "@/app/actions/get-email-reports";
-import { setEmailReportsAction } from "@/app/actions/update-email-reports";
 import { triggerRun, RerunError } from "@/app/audit/_components/rerun-button";
 import { AuthDialog } from "@/app/audit/_components/auth-dialog";
 import { toast } from "@/app/components/toast";
@@ -426,202 +424,18 @@ function ScheduledAuditSection({
   );
 }
 
-// ── email reports section ────────────────────────────────────────────────────
-
-function EmailReportsSection({
-  view,
-  onReload,
-}: {
-  view: EmailReportsView;
-  onReload: () => Promise<void>;
-}) {
-  const [reportsOn, setReportsOn] = useState(view.reportsOn);
-  const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState<string[] | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-
-  useEffect(() => setReportsOn(view.reportsOn), [view.reportsOn]);
-
-  const onToggle = useCallback(async () => {
-    const next = !reportsOn;
-    setReportsOn(next); // optimistic
-    setSaving(true);
-    setRefusal(null);
-    try {
-      // Delegates to runEmailReportsOn/OffCommand — the same rules the CLI uses.
-      const res = await setEmailReportsAction(next);
-      if (res.exitCode === 0) {
-        toast(next ? "Emailed reports on." : "Emailed reports off.");
-        await onReload();
-      } else {
-        // A refusal (e.g. a race that lost enrolment, or no verified address).
-        // Show the command's own explanation verbatim rather than a generic error.
-        setReportsOn(!next);
-        setRefusal(res.lines);
-      }
-    } catch {
-      setReportsOn(!next);
-      toast("Could not save that.");
-    } finally {
-      setSaving(false);
-    }
-  }, [reportsOn, onReload]);
-
-  const onAuthed = useCallback(async () => {
-    setAuthOpen(false);
-    await onReload(); // now signed in — re-derive which control to show
-  }, [onReload]);
-
-  const verifiedMismatch =
-    view.verifiedFor && view.signedInEmail && view.verifiedFor !== view.signedInEmail;
-
-  return (
-    <div className="panel" style={{ padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h3 style={SECTION_TITLE}>Email reports</h3>
-          <p style={MUTED}>Get emailed when a scheduled scan finds something harmful.</p>
-        </div>
-        <div>
-          {!view.cloudEnrolled ? (
-            <Pill tone="muted">not connected</Pill>
-          ) : reportsOn ? (
-            <Pill tone="ok">on</Pill>
-          ) : (
-            <Pill tone="muted">off</Pill>
-          )}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        {/* State 1: not cloud-enrolled — email is impossible. Say why, plainly. */}
-        {!view.cloudEnrolled ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={BODY}>
-              Emailed reports need a connection to Failproof Cloud. The report is rendered and sent
-              by the cloud from a summary this machine uploads — without an enrolment there is no
-              organisation to scope it to and no verified address to send to, and a local-only
-              machine naming its own recipient would be an open mail relay. So there is no offline
-              version of this.
-            </p>
-            <p style={MUTED}>
-              Connect this machine, then come back:{" "}
-              <Cmd>failproofai config --connect &lt;url&gt; --token &lt;key&gt;</Cmd>
-            </p>
-          </div>
-        ) : !view.signedInEmail ? (
-          /* State 2: enrolled but signed out — lead into the EXISTING login flow. */
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={BODY}>
-              Reports go to the address you verify by one-time code — never a second address typed
-              here. Sign in to route them to your verified email.
-            </p>
-            <div>
-              <button type="button" className="btn btn-primary" onClick={() => setAuthOpen(true)}>
-                [ sign in ]
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* State 3: enrolled + signed in — the real control. */
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ marginTop: 2 }}>
-                <Toggle
-                  enabled={reportsOn}
-                  onChange={onToggle}
-                  disabled={saving}
-                  label={reportsOn ? "Turn off emailed reports" : "Turn on emailed reports"}
-                />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ ...BODY, color: "var(--ink)" }}>
-                  {reportsOn ? "Emailing harmful findings" : "Email me harmful findings"}, agreed
-                  under <span style={{ color: "var(--accent-pink)" }}>{view.verifiedFor ?? view.signedInEmail}</span>.
-                </p>
-                <p style={{ ...BODY, marginTop: 6 }}>
-                  A scan uploads counts only — rule ids, hit counts, how many projects each fired
-                  in, and timestamps. Never a file path, a command, a prompt, or anything from a
-                  transcript. Recipients are resolved by the server from your organisation, so this
-                  address is a record of consent, not a target.
-                </p>
-                <p style={{ ...BODY, marginTop: 6 }}>
-                  You are emailed <span style={CODE}>only</span> when a scan finds something harmful
-                  still getting through. A clean week is silent — that&apos;s expected, not a
-                  breakage.
-                </p>
-              </div>
-            </div>
-
-            {refusal && (
-              <div
-                style={{
-                  border: "1px solid var(--accent-pink)",
-                  borderLeftWidth: 3,
-                  background: "var(--accent-pink-bg)",
-                  padding: "10px 12px",
-                }}
-              >
-                {refusal.map((line, i) => (
-                  <p key={i} style={{ ...BODY, color: line ? "var(--ink)" : undefined, margin: 0, minHeight: line ? undefined : 8 }}>
-                    {line}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {!view.autoAuditOn && (
-              <p style={{ ...BODY, color: "var(--amber)" }}>
-                Scheduled scanning is off, so no scan is produced to report. Turn it on above.
-              </p>
-            )}
-            {verifiedMismatch && (
-              <p style={{ ...BODY, color: "var(--amber)" }}>
-                Signed in as {view.signedInEmail}, which isn&apos;t who opted in ({view.verifiedFor}
-                ). Toggle off and on again to re-confirm under this address.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* The exact CLI status text, surfaced so the two stay legibly in sync. */}
-        {view.statusLines.length > 0 && (
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--line)" }}>
-            {view.statusLines.map((line, i) => (
-              <p key={i} style={MUTED}>
-                {line}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <AuthDialog
-        open={authOpen}
-        headline="sign in to route reports"
-        subhead="we'll send a one-time code to your email to confirm."
-        source="settings_email_reports"
-        onClose={() => setAuthOpen(false)}
-        onAuthed={onAuthed}
-      />
-    </div>
-  );
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsClient() {
   const [scheduled, setScheduled] = useState<ScheduledAuditView | null>(null);
-  const [email, setEmail] = useState<EmailReportsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const mounted = useRef(true);
 
   const reload = useCallback(async () => {
-    const [s, e] = await Promise.all([getScheduledAuditAction(), getEmailReportsAction()]);
+    const s = await getScheduledAuditAction();
     if (!mounted.current) return;
     setScheduled(s);
-    setEmail(e);
   }, []);
 
   useEffect(() => {
@@ -661,15 +475,12 @@ export default function SettingsClient() {
 
         {loading ? (
           <p style={MUTED}>Loading…</p>
-        ) : error || !scheduled || !email ? (
+        ) : error || !scheduled ? (
           <p style={{ ...BODY, color: "var(--accent-pink)" }}>
             Could not load settings. Refresh to try again.
           </p>
         ) : (
-          <>
-            <ScheduledAuditSection view={scheduled} onReload={reload} />
-            <EmailReportsSection view={email} onReload={reload} />
-          </>
+          <ScheduledAuditSection view={scheduled} onReload={reload} />
         )}
       </section>
     </main>

@@ -3,7 +3,7 @@
  *
  * Returns the currently signed-in identity by reading the local
  * `~/.failproofai/auth.json` cache. No round-trip to the api-server — the
- * file is the source of truth, same as the CLI's `failproofai auth whoami`.
+ * file is the source of truth for who is signed in on this machine.
  * This keeps the dashboard UI and the CLI consistent regardless of whether
  * the api-server is reachable.
  *

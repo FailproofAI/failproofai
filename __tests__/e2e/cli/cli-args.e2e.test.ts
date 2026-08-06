@@ -78,6 +78,22 @@ describe("top-level: unknown command", () => {
     const result = runCli("unknowncommand");
     expect(result.stderr).toContain("failproofai policies");
   });
+
+  it("suggests the NEAREST subcommand, not a hardcoded one", () => {
+    // The suggestion was the literal string "policies" for every input, which
+    // was right only when the typo happened to be a typo of that word.
+    expect(runCli("confg").stderr).toContain("failproofai config");
+    expect(runCli("audits").stderr).toContain("failproofai audit");
+  });
+
+  it("points a stale `auth` at audit rather than somewhere unrelated", () => {
+    // `auth` was a real subcommand until it was removed, so an old script or
+    // plain muscle memory lands here. It must not be answered with the one
+    // command that has nothing to do with what was typed.
+    const result = runCli("auth", "login");
+    assertCleanError(result, "Unknown command: auth");
+    expect(result.stderr).toContain("failproofai audit");
+  });
 });
 
 describe("top-level: unknown flag", () => {

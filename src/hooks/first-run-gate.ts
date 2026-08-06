@@ -15,16 +15,15 @@
 /**
  * Subcommands that must never be interrupted by onboarding.
  *
- * All four are configuration actions in their own right: `config` IS the
- * wizard, and `policies` / `policy` / `auth` are the non-interactive way to do
- * setup. Putting a wizard in front of them would override an intent the user
- * just stated, and would hang any script that calls them.
+ * All three are configuration actions in their own right: `config` IS the
+ * wizard, and `policies` / `policy` are the non-interactive way to do setup.
+ * Putting a wizard in front of them would override an intent the user just
+ * stated, and would hang any script that calls them.
  */
 export const FIRST_RUN_EXEMPT_SUBCOMMANDS: readonly string[] = [
   "config",
   "policies",
   "policy",
-  "auth",
 ];
 
 export function shouldOfferFirstRun(args: readonly string[]): boolean {

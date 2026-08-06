@@ -48,8 +48,17 @@ on:
 # than a queued one — the release assets attach before the npm publish, so a run
 # killed between them leaves a tag whose binaries exist and whose package does
 # not.
+# A CONSTANT group, not one keyed on `github.ref`. The two triggers this block
+# exists to serialize never share a ref — `release: published` runs as
+# `refs/tags/vX.Y.Z` and `workflow_dispatch` as `refs/heads/main` — so
+# `publish-${{ github.ref }}` put them in DIFFERENT groups and queued neither
+# behind the other, which is precisely the pair the comment above describes.
+# `npm view` reads through a cache documented to lag up to two minutes, so both
+# could pass the preflight's "this version is unpublished" check and proceed.
+# Nothing about this pipeline is per-ref anyway: the version-bump push races on
+# `main` whatever ref produced it.
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish
   cancel-in-progress: false
 
 jobs:
@@ -442,9 +451,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          # Persist the app token so the version-bump `git push origin main`
-          # below authenticates as the bypass actor, not the default token.
-          token: ${{ steps.app-token.outputs.token }}
+          # NOT persisted. This token bypasses the org ruleset on `main`, and
+          # persisting it writes it into `.git/config` for the whole job — where
+          # it sat, readable, through `bun install` (which runs `prepare`, a full
+          # Next build) and every dependency lifecycle script, long before the
+          # one step at the end that actually needs it. Any compromised
+          # build-time dependency could read it and push to `main` unreviewed.
+          # The version-bump step supplies it directly to the single `git push`
+          # that needs it instead. `ci.yml` and `build-daemon.yml` were hardened
+          # for the identical risk; this job, holding the more dangerous token,
+          # was missed.
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -513,18 +530,42 @@ jobs:
           if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
           node scripts/build-daemon-packages.mjs "${ARGS[@]}"
 
+      # Built HERE, explicitly, rather than left to the `prepare` that
+      # `npm publish` would otherwise run for us.
+      #
+      # The rebuild itself is load-bearing and must stay: `bun build` INLINES
+      # `package.json`'s version into dist/cli.mjs and dist/worker.mjs, and
+      # `daemon-download.ts` constructs the GitHub Release URL from that
+      # version — so a tarball built before the `npm version` step above would
+      # ship a CLI that reports the wrong version and downloads its daemon from
+      # the wrong tag. What changes is only WHO holds the npm token while it
+      # runs: `npm publish`'s own `prepare` inherits that step's environment, so
+      # NODE_AUTH_TOKEN was exported into a full Next build and every
+      # dependency it loads. Splitting the build out keeps the token scoped to
+      # the one command that needs a registry credential.
+      #
+      # Order is unchanged — this still runs after `npm version` and after the
+      # daemon artifacts land in RUNNER_TEMP (never the checkout, so Next's file
+      # tracing cannot sweep them into `.next/standalone`).
+      - name: Build the tarball contents
+        run: bun run build
+
       - name: Publish
         env:
           DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # --ignore-scripts: the build above already produced exactly what
+          # `prepare` would have. Re-running it here is what put the publish
+          # token inside the bundler. The sibling `cli-tarball` job already
+          # packs with --ignore-scripts for this reason.
           if [[ "$DRY_RUN" == "true" ]]; then
             # --provenance is dropped here on purpose: attestation is a
             # registry-side write that has nothing to validate in a dry run.
-            npm publish --dry-run --tag "$DIST_TAG"
+            npm publish --dry-run --ignore-scripts --tag "$DIST_TAG"
           else
-            npm publish --provenance --tag "$DIST_TAG"
+            npm publish --provenance --ignore-scripts --tag "$DIST_TAG"
           fi
 
       - name: Publish alias packages
@@ -625,6 +666,9 @@ jobs:
           (github.event_name == 'release' || github.ref_name == 'main')
         env:
           NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
+          # Scoped to this step alone rather than persisted in `.git/config` for
+          # the whole job — see the checkout above.
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -661,9 +705,16 @@ jobs:
           git add package.json Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
 
-          # Authenticated as the version-bot App (persisted by the checkout above),
-          # which bypasses the ruleset's pull-request requirement on main.
-          git push origin main
+          # Authenticated as the version-bot App, which bypasses the ruleset's
+          # pull-request requirement on main. Passed on this one command rather
+          # than persisted in `.git/config`, so it is never on disk while build
+          # scripts run. `-c http.extraheader` is used because a token in the
+          # remote URL would be echoed by git's own error output on a failed
+          # push; `::add-mask::` covers the log, not the URL git prints.
+          echo "::add-mask::$APP_TOKEN"
+          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
+              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
       - name: Note skipped bump
         if: >-

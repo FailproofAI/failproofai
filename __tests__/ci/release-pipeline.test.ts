@@ -324,7 +324,14 @@ describe("publish.yml", () => {
     const bump = wf.jobs.publish.steps.find(
       (s: Record<string, any>) => s.name === "Bump version for next development cycle",
     );
-    expect(bump.run).toContain("git push origin main");
+    // Pushes to main — but with the app token supplied to this one command
+    // rather than persisted into `.git/config` by the checkout, where it would
+    // sit readable through `bun install`'s `prepare` build and every dependency
+    // lifecycle script. It is a ruleset-bypass credential; its exposure window
+    // should be one `git push`, not the whole job.
+    expect(bump.run).toContain("HEAD:main");
+    expect(bump.run).toContain("APP_TOKEN");
+    expect(bump.env?.APP_TOKEN).toContain("app-token");
     expect(bump.if).toContain("github.event_name == 'release'");
     expect(bump.if).toContain("github.ref_name == 'main'");
     expect(bump.if).toContain("dry_run != 'true'");
@@ -353,8 +360,53 @@ describe("publish.yml", () => {
     // bump step's unguarded `git push origin main` loses outright for one of
     // them. Never cancel-in-progress: the assets attach before the npm publish,
     // so a run killed between them leaves a tag with binaries and no package.
-    expect(wf.concurrency?.group).toBe("publish-${{ github.ref }}");
+    //
+    // The group must NOT be keyed on the ref. The two triggers never share
+    // one — `release: published` runs as `refs/tags/vX.Y.Z` and
+    // `workflow_dispatch` as `refs/heads/main` — so `publish-${{ github.ref }}`
+    // placed the exact pair this exists to serialize into different groups and
+    // queued neither. Nothing here is per-ref: the bump races on `main`
+    // whichever ref produced the run.
+    expect(wf.concurrency?.group).toBe("publish");
+    expect(wf.concurrency?.group).not.toContain("github.ref");
     expect(wf.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
+
+  it("never leaves the ruleset-bypass token on disk while build scripts run", () => {
+    // The publish job checks out with the version-bot App token, which bypasses
+    // the org ruleset's PR-and-review requirement on `main`. Persisting it
+    // writes it into `.git/config` for the whole job — and the very next step
+    // is `bun install`, which runs `prepare` (a full Next build) plus every
+    // dependency lifecycle script, all long before the one step at the end that
+    // needs the token. `ci.yml` and `build-daemon.yml` were hardened for the
+    // identical risk with the WEAKER default token; this job was missed.
+    const checkout = wf.jobs.publish.steps.find((s: Record<string, any>) =>
+      String(s.uses ?? "").startsWith("actions/checkout"),
+    );
+    expect(checkout.with?.["persist-credentials"]).toBe(false);
+    expect(checkout.with?.token).toBeUndefined();
+  });
+
+  it("keeps the npm token out of the build toolchain", () => {
+    // `npm publish` runs `prepare` — a full `next build` — and that inherits
+    // the publishing step's environment, so NODE_AUTH_TOKEN was exported into
+    // the bundler and every dependency it loads. The build is done as its own
+    // step (it must still happen AFTER `npm version`, because `bun build`
+    // inlines package.json's version into dist/cli.mjs and daemon-download.ts
+    // derives the release URL from it), and the publish then skips scripts.
+    const steps = wf.jobs.publish.steps as Record<string, any>[];
+    const buildIdx = steps.findIndex((s) => s.name === "Build the tarball contents");
+    const publishIdx = steps.findIndex((s) => s.name === "Publish");
+    const versionIdx = steps.findIndex((s) => s.name === "Set publish version in package.json");
+
+    expect(buildIdx).toBeGreaterThan(versionIdx);
+    expect(publishIdx).toBeGreaterThan(buildIdx);
+    // The build step must not carry a registry credential.
+    expect(JSON.stringify(steps[buildIdx].env ?? {})).not.toContain("NPM_TOKEN");
+    // And every `npm publish` invocation must skip the lifecycle scripts.
+    for (const line of String(steps[publishIdx].run).split("\n")) {
+      if (line.includes("npm publish")) expect(line).toContain("--ignore-scripts");
+    }
   });
 
   it("verifies the release carries every platform binary", () => {

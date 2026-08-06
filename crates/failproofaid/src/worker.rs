@@ -18,6 +18,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -175,6 +176,9 @@ pub struct Worker {
     socket_path: PathBuf,
     cmd: WorkerCommand,
     child: Mutex<Option<Child>>,
+    /// Set once shutdown begins, so no thread can spawn a worker after the
+    /// process has decided to stop. See [`Worker::shutdown`].
+    stopping: AtomicBool,
 }
 
 impl Worker {
@@ -183,6 +187,33 @@ impl Worker {
             socket_path,
             cmd,
             child: Mutex::new(None),
+            stopping: AtomicBool::new(false),
+        }
+    }
+
+    /// Stop the worker, and make sure nothing starts another one.
+    ///
+    /// Exists because `Drop` was not enough. `main.rs` pre-warms the worker on
+    /// a detached thread that holds its own `Arc<Worker>`, so a SIGTERM landing
+    /// while that thread is still inside `ensure_started()` — a cold start is
+    /// hundreds of milliseconds, and the accept loop returns in tens — left the
+    /// refcount above zero when `run()` dropped its own reference. `Worker::drop`
+    /// never ran, the worker's process group was never killed, and the daemon
+    /// exited leaving it orphaned. Reproduced by this crate's own
+    /// `daemon_e2e.rs` (spawn, then terminate immediately) and by every fast
+    /// `systemctl restart`.
+    ///
+    /// The flag is what makes the ordering safe: killing the child first and
+    /// then joining the warm-up thread would let a warm-up that was mid-spawn
+    /// install a NEW child afterwards. `ensure_started` checks this under the
+    /// same lock, so once shutdown has it, no spawn can follow.
+    pub fn shutdown(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.child.lock()
+            && let Some(mut child) = guard.take()
+        {
+            kill_process_group(&mut child);
+            let _ = std::fs::remove_file(&self.socket_path);
         }
     }
 
@@ -203,6 +234,11 @@ impl Worker {
     /// reason.
     fn ensure_started(&self) -> Result<(), WorkerError> {
         let mut guard = self.child.lock().unwrap();
+        // Checked under the lock, so a warm-up racing shutdown cannot spawn a
+        // worker the shutdown has already finished killing.
+        if self.stopping.load(Ordering::SeqCst) {
+            return Err(WorkerError::Io(io::Error::other("daemon is shutting down")));
+        }
         // "Was there a child, and is it gone?" is the whole crash signal. A
         // `Some` that no longer runs is a worker that died between requests —
         // the case that matters, because from the outside it is indistinguishable
@@ -353,6 +389,9 @@ impl Worker {
 }
 
 impl Drop for Worker {
+    /// Backstop for the paths that do not call [`Worker::shutdown`] explicitly
+    /// (tests, and any early return). Idempotent: `take()` yields `None` once
+    /// shutdown has already run.
     fn drop(&mut self) {
         if let Ok(mut guard) = self.child.lock()
             && let Some(mut child) = guard.take()
@@ -450,5 +489,43 @@ mod tests {
             !socket_path.exists(),
             "Drop should remove the worker socket file"
         );
+    }
+
+    /// A worker started by the warm-up path must not survive the daemon.
+    ///
+    /// The regression: `main.rs` pre-warms on a detached thread holding its own
+    /// `Arc<Worker>`, and a SIGTERM landing mid-`ensure_started()` left that
+    /// reference alive when `run()` dropped its own — so the refcount never hit
+    /// zero, `Drop` never ran, and the process exited with the worker orphaned.
+    /// Exercised by `daemon_e2e.rs`'s spawn-then-terminate, and by every fast
+    /// `systemctl restart`.
+    #[test]
+    fn shutdown_kills_the_worker_and_refuses_to_start_another() {
+        let socket_path = temp_socket_path("shutdown-race");
+        // Long-lived, so a surviving process would be plainly visible.
+        let worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell(format!(
+                "sleep 60 & nc -lU {} >/dev/null 2>&1 || sleep 60",
+                socket_path.display()
+            )),
+        );
+
+        worker.shutdown();
+
+        // The whole point of the flag: after shutdown nothing may spawn,
+        // however late it arrives. Without it, a warm-up still inside
+        // `ensure_started` would install a fresh child AFTER the kill.
+        let err = worker
+            .ensure_started()
+            .expect_err("no worker may start once shutdown has begun");
+        assert!(
+            err.to_string().contains("shutting down"),
+            "expected a shutdown refusal, got {err}"
+        );
+        assert!(worker.child.lock().unwrap().is_none());
+
+        // Idempotent — `Drop` runs it again as a backstop.
+        worker.shutdown();
     }
 }

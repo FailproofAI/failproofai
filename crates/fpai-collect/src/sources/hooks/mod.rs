@@ -59,7 +59,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-use crate::config::HooksVerbosity;
+use crate::config::{HooksVerbosity, Redact};
 use crate::cursor::{CursorStore, FileCursor, identity};
 use crate::spool::{DEFAULT_MAX_BATCH_BYTES, SpoolWriter, is_batch_file};
 use crate::supervisor::{Shutdown, TaskError};
@@ -84,6 +84,9 @@ pub async fn run(
     environment: String,
     machine_id: Option<String>,
     user: Option<String>,
+    // From `[collector] redact`. See the note on `filetail::Params::redact`:
+    // the knob parsed and reached no source at all before this.
+    redact: Redact,
     sd: Shutdown,
 ) -> Result<(), TaskError> {
     if verbosity == HooksVerbosity::Off {
@@ -110,9 +113,12 @@ pub async fn run(
             &spool_dir,
             &mut cursors,
             verbosity,
-            &environment,
-            machine_id.as_deref(),
-            user.as_deref(),
+            Emit {
+                environment: &environment,
+                machine_id: machine_id.as_deref(),
+                user: user.as_deref(),
+                redact,
+            },
         )
         .await
         {
@@ -136,16 +142,33 @@ pub async fn run(
     }
 }
 
+/// How every event this source emits is stamped and scrubbed.
+///
+/// Grouped rather than passed as four more positional arguments: they are one
+/// concern (what goes onto the wire and what must not), they are constant for
+/// the source's whole life, and threading them individually is what pushed
+/// `poll_once` past the point where a caller can read its call site.
+struct Emit<'a> {
+    environment: &'a str,
+    machine_id: Option<&'a str>,
+    user: Option<&'a str>,
+    redact: Redact,
+}
+
 /// One pass over the store.
 async fn poll_once(
     store_dir: &Path,
     spool_dir: &Path,
     cursors: &mut CursorStore,
     verbosity: HooksVerbosity,
-    environment: &str,
-    machine_id: Option<&str>,
-    user: Option<&str>,
+    emit: Emit<'_>,
 ) -> Result<u64, TaskError> {
+    let Emit {
+        environment,
+        machine_id,
+        user,
+        redact,
+    } = emit;
     let files = list_pages(store_dir).await;
     if files.is_empty() {
         return Ok(0);
@@ -158,7 +181,8 @@ async fn poll_once(
         "activity",
     )
     .with_machine_id(machine_id.map(str::to_string))
-    .with_user(user.map(str::to_string));
+    .with_user(user.map(str::to_string))
+    .with_redact(redact);
     // Allow rows are rolled up across the whole pass, so a bucket spanning two
     // files still emits once.
     let mut buckets: BTreeMap<transform::BucketKey, AllowBucket> = BTreeMap::new();

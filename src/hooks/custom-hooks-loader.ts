@@ -18,7 +18,14 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
 import { customPolicies, getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
-import { findDistIndex, rewriteFileTree, TMP_SUFFIX, cleanupTmpFiles } from "./loader-utils";
+import {
+  findDistIndex,
+  rewriteFileTree,
+  TMP_SUFFIX,
+  cleanupTmpFiles,
+  isTmpArtifact,
+  sweepStaleTmpArtifacts,
+} from "./loader-utils";
 import { findProjectConfigDir } from "./hooks-config";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -46,6 +53,15 @@ interface CachedPolicyModule {
  * functions prevents an unbounded ESM module-cache leak in the resident worker.
  * A source-tree change replaces this entry and imports one new module. */
 const policyModuleCache = new Map<string, CachedPolicyModule>();
+/**
+ * Cap, for the reason `gitBranchCache` states and this cache did not carry
+ * over: a warm worker touching many projects over its lifetime must not grow
+ * this unboundedly. Keyed by absolute policy-file path and holding cloned hook
+ * closures, so the entries are not small. Cleared wholesale rather than evicted
+ * one at a time — the next load simply re-imports, which is the same cost the
+ * cache exists to avoid paying twice, not a correctness change.
+ */
+const POLICY_MODULE_CACHE_MAX_ENTRIES = 500;
 
 /** Script extensions we could load, used to spot near-miss filenames. */
 const LOADABLE_EXT_RE = /\.(js|mjs|ts)$/;
@@ -88,7 +104,11 @@ export function findSkippedPolicyFiles(dir: string): string[] {
           e.isFile() &&
           LOADABLE_EXT_RE.test(e.name) &&
           !CONVENTION_FILE_RE.test(e.name) &&
-          !e.name.endsWith(".d.ts"),
+          !e.name.endsWith(".d.ts") &&
+          // Never our own generated files. They are `.mjs` and never match the
+          // convention, so each one a killed load left behind was reported to
+          // the user as a policy file that would not load.
+          !isTmpArtifact(e.name),
       )
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b));
@@ -190,6 +210,7 @@ async function loadSingleFile(
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
     await importWithDeadline(fileUrl);
+    if (policyModuleCache.size >= POLICY_MODULE_CACHE_MAX_ENTRIES) policyModuleCache.clear();
     policyModuleCache.set(absPath, {
       fingerprint,
       hooks: getCustomHooks()
@@ -381,7 +402,17 @@ export async function loadAllCustomHooks(
   // exactly that — and it is discovered here as well. Skip what step 1 loaded,
   // or the file is imported twice and every hook in it fires twice per event.
   const projectDir = resolve(projectRoot, ".failproofai", "policies");
-  if (conventionEnabled) warnSkippedPolicyFiles(projectDir, "project");
+  // Clear out generated files a killed load left behind, before anything scans
+  // this directory. The temporary tree has to be written beside the sources for
+  // a rewritten relative import to resolve, and its name now carries a pid and
+  // sequence number — so unlike the old fixed name, each abnormal termination
+  // leaks one file permanently rather than leaving one that the next load
+  // overwrites. Best-effort and age-gated, so it can never remove a tree
+  // another process is still importing.
+  if (conventionEnabled) {
+    void sweepStaleTmpArtifacts(projectDir);
+    warnSkippedPolicyFiles(projectDir, "project");
+  }
   const projectFiles = conventionEnabled
     ? discoverPolicyFiles(projectDir).filter((f) => !loadedPaths.has(f))
     : [];
@@ -417,7 +448,10 @@ export async function loadAllCustomHooks(
   // double-register. The binary runs under Bun and the tests under Node, so the
   // bug is invisible from both sides. Do not rely on that; dedupe the paths.
   const userDir = customPoliciesDir();
-  if (conventionEnabled && userDir !== projectDir) warnSkippedPolicyFiles(userDir, "user");
+  if (conventionEnabled && userDir !== projectDir) {
+    void sweepStaleTmpArtifacts(userDir);
+    warnSkippedPolicyFiles(userDir, "user");
+  }
   const userFiles =
     conventionEnabled && userDir !== projectDir
       ? discoverPolicyFiles(userDir).filter((f) => !loadedPaths.has(f))

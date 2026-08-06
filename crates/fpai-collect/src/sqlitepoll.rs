@@ -47,6 +47,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 
+use crate::config::Redact;
 use crate::cursor::{CursorStore, FileCursor};
 use crate::spool::SpoolWriter;
 use crate::supervisor::{Shutdown, TaskError};
@@ -106,6 +107,16 @@ pub struct SqliteFormat {
 pub struct Params {
     pub agent_id: String,
     pub environment: String,
+    /// Redaction applied to every event this source spools.
+    ///
+    /// Threaded from `[collector] redact` in `config.toml`. The knob parsed
+    /// correctly and reached nothing: no source carried the field, so
+    /// `SpoolWriter::with_redact` had exactly two references — its definition
+    /// and its own unit test — and every real writer kept the hardcoded
+    /// `Redact::Minimal`. Setting `redact = "off"` had no observable effect at
+    /// all, which is worse than not offering the setting.
+    pub redact: Redact,
+
     /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
     pub machine_id: Option<String>,
     /// OS user this daemon runs as, stamped on every event. See `SpoolWriter`.
@@ -234,7 +245,8 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool)
         spec.format.kind,
     )
     .with_machine_id(spec.params.machine_id.clone())
-    .with_user(spec.params.user.clone());
+    .with_user(spec.params.user.clone())
+    .with_redact(spec.params.redact);
     let emitted = outcome.events.len() as u64;
     for event in outcome.events {
         writer.push(event).await.map_err(io_err)?;

@@ -771,6 +771,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
         state_dir: state,
         poll_interval: Duration::from_millis(200),
         params: Params {
+            redact: fpai_collect::Redact::Minimal,
             agent_id: copilot::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
             machine_id: None,

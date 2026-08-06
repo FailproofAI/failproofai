@@ -272,6 +272,40 @@ function shellQuote(value: string): string {
  * equivalent — which is the difference between a diff a human can read and one
  * they stop reading.
  */
+/**
+ * Characters that cannot appear in a value interpolated into a systemd unit.
+ *
+ * A newline ENDS THE DIRECTIVE, so a path containing one injects arbitrary
+ * settings into a file that is installed root-owned at `/etc/systemd/system`
+ * and loaded at every boot. A double quote closes `Environment="..."` early and
+ * does the same; a backslash is systemd's own escape character inside a quoted
+ * value and makes the result unpredictable rather than merely wrong.
+ *
+ * The mechanism is demonstrated by this repo's own test, which sets
+ * `FAILPROOFAI_CLI_CMD` to `/usr/bin/true"\nUser=failproofai-no-such-user` and
+ * relies on systemd HONOURING the injected `User=` — it passes only because the
+ * injected user does not exist. A valid one (`User=root`, or an added
+ * `ExecStartPre=`) would have succeeded silently, undoing the
+ * "root-installed but never root-run" invariant the whole design rests on.
+ *
+ * These values are resolved paths and commands; none can legitimately contain
+ * any of these characters. So this REJECTS rather than escaping — a unit that
+ * refuses to be written is a clear failure, and inventing an escaping scheme
+ * for systemd's grammar is a larger surface than the problem.
+ */
+const UNIT_UNSAFE_RE = /["\\\r\n]/;
+
+/** Throws when a value cannot be safely interpolated into a unit file. */
+function assertUnitSafe(value: string, field: string): string {
+  if (UNIT_UNSAFE_RE.test(value)) {
+    throw new Error(
+      `refusing to write a service definition: ${field} contains a quote, backslash or newline ` +
+        `(${JSON.stringify(value)}), which would inject directives into a root-owned unit file`,
+    );
+  }
+  return value;
+}
+
 function serviceEnvironment(workerCmd: string | null, cliCmd: string | null): [string, string][] {
   const entries: [string, string][] = [];
   if (workerCmd) entries.push(["FAILPROOFAI_WORKER_CMD", workerCmd]);
@@ -529,9 +563,11 @@ export function systemdUnitContents(
   // Quoted because every value here contains a space or a path — systemd's
   // Environment= requires quoting whenever the value does.
   const envLines = serviceEnvironment(workerCmd, cliCmd)
-    .map(([key, value]) => `Environment="${key}=${value}"\n`)
+    .map(([key, value]) => `Environment="${key}=${assertUnitSafe(value, key)}"\n`)
     .join("");
-  const user = serviceUser();
+  const user = assertUnitSafe(serviceUser(), "User");
+  assertUnitSafe(binaryPath, "ExecStart");
+  assertUnitSafe(homedir(), "HOME");
   return `[Unit]
 Description=failproofai background daemon (failproofaid) for ${user}
 After=network.target
@@ -920,9 +956,21 @@ export function upgradedServiceDefinition(
   const binaryPath = installedExecStart(definition);
   if (!binaryPath) return null;
   const workerCmd = resolveWorkerCommand() ?? installedEnvValue(definition, "FAILPROOFAI_WORKER_CMD");
-  return process.platform === "linux"
-    ? systemdUnitContents(binaryPath, workerCmd, cliCmd)
-    : launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd);
+  try {
+    return process.platform === "linux"
+      ? systemdUnitContents(binaryPath, workerCmd, cliCmd)
+      : launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd);
+  } catch (err) {
+    // A value that cannot be safely interpolated is reported as "no usable
+    // definition" rather than thrown: this runs against a HEALTHY, RUNNING
+    // daemon and the caller's contract is an outcome, not an exception. The
+    // refusal happens before anything is written or stopped, so the machine is
+    // left exactly as it was.
+    hookLogWarn(
+      `service definition not rewritten: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }
 
 export type DaemonUpgradeOutcome =
@@ -1080,7 +1128,18 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
   if (!upgraded) {
     return {
       outcome: "failed",
-      reason: `the installed service definition at ${daemonServiceFilePath()} has no readable start command; it looks hand-edited, so it was left alone`,
+      reason:
+        `no safe replacement could be composed for the service definition at ${daemonServiceFilePath()} — ` +
+        `either it has no readable start command (it looks hand-edited) or a value that would go into it ` +
+        `contains a quote, backslash or newline. It was left alone.`,
+      // Reported because nothing was touched: the refusal happens before any
+      // write and before any stop, so whatever was running still is. The
+      // wizard branches on this to decide whether to clear `daemonConfigured`,
+      // and omitting it here would have read as "the daemon may be down" on a
+      // machine whose daemon is perfectly healthy — which on a
+      // `daemonConfigured` box is the difference between a lost audit lane and
+      // every tool call denied.
+      daemonRunning: daemonServiceStatus() === "running",
     };
   }
 

@@ -97,6 +97,7 @@ async fn run_once(store: &Path, state: &Path, spool: &Path, v: HooksVerbosity) {
         "local".into(),
         None,
         None,
+        fpai_collect::Redact::Minimal,
         sd,
     );
     let _ = tokio::time::timeout(Duration::from_millis(1500), fut).await;

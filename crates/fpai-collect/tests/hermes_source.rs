@@ -992,6 +992,7 @@ fn spec(db: PathBuf, spool: PathBuf, state: PathBuf) -> sqlitepoll::Spec {
         state_dir: state,
         poll_interval: Duration::from_millis(150),
         params: sqlitepoll::Params {
+            redact: fpai_collect::Redact::Minimal,
             agent_id: hermes::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
             machine_id: None,

@@ -77,10 +77,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // finishes still gets a correct, just slightly slower, answer — `call()`
     // -> `ensure_started()` shares the same lock and simply waits for
     // whichever spawn (this one or its own) is already in flight.
-    {
+    // The handle is KEPT. Discarding it left the warm-up thread holding its own
+    // `Arc<Worker>` with nobody to join it: a SIGTERM arriving while it was
+    // still inside `ensure_started()` (a cold start is hundreds of
+    // milliseconds; the accept loop returns in tens) meant `run()` dropped its
+    // reference, the refcount stayed above zero, `Worker::drop` never ran, and
+    // the process exited leaving the worker orphaned. See `Worker::shutdown`.
+    let warm_handle = {
         let warm_worker = worker.clone();
-        std::thread::spawn(move || warm_worker.warm());
-    }
+        std::thread::spawn(move || warm_worker.warm())
+    };
 
     // Cloud policy integrity is a maintenance-lane responsibility, never a
     // hook-path operation. The monitor is useful before cloud transport lands:
@@ -139,7 +145,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // (Every other `?` between the lane starting and here can only fail when
     // HOME is unset, in which case the lane has already stopped and buffered
     // nothing.)
-    let srv = match server::Server::bind(&socket_path, worker) {
+    let srv = match server::Server::bind(&socket_path, worker.clone()) {
         Ok(srv) => srv,
         Err(err) => {
             shutdown.store(true, Ordering::Relaxed);
@@ -152,6 +158,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[failproofaid] listening on {}", socket_path.display());
 
     let run_result = srv.run_until(shutdown);
+
+    // Stop the worker explicitly, then join the thread that may have been
+    // starting it. In this order: the flag `shutdown()` sets is checked under
+    // the same lock `ensure_started` takes, so a warm-up that had not yet
+    // spawned now refuses and returns promptly, and one that had already
+    // spawned has just had its process group killed. The reverse order would
+    // let a mid-spawn warm-up install a fresh worker after the kill.
+    worker.shutdown();
+    let _ = warm_handle.join();
 
     // Join the manager, which drains the collector within its flush budget
     // before returning. Done before `?` so a server error still gives the
@@ -386,6 +401,11 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     // user) identity. Resolved once and stamped onto every event by every source
     // below, so two profiles on one machine stay distinct in the fleet views.
     let os_user = current_os_user();
+    // `[collector] redact`, threaded to every source below. It parsed correctly
+    // and reached nothing: no source carried the field, so every real
+    // `SpoolWriter` kept the hardcoded `Redact::Minimal` and setting
+    // `redact = "off"` had no observable effect at all.
+    let redact = cfg.settings.redact;
 
     if cfg.settings.hooks {
         // Hook activity: one source covering every CLI failproofai is
@@ -400,6 +420,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let environment = cfg.settings.environment.clone();
         let machine_id = cfg.settings.machine_id.clone();
         let hooks_user = os_user.clone();
+        let hooks_redact = cfg.settings.redact;
         tasks.push(fpai_collect::TaskSpec::new("hook-activity", move |sd| {
             fpai_collect::sources::hooks::run(
                 store_dir.clone(),
@@ -409,6 +430,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 environment.clone(),
                 machine_id.clone(),
                 hooks_user.clone(),
+                hooks_redact,
                 sd,
             )
         }));
@@ -440,6 +462,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         // Subagent transcripts live under the SAME root, claimed by a second
         // format. A separate source, not a second predicate: `is_source_file`
@@ -457,6 +480,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -469,6 +493,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -481,6 +506,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -493,6 +519,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -505,6 +532,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -517,6 +545,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -529,6 +558,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
         file_source(
             &mut tasks,
@@ -541,6 +571,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
         );
 
         use fpai_collect::sources::{devin, goose, hermes, opencode};
@@ -555,6 +586,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
             None,
         );
         sqlite_source(
@@ -568,6 +600,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
             None,
         );
         sqlite_source(
@@ -581,6 +614,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &env,
             machine.as_deref(),
             os_user.as_deref(),
+            redact,
             None,
         );
 
@@ -608,6 +642,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 &env,
                 machine.as_deref(),
                 os_user.as_deref(),
+                redact,
                 Some(format!("hermes:{profile}")),
             );
         }
@@ -662,6 +697,7 @@ fn file_source(
     environment: &str,
     machine_id: Option<&str>,
     user: Option<&str>,
+    redact: fpai_collect::Redact,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     // One cursor store per source, never shared: the store writes its whole map
@@ -685,6 +721,7 @@ fn file_source(
                     machine_id: machine_id.clone(),
                     user: user.clone(),
                     end_idle_mins: 10,
+                    redact,
                     max_read_bytes: 32 * 1024 * 1024,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     // Never the whole history by default. A normal machine holds
@@ -711,6 +748,7 @@ fn sqlite_source(
     environment: &str,
     machine_id: Option<&str>,
     user: Option<&str>,
+    redact: fpai_collect::Redact,
     // Distinct health key when one format has several live instances (Hermes,
     // one database per profile). `None` reports under the format's own kind.
     health_key: Option<String>,
@@ -732,6 +770,7 @@ fn sqlite_source(
                     environment: environment.clone(),
                     machine_id: machine_id.clone(),
                     user: user.clone(),
+                    redact,
                     max_rows_per_poll: 2000,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     max_drain_passes: 20,

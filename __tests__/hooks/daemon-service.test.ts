@@ -337,6 +337,45 @@ describe("hooks/daemon-service", () => {
       expect(plist).toContain(`<string>${cliCmd}</string>`);
     });
 
+    // The unit is installed root-owned at /etc/systemd/system and loaded at
+    // every boot. A newline ENDS a directive, so a value carrying one injects
+    // arbitrary settings into it — and this repo's own refresh test proves the
+    // mechanism works by setting FAILPROOFAI_CLI_CMD to
+    // `/usr/bin/true"\nUser=failproofai-no-such-user` and relying on systemd
+    // HONOURING the injected `User=`. It passes only because that user does not
+    // exist; `User=root`, or an added `ExecStartPre=`, would have succeeded
+    // silently and undone the "root-installed, never root-run" invariant.
+    it("refuses to compose a unit from a value carrying a newline or a quote", async () => {
+      useScratchHome();
+      setPlatform("linux");
+      const { systemdUnitContents } = await import("../../src/hooks/daemon-service");
+
+      // Exactly the shape the refresh test injects.
+      expect(() =>
+        systemdUnitContents("/opt/failproofaid", null, '/usr/bin/true"\nUser=root'),
+      ).toThrow(/quote, backslash or newline/);
+
+      // A bare newline in the worker command, and a quote on its own — both
+      // close out of `Environment="…"` or out of the directive.
+      expect(() =>
+        systemdUnitContents("/opt/failproofaid", "/usr/bin/node /w.mjs\nExecStartPre=/bin/sh -c evil"),
+      ).toThrow(/quote, backslash or newline/);
+      expect(() => systemdUnitContents("/opt/failproofaid", '/usr/bin/node "/w.mjs')).toThrow(
+        /quote, backslash or newline/,
+      );
+
+      // ExecStart itself is interpolated too.
+      expect(() => systemdUnitContents("/opt/failproofaid\nUser=root", null)).toThrow(
+        /quote, backslash or newline/,
+      );
+
+      // And the ordinary case still composes, including single quotes, which
+      // are how every real worker/CLI command is already shell-quoted.
+      expect(() =>
+        systemdUnitContents("/opt/failproofaid", "'/usr/bin/node' '/w.mjs'", "'/usr/bin/node' '/c.mjs'"),
+      ).not.toThrow();
+    });
+
     it("omits the environment block entirely when neither command resolves", async () => {
       // A `<dict>` with no keys, or a stray `Environment=""`, is not the same
       // as no environment — the daemon reads "set but empty" as a command.

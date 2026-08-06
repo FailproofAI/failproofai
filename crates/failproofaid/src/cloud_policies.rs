@@ -381,7 +381,31 @@ impl PolicyStore {
     /// transport must re-fetch; active.json remains unchanged and the worker's
     /// already-loaded generation remains the last known good decision set.
     pub fn repair_active_from_cache(&self) -> Result<usize, ReconcileError> {
-        if let Some(desired) = self.read_desired()? {
+        // A corrupted `desired-state.json` must not disable repair.
+        //
+        // `self.read_desired()?` propagated any parse error straight out,
+        // short-circuiting before the `active.json`-driven branch below — the
+        // one that rebuilds a tampered `generations/<n>/<id>.mjs` from the
+        // still-valid, content-addressed `artifacts/<sha>.mjs` copy. So one bad
+        // byte in a file this branch does not even need permanently disabled
+        // generation-copy self-healing, and per `CLOUD_POLICIES.md` the only
+        // thing that rewrites it is a successful cloud poll — which never
+        // happens on an unenrolled or unreachable machine.
+        //
+        // `reconcile()` already tolerates exactly this for `active.json`
+        // (`Err(ReconcileError::Json(_)) => None`); the two are now symmetric.
+        let desired = match self.read_desired() {
+            Ok(desired) => desired,
+            Err(ReconcileError::Json(err)) => {
+                tracing::warn!(
+                    %err,
+                    "desired-state.json is unreadable; repairing from active.json alone"
+                );
+                None
+            }
+            Err(err) => return Err(err),
+        };
+        if let Some(desired) = desired {
             let outcome = self.reconcile(&desired, &|policy: &DesiredPolicy| {
                 Err(format!(
                     "no verified cached bytes remain for {}; cloud refetch required",

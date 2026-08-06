@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
+use crate::config::Redact;
 use crate::cursor::{self, CursorStore, FileCursor, TailState, identity};
 use crate::spool::SpoolWriter;
 use crate::supervisor::{Shutdown, TaskError};
@@ -136,6 +137,16 @@ pub fn no_seed_state(_lines: &[String], _state: &mut TailState) {}
 pub struct Params {
     pub agent_id: String,
     pub environment: String,
+    /// Redaction applied to every event this source spools.
+    ///
+    /// Threaded from `[collector] redact` in `config.toml`. The knob parsed
+    /// correctly and reached nothing: no source carried the field, so
+    /// `SpoolWriter::with_redact` had exactly two references — its definition
+    /// and its own unit test — and every real writer kept the hardcoded
+    /// `Redact::Minimal`. Setting `redact = "off"` had no observable effect at
+    /// all, which is worse than not offering the setting.
+    pub redact: Redact,
+
     /// Machine this daemon runs on, stamped on every event. See `SpoolWriter`.
     pub machine_id: Option<String>,
     /// OS user this daemon runs as, stamped on every event. See `SpoolWriter`.
@@ -356,7 +367,8 @@ async fn process_file(
         &ctx.session_id,
     )
     .with_machine_id(spec.params.machine_id.clone())
-    .with_user(spec.params.user.clone());
+    .with_user(spec.params.user.clone())
+    .with_redact(spec.params.redact);
     let mut emitted = 0u64;
 
     // A session with no start event never appears in the product, so retry it

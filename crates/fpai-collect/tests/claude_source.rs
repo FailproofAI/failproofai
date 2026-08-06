@@ -505,6 +505,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
         state_dir: state,
         poll_interval: Duration::from_millis(200),
         params: Params {
+            redact: fpai_collect::Redact::Minimal,
             agent_id: claude::DEFAULT_AGENT_ID.into(),
             environment: "local".into(),
             machine_id: None,
@@ -739,4 +740,60 @@ fn claude_declares_itself_byte_tailable() {
     // If Claude ever starts rewriting mid-file the way droid does, this is the
     // switch — and the engine already supports the other policy.
     assert_eq!(claude::FORMAT.reread, RereadPolicy::ByteCursor);
+}
+
+/// `[collector] redact` has to reach a real source, not just parse.
+///
+/// It parsed correctly and reached nothing: no source carried the field, so
+/// `SpoolWriter::with_redact` had exactly two references — its own definition
+/// and its own unit test — and every real writer kept the hardcoded
+/// `Redact::Minimal`. Setting `redact = "off"` in `config.toml` had no
+/// observable effect anywhere, which is worse than not offering the setting.
+///
+/// Asserted through a real filetail run rather than against `SpoolWriter`
+/// directly, because the gap was the wiring between them.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_configured_redaction_mode_reaches_the_spool() {
+    const SECRET: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123";
+
+    async fn spool_with(mode: fpai_collect::Redact, tag: &str) -> String {
+        let root = tmpdir(&format!("redact-root-{tag}"));
+        let spool = tmpdir(&format!("redact-spool-{tag}"));
+        let state = tmpdir(&format!("redact-state-{tag}"));
+        write_session(
+            &root,
+            &[user_prompt(
+                "2026-07-18T09:42:04.058Z",
+                &format!("export TOKEN={SECRET}"),
+            )],
+        );
+        let mut s = spec(root, spool.clone(), state);
+        s.params.redact = mode;
+        run_briefly(s, 1200).await;
+        spooled(&spool)
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    // The default, and what every source was pinned to regardless of config.
+    let minimal = spool_with(fpai_collect::Redact::Minimal, "min").await;
+    assert!(
+        !minimal.is_empty(),
+        "the source must have spooled something"
+    );
+    assert!(
+        !minimal.contains(SECRET),
+        "minimal mode must redact: {minimal}"
+    );
+
+    // The knob the operator actually set. Before this was wired, the two
+    // outputs were byte-identical.
+    let off = spool_with(fpai_collect::Redact::Off, "off").await;
+    assert!(!off.is_empty(), "the source must have spooled something");
+    assert!(
+        off.contains(SECRET),
+        "redact = off must leave the value alone: {off}"
+    );
 }

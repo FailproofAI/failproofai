@@ -18,6 +18,65 @@ import { createHash } from "crypto";
 
 export const TMP_SUFFIX = ".__failproofai_tmp__.mjs";
 
+/**
+ * Anything this loader generated, by name.
+ *
+ * The temporary tree is written BESIDE the user's sources, because that is the
+ * only place a rewritten relative import still resolves. That was harmless
+ * while the name was fixed — an abnormally terminated hook left at most one
+ * stale file per source, overwritten on the next load — but the name now
+ * carries a pid and a sequence number, so every kill (a CLI hook timeout, a
+ * Ctrl-C) leaves a uniquely-named file behind forever.
+ *
+ * Two consequences, and the second is the visible one: the directory fills up,
+ * and `findSkippedPolicyFiles` reports each leftover back to the user as a
+ * policy file that will not load — an accusation about a file failproofai
+ * wrote itself.
+ */
+const TMP_ARTIFACT_RE = /\.__failproofai_tmp__\./;
+
+/** True for a file this loader generated rather than one the user wrote. */
+export function isTmpArtifact(name: string): boolean {
+  return TMP_ARTIFACT_RE.test(name);
+}
+
+/**
+ * How stale a generated file must be before a sweep will remove it.
+ *
+ * Another process may be mid-load right now, and its temporary tree is live
+ * until its `import()` resolves. Well past the 10s a module load is allowed,
+ * so a sweep can never delete a file another loader is still using.
+ */
+const TMP_SWEEP_MIN_AGE_MS = 60_000;
+
+/**
+ * Remove generated files left behind by a load that was killed.
+ *
+ * Best-effort and never throws: this runs on the hook path, and failing to
+ * tidy up is not worth failing an evaluation over.
+ */
+export async function sweepStaleTmpArtifacts(dir: string, now = Date.now()): Promise<number> {
+  let removed = 0;
+  try {
+    const { readdir, stat } = await import("fs/promises");
+    for (const name of await readdir(dir)) {
+      if (!isTmpArtifact(name)) continue;
+      const path = resolve(dir, name);
+      try {
+        const info = await stat(path);
+        if (now - info.mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        await unlink(path);
+        removed++;
+      } catch {
+        /* raced with another sweep, or not ours to remove */
+      }
+    }
+  } catch {
+    /* unreadable directory — nothing to sweep */
+  }
+  return removed;
+}
+
 /** Regex to find local relative import specifiers (ESM). */
 const LOCAL_IMPORT_RE = /(?:import\s+(?:[\s\S]*?\s+from\s+)?|export\s+(?:[\s\S]*?\s+from\s+))(['"])(\.\.?\/[^'"]+)\1/g;
 

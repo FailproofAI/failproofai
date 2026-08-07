@@ -1,5 +1,23 @@
 // @vitest-environment node
+//
+// Every test here runs against a THROWAWAY `FAILPROOFAI_HOME`.
+//
+// It did not, and the consequence was a suite that passed in CI and failed on
+// the machines of the people developing it. `handler.ts` reads cloud-managed
+// policies off disk (`readActiveCloudManagedPolicies`), so a developer with a
+// real deployment saw its artifacts arrive as arguments the assertions never
+// expected — one failure read
+// `["/home/…/cloud-policies/generations/4/block-curl-simple.mjs"]` where the
+// test wanted `undefined`. Nothing was broken; the test was reading their
+// laptop.
+//
+// That is worse than a flaky test. CI is green, so the red is only ever seen
+// locally, by exactly the people who most need to trust the suite — and the
+// lesson it teaches is to ignore it.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { handleHookEvent, evaluateHookEvent } from "../../src/hooks/handler";
 
 vi.mock("../../src/hooks/hooks-config", () => ({
@@ -81,13 +99,29 @@ describe("hooks/handler", () => {
     });
   }
 
+  let scratchHome: string;
+  const originalHome = process.env.FAILPROOFAI_HOME;
+
   beforeEach(() => {
+    // Empty and per-test. `handler.ts` resolves cloud-managed policies, the
+    // activity store and the layout marker from this directory; pointing it at
+    // a fresh temp dir is what makes the assertions about "no custom policies"
+    // true by construction rather than by whatever the developer happens to
+    // have deployed.
+    scratchHome = mkdtempSync(join(tmpdir(), "fpai-handler-"));
+    process.env.FAILPROOFAI_HOME = scratchHome;
     stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.clearAllMocks();
   });
 
   afterEach(() => {
+    // Restored rather than deleted: `process.env` is shared across the file, and
+    // a test that leaves it unset makes the NEXT one read the real home again —
+    // reintroducing the bug this fixes, intermittently.
+    if (originalHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = originalHome;
+    rmSync(scratchHome, { recursive: true, force: true });
     vi.restoreAllMocks();
     restoreStdin();
   });

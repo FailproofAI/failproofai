@@ -135,6 +135,7 @@ import {
 } from "../../src/hooks/daemon-service";
 import {
   buildAgentChoices,
+  buildCompletionSummary,
   buildPresetChoices,
   clisSupportingScope,
   resolvePresetSelection,
@@ -231,10 +232,16 @@ beforeEach(() => {
   vi.mocked(installHooks).mockClear();
   vi.mocked(runPostSetupAudit).mockClear();
   vi.mocked(outro).mockClear();
-  vi.mocked(isDaemonSupportedPlatform).mockReset().mockReturnValue(false);
-  vi.mocked(installDaemonService)
-    .mockReset()
-    .mockResolvedValue({ installed: false, reason: "mocked" });
+  // Supported-and-already-healthy is the safe default for every test that
+  // isn't specifically about the daemon step: it makes step 0 a one-line
+  // no-op ("already installed and running — leaving it alone") without
+  // demanding sudo — and, now that an unsupported platform hard-fails setup
+  // before a single prompt is drawn, without aborting every other test in
+  // this file. Tests that actually exercise the daemon step override these.
+  vi.mocked(isDaemonSupportedPlatform).mockReset().mockReturnValue(true);
+  vi.mocked(daemonServiceStatus).mockReset().mockReturnValue("running");
+  vi.mocked(daemonServiceNeedsUpgrade).mockReset().mockReturnValue(false);
+  vi.mocked(installDaemonService).mockReset().mockResolvedValue({ installed: true });
   // Reset too, or call counts leak across tests and "was never asked for sudo"
   // silently passes on history from an earlier one.
   vi.mocked(primeElevation).mockReset().mockReturnValue(true);
@@ -328,6 +335,40 @@ describe("configure-wizard pure builders", () => {
     // Tell the user where to change their mind, so an intentional "none" does
     // not read like the wizard dropped the selection.
     expect(lines).toContain("failproofai policies --install");
+  });
+
+  // The 3-column gutter ("└  ") that outro() prepends when rendered.
+  const GUTTER = 3;
+
+  it("keeps the completion summary within 80 columns for the longest real combination", () => {
+    // Every builtin policy, every supported CLI, and every optional note
+    // present at once — the worst case now that an unsupported platform
+    // aborts before this line is ever reached (so "no daemon" can no longer
+    // shrink it).
+    const message = buildCompletionSummary(
+      99, // headroom above today's real policy count
+      INTEGRATION_TYPES.length,
+      true, // custom enabled
+      true, // daemon installed
+      true, // connected
+    );
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    expect(message).toContain("custom");
+    expect(message).toContain("daemon");
+    expect(message).toContain("reporting");
+  });
+
+  it("keeps the completion summary within 80 columns with custom policies explicitly off", () => {
+    // "off" is the longer of the two custom-policies tags, and stacks with
+    // the other two notes the same way "custom" does above.
+    const message = buildCompletionSummary(99, INTEGRATION_TYPES.length, false, true, true);
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    expect(message).toContain("custom off");
+  });
+
+  it("omits every optional note when nothing is present", () => {
+    const message = buildCompletionSummary(2, 1, undefined, false, false);
+    expect(message).toBe("Setup complete — 2 policies · 1 assistant");
   });
 });
 
@@ -494,6 +535,20 @@ describe("first-run redirect", () => {
     markLauncherSeen(); // simulate a prior completed setup
     const handled = await maybeFirstRunConfigure(ttyIO());
     expect(handled).toBe(false);
+    expect(selectOne).not.toHaveBeenCalled();
+  });
+
+  it("hard-fails cleanly on an unsupported platform, and does not nag again next command", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
+
+    const first = await maybeFirstRunConfigure(ttyIO());
+    expect(first).toBe(true); // took over the turn
+    expect(hasSeenLauncher()).toBe(false); // never completed
+    expect(installHooks).not.toHaveBeenCalled();
+
+    // The next command must not relaunch the wizard and hard-fail again.
+    const second = await maybeFirstRunConfigure(ttyIO());
+    expect(second).toBe(false); // a one-line hint instead of a relaunch
     expect(selectOne).not.toHaveBeenCalled();
   });
 });
@@ -681,18 +736,35 @@ describe("configure-wizard daemon integration", () => {
     expect(hasSeenLauncher()).toBe(false);
   });
 
-  it("does not require a daemon, or sudo, on an unsupported platform", async () => {
-    // Requiring an impossible step would lock these users out of setup
-    // entirely rather than protecting anything.
+  it("hard-fails on an unsupported platform, before drawing a single prompt", async () => {
+    // A Windows machine (or any non-linux/darwin platform) has nothing
+    // running failproofaid — completing setup anyway used to leave it
+    // reading as configured while enforcing in-process, with no fail-closed
+    // guarantee. Refusing outright is the honest failure.
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
     drive(HAPPY);
 
     const result = await runConfigureWizard(ttyIO());
 
-    expect(result.applied).toBe(true);
+    expect(result.applied).toBe(false);
+    expect(result.abort).toBe("unsupported_platform");
+    expect(selectOne).not.toHaveBeenCalled();
+    expect(multiSelect).not.toHaveBeenCalled();
     expect(primeElevation).not.toHaveBeenCalled();
     expect(installDaemonService).not.toHaveBeenCalled();
+    expect(installHooks).not.toHaveBeenCalled();
     expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+  });
+
+  it("explains why, naming the platform, when it hard-fails on an unsupported platform", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
+    const stdout = mkTtyStdout();
+
+    await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
+
+    const written = vi.mocked(stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("Linux");
+    expect(written).toContain("macOS");
   });
 
   it("skips the install, and the password prompt, when a daemon is already running", async () => {
@@ -927,19 +999,12 @@ describe("configure-wizard daemon integration", () => {
     expect(props.reason).not.toContain("/home/");
   });
 
-  it("mentions the daemon in the outro only when one is actually there", async () => {
+  it("mentions the daemon in the outro when one is actually there", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
     drive(HAPPY);
     await runConfigureWizard(ttyIO());
-    expect(vi.mocked(outro).mock.calls[0]![0]).toContain("daemon on");
-
-    // Unsupported platform: no daemon, so no claim of one.
-    vi.mocked(outro).mockClear();
-    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
-    drive(HAPPY);
-    await runConfigureWizard(ttyIO());
-    expect(vi.mocked(outro).mock.calls[0]![0]).not.toContain("daemon on");
+    expect(vi.mocked(outro).mock.calls[0]![0]).toContain("daemon");
   });
 
   it("shows the daemon row in the review only when one will be installed", async () => {
@@ -997,10 +1062,6 @@ describe("configure-wizard daemon integration", () => {
   });
 });
 describe("scope targets", () => {
-  beforeEach(() => {
-    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
-  });
-
   it("installs once per scope when Both is chosen", async () => {
     drive({ ...HAPPY, target: "both" });
 
@@ -1059,7 +1120,6 @@ describe("scope targets", () => {
 
 describe("connect step", () => {
   beforeEach(() => {
-    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(false);
     vi.mocked(connectToCloud).mockClear();
     vi.mocked(validateIngestKey).mockClear().mockResolvedValue({ ok: true });
     // ONE prompt now, not two. The endpoint is no longer asked for: there is

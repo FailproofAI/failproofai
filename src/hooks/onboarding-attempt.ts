@@ -29,11 +29,13 @@
  * elevate. So each reason carries a cheap local check for whether its blocker
  * is gone, and the wizard offers itself again the moment one is:
  *
- *   needs_root     -> elevation is now possible without a prompt
- *   daemon_failed  -> the service manager now reports something different
- *   cancelled      -> the CLI version changed; an upgrade is a fair moment to
- *                     ask again, and nothing else about a deliberate cancel
- *                     should re-nag
+ *   needs_root          -> elevation is now possible without a prompt
+ *   daemon_failed       -> the service manager now reports something different
+ *   cancelled           -> the CLI version changed; an upgrade is a fair moment to
+ *                          ask again, and nothing else about a deliberate cancel
+ *                          should re-nag
+ *   unsupported_platform -> the CLI version changed (a future release might
+ *                          support this platform)
  *
  * Every probe is local and takes milliseconds. None of them runs on the hook
  * path — `--hook` never reaches the first-run gate at all.
@@ -150,6 +152,11 @@ export function blockerCleared(attempt: OnboardingAttempt, probe: RetryProbe): b
       // this module removes — but an upgrade is a new thing to say, so it is
       // allowed to ask once more.
       return probe.cliVersion !== attempt.cliVersion;
+    case "unsupported_platform":
+      // A permanent property of the machine, not the invocation — nagging every
+      // command would just repeat the hard-fail. Only a new release is a reason
+      // to ask again (it might add support for this platform).
+      return probe.cliVersion !== attempt.cliVersion;
     case "not_a_tty":
     case "running_as_sudo":
       // Both are properties of the invocation, not of the machine, so the next
@@ -166,14 +173,23 @@ export function attemptHintLines(attempt: OnboardingAttempt): string[] {
     needs_root: "it needs root to install the failproofaid service",
     daemon_failed: "the failproofaid service could not be started",
     cancelled: "it was cancelled",
+    unsupported_platform: "failproofaid does not run on this platform",
     not_a_tty: "there was no terminal to ask in",
     running_as_sudo: "it was run under sudo",
   };
   const detail = why[attempt.reason] ?? "it did not finish";
+  // Every other reason is fixable by the user right now, so the generic
+  // retry is correct. unsupported_platform is not — blockerCleared only
+  // re-offers it on a CLI version change, and `failproofai config` would
+  // hit the exact same hard-fail in the meantime.
+  const action =
+    attempt.reason === "unsupported_platform"
+      ? "Check for a failproofai update — this platform may be supported by a newer release."
+      : "Run `failproofai config` when you are ready.";
   return [
     ``,
     `[failproofai] Setup is not finished — ${detail}.`,
-    `              Run \`failproofai config\` when you are ready.`,
+    `              ${action}`,
     ``,
   ];
 }

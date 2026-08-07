@@ -126,6 +126,7 @@ export type WizardAbort =
   | "cancelled"
   | "needs_root"
   | "daemon_failed"
+  | "unsupported_platform"
   | "not_a_tty"
   | "running_as_sudo";
 
@@ -413,6 +414,37 @@ export function describeCustomPolicies(cwd: string): {
     }
   }
   return { active, warnings, fileCount, scopes };
+}
+
+/**
+ * The wizard's one-line completion summary. Pure and exported so the widest
+ * real combination — every policy, every CLI, custom/daemon/reporting all
+ * present — can be pinned by a test without having to drive the whole wizard
+ * through a real chdir + on-disk custom-policy fixture.
+ *
+ * Kept inside a standard 80-column terminal: `writeLines` truncates with a
+ * hard cut and no ellipsis, so an over-long line doesn't just lose its tail
+ * — it reads as broken output. Naming all ten CLIs once took it to 182
+ * characters; the count alone carries the same information, and the user
+ * picked them two screens ago. A single grouped "· a, b, c" clause bounds the
+ * optional notes to one separator and short tags, rather than three
+ * independent " · " clauses stacking up.
+ */
+export function buildCompletionSummary(
+  policiesCount: number,
+  assistantsCount: number,
+  customEnabled: boolean | undefined,
+  daemonInstalled: boolean,
+  connected: boolean,
+): string {
+  const extras: string[] = [];
+  if (customEnabled === true) extras.push("custom");
+  else if (customEnabled === false) extras.push("custom off");
+  if (daemonInstalled) extras.push("daemon");
+  if (connected) extras.push("reporting");
+  const extrasNote = extras.length > 0 ? ` · ${extras.join(", ")}` : "";
+  const assistants = `${assistantsCount} assistant${assistantsCount === 1 ? "" : "s"}`;
+  return `Setup complete — ${policiesCount} policies · ${assistants}${extrasNote}`;
 }
 
 export function reviewLines(state: {
@@ -712,6 +744,25 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   // Fire-and-forget: never block the wizard's first paint on telemetry.
   void emit("configure_started", {});
+
+  // failproofaid — the only evaluator on a configured machine — only runs on
+  // Linux and macOS. Checked before intro() draws anything and before a
+  // single prompt is asked: completing setup anyway used to leave e.g. a
+  // Windows machine reading as configured while enforcing in-process with no
+  // fail-closed guarantee, which is worse than not being set up at all.
+  if (!isDaemonSupportedPlatform()) {
+    stdout.write(
+      `failproofai requires failproofaid, its background policy daemon, which runs on\n` +
+        `Linux and macOS only — not ${process.platform}. Setup cannot continue here: an\n` +
+        "installation with no daemon behind it would read as configured while enforcing\n" +
+        "nothing, which is worse than not being set up at all.\n\n" +
+        "Nothing was changed. This platform will be supported once failproofaid gains a\n" +
+        `${process.platform} service target.\n\n`,
+    );
+    void emit("configure_aborted", { reason: "unsupported_platform" });
+    return { applied: false, abort: "unsupported_platform" };
+  }
+
   intro("let's set up your safety net", stdout);
 
   const cancel = (): WizardResult => {
@@ -733,9 +784,9 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // Machine-level, so it is deliberately NOT gated on the scope chosen in the
   // next step: one daemon serves every project on this machine.
   //
-  // On a platform with no service manager there is nothing to install, so the
-  // requirement does not apply — requiring an impossible step would lock those
-  // users out of setup entirely rather than protecting anything.
+  // Always true here — the guard near the top of this function already
+  // refused setup on anything else. Kept as a real read (not a literal
+  // `true`) so this block still fails safe if that guard is ever moved.
   const daemonSupported = isDaemonSupportedPlatform();
   // An already-healthy daemon needs no install and no password. Re-running
   // setup on a configured machine must not demand sudo for work that is
@@ -1411,22 +1462,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // And any record of an earlier failure is now false: this machine got set up.
   clearOnboardingAttempt();
 
-  // Keep this inside a standard 80-column terminal. `writeLines` truncates with
-  // a hard cut and no ellipsis, so an over-long line doesn't just lose its tail
-  // — it reads as broken output. Naming all ten CLIs took it to 182 characters;
-  // the count alone carries the same information, and the user picked them two
-  // screens ago.
-  const customNote =
-    customEnabled === true
-      ? " + your custom policies"
-      : customEnabled === false
-        ? " · custom policies DISABLED"
-        : "";
-  const daemonNote = daemonInstalled ? " · daemon on" : "";
-  const cloudNote = connected ? " · reporting on" : "";
-  const assistants = `${clis.length} assistant${clis.length === 1 ? "" : "s"}`;
+  // Every real completed setup is on a supported platform now (an unsupported
+  // one aborts before this point), so the optional notes in the summary below
+  // are no longer occasional additions — see buildCompletionSummary's own doc
+  // comment for why the widest combination still fits in 80 columns.
   outro(
-    `Setup complete — ${policies.length} policies${customNote} · ${assistants}${daemonNote}${cloudNote}`,
+    buildCompletionSummary(policies.length, clis.length, customEnabled, daemonInstalled, connected),
     { ok: true },
     stdout,
   );

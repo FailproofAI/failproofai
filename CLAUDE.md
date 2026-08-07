@@ -906,22 +906,22 @@ denies until `failproofai config` runs. `publish.yml` ships both from one commit
 itself.
 
 **In-process evaluation still exists**, reachable only when `daemonConfigured` is false —
-which is exactly three situations, none of them a configured user machine:
+which is exactly two situations, neither of them a configured user machine:
 
 | Case | Why |
 |------|-----|
 | This repo's dogfood configs | Standing decision above: a flaky dev daemon must not block contributors' tool calls in the same loop where the daemon is being developed. |
-| Unsupported platforms | `isDaemonSupportedPlatform()` is linux + darwin only. |
 | Not yet set up | No hooks are installed either, so nothing evaluates anything. |
 
-**Known gap — Windows.** The wizard *skips* the daemon requirement on an unsupported
-platform rather than refusing setup, so a Windows user completes setup, reads as
-configured, and enforces **in-process**: slower (~850ms vs ~57ms), and with no fail-closed
-guarantee, because `daemonConfigured` is never set and there is nothing to fail closed
-against. The policies themselves are identical and do enforce. This is a deliberate
-trade — refusing setup would drop the platform entirely — and it is the one place
-"all enforcement routes through the daemon" is not literally true. Revisit it if
-failproofaid ever gains a Windows service target.
+**Unsupported platforms refuse setup, not degrade into it.** `isDaemonSupportedPlatform()`
+is linux + darwin only, and `failproofai config` checks it before drawing a single prompt:
+on anything else (Windows, today) it prints why and exits 1, writing nothing — no hooks
+installed, no `daemonConfigured` flag, no half-configured machine. This used to be a known
+gap — the wizard *skipped* the daemon requirement instead, so a Windows user completed
+setup, read as configured, and enforced in-process with no fail-closed guarantee at all.
+Refusing is the more honest failure: it says plainly that the platform isn't supported yet,
+rather than silently shipping a weaker guarantee than every other configured machine has.
+Revisit when failproofaid gains a Windows service target.
 
 ### How the daemon is supervised
 

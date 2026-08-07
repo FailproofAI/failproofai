@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
+import { waitForDaemonRunning } from "../../src/hooks/daemon-service";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -873,4 +874,77 @@ describe("hooks/daemon-service", () => {
       });
     },
   );
+});
+
+describe("hooks/daemon-service waitForDaemonRunning", () => {
+  // A virtual clock: `sleep` advances it, so these assert the SHAPE of the wait
+  // without spending the wall-clock time being asserted about.
+  const clock = () => {
+    let t = 0;
+    return {
+      now: () => t,
+      sleep: async (ms: number) => {
+        t += ms;
+      },
+      elapsed: () => t,
+    };
+  };
+
+  it("returns as soon as the socket answers, instead of sitting out the settle window", async () => {
+    const c = clock();
+    let calls = 0;
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "running",
+      // Answers on the second look — the real machine binds its socket in ~13ms.
+      accepts: async () => ++calls >= 2,
+    });
+    expect(ok).toBe(true);
+    // The old code slept a flat 750ms here regardless. Anything near that means
+    // the early exit is gone.
+    expect(c.elapsed()).toBeLessThan(300);
+  });
+
+  it("fails the moment the unit leaves running, rather than waiting the window out", async () => {
+    const c = clock();
+    let looks = 0;
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      // Active on the first read, dead on the next — the startup-death case the
+      // settle window exists to catch.
+      status: () => (++looks <= 1 ? "running" : "stopped"),
+      accepts: async () => false,
+    });
+    expect(ok).toBe(false);
+    // Detected on the first poll, not after a 750ms sleep.
+    expect(c.elapsed()).toBeLessThan(300);
+  });
+
+  it("still holds the full window when the socket never answers but the unit stays up", async () => {
+    const c = clock();
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "running",
+      accepts: async () => false,
+    });
+    // Held rather than failed: a unit that stayed active for the whole window
+    // did not die at startup, which is all the settle ever established.
+    expect(ok).toBe(true);
+    expect(c.elapsed()).toBeGreaterThanOrEqual(750);
+  });
+
+  it("gives up when the unit never reaches running at all", async () => {
+    const c = clock();
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "stopped",
+      accepts: async () => false,
+    });
+    expect(ok).toBe(false);
+    expect(c.elapsed()).toBeGreaterThanOrEqual(5000);
+  });
 });

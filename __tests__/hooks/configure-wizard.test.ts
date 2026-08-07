@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { summarize } from "../../src/hooks/tui";
+import { summarize,
+  BACK,
+} from "../../src/hooks/tui";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -1256,5 +1258,45 @@ describe("connect step", () => {
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
     expect(connectToCloud).not.toHaveBeenCalled();
+  });
+});
+
+describe("wizard back-navigation", () => {
+  it("← on the harness step re-asks the policy step, and carries the answer back in", async () => {
+    const one = vi.mocked(selectOne);
+    const many = vi.mocked(multiSelect);
+    one.mockResolvedValueOnce("user" as never); // scope
+    many.mockResolvedValueOnce(["secrets", "git"] as never); // policies, 1st pass
+    many.mockResolvedValueOnce(BACK as never); // harnesses -> ←
+    many.mockResolvedValueOnce(["secrets"] as never); // policies, re-asked
+    many.mockResolvedValueOnce(["claude"] as never); // harnesses, 2nd pass
+    one.mockResolvedValueOnce("local" as never); // connect
+    one.mockResolvedValueOnce("apply" as never); // review
+
+    await runConfigureWizard(ttyIO());
+
+    // Four multiSelect calls: policies, harnesses, policies again, harnesses.
+    expect(many.mock.calls.length).toBe(4);
+
+    // The re-asked policy step must arrive pre-checked with the first answer,
+    // or a ← silently discards what the user already chose.
+    const reasked = many.mock.calls[2]![0];
+    const checked = reasked.choices.filter((c) => c.checked);
+    expect(checked.map((c) => String(c.value)).sort()).toEqual(["git", "secrets"]);
+  });
+
+  it("the policy step itself offers no ←, because the step before it is often not asked", async () => {
+    const one = vi.mocked(selectOne);
+    const many = vi.mocked(multiSelect);
+    one.mockResolvedValueOnce("user" as never);
+    many.mockResolvedValueOnce(["git"] as never);
+    many.mockResolvedValueOnce(["claude"] as never);
+    one.mockResolvedValueOnce("local" as never);
+    one.mockResolvedValueOnce("apply" as never);
+
+    await runConfigureWizard(ttyIO());
+
+    expect(many.mock.calls[0]![0].allowBack).toBeFalsy();
+    expect(many.mock.calls[1]![0].allowBack).toBe(true);
   });
 });

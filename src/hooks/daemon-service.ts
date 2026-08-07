@@ -1036,25 +1036,80 @@ export async function probeDaemon(): Promise<DaemonProbe> {
   }
 }
 
+/**
+ * "Is anything listening on the daemon socket?" — never throws.
+ *
+ * Split out because `waitForDaemonRunning` needs the connect check WITHOUT the
+ * hook evaluation: it runs inside a settle loop, and a failed import or a
+ * transient refusal there must read as "not yet", never as an error.
+ */
+async function daemonAcceptsConnectionsQuietly(): Promise<boolean> {
+  try {
+    const { daemonAcceptsConnections } = await import("./daemon-client");
+    return await daemonAcceptsConnections();
+  } catch {
+    return false;
+  }
+}
+
 /** Boolean form, for callers that only branch on healthy/not. */
 export async function probeDaemonEndToEnd(): Promise<boolean> {
   return (await probeDaemon()).ok;
 }
 
 /**
- * Waits for the service to report running, then re-checks after a settle
- * window (see `SERVICE_SETTLE_MS`) so a daemon that dies at startup doesn't
- * pass on the strength of one optimistic reading.
+ * Waits for the service to report running and to HOLD it — a `Type=simple` unit
+ * is active the moment it forks, so one optimistic reading passes a daemon that
+ * died at startup.
+ *
+ * WATCHED, not slept through. This used to sleep `SERVICE_SETTLE_MS` blind and
+ * read the status once at the end, which was wrong in both directions on a
+ * healthy machine and a broken one:
+ *
+ *   • Healthy: the socket is up in ~13ms and answers a real hook in ~125ms, and
+ *     setup still sat there for the remaining ~600ms with the answer already in
+ *     hand. Setup runs this twice on the repair path (uninstall, reinstall), so
+ *     it was over a second of dead wait every time.
+ *   • Broken: a daemon that died at 100ms was not noticed until 750ms, because
+ *     nothing looked until the sleep was over.
+ *
+ * Now the window is polled. Leaving `running` at any point fails immediately,
+ * and the wait ends early once the daemon has answered a real hook — a reply is
+ * strictly stronger evidence of "did not die at startup" than "still active
+ * after an arbitrary sleep", which is all the settle ever established.
  */
-async function waitForDaemonRunning(): Promise<boolean> {
-  const deadline = Date.now() + SERVICE_START_TIMEOUT_MS;
+export interface WaitForDaemonDeps {
+  status?: () => DaemonServiceStatus;
+  accepts?: () => Promise<boolean>;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+export async function waitForDaemonRunning(deps: WaitForDaemonDeps = {}): Promise<boolean> {
+  const status = deps.status ?? daemonServiceStatus;
+  const accepts = deps.accepts ?? daemonAcceptsConnectionsQuietly;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = deps.now ?? Date.now;
+
+  const deadline = now() + SERVICE_START_TIMEOUT_MS;
   for (;;) {
-    if (daemonServiceStatus() === "running") break;
-    if (Date.now() >= deadline) return false;
-    await new Promise((r) => setTimeout(r, SERVICE_START_POLL_MS));
+    if (status() === "running") break;
+    if (now() >= deadline) return false;
+    await sleep(SERVICE_START_POLL_MS);
   }
-  await new Promise((r) => setTimeout(r, SERVICE_SETTLE_MS));
-  return daemonServiceStatus() === "running";
+
+  const settleUntil = now() + SERVICE_SETTLE_MS;
+  for (;;) {
+    // A unit that has left `running` is dead now; there is nothing to wait out.
+    if (status() !== "running") return false;
+    // A daemon that accepted a connection is a daemon that got past startup and
+    // bound its socket. Deliberately the CHEAP check, not a full hook
+    // evaluation: `probeDaemon` runs the end-to-end one moments later, and
+    // paying for it twice is what this rewrite exists to stop.
+    if (await accepts()) return true;
+    if (now() >= settleUntil) return true;
+    await sleep(SERVICE_START_POLL_MS);
+  }
 }
 
 // ── Upgrading a service definition that predates a variable ──────────────────

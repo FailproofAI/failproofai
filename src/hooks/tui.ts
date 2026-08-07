@@ -34,6 +34,8 @@ export interface SelectChoice<T> {
 }
 
 export interface SelectOneOptions<T> {
+  /** Offer ← to go back a step. The caller must handle `BACK`. */
+  allowBack?: boolean;
   message: string;
   choices: SelectChoice<T>[];
   /** Static info lines rendered under the question (e.g. a review summary). */
@@ -64,6 +66,8 @@ export interface MultiChoice<T> {
 }
 
 export interface MultiSelectOptions<T> {
+  /** Offer ← to go back a step. The caller must handle `BACK`. */
+  allowBack?: boolean;
   message: string;
   choices: MultiChoice<T>[];
   minSelected?: number;
@@ -423,6 +427,8 @@ interface PromptSpec<R> {
   renderRow: (index: number, active: boolean, budget: number) => string;
   /** Extra line(s) above the footer (e.g. a min-selected warning). */
   warnLine?: () => string | null;
+  /** When set, ← resolves `BACK` so the caller can step backwards. */
+  allowBack?: boolean;
   footer: string;
   /** Handle non-navigation keys. `{done}` finishes, `"redraw"` repaints. */
   onKey: (key: readline.Key, cursor: number) => { done: R } | "redraw" | undefined;
@@ -500,6 +506,10 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
       if (!key) return;
       if ((key.ctrl && (key.name === "c" || key.name === "d")) || key.name === "escape") {
         finish(null);
+      } else if (key.name === "left" && p.allowBack) {
+        // Only when the caller opted in. A prompt with nowhere to go back TO
+        // must not appear to offer it.
+        finish(BACK as unknown as never);
       } else if (key.name === "up") {
         cursor = cursor > 0 ? cursor - 1 : choices.length - 1;
         repaint(stdout, region, build());
@@ -519,7 +529,24 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
 
 // ── selectOne (radio) ─────────────────────────────────────────────────────────
 
-export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | null> {
+/**
+ * Returned by a prompt when the user asked to go BACK a step, as distinct from
+ * cancelling. Both used to be `null`, which made "I picked the wrong scope" and
+ * "I want out" the same keystroke — so the only way to change an earlier answer
+ * was to abandon setup and start over.
+ *
+ * A symbol rather than a sentinel string because a caller's value type is its
+ * own: `selectOne<string>` could legitimately have "back" as a real choice.
+ */
+export const BACK: unique symbol = Symbol("failproofai.back");
+export type Back = typeof BACK;
+
+// Overloaded so `BACK` appears in the return type ONLY where it was asked for.
+// Widening every caller to `T | Back | null` would make dozens of call sites
+// handle a value they can never receive.
+export function selectOne<T>(opts: SelectOneOptions<T> & { allowBack: true }): Promise<T | Back | null>;
+export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | null>;
+export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | Back | null> {
   const stdin: TTYIn = opts.stdin ?? process.stdin;
   const stdout: TTYOut = opts.stdout ?? process.stdout;
   const choices = opts.choices;
@@ -550,7 +577,10 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | null> {
       const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
       return `${dot} ${label}${hint}`;
     },
-    footer: "↑/↓ navigate · enter to select · esc to cancel",
+    allowBack: opts.allowBack,
+    footer: opts.allowBack
+      ? "↑/↓ navigate · enter to select · ← back · esc to cancel"
+      : "↑/↓ navigate · enter to select · esc to cancel",
     onKey: (key, cursor) =>
       key.name === "return" ? { done: choices[cursor].value } : undefined,
     summaryFor: (value) =>
@@ -562,7 +592,9 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | null> {
 
 // ── multiSelect (checklist) ────────────────────────────────────────────────────
 
-export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null> {
+export function multiSelect<T>(opts: MultiSelectOptions<T> & { allowBack: true }): Promise<T[] | null | Back>;
+export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>;
+export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null | Back> {
   const stdin: TTYIn = opts.stdin ?? process.stdin;
   const stdout: TTYOut = opts.stdout ?? process.stdout;
   const choices = opts.choices;
@@ -604,7 +636,12 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
       return `${caret} ${box} ${label}${hint}`;
     },
     warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),
-    footer: opts.hint ?? "↑/↓ move · space select · ctrl+a all · enter confirm",
+    allowBack: opts.allowBack,
+    footer:
+      opts.hint ??
+      (opts.allowBack
+        ? "↑/↓ move · space select · ctrl+a all · ← back · enter confirm"
+        : "↑/↓ move · space select · ctrl+a all · enter confirm"),
     onKey: (key, cursor) => {
       if (key.name === "space") {
         if (choices[cursor]?.locked) return "redraw"; // always on — not a choice

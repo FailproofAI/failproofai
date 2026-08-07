@@ -33,6 +33,7 @@ import { dirname, resolve, sep } from "node:path";
 import {
   selectOne,
   multiSelect,
+  BACK,
   promptText,
   intro,
   outro,
@@ -960,23 +961,37 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // The assistants step below keeps its minimum deliberately: an empty CLI list
   // does NOT mean "no assistants" there — `installHooksImpl` falls back to
   // ["claude"], so letting it through would silently install for Claude.
-  const presets = await multiSelect<string>({
-    message: "What should we guard against?",
-    choices: presetChoices,
-    summaryNoun: "bundles",
-    hint: "space toggles · combine presets · ↵ confirm · none is fine",
-    stdin,
-    stdout,
-  });
-  if (presets === null) return cancel();
-  const policies = resolvePresetSelection(presets);
-  // Only meaningful when there are files to switch off; with none, the row is
-  // locked-unchecked and must not write a disabling flag.
-  const customEnabled = hasCustomFiles ? presets.includes(CUSTOM) : undefined;
+  // Steps 2 and 3 are navigable: ← on the harness step returns to the policy
+  // step with the previous answer still selected. Before this, changing an
+  // earlier answer meant abandoning setup and starting over, because a prompt
+  // had exactly one way out and it was `null`.
+  //
+  // The policy step itself takes no `allowBack`: the only thing before it is
+  // the scope question, which is frequently not asked at all (a single choice
+  // is stated, not prompted), so ← there would sometimes go nowhere.
+  let presets: string[] | null = null;
+  let clisSel: string[] | null = null;
+  while (clisSel === null) {
+    // Re-entering after a ← must show what was picked, not a blank slate.
+    // Selection state lives on each choice, so carry it back in.
+    // Loop-carried: narrowed to `null` on the first pass, repopulated on a ←.
+    const priorPresets = presets as string[] | null;
+    presets = await multiSelect<string>({
+      message: "What should we guard against?",
+      choices: priorPresets
+        ? presetChoices.map((c) => ({ ...c, checked: priorPresets.includes(c.value) }))
+        : presetChoices,
+      summaryNoun: "bundles",
+      hint: "space toggles · combine presets · ↵ confirm · none is fine",
+      stdin,
+      stdout,
+    });
+    if (presets === null) return cancel();
 
-  // 3 — Which assistants? An "Everything available" row protects every supported
-  // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-  const clisSel = await multiSelect<string>({
+    // 3 — Which harnesses? An "Everything available" row protects every supported
+    // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
+    const priorClis = clisSel as string[] | null;
+    const picked: string[] | typeof BACK | null = await multiSelect<string>({
     message: "Which harnesses should it protect?",
     choices: [
       {
@@ -990,14 +1005,25 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         summaryExclude: true,
       },
       ...buildAgentChoices(primaryScope, cwd),
-    ],
-    minSelected: 1,
-    summaryNoun: "harnesses",
-    hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
-    stdin,
-    stdout,
-  });
-  if (clisSel === null) return cancel();
+    ].map((c) => (priorClis ? { ...c, checked: priorClis.includes(c.value) } : c)),
+      minSelected: 1,
+      summaryNoun: "harnesses",
+      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
+      allowBack: true as const,
+      stdin,
+      stdout,
+    });
+    if (picked === null) return cancel();
+    // ← re-runs the loop, which re-asks the policy step with its answer intact.
+    if (picked === BACK) continue;
+    clisSel = picked;
+  }
+  // Non-null by construction: the loop only exits once both are assigned.
+  const chosenPresets: string[] = presets ?? [];
+  const policies = resolvePresetSelection(chosenPresets);
+  // Only meaningful when there are files to switch off; with none, the row is
+  // locked-unchecked and must not write a disabling flag.
+  const customEnabled = hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
   // Filter to what the chosen scopes support in BOTH branches: "Everything
   // available" must not expand to CLIs that cannot take any selected scope,
   // and a locked row can't be ticked but belt-and-braces keeps the invariant
@@ -1374,7 +1400,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     cli: clis,
     cli_count: clis.length,
     policy_count: policies.length,
-    source: presets.join("+"),
+    source: chosenPresets.join("+"),
     connected: connect !== null,
   });
 

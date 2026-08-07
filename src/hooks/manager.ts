@@ -25,6 +25,7 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
+import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -837,6 +838,40 @@ export async function listHooks(cwd?: string): Promise<void> {
       }
     }
     console.log();
+  }
+
+  // Cloud-managed policies. These enforce on this machine exactly like the two
+  // sections above, but nothing here listed them — so `failproofai policies`
+  // answered "what is enforcing?" with a subset, and the policies an operator
+  // pushed to a fleet were the ones invisible to the person running the
+  // command on it.
+  //
+  // Read-only on purpose: these are owned by the deployment, not by local
+  // config. `--uninstall <name>` cannot switch one off, and printing them
+  // beside toggleable rows without saying so would imply it can.
+  try {
+    const cloud = readActiveCloudManagedPolicies();
+    if (cloud.length > 0) {
+      const gen = cloud[0].generation;
+      console.log(
+        `\n  \u2500\u2500 Cloud-managed \u2014 deployment ${gen} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
+      );
+      const colWidth = Math.max(nameColWidth, ...cloud.map((c) => c.id.length + 2));
+      for (const artifact of cloud) {
+        // `observe` is evaluated and then has its verdict discarded, so a row
+        // that read "ON" would claim enforcement this policy deliberately is
+        // not doing.
+        const status =
+          artifact.effect === "observe" ? "\x1B[33m\u25D0 OBS\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
+        console.log(`  ${status}    ${artifact.id.padEnd(colWidth)}v${artifact.revision}`);
+      }
+      console.log("\n  Managed from the dashboard \u2014 not switchable with `failproofai policies`.");
+      console.log();
+    }
+  } catch {
+    // A machine with no deployment, or an unreadable manifest, simply has no
+    // section. The hook path reports its own failures; a listing must not be
+    // the thing that turns a bad manifest into a broken command.
   }
 
   // Mirror what was just listed into the USER config. Safe here because

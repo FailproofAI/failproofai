@@ -19,7 +19,7 @@
  * correct with zero changes; a worker_threads/process pool is a valid
  * future enhancement if this becomes a real throughput bottleneck.
  */
-import { createServer, type Server, type Socket } from "node:net";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
 import { evaluateHookEvent } from "./handler";
 import type { IntegrationType } from "./types";
@@ -125,7 +125,7 @@ function enqueue(task: () => Promise<void>): void {
     .catch(() => {});
 }
 
-function handleConnection(socket: Socket): void {
+function handleConnection(socket: Socket, shutdown: () => void): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
 
@@ -161,6 +161,15 @@ function handleConnection(socket: Socket): void {
       } catch {
         socket.write(encodeFrame({ type: "error", message: "malformed request frame" }));
         continue;
+      }
+
+      if (
+        message &&
+        typeof message === "object" &&
+        (message as Record<string, unknown>).type === "shutdown"
+      ) {
+        socket.end(encodeFrame({ type: "shutdownAccepted" }), shutdown);
+        return;
       }
 
       if (!isWorkerHookRequest(message)) {
@@ -201,16 +210,64 @@ function handleConnection(socket: Socket): void {
   });
 }
 
-export function startWorkerServer(socketPath: string): Server {
-  if (existsSync(socketPath)) {
-    try {
-      unlinkSync(socketPath);
-    } catch {
-      // Racing with something else clearing it — fine, bind will surface
-      // any real problem.
+const STALE_WORKER_SHUTDOWN_TIMEOUT_MS = 2_000;
+
+function requestExistingWorkerShutdown(socketPath: string): Promise<"stale" | "stopped"> {
+  return new Promise((resolvePromise, reject) => {
+    const socket = createConnection({ path: socketPath });
+    let recvBuf = Buffer.alloc(0);
+    let settled = false;
+    const timer = setTimeout(() => finish(new Error("existing worker did not acknowledge shutdown")), STALE_WORKER_SHUTDOWN_TIMEOUT_MS);
+    timer.unref?.();
+
+    const finish = (result: Error | "stale" | "stopped") => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      if (result instanceof Error) reject(result);
+      else resolvePromise(result);
+    };
+
+    socket.on("connect", () => socket.write(encodeFrame({ type: "shutdown" })));
+    socket.on("data", (chunk: Buffer) => {
+      recvBuf = Buffer.concat([recvBuf, chunk]);
+      if (recvBuf.length < 4) return;
+      const len = recvBuf.readUInt32BE(0);
+      if (len > MAX_FRAME_LEN || recvBuf.length < 4 + len) return;
+      try {
+        const response = JSON.parse(recvBuf.subarray(4, 4 + len).toString("utf8")) as { type?: unknown };
+        if (response.type === "shutdownAccepted") finish("stopped");
+        else finish(new Error("existing socket belongs to a process that does not support shutdown"));
+      } catch {
+        finish(new Error("existing worker returned a malformed shutdown response"));
+      }
+    });
+    socket.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ECONNREFUSED" || err.code === "ENOENT") finish("stale");
+      else finish(err);
+    });
+  });
+}
+
+export function startWorkerServer(socketPath: string, shutdown?: () => void): Server {
+  const server = createServer((socket) =>
+    handleConnection(socket, shutdown ?? (() => server.close())),
+  );
+
+  const listen = () => {
+    if (existsSync(socketPath)) {
+      try {
+        unlinkSync(socketPath);
+      } catch {
+        // Racing with the old worker clearing it is harmless; listen surfaces
+        // any remaining conflict.
+      }
     }
-  }
-  const server = createServer(handleConnection);
-  server.listen(socketPath);
+    server.listen(socketPath);
+  };
+
+  if (!existsSync(socketPath)) listen();
+  else void requestExistingWorkerShutdown(socketPath).then(listen, (err) => server.emit("error", err));
   return server;
 }

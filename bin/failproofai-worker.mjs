@@ -35,7 +35,7 @@ if (!socketPath) {
 }
 
 const { startWorkerServer } = await import("../src/hooks/worker-server");
-const server = startWorkerServer(socketPath);
+const server = startWorkerServer(socketPath, shutdown);
 
 server.on("error", (err) => {
   console.error(`[failproofai-worker] server error: ${err.message}`);

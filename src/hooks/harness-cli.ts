@@ -21,13 +21,18 @@
  * other detector: `[collector.sources.claud]` is valid TOML, parses cleanly,
  * captures nothing, and is mentioned nowhere else a user would look.
  *
- * # Why a restart is mentioned and not performed
+ * # No restart, and no sudo
  *
- * The collector builds its task list once, when collection becomes enabled. A
- * path added now is captured after the daemon next starts. Restarting it is
- * `sudo systemctl restart` against a system-scope unit — this command writes a
- * file without root and says what to run, rather than prompting for a password
- * from under a command that had no other reason to need one.
+ * This writes one file in the user's own home and nothing else. The daemon's
+ * collector manager re-reads `config.toml` on an interval and cycles the
+ * collector whenever the resolved `CollectorConfig` changes — the same path
+ * that already picks up `--connect`, a stream being switched off, and a
+ * verbosity change. `extra_paths` rides it for free by living inside
+ * `Settings`, which is part of the value being compared. That is load-bearing
+ * rather than incidental, and `collector_config_change_cycles_the_collector`
+ * in `crates/fpai-collect/src/config.rs` pins it: move `sources` out of
+ * `CollectorConfig` and the CLI would keep reporting success for paths the
+ * running daemon never picks up.
  */
 
 import { readConfig, updateConfig } from "./fp-config";
@@ -116,13 +121,26 @@ function writePaths(harness: string, paths: string[]): void {
   });
 }
 
-const RESTART_HINT = [
+/**
+ * No restart, and deliberately no instruction to perform one.
+ *
+ * The daemon's collector manager re-reads `config.toml` on an interval and
+ * cycles the collector whenever the resolved `CollectorConfig` changes — the
+ * same path that already picks up `--connect`, a stream being switched off and
+ * a verbosity change. `extra_paths` rides that for free because it lives inside
+ * `Settings`, which lives inside the value being compared.
+ *
+ * Verified live: adding a path to a running daemon logged "collector
+ * configuration changed; cycling the collector", took the task count from 21 to
+ * 23, and the first transcript written under the new path reached the server.
+ *
+ * This said "run `sudo systemctl restart failproofaid@$USER`" first. That was
+ * wrong twice over: the restart is unnecessary, and it asks for root from a
+ * command that writes one file in the user's own home and needs none.
+ */
+const TAKES_EFFECT_HINT = [
   "",
-  "The collector builds its task list at startup, so this takes effect when the",
-  "daemon next restarts:",
-  "",
-  "  sudo systemctl restart failproofaid@$USER    # linux",
-  "  sudo launchctl kickstart -k system/ai.befailproof.failproofaid   # macos",
+  "The daemon picks this up on its own within a few seconds — no restart, no sudo.",
 ];
 
 export function addPath(harness: string, entry: string): HarnessResult {
@@ -173,7 +191,7 @@ export function addPath(harness: string, entry: string): HarnessResult {
       ? `  agent ids will be namespaced ${wanted}-*`
       : "  a label will be derived from the folder name; `failproofai harness list` shows it",
     `  written to ${configFile()}`,
-    ...RESTART_HINT,
+    ...TAKES_EFFECT_HINT,
   ]);
 }
 
@@ -199,7 +217,7 @@ export function removePath(harness: string, target: string): HarnessResult {
     "",
     "Already-collected sessions from that path are NOT removed — they are on the",
     "server. This only stops new ones.",
-    ...RESTART_HINT,
+    ...TAKES_EFFECT_HINT,
   ]);
 }
 

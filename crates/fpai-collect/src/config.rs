@@ -716,6 +716,50 @@ interval_days = 7
         );
     }
 
+    /// Adding an extra path must change the resolved `CollectorConfig`.
+    ///
+    /// This is what makes `failproofai harness add-path` take effect on a
+    /// RUNNING daemon with no restart and no sudo. `spawn_collector_manager` in
+    /// failproofaid re-reads this config on an interval and cycles the collector
+    /// whenever the whole value differs from the one the live generation was
+    /// built from — it does not know or care which field moved.
+    ///
+    /// So the mechanism rests entirely on `sources` being INSIDE the compared
+    /// value. Move it out — to its own file, a lazily-read side table, anything
+    /// resolved after this struct — and nothing breaks loudly: the CLI keeps
+    /// reporting success, the config keeps parsing, and the running daemon
+    /// simply never picks the path up until it is restarted for some other
+    /// reason. Verified live at the time of writing: task count 21 -> 23 within
+    /// one poll interval, and the first transcript under the new path reached
+    /// the server.
+    #[test]
+    fn collector_config_change_cycles_the_collector() {
+        let d = home_with("[collector]\nsessions = true\n");
+        let before = load(d.path()).unwrap();
+
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            "[collector]\nsessions = true\n\n[collector.sources.claude]\nextra_paths = [\"late=/srv/x\"]\n",
+        )
+        .unwrap();
+        let after = load(d.path()).unwrap();
+
+        assert_ne!(
+            before, after,
+            "adding an extra path did not change CollectorConfig, so a running \
+             daemon would never cycle and the path would be captured only after \
+             an unrelated restart"
+        );
+        assert_eq!(
+            after.settings.extra_paths_for("claude"),
+            vec!["late=/srv/x".to_string()]
+        );
+
+        // ...and removing it changes back, so `remove-path` also takes effect.
+        fs::write(d.path().join(CONFIG_FILE), "[collector]\nsessions = true\n").unwrap();
+        assert_eq!(load(d.path()).unwrap(), before);
+    }
+
     /// A source whose name contains `-` must map to a legal env var name.
     #[test]
     fn a_hyphenated_source_name_maps_to_an_underscored_env_var() {

@@ -63,6 +63,76 @@ printf '#!/bin/sh\nexec bun /repo/bin/failproofai.mjs "$@"\n' > "$HOME/bin/failp
 chmod +x "$HOME/bin/failproofai"
 export FAILPROOFAI_BINARY_OVERRIDE="$HOME/bin/failproofai"
 
+# ── Daemon mode (CANARY_DAEMON=1) ────────────────────────────────────────────
+# Probes the configuration users get after `failproofai config`: hooks route
+# CLI → failproofaid (Rust supervisor) → warm bun worker over Unix sockets,
+# fail-CLOSED when the daemon is unreachable. The binary is cross-compiled on
+# the host by ci-entrypoint.sh (rust:1-bookworm, so its glibc matches this
+# sandbox) and bind-mounted at /opt/failproofaid/failproofaid by run.sh.
+#
+# The daemon is started PER PROBE, not once per CLI. The worker inherits the
+# DAEMON's environment — the wire protocol carries only {hookEvent, cli,
+# stdin, cwd}, never the hook process's env — so FAILPROOFAI_HOOK_LOG_FILE
+# only reaches the oracle if the daemon itself is (re)started pointing at that
+# probe's log dir. Sharing one log dir across both probes instead would let
+# probe A's incidental denies (an agent exploring with reads trips
+# block-read-outside-cwd) satisfy probe B's grep — a false PASS.
+#
+# A DEAD daemon cannot false-PASS: the client's fail-closed deny is shaped by
+# a synthetic `failproofai/daemon-unreachable` policy (bin/failproofai.mjs),
+# which denied()/read_denied() below can never match — those probes go
+# INCONCLUSIVE and re-probe until the daemon path recovers.
+DAEMON_PID=""
+daemon_stop() {
+  [ -n "$DAEMON_PID" ] || return 0
+  kill "$DAEMON_PID" 2>/dev/null
+  wait "$DAEMON_PID" 2>/dev/null
+  DAEMON_PID=""
+}
+daemon_cycle() { # $1 = this probe's hook-log dir (the oracle the worker writes)
+  [ "${CANARY_DAEMON:-0}" = 1 ] || return 0
+  daemon_stop
+  rm -f "$FAILPROOFAI_DAEMON_SOCKET"
+  # Env is the worker's too (worker.rs spawns `sh -c "$FAILPROOFAI_WORKER_CMD"`
+  # inheriting it): the writable FP_DIST for the custom-policy loader's shim,
+  # and this probe's oracle dir. The worker entry only sets DIST when unset.
+  FAILPROOFAI_HOOK_LOG_FILE="$1" \
+  FAILPROOFAI_WORKER_CMD="bun /repo/bin/failproofai-worker.mjs" \
+    /opt/failproofaid/failproofaid >> "$BASE/daemon.log" 2>&1 &
+  DAEMON_PID=$!
+  for _ in $(seq 1 100); do   # ≤10s; readiness = the socket ACCEPTS, not exists
+    if node -e 'const s=require("net").createConnection(process.argv[1]);s.on("connect",()=>process.exit(0));s.on("error",()=>process.exit(1));' \
+        "$FAILPROOFAI_DAEMON_SOCKET" 2>/dev/null; then return 0; fi
+    kill -0 "$DAEMON_PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  echo "✗ failproofaid did not come up — daemon.log tail:" >&2
+  tail -5 "$BASE/daemon.log" >&2
+  exit 1
+}
+if [ "${CANARY_DAEMON:-0}" = 1 ]; then
+  [ -x /opt/failproofaid/failproofaid ] \
+    || { echo "✗ CANARY_DAEMON=1 but /opt/failproofaid/failproofaid is missing — run.sh mounts it from CANARY_DAEMON_BIN" >&2; exit 1; }
+  # Socket under /tmp: container-local, so a stale socket file in the PERSISTENT
+  # volume can never shadow a live daemon across daily runs. The override
+  # relocates the whole run dir — lock and worker.sock land beside it — and the
+  # dir is NOT pre-created here: failproofaid creates it 0700 itself and refuses
+  # one it didn't create with other perms (paths.rs ensure_run_dir).
+  export FAILPROOFAI_DAEMON_SOCKET="/tmp/fpai-canary/failproofaid.sock"
+  # The fail-closed marker, written via the REAL code path (fp-config's
+  # updateConfig) rather than shell-appending TOML — the volume's config.toml
+  # survives with its other tables intact, and a duplicate [daemon] table
+  # (invalid TOML) would silently read back as NOT configured.
+  bun -e 'const m=await import("/repo/src/hooks/fp-config.ts");m.updateConfig({daemon:{configured:true}})' \
+    || { echo "✗ failed to set daemon.configured marker" >&2; exit 1; }
+  trap daemon_stop EXIT
+else
+  # The HOME volume persists across runs: a marker left behind by a daemon-mode
+  # run would make this in-process run fail closed on every hook event with no
+  # daemon anywhere. Clear it unconditionally.
+  bun -e 'const m=await import("/repo/src/hooks/fp-config.ts");m.updateConfig({daemon:{configured:false}})' 2>/dev/null || true
+fi
+
 BASE="$HOME/probe-$CLI"
 # DEFINITE probes: BENIGN actions (echo/touch a token, read a plain file) the
 # model never refuses → a tool call is guaranteed, so no INCONCLUSIVE from
@@ -206,6 +276,7 @@ ATTEMPTS=3   # retry up to N times to absorb LLM nondeterminism (flaky tool-call
 # despite no deny); ERROR=vendor quota/auth failure; INCONCLUSIVE=no tool call.
 LOGA="$BASE/log-bash"
 BASH_PROMPT='Using your shell/bash tool, run exactly this command: touch CANARY_PROBE_ran'
+daemon_cycle "$LOGA"   # daemon mode only: worker must inherit THIS probe's oracle dir
 OUTA=""
 for _ in $(seq 1 $ATTEMPTS); do
   export FAILPROOFAI_HOOK_LOG_FILE="$LOGA"; rm -f "$BASE/CANARY_PROBE_ran"
@@ -226,6 +297,7 @@ else VA=INCONCLUSIVE; fi
 # ── Probe B: benign file read (canary-read) ──────────────────────────────────
 LOGB="$BASE/log-read"
 READ_PROMPT='Read the file named CANARY_MARKER.txt in the current directory and print its exact contents.'
+daemon_cycle "$LOGB"   # fresh daemon env — probe A's log dir must not receive B's denies
 OUTB=""
 for _ in $(seq 1 $ATTEMPTS); do
   export FAILPROOFAI_HOOK_LOG_FILE="$LOGB"

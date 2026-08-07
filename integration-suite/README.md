@@ -4,27 +4,65 @@ A daily **live-enforcement integration test** for failproofai. It answers one
 question the unit/e2e suites can't: *does failproofai still enforce against every
 supported agent CLI, at the versions users actually install today?*
 
-Every day (`.github/workflows/integration-suite.yml`) it installs all 12 agent
-CLIs **@latest** into an isolated Docker sandbox, drives each one against
-failproofai's own policies (built from this repo's HEAD), and confirms the hook
-log shows a **DENY**. A *silent-allow* — a blocked action that ran with no deny —
-means enforcement broke against that CLI (e.g. a vendor changed their hook schema
-out from under us). The test asserts the deny **positively**, so drift surfaces
-as a red run + a Slack alert instead of going unnoticed until a user hits it.
+Every day (a systemd user timer on the canary box — see **Local runner** below;
+`.github/workflows/integration-suite.yml` is the on-demand cloud fallback) it
+installs all 12 agent CLIs **@latest** into an isolated Docker sandbox, drives
+each one against failproofai's own policies (built from the ref under test), and
+confirms the hook log shows a **DENY**. A *silent-allow* — a blocked action that
+ran with no deny — means enforcement broke against that CLI (e.g. a vendor
+changed their hook schema out from under us). The test asserts the deny
+**positively**, so drift surfaces as a red run + a Slack alert instead of going
+unnoticed until a user hits it.
+
+On the box, the stable leg also runs **daemon-configured** (`CANARY_DAEMON=1`):
+hooks route CLI → `failproofaid` (Rust supervisor) → warm bun worker, fail-closed
+— the configuration `failproofai config` gives users — so the canary tests the
+transport users actually run, not just the in-process path. See the
+`CANARY_DAEMON` block in `probe-cli.sh` for the mechanics (per-probe daemon
+restarts, the `daemon.configured` marker, and why a dead daemon scores
+INCONCLUSIVE rather than a false PASS).
 
 ## Why it's separate from `__tests__/`
 
 It drives **real vendor CLIs against real gateway models** — it needs network,
 Docker, credentials, and ~7-10 min, none of which belong in the fast in-process
-vitest suites. So it's a scheduled workflow, not a PR gate.
+vitest suites. So it's a scheduled run, not a PR gate.
+
+## Local runner (the daily driver)
+
+Daily runs live on a **local canary box**, not GH Actions — runner minutes were
+the entire cost of the old daily cron; the LLM spend is identical either way.
+`local/` holds everything box-side:
+
+```
+local/run-local.sh              the cron replacement: checkout CANARY_REF →
+                                stable leg (daemon) → beta leg → crash-guard
+local/install.sh                box setup: installed copy + units + secrets template
+local/failproofai-canary.service  systemd user unit (oneshot, 4h ceiling)
+local/failproofai-canary.timer    daily 06:17 UTC, Persistent=true
+```
+
+Box setup: clone the repo anywhere once, `bash integration-suite/local/install.sh`,
+fill `~/.config/failproofai-canary/secrets.env` (same variables the GHA
+Environment supplied; token tarballs still come from `capture-tokens.sh` on a
+logged-in machine), `loginctl enable-linger`, enable the timer. The wrapper runs
+from an **installed copy** because it hard-resets the runner clone every run —
+nothing that must survive a run may live inside the clone.
+
+State (`integration-suite-state[-beta].json`) sits in
+`~/.local/state/failproofai-canary/` instead of the Actions cache; the
+version-gate logic is unchanged. Verdict reports POST to Slack exactly as
+before; a leg that dies *before* reporting gets a distinct crash-note (that's
+the replacement for GHA's red-job email).
 
 ## How a run works
 
-The workflow is a thin trigger; `ci-entrypoint.sh` is the front door and does
-everything below except the Actions cache restore/save.
+The trigger (box: `local/run-local.sh`; cloud: the workflow) is thin;
+`ci-entrypoint.sh` is the front door and does everything below except state
+restore/save.
 
-1. Restore `integration-suite-state.json` from Actions cache (version-gate +
-   broke/recovered diff) — *workflow*.
+1. Point `CANARY_STATE` at `integration-suite-state.json` (version-gate +
+   broke/recovered diff) — box state dir, or Actions cache on a dispatch.
 2. Build failproofai under test (`dist/index.js` + `dist/cli.mjs`) from this repo.
 3. Decode the OAuth token secrets, build the sandbox image, create the per-run
    HOME volume, install all 12 CLIs (`install-clis.sh`), inject the credential
@@ -96,8 +134,10 @@ able to overwrite the stable leg's gating record.
 
 Because this repo is public, all credentials live in a scoped **GitHub
 Environment** (`cli-integration`) — only this workflow's job can read them — and
-the workflow triggers on `schedule`/`workflow_dispatch` **only**, so fork PRs can
-never reach them.
+the workflow triggers on `workflow_dispatch` **only**, so fork PRs can never
+reach them. (The canary box keeps its own copy of the same variables in
+`~/.config/failproofai-canary/secrets.env`, chmod 600 — updating one does not
+update the other.)
 
 | Auth | CLIs | Secret(s) |
 |------|------|-----------|
@@ -126,4 +166,5 @@ canary-policies.mjs   benign-marker custom policies the probe trips
 run.sh                orchestrator (gate → probe → report → Slack)
 report.js             build the Slack report + diff state (broke/recovered)
 capture-tokens.sh     (run on a logged-in machine) refresh the OAuth token secrets
+local/                the daily driver: box wrapper + systemd units (see above)
 ```

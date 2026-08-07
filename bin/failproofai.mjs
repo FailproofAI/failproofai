@@ -271,7 +271,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -318,6 +318,14 @@ COMMANDS
     --custom, -c                   Clear all explicit custom policy paths
 
   policies --help, -h            Show this help for the policies command
+
+  harness list                   Show extra capture paths per agent CLI
+  harness add-path <h> <path>    Also capture sessions from <path> for harness
+                                 <h>. Accepts \`<label>=<path>\`; the label
+                                 namespaces agent ids so two copies of one
+                                 project stay distinct.
+  harness remove-path <h> <p>    Stop capturing that path
+  harness --help, -h             Show this help for the harness command
 
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
@@ -641,6 +649,80 @@ OPTIONS
       else console.error(line);
     }
     await track("cli_backfill", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run"), explicit_since: sinceIdx >= 0 });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // harness list | add-path | remove-path
+  //
+  // Extra capture paths per harness. Writes ~/.failproofai/config.toml and
+  // nothing else — no root, no daemon call — so it works on a machine whose
+  // daemon is stopped, which is when someone is most likely to be fixing what
+  // it captures.
+  if (args[0] === "harness") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai harness — capture sessions from more than one location per agent CLI
+
+USAGE
+  failproofai harness list [<harness>]
+  failproofai harness add-path <harness> [<label>=]<path>
+  failproofai harness remove-path <harness> <path|label>
+
+WHY
+  Each agent CLI is watched wherever its own installer put it — ~/.claude/projects,
+  ~/.hermes/state.db, and so on. That misses every other arrangement: a second
+  profile, a mounted team share, a container's home beside the host's, an agent
+  an operator moved. Those hold real sessions and nothing collects them.
+
+THE LABEL
+  An entry is \`<path>\` or \`<label>=<path>\`. The label namespaces agent ids as
+  <label>-<agentId>, and it matters: two locations holding the same project
+  derive the SAME id (it comes from the cwd inside the transcript, identical in
+  both copies), so without a label they merge into one agent whose sessions
+  interleave from two machines' worth of history. Omit it and one is derived
+  from the folder name.
+
+HARNESSES
+  claude, codex, copilot, openclaw, pi, factory, antigravity, cursor,
+  goose, opencode, devin, hermes
+
+  \`claude\` covers subagent transcripts too — they live under the same root.
+
+NOTES
+  • Session collection must be on for any of this to be read; extra paths follow
+    [collector] in ~/.failproofai/config.toml like the default ones do.
+  • A path overlapping one already captured is REFUSED by the daemon at startup
+    rather than collected twice under two ids. It says so in the journal.
+  • Takes effect at the next daemon restart — the collector builds its task list
+    once, at startup.
+
+EXAMPLES
+  failproofai harness add-path claude work=/srv/team/.claude/projects
+  failproofai harness add-path hermes prod=/srv/hermes-prod/state.db
+  failproofai harness add-path codex /mnt/other-home/.codex/sessions
+  failproofai harness list
+  failproofai harness remove-path claude work
+`.trimStart());
+      process.exit(0);
+    }
+
+    lastSubcommand = "harness";
+    const { runHarnessCommand } = await import("../src/hooks/harness-cli");
+    const result = runHarnessCommand(subArgs);
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_harness", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never the harness name, the label or the path.
+      // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
+      // promises we send shape, never value.
+      sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);
     return;

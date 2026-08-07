@@ -23,6 +23,7 @@
 //! transcripts carry prompts, file contents and whatever the user pasted into
 //! a terminal — configuring a key must not silently start shipping those.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -150,6 +151,28 @@ pub struct Settings {
     /// this field existed; such events carry no machine.
     #[serde(default)]
     pub machine_id: Option<String>,
+    /// Per-source extra capture paths, keyed by source name (`claude`,
+    /// `hermes`, …) — `[collector.sources.<name>]` in `config.toml`.
+    ///
+    /// A map rather than a struct with 13 fields: the source list is data, not
+    /// schema, and a struct would mean a newly added source silently ignoring
+    /// its own config key until somebody remembered to add the field. An
+    /// unrecognised key here is caught by the caller, which knows the real
+    /// source list, and reported rather than dropped — a typo'd `[collector.
+    /// sources.claud]` that parsed cleanly and captured nothing is exactly the
+    /// silent failure this project exists to remove.
+    #[serde(default)]
+    pub sources: BTreeMap<String, SourceSettings>,
+}
+
+/// The `[collector.sources.<name>]` table.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SourceSettings {
+    /// Extra locations to capture, each `label=path` or bare `path`. Resolved
+    /// by [`crate::extra_paths::resolve`]; see that module for the grammar and
+    /// for what each rejection prevents.
+    #[serde(default)]
+    pub extra_paths: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -169,7 +192,55 @@ impl Default for Settings {
             redact: Redact::default(),
             environment: default_environment(),
             machine_id: None,
+            sources: BTreeMap::new(),
         }
+    }
+}
+
+impl Settings {
+    /// Raw `extra_paths` entries for one source, env override winning whole.
+    ///
+    /// `FAILPROOFAI_<SOURCE>_EXTRA_PATHS`, comma-separated — the same
+    /// env → file → default precedence as every other knob here, and the same
+    /// env name shape AgentEye's collector uses (`AGENTEYE_HERMES_EXTRA_PATHS`).
+    /// It REPLACES the file's list rather than appending to it: a container that
+    /// sets the variable is describing that container's whole layout, and
+    /// silently inheriting a host path from a mounted config would capture a
+    /// directory the operator never asked for.
+    ///
+    /// The source name is upper-cased with `-` mapped to `_`, so
+    /// `claude-subagent` reads `FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS`.
+    pub fn extra_paths_for(&self, source: &str) -> Vec<String> {
+        let var = format!(
+            "FAILPROOFAI_{}_EXTRA_PATHS",
+            source.to_ascii_uppercase().replace('-', "_")
+        );
+        if let Some(raw) = env_nonempty(&var) {
+            return raw
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
+        }
+        self.sources
+            .get(source)
+            .map(|s| s.extra_paths.clone())
+            .unwrap_or_default()
+    }
+
+    /// Configured source names that are not in `known`.
+    ///
+    /// Returned rather than warned about here so the caller — which owns the
+    /// real source list — decides how loud to be. A typo'd table parses fine
+    /// and captures nothing, and nothing else in the pipeline would ever
+    /// mention it.
+    pub fn unknown_sources(&self, known: &[&str]) -> Vec<String> {
+        self.sources
+            .keys()
+            .filter(|k| !known.contains(&k.as_str()))
+            .cloned()
+            .collect()
     }
 }
 
@@ -492,3 +563,172 @@ fn tighten_home(home: &Path) {
 
 #[cfg(not(unix))]
 fn tighten_home(_home: &Path) {}
+
+#[cfg(test)]
+mod extra_path_settings_tests {
+    use super::*;
+
+    /// The exact bytes `writeConfig` in `src/hooks/fp-config.ts` produces after
+    /// two `failproofai harness add-path` runs, captured from a live CLI
+    /// invocation rather than hand-written.
+    ///
+    /// This is the seam with nothing holding it together: the TypeScript CLI
+    /// writes this file and the Rust daemon reads it, and neither is generated
+    /// from the other. Both halves parse cleanly on their own while disagreeing
+    /// — which is how `[collector]` came to be snake_case at all (it was
+    /// camelCase under `policies-config.json`, and carrying that over would have
+    /// meant every field silently falling back to its default).
+    ///
+    /// The sub-table placement is load-bearing and is the other reason this is
+    /// verbatim: TOML requires `[collector.sources.*]` AFTER every scalar of
+    /// `[collector]`, and a writer that emitted them earlier would produce a
+    /// file where `environment` and `redact` silently belong to a sub-table.
+    const WRITTEN_BY_THE_CLI: &str = r#"# failproofai configuration. Safe to edit by hand.
+# Credentials are NOT here — see credentials.toml (owner-only).
+
+[mode]
+kind = "oss"
+
+[daemon]
+configured = false
+
+[collector]
+# Session transcripts carry prompts, file contents and command output.
+sessions = true
+# Hook decisions: which policy fired and what it decided. No file contents.
+hooks = true
+hooks_verbosity = "decisions"
+redact = "minimal"
+environment = "local"
+machine_id = "m-123"
+
+[collector.sources.claude]
+# Extra locations to capture for this harness, beyond its default one.
+extra_paths = ["work=/srv/team/.claude/projects"]
+
+[collector.sources.hermes]
+extra_paths = ["/srv/hermes-prod/state.db", "b=/srv/other.db"]
+
+[audit]
+auto = false
+interval_days = 7
+"#;
+
+    fn home_with(text: &str) -> tempdir::Dir {
+        let d = tempdir::Dir::new();
+        fs::write(d.path().join(CONFIG_FILE), text).unwrap();
+        d
+    }
+
+    /// A minimal scratch directory; the crate has no dev-dep on `tempfile`.
+    mod tempdir {
+        use std::path::{Path, PathBuf};
+        pub struct Dir(PathBuf);
+        impl Dir {
+            pub fn new() -> Self {
+                let p = std::env::temp_dir().join(format!(
+                    "fpai-cfg-{}-{}",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                ));
+                std::fs::create_dir_all(&p).unwrap();
+                Dir(p)
+            }
+            pub fn path(&self) -> &Path {
+                &self.0
+            }
+        }
+        impl Drop for Dir {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+    }
+
+    #[test]
+    fn reads_the_sources_tables_the_typescript_cli_writes() {
+        let d = home_with(WRITTEN_BY_THE_CLI);
+        let s = load_settings(d.path()).unwrap();
+
+        // The scalars after which the sub-tables appear must NOT have been
+        // swallowed into one.
+        assert!(s.sessions, "sessions was lost to a sub-table");
+        assert_eq!(s.environment, "local");
+        assert_eq!(s.machine_id.as_deref(), Some("m-123"));
+
+        assert_eq!(
+            s.extra_paths_for("claude"),
+            vec!["work=/srv/team/.claude/projects".to_string()]
+        );
+        assert_eq!(
+            s.extra_paths_for("hermes"),
+            vec![
+                "/srv/hermes-prod/state.db".to_string(),
+                "b=/srv/other.db".to_string()
+            ]
+        );
+        assert!(s.extra_paths_for("codex").is_empty());
+        assert!(s.unknown_sources(&["claude", "hermes"]).is_empty());
+    }
+
+    #[test]
+    fn a_config_with_no_sources_table_reads_as_none_configured() {
+        let d = home_with("[collector]\nsessions = true\n");
+        let s = load_settings(d.path()).unwrap();
+        assert!(s.sources.is_empty());
+        for h in ["claude", "hermes", "codex"] {
+            assert!(s.extra_paths_for(h).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_unrecognised_source_table_is_reported_rather_than_ignored() {
+        let d = home_with("[collector]\n[collector.sources.claud]\nextra_paths = [\"/srv/x\"]\n");
+        let s = load_settings(d.path()).unwrap();
+        assert_eq!(s.unknown_sources(&["claude"]), vec!["claud".to_string()]);
+    }
+
+    /// The env override REPLACES the file's list. A container setting it is
+    /// describing that container's whole layout; inheriting a host path from a
+    /// mounted config would capture a directory nobody asked for.
+    #[test]
+    fn the_env_override_replaces_the_file_and_splits_on_commas() {
+        let d = home_with(WRITTEN_BY_THE_CLI);
+        let s = load_settings(d.path()).unwrap();
+        // SAFETY: single-threaded test; restored before returning.
+        unsafe {
+            std::env::set_var("FAILPROOFAI_CLAUDE_EXTRA_PATHS", " a=/one , b=/two ,, ");
+        }
+        assert_eq!(
+            s.extra_paths_for("claude"),
+            vec!["a=/one".to_string(), "b=/two".to_string()]
+        );
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_CLAUDE_EXTRA_PATHS");
+        }
+        // ...and falls back to the file once it is gone.
+        assert_eq!(
+            s.extra_paths_for("claude"),
+            vec!["work=/srv/team/.claude/projects".to_string()]
+        );
+    }
+
+    /// A source whose name contains `-` must map to a legal env var name.
+    #[test]
+    fn a_hyphenated_source_name_maps_to_an_underscored_env_var() {
+        let s = Settings::default();
+        unsafe {
+            std::env::set_var("FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS", "/srv/sub");
+        }
+        assert_eq!(
+            s.extra_paths_for("claude-subagent"),
+            vec!["/srv/sub".to_string()]
+        );
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS");
+        }
+    }
+}

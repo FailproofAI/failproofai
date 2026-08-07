@@ -779,6 +779,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
         spool_dir: spool,
         state_dir: state,
         poll_interval: Duration::from_millis(200),
+        health_key: None,
         params: Params {
             redact: fpai_collect::Redact::Minimal,
             agent_id: pi::DEFAULT_AGENT_ID.into(),
@@ -789,6 +790,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,
             since_days: None,
+            label: None,
         },
     }
 }

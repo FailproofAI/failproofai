@@ -613,6 +613,32 @@ fn collector_config_poll_interval() -> Duration {
     Duration::from_millis(ms.max(MINIMUM_MS))
 }
 
+/// Harness keys accepted under `[collector.sources.<key>]` in `config.toml`.
+///
+/// Twelve keys for thirteen sources: `claude` covers both the main and the
+/// subagent format, which share a root. Anything else configured is reported at
+/// startup rather than ignored — a typo'd table parses cleanly, captures
+/// nothing, and is mentioned nowhere else in the pipeline.
+///
+/// Kept beside the registrations below rather than derived from them because
+/// `claude-subagent` is a source and not a harness, so the two lists are
+/// genuinely different and deriving one from the other would reintroduce the
+/// key nobody should configure.
+const HARNESS_KEYS: &[&str] = &[
+    "claude",
+    "codex",
+    "copilot",
+    "openclaw",
+    "pi",
+    "factory",
+    "antigravity",
+    "cursor",
+    "goose",
+    "opencode",
+    "devin",
+    "hermes",
+];
+
 fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     let home = match paths::failproofai_home() {
         Ok(home) => home,
@@ -739,14 +765,69 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         let machine = cfg.settings.machine_id.clone();
         let cursors = cursors_root.clone();
 
+        // `~` in a configured path expands against this, not against whatever
+        // HOME the service unit happened to inherit at spawn time — a
+        // system-scope unit's environment carries essentially nothing (see
+        // `resolveWorkerCommand` in daemon-service.ts for the same hazard).
+        let home_dir = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let settings = &cfg.settings;
+
+        // A configured table naming no real source captures nothing and is
+        // mentioned nowhere else in the pipeline, so say so once at startup.
+        for unknown in settings.unknown_sources(HARNESS_KEYS) {
+            eprintln!(
+                "[failproofaid] config.toml has [collector.sources.{unknown}], which is not a \
+                 known harness; nothing will be captured from it. Known: {}",
+                HARNESS_KEYS.join(", ")
+            );
+        }
+
+        // Resolve one harness's configured extra paths against the roots it
+        // already watches, logging every rejection — each one is a path the
+        // operator asked for and is not getting.
+        let extras = |harness: &str,
+                      defaults: &[std::path::PathBuf]|
+         -> Vec<fpai_collect::ExtraPath> {
+            let entries = settings.extra_paths_for(harness);
+            if entries.is_empty() {
+                return Vec::new();
+            }
+            let resolved =
+                fpai_collect::extra_paths::resolve(&entries, defaults, home_dir.as_deref());
+            for bad in &resolved.rejected {
+                eprintln!(
+                    "[failproofaid] ignoring extra path {:?} for {harness}: {}",
+                    bad.entry, bad.reason
+                );
+            }
+            for ok in &resolved.accepted {
+                eprintln!(
+                    "[failproofaid] {harness}: also capturing {} as {:?} (agent ids namespaced {}-*)",
+                    ok.path.display(),
+                    ok.label,
+                    ok.label
+                );
+            }
+            resolved.accepted
+        };
+
         use fpai_collect::sources::{
             antigravity, claude, codex, copilot, cursor, factory, openclaw, pi,
         };
+
+        // Claude's two formats share one root and therefore one harness key:
+        // an extra path holding Claude transcripts holds their subagents too,
+        // and asking the operator to configure `claude` and `claude-subagent`
+        // separately would mean a natural-looking config that silently drops
+        // every subagent under the added path.
+        let claude_roots = vec![claude_projects_root()];
+        let claude_extra = extras("claude", &claude_roots);
         file_source(
             &mut tasks,
             "claude",
             claude::FORMAT,
-            vec![claude_projects_root()],
+            claude_roots.clone(),
+            &claude_extra,
             claude::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -764,7 +845,8 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             &mut tasks,
             "claude-subagent",
             claude::SUBAGENT_FORMAT,
-            vec![claude_projects_root()],
+            claude_roots,
+            &claude_extra,
             claude::SUBAGENT_DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -773,11 +855,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let codex_roots = vec![codex_sessions_root()];
         file_source(
             &mut tasks,
             "codex",
             codex::FORMAT,
-            vec![codex_sessions_root()],
+            codex_roots.clone(),
+            &extras("codex", &codex_roots),
             codex::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -786,11 +871,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let copilot_roots = vec![copilot::session_state_root()];
         file_source(
             &mut tasks,
             "copilot",
             copilot::FORMAT,
-            vec![copilot::session_state_root()],
+            copilot_roots.clone(),
+            &extras("copilot", &copilot_roots),
             copilot::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -799,11 +887,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let openclaw_roots = openclaw::default_roots();
         file_source(
             &mut tasks,
             "openclaw",
             openclaw::FORMAT,
-            openclaw::default_roots(),
+            openclaw_roots.clone(),
+            &extras("openclaw", &openclaw_roots),
             openclaw::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -812,11 +903,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let pi_roots = vec![pi::sessions_root()];
         file_source(
             &mut tasks,
             "pi",
             pi::FORMAT,
-            vec![pi::sessions_root()],
+            pi_roots.clone(),
+            &extras("pi", &pi_roots),
             pi::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -825,11 +919,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let factory_roots = vec![factory_sessions_root()];
         file_source(
             &mut tasks,
             "factory",
             factory::FORMAT,
-            vec![factory_sessions_root()],
+            factory_roots.clone(),
+            &extras("factory", &factory_roots),
             factory::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -838,11 +935,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let antigravity_roots = vec![antigravity_brain_root()];
         file_source(
             &mut tasks,
             "antigravity",
             antigravity::FORMAT,
-            vec![antigravity_brain_root()],
+            antigravity_roots.clone(),
+            &extras("antigravity", &antigravity_roots),
             antigravity::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -851,11 +951,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             os_user.as_deref(),
             redact,
         );
+
+        let cursor_roots = vec![cursor_projects_root()];
         file_source(
             &mut tasks,
             "cursor",
             cursor::FORMAT,
-            vec![cursor_projects_root()],
+            cursor_roots.clone(),
+            &extras("cursor", &cursor_roots),
             cursor::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
@@ -866,55 +969,60 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         );
 
         use fpai_collect::sources::{devin, goose, hermes, opencode};
-        sqlite_source(
+        sqlite_harness(
             &mut tasks,
             "goose",
             goose::FORMAT,
             goose::db_path(),
+            &extras("goose", &[goose::db_path()]),
             goose::DEFAULT_AGENT_ID,
             &spool,
-            cursors.join("goose"),
+            &cursors,
             &env,
             machine.as_deref(),
             os_user.as_deref(),
             redact,
-            None,
         );
-        sqlite_source(
+        sqlite_harness(
             &mut tasks,
             "opencode",
             opencode::FORMAT,
             opencode::default_db_path(),
+            &extras("opencode", &[opencode::default_db_path()]),
             opencode::DEFAULT_AGENT_ID,
             &spool,
-            cursors.join("opencode"),
+            &cursors,
             &env,
             machine.as_deref(),
             os_user.as_deref(),
             redact,
-            None,
         );
-        sqlite_source(
+        sqlite_harness(
             &mut tasks,
             "devin",
             devin::FORMAT,
             devin::db_path(),
+            &extras("devin", &[devin::db_path()]),
             devin::DEFAULT_AGENT_ID,
             &spool,
-            cursors.join("devin"),
+            &cursors,
             &env,
             machine.as_deref(),
             os_user.as_deref(),
             redact,
-            None,
         );
 
         // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
         // cursor on a fixed synthetic id — so two profiles sharing one state
         // directory would clobber each other's watermark and each would re-read
         // from zero after every restart. Each database gets its own.
-        for (i, db) in hermes::default_db_paths().into_iter().enumerate() {
-            let profile = profile_dir_name(&db, i);
+        //
+        // This is the shape every other source now takes for its extra paths;
+        // Hermes reached it first, by having several default databases rather
+        // than several configured ones.
+        let hermes_dbs = hermes::default_db_paths();
+        for (i, db) in hermes_dbs.iter().enumerate() {
+            let profile = profile_dir_name(db, i);
             let state = cursors.join("hermes").join(&profile);
             // ...and its own health key, for the same reason it gets its own
             // cursor directory. Every profile reporting under the bare string
@@ -926,7 +1034,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 &mut tasks,
                 "hermes",
                 hermes::FORMAT,
-                db,
+                db.clone(),
                 hermes::DEFAULT_AGENT_ID,
                 &spool,
                 state,
@@ -935,6 +1043,30 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 Some(format!("hermes:{profile}")),
+                // No label: a default profile is not an extra path, and
+                // namespacing it would rename every agent id on every machine
+                // that already has one.
+                None,
+            );
+        }
+        // Configured extras are resolved against EVERY default profile database,
+        // so pointing one at a profile Hermes already exposes is rejected rather
+        // than collected twice under two ids.
+        for ep in extras("hermes", &hermes_dbs) {
+            sqlite_source(
+                &mut tasks,
+                "hermes",
+                hermes::FORMAT,
+                ep.path.clone(),
+                hermes::DEFAULT_AGENT_ID,
+                &spool,
+                cursors.join("hermes").join(&ep.label),
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                Some(format!("hermes:{}", ep.label)),
+                Some(ep.label.clone()),
             );
         }
     }
@@ -976,13 +1108,24 @@ fn claude_projects_root() -> std::path::PathBuf {
     home.join(".claude").join("projects")
 }
 
-/// Register one file-tailing source.
+/// Register one file-tailing source: its default roots, plus one further
+/// instance per configured extra path.
+///
+/// Each extra path is a SEPARATE task rather than another entry in `roots`, and
+/// that is the whole design. `roots` is walked by one task with one cursor store
+/// and one `Params`, so a second root added there would be captured under the
+/// same agent id as the default — and two copies of one project derive the same
+/// id (from the `cwd` inside the transcript, identical in both copies). The
+/// label that separates them lives in `Params`, so a distinct label demands a
+/// distinct task, which then also needs its own cursor directory and its own
+/// health key for the reasons documented on each.
 #[allow(clippy::too_many_arguments)]
 fn file_source(
     tasks: &mut Vec<fpai_collect::TaskSpec>,
     name: &'static str,
     format: fpai_collect::filetail::Format,
     roots: Vec<std::path::PathBuf>,
+    extra: &[fpai_collect::ExtraPath],
     default_agent_id: &'static str,
     spool_dir: &std::path::Path,
     cursor_root: &std::path::Path,
@@ -991,15 +1134,76 @@ fn file_source(
     user: Option<&str>,
     redact: fpai_collect::Redact,
 ) {
+    // The default instance: every root the source ships with, no label.
+    file_source_instance(
+        tasks,
+        name,
+        format,
+        roots,
+        None,
+        cursor_root.join(name),
+        None,
+        default_agent_id,
+        spool_dir,
+        environment,
+        machine_id,
+        user,
+        redact,
+    );
+
+    for ep in extra {
+        file_source_instance(
+            tasks,
+            name,
+            format,
+            vec![ep.path.clone()],
+            Some(ep.label.clone()),
+            // Its own cursor store. The store writes its whole map atomically,
+            // so sharing one with the default instance would have them clobber
+            // each other's watermarks and both re-read from zero after every
+            // restart.
+            cursor_root.join(name).join(&ep.label),
+            // ...and its own health key, or the instances overwrite each other's
+            // record and `root_present` alternates as they take turns.
+            Some(format!("{name}:{}", ep.label)),
+            default_agent_id,
+            spool_dir,
+            environment,
+            machine_id,
+            user,
+            redact,
+        );
+    }
+}
+
+/// One live instance of a file-tailing source.
+#[allow(clippy::too_many_arguments)]
+fn file_source_instance(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    name: &'static str,
+    format: fpai_collect::filetail::Format,
+    roots: Vec<std::path::PathBuf>,
+    label: Option<String>,
+    state_dir: std::path::PathBuf,
+    health_key: Option<String>,
+    default_agent_id: &'static str,
+    spool_dir: &std::path::Path,
+    environment: &str,
+    machine_id: Option<&str>,
+    user: Option<&str>,
+    redact: fpai_collect::Redact,
+) {
     let spool_dir = spool_dir.to_path_buf();
-    // One cursor store per source, never shared: the store writes its whole map
-    // atomically, so two sources sharing a file would clobber each other and the
-    // loser would re-read from zero after every restart.
-    let state_dir = cursor_root.join(name);
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
     let user = user.map(str::to_string);
-    tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
+    // The task name carries the label so `/workflows`-style task listings and
+    // the supervisor's own logs name the instance, not just the source.
+    let task_name: String = match &label {
+        Some(l) => format!("{name}:{l}"),
+        None => name.to_string(),
+    };
+    tasks.push(fpai_collect::TaskSpec::new(task_name, move |sd| {
         fpai_collect::filetail::run(
             fpai_collect::filetail::Spec {
                 format,
@@ -1007,11 +1211,13 @@ fn file_source(
                 spool_dir: spool_dir.clone(),
                 state_dir: state_dir.clone(),
                 poll_interval: std::time::Duration::from_secs(2),
+                health_key: health_key.clone(),
                 params: fpai_collect::filetail::Params {
                     agent_id: default_agent_id.to_string(),
                     environment: environment.clone(),
                     machine_id: machine_id.clone(),
                     user: user.clone(),
+                    label: label.clone(),
                     end_idle_mins: 10,
                     redact,
                     max_read_bytes: 32 * 1024 * 1024,
@@ -1022,12 +1228,73 @@ fn file_source(
                     // widens this for its own rebuild — see BACKFILL_SINCE_DAYS,
                     // without which rewinding cursors delivers only 7 days no
                     // matter what was asked for.
+                    //
+                    // A newly added extra path needs no special case: it has no
+                    // cursor, so every file under it is a first discovery and is
+                    // read from the start of this same window.
                     since_days: file_source_since_days(),
                 },
             },
             sd,
         )
     }));
+}
+
+/// Register one SQLite-polling source: its default database, plus one further
+/// instance per configured extra path.
+///
+/// The file-tailing counterpart of this is `file_source`; both expand a harness
+/// into `1 + N` tasks for the same reason, and give each instance its own
+/// cursor directory and health key. Hermes does not use this wrapper because it
+/// already has several DEFAULT databases (one per profile) and so drives the
+/// per-instance registration itself.
+#[allow(clippy::too_many_arguments)]
+fn sqlite_harness(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    name: &'static str,
+    format: fpai_collect::sqlitepoll::SqliteFormat,
+    db_path: std::path::PathBuf,
+    extra: &[fpai_collect::ExtraPath],
+    default_agent_id: &'static str,
+    spool_dir: &std::path::Path,
+    cursor_root: &std::path::Path,
+    environment: &str,
+    machine_id: Option<&str>,
+    user: Option<&str>,
+    redact: fpai_collect::Redact,
+) {
+    sqlite_source(
+        tasks,
+        name,
+        format,
+        db_path,
+        default_agent_id,
+        spool_dir,
+        cursor_root.join(name),
+        environment,
+        machine_id,
+        user,
+        redact,
+        None,
+        None,
+    );
+    for ep in extra {
+        sqlite_source(
+            tasks,
+            name,
+            format,
+            ep.path.clone(),
+            default_agent_id,
+            spool_dir,
+            cursor_root.join(name).join(&ep.label),
+            environment,
+            machine_id,
+            user,
+            redact,
+            Some(format!("{name}:{}", ep.label)),
+            Some(ep.label.clone()),
+        );
+    }
 }
 
 /// Register one SQLite-polling source.
@@ -1045,14 +1312,21 @@ fn sqlite_source(
     user: Option<&str>,
     redact: fpai_collect::Redact,
     // Distinct health key when one format has several live instances (Hermes,
-    // one database per profile). `None` reports under the format's own kind.
+    // one database per profile; and now any source with an extra path
+    // configured). `None` reports under the format's own kind.
     health_key: Option<String>,
+    // Agent-id namespace for an extra database. `None` for the default one.
+    label: Option<String>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
     let user = user.map(str::to_string);
-    tasks.push(fpai_collect::TaskSpec::new(name, move |sd| {
+    let task_name: String = match &label {
+        Some(l) => format!("{name}:{l}"),
+        None => name.to_string(),
+    };
+    tasks.push(fpai_collect::TaskSpec::new(task_name, move |sd| {
         fpai_collect::sqlitepoll::run(
             fpai_collect::sqlitepoll::Spec {
                 format,
@@ -1065,6 +1339,7 @@ fn sqlite_source(
                     environment: environment.clone(),
                     machine_id: machine_id.clone(),
                     user: user.clone(),
+                    label: label.clone(),
                     redact,
                     max_rows_per_poll: 2000,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,

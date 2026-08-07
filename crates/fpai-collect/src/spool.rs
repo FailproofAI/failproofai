@@ -70,6 +70,18 @@ pub struct SpoolWriter {
     /// same name on two machines never merges. `None` when it could not be
     /// resolved; such events simply carry no user.
     user: Option<String>,
+    /// Agent-id namespace for an extra capture path. `None` for a source
+    /// watching its default location, which is the overwhelming majority.
+    ///
+    /// Applied HERE rather than in each engine because the two engines resolve
+    /// agent ids in different places — `filetail` per discovered file, from the
+    /// path and header; `sqlitepoll` by handing `params.agent_id` to the
+    /// format, which may derive its own from a row (Hermes does). Prefixing
+    /// either one alone would namespace some events and not others from the
+    /// same path, which reads as two unrelated agents. This is the one point
+    /// every event from every source passes through, which is why `machine_id`
+    /// and `user` are stamped here too.
+    label: Option<String>,
 }
 
 impl SpoolWriter {
@@ -100,6 +112,7 @@ impl SpoolWriter {
             redacted: 0,
             machine_id: None,
             user: None,
+            label: None,
         }
     }
 
@@ -123,6 +136,16 @@ impl SpoolWriter {
     /// own.
     pub fn with_user(mut self, user: Option<String>) -> Self {
         self.user = user.filter(|s| !s.is_empty());
+        self
+    }
+
+    /// Namespace every event's `agent_id` as `<label>-<agentId>`.
+    ///
+    /// An empty string is treated as absent, like the machine id and user
+    /// above: a blank label would produce `-claude-myrepo`, which groups
+    /// nothing and reads as a typo in the product.
+    pub fn with_label(mut self, label: Option<String>) -> Self {
+        self.label = label.filter(|s| !s.is_empty());
         self
     }
 
@@ -167,6 +190,26 @@ impl SpoolWriter {
         {
             obj.entry("user")
                 .or_insert_with(|| Value::String(user.clone()));
+        }
+
+        // Namespace the agent id for an extra capture path, at the same choke
+        // point and for the same reason. Unlike `machine_id` and `user` this
+        // REWRITES rather than filling a gap: the id is already present, set by
+        // the format from the path or the row, and two copies of one project in
+        // two locations derive the SAME id — which is precisely what the label
+        // exists to separate.
+        //
+        // Idempotent by construction is not available here (a project legitimately
+        // named `work-claude` would be indistinguishable from an already-prefixed
+        // id), so this must run exactly once per event. It does: every event
+        // reaches `push` once, and a re-shipped batch is re-read from the spool
+        // file rather than pushed again.
+        if let Some(label) = &self.label
+            && let Some(obj) = event.as_object_mut()
+            && let Some(id) = obj.get("agent_id").and_then(|v| v.as_str())
+        {
+            let namespaced = crate::extra_paths::namespaced(label, id);
+            obj.insert("agent_id".into(), Value::String(namespaced));
         }
 
         let mut line = serialize(&event)?;

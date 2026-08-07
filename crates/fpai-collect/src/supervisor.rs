@@ -155,18 +155,24 @@ impl From<&str> for TaskError {
 /// future that already failed cannot be polled again, and reusing one would
 /// silently make "restart" mean "give up".
 pub struct TaskSpec {
-    pub name: &'static str,
+    /// Owned rather than `&'static str` because one source can now have several
+    /// live instances — a default root plus one task per configured extra path —
+    /// and their names are built at runtime (`claude:work`). Only ever used for
+    /// logging, never as a key, so duplicates would not have been a correctness
+    /// bug; they would just have made two instances indistinguishable in the
+    /// journal, which is where a multi-path problem is diagnosed.
+    pub name: String,
     factory: TaskFactory,
 }
 
 impl TaskSpec {
-    pub fn new<F, Fut>(name: &'static str, factory: F) -> Self
+    pub fn new<F, Fut>(name: impl Into<String>, factory: F) -> Self
     where
         F: Fn(Shutdown) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), TaskError>> + Send + 'static,
     {
         TaskSpec {
-            name,
+            name: name.into(),
             factory: Box::new(move |sd| Box::pin(factory(sd))),
         }
     }
@@ -348,13 +354,13 @@ async fn supervise_one(
             Ok(Ok(())) => {
                 // Finished its work. Not a failure, so no backoff — but also
                 // nothing to restart, so stop supervising it.
-                tracing::debug!(task = spec.name, "collector task completed");
+                tracing::debug!(task = %spec.name, "collector task completed");
                 return;
             }
             Ok(Err(err)) => {
                 metrics.failures.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(
-                    task = spec.name,
+                    task = %spec.name,
                     %err,
                     retry_in_ms = backoff.as_millis() as u64,
                     "collector task failed; restarting"
@@ -365,7 +371,7 @@ async fn supervise_one(
                 // Logged at error, not warn: an Err is usually the
                 // environment, a panic is always a bug worth chasing.
                 tracing::error!(
-                    task = spec.name,
+                    task = %spec.name,
                     panic = %panic_msg,
                     retry_in_ms = backoff.as_millis() as u64,
                     "collector task PANICKED; contained and restarting. Enforcement is unaffected"

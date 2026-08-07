@@ -1152,6 +1152,18 @@ src/hooks/
                               all 11 CLIs, recoverable only by hand-editing
                               ~/.failproofai/policies-config.json
   manager.ts                 policies --install / --uninstall / list
+  harness-cli.ts             `failproofai harness add-path/remove-path/list` —
+                              edits [collector.sources.<harness>] extra_paths in
+                              config.toml and NOTHING else. The grammar, `~`
+                              expansion, overlap rejection and <label>-<agentId>
+                              namespacing all live in the daemon
+                              (crates/fpai-collect/src/extra_paths.rs); this side
+                              validates only the HARNESS NAME, because that is
+                              the one failure with no other detector — a typo'd
+                              table is valid TOML that captures nothing.
+                              HARNESS_KEYS here and in main.rs are two
+                              hand-maintained copies of one list; a test reads
+                              the Rust source to keep them identical
 src/index.ts                 Public API entry point → compiled to dist/index.js
 dist/index.js                CJS bundle (built by `bun run build`; shipped in npm pkg)
 dist/cli.mjs                 Bundled bin/failproofai.mjs (bun run build:cli)
@@ -1159,6 +1171,24 @@ dist/worker.mjs              Bundled bin/failproofai-worker.mjs (bun run build:w
                               plain Node can't resolve raw .ts specifiers, so the warm
                               worker needs this bundle just like the CLI does
 Cargo.toml                   Rust workspace root (resolver "3", shared [workspace.package])
+crates/fpai-collect/src/extra_paths.rs
+                              Per-source extra capture paths: `label=path`
+                              grammar, folder-name label fallback, and the
+                              rejections that each prevent a SILENT failure — a
+                              path overlapping a default root is collected twice
+                              under two agent ids, and two entries sharing a
+                              label share a cursor directory whose whole map is
+                              written atomically, so both re-read from zero after
+                              every restart. Each accepted path becomes its OWN
+                              task (file_source / sqlite_harness in main.rs) with
+                              its own cursor dir and health key — Hermes reached
+                              this shape first, via per-profile databases. The
+                              <label>-<agentId> prefix is applied in
+                              SpoolWriter::push, never in an engine: a SQLite
+                              format derives its real id from the row and takes
+                              params.agent_id only as a fallback, so prefixing
+                              there namespaces just the sessions that failed to
+                              derive one
 crates/fpai-ipc/              Wire protocol shared by the daemon and its tests: length-
                               prefixed JSON framing, protocolVersion envelope, peer-
                               credential checks (see crates/PROTOCOL.md)

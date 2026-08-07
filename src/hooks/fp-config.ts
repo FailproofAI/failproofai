@@ -159,6 +159,25 @@ export interface FpConfig {
     redact: "minimal" | "off";
     environment: string;
     machineId?: string;
+    /**
+     * Extra locations to capture per harness, beyond the one each source ships
+     * with — `[collector.sources.<harness>] extra_paths` in `config.toml`.
+     *
+     * Each entry is `label=path` or a bare `path`; the label becomes an agent-id
+     * namespace (`<label>-<agentId>`), which is what keeps two copies of one
+     * project from merging into a single agent. The daemon is the authority on
+     * the grammar and on which harness names are real — see
+     * `crates/fpai-collect/src/extra_paths.rs` and `HARNESS_KEYS` in
+     * `crates/failproofaid/src/main.rs`. This side stores and edits the strings;
+     * it deliberately does not re-implement the parser, because two parsers is
+     * how the CLI comes to accept a path the daemon then silently drops.
+     *
+     * Absent for every machine that has not configured one, which is almost all
+     * of them — so `writeConfig` emits nothing at all in that case and a config
+     * file is byte-identical to what this version wrote before the field
+     * existed.
+     */
+    sources?: Record<string, { extraPaths: string[] }>;
   };
   telemetry: {
     /**
@@ -234,6 +253,32 @@ export const DEFAULT_CONFIG: FpConfig = {
   audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
 };
 
+/**
+ * `[collector.sources.*]` → the in-memory shape, dropping anything unusable.
+ *
+ * Entries are kept as written rather than normalised. The daemon parses them
+ * (label derivation, overlap rejection, `~` expansion) and reports what it
+ * rejected at startup; normalising here would give the two sides two answers
+ * and hide the daemon's rejection behind a value the CLI had already rewritten.
+ * The only things dropped are shapes that could not survive a round trip at
+ * all — a non-array, or a non-string element.
+ *
+ * `undefined` rather than `{}` when nothing is configured, so `writeConfig`
+ * emits no table and an untouched config file keeps its exact previous bytes.
+ */
+function readSources(raw: unknown): FpConfig["collector"]["sources"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, { extraPaths: string[] }> = {};
+  for (const [name, table] of Object.entries(raw as Record<string, unknown>)) {
+    if (!table || typeof table !== "object" || Array.isArray(table)) continue;
+    const entries = (table as Record<string, unknown>).extra_paths;
+    if (!Array.isArray(entries)) continue;
+    const paths = entries.filter((e): e is string => typeof e === "string" && e.trim() !== "");
+    if (paths.length > 0) out[name] = { extraPaths: paths };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function readConfig(): FpConfig {
   try {
     const parsed = parseToml(readFileSync(configFile(), "utf8")) as Record<string, unknown>;
@@ -258,6 +303,7 @@ export function readConfig(): FpConfig {
         environment:
           typeof collector.environment === "string" ? collector.environment : "local",
         machineId: typeof collector.machine_id === "string" ? collector.machine_id : undefined,
+        sources: readSources(collector.sources),
       },
       // Only an explicit `false` switches it off. Absent, or any other value,
       // reads as on — the shipped default, and what a config with no
@@ -308,6 +354,22 @@ export function writeConfig(config: FpConfig): void {
     `environment = ${JSON.stringify(c.environment)}`,
   );
   if (c.machineId) lines.push(`machine_id = ${JSON.stringify(c.machineId)}`);
+  // Sub-tables MUST come after every scalar of `[collector]`, or TOML reads the
+  // scalars that follow as belonging to the last sub-table opened. They are also
+  // emitted only when non-empty, so a machine that never configured one gets a
+  // file byte-identical to what this function produced before the field existed
+  // — the same reasoning as `[telemetry]` below.
+  for (const [name, src] of Object.entries(c.sources ?? {})) {
+    if (!src.extraPaths?.length) continue;
+    lines.push(
+      "",
+      `[collector.sources.${name}]`,
+      "# Extra locations to capture for this harness, beyond its default one.",
+      "# Each entry is \"label=path\" or a bare \"path\"; the label namespaces agent",
+      "# ids as <label>-<agentId> so two copies of one project stay distinct.",
+      `extra_paths = [${src.extraPaths.map((p) => JSON.stringify(p)).join(", ")}]`,
+    );
+  }
   // Written ONLY when switched off. A default install therefore carries no
   // [telemetry] block at all, but an operator who added one by hand keeps it:
   // writeConfig regenerates this file wholesale, so emitting the key only when

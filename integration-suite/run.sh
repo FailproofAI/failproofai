@@ -61,8 +61,20 @@ FP_SHA="${CANARY_FP_SHA:-$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || 
 # Installed versions from the install step, keyed by cli.
 VERSIONS_JSON="$(docker run --rm -v "$VOL:/home/canary" "$IMAGE" cat /home/canary/canary-tier0.json 2>/dev/null || echo '[]')"
 
+# Daemon mode: bind the host-built failproofaid binary into the probe container
+# and tell probe-cli.sh to route hooks through it (see its CANARY_DAEMON block).
+# A file→file bind mount, read-only — executing from an ro mount is fine.
+DAEMON_FLAGS=()
+if [ "${CANARY_DAEMON:-0}" = 1 ]; then
+  DBIN="${CANARY_DAEMON_BIN:?CANARY_DAEMON=1 requires CANARY_DAEMON_BIN (host path to the built failproofaid)}"
+  [ -x "$DBIN" ] || { echo "✗ CANARY_DAEMON_BIN=$DBIN is not an executable file" >&2; exit 1; }
+  # docker reads a relative -v source as a NAMED VOLUME — absolutize first.
+  DBIN="$(cd "$(dirname "$DBIN")" && pwd)/$(basename "$DBIN")"
+  DAEMON_FLAGS=(-e CANARY_DAEMON=1 -v "$DBIN:/opt/failproofaid/failproofaid:ro")
+fi
+
 run_probe() {
-  docker run --rm --env-file "$ENVFILE" \
+  docker run --rm --env-file "$ENVFILE" "${DAEMON_FLAGS[@]}" \
     -v "$REPO:/repo:ro" -v "$SANDBOX:/opt/canary:ro" -v "$VOL:/home/canary" \
     "$IMAGE" bash /opt/canary/probe-cli.sh "$1" 2>&1
 }

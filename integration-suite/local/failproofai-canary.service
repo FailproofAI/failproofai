@@ -1,0 +1,14 @@
+[Unit]
+Description=failproofai CLI integration suite (canary) — one full run, both legs
+# No network-online dependency: user-manager network targets are unreliable.
+# run-local.sh's own `git fetch` fails loudly (and Slack-notes) if offline.
+
+[Service]
+Type=oneshot
+# The INSTALLED copy (install.sh) — never a path inside the runner clone,
+# which run-local.sh hard-resets on every run.
+ExecStart=%h/.config/failproofai-canary/bin/run-local.sh
+# Two legs at up to 90 min each (run-local.sh's per-leg timeout) plus CLI
+# installs and the daemon build; anything past this is a wedged run.
+TimeoutStartSec=4h
+Nice=10

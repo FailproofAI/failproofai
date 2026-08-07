@@ -197,3 +197,166 @@ describe("promptText redraw stays on one physical row", () => {
     expect(drawnRows(40, "API key for localhost:3000", "needs events:add", 40)).toBeLessThanOrEqual(40);
   });
 });
+
+// ── back navigation, and the two ways it was broken ──────────────────────────
+//
+// `BACK` is a symbol the shared key handler injects when ← is pressed on a
+// prompt that opted into `allowBack`. It is NOT a value of the prompt's own
+// result type, so every `summaryFor` callback received something it was never
+// written to handle — and the two existing callers failed differently:
+//
+//   multiSelect  `values.includes(BACK)` → TypeError, thrown INSIDE `finish`
+//                before `resolve()`, so the promise never settled and the
+//                wizard stopped responding to input entirely.
+//   selectOne    fell through to `String(value)` and rendered the literal
+//                text `Symbol(failproofai.back)` as the user's answer.
+describe("back navigation", () => {
+  const harness = () => {
+    const writes: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: 80,
+      write: vi.fn((s: string) => { writes.push(s); return true; }),
+    } as unknown as TTYOut;
+    let onKey: ((s: string | undefined, k: unknown) => void) | undefined;
+    const stdin = {
+      isTTY: true,
+      isRaw: false,
+      setRawMode: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
+      removeListener: vi.fn(),
+      listenerCount: vi.fn(() => 0),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      addListener: vi.fn(),
+    } as unknown as TTYIn;
+    return { stdin, stdout, writes, press: (name: string) => onKey?.(undefined, { name }) };
+  };
+
+  const rendered = (writes: string[]) =>
+    writes.join("").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+
+  // The hang. Without the fix this test does not fail — it never finishes.
+  it("multiSelect resolves when ← is pressed instead of throwing", async () => {
+    const h = harness();
+    const p = multiSelect({
+      message: "pick",
+      choices: [
+        { label: "A", value: "a" },
+        { label: "B", value: "b" },
+      ],
+      allowBack: true,
+      stdin: h.stdin,
+      stdout: h.stdout,
+    });
+    h.press("left");
+    const result = await Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("← never settled the promise")), 2000)),
+    ]);
+    expect(typeof result).toBe("symbol");
+    expect(rendered(h.writes)).not.toContain("Symbol(");
+    expect(rendered(h.writes)).toContain("back");
+  });
+
+  it("selectOne renders 'back' rather than the raw symbol", async () => {
+    const h = harness();
+    const p = selectOne({
+      message: "pick",
+      choices: [
+        { label: "A", value: "a" },
+        { label: "B", value: "b" },
+      ],
+      allowBack: true,
+      stdin: h.stdin,
+      stdout: h.stdout,
+    });
+    h.press("left");
+    const result = await p;
+    expect(typeof result).toBe("symbol");
+    expect(rendered(h.writes)).not.toContain("Symbol(failproofai.back)");
+    expect(rendered(h.writes)).toContain("back");
+  });
+
+  // A prompt that did not opt in must not appear to offer back navigation.
+  it("← is inert when allowBack was not requested", async () => {
+    const h = harness();
+    const p = selectOne({
+      message: "pick",
+      choices: [{ label: "A", value: "a" }],
+      stdin: h.stdin,
+      stdout: h.stdout,
+    });
+    h.press("left");
+    h.press("return");
+    await expect(p).resolves.toBe("a");
+  });
+});
+
+// The validation-error row was never measured. `draw()` emits the prompt and
+// the error as ONE write containing a newline (`${line}${err}`), so a helper
+// that measures each write whole sees `prompt + "\n  error"` as a single long
+// string — it overstates every row and, more importantly, never checks the
+// error row against the terminal width at all. Rows are split here.
+describe("promptText validation errors stay within the terminal", () => {
+  const rowsFor = (cols: number, message: string, error: string) => {
+    const writes: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: cols,
+      write: vi.fn((s: string) => { writes.push(s); return true; }),
+    } as unknown as TTYOut;
+    let onKey: ((s: string | undefined, k: unknown) => void) | undefined;
+    const stdin = {
+      isTTY: true,
+      isRaw: false,
+      setRawMode: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
+      removeListener: vi.fn(),
+      listenerCount: vi.fn(() => 0),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      addListener: vi.fn(),
+    } as unknown as TTYIn;
+
+    void promptText({ message, mask: true, validate: () => error, stdin, stdout });
+    for (let i = 0; i < 40; i++) onKey?.("x", { name: "x" });
+    onKey?.(undefined, { name: "return" }); // fails validation -> draws the error
+
+    // Each WRITE is one redraw (it begins with `\r\x1b[2K`, which returns to
+    // column 0 and erases), and a single redraw may itself contain a newline
+    // when an error row is appended. So rows are per-write AND per-newline —
+    // joining the writes first would concatenate 40 independent redraws into
+    // one 2000-character "row" and measure nothing real.
+    return writes.flatMap((w) =>
+      w
+        .split("\n")
+        .map((row) => row.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "").length),
+    );
+  };
+
+  it("wraps neither the prompt nor a long error at 80 columns", () => {
+    const rows = rowsFor(
+      80,
+      "API key for localhost:3000",
+      "that key is not valid for this organisation — check you copied the whole value, including the prefix",
+    );
+    expect(Math.max(...rows)).toBeLessThanOrEqual(80);
+  });
+
+  it("holds at a narrow width, where the error has least room", () => {
+    const rows = rowsFor(40, "API key for localhost:3000", "invalid key, please check and try again");
+    expect(Math.max(...rows)).toBeLessThanOrEqual(40);
+  });
+
+  it("actually rendered an error row (the test would pass vacuously otherwise)", () => {
+    const rows = rowsFor(80, "API key", "nope");
+    expect(rows.length).toBeGreaterThan(1);
+  });
+});

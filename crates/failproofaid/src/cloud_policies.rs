@@ -33,6 +33,11 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[serde(rename_all = "camelCase")]
 pub struct DesiredState {
     pub schema_version: u32,
+    /// `generation` is the pre-rename spelling. Accepted as an alias because
+    /// this value is BOTH received from the server and persisted to
+    /// `desired-state.json` — so an upgraded daemon meets the old name on disk
+    /// even against a server that has already moved on.
+    #[serde(alias = "generation")]
     pub deployment: u64,
     pub policies: Vec<DesiredPolicy>,
 }
@@ -41,6 +46,8 @@ pub struct DesiredState {
 #[serde(rename_all = "camelCase")]
 pub struct DesiredPolicy {
     pub id: String,
+    /// `revision` is the pre-rename spelling. See `DesiredState::deployment`.
+    #[serde(alias = "revision")]
     pub version: u64,
     pub sha256: String,
     /// Opaque locator interpreted only by the cloud transport implementation.
@@ -70,6 +77,16 @@ pub enum PolicyEffect {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveDeployment {
     pub schema_version: u32,
+    /// `generation` is what every daemon before the rename wrote here.
+    ///
+    /// The alias is load-bearing rather than tidy: this struct carries
+    /// `deny_unknown_fields`, so without it an upgraded daemon fails to parse
+    /// its OWN `active.json` on three counts at once — `generation` unrecognised,
+    /// `deployment` missing, and the same again for every policy's `revision`.
+    /// A machine would silently lose the deployment it was enforcing until a
+    /// poll succeeded, which on a fail-closed machine is the gap this whole
+    /// subsystem exists to prevent.
+    #[serde(alias = "generation")]
     pub deployment: u64,
     pub policies: Vec<ActivePolicy>,
 }
@@ -78,6 +95,8 @@ pub struct ActiveDeployment {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivePolicy {
     pub id: String,
+    /// `revision` is the pre-rename spelling. See `ActiveDeployment::deployment`.
+    #[serde(alias = "revision")]
     pub version: u64,
     pub sha256: String,
     /// Relative to the cloud-managed root. Never supplied by the server.
@@ -941,5 +960,89 @@ mod tests {
 
         assert_eq!(fs::read(deployment_path).unwrap(), bytes);
         fs::remove_dir_all(store.root()).ok();
+    }
+}
+
+#[cfg(test)]
+mod pre_rename_state_tests {
+    use super::*;
+
+    /// Byte-exact `active.json` written by a daemon before the
+    /// generation→deployment / revision→version rename, captured from a live
+    /// machine rather than hand-written.
+    const PRE_RENAME_ACTIVE: &str = r#"{
+  "schemaVersion": 1,
+  "generation": 1,
+  "policies": [
+    {
+      "id": "e2e-block-curl",
+      "revision": 1,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "path": "generations/1/e2e-block-curl.mjs",
+      "effect": "enforce"
+    }
+  ]
+}"#;
+
+    /// The upgrade case. `ActiveDeployment` carries `deny_unknown_fields`, so
+    /// without the aliases this fails on three counts at once: `generation`
+    /// unrecognised, `deployment` missing, and `revision`/`version` likewise per
+    /// policy. The machine would lose the deployment it was already enforcing
+    /// until a poll succeeded — on a fail-closed machine, exactly the gap this
+    /// subsystem exists to close.
+    #[test]
+    fn active_json_written_before_the_rename_still_parses() {
+        let parsed: ActiveDeployment = serde_json::from_str(PRE_RENAME_ACTIVE)
+            .expect("a pre-rename active.json must still be readable after an upgrade");
+        assert_eq!(parsed.schema_version, 1);
+        assert_eq!(parsed.deployment, 1);
+        assert_eq!(parsed.policies.len(), 1);
+        assert_eq!(parsed.policies[0].version, 1);
+        assert_eq!(parsed.policies[0].id, "e2e-block-curl");
+        assert_eq!(parsed.policies[0].effect, PolicyEffect::Enforce);
+    }
+
+    /// `desired-state.json` is persisted too, and the server may still be
+    /// sending the old spelling while a machine has already upgraded.
+    #[test]
+    fn desired_state_accepts_the_pre_rename_spelling() {
+        let parsed: DesiredState = serde_json::from_str(
+            r#"{"schemaVersion":1,"generation":184,
+                "policies":[{"id":"p","revision":7,"sha256":"a",
+                             "artifactUrl":"/enforcement/v1/artifacts/a"}]}"#,
+        )
+        .expect("a pre-rename desired state must still be readable");
+        assert_eq!(parsed.deployment, 184);
+        assert_eq!(parsed.policies[0].version, 7);
+    }
+
+    /// The new spelling is what we WRITE, and must keep round-tripping — an
+    /// alias that quietly became the canonical name would be its own bug.
+    #[test]
+    fn the_current_spelling_round_trips() {
+        let state = ActiveDeployment {
+            schema_version: 1,
+            deployment: 9,
+            policies: vec![ActivePolicy {
+                id: "p".into(),
+                version: 3,
+                sha256: "a".into(),
+                path: "deployments/9/p.mjs".into(),
+                effect: PolicyEffect::Observe,
+            }],
+        };
+        let text = serde_json::to_string(&state).unwrap();
+        assert!(
+            text.contains("\"deployment\":9"),
+            "must serialize the NEW name: {text}"
+        );
+        assert!(
+            text.contains("\"version\":3"),
+            "must serialize the NEW name: {text}"
+        );
+        assert_eq!(
+            serde_json::from_str::<ActiveDeployment>(&text).unwrap(),
+            state
+        );
     }
 }

@@ -475,10 +475,21 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
   };
 
   const collapse = (result: R | null): void => {
+    // BACK is handled HERE, not in each `summaryFor`, because it is not a value
+    // of `R` at all — it is a sentinel the shared key handler injects, so every
+    // prompt would otherwise have to know about a symbol it never declared.
+    //
+    // Both existing callers got it wrong in different ways, and one of them
+    // hung: `multiSelect`'s summary calls `values.includes(...)`, which throws
+    // `TypeError` on a symbol — and it throws INSIDE `finish`, before
+    // `resolve(result)`, so pressing ← never settled the promise and the wizard
+    // stopped responding entirely. `selectOne` fell through to `String(value)`
+    // and rendered the literal text `Symbol(failproofai.back)`.
+    const summary = (result as unknown) === BACK ? "back" : p.summaryFor(result);
     repaint(stdout, region, [
       c.dim(BAR),
       `${c.dim(STEP_DONE)}  ${p.message}`,
-      `${c.dim(BAR)}  ${c.dim(p.summaryFor(result))}`,
+      `${c.dim(BAR)}  ${c.dim(summary)}`,
     ]);
   };
 

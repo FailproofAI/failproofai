@@ -106,18 +106,35 @@ export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushRes
     };
   }
 
-  if (isDaemonSupportedPlatform()) {
-    const status = daemonServiceStatus();
-    if (status !== "running") {
-      return {
-        exitCode: 1,
-        pending: pendingBatches(home),
-        lines: [
-          `failproofaid is ${status}, and it is what delivers batches.`,
-          "Start it with `failproofai config`.",
-        ],
-      };
-    }
+  // Nothing on an unsupported platform will ever read the request file, so
+  // writing one and reporting success is a lie the user cannot detect: the
+  // command exits 0, the batches stay exactly where they were, and the only
+  // symptom is data that never arrives.
+  //
+  // Refusing here matches what `failproofai config` now does on the same
+  // platforms rather than completing unenforced — the two commands should not
+  // disagree about whether this machine has a daemon.
+  if (!isDaemonSupportedPlatform()) {
+    return {
+      exitCode: 1,
+      pending: pendingBatches(home),
+      lines: [
+        `failproofaid does not run on ${process.platform}, and it is what delivers batches.`,
+        "Nothing would pick this request up, so nothing was written.",
+      ],
+    };
+  }
+
+  const status = daemonServiceStatus();
+  if (status !== "running") {
+    return {
+      exitCode: 1,
+      pending: pendingBatches(home),
+      lines: [
+        `failproofaid is ${status}, and it is what delivers batches.`,
+        "Start it with `failproofai config`.",
+      ],
+    };
   }
 
   const before = pendingBatches(home);

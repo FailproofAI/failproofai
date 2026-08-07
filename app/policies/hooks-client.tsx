@@ -396,7 +396,7 @@ function DetailPanel({
                 <span className="text-muted-foreground">Decided by: </span>
                 <span className="font-mono text-foreground">
                   {item.policySource === "cloud" && item.cloudPolicyId
-                    ? `cloud · ${item.cloudPolicyId} rev ${item.cloudVersion}`
+                    ? `cloud · ${item.cloudPolicyId} version ${item.cloudVersion}`
                     : item.policySource}
                 </span>
               </div>

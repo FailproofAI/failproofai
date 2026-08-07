@@ -696,8 +696,8 @@ NOTES
     [collector] in ~/.failproofai/config.toml like the default ones do.
   • A path overlapping one already captured is REFUSED by the daemon at startup
     rather than collected twice under two ids. It says so in the journal.
-  • Takes effect at the next daemon restart — the collector builds its task list
-    once, at startup.
+  • Takes effect within seconds — the daemon re-reads config.toml on an interval
+    and cycles its collector. No restart, no sudo.
 
 EXAMPLES
   failproofai harness add-path claude work=/srv/team/.claude/projects

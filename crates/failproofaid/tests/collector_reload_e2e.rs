@@ -271,3 +271,61 @@ fn disabling_collection_stops_it_and_re_enabling_starts_it_again() {
     daemon.wait_for("collector enabled", 2, Duration::from_secs(20));
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// An extra capture path added by hand is picked up without a restart.
+///
+/// `failproofai harness add-path` writes `[collector.sources.<harness>]
+/// extra_paths` and tells the user the daemon will notice on its own. That
+/// promise rests entirely on `sources` living inside the `CollectorConfig` the
+/// manager compares each tick — nothing registers the field explicitly, and
+/// moving it anywhere resolved later would break the promise silently: the CLI
+/// keeps reporting success, the config keeps parsing, and the running daemon
+/// simply never captures the path until it is restarted for some unrelated
+/// reason.
+///
+/// Asserted on the REAL binary against a hand-edited file, like the cases above
+/// and for the same reason — the property is "an edit somebody else made is
+/// noticed", and a fleet tool or a `sed` is a legitimate way to make it.
+///
+/// The task-count line is what proves the path was actually REGISTERED rather
+/// than merely triggering a cycle: `sessions = true` turns the session sources
+/// on, and each labelled path adds its own task on top (claude's extra path
+/// adds two — the main and subagent formats share a root).
+#[test]
+fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
+    let home = unique_home("extra-path");
+    make_home(&home, "a-key");
+    // Session capture on: extra paths are a session-source feature, and the
+    // default config `make_home` writes has it off.
+    let cfg = home.join("config.toml");
+    let base = std::fs::read_to_string(&cfg)
+        .unwrap()
+        .replace("sessions = false", "sessions = true");
+    std::fs::write(&cfg, &base).unwrap();
+
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    let extra = home.join("extra-claude-projects");
+    std::fs::create_dir_all(&extra).unwrap();
+    std::fs::write(
+        &cfg,
+        format!(
+            "{base}\n[collector.sources.claude]\nextra_paths = [\"late={}\"]\n",
+            extra.display()
+        ),
+    )
+    .unwrap();
+
+    daemon.wait_for(
+        "collector configuration changed; cycling the collector",
+        1,
+        Duration::from_secs(20),
+    );
+    // The daemon names every extra path it accepts, so this is the line that
+    // says the entry was parsed and not rejected.
+    daemon.wait_for("also capturing", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
+    let _ = std::fs::remove_dir_all(&home);
+}

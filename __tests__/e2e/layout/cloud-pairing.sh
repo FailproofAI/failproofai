@@ -139,13 +139,13 @@ customPolicies.add({
 '
 BODY=$(python3 -c "import json,sys;print(json.dumps({'id':'e2e-cloud-guard','description':'e2e','source':sys.stdin.read()}))" <<< "$POLICY_SRC")
 PUB=$(api POST /enforcement/policies "$OPS" "$BODY")
-REV=$(printf '%s' "$PUB" | jqp "['revision']")
-[ -n "$REV" ] && ok "policy published (revision $REV)" || bad "policy published" "$PUB"
+VER=$(printf '%s' "$PUB" | jqp "['version']")
+[ -n "$VER" ] && ok "policy published (version $VER)" || bad "policy published" "$PUB"
 
 DEP=$(api PUT "/enforcement/deployments/$MACHINE" "$OPS" \
-  "{\"policies\":[{\"id\":\"e2e-cloud-guard\",\"revision\":$REV}]}")
-GEN=$(printf '%s' "$DEP" | jqp "['generation']")
-[ -n "$GEN" ] && ok "policy deployed to $MACHINE (generation $GEN)" || bad "policy deployed" "$DEP"
+  "{\"policies\":[{\"id\":\"e2e-cloud-guard\",\"version\":$VER}]}")
+DEPL=$(printf '%s' "$DEP" | jqp "['deployment']")
+[ -n "$DEPL" ] && ok "policy deployed to $MACHINE (deployment $DEPL)" || bad "policy deployed" "$DEP"
 
 DS=$(api GET "/enforcement/v1/desired-state?machineId=$MACHINE" "$OPS")
 eq "desired-state names the policy" "$(printf '%s' "$DS" | jqp "['policies'][0]['id']")" "e2e-cloud-guard"
@@ -179,8 +179,8 @@ hasnt "cloud polling is NOT disabled on an enrolled machine" "$(cat "$LOG")" "cl
 
 ACTIVE="$H/policies/cloud-policies/active.json"
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f "$ACTIVE" ] && break; sleep 1; done
-[ -f "$ACTIVE" ] && ok "the pulled generation lands where the CLI reads it" \
-  || bad "the pulled generation lands where the CLI reads it" "no $ACTIVE"
+[ -f "$ACTIVE" ] && ok "the pulled deployment lands where the CLI reads it" \
+  || bad "the pulled deployment lands where the CLI reads it" "no $ACTIVE"
 MAN=$(cat "$ACTIVE" 2>/dev/null)
 has "…naming the deployed policy" "$MAN" "e2e-cloud-guard"
 has "…with its content hash" "$MAN" "sha256"
@@ -200,7 +200,7 @@ hasnt "an unrelated command is not denied" "$OUT" '"permissionDecision":"deny"'
 head1 "PHASE 5 — OBSERVE: evaluated, recorded, never blocking"
 
 api PUT "/enforcement/deployments/$MACHINE" "$OPS" \
-  "{\"policies\":[{\"id\":\"e2e-cloud-guard\",\"revision\":$REV,\"effect\":\"observe\"}]}" >/dev/null
+  "{\"policies\":[{\"id\":\"e2e-cloud-guard\",\"version\":$VER,\"effect\":\"observe\"}]}" >/dev/null
 DS=$(api GET "/enforcement/v1/desired-state?machineId=$MACHINE" "$OPS")
 eq "the same policy is redeployed as observe" "$(printf '%s' "$DS" | jqp "['policies'][0]['effect']")" "observe"
 
@@ -246,7 +246,7 @@ has "…naming the cloud policy" "$PAY" "e2e-cloud-guard"
 has "…the verdict it would have returned" "$PAY" '"decision":"deny"'
 has "…while the action itself was allowed" "$PAY" '"outcome":"allow"'
 has "…stamped with this machine" "$PAY" '"machine_id":"e2e-machine"'
-has "…and the generation it enforced from" "$PAY" '"cloud_generation"'
+has "…and the deployment it enforced from" "$PAY" '"cloud_deployment"'
 
 DENIED=$(ch "select payload from agenteye.events where session_id = 'e2e-sess' and payload like '%\"outcome\":\"deny\"%' limit 1")
 has "the ENFORCE-mode denial also reached the server" "$DENIED" "e2e-cloud-guard"

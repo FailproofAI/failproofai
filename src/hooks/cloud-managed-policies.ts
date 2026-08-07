@@ -66,20 +66,41 @@ export function cloudManagedPolicyRoot(): string {
   );
 }
 
+/**
+ * A version-1 manifest, in the spelling a pre-rename daemon actually wrote.
+ *
+ * Accepting schema 1 while reading only the version-2 FIELD NAMES made the
+ * acceptance unreachable: every genuine v1 file threw "active manifest
+ * deployment is invalid". The Rust reader of this same file handles it with
+ * `#[serde(alias = "generation")]` / `#[serde(alias = "revision")]`; this is the
+ * TypeScript half of that pair, and it was missing.
+ */
+interface LegacyActiveManifest {
+  generation?: number;
+  policies?: Array<{ revision?: number }>;
+}
+
 function parseManifest(value: unknown): ActiveManifest {
   if (!value || typeof value !== "object") throw new Error("active manifest is not an object");
-  const manifest = value as Partial<ActiveManifest>;
-  if (!ACCEPTED_ACTIVE_SCHEMA_VERSIONS.includes(manifest.schemaVersion as number)) {
+  const raw = value as Partial<ActiveManifest> & LegacyActiveManifest;
+  if (!ACCEPTED_ACTIVE_SCHEMA_VERSIONS.includes(raw.schemaVersion as number)) {
     throw new Error(
-      `unsupported active manifest schema ${String(manifest.schemaVersion)} ` +
+      `unsupported active manifest schema ${String(raw.schemaVersion)} ` +
         `(supported: ${ACCEPTED_ACTIVE_SCHEMA_VERSIONS.join(", ")})`,
     );
   }
-  if (!Number.isSafeInteger(manifest.deployment) || (manifest.deployment ?? -1) < 0) {
+  // New name wins; the old one is a fallback, not an equal. A file carrying both
+  // (written by a mixed-version machine) must resolve to the current field.
+  const deployment = raw.deployment ?? raw.generation;
+  if (!Number.isSafeInteger(deployment) || (deployment ?? -1) < 0) {
     throw new Error("active manifest deployment is invalid");
   }
-  if (!Array.isArray(manifest.policies)) throw new Error("active manifest policies is not an array");
-  return manifest as ActiveManifest;
+  if (!Array.isArray(raw.policies)) throw new Error("active manifest policies is not an array");
+  const policies = raw.policies.map((p) => {
+    const entry = p as ActiveManifest["policies"][number] & { revision?: number };
+    return { ...entry, version: entry.version ?? entry.revision } as ActiveManifest["policies"][number];
+  });
+  return { schemaVersion: raw.schemaVersion as number, deployment: deployment as number, policies };
 }
 
 function resolveManagedPath(root: string, candidate: string): string {

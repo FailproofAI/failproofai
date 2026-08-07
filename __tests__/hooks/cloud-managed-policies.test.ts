@@ -16,14 +16,14 @@ function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
   roots.push(root);
   process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
   const sha256 = createHash("sha256").update(policyBytes).digest("hex");
-  const generationDir = join(root, "deployments", "12");
-  mkdirSync(generationDir, { recursive: true });
-  const policyPath = join(generationDir, "guard.mjs");
+  const deploymentDir = join(root, "deployments", "12");
+  mkdirSync(deploymentDir, { recursive: true });
+  const policyPath = join(deploymentDir, "guard.mjs");
   writeFileSync(policyPath, policyBytes);
   writeFileSync(
     join(root, "active.json"),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       deployment: 12,
       policies: [{ id: "guard", version: 3, sha256, path: "deployments/12/guard.mjs" }],
     }),
@@ -137,3 +137,65 @@ describe("clearActiveCloudManagedPolicies", () => {
   });
 });
 
+
+describe("a manifest written BEFORE the rename", () => {
+  // The reader accepts schemaVersion 1 so a pre-rename beta daemon's active.json
+  // still parses. That acceptance was unreachable: it read only the v2 field
+  // names, so every genuine v1 file threw "active manifest deployment is
+  // invalid" — the daemon reconciling happily while the hook path alone refused,
+  // which is the exact drift this module's header warns about.
+  //
+  // These bytes are the real v1 spelling, matching the fixture the Rust test
+  // `active_json_written_before_the_rename_still_parses` uses.
+  const seedV1 = () => {
+    const root = mkdtempSync(join(tmpdir(), "fpai-cloud-v1-"));
+    roots.push(root);
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
+    const bytes = "export default {};\n";
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const dir = join(root, "generations", "1");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "guard.mjs"), bytes);
+    writeFileSync(
+      join(root, "active.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        generation: 7,
+        policies: [{ id: "guard", revision: 3, sha256, path: "generations/1/guard.mjs" }],
+      }),
+    );
+    return sha256;
+  };
+
+  it("parses, instead of throwing on the field names it was accepted for", () => {
+    seedV1();
+    const active = readActiveCloudManagedPolicies();
+    expect(active).toHaveLength(1);
+    expect(active[0].deployment).toBe(7);
+    expect(active[0].version).toBe(3);
+  });
+
+  it("prefers the new names when a manifest carries both", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpai-cloud-both-"));
+    roots.push(root);
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
+    const bytes = "export default {};\n";
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    mkdirSync(join(root, "deployments", "9"), { recursive: true });
+    writeFileSync(join(root, "deployments", "9", "guard.mjs"), bytes);
+    writeFileSync(
+      join(root, "active.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        generation: 1,
+        deployment: 9,
+        policies: [
+          { id: "guard", revision: 1, version: 4, sha256, path: "deployments/9/guard.mjs" },
+        ],
+      }),
+    );
+    const active = readActiveCloudManagedPolicies();
+    expect(active[0].deployment).toBe(9);
+    expect(active[0].version).toBe(4);
+  });
+});

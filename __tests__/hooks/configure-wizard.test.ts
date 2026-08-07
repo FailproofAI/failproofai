@@ -611,7 +611,7 @@ describe("scope-aware assistant selection", () => {
     expect(message).toContain("Setup complete");
     // 3 columns of gutter ("└  ") sit in front of it when rendered.
     expect(message.length + 3).toBeLessThanOrEqual(80);
-    expect(message).toContain("assistants"); // the tail survived
+    expect(message).toContain("harnesses"); // the tail survived
   });
 
   it("applies to only the scope-supported CLIs when Everything available is ticked", async () => {

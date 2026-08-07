@@ -271,7 +271,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -286,6 +286,13 @@ USAGE
 COMMANDS
   (no args)                      Launch the policy dashboard
   config                         Interactive setup — pick scope, agents & policies
+    --connect <url> --token <key>  Connect to Failproof Cloud non-interactively
+    --machine-id <id>              Stable id for this machine
+    --machine-label <name>         Human-readable name in the dashboard
+    --no-transcripts               Report decisions only, never transcripts
+    --disconnect                   Stop pulling policy and sending activity
+    --status                       Show connection, daemon and pause state
+    --pause / --resume             Pause or resume enforcement
 
   policy add <name>              Enable a single policy (see \`policy --help\`)
   policy remove <name>           Disable a single policy
@@ -315,6 +322,18 @@ COMMANDS
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command
+
+  backfill                       Re-send history the collector already read past
+                                 — after clearing the dashboard, re-enrolling a
+                                 machine, or connecting later than the work
+    --since <when>                 How far back: 30d, 6m, or YYYY-MM-DD
+                                   (default: 30 days)
+    --dry-run                      Report what would be re-read, change nothing
+
+  flush                          Deliver everything already spooled, now,
+                                 instead of waiting for the next sweep
+    --wait                         Block until the spool drains (or --timeout)
+    --timeout <secs>               How long to wait with --wait (default: 60)
 
   uninstall                      Remove failproofai from this machine: hook
                                  entries from every agent CLI, and the daemon
@@ -355,6 +374,10 @@ EXAMPLES
   failproofai policies --uninstall --cli opencode
   failproofai policies --uninstall --cli pi
   failproofai policies --uninstall --custom
+  failproofai backfill --since 6m
+  failproofai backfill --dry-run
+  failproofai flush --wait
+  failproofai config --status
 
 LINKS
   ⭐ Star us:      https://github.com/failproofai/failproofai
@@ -487,6 +510,72 @@ LINKS
   // over. Every precondition a person can get wrong is still checked HERE,
   // synchronously, because reporting success and leaving the real failure in the
   // journal is what already cost twenty minutes on a live machine.
+  if (args[0] === "flush") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai flush — deliver what is already spooled, now
+
+USAGE
+  failproofai flush [--wait] [--timeout <secs>]
+
+WHY
+  The collector is unhurried on purpose: a batch is swept once it is older than
+  two minutes, at most 64 per pass, on a 60-second cadence. That pacing keeps a
+  backlog from stampeding the server, and it is exactly wrong when you are
+  standing at a dashboard waiting to see your own events — "not delivered yet"
+  and "not working" look identical from there.
+
+  This asks the daemon to make a pass right now, with no minimum age and no
+  per-pass cap. It re-sends nothing: only batches already spooled and not yet
+  delivered. For history the collector has already read past, use \`backfill\`.
+
+OPTIONS
+  --wait             Block until the spool drains, or --timeout elapses.
+  --timeout <secs>   How long --wait waits. Default: 60.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--wait", "--timeout"]);
+    const unknown = subArgs.find(
+      (a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--timeout",
+    );
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai flush --help\` for usage.`);
+    }
+
+    let timeoutSecs;
+    const tIdx = subArgs.indexOf("--timeout");
+    if (tIdx >= 0) {
+      const raw = subArgs[tIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --timeout.");
+      const n = Number(raw);
+      // Rejected rather than coerced: NaN would silently become "wait forever
+      // or not at all" depending on the comparison, and neither is what was asked.
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new CliError(`Could not read --timeout ${raw}. Give a number of seconds.`);
+      }
+      timeoutSecs = n;
+    }
+
+    lastSubcommand = "flush";
+    const { runFlushCommand } = await import("../src/hooks/flush-cli");
+    const result = await runFlushCommand({ wait: subArgs.includes("--wait"), timeoutSecs });
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_flush", {
+      ok: result.exitCode === 0,
+      waited: subArgs.includes("--wait"),
+      pending: result.pending,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
   if (args[0] === "backfill") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -1115,7 +1204,7 @@ USAGE
 WHAT IT DOES
   Walks you through 4 quick steps and writes everything for you:
     1. Where      — global (all projects) or just this project
-    2. Assistants — which agent CLIs to protect (Claude, Codex, ...)
+    2. Harnesses  — which agent CLIs to protect (Claude, Codex, ...)
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
@@ -1124,7 +1213,13 @@ FAILPROOF CLOUD
                                     Connect this machine to Failproof Cloud
                                     [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
-  failproofai config --status       Show connection and pause state
+  failproofai config --status       Show connection, daemon and pause state
+  failproofai config --pause [--session <id>]
+                                    Pause enforcement, time-boxed
+  failproofai config --resume [--all]
+                                    Resume enforcement
+
+    --machine-label <name>          Human-readable name in the dashboard
 
   One connection, two capabilities: this machine PULLS centrally-managed
   policies and SENDS what its hooks decided, so the dashboard shows the fleet

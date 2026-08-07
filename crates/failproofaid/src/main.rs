@@ -354,6 +354,14 @@ fn spawn_collector_manager(
                     continue;
                 }
 
+                // Cheap by comparison with a backfill: nothing is rewound and
+                // the collector keeps running. Just tell the sweeper to stop
+                // waiting out its interval.
+                if take_flush_request() {
+                    flush_flag().store(true, Ordering::SeqCst);
+                    tracing::info!("flush requested; delivering spooled batches now");
+                }
+
                 let next = current_collector_config();
                 // `None` means unreadable, not "disabled". A half-written file
                 // caught mid-save would otherwise tear down a healthy collector
@@ -488,6 +496,34 @@ fn file_source_since_days() -> Option<u64> {
 /// CLI is the only writer, and it writes this file atomically, so a malformed
 /// one means a hand-edit or a truncated disk rather than a race worth waiting
 /// out.
+/// Set by the maintenance tick when a `failproofai flush` request lands, and
+/// swapped back to false by the spool sweeper when it has done the pass.
+///
+/// A flag rather than a channel because the sweeper is rebuilt whenever the
+/// collector cycles (a config change, a backfill) and a channel receiver would
+/// go with it — dropping a request that had already been taken off disk.
+static FLUSH_NOW: std::sync::OnceLock<Arc<std::sync::atomic::AtomicBool>> =
+    std::sync::OnceLock::new();
+
+fn flush_flag() -> Arc<std::sync::atomic::AtomicBool> {
+    FLUSH_NOW
+        .get_or_init(|| Arc::new(std::sync::atomic::AtomicBool::new(false)))
+        .clone()
+}
+
+/// True when a flush was requested. Removed before acting, like the backfill
+/// request, so a panic mid-pass cannot re-trigger it forever.
+fn take_flush_request() -> bool {
+    let Ok(path) = paths::flush_request_path() else {
+        return false;
+    };
+    if !path.exists() {
+        return false;
+    }
+    let _ = std::fs::remove_file(&path);
+    true
+}
+
 fn take_backfill_request() -> Option<std::time::SystemTime> {
     let path = paths::backfill_request_path().ok()?;
     let raw = std::fs::read_to_string(&path).ok()?;
@@ -917,6 +953,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 sweep_dirs.clone(),
                 failed_dir.clone(),
                 sd,
+                flush_flag(),
             )
         }),
     ]);

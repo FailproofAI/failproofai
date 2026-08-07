@@ -432,7 +432,7 @@ export function describeCustomPolicies(cwd: string): {
  */
 export function buildCompletionSummary(
   policiesCount: number,
-  assistantsCount: number,
+  harnessesCount: number,
   customEnabled: boolean | undefined,
   daemonInstalled: boolean,
   connected: boolean,
@@ -443,8 +443,8 @@ export function buildCompletionSummary(
   if (daemonInstalled) extras.push("daemon");
   if (connected) extras.push("reporting");
   const extrasNote = extras.length > 0 ? ` · ${extras.join(", ")}` : "";
-  const assistants = `${assistantsCount} assistant${assistantsCount === 1 ? "" : "s"}`;
-  return `Setup complete — ${policiesCount} policies · ${assistants}${extrasNote}`;
+  const harnesses = `${harnessesCount} harness${harnessesCount === 1 ? "" : "es"}`;
+  return `Setup complete — ${policiesCount} policies · ${harnesses}${extrasNote}`;
 }
 
 export function reviewLines(state: {
@@ -473,9 +473,9 @@ export function reviewLines(state: {
         ? `This project (${homeify(cwd)})`
         : "Everywhere (global)";
   const lines: string[] = [];
-  const assistantNames = clis.map((c) => getIntegration(c).displayName);
+  const harnessNames = clis.map((c) => getIntegration(c).displayName);
   lines.push(`  Where      : ${where}`);
-  lines.push(`  Assistants : ${assistantNames.length ? summarize(assistantNames, "assistants") : "(none)"}`);
+  lines.push(`  Harnesses  : ${harnessNames.length ? summarize(harnessNames, "harnesses") : "(none)"}`);
   // Zero is a deliberate answer, not a failed step — say so, and say where to
   // change it, so the review screen doesn't read like the wizard lost the
   // selection. Hooks still install; only the builtin set is empty.
@@ -977,7 +977,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // 3 — Which assistants? An "Everything available" row protects every supported
   // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
   const clisSel = await multiSelect<string>({
-    message: "Which AI assistants should it protect?",
+    message: "Which harnesses should it protect?",
     choices: [
       {
         label: "Everything available",
@@ -985,14 +985,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         // Counts only what this scope can actually take — expanding to all 12
         // under project scope is what crashed the apply on Hermes.
         hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
-        // A selector, not an assistant. Counting it gave "13 assistants" for
+        // A selector, not a harness. Counting it gave "13 harnesses" for
         // the 12 supported CLIs, and listed "Everything available" among them.
         summaryExclude: true,
       },
       ...buildAgentChoices(primaryScope, cwd),
     ],
     minSelected: 1,
-    summaryNoun: "assistants",
+    summaryNoun: "harnesses",
     hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
     stdin,
     stdout,
@@ -1038,16 +1038,20 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         "  transcripts — prompts, file contents and command output — to your",
         "  dashboard. Staying local sends nothing, anywhere, ever.",
       ],
+      // Cloud first, and therefore preselected: connecting is what most people
+      // running this wizard came to do, and the local path stays one keystroke
+      // away. Reversing these two is the whole change — neither option's copy
+      // moved, so "stay local" is still stated as plainly as it was.
       choices: [
-        {
-          label: "Not now — stay local",
-          value: "local",
-          hint: "policies still enforce · connect later with failproofai config --connect",
-        },
         {
           label: "Paste an API key",
           value: "key",
           hint: "reports decisions and transcripts to your dashboard",
+        },
+        {
+          label: "Not now — stay local",
+          value: "local",
+          hint: "policies still enforce · connect later with failproofai config --connect",
         },
       ],
       stdin,

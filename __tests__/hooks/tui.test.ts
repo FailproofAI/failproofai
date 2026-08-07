@@ -5,6 +5,7 @@ import {
   ellipsize,
   summarize,
   renderBrandLogo,
+  promptText,
   type TTYIn,
   type TTYOut,
 } from "../../src/hooks/tui";
@@ -137,5 +138,52 @@ describe("brand logomark", () => {
       columns: 21,
     } as unknown as TTYOut);
     expect(lines).toHaveLength(1);
+  });
+});
+
+describe("promptText redraw stays on one physical row", () => {
+  // Regression: `\r\x1b[2K` erases only the row the cursor is on. A composed
+  // line wider than the terminal WRAPS, so the erase misses the earlier rows
+  // and every keystroke leaves one behind — pasting a 40-character API key
+  // printed 40 stacked copies of the prompt.
+  const drawnRows = (cols: number, message: string, hint: string, typed: number) => {
+    const writes: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: cols,
+      write: vi.fn((s: string) => { writes.push(s); return true; }),
+    } as unknown as TTYOut;
+    let onKey: ((s: string | undefined, k: unknown) => void) | undefined;
+    const stdin = {
+      isTTY: true,
+      setRawMode: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
+      removeListener: vi.fn(),
+    } as unknown as TTYIn;
+
+    void promptText({ message, hint, mask: true, stdin, stdout });
+    for (let i = 0; i < typed; i++) onKey?.("x", { name: "x" });
+
+    // Widest single write, measured without ANSI, is the widest row rendered.
+    const widest = Math.max(
+      ...writes.map((w) => w.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "").length),
+    );
+    return widest;
+  };
+
+  it("never renders wider than the terminal, even with a long hint and a long value", () => {
+    const widest = drawnRows(
+      80,
+      "API key for localhost:3000",
+      "needs events:add · policies:pull enables managed policy too",
+      40,
+    );
+    expect(widest).toBeLessThanOrEqual(80);
+  });
+
+  it("holds at a narrow width too", () => {
+    expect(drawnRows(40, "API key for localhost:3000", "needs events:add", 40)).toBeLessThanOrEqual(40);
   });
 });

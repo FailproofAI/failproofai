@@ -2,8 +2,15 @@
 
 ## 1.0.0-beta.13 — 2026-08-07
 
+### Features
+- Add `failproofai flush` — deliver what is already spooled, now. The collector is unhurried on purpose (a batch is swept once it is older than two minutes, at most 64 per pass, on a 60-second cadence), which is right for a backlog and exactly wrong for somebody standing at a dashboard waiting to see their own events: from there "not delivered yet" and "not working" look identical. The command asks the daemon for a pass with no minimum age and no cap, and `--wait` blocks until the spool drains so a script can flush and then assert. It re-sends nothing — for history the collector already read past, that is still `backfill`. (#PR)
+
 ### Fixes
 - Make `failproofai config` refuse setup on an unsupported platform (Windows, today) instead of completing it unenforced. The wizard used to skip the daemon requirement and finish anyway, leaving the machine reading as configured while enforcing in-process with no fail-closed guarantee — now it prints why and exits 1 before drawing a single prompt, writing nothing. (#664)
+- Stop the API-key prompt printing one copy of itself per character typed. `\r\x1b[2K` erases the row the cursor is on and nothing above it, so a line wider than the terminal wrapped, the erase reached only its last row, and every keystroke left the previous rows behind — pasting a 40-character key stacked 40 prompts down the screen. The prompt now truncates to one physical row. (#PR)
+- Offer the cloud connection first in the setup wizard, and preselect it. Connecting is what most people running the wizard came to do; staying local is one keystroke away and neither option's copy changed. (#PR)
+- Say "harnesses" rather than "AI assistants" throughout setup — the wizard protects agent CLIs, and the word it used for them matched no other surface. (#PR)
+- Document the commands and flags that `--help` never mentioned: `backfill` (absent entirely, with `--since` and `--dry-run`), the new `flush`, and the whole `config` cloud surface — `--connect`, `--token`, `--machine-id`, `--machine-label`, `--no-transcripts`, `--disconnect`, `--status`, `--pause`, `--resume`. A flag nobody can discover is a flag that does not exist. (#PR)
 - Drop the "safety net" metaphor from the setup wizard's intro, which now names the tool it is setting up. A metaphor tells a first-time user nothing about what the next four steps will do to their machine, and this is the first line they see. (#PR)
 
 ## 1.0.0-beta.12 — 2026-08-07

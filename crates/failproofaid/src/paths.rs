@@ -123,6 +123,15 @@ pub fn backfill_request_path() -> io::Result<PathBuf> {
         .join("backfill-request.json"))
 }
 
+/// Where `failproofai flush` leaves its request. Same hand-off shape as the
+/// backfill request: the CLI cannot deliver spooled batches itself (the
+/// uploader's concurrency limiter and in-flight set live in the running
+/// daemon, and a second uploader would POST the same files twice), so it
+/// writes a request the daemon drains on its next tick.
+pub fn flush_request_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("state").join("flush-request.json"))
+}
+
 pub fn audit_schedule_path() -> io::Result<PathBuf> {
     Ok(failproofai_home()?
         .join("state")

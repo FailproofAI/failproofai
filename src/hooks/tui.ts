@@ -705,10 +705,19 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
   return new Promise((resolve) => {
     let value = "";
     const draw = (error?: string) => {
+      const cols = stdout.columns || 80;
       const shown = opts.mask ? "•".repeat(value.length) : value;
       const hint = opts.hint ? `  ${c.dim(opts.hint)}` : "";
-      const err = error ? `\n  ${c.warn(error)}` : "";
-      stdout.write(`\r\x1b[2K${c.bold(opts.message)} ${shown}${hint}${err}`);
+      // Truncate to ONE physical row. `\r\x1b[2K` erases the row the cursor is
+      // on and nothing above it — so a line wider than the terminal wraps, the
+      // erase reaches only its last row, and every keystroke leaves the earlier
+      // rows behind. That is why pasting a 40-character API key printed 40
+      // stacked copies of the prompt: `API key for <host>` plus the masked
+      // value plus the `needs events:add · policies:pull …` hint is past 80
+      // columns before the key is even half typed.
+      const line = truncate(`${c.bold(opts.message)} ${shown}${hint}`, cols - 1);
+      const err = error ? `\n  ${truncate(c.warn(error), cols - 3)}` : "";
+      stdout.write(`\r\x1b[2K${line}${err}`);
       if (err) stdout.write("\x1b[1A");
     };
     draw();

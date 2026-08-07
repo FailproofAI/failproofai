@@ -250,7 +250,13 @@ async fn watcher_and_sweeper_run_under_the_supervisor_and_stop_on_shutdown() {
                 fpai_collect::delivery::watch(dw.clone(), vec![sw.clone()], sd)
             }),
             TaskSpec::new("spool-sweeper", move |sd| {
-                fpai_collect::delivery::sweep(ds.clone(), vec![ss.clone()], fs_dir.clone(), sd)
+                fpai_collect::delivery::sweep(
+                    ds.clone(),
+                    vec![ss.clone()],
+                    fs_dir.clone(),
+                    sd,
+                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                )
             }),
         ],
         shutdown.clone(),

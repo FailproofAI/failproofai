@@ -313,3 +313,132 @@ describe("daemon flag self-heal", () => {
     spyStat.mockRestore();
   });
 });
+
+// ── the policy selection a person typed ──────────────────────────────────
+//
+// Layout 1 kept the user policy config at `~/.failproofai/policies-config.json`;
+// layout 2 keeps it at `policies/local-policies/policies-config.json`. BOTH were
+// on the reset list, so an upgrade silently emptied `enabledPolicies` — and the
+// machine still read as configured afterwards (`isConfigured()` is a union that
+// sees the agent CLIs' untouched settings files), so hooks kept firing against a
+// policy set that had quietly become the default one.
+describe("resetHome carries the layout-1 policy selection", () => {
+  const layoutOneConfig = {
+    enabledPolicies: ["block-sudo", "block-env-files", "require-tests-before-stop"],
+    customPoliciesPaths: ["/home/u/team/policies.mjs"],
+    disabledCustomPolicies: ["team/noisy-rule"],
+    policyParams: { "block-sudo": { allowlist: ["sudo -n true"] } },
+    llm: { baseUrl: "https://llm.internal/v1", model: "gpt-4o-mini" },
+    // Layout 1 also kept collector settings HERE, in camelCase. Layout 2 moved
+    // them to config.toml in snake_case, where `fpai-collect`'s `Settings`
+    // deserializes them — so carrying this block forward would put a key into
+    // the new file that nothing reads, looking preserved and behaving absent.
+    collector: { hooksVerbosity: "all", machineId: "m-legacy" },
+  };
+
+  function seedLayoutOnePolicyConfig() {
+    writeFileSync(legacy.policyConfig(), JSON.stringify(layoutOneConfig, null, 2));
+  }
+
+  it("carries the fields layout 2 still means", () => {
+    seedLayoutOne();
+    seedLayoutOnePolicyConfig();
+
+    const out = resetHome(1);
+
+    const carried = JSON.parse(
+      readFileSync(resolve(localPoliciesDir(), "policies-config.json"), "utf8"),
+    );
+    expect(carried.enabledPolicies).toEqual([
+      "block-sudo",
+      "block-env-files",
+      "require-tests-before-stop",
+    ]);
+    expect(carried.customPoliciesPaths).toEqual(["/home/u/team/policies.mjs"]);
+    expect(carried.disabledCustomPolicies).toEqual(["team/noisy-rule"]);
+    expect(carried.policyParams).toEqual({ "block-sudo": { allowlist: ["sudo -n true"] } });
+    expect(carried.llm).toEqual({ baseUrl: "https://llm.internal/v1", model: "gpt-4o-mini" });
+    expect(out.policyConfig).toContain("enabledPolicies");
+  });
+
+  // The one exclusion, and the reason the carry is an allowlist rather than a
+  // copy. A camelCase `collector` block in the new file reads as a preserved
+  // setting and does nothing.
+  it("does NOT carry the collector block, which moved to config.toml", () => {
+    seedLayoutOne();
+    seedLayoutOnePolicyConfig();
+
+    const out = resetHome(1);
+
+    const carried = JSON.parse(
+      readFileSync(resolve(localPoliciesDir(), "policies-config.json"), "utf8"),
+    );
+    expect(carried.collector).toBeUndefined();
+    expect(out.policyConfig).not.toContain("collector");
+  });
+
+  // A home already set up on layout 2 has a NEWER answer than the layout-1 file
+  // beside it, and a stale file winning would UNDO configuration rather than
+  // preserve it. The reset still CLEARS that layout-2 config on a layout
+  // migration (see "still clears the machine-owned children of policies/") —
+  // what must never happen is layout 1's values taking its place.
+  it("never lets the layout-1 file overwrite an existing layout-2 config", () => {
+    seedLayoutOne();
+    seedLayoutOnePolicyConfig();
+    mkdirSync(localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(localPoliciesDir(), "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["current-choice"] }),
+    );
+
+    const out = resetHome(1);
+
+    expect(out.policyConfig).toEqual([]);
+    const path = resolve(localPoliciesDir(), "policies-config.json");
+    if (existsSync(path)) {
+      const after = JSON.parse(readFileSync(path, "utf8"));
+      expect(after.enabledPolicies).not.toContain("block-sudo");
+    }
+  });
+
+  it("is a no-op when there is no layout-1 config", () => {
+    seedLayoutOne();
+    // `seedLayoutOne()` writes one; this case is the home that never had it.
+    rmSync(legacy.policyConfig(), { force: true });
+    const out = resetHome(1);
+    expect(out.policyConfig).toEqual([]);
+    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(false);
+  });
+
+  // Unparseable is not worth aborting a reset over, and there is nothing to
+  // carry — which is exactly what happened before this function existed.
+  it("survives an unparseable layout-1 config without aborting the reset", () => {
+    seedLayoutOne();
+    writeFileSync(legacy.policyConfig(), "{ this is not json");
+    const out = resetHome(1);
+    expect(out.policyConfig).toEqual([]);
+    expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
+  });
+
+  // A file carrying only a collector block has nothing to carry, and must not
+  // produce an empty layout-2 file that looks like a real one.
+  it("writes nothing when only excluded fields are present", () => {
+    seedLayoutOne();
+    writeFileSync(legacy.policyConfig(), JSON.stringify({ collector: { hooksVerbosity: "all" } }));
+    const out = resetHome(1);
+    expect(out.policyConfig).toEqual([]);
+    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(false);
+  });
+
+  // The whole point: after the reset, the carried file is what the loader reads.
+  it("leaves the carried config where the layout-2 reader looks", () => {
+    seedLayoutOne();
+    seedLayoutOnePolicyConfig();
+    resetHome(1);
+    // The layout-1 original is gone...
+    expect(existsSync(legacy.policyConfig())).toBe(false);
+    // ...and the layout-2 path, which `globalPolicyConfigFile()` resolves to,
+    // holds the selection.
+    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(true);
+  });
+});

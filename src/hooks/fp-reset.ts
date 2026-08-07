@@ -29,14 +29,25 @@
  * user out of their agent entirely, with no way back except hand-editing JSON.
  * A loud warning that survives until setup runs is the proportionate answer.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, resolve } from "node:path";
 import {
   LAYOUT_VERSION,
   customPoliciesDir,
   failproofaiHome,
+  globalPolicyConfigFile,
   hookActivityDir,
   legacy,
+  localPoliciesDir,
   policiesDir,
   resettablePaths,
 } from "./fp-home";
@@ -56,6 +67,8 @@ export interface ResetOutcome {
   migrated: string[];
   /** Basenames of decision-log pages carried into layout 2's `hook-activity/`. */
   activity: string[];
+  /** Keys of the layout-1 policy config carried into layout 2's. */
+  policyConfig: string[];
   /** The layout that was found before the reset. */
   from: number;
 }
@@ -203,6 +216,118 @@ export function migrateHookActivity(): string[] {
 }
 
 /**
+ * Fields of layout 1's `policies-config.json` that layout 2's still means.
+ *
+ * An allowlist, not a copy, and the exclusion is the point: layout 1's file
+ * ALSO carried a `collector` block, and layout 2 moved collector settings to
+ * `[collector]` in `config.toml` — in snake_case, deliberately, because
+ * `fpai-collect`'s `Settings` deserializes them and camelCase keys would make
+ * every field silently fall back to its default (see the note on `Settings` in
+ * `crates/fpai-collect/src/config.rs`, which records that exact bug). Carrying
+ * `collector` forward would put a block into the new file that nothing reads,
+ * where it would look like a preserved setting and behave like an absent one.
+ *
+ * The `llm` block moves because the loader still reads it from here, and its
+ * value is an endpoint and a model name a person configured by hand.
+ */
+const CARRIED_POLICY_CONFIG_KEYS = [
+  "enabledPolicies",
+  "customPoliciesPaths",
+  "customPoliciesPath",
+  "disabledCustomPolicies",
+  "conventionPolicies",
+  "disabledConventionPolicies",
+  "policyParams",
+  "llm",
+] as const;
+
+/**
+ * Carry the user's policy SELECTION across the layout-1 → layout-2 move.
+ *
+ * Layout 1 kept it at `~/.failproofai/policies-config.json`; layout 2 keeps it
+ * at `policies/local-policies/policies-config.json`, and both were on the reset
+ * list. So an upgrade silently emptied `enabledPolicies` — every builtin the
+ * user had turned on, every explicit `customPoliciesPaths` entry, and every
+ * per-policy parameter. The machine still read as configured afterwards
+ * (`isConfigured()` is a union that sees the agent CLIs' untouched settings
+ * files), so hooks kept firing against a policy set that had quietly become
+ * the default one. That is the same silent enforcement gap
+ * `migrateConventionPolicies()` exists to close, by a different route.
+ *
+ * This is deliberately NARROW. The standing decision for layout 1 is
+ * wipe-and-re-setup rather than migrate, because a half-migrated home that
+ * reads "no data" is worse than one that says so — see `legacy` in
+ * `fp-home.ts`. Everything derived (cursors, spool, health, audit cache) still
+ * goes and is rebuilt. What is carried is only what a person typed and nothing
+ * regenerates, which is the same test `migrateHookActivity()` applies to the
+ * decision log.
+ *
+ * # Two phases, because the source and the destination are BOTH on the list
+ *
+ * Unlike the two migrations above, this one cannot run entirely before the
+ * deletions. Its source (`legacy.policyConfig()`) is removed by them, and so is
+ * its destination's parent (`localPoliciesDir()`) — rightly, since clearing a
+ * stale selection on a layout migration is the documented behaviour. Writing
+ * first would have the reset delete the carry moments after it happened, which
+ * is exactly what the note on `hookActivityDir()` in `resettablePaths()` records
+ * happening once already.
+ *
+ * So: READ before, WRITE after.
+ */
+export function readCarriedPolicyConfig(): Record<string, unknown> | null {
+  const from = legacy.policyConfig();
+  // Checked HERE rather than at write time: by then the destination has been
+  // deleted along with its parent, so every home would look empty. A home
+  // already set up on layout 2 has a newer answer than the layout-1 file beside
+  // it, and a stale file winning would UNDO configuration, not preserve it.
+  if (!existsSync(from) || existsSync(globalPolicyConfigFile())) return null;
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(readFileSync(from, "utf8")) as Record<string, unknown>;
+  } catch {
+    // Unparseable is not worth aborting a reset over, and there is nothing to
+    // carry. The file is removed with the rest of layout 1, which is also what
+    // would have happened before this function existed.
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+  const carried: Record<string, unknown> = {};
+  let found = false;
+  for (const key of CARRIED_POLICY_CONFIG_KEYS) {
+    if (parsed[key] !== undefined) {
+      carried[key] = parsed[key];
+      found = true;
+    }
+  }
+  // Nothing worth carrying — a file holding only excluded fields must not
+  // produce an empty layout-2 config that looks like a real one.
+  if (!found) return null;
+
+  // `enabledPolicies` is required by the type and by every reader. A layout-1
+  // file that somehow lacked it would otherwise produce a layout-2 file that
+  // throws on read — worse than the empty default it replaces.
+  if (carried.enabledPolicies === undefined) carried.enabledPolicies = [];
+  return carried;
+}
+
+/** Second phase of {@link readCarriedPolicyConfig}; runs AFTER the deletions. */
+export function writeCarriedPolicyConfig(carried: Record<string, unknown> | null): string[] {
+  if (!carried) return [];
+  const to = globalPolicyConfigFile();
+  try {
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, JSON.stringify(carried, null, 2) + "\n", "utf8");
+  } catch {
+    // A destination we cannot write is not worth aborting the reset over; the
+    // user re-runs setup, which is the pre-existing behaviour.
+    return [];
+  }
+  return Object.keys(carried).sort((a, b) => a.localeCompare(b));
+}
+
+/**
  * Delete every path layout 1 or layout 2 could have written, then stamp
  * VERSION so the next run reads as current.
  *
@@ -217,8 +342,17 @@ export function resetHome(from: number): ResetOutcome {
   // then walks over.
   const migrated = migrateConventionPolicies();
   const activity = migrateHookActivity();
+  const pendingPolicyConfig = readCarriedPolicyConfig();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
+    // A reset FROM the current layout is not a layout migration, and the only
+    // thing under `local-policies/` is the user's enabled-policy selection.
+    // Clearing it is right when moving off an old layout (setup re-asks) and
+    // wrong when nothing is being migrated — there it would silently discard a
+    // current, valid selection, including one this function had just carried.
+    // The single production caller always passes a DETECTED stale layout, so
+    // this only ever changes the forced same-layout case.
+    if (from === LAYOUT_VERSION && path === localPoliciesDir()) continue;
     if (!existsSync(path)) continue;
     try {
       rmSync(path, { recursive: true, force: true });
@@ -229,8 +363,9 @@ export function resetHome(from: number): ResetOutcome {
       // directory from an old layout is inert once nothing reads it.
     }
   }
+  const policyConfig = writeCarriedPolicyConfig(pendingPolicyConfig);
   writeVersionFile();
-  return { removed, migrated, activity, from };
+  return { removed, migrated, activity, policyConfig, from };
 }
 
 export interface LayoutCheck {

@@ -38,6 +38,11 @@
 #   CANARY_VERSION_GATED   "all" (default) | comma-sep list | "none" to force-probe
 #   CANARY_CLIS            space-separated CLI subset (empty = all 12)
 #   CANARY_SKIP_BUILD      set to 1 to reuse an existing dist/ (local iteration)
+#   CANARY_DAEMON          set to 1 to probe the daemon-configured (failproofaid)
+#                          hook path: builds the Rust daemon and routes every
+#                          probe's hooks through it, fail-closed (see probe-cli.sh)
+#   CANARY_CARGO_CACHE     cargo home+target cache dir for the daemon build
+#                          (default ~/.cache/failproofai-canary/cargo)
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
@@ -99,6 +104,28 @@ fi
 if [ ! -s "$REPO/dist/index.js" ] || [ ! -s "$REPO/dist/cli.mjs" ]; then
   echo "✗ dist/index.js and dist/cli.mjs must both be non-empty" >&2
   exit 1
+fi
+
+# ── 1b. build failproofaid under test (daemon mode only) ────────────────────
+# Built in a rust:1-bookworm container, NOT on the host: the sandbox image is
+# node:22-bookworm-slim (glibc 2.36), and a binary linked against a newer host
+# glibc would fail to load inside it. The repo mounts read-only — cargo writes
+# only to the mounted cache (registry + target), so the checkout stays clean.
+if [ "${CANARY_DAEMON:-0}" = 1 ]; then
+  step "building failproofaid (daemon) under test"
+  if [ ! -f "$REPO/crates/failproofaid/Cargo.toml" ]; then
+    echo "✗ CANARY_DAEMON=1 but $REPO has no crates/failproofaid — this ref predates the daemon; unset CANARY_DAEMON or pick a ref that carries it" >&2
+    exit 1
+  fi
+  CARGO_CACHE="${CANARY_CARGO_CACHE:-$HOME/.cache/failproofai-canary/cargo}"
+  mkdir -p "$CARGO_CACHE/home" "$CARGO_CACHE/target"
+  docker run --rm -u "$(id -u):$(id -g)" \
+    -e HOME=/cargo/home -e CARGO_HOME=/cargo/home -e CARGO_TARGET_DIR=/cargo/target \
+    -v "$CARGO_CACHE:/cargo" -v "$REPO:/src:ro" -w /src \
+    rust:1-bookworm cargo build --release --locked -p failproofaid \
+    || { echo "✗ failproofaid build failed" >&2; exit 1; }
+  export CANARY_DAEMON_BIN="$CARGO_CACHE/target/release/failproofaid"
+  [ -x "$CANARY_DAEMON_BIN" ] || { echo "✗ built failproofaid missing at $CANARY_DAEMON_BIN" >&2; exit 1; }
 fi
 
 # ── 2. decode OAuth token secrets ───────────────────────────────────────────
@@ -176,4 +203,6 @@ CANARY_STATE="$STATE" \
 CANARY_ENVFILE="$ENVFILE" \
 CANARY_CHANNEL="$CHANNEL" \
 CANARY_PEER_STATE="$PEER_STATE" \
+CANARY_DAEMON="${CANARY_DAEMON:-0}" \
+CANARY_DAEMON_BIN="${CANARY_DAEMON_BIN:-}" \
   bash "$HERE/run.sh" ${CANARY_CLIS:-}

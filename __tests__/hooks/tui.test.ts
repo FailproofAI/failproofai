@@ -161,6 +161,16 @@ describe("promptText redraw stays on one physical row", () => {
       pause: vi.fn(),
       on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
       removeListener: vi.fn(),
+      // `readline.emitKeypressEvents` calls these on the stream it is given.
+      // Without them the promise rejects, and because this test deliberately
+      // does not await it (`void promptText(...)`), the rejection surfaces as an
+      // UNHANDLED error — tests all green, job red, which is exactly how it
+      // reached CI.
+      listenerCount: vi.fn(() => 0),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      addListener: vi.fn(),
     } as unknown as TTYIn;
 
     void promptText({ message, hint, mask: true, stdin, stdout });

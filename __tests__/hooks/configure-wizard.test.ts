@@ -370,7 +370,7 @@ describe("configure-wizard pure builders", () => {
 
   it("omits every optional note when nothing is present", () => {
     const message = buildCompletionSummary(2, 1, undefined, false, false);
-    expect(message).toBe("Setup complete — 2 policies · 1 assistant");
+    expect(message).toBe("Setup complete — 2 policies · 1 harness");
   });
 });
 

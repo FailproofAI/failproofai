@@ -2,25 +2,30 @@
  * Tripwires for the LOCAL canary runner (integration-suite/local/) and the
  * daemon-mode (CANARY_DAEMON) probe path.
  *
- * Daily integration-suite runs moved off GH Actions onto a local box
- * (2026-08-07, for runner-minute cost); the stable leg there probes the
- * daemon-configured (failproofaid) hook path — the way-forward configuration.
- * Everything below is shell scripts and systemd units with no importable
- * surface, so the tests parse the real files — same approach as
+ * Daily integration-suite runs moved off GH Actions (2026-08-07, for
+ * runner-minute cost) onto a box whose entire contract is: Docker + one cron
+ * line + one env file. A self-contained runner image drives the HOST's Docker
+ * through the mounted socket; its baked entrypoint checks out CANARY_REF and
+ * hands off to runner-daily.sh FROM THE CHECKOUT, so harness changes reach the
+ * box through git with no image rebuild. The stable leg probes the
+ * daemon-configured (failproofaid) path — the way-forward configuration.
+ *
+ * Everything below is shell scripts, a Dockerfile and an env template with no
+ * importable surface, so the tests parse the real files — same approach as
  * channel-refs.test.ts, and for the same reason: the alternative is a second
  * copy of each contract to drift against.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = path.join(__dirname, "../..");
 const SUITE = path.join(ROOT, "integration-suite");
 const LOCAL = path.join(SUITE, "local");
-const runLocal = readFileSync(path.join(LOCAL, "run-local.sh"), "utf8");
-const installSh = readFileSync(path.join(LOCAL, "install.sh"), "utf8");
-const service = readFileSync(path.join(LOCAL, "failproofai-canary.service"), "utf8");
-const timer = readFileSync(path.join(LOCAL, "failproofai-canary.timer"), "utf8");
+const dockerfile = readFileSync(path.join(LOCAL, "Dockerfile.runner"), "utf8");
+const entrypointSh = readFileSync(path.join(LOCAL, "runner-entrypoint.sh"), "utf8");
+const dailySh = readFileSync(path.join(LOCAL, "runner-daily.sh"), "utf8");
+const secretsExample = readFileSync(path.join(LOCAL, "secrets.env.example"), "utf8");
 const workflow = readFileSync(
   path.join(ROOT, ".github/workflows/integration-suite.yml"),
   "utf8",
@@ -43,55 +48,100 @@ describe("GHA workflow is dispatch-only", () => {
   });
 });
 
-describe("local runner wiring", () => {
-  it("service ExecStart points at the exact path install.sh installs to", () => {
-    // run-local.sh hard-resets the runner clone, so the unit must exec the
-    // INSTALLED copy — a unit pointing into the clone would run whatever the
-    // checked-out ref happens to carry, mid-reset.
-    const m = /^ExecStart=%h\/(\S+)$/m.exec(service);
-    expect(m).not.toBeNull();
-    expect(m![1]).toBe(".config/failproofai-canary/bin/run-local.sh");
-    expect(installSh).toContain("CANARY_CONF_DIR:-$HOME/.config/failproofai-canary");
-    expect(installSh).toMatch(
-      /install -m 755 "\$HERE\/run-local\.sh" "\$CONF_DIR\/bin\/run-local\.sh"/,
-    );
+describe("runner image (the boss's one container)", () => {
+  it("bakes the thin entrypoint and nothing else of the harness", () => {
+    // The image must stay rebuild-free across harness changes: it may carry
+    // runner-entrypoint.sh (thin, stable) but must NOT bake runner-daily.sh
+    // or any other harness file — those are executed from the checkout.
+    expect(dockerfile).toMatch(/^COPY runner-entrypoint\.sh /m);
+    expect(dockerfile).toMatch(/^ENTRYPOINT \["\/usr\/local\/bin\/runner-entrypoint\.sh"\]$/m);
+    // (comments may mention the daily driver; COPY lines must not)
+    expect(dockerfile).not.toMatch(/^COPY .*runner-daily/m);
   });
 
-  it("install.sh installs both systemd units", () => {
-    expect(installSh).toContain("failproofai-canary.service");
-    expect(installSh).toContain("failproofai-canary.timer");
+  it("ships the docker CLIENT for the mounted host socket", () => {
+    expect(dockerfile).toMatch(/download\.docker\.com\/linux\/static/);
   });
 
-  it("timer keeps the retired GHA cron slot and catches up after downtime", () => {
-    expect(timer).toMatch(/OnCalendar=.*06:17.*UTC/);
-    expect(timer).toMatch(/^Persistent=true$/m);
-  });
-
-  it("run-local.sh drives the same front door CI does", () => {
-    expect(runLocal).toContain("integration-suite/ci-entrypoint.sh");
-  });
-
-  it("refuses to run without an explicit CANARY_REF", () => {
+  it("entrypoint refuses to run without the socket and without CANARY_REF", () => {
     // A baked-in default ref would silently keep probing a stale branch after
-    // the daemon branch merges to main — every box states what it tests.
-    expect(runLocal).toMatch(/\$\{CANARY_REF:\?/);
+    // the daemon branch merges to main — the env file states what it tests.
+    expect(entrypointSh).toContain("/var/run/docker.sock");
+    expect(entrypointSh).toMatch(/\$\{CANARY_REF:\?/);
+  });
+
+  it("entrypoint serializes runs and hands off to the in-repo daily driver", () => {
+    // The lock file lives on the host work dir so overlapping cron fires
+    // share one lock across separate containers.
+    expect(entrypointSh).toMatch(/flock -n/);
+    expect(entrypointSh).toMatch(/exec bash "\$CLONE\/integration-suite\/local\/runner-daily\.sh"/);
+    expect(existsSync(path.join(LOCAL, "runner-daily.sh"))).toBe(true);
+  });
+
+  it("entrypoint explains the identical-path work-dir mount when it is missing", () => {
+    // Path parity is the load-bearing trick of the whole design: paths under
+    // the work dir serve as sibling-container -v sources, resolved by the
+    // HOST daemon. The failure message must teach the fix.
+    expect(entrypointSh).toMatch(/-v \\"\\\$HOME\/fp-canary:\\\$HOME\/fp-canary\\"/);
+  });
+});
+
+describe("daily driver (in-repo, evolves with the harness)", () => {
+  it("drives the same front door CI does, one leg per channel", () => {
+    expect(dailySh).toContain("integration-suite/ci-entrypoint.sh");
+    expect(dailySh).toMatch(/\$\{CANARY_LEGS:-stable beta\}/);
   });
 
   it("stable leg defaults to the daemon path, beta to in-process", () => {
-    expect(runLocal).toContain("${CANARY_DAEMON_STABLE:-1}");
-    expect(runLocal).toContain("${CANARY_DAEMON_BETA:-0}");
+    expect(dailySh).toContain("${CANARY_DAEMON_STABLE:-1}");
+    expect(dailySh).toContain("${CANARY_DAEMON_BETA:-0}");
   });
 
-  it("secrets template offers every secret-fed env var the workflow maps", () => {
-    // The box's secrets.env and the GHA Environment must stay interchangeable.
-    // A secret added to the workflow but not the template means the box runs
+  it("pins the cargo cache under the work dir (path parity for the sibling build)", () => {
+    // ci-entrypoint's default cargo cache is under $HOME — inside the runner
+    // container that path does not exist on the host, so the rust sibling
+    // container's -v mount would silently create a root-owned host dir and
+    // cache nothing. The only harness default rooted outside $WORK.
+    expect(dailySh).toMatch(/CANARY_CARGO_CACHE="\$\{CANARY_CARGO_CACHE:-\$WORK\/cargo\}"/);
+  });
+
+  it("crash-guard greps the exact success line run.sh prints", () => {
+    // "leg died WITHOUT reporting" is detected by the absence of run.sh's own
+    // posted-to-Slack line — if that wording changes in run.sh, the crash
+    // guard goes blind and every FAIL verdict would double-post a crash note.
+    const m = /grep -q "([^"]+)" "\$leg_log"/.exec(dailySh);
+    expect(m).not.toBeNull();
+    expect(runSh).toContain(m![1]);
+  });
+});
+
+describe("secrets.env.example (the one file the boss edits)", () => {
+  it("offers every secret-fed env var the workflow maps", () => {
+    // The box's env file and the GHA Environment must stay interchangeable.
+    // A secret added to the workflow but not the example means the box runs
     // without it and that CLI quietly reports ERROR forever.
     const envNames = [...workflow.matchAll(/^\s+([A-Z0-9_]+):\s+\$\{\{\s*secrets\./gm)].map(
       (m) => m[1],
     );
     expect(envNames.length).toBeGreaterThanOrEqual(10);
     for (const name of envNames) {
-      expect(installSh, `secrets.env template is missing ${name}`).toContain(name);
+      expect(secretsExample, `secrets.env.example is missing ${name}`).toContain(name);
+    }
+  });
+
+  it("states CANARY_REF uncommented (the runner refuses to start without it)", () => {
+    expect(secretsExample).toMatch(/^CANARY_REF=\S+$/m);
+  });
+
+  it("is valid docker --env-file material: no shell expansion on value lines", () => {
+    // docker --env-file is literal KEY=value — a $HOME in a value would reach
+    // the container as the four characters "$HOM"+"E". Comments may mention
+    // $HOME freely; value lines must not.
+    const valueLines = secretsExample
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("#"));
+    for (const line of valueLines) {
+      expect(line, `value line must not rely on shell expansion: ${line}`).not.toContain("$");
     }
   });
 });
@@ -138,7 +188,7 @@ describe("daemon-mode probe path", () => {
     // rename on either side trips this test.
     const idMatch = /registerPolicy\(\s*"(failproofai\/[a-z-]+)",\s*"Fail-closed/.exec(handlerTs);
     expect(idMatch).not.toBeNull();
-    // handler.ts:463 — `result=${decision} policy=${policyName} duration=…`
+    // handler.ts — `result=${decision} policy=${policyName} duration=…`
     const failClosedLine = `result=deny policy=${idMatch![1]} duration=3ms`;
 
     const deniedPat = /denied\(\) \{ grep -qE "([^"]+)"/.exec(probeSh);

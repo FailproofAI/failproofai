@@ -32,28 +32,50 @@ vitest suites. So it's a scheduled run, not a PR gate.
 
 Daily runs live on a **local canary box**, not GH Actions — runner minutes were
 the entire cost of the old daily cron; the LLM spend is identical either way.
-`local/` holds everything box-side:
+The box needs exactly **Docker + one cron line + one env file**; there is no
+host toolchain, no installed scripts, no systemd. Everything else happens
+inside a self-contained runner image that drives the host's Docker through the
+mounted socket (sibling containers — the sandbox image, volumes and probe
+containers are the exact ones CI runs).
 
+Box setup, in full:
+
+```bash
+# 1. one-time: build the runner image (from a clone, or straight from GitHub)
+docker build -t failproofai-canary-runner \
+  -f integration-suite/local/Dockerfile.runner integration-suite/local/
+
+# 2. one-time: work dir + secrets
+mkdir -p ~/fp-canary
+cp integration-suite/local/secrets.env.example ~/fp-canary/secrets.env
+chmod 600 ~/fp-canary/secrets.env    # then fill it in
+
+# 3. cron (pick any quiet hour; overlapping fires share a lock and no-op)
+17 6 * * * docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
 ```
-local/run-local.sh              the cron replacement: checkout CANARY_REF →
-                                stable leg (daemon) → beta leg → crash-guard
-local/install.sh                box setup: installed copy + units + secrets template
-local/failproofai-canary.service  systemd user unit (oneshot, 4h ceiling)
-local/failproofai-canary.timer    daily 06:17 UTC, Persistent=true
-```
 
-Box setup: clone the repo anywhere once, `bash integration-suite/local/install.sh`,
-fill `~/.config/failproofai-canary/secrets.env` (same variables the GHA
-Environment supplied; token tarballs still come from `capture-tokens.sh` on a
-logged-in machine), `loginctl enable-linger`, enable the timer. The wrapper runs
-from an **installed copy** because it hard-resets the runner clone every run —
-nothing that must survive a run may live inside the clone.
+The work dir is mounted at an **identical path** inside and out — that is
+load-bearing, not style: paths under it are used both for in-container file
+ops and as sibling-container `-v` sources, which the host daemon resolves
+against the host filesystem. The entrypoint auto-detects it (and says exactly
+what to mount if it can't).
 
-State (`integration-suite-state[-beta].json`) sits in
-`~/.local/state/failproofai-canary/` instead of the Actions cache; the
-version-gate logic is unchanged. Verdict reports POST to Slack exactly as
-before; a leg that dies *before* reporting gets a distinct crash-note (that's
-the replacement for GHA's red-job email).
+At each run the image's baked entrypoint (`runner-entrypoint.sh` — thin on
+purpose) locks, clones/fetches `CANARY_REF` into `~/fp-canary/clone`, and
+hands off to `runner-daily.sh` **from that checkout** — so harness changes
+reach the box through git, and the image only needs a rebuild when the
+entrypoint itself changes. The daily driver runs the stable leg
+(daemon-configured) then the beta leg (in-process), exactly like the old GHA
+matrix.
+
+Everything lands under the work dir: version-gate state in `state/` (instead
+of the Actions cache — the gate logic is unchanged), run + per-leg logs in
+`logs/` (pruned after 14 days), the clone, and the daemon build's cargo cache.
+Verdict reports POST to Slack exactly as before; a leg that dies *before*
+reporting gets a distinct crash-note with the log tail (that's the replacement
+for GHA's red-job email — cron's own output can go to `/dev/null`). Token
+tarballs still come from `capture-tokens.sh` on a logged-in machine; the first
+run probes all 12 CLIs (~1h, empty gate) and steady-state runs are short.
 
 ## How a run works
 

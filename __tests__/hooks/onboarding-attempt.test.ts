@@ -198,6 +198,28 @@ describe("cancelled — a deliberate stop", () => {
   });
 });
 
+describe("unsupported_platform — a permanent property of the machine", () => {
+  it("stays blocked on the same CLI version", () => {
+    // Nagging every command would just repeat the hard-fail this reason
+    // records — the machine's platform has not changed.
+    expect(
+      blockerCleared(
+        attempt({ reason: "unsupported_platform", cliVersion: "1.0.0" }),
+        probe({ cliVersion: "1.0.0" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("re-offers after an upgrade, in case the new version supports it", () => {
+    expect(
+      blockerCleared(
+        attempt({ reason: "unsupported_platform", cliVersion: "1.0.0" }),
+        probe({ cliVersion: "1.1.0" }),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("reasons that are properties of the invocation, not the machine", () => {
   it("re-offers for not_a_tty and running_as_sudo", () => {
     for (const reason of ["not_a_tty", "running_as_sudo"] as const) {
@@ -226,6 +248,7 @@ describe("what the user is told", () => {
       "needs_root",
       "daemon_failed",
       "cancelled",
+      "unsupported_platform",
       "not_a_tty",
       "running_as_sudo",
     ] as const) {

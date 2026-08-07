@@ -126,6 +126,7 @@ export type WizardAbort =
   | "cancelled"
   | "needs_root"
   | "daemon_failed"
+  | "unsupported_platform"
   | "not_a_tty"
   | "running_as_sudo";
 
@@ -712,6 +713,25 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   // Fire-and-forget: never block the wizard's first paint on telemetry.
   void emit("configure_started", {});
+
+  // failproofaid — the only evaluator on a configured machine — only runs on
+  // Linux and macOS. Checked before intro() draws anything and before a
+  // single prompt is asked: completing setup anyway used to leave e.g. a
+  // Windows machine reading as configured while enforcing in-process with no
+  // fail-closed guarantee, which is worse than not being set up at all.
+  if (!isDaemonSupportedPlatform()) {
+    stdout.write(
+      `failproofai requires failproofaid, its background policy daemon, which runs on\n` +
+        `Linux and macOS only — not ${process.platform}. Setup cannot continue here: an\n` +
+        "installation with no daemon behind it would read as configured while enforcing\n" +
+        "nothing, which is worse than not being set up at all.\n\n" +
+        "Nothing was changed. This platform will be supported once failproofaid gains a\n" +
+        `${process.platform} service target.\n\n`,
+    );
+    void emit("configure_aborted", { reason: "unsupported_platform" });
+    return { applied: false, abort: "unsupported_platform" };
+  }
+
   intro("let's set up your safety net", stdout);
 
   const cancel = (): WizardResult => {
@@ -733,9 +753,9 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // Machine-level, so it is deliberately NOT gated on the scope chosen in the
   // next step: one daemon serves every project on this machine.
   //
-  // On a platform with no service manager there is nothing to install, so the
-  // requirement does not apply — requiring an impossible step would lock those
-  // users out of setup entirely rather than protecting anything.
+  // Always true here — the guard near the top of this function already
+  // refused setup on anything else. Kept as a real read (not a literal
+  // `true`) so this block still fails safe if that guard is ever moved.
   const daemonSupported = isDaemonSupportedPlatform();
   // An already-healthy daemon needs no install and no password. Re-running
   // setup on a configured machine must not demand sudo for work that is
@@ -1415,12 +1435,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // a hard cut and no ellipsis, so an over-long line doesn't just lose its tail
   // — it reads as broken output. Naming all ten CLIs took it to 182 characters;
   // the count alone carries the same information, and the user picked them two
-  // screens ago.
+  // screens ago. Every real completed setup is on a supported platform now (an
+  // unsupported one aborts before this point), so `daemonNote` below is no
+  // longer an occasional addition — the widest real case (every policy, every
+  // CLI, custom off) must fit with it included, which is why this note stays
+  // terse rather than spelling out "DISABLED".
   const customNote =
     customEnabled === true
       ? " + your custom policies"
       : customEnabled === false
-        ? " · custom policies DISABLED"
+        ? " · custom off"
         : "";
   const daemonNote = daemonInstalled ? " · daemon on" : "";
   const cloudNote = connected ? " · reporting on" : "";

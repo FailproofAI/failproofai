@@ -64,13 +64,22 @@ VERSIONS_JSON="$(docker run --rm -v "$VOL:/home/canary" "$IMAGE" cat /home/canar
 # Daemon mode: bind the host-built failproofaid binary into the probe container
 # and tell probe-cli.sh to route hooks through it (see its CANARY_DAEMON block).
 # A file→file bind mount, read-only — executing from an ro mount is fine.
+# CANARY_DAEMON_DEAD=1 (fail-closed leg) implies daemon mode but needs no
+# binary: the daemon is deliberately never started, only the marker is set.
+# It also gets its OWN state lane: a PASS here means "denied while dead", and
+# recording that as green in the enforcement gate would skip the next REAL
+# probe of the same (CLI, failproofai) pair as already-verified.
+if [ "${CANARY_DAEMON_DEAD:-0}" = 1 ]; then CANARY_DAEMON=1; STATE="$STATE.dead"; fi
 DAEMON_FLAGS=()
 if [ "${CANARY_DAEMON:-0}" = 1 ]; then
-  DBIN="${CANARY_DAEMON_BIN:?CANARY_DAEMON=1 requires CANARY_DAEMON_BIN (host path to the built failproofaid)}"
-  [ -x "$DBIN" ] || { echo "✗ CANARY_DAEMON_BIN=$DBIN is not an executable file" >&2; exit 1; }
-  # docker reads a relative -v source as a NAMED VOLUME — absolutize first.
-  DBIN="$(cd "$(dirname "$DBIN")" && pwd)/$(basename "$DBIN")"
-  DAEMON_FLAGS=(-e CANARY_DAEMON=1 -v "$DBIN:/opt/failproofaid/failproofaid:ro")
+  DAEMON_FLAGS=(-e CANARY_DAEMON=1 -e "CANARY_DAEMON_DEAD=${CANARY_DAEMON_DEAD:-0}")
+  if [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
+    DBIN="${CANARY_DAEMON_BIN:?CANARY_DAEMON=1 requires CANARY_DAEMON_BIN (host path to the built failproofaid)}"
+    [ -x "$DBIN" ] || { echo "✗ CANARY_DAEMON_BIN=$DBIN is not an executable file" >&2; exit 1; }
+    # docker reads a relative -v source as a NAMED VOLUME — absolutize first.
+    DBIN="$(cd "$(dirname "$DBIN")" && pwd)/$(basename "$DBIN")"
+    DAEMON_FLAGS+=(-v "$DBIN:/opt/failproofaid/failproofaid:ro")
+  fi
 fi
 
 run_probe() {

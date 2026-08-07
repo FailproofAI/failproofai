@@ -179,6 +179,60 @@ describe("daemon-mode probe path", () => {
     expect(probeSh).toMatch(/updateConfig\(\{daemon:\{configured:false\}\}\)/);
   });
 
+  it("CANARY_DAEMON_DEAD implies daemon mode in every layer", () => {
+    // The fail-closed leg (daemon-configured, daemon never started — every CLI
+    // must deny; live-verified 2026-08-07 against 10 real CLIs). Each layer
+    // normalizes independently because each can be invoked directly.
+    for (const [name, src] of [
+      ["probe-cli.sh", probeSh],
+      ["run.sh", runSh],
+      ["ci-entrypoint.sh", entrypoint],
+    ] as const) {
+      expect(src, `${name} missing the DEAD→DAEMON normalization`).toMatch(
+        /CANARY_DAEMON_DEAD[^\n]*&& CANARY_DAEMON=1|CANARY_DAEMON_DEAD[^\n]*\]; then CANARY_DAEMON=1/,
+      );
+    }
+  });
+
+  it("the DEAD leg never starts the daemon, needs no binary, and skips the build", () => {
+    expect(probeSh).toMatch(/CANARY_DAEMON_DEAD[^\n]*mkdir -p "\$1"; return 0/);
+    // run.sh: the binary requirement sits inside the not-DEAD guard
+    expect(runSh).toMatch(/CANARY_DAEMON_DEAD[^\n]*!= 1[\s\S]{0,200}CANARY_DAEMON_BIN/);
+    // ci-entrypoint: the cargo build is skipped on the DEAD leg
+    expect(entrypoint).toMatch(/CANARY_DAEMON[^\n]*= 1[^\n]*&&[^\n]*CANARY_DAEMON_DEAD[^\n]*!= 1/);
+  });
+
+  it("the DEAD leg scores the fail-closed deny as PASS on both probes", () => {
+    const scored = probeSh.match(
+      /\[ "\$\{CANARY_DAEMON_DEAD:-0\}" = 1 \] && daemon_failed_closed "\$LOG[AB]\/hooks\.log"; then V[AB]=PASS/g,
+    );
+    expect(scored?.length).toBe(2);
+    // and the detector keys on the synthetic fail-closed policy name
+    expect(probeSh).toMatch(/daemon_failed_closed\(\) \{ grep -q "daemon-unreachable"/);
+  });
+
+  it("DEAD-leg results live in their own state lane", () => {
+    // A PASS on the DEAD leg means "denied while dead". Written into the
+    // enforcement gate it would skip the next REAL probe of the same
+    // (CLI, failproofai) pair as already-green.
+    expect(runSh).toMatch(/STATE="\$STATE\.dead"/);
+  });
+
+  it("the marker is cleared BEFORE wire and set AFTER it (wire fires vendor hooks)", () => {
+    // A marker with no daemon up yet would fail-close the vendor CLI calls
+    // wire() itself makes (openclaw onboard fires plugin hooks), breaking the
+    // wiring before any probe runs. That marker can come from TODAY (set too
+    // early) or YESTERDAY (persistent volume) — so the clear must run in every
+    // mode before wire, and daemon mode re-sets only after wire.
+    const wireCall = probeSh.indexOf("\nwire\n");
+    const markerClear = probeSh.indexOf("m.updateConfig({daemon:{configured:false}})");
+    const markerSet = probeSh.indexOf("m.updateConfig({daemon:{configured:true}})");
+    expect(wireCall).toBeGreaterThan(0);
+    expect(markerClear).toBeGreaterThan(0);
+    expect(markerClear).toBeLessThan(wireCall);
+    expect(markerSet).toBeGreaterThan(wireCall);
+  });
+
   it("a dead daemon cannot false-PASS either probe", () => {
     // bin/failproofai.mjs shapes an unreachable-daemon deny through a
     // synthetic policy (see handler.ts's forceDecision branch). Its oracle

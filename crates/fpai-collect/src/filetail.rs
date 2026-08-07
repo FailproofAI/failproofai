@@ -158,6 +158,13 @@ pub struct Params {
     /// Skip files older than this many days on first discovery. `None` reads
     /// everything, which on a normal machine is gigabytes of history.
     pub since_days: Option<u64>,
+    /// Agent-id namespace when this instance watches an EXTRA path rather than
+    /// the source's default root. `None` for the default instance.
+    ///
+    /// Threaded to `SpoolWriter::with_label`; see the field there for why the
+    /// prefix is applied at that choke point rather than where this engine
+    /// resolves the id.
+    pub label: Option<String>,
 }
 
 pub struct Spec {
@@ -167,10 +174,24 @@ pub struct Spec {
     pub state_dir: PathBuf,
     pub poll_interval: std::time::Duration,
     pub params: Params,
+    /// Key this instance reports health under. `None` uses `format.kind`.
+    ///
+    /// The same field `sqlitepoll::Spec` carries, added for the same reason and
+    /// with the same failure behind it: one format can now have several live
+    /// instances (a default root plus one per extra path), and every one of them
+    /// reporting under the bare kind makes `collector-health.json` alternate
+    /// `root_present` true/false as they overwrite each other — destroying the
+    /// "absent root versus idle source" distinction the record exists to draw.
+    /// Hermes hit exactly this with its per-profile databases.
+    pub health_key: Option<String>,
 }
 
 /// Tail every discovered file until shutdown.
 pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
+    let health_key = spec
+        .health_key
+        .clone()
+        .unwrap_or_else(|| spec.format.kind.to_string());
     let mut cursors = CursorStore::load(spec.state_dir.clone());
 
     // Log which roots actually exist. Without this an absent root is
@@ -194,7 +215,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
         match poll_once(&spec, &mut cursors).await {
             Ok(outcome) => {
                 crate::health::report_poll(
-                    spec.format.kind,
+                    &health_key,
                     spec.roots.iter().any(|r| r.exists()),
                     outcome.events,
                     cursors.len() as u64,
@@ -203,7 +224,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
                 // every file failed must not read as a clean one.
                 if let Some(err) = outcome.first_error {
                     crate::health::report_error(
-                        spec.format.kind,
+                        &health_key,
                         &format!(
                             "{} file(s) could not be processed; first: {err}",
                             outcome.failed
@@ -213,7 +234,7 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
             }
             Err(err) => {
                 tracing::warn!(source = spec.format.kind, %err, "poll failed; retrying next tick");
-                crate::health::report_error(spec.format.kind, &err.to_string());
+                crate::health::report_error(&health_key, &err.to_string());
             }
         }
         if !sd.sleep(spec.poll_interval).await {
@@ -366,6 +387,7 @@ async fn process_file(
         spec.format.kind,
         &ctx.session_id,
     )
+    .with_label(spec.params.label.clone())
     .with_machine_id(spec.params.machine_id.clone())
     .with_user(spec.params.user.clone())
     .with_redact(spec.params.redact);

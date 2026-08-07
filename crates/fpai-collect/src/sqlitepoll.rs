@@ -126,6 +126,14 @@ pub struct Params {
     /// Poll passes before yielding to the shutdown check. Bounds how long a
     /// backlog drain can ignore a stop request.
     pub max_drain_passes: u32,
+    /// Agent-id namespace when this instance polls an EXTRA database rather
+    /// than the source's default one. `None` for the default instance.
+    ///
+    /// Threaded to `SpoolWriter::with_label`. It must be applied there and not
+    /// by rewriting `agent_id` above, because a format's `poll` may derive its
+    /// own per-row ids from that value (Hermes does, via `SessionMeta`) — so a
+    /// prefix here would reach the fallback and miss every derived one.
+    pub label: Option<String>,
 }
 
 pub struct Spec {
@@ -238,12 +246,22 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool)
         return Ok((0, outcome.more));
     }
 
+    // The tag carries the label so batches from a source's several instances
+    // are told apart in the shared spool directory, which is what the tag is
+    // for. Two instances would otherwise write `hermes-hermes-*` alike and only
+    // `run_id` would separate them — enough for correctness, useless for anyone
+    // reading the directory.
+    let tag = match &spec.params.label {
+        Some(label) => format!("{}-{label}", spec.format.kind),
+        None => spec.format.kind.to_string(),
+    };
     let mut writer = SpoolWriter::new(
         spec.spool_dir.clone(),
         spec.params.max_batch_bytes,
         spec.format.kind,
-        spec.format.kind,
+        &tag,
     )
+    .with_label(spec.params.label.clone())
     .with_machine_id(spec.params.machine_id.clone())
     .with_user(spec.params.user.clone())
     .with_redact(spec.params.redact);

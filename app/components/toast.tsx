@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, useCallback, useEffect, useState } from "react";
+import { useSyncExternalStore, useEffect, useState } from "react";
 
 interface Toast {
   id: number;

@@ -14,7 +14,7 @@
  *
  * Empty / running states fall back to EmptyState and RunProgress.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAuditResultAction } from "@/app/actions/get-audit-result";
 import type { AuditResult, RunAuditOptions } from "@/src/audit/types";
 import { classifyAgent } from "@/src/audit/archetypes";
@@ -227,8 +227,6 @@ export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Pr
   const result = cache.status === "cached" ? cache.result : null;
   if (!result) return null;
   const cachedAt = cache.status === "cached" ? cache.cachedAt : null;
-  const params = cache.status === "cached" ? cache.params : undefined;
-
   /* ---- scanned but zero sessions --------------------------------- */
   if (result.transcripts.scanned === 0) {
     return (

@@ -10,7 +10,6 @@ import {
   resolveMachineLabel,
   validateCloudUrl,
   verifyCloudCredentials,
-  writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import { daemonRestartCommand, daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
@@ -23,7 +22,6 @@ import {
   configuredPaths,
   connectToCloud,
   describeOutcome,
-  ingestUrlFor,
 } from "./cloud-connection";
 import {
   clearIngestCredential,

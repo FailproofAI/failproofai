@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -297,7 +297,7 @@ async function main() {
 
     // Translate uncached pages with concurrency limit
     if (uncachedTasks.length > 0) {
-      const taskResults = await runWithConcurrency(
+      await runWithConcurrency(
         uncachedTasks.map(({ page, relPath, lang }) => async () => {
           try {
             const result = await translateMdxPage(page, lang, {

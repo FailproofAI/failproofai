@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getLanguageByCode, NAV_TRANSLATIONS, LANGUAGES } from "./config";
+import { getLanguageByCode, NAV_TRANSLATIONS } from "./config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOCS_JSON_PATH = join(__dirname, "..", "..", "docs", "docs.json");

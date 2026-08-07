@@ -12,7 +12,6 @@
  * sharp `.btn-press` action button. Sized so it occupies the same vertical
  * space as the loaded dashboard does on its hero — no more cramped popover.
  */
-import React from "react";
 import { triggerRun } from "./rerun-button";
 import { usePostHog } from "@/contexts/PostHogContext";
 

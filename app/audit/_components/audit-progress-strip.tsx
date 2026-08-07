@@ -15,7 +15,7 @@
  * Reuses the existing `RerunError.kind` discrimination to render a red
  * error strip with kind-specific copy when a run dies.
  */
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { RerunError } from "./rerun-button";
 
 export type RerunStatus =

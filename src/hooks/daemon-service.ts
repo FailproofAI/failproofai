@@ -1,8 +1,7 @@
 /**
- * Installs/uninstalls/checks failproofaid as a real OS-level user service
- * (systemd `--user` on Linux, launchd `LaunchAgent` on macOS) so it's
- * "constant" — starts at login, restarts on crash — without ever needing
- * elevation. User-scope only, matching the daemon itself.
+ * Installs, upgrades, checks, and removes failproofaid as a system-managed
+ * service. The definition is root-owned and starts at boot, but the daemon
+ * process itself runs as the user who configured failproofai.
  *
  * No public `failproofai daemon install`-style subcommand exists —
  * `configure-wizard.ts` calls the functions here directly, the same
@@ -18,18 +17,17 @@ import {
   rmSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
-import { getConfigPathForScope } from "./hooks-config";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
 import { version } from "../../package.json";
 import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
 /**
- * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
- * per-user session bus or to launchd, and a wedged session makes an
+ * Every `systemctl` / `launchctl` call is bounded. A wedged service manager
+ * makes an
  * unbounded `execFileSync` block forever — inside the interactive wizard
  * that reads as a hang with no output at all (`stdio: "ignore"`), right
  * after the user pressed "apply". A timeout throws instead, which the
@@ -39,7 +37,7 @@ const SERVICE_CMD_TIMEOUT_MS = 10_000;
 
 /**
  * How long to wait for the service manager to actually get the daemon into
- * a running state after `enable --now` / `load -w`. Both commands return as
+ * a running state after restart/load. Those commands return as
  * soon as the job is accepted, which is well before the process has proven
  * it can stay up.
  */
@@ -47,7 +45,7 @@ const SERVICE_START_TIMEOUT_MS = 5_000;
 const SERVICE_START_POLL_MS = 100;
 /**
  * How long a unit has to still be running after it first reports running.
- * `systemctl --user is-active` calls a `Type=simple` unit active the moment
+ * `systemctl is-active` calls a `Type=simple` unit active the moment
  * it forks, so a daemon that dies immediately still reports active once —
  * a single check would wave through exactly the crash-at-startup case this
  * is here to catch. Comfortably longer than the unit's `RestartSec=2`
@@ -688,9 +686,8 @@ ${conditionLines}
 Type=simple
 User=${user}
 # Set explicitly rather than relying on systemd deriving it from User=:
-# failproofaid is user-scope by construction and refuses to start without
-# HOME ("HOME is not set; failproofaid is user-scope only"), so the one
-# variable it cannot do without is not left to a version-dependent default.
+# failproofaid stores per-user state and refuses to start without HOME, so this
+# required variable is not left to a version-dependent default.
 Environment="HOME=${homedir()}"
 ${envLines}ExecStart=${binaryPath}
 Restart=on-failure
@@ -810,9 +807,8 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     return { installed: false, reason: `failproofaid is not supported on ${process.platform} yet` };
   }
 
-  // May reach the network: the npm package carries no binary, so this is
-  // where a machine opting into the daemon fetches the one built for its
-  // platform from this version's release.
+  // May reach the network when the matching optional platform package is not
+  // installed. The GitHub release asset is the verified fallback channel.
   const { path: binaryPath, reason: binaryReason } = await ensureFailproofaidBinary();
   if (!binaryPath) {
     return { installed: false, reason: binaryReason ?? "failproofaid binary not found for this platform" };

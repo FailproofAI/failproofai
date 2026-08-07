@@ -6,7 +6,6 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
 

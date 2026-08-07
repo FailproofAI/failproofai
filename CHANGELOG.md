@@ -5,6 +5,9 @@
 ### Fixes
 - Make `failproofai config` refuse setup on an unsupported platform (Windows, today) instead of completing it unenforced. The wizard used to skip the daemon requirement and finish anyway, leaving the machine reading as configured while enforcing in-process with no fail-closed guarantee — now it prints why and exits 1 before drawing a single prompt, writing nothing. (#664)
 
+### Chores
+- Remove compiler-proven dead code left around the `failproofaid` integration, including the obsolete daemon-hook wrapper and unused `html2canvas` dependency. Enable `noUnusedLocals` to prevent that residue returning, and correct stale daemon documentation and package metadata.
+
 ## 1.0.0-beta.12 — 2026-08-07
 
 ### Fixes

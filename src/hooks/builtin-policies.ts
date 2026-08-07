@@ -3,7 +3,7 @@
  */
 import { resolve, join } from "node:path";
 import { statSync } from "node:fs";
-import { readFile, writeFile, stat, open } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import type { BuiltinPolicyDefinition, PolicyContext, PolicyResult, PolicyParamsSchema } from "./policy-types";

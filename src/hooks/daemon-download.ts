@@ -45,7 +45,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { version } from "../../package.json";

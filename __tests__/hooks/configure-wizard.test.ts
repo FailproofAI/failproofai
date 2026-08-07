@@ -144,14 +144,13 @@ import {
   maybeFirstRunConfigure,
   hasSeenLauncher,
   markLauncherSeen,
-  classifyDaemonInstallFailure,
 } from "../../src/hooks/configure-wizard";
 import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
 import { trackHookEvent } from "../../src/hooks/hook-telemetry";
-import { globalPolicyConfigFile, configFile as fpConfigFile, launcherMarker } from "../../src/hooks/fp-home";
+import { configFile as fpConfigFile, launcherMarker } from "../../src/hooks/fp-home";
 import { readConfig as readFpConfig } from "../../src/hooks/fp-config";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;

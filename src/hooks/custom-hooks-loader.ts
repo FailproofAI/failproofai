@@ -15,7 +15,6 @@ import { randomUUID } from "crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
 import { customPolicies, getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";

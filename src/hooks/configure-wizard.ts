@@ -44,8 +44,6 @@ import {
 import {
   DEFAULT_INGEST_URL,
   validateIngestKey,
-  writeIngestCredential,
-  writeCollectorSettings,
 } from "./collector-config";
 import {
   detectInstalledClis,
@@ -82,8 +80,6 @@ import {
   resolveMachineId,
   resolveMachineLabel,
   validateCloudUrl,
-  verifyCloudCredentials,
-  writeCloudCredentials,
 } from "./cloud-enrollment";
 import {
   cloudBaseFor,

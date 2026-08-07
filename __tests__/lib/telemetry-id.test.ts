@@ -39,7 +39,6 @@ vi.mock("node:crypto", async () => {
 
 const mockedFs = vi.mocked(fs);
 const mockedOs = vi.mocked(os);
-const mockedCrypto = vi.mocked(crypto);
 const mockedExecSync = vi.mocked(execSync);
 
 describe("lib/telemetry-id", () => {

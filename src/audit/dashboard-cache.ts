@@ -11,8 +11,6 @@
  * makes navigating back to /audit instant without re-running.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import type { AuditResult, RunAuditOptions } from "./types";
 import { auditDashboardFile } from "../hooks/fp-home";

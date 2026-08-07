@@ -41,6 +41,9 @@
 #   CANARY_DAEMON          set to 1 to probe the daemon-configured (failproofaid)
 #                          hook path: builds the Rust daemon and routes every
 #                          probe's hooks through it, fail-closed (see probe-cli.sh)
+#   CANARY_DAEMON_DEAD     set to 1 for the fail-closed leg: daemon-configured
+#                          but the daemon is never started — every CLI must
+#                          DENY. Implies CANARY_DAEMON=1; skips the Rust build.
 #   CANARY_CARGO_CACHE     cargo home+target cache dir for the daemon build
 #                          (default ~/.cache/failproofai-canary/cargo)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +114,9 @@ fi
 # node:22-bookworm-slim (glibc 2.36), and a binary linked against a newer host
 # glibc would fail to load inside it. The repo mounts read-only — cargo writes
 # only to the mounted cache (registry + target), so the checkout stays clean.
-if [ "${CANARY_DAEMON:-0}" = 1 ]; then
+# The DEAD (fail-closed) leg needs no binary — the daemon is never started.
+[ "${CANARY_DAEMON_DEAD:-0}" = 1 ] && CANARY_DAEMON=1
+if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
   step "building failproofaid (daemon) under test"
   if [ ! -f "$REPO/crates/failproofaid/Cargo.toml" ]; then
     echo "✗ CANARY_DAEMON=1 but $REPO has no crates/failproofaid — this ref predates the daemon; unset CANARY_DAEMON or pick a ref that carries it" >&2
@@ -204,5 +209,6 @@ CANARY_ENVFILE="$ENVFILE" \
 CANARY_CHANNEL="$CHANNEL" \
 CANARY_PEER_STATE="$PEER_STATE" \
 CANARY_DAEMON="${CANARY_DAEMON:-0}" \
+CANARY_DAEMON_DEAD="${CANARY_DAEMON_DEAD:-0}" \
 CANARY_DAEMON_BIN="${CANARY_DAEMON_BIN:-}" \
   bash "$HERE/run.sh" ${CANARY_CLIS:-}

@@ -1,0 +1,41 @@
+# failproofai canary — the self-contained daily RUNNER image.
+#
+# The whole box story is: build this once, add one cron line, done.
+#
+#   docker build -t failproofai-canary-runner -f Dockerfile.runner .
+#   17 6 * * * docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+#     -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" \
+#     failproofai-canary-runner >/dev/null 2>&1
+#
+# At each run the baked entrypoint clones/fetches the repo at $CANARY_REF into
+# the work dir and hands off to integration-suite/local/runner-daily.sh FROM
+# THAT CHECKOUT — so harness changes reach the box through git, and this image
+# only needs a rebuild when the entrypoint or this file change.
+#
+# It drives the HOST's Docker through the mounted socket (sibling containers,
+# not docker-in-docker): the sandbox image, per-channel HOME volumes and probe
+# containers are the exact ones CI runs. That is why the work dir must be
+# mounted at an IDENTICAL path inside and out — paths under it are used both
+# for in-container file ops and as `-v` sources that the HOST daemon resolves.
+
+FROM node:22-bookworm-slim
+
+# bun from the official image — same trick as the sandbox Dockerfile.
+COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# docker CLIENT only — the daemon is the host's, reached through the socket.
+# Static binary, arch-mapped (x86_64 / aarch64 — uname -m matches the URL).
+ARG DOCKER_VERSION=27.5.1
+RUN arch="$(uname -m)" \
+ && curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_VERSION}.tgz" \
+    | tar -xz --strip-components=1 -C /usr/local/bin docker/docker
+
+COPY runner-entrypoint.sh /usr/local/bin/runner-entrypoint.sh
+RUN chmod +x /usr/local/bin/runner-entrypoint.sh \
+ && bun --version && node --version && git --version && docker --version
+
+ENTRYPOINT ["/usr/local/bin/runner-entrypoint.sh"]

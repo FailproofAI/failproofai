@@ -8,9 +8,10 @@
  * Cleanup is registered via afterEach() automatically.
  */
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach } from "vitest";
+import { customPoliciesDir, globalPolicyConfigFile } from "../../../src/hooks/fp-home";
 
 export interface FixtureEnv {
   /** Pass as payload.cwd — policies-config.json is resolved relative to this. */
@@ -60,9 +61,11 @@ export function createFixtureEnv(): FixtureEnv {
       let configPath: string;
 
       if (scope === "global") {
-        const dir = join(home, ".failproofai");
-        mkdirSync(dir, { recursive: true });
-        configPath = join(dir, "policies-config.json");
+        // Layout 2 nests the GLOBAL config under policies/local-policies/.
+        // Project scope is deliberately unchanged — those files are committed
+        // to users' repos — which is why only this branch moves.
+        configPath = globalPolicyConfigFile(home);
+        mkdirSync(dirname(configPath), { recursive: true });
       } else {
         const dir = join(cwd, ".failproofai");
         mkdirSync(dir, { recursive: true });
@@ -82,8 +85,11 @@ export function createFixtureEnv(): FixtureEnv {
     },
 
     writePolicyFile(filename: string, content: string, scope: "project" | "global" = "project"): string {
-      const base = scope === "global" ? home : cwd;
-      const dir = join(base, ".failproofai", "policies");
+      // Global convention policies moved to policies/custom-policies/ so they
+      // no longer share a directory with cloud artifacts and the builtin set.
+      // Project scope keeps .failproofai/policies/ exactly as before.
+      const dir =
+        scope === "global" ? customPoliciesDir(home) : join(cwd, ".failproofai", "policies");
       mkdirSync(dir, { recursive: true });
       const filePath = join(dir, filename);
       writeFileSync(filePath, content, "utf8");

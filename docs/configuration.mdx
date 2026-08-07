@@ -166,7 +166,14 @@ In addition to the explicit `customPoliciesPath`, failproofai automatically disc
 | Level | Directory | Scope |
 |-------|-----------|-------|
 | Project | `.failproofai/policies/` | Shared with team via version control |
-| User | `~/.failproofai/policies/` | Personal, applies to all projects |
+| User | `~/.failproofai/policies/custom-policies/` | Personal, applies to all projects |
+
+<Note>
+  The user-level directory moved down a level in the home-directory
+  reorganisation. Files left at the old `~/.failproofai/policies/` are moved
+  into `custom-policies/` automatically the first time you run any `failproofai`
+  command after upgrading, and the command tells you which files it moved.
+</Note>
 
 **File matching:** Only files matching `*policies.{js,mjs,ts}` are loaded (e.g. `security-policies.mjs`, `workflow-policies.js`). Other files in the directory are ignored.
 

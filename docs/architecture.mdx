@@ -135,7 +135,7 @@ stdin JSON
       → instruct decisions accumulate
       → allow messages accumulate
   → write JSON decision to stdout
-  → persist event to ~/.failproofai/hook-activity.jsonl
+  → persist event to ~/.failproofai/hook-activity/current.jsonl
   → exit
 ```
 
@@ -243,7 +243,7 @@ Custom policies are evaluated after all built-in policies. A custom policy `deny
 
 ## Activity logging
 
-After each hook event, the handler appends a JSONL line to `~/.failproofai/hook-activity.jsonl`:
+After each hook event, the handler appends a JSONL line to `~/.failproofai/hook-activity/current.jsonl`, which rotates into `page-<timestamp>-<seq>.jsonl` once it reaches a page:
 
 ```json
 {
@@ -317,7 +317,7 @@ failproofai/
 │   ├── manager.ts                # install / remove / list operations
 │   ├── install-prompt.ts         # Interactive policy selection prompt
 │   ├── hook-logger.ts            # Logging to hook.log
-│   ├── hook-activity-store.ts    # Persist activity to hook-activity.jsonl
+│   ├── hook-activity-store.ts    # Persist activity to hook-activity/
 │   └── llm-client.ts             # LLM API client (for AI-powered policies)
 ├── app/                          # Next.js dashboard (pages + server actions)
 ├── lib/                          # Shared utilities

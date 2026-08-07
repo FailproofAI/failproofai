@@ -867,13 +867,163 @@ Resolve any conflicts, then continue. Never push a branch that is missing commit
 After every `git push`, run `gh run watch` or poll `gh run list --limit 3` until all checks
 finish. If any job fails, **stop and fix it before continuing**. Never leave a red CI.
 
-The CI runs four jobs — all must pass:
+`.github/workflows/ci.yml` runs these jobs on every push — all must pass:
+
 | Job | Command |
 |-----|---------|
-| quality | lint + tsc + version-consistency check |
-| test | `bun run test:run` (unit, 4 env configs) |
-| build | `bun run build` (Next.js + dist/index.js) |
+| quality | lint + tsc + version-consistency check (now also covers `Cargo.toml`'s workspace version against root `package.json` — the release tag the CLI builds its daemon download URL from is the npm version, and the binary at that URL reports the Cargo one) |
+| rust-quality | `cargo fmt --check` + `cargo clippy` + `cargo test --workspace`. `cargo test` spawns the real TS worker via `bun`, so the job installs bun too. (The steps stay gated on `crates/*/Cargo.toml` existing — a zero-member workspace hard-errors — but both crates are present now, so they all run for real.) |
+| test | `bun run test:run` (unit, 3 env configs) |
+| build | `bun run build` (Next.js + `dist/index.js` + `dist/cli.mjs` + `dist/worker.mjs`) |
 | test-e2e | `bun run test:e2e` |
+| docs | docs build/validation |
+
+A separate `.github/workflows/build-daemon.yml` ("Build failproofaid") cross-compiles the
+4 real `failproofaid` release binaries (linux-x64/arm64, darwin-x64/arm64), gzips each one
+and uploads it as an artifact — path-filtered to `crates/**`/`Cargo.*`/
+`rust-toolchain.toml` changes, so it doesn't run on every PR. It is a **reusable
+workflow**: `publish.yml` calls it and downloads those artifacts in the same run, which is
+how a release gets binaries built from the exact commit being published. It can also be
+triggered manually via `workflow_dispatch`. It's slower than `rust-quality` (real
+cross-compiles across 4 matrix legs, two of them real macOS runners) — don't expect it to
+finish inside a quick `gh run watch` poll; check back or use a longer timeout.
+
+### Enforcement routes through the daemon, and where it cannot
+
+On a machine that completed setup, **failproofaid is the only evaluator**. Setup requires
+the daemon, so `daemonConfigured` is true, and from there every way of not getting an
+answer denies — an unreachable socket *and* a protocol-version mismatch. There is no
+in-process fallback on that path: a second policy engine reachable by breaking the first
+is not a guarantee, and a machine where stopping one service silently disables every
+guardrail is not a guarded machine.
+
+The mismatch case denies with a message naming the version and `failproofai config`,
+because the remedy differs from "the daemon is down" and that difference is the whole
+value of telling them apart. The accepted cost: both sides hardcode `PROTOCOL_VERSION`,
+so the first time it is bumped a machine whose CLI updated via npm before its daemon did
+denies until `failproofai config` runs. `publish.yml` ships both from one commit and
+`daemonVersionSkew()` hints on every CLI command, so the window is bounded and announces
+itself.
+
+**In-process evaluation still exists**, reachable only when `daemonConfigured` is false —
+which is exactly three situations, none of them a configured user machine:
+
+| Case | Why |
+|------|-----|
+| This repo's dogfood configs | Standing decision above: a flaky dev daemon must not block contributors' tool calls in the same loop where the daemon is being developed. |
+| Unsupported platforms | `isDaemonSupportedPlatform()` is linux + darwin only. |
+| Not yet set up | No hooks are installed either, so nothing evaluates anything. |
+
+**Known gap — Windows.** The wizard *skips* the daemon requirement on an unsupported
+platform rather than refusing setup, so a Windows user completes setup, reads as
+configured, and enforces **in-process**: slower (~850ms vs ~57ms), and with no fail-closed
+guarantee, because `daemonConfigured` is never set and there is nothing to fail closed
+against. The policies themselves are identical and do enforce. This is a deliberate
+trade — refusing setup would drop the platform entirely — and it is the one place
+"all enforcement routes through the daemon" is not literally true. Revisit it if
+failproofaid ever gains a Windows service target.
+
+### How the daemon is supervised
+
+The service is **system-scope, user-run**: `/etc/systemd/system/failproofaid@<user>.service`
+with `User=<user>` and `WantedBy=multi-user.target` (macOS: a `/Library/LaunchDaemons`
+plist with `UserName`). It starts at boot, needs no login, and survives logout.
+
+It was a systemd `--user` unit through 1.0.0-beta.0, and that is what forced the change: a
+user manager does not start at boot without `loginctl enable-linger` and stops with the
+last session, so the daemon died on logout — and because a daemon-configured machine
+**fails closed**, anything running without a login session (detached tmux, cron, a CI
+runner) then hit denials.
+
+Three consequences, all handled explicitly rather than assumed:
+
+- **Install needs root.** `canElevate()` checks `sudo -n` (or uid 0) *before* writing
+  anything; when it fails, the install writes nothing and returns the exact commands to
+  run, classified as `needs_root`. `sudo -n`, never interactive — a password prompt fired
+  from under the wizard's TUI is unreadable.
+- **A system unit has no login environment.** `resolveWorkerCommand()` uses
+  `process.execPath`, not a bare `node`: the single most common Node install is nvm, whose
+  binary lives under `~/.nvm/versions/node/*/bin` and is on no system PATH. A bare `node`
+  resolves when the wizard runs it and then fails inside the service, silently.
+- **The old user unit must go first.** `removeLegacyUserService()` runs on every install
+  and uninstall. It holds the same flock the new service needs, so leaving one behind means
+  the system unit starts, loses the singleton race, and the machine sits fail-closed
+  against a daemon that never came up.
+
+The unit is named per user (`failproofaid@alice`) so a second person on the same box cannot
+silently steal the first's service — every field in it is user-specific anyway (ExecStart
+under that user's `~/.failproofai/bin`, HOME, the worker command). Reading status needs no
+privileges: `systemctl status failproofaid@<user>`, exposed as `daemonStatusCommand()`.
+
+### How the daemon binary reaches users
+
+The CLI tarball itself carries no binary — one tarball serves every platform — but the
+binary reaches a machine through **two** channels, and `ensureFailproofaidBinary()` in
+`daemon-service.ts` tries them in this order:
+
+**1. npm, as an optional dependency.** The four binaries publish as
+`@failproofai/failproofaid-<os>-<arch>` packages with `os`/`cpu` set, pinned in the root
+package's `optionalDependencies`, so `npm install failproofai` already brought down the one
+matching this machine and skipped the other three. `installFromNpmPackage()` copies it into
+place with no network at all — the only channel that works air-gapped or behind a proxy
+that blocks github.com. `npmPlatformBinaryPath()` anchors resolution at
+`FAILPROOFAI_PACKAGE_ROOT` (**not** `import.meta.url`, which does not survive the CJS
+bundle) and uses a **computed** specifier, or the bundler would try to resolve a package
+that is optional and absent on three machines out of four at build time.
+
+**2. The GitHub Release asset.** `failproofaid-<os>-<arch>.gz` plus a `SHA256SUMS` manifest,
+which `daemon-download.ts` fetches for this CLI's own version, verifying the SHA-256
+**before** decompressing. Covers installs that skipped optional dependencies, tarballs
+installed from disk, and anyone installing the daemon standalone. The URL is *constructed*
+from `package.json`'s version, never discovered — no API call, no `releases/latest`
+redirect, no rate limit, and no way to end up with a daemon built from different source than
+the CLI talking to it.
+
+Both channels land the file at `~/.failproofai/bin/failproofaid-<version>` through the same
+`installBinaryBytes()` — atomic rename, mode 0755, versioned filename (which avoids
+`ETXTBSY` against a running daemon and stops an upgrade from repointing a live service unit
+at a binary built from different source). **`ExecStart` never points into `node_modules`**:
+an `npm i -g failproofai@next` would silently swap the file under a running service, and an
+uninstall would delete it out from under an enabled unit that then crash-loops at every boot.
+
+Ordering in `publish.yml` is load-bearing in two places, both guarded by
+`__tests__/ci/release-pipeline.test.ts`: the four platform packages publish **before** the
+root package that pins them (an `optionalDependency` npm cannot resolve is a 404 in every
+install), and the release assets attach **before** the npm publish (or the package ships
+pointing at a tag whose binaries do not exist yet). `scripts/build-daemon-packages.mjs`
+generates and publishes the platform packages and writes the pins in the same invocation —
+they are injected at publish time, never committed, so a pin can never name a version that
+was not published and this repo's own `bun install --frozen-lockfile` keeps working.
+
+This is the second attempt at the npm half. The first shipped the pins and never published
+anything behind them (the daemon PR never touched `publish.yml`), so every install resolved
+four 404s — which is why the publish script **fails the release** rather than warning when a
+platform package cannot be published, and why the ordering above is a test rather than a
+convention.
+
+That same ordering is why **preflight refuses to start when the publish version is already on
+the registry**. A `workflow_dispatch` has no version input — the publish version is whatever
+`package.json` carries, and a feature branch's is routinely a version that shipped long ago —
+while the root package publishes last. Without the check, a burned version runs the whole
+cross-compile, attaches the assets, publishes the four platform packages, and only then takes
+`E403` on the root package, stranding four orphan platform versions that nothing pins and that
+npm's 72-hour window is the only way to remove. It is ungated on `dry_run` on purpose: a dry
+run that validated a release which cannot happen is not a useful dry run.
+
+Only the install path (`failproofai config`, global scope) does any of this.
+`resolveFailproofaidBinaryPath()` is a pure disk check — env override →
+`~/.failproofai/bin/failproofaid-<version>` → a locally-built `target/{release,debug}`
+binary — so the hook path can never block on the network. Two escape hatches:
+`FAILPROOFAI_NO_DOWNLOAD=1` (air-gapped: fail with a reason instead of reaching out, while
+an already-installed binary keeps working — it gates *fetching*, not the npm copy) and
+`FAILPROOFAI_DAEMON_BASE_URL` (an internal mirror, and what the tests point at a local HTTP
+server).
+
+The release also carries `failproofai-<version>.tgz`, the CLI's own npm tarball, packed by
+the `cli-tarball` job at the version being published and covered by the same `SHA256SUMS`.
+It is how you install the CLI without the registry (`npm i -g ./failproofai-<version>.tgz`),
+and it is attached on every release — that job is deliberately **not** gated on
+`has_daemon`.
 
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
@@ -948,18 +1098,96 @@ After any change to `src/hooks/`, verify these scenarios don't regress:
 
 ```
 bin/failproofai.mjs          Entry point (bun shebang); sets FAILPROOFAI_DIST_PATH
+bin/failproofai-worker.mjs   Warm-worker entrypoint; spawned by the Rust daemon, not a user
+bin/failproofaid-shim.mjs    `failproofaid` bin entry; execs the downloaded binary at
+                              ~/.failproofai/bin/failproofaid-<version> (hand invocation
+                              only — service units point at the binary directly)
 src/hooks/
   custom-hooks-loader.ts     Orchestrates temp-file creation + dynamic import
   loader-utils.ts            findDistIndex(), createEsmShim(), rewriteFileTree()
   custom-hooks-registry.ts   globalThis registry shared between loader and handler
   policy-helpers.ts          allow() / deny() / instruct()
-  handler.ts                 Called by Claude Code --hook events
+  handler.ts                 canonicalizeEventType() + evaluateHookEvent() (core logic,
+                              param-in/return-out) + handleHookEvent() (one-shot stdin/
+                              stdout wrapper called by both bin/failproofai.mjs and tests)
+  worker-server.ts           Listens on the daemon-spawned worker's Unix socket, serializes
+                              concurrent evaluateHookEvent() calls through one async queue
+  daemon-client.ts           isDaemonConfigured() + tryDaemonHook(). TWO budgets, not
+                              one: ~150ms to CONNECT (the "is anything listening" probe
+                              — a dead daemon must never add latency to a hook) and 30s
+                              for the RESPONSE once connected, matching worker.rs's own
+                              read timeout. They are separate because a timeout here is
+                              a DENY on a daemon-configured machine, and one 150ms
+                              budget over the whole roundtrip made a slow-but-correct
+                              evaluation (handler.ts allows 10s per custom policy;
+                              worker-server.ts serializes) indistinguishable from a dead
+                              daemon. See also the worker pre-warming note in worker.rs
+                              below, and the awaitTelemetryFlush note in handler.ts for
+                              a bug class that silently blew through the budget even
+                              when warm
+  daemon-download.ts         Both channels that put the binary on disk, sharing one
+                              installBinaryBytes() (atomic rename, 0755):
+                              installFromNpmPackage() copies it out of the
+                              @failproofai/failproofaid-<os>-<arch> optional dependency
+                              (no network — the air-gapped path), and
+                              downloadFailproofaidBinary() fetches the release asset for
+                              this version, SHA-256 verified before it is decompressed.
+                              Never throws; FAILPROOFAI_NO_DOWNLOAD /
+                              FAILPROOFAI_DAEMON_BASE_URL opt out of or redirect the
+                              download only
+  daemon-service.ts          installDaemonService()/uninstallDaemonService()/
+                              daemonServiceStatus()/setDaemonConfigured() — SYSTEM-scope
+                              systemd unit (/etc/systemd/system/failproofaid@<user>
+                              .service, User=<user>, WantedBy=multi-user.target) /
+                              launchd LaunchDaemon with UserName; root-installed via
+                              `sudo -n`, never root-run. Called
+                              directly by configure-wizard.ts, no public
+                              `failproofai daemon` subcommand. install waits for the
+                              service to reach AND HOLD a running state before
+                              reporting success (a Type=simple unit reports active the
+                              moment it forks, so one reading passes a daemon that died
+                              at startup), and uninstall clears daemonConfigured first
+                              and unconditionally — leaving that flag set with no daemon
+                              to reach denies every hook event on the machine, across
+                              all 11 CLIs, recoverable only by hand-editing
+                              ~/.failproofai/policies-config.json
   manager.ts                 policies --install / --uninstall / list
 src/index.ts                 Public API entry point → compiled to dist/index.js
 dist/index.js                CJS bundle (built by `bun run build`; shipped in npm pkg)
+dist/cli.mjs                 Bundled bin/failproofai.mjs (bun run build:cli)
+dist/worker.mjs              Bundled bin/failproofai-worker.mjs (bun run build:worker) —
+                              plain Node can't resolve raw .ts specifiers, so the warm
+                              worker needs this bundle just like the CLI does
+Cargo.toml                   Rust workspace root (resolver "3", shared [workspace.package])
+crates/fpai-ipc/              Wire protocol shared by the daemon and its tests: length-
+                              prefixed JSON framing, protocolVersion envelope, peer-
+                              credential checks (see crates/PROTOCOL.md)
+crates/failproofaid/           The daemon binary — socket server + service lifecycle +
+                              worker supervision, zero policy logic
+  src/worker.rs               Spawns/supervises the warm worker subprocess; Worker::warm()
+                              pre-starts it off the accept-loop path right after the daemon
+                              binds its socket (main.rs) so the ~700ms Node cold start never
+                              lands on the critical path of a real hook call
+  src/server.rs                Unix socket accept loop, relays Hook requests to the worker
+  src/paths.rs                  ~/.failproofai/run/ layout (socket, worker socket, lock)
+  src/lock.rs                    Non-blocking flock() singleton guard
+                              (the four compiled binaries ship BOTH as
+                              @failproofai/failproofaid-<os>-<arch> npm packages and as
+                              GitHub Release assets — see "How the daemon binary reaches
+                              users")
 __tests__/                   Unit + e2e tests (vitest)
 examples/                    Sample custom policy files
 ```
+
+**This repo's own dogfood hook configs (`.claude/settings.json`,
+`.codex/hooks.json`, etc.) deliberately stay on the in-process path, never
+daemon-configured** — `scripts/dev-hook.mjs` already exists specifically to
+avoid a self-reference conflict between this repo's own dogfood hooks and the
+package being developed inside it; a locally-running daemon (with its
+fail-closed-on-down behavior) in that same loop would multiply that exact
+risk class, and a flaky dev daemon could start blocking this repo's own
+contributors' tool calls. This is a deliberate, standing decision — don't
+wire a daemon into the dogfood configs without revisiting it explicitly.
 
 ## Changelog
 

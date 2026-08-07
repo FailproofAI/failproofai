@@ -22,13 +22,14 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { logsDir } from "./fp-home";
 
 export type LogLevel = "info" | "warn" | "error";
 
 const LEVEL_ORDER: Record<LogLevel, number> = { info: 0, warn: 1, error: 2 };
 const MAX_FILE_SIZE = 512 * 1024; // 500 KB
 const LOG_FILENAME = "hooks.log";
-const DEFAULT_LOG_DIR = join(homedir(), ".failproofai", "logs");
+const DEFAULT_LOG_DIR = logsDir();
 
 // ── State (lazy-initialized) ──
 

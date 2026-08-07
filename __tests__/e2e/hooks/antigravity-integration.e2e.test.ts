@@ -25,6 +25,7 @@ import {
 } from "../helpers/hook-runner";
 import { AntigravityPayloads } from "../helpers/payloads";
 import { createFixtureEnv } from "../helpers/fixture-env";
+import { hookActivityDir } from "../../../src/hooks/fp-home";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BINARY_PATH = resolve(REPO_ROOT, "bin/failproofai.mjs");
@@ -147,7 +148,7 @@ describe("E2E: Antigravity integration — hook protocol", () => {
         AntigravityPayloads.preToolUse.bash("sudo cat /etc/passwd", env.cwd),
         { homeDir: env.home, cli: "antigravity" },
       );
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;

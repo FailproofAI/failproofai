@@ -10,7 +10,9 @@ import {
   readCachedTranscriptResult,
   writeCachedTranscriptResult,
 } from "../../src/audit/cache";
+import { DEFAULT_AUDIT_INTERVAL_DAYS } from "../../src/hooks/fp-config";
 import type { TranscriptAuditResult } from "../../src/audit/types";
+import { auditCacheDir } from "../../src/hooks/fp-home";
 
 const TRANSCRIPT_PATH = "/tmp/fake-transcript.jsonl";
 const MTIME = 1_700_000_000_000;
@@ -32,7 +34,7 @@ const FAKE_RESULT: TranscriptAuditResult = {
 
 function cachePathFor(transcriptPath: string): string {
   const key = createHash("sha1").update(transcriptPath).digest("hex");
-  return join(homedir(), ".failproofai", "cache", "audit", `${key}.json`);
+  return join(auditCacheDir(), `${key}.json`);
 }
 
 describe("per-transcript audit cache", () => {
@@ -80,14 +82,19 @@ describe("per-transcript audit cache", () => {
     expect(readCachedTranscriptResult(TRANSCRIPT_PATH, MTIME, 0)).toBeNull();
   });
 
-  it("rejects entries older than the 7-day TTL", () => {
-    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60_000;
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+  it("rejects entries older than the TTL", () => {
+    // Must be past CACHE_TTL_MS, not merely "old". At 8 days this silently
+    // stopped exercising the TTL the moment it moved to 30: the entry was still
+    // inside it, and the assertion only held because the fake engineVersion
+    // below fails an earlier check. Derived from the constant so it cannot
+    // drift out of agreement again.
+    const pastTtl = Date.now() - (CACHE_TTL_MS + 24 * 60 * 60_000);
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({
         schemaVersion: CACHE_SCHEMA_VERSION,
-        cachedAt: eightDaysAgo,
+        cachedAt: pastTtl,
         mtimeMs: MTIME,
         sizeBytes: SIZE,
         // engineVersion / detectorVersion intentionally absent — TTL check
@@ -100,7 +107,7 @@ describe("per-transcript audit cache", () => {
     expect(readCachedTranscriptResult(TRANSCRIPT_PATH, MTIME, SIZE)).toBeNull();
   });
 
-  it("accepts entries inside the 7-day TTL when the rest of the key matches", () => {
+  it("accepts entries inside the TTL when the rest of the key matches", () => {
     // Write through the official writer to populate the right
     // engine/detector hashes, then re-read immediately — Date.now() at
     // read time is within the TTL of Date.now() at write time.
@@ -110,7 +117,7 @@ describe("per-transcript audit cache", () => {
   });
 
   it("rejects a schema v2 entry (forces re-scan after upgrade)", () => {
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({
@@ -127,7 +134,7 @@ describe("per-transcript audit cache", () => {
   });
 
   it("rejects entries with a missing cachedAt field", () => {
-    mkdirSync(join(tmpHome, ".failproofai", "cache", "audit"), { recursive: true });
+    mkdirSync(auditCacheDir(tmpHome), { recursive: true });
     writeFileSync(
       cachePathFor(TRANSCRIPT_PATH),
       JSON.stringify({
@@ -143,7 +150,17 @@ describe("per-transcript audit cache", () => {
     expect(readCachedTranscriptResult(TRANSCRIPT_PATH, MTIME, SIZE)).toBeNull();
   });
 
-  it("CACHE_TTL_MS is 7 days", () => {
-    expect(CACHE_TTL_MS).toBe(7 * 24 * 60 * 60_000);
+  it("CACHE_TTL_MS is 30 days, comfortably clear of the audit interval", () => {
+    expect(CACHE_TTL_MS).toBe(30 * 24 * 60 * 60_000);
+  });
+
+  it("does not expire within the scheduled-audit interval", () => {
+    // The real assertion, and why the number changed: the TTL used to be 7 days
+    // — exactly DEFAULT_AUDIT_INTERVAL_DAYS — so a scheduled run found every
+    // entry from the previous run already expired and cold-scanned the whole
+    // history every single time. Pinning the relationship rather than only the
+    // constant means lowering one without the other fails here.
+    const intervalMs = DEFAULT_AUDIT_INTERVAL_DAYS * 24 * 60 * 60_000;
+    expect(CACHE_TTL_MS).toBeGreaterThan(intervalMs * 2);
   });
 });

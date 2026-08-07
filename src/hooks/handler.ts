@@ -25,7 +25,8 @@ import {
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
-import type { PolicyFunction, PolicyResult } from "./policy-types";
+import { normalizeCliPayload } from "./normalize-cli-payload";
+import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
@@ -39,6 +40,10 @@ import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
+import { readStdinPayload } from "./read-stdin";
+import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { readActivePause, type ActivePause } from "./session-pause";
+import { layoutWarningForHook } from "./fp-reset";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -49,8 +54,11 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
  * NAMES arrive PascalCase already (note: tool names are a separate matter and
  * are canonicalized in canonicalizeToolName below). The internal
  * registry, builtin policies, and policy.match.events all key on PascalCase.
+ *
+ * Exported so fail-closed.ts can produce the same canonical event type
+ * without duplicating this per-CLI mapping.
  */
-function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType {
+export function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType {
   if (cli === "codex") {
     const mapped = CODEX_EVENT_MAP[raw as CodexHookEventType];
     if (mapped) return mapped;
@@ -87,115 +95,117 @@ function canonicalizeEventType(raw: string, cli: IntegrationType): HookEventType
   return raw as HookEventType;
 }
 
-export async function handleHookEvent(
+export interface HookEventOutcome {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface EvaluateHookEventOptions {
+  /**
+   * Await pending telemetry POSTs before returning. Defaults to `true`,
+   * matching the one-shot CLI process's need to flush before `process.exit()`
+   * drops anything in flight. The warm worker (which never exits between
+   * calls) passes `false` — telemetry simply resolves on its own schedule,
+   * a real latency win unlocked by the process staying alive.
+   */
+  awaitTelemetryFlush?: boolean;
+  /**
+   * When set, skips loading policies-config.json / builtins / custom hooks
+   * entirely and registers ONLY a single synthetic policy that always
+   * returns this decision — then runs the real, unmodified
+   * `evaluatePolicies()` so the response still gets this event/CLI's exact
+   * per-CLI shaping (Cursor's flat `continue:false`, Factory's exit-2, …).
+   * This is the fail-closed path: reusing the real evaluator for shaping
+   * instead of hand-rolling a generic denial avoids a decision that *looks*
+   * like protection but is silently inert for at least one CLI.
+   */
+  forceDecision?: { decision: "deny"; reason: string };
+  /**
+   * Used only when the stdin payload itself carries no `cwd` (and, for
+   * Cursor, no `workspace_roots`) — see `resolveCwd`. Callers running
+   * inside a long-lived process (the warm worker) MUST pass the
+   * *originating* CLI process's cwd here rather than leaving this unset:
+   * `readMergedHooksConfig`/`loadAllCustomHooks` fall back to
+   * `process.cwd()` internally when `session.cwd` is undefined, and inside
+   * a warm worker `process.cwd()` is fixed at wherever the worker itself
+   * was spawned — not wherever this particular request's session actually
+   * is. The one-shot CLI process doesn't need this: its own `process.cwd()`
+   * already IS the right value, which is exactly what that fallback was
+   * written for.
+   */
+  fallbackCwd?: string;
+}
+
+/**
+ * Runs an observe-mode policy under the same timeout and error handling as an
+ * enforcing one, so what gets measured is what would actually have happened —
+ * including a policy that times out, which in enforce mode is an allow and must
+ * be recorded as one rather than as a would-deny.
+ */
+async function runObserved(
+  hook: CustomHook,
+  ctx: Parameters<CustomHook["fn"]>[0],
+  hookName: string,
+  eventType: string,
+  cli: IntegrationType,
+): Promise<PolicyResult> {
+  try {
+    return await Promise.race([
+      hook.fn(ctx),
+      new Promise<PolicyResult>((_, reject) => setTimeout(() => reject(new Error("timeout")), 10_000)),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    void trackHookEvent(getInstanceId(), "custom_hook_error", {
+      hook_name: hookName,
+      error_type: msg === "timeout" ? "timeout" : "exception",
+      event_type: eventType,
+      cli,
+      is_observe_mode: true,
+    });
+    return { decision: "allow" };
+  }
+}
+
+/**
+ * The core hook-evaluation logic, decoupled from process stdin/stdout so it
+ * can be called repeatedly inside a long-lived process (the daemon's warm
+ * worker) as well as from the one-shot `handleHookEvent` wrapper below.
+ * Never reads `process.stdin` or writes `process.stdout`/`process.stderr`
+ * itself — every caller gets the full `{exitCode, stdout, stderr}` back and
+ * decides what to do with it.
+ */
+export async function evaluateHookEvent(
   eventType: string,
   cli: IntegrationType = "claude",
-): Promise<number> {
+  stdinPayload: string,
+  opts?: EvaluateHookEventOptions,
+): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  // A home from another layout resolves to no global config, so every builtin
+  // silently stops firing — the machine looks protected and is not. Say so on
+  // every call rather than deleting anything (a hook is unattended) or denying
+  // (a blanket deny takes UserPromptSubmit with it and locks the user out of
+  // their agent entirely — demonstrated on a real machine during this work).
+  const layoutWarning = layoutWarningForHook();
+  if (layoutWarning) hookLogWarn(layoutWarning);
   try {
-
-    // Read stdin payload (Claude passes JSON)
-    const MAX_STDIN_BYTES = 1_048_576; // 1 MB
-    let payload = "";
-    let stdinOversized = false;
-    try {
-      payload = await new Promise<string>((resolve, reject) => {
-        const chunks: string[] = [];
-        let totalBytes = 0;
-        process.stdin.setEncoding("utf8");
-        process.stdin.on("data", (chunk: string) => {
-          totalBytes += Buffer.byteLength(chunk);
-          if (totalBytes > MAX_STDIN_BYTES) {
-            hookLogWarn(`stdin payload exceeds 1 MB for ${eventType}, discarding`);
-            stdinOversized = true;
-            process.stdin.destroy();
-            resolve("");
-            return;
-          }
-          chunks.push(chunk);
-        });
-        process.stdin.on("end", () => resolve(chunks.join("")));
-        process.stdin.on("error", reject);
-        // If stdin is already closed or not piped, resolve immediately
-        if (process.stdin.readableEnded) resolve("");
-      });
-    } catch (err) {
-      hookLogWarn(`stdin read failed for ${eventType}`);
-      void trackHookEvent(getInstanceId(), "hook_stdin_error", {
-        event_type: eventType,
-        cli,
-        error_type: err instanceof Error ? err.name : "unknown",
-      });
-    }
-    if (stdinOversized) {
-      void trackHookEvent(getInstanceId(), "hook_stdin_error", {
-        event_type: eventType,
-        cli,
-        error_type: "oversized",
-      });
-    }
-
     let parsed: Record<string, unknown> = {};
-    if (payload) {
+    if (stdinPayload) {
       try {
-        parsed = JSON.parse(payload) as Record<string, unknown>;
+        parsed = JSON.parse(stdinPayload) as Record<string, unknown>;
       } catch {
-        hookLogWarn(`payload parse failed for ${eventType} (${payload.length} bytes)`);
+        hookLogWarn(`payload parse failed for ${eventType} (${stdinPayload.length} bytes)`);
         void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
           event_type: eventType,
           cli,
-          payload_size: payload.length,
+          payload_size: stdinPayload.length,
         });
       }
     }
 
-    // Antigravity (agy) pipes a camelCase protojson payload; normalize the fields
-    // the handler downstream reads to canonical snake_case BEFORE any
-    // canonicalization runs. `toolCall.{name,args}` → `tool_name`/`tool_input`,
-    // `conversationId` → `session_id`, `workspacePaths[0]` → `cwd`,
-    // `transcriptPath` → `transcript_path`. Verified against agy v1.1.2.
-    if (cli === "antigravity") {
-      const tc = parsed.toolCall as { name?: string; args?: unknown } | undefined;
-      if (tc && typeof tc === "object") {
-        if (tc.name !== undefined) parsed.tool_name = tc.name;
-        if (tc.args !== undefined) parsed.tool_input = tc.args;
-      }
-      if (typeof parsed.conversationId === "string") parsed.session_id = parsed.conversationId;
-      if (Array.isArray(parsed.workspacePaths) && typeof parsed.workspacePaths[0] === "string") {
-        parsed.cwd = parsed.workspacePaths[0];
-      }
-      if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
-    }
-
-    // Copilot's snake_case events (PreToolUse/PostToolUse/Stop/…) are already
-    // Claude-shaped, but `permissionRequest` alone pipes a camelCase payload
-    // (`hookName`, `sessionId`, `toolName` in lowercase, `toolInput`) — verified
-    // live against Copilot CLI 1.0.71. Normalize the fields the handler reads so
-    // PermissionRequest-matched policies (e.g. block-sudo's Codex-escalation
-    // guard) fire instead of seeing a null tool name.
-    if (cli === "copilot") {
-      if (typeof parsed.toolName === "string" && parsed.tool_name === undefined) {
-        parsed.tool_name = parsed.toolName;
-      }
-      if (parsed.toolInput !== undefined && parsed.tool_input === undefined) {
-        parsed.tool_input = parsed.toolInput;
-      }
-      if (typeof parsed.sessionId === "string" && parsed.session_id === undefined) {
-        parsed.session_id = parsed.sessionId;
-      }
-    }
-
-    // Goose pipes `event` / `working_dir` instead of Claude's `hook_event_name` /
-    // `cwd` (its `tool_name` / `tool_input` are already canonical field names).
-    // Normalize both so resolveCwd keeps its cwd (block-read-outside-cwd) and the
-    // round-tripped event name is available. The --hook arg is already PascalCase,
-    // so canonicalizeEventType needs no goose branch. Verified goose v1.43.0.
-    if (cli === "goose") {
-      if (typeof parsed.working_dir === "string") parsed.cwd = parsed.working_dir;
-      if (typeof parsed.event === "string" && parsed.hook_event_name === undefined) {
-        parsed.hook_event_name = parsed.event;
-      }
-    }
+    normalizeCliPayload(cli, parsed);
 
     // Canonicalize event name (Codex sends snake_case; internals expect PascalCase)
     const canonicalEventType = canonicalizeEventType(eventType, cli);
@@ -226,7 +236,7 @@ export async function handleHookEvent(
     const session: SessionMetadata = {
       sessionId,
       transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),
-      cwd: resolveCwd(cli, parsed),
+      cwd: resolveCwd(cli, parsed) ?? opts?.fallbackCwd,
       permissionMode: resolvePermissionMode(cli, parsed, sessionId),
       hookEventName: parsed.hook_event_name as string | undefined,
       // Preserve the raw CLI-side event name (eventType arg) before
@@ -237,108 +247,229 @@ export async function handleHookEvent(
       cli,
     };
 
-    // Load enabled policies (merge across project/local/global scopes)
-    const config = readMergedHooksConfig(session.cwd);
-    clearPolicies();
-    registerBuiltinPolicies(config.enabledPolicies);
+    let config: HooksConfig;
+    let customHooksList: CustomHook[] = [];
+    let conventionHookNames = new Set<string>();
+    let activePause: ActivePause | null = null;
+    /** Registered policy name → where it came from. See the set() below. */
+    const policyAttribution = new Map<
+      string,
+      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudRevision?: number }
+    >();
+    let cloudGeneration: number | undefined;
+    /** What observe-mode policies WOULD have done, had they been enforcing. */
+    const observedResults: Array<{
+      policyId: string;
+      revision: number;
+      decision: "deny" | "instruct";
+      reason: string | null;
+    }> = [];
 
-    // Load and register custom hooks (layer 2, after builtins)
-    const loadResult = await loadAllCustomHooks(
-      config.customPoliciesPaths ?? config.customPoliciesPath,
-      {
-      sessionCwd: session.cwd,
-      customPoliciesEnabled: config.customPoliciesEnabled,
-      },
-    );
-    const customHooksList = loadResult.hooks;
-    const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
-    const conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
-
-    for (const hook of customHooksList) {
-      const policyId = (hook as CustomHook & { __policyId?: string }).__policyId;
-      if (policyId && disabledCustomPolicies.has(policyId)) continue;
-      const hookName = hook.name;
-      const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
-      const isConvention = !!conventionScope;
-      const prefix = isConvention ? `.failproofai-${conventionScope}` : "custom";
-      const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
-        try {
-          const result = await Promise.race([
-            hook.fn(ctx),
-            new Promise<PolicyResult>((_, reject) =>
-              setTimeout(() => reject(new Error("timeout")), 10_000),
-            ),
-          ]);
-          return result;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const isTimeout = msg === "timeout";
-          hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
-          void trackHookEvent(getInstanceId(), "custom_hook_error", {
-            hook_name: hookName,
-            error_type: isTimeout ? "timeout" : "exception",
-            event_type: eventType,
-            cli,
-            is_convention_policy: isConvention,
-            convention_scope: conventionScope ?? null,
-          });
-          return { decision: "allow" };
-        }
-      };
+    if (opts?.forceDecision) {
+      // Fail-closed: no config/custom-hook loading at all — a daemon that
+      // can't be reached can't have run any of a project's custom policies
+      // either, so there is nothing to load. One synthetic policy stands in
+      // for the entire enabled set.
+      config = { enabledPolicies: [] };
+      clearPolicies();
+      const decision = opts.forceDecision;
       registerPolicy(
-        `${prefix}/${hookName}`,
-        hook.description ?? "",
-        fn,
-        hook.match ?? {},
-        -1, // Custom hooks run after builtins (priority 0)
+        "failproofai/daemon-unreachable",
+        "Fail-closed: the failproofaid daemon could not be reached for this daemon-configured scope.",
+        async (): Promise<PolicyResult> => ({ decision: decision.decision, reason: decision.reason }),
+        {},
+      );
+    } else {
+      // Load enabled policies (merge across project/local/global scopes)
+      config = readMergedHooksConfig(session.cwd);
+      clearPolicies();
+
+      // A session pause suspends LOCAL policy only, for a bounded time. Cloud
+      // assignments are exempt below for the same reason `disabledCustomPolicies`
+      // already exempts them: a locally-issued command that could switch off a
+      // centrally assigned policy would make cloud enforcement decorative.
+      activePause = readActivePause(session.sessionId);
+      registerBuiltinPolicies(activePause ? [] : config.enabledPolicies);
+
+      // Cloud-managed policies are daemon-reconciled artifacts, but they use
+      // the same public JS policy API as local custom policies. Verify and add
+      // only the paths referenced by the atomically active generation.
+      //
+      // Wrapped, like `readConfigAt` and `readActivePause` above it. This call
+      // has fourteen throw sites — a malformed manifest, an unsafe id, an
+      // integrity mismatch, an unknown effect — and it sat bare inside a `try`
+      // whose only handler is a `finally`, so any of them aborted the entire
+      // evaluation. What that cost depended on where the hook ran, and none of
+      // the outcomes were the intended one: on a daemon machine the client
+      // fail-closed denies every tool call, and off the daemon path the throw
+      // reaches `bin/failproofai.mjs`'s outer catch, which exits 2 with nothing
+      // on stdout — a deny on Claude and Factory, but a logged warning followed
+      // by an ALLOW on Copilot, Cursor, Goose, Pi and Hermes, which read a
+      // decision off stdout and ignore the exit code. One corrupt byte was
+      // either a permanent machine-wide lockout or silent non-enforcement,
+      // depending on the CLI.
+      //
+      // Failing open here degrades ONE layer: builtins and local custom
+      // policies were already registered above and keep enforcing. That is the
+      // same trade `2ad735e5` made on the Rust side, and it is strictly better
+      // than the status quo, which already failed open on five of the twelve —
+      // just accidentally, and without saying so.
+      let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      try {
+        cloudManagedPolicies = readActiveCloudManagedPolicies();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        hookLogWarn(
+          `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
+            `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
+        );
+        void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
+          event_type: eventType,
+          cli,
+        });
+      }
+      // Recorded on every row once a machine is managed, whether or not a cloud
+      // policy decided this event: "what was deployed here at the time" is a
+      // separate question from "what decided", and only the former can tell a
+      // rollout that changed nothing from one that never reached the machine.
+      cloudGeneration = cloudManagedPolicies[0]?.generation;
+      const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
+      const allExplicitPaths =
+        cloudManagedPolicies.length === 0
+          ? configuredCustomPaths
+          : [
+              ...(typeof configuredCustomPaths === "string" ? [configuredCustomPaths] : configuredCustomPaths ?? []),
+              ...cloudManagedPolicies.map((policy) => policy.path),
+            ];
+
+      // Load and register custom hooks (layer 2, after builtins)
+      const loadResult = await loadAllCustomHooks(allExplicitPaths, {
+        sessionCwd: session.cwd,
+        customPoliciesEnabled: config.customPoliciesEnabled,
+        ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
+      });
+      customHooksList = loadResult.hooks;
+      const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
+      conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
+
+      for (const hook of customHooksList) {
+        const taggedHook = hook as CustomHook & {
+          __policyId?: string;
+          __cloudManaged?: CloudManagedPolicyArtifact;
+        };
+        const policyId = taggedHook.__policyId;
+        const cloudManaged = taggedHook.__cloudManaged;
+        // Local config cannot disable a centrally assigned policy merely by
+        // copying its generated ID into disabledCustomPolicies.
+        if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
+        // Same rule for a session pause — it suspends local policy, never cloud.
+        if (!cloudManaged && activePause) continue;
+        const hookName = hook.name;
+        const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
+        const isConvention = !!conventionScope;
+        const prefix = cloudManaged
+          ? `cloud/${cloudManaged.id}@${cloudManaged.revision}`
+          : isConvention
+            ? `.failproofai-${conventionScope}`
+            : "custom";
+        // Observe mode: run it for real, record what it decided, then hand back
+        // an allow. Evaluating and discarding is the whole point — a rollout is
+        // measured against real traffic before it can break anyone's work, and
+        // a policy that did not actually run would measure nothing.
+        const observeOnly = cloudManaged?.effect === "observe";
+        const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
+          if (observeOnly) {
+            const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
+            if (shadow.decision !== "allow") {
+              observedResults.push({
+                policyId: cloudManaged!.id,
+                revision: cloudManaged!.revision,
+                decision: shadow.decision,
+                reason: shadow.reason ?? null,
+              });
+            }
+            return { decision: "allow" };
+          }
+          try {
+            const result = await Promise.race([
+              hook.fn(ctx),
+              new Promise<PolicyResult>((_, reject) => setTimeout(() => reject(new Error("timeout")), 10_000)),
+            ]);
+            return result;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const isTimeout = msg === "timeout";
+            hookLogWarn(`${prefix} hook "${hookName}" failed: ${msg}`);
+            void trackHookEvent(getInstanceId(), "custom_hook_error", {
+              hook_name: hookName,
+              error_type: isTimeout ? "timeout" : "exception",
+              event_type: eventType,
+              cli,
+              is_convention_policy: isConvention,
+              convention_scope: conventionScope ?? null,
+            });
+            return { decision: "allow" };
+          }
+        };
+        const registeredName = `${prefix}/${hookName}`;
+        // Record where this policy came from as structured data, keyed by the
+        // exact name the evaluator will report back. The display name already
+        // encodes it ("cloud/org-guard@7/…"), but only as a string — so the one
+        // question cloud attribution has to answer, "which rollout produced
+        // this decision", could only be answered by re-parsing our own label.
+        policyAttribution.set(registeredName, {
+          source: cloudManaged ? "cloud" : isConvention ? "convention" : "custom",
+          ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudRevision: cloudManaged.revision } : {}),
+        });
+        registerPolicy(
+          registeredName,
+          hook.description ?? "",
+          fn,
+          hook.match ?? {},
+          -1, // Custom hooks run after builtins (priority 0)
+        );
+      }
+
+      // Fire telemetry once per invocation for custom hook loads
+      if (customHooksList.length > 0) {
+        void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
+          cli,
+          custom_hooks_count: customHooksList.length,
+          custom_hook_names: customHooksList.map((h) => h.name),
+          event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
+        });
+      }
+
+      // Fire telemetry for convention-based policy discovery
+      if (loadResult.conventionSources.length > 0) {
+        void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
+          event_type: canonicalEventType,
+          cli,
+          project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
+          user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
+          convention_hook_count: conventionHookNames.size,
+          convention_hook_names: [...conventionHookNames],
+        });
+      }
+
+      hookLogInfo(
+        `event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`,
       );
     }
-
-    // Fire telemetry once per invocation for custom hook loads
-    if (customHooksList.length > 0) {
-      void trackHookEvent(getInstanceId(), "custom_hooks_loaded", {
-        cli,
-        custom_hooks_count: customHooksList.length,
-        custom_hook_names: customHooksList.map((h) => h.name),
-        event_types_covered: [...new Set(customHooksList.flatMap((h) => h.match?.events ?? []))],
-      });
-    }
-
-    // Fire telemetry for convention-based policy discovery
-    if (loadResult.conventionSources.length > 0) {
-      void trackHookEvent(getInstanceId(), "convention_policies_loaded", {
-        event_type: canonicalEventType,
-        cli,
-        project_file_count: loadResult.conventionSources.filter((s) => s.scope === "project").length,
-        user_file_count: loadResult.conventionSources.filter((s) => s.scope === "user").length,
-        convention_hook_count: conventionHookNames.size,
-        convention_hook_names: [...conventionHookNames],
-      });
-    }
-
-    hookLogInfo(`event=${canonicalEventType} cli=${cli} policies=${config.enabledPolicies.length} custom=${customHooksList.length} convention=${conventionHookNames.size}`);
 
     // Evaluate policies (use canonical PascalCase event type)
     const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
-    if (result.stdout) {
-      process.stdout.write(result.stdout);
-    }
-    if (result.stderr) {
-      process.stderr.write(result.stderr);
-    }
-
     // Which policies actually ran for this event, regardless of how they
     // decided. `result.policyName` names only the decider — null on a plain
     // allow — so without this a row cannot tell "your policy ran and allowed"
     // from "no policy covers this event". The lookup is the same cached call
     // the evaluator already made, so it costs nothing.
-    const matchedPolicies = getPoliciesForEvent(
-      canonicalEventType,
-      parsed.tool_name as string | undefined,
-    ).map((p) => p.name);
+    const matchedPolicies = getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map(
+      (p) => p.name,
+    );
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {
@@ -357,6 +488,32 @@ export async function handleHookEvent(
       cwd: session.cwd,
       permissionMode: session.permissionMode,
       hookEventName: session.hookEventName,
+      // Attribution. A builtin is anything registered that is not in the map,
+      // so its absence is meaningful rather than missing — but only when a
+      // policy actually decided; a plain allow names nobody.
+      ...(result.policyName
+        ? (() => {
+            const attribution = policyAttribution.get(result.policyName);
+            return {
+              policySource: attribution?.source ?? ("builtin" as const),
+              ...(attribution?.cloudPolicyId ? { cloudPolicyId: attribution.cloudPolicyId } : {}),
+              ...(attribution?.cloudRevision !== undefined
+                ? { cloudRevision: attribution.cloudRevision }
+                : {}),
+            };
+          })()
+        : {}),
+      ...(cloudGeneration !== undefined ? { cloudGeneration } : {}),
+      // The point of observe mode is this record. Without it the rollout is
+      // unmeasurable and the row is indistinguishable from one where the policy
+      // never matched at all.
+      ...(observedResults.length > 0 ? { observed: observedResults } : {}),
+      // Without these, a row logged during a pause is indistinguishable from
+      // one where every policy ran and allowed — the log would assert a clean
+      // window over exactly the window that was not enforced.
+      ...(activePause
+        ? { pausedBy: activePause.setBy, pauseExpiresAt: activePause.expiresAt }
+        : {}),
     };
     try {
       persistHookActivity(activityEntry);
@@ -370,15 +527,15 @@ export async function handleHookEvent(
         const isCustomHook = result.policyName?.startsWith("custom/") ?? false;
         const isConventionPolicy = result.policyName?.startsWith(".failproofai-") ?? false;
         const conventionScope = isConventionPolicy
-          ? result.policyName!.match(/^\.failproofai-(project|user)\//)?.[1] ?? null
+          ? (result.policyName!.match(/^\.failproofai-(project|user)\//)?.[1] ?? null)
           : null;
         const hasCustomParams =
-          !isCustomHook && !isConventionPolicy && !!(result.policyName && config.policyParams?.[result.policyName]);
-        const paramKeysOverridden = hasCustomParams
-          ? Object.keys(config.policyParams![result.policyName!])
-          : [];
+          !isCustomHook &&
+          !isConventionPolicy &&
+          !!(result.policyName && config.policyParams?.[result.policyName]);
+        const paramKeysOverridden = hasCustomParams ? Object.keys(config.policyParams![result.policyName!]) : [];
         const distinctId = getInstanceId();
-        await trackHookEvent(distinctId, "hook_policy_triggered", {
+        const trackPromise = trackHookEvent(distinctId, "hook_policy_triggered", {
           event_type: canonicalEventType,
           cli,
           tool_name: (parsed.tool_name as string) ?? null,
@@ -390,17 +547,75 @@ export async function handleHookEvent(
           has_custom_params: hasCustomParams,
           param_keys_overridden: paramKeysOverridden,
         });
+        // Deny/instruct is exactly the response the daemon's warm worker
+        // needs to return fast — a live network POST to PostHog on this path
+        // (previously always awaited here, regardless of opts.awaitTelemetryFlush)
+        // made every deny/instruct decision pay a real network round-trip
+        // (hundreds of ms, up to sendEvent's 5s abort timeout when PostHog is
+        // unreachable) before the result could return. Caught by a real
+        // Docker daemon test: a `sudo` deny took ~700ms even against an
+        // already-warm worker and blew through the client's 150ms
+        // fail-closed budget every time. Same opt-out this file already
+        // grants `flushHookTelemetry()` below — the worker passes
+        // awaitTelemetryFlush:false and never calls that flush either, so
+        // this becomes true fire-and-forget for it.
+        if (opts?.awaitTelemetryFlush ?? true) {
+          await trackPromise;
+        }
       } catch {
         // Telemetry is best-effort — never block the hook
       }
     }
-    return result.exitCode;
+
+    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   } finally {
-    // Await any un-awaited (`void trackHookEvent(...)`) events fired during
-    // this invocation. bin/failproofai.mjs calls process.exit() the moment we
-    // return OR throw, which would otherwise drop in-flight POSTs — notably on
-    // the allow path (no trailing awaited event) and on any early throw
-    // (custom-hook load / policy eval) before the happy path is reached.
-    await flushHookTelemetry();
+    if (opts?.awaitTelemetryFlush ?? true) {
+      // Await any un-awaited (`void trackHookEvent(...)`) events fired during
+      // this invocation. The one-shot CLI process calls process.exit() the
+      // moment it gets its result back, which would otherwise drop in-flight
+      // POSTs — notably on the allow path (no trailing awaited event) and on
+      // any early throw (custom-hook load / policy eval) before the happy
+      // path is reached. The warm worker passes awaitTelemetryFlush:false —
+      // it never exits between calls, so there's nothing to drop.
+      await flushHookTelemetry();
+    }
   }
+}
+
+/**
+ * One-shot CLI entrypoint — reads `process.stdin`, evaluates the hook, writes
+ * `process.stdout`/`process.stderr`, and returns just the exit code. This is
+ * the exact contract `bin/failproofai.mjs`'s `--hook` path has always had;
+ * kept unchanged so nothing about the one-shot (non-daemon) path regresses.
+ * Internally now just a thin wrapper around `evaluateHookEvent`.
+ */
+export async function handleHookEvent(eventType: string, cli: IntegrationType = "claude"): Promise<number> {
+  const MAX_STDIN_BYTES = 1_048_576; // 1 MB
+  const stdinRead = await readStdinPayload(MAX_STDIN_BYTES);
+  if (stdinRead.readError) {
+    hookLogWarn(`stdin read failed for ${eventType}`);
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: "unknown",
+    });
+  }
+  if (stdinRead.oversized) {
+    hookLogWarn(`stdin payload exceeds 1 MB for ${eventType}, discarding`);
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: "oversized",
+    });
+  }
+
+  const result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  return result.exitCode;
 }

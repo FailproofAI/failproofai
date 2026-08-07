@@ -55,6 +55,24 @@ jobs:
               MISMATCH=1
             fi
           done
+          # The daemon binaries DO ship as npm platform packages
+          # (@failproofai/failproofaid-<os>-<arch>), but their pins are injected
+          # into package.json at publish time by
+          # scripts/build-daemon-packages.mjs — the same invocation that
+          # publishes them, so they cannot drift — and are deliberately absent
+          # from the committed tree. Nothing to check here.
+          #
+          # The Cargo version still has to match, because the release tag the
+          # CLI builds its download URL from is the npm version, and the binary
+          # at that URL reports the Cargo one.
+          # Check the Cargo workspace version (failproofaid) against root package.json
+          if [ -f Cargo.toml ]; then
+            CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+            if [ "$CARGO_VERSION" != "$ROOT_VERSION" ]; then
+              echo "::error file=Cargo.toml::Version mismatch: Cargo.toml has $CARGO_VERSION, expected $ROOT_VERSION"
+              MISMATCH=1
+            fi
+          fi
           if [ "$MISMATCH" -eq 1 ]; then
             echo "::error::Version mismatch detected across package.json files"
             exit 1
@@ -74,6 +92,85 @@ jobs:
           max_attempts: 3
           timeout_minutes: 5
           command: bunx tsc --noEmit
+
+  rust-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # This job runs `cargo clippy`/`cargo test` over the full
+          # dependency tree, executing third-party build scripts. The
+          # default (`true`) would leave GITHUB_TOKEN in .git/config where
+          # any of them could read it; nothing here needs push access.
+          persist-credentials: false
+
+      # Stage 1 lands an empty Cargo workspace (zero crates/*/Cargo.toml) so
+      # the CI plumbing itself can go green before any Rust code exists.
+      # `cargo build/clippy/test --workspace` (and even `cargo fmt --all`)
+      # all hard-error on a zero-member workspace ("the workspace has no
+      # members"), so every real step below is gated on at least one crate
+      # being present rather than relying on any of them to no-op cleanly.
+      - name: Detect crates
+        id: crates
+        run: |
+          if ls crates/*/Cargo.toml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No crates/*/Cargo.toml yet — rust-quality has nothing to check."
+          fi
+
+      - if: steps.crates.outputs.present == 'true'
+        run: rustup show
+
+      # cargo test spawns the real TS worker via `bun bin/failproofai-worker.mjs`
+      # (crates/failproofaid/src/server.rs's live end-to-end test) — bun has to
+      # be on PATH for that test, not just for the TS-side jobs.
+      - if: steps.crates.outputs.present == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # …and bun on PATH is not enough on its own. That worker runs the raw
+      # TypeScript, so it resolves the handler's real dependency tree at
+      # runtime rather than a bundle's. The moment anything under src/hooks
+      # imports a third-party package, this job fails with a bun ENOENT that
+      # reads like a Rust problem — the failure surfaces as "worker process
+      # exited before creating its socket". Production is unaffected, because
+      # dist/worker.mjs bundles those deps; only this path needs them on disk.
+      - if: steps.crates.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - if: steps.crates.outputs.present == 'true'
+        name: Install worker dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - if: steps.crates.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: cargo fmt --check
+        if: steps.crates.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        if: steps.crates.outputs.present == 'true'
+        run: cargo test --workspace
 
   test:
     runs-on: ubuntu-latest

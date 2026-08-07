@@ -74,9 +74,35 @@ describe("top-level: unknown command", () => {
     assertCleanError(result, "Unknown command: unknowncommand");
   });
 
-  it("suggests failproofai policies for unknown subcommand", () => {
+  it("always offers a runnable suggestion for an unknown subcommand", () => {
+    // Deliberately NOT pinned to a specific word. "unknowncommand" is a typo of
+    // nothing, so which subcommand comes out nearest is an artefact of the
+    // command LIST, not a contract: it read "policies" only because three names
+    // tied at distance 12 and `SUBCOMMANDS[0]` broke the tie. Adding
+    // `uninstall` (distance 10) changed the winner without changing any
+    // behaviour anyone relies on. The contract is that a suggestion is offered
+    // and names a real subcommand; the nearest-match behaviour itself is
+    // covered by the tests below, which use inputs that ARE typos of something.
     const result = runCli("unknowncommand");
-    expect(result.stderr).toContain("failproofai policies");
+    const match = /Did you mean: failproofai (\S+)\?/.exec(result.stderr);
+    expect(match).not.toBeNull();
+    expect(["policies", "policy", "audit", "config", "uninstall"]).toContain(match![1]);
+  });
+
+  it("suggests the NEAREST subcommand, not a hardcoded one", () => {
+    // The suggestion was the literal string "policies" for every input, which
+    // was right only when the typo happened to be a typo of that word.
+    expect(runCli("confg").stderr).toContain("failproofai config");
+    expect(runCli("audits").stderr).toContain("failproofai audit");
+  });
+
+  it("points a stale `auth` at audit rather than somewhere unrelated", () => {
+    // `auth` was a real subcommand until it was removed, so an old script or
+    // plain muscle memory lands here. It must not be answered with the one
+    // command that has nothing to do with what was typed.
+    const result = runCli("auth", "login");
+    assertCleanError(result, "Unknown command: auth");
+    expect(result.stderr).toContain("failproofai audit");
   });
 });
 

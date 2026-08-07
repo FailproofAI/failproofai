@@ -7,6 +7,9 @@ import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCh
 import PaginationControls from "@/app/components/pagination-controls";
 import { getHookActivityAction, searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
+import { getActivePausesAction } from "@/app/actions/get-active-pauses";
+import type { ActivePause } from "@/src/hooks/session-pause";
+import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
@@ -386,7 +389,27 @@ function DetailPanel({
             event detail
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">
+            <PausedNote item={item} />
             <EnforcementNote item={item} />
+            {item.policySource && (
+              <div>
+                <span className="text-muted-foreground">Decided by: </span>
+                <span className="font-mono text-foreground">
+                  {item.policySource === "cloud" && item.cloudPolicyId
+                    ? `cloud · ${item.cloudPolicyId} rev ${item.cloudRevision}`
+                    : item.policySource}
+                </span>
+              </div>
+            )}
+            {item.cloudGeneration !== undefined && (
+              <div>
+                {/* Present on every row of a managed machine, not just cloud
+                    decisions — it is what separates a rollout that changed no
+                    outcomes from one that never arrived. */}
+                <span className="text-muted-foreground">Cloud generation: </span>
+                <span className="font-mono text-foreground">{item.cloudGeneration}</span>
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">Session ID: </span>
               <span className="font-mono text-foreground">
@@ -443,6 +466,7 @@ function ActivityTab({
 
   const [page, setPage] = useState(() => paramToPage(url.get("page")));
   const [data, setData] = useState<HookActivityPayload | null>(null);
+  const [activePauses, setActivePauses] = useState<ActivePause[]>([]);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   const [filterDecision, setFilterDecision] = useState<"" | "allow" | "deny" | "instruct">(() => {
@@ -456,10 +480,14 @@ function ActivityTab({
     const v = url.get("cli");
     return isKnownCli(v) ? v : "";
   });
+  const [filterSource, setFilterSource] = useState<"" | "builtin" | "custom" | "convention" | "cloud">(() => {
+    const v = url.get("source");
+    return v === "builtin" || v === "custom" || v === "convention" || v === "cloud" ? v : "";
+  });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterTelemetryFirstRunRef = useRef(true);
-  const filtersRef = useRef({ filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli });
-  filtersRef.current = { filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli };
+  const filtersRef = useRef({ filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli, filterSource });
+  filtersRef.current = { filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli, filterSource };
 
   useEffect(() => {
     if (!mountedRef.current) {
@@ -472,17 +500,18 @@ function ActivityTab({
       policy: filterPolicy || undefined,
       session: filterSessionId || undefined,
       cli: filterCli || undefined,
+      source: filterSource || undefined,
       page: pageToParam(page),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli, page]);
+  }, [filterDecision, filterEventType, filterPolicy, filterSessionId, filterCli, filterSource, page]);
 
-  const hasActiveFilters = filterDecision !== "" || filterEventType !== "" || filterPolicy !== "" || filterSessionId !== "" || filterCli !== "";
+  const hasActiveFilters = filterDecision !== "" || filterEventType !== "" || filterPolicy !== "" || filterSessionId !== "" || filterCli !== "" || filterSource !== "";
 
   const fetchData = useCallback(async (p: number) => {
     try {
-      const { filterDecision: fd, filterEventType: fe, filterPolicy: fp, filterSessionId: fs, filterCli: fc } = filtersRef.current;
-      const active = fd !== "" || fe !== "" || fp !== "" || fs !== "" || fc !== "";
+      const { filterDecision: fd, filterEventType: fe, filterPolicy: fp, filterSessionId: fs, filterCli: fc, filterSource: fsrc } = filtersRef.current;
+      const active = fd !== "" || fe !== "" || fp !== "" || fs !== "" || fc !== "" || fsrc !== "";
       let result: HookActivityPayload;
       if (active) {
         result = await searchHookActivityAction(
@@ -492,6 +521,7 @@ function ActivityTab({
             policyName: fp || undefined,
             sessionId: fs || undefined,
             integration: fc || undefined,
+            source: fsrc || undefined,
           },
           p,
         );
@@ -510,6 +540,22 @@ function ActivityTab({
     const id = setInterval(() => fetchData(page), ms);
     return () => clearInterval(id);
   }, [page, fetchData, intervalSec]);
+
+  // Pause state is polled independently of the activity page: it is live
+  // machine state, not a property of whichever rows are on screen, and it must
+  // keep updating while the user sits on page 3 of history.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      getActivePausesAction()
+        .then((p) => { if (!cancelled) setActivePauses(p); })
+        .catch(() => { /* non-critical: the banner simply stays hidden */ });
+    };
+    load();
+    const ms = intervalSec > 0 ? intervalSec * 1000 : 5000;
+    const id = setInterval(load, ms);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [intervalSec]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -565,6 +611,10 @@ function ActivityTab({
 
   return (
     <>
+      {/* Above the stats, deliberately: a paused machine is the most important
+          thing on this screen, and the numbers below it are being produced with
+          local enforcement switched off. */}
+      <PausedBanner pauses={activePauses} />
       {data?.stats && data.stats.totalEvents > 0 && (
         <div style={{ marginBottom: 18 }}>
           <StatsBar stats={data.stats} />
@@ -591,6 +641,29 @@ function ActivityTab({
               <option value="SessionEnd">SessionEnd</option>
               <option value="UserPromptSubmit">UserPromptSubmit</option>
               <option value="PermissionRequest">PermissionRequest</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            {/* "What did my organization's policies decide here?" is the
+                question cloud rollout reporting rests on, and it is
+                unanswerable while the source is only a prefix on a name. */}
+            <span className="filter-label">source</span>
+            <select
+              value={filterSource}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilterSource(
+                  v === "builtin" || v === "custom" || v === "convention" || v === "cloud" ? v : "",
+                );
+              }}
+              className="filter-input"
+              aria-label="Filter by policy source"
+            >
+              <option value="">all sources</option>
+              <option value="builtin">builtin</option>
+              <option value="custom">custom</option>
+              <option value="convention">convention</option>
+              <option value="cloud">cloud</option>
             </select>
           </div>
           <div className="filter-group">
@@ -642,6 +715,7 @@ function ActivityTab({
                 setFilterCli("");
                 setFilterPolicy("");
                 setFilterSessionId("");
+                setFilterSource("");
               }}
               aria-label="Clear all filters"
             >
@@ -744,6 +818,7 @@ function ActivityTab({
                         </td>
                         <td className="px-3 py-2">
                           <DecisionBadge decision={item.decision} />
+                          {item.pausedBy && <PausedPill />}
                         </td>
                         <td className="px-3 py-2">
                           <EventTypeBadge eventType={item.eventType} />

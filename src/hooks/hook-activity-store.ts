@@ -1,7 +1,7 @@
 /**
  * Disk persistence for hook activity entries using page-sized JSONL files.
  *
- * Storage location: ~/.failproofai/cache/hook-activity/
+ * Storage location: ~/.failproofai/hook-activity/ (see fp-home.ts)
  *
  * File structure:
  * - current.jsonl — actively written to, 0–PAGE_SIZE entries
@@ -22,19 +22,32 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import type { IntegrationType } from "./types";
+import { hookActivityDir } from "./fp-home";
 
 export const PAGE_SIZE = 25;
 
-const DEFAULT_STORE_DIR = join(homedir(), ".failproofai", "cache", "hook-activity");
+/**
+ * Layout 2 promoted this out of `cache/`. It was never a cache — nothing
+ * regenerates it, and deleting it loses the decision history the dashboard's
+ * activity tab is built on. Resolved lazily (not at module load) so
+ * FAILPROOFAI_HOME is honoured by tests and containers that set it after
+ * import.
+ */
+const defaultStoreDir = () => hookActivityDir();
 const CURRENT_FILE = "current.jsonl";
 const COUNT_FILE = "current.count"; // tracks line count; O(1) read/write vs rereading current.jsonl
 const STATS_FILE = "stats.json";
 const LOCK_FILE = "current.lock";  // advisory lock for concurrent hook processes
 const LOCK_STALE_MS = 2000;        // steal lock if older than 2 s (covers crashed processes)
 
-let storeDir = DEFAULT_STORE_DIR;
+let storeDirOverride: string | null = null;
+/**
+ * A getter, not a module-load constant: `FAILPROOFAI_HOME` is routinely set by
+ * a test or a container AFTER this module is imported, and a value captured at
+ * import time would silently point every write at the real home.
+ */
+const storeDirValue = () => storeDirOverride ?? defaultStoreDir();
 let rotateSeq = 0;
 
 // ── Types ──
@@ -69,6 +82,45 @@ export interface HookActivityEntry {
   cwd?: string;
   permissionMode?: string;
   hookEventName?: string;
+  /**
+   * Set only on events evaluated while a session pause was active. Absent on
+   * every ordinary row and on every row written before pausing existed, so —
+   * like `matchedPolicies` — consumers must treat `undefined` as "not paused"
+   * rather than rendering it as unknown.
+   */
+  pausedBy?: string;
+  /** Epoch ms the pause lifts. Present iff `pausedBy` is. */
+  pauseExpiresAt?: number;
+  /**
+   * Where the policy that DECIDED came from. Absent when nothing decided (a
+   * plain allow) and on rows written before this existed — so, like
+   * `matchedPolicies`, `undefined` means "unknown", not "builtin".
+   */
+  policySource?: "builtin" | "custom" | "convention" | "cloud";
+  /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
+  cloudPolicyId?: string;
+  /** Immutable revision of that policy — the half of attribution that identifies WHICH version ran. */
+  cloudRevision?: number;
+  /**
+   * The cloud generation active when this event was evaluated, recorded on
+   * every row of a managed machine regardless of what decided. "What was
+   * deployed here" is a different question from "what decided", and only this
+   * distinguishes a rollout that changed no outcomes from one that never
+   * arrived.
+   */
+  cloudGeneration?: number;
+  /**
+   * What observe-mode policies WOULD have done, had they been enforcing. This
+   * record is the entire point of observe mode: without it the row is
+   * indistinguishable from one where the policy never matched, and the rollout
+   * being trialled is unmeasurable.
+   */
+  observed?: Array<{
+    policyId: string;
+    revision: number;
+    decision: "deny" | "instruct";
+    reason: string | null;
+  }>;
 }
 
 export interface HookActivityFilters {
@@ -77,6 +129,12 @@ export interface HookActivityFilters {
   policyName?: string;
   sessionId?: string;
   integration?: IntegrationType;
+  /**
+   * Filter by where the deciding policy came from. "Show me everything my
+   * organization's policies decided" is the question cloud rollout reporting
+   * is built on, and it is unanswerable without this.
+   */
+  source?: "builtin" | "custom" | "convention" | "cloud";
 }
 
 export interface HookActivityStats {
@@ -89,8 +147,8 @@ export interface HookActivityStats {
 // ── Directory setup ──
 
 function ensureDir(): void {
-  if (!existsSync(storeDir)) {
-    mkdirSync(storeDir, { recursive: true });
+  if (!existsSync(storeDirValue())) {
+    mkdirSync(storeDirValue(), { recursive: true });
   }
 }
 
@@ -98,7 +156,7 @@ function ensureDir(): void {
 
 function acquireLock(): void {
   ensureDir();
-  const lockPath = join(storeDir, LOCK_FILE);
+  const lockPath = join(storeDirValue(), LOCK_FILE);
   const deadline = Date.now() + LOCK_STALE_MS;
   while (Date.now() < deadline) {
     try {
@@ -121,7 +179,7 @@ function acquireLock(): void {
 }
 
 function releaseLock(): void {
-  try { unlinkSync(join(storeDir, LOCK_FILE)); } catch { /* ignore */ }
+  try { unlinkSync(join(storeDirValue(), LOCK_FILE)); } catch { /* ignore */ }
 }
 
 // ── Writing (synchronous — hook handler is short-lived) ──
@@ -130,8 +188,8 @@ export function persistHookActivity(entry: HookActivityEntry): void {
   ensureDir();
   acquireLock();
   try {
-    const currentPath = join(storeDir, CURRENT_FILE);
-    const countPath = join(storeDir, COUNT_FILE);
+    const currentPath = join(storeDirValue(), CURRENT_FILE);
+    const countPath = join(storeDirValue(), COUNT_FILE);
 
     const lineCount = readCount(countPath);
     if (lineCount >= PAGE_SIZE) {
@@ -153,7 +211,7 @@ export function persistHookActivity(entry: HookActivityEntry): void {
 
 function rotate(currentPath: string, countPath: string): void {
   const archiveName = `page-${Date.now()}-${rotateSeq++}.jsonl`;
-  const archivePath = join(storeDir, archiveName);
+  const archivePath = join(storeDirValue(), archiveName);
   renameSync(currentPath, archivePath);
   // Reset count for the fresh file (write 0 — next append will set it to 1)
   writeCount(countPath, 0);
@@ -195,7 +253,7 @@ interface StoredStats {
 
 function readStoredStats(): StoredStats {
   try {
-    return JSON.parse(readFileSync(join(storeDir, STATS_FILE), "utf-8")) as StoredStats;
+    return JSON.parse(readFileSync(join(storeDirValue(), STATS_FILE), "utf-8")) as StoredStats;
   } catch {
     return { totalEvents: 0, denyCount: 0, policyMap: {} };
   }
@@ -213,10 +271,10 @@ function updateStats(entry: HookActivityEntry): void {
     s.policyMap[entry.policyName] = (s.policyMap[entry.policyName] ?? 0) + 1;
   }
   // Write atomically: write to a PID-unique temp file then rename — prevents partial reads.
-  const tmpPath = join(storeDir, `stats.json.${process.pid}.tmp`);
+  const tmpPath = join(storeDirValue(), `stats.json.${process.pid}.tmp`);
   try {
     writeFileSync(tmpPath, JSON.stringify(s), "utf-8");
-    renameSync(tmpPath, join(storeDir, STATS_FILE));
+    renameSync(tmpPath, join(storeDirValue(), STATS_FILE));
   } catch {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
     // Non-fatal: stats file write failure doesn't block the hook
@@ -243,7 +301,7 @@ export function getHookActivityPage(page: number): HookActivityEntry[] {
   if (page < 1) return [];
 
   if (page === 1) {
-    const currentPath = join(storeDir, CURRENT_FILE);
+    const currentPath = join(storeDirValue(), CURRENT_FILE);
     return readJsonlFile(currentPath).reverse();
   }
 
@@ -251,7 +309,7 @@ export function getHookActivityPage(page: number): HookActivityEntry[] {
   const archiveIndex = page - 2;
   if (archiveIndex >= archives.length) return [];
 
-  return readJsonlFile(join(storeDir, archives[archiveIndex])).reverse();
+  return readJsonlFile(join(storeDirValue(), archives[archiveIndex])).reverse();
 }
 
 export function getHookActivityPageCount(): number {
@@ -262,13 +320,13 @@ export function getHookActivityPageCount(): number {
 export function getAllHookActivityEntries(): HookActivityEntry[] {
   ensureDir();
 
-  const currentPath = join(storeDir, CURRENT_FILE);
+  const currentPath = join(storeDirValue(), CURRENT_FILE);
   const currentEntries = readJsonlFile(currentPath).reverse();
 
   const archives = getArchiveFiles();
   const archiveEntries: HookActivityEntry[] = [];
   for (const file of archives) {
-    const entries = readJsonlFile(join(storeDir, file));
+    const entries = readJsonlFile(join(storeDirValue(), file));
     archiveEntries.push(...entries.reverse());
   }
 
@@ -298,6 +356,11 @@ export function searchHookActivity(
       return false;
     }
     if (filters.integration && entry.integration !== filters.integration) return false;
+    // Rows written before attribution existed have no policySource. They are
+    // excluded from every source filter rather than guessed at — a wrong
+    // attribution is worse than a missing one when the point is proving which
+    // rollout decided something.
+    if (filters.source && entry.policySource !== filters.source) return false;
     return true;
   });
 
@@ -342,7 +405,7 @@ function readJsonlFile(filePath: string): HookActivityEntry[] {
 
 function getArchiveFiles(): string[] {
   try {
-    const files = readdirSync(storeDir);
+    const files = readdirSync(storeDirValue());
     return files
       .filter((f) => f.startsWith("page-") && f.endsWith(".jsonl"))
       .sort((a, b) => {
@@ -364,5 +427,7 @@ function getArchiveFiles(): string[] {
 
 export function _resetForTest(testDir?: string): void {
   rotateSeq = 0;
-  storeDir = testDir ?? DEFAULT_STORE_DIR;
+  // null, not the default path: clearing the override lets the getter re-read
+  // FAILPROOFAI_HOME, which a test may have changed since this module loaded.
+  storeDirOverride = testDir ?? null;
 }

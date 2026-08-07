@@ -22,3 +22,20 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+
+  # The Rust workspace. Absent until the daemon shipped, so `Cargo.lock` was
+  # updated only by hand — for a dependency tree that includes the TLS stack
+  # compiled into a root-installed system service.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the whole tree rather than five a week: these crates are
+      # verified together by `cargo test --workspace`, and splitting them means
+      # each PR rebuilds the same lockfile the others just changed.
+      rust-dependencies:
+        patterns:
+          - "*"

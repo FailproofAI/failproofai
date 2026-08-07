@@ -1,0 +1,43 @@
+[package]
+name = "failproofaid"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Thin Rust supervisor: owns the failproofai IPC socket, service lifecycle, and warm worker process supervision. Carries no policy logic."
+publish = false
+
+[[bin]]
+name = "failproofaid"
+path = "src/main.rs"
+
+[dependencies]
+fpai-ipc = { path = "../fpai-ipc" }
+fpai-collect = { path = "../fpai-collect" }
+# Without a subscriber every `tracing::` call in fpai-collect is silently
+# discarded — including the uploader's "the server stored NONE of its events".
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Layout 2 keeps the cloud credential in credentials.toml's [cloud] table, so
+# the daemon has to read TOML to find its own enrolment. Already in the tree via
+# fpai-collect, which parses the same file's [ingest] table.
+toml = "1.1.4"
+libc = "0.2"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+# Epoch-millis to RFC3339, for the `timestamp` on each telemetry event. Already
+# in the tree via fpai-collect at the same version and features, so this adds
+# nothing to the lockfile or to any of the four cross-compile legs — and the
+# alternative is hand-rolled civil date maths, which fails silently (a leap-year
+# slip puts every event on the wrong day with nothing to notice it).
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+
+[dev-dependencies]
+# The telemetry lane's transport is asserted against a real HTTP server rather
+# than a trait double: the failure this guards against is a batch PostHog
+# rejects, which only a server that parses the body can see. Both are already in
+# the lockfile via fpai-collect's dev-dependencies.
+wiremock = "0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

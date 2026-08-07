@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
+import { globalPolicyConfigFile } from "../../src/hooks/fp-home";
 
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock("node:fs", () => ({
   }),
 }));
 
-const CONFIG_PATH = resolve(homedir(), ".failproofai", "policies-config.json");
+const CONFIG_PATH = globalPolicyConfigFile();
 
 describe("hooks/hooks-config", () => {
   beforeEach(() => {
@@ -76,7 +77,7 @@ describe("hooks/hooks-config", () => {
     const CWD = "/tmp/test-project";
     const projectPath = resolve(CWD, ".failproofai", "policies-config.json");
     const localPath = resolve(CWD, ".failproofai", "policies-config.local.json");
-    const globalPath = resolve(homedir(), ".failproofai", "policies-config.json");
+    const globalPath = globalPolicyConfigFile();
 
     function mockFiles(files: Record<string, object>): void {
       vi.mocked(existsSync).mockImplementation((p) => String(p) in files);
@@ -283,7 +284,7 @@ describe("hooks/hooks-config", () => {
     });
 
     it("falls through to global when no .failproofai exists in any parent", async () => {
-      const globalPath = resolve(homedir(), ".failproofai", "policies-config.json");
+      const globalPath = globalPolicyConfigFile();
       mockFilesWithDirs({
         [globalPath]: { enabledPolicies: ["block-rm-rf"] },
       });
@@ -294,7 +295,7 @@ describe("hooks/hooks-config", () => {
     });
 
     it("does not pick up ~/.failproofai (the global dir) as a project root", async () => {
-      const globalPath = resolve(homedir(), ".failproofai", "policies-config.json");
+      const globalPath = globalPolicyConfigFile();
       mockFilesWithDirs({
         [globalPath]: { enabledPolicies: ["sanitize-jwt"] },
       });
@@ -381,7 +382,7 @@ describe("hooks/hooks-config", () => {
     it("returns global path for user scope", async () => {
       const { getConfigPathForScope } = await import("../../src/hooks/hooks-config");
       expect(getConfigPathForScope("user")).toBe(
-        resolve(homedir(), ".failproofai", "policies-config.json"),
+        globalPolicyConfigFile(),
       );
     });
 
@@ -421,7 +422,7 @@ describe("hooks/hooks-config", () => {
     });
 
     it("reads from user scope (global path)", async () => {
-      const globalPath = resolve(homedir(), ".failproofai", "policies-config.json");
+      const globalPath = globalPolicyConfigFile();
       vi.mocked(existsSync).mockImplementation((p) => String(p) === globalPath);
       vi.mocked(readFileSync).mockImplementation((p) => {
         if (String(p) === globalPath) return JSON.stringify({ enabledPolicies: ["sanitize-jwt"] });
@@ -456,7 +457,7 @@ describe("hooks/hooks-config", () => {
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
       writeScopedHooksConfig({ enabledPolicies: ["sanitize-jwt"] }, "user");
       const [path] = vi.mocked(writeFileSync).mock.calls[0];
-      expect(path).toBe(resolve(homedir(), ".failproofai", "policies-config.json"));
+      expect(path).toBe(globalPolicyConfigFile());
     });
 
     it("creates directory if it does not exist", async () => {

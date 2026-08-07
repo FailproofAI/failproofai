@@ -7,7 +7,8 @@
  * lib/goose-sessions.ts parses each session's `messages`), producing the same
  * LogEntry[] shape the other adapters do — so `logEntriesToEvents` handles the
  * rest. Like Devin, each Goose session carries a real `working_dir`, so
- * `audit --project <cwd>` filters work (unlike the cwd-less Hermes gateway).
+ * `audit --project <cwd>` filters work. (Hermes does too, for its `source='cli'`
+ * sessions — only its Slack/Telegram gateway runs are genuinely cwd-less.)
  */
 import { getGooseSessions } from "../../../lib/goose-projects";
 import { getGooseSessionLog } from "../../../lib/goose-sessions";

@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { readFile } from "node:fs/promises";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { execSync, execFileSync } from "node:child_process";
 import { BUILTIN_POLICIES, registerBuiltinPolicies, clearGitBranchCache } from "../../src/hooks/builtin-policies";
 import { getPoliciesForEvent, clearPolicies } from "../../src/hooks/policy-registry";
@@ -34,13 +37,13 @@ describe("hooks/builtin-policies", () => {
   });
 
   describe("BUILTIN_POLICIES", () => {
-    it("has 39 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+    it("has 40 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(40);
     });
 
-    it("has 11 default-enabled policies", () => {
+    it("has 12 default-enabled policies", () => {
       const defaults = BUILTIN_POLICIES.filter((p) => p.defaultEnabled);
-      expect(defaults).toHaveLength(11);
+      expect(defaults).toHaveLength(12);
     });
   });
 
@@ -503,6 +506,153 @@ describe("hooks/builtin-policies", () => {
     it("allows non-sudo commands", async () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "ls -la" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+  });
+
+  describe("block-self-pause", () => {
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "block-self-pause")!;
+    const decide = async (command: string) =>
+      (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command } }))).decision;
+
+    it("blocks the agent pausing enforcement", async () => {
+      expect(await decide("failproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai config --pause 8h")).toBe("deny");
+    });
+
+    it("blocks it through the aliases and package runners the CLI accepts", async () => {
+      // `configure` and `setup` are normalized to `config` by the entrypoint, so
+      // matching only the canonical spelling would leave two open doors.
+      expect(await decide("failproofai configure --pause")).toBe("deny");
+      expect(await decide("failproofai setup --pause")).toBe("deny");
+      expect(await decide("npx -y failproofai config --pause")).toBe("deny");
+      expect(await decide("bunx failproofai config --pause 30m")).toBe("deny");
+    });
+
+    it("blocks it mid-command, not just at the start", async () => {
+      expect(await decide("cd /tmp && failproofai config --pause")).toBe("deny");
+    });
+
+    // Every line below walked straight through the first version of this
+    // policy, each for one of two reasons: `\bfailproofai\b` could not absorb
+    // the character after the name, and `\s--pause` matched exactly one space.
+    // An agent that reaches any of them suspends every other local guardrail
+    // for 30 minutes, so these are the cases that decide whether the policy is
+    // worth having at all.
+    it("blocks a version-pinned or @latest package runner invocation", async () => {
+      expect(await decide("npx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("npx -y failproofai@0.0.16 config --pause 8h")).toBe("deny");
+      expect(await decide("bunx failproofai@latest config --pause")).toBe("deny");
+      expect(await decide("pnpm dlx failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it when the binary is named by path", async () => {
+      expect(
+        await decide("node /usr/lib/node_modules/failproofai/bin/failproofai.mjs config --pause"),
+      ).toBe("deny");
+      expect(await decide("/usr/local/bin/failproofai config --pause")).toBe("deny");
+      expect(await decide("./node_modules/.bin/failproofai config --pause")).toBe("deny");
+    });
+
+    it("blocks it regardless of how the whitespace falls", async () => {
+      expect(await decide("failproofai config  --pause")).toBe("deny");
+      expect(await decide("failproofai  config   --pause  30m")).toBe("deny");
+      expect(await decide("npx  -y  failproofai  config  --pause")).toBe("deny");
+    });
+
+    it("blocks the shell-escape spellings a red-team used to reconstruct the name", async () => {
+      // A shell removes these before it execs, so each runs the REAL binary and
+      // writes a real pause while presenting a broken literal to the matcher.
+      // All five slipped through the regex-only version.
+      expect(await decide("fail\\proofai config --pause")).toBe("deny");
+      expect(await decide('fail"proof"ai config --pause')).toBe("deny");
+      expect(await decide("fail'proof'ai config --pause")).toBe("deny");
+      expect(await decide("f\\a\\i\\l\\p\\r\\o\\o\\f\\a\\i config --pause")).toBe("deny");
+      expect(await decide("failproof\\ai config --pause --session s1")).toBe("deny");
+    });
+
+    it("blocks ANSI-C quoting, the second lexical class a red-team used", async () => {
+      // $'...' is resolved by the shell purely lexically, like backslash and
+      // quotes — so it belongs on the closed side of the boundary. Each of
+      // these reconstructs `failproofai` and writes a real pause; all three
+      // slipped past the backslash/quote-only normalizer.
+      expect(await decide("$'fail\\x70roofai' config --pause")).toBe("deny"); // hex p
+      expect(await decide("$'fail\\160roofai' config --pause")).toBe("deny"); // octal p
+      expect(await decide("$'fail\\u0070roofai' config --pause")).toBe("deny"); // unicode p
+      expect(await decide("$'\\x66\\x61\\x69\\x6c\\x70\\x72\\x6f\\x6f\\x66\\x61\\x69' config --pause")).toBe(
+        "deny",
+      ); // the whole name in hex
+    });
+
+    it("blocks backslash-newline line continuation, the last lexical class", async () => {
+      // A shell deletes a backslash+newline pair and rejoins the fragments.
+      // The name can be split at any position, repeatedly, or the gap between
+      // tokens — all reconstruct the real `failproofai config --pause`.
+      expect(await decide("fail\\\nproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai con\\\nfig --pause")).toBe("deny");
+      expect(await decide("f\\\na\\\ni\\\nl\\\nproofai config --pause")).toBe("deny");
+      expect(await decide("failproofai config\\\n --pause")).toBe("deny");
+    });
+
+    it("does NOT claim to block the indirection class — that is honestly out of scope", async () => {
+      // When the binary name is BUILT from fragments so the literal never
+      // appears contiguously, a regex over the pre-exec string cannot see it;
+      // the shell reconstructs `failproofai` and runs the pause. The policy
+      // allows these, the doc comment says so, and the real fix is
+      // action-gating, deferred. Asserting the current (permissive) behaviour
+      // keeps the limitation documented rather than mistaken for coverage.
+      // (Spellings where the literal name DOES appear somewhere — e.g. a
+      //  variable assigned the whole word, or `$(printf failproofai)` — are
+      //  denied coincidentally, so they are not the interesting case.)
+      expect(await decide("a=fail; b=proofai; $a$b config --pause")).toBe("allow");
+      expect(await decide("p=proof; failp${p}ai config --pause")).toBe("allow");
+    });
+
+    it("still allows resume and status in those same spellings", async () => {
+      // The widened match must not start denying the two commands that restore
+      // or merely report enforcement — that would make the policy costly to
+      // keep on, and a policy people switch off protects nobody.
+      expect(await decide("npx failproofai@latest config --resume")).toBe("allow");
+      expect(await decide("/usr/local/bin/failproofai config  --status")).toBe("allow");
+      expect(await decide("node /path/to/failproofai.mjs config --resume")).toBe("allow");
+    });
+
+    it("allows resume and status — neither removes enforcement", async () => {
+      expect(await decide("failproofai config --resume")).toBe("allow");
+      expect(await decide("failproofai config --status")).toBe("allow");
+    });
+
+    it("allows ordinary failproofai use and unrelated commands", async () => {
+      expect(await decide("failproofai config")).toBe("allow");
+      expect(await decide("failproofai policies --install block-sudo")).toBe("allow");
+      expect(await decide("git commit -m 'pause the rollout'")).toBe("allow");
+    });
+
+    // The policy is defaultEnabled, and this repo's own CHANGELOG.md and
+    // docs/built-in-policies.mdx contain the literal invocation — so before the
+    // command-position anchor, the first thing it did on a real machine was
+    // deny an agent reading the documentation for it. Every line below was
+    // denied by the unanchored pattern.
+    it("does NOT fire when the invocation is merely quoted inside an argument", async () => {
+      expect(await decide('grep -rn "failproofai config --pause" docs/')).toBe("allow");
+      expect(await decide('git commit -m "docs: explain failproofai config --pause"')).toBe("allow");
+      expect(await decide('gh pr create --body "adds failproofai config --pause"')).toBe("allow");
+      expect(await decide('git log --grep "failproofai config --pause"')).toBe("allow");
+      expect(await decide('rg --files-with-matches "failproofai config --pause"')).toBe("allow");
+      expect(await decide('echo "run failproofai config --pause to suspend"')).toBe("allow");
+    });
+
+    // The anchor must not be satisfied by a wrapper that merely *precedes* the
+    // binary, or the runner forms above would have regressed with it.
+    it("still blocks it behind an interpreter, a wrapper and command substitution", async () => {
+      expect(await decide('sh -c "failproofai config --pause"')).toBe("deny");
+      expect(await decide("timeout 30 failproofai config --pause")).toBe("deny");
+      expect(await decide("env FPAI_X=1 failproofai config --pause")).toBe("deny");
+      expect(await decide("echo $(failproofai config --pause)")).toBe("deny");
+      expect(await decide("failproofai config --pause=30m")).toBe("deny");
+    });
+
+    it("is on by default — an opt-in guardrail here protects nobody", async () => {
+      expect(policy.defaultEnabled).toBe(true);
     });
   });
 
@@ -3093,6 +3243,99 @@ describe("hooks/builtin-policies", () => {
       const result = await policy.fn(ctx);
       expect(result.decision).toBe("allow");
       expect(result.reason).toContain("origin/develop");
+    });
+  });
+
+  describe("getCurrentBranch mtime-gated caching (via require-pr-before-stop)", () => {
+    // Exercises the internal, unexported getCurrentBranch through a real
+    // policy — this is specifically testing the new .git/HEAD-mtime cache
+    // invalidation added for the daemon's warm worker (see builtin-policies.ts):
+    // a branch name must never be served stale once .git/HEAD's mtime changes,
+    // and must be reused (no extra execSync call) while it hasn't.
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "require-pr-before-stop")!;
+    let tmpCwd: string;
+    let headPath: string;
+
+    beforeEach(() => {
+      tmpCwd = mkdtempSync(join(tmpdir(), "fpai-branch-cache-test-"));
+      mkdirSync(join(tmpCwd, ".git"), { recursive: true });
+      headPath = join(tmpCwd, ".git", "HEAD");
+      writeFileSync(headPath, "ref: refs/heads/main\n");
+    });
+
+    afterEach(() => {
+      vi.mocked(execSync).mockReset();
+      vi.mocked(execFileSync).mockReset();
+      clearGitBranchCache();
+      rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    function mockBranch(branch: string) {
+      vi.mocked(execSync).mockImplementation((cmd: string) => {
+        if (typeof cmd === "string" && cmd.includes("gh --version")) return "/usr/bin/gh\n";
+        if (typeof cmd === "string" && cmd.includes("rev-parse --abbrev-ref")) return `${branch}\n`;
+        if (typeof cmd === "string" && cmd.includes("gh pr view")) throw new Error("no pull requests found");
+        return "";
+      });
+      vi.mocked(execFileSync).mockImplementation((_cmd: string, args?: readonly string[]) => {
+        const joined = args?.join(" ") ?? "";
+        if (joined.includes("log") && joined.includes("..HEAD")) return "abc123 some commit\n";
+        if (joined.includes("diff") && joined.includes("--stat")) return " src/index.ts | 2 +-\n";
+        return "";
+      });
+    }
+
+    it("reuses the cached branch across calls while .git/HEAD's mtime is unchanged", async () => {
+      mockBranch("first-branch");
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: tmpCwd } });
+      const first = await policy.fn(ctx);
+      expect(first.decision).toBe("deny");
+      expect(first.reason).toContain('"first-branch"');
+
+      // Change what execSync would report WITHOUT touching .git/HEAD's mtime —
+      // a correct cache must still serve the first call's branch.
+      mockBranch("second-branch");
+      const second = await policy.fn(ctx);
+      expect(second.reason).toContain('"first-branch"');
+      expect(second.reason).not.toContain('"second-branch"');
+    });
+
+    it("re-fetches the branch once .git/HEAD's mtime changes", async () => {
+      mockBranch("first-branch");
+      const ctx = makeCtx({ eventType: "Stop", session: { cwd: tmpCwd } });
+      const first = await policy.fn(ctx);
+      expect(first.reason).toContain('"first-branch"');
+
+      // A real checkout/switch updates .git/HEAD's mtime — simulate that
+      // directly rather than relying on wall-clock drift between two fast
+      // calls, which could land within the filesystem's mtime resolution.
+      writeFileSync(headPath, "ref: refs/heads/second-branch\n");
+      const bumped = new Date(Date.now() + 5000);
+      utimesSync(headPath, bumped, bumped);
+
+      mockBranch("second-branch");
+      const second = await policy.fn(ctx);
+      expect(second.reason).toContain('"second-branch"');
+      expect(second.reason).not.toContain('"first-branch"');
+    });
+
+    it("does not cache when .git/HEAD cannot be stat'd (e.g. a worktree/submodule layout)", async () => {
+      // No .git directory at all under this cwd.
+      const noGitCwd = mkdtempSync(join(tmpdir(), "fpai-branch-cache-nogit-"));
+      try {
+        mockBranch("first-branch");
+        const ctx = makeCtx({ eventType: "Stop", session: { cwd: noGitCwd } });
+        const first = await policy.fn(ctx);
+        expect(first.reason).toContain('"first-branch"');
+
+        mockBranch("second-branch");
+        const second = await policy.fn(ctx);
+        // Without a stat-able .git/HEAD, every call must re-fetch — matching
+        // today's behavior for this case rather than caching indefinitely.
+        expect(second.reason).toContain('"second-branch"');
+      } finally {
+        rmSync(noGitCwd, { recursive: true, force: true });
+      }
     });
   });
 

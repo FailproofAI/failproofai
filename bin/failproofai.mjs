@@ -62,6 +62,32 @@ async function track(name, props) {
   } catch {}
 }
 
+/**
+ * Exits only once stdout/stderr have actually been flushed.
+ *
+ * Under every agent CLI a hook's stdout is a pipe, and pipe writes in Node
+ * are asynchronous — `process.exit()` terminates without draining what's
+ * still buffered. That stdout carries the decision payload, so a truncated
+ * write silently changes the decision the CLI observes; on the fail-closed
+ * path it would drop the deny reason entirely and leave the CLI with a bare
+ * exit code and no explanation.
+ */
+async function exitAfterFlush(code) {
+  const drain = (stream) =>
+    new Promise((resolveDrain) => {
+      // A zero-length write's callback still queues behind everything
+      // already buffered, so this resolves after the real output lands.
+      if (stream.writableLength === 0 || stream.destroyed) resolveDrain();
+      else stream.write("", () => resolveDrain());
+    });
+  try {
+    await Promise.all([drain(process.stdout), drain(process.stderr)]);
+  } catch {
+    // Never let a flush problem swallow the exit code itself.
+  }
+  process.exit(code);
+}
+
 // --hook <event> [--cli <name>] — called by an agent CLI hook; fast path, outside
 // runCli() because it has its own exit code contract with the calling agent.
 const hookIdx = args.indexOf("--hook");
@@ -94,13 +120,131 @@ if (hookIdx >= 0) {
       ? cliArg
       : "claude";
   try {
+    // Daemon-aware path — inert (and this whole block skipped) on every
+    // machine until `failproofai config` has installed failproofaid AND
+    // written the daemonConfigured marker (Stage 4). Until then this is
+    // byte-for-byte the same handleHookEvent(...) call below.
+    const { isDaemonConfigured, attemptDaemonHook } = await import("../src/hooks/daemon-client");
+    if (isDaemonConfigured()) {
+      const { readStdinPayload } = await import("../src/hooks/read-stdin");
+      const { evaluateHookEvent } = await import("../src/hooks/handler");
+      const stdinRead = await readStdinPayload();
+
+      const attempt = await attemptDaemonHook({
+        hookEvent: eventType,
+        cli,
+        stdin: stdinRead.payload,
+        // The client's own cwd IS the originating CLI session's cwd — this
+        // process is spawned fresh, at that location, by the calling agent
+        // CLI's own hook mechanism. See daemon-client.ts / PROTOCOL.md.
+        cwd: process.cwd(),
+      });
+
+      // On a daemon-configured machine the daemon is the ONLY evaluator. Every
+      // way of not getting an answer from it denies, and in-process evaluation
+      // is never reached from this branch — that is what "all enforcement is
+      // routed through the daemon" means, and a fallback here would be a second
+      // policy engine reachable by breaking the first.
+      //
+      // The two failures still differ in what the USER has to do, so they are
+      // told apart in the message and nowhere else:
+      //
+      //   protocol-mismatch: a daemon answered, so it is alive; the CLI and the
+      //     daemon are different versions, which is what an `npm update` that
+      //     has not been followed by `failproofai config` looks like. The remedy
+      //     is an upgrade, and naming it is the difference between a one-command
+      //     fix and a support ticket. `daemonVersionSkew()` has already been
+      //     hinting this on every CLI command.
+      //
+      //   unreachable: nothing answered. A stopped service, a deleted socket and
+      //     deliberate tampering are indistinguishable from here — and a machine
+      //     where stopping one service silently disables every guardrail is not
+      //     a guarded machine.
+      let result;
+      if (attempt.ok) {
+        result = attempt.response;
+      } else {
+        const reason =
+          attempt.failure === "protocol-mismatch"
+            ? "failproofaid is running a different protocol version than this CLI, so it " +
+              "cannot evaluate this call. Run `failproofai config` to update the daemon."
+            : "failproofaid could not be reached. This machine is configured to run hooks through it " +
+              "— check the daemon (see `failproofai config`) rather than retrying blindly.";
+        result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {
+          forceDecision: { decision: "deny", reason },
+        });
+      }
+
+      if (result.stdout) process.stdout.write(result.stdout);
+      if (result.stderr) process.stderr.write(result.stderr);
+      await exitAfterFlush(result.exitCode);
+    }
+
     const { handleHookEvent } = await import("../src/hooks/handler");
     const exitCode = await handleHookEvent(eventType, cli);
     // handleHookEvent already flushes its own telemetry before returning; this
     // is the normal, reliable exit.
-    process.exit(exitCode);
+    await exitAfterFlush(exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // The outer fail-closed boundary. This wrote NOTHING to stdout and exited 2,
+    // which is a deny for Claude and Factory's non-Stop events and a silent
+    // ALLOW for the eight CLIs that read their verdict from stdout JSON —
+    // Cursor, Pi, Hermes, OpenClaw, Devin, Antigravity, Goose, and Factory's
+    // Stop. Everything above can land here, INCLUDING the forced-deny call that
+    // handles an unreachable daemon, so the one path whose entire job is to fail
+    // closed failed open instead.
+    //
+    // Emitted BEFORE any telemetry: `flushHookTelemetry` loops until its queue
+    // drains and is not bounded, so draining first meant a stuck send could hold
+    // the verdict back indefinitely — and a verdict that arrives after the agent
+    // has moved on is the same as no verdict.
+    const reason =
+      "failproofai could not evaluate this call and is failing closed. " +
+      `Check the failproofai installation (\`failproofai config\`). Underlying error: ${msg}`;
+    let emitted = false;
+    let denyExitCode = 2;
+    try {
+      // The real evaluator does the shaping, exactly as the unreachable-daemon
+      // path above does — that is what keeps this deny from being inert on some
+      // CLI whose contract nobody remembered here. It can only work if the
+      // handler module is loadable, which is why the fallback below exists.
+      const { evaluateHookEvent } = await import("../src/hooks/handler");
+      const forced = await evaluateHookEvent(eventType, cli, "", {
+        forceDecision: { decision: "deny", reason },
+      });
+      if (forced.stdout) process.stdout.write(forced.stdout);
+      if (forced.stderr) process.stderr.write(forced.stderr);
+      emitted = true;
+      denyExitCode = forced.exitCode;
+    } catch {
+      // Last ditch: the module that knows each CLI's exact deny shape is itself
+      // the thing that just failed, so this emits the union of them — every CLI
+      // reads only the keys it knows and ignores the rest. Deliberately NOT a
+      // per-CLI table: a second copy of those twelve contracts would drift from
+      // the real one, and this runs only when the install is already broken.
+      // Imperfect enforcement beats the zero bytes that were written before.
+      try {
+        process.stdout.write(
+          JSON.stringify({
+            decision: "block",
+            reason,
+            permission: "deny",
+            followup_message: reason,
+            hookSpecificOutput: {
+              hookEventName: eventType,
+              permissionDecision: "deny",
+              permissionDecisionReason: reason,
+            },
+          }),
+        );
+        emitted = true;
+      } catch {}
+    }
+    if (!emitted) console.error(`Unexpected error: ${msg}`);
+    else console.error(`[failproofai] failing closed: ${msg}`);
+
     await track("hook_dispatch_error", {
       event_type: eventType,
       cli,
@@ -113,8 +257,10 @@ if (hookIdx >= 0) {
       const { flushHookTelemetry } = await import("../src/hooks/hook-telemetry");
       await flushHookTelemetry();
     } catch {}
-    console.error(`Unexpected error: ${msg}`);
-    process.exit(2);
+    // `exitAfterFlush`, not a bare `process.exit`: this was the one exit in
+    // `--hook` handling that skipped it, so under load `process.exit` could
+    // truncate the very bytes carrying the deny.
+    await exitAfterFlush(denyExitCode);
   }
 }
 
@@ -124,18 +270,8 @@ if (hookIdx >= 0) {
  * Error     → unexpected; shows message only, exits 2
  */
 async function runCli() {
-  // Report a fresh install / upgrade. Deliberately here rather than at module
-  // scope: everything above this point is the --hook fast path, which runs on
-  // every tool call. No-ops after the first run on a given version.
-  try {
-    const { maybeReportInstall } = await import("../lib/install-check");
-    await maybeReportInstall(version);
-  } catch {
-    // never block a command on reporting
-  }
-
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "auth", "audit", "config"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -176,15 +312,19 @@ COMMANDS
 
   policies --help, -h            Show this help for the policies command
 
-  auth                           Sign in / out of FailproofAI from the CLI.
-    login                          Email + OTP flow; writes ~/.failproofai/auth.json
-    logout                         Revoke this session and remove auth.json
-    whoami                         Print the currently authenticated identity
-  auth --help, -h                Show this help for the auth command
-
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command
+
+  uninstall                      Remove failproofai from this machine: hook
+                                 entries from every agent CLI, and the daemon
+                                 service. Run this BEFORE \`npm rm -g failproofai\`
+                                 — npm runs no uninstall script, so removing the
+                                 package alone leaves both behind.
+    --purge                        Also delete ~/.failproofai (settings,
+                                   credentials, audit history, daemon binary)
+    --dry-run                      Show what would be removed, change nothing
+    --yes, -y                      Skip the confirmation prompt
 
   --version, -v                  Print version and exit
   --help, -h                     Show this help message
@@ -232,6 +372,296 @@ LINKS
     }
     console.log(version);
     process.exit(0);
+  }
+
+  // First-run onboarding — before any subcommand runs its own work.
+  //
+  // On a machine that has never been set up, the first thing the user typed is
+  // almost never the thing they need first, so we run the wizard and then let
+  // their original command proceed. Exemptions matter more than the rule:
+  //
+  //   --hook            never reaches here (it exits above) — it runs on every
+  //                     tool call, and a wizard on that path would hang an agent
+  //   --version/--help  answering "what is this" must not require setup
+  //   config            IS the wizard
+  //   policies/policy   explicit configuration actions. Intercepting these would
+  //                     fight the intent the user just stated, and would break
+  //                     non-interactive scripts that call them to do setup.
+  //
+  // `maybeFirstRunConfigure` is itself a no-op on a configured machine, on a
+  // non-TTY, and under sudo — so this is a cheap check, not a second gate.
+  // Layout check, before onboarding decides anything. A home written by an
+  // older layout is reset here — visibly, in a real command the user typed —
+  // rather than from a hook, which runs unattended once per tool call. A home
+  // written by a NEWER layout stops the command instead: that data is fine and
+  // an upgrade would read it, so deleting it would destroy something
+  // recoverable.
+  //
+  // `audit --scheduled` is the exception, and it takes the HOOK's branch: it is
+  // spawned by failproofaid on a timer, so "visibly, in a real command the user
+  // typed" is exactly what it is not. `checkLayoutForCli()` deletes
+  // config.toml and credentials.toml (see `resettablePaths`), so letting a
+  // background process reach it would silently revoke a user's
+  // `[telemetry] enabled = false`, erase their cloud enrolment, and switch off
+  // `[audit] auto` — the setting that scheduled the run — with the explanation
+  // going only to the service journal. Reachable on every machine at the next
+  // LAYOUT_VERSION bump, when a home carrying `auto = true` is by definition
+  // stale. Verified live: one scheduled tick took a home's whole config.
+  //
+  // `--help` / `--version` take the same exemption `first-run-gate.ts` gives
+  // them, and for a stronger reason. Those two answer "what is this / how do I
+  // use it"; the subcommands that parse their own help (`policies --help`) fall
+  // past the help block above and reach here, so without this a user typing
+  // `failproofai policies --help` had their home reset by a question. The
+  // adjacent, far less destructive first-run gate exempted help from the start.
+  let layoutWasReset = false;
+  {
+    const isHelpOrVersion =
+      args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
+    if (args[0] === "audit" && args.includes("--scheduled")) {
+      const { layoutWarningForHook } = await import("../src/hooks/fp-reset");
+      const warning = layoutWarningForHook();
+      if (warning) {
+        // Exit 1, not 75: 75 means "another audit holds the lock" and is retried
+        // in fifteen minutes, which here would just re-warn four times an hour
+        // forever. A stale home is a real failure that `failproofai config`
+        // fixes, so it is reported and retried at the ordinary cadence.
+        console.error(warning);
+        process.exit(1);
+      }
+    } else if (!isHelpOrVersion) {
+      const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
+      const check = await checkLayoutForCli();
+      for (const line of check.lines) console.error(line);
+      if (check.fatal) process.exit(1);
+      layoutWasReset = check.didReset;
+    }
+  }
+
+  // Report a fresh install / upgrade. AFTER the layout check above, never
+  // before: this writes the `last-version` marker, and while that file lived at
+  // the root of the home it was one of the landmarks `detectLayout()` reads as
+  // "layout 1". Running first meant the CLI created the file and then read it
+  // back as evidence of an old layout, so every genuinely fresh machine had its
+  // very first command open with "failproofai reorganised … Removed 1 item(s)
+  // from the old layout." Nothing was lost — there was nothing there — but
+  // training every new user to ignore that banner is expensive given what it
+  // says on a real layout-1 home. The file has also moved under `state/`, so
+  // the two are independent now; the order is kept because it is the correct
+  // one regardless.
+  //
+  // Deliberately not at module scope: everything above the CLI entry is the
+  // --hook fast path, which runs on every tool call. No-ops after the first run
+  // on a given version.
+  try {
+    const { maybeReportInstall } = await import("../lib/install-check");
+    await maybeReportInstall(version);
+  } catch {
+    // never block a command on reporting
+  }
+
+  const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
+  if (shouldOfferFirstRun(args) || layoutWasReset) {
+    try {
+      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
+      // `audit` runs its own scan immediately after this returns; firing the
+      // post-setup audit too would scan the whole history twice in a row.
+      //
+      // `force` after a reset: the home's policy config is gone, but the agent
+      // CLIs' settings files were deliberately left alone, so `isConfigured()`
+      // still reads true off `hasGlobalHooks` and setup would be skipped —
+      // leaving hooks firing against no policies, silently and permanently.
+      await maybeFirstRunConfigure(
+        {},
+        { postSetupAudit: args[0] !== "audit", force: layoutWasReset },
+      );
+    } catch {
+      // Onboarding is never allowed to block the command the user actually typed.
+    }
+  }
+
+  // backfill [--since <YYYY-MM-DD|Nd>] [--dry-run]
+  //
+  // Hands off to the daemon rather than doing the work: the cursors it rewinds
+  // are held in memory by the RUNNING collector, which would write them back
+  // over. Every precondition a person can get wrong is still checked HERE,
+  // synchronously, because reporting success and leaving the real failure in the
+  // journal is what already cost twenty minutes on a live machine.
+  if (args[0] === "backfill") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai backfill — re-send history the collector has already read past
+
+USAGE
+  failproofai backfill [--since <when>] [--dry-run]
+
+WHY
+  The collector never re-reads a file it has a cursor for, which is right until
+  the dashboard's data is cleared, a machine is re-enrolled, or cursors advanced
+  before there was anywhere to send. Then the history exists on disk and nowhere
+  else, with no way to ask for it again.
+
+  Re-sending is safe: redaction is deterministic, so a re-sent event hashes
+  identically to its first send and collapses into the row already there.
+
+OPTIONS
+  --since <when>   How far back. \`30d\`, \`6m\`, or \`YYYY-MM-DD\`.
+                   Default: 30 days.
+  --dry-run        Report what would be re-read and change nothing.
+
+  Which streams are sent follows [collector] in ~/.failproofai/config.toml —
+  a backfill never sends something your config says you do not want.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--since", "--dry-run"]);
+    const unknown = subArgs.find((a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--since");
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai backfill --help\` for usage.`);
+    }
+
+    let sinceMs;
+    const sinceIdx = subArgs.indexOf("--since");
+    if (sinceIdx >= 0) {
+      const raw = subArgs[sinceIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --since.");
+      // `30d` / `6m` / an ISO date. Rejected rather than guessed at: silently
+      // reading an unparseable window as "the default" would send a different
+      // amount of history than was asked for, and nothing would say so.
+      const rel = /^(\d+)([dmy])$/.exec(raw);
+      if (rel) {
+        const n = Number(rel[1]);
+        const days = rel[2] === "d" ? n : rel[2] === "m" ? n * 30 : n * 365;
+        sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+      } else {
+        const t = Date.parse(raw);
+        if (Number.isNaN(t)) {
+          throw new CliError(`Could not read --since ${raw}. Use 30d, 6m, or YYYY-MM-DD.`);
+        }
+        sinceMs = t;
+      }
+    }
+
+    lastSubcommand = "backfill";
+    const { runBackfillCommand } = await import("../src/hooks/backfill-cli");
+    const result = runBackfillCommand({ sinceMs, dryRun: subArgs.includes("--dry-run") });
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_backfill", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run"), explicit_since: sinceIdx >= 0 });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // uninstall [--purge] [--dry-run] [--yes|-y]
+  //
+  // Top-level, and deliberately NOT a flag on `policies`. `policies --uninstall`
+  // disables policies; this removes the product — hook entries across every
+  // agent CLI plus the root-owned daemon service — and the two must not be one
+  // keystroke apart.
+  if (args[0] === "uninstall") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai uninstall — remove failproofai from this machine
+
+USAGE
+  failproofai uninstall [--purge] [--dry-run] [--yes]
+
+WHAT IT REMOVES
+  • failproofai hook entries from every agent CLI that has them
+  • the failproofaid daemon service (needs sudo)
+  • the "require the daemon" flag — cleared FIRST, so a partial uninstall can
+    never leave this machine denying every tool call
+
+OPTIONS
+  --purge         Also delete ~/.failproofai — settings, credentials, audit
+                  history and the downloaded daemon binary. Off by default so a
+                  reinstall keeps your history.
+  --dry-run       Print what would be removed and change nothing.
+  --yes, -y       Skip the confirmation prompt. Required when there is no TTY.
+
+WHY THIS EXISTS
+  npm runs no uninstall script, so \`npm rm -g failproofai\` removes the package
+  and leaves the hook entries and the service behind. Run this first, then:
+      npm rm -g failproofai
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--purge", "--dry-run", "--yes", "-y"]);
+    const unknown = subArgs.find((a) => !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai uninstall --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "uninstall_command";
+    const { runUninstallCommand } = await import("../src/hooks/uninstall-cli");
+    const purge = subArgs.includes("--purge");
+    const dryRun = subArgs.includes("--dry-run");
+    const yes = subArgs.includes("--yes") || subArgs.includes("-y");
+
+    // Set only when the prompt actually rendered the plan, which is the one
+    // case where printing it again would duplicate it.
+    let planWasShown = false;
+    const result = await runUninstallCommand({
+      purge,
+      dryRun,
+      yes,
+      cwd: process.cwd(),
+      // Only offered when a person can actually answer. Without a TTY the
+      // command requires --yes rather than assuming consent — see the module.
+      confirm: process.stdin.isTTY
+        ? async (planLines) => {
+            planWasShown = true;
+            const { selectOne } = await import("../src/hooks/tui");
+            // "No" first, so the default landing position on Enter is the
+            // non-destructive one.
+            const answer = await selectOne({
+              message: purge
+                ? "Remove failproofai and DELETE ~/.failproofai?"
+                : "Remove failproofai from this machine?",
+              body: planLines,
+              choices: [
+                { label: "No, cancel", value: false },
+                { label: purge ? "Yes, remove and purge" : "Yes, remove it", value: true },
+              ],
+            });
+            return answer === true;
+          }
+        : undefined,
+    });
+
+    // The prompt already rendered the plan as its body; re-printing it would
+    // show the same block twice. `planLines` is reported by the command rather
+    // than guessed from the text — see UninstallResult.
+    const skip = planWasShown ? result.planLines : 0;
+    for (const line of result.lines.slice(skip)) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    // NOT after a purge. `track` resolves the instance id, and `getInstanceId()`
+    // lazily WRITES ~/.failproofai/state/telemetry-id — which re-created the
+    // whole directory seconds after the purge deleted it, leaving a machine the
+    // user had just wiped holding a brand-new tracking identifier and making
+    // the command's own "✓ deleted" line false. A purge means gone; nothing
+    // gets to touch the home afterwards, least of all telemetry.
+    if (!result.purged) {
+      await track("cli_uninstall_command", {
+        ok: result.exitCode === 0,
+        purge,
+        dry_run: dryRun,
+      });
+    }
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
   }
 
   // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]
@@ -499,19 +929,6 @@ EXAMPLES
     process.exit(0);
   }
 
-  // auth — email-OTP login flow against the FailproofAI api-server.
-  if (args[0] === "auth") {
-    lastSubcommand = "auth";
-    const { runAuthCli } = await import("../src/auth/cli");
-    await runAuthCli(args.slice(1));
-    await track("cli_auth_invoked", {
-      args_count: args.length - 1,
-      subcommand: args[1] ?? "help",
-      exit_code: process.exitCode ?? 0,
-    });
-    process.exit(process.exitCode ?? 0);
-  }
-
   // audit — scan local agent-CLI history, then launch the dashboard at /audit.
   if (args[0] === "audit") {
     lastSubcommand = "audit";
@@ -702,19 +1119,183 @@ WHAT IT DOES
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
+FAILPROOF CLOUD
+  failproofai config --connect <url> --token <key> [--machine-id <id>]
+                                    Connect this machine to Failproof Cloud
+                                    [--no-transcripts] decisions only, no transcripts
+  failproofai config --disconnect   Stop pulling policy and sending activity
+  failproofai config --status       Show connection and pause state
+
+  One connection, two capabilities: this machine PULLS centrally-managed
+  policies and SENDS what its hooks decided, so the dashboard shows the fleet
+  it is enforcing on. Both are checked against the server before anything is
+  written, and reported separately — a key carrying policies:pull but not
+  events:add connects for policy and says exactly why the dashboard is empty.
+
+  Tokens are stored owner-only in ~/.failproofai/, never in the service unit —
+  that file is world-readable. Connecting needs no sudo, and the machine id
+  defaults to this host's name.
+
+  Connecting sends BOTH policy decisions and full session transcripts. A
+  transcript carries prompts, file contents and whatever was pasted into a
+  terminal — that is the point of connecting, and it is stated here rather than
+  buried behind a flag nobody finds. Use --no-transcripts for decisions only.
+
+PAUSING ENFORCEMENT (one session, always time-boxed)
+  failproofai config --pause         Pause this directory's newest agent session (30m)
+  failproofai config --pause 10m     Pause for a given time (max 8h; s/m/h, bare = minutes)
+  failproofai config --resume        End the pause early
+  failproofai config --status        Show what is paused and when it lifts
+    --session <id>                     Target a specific session
+    --all                              With --resume, end every active pause
+
+  A pause suspends builtin, custom and convention policies for that session
+  only, and always expires on its own. Cloud-managed policies keep enforcing.
+
   Prefer flags? See \`failproofai policies --help\`.
 `.trimStart());
       process.exit(0);
     }
     lastSubcommand = "config";
+
+    // --pause / --resume / --status are non-interactive session actions that
+    // share `config`'s surface but not the wizard. They write session state,
+    // never the config file — a pause that reached policies-config.json would
+    // be committed and outlive the session that asked for it.
+    // Cloud enrolment. Deliberately writes a credential file the daemon reads
+    // rather than an Environment= line in the service unit: that unit is
+    // installed world-readable (0644, /etc/systemd/system), so a token there
+    // would be readable by every local user. Keeping it out also means no
+    // sudo, and lets an already-installed daemon be connected.
+    const connectIdx = args.indexOf("--connect");
+    const wantsDisconnect = args.includes("--disconnect");
+    if (connectIdx >= 0 || wantsDisconnect) {
+      if (connectIdx >= 0 && wantsDisconnect) {
+        throw new CliError("--connect and --disconnect cannot be combined.");
+      }
+      const valueAfter = (flag) => {
+        const i = args.indexOf(flag);
+        if (i < 0) return undefined;
+        const v = args[i + 1];
+        if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+        return v;
+      };
+      let result;
+      if (wantsDisconnect) {
+        const { runDisconnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = runDisconnectCommand();
+      } else {
+        const { hostname } = await import("node:os");
+        const { runConnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = await runConnectCommand({
+          url: valueAfter("--connect"),
+          token: valueAfter("--token"),
+          machineId: valueAfter("--machine-id"),
+          machineLabel: valueAfter("--machine-label"),
+          defaultMachineId: hostname(),
+          // Transcripts are what connecting is FOR, so they default on and the
+          // disclosure is made at the point of connection rather than hidden
+          // behind an opt-in flag most people never discover — a dashboard
+          // showing only decisions is the empty-dashboard problem in a
+          // different costume. --no-transcripts is the explicit way out, and
+          // `failproofai config --status` always says which is in effect.
+          sessions: !args.includes("--no-transcripts"),
+        });
+      }
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_cloud_enrollment", {
+        action: wantsDisconnect ? "disconnect" : "connect",
+        ok: result.exitCode === 0,
+      });
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
+    const pauseIdx = args.indexOf("--pause");
+    const wantsResume = args.includes("--resume");
+    const wantsStatus = args.includes("--status");
+    if (pauseIdx >= 0 || wantsResume || wantsStatus) {
+      const chosen = [pauseIdx >= 0 && "--pause", wantsResume && "--resume", wantsStatus && "--status"].filter(Boolean);
+      if (chosen.length > 1) {
+        throw new CliError(`${chosen.join(" and ")} cannot be combined.`);
+      }
+      const sessionIdx = args.indexOf("--session");
+      if (sessionIdx >= 0 && !args[sessionIdx + 1]) {
+        throw new CliError("Missing session id after --session.");
+      }
+      // A bare `--pause` takes the default duration, so only treat the next
+      // token as a duration when it isn't another flag.
+      const next = pauseIdx >= 0 ? args[pauseIdx + 1] : undefined;
+      const duration = next && !next.startsWith("-") ? next : undefined;
+
+      const { runPauseCommand } = await import("../src/hooks/session-pause-cli");
+      const result = runPauseCommand({
+        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        duration,
+        sessionId: sessionIdx >= 0 ? args[sessionIdx + 1] : undefined,
+        all: args.includes("--all"),
+        cwd: process.cwd(),
+      });
+      // `--status` answers "what is this machine's state?", which is both
+      // halves: whether enforcement is paused AND whether cloud is connected.
+      if (wantsStatus) {
+        const { connectionStatusLines } = await import("../src/hooks/cloud-enrollment-cli");
+        for (const line of connectionStatusLines()) console.log(line);
+        // Always printed, including where reports can never work: "why am I
+        // not getting them?" is the question --status exists to answer, and an
+        // omitted line answers it with silence.
+        console.log("");
+      }
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_pause_invoked", {
+        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        ok: result.exitCode === 0,
+        affected: result.affected,
+      });
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
     const result = await runConfigureWizard();
     await track("cli_configure_invoked", {
       applied: result.applied,
-      scope: result.scope ?? null,
+      // `target` and `scopes`, not `scope`: the wizard rework replaced that
+      // field and nothing caught it, because `.mjs` is outside the tsconfig
+      // include so `tsc --noEmit` never type-checks this file. Every
+      // `cli_configure_invoked` since has reported `scope: null`.
+      target: result.target ?? null,
+      scopes: result.scopes ?? [],
       cli_count: result.clis?.length ?? 0,
+      abort: result.abort ?? null,
     });
-    process.exit(0);
+    // `abort` is the field `WizardAbort` exists to expose, and exiting 0
+    // regardless discarded it: a fleet script could not tell "the user pressed
+    // Esc" from "this machine could not install the required daemon and is
+    // unconfigured". Cancelling is not a failure; the other two are.
+    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : 0);
+    return;
+  }
+
+  // Shared by both "unknown thing" guards below, so a mistyped SUBCOMMAND gets
+  // the same nearest-match treatment a mistyped flag already got.
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    return dp[m][n];
   }
 
   // Unknown flag guard — must appear after all known-flag branches
@@ -722,20 +1303,7 @@ WHAT IT DOES
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
 
   if (unknownFlag) {
-    function levenshtein(a, b) {
-      const m = a.length, n = b.length;
-      const dp = Array.from({ length: m + 1 }, (_, i) =>
-        Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-      );
-      for (let i = 1; i <= m; i++)
-        for (let j = 1; j <= n; j++)
-          dp[i][j] = a[i - 1] === b[j - 1]
-            ? dp[i - 1][j - 1]
-            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-      return dp[m][n];
-    }
-
-    const primary = ["--version", "--help", "--hook", "policies", "policy", "auth", "audit"];
+    const primary = ["--version", "--help", "--hook", "policies", "policy", "audit"];
     const closest = primary.reduce((best, flag) => {
       const dist = levenshtein(unknownFlag, flag);
       return dist < best.dist ? { flag, dist } : best;
@@ -751,29 +1319,27 @@ WHAT IT DOES
   // Unknown subcommand guard (non-flag args that aren't a known subcommand)
   const unknownSubcommand = args.find(a => !a.startsWith("-") && !SUBCOMMANDS.includes(a));
   if (unknownSubcommand) {
+    // Nearest match rather than a hardcoded "policies", which was wrong for
+    // every input that was not a typo of it. `auth` made that concrete: it was
+    // a real subcommand until this release, so an old script or plain muscle
+    // memory lands here, and answering "did you mean policies?" sends someone
+    // to the one command that has nothing to do with what they typed.
+    const nearest = SUBCOMMANDS.reduce(
+      (best, name) => {
+        const dist = levenshtein(unknownSubcommand, name);
+        return dist < best.dist ? { name, dist } : best;
+      },
+      { name: SUBCOMMANDS[0], dist: Infinity },
+    );
     throw new CliError(
       `Unknown command: ${unknownSubcommand}\n` +
-      `Did you mean: failproofai policies?\n` +
+      `Did you mean: failproofai ${nearest.name}?\n` +
       `Run \`failproofai --help\` for usage details.`
     );
   }
 
-  // First-run onboarding — on the first bare `failproofai` invocation, run the
-  // configure wizard (which also fires the post-setup audit) BEFORE the
-  // dashboard. Unlike before, we then fall through to launch the dashboard, so a
-  // fresh user gets: setup → audit → dashboard, and every later `failproofai`
-  // goes straight to the dashboard. Best-effort: any error must not block launch.
-  if (args.length === 0) {
-    try {
-      const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
-      await maybeFirstRunConfigure();
-    } catch {
-      // First-run onboarding is non-critical; fall through to the dashboard.
-    }
-  }
-
   // Dashboard launch — always production mode. Runs on every bare `failproofai`
-  // (after first-run onboarding, if any).
+  // (first-run onboarding, if any, already ran above).
   const { launch } = await import("../scripts/launch");
   launch("start");
 }

@@ -41,8 +41,13 @@ jobs:
         with:
           # No git ops after checkout; don't leave the token in .git/config.
           persist-credentials: false
-      - name: Scan bun.lock for known-vulnerable / malicious dependencies
+      # Both lockfiles, in one scan. `Cargo.lock`'s 238 packages were covered by
+      # nothing at all — not this job, which was only ever given `bun.lock`, and
+      # not Dependabot, which had no `cargo` ecosystem — for a TLS stack that
+      # compiles into a root-installed system service.
+      - name: Scan bun.lock and Cargo.lock for known-vulnerable / malicious dependencies
         uses: google/osv-scanner-action/osv-scanner-action@9fd1bcce27f67e3bd819a0a7620e332803dc43bc # v2.3.8
         with:
           scan-args: |-
             --lockfile=bun.lock
+            --lockfile=Cargo.lock

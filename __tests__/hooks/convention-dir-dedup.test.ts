@@ -21,6 +21,7 @@ import { join } from "node:path";
 
 import { loadAllCustomHooks } from "@/src/hooks/custom-hooks-loader";
 import { clearCustomHooks } from "@/src/hooks/custom-hooks-registry";
+import { customPoliciesDir } from "../../src/hooks/fp-home";
 
 const SRC = `
   import { customPolicies, allow } from "failproofai";
@@ -37,8 +38,8 @@ describe("convention discovery deduplicates overlapping directories", () => {
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "fp-dedup-"));
-    mkdirSync(join(home, ".failproofai", "policies"), { recursive: true });
-    writeFileSync(join(home, ".failproofai", "policies", "probe-policies.mjs"), SRC, "utf8");
+    mkdirSync(customPoliciesDir(home), { recursive: true });
+    writeFileSync(join(customPoliciesDir(home), "probe-policies.mjs"), SRC, "utf8");
     vi.stubEnv("HOME", home);
     vi.stubEnv("USERPROFILE", home);
     clearCustomHooks();

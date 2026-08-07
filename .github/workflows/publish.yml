@@ -35,6 +35,32 @@ on:
         type: boolean
         default: false
 
+# Two entry points can fire for the same version — a `release: published` and a
+# `workflow_dispatch` — and this pipeline is not safe to run twice at once.
+# Overlapping runs both pass the preflight's "this version is unpublished"
+# `npm view` check before either has published, and the "Bump version for next
+# development cycle" step then has both racing an unguarded
+# `git fetch → checkout main → commit → push`, where the loser's push simply
+# fails. `ci.yml` and `bump-platform-submodule.yml` both serialize for the same
+# reason; this one was the exception.
+#
+# NOT `cancel-in-progress`: a half-cancelled publish is the one outcome worse
+# than a queued one — the release assets attach before the npm publish, so a run
+# killed between them leaves a tag whose binaries exist and whose package does
+# not.
+# A CONSTANT group, not one keyed on `github.ref`. The two triggers this block
+# exists to serialize never share a ref — `release: published` runs as
+# `refs/tags/vX.Y.Z` and `workflow_dispatch` as `refs/heads/main` — so
+# `publish-${{ github.ref }}` put them in DIFFERENT groups and queued neither
+# behind the other, which is precisely the pair the comment above describes.
+# `npm view` reads through a cache documented to lag up to two minutes, so both
+# could pass the preflight's "this version is unpublished" check and proceed.
+# Nothing about this pipeline is per-ref anyway: the version-bump push races on
+# `main` whatever ref produced it.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 jobs:
   # Everything cheap and fail-fast lives here: version resolution, the npm
   # credential check (so a bad token costs seconds rather than a 20-minute
@@ -136,6 +162,28 @@ jobs:
           echo "Next version: $NEXT_VERSION"
           echo "Dry run: $DRY_RUN"
 
+      # npm refuses to overwrite a published version, and the root package is
+      # the LAST thing this pipeline publishes — so without this check a burned
+      # version still runs the whole cross-compile matrix, attaches release
+      # assets, and publishes the four @failproofai/failproofaid-<os>-<arch>
+      # packages before dying on `E403 You cannot publish over the previously
+      # published versions`. That leaves four orphan platform packages on the
+      # registry at a version whose CLI is already published without pins to
+      # them, and the orphans cannot be unpublished after 72 hours. It is the
+      # exact failure a dispatch from a branch hits by default, because a
+      # workflow_dispatch has no version input: PUBLISH_VERSION is whatever
+      # package.json carries, and a feature branch's package.json is routinely
+      # a version that shipped long ago.
+      - name: Verify the version is unpublished
+        env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.publish_version }}
+        run: |
+          if npm view "failproofai@$PUBLISH_VERSION" version >/dev/null 2>&1; then
+            echo "::error::failproofai@$PUBLISH_VERSION is already published — npm will reject it. Bump the version on a release-cut branch, or dispatch from a ref that carries an unpublished version."
+            exit 1
+          fi
+          echo "failproofai@$PUBLISH_VERSION is not on the registry yet."
+
       # Who may cut a STABLE release. Prereleases are deliberately open: a beta
       # or a `next` build is how anyone with write access ships a branch for
       # testing, and npm's `beta`/`next` tags are opt-in. A stable release is
@@ -228,34 +276,117 @@ jobs:
     if: needs.preflight.outputs.has_daemon == 'true'
     uses: ./.github/workflows/build-daemon.yml
 
-  # Attaches the binaries + their checksums to the GitHub Release BEFORE npm
-  # publishes, because that release is where the installed CLI fetches its
-  # daemon from.
+  # The CLI's own installable artifact. Deliberately NOT gated on has_daemon:
+  # a release should carry an installable `failproofai` whether or not that ref
+  # builds a daemon, and this is the only way to install the CLI without the
+  # npm registry (`npm i -g ./failproofai-<version>.tgz`).
+  cli-tarball:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 5
+          command: bun install --frozen-lockfile
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      # The tarball has to be packed at the version being published, not at
+      # whatever the ref happens to carry — a release from a tag bumps the
+      # version in the publish job, and an asset named for a different version
+      # than it contains is worse than no asset.
+      - name: Set publish version in package.json
+        if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+        run: npm version "$PUBLISH_VERSION" --no-git-tag-version
+
+      - name: Build
+        run: bun run build
+
+      - name: Pack the CLI tarball
+        run: |
+          # --ignore-scripts: the build above already ran, and `prepare` would
+          # fire a second full Next.js build for nothing.
+          npm pack --ignore-scripts
+          ls -l failproofai-*.tgz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: failproofai-tarball
+          path: failproofai-*.tgz
+          if-no-files-found: error
+
+  # Attaches the daemon binaries, the CLI tarball and their checksums to the
+  # GitHub Release BEFORE npm publishes, because that release is where an
+  # installed CLI fetches its daemon from when npm did not supply one.
   release-assets:
-    needs: [preflight, daemon]
-    if: needs.preflight.outputs.has_daemon == 'true'
+    needs: [preflight, daemon, cli-tarball]
+    # `daemon` is skipped on a ref with no Rust workspace, which must still
+    # attach the CLI tarball — but a daemon FAILURE has to stop the release,
+    # and a skipped dependency is what a failed one leaves behind.
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.cli-tarball.result == 'success' &&
+      (needs.daemon.result == 'success' || needs.daemon.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
+        if: needs.preflight.outputs.has_daemon == 'true'
         with:
           pattern: failproofaid-*
           path: release-assets
           merge-multiple: true
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: failproofai-tarball
+          path: release-assets
+
       - name: Assemble SHA256SUMS
         working-directory: release-assets
+        env:
+          HAS_DAEMON: ${{ needs.preflight.outputs.has_daemon }}
         run: |
-          sha256sum failproofaid-*.gz > SHA256SUMS
-          cat SHA256SUMS
-          # The CLI refuses to install a binary it cannot match to a checksum,
-          # so a short list here is a broken release, not a partial one.
-          COUNT=$(grep -c . SHA256SUMS)
-          if [ "$COUNT" -ne 4 ]; then
-            echo "::error::Expected 4 platform binaries, found $COUNT"
+          : > SHA256SUMS
+          if [ "$HAS_DAEMON" = "true" ]; then
+            sha256sum failproofaid-*.gz >> SHA256SUMS
+            # The CLI refuses to install a binary it cannot match to a checksum,
+            # so a short list here is a broken release, not a partial one.
+            COUNT=$(grep -c . SHA256SUMS)
+            if [ "$COUNT" -ne 4 ]; then
+              echo "::error::Expected 4 platform binaries, found $COUNT"
+              exit 1
+            fi
+          fi
+          # Attached on every release, daemon or not.
+          if ! ls failproofai-*.tgz >/dev/null 2>&1; then
+            echo "::error::No CLI tarball to attach"
             exit 1
           fi
+          sha256sum failproofai-*.tgz >> SHA256SUMS
+          cat SHA256SUMS
 
       - name: Attach assets to the release
         if: ${{ !inputs.dry_run }}
@@ -283,19 +414,21 @@ jobs:
         if: ${{ inputs.dry_run }}
         env:
           TAG: ${{ needs.preflight.outputs.tag }}
-        run: echo "::notice::Dry run — built and checksummed 4 binaries, attached nothing to $TAG."
+        run: echo "::notice::Dry run — checksummed the CLI tarball and any platform binaries, attached nothing to $TAG."
 
   publish:
-    needs: [preflight, daemon, release-assets]
+    needs: [preflight, daemon, cli-tarball, release-assets]
     # Both daemon jobs are skipped on a ref with no Rust workspace, which must
     # not block the npm publish. A FAILURE in either one must, though — and
     # that is why `daemon` is checked explicitly rather than relied on through
     # release-assets: a failed dependency leaves the dependent job `skipped`,
     # which would otherwise read here as "nothing to do" and publish a package
-    # whose daemon binaries were never built.
+    # whose daemon binaries were never built. `cli-tarball` runs the same build
+    # this job publishes, so its failure is never "nothing to do" either.
     if: >-
       always() &&
       needs.preflight.result == 'success' &&
+      needs.cli-tarball.result == 'success' &&
       (needs.daemon.result == 'success' || needs.daemon.result == 'skipped') &&
       (needs.release-assets.result == 'success' || needs.release-assets.result == 'skipped')
     runs-on: ubuntu-latest
@@ -318,9 +451,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          # Persist the app token so the version-bump `git push origin main`
-          # below authenticates as the bypass actor, not the default token.
-          token: ${{ steps.app-token.outputs.token }}
+          # NOT persisted. This token bypasses the org ruleset on `main`, and
+          # persisting it writes it into `.git/config` for the whole job — where
+          # it sat, readable, through `bun install` (which runs `prepare`, a full
+          # Next build) and every dependency lifecycle script, long before the
+          # one step at the end that actually needs it. Any compromised
+          # build-time dependency could read it and push to `main` unreviewed.
+          # The version-bump step supplies it directly to the single `git push`
+          # that needs it instead. `ci.yml` and `build-daemon.yml` were hardened
+          # for the identical risk; this job, holding the more dangerous token,
+          # was missed.
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -352,18 +493,79 @@ jobs:
           npm version "$PUBLISH_VERSION" --no-git-tag-version
           echo "Updated package.json to $PUBLISH_VERSION"
 
+      # The four @failproofai/failproofaid-<platform> packages, from the same
+      # binaries the release gets. They MUST publish before the root package
+      # below, which pins them as optionalDependencies: an optional dependency
+      # npm cannot resolve is a 404 in every install, which is exactly how the
+      # first attempt at npm-shipping the daemon failed.
+      # Into RUNNER_TEMP, never the checkout. `npm publish` re-runs `prepare`,
+      # so the Next build happens again after this step, and its file tracing
+      # pulls the whole project root into `.next/standalone` — a dry run with
+      # these downloaded into the workspace shipped 16 MB of daemon `.gz`
+      # assets inside the published CLI tarball.
+      - name: Download the daemon binaries
+        if: needs.daemon.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: failproofaid-*
+          path: ${{ runner.temp }}/daemon-artifacts
+          merge-multiple: true
+
+      - name: Publish the failproofaid platform packages
+        if: needs.daemon.result == 'success'
+        env:
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          ARTIFACTS: ${{ runner.temp }}/daemon-artifacts
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # --pin-root writes the four pins into package.json for the publish
+          # below. It runs in the same step as the publish that makes those
+          # names resolvable, so the two can never disagree. The version-bump
+          # step later does `git checkout -- package.json`, so this edit never
+          # reaches main. Staging defaults to the temp dir for the same reason
+          # the artifacts land there.
+          ARGS=(--artifacts "$ARTIFACTS" --dist-tag "$DIST_TAG" --version "$PUBLISH_VERSION" --pin-root)
+          if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
+          node scripts/build-daemon-packages.mjs "${ARGS[@]}"
+
+      # Built HERE, explicitly, rather than left to the `prepare` that
+      # `npm publish` would otherwise run for us.
+      #
+      # The rebuild itself is load-bearing and must stay: `bun build` INLINES
+      # `package.json`'s version into dist/cli.mjs and dist/worker.mjs, and
+      # `daemon-download.ts` constructs the GitHub Release URL from that
+      # version — so a tarball built before the `npm version` step above would
+      # ship a CLI that reports the wrong version and downloads its daemon from
+      # the wrong tag. What changes is only WHO holds the npm token while it
+      # runs: `npm publish`'s own `prepare` inherits that step's environment, so
+      # NODE_AUTH_TOKEN was exported into a full Next build and every
+      # dependency it loads. Splitting the build out keeps the token scoped to
+      # the one command that needs a registry credential.
+      #
+      # Order is unchanged — this still runs after `npm version` and after the
+      # daemon artifacts land in RUNNER_TEMP (never the checkout, so Next's file
+      # tracing cannot sweep them into `.next/standalone`).
+      - name: Build the tarball contents
+        run: bun run build
+
       - name: Publish
         env:
           DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # --ignore-scripts: the build above already produced exactly what
+          # `prepare` would have. Re-running it here is what put the publish
+          # token inside the bundler. The sibling `cli-tarball` job already
+          # packs with --ignore-scripts for this reason.
           if [[ "$DRY_RUN" == "true" ]]; then
             # --provenance is dropped here on purpose: attestation is a
             # registry-side write that has nothing to validate in a dry run.
-            npm publish --dry-run --tag "$DIST_TAG"
+            npm publish --dry-run --ignore-scripts --tag "$DIST_TAG"
           else
-            npm publish --provenance --tag "$DIST_TAG"
+            npm publish --provenance --ignore-scripts --tag "$DIST_TAG"
           fi
 
       - name: Publish alias packages
@@ -376,6 +578,83 @@ jobs:
           if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
           node scripts/publish-aliases.mjs "${ARGS[@]}"
 
+      # Every name above takes its version from the same PUBLISH_VERSION, so a
+      # run that completes is in lockstep by construction. This checks the
+      # thing construction cannot: that the REGISTRY ended up that way. The
+      # daemon story only works if `failproofai@V` and all four
+      # `@failproofai/failproofaid-<os>-<arch>@V` exist together — a version
+      # where the CLI resolved but a platform package did not is an install
+      # that 404s on an optionalDependency, and one where the platform
+      # packages landed but the CLI did not is four orphans nothing pins.
+      # Both halves of that split have already shipped once each (beta.1-3 and
+      # beta.0 respectively), from partial runs that each reported success.
+      # Publishes are not transactional and npm's own publish step can no-op on
+      # an already-published version, so the only way to know is to ask.
+      - name: Verify every package published at the same version
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          HAS_DAEMON: ${{ needs.preflight.outputs.has_daemon }}
+        run: |
+          NAMES=("failproofai")
+          if [[ "$HAS_DAEMON" == "true" ]]; then
+            for P in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+              NAMES+=("@failproofai/failproofaid-$P")
+            done
+          fi
+
+          MISSING=()
+          for NAME in "${NAMES[@]}"; do
+            # The registry is a read-through cache, so a just-published version
+            # can take a moment to be visible everywhere. Check immediately,
+            # then back off 10s / 30s / 1m / 2m before calling it missing —
+            # long enough that propagation is not mistaken for a failed publish,
+            # short enough that a genuinely failed publish is still reported in
+            # the same run rather than hours later by a user.
+            FOUND=""
+            for DELAY in 0 10 30 60 120; do
+              [[ "$DELAY" -gt 0 ]] && sleep "$DELAY"
+              if npm view "$NAME@$PUBLISH_VERSION" version >/dev/null 2>&1; then
+                FOUND=1
+                break
+              fi
+            done
+            if [[ -n "$FOUND" ]]; then
+              echo "  ok  $NAME@$PUBLISH_VERSION"
+            else
+              echo "  MISSING  $NAME@$PUBLISH_VERSION"
+              MISSING+=("$NAME")
+            fi
+          done
+
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            echo "::error::Version split on the registry — these are not published at $PUBLISH_VERSION: ${MISSING[*]}. Every package in a release must carry the same version."
+            exit 1
+          fi
+
+          # The pins are written at publish time, so a root package that
+          # resolved but points at a different version is a silent downgrade
+          # for the daemon half.
+          if [[ "$HAS_DAEMON" == "true" ]]; then
+            PINS=$(npm view "failproofai@$PUBLISH_VERSION" optionalDependencies --json)
+            BAD=$(node -e '
+              const pins = JSON.parse(process.argv[1] || "{}");
+              const want = process.argv[2];
+              const bad = Object.entries(pins)
+                .filter(([n]) => n.startsWith("@failproofai/failproofaid-"))
+                .filter(([, v]) => v !== want)
+                .map(([n, v]) => `${n}@${v}`);
+              if (Object.keys(pins).length === 0) bad.push("(no optionalDependencies at all)");
+              console.log(bad.join(", "));
+            ' "$PINS" "$PUBLISH_VERSION")
+            if [[ -n "$BAD" ]]; then
+              echo "::error::failproofai@$PUBLISH_VERSION pins daemon packages at the wrong version: $BAD"
+              exit 1
+            fi
+          fi
+
+          echo "All packages published at $PUBLISH_VERSION."
+
       # The bump targets main unconditionally — it checks main out and pushes to
       # it — so it must never run for a build that did not come from main. A
       # dispatch from a feature branch would otherwise rewrite main's version
@@ -387,6 +666,9 @@ jobs:
           (github.event_name == 'release' || github.ref_name == 'main')
         env:
           NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
+          # Scoped to this step alone rather than persisted in `.git/config` for
+          # the whole job — see the checkout above.
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -398,12 +680,41 @@ jobs:
 
           npm version "$NEXT_VERSION" --no-git-tag-version
 
-          git add package.json
+          # The Cargo workspace version has to move WITH package.json.
+          # `ci.yml`'s version-consistency job compares the two, and this commit
+          # carries `[skip ci]` — so a bump that touched only package.json left
+          # main red, and the failure surfaced on the next unrelated PR as
+          # "Version mismatch: Cargo.toml has <old>, expected <new>" from a
+          # change that had nothing to do with it. Every release did this.
+          #
+          # Anchored to the [workspace.package] table rather than a bare
+          # `^version = `: the file has several `version = ` lines and only the
+          # first one under that heading is the workspace version.
+          perl -0pi -e 's/(\[workspace\.package\]\n(?:[^\[]*?\n)?version = ")[^"]*(")/${1}'"$NEXT_VERSION"'${2}/' Cargo.toml
+          CARGO_VERSION=$(perl -0ne 'print $1 if /\[workspace\.package\][^\[]*?version = "([^"]*)"/' Cargo.toml)
+          if [ "$CARGO_VERSION" != "$NEXT_VERSION" ]; then
+            echo "::error file=Cargo.toml::Failed to bump the Cargo workspace version (found '$CARGO_VERSION', wanted '$NEXT_VERSION')"
+            exit 1
+          fi
+          # Both crates carry `version.workspace = true`, so their lockfile
+          # entries move with it. Without this the tree is left with a
+          # Cargo.lock that disagrees with Cargo.toml, which fails any
+          # `--locked` build.
+          cargo update --workspace --offline || cargo update --workspace
+
+          git add package.json Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
 
-          # Authenticated as the version-bot App (persisted by the checkout above),
-          # which bypasses the ruleset's pull-request requirement on main.
-          git push origin main
+          # Authenticated as the version-bot App, which bypasses the ruleset's
+          # pull-request requirement on main. Passed on this one command rather
+          # than persisted in `.git/config`, so it is never on disk while build
+          # scripts run. `-c http.extraheader` is used because a token in the
+          # remote URL would be echoed by git's own error output on a failed
+          # push; `::add-mask::` covers the log, not the URL git prints.
+          echo "::add-mask::$APP_TOKEN"
+          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
+              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
       - name: Note skipped bump
         if: >-
@@ -415,3 +726,121 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           echo "::notice::Left main's version untouched (ref '$REF_NAME', dry_run=$DRY_RUN). Main is bumped only by a release or a dispatch from main."
+
+  # The last word on whether a release actually reached users: a real
+  # `npm install` from the registry, on a clean runner, one per platform the
+  # daemon ships for.
+  #
+  # `npm view` (in the publish job) proves a manifest is queryable. It does not
+  # prove the tarball is fetchable, that npm's `os`/`cpu` filters resolve the
+  # right platform package on the machine it is meant for, that the executable
+  # bit survived publish -> install, or that the binary inside is the version
+  # the CLI beside it believes it is. Only an install proves those, and each
+  # one has its own failure mode a manifest query reads as healthy.
+  #
+  # A matrix is not optional here: npm installs the ONE platform package
+  # matching the runner's os/cpu and silently skips the other three, so a
+  # single-runner check can only ever verify a quarter of what shipped.
+  verify-install:
+    name: verify-install (${{ matrix.platform }})
+    needs: [preflight, publish]
+    if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+    strategy:
+      fail-fast: false
+      # Same four legs as the build matrix, each on a runner native to its own
+      # target — a cross-installed package would not exercise the os/cpu filter
+      # that decides which binary a real user gets.
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+          - os: macos-15-intel
+            platform: darwin-x64
+          - os: macos-14
+            platform: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install the published CLI from the registry
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Same backoff as the registry check: immediate, then 10s / 30s / 1m
+          # / 2m. An install can 404 for a few seconds after a publish on a CDN
+          # edge that has not caught up.
+          INSTALLED=""
+          for DELAY in 0 10 30 60 120; do
+            [ "$DELAY" -gt 0 ] && sleep "$DELAY"
+            if npm install -g "failproofai@$PUBLISH_VERSION"; then
+              INSTALLED=1
+              break
+            fi
+            echo "install did not succeed yet; retrying"
+          done
+          if [ -z "$INSTALLED" ]; then
+            echo "::error::failproofai could not be installed from the registry on $PLATFORM at the published version."
+            exit 1
+          fi
+
+      - name: Verify the CLI runs and reports the published version
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+        run: |
+          # Not a formality: the package ships a bundled dist/cli.mjs, so a
+          # broken build publishes fine and fails at the first invocation.
+          REPORTED=$(failproofai --version)
+          printf 'failproofai --version -> %s\n' "$REPORTED"
+          case "$REPORTED" in
+            *"$PUBLISH_VERSION"*) ;;
+            *) echo "::error::Installed failproofai reports a different version than the one published."; exit 1 ;;
+          esac
+
+      - name: Verify the daemon binary arrived through the optional dependency
+        if: ${{ needs.preflight.outputs.has_daemon == 'true' }}
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Resolved the same way the CLI resolves it at runtime
+          # (npmPlatformBinaryPath in daemon-download.ts): from the installed
+          # failproofai package, so a package that exists on the registry but
+          # does not resolve for THIS machine still fails here.
+          ROOT=$(npm root -g)
+          PKG_DIR=$(node -e '
+            const { createRequire } = require("module");
+            const { dirname } = require("path");
+            const req = createRequire(process.argv[1] + "/failproofai/package.json");
+            process.stdout.write(dirname(req.resolve("@failproofai/failproofaid-" + process.argv[2] + "/package.json")));
+          ' "$ROOT" "$PLATFORM")
+          printf 'Platform package resolved at %s\n' "$PKG_DIR"
+
+          PKG_VERSION=$(node -p "require('$PKG_DIR/package.json').version")
+          if [ "$PKG_VERSION" != "$PUBLISH_VERSION" ]; then
+            echo "::error::The resolved platform package is not at the published version. The CLI rejects a mismatched platform package and falls back to the download, so this is a silent loss of the offline install path."
+            exit 1
+          fi
+
+          BIN=$(ls "$PKG_DIR"/bin/failproofaid*)
+          # npm records the executable bit in the tarball; if it did not
+          # survive publish -> install, the daemon is unlaunchable on a user's
+          # machine while every manifest still looks correct.
+          [ -x "$BIN" ] || { echo "::error::The installed daemon binary is not executable."; exit 1; }
+
+          REPORTED=$("$BIN" --version)
+          printf 'failproofaid --version -> %s\n' "$REPORTED"
+          case "$REPORTED" in
+            *"$PUBLISH_VERSION"*) ;;
+            *) echo "::error::The daemon binary reports a different version than the one published. The CLI builds its download URL from the npm version and the binary at that URL must agree."; exit 1 ;;
+          esac
+
+      - name: Summary
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "::notice::$PLATFORM installs from the registry and carries a matching daemon."

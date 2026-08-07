@@ -19,10 +19,12 @@
  * real command.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { platform, arch, release, homedir, hostname } from "node:os";
 import { createHmac } from "node:crypto";
 import { trackInstallEvent } from "../scripts/install-telemetry.mjs";
+import { isTelemetryEnabled } from "./telemetry-enabled";
+import { globalPolicyConfigFile, lastVersionFile } from "../src/hooks/fp-home";
 
 const FAILPROOFAI_HOOK_MARKER = "__failproofai_hook__";
 const NAMESPACE = "failproofai-telemetry-v1";
@@ -47,7 +49,7 @@ function hashToId(raw: string): string {
 }
 
 function lastVersionPath(): string {
-  return resolve(homedir(), ".failproofai", "last-version");
+  return lastVersionFile();
 }
 
 /**
@@ -110,7 +112,13 @@ export interface HooksState {
  * script so the event keeps its historical meaning.
  */
 export function checkHooks(): HooksState {
-  const hooksConfigPath = resolve(homedir(), ".failproofai", "policies-config.json");
+  // Layout 2's global policy config, via the one module allowed to join a path
+  // onto the home. This read `~/.failproofai/policies-config.json` — layout 1's
+  // location — so on every layout-2 machine it found nothing and reported the
+  // install as unconfigured with zero policies, which is what
+  // `package_installed` telemetry has been recording for every user since the
+  // reorganisation.
+  const hooksConfigPath = globalPolicyConfigFile();
   if (!existsSync(hooksConfigPath)) {
     return { configured: false, registered: false, policyCount: 0 };
   }
@@ -177,6 +185,13 @@ export async function maybeReportInstall(version: string): Promise<void> {
     // Steady state: same version already reported. Costs one stat() per command.
     if (previousVersion === version) return;
 
+    // The install dispatcher is a dependency-free .mjs and cannot import the
+    // TOML config, so it is told the verdict rather than resolving it. Passed
+    // per call rather than checked here, because the version marker below must
+    // still be written when telemetry is off — otherwise this whole check would
+    // re-run on every single CLI invocation, forever.
+    const telemetryEnabled = isTelemetryEnabled();
+
     const hooks = checkHooks();
 
     const events: Promise<void>[] = [];
@@ -187,7 +202,7 @@ export async function maybeReportInstall(version: string): Promise<void> {
           arch: arch(),
           os_release: release(),
           node_version: process.versions.node,
-        }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+        }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
       );
     } else {
       const cmp = compareSemver(previousVersion, version);
@@ -198,7 +213,7 @@ export async function maybeReportInstall(version: string): Promise<void> {
           direction: cmp < 0 ? "upgrade" : "downgrade",
           platform: platform(),
           arch: arch(),
-        }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+        }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
       );
     }
 
@@ -212,13 +227,13 @@ export async function maybeReportInstall(version: string): Promise<void> {
         hooks_configured: hooks.configured,
         hooks_registered: hooks.registered,
         enabled_policy_count: hooks.policyCount,
-      }, { version, timeoutMs: REPORT_TIMEOUT_MS }),
+      }, { version, timeoutMs: REPORT_TIMEOUT_MS, enabled: telemetryEnabled }),
     );
 
     // Record before awaiting: a dropped event is cheaper than re-reporting the
     // same version on every command because delivery kept failing.
     try {
-      mkdirSync(resolve(homedir(), ".failproofai"), { recursive: true });
+      mkdirSync(dirname(versionFile), { recursive: true });
       writeFileSync(versionFile, version, "utf8");
     } catch {
       // best-effort

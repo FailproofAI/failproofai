@@ -77,6 +77,9 @@ packages/*/assets/
 # closed-source platform (cloned separately)
 /platform
 
+# rust
+/target
+
 # WSL/Windows alternate data streams
 *:Zone.Identifier
 .dev.log
@@ -100,3 +103,19 @@ COMMIT_MSG.tmp
 /canary.env
 /integration-suite-state.json
 /cli-integration-state.json
+
+# Compressed failproofaid binaries — produced by
+# .github/workflows/build-daemon.yml (or a local `cargo build --release` +
+# gzip for manual Docker verification), uploaded as release assets, never
+# committed. Same for npm-pack tarballs produced anywhere in the repo during
+# local packaging tests.
+/failproofaid-*.gz
+*.tgz
+
+# Release-pipeline scratch. The publish workflow keeps both of these in
+# RUNNER_TEMP — a build sweeps anything at the project root into
+# .next/standalone — but a manual run (`gh release download --dir
+# release-assets`, `build-daemon-packages.mjs --staging .daemon-packages`)
+# lands them here.
+/.daemon-packages/
+/release-assets/

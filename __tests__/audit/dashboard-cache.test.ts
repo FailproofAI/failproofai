@@ -11,6 +11,7 @@ import {
   DASHBOARD_CACHE_SCHEMA_VERSION,
 } from "../../src/audit/dashboard-cache";
 import type { AuditResult } from "../../src/audit/types";
+import { auditDashboardFile, auditDir } from "../../src/hooks/fp-home";
 
 const FAKE_RESULT: AuditResult = {
   version: 2,
@@ -59,7 +60,7 @@ describe("dashboard cache", () => {
 
   it("writes mode 0600 on the file", () => {
     writeDashboardCache({}, FAKE_RESULT);
-    const cachePath = join(tmpHome, ".failproofai", "audit-dashboard.json");
+    const cachePath = auditDashboardFile(tmpHome);
     expect(existsSync(cachePath)).toBe(true);
     const mode = statSync(cachePath).mode & 0o777;
     // Some filesystems (FAT, etc.) can't honor mode bits perfectly — just
@@ -68,16 +69,16 @@ describe("dashboard cache", () => {
   });
 
   it("returns null for a corrupt JSON cache file", () => {
-    const dir = join(tmpHome, ".failproofai");
+    const dir = auditDir(tmpHome);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "audit-dashboard.json"), "{ not json", "utf-8");
+    writeFileSync(auditDashboardFile(tmpHome), "{ not json", "utf-8");
     expect(readDashboardCache()).toBeNull();
   });
 
   it("returns null when shape is wrong", () => {
-    const dir = join(tmpHome, ".failproofai");
+    const dir = auditDir(tmpHome);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "audit-dashboard.json"), JSON.stringify({ foo: 1 }), "utf-8");
+    writeFileSync(auditDashboardFile(tmpHome), JSON.stringify({ foo: 1 }), "utf-8");
     expect(readDashboardCache()).toBeNull();
   });
 
@@ -96,11 +97,11 @@ describe("dashboard cache", () => {
   });
 
   it("rejects entries older than the 7-day TTL", () => {
-    const dir = join(tmpHome, ".failproofai");
+    const dir = auditDir(tmpHome);
     mkdirSync(dir, { recursive: true });
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString();
     writeFileSync(
-      join(dir, "audit-dashboard.json"),
+      auditDashboardFile(tmpHome),
       JSON.stringify({
         schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
         cachedAt: eightDaysAgo,
@@ -113,11 +114,11 @@ describe("dashboard cache", () => {
   });
 
   it("accepts entries inside the 7-day TTL", () => {
-    const dir = join(tmpHome, ".failproofai");
+    const dir = auditDir(tmpHome);
     mkdirSync(dir, { recursive: true });
     const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60_000).toISOString();
     writeFileSync(
-      join(dir, "audit-dashboard.json"),
+      auditDashboardFile(tmpHome),
       JSON.stringify({
         schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
         cachedAt: sixDaysAgo,
@@ -130,11 +131,11 @@ describe("dashboard cache", () => {
   });
 
   it("readDashboardCacheMeta returns cachedAt even when the entry is expired", () => {
-    const dir = join(tmpHome, ".failproofai");
+    const dir = auditDir(tmpHome);
     mkdirSync(dir, { recursive: true });
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString();
     writeFileSync(
-      join(dir, "audit-dashboard.json"),
+      auditDashboardFile(tmpHome),
       JSON.stringify({
         schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
         cachedAt: eightDaysAgo,

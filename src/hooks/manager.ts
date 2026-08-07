@@ -24,6 +24,7 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
+import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -645,7 +646,7 @@ export async function listHooks(cwd?: string): Promise<void> {
     } else {
       console.log("\n  Run `failproofai policies --install` to get started.");
     }
-    console.log("  Config: ~/.failproofai/policies-config.json\n");
+    console.log(`  Config: ${globalPolicyConfigFile()}\n`);
   } else if (installedScopes.length === 1) {
     // State B: Single scope — table with header row
     const scope = installedScopes[0];
@@ -657,7 +658,7 @@ export async function listHooks(cwd?: string): Promise<void> {
     for (const policy of regularPolicies) printSimpleRow(policy);
     printBetaSection(printSimpleRow);
 
-    console.log("\n  Config: ~/.failproofai/policies-config.json\n");
+    console.log(`\n  Config: ${globalPolicyConfigFile()}\n`);
   } else {
     // State C: Multiple scopes — column table
     const COL = 9;
@@ -701,7 +702,7 @@ export async function listHooks(cwd?: string): Promise<void> {
       for (const policy of betaPolicies) printMultiScopeRow(policy);
     }
 
-    console.log("\n  Config: ~/.failproofai/policies-config.json");
+    console.log(`\n  Config: ${globalPolicyConfigFile()}`);
 
     // Multi-scope warning
     const scopeNames = installedScopes.join(", ");
@@ -765,7 +766,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   // hook path was loading them.
   const base = findProjectConfigDir(cwd ?? process.cwd());
   const projectDir = resolve(base, ".failproofai", "policies");
-  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const userDir = customPoliciesDir();
   const sameDir = userDir === projectDir;
   const conventionDirs: { label: string; dir: string }[] = [
     { label: sameDir ? "Project + User" : "Project", dir: projectDir },

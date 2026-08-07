@@ -14,8 +14,14 @@
  * No arguments yet — a bare `failproofai audit` does a full scan (all CLIs, all
  * history). Flags (--since, --cli, --project, --port, --no-open) are easy
  * follow-ups against `RunAuditOptions`.
+ *
+ * `--scheduled` is the one exception, and it is not a flag on the interactive
+ * command so much as a second entry point sharing its name: it runs the same
+ * scan with no TTY, no browser and no server, and reports its outcome through
+ * an exit code. See `runScheduledAudit`.
  */
 import { runAudit } from "./index";
+import { acquireAuditLock, type AuditLockInfo } from "./audit-lock";
 import { writeDashboardCache } from "./dashboard-cache";
 import type { AuditResult, RunAuditOptions } from "./types";
 import { trackHookEvent } from "../hooks/hook-telemetry";
@@ -27,6 +33,16 @@ import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
  *  for `start` mode, which `failproofai` (bare) already uses. */
 const DASHBOARD_PORT = 8020;
+
+/**
+ * `EX_TEMPFAIL` from sysexits.h — "another audit already holds the lock".
+ *
+ * A distinct code rather than 1, because the scheduler that spawns the headless
+ * run has to tell the two apart: a failure deserves a report, while losing the
+ * lock means only "come back in fifteen minutes". Collapsing them would make a
+ * healthy machine that simply ran two audits close together look broken.
+ */
+export const EXIT_AUDIT_ALREADY_RUNNING = 75;
 
 /**
  * Mirror of `app/audit/_components/run-progress.tsx`'s `STAGES`. Kept identical
@@ -48,6 +64,12 @@ USAGE
   failproofai audit          Scan your agent-CLI session history for risky and
                              wasteful patterns, then open the audit dashboard.
   failproofai audit --help   Show this help.
+
+  failproofai audit --scheduled
+                             Headless run: scan, refresh the dashboard's cached
+                             result, print one line, exit. No browser, no
+                             server. This is what a scheduled audit runs; exit
+                             75 means another audit already had the lock.
 
 WHAT IT DOES
   1. Scans past sessions from every installed agent CLI (Claude, Codex, Cursor,
@@ -247,10 +269,13 @@ function printSummary(result: AuditResult): void {
 
 /**
  * Which entry point ran the audit. `onboarding` is the automatic post-setup run;
- * `cli` is an explicit `failproofai audit`. Carried on every cli_audit_* event so
- * the first audit a user ever runs is distinguishable from later deliberate ones.
+ * `cli` is an explicit `failproofai audit`; `scheduled` is the headless run the
+ * daemon spawns. Carried on every cli_audit_* event so the first audit a user
+ * ever runs, a deliberate one, and one nobody was present for stay distinct —
+ * without which an opt-in scheduled scan would silently inflate the counts that
+ * describe what people actually do by hand.
  */
-type AuditSource = "cli" | "onboarding";
+type AuditSource = "cli" | "onboarding" | "scheduled";
 
 /** Shared so both entry points report cli_audit_completed identically. */
 function auditCompletedProps(source: AuditSource, result: AuditResult) {
@@ -261,6 +286,89 @@ function auditCompletedProps(source: AuditSource, result: AuditResult) {
     total_hits: result.totals.hits,
     findings: result.results.length,
   };
+}
+
+/** One line naming whoever holds the lock, for a refusal message. */
+function heldByLine(held: AuditLockInfo | null): string {
+  if (!held) return "another audit is already running";
+  const ageS = Math.max(0, Math.round((Date.now() - held.startedAt) / 1000));
+  return `another audit is already running (pid ${held.pid}, started by ${held.source} ${ageS}s ago)`;
+}
+
+// ── Headless (scheduled) audit ───────────────────────────────────────────────
+
+/**
+ * Run the audit with nobody watching: no TTY animation, no browser, no prompts,
+ * no dashboard server left behind.
+ *
+ * This is the entry point the scheduler spawns, and it must be a SEPARATE
+ * short-lived process. `src/hooks/worker-server.ts` serialises every request
+ * through one promise chain that `crates/failproofaid/src/worker.rs` caps at
+ * 30s, and `daemon-client.ts` turns that timeout into a DENY — so a ~104-second
+ * audit on the warm worker would be a machine-wide fail-closed denial across
+ * all 12 CLIs for as long as it ran.
+ *
+ * Returns the exit code instead of exiting, so the caller owns the exit and
+ * this stays callable from a test:
+ *   0  the scan completed (whether or not it found anything)
+ *   1  the scan failed, or its result could not be persisted
+ *  75  another audit holds the lock — not an error, come back later
+ */
+export async function runScheduledAudit(): Promise<number> {
+  const attempt = acquireAuditLock("scheduled");
+  if (!attempt.ok) {
+    // Deliberately ahead of cli_audit_started: a run that never started must
+    // not be counted as one that did.
+    process.stderr.write(`failproofai: ${heldByLine(attempt.heldBy)}; skipping this scheduled run\n`);
+    return EXIT_AUDIT_ALREADY_RUNNING;
+  }
+
+  const instanceId = getInstanceId();
+  try {
+    // Every event here is awaited, unlike runAuditCli's fire-and-forget
+    // `started`. Nothing keeps this process alive once the audit settles — no
+    // dashboard server, no user — and there is nobody waiting on latency
+    // either, so the bounded (5s, never-throws) send costs nothing that matters.
+    await trackHookEvent(instanceId, "cli_audit_started", { source: "scheduled" });
+
+    let result: AuditResult;
+    try {
+      result = await runAudit({});
+    } catch (err) {
+      await trackHookEvent(instanceId, "cli_audit_failed", {
+        source: "scheduled",
+        error_type: err instanceof Error ? err.name : "unknown",
+        error_message: sanitizeErrorMessage(err),
+      });
+      process.stderr.write(
+        `failproofai: scheduled audit failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      return 1;
+    }
+
+    await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("scheduled", result));
+
+    // No cache write for an empty scan, matching both interactive paths — and it
+    // matters more here. This run is unattended, so overwriting a real earlier
+    // audit's cached result with an empty one (after a history rotation, or on a
+    // service unit whose HOME resolves somewhere else) would blank the dashboard
+    // with nobody present to notice why.
+    if (result.eventsScanned > 0 && !writeDashboardCache({}, result)) {
+      // The cache is the only channel by which this run's result reaches
+      // anyone, so failing to write it is a failed run, not a footnote.
+      process.stderr.write("failproofai: scheduled audit ran but its result could not be saved\n");
+      return 1;
+    }
+
+    process.stdout.write(
+      `failproofai: audit complete — ${num(result.eventsScanned)} tool calls across ` +
+        `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
+    );
+
+    return 0;
+  } finally {
+    attempt.lock.release();
+  }
 }
 
 // ── Post-setup background audit ────────────────────────────────────────────────
@@ -279,47 +387,67 @@ function auditCompletedProps(source: AuditSource, result: AuditResult) {
 export async function runPostSetupAudit(): Promise<void> {
   if (process.env.FAILPROOFAI_NO_AUTO_AUDIT === "1") return;
 
-  const instanceId = getInstanceId();
-  // Fire-and-forget, as in runAuditCli: the multi-second scan below keeps the
-  // process alive long enough for this to land, and the completed/failed event
-  // that follows is awaited.
-  void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
+  // Take the same cross-process cache lock the scheduled run, `failproofai
+  // audit` and the dashboard re-run take. This onboarding scan writes the very
+  // same sha1-keyed per-transcript cache and single-slot dashboard cache, so it
+  // is the fourth writer and must serialise with the other three — a scheduled
+  // daemon child can already be mid-scan when setup finishes. Held ⇒ skip, best
+  // effort: the dashboard boots on whatever the holder's run leaves behind, and
+  // this is pre-warming, not a result anyone is waiting on. `onboarding` matches
+  // the telemetry source below and the lock source declared in audit-lock.ts.
+  const attempt = acquireAuditLock("onboarding");
+  if (!attempt.ok) {
+    process.stdout.write(
+      `\n  ${c(DIM, "an audit is already running — the dashboard will show its result.")}\n\n`,
+    );
+    return;
+  }
 
-  process.stdout.write(
-    `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
-  );
-
-  let result: AuditResult;
   try {
-    result = await runWithProgress({});
-  } catch (err) {
-    // Awaited: this function returns straight into the dashboard boot, and a
-    // fire-and-forget fetch would race it.
-    await trackHookEvent(instanceId, "cli_audit_failed", {
-      source: "onboarding",
-      error_type: err instanceof Error ? err.name : "unknown",
-      error_message: sanitizeErrorMessage(err),
-    });
-    process.stdout.write(
-      `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
-    );
-    return;
-  }
+    const instanceId = getInstanceId();
+    // Fire-and-forget, as in runAuditCli: the multi-second scan below keeps the
+    // process alive long enough for this to land, and the completed/failed event
+    // that follows is awaited.
+    void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
 
-  // Reported before the empty-history return below, so an onboarding audit that
-  // finds nothing is still counted — matching runAuditCli, which reports
-  // completed regardless of what the scan turned up.
-  await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
-
-  if (result.eventsScanned === 0) {
     process.stdout.write(
-      `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
+      `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
     );
-    return;
+
+    let result: AuditResult;
+    try {
+      result = await runWithProgress({});
+    } catch (err) {
+      // Awaited: this function returns straight into the dashboard boot, and a
+      // fire-and-forget fetch would race it.
+      await trackHookEvent(instanceId, "cli_audit_failed", {
+        source: "onboarding",
+        error_type: err instanceof Error ? err.name : "unknown",
+        error_message: sanitizeErrorMessage(err),
+      });
+      process.stdout.write(
+        `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
+      );
+      return;
+    }
+
+    // Reported before the empty-history return below, so an onboarding audit that
+    // finds nothing is still counted — matching runAuditCli, which reports
+    // completed regardless of what the scan turned up.
+    await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
+
+    if (result.eventsScanned === 0) {
+      process.stdout.write(
+        `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
+      );
+      return;
+    }
+    writeDashboardCache({}, result);
+    printSummary(result);
+    process.stdout.write("\n");
+  } finally {
+    attempt.lock.release();
   }
-  writeDashboardCache({}, result);
-  printSummary(result);
-  process.stdout.write("\n");
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -329,6 +457,15 @@ export async function runAuditCli(args: string[]): Promise<void> {
     process.stdout.write(HELP);
     process.exit(0);
   }
+  // The headless path, spawned rather than typed. Handled ahead of the
+  // rejection below so that adding it costs the interactive path nothing: it
+  // still refuses every argument it has always refused.
+  if (args.includes("--scheduled")) {
+    const extra = args.find((a) => a !== "--scheduled");
+    if (extra) die(`\`audit --scheduled\` takes no other arguments (got: ${extra}).`);
+    process.exit(await runScheduledAudit());
+  }
+
   // No arguments supported yet — reject typos rather than silently doing a bare
   // audit, so a future `failproofai audit --since 7d` doesn't quietly no-op.
   const stray = args.find((a) => a !== "--help" && a !== "-h");
@@ -337,6 +474,18 @@ export async function runAuditCli(args: string[]): Promise<void> {
       `\`audit\` takes no arguments yet (got: ${stray}).\n` +
         `Run \`failproofai audit\` to scan your history and open the dashboard.`,
     );
+  }
+
+  // Taken before any telemetry so a refused run is not counted as a started
+  // one, and released the moment the SCAN is done — see below, well before
+  // launch() parks this process on the dashboard.
+  const attempt = acquireAuditLock("cli");
+  if (!attempt.ok) {
+    process.stderr.write(
+      `Error: ${heldByLine(attempt.heldBy)}.\n` +
+        `Two audits write the same cache files, so this one won't start. Try again shortly.\n`,
+    );
+    process.exit(EXIT_AUDIT_ALREADY_RUNNING);
   }
 
   const instanceId = getInstanceId();
@@ -392,6 +541,13 @@ export async function runAuditCli(args: string[]): Promise<void> {
       `\n  ${c(PINK, "!")} ${c(DIM, "couldn't save the audit cache; the dashboard may show an empty state.")}\n`,
     );
   }
+
+  // Released here, not in a `finally`: the lock covers the SCAN, and launch()
+  // below keeps this process alive for as long as the user leaves the dashboard
+  // open. Holding it that long would block every scheduled run until the
+  // one-hour stale ceiling expired. The exit paths above (die(), the
+  // empty-history exit) are covered by the handle's own process-exit hook.
+  attempt.lock.release();
 
   const url = `http://localhost:${DASHBOARD_PORT}/audit`;
   process.stdout.write(

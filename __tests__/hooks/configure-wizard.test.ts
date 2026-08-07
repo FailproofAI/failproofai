@@ -135,6 +135,7 @@ import {
 } from "../../src/hooks/daemon-service";
 import {
   buildAgentChoices,
+  buildCompletionSummary,
   buildPresetChoices,
   clisSupportingScope,
   resolvePresetSelection,
@@ -334,6 +335,40 @@ describe("configure-wizard pure builders", () => {
     // Tell the user where to change their mind, so an intentional "none" does
     // not read like the wizard dropped the selection.
     expect(lines).toContain("failproofai policies --install");
+  });
+
+  // The 3-column gutter ("└  ") that outro() prepends when rendered.
+  const GUTTER = 3;
+
+  it("keeps the completion summary within 80 columns for the longest real combination", () => {
+    // Every builtin policy, every supported CLI, and every optional note
+    // present at once — the worst case now that an unsupported platform
+    // aborts before this line is ever reached (so "no daemon" can no longer
+    // shrink it).
+    const message = buildCompletionSummary(
+      99, // headroom above today's real policy count
+      INTEGRATION_TYPES.length,
+      true, // custom enabled
+      true, // daemon installed
+      true, // connected
+    );
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    expect(message).toContain("custom");
+    expect(message).toContain("daemon");
+    expect(message).toContain("reporting");
+  });
+
+  it("keeps the completion summary within 80 columns with custom policies explicitly off", () => {
+    // "off" is the longer of the two custom-policies tags, and stacks with
+    // the other two notes the same way "custom" does above.
+    const message = buildCompletionSummary(99, INTEGRATION_TYPES.length, false, true, true);
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    expect(message).toContain("custom off");
+  });
+
+  it("omits every optional note when nothing is present", () => {
+    const message = buildCompletionSummary(2, 1, undefined, false, false);
+    expect(message).toBe("Setup complete — 2 policies · 1 assistant");
   });
 });
 
@@ -969,7 +1004,7 @@ describe("configure-wizard daemon integration", () => {
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
     drive(HAPPY);
     await runConfigureWizard(ttyIO());
-    expect(vi.mocked(outro).mock.calls[0]![0]).toContain("daemon on");
+    expect(vi.mocked(outro).mock.calls[0]![0]).toContain("daemon");
   });
 
   it("shows the daemon row in the review only when one will be installed", async () => {

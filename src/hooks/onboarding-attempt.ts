@@ -178,10 +178,18 @@ export function attemptHintLines(attempt: OnboardingAttempt): string[] {
     running_as_sudo: "it was run under sudo",
   };
   const detail = why[attempt.reason] ?? "it did not finish";
+  // Every other reason is fixable by the user right now, so the generic
+  // retry is correct. unsupported_platform is not — blockerCleared only
+  // re-offers it on a CLI version change, and `failproofai config` would
+  // hit the exact same hard-fail in the meantime.
+  const action =
+    attempt.reason === "unsupported_platform"
+      ? "Check for a failproofai update — this platform may be supported by a newer release."
+      : "Run `failproofai config` when you are ready.";
   return [
     ``,
     `[failproofai] Setup is not finished — ${detail}.`,
-    `              Run \`failproofai config\` when you are ready.`,
+    `              ${action}`,
     ``,
   ];
 }

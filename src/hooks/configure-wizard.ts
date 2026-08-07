@@ -416,6 +416,37 @@ export function describeCustomPolicies(cwd: string): {
   return { active, warnings, fileCount, scopes };
 }
 
+/**
+ * The wizard's one-line completion summary. Pure and exported so the widest
+ * real combination — every policy, every CLI, custom/daemon/reporting all
+ * present — can be pinned by a test without having to drive the whole wizard
+ * through a real chdir + on-disk custom-policy fixture.
+ *
+ * Kept inside a standard 80-column terminal: `writeLines` truncates with a
+ * hard cut and no ellipsis, so an over-long line doesn't just lose its tail
+ * — it reads as broken output. Naming all ten CLIs once took it to 182
+ * characters; the count alone carries the same information, and the user
+ * picked them two screens ago. A single grouped "· a, b, c" clause bounds the
+ * optional notes to one separator and short tags, rather than three
+ * independent " · " clauses stacking up.
+ */
+export function buildCompletionSummary(
+  policiesCount: number,
+  assistantsCount: number,
+  customEnabled: boolean | undefined,
+  daemonInstalled: boolean,
+  connected: boolean,
+): string {
+  const extras: string[] = [];
+  if (customEnabled === true) extras.push("custom");
+  else if (customEnabled === false) extras.push("custom off");
+  if (daemonInstalled) extras.push("daemon");
+  if (connected) extras.push("reporting");
+  const extrasNote = extras.length > 0 ? ` · ${extras.join(", ")}` : "";
+  const assistants = `${assistantsCount} assistant${assistantsCount === 1 ? "" : "s"}`;
+  return `Setup complete — ${policiesCount} policies · ${assistants}${extrasNote}`;
+}
+
 export function reviewLines(state: {
   /** What the scope step resolved to. Expands to one or two real scopes. */
   target: SetupTarget;
@@ -1431,26 +1462,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // And any record of an earlier failure is now false: this machine got set up.
   clearOnboardingAttempt();
 
-  // Keep this inside a standard 80-column terminal. `writeLines` truncates with
-  // a hard cut and no ellipsis, so an over-long line doesn't just lose its tail
-  // — it reads as broken output. Naming all ten CLIs took it to 182 characters;
-  // the count alone carries the same information, and the user picked them two
-  // screens ago. Every real completed setup is on a supported platform now (an
-  // unsupported one aborts before this point), so `daemonNote` below is no
-  // longer an occasional addition — the widest real case (every policy, every
-  // CLI, custom off) must fit with it included, which is why this note stays
-  // terse rather than spelling out "DISABLED".
-  const customNote =
-    customEnabled === true
-      ? " + your custom policies"
-      : customEnabled === false
-        ? " · custom off"
-        : "";
-  const daemonNote = daemonInstalled ? " · daemon on" : "";
-  const cloudNote = connected ? " · reporting on" : "";
-  const assistants = `${clis.length} assistant${clis.length === 1 ? "" : "s"}`;
+  // Every real completed setup is on a supported platform now (an unsupported
+  // one aborts before this point), so the optional notes in the summary below
+  // are no longer occasional additions — see buildCompletionSummary's own doc
+  // comment for why the widest combination still fits in 80 columns.
   outro(
-    `Setup complete — ${policies.length} policies${customNote} · ${assistants}${daemonNote}${cloudNote}`,
+    buildCompletionSummary(policies.length, clis.length, customEnabled, daemonInstalled, connected),
     { ok: true },
     stdout,
   );

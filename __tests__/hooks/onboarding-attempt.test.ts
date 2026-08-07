@@ -257,4 +257,12 @@ describe("what the user is told", () => {
       expect(text, reason).not.toContain("undefined");
     }
   });
+
+  it("does not tell an unsupported-platform machine to re-run the command that just hard-failed", () => {
+    // blockerCleared only re-offers this reason on a CLI version change, so
+    // `failproofai config` would hit the exact same guard right now.
+    const text = attemptHintLines(attempt({ reason: "unsupported_platform" })).join("\n");
+    expect(text).not.toContain("Run `failproofai config`");
+    expect(text).toContain("update");
+  });
 });

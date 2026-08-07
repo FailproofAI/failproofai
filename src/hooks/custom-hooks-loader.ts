@@ -387,7 +387,7 @@ export async function loadAllCustomHooks(
           };
           if (cloudManaged) {
             tagged.__cloudManaged = cloudManaged;
-            tagged.__policyId = `cloud:${cloudManaged.id}@${cloudManaged.revision}:${hook.name}`;
+            tagged.__policyId = `cloud:${cloudManaged.id}@${cloudManaged.version}:${hook.name}`;
           } else {
             tagged.__policyId = customPolicyId(absPath, hook.name);
           }

@@ -55,14 +55,14 @@ pub fn worker_socket_path() -> io::Result<PathBuf> {
     Ok(run_dir()?.join("worker.sock"))
 }
 
-/// `~/.failproofai/policies/cloud-policies` — where pulled generations land.
+/// `~/.failproofai/policies/cloud-policies` — where pulled deployments land.
 /// The override keeps tests and development runs away from a user's real
 /// policy directory.
 ///
 /// The directory name is `cloud-policies`, matching `fp-home.ts`'s
 /// `cloudPoliciesDir`, which is what the hook path actually reads. Layout 2
 /// renamed it from `cloud-managed` and this function kept writing the old
-/// name — so the daemon downloaded every generation, verified it, wrote it to
+/// name — so the daemon downloaded every deployment, verified it, wrote it to
 /// disk, and the CLI read an empty directory and enforced nothing. Both halves
 /// looked healthy; only the combination was broken.
 pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
@@ -285,7 +285,7 @@ mod tests {
     fn pulled_policies_land_where_the_cli_reads_them() {
         // `fp-home.ts`: `cloudPoliciesDir = policies/cloud-policies`. This
         // wrote layout 1's `policies/cloud-managed`, so the daemon downloaded
-        // every generation, verified its hashes, wrote it to disk — and the CLI
+        // every deployment, verified its hashes, wrote it to disk — and the CLI
         // read an empty directory and enforced nothing. Both halves logged
         // success; only the combination was broken.
         let _guard = ENV_LOCK.lock().unwrap();
@@ -439,7 +439,7 @@ mod tests {
     /// were live bugs at once: `run_dir` read `$HOME` while the CLI honoured
     /// `FAILPROOFAI_HOME` (so a healthy daemon denied every tool call on a
     /// fail-closed machine), `cloud_managed_policy_dir` still wrote layout 1's
-    /// `cloud-managed` (so every verified generation landed in a directory
+    /// `cloud-managed` (so every verified deployment landed in a directory
     /// nothing opened), and the credential moved to `credentials.toml` on one
     /// side only (so `--connect` wrote a token the daemon never read). Each was
     /// fixed by hand; nothing stopped the next one, and BOTH files cited a test

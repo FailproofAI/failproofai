@@ -244,7 +244,7 @@ customPolicies.add({
 
   it("loads a hash-verified active cloud policy with a cloud-qualified identity", async () => {
     const managedRoot = join(projectDir, "cloud-managed");
-    const generationDir = join(managedRoot, "generations", "42");
+    const generationDir = join(managedRoot, "deployments", "42");
     mkdirSync(generationDir, { recursive: true });
     const policyPath = join(generationDir, "org-guard.mjs");
     const policyBytes = `import { customPolicies, deny } from "failproofai";
@@ -260,13 +260,13 @@ customPolicies.add({
       join(managedRoot, "active.json"),
       JSON.stringify({
         schemaVersion: 1,
-        generation: 42,
+        deployment: 42,
         policies: [
           {
             id: "org-guard",
-            revision: 8,
+            version: 8,
             sha256,
-            path: "generations/42/org-guard.mjs",
+            path: "deployments/42/org-guard.mjs",
           },
         ],
       }),

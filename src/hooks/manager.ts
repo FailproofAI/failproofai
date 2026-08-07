@@ -852,7 +852,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   try {
     const cloud = readActiveCloudManagedPolicies();
     if (cloud.length > 0) {
-      const gen = cloud[0].generation;
+      const gen = cloud[0].deployment;
       console.log(
         `\n  \u2500\u2500 Cloud-managed \u2014 deployment ${gen} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
       );
@@ -863,7 +863,7 @@ export async function listHooks(cwd?: string): Promise<void> {
         // not doing.
         const status =
           artifact.effect === "observe" ? "\x1B[33m\u25D0 OBS\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
-        console.log(`  ${status}    ${artifact.id.padEnd(colWidth)}v${artifact.revision}`);
+        console.log(`  ${status}    ${artifact.id.padEnd(colWidth)}v${artifact.version}`);
       }
       console.log("\n  Managed from the dashboard \u2014 not switchable with `failproofai policies`.");
       console.log();

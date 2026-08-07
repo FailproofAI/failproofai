@@ -90,7 +90,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Cloud policy integrity is a maintenance-lane responsibility, never a
     // hook-path operation. The monitor is useful before cloud transport lands:
-    // it keeps the active generation and content-addressed artifact cache in
+    // it keeps the active deployment and content-addressed artifact cache in
     // agreement and reports when both verified copies have been lost.
     let cloud_policy_store = cloud_policies::PolicyStore::new(paths::cloud_managed_policy_dir()?);
     // One lane, resolving enrolment per tick rather than once at startup.
@@ -290,10 +290,10 @@ fn spawn_collector_manager(
             // machine.
             telemetry::set_collector_metrics(collector.metrics());
             // `Option` because `join_with_flush` CONSUMES the handle: the loop
-            // has to be able to give a generation away and hold nothing until it
+            // has to be able to give a deployment away and hold nothing until it
             // has a replacement.
             let mut collector = Some(collector);
-            // The config this generation was built from. Comparing the whole
+            // The config this deployment was built from. Comparing the whole
             // `CollectorConfig` rather than just the credential is deliberate:
             // it also covers a stream being switched off, a verbosity change and
             // a redaction change, all of which are baked into the tasks at build
@@ -374,7 +374,7 @@ fn spawn_collector_manager(
                     continue;
                 }
 
-                // Drain what the old generation already spooled BEFORE starting
+                // Drain what the old deployment already spooled BEFORE starting
                 // the new one. Two collectors sharing a spool directory would
                 // both claim the same batch files.
                 tracing::info!("collector configuration changed; cycling the collector");
@@ -398,7 +398,7 @@ fn spawn_collector_manager(
                     }
                     // Control falls through to the spawn below. `next_cfg` is
                     // refreshed to whatever re-enabled collection, because THAT
-                    // is what the new generation will be built from.
+                    // is what the new deployment will be built from.
                 }
                 let next_cfg = current_collector_config().unwrap_or(next_cfg);
 
@@ -411,10 +411,10 @@ fn spawn_collector_manager(
                     running_cfg = Some(next_cfg);
                     continue;
                 };
-                // Replaces the previous generation's counters. The registry is a
+                // Replaces the previous deployment's counters. The registry is a
                 // RwLock rather than a OnceLock for exactly this — a set-once
                 // slot left telemetry polling a collector that had been joined,
-                // reporting a dead generation's totals as current.
+                // reporting a dead deployment's totals as current.
                 telemetry::set_collector_metrics(next_collector.metrics());
                 collector = Some(next_collector);
                 // What was BUILT FROM, not a fresh read. Re-reading here loses

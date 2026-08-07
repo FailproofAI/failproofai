@@ -454,8 +454,8 @@ fn attributed_deny_row() -> String {
         "cwd": "/home/sidd/work/failproofai",
         "policySource": "cloud",
         "cloudPolicyId": "org-blocks-curl",
-        "cloudRevision": 3,
-        "cloudGeneration": 8,
+        "cloudVersion": 3,
+        "cloudDeployment": 8,
         "pausedBy": "session",
         "pauseExpiresAt": 1785742712184i64
     })
@@ -480,8 +480,8 @@ async fn a_decision_carries_its_attribution_to_the_server() {
     // Exactly the keys the server's queries extract.
     assert_eq!(end["policy_source"], "cloud");
     assert_eq!(end["cloud_policy_id"], "org-blocks-curl");
-    assert_eq!(end["cloud_revision"], 3);
-    assert_eq!(end["cloud_generation"], 8);
+    assert_eq!(end["cloud_version"], 3);
+    assert_eq!(end["cloud_deployment"], 8);
     assert_eq!(end["paused"], true, "must be a bool, not a string");
     assert_eq!(end["paused_by"], "session");
 
@@ -532,7 +532,7 @@ async fn an_allow_rollup_never_mixes_two_policy_sources() {
         "timestamp": 1785740912000i64, "eventType": "PreToolUse", "integration": "claude",
         "toolName": "Bash", "decision": "allow", "durationMs": 2,
         "sessionId": "s1", "cwd": "/w", "policySource": "cloud",
-        "cloudPolicyId": "org-guard", "cloudRevision": 2, "cloudGeneration": 8
+        "cloudPolicyId": "org-guard", "cloudVersion": 2, "cloudDeployment": 8
     })
     .to_string();
     let plain_allow = serde_json::json!({
@@ -571,7 +571,7 @@ async fn an_allow_rollup_never_mixes_two_policy_sources() {
     // so two events carrying the SAME id collapse back into one row in the
     // product — undoing this split downstream, silently, in exactly the two
     // cases it exists for: the minute a pause starts, and the minute a cloud
-    // generation flips during a rollout. The aggregate id was built from
+    // deployment flips during a rollout. The aggregate id was built from
     // session/minute/event/tool only, all four of which are identical here by
     // construction, so both events shipped with byte-identical ids and this
     // test passed anyway.
@@ -597,14 +597,14 @@ async fn an_observed_verdict_survives_the_allow_rollup() {
     let observed = serde_json::json!({
         "timestamp": 1785740912000i64, "eventType": "PreToolUse", "integration": "claude",
         "toolName": "Bash", "decision": "allow", "durationMs": 3,
-        "sessionId": "s1", "cwd": "/w", "cloudGeneration": 8,
-        "observed": [{"policyId": "org-trials-git-push", "revision": 1, "decision": "deny"}]
+        "sessionId": "s1", "cwd": "/w", "cloudDeployment": 8,
+        "observed": [{"policyId": "org-trials-git-push", "version": 1, "decision": "deny"}]
     })
     .to_string();
     let ordinary = serde_json::json!({
         "timestamp": 1785740912100i64, "eventType": "PreToolUse", "integration": "claude",
         "toolName": "Bash", "decision": "allow", "durationMs": 1,
-        "sessionId": "s1", "cwd": "/w", "cloudGeneration": 8
+        "sessionId": "s1", "cwd": "/w", "cloudDeployment": 8
     })
     .to_string();
 

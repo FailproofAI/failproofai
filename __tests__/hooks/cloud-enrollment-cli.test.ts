@@ -11,7 +11,7 @@ import { readConfig } from "../../src/hooks/fp-config";
 
 let dir: string;
 let realHome: string | undefined;
-const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, generation: 12 }));
+const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, deployment: 12 }));
 const ingestOk = vi.fn(async () => ({ ok: true as const }));
 // A key carrying both permissions, so the capability gating is transparent here
 // and each test exercises whatever `verify`/`verifyIngest` it injected. Reports
@@ -64,7 +64,7 @@ describe("--connect", () => {
     expect(r.exitCode).toBe(0);
     // The label is the human name; the explicit id is shown in parentheses.
     expect(r.lines.join("\n")).toMatch(/Connected to https:\/\/be\.failproof\.ai as lab-1 \(m-1\)/);
-    expect(r.lines.join("\n")).toMatch(/3 policies assigned \(generation 12\)/);
+    expect(r.lines.join("\n")).toMatch(/3 policies assigned \(deployment 12\)/);
     expect(readCloudCredentials()).toEqual({
       url: base.url,
       machineId: "m-1",
@@ -349,13 +349,13 @@ describe("--disconnect means disconnect", () => {
     // Clearing the credential ends polling. Every artifact already on disk
     // stayed referenced by active.json and kept being loaded on every tool
     // call, so a machine that had deliberately left its organisation went on
-    // being governed by whatever generation was current when it left.
+    // being governed by whatever deployment was current when it left.
     await runConnectCommand({ ...base, machineId: "m-1" });
     const managedRoot = resolve(dir, "home", "policies", "cloud-policies");
     mkdirSync(managedRoot, { recursive: true });
     writeFileSync(
       resolve(managedRoot, "active.json"),
-      JSON.stringify({ schemaVersion: 1, generation: 4, policies: [] }),
+      JSON.stringify({ schemaVersion: 1, deployment: 4, policies: [] }),
     );
 
     runDisconnectCommand();

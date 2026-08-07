@@ -273,7 +273,7 @@ describe("hooks/handler with a corrupt cloud-managed manifest", () => {
     // look protected and be enforcing only its local set.
     writeFileSync(
       join(policyRoot, "active.json"),
-      JSON.stringify({ schemaVersion: 999, generation: 1, policies: [] }),
+      JSON.stringify({ schemaVersion: 999, deployment: 1, policies: [] }),
     );
 
     const result = await evaluateHookEvent("PreToolUse", "claude", stdin({

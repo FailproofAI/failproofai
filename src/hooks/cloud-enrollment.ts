@@ -182,7 +182,7 @@ export function clearCloudCredentials(): boolean {
 }
 
 export type VerifyResult =
-  | { ok: true; policyCount: number; generation: number }
+  | { ok: true; policyCount: number; deployment: number }
   | { ok: false; reason: string };
 
 /**
@@ -228,11 +228,11 @@ export async function verifyCloudCredentials(creds: CloudCredentials): Promise<V
   }
 
   try {
-    const body = (await response.json()) as { policies?: unknown[]; generation?: number };
+    const body = (await response.json()) as { policies?: unknown[]; deployment?: number };
     return {
       ok: true,
       policyCount: Array.isArray(body.policies) ? body.policies.length : 0,
-      generation: typeof body.generation === "number" ? body.generation : 0,
+      deployment: typeof body.deployment === "number" ? body.deployment : 0,
     };
   } catch {
     return {

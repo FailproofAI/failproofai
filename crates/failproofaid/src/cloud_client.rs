@@ -300,7 +300,7 @@ impl CloudClient {
 /// `--disconnect` take effect within one interval, with nothing to restart.
 ///
 /// Resolution failures degrade to integrity-only rather than killing the lane:
-/// a machine that was pulling policy keeps its last known-good generation and
+/// a machine that was pulling policy keeps its last known-good deployment and
 /// keeps repairing tampering while its credentials are broken.
 ///
 /// Two intervals, chosen per tick, so both documented knobs keep their meaning
@@ -339,7 +339,7 @@ pub fn spawn_maintenance(
             }
 
             // Runs whether or not cloud is reachable: poll failures never
-            // discard the last known-good generation, and local tampering is
+            // discard the last known-good deployment, and local tampering is
             // still repaired while the cloud is offline or unconfigured.
             if let Err(err) = store.repair_active_from_cache() {
                 eprintln!("[failproofaid] cloud policy integrity error: {err}");
@@ -364,8 +364,8 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
                     if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 =>
                 {
                     eprintln!(
-                        "[failproofaid] cloud policy generation {} active (downloaded {}, repaired {})",
-                        outcome.generation, outcome.downloaded, outcome.repaired
+                        "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
+                        outcome.deployment, outcome.downloaded, outcome.repaired
                     );
                 }
                 Ok(_) => {}
@@ -562,7 +562,7 @@ mod tests {
                 let body = if request
                     .starts_with("GET /enforcement/v1/desired-state?machineId=machine-1")
                 {
-                    format!(r#"{{"schemaVersion":1,"generation":7,"policies":[{{"id":"guard","revision":2,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}]}}"#).into_bytes()
+                    format!(r#"{{"schemaVersion":1,"deployment":7,"policies":[{{"id":"guard","version":2,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}]}}"#).into_bytes()
                 } else {
                     expected_artifact.clone()
                 };
@@ -590,10 +590,10 @@ mod tests {
         let outcome = store
             .reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy))
             .unwrap();
-        assert_eq!(outcome.generation, 7);
+        assert_eq!(outcome.deployment, 7);
         assert_eq!(outcome.downloaded, 1);
         assert_eq!(
-            fs::read(root.join("generations/7/guard.mjs")).unwrap(),
+            fs::read(root.join("deployments/7/guard.mjs")).unwrap(),
             artifact
         );
         server.join().unwrap();
@@ -606,7 +606,7 @@ mod tests {
             CloudClient::new("https://cloud.example", "secret".into(), "machine".into()).unwrap();
         let policy = DesiredPolicy {
             id: "guard".into(),
-            revision: 1,
+            version: 1,
             sha256: "0".repeat(64),
             artifact_url: "https://evil.example/artifact".into(),
             effect: PolicyEffect::Enforce,

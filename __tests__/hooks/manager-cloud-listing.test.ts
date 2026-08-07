@@ -26,7 +26,7 @@ describe("failproofai policies — cloud-managed section", () => {
 
   it("lists a deployed policy, with its version and the deployment number", async () => {
     readActive.mockReturnValue([
-      { id: "org-guard", revision: 3, effect: "enforce", sha256: "a", path: "p", generation: 7 },
+      { id: "org-guard", version: 3, effect: "enforce", sha256: "a", path: "p", deployment: 7 },
     ]);
     await listHooks();
     expect(text()).toContain("Cloud-managed — deployment 7");
@@ -36,7 +36,7 @@ describe("failproofai policies — cloud-managed section", () => {
 
   it("marks an observe policy as OBS, never ON — its verdict is discarded", async () => {
     readActive.mockReturnValue([
-      { id: "watch-only", revision: 1, effect: "observe", sha256: "a", path: "p", generation: 2 },
+      { id: "watch-only", version: 1, effect: "observe", sha256: "a", path: "p", deployment: 2 },
     ]);
     await listHooks();
     const line = text().split("\n").find((l) => l.includes("watch-only")) ?? "";
@@ -46,7 +46,7 @@ describe("failproofai policies — cloud-managed section", () => {
 
   it("says these are not switchable locally, because --uninstall cannot touch them", async () => {
     readActive.mockReturnValue([
-      { id: "org-guard", revision: 1, effect: "enforce", sha256: "a", path: "p", generation: 1 },
+      { id: "org-guard", version: 1, effect: "enforce", sha256: "a", path: "p", deployment: 1 },
     ]);
     await listHooks();
     expect(text()).toContain("Managed from the dashboard");

@@ -1180,7 +1180,7 @@ function installedExecStart(definition: string): string | null {
  * True when a service IS installed but its definition predates
  * `FAILPROOFAI_CLI_CMD`.
  *
- * Deliberately a content check against the definition on disk, not a revision
+ * Deliberately a content check against the definition on disk, not a version
  * number mirrored into `config.toml`. The mirror is the tempting shape — it is
  * how `daemon.installed_version` is modelled — but that field is declared,
  * read and cleared and has never once been WRITTEN (both `setDaemonConfigured`

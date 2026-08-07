@@ -214,7 +214,7 @@ export function runDisconnectCommand(): CommandResult {
   // credential ends the daemon's polling; every artifact already on disk stayed
   // referenced by `active.json` and kept being loaded on every tool call — so a
   // machine that had deliberately left its organisation went on being governed
-  // by whatever generation was current when it left, indefinitely, while
+  // by whatever deployment was current when it left, indefinitely, while
   // `--status` reported it as unconnected.
   const stoppedManaged = clearActiveCloudManagedPolicies();
   // Back to OSS. Leaving mode = "cloud" with no credentials would describe a

@@ -153,11 +153,11 @@ impl Health {
 /// `COLLECTOR_METRICS`, for the same reason and with the same consequence.
 ///
 /// This was a `OnceLock`, so only the FIRST `install()` in a process took
-/// effect. That was true for exactly one generation of the collector: it is now
+/// effect. That was true for exactly one deployment of the collector: it is now
 /// cycled whenever its configuration changes (a rotated credential, a stream
 /// switched off) and rebuilt by `failproofai backfill`, and `collector_tasks()`
 /// installs a fresh `Health` each time. Every later install was silently
-/// dropped, so sources reported into the ORPHANED first-generation registry
+/// dropped, so sources reported into the ORPHANED first-deployment registry
 /// while the live `writer_task` published the one nobody was writing to.
 /// `collector-health.json` kept being rewritten every 30s with frozen numbers,
 /// and a source that had gone completely dark read exactly like a healthy one —
@@ -167,7 +167,7 @@ static GLOBAL: std::sync::RwLock<Option<std::sync::Arc<Health>>> = std::sync::Rw
 /// Install the process health registry, replacing any previous one.
 ///
 /// The caller installs before starting any source, so no poll ever reports into
-/// a registry that does not exist yet, and the generation being replaced is one
+/// a registry that does not exist yet, and the deployment being replaced is one
 /// whose tasks have already been joined.
 pub fn install(health: std::sync::Arc<Health>) {
     // A poisoned lock is not a reason to stop recording health: recover the
@@ -388,7 +388,7 @@ mod tests {
     /// `GLOBAL` was a `OnceLock`, so the second `install()` — which happens on
     /// every credential rotation, every `[collector]` config change and every
     /// `failproofai backfill` — was silently dropped. Sources then reported
-    /// through the free functions into the first generation, which had already
+    /// through the free functions into the first deployment, which had already
     /// been joined, while the live `writer_task` published the second one.
     /// `collector-health.json` froze, and a dead source became
     /// indistinguishable from an idle one.
@@ -415,17 +415,17 @@ mod tests {
         assert_eq!(entry.events, 7);
         assert_eq!(entry.errors, 1);
 
-        // And the replaced generation must go quiet rather than keep absorbing
+        // And the replaced deployment must go quiet rather than keep absorbing
         // them — that silent absorption is what made the file freeze.
         let gen1 = first.snapshot();
         assert!(
             !gen1.sources.contains_key("cycle-test-gen2"),
-            "reports leaked into the orphaned generation: {:?}",
+            "reports leaked into the orphaned deployment: {:?}",
             gen1.sources.keys().collect::<Vec<_>>()
         );
         assert!(
             gen1.sources.contains_key("cycle-test-gen1"),
-            "the first generation should still hold what it recorded while it was live"
+            "the first deployment should still hold what it recorded while it was live"
         );
     }
 

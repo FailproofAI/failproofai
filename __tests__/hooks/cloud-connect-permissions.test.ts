@@ -49,7 +49,7 @@ function probes() {
     ran,
     verifyPolicy: async () => {
       ran.policy = true;
-      return { ok: true as const, policyCount: 3, generation: 7 };
+      return { ok: true as const, policyCount: 3, deployment: 7 };
     },
     verifyIngest: async () => {
       ran.ingest = true;

@@ -176,9 +176,9 @@ fn it_keeps_noticing_changes_rather_than_reloading_once() {
     // A one-shot reload would pass the test above and still strand the second
     // rotation, so the loop is asserted rather than the first iteration.
     //
-    // Each edit waits for the previous generation to be RUNNING, not merely for
+    // Each edit waits for the previous deployment to be RUNNING, not merely for
     // the cycle to be announced. "cycling the collector" is logged before
-    // `join_with_flush` drains the old generation, so an edit made on that log
+    // `join_with_flush` drains the old deployment, so an edit made on that log
     // line lands mid-cycle and is picked up by the same rebuild — the daemon
     // coalesces to the latest config, correctly, and no second cycle is ever
     // logged. Asserting the count without this sync tests the timing of the
@@ -202,7 +202,7 @@ fn it_keeps_noticing_changes_rather_than_reloading_once() {
 fn an_unchanged_config_does_not_cycle_anything() {
     // Re-reading the file every tick must not look like a change, or the
     // collector would be torn down and rebuilt twice a second — losing the
-    // in-flight batches of every generation.
+    // in-flight batches of every deployment.
     let home = unique_home("stable");
     make_home(&home, "a-stable-key");
     let daemon = spawn_daemon(&home);

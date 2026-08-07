@@ -101,7 +101,7 @@ vi.mock("../../src/hooks/cloud-connection", async (importOriginal) => {
   return {
     ...actual,
     connectToCloud: vi.fn(async () => ({
-      policy: { ok: true, policyCount: 2, generation: 7 },
+      policy: { ok: true, policyCount: 2, deployment: 7 },
       ingest: { ok: true },
       anyConfigured: true,
     })),

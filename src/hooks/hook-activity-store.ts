@@ -99,16 +99,16 @@ export interface HookActivityEntry {
   policySource?: "builtin" | "custom" | "convention" | "cloud";
   /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
   cloudPolicyId?: string;
-  /** Immutable revision of that policy — the half of attribution that identifies WHICH version ran. */
-  cloudRevision?: number;
+  /** Immutable version of that policy — the half of attribution that identifies WHICH version ran. */
+  cloudVersion?: number;
   /**
-   * The cloud generation active when this event was evaluated, recorded on
+   * The cloud deployment active when this event was evaluated, recorded on
    * every row of a managed machine regardless of what decided. "What was
    * deployed here" is a different question from "what decided", and only this
    * distinguishes a rollout that changed no outcomes from one that never
    * arrived.
    */
-  cloudGeneration?: number;
+  cloudDeployment?: number;
   /**
    * What observe-mode policies WOULD have done, had they been enforcing. This
    * record is the entire point of observe mode: without it the row is
@@ -117,7 +117,7 @@ export interface HookActivityEntry {
    */
   observed?: Array<{
     policyId: string;
-    revision: number;
+    version: number;
     decision: "deny" | "instruct";
     reason: string | null;
   }>;

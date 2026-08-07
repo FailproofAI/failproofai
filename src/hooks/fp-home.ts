@@ -32,7 +32,7 @@
  *   bin/                     downloaded daemon binaries, one per version
  *   policies/
  *     local-policies/        the builtin enable/disable set
- *     cloud-policies/        content-addressed artifacts + active generation
+ *     cloud-policies/        content-addressed artifacts + active deployment
  *     custom-policies/       user convention policies (*.mjs)
  *   cursors/<source>/        per-source collector watermarks
  *   audit/                   audit report + per-session cache
@@ -135,7 +135,7 @@ export const localPoliciesDir = (home?: string) => atHome(home, "policies", "loc
 export const globalPolicyConfigFile = (home?: string) =>
   resolve(localPoliciesDir(home), "policies-config.json");
 
-/** Cloud-managed generations: `active.json` plus content-addressed artifacts. */
+/** Cloud-managed deployments: `active.json` plus content-addressed artifacts. */
 export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "cloud-policies");
 
 /** User convention policies (`*.mjs`) that load without any flag. */

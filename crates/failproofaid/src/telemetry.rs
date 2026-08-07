@@ -148,7 +148,7 @@ static LANE: OnceLock<Arc<Lane>> = OnceLock::new();
 /// REPLACEABLE, not set-once. The collector is cycled whenever its configuration
 /// changes, and a `OnceLock` silently dropped every set after the first — so
 /// after a credential rotation this lane went on polling the counters of a
-/// collector that had already been joined, reporting a dead generation's totals
+/// collector that had already been joined, reporting a dead deployment's totals
 /// as if they were current. Nothing errored; the numbers simply stopped moving,
 /// which is indistinguishable from a healthy idle machine.
 static COLLECTOR_METRICS: RwLock<Option<Arc<fpai_collect::SupervisorMetrics>>> = RwLock::new(None);
@@ -812,7 +812,7 @@ impl Runner {
     fn poll_collector(&mut self) {
         // Cloned out of the lock rather than read through it: `poll_collector`
         // does real work below, and holding a read guard across it would block
-        // the manager thread mid-cycle when it swaps in a new generation.
+        // the manager thread mid-cycle when it swaps in a new deployment.
         let Some(metrics) = COLLECTOR_METRICS
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -1411,8 +1411,8 @@ mod tests {
             "failures",
             "panics",
             "restarts",
-            "generation",
-            "generation_changed",
+            "deployment",
+            "deployment_changed",
             "downloaded",
             "repaired",
         ];

@@ -396,18 +396,18 @@ function DetailPanel({
                 <span className="text-muted-foreground">Decided by: </span>
                 <span className="font-mono text-foreground">
                   {item.policySource === "cloud" && item.cloudPolicyId
-                    ? `cloud · ${item.cloudPolicyId} rev ${item.cloudRevision}`
+                    ? `cloud · ${item.cloudPolicyId} rev ${item.cloudVersion}`
                     : item.policySource}
                 </span>
               </div>
             )}
-            {item.cloudGeneration !== undefined && (
+            {item.cloudDeployment !== undefined && (
               <div>
                 {/* Present on every row of a managed machine, not just cloud
                     decisions — it is what separates a rollout that changed no
                     outcomes from one that never arrived. */}
-                <span className="text-muted-foreground">Cloud generation: </span>
-                <span className="font-mono text-foreground">{item.cloudGeneration}</span>
+                <span className="text-muted-foreground">Cloud deployment: </span>
+                <span className="font-mono text-foreground">{item.cloudDeployment}</span>
               </div>
             )}
             <div>

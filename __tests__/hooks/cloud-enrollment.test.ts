@@ -170,7 +170,7 @@ describe("verifyCloudCredentials", () => {
   let respond: (path: string) => { status: number; body: string };
 
   beforeEach(async () => {
-    respond = () => ({ status: 200, body: JSON.stringify({ schemaVersion: 1, generation: 4, policies: [] }) });
+    respond = () => ({ status: 200, body: JSON.stringify({ schemaVersion: 1, deployment: 4, policies: [] }) });
     server = createServer((req, res) => {
       lastAuth = req.headers.authorization;
       const { status, body } = respond(req.url ?? "");
@@ -192,10 +192,10 @@ describe("verifyCloudCredentials", () => {
     let seenUrl = "";
     respond = (url) => {
       seenUrl = url;
-      return { status: 200, body: JSON.stringify({ generation: 9, policies: [{ id: "a" }, { id: "b" }] }) };
+      return { status: 200, body: JSON.stringify({ deployment: 9, policies: [{ id: "a" }, { id: "b" }] }) };
     };
     const result = await verifyCloudCredentials(creds());
-    expect(result).toEqual({ ok: true, policyCount: 2, generation: 9 });
+    expect(result).toEqual({ ok: true, policyCount: 2, deployment: 9 });
     expect(lastAuth).toBe("Bearer the-token");
     expect(seenUrl).toContain("/enforcement/v1/desired-state?machineId=m-1");
   });

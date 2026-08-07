@@ -341,6 +341,12 @@ export function resettablePaths(): string[] {
     // `custom-policies/` is deliberately absent from this list for the same
     // reason. Both directories below are re-derived: `local-policies/` by
     // setup, `cloud-policies/` by the next daemon poll.
+    //
+    // `local-policies/` holds ONE file — the user's enabled-policy selection —
+    // and clearing it on a layout migration is deliberate and tested. But it is
+    // also the destination `migratePolicyConfig()` carries layout 1's selection
+    // into, so the carry is written AFTER this list runs, and `resetHome` skips
+    // this entry when the reset is not a layout migration at all. See both.
     localPoliciesDir(),
     cloudPoliciesDir(),
     // `at("cursors")` is deliberately NOT here, and it is load-bearing for the

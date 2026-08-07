@@ -763,7 +763,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     return { applied: false, abort: "unsupported_platform" };
   }
 
-  intro("let's set up your safety net", stdout);
+  intro("let's set up failproofai", stdout);
 
   const cancel = (): WizardResult => {
     outro("Cancelled — nothing was changed.", { ok: false }, stdout);

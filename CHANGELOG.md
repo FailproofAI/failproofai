@@ -4,6 +4,7 @@
 
 ### Fixes
 - Make `failproofai config` refuse setup on an unsupported platform (Windows, today) instead of completing it unenforced. The wizard used to skip the daemon requirement and finish anyway, leaving the machine reading as configured while enforcing in-process with no fail-closed guarantee — now it prints why and exits 1 before drawing a single prompt, writing nothing. (#664)
+- Drop the "safety net" metaphor from the setup wizard's intro, which now names the tool it is setting up. A metaphor tells a first-time user nothing about what the next four steps will do to their machine, and this is the first line they see. (#PR)
 
 ## 1.0.0-beta.12 — 2026-08-07
 

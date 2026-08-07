@@ -19,7 +19,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 1;
+/// What this daemon WRITES, and what the server emits today.
+///
+/// 2, because the v1 payload named these fields `generation` and `revision`
+/// and neither appears any more. Same endpoint, same version number, different
+/// shape is precisely what a schema version exists to prevent — see the note at
+/// the emit site in AgentEye's `enforcement.rs`.
+pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
+
+/// What this daemon ACCEPTS when reading.
+///
+/// 1 is here for files on DISK, never for a server: a machine that ran an
+/// earlier beta has a `desired-state.json` and an `active.json` written at
+/// version 1, and both structs carry `deny_unknown_fields`, so refusing the
+/// version would make the daemon unable to read its own persisted state — it
+/// would silently stop enforcing cloud policy until a poll re-materialised
+/// everything. The field aliases on `ActiveDeployment` exist for the same
+/// files and the same reason.
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, DESIRED_STATE_SCHEMA_VERSION];
 const MANAGED_FILE_MODE: u32 = 0o600;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -33,11 +50,6 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[serde(rename_all = "camelCase")]
 pub struct DesiredState {
     pub schema_version: u32,
-    /// `generation` is the pre-rename spelling. Accepted as an alias because
-    /// this value is BOTH received from the server and persisted to
-    /// `desired-state.json` — so an upgraded daemon meets the old name on disk
-    /// even against a server that has already moved on.
-    #[serde(alias = "generation")]
     pub deployment: u64,
     pub policies: Vec<DesiredPolicy>,
 }
@@ -46,8 +58,6 @@ pub struct DesiredState {
 #[serde(rename_all = "camelCase")]
 pub struct DesiredPolicy {
     pub id: String,
-    /// `revision` is the pre-rename spelling. See `DesiredState::deployment`.
-    #[serde(alias = "revision")]
     pub version: u64,
     pub sha256: String,
     /// Opaque locator interpreted only by the cloud transport implementation.
@@ -437,10 +447,10 @@ impl PolicyStore {
         let Some(active) = self.read_active()? else {
             return Ok(0);
         };
-        if active.schema_version != DESIRED_STATE_SCHEMA_VERSION {
+        if !SUPPORTED_SCHEMA_VERSIONS.contains(&active.schema_version) {
             return Err(ReconcileError::InvalidDesiredState(format!(
-                "unsupported active schema version {}",
-                active.schema_version
+                "unsupported active schema version {} (supported: {:?})",
+                active.schema_version, SUPPORTED_SCHEMA_VERSIONS
             )));
         }
 
@@ -506,10 +516,10 @@ pub fn spawn_integrity_monitor(
 }
 
 fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> {
-    if desired.schema_version != DESIRED_STATE_SCHEMA_VERSION {
+    if !SUPPORTED_SCHEMA_VERSIONS.contains(&desired.schema_version) {
         return Err(ReconcileError::InvalidDesiredState(format!(
-            "unsupported schema version {}",
-            desired.schema_version
+            "unsupported schema version {} (supported: {:?})",
+            desired.schema_version, SUPPORTED_SCHEMA_VERSIONS
         )));
     }
     let mut ids = HashSet::new();
@@ -1002,18 +1012,65 @@ mod pre_rename_state_tests {
         assert_eq!(parsed.policies[0].effect, PolicyEffect::Enforce);
     }
 
-    /// `desired-state.json` is persisted too, and the server may still be
-    /// sending the old spelling while a machine has already upgraded.
+    /// The WIRE deliberately does NOT accept the old spelling.
+    ///
+    /// The alias was there and was removed on purpose: AgentEye#559 emits only
+    /// the new names and bumped the payload to `schemaVersion: 2`, so an alias
+    /// here would be dead code guarding a case no server can produce — and a
+    /// silently-tolerated old field is how two sides drift back apart. If a
+    /// payload ever arrives with `generation`/`revision`, it is either a stale
+    /// server or something forged, and both should fail loudly.
+    ///
+    /// This is the exact opposite choice from `ActiveDeployment` above, and the
+    /// difference is *who wrote the bytes*: the wire comes from a server we
+    /// version in lockstep, `active.json` comes from a daemon that may be older
+    /// than the one now reading it.
     #[test]
-    fn desired_state_accepts_the_pre_rename_spelling() {
-        let parsed: DesiredState = serde_json::from_str(
+    fn the_wire_does_not_accept_the_pre_rename_spelling() {
+        let err = serde_json::from_str::<DesiredState>(
             r#"{"schemaVersion":1,"generation":184,
                 "policies":[{"id":"p","revision":7,"sha256":"a",
                              "artifactUrl":"/enforcement/v1/artifacts/a"}]}"#,
         )
-        .expect("a pre-rename desired state must still be readable");
-        assert_eq!(parsed.deployment, 184);
-        assert_eq!(parsed.policies[0].version, 7);
+        .expect_err("the old wire spelling must be refused, not silently accepted");
+        assert!(
+            err.to_string().contains("missing field"),
+            "expected a missing-field error, got: {err}"
+        );
+    }
+
+    /// Both schema versions are readable, and only from disk does 1 arise.
+    #[test]
+    fn both_schema_versions_are_accepted() {
+        assert!(
+            SUPPORTED_SCHEMA_VERSIONS.contains(&1),
+            "a beta daemon's files are v1"
+        );
+        assert!(
+            SUPPORTED_SCHEMA_VERSIONS.contains(&DESIRED_STATE_SCHEMA_VERSION),
+            "what we write must be readable"
+        );
+        assert_eq!(DESIRED_STATE_SCHEMA_VERSION, 2, "the server emits 2");
+
+        // The version the server actually sends must validate.
+        let desired: DesiredState = serde_json::from_str(
+            r#"{"schemaVersion":2,"deployment":1,
+                "policies":[{"id":"p","version":1,
+                  "sha256":"439735423d5d532041bccbbc62cafefacd2253d3a7c71ff99d6473b38acda0ee",
+                  "artifactUrl":"/enforcement/v1/artifacts/x","effect":"enforce"}]}"#,
+        )
+        .expect("schemaVersion 2 is what AgentEye emits");
+        validate_desired_state(&desired).expect("v2 desired state must validate");
+
+        // ...and an unknown one is still refused.
+        let bad = DesiredState {
+            schema_version: 99,
+            ..desired
+        };
+        assert!(
+            validate_desired_state(&bad).is_err(),
+            "an unknown version must be refused"
+        );
     }
 
     /// The new spelling is what we WRITE, and must keep round-tripping — an

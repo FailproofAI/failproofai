@@ -10,7 +10,21 @@ import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
 
-const ACTIVE_SCHEMA_VERSION = 1;
+/**
+ * Active-manifest schema versions this reader accepts.
+ *
+ * MUST stay in step with `SUPPORTED_SCHEMA_VERSIONS` in `cloud_policies.rs`,
+ * which is what WRITES the file this parses. They are two hand-maintained
+ * copies of one contract in two languages, and the failure is silent in the
+ * worst direction: the daemon reconciles happily, `active.json` is correct on
+ * disk, and only the hook path refuses it — so cloud policy stops being
+ * enforced while every other signal says the machine is healthy. Reproduced
+ * exactly that way while syncing this with AgentEye#559.
+ *
+ * 1 is accepted for files a pre-rename beta daemon left behind; 2 is what is
+ * written now.
+ */
+const ACCEPTED_ACTIVE_SCHEMA_VERSIONS: readonly number[] = [1, 2];
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const POLICY_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
@@ -55,8 +69,11 @@ export function cloudManagedPolicyRoot(): string {
 function parseManifest(value: unknown): ActiveManifest {
   if (!value || typeof value !== "object") throw new Error("active manifest is not an object");
   const manifest = value as Partial<ActiveManifest>;
-  if (manifest.schemaVersion !== ACTIVE_SCHEMA_VERSION) {
-    throw new Error(`unsupported active manifest schema ${String(manifest.schemaVersion)}`);
+  if (!ACCEPTED_ACTIVE_SCHEMA_VERSIONS.includes(manifest.schemaVersion as number)) {
+    throw new Error(
+      `unsupported active manifest schema ${String(manifest.schemaVersion)} ` +
+        `(supported: ${ACCEPTED_ACTIVE_SCHEMA_VERSIONS.join(", ")})`,
+    );
   }
   if (!Number.isSafeInteger(manifest.deployment) || (manifest.deployment ?? -1) < 0) {
     throw new Error("active manifest deployment is invalid");

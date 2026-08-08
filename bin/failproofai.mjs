@@ -327,6 +327,26 @@ COMMANDS
   harness remove-path <h> <p>    Stop capturing that path
   harness --help, -h             Show this help for the harness command
 
+    Each agent CLI is watched wherever its own installer put it. Extra paths add
+    the places it did not: a second profile, a team share, a per-user home.
+
+    failproofai harness add-path openclaw user1=/srv/.openclaw-user1
+    failproofai harness add-path openclaw user2=/srv/.openclaw-user2
+    failproofai harness add-path hermes   user1=/srv/.hermes-user1/state.db
+
+    LABEL PER-USER PATHS EXPLICITLY. An agent id comes from the cwd recorded
+    inside the transcript, identical in every copy of a project, so unlabelled
+    paths merge two people into one agent whose sessions interleave. Omitting the
+    label derives one from the folder name — fine for .openclaw-user1, but
+    /home/u1/.openclaw and /home/u2/.openclaw both derive "openclaw" and the
+    second is refused. A path overlapping one already captured is refused too.
+
+    FAILPROOFAI_<HARNESS>_EXTRA_PATHS overrides the file for containers:
+      FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
+
+    Written to ~/.failproofai/config.json; the daemon picks it up in seconds —
+    no restart, no sudo. Session collection must be on for any of it to be read.
+
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command
@@ -706,16 +726,6 @@ NOTES
   • Takes effect within seconds — the daemon re-reads config.json on an interval
     and cycles its collector. No restart, no sudo.
 
-ENV OVERRIDE (containers)
-  FAILPROOFAI_<HARNESS>_EXTRA_PATHS takes a comma-separated list and REPLACES the
-  file's entries for that harness, so an image needs no baked-in config:
-
-    FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
-    FAILPROOFAI_HERMES_EXTRA_PATHS="prod=/srv/hermes-prod/state.db"
-
-  A hyphenated harness name uses underscores: claude-subagent reads
-  FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS.
-
 EXAMPLES
   failproofai harness add-path claude work=/srv/team/.claude/projects
   failproofai harness add-path hermes prod=/srv/hermes-prod/state.db
@@ -723,16 +733,6 @@ EXAMPLES
   failproofai harness list
   failproofai harness remove-path claude work
 
-  One home per person — LABEL THESE EXPLICITLY. An agent id is derived from the
-  cwd recorded inside the transcript, which is identical in every copy of the
-  same project, so without labels two people's sessions merge into one agent and
-  interleave. The folder-name fallback rescues /srv/.openclaw-user1 (distinct
-  folders) but NOT /home/u1/.openclaw and /home/u2/.openclaw — both derive
-  "openclaw", and the second is refused as a duplicate label.
-
-  failproofai harness add-path openclaw user1=/srv/.openclaw-user1
-  failproofai harness add-path openclaw user2=/srv/.openclaw-user2
-  failproofai harness add-path hermes   user1=/srv/.hermes-user1/state.db
 `.trimStart());
       process.exit(0);
     }

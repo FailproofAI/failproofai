@@ -22,18 +22,39 @@
  * machine denied every tool call), its cloud policy directory still said
  * `cloud-managed`, and its credential still said `cloud.json`.
  *
- * ## Layout 2
+ * ## Layout 3
+ *
+ * Three things changed from layout 2, all of them about a directory saying what
+ * it holds:
+ *
+ * - **Everything is JSON.** `config.toml` and `credentials.toml` are now
+ *   `.json`. Two serialisation formats in one home meant two parsers, two
+ *   escaping rules, and a `toml` dependency in both the CLI and the daemon to
+ *   read files that were only ever flat key/value.
+ * - **`policies/` holds policies, and only policies.** It also held
+ *   `local-policies/` — our config, not a policy at all, and the one file a
+ *   user must not hand-edit sitting among the ones they should. That moved to
+ *   the root. What stays is every policy on the machine: the user's own `*.mjs`
+ *   directly in it, the fleet's under `cloud-policies/`. Nesting them is safe
+ *   because the convention loader does not recurse (see `cloudPoliciesDir`),
+ *   and it means one directory answers "what governs this machine".
+ * - **No per-deployment directories.** `cloud-policies/generations/<n>/` held a
+ *   full copy of every artifact per deployment — a tree to create, prune and
+ *   keep consistent with the manifest, on top of the `artifacts/` copy. They
+ *   are content-addressed and therefore immutable, so the copies bought nothing
+ *   the digests did not already give. `cloud-policies/` is flat now: one
+ *   `artifacts/` directory, and `active.json` naming what is live — see
+ *   `cloud_policies.rs` for why activation is still atomic without them.
  *
  * ```
  * ~/.failproofai/
  *   VERSION                  layout / cli / daemon versions
- *   config.toml       0644   non-secret: mode, daemon, collector prefs
- *   credentials.toml  0600   every token
+ *   config.json       0644   non-secret: mode, daemon, collector prefs
+ *   credentials.json  0600   every token
+ *   policies-config.json     the builtin enable/disable set + params
  *   bin/                     downloaded daemon binaries, one per version
- *   policies/
- *     local-policies/        the builtin enable/disable set
- *     cloud-policies/        content-addressed artifacts + active deployment
- *     custom-policies/       user convention policies (*.mjs)
+ *   policies/                every policy: the user's *.mjs sit directly here
+ *     cloud-policies/        the fleet's — flat: active.json, desired-state.json, artifacts/
  *   cursors/<source>/        per-source collector watermarks
  *   audit/                   audit report + per-session cache
  *   hook-activity/           decision log the dashboard reads
@@ -69,7 +90,7 @@ import { resolve } from "node:path";
  * 1 — the original flat/`cache`-based layout, through 1.0.0-beta.5.
  * 2 — this file.
  */
-export const LAYOUT_VERSION = 2;
+export const LAYOUT_VERSION = 3;
 
 /**
  * `~/.failproofai`, or `FAILPROOFAI_HOME`.
@@ -102,7 +123,7 @@ const atHome = (home: string | undefined, ...parts: string[]): string =>
 export const versionFile = (home?: string) => atHome(home, "VERSION");
 
 /** Non-secret configuration. World-readable by design; never holds a token. */
-export const configFile = (home?: string) => atHome(home, "config.toml");
+export const configFile = (home?: string) => atHome(home, "config.json");
 
 /**
  * Every credential, owner-only.
@@ -112,7 +133,7 @@ export const configFile = (home?: string) => atHome(home, "config.toml");
  * there would be readable by every local user on the box — which is exactly
  * why `ingest.json` and `cloud.json` were separate files before this.
  */
-export const credentialsFile = (home?: string) => atHome(home, "credentials.toml");
+export const credentialsFile = (home?: string) => atHome(home, "credentials.json");
 
 // ── Daemon binaries ──────────────────────────────────────────────────────────
 
@@ -128,18 +149,53 @@ export const daemonBinary = (version: string, home?: string) =>
 
 // ── Policies ─────────────────────────────────────────────────────────────────
 
+/**
+ * Where the user drops convention policies (`*.mjs`), loaded with no flag.
+ *
+ * Layout 3 made this the WHOLE meaning of the directory. It used to hold two
+ * subdirectories the user did not put there — `local-policies/` (our config)
+ * and `cloud-policies/` (the fleet's) — so "mine" and "not mine" shared a
+ * folder and nothing said which was which.
+ */
 export const policiesDir = (home?: string) => atHome(home, "policies");
 
-/** The builtin enable/disable set and per-policy params, GLOBAL scope only. */
-export const localPoliciesDir = (home?: string) => atHome(home, "policies", "local-policies");
+/** Convention policies ARE the policies directory now; kept as an alias. */
+export const customPoliciesDir = policiesDir;
+
+/**
+ * The builtin enable/disable set and per-policy params, GLOBAL scope only.
+ *
+ * At the root in layout 3. It is configuration, not a policy, and burying it
+ * two levels inside a directory users are told to drop files into put the one
+ * file they must not hand-edit among the ones they should.
+ */
 export const globalPolicyConfigFile = (home?: string) =>
-  resolve(localPoliciesDir(home), "policies-config.json");
+  atHome(home, "policies-config.json");
 
-/** Cloud-managed deployments: `active.json` plus content-addressed artifacts. */
+/**
+ * Cloud-managed deployments: `active.json`, `desired-state.json`, and
+ * content-addressed `artifacts/`.
+ *
+ * A CHILD of `policies/`, so everything that is a policy lives under one
+ * directory and the home root stays readable — every policy on the machine is
+ * under `policies/`, whoever put it there.
+ *
+ * Safe to nest because the convention loader does not recurse:
+ * `discoverPolicyFiles()` and `findSkippedPolicyFiles()` both filter
+ * `isFile()`, so this directory is invisible to it. That is the property that
+ * makes the nesting safe rather than a coincidence — if either ever walks
+ * subdirectories, every cloud artifact becomes a convention policy loaded
+ * WITHOUT its digest being checked, which is the one path this whole module
+ * exists to prevent. `fp-home.test.ts` pins it.
+ *
+ * What is flat is the INSIDE of this directory: `artifacts/` holds every
+ * content-addressed policy for every deployment, and `active.json` names which
+ * of them is live. There is no `deployments/<n>/` tree — a per-deployment
+ * directory is one more moving part that has to be created, pruned and kept
+ * consistent with the manifest, and it bought nothing the digests did not
+ * already give.
+ */
 export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "cloud-policies");
-
-/** User convention policies (`*.mjs`) that load without any flag. */
-export const customPoliciesDir = (home?: string) => resolve(policiesDir(home), "custom-policies");
 
 // ── Collector ────────────────────────────────────────────────────────────────
 
@@ -275,7 +331,35 @@ export const logsDir = (home?: string) => atHome(home, "logs");
  * silently reads "no data" is worse than one that says so.
  */
 export const legacy = {
+  /**
+   * Layout 1's policy config — at the home root.
+   *
+   * Layout 3 puts the CURRENT config back at this exact path, so this is not a
+   * discriminating landmark on its own. `detectLayout()` checks for a layout-2+
+   * marker before consulting it; see the comment there.
+   */
   policyConfig: () => at("policies-config.json"),
+  /**
+   * Layout 2's `config.toml`. A landmark in its own right now: layout 1 had no
+   * such file, so its presence proves a home is newer than layout 1 even when
+   * `VERSION` is missing.
+   */
+  configToml: () => at("config.toml"),
+  /** Layout 2's credentials, replaced by `credentials.json`. */
+  credentialsToml: () => at("credentials.toml"),
+  /** Layout 2 nested the policy config two levels down. */
+  localPoliciesDir: () => at("policies", "local-policies"),
+  /** Layout 2 kept convention policies in a subdirectory. */
+  customPoliciesDir: () => at("policies", "custom-policies"),
+  // NO `cloudPoliciesDir` HERE. Layout 2 put cloud deployments at
+  // `policies/cloud-policies`, which is where layout 3 puts them too — so there
+  // is no old location to migrate from or prune, and an entry here would be a
+  // "legacy" path identical to the live one. That is not a harmless duplicate:
+  // it is exactly the shape that made `legacy.policyConfig()` unusable as a
+  // landmark, and anything treating this list as "safe to delete, it's old"
+  // would be deleting the current deployment. What DID change inside it is the
+  // shape — `deployments/<n>/` trees flattened into one `artifacts/` dir —
+  // which `cloud_policies.rs` prunes after the flip, not this list.
   policyConfigLocal: () => at("policies-config.local.json"),
   cloudCredentials: () => at("cloud.json"),
   ingestCredentials: () => at("ingest.json"),
@@ -326,7 +410,23 @@ export function resettablePaths(): string[] {
     legacy.collectorHealth(),
     legacy.onboardingLock(),
     legacy.cloudManagedPolicies(),
-    // The MACHINE-OWNED children of `policies/`, never the parent.
+    // Layout 2's files, by their layout-2 names. Without these a layout-2 home
+    // upgrading to 3 keeps `config.toml` and `credentials.toml` sitting next to
+    // the new `.json` pair — two configs, one of them stale, and the reset that
+    // was supposed to clear the old layout leaving its most important files
+    // behind. `credentials.toml` is the worse half: a live token in a file
+    // nothing reads any more and nothing will clean up.
+    legacy.configToml(),
+    legacy.credentialsToml(),
+    legacy.localPoliciesDir(),
+    // NOT `legacy.customPoliciesDir()`. `migrateConventionPolicies()` empties it
+    // and removes it itself, and whatever it could NOT move is the user's own
+    // hand-written source — which this list would delete moments after that
+    // function deliberately decided to preserve it. That is not hypothetical:
+    // a `lib/` of helpers colliding with a stale `policies/lib/` was destroyed
+    // outright, and the policy that did move was left importing a file that no
+    // longer existed.
+    // The MACHINE-OWNED things, never the directory the user owns.
     //
     // `at("policies")` stood here, and on layout 1 that directory IS the
     // documented home for hand-written personal policies — `docs/
@@ -338,16 +438,26 @@ export function resettablePaths(): string[] {
     // that still sees the agent CLIs' untouched settings files — so the wizard
     // was skipped and hooks kept firing against an empty policy set.
     //
-    // `custom-policies/` is deliberately absent from this list for the same
-    // reason. Both directories below are re-derived: `local-policies/` by
-    // setup, `cloud-policies/` by the next daemon poll.
+    // `policies/` is deliberately absent from this list for the same reason —
+    // the user's own convention policies sit directly in it and nothing
+    // re-derives them. Its `cloud-policies/` CHILD is listed instead, which is
+    // the whole reason this is a per-entry list and not `rm -rf policies/`:
+    // one directory now holds both the files a person wrote by hand and the
+    // ones the fleet sent, and only the second kind can be thrown away. Both
+    // entries below are re-derived — the policy config by setup,
+    // `cloud-policies/` by the next daemon poll.
     //
-    // `local-policies/` holds ONE file — the user's enabled-policy selection —
+    // The policy config holds ONE thing — the user's enabled-policy selection —
     // and clearing it on a layout migration is deliberate and tested. But it is
     // also the destination `migratePolicyConfig()` carries layout 1's selection
     // into, so the carry is written AFTER this list runs, and `resetHome` skips
     // this entry when the reset is not a layout migration at all. See both.
-    localPoliciesDir(),
+    //
+    // Layout 3 moved it from `policies/local-policies/policies-config.json` to
+    // the home root, so this is a FILE now rather than the directory that held
+    // it — `policies/` itself must survive, because in layout 3 it is the
+    // user's.
+    globalPolicyConfigFile(),
     cloudPoliciesDir(),
     // `at("cursors")` is deliberately NOT here, and it is load-bearing for the
     // activity migration above rather than a separate opinion. Cursors are keyed

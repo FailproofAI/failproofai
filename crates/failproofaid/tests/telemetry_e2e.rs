@@ -243,7 +243,7 @@ fn spawn_daemon(home: &Path, collector: &Collector, extra_env: &[(&str, &str)]) 
 fn no_test_in_this_crate_can_report_to_the_real_posthog() {
     // The tripwire for a mistake this step actually made. `FAILPROOFAI_DAEMON_SOCKET`
     // relocates only `run/`, so a daemon spawned without `FAILPROOFAI_HOME`
-    // reads the developer's real config.toml — where telemetry resolves to its
+    // reads the developer's real config.json — where telemetry resolves to its
     // shipped default, ON — and posts `daemon_started` to the real endpoint from
     // `cargo test` and from CI. It is silent from inside the test: everything
     // passes, and the only evidence is events arriving in production from a
@@ -281,11 +281,11 @@ fn no_test_in_this_crate_can_report_to_the_real_posthog() {
 #[test]
 fn a_real_daemon_reports_its_lifecycle_to_the_batch_endpoint() {
     let home = scratch_home("lifecycle");
-    // No [telemetry] block at all — the shape of a default install, and the one
+    // No telemetry object at all — the shape of a default install, and the one
     // that has to read as ON or the shipped default is unreachable.
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"oss\"\n\n[collector]\nmachine_id = \"m-e2e\"\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"oss"},"collector":{"machine_id":"m-e2e"}}"#,
     )
     .unwrap();
     let collector = Collector::start();
@@ -353,14 +353,14 @@ fn a_real_daemon_reports_its_lifecycle_to_the_batch_endpoint() {
 
 #[test]
 fn the_config_file_opt_out_makes_the_daemon_completely_silent() {
-    // The whole reason `[telemetry] enabled` exists: this is a system-scope
+    // The whole reason `telemetry.enabled` exists: this is a system-scope
     // service unit whose environment carries essentially nothing, so the file is
     // the ONLY switch that can reach it. If this test can be made to pass by a
     // daemon that sends one request, the opt-out does not exist.
     let home = scratch_home("opt-out-file");
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"oss\"\n\n[telemetry]\nenabled = false\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"oss"},"telemetry":{"enabled":false}}"#,
     )
     .unwrap();
     let collector = Collector::start();
@@ -389,8 +389,8 @@ fn the_environment_opt_out_also_makes_the_daemon_silent() {
     // able to switch OFF a file that says on — the more-restrictive rule.
     let home = scratch_home("opt-out-env");
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"oss\"\n\n[telemetry]\nenabled = true\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"oss"},"telemetry":{"enabled":true}}"#,
     )
     .unwrap();
     let collector = Collector::start();
@@ -415,12 +415,12 @@ fn the_environment_opt_out_also_makes_the_daemon_silent() {
 
 #[test]
 fn switching_the_opt_out_off_mid_run_stops_the_reporting_without_a_restart() {
-    // `failproofai config` writes config.toml WITHOUT root while this is a
+    // `failproofai config` writes config.json WITHOUT root while this is a
     // system unit, so an opt-out that only took effect on restart would need a
     // `sudo systemctl restart` to hold — which is exactly the flow the file
     // exists to avoid. Anything memoised for the life of the process fails here.
     let home = scratch_home("opt-out-live");
-    std::fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
+    std::fs::write(home.join("config.json"), "[mode]\nkind = \"oss\"\n").unwrap();
     let collector = Collector::start();
     let mut daemon = spawn_daemon(&home, &collector, &[]);
     assert!(
@@ -430,8 +430,8 @@ fn switching_the_opt_out_off_mid_run_stops_the_reporting_without_a_restart() {
     );
 
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"oss\"\n\n[telemetry]\nenabled = false\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"oss"},"telemetry":{"enabled":false}}"#,
     )
     .unwrap();
     // One tick to notice, then a settling window.
@@ -460,7 +460,7 @@ fn a_daemon_that_was_killed_says_so_on_its_next_start() {
     // ordinary start. On a fail-closed machine the window between the two is
     // every tool call denied.
     let home = scratch_home("unclean");
-    std::fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
+    std::fs::write(home.join("config.json"), "[mode]\nkind = \"oss\"\n").unwrap();
     let first = Collector::start();
     let daemon = spawn_daemon(&home, &first, &[]);
     assert!(
@@ -511,7 +511,7 @@ fn a_daemon_that_cannot_bind_its_socket_still_says_so_before_it_dies() {
     // telemetry flush — so `daemon_started` would be buffered and then taken to
     // the grave. Found by running the real binary, not by reading it.
     let home = scratch_home("bind-failure");
-    std::fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
+    std::fs::write(home.join("config.json"), "[mode]\nkind = \"oss\"\n").unwrap();
     let collector = Collector::start();
 
     // A `sockaddr_un.sun_path` is ~108 bytes on Linux and 104 on macOS, so this
@@ -553,7 +553,7 @@ fn the_id_the_cli_resolved_is_the_one_the_daemon_reports_under() {
     // A daemon reporting under a different id than the CLI does not fail — it
     // files one machine as two PostHog persons, and nothing in the data says so.
     let home = scratch_home("identity");
-    std::fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
+    std::fs::write(home.join("config.json"), "[mode]\nkind = \"oss\"\n").unwrap();
     std::fs::create_dir_all(home.join("state")).unwrap();
     std::fs::write(home.join("state").join("telemetry-id"), "cli-resolved-id").unwrap();
 

@@ -45,7 +45,7 @@
 //!
 //! # The off-switch is checked before anything is buffered
 //!
-//! `[telemetry] enabled` in `config.toml` plus `FAILPROOFAI_TELEMETRY_DISABLED`,
+//! `telemetry.enabled` in `config.json` plus `FAILPROOFAI_TELEMETRY_DISABLED`,
 //! resolved to the MORE RESTRICTIVE of the two, exactly as `lib/telemetry-enabled.ts`
 //! does for the four TypeScript dispatchers. The file is the one that matters
 //! here: this is a system-scope service unit whose environment carries
@@ -239,7 +239,7 @@ struct FileConfig {
     machine_id: Option<String>,
 }
 
-/// `[telemetry]` and `[collector].machine_id` out of `config.toml`, in one read.
+/// `telemetry` and `collector.machine_id` out of `config.json`, in one read.
 ///
 /// Mirrors `readConfig` in `src/hooks/fp-config.ts` value for value: only an
 /// explicit `enabled = false` switches telemetry off, and an absent, unreadable
@@ -253,19 +253,20 @@ fn load_file_config(home: &Path) -> FileConfig {
         telemetry_enabled: true,
         machine_id: None,
     };
-    let Ok(text) = std::fs::read_to_string(home.join("config.toml")) else {
+    let Ok(text) = std::fs::read_to_string(home.join("config.json")) else {
         return default;
     };
-    // `toml::from_str`, NOT `text.parse::<toml::Value>()` — `FromStr for Value`
-    // parses a single VALUE and rejects a whole document at its first table
-    // header. It compiles and never errors visibly; the audit lane shipped that
-    // bug once and it made every table on every machine read as absent.
-    let Ok(root) = toml::from_str::<toml::Value>(&text) else {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
         return default;
     };
     FileConfig {
+        // Absent reads as ENABLED, and only an explicit `false` disables. A
+        // default install writes no telemetry object at all, so treating a
+        // missing key as "off" would silently disable it everywhere; treating a
+        // malformed file as "on" is the direction that cannot surprise a user
+        // who never opted out.
         telemetry_enabled: root.get("telemetry").and_then(|t| t.get("enabled"))
-            != Some(&toml::Value::Boolean(false)),
+            != Some(&serde_json::Value::Bool(false)),
         machine_id: root
             .get("collector")
             .and_then(|c| c.get("machine_id"))
@@ -1261,16 +1262,16 @@ mod tests {
         // on or the shipped default would be unreachable.
         let home = scratch("gate-file");
         let cases = [
-            ("", true),
-            ("[telemetry]\nenabled = true\n", true),
-            ("[mode]\nkind = \"oss\"\n", true),
-            ("[telemetry]\nenabled = false\n", false),
+            ("{}", true),
+            (r#"{"telemetry":{"enabled":true}}"#, true),
+            (r#"{"mode":{"kind":"oss"}}"#, true),
+            (r#"{"telemetry":{"enabled":false}}"#, false),
             // Malformed: resolves to the default rather than inventing a third
             // answer, exactly as readConfig's catch does.
-            ("[telemetry\nenabled = ", true),
+            ("{ not json", true),
         ];
         for (body, expected) in cases {
-            std::fs::write(home.join("config.toml"), body).unwrap();
+            std::fs::write(home.join("config.json"), body).unwrap();
             assert_eq!(
                 load_file_config(&home).telemetry_enabled,
                 expected,
@@ -1284,12 +1285,16 @@ mod tests {
     fn the_machine_id_rides_from_the_collector_block() {
         let home = scratch("gate-machine");
         std::fs::write(
-            home.join("config.toml"),
-            "[collector]\nmachine_id = \"m-42\"\n",
+            home.join("config.json"),
+            r#"{"collector":{"machine_id":"m-42"}}"#,
         )
         .unwrap();
         assert_eq!(load_file_config(&home).machine_id.as_deref(), Some("m-42"));
-        std::fs::write(home.join("config.toml"), "[collector]\nmachine_id = \"\"\n").unwrap();
+        std::fs::write(
+            home.join("config.json"),
+            r#"{"collector":{"machine_id":""}}"#,
+        )
+        .unwrap();
         assert_eq!(load_file_config(&home).machine_id, None);
         std::fs::remove_dir_all(&home).ok();
     }
@@ -1486,7 +1491,11 @@ mod tests {
         // report — the buffered-event bug one level down, in a field nobody
         // looks at as buffered state.
         let home = scratch("tick-gate");
-        std::fs::write(home.join("config.toml"), "[telemetry]\nenabled = false\n").unwrap();
+        std::fs::write(
+            home.join("config.json"),
+            r#"{"telemetry":{"enabled":false}}"#,
+        )
+        .unwrap();
         let lane = bare_lane();
         lane.push(event("daemon_started"));
         let mut runner = Runner {

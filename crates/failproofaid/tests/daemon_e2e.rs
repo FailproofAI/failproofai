@@ -40,7 +40,7 @@ fn unique_socket_path(name: &str) -> PathBuf {
 /// A scratch failproofai home for a spawned daemon, beside its socket.
 ///
 /// `FAILPROOFAI_DAEMON_SOCKET` relocates only `run/`; everything else the
-/// daemon reads and writes — `config.toml`, `state/` — still resolves from
+/// daemon reads and writes — `config.json`, `state/` — still resolves from
 /// `$HOME`. So without this, these tests ran the real binary against the
 /// developer's own `~/.failproofai`: it would read their real telemetry
 /// opt-out, write their real `state/daemon-run.json`, and POST a
@@ -100,7 +100,7 @@ fn spawn_daemon(socket_path: &PathBuf) -> DaemonGuard {
         .env("FAILPROOFAI_HOME", scratch_home(socket_path))
         // Never report from a test. The scratch home above keeps the daemon out
         // of the developer's real `~/.failproofai`, but a home with no
-        // config.toml resolves telemetry to its shipped default — ON — so
+        // config.json resolves telemetry to its shipped default — ON — so
         // without this every `cargo test` and every CI run would POST a real
         // `daemon_started` to the real PostHog endpoint.
         .env("FAILPROOFAI_TELEMETRY_DISABLED", "1")

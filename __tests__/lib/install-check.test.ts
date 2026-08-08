@@ -14,13 +14,12 @@ const FAKE_HOME = "/fake/home";
 // policy tree; reading the old path made `checkHooks()` report every layout-2
 // install as unconfigured with zero policies.
 const LAST_VERSION = resolve(FAKE_HOME, ".failproofai", "state", "last-version");
-const HOOKS_CONFIG = resolve(
-  FAKE_HOME,
-  ".failproofai",
-  "policies",
-  "local-policies",
-  "policies-config.json",
-);
+// Layout 3 moved this to the home ROOT: it is configuration, not a policy, and
+// `policies/` now means only the files the user dropped there. Hardcoded rather
+// than imported so a path change has to be made here too — reading the wrong
+// path made `checkHooks()` report every install as unconfigured with zero
+// policies, which is exactly the regression this constant already survived once.
+const HOOKS_CONFIG = resolve(FAKE_HOME, ".failproofai", "policies-config.json");
 const USER_SETTINGS = resolve(FAKE_HOME, ".claude", "settings.json");
 
 vi.mock("node:fs", () => ({

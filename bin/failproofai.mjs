@@ -450,8 +450,12 @@ LINKS
     const isHelpOrVersion =
       args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
     if (args[0] === "audit" && args.includes("--scheduled")) {
-      const { layoutWarningForHook } = await import("../src/hooks/fp-reset");
-      const warning = layoutWarningForHook();
+      // NOT `layoutWarningForHook` — that one answers the hook's question
+      // ("are policies unenforced?") and deliberately stays quiet when the
+      // global config is readable. This gate is about the LAYOUT, and must
+      // fire whenever completing the run would reset the home.
+      const { layoutBlockerForScheduledRun } = await import("../src/hooks/fp-reset");
+      const warning = layoutBlockerForScheduledRun();
       if (warning) {
         // Exit 1, not 75: 75 means "another audit holds the lock" and is retried
         // in fifteen minutes, which here would just re-warn four times an hour

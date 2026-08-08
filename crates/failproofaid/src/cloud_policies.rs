@@ -313,12 +313,28 @@ impl PolicyStore {
             );
         }
 
+        // ONE copy of every policy, addressed by its own hash.
+        //
+        // Layout 2 kept two: `artifacts/<sha>` plus a per-deployment copy under
+        // `deployments/<n>/<id>.mjs`. The second copy bought two things, and
+        // neither survives contact with content addressing:
+        //
+        //   • Staging. A deployment was materialised whole under its own number
+        //     before `active.json` pointed at it, so a half-downloaded set could
+        //     not go live. But an artifact path CONTAINS its hash, so a new
+        //     deployment only ever writes new files — it cannot disturb the ones
+        //     the current `active.json` names. Nothing needs staging away from a
+        //     live set it is structurally incapable of touching.
+        //
+        //   • Mutual repair. A tampered artifact was rebuilt from the deployment
+        //     copy and vice versa. That is a cache repairing a cache; the server
+        //     is the authority, the hash is known, and a re-fetch is both simpler
+        //     and correct even when BOTH copies are bad — the case the old scheme
+        //     could not recover from at all.
+        //
+        // `active.json` is still the single atomic activation point, and the flip
+        // is still last.
         fs::create_dir_all(self.root.join("artifacts"))?;
-        let deployment_dir = self
-            .root
-            .join("deployments")
-            .join(desired.deployment.to_string());
-        fs::create_dir_all(&deployment_dir)?;
 
         let mut downloaded = 0;
         let mut repaired = 0;
@@ -326,19 +342,13 @@ impl PolicyStore {
 
         for policy in &desired.policies {
             let artifact_path = self.artifact_path(&policy.sha256);
-            let deployment_path = deployment_dir.join(format!("{}.mjs", policy.id));
 
-            let artifact_valid = file_matches_hash(&artifact_path, &policy.sha256)?;
-            let deployment_valid = file_matches_hash(&deployment_path, &policy.sha256)?;
-
-            let bytes = if artifact_valid {
-                fs::read(&artifact_path)?
-            } else if deployment_valid {
-                let bytes = fs::read(&deployment_path)?;
-                write_atomic(&artifact_path, &bytes)?;
-                repaired += 1;
-                bytes
-            } else {
+            if !file_matches_hash(&artifact_path, &policy.sha256)? {
+                // Present-but-wrong and absent are different events, and the
+                // metric is worth keeping honest: one means somebody or
+                // something modified a verified file, the other is a first
+                // download.
+                let existed = artifact_path.exists();
                 let bytes = fetcher
                     .fetch(policy)
                     .map_err(|message| ReconcileError::Fetch {
@@ -347,16 +357,14 @@ impl PolicyStore {
                     })?;
                 verify_bytes(policy, &bytes)?;
                 write_atomic(&artifact_path, &bytes)?;
-                downloaded += 1;
-                bytes
-            };
-
-            if !deployment_valid {
-                write_atomic(&deployment_path, &bytes)?;
-                if artifact_valid {
+                if existed {
                     repaired += 1;
+                } else {
+                    downloaded += 1;
                 }
             }
+
+            let deployment_path = artifact_path;
 
             let relative_path = deployment_path
                 .strip_prefix(&self.root)
@@ -382,11 +390,13 @@ impl PolicyStore {
             policies: active_policies,
         };
         let manifest_bytes = serde_json::to_vec_pretty(&active)?;
-        write_atomic(&deployment_dir.join("manifest.json"), &manifest_bytes)?;
+        // The per-deployment `manifest.json` is gone with `deployments/<n>/`. It
+        // duplicated `active.json` for a directory that no longer exists, and a
+        // second copy of the pointer is a second thing that can disagree.
 
         // Persist the cloud snapshot before switching active.json. A crash in
         // between is recoverable: the maintenance loop reconstructs the active
-        // pointer from this snapshot and the fully staged deployment.
+        // pointer from this snapshot and the artifacts already verified on disk.
         write_atomic(
             &self.desired_state_path(),
             &serde_json::to_vec_pretty(desired)?,
@@ -397,6 +407,21 @@ impl PolicyStore {
             write_atomic(&self.active_manifest_path(), &manifest_bytes)?;
         }
 
+        // AFTER the flip, never before. A machine upgrading from layout 2 has a
+        // `deployments/` tree whose files the OLD `active.json` still named; once
+        // the new pointer is live nothing reads it, and leaving it behind means
+        // carrying a full copy of every policy set the machine has ever had.
+        //
+        // Best-effort: a directory we cannot remove is dead weight, not a reason
+        // to fail a reconcile that has already succeeded.
+        let legacy_deployments = self.root.join("deployments");
+        if activated && legacy_deployments.exists() {
+            match fs::remove_dir_all(&legacy_deployments) {
+                Ok(()) => tracing::info!("removed the layout-2 deployments/ tree"),
+                Err(err) => tracing::warn!(?err, "could not remove the layout-2 deployments/ tree"),
+            }
+        }
+
         Ok(ReconcileOutcome {
             deployment: desired.deployment,
             downloaded,
@@ -405,10 +430,24 @@ impl PolicyStore {
         })
     }
 
-    /// Verifies the active deployment and repairs one bad copy from the other
-    /// verified local copy. If both copies are missing/corrupt, the cloud
-    /// transport must re-fetch; active.json remains unchanged and the worker's
-    /// already-loaded deployment remains the last known good decision set.
+    /// Verifies every artifact the active deployment names, and reports what it
+    /// cannot fix.
+    ///
+    /// WHAT THIS LOST WHEN `deployments/<n>/` WENT AWAY, stated plainly because
+    /// it is a real capability and not an implementation detail: layout 2 kept
+    /// two copies of every policy, so a tampered one could be rebuilt from the
+    /// other WITHOUT the network. There is one copy now, and a corrupt copy has
+    /// no local source of truth — the fix is a re-fetch, which needs the server.
+    ///
+    /// What is NOT lost is the safety property. The hook path verifies each
+    /// artifact's digest before importing it, so a tampered file is refused, not
+    /// executed. The cost is availability: on a machine that cannot reach the
+    /// control plane, that one policy stops enforcing until it can, and this
+    /// function's error is what says so. For a tool whose job is refusing
+    /// dangerous things, failing closed and loudly beats self-healing quietly.
+    ///
+    /// active.json is left unchanged either way, so the worker keeps its last
+    /// known-good decision set.
     pub fn repair_active_from_cache(&self) -> Result<usize, ReconcileError> {
         // A corrupted `desired-state.json` must not disable repair.
         //
@@ -784,26 +823,15 @@ mod tests {
     }
 
     #[test]
-    fn repairs_a_tampered_deployment_copy_from_the_verified_artifact() {
-        let store = temp_store("repair-deployment");
-        let bytes = b"export default 'verified';\n";
-        store
-            .reconcile(&desired(3, "guard", bytes), &|_: &DesiredPolicy| {
-                Ok(bytes.to_vec())
-            })
-            .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        let deployment_path = store.root().join(&active.policies[0].path);
-        fs::write(&deployment_path, b"tampered").unwrap();
-
-        assert_eq!(store.repair_active_from_cache().unwrap(), 1);
-        assert_eq!(fs::read(deployment_path).unwrap(), bytes);
-        fs::remove_dir_all(store.root()).ok();
-    }
-
-    #[test]
-    fn repairs_a_tampered_artifact_from_the_verified_deployment_copy() {
-        let store = temp_store("repair-artifact");
+    fn a_tampered_artifact_is_reported_rather_than_silently_repaired() {
+        // Layout 2 kept a second copy under `deployments/<n>/` and rebuilt one
+        // from the other offline. There is one copy now, so a corrupt artifact
+        // has no local source of truth and the honest outcome is an error the
+        // caller logs — both callers already treat it as an integrity error.
+        //
+        // The safety property is unchanged: the hook path verifies the digest
+        // before importing, so the tampered bytes are refused rather than run.
+        let store = temp_store("tampered-artifact");
         let bytes = b"export default 'verified';\n";
         let state = desired(4, "guard", bytes);
         store
@@ -812,28 +840,39 @@ mod tests {
         let artifact_path = store.artifact_path(&state.policies[0].sha256);
         fs::write(&artifact_path, b"tampered").unwrap();
 
-        assert_eq!(store.repair_active_from_cache().unwrap(), 1);
-        assert_eq!(fs::read(artifact_path).unwrap(), bytes);
+        let err = store
+            .repair_active_from_cache()
+            .expect_err("a corrupt artifact with no second copy cannot be repaired locally");
+        assert!(
+            format!("{err}").contains("refetch"),
+            "the error must say a re-fetch is required, got: {err}"
+        );
+        // active.json is untouched, so the worker keeps its last known-good set.
+        assert!(store.read_active().unwrap().is_some());
         fs::remove_dir_all(store.root()).ok();
     }
 
     #[test]
-    fn reports_when_both_verified_copies_are_lost() {
-        let store = temp_store("both-lost");
+    fn a_real_poll_refetches_what_local_repair_cannot() {
+        // The other half of the same contract: the fix exists, it just needs the
+        // server. With a working fetcher the tampered artifact is replaced and
+        // counted as a repair rather than a first download.
+        let store = temp_store("refetch-tampered");
         let bytes = b"export default 'verified';\n";
-        let state = desired(5, "guard", bytes);
+        let state = desired(4, "guard", bytes);
         store
             .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
             .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        fs::write(store.root().join(&active.policies[0].path), b"bad-one").unwrap();
-        fs::write(store.artifact_path(&state.policies[0].sha256), b"bad-two").unwrap();
+        let artifact_path = store.artifact_path(&state.policies[0].sha256);
+        fs::write(&artifact_path, b"tampered").unwrap();
 
-        assert!(matches!(
-            store.repair_active_from_cache(),
-            Err(ReconcileError::Fetch { .. })
-        ));
-        assert_eq!(store.read_active().unwrap().unwrap().deployment, 5);
+        let outcome = store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+
+        assert_eq!(outcome.repaired, 1, "present-but-wrong counts as a repair");
+        assert_eq!(outcome.downloaded, 0, "not a first download");
+        assert_eq!(fs::read(artifact_path).unwrap(), bytes);
         fs::remove_dir_all(store.root()).ok();
     }
 
@@ -946,7 +985,14 @@ mod tests {
     }
 
     #[test]
-    fn background_monitor_repairs_without_touching_the_hook_path() {
+    fn the_background_monitor_detects_tampering_without_touching_the_hook_path() {
+        // The monitor's job changed with the flattening. It used to REPAIR a
+        // tampered copy from the other one; with a single content-addressed copy
+        // it DETECTS and reports, and the fix comes from the next cloud poll.
+        //
+        // What it must still never do is disturb the hook path: `active.json` is
+        // left exactly as it was, so the worker keeps enforcing its last
+        // known-good set while the corruption is reported.
         let store = temp_store("monitor");
         let bytes = b"export default 'verified';\n";
         store
@@ -954,21 +1000,21 @@ mod tests {
                 Ok(bytes.to_vec())
             })
             .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        let deployment_path = store.root().join(&active.policies[0].path);
-        fs::write(&deployment_path, b"tampered").unwrap();
+        let active_before = store.read_active().unwrap().unwrap();
+        let artifact = store.root().join(&active_before.policies[0].path);
+        fs::write(&artifact, b"tampered").unwrap();
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let handle =
             spawn_integrity_monitor(store.clone(), shutdown.clone(), Duration::from_millis(10));
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while fs::read(&deployment_path).unwrap() != bytes && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        std::thread::sleep(Duration::from_millis(60));
         shutdown.store(true, Ordering::Relaxed);
         handle.join().unwrap();
 
-        assert_eq!(fs::read(deployment_path).unwrap(), bytes);
+        // Still tampered — the monitor cannot fix this alone any more — but the
+        // pointer the worker reads is untouched.
+        assert_eq!(fs::read(&artifact).unwrap(), b"tampered");
+        assert_eq!(store.read_active().unwrap().unwrap(), active_before);
         fs::remove_dir_all(store.root()).ok();
     }
 }

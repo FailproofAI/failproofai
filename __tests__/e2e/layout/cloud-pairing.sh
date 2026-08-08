@@ -80,17 +80,24 @@ head1 "PHASE 1 — the key is checked BEFORE it is used (live introspect)"
 
 reset_home
 OUT=$(connect "$K_BOTH")
-has "a key with both permissions connects" "$OUT" "Connected to $API as $MACHINE"
+# Asserted in two parts, because the CLI shows a human LABEL beside the id when
+# the machine has one — `shownAs` in cloud-enrollment-cli.ts renders
+# "<label> (<id>)" and falls back to the bare id only when they are equal. A
+# single fixed-string assertion on "as <id>" therefore passed on an unlabelled
+# machine and failed on a labelled one, which is a property of whoever ran it
+# last, not of the code under test.
+has "a key with both permissions connects" "$OUT" "Connected to $API as"
+has "…identifying this machine" "$OUT" "$MACHINE"
 has "…and the server's own org is named back to the user" "$OUT" "FailproofAI (failproofai)"
 has "…policy capability configured" "$OUT" "Policy"
 has "…dashboard capability configured" "$OUT" "hook activity will be sent"
 has "…and ingest targets the VERSIONED route" "$OUT" "$API/v1/events"
-CREDS=$(cat "$H/credentials.toml")
-has "credentials.toml carries the policy token" "$CREDS" '[cloud]'
-has "…the ingest key" "$CREDS" '[ingest]'
-has "…and the org, recorded once" "$CREDS" '[org]'
-has "…by slug" "$CREDS" 'slug = "failproofai"'
-eq  "credentials.toml is owner-only" "$(stat -c '%a' "$H/credentials.toml")" "600"
+CREDS=$(cat "$H/credentials.json")
+has "credentials.json carries the policy token" "$CREDS" '"cloud":'
+has "…the ingest key" "$CREDS" '"ingest":'
+has "…and the org, recorded once" "$CREDS" '"org":'
+has "…by slug" "$CREDS" '"slug": "failproofai"'
+eq  "credentials.json is owner-only" "$(stat -c '%a' "$H/credentials.json")" "600"
 STATUS=$(FAILPROOFAI_HOME="$H" node "$CLI" config --status 2>&1)
 has "--status reports the org offline" "$STATUS" "failproofai"
 hasnt "--status never prints the token" "$STATUS" "$K_BOTH"
@@ -100,29 +107,29 @@ OUT=$(connect "$K_EVENTS")
 has "an events-only key still configures the dashboard" "$OUT" "dashboard reporting only"
 has "…and names the missing permission, not a generic 403" "$OUT" "policies:pull"
 has "…identifying the org the key IS valid for" "$OUT" "FailproofAI (failproofai)"
-[ -f "$H/credentials.toml" ] && has "…records the org with no [cloud] table" "$(cat "$H/credentials.toml")" '[org]' \
-  || bad "…records the org with no [cloud] table" "no credentials.toml"
-hasnt "…and writes no policy credential it cannot use" "$(cat "$H/credentials.toml")" '[cloud]'
+[ -f "$H/credentials.json" ] && has "…records the org with no cloud credential" "$(cat "$H/credentials.json")" '"org":' \
+  || bad "…records the org with no cloud credential" "no credentials.json"
+hasnt "…and writes no policy credential it cannot use" "$(cat "$H/credentials.json")" '"cloud":'
 
 reset_home
 OUT=$(connect "$K_POLICIES")
 has "a policies-only key still enrols for policy" "$OUT" "for policy only"
 has "…and names the missing ingest permission" "$OUT" "events:add"
-hasnt "…and writes no ingest credential" "$(cat "$H/credentials.toml")" '[ingest]'
+hasnt "…and writes no ingest credential" "$(cat "$H/credentials.json")" '"ingest":'
 
 reset_home
 OUT=$(connect "$K_NEITHER")
 has "a key with neither permission is refused" "$OUT" "Could not connect"
 has "…naming events:add" "$OUT" "events:add"
 has "…and policies:pull" "$OUT" "policies:pull"
-[ -f "$H/credentials.toml" ] && bad "…and writes nothing at all" "credentials.toml exists" || ok "…and writes nothing at all"
-CFG=$(cat "$H/config.toml" 2>/dev/null)
-hasnt "…leaving the machine in oss mode, provably silent" "$CFG" 'kind = "cloud"'
+[ -f "$H/credentials.json" ] && bad "…and writes nothing at all" "credentials.json exists" || ok "…and writes nothing at all"
+CFG=$(cat "$H/config.json" 2>/dev/null)
+hasnt "…leaving the machine in oss mode, provably silent" "$CFG" '"kind": "cloud"'
 
 reset_home
 OUT=$(connect "not-a-real-key")
 has "a key the server rejects is reported as rejected" "$OUT" "did not accept"
-[ -f "$H/credentials.toml" ] && bad "…and writes nothing" "credentials.toml exists" || ok "…and writes nothing"
+[ -f "$H/credentials.json" ] && bad "…and writes nothing" "credentials.json exists" || ok "…and writes nothing"
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 2 — author and deploy a cloud-managed policy"
@@ -156,15 +163,20 @@ head1 "PHASE 3 — the daemon pulls it, verifies it, and the CLI can read it"
 
 reset_home
 connect "$K_BOTH" >/dev/null
-python3 - "$H/config.toml" <<'PY'
-import sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text()
+python3 - "$H/config.json" <<'PY'
+import sys, json, pathlib
 # What `failproofai config` sets after a successful service install. Set here
 # directly because installing a system unit needs root this run does not have.
-s = s.replace("configured = false", "configured = true")
-p.write_text(s)
+#
+# Parsed and re-serialised rather than string-replaced. The replace form was a
+# TOML edit left over from layout 2: against a JSON file it matched nothing,
+# wrote the file back BYTE-IDENTICAL, and every assertion after it ran against a
+# machine that was never daemon-configured — the phase silently tested nothing.
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text())
+d.setdefault("daemon", {})["configured"] = True
+p.write_text(json.dumps(d, indent=2) + "\n")
 PY
-has "machine marked daemon-configured" "$(cat "$H/config.toml")" "configured = true"
+has "machine marked daemon-configured" "$(cat "$H/config.json")" '"configured": true'
 
 FAILPROOFAI_HOME="$H" HOME="$FAKEHOME" \
   FAILPROOFAI_WORKER_COMMAND="$(command -v node) $R/dist/worker.mjs" \

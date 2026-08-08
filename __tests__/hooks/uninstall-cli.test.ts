@@ -66,7 +66,7 @@ beforeEach(() => {
   calls.length = 0;
   home = mkdtempSync(join(tmpdir(), "fpai-uninstall-"));
   mkdirSync(join(home, "state"), { recursive: true });
-  writeFileSync(join(home, "config.toml"), "[daemon]\nconfigured = true\n");
+  writeFileSync(join(home, "config.json"), JSON.stringify({ daemon: { configured: true } }));
   servicePath = join(home, "failproofaid@tester.service");
   writeFileSync(servicePath, "[Unit]\n");
   serviceExists = true;

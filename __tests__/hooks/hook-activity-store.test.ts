@@ -68,13 +68,21 @@ describe("hooks/hook-activity-store", () => {
       expect(getHookActivityPage(2)).toHaveLength(PAGE_SIZE);
     });
 
+    // 80 entries, each a full synchronous round trip: acquire the advisory lock,
+    // read the count, sometimes rotate, append, rewrite the count, rewrite the
+    // stats file through a temp + rename, release the lock. That is well over
+    // five hundred filesystem operations, and vitest's 5s default is sized for
+    // in-memory tests — under a loaded machine running 191 files in parallel it
+    // is not enough, and this timed out at 20s while passing in 24ms on its own.
+    // The timeout is raised rather than the work reduced, because the number of
+    // rotations IS what the test is for.
     it("rotates multiple times", () => {
       for (let i = 0; i < PAGE_SIZE * 3 + 5; i++) {
         persistHookActivity(makeEntry({ timestamp: 1000 + i }));
       }
       expect(getHookActivityPageCount()).toBe(4);
       expect(getHookActivityPage(1)).toHaveLength(5);
-    });
+    }, 30_000);
   });
 
   describe("getHookActivityPage", () => {

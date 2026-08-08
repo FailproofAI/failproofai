@@ -59,7 +59,7 @@ describe("resolveMachineLabel", () => {
   });
 });
 
-describe("machineLabel round-trips through the credentials.toml [cloud] table", () => {
+describe("machineLabel round-trips through the credentials.json cloud object", () => {
   // The default tests use the JSON override; this one exercises the real TOML
   // path (layout 2), where the label lives in the [cloud] table of
   // credentials.toml and must survive a write → read.
@@ -74,14 +74,16 @@ describe("machineLabel round-trips through the credentials.toml [cloud] table", 
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes machine_label into the TOML and reads it back", () => {
+  it("writes machine_label into the JSON and reads it back", () => {
     writeCloudCredentials({
       url: "https://be.failproof.ai",
       machineId: "id-123",
       token: "tok",
       machineLabel: "Chetan's laptop",
     });
-    expect(readFileSync(credentialsFile(), "utf8")).toMatch(/machine_label = "Chetan's laptop"/);
+    expect(JSON.parse(readFileSync(credentialsFile(), "utf8")).cloud.machine_label).toBe(
+      "Chetan's laptop",
+    );
     expect(readCloudCredentials()).toEqual({
       url: "https://be.failproof.ai",
       machineId: "id-123",

@@ -37,6 +37,8 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  rmdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -47,7 +49,6 @@ import {
   globalPolicyConfigFile,
   hookActivityDir,
   legacy,
-  localPoliciesDir,
   policiesDir,
   resettablePaths,
 } from "./fp-home";
@@ -74,55 +75,116 @@ export interface ResetOutcome {
 }
 
 /** Script files a person could have written by hand. `.d.ts` is a type stub. */
-const USER_SOURCE_RE = /\.(js|mjs|ts)$/;
-
 /**
- * Move hand-written policies from layout 1's `policies/` into layout 2's
- * `policies/custom-policies/`, where the loader actually reads them.
+ * Move the user's own policy directory back up: layout 2's
+ * `policies/custom-policies/` into layout 3's `policies/`, where the loader
+ * reads it.
  *
- * Layout 1 documented `~/.failproofai/policies/` as the user scope for personal
- * convention policies, and layout 2 moved the directory the loader opens down a
- * level (`customPoliciesDir()`). Left alone, those files survive the reset —
- * that part is handled by keeping the parent out of `resettablePaths()` — but
- * nothing would ever load them again, which is the same silent enforcement gap
- * by a slower route.
+ * Left alone, nothing would ever load those files again — and worse, the reset
+ * DELETES `custom-policies/` (it is in `resettablePaths()`), so they would not
+ * merely stop loading, they would be gone.
  *
- * Every loadable extension moves, not just the `*policies.{js,mjs,ts}` names
- * the convention loads: a file that misses the naming convention is still
- * source somebody wrote, and `findSkippedPolicyFiles` exists precisely to tell
- * them so. Leaving it behind to be reported against an empty directory helps
- * nobody.
+ * EVERY entry moves — every file regardless of extension, and every
+ * subdirectory — not just the loadable sources. Moving only `*.{js,mjs,ts}`
+ * deleted the rest along with the directory, and the two things it deleted are
+ * exactly the things a real policy depends on: a `lib/` of shared helpers the
+ * policy imports, and the `.json` data file it reads its rules from. The
+ * surviving policy then referenced a `./lib/rules.mjs` that no longer existed,
+ * so the migration turned a working policy into a broken one AND destroyed
+ * source nothing regenerates. Reproduced exactly that way on a seeded home.
  *
- * A destination that already exists is never overwritten — the source is left
- * in place instead. The parent directory is no longer deleted, so "left in
- * place" means "still there to look at", which is the right outcome for the
- * only case that reaches it (a half-finished earlier migration).
+ * Moving the whole directory is also what keeps relative imports valid: every
+ * entry keeps its position relative to every other, so `./lib/rules.mjs`
+ * resolves after the move for the same reason it did before.
+ *
+ * A destination that already exists is never overwritten. Two things make that
+ * safe rather than lossy, and BOTH are required:
+ *
+ *  - DIRECTORIES MERGE. A colliding directory is not a conflict — `lib/` on both
+ *    sides usually holds different files, and the likeliest collision of all is
+ *    exactly `lib/`, because layout 1 → 2 left one behind (it moved only
+ *    `*.{js,mjs,ts}`, which is the bug this function now fixes). Skipping the
+ *    whole directory on a name match discarded every file inside it. Only a
+ *    genuine leaf collision — the same name, and at least one side a file — is
+ *    left alone.
+ *  - WHAT CANNOT MOVE IS NOT DELETED. `custom-policies/` is deliberately NOT in
+ *    `resettablePaths()`; this function removes it itself, and only once it is
+ *    empty. It used to be on that list, so every entry deliberately "left in
+ *    place" was deleted seconds later by the same `resetHome()` call that had
+ *    just decided to preserve it — the user lost hand-written source, and the
+ *    policy that DID move was left importing a `./lib/rules.mjs` that no longer
+ *    existed. Verified on a seeded home: the helper was gone from the machine
+ *    entirely and the surviving policy failed to load.
  */
 export function migrateConventionPolicies(): string[] {
-  const from = policiesDir();
+  // LAYOUT 3 REVERSED THIS. Layout 2 moved the user's `*.mjs` DOWN into
+  // `policies/custom-policies/`; layout 3 reads them straight out of
+  // `policies/`, which is where layout 1 kept them all along. So:
+  //
+  //   • from layout 1 — nothing to do. The files are already in the directory
+  //     that now loads them, and moving them anywhere would be a regression.
+  //   • from layout 2 — move them back UP, out of `custom-policies/`, or the
+  //     reset deletes that directory (it is in `resettablePaths()`) and takes
+  //     the user's own policies with it.
+  //
+  // `resetHome` calls this BEFORE it deletes anything, which is what makes the
+  // second case safe rather than a race.
+  const from = legacy.customPoliciesDir();
   if (!existsSync(from)) return [];
   const moved: string[] = [];
-  try {
-    const entries = readdirSync(from, { withFileTypes: true }).filter(
-      (e) => e.isFile() && USER_SOURCE_RE.test(e.name) && !e.name.endsWith(".d.ts"),
-    );
-    if (entries.length === 0) return [];
 
-    const to = customPoliciesDir();
-    mkdirSync(to, { recursive: true });
+  // Returns the names it moved, relative to `dir`. Recurses only where both
+  // sides are directories; everything else either moves whole or stays put.
+  const mergeInto = (dir: string, dest: string, prefix: string): void => {
+    let entries;
+    try {
+      // No filter: this whole directory is the user's — policy sources, the
+      // helpers they import, and the data files they read.
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      // A directory we cannot read is not worth aborting a reset over, and its
+      // contents stay where they are rather than being lost.
+      return;
+    }
+    if (entries.length === 0) return;
+    try {
+      mkdirSync(dest, { recursive: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
-      const target = resolve(to, entry.name);
-      if (existsSync(target)) continue;
-      try {
-        renameSync(resolve(from, entry.name), target);
-        moved.push(entry.name);
-      } catch {
-        // One unmovable file must not strand the rest. It stays where it is,
-        // and the reset no longer deletes that directory.
+      const source = resolve(dir, entry.name);
+      const target = resolve(dest, entry.name);
+      const name = `${prefix}${entry.name}`;
+      if (!existsSync(target)) {
+        try {
+          renameSync(source, target);
+          moved.push(name);
+        } catch {
+          // One unmovable entry must not strand the rest — and because this
+          // directory is no longer on the reset list, "not moved" now really
+          // does mean "still on disk".
+        }
+        continue;
+      }
+      // Both directories: merge their contents rather than discarding the
+      // source wholesale. Anything genuinely colliding inside is left alone by
+      // the same rule, one level down.
+      if (entry.isDirectory() && statSync(target).isDirectory()) {
+        mergeInto(source, target, `${name}/`);
       }
     }
+  };
+
+  mergeInto(from, policiesDir(), "");
+
+  // Remove the directory ONLY if the merge emptied it. A non-empty
+  // `custom-policies/` is the user's remaining files, and this is the one place
+  // that decides their fate — `resettablePaths()` no longer lists it.
+  try {
+    rmdirSync(from);
   } catch {
-    // A policies directory we cannot read is not worth aborting a reset over.
+    // Not empty, or not removable. Either way it stays, which is the point.
   }
   return moved.sort((a, b) => a.localeCompare(b));
 }
@@ -266,7 +328,7 @@ const CARRIED_POLICY_CONFIG_KEYS = [
  *
  * Unlike the two migrations above, this one cannot run entirely before the
  * deletions. Its source (`legacy.policyConfig()`) is removed by them, and so is
- * its destination's parent (`localPoliciesDir()`) — rightly, since clearing a
+ * its destination (`globalPolicyConfigFile()`) — rightly, since clearing a
  * stale selection on a layout migration is the documented behaviour. Writing
  * first would have the reset delete the carry moments after it happened, which
  * is exactly what the note on `hookActivityDir()` in `resettablePaths()` records
@@ -275,12 +337,20 @@ const CARRIED_POLICY_CONFIG_KEYS = [
  * So: READ before, WRITE after.
  */
 export function readCarriedPolicyConfig(): Record<string, unknown> | null {
-  const from = legacy.policyConfig();
-  // Checked HERE rather than at write time: by then the destination has been
-  // deleted along with its parent, so every home would look empty. A home
-  // already set up on layout 2 has a newer answer than the layout-1 file beside
-  // it, and a stale file winning would UNDO configuration, not preserve it.
-  if (!existsSync(from) || existsSync(globalPolicyConfigFile())) return null;
+  const to = globalPolicyConfigFile();
+  // NEWEST SOURCE WINS. Two older layouts kept this file in two places, and a
+  // home being upgraded may hold either:
+  //
+  //   layout 2 — `policies/local-policies/policies-config.json`
+  //   layout 1 — `policies-config.json` at the home root
+  //
+  // Layout 3 puts it back at the ROOT, so layout 1's path and the destination
+  // are now the same file. Reading layout 1's copy while a layout-2 one exists
+  // would carry the OLDER answer forward and silently undo whatever the user
+  // chose since — so layout 2's nested file is preferred whenever it is there.
+  const layoutTwo = resolve(legacy.localPoliciesDir(), "policies-config.json");
+  const from = existsSync(layoutTwo) ? layoutTwo : legacy.policyConfig();
+  if (!existsSync(from)) return null;
 
   let parsed: Record<string, unknown>;
   try {
@@ -337,12 +407,63 @@ export function writeCarriedPolicyConfig(carried: Record<string, unknown> | null
  * large, version-pinned and re-verified on use, and `run/` holds sockets
  * belonging to a process that may be alive right now.
  */
+/**
+ * Carry a telemetry OPT-OUT across a layout-2 upgrade.
+ *
+ * Layout 2 kept it in `config.toml`, which the reset deletes, and layout 3
+ * writes a fresh `config.json` whose default is `telemetry.enabled: true`. So an
+ * upgrade silently turned anonymous telemetry back ON for anyone who had turned
+ * it off — and that file is the ONLY off-switch that reaches the daemon, because
+ * a system-scope service unit does not inherit `FAILPROOFAI_TELEMETRY_DISABLED`
+ * from anyone's shell. An opt-out that a routine upgrade revokes is not an
+ * opt-out.
+ *
+ * Deliberately one-directional: only `false` is carried. Everything else in that
+ * file is either re-derived by setup or a thing the wizard re-asks, and carrying
+ * an ENABLED flag forward would be carrying the default, which is not a choice
+ * anyone made. This matches the narrow rule the policy-config carry follows —
+ * move only what a person typed and nothing regenerates.
+ *
+ * A regex rather than a TOML parser, for the reason `readLegacyTomlVersion`
+ * gives: the dependency is gone, and this is a flat `key = value` file this
+ * codebase wrote. Read BEFORE the deletions, applied after — same two-phase
+ * shape, same reason.
+ */
+export function readCarriedTelemetryOptOut(): boolean {
+  const from = legacy.configToml();
+  if (!existsSync(from)) return false;
+  try {
+    const text = readFileSync(from, "utf8");
+    // Scoped to the `[telemetry]` table, not the whole file — a stray
+    // `enabled = false` under `[collector]` is not a telemetry opt-out.
+    //
+    // Sliced rather than matched with a single expression: the obvious form ends
+    // the section with `(?=^\s*\[|\Z)`, and JavaScript HAS NO `\Z`. It parses as
+    // a literal "Z", so the lookahead only ever succeeded via its other branch —
+    // meaning the section was found when another table followed it and MISSED
+    // whenever `[telemetry]` was last in the file, which is exactly where a
+    // hand-added opt-out tends to be. Caught by the test for this function; the
+    // live fixture happened to have `[collector]` after it and passed.
+    const start = text.search(/^\s*\[telemetry\]\s*$/m);
+    if (start === -1) return false;
+    const body = text.slice(start).replace(/^\s*\[telemetry\]\s*$/m, "");
+    const nextTable = body.search(/^\s*\[/m);
+    const section = nextTable === -1 ? body : body.slice(0, nextTable);
+    return /^\s*enabled\s*=\s*false\s*$/m.test(section);
+  } catch {
+    return false;
+  }
+}
+
 export function resetHome(from: number): ResetOutcome {
   // BEFORE the deletions, so a file that is mid-move is never one the reset
   // then walks over.
   const migrated = migrateConventionPolicies();
   const activity = migrateHookActivity();
   const pendingPolicyConfig = readCarriedPolicyConfig();
+  // Read before the deletions for the same reason as the policy config: its
+  // source (`config.toml`) is on the list below.
+  const telemetryOptOut = readCarriedTelemetryOptOut();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
     // A reset FROM the current layout is not a layout migration, and the only
@@ -352,7 +473,7 @@ export function resetHome(from: number): ResetOutcome {
     // current, valid selection, including one this function had just carried.
     // The single production caller always passes a DETECTED stale layout, so
     // this only ever changes the forced same-layout case.
-    if (from === LAYOUT_VERSION && path === localPoliciesDir()) continue;
+    if (from === LAYOUT_VERSION && path === globalPolicyConfigFile()) continue;
     if (!existsSync(path)) continue;
     try {
       rmSync(path, { recursive: true, force: true });
@@ -364,6 +485,9 @@ export function resetHome(from: number): ResetOutcome {
     }
   }
   const policyConfig = writeCarriedPolicyConfig(pendingPolicyConfig);
+  // After the deletions, onto the fresh config, so the upgrade cannot revoke a
+  // choice the user made.
+  if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
   writeVersionFile();
   return { removed, migrated, activity, policyConfig, from };
 }
@@ -455,7 +579,15 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
     };
   }
 
-  if (state.kind === "absent") writeVersionFile();
+  // Write the marker back for a fresh home — and ALSO for one whose layout had
+  // to be recovered from a landmark. `inferred` means the home is genuinely on
+  // this layout and only `VERSION` is missing; leaving it missing means every
+  // later command re-infers it, and `writeVersionFile()` carries the daemon
+  // version forward from the file it just failed to read, so the recorded
+  // daemon version is erased and `daemonVersionSkew()` goes quiet about a stale
+  // daemon. Re-stamping is what "the only thing actually missing is the marker"
+  // was supposed to mean.
+  if (state.kind === "absent" || (state.kind === "current" && state.inferred)) writeVersionFile();
   return {
     state,
     fatal: false,
@@ -582,6 +714,40 @@ function staleDaemonHint(): string[] {
  * machine whose global policies have silently stopped firing) persists until
  * somebody acts on it.
  */
+/**
+ * Why an UNATTENDED run must not proceed — a different question from the hook's.
+ *
+ * The hook asks "are global policies unenforced?", and answers it about one
+ * file. This asks "is this home on a layout this build understands?", and the
+ * answer must not be softened by anything: the scheduled audit runs with nobody
+ * watching, and the ordinary CLI path RESETS a stale home — which deletes
+ * `config.toml` (revoking a telemetry opt-out and the `[audit] auto` flag that
+ * scheduled the run) and `credentials.toml` (dropping cloud enrolment). Doing
+ * that on a timer, with the explanation going only to the service journal, is
+ * the failure this gate exists to prevent.
+ *
+ * Sharing `layoutWarningForHook()` for both is what made this subtle: teaching
+ * that function to stay quiet when the global policy config IS readable — right
+ * for the hook, since layout 1 and layout 3 keep it at the same path — silently
+ * turned this gate off for exactly the homes most likely to hit it.
+ */
+export function layoutBlockerForScheduledRun(): string | null {
+  const state = detectLayout();
+  if (state.kind === "current" || state.kind === "absent") return null;
+  if (state.kind === "future") {
+    return (
+      `[failproofai] this directory was written by a newer version ` +
+      `(layout ${state.found} vs ${LAYOUT_VERSION}) — refusing to run unattended. ` +
+      `Upgrade failproofai.`
+    );
+  }
+  return (
+    `[failproofai] setup predates this version (layout ${state.found} vs ${LAYOUT_VERSION}) — ` +
+    `refusing to run unattended, because completing it would reset this home. ` +
+    `Run \`failproofai config\`.`
+  );
+}
+
 export function layoutWarningForHook(): string | null {
   const state = detectLayout();
   if (state.kind === "current" || state.kind === "absent") return null;
@@ -592,6 +758,19 @@ export function layoutWarningForHook(): string | null {
       `Upgrade failproofai.`
     );
   }
+  // The claim is about ONE FILE — the global policy config — so ask about that
+  // file rather than about the layout number. Layout 1 and layout 3 keep it at
+  // the SAME path (`~/.failproofai/policies-config.json`), so a home carrying
+  // one is read as layout 1 by the landmark fallback while the hook path loads
+  // and enforces it perfectly well. Hand-writing that file is something
+  // `docs/configuration.mdx` explicitly tells people to do, and they were told
+  // on every single tool call that their policies were not being enforced
+  // WHILE THEY WERE — the deny and the warning printed together.
+  //
+  // A warning that contradicts the behaviour it describes is worse than no
+  // warning: it teaches people to ignore the one channel that will matter when
+  // enforcement really has stopped.
+  if (existsSync(globalPolicyConfigFile())) return null;
   return (
     `[failproofai] setup predates this version — global policies are NOT being enforced. ` +
     `Run \`failproofai config\` to re-create it.`

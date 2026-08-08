@@ -58,16 +58,20 @@ describe("harness extra paths", () => {
     expect(readConfig().collector.sources).toBeUndefined();
   });
 
-  it("adding then removing the last path leaves no empty table behind", () => {
+  it("adding then removing the last path leaves no empty object behind", () => {
+    // Was "no empty TABLE behind" — layout 3 made the file JSON, so the shape
+    // being guarded is a `collector.sources` key with nothing under it. The
+    // property is the same and it is the one that matters: a user who adds a
+    // path and removes it gets their file back byte for byte.
     writeConfig(DEFAULT_CONFIG);
     const before = readFileSync(configFile(), "utf8");
 
     addPath("claude", "work=/srv/team/projects");
-    expect(readFileSync(configFile(), "utf8")).toContain("[collector.sources.claude]");
+    const added = JSON.parse(readFileSync(configFile(), "utf8"));
+    expect(added.collector.sources.claude.extra_paths).toEqual(["work=/srv/team/projects"]);
 
     removePath("claude", "work");
-    expect(readFileSync(configFile(), "utf8")).not.toContain("[collector.sources");
-    // Byte-identical to before: a user who adds and removes gets their file back.
+    expect(JSON.parse(readFileSync(configFile(), "utf8")).collector.sources).toBeUndefined();
     expect(readFileSync(configFile(), "utf8")).toBe(before);
   });
 

@@ -3,7 +3,7 @@
 //! Everything in `audit_lane`'s unit tests is a pure function or a lone child
 //! process. What they cannot show is the part that actually broke during
 //! development and would break again silently: that the lane, running inside the
-//! real binary, reads the real `[audit]` table out of a real `config.toml`,
+//! real binary, reads the real `audit` object out of a real `config.json`,
 //! consults the schedule at the layout-2 path, persists it BEFORE spawning, and
 //! launches the command the service unit hands it in `FAILPROOFAI_CLI_CMD`.
 //!
@@ -151,8 +151,8 @@ fn stub_cli(marker: &Path, exit_code: i32) -> String {
 fn a_due_scan_actually_runs_and_the_schedule_advances() {
     let home = scratch_home("due");
     std::fs::write(
-        home.join("config.toml"),
-        "[audit]\nauto = true\ninterval_days = 7\n",
+        home.join("config.json"),
+        r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
     // Due an hour ago. Written by hand because seeding one is the OTHER branch:
@@ -200,11 +200,11 @@ fn a_due_scan_actually_runs_and_the_schedule_advances() {
 #[test]
 fn auto_off_is_the_default_and_nothing_scans() {
     // The user's decision: the scan reads the CONTENTS of every session
-    // transcript on disk, so a config that never mentions [audit] — which is
+    // transcript on disk, so a config that never mentions `audit` — which is
     // every config written before this feature existed — must scan nothing, even
     // with a schedule sitting past due.
     let home = scratch_home("off");
-    std::fs::write(home.join("config.toml"), "[collector]\nhooks = true\n").unwrap();
+    std::fs::write(home.join("config.json"), r#"{"collector":{"hooks":true}}"#).unwrap();
     let due = now_ms() - 3_600_000;
     write_schedule(&home, &format!(r#"{{"schema":1,"next_due_at_ms":{due}}}"#));
 
@@ -230,8 +230,8 @@ fn a_first_start_schedules_instead_of_scanning_immediately() {
     // state file cannot be kept — would cost a full scan at that moment.
     let home = scratch_home("seed");
     std::fs::write(
-        home.join("config.toml"),
-        "[audit]\nauto = true\ninterval_days = 7\n",
+        home.join("config.json"),
+        r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
 
@@ -262,8 +262,8 @@ fn exit_75_is_retried_soon_and_is_not_recorded_as_a_run() {
     // interval for the scan it did not get.
     let home = scratch_home("locked");
     std::fs::write(
-        home.join("config.toml"),
-        "[audit]\nauto = true\ninterval_days = 7\n",
+        home.join("config.json"),
+        r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
     let due = now_ms() - 3_600_000;
@@ -308,8 +308,8 @@ fn a_schedule_that_cannot_be_written_is_reported_once_not_once_a_tick() {
     // life of the daemon, forever, on a machine that is already broken.
     let home = scratch_home("unwritable");
     std::fs::write(
-        home.join("config.toml"),
-        "[audit]\nauto = true\ninterval_days = 7\n",
+        home.join("config.json"),
+        r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
     // `state` as a regular file: create_dir_all fails with EEXIST, which is the
@@ -350,8 +350,8 @@ fn a_shutdown_is_not_held_up_by_a_running_scan() {
     // to come back is a machine denying tool calls.
     let home = scratch_home("shutdown");
     std::fs::write(
-        home.join("config.toml"),
-        "[audit]\nauto = true\ninterval_days = 7\n",
+        home.join("config.json"),
+        r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
     let due = now_ms() - 3_600_000;

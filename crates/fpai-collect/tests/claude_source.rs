@@ -744,12 +744,12 @@ fn claude_declares_itself_byte_tailable() {
     assert_eq!(claude::FORMAT.reread, RereadPolicy::ByteCursor);
 }
 
-/// `[collector] redact` has to reach a real source, not just parse.
+/// `collector.redact` has to reach a real source, not just parse.
 ///
 /// It parsed correctly and reached nothing: no source carried the field, so
 /// `SpoolWriter::with_redact` had exactly two references — its own definition
 /// and its own unit test — and every real writer kept the hardcoded
-/// `Redact::Minimal`. Setting `redact = "off"` in `config.toml` had no
+/// `Redact::Minimal`. Setting `redact = "off"` in `config.json` had no
 /// observable effect anywhere, which is worse than not offering the setting.
 ///
 /// Asserted through a real filetail run rather than against `SpoolWriter`

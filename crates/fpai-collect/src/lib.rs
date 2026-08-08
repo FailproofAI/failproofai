@@ -22,6 +22,8 @@ pub mod sources;
 pub mod spool;
 pub mod sqlitepoll;
 pub mod supervisor;
+#[cfg(test)]
+mod test_env;
 pub mod uploader;
 
 pub use config::{

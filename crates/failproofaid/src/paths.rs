@@ -69,6 +69,12 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("FAILPROOFAI_CLOUD_POLICY_DIR") {
         return Ok(PathBuf::from(path));
     }
+    // A CHILD of `policies/` — every policy on the machine lives under one
+    // directory, whoever put it there. Safe because the CLI's convention loader
+    // does not recurse (`discoverPolicyFiles` filters `isFile()`), so these
+    // artifacts are never picked up as unverified convention policies. Mirrors
+    // `cloudPoliciesDir()` in fp-home.ts, and the cross-language test at the
+    // bottom of this file executes that module to prove the two agree.
     Ok(failproofai_home()?.join("policies").join("cloud-policies"))
 }
 
@@ -213,16 +219,15 @@ pub fn ensure_run_dir() -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    // std::env::set_var affects the whole process, so these tests must not
-    // run concurrently with each other or with other tests reading these
-    // vars.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // std::env::set_var affects the whole process, so these tests must not run
+    // concurrently with each other OR with any other module's env tests — which
+    // is why the lock is crate-wide rather than declared here. See test_env.rs.
+    use crate::test_env::lock_env;
 
     #[test]
     fn socket_override_takes_precedence_over_home() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::set_var("FAILPROOFAI_DAEMON_SOCKET", "/tmp/example/daemon.sock");
         }
@@ -238,7 +243,7 @@ mod tests {
 
     #[test]
     fn default_socket_path_lives_under_home_dot_failproofai_run() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::remove_var("FAILPROOFAI_HOME");
@@ -258,7 +263,7 @@ mod tests {
         // A daemon-configured machine fails closed when it cannot reach the
         // daemon — so a HEALTHY daemon denied every tool call across all 11
         // CLIs, and the only symptom was the generic "could not be reached".
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::set_var("HOME", "/home/example-user");
@@ -288,13 +293,16 @@ mod tests {
         // every deployment, verified its hashes, wrote it to disk — and the CLI
         // read an empty directory and enforced nothing. Both halves logged
         // success; only the combination was broken.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
             std::env::set_var("FAILPROOFAI_HOME", "/tmp/alt-home");
         }
         assert_eq!(
             cloud_managed_policy_dir().unwrap(),
+            // A CHILD of `policies/`: one directory holds every policy on the
+            // machine. The CLI's convention loader does not recurse, so these
+            // never load as unverified drop-in policies.
             PathBuf::from("/tmp/alt-home/policies/cloud-policies")
         );
         unsafe {
@@ -313,7 +321,7 @@ mod tests {
         // all three bugs above: some paths read `$HOME/.failproofai` and the
         // rest read FAILPROOFAI_HOME, so the daemon silently split itself
         // across two directories.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
@@ -339,7 +347,7 @@ mod tests {
 
     #[test]
     fn ensure_run_dir_creates_it_with_owner_only_permissions() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         let tmp =
             std::env::temp_dir().join(format!("failproofaid-paths-test-{}", std::process::id()));
         unsafe {
@@ -359,7 +367,7 @@ mod tests {
 
     #[test]
     fn ensure_run_dir_refuses_to_touch_a_preexisting_directory_with_the_wrong_permissions() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         let tmp = std::env::temp_dir().join(format!(
             "failproofaid-paths-test-preexisting-{}",
             std::process::id()
@@ -453,7 +461,7 @@ mod tests {
     /// pins Rust against Rust.
     #[test]
     fn every_mirrored_path_agrees_with_fp_home_ts() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
 
         let home =
             std::env::temp_dir().join(format!("failproofaid-layout-parity-{}", std::process::id()));

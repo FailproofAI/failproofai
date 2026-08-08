@@ -109,7 +109,7 @@ pub struct Params {
     pub environment: String,
     /// Redaction applied to every event this source spools.
     ///
-    /// Threaded from `[collector] redact` in `config.toml`. The knob parsed
+    /// Threaded from `collector.redact` in `config.toml`. The knob parsed
     /// correctly and reached nothing: no source carried the field, so
     /// `SpoolWriter::with_redact` had exactly two references — its definition
     /// and its own unit test — and every real writer kept the hardcoded

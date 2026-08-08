@@ -2,12 +2,12 @@
 //!
 //! # Two files, on purpose
 //!
-//! Every credential lives in `~/.failproofai/credentials.toml` at mode 0600.
+//! Every credential lives in `~/.failproofai/credentials.json` at mode 0600.
 //! Everything else — which sources are on, backfill window, hook verbosity —
-//! lives in `config.toml` under `[collector]`, beside the rest of the settings,
+//! lives in `config.json` under `collector`, beside the rest of the settings,
 //! where it is readable, diffable and safe to commit to a dotfiles repo.
 //!
-//! That split is not tidiness. `config.toml` is written with a bare
+//! That split is not tidiness. `config.json` is written with a bare
 //! `writeFileSync`, so it inherits the umask and lands at 0664 on a normal
 //! machine — inside `~/.failproofai/`, which is itself 0775. Putting an API key
 //! there would publish it to every local user on the box, which is exactly why
@@ -16,7 +16,7 @@
 //!
 //! # Disabled is the default, and it is a real default
 //!
-//! No `[ingest]` table, or one with no key, means collection is off: no tasks,
+//! No `ingest` object, or one with no key, means collection is off: no tasks,
 //! so no thread and no runtime (see [`crate::supervisor::spawn_supervised`]). A
 //! machine that has not opted in pays nothing for this code existing. Session
 //! collection additionally requires its own explicit opt-in, because
@@ -54,15 +54,15 @@ use serde::{Deserialize, Serialize};
 /// `--connect`, and that origin is now the one already in their browser rather
 /// than a second hostname they have to be told about.
 ///
-/// Machines already carrying the server hostname in `credentials.toml` keep
+/// Machines already carrying the server hostname in `credentials.json` keep
 /// working untouched: this is only the value used when no URL was recorded.
 pub const DEFAULT_INGEST_URL: &str = "https://app.befailproof.ai/v1/events";
 
 /// Filename of the credential file inside the failproofai home.
 /// Layout 2: every credential in one owner-only TOML file, keyed by table.
-const CREDENTIALS_FILE: &str = "credentials.toml";
+const CREDENTIALS_FILE: &str = "credentials.json";
 /// Layout 2: non-secret configuration, including the collector block.
-const CONFIG_FILE: &str = "config.toml";
+const CONFIG_FILE: &str = "config.json";
 
 /// Mode the credential file must have. Anything wider is a finding.
 #[cfg(unix)]
@@ -117,7 +117,7 @@ pub enum Redact {
     Off,
 }
 
-/// The non-secret half, read from `config.toml` under `[collector]`.
+/// The non-secret half, read from `config.json` under `collector`.
 ///
 /// snake_case keys, matching TOML convention and what `fp-config.ts` writes.
 /// This was camelCase while the source was `policies-config.json`; carrying
@@ -152,7 +152,7 @@ pub struct Settings {
     #[serde(default)]
     pub machine_id: Option<String>,
     /// Per-source extra capture paths, keyed by source name (`claude`,
-    /// `hermes`, …) — `[collector.sources.<name>]` in `config.toml`.
+    /// `hermes`, …) — `collector.sources.<name>` in `config.json`.
     ///
     /// A map rather than a struct with 13 fields: the source list is data, not
     /// schema, and a struct would mean a newly added source silently ignoring
@@ -165,7 +165,7 @@ pub struct Settings {
     pub sources: BTreeMap<String, SourceSettings>,
 }
 
-/// The `[collector.sources.<name>]` table.
+/// The `collector.sources.<name>` table.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SourceSettings {
     /// Extra locations to capture, each `label=path` or bare `path`. Resolved
@@ -385,11 +385,12 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
     let from_file: Option<Ingest> = match fs::read_to_string(&path) {
         Ok(text) => {
             warn_if_world_readable(&path);
-            let doc: toml::Value = toml::from_str(&text).map_err(|e| ConfigError::Malformed {
-                path: path.clone(),
-                detail: e.to_string(),
-            })?;
-            // A credentials file with no [ingest] table is not malformed — it
+            let doc: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| ConfigError::Malformed {
+                    path: path.clone(),
+                    detail: e.to_string(),
+                })?;
+            // A credentials file with no `ingest` object is not malformed — it
             // is a machine connected for policy but not reporting, which is a
             // supported half-state.
             //
@@ -433,16 +434,17 @@ fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
         Err(e) => return Err(ConfigError::Io(e)),
     };
 
-    let root: toml::Value = toml::from_str(&text).map_err(|e| ConfigError::Malformed {
-        path: path.clone(),
-        detail: e.to_string(),
-    })?;
+    let root: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| ConfigError::Malformed {
+            path: path.clone(),
+            detail: e.to_string(),
+        })?;
 
     match root.get("collector") {
         None => Ok(Settings::default()),
-        Some(v) => v.clone().try_into().map_err(|e| ConfigError::Malformed {
+        Some(v) => serde_json::from_value(v.clone()).map_err(|e| ConfigError::Malformed {
             path,
-            detail: format!("the [collector] table is not usable: {e}"),
+            detail: format!("the collector object is not usable: {e}"),
         }),
     }
 }
@@ -486,23 +488,25 @@ pub fn write_ingest(home: &Path, ingest: &Ingest) -> Result<PathBuf, ConfigError
 
     let path = home.join(CREDENTIALS_FILE);
 
-    // Merge, never replace. credentials.toml also carries the cloud token and
+    // Merge, never replace. credentials.json also carries the cloud token and
     // the dashboard session; rewriting the file from this one writer would
     // silently disconnect both. Layout 1 could get away with a whole-file write
     // because each credential had its own file.
-    let mut doc: toml::Table = fs::read_to_string(&path)
+    let mut doc: serde_json::Map<String, serde_json::Value> = fs::read_to_string(&path)
         .ok()
-        .and_then(|t| toml::from_str(&t).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();
 
-    let mut table = toml::Table::new();
-    table.insert("url".into(), toml::Value::String(ingest.url.clone()));
-    table.insert("key".into(), toml::Value::String(ingest.key.clone()));
-    doc.insert("ingest".into(), toml::Value::Table(table));
+    doc.insert(
+        "ingest".into(),
+        serde_json::json!({ "url": ingest.url, "key": ingest.key }),
+    );
 
+    // No leading comment line any more: JSON has nowhere to put one, and a file
+    // that is not valid JSON is a file the other readers reject.
     let body = format!(
-        "# failproofai credentials — owner-only (0600). Do not commit.\n\n{}",
-        toml::to_string_pretty(&doc)
+        "{}\n",
+        serde_json::to_string_pretty(&doc)
             .map_err(|e| ConfigError::Invalid(format!("could not serialize credentials: {e}")))?
     );
 
@@ -575,44 +579,48 @@ mod extra_path_settings_tests {
     /// This is the seam with nothing holding it together: the TypeScript CLI
     /// writes this file and the Rust daemon reads it, and neither is generated
     /// from the other. Both halves parse cleanly on their own while disagreeing
-    /// — which is how `[collector]` came to be snake_case at all (it was
+    /// — which is how `collector` came to be snake_case at all (it was
     /// camelCase under `policies-config.json`, and carrying that over would have
     /// meant every field silently falling back to its default).
-    ///
-    /// The sub-table placement is load-bearing and is the other reason this is
-    /// verbatim: TOML requires `[collector.sources.*]` AFTER every scalar of
-    /// `[collector]`, and a writer that emitted them earlier would produce a
-    /// file where `environment` and `redact` silently belong to a sub-table.
-    const WRITTEN_BY_THE_CLI: &str = r#"# failproofai configuration. Safe to edit by hand.
-# Credentials are NOT here — see credentials.toml (owner-only).
-
-[mode]
-kind = "oss"
-
-[daemon]
-configured = false
-
-[collector]
-# Session transcripts carry prompts, file contents and command output.
-sessions = true
-# Hook decisions: which policy fired and what it decided. No file contents.
-hooks = true
-hooks_verbosity = "decisions"
-redact = "minimal"
-environment = "local"
-machine_id = "m-123"
-
-[collector.sources.claude]
-# Extra locations to capture for this harness, beyond its default one.
-extra_paths = ["work=/srv/team/.claude/projects"]
-
-[collector.sources.hermes]
-extra_paths = ["/srv/hermes-prod/state.db", "b=/srv/other.db"]
-
-[audit]
-auto = false
-interval_days = 7
-"#;
+    /// Layout 3 made this JSON, which removed the hazard this fixture used to
+    /// guard: TOML required `[collector.sources.*]` AFTER every scalar of
+    /// `collector`, and a writer emitting them earlier produced a file where
+    /// `environment` and `redact` silently belonged to a sub-table. JSON has no
+    /// such ordering rule — one fewer way for the two writers to disagree.
+    const WRITTEN_BY_THE_CLI: &str = r#"{
+      "mode": {
+        "kind": "oss"
+      },
+      "daemon": {
+        "configured": false
+      },
+      "collector": {
+        "sessions": true,
+        "hooks": true,
+        "hooks_verbosity": "decisions",
+        "redact": "minimal",
+        "environment": "local",
+        "machine_id": "m-123",
+        "sources": {
+          "claude": {
+            "extra_paths": [
+              "work=/srv/team/.claude/projects"
+            ]
+          },
+          "hermes": {
+            "extra_paths": [
+              "/srv/hermes-prod/state.db",
+              "b=/srv/other.db"
+            ]
+          }
+        }
+      },
+      "audit": {
+        "auto": false,
+        "interval_days": 7
+      }
+    }
+    "#;
 
     fn home_with(text: &str) -> tempdir::Dir {
         let d = tempdir::Dir::new();
@@ -650,6 +658,9 @@ interval_days = 7
 
     #[test]
     fn reads_the_sources_tables_the_typescript_cli_writes() {
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
         let d = home_with(WRITTEN_BY_THE_CLI);
         let s = load_settings(d.path()).unwrap();
 
@@ -676,7 +687,10 @@ interval_days = 7
 
     #[test]
     fn a_config_with_no_sources_table_reads_as_none_configured() {
-        let d = home_with("[collector]\nsessions = true\n");
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
+        let d = home_with(r#"{"collector":{"sessions":true}}"#);
         let s = load_settings(d.path()).unwrap();
         assert!(s.sources.is_empty());
         for h in ["claude", "hermes", "codex"] {
@@ -686,7 +700,10 @@ interval_days = 7
 
     #[test]
     fn an_unrecognised_source_table_is_reported_rather_than_ignored() {
-        let d = home_with("[collector]\n[collector.sources.claud]\nextra_paths = [\"/srv/x\"]\n");
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
+        let d = home_with(r#"{"collector":{"sources":{"claud":{"extra_paths":["/srv/x"]}}}}"#);
         let s = load_settings(d.path()).unwrap();
         assert_eq!(s.unknown_sources(&["claude"]), vec!["claud".to_string()]);
     }
@@ -696,6 +713,9 @@ interval_days = 7
     /// mounted config would capture a directory nobody asked for.
     #[test]
     fn the_env_override_replaces_the_file_and_splits_on_commas() {
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
         let d = home_with(WRITTEN_BY_THE_CLI);
         let s = load_settings(d.path()).unwrap();
         // SAFETY: single-threaded test; restored before returning.
@@ -734,12 +754,15 @@ interval_days = 7
     /// the server.
     #[test]
     fn collector_config_change_cycles_the_collector() {
-        let d = home_with("[collector]\nsessions = true\n");
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
+        let d = home_with(r#"{"collector":{"sessions":true}}"#);
         let before = load(d.path()).unwrap();
 
         fs::write(
             d.path().join(CONFIG_FILE),
-            "[collector]\nsessions = true\n\n[collector.sources.claude]\nextra_paths = [\"late=/srv/x\"]\n",
+            r#"{"collector":{"sessions":true,"sources":{"claude":{"extra_paths":["late=/srv/x"]}}}}"#,
         )
         .unwrap();
         let after = load(d.path()).unwrap();
@@ -756,13 +779,20 @@ interval_days = 7
         );
 
         // ...and removing it changes back, so `remove-path` also takes effect.
-        fs::write(d.path().join(CONFIG_FILE), "[collector]\nsessions = true\n").unwrap();
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
         assert_eq!(load(d.path()).unwrap(), before);
     }
 
     /// A source whose name contains `-` must map to a legal env var name.
     #[test]
     fn a_hyphenated_source_name_maps_to_an_underscored_env_var() {
+        // Serialised against every other test touching these env overrides;
+        // two of them set FAILPROOFAI_CLAUDE_EXTRA_PATHS process-wide. See test_env.rs.
+        let _env = crate::test_env::lock_env();
         let s = Settings::default();
         unsafe {
             std::env::set_var("FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS", "/srv/sub");

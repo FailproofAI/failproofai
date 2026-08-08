@@ -229,7 +229,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
         purged: false,
         lines: [
           ...lines,
-          `✗ could not update ${failproofaiHome()}/config.toml: ${err instanceof Error ? err.message : String(err)}`,
+          `✗ could not update ${failproofaiHome()}/config.json: ${err instanceof Error ? err.message : String(err)}`,
           ``,
           `Stopped before touching the service. Removing it while this machine still`,
           `requires it would deny every tool call. Fix the file's permissions and re-run.`,

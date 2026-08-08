@@ -3,7 +3,7 @@
 //! The collector resolves its ingest credential once, when it starts, and the
 //! uploader caches the bearer key at construction. So rotating a key used to
 //! leave the file correct and the process wrong: `--connect` verified the NEW
-//! key and reported success, the service stayed healthy, `credentials.toml`
+//! key and reported success, the service stayed healthy, `credentials.json`
 //! held a key that worked when curled — and every batch 401'd and parked.
 //!
 //! Observed live before this existed: a key revoked at 13:05:37 and replaced 37
@@ -12,7 +12,7 @@
 //! data that never arrived, which is the hardest kind of failure to notice.
 //!
 //! These drive the REAL binary against a real config file on disk, because the
-//! property under test is "an edit somebody else made is noticed". `config.toml`
+//! property under test is "an edit somebody else made is noticed". `config.json`
 //! says "Safe to edit by hand" and means it — a fleet tool, an editor or a `sed`
 //! are all legitimate, and none of them run our code. A test that called an
 //! internal reload function would prove something else entirely.
@@ -57,19 +57,18 @@ fn make_home(home: &Path, ingest_key: &str) {
         }
     }
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"cloud\"\n\n[collector]\nsessions = false\nhooks = true\n\
-         hooks_verbosity = \"decisions\"\nredact = \"minimal\"\nenvironment = \"local\"\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"cloud"},"collector":{"sessions":false,"hooks":true,"hooks_verbosity":"decisions","redact":"minimal","environment":"local"}}"#,
     )
     .unwrap();
     write_credentials(home, ingest_key);
 }
 
 fn write_credentials(home: &Path, key: &str) {
-    let path = home.join("credentials.toml");
+    let path = home.join("credentials.json");
     std::fs::write(
         &path,
-        format!("[ingest]\nurl = \"http://127.0.0.1:59999/v1/events\"\nkey = \"{key}\"\n"),
+        format!(r#"{{"ingest":{{"url":"http://127.0.0.1:59999/v1/events","key":"{key}"}}}}"#),
     )
     .unwrap();
     #[cfg(unix)]
@@ -232,8 +231,8 @@ fn a_half_written_config_is_waited_out_rather_than_acted_on() {
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
     // Truncated TOML: a real mid-save state, not invented garbage.
-    let mut f = std::fs::File::create(home.join("credentials.toml")).unwrap();
-    f.write_all(b"[ingest]\nurl = \"http://127.0.0.1:59999/v1/ev")
+    let mut f = std::fs::File::create(home.join("credentials.json")).unwrap();
+    f.write_all(b"{\"ingest\":{\"url\":\"http://127.0.0.1:59999/v1/ev")
         .unwrap();
     drop(f);
     std::thread::sleep(Duration::from_secs(3));
@@ -262,9 +261,13 @@ fn disabling_collection_stops_it_and_re_enabling_starts_it_again() {
     let daemon = spawn_daemon(&home);
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
-    let cfg = home.join("config.toml");
+    let cfg = home.join("config.json");
     let on = std::fs::read_to_string(&cfg).unwrap();
-    std::fs::write(&cfg, on.replace("hooks = true", "hooks = false")).unwrap();
+    // JSON now, so the edit is on the key/value pair, not a TOML line. A
+    // string replace that silently matches nothing writes the file back
+    // unchanged and the test then waits 20s for a reload that never had a
+    // reason to happen — which is exactly how this broke.
+    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
     daemon.wait_for("no longer enabled", 1, Duration::from_secs(20));
 
     std::fs::write(&cfg, &on).unwrap();
@@ -297,10 +300,10 @@ fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
     make_home(&home, "a-key");
     // Session capture on: extra paths are a session-source feature, and the
     // default config `make_home` writes has it off.
-    let cfg = home.join("config.toml");
+    let cfg = home.join("config.json");
     let base = std::fs::read_to_string(&cfg)
         .unwrap()
-        .replace("sessions = false", "sessions = true");
+        .replace(r#""sessions":false"#, r#""sessions":true"#);
     std::fs::write(&cfg, &base).unwrap();
 
     let daemon = spawn_daemon(&home);
@@ -309,11 +312,18 @@ fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
 
     let extra = home.join("extra-claude-projects");
     std::fs::create_dir_all(&extra).unwrap();
+    // Appending a TOML table to a JSON file produces something no parser
+    // accepts, and `load_settings` treats an unreadable config as "unchanged" —
+    // so the daemon would never cycle and this test would wait out its full
+    // timeout for a reason that had nothing to do with the feature.
     std::fs::write(
         &cfg,
-        format!(
-            "{base}\n[collector.sources.claude]\nextra_paths = [\"late={}\"]\n",
-            extra.display()
+        base.replace(
+            r#""environment":"local""#,
+            &format!(
+                r#""environment":"local","sources":{{"claude":{{"extra_paths":["late={}"]}}}}"#,
+                extra.display()
+            ),
         ),
     )
     .unwrap();

@@ -23,7 +23,6 @@ serde_json = "1"
 # Layout 2 keeps the cloud credential in credentials.toml's [cloud] table, so
 # the daemon has to read TOML to find its own enrolment. Already in the tree via
 # fpai-collect, which parses the same file's [ingest] table.
-toml = "1.1.4"
 libc = "0.2"
 sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

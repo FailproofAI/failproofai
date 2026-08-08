@@ -1,28 +1,29 @@
 /**
- * `VERSION`, `config.toml` and `credentials.toml` — the three files a human
+ * `VERSION`, `config.json` and `credentials.json` — the three files a human
  * might actually open in `~/.failproofai`.
  *
  * ## Why the split
  *
- * `config.toml` inherits the umask and lands at 0664 on a normal machine.
- * `credentials.toml` is written 0600 and holds every token. That boundary is
+ * `config.json` inherits the umask and lands at 0664 on a normal machine.
+ * `credentials.json` is written 0600 and holds every token. That boundary is
  * not tidiness: it is why `ingest.json` and `cloud.json` were separate files
- * before this, and it means CI, tooling and a screen-shared `cat config.toml`
+ * before this, and it means CI, tooling and a screen-shared `cat config.json`
  * can read a machine's configuration without ever seeing a live credential.
  *
- * ## Why TOML here and JSON elsewhere
+ * ## One format, not two
  *
- * These three files are the ones a person edits by hand, so they get comments
- * and a forgiving syntax. Everything the machine writes on a hot path — the
- * builtin policy set, cursors, collector health, the spool — stays JSON,
- * parsed by the runtime's own native parser with no dependency and no import
- * cost. A TOML parser on the per-tool-call path would be paying a
- * human-ergonomics tax on a latency budget that exists precisely because
- * per-call work was too expensive.
+ * These were TOML through layout 2, for the comments — the file explained what
+ * `oss` meant and why `daemon.configured` must never be hand-set. Layout 3
+ * moved them to JSON so the home speaks one format end to end: one parser, one
+ * escaping rule, and no `toml` dependency in either the CLI or the daemon for
+ * files that were always flat key/value.
+ *
+ * The comments are the cost, and they were not decoration — this is the file
+ * someone opens when something is wrong. That guidance now lives in
+ * `failproofai config --status` and the docs, which is a worse place for it.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { parse as parseToml } from "smol-toml";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -47,8 +48,10 @@ export interface VersionFile {
 export type LayoutState =
   /** No home yet, or an empty one. A fresh install. */
   | { kind: "absent" }
-  /** A home written by this layout. */
-  | { kind: "current"; version: VersionFile }
+  /** A home written by this layout. `inferred` means the layout was recovered
+   *  from a landmark because `VERSION` was missing or unreadable — the caller
+   *  should write the marker back. */
+  | { kind: "current"; version: VersionFile; inferred?: boolean }
   /** A home from an older layout — must be reset, never half-read. */
   | { kind: "stale"; found: number }
   /** A home from a NEWER layout: a downgrade. Refuse rather than corrupt it. */
@@ -75,8 +78,44 @@ export function detectLayout(): LayoutState {
       : { kind: "stale", found: raw.layout };
   }
 
-  // No VERSION file. Layout 1 if any of its landmarks are present, otherwise
-  // this is simply a home that has not been set up yet.
+  // No VERSION file — fall back to landmarks.
+  //
+  // ORDER MATTERS, because layout 3 collides with layout 1 on one of them.
+  // Layout 3 put `policies-config.json` back at the home root, which is exactly
+  // where layout 1 kept it. A layout-3 home that lost its VERSION would
+  // therefore match a layout-1 landmark and be reported as layout 1 — and
+  // `resetHome(1)` runs layout-1 MIGRATIONS, which move `policies/*.mjs` on the
+  // assumption they are in layout 1's positions. In layout 3 those are the
+  // user's own convention policies, sitting where they belong.
+  //
+  // So check for a marker only the newer layouts have first — and DISTINGUISH
+  // them, because the two answers are not equally safe.
+  //
+  // `config.json` is layout 3's OWN file. Layout 2 wrote `config.toml`, layout 1
+  // had neither, and nothing but setup writes either one. So its presence does
+  // not merely prove "newer than layout 1" — it identifies THIS layout, and the
+  // only thing actually missing is the marker. Reporting it as stale instead ran
+  // a destructive reset over a healthy machine: `resettablePaths()` lists
+  // `configFile()` and `credentialsFile()`, so the home lost its live cloud
+  // token AND `daemon.configured` — which is what makes a machine fail closed.
+  // A machine that dropped out of fail-closed enforcement because a marker file
+  // went missing is the exact failure this module exists to prevent, and it
+  // announced itself as a routine "reorganised your home" message.
+  if (existsSync(configFile())) {
+    // `inferred`: the layout is right but the MARKER is missing, and nothing
+    // else rewrites it — so every later command re-derives it from a landmark,
+    // and the daemon version recorded in that file is gone for good
+    // (`daemonVersionSkew()` reads it, and stops nudging about a stale daemon).
+    // The caller re-stamps, exactly as it already does for a fresh home.
+    return { kind: "current", version: { layout: LAYOUT_VERSION, cli: "" }, inferred: true };
+  }
+
+  // `config.toml` and no `config.json` is genuinely layout 2, and a reset is
+  // right: its files are the ones being replaced.
+  if (existsSync(legacy.configToml())) return { kind: "stale", found: LAYOUT_VERSION - 1 };
+
+  // Layout 1 if any of its landmarks are present, otherwise this is simply a
+  // home that has not been set up yet.
   const layoutOneMarkers = [
     legacy.policyConfig(),
     legacy.cacheDir(),
@@ -89,9 +128,50 @@ export function detectLayout(): LayoutState {
   return layoutOneMarkers.some((p) => existsSync(p)) ? { kind: "stale", found: 1 } : { kind: "absent" };
 }
 
+/**
+ * Read a layout-2 `VERSION`, which is TOML.
+ *
+ * Layout 3 made this file JSON, so `JSON.parse` throws on every layout-2 home —
+ * and "unreadable" is NOT a harmless answer here. It sends `detectLayout()` to
+ * the landmarks, and a layout-2 home whose owner never completed setup has no
+ * `config.toml` to match: it falls through every layout-1 marker too (layout 2
+ * nested `policies-config.json`, so the root file layout 1 is recognised by is
+ * absent) and reads as `absent` — a FRESH INSTALL. The CLI then stamps it
+ * layout 3 with no reset and no migration, and
+ * `policies/local-policies/policies-config.json` plus
+ * `policies/custom-policies/*.mjs` are orphaned permanently: the user's enabled
+ * policies revert to the defaults, their own policy files stop loading, and
+ * nothing says so. Reproduced exactly that way on a seeded home.
+ *
+ * A regex rather than a TOML parser because removing that dependency is half
+ * the point of layout 3, and this file is three flat `key = value` lines that
+ * this codebase itself wrote.
+ *
+ * ALL THREE fields are read, including `daemon`. It is tempting to take only the
+ * layout number on the grounds that the home is about to be reset — but
+ * `writeVersionFile()` carries the daemon version forward from `existing?.daemon`,
+ * so a field missing here is not re-derived, it is ERASED. The machine then
+ * reports "daemon not installed" with the binary sitting in `bin/`, and
+ * `daemonVersionSkew()` stops nudging about a stale daemon precisely when an
+ * upgrade has just happened.
+ */
+function readLegacyTomlVersion(text: string): VersionFile | null {
+  const layout = Number(/^\s*layout\s*=\s*(\d+)\s*$/m.exec(text)?.[1]);
+  if (!Number.isFinite(layout)) return null;
+  const str = (key: string) => new RegExp(`^\\s*${key}\\s*=\\s*"([^"]*)"`, "m").exec(text)?.[1];
+  return { layout, cli: str("cli") ?? "", daemon: str("daemon") };
+}
+
 export function readVersionFile(): VersionFile | null {
+  let text: string;
   try {
-    const parsed = parseToml(readFileSync(versionFile(), "utf8")) as Record<string, unknown>;
+    text = readFileSync(versionFile(), "utf8");
+  } catch {
+    // Absent or unreadable. The landmark check decides what that implies.
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
     const layout = Number(parsed.layout);
     if (!Number.isFinite(layout)) return null;
     return {
@@ -100,9 +180,10 @@ export function readVersionFile(): VersionFile | null {
       daemon: typeof parsed.daemon === "string" ? parsed.daemon : undefined,
     };
   } catch {
-    // Absent, unreadable, or malformed. All three mean "cannot prove a
-    // layout", and the landmark check above decides what that implies.
-    return null;
+    // Not JSON. Before concluding "no layout", try the one other format this
+    // file has ever had — see `readLegacyTomlVersion` for what guessing wrong
+    // costs. Genuinely corrupt content still yields null from there.
+    return readLegacyTomlVersion(text);
   }
 }
 
@@ -118,17 +199,17 @@ export function writeVersionFile(
     // explicit act, used on uninstall.
     daemon: v.clearDaemon ? undefined : (v.daemon ?? existing?.daemon),
   };
-  const lines = [
-    "# Written by failproofai. `layout` is what tells a newer CLI whether this",
-    "# directory can be read as-is; do not edit it by hand.",
-    `layout = ${next.layout}`,
-    `cli = ${JSON.stringify(next.cli)}`,
-  ];
-  if (next.daemon) lines.push(`daemon = ${JSON.stringify(next.daemon)}`);
-  writeFileAt(versionFile(), lines.join("\n") + "\n");
+  writeFileAt(
+    versionFile(),
+    `${JSON.stringify(
+      { layout: next.layout, cli: next.cli, ...(next.daemon ? { daemon: next.daemon } : {}) },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
-// ── config.toml ──────────────────────────────────────────────────────────────
+// ── config.json ──────────────────────────────────────────────────────────────
 
 /**
  * How this machine relates to Failproof Cloud.
@@ -281,15 +362,22 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
 
 export function readConfig(): FpConfig {
   try {
-    const parsed = parseToml(readFileSync(configFile(), "utf8")) as Record<string, unknown>;
+    const parsed = JSON.parse(readFileSync(configFile(), "utf8")) as Record<string, unknown>;
     const mode = (parsed.mode as Record<string, unknown> | undefined)?.kind;
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
     const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
     const audit = (parsed.audit ?? {}) as Record<string, unknown>;
     return {
-      // Anything unrecognised reads as `oss`. The failure direction matters:
-      // a corrupt config must not be able to turn cloud reporting ON.
+      // Anything unrecognised reads as `oss`. The failure direction matters: a
+      // corrupt config must not be able to turn cloud reporting ON.
+      //
+      // This is a real check rather than `?? "oss"`, which only caught a MISSING
+      // mode and passed every present-but-unknown value straight through — so
+      // `"enterprise"`, or a typo like `"clod"`, became the machine's mode. The
+      // test named for this branch was writing a TOML body into a `.json` file,
+      // so the parse failed, the whole function fell to its defaults, and the
+      // assertion passed without the branch ever running.
       mode: mode === "cloud" ? "cloud" : "oss",
       daemon: { configured: daemon.configured === true },
       collector: {
@@ -324,78 +412,61 @@ export function readConfig(): FpConfig {
   }
 }
 
+/**
+ * Regenerates `config.json` wholesale.
+ *
+ * The layout-2 file was hand-written TOML carrying its own documentation — what
+ * `oss` meant, why `daemon.configured` must never be hand-set. JSON cannot hold
+ * a comment, so that guidance now lives in `failproofai config --status` and the
+ * docs. It is a real loss on the one file a user opens when something is wrong;
+ * the trade is one serialisation format across the whole home instead of two.
+ */
 export function writeConfig(config: FpConfig): void {
   const c = config.collector;
-  const lines = [
-    "# failproofai configuration. Safe to edit by hand.",
-    "# Credentials are NOT here — see credentials.toml (owner-only).",
-    "",
-    "[mode]",
-    "# \"oss\"   — fully local. No transcripts, hook activity or policy leave",
-    "#           this machine.",
-    "# \"cloud\" — reports to, and receives policy from, Failproof Cloud.",
-    `kind = ${JSON.stringify(config.mode)}`,
-    "",
-    "[daemon]",
-    "# When true, hooks route through failproofaid AND FAIL CLOSED if it is",
-    "# unreachable. Never set this by hand: `failproofai config` sets it only",
-    "# after verifying the service is genuinely running.",
-    `configured = ${config.daemon.configured}`,
-  ];
-  lines.push(
-    "",
-    "[collector]",
-    "# Session transcripts carry prompts, file contents and command output.",
-    `sessions = ${c.sessions}`,
-    "# Hook decisions: which policy fired and what it decided. No file contents.",
-    `hooks = ${c.hooks}`,
-    `hooks_verbosity = ${JSON.stringify(c.hooksVerbosity)}`,
-    `redact = ${JSON.stringify(c.redact)}`,
-    `environment = ${JSON.stringify(c.environment)}`,
-  );
-  if (c.machineId) lines.push(`machine_id = ${JSON.stringify(c.machineId)}`);
-  // Sub-tables MUST come after every scalar of `[collector]`, or TOML reads the
-  // scalars that follow as belonging to the last sub-table opened. They are also
-  // emitted only when non-empty, so a machine that never configured one gets a
-  // file byte-identical to what this function produced before the field existed
-  // — the same reasoning as `[telemetry]` below.
-  for (const [name, src] of Object.entries(c.sources ?? {})) {
-    if (!src.extraPaths?.length) continue;
-    lines.push(
-      "",
-      `[collector.sources.${name}]`,
-      "# Extra locations to capture for this harness, beyond its default one.",
-      "# Each entry is \"label=path\" or a bare \"path\"; the label namespaces agent",
-      "# ids as <label>-<agentId> so two copies of one project stay distinct.",
-      `extra_paths = [${src.extraPaths.map((p) => JSON.stringify(p)).join(", ")}]`,
-    );
-  }
-  // Written ONLY when switched off. A default install therefore carries no
-  // [telemetry] block at all, but an operator who added one by hand keeps it:
-  // writeConfig regenerates this file wholesale, so emitting the key only when
-  // it is set is what stops a later rewrite from silently switching telemetry
-  // back on underneath them.
-  if (!config.telemetry.enabled) {
-    lines.push("", "[telemetry]", "enabled = false");
-  }
-  // Written ALWAYS, unlike [telemetry] directly above — the two are opposites
-  // on purpose. Telemetry ships on and is deliberately not advertised in the
-  // file; the scheduled audit ships off and is meant to be FOUND, and a switch
-  // nobody can see is the same as a switch that does not exist. Emitting both
-  // keys unconditionally also makes "a user's setting survives a rewrite" total
-  // rather than conditional: every field the struct carries is on disk, so
-  // there is no value of this block that a later regeneration can drop.
-  lines.push(
-    "",
-    "[audit]",
-    "# Scan this machine's agent history on a schedule and refresh the audit",
-    "# dashboard. OFF by default: the scan reads the CONTENTS of every session",
-    "# transcript on disk, so it waits to be asked. It runs as a separate",
-    "# short-lived process — never on the hook path.",
-    `auto = ${config.audit.auto}`,
-    `interval_days = ${config.audit.intervalDays}`,
-  );
-  writeFileAt(configFile(), lines.join("\n") + "\n");
+  const out: Record<string, unknown> = {
+    mode: { kind: config.mode },
+    daemon: { configured: config.daemon.configured },
+    collector: {
+      sessions: c.sessions,
+      hooks: c.hooks,
+      hooks_verbosity: c.hooksVerbosity,
+      redact: c.redact,
+      environment: c.environment,
+      // Omitted when unset rather than written null: the Rust side treats an
+      // absent machine_id as "derive one", and an explicit null is not that.
+      ...(c.machineId ? { machine_id: c.machineId } : {}),
+      // Extra capture paths per harness. Emitted ONLY when non-empty, so a
+      // machine that never configured one gets a file byte-identical to what
+      // this function produced before the field existed — the same reasoning as
+      // `telemetry` below. (In TOML this also had to come after every scalar of
+      // `[collector]`, or the scalars after it read as belonging to the
+      // sub-table. JSON has no such ordering hazard, which is one of the things
+      // the format change buys.)
+      ...(Object.entries(c.sources ?? {}).some(([, s]) => s.extraPaths?.length)
+        ? {
+            sources: Object.fromEntries(
+              Object.entries(c.sources ?? {})
+                .filter(([, s]) => s.extraPaths?.length)
+                .map(([name, s]) => [name, { extra_paths: s.extraPaths }]),
+            ),
+          }
+        : {}),
+    },
+    // Written ONLY when switched off. A default install therefore carries no
+    // telemetry block at all, but an operator who switched it off keeps it:
+    // this function regenerates the file wholesale, so emitting the key only
+    // when it is set is what stops a later rewrite from silently switching
+    // telemetry back on underneath them.
+    ...(config.telemetry.enabled ? {} : { telemetry: { enabled: false } }),
+    // Written ALWAYS, unlike telemetry directly above — the two are opposites
+    // on purpose. Telemetry ships on and is deliberately not advertised;
+    // the scheduled audit ships off and is meant to be FOUND, and a switch
+    // nobody can see is the same as a switch that does not exist. Emitting both
+    // keys unconditionally also makes "a user's setting survives a rewrite"
+    // total rather than conditional.
+    audit: { auto: config.audit.auto, interval_days: config.audit.intervalDays },
+  };
+  writeFileAt(configFile(), `${JSON.stringify(out, null, 2)}\n`);
 }
 
 /** Merge a partial update into the config on disk. */
@@ -418,7 +489,7 @@ export function updateConfig(patch: {
   return next;
 }
 
-// ── credentials.toml ─────────────────────────────────────────────────────────
+// ── credentials.json ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
@@ -444,7 +515,7 @@ export interface FpCredentials {
 
 export function readCredentials(): FpCredentials {
   try {
-    const parsed = parseToml(readFileSync(credentialsFile(), "utf8")) as Record<string, unknown>;
+    const parsed = JSON.parse(readFileSync(credentialsFile(), "utf8")) as Record<string, unknown>;
     const cloud = parsed.cloud as Record<string, unknown> | undefined;
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
@@ -495,41 +566,32 @@ export function readCredentials(): FpCredentials {
  * without the explicit chmod.
  */
 export function writeCredentials(creds: FpCredentials): void {
-  const lines: string[] = [
-    "# failproofai credentials — owner-only (0600). Do not commit.",
-  ];
+  const out: Record<string, unknown> = {};
   if (creds.cloud) {
-    lines.push(
-      "",
-      "[cloud]",
-      `url = ${JSON.stringify(creds.cloud.url)}`,
-      `machine_id = ${JSON.stringify(creds.cloud.machineId)}`,
-      ...(creds.cloud.machineLabel
-        ? [`machine_label = ${JSON.stringify(creds.cloud.machineLabel)}`]
-        : []),
-      `token = ${JSON.stringify(creds.cloud.token)}`,
-    );
+    out.cloud = {
+      url: creds.cloud.url,
+      machine_id: creds.cloud.machineId,
+      ...(creds.cloud.machineLabel ? { machine_label: creds.cloud.machineLabel } : {}),
+      token: creds.cloud.token,
+    };
   }
   if (creds.ingest) {
-    lines.push(
-      "",
-      "[ingest]",
-      `url = ${JSON.stringify(creds.ingest.url)}`,
-      `key = ${JSON.stringify(creds.ingest.key)}`,
-    );
+    out.ingest = { url: creds.ingest.url, key: creds.ingest.key };
   }
   if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
-    lines.push("", "[org]");
-    if (creds.org.id) lines.push(`id = ${JSON.stringify(creds.org.id)}`);
-    if (creds.org.slug) lines.push(`slug = ${JSON.stringify(creds.org.slug)}`);
-    if (creds.org.name) lines.push(`name = ${JSON.stringify(creds.org.name)}`);
+    out.org = {
+      ...(creds.org.id ? { id: creds.org.id } : {}),
+      ...(creds.org.slug ? { slug: creds.org.slug } : {}),
+      ...(creds.org.name ? { name: creds.org.name } : {}),
+    };
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {
-    lines.push("", "[auth]");
-    if (creds.auth.baseUrl) lines.push(`base_url = ${JSON.stringify(creds.auth.baseUrl)}`);
-    if (creds.auth.sessionToken) lines.push(`session_token = ${JSON.stringify(creds.auth.sessionToken)}`);
-    if (creds.auth.expiresAt) lines.push(`expires_at = ${creds.auth.expiresAt}`);
-    if (creds.auth.email) lines.push(`email = ${JSON.stringify(creds.auth.email)}`);
+    out.auth = {
+      ...(creds.auth.baseUrl ? { base_url: creds.auth.baseUrl } : {}),
+      ...(creds.auth.sessionToken ? { session_token: creds.auth.sessionToken } : {}),
+      ...(creds.auth.expiresAt ? { expires_at: creds.auth.expiresAt } : {}),
+      ...(creds.auth.email ? { email: creds.auth.email } : {}),
+    };
   }
 
   const home = failproofaiHome();
@@ -539,7 +601,7 @@ export function writeCredentials(creds: FpCredentials): void {
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), lines.join("\n") + "\n", { mode: 0o600 });
+  writeFileSync(credentialsFile(), `${JSON.stringify(out, null, 2)}\n`, { mode: 0o600 });
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {

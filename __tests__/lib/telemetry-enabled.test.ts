@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 function writeTelemetryBlock(enabled: boolean): void {
-  writeFileSync(configFile(), `[telemetry]\nenabled = ${enabled}\n`);
+  writeFileSync(configFile(), JSON.stringify({ telemetry: { enabled } }));
 }
 
 describe("isTelemetryEnabled", () => {
@@ -69,7 +69,7 @@ describe("isTelemetryEnabled", () => {
   });
 
   it("a malformed config resolves to the shipped default rather than a third answer", () => {
-    writeFileSync(configFile(), "[telemetry\nenabled = ");
+    writeFileSync(configFile(), "{ not json");
     expect(isTelemetryEnabled()).toBe(true);
   });
 

@@ -358,9 +358,43 @@ export async function loadAllCustomHooks(
   // twice per event. Seeded by the explicit path below and consulted by both
   // convention passes.
   const loadedPaths = new Set<string>();
-  const cloudManagedByPath = new Map(
-    (opts?.cloudManagedPolicies ?? []).map((policy) => [resolve(policy.path), policy]),
-  );
+
+  // Cloud policies keyed by the artifact they resolve to — and artifacts are
+  // CONTENT-ADDRESSED, so two policies whose source is byte-identical share one
+  // path. Building this map with a plain `new Map(entries)` let the last one win
+  // silently, and since `loadedPaths` then loads that file exactly once, the
+  // other policy vanished: its id never appeared in `failproofai policies` or in
+  // the decision log, and — the part that matters — ITS EFFECT DECIDED NOTHING.
+  // An `enforce` policy sharing bytes with an `observe` one was downgraded to
+  // observation, which is a silent enforcement gap, and the reverse turned a
+  // measurement-only rollout into live denials.
+  //
+  // It could not happen before the flattening: `deployments/<n>/<id>.mjs` gave
+  // every policy its own path even when the bytes matched.
+  //
+  // One module instance is right — `customPolicies.add` is an unconditional
+  // push, so importing the file twice would register every hook twice and run
+  // the policy twice per event. So the collision is resolved rather than
+  // avoided, and it resolves toward ENFORCEMENT: over-enforcing is visible to
+  // whoever hits it, while under-enforcing is exactly the silent failure this
+  // codebase exists to remove. It is also announced, so an operator can give the
+  // two policies distinguishable source instead of living with the merge.
+  const cloudManagedByPath = new Map<string, CloudManagedPolicyArtifact>();
+  for (const policy of opts?.cloudManagedPolicies ?? []) {
+    const key = resolve(policy.path);
+    const existing = cloudManagedByPath.get(key);
+    if (!existing) {
+      cloudManagedByPath.set(key, policy);
+      continue;
+    }
+    hookLogWarn(
+      `cloud-managed policies ${existing.id} and ${policy.id} have identical source, so they share ` +
+        `one artifact and load as one policy; enforcing it if either asks to enforce`,
+    );
+    if (existing.effect !== "enforce" && policy.effect === "enforce") {
+      cloudManagedByPath.set(key, policy);
+    }
+  }
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using
   // the legacy singular form.
@@ -415,9 +449,24 @@ export async function loadAllCustomHooks(
   // leaks one file permanently rather than leaving one that the next load
   // overwrites. Best-effort and age-gated, so it can never remove a tree
   // another process is still importing.
+  // WHICH SCOPE this directory is depends on whether it IS the user directory.
+  // Run an agent CLI with the cwd set to $HOME and `<cwd>/.failproofai/policies`
+  // resolves to `~/.failproofai/policies` — the user scope itself. Layout 3 made
+  // that reachable by collapsing `customPoliciesDir()` onto `policiesDir()`;
+  // layout 2 nested the user directory one level deeper, so the two could never
+  // be the same path.
+  //
+  // Tagging it `project` there would make a policy's id depend on where the
+  // agent happened to be launched from — `convention:project:x-policies.mjs:foo`
+  // from $HOME and `convention:user:x-policies.mjs:foo` from anywhere else — and
+  // a disable is RECORDED AGAINST THAT ID. So a user who switched a policy off
+  // would find it firing again whenever they worked out of their home
+  // directory, with nothing to explain it. The files are the user's global
+  // policies; that the cwd also points at them is incidental.
+  const projectScope: "project" | "user" = projectDir === customPoliciesDir() ? "user" : "project";
   if (conventionEnabled) {
     void sweepStaleTmpArtifacts(projectDir);
-    warnSkippedPolicyFiles(projectDir, "project");
+    warnSkippedPolicyFiles(projectDir, projectScope);
   }
   // The shim directory leaks the same way and is swept on the same terms. It is
   // ours alone and outside the policy tree, so nothing else would ever reap it;
@@ -430,14 +479,14 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "project" });
+    await loadSingleFile(file, { conventionScope: projectScope });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
-      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("project", basename(file), hook.name);
+      (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
     }
     if (newHooks.length > 0) {
       conventionSources.push({
-        scope: "project",
+        scope: projectScope,
         file: basename(file),
         hookNames: newHooks.map((h) => h.name),
       });

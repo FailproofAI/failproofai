@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   LAYOUT_VERSION,
   binDir,
@@ -9,12 +9,18 @@ import {
   hookActivityDir,
   cursorsDir,
   customPoliciesDir,
-  localPoliciesDir,
+  policiesDir,
+  globalPolicyConfigFile,
   cloudPoliciesDir,
   legacy,
 } from "../../src/hooks/fp-home";
-import { detectLayout, readVersionFile, writeVersionFile } from "../../src/hooks/fp-config";
-import { resetHome, checkLayoutForCli, layoutWarningForHook } from "../../src/hooks/fp-reset";
+import { detectLayout, readConfig, readVersionFile, writeVersionFile } from "../../src/hooks/fp-config";
+import {
+  resetHome,
+  checkLayoutForCli,
+  layoutWarningForHook,
+  layoutBlockerForScheduledRun,
+} from "../../src/hooks/fp-reset";
 
 let home: string;
 let prev: string | undefined;
@@ -51,7 +57,10 @@ describe("resetHome", () => {
 
     expect(out.from).toBe(1);
     expect(out.removed.length).toBeGreaterThan(0);
-    expect(existsSync(legacy.policyConfig())).toBe(false);
+    // NOT absent: layout 3 keeps the policy config at this exact path and the
+    // carry rewrites it with the user's selection. What must be gone is the
+    // layout-1 state around it.
+    expect(existsSync(legacy.policyConfig())).toBe(true);
     // `cache/` itself survives now — it contains the decision log, which is
     // carried across — but everything else inside it goes.
     expect(existsSync(legacy.auditCacheDir())).toBe(false);
@@ -121,60 +130,203 @@ describe("resetHome", () => {
       writeFileSync(resolve(home, "policies", "block-foo.mjs"), "// skipped\n");
     }
 
-    it("never deletes them", () => {
+    it("leaves them exactly where they are — layout 3 already loads them there", () => {
+      // Layout 2 MOVED these down into `policies/custom-policies/`. Layout 3
+      // reads `policies/` directly, which is where layout 1 put them, so the
+      // right migration is no migration: the files must not move, and must not
+      // be deleted.
       seedLayoutOne();
       seedUserPolicies();
       resetHome(1);
-      expect(existsSync(resolve(home, "policies", "my-policies.mjs"))).toBe(false);
-      // Not deleted — MOVED. Asserted properly below; this only pins that the
-      // bytes still exist somewhere under the home.
+      expect(existsSync(resolve(home, "policies", "my-policies.mjs"))).toBe(true);
+      expect(existsSync(resolve(home, "policies", "team-policies.js"))).toBe(true);
+      // Including the one that misses the naming convention: still somebody's
+      // source, and deleting it is the same harm.
+      expect(existsSync(resolve(home, "policies", "block-foo.mjs"))).toBe(true);
       expect(existsSync(resolve(customPoliciesDir(), "my-policies.mjs"))).toBe(true);
     });
 
-    it("moves them to where layout 2 actually loads them, and says which", () => {
-      // Surviving the delete is only half of it: layout 2's loader opens
-      // `policies/custom-policies/`, so a file left at the old top level would
-      // be kept and never loaded again — the same enforcement gap, slower.
+    it("carries layout 2's policies back UP out of custom-policies/", () => {
+      // The other direction, and the one that matters for anyone upgrading from
+      // layout 2: `policies/custom-policies/` is in `resettablePaths()`, so a
+      // file left there is a file the reset deletes.
+      seedLayoutOne();
+      mkdirSync(legacy.customPoliciesDir(), { recursive: true });
+      writeFileSync(resolve(legacy.customPoliciesDir(), "from-two-policies.mjs"), "// v2\n");
+
+      const out = resetHome(2);
+
+      expect(out.migrated).toEqual(["from-two-policies.mjs"]);
+      expect(existsSync(resolve(policiesDir(), "from-two-policies.mjs"))).toBe(true);
+      expect(existsSync(legacy.customPoliciesDir())).toBe(false);
+    });
+
+    it("carries the helpers and data files a policy imports, not just sources", () => {
+      // `custom-policies/` is deleted by the reset, so anything the migration
+      // leaves behind is DESTROYED, not merely stranded. Moving only
+      // `*.{js,mjs,ts}` took out precisely what a real policy depends on — a
+      // `lib/` of shared helpers and the `.json` it reads its rules from — and
+      // the policy that DID survive then imported a file that no longer
+      // existed. A broken policy plus deleted source, from a migration whose
+      // message says it kept the user's files.
+      seedLayoutOne();
+      const from = legacy.customPoliciesDir();
+      mkdirSync(resolve(from, "lib"), { recursive: true });
+      writeFileSync(resolve(from, "team-policies.mjs"), 'import "./lib/rules.mjs";\n');
+      writeFileSync(resolve(from, "lib", "rules.mjs"), "export const RULES = [];\n");
+      writeFileSync(resolve(from, "blocklist.json"), '{"deny":["curl"]}');
+
+      resetHome(2);
+
+      // Relative imports still resolve because every entry keeps its position
+      // relative to every other.
+      expect(existsSync(resolve(policiesDir(), "team-policies.mjs"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "lib", "rules.mjs"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "blocklist.json"))).toBe(true);
+      expect(existsSync(from)).toBe(false);
+    });
+
+    it("merges a colliding directory instead of discarding it", () => {
+      // `lib/` is the likeliest collision of all: the layout-1 → 2 migration
+      // moved only `*.{js,mjs,ts}`, so a stale `policies/lib/` is exactly what it
+      // left behind. Skipping the whole directory on a name match threw away
+      // every file inside it — and because `custom-policies/` was on the reset
+      // list, "skipped" meant DELETED. The policy that did move was then left
+      // importing a `./lib/rules.mjs` that no longer existed anywhere.
+      seedLayoutOne();
+      const from = legacy.customPoliciesDir();
+      mkdirSync(resolve(from, "lib"), { recursive: true });
+      mkdirSync(resolve(policiesDir(), "lib"), { recursive: true });
+      writeFileSync(resolve(policiesDir(), "lib", "leftover.mjs"), "export const a = 1;\n");
+      writeFileSync(resolve(from, "my-policies.mjs"), 'import "./lib/rules.mjs";\n');
+      writeFileSync(resolve(from, "lib", "rules.mjs"), "export const RULES = [];\n");
+
+      resetHome(2);
+
+      expect(existsSync(resolve(policiesDir(), "my-policies.mjs"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "lib", "rules.mjs"))).toBe(true);
+      // The directory that was already there is untouched, not replaced.
+      expect(existsSync(resolve(policiesDir(), "lib", "leftover.mjs"))).toBe(true);
+    });
+
+    it("keeps what it could not move, rather than deleting it", () => {
+      // A genuine leaf collision: same name, and the destination wins. The
+      // layout-2 copy is the user's hand-written source and nothing regenerates
+      // it, so it must still be on disk afterwards — `custom-policies/` is
+      // deliberately NOT in resettablePaths() for exactly this reason.
+      seedLayoutOne();
+      const from = legacy.customPoliciesDir();
+      mkdirSync(from, { recursive: true });
+      writeFileSync(resolve(from, "beta-policies.mjs"), "// LAYOUT 2 COPY\n");
+      writeFileSync(resolve(policiesDir(), "beta-policies.mjs"), "// LAYOUT 3 COPY\n");
+
+      resetHome(2);
+
+      // The destination is never overwritten...
+      expect(readFileSync(resolve(policiesDir(), "beta-policies.mjs"), "utf8")).toContain("LAYOUT 3 COPY");
+      // ...and the source it refused to overwrite with is still there to look at.
+      expect(readFileSync(resolve(from, "beta-policies.mjs"), "utf8")).toContain("LAYOUT 2 COPY");
+    });
+
+    it("reports nothing moved, because nothing needed to move", () => {
+      // Layout 2's loader opened `policies/custom-policies/`, so layout 1's
+      // files had to be carried down into it. Layout 3's loader opens
+      // `policies/` — where they already are — so the honest report is an empty
+      // migration, not a move to the same place dressed up as one.
       seedLayoutOne();
       seedUserPolicies();
       const out = resetHome(1);
 
-      expect(out.migrated).toEqual(["block-foo.mjs", "my-policies.mjs", "team-policies.js"]);
-      expect(existsSync(resolve(customPoliciesDir(), "my-policies.mjs"))).toBe(true);
-      expect(existsSync(resolve(customPoliciesDir(), "team-policies.js"))).toBe(true);
-      expect(existsSync(resolve(customPoliciesDir(), "block-foo.mjs"))).toBe(true);
+      expect(out.migrated).toEqual([]);
+      expect(existsSync(resolve(policiesDir(), "my-policies.mjs"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "team-policies.js"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "block-foo.mjs"))).toBe(true);
     });
 
-    it("still clears the machine-owned children of policies/", () => {
-      // Narrowing the reset must not turn it into a no-op: both of these are
-      // re-derived (local by setup, cloud by the next daemon poll) and a stale
-      // one is exactly what the reset exists to remove.
+    it("removes layout 2's credentials.toml — a live token nothing will read again", () => {
+      // The worst thing a layout migration can leave behind. `credentials.toml`
+      // holds the org-scoped `policies:pull` bearer token and the ingest key;
+      // layout 3 stops reading it, so if this entry ever regresses the token
+      // sits on disk indefinitely — unread, unrotatable through the CLI, and
+      // invisible to `failproofai config --status`. Untested until now, on a
+      // list where "it is in the array" and "it is actually deleted" are
+      // different claims.
       seedLayoutOne();
-      mkdirSync(localPoliciesDir(), { recursive: true });
-      writeFileSync(resolve(localPoliciesDir(), "policies-config.json"), "{}");
+      writeFileSync(legacy.credentialsToml(), '[cloud]\ntoken = "LIVE-TOKEN"\n');
+      writeFileSync(legacy.configToml(), 'mode = "cloud"\n');
+      mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+      writeFileSync(resolve(legacy.localPoliciesDir(), "policies-config.json"), "{}");
+
+      resetHome(2);
+
+      expect(existsSync(legacy.credentialsToml())).toBe(false);
+      expect(existsSync(legacy.configToml())).toBe(false);
+      expect(existsSync(legacy.localPoliciesDir())).toBe(false);
+    });
+
+    it("carries a telemetry opt-out out of config.toml", () => {
+      // config.toml is deleted by the reset and the fresh config.json defaults
+      // telemetry ON, so the upgrade silently revoked the opt-out. That file is
+      // the only off-switch that reaches the daemon — a system-scope service
+      // unit inherits no FAILPROOFAI_TELEMETRY_DISABLED from anyone's shell.
+      seedLayoutOne();
+      writeFileSync(legacy.configToml(), '[mode]\nkind = "oss"\n\n[telemetry]\nenabled = false\n');
+
+      resetHome(2);
+
+      expect(readConfig().telemetry.enabled).toBe(false);
+    });
+
+    it("does not invent an opt-out nobody asked for", () => {
+      // Only `false` is carried. Carrying an enabled flag forward would be
+      // carrying the DEFAULT, which is not a choice anyone made.
+      seedLayoutOne();
+      writeFileSync(legacy.configToml(), '[mode]\nkind = "oss"\n\n[telemetry]\nenabled = true\n');
+
+      resetHome(2);
+
+      expect(readConfig().telemetry.enabled).toBe(true);
+    });
+
+    it("still clears the machine-owned policy state", () => {
+      // Narrowing the reset must not turn it into a no-op: both of these are
+      // re-derived (the config by setup, cloud by the next daemon poll) and a
+      // stale one is exactly what the reset exists to remove.
+      seedLayoutOne();
+      writeFileSync(globalPolicyConfigFile(), "{}");
       mkdirSync(cloudPoliciesDir(), { recursive: true });
       writeFileSync(resolve(cloudPoliciesDir(), "active.json"), "{}");
       mkdirSync(legacy.cloudManagedPolicies(), { recursive: true });
 
       resetHome(1);
 
-      expect(existsSync(localPoliciesDir())).toBe(false);
+      expect(existsSync(globalPolicyConfigFile())).toBe(false);
       expect(existsSync(cloudPoliciesDir())).toBe(false);
       expect(existsSync(legacy.cloudManagedPolicies())).toBe(false);
     });
 
-    it("does not overwrite a file already at the destination", () => {
+    it("leaves a layout-1 home's policy files exactly where they are", () => {
+      // This test used to seed `customPoliciesDir()` as the DESTINATION and
+      // `policies/` as the source and assert that neither was overwritten —
+      // but layout 3 aliased `customPoliciesDir = policiesDir`, so those became
+      // the SAME FILE. It wrote "// mine" then "// newer" over one path and
+      // asserted the survivor was "// newer", which is true of any code at all.
+      // It never ran the migration it named — `legacy.customPoliciesDir()` does
+      // not exist on a layout-1 home, so the function returns at its first
+      // guard. The never-overwrite invariant is covered for real by "keeps what
+      // it could not move", which fails when that behaviour is reverted.
+      //
+      // What IS worth asserting here is layout 1's own property: the files are
+      // already in the directory layout 3 loads, so the migration must not
+      // touch them at all — not move them, not rewrite them, not report them.
       seedLayoutOne();
       seedUserPolicies();
-      mkdirSync(customPoliciesDir(), { recursive: true });
-      writeFileSync(resolve(customPoliciesDir(), "my-policies.mjs"), "// newer\n");
+      writeFileSync(resolve(policiesDir(), "my-policies.mjs"), "// exactly this\n");
 
       const out = resetHome(1);
 
-      expect(out.migrated).not.toContain("my-policies.mjs");
-      expect(readFileSync(resolve(customPoliciesDir(), "my-policies.mjs"), "utf8")).toBe("// newer\n");
-      // The source is left where it was rather than dropped on the floor.
-      expect(existsSync(resolve(home, "policies", "my-policies.mjs"))).toBe(true);
+      expect(out.migrated).toEqual([]);
+      expect(readFileSync(resolve(policiesDir(), "my-policies.mjs"), "utf8")).toBe("// exactly this\n");
     });
   });
 });
@@ -185,15 +337,18 @@ describe("checkLayoutForCli", () => {
     const check = await checkLayoutForCli();
     expect(check.fatal).toBe(false);
     expect(check.lines.join("\n")).toContain("failproofai config");
-    expect(existsSync(legacy.policyConfig())).toBe(false);
+    // NOT absent: layout 3 keeps the policy config at this exact path and the
+    // carry rewrites it with the user's selection. What must be gone is the
+    // layout-1 state around it.
+    expect(existsSync(legacy.policyConfig())).toBe(true);
   });
 
   it("REFUSES a future layout instead of deleting it", async () => {
     // The two failures are not symmetric: an older home can be rebuilt by
     // re-running setup, but a newer one holds data this build cannot read and
     // an upgrade could. Resetting it would destroy something recoverable.
-    writeFileSync(resolve(home, "VERSION"), 'layout = 99\ncli = "9.9.9"\n');
-    writeFileSync(resolve(home, "config.toml"), "[mode]\nkind = \"cloud\"\n");
+    writeFileSync(resolve(home, "VERSION"), JSON.stringify({ layout: 99, cli: "9.9.9" }));
+    writeFileSync(resolve(home, "config.json"), JSON.stringify({ mode: { kind: "cloud" } }));
 
     const check = await checkLayoutForCli();
 
@@ -201,7 +356,7 @@ describe("checkLayoutForCli", () => {
     expect(check.lines.join("\n")).toMatch(/newer version/i);
     expect(check.lines.join("\n")).toContain("npm install -g failproofai@latest");
     // Nothing removed.
-    expect(existsSync(resolve(home, "config.toml"))).toBe(true);
+    expect(existsSync(resolve(home, "config.json"))).toBe(true);
   });
 
   it("stamps VERSION on a fresh home and says nothing", async () => {
@@ -225,14 +380,17 @@ describe("checkLayoutForCli", () => {
   });
 
   it("names the policy files it moved rather than counting them", async () => {
+    // Seeded in LAYOUT 2's position, because that is the only upgrade that
+    // still moves anything — a layout-1 home's policies already sit where
+    // layout 3 reads them.
     seedLayoutOne();
-    mkdirSync(resolve(home, "policies"), { recursive: true });
-    writeFileSync(resolve(home, "policies", "my-policies.mjs"), "// mine\n");
+    mkdirSync(legacy.customPoliciesDir(), { recursive: true });
+    writeFileSync(resolve(legacy.customPoliciesDir(), "my-policies.mjs"), "// mine\n");
 
     const text = (await checkLayoutForCli()).lines.join("\n");
 
     expect(text).toContain("my-policies.mjs");
-    expect(text).toContain(customPoliciesDir());
+    expect(text).toContain(policiesDir());
   });
 
   it("says nothing on an already-current home", async () => {
@@ -243,13 +401,52 @@ describe("checkLayoutForCli", () => {
 });
 
 describe("layoutWarningForHook", () => {
-  it("warns on a stale layout — silence would mean unenforced policies", () => {
+  it("warns when the global config really is where nothing reads it", () => {
     // The failure being guarded: a stale home resolves to no global config, so
     // every builtin quietly stops firing and the machine looks protected.
-    seedLayoutOne();
+    //
+    // Layout 2 is that case — it nested the file at
+    // `policies/local-policies/policies-config.json`, which layout 3 never
+    // reads — so the warning is TRUE here and must fire.
+    writeFileSync(legacy.configToml(), 'mode = "oss"\n');
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["block-sudo"] }),
+    );
     const warning = layoutWarningForHook();
     expect(warning).toContain("NOT being enforced");
     expect(warning).toContain("failproofai config");
+  });
+
+  it("still blocks an UNATTENDED run on that same layout-1 home", () => {
+    // The two questions are different and must not share an answer. The hook
+    // asks "are policies unenforced?" — no, so it stays quiet. The scheduled
+    // audit asks "would completing this run reset the home?" — yes, and a reset
+    // on a timer deletes the cloud credential and the `[audit] auto` flag that
+    // scheduled it, with the explanation going only to the service journal.
+    //
+    // Teaching one function to answer both is what turned this gate off: the
+    // silence added for the hook silently disabled the unattended guard for
+    // exactly the homes most likely to hit it.
+    seedLayoutOne();
+    expect(layoutWarningForHook()).toBeNull();
+    expect(layoutBlockerForScheduledRun()).toContain("refusing to run unattended");
+  });
+
+  it("stays silent on a layout-1 home, whose config layout 3 DOES read", () => {
+    // Layout 3 put `policies-config.json` back at the home root — layout 1's
+    // exact path. So a layout-1 home is detected as stale while its global
+    // config loads and enforces perfectly well, and the hook printed
+    // "global policies are NOT being enforced" on every single tool call
+    // WHILE DENYING. Verified against the real hook path: the deny and the
+    // warning came out together.
+    //
+    // A warning that contradicts the behaviour it describes is worse than no
+    // warning — it teaches people to ignore the one channel that will matter
+    // when enforcement really has stopped.
+    seedLayoutOne();
+    expect(layoutWarningForHook()).toBeNull();
   });
 
   it("NEVER deletes anything from the hook path", () => {
@@ -262,7 +459,7 @@ describe("layoutWarningForHook", () => {
   });
 
   it("warns on a future layout too", () => {
-    writeFileSync(resolve(home, "VERSION"), 'layout = 99\ncli = "9.9.9"\n');
+    writeFileSync(resolve(home, "VERSION"), JSON.stringify({ layout: 99, cli: "9.9.9" }));
     expect(layoutWarningForHook()).toMatch(/newer version/i);
   });
 
@@ -347,7 +544,7 @@ describe("resetHome carries the layout-1 policy selection", () => {
     const out = resetHome(1);
 
     const carried = JSON.parse(
-      readFileSync(resolve(localPoliciesDir(), "policies-config.json"), "utf8"),
+      readFileSync(globalPolicyConfigFile(), "utf8"),
     );
     expect(carried.enabledPolicies).toEqual([
       "block-sudo",
@@ -371,7 +568,7 @@ describe("resetHome carries the layout-1 policy selection", () => {
     const out = resetHome(1);
 
     const carried = JSON.parse(
-      readFileSync(resolve(localPoliciesDir(), "policies-config.json"), "utf8"),
+      readFileSync(globalPolicyConfigFile(), "utf8"),
     );
     expect(carried.collector).toBeUndefined();
     expect(out.policyConfig).not.toContain("collector");
@@ -382,23 +579,28 @@ describe("resetHome carries the layout-1 policy selection", () => {
   // preserve it. The reset still CLEARS that layout-2 config on a layout
   // migration (see "still clears the machine-owned children of policies/") —
   // what must never happen is layout 1's values taking its place.
-  it("never lets the layout-1 file overwrite an existing layout-2 config", () => {
+  it("never lets a newer config be overwritten by the layout-1 file", () => {
+    // In layout 2 the source and destination were different files, and this
+    // guard protected the newer one. Layout 3 collapsed them onto a single path,
+    // so the case worth defending is a home that still carries LAYOUT 2's nested
+    // config: that is the newer answer, and the layout-1 file must not win.
     seedLayoutOne();
     seedLayoutOnePolicyConfig();
-    mkdirSync(localPoliciesDir(), { recursive: true });
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
     writeFileSync(
-      resolve(localPoliciesDir(), "policies-config.json"),
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
       JSON.stringify({ enabledPolicies: ["current-choice"] }),
     );
 
-    const out = resetHome(1);
+    const out = resetHome(2);
 
-    expect(out.policyConfig).toEqual([]);
-    const path = resolve(localPoliciesDir(), "policies-config.json");
-    if (existsSync(path)) {
-      const after = JSON.parse(readFileSync(path, "utf8"));
-      expect(after.enabledPolicies).not.toContain("block-sudo");
-    }
+    // Layout 2's answer wins and lands at the layout-3 path. The layout-1 file
+    // sitting at that same path is the OLDER one, and carrying it would undo
+    // whatever the user chose after upgrading to layout 2.
+    expect(out.policyConfig).toContain("enabledPolicies");
+    const after = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8"));
+    expect(after.enabledPolicies).toEqual(["current-choice"]);
+    expect(after.enabledPolicies).not.toContain("block-sudo");
   });
 
   it("is a no-op when there is no layout-1 config", () => {
@@ -407,7 +609,7 @@ describe("resetHome carries the layout-1 policy selection", () => {
     rmSync(legacy.policyConfig(), { force: true });
     const out = resetHome(1);
     expect(out.policyConfig).toEqual([]);
-    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(false);
+    expect(existsSync(globalPolicyConfigFile())).toBe(false);
   });
 
   // Unparseable is not worth aborting a reset over, and there is nothing to
@@ -427,18 +629,22 @@ describe("resetHome carries the layout-1 policy selection", () => {
     writeFileSync(legacy.policyConfig(), JSON.stringify({ collector: { hooksVerbosity: "all" } }));
     const out = resetHome(1);
     expect(out.policyConfig).toEqual([]);
-    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(false);
+    expect(existsSync(globalPolicyConfigFile())).toBe(false);
   });
 
   // The whole point: after the reset, the carried file is what the loader reads.
-  it("leaves the carried config where the layout-2 reader looks", () => {
+  it("leaves the carried config exactly where the loader reads it", () => {
+    // LAYOUT 3 PUT THE CONFIG BACK AT LAYOUT 1'S PATH, so `legacy.policyConfig()`
+    // and `globalPolicyConfigFile()` are now the SAME file. "The original is
+    // gone" stopped being the right assertion: the carry rewrites that exact
+    // path, and a home with no policy config after a reset is a home that lost
+    // the user's selection.
     seedLayoutOne();
     seedLayoutOnePolicyConfig();
     resetHome(1);
-    // The layout-1 original is gone...
-    expect(existsSync(legacy.policyConfig())).toBe(false);
-    // ...and the layout-2 path, which `globalPolicyConfigFile()` resolves to,
-    // holds the selection.
-    expect(existsSync(resolve(localPoliciesDir(), "policies-config.json"))).toBe(true);
+
+    expect(existsSync(globalPolicyConfigFile())).toBe(true);
+    const after = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8"));
+    expect(after.enabledPolicies).toContain("block-sudo");
   });
 });

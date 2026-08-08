@@ -351,6 +351,7 @@ describe("--disconnect means disconnect", () => {
     // call, so a machine that had deliberately left its organisation went on
     // being governed by whatever deployment was current when it left.
     await runConnectCommand({ ...base, machineId: "m-1" });
+    // A child of `policies/`: one directory holds every policy on the machine.
     const managedRoot = resolve(dir, "home", "policies", "cloud-policies");
     mkdirSync(managedRoot, { recursive: true });
     writeFileSync(

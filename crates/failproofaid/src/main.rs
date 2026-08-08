@@ -5,6 +5,8 @@ mod lock;
 mod paths;
 mod server;
 mod telemetry;
+#[cfg(test)]
+mod test_env;
 mod worker;
 
 use std::sync::Arc;
@@ -718,7 +720,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     // user) identity. Resolved once and stamped onto every event by every source
     // below, so two profiles on one machine stay distinct in the fleet views.
     let os_user = current_os_user();
-    // `[collector] redact`, threaded to every source below. It parsed correctly
+    // `collector.redact`, threaded to every source below. It parsed correctly
     // and reached nothing: no source carried the field, so every real
     // `SpoolWriter` kept the hardcoded `Redact::Minimal` and setting
     // `redact = "off"` had no observable effect at all.

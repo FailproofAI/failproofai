@@ -272,7 +272,7 @@ export function listPaths(harness?: string): HarnessResult {
     if (lines.length === 0) lines.push("No extra capture paths configured for any known harness.");
     lines.push(
       "",
-      `⚠ config.toml configures ${unknown.length} unknown harness(es): ${unknown.join(", ")}`,
+      `⚠ config.json configures ${unknown.length} unknown harness(es): ${unknown.join(", ")}`,
       "  Nothing is captured from them.",
       `  Known: ${HARNESS_KEYS.join(", ")}`,
     );

@@ -84,7 +84,7 @@ pub async fn run(
     environment: String,
     machine_id: Option<String>,
     user: Option<String>,
-    // From `[collector] redact`. See the note on `filetail::Params::redact`:
+    // From `collector.redact`. See the note on `filetail::Params::redact`:
     // the knob parsed and reached no source at all before this.
     redact: Redact,
     sd: Shutdown,

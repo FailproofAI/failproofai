@@ -713,6 +713,14 @@ EXAMPLES
   failproofai harness list
   failproofai harness remove-path claude work
 
+  One home per person — label them, or both derive the same folder-name label
+  and the second is refused:
+  failproofai harness add-path openclaw user1=/srv/.openclaw-user1
+  failproofai harness add-path openclaw user2=/srv/.openclaw-user2
+
+  Containers: FAILPROOFAI_<HARNESS>_EXTRA_PATHS replaces the file's entries.
+  FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
+
 `.trimStart());
       process.exit(0);
     }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.15 — 2026-08-09
+
+### Docs
+
+- Trim the extra-capture-path guidance in `failproofai --help` back to the command listing, and keep the useful half — the per-user labelling rule and the container `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` override — in `harness --help`, where someone who has decided to use the feature will look. Twenty-one lines of prose in a listing that is scanned rather than read is not help. (#663)
+
 ## 1.0.0-beta.14 — 2026-08-08
 
 ### Features

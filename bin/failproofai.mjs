@@ -327,26 +327,6 @@ COMMANDS
   harness remove-path <h> <p>    Stop capturing that path
   harness --help, -h             Show this help for the harness command
 
-    Each agent CLI is watched wherever its own installer put it. Extra paths add
-    the places it did not: a second profile, a team share, a per-user home.
-
-    failproofai harness add-path openclaw user1=/srv/.openclaw-user1
-    failproofai harness add-path openclaw user2=/srv/.openclaw-user2
-    failproofai harness add-path hermes   user1=/srv/.hermes-user1/state.db
-
-    LABEL PER-USER PATHS EXPLICITLY. An agent id comes from the cwd recorded
-    inside the transcript, identical in every copy of a project, so unlabelled
-    paths merge two people into one agent whose sessions interleave. Omitting the
-    label derives one from the folder name — fine for .openclaw-user1, but
-    /home/u1/.openclaw and /home/u2/.openclaw both derive "openclaw" and the
-    second is refused. A path overlapping one already captured is refused too.
-
-    FAILPROOFAI_<HARNESS>_EXTRA_PATHS overrides the file for containers:
-      FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
-
-    Written to ~/.failproofai/config.json; the daemon picks it up in seconds —
-    no restart, no sudo. Session collection must be on for any of it to be read.
-
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command

@@ -106,6 +106,7 @@
   },
   "overrides": {
     "postcss": "8.5.23",
+    "nanoid": "3.3.17",
     "eslint-plugin-react-hooks": "7.0.1",
     "vite": "8.0.16",
     "undici": "7.29.0",

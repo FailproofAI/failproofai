@@ -696,12 +696,25 @@ HARNESSES
   \`claude\` covers subagent transcripts too — they live under the same root.
 
 NOTES
-  • Session collection must be on for any of this to be read; extra paths follow
-    [collector] in ~/.failproofai/config.toml like the default ones do.
+  • Session collection must be on for any of this to be read; extra paths live
+    under "collector" in ~/.failproofai/config.json like the default ones do.
   • A path overlapping one already captured is REFUSED by the daemon at startup
     rather than collected twice under two ids. It says so in the journal.
-  • Takes effect within seconds — the daemon re-reads config.toml on an interval
+  • Two entries sharing a LABEL are refused too: they would share one cursor
+    directory, whose whole map is written at once, so each would clobber the
+    other's watermark and re-read from zero after every restart.
+  • Takes effect within seconds — the daemon re-reads config.json on an interval
     and cycles its collector. No restart, no sudo.
+
+ENV OVERRIDE (containers)
+  FAILPROOFAI_<HARNESS>_EXTRA_PATHS takes a comma-separated list and REPLACES the
+  file's entries for that harness, so an image needs no baked-in config:
+
+    FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
+    FAILPROOFAI_HERMES_EXTRA_PATHS="prod=/srv/hermes-prod/state.db"
+
+  A hyphenated harness name uses underscores: claude-subagent reads
+  FAILPROOFAI_CLAUDE_SUBAGENT_EXTRA_PATHS.
 
 EXAMPLES
   failproofai harness add-path claude work=/srv/team/.claude/projects
@@ -709,6 +722,17 @@ EXAMPLES
   failproofai harness add-path codex /mnt/other-home/.codex/sessions
   failproofai harness list
   failproofai harness remove-path claude work
+
+  One home per person — LABEL THESE EXPLICITLY. An agent id is derived from the
+  cwd recorded inside the transcript, which is identical in every copy of the
+  same project, so without labels two people's sessions merge into one agent and
+  interleave. The folder-name fallback rescues /srv/.openclaw-user1 (distinct
+  folders) but NOT /home/u1/.openclaw and /home/u2/.openclaw — both derive
+  "openclaw", and the second is refused as a duplicate label.
+
+  failproofai harness add-path openclaw user1=/srv/.openclaw-user1
+  failproofai harness add-path openclaw user2=/srv/.openclaw-user2
+  failproofai harness add-path hermes   user1=/srv/.hermes-user1/state.db
 `.trimStart());
       process.exit(0);
     }

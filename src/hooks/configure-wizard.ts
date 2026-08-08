@@ -811,7 +811,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // systemd calls active whose worker dies on every spawn. That machine reads
   // as "already running", so this wizard — the documented remedy, and the only
   // caller that can rebuild the unit — skipped it and left the box denying
-  // every tool call with no route back but hand-editing `config.toml`. A real
+  // every tool call with no route back but hand-editing `config.json`. A real
   // hook evaluation is the only check that distinguishes the two.
   const daemonSkew = daemonSupported ? daemonVersionSkew() : null;
   const daemonState = daemonSupported ? daemonServiceStatus() : "unsupported-platform";

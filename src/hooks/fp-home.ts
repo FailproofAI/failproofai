@@ -269,7 +269,7 @@ export const sessionPauseDir = () => resolve(stateDir(), "sessions");
  * The DAEMON is the sole writer (`crates/failproofaid/src/audit_lane.rs`, which
  * mirrors this path in `paths.rs`) — it owns the schedule, and a second writer
  * racing it could hand a machine two full scans back to back. Everything on this
- * side reads it: the interval itself lives in `config.toml`'s `[audit]` table,
+ * side reads it: the interval itself lives in `config.json`'s `audit` object,
  * which a human edits, while this file is derived state a human never opens,
  * which is why it sits under `state/` rather than beside the audit results.
  */
@@ -285,7 +285,7 @@ export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "aud
  * `x64` where Rust says `x86_64`), and a near-miss there does not fail, it
  * silently files one machine under two PostHog persons — so this file is how the
  * two agree. Derived state a human never opens, hence `state/` rather than
- * beside `config.toml`.
+ * beside `config.json`.
  */
 export const telemetryIdFile = (home?: string) => resolve(stateDir(home), "telemetry-id");
 export const launcherMarker = (home?: string) => resolve(stateDir(home), "launcher-configured");

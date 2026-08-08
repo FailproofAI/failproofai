@@ -127,7 +127,7 @@ export function writeIngestCredential(cred: IngestCredential): string {
 
 /** Merge the collector block into the shared (non-secret) config. */
 export function writeCollectorSettings(settings: CollectorSettings): void {
-  // Collector preferences are NOT secret, so they live in config.toml. The key
+  // Collector preferences are NOT secret, so they live in config.json. The key
   // that makes them meaningful lives in credentials.toml; that split is the
   // whole point of layout 2.
   updateConfig({

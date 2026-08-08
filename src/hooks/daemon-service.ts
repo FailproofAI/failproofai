@@ -393,8 +393,25 @@ function systemdUnitName(user: string = serviceUser()): string {
   return `failproofaid@${user}.service`;
 }
 
+/**
+ * The unit directory, redirectable for tests ONLY.
+ *
+ * It was hardcoded, which left a test asserting "a failed install writes
+ * nothing" checking the REAL `/etc/systemd/system` — so it passed in CI, where
+ * nothing is installed, and failed on the machine of anyone who actually uses
+ * failproofai, whose genuine unit file is sitting right there. That is the bug
+ * class `handler.test.ts`'s header already documents: CI is green, so the red is
+ * only ever seen locally, by exactly the people who most need to trust the suite.
+ *
+ * Read through a function rather than captured at module load, because a test
+ * sets it after importing this module.
+ */
+function systemdUnitDir(): string {
+  return process.env.FAILPROOFAI_SYSTEMD_DIR || "/etc/systemd/system";
+}
+
 function systemdUnitPath(user: string = serviceUser()): string {
-  return resolve("/etc/systemd/system", systemdUnitName(user));
+  return resolve(systemdUnitDir(), systemdUnitName(user));
 }
 
 /**

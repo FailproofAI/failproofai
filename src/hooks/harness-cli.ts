@@ -18,13 +18,13 @@
  * from the feature working.
  *
  * The one thing validated here is the HARNESS NAME, because that failure has no
- * other detector: `[collector.sources.claud]` is valid TOML, parses cleanly,
+ * other detector: `collector.sources.claud` is valid JSON, parses cleanly,
  * captures nothing, and is mentioned nowhere else a user would look.
  *
  * # No restart, and no sudo
  *
  * This writes one file in the user's own home and nothing else. The daemon's
- * collector manager re-reads `config.toml` on an interval and cycles the
+ * collector manager re-reads `config.json` on an interval and cycles the
  * collector whenever the resolved `CollectorConfig` changes — the same path
  * that already picks up `--connect`, a stream being switched off, and a
  * verbosity change. `extra_paths` rides it for free by living inside
@@ -39,7 +39,7 @@ import { readConfig, updateConfig } from "./fp-config";
 import { configFile } from "./fp-home";
 
 /**
- * Harness keys `[collector.sources.<key>]` accepts.
+ * Harness keys `collector.sources.<key>` accepts.
  *
  * MUST stay in step with `HARNESS_KEYS` in `crates/failproofaid/src/main.rs`,
  * which is the side that actually registers the tasks. A name here that the
@@ -124,7 +124,7 @@ function writePaths(harness: string, paths: string[]): void {
 /**
  * No restart, and deliberately no instruction to perform one.
  *
- * The daemon's collector manager re-reads `config.toml` on an interval and
+ * The daemon's collector manager re-reads `config.json` on an interval and
  * cycles the collector whenever the resolved `CollectorConfig` changes — the
  * same path that already picks up `--connect`, a stream being switched off and
  * a verbosity change. `extra_paths` rides that for free because it lives inside
@@ -266,7 +266,7 @@ export function listPaths(harness?: string): HarnessResult {
     }
   }
   // Unknown tables are surfaced here as well as by the daemon: a user who
-  // hand-edited config.toml runs `list` to check it, and that is the moment the
+  // hand-edited config.json runs `list` to check it, and that is the moment the
   // typo is cheapest to find.
   if (unknown.length > 0) {
     if (lines.length === 0) lines.push("No extra capture paths configured for any known harness.");

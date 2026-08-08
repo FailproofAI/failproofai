@@ -1153,14 +1153,16 @@ src/hooks/
                               ~/.failproofai/policies-config.json
   manager.ts                 policies --install / --uninstall / list
   harness-cli.ts             `failproofai harness add-path/remove-path/list` —
-                              edits [collector.sources.<harness>] extra_paths in
-                              config.toml and NOTHING else. The grammar, `~`
+                              edits collector.sources.<harness>.extra_paths in
+                              config.json and NOTHING else. The grammar, `~`
                               expansion, overlap rejection and <label>-<agentId>
                               namespacing all live in the daemon
                               (crates/fpai-collect/src/extra_paths.rs); this side
                               validates only the HARNESS NAME, because that is
                               the one failure with no other detector — a typo'd
-                              table is valid TOML that captures nothing.
+                              key is valid JSON that captures nothing.
+                              FAILPROOFAI_<HARNESS>_EXTRA_PATHS (comma-separated)
+                              overrides the file per source, for containers.
                               HARNESS_KEYS here and in main.rs are two
                               hand-maintained copies of one list; a test reads
                               the Rust source to keep them identical

@@ -42,6 +42,14 @@ describe("hooks/daemon-service", () => {
   function useScratchHome(): string {
     home = mkdtempSync(resolve(tmpdir(), "fpai-daemon-service-"));
     process.env.HOME = home;
+    // The systemd unit directory too. "A failed install writes nothing" was
+    // asserted against the REAL /etc/systemd/system — green in CI, where nothing
+    // is installed, and red on the machine of anyone who actually USES
+    // failproofai, whose genuine unit file is sitting right there. Same bug
+    // class `handler.test.ts`'s header documents: the red is only ever seen
+    // locally, by exactly the people who most need to trust the suite.
+    process.env.FAILPROOFAI_SYSTEMD_DIR = resolve(home, "systemd");
+    mkdirSync(process.env.FAILPROOFAI_SYSTEMD_DIR, { recursive: true });
     return home;
   }
 
@@ -54,6 +62,9 @@ describe("hooks/daemon-service", () => {
     // — which is what broke CI while passing locally. The download path
     // itself is covered in daemon-download.test.ts against a local server.
     process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+    // Never inherited between tests: one that does not call useScratchHome
+    // must not silently reuse the previous test's scratch directory.
+    delete process.env.FAILPROOFAI_SYSTEMD_DIR;
   });
 
   afterEach(() => {
@@ -62,6 +73,7 @@ describe("hooks/daemon-service", () => {
     else delete process.env.HOME;
     if (originalNoDownload !== undefined) process.env.FAILPROOFAI_NO_DOWNLOAD = originalNoDownload;
     else delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+    delete process.env.FAILPROOFAI_SYSTEMD_DIR;
     Object.defineProperty(process, "platform", { value: originalPlatform });
     Object.defineProperty(process, "arch", { value: originalArch });
     if (originalBinaryEnv !== undefined) process.env.FAILPROOFAI_DAEMON_BINARY = originalBinaryEnv;
@@ -417,7 +429,9 @@ describe("hooks/daemon-service", () => {
           expect(result.reason).toContain("systemctl enable");
           expect(result.reason).toContain("systemctl restart");
           expect(result.reason).not.toContain("enable --now");
-          expect(existsSync(`/etc/systemd/system/failproofaid@${userInfo().username}.service`)).toBe(false);
+          expect(
+              existsSync(resolve(process.env.FAILPROOFAI_SYSTEMD_DIR!, `failproofaid@${userInfo().username}.service`)),
+            ).toBe(false);
         } finally {
           vi.doUnmock("node:child_process");
           vi.resetModules();

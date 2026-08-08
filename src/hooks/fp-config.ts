@@ -242,7 +242,7 @@ export interface FpConfig {
     machineId?: string;
     /**
      * Extra locations to capture per harness, beyond the one each source ships
-     * with — `[collector.sources.<harness>] extra_paths` in `config.toml`.
+     * with — `collector.sources.<harness>.extra_paths` in `config.json`.
      *
      * Each entry is `label=path` or a bare `path`; the label becomes an agent-id
      * namespace (`<label>-<agentId>`), which is what keeps two copies of one
